@@ -41,3 +41,25 @@ test fn an_empty_list_in_both_branches_does_not_fabricate_a_unit_element() -> Bo
 test fn a_typed_branch_beside_an_empty_one_still_resolves() -> Bool {
   compiles_with_no_blocking_diagnostic(source: green_one_branch_typed_source)
 }
+
+// EVAL CONTROL for gunbc.recurring_failure_mode empty_list_evaluates_to_unit.
+// Discriminates the silent-wrongness class: concat from [] as List<T> must yield a T
+// record, not Unit. Reading .path would TypeError with "cannot access field 'path' on
+// Unit" if the empty init (or concat) fabricated Unit as an element — the generated-lane
+// specimen. This claim does not assert which eval_expr_inner arm ran (ExprListLit vs
+// NoExprData TypeError); a TypeError RED for the new refusal is not authorable as an
+// Accepted value claim without injecting typed IR (review 77955).
+type EmptyListEvalFile { path: String }
+
+data empty_list_eval_seed: List<EmptyListEvalFile> = [EmptyListEvalFile { path: "a" }]
+
+fn empty_list_eval_concat_from_empty() -> List<EmptyListEvalFile> {
+  fold(empty_list_eval_seed, init: [] as List<EmptyListEvalFile>, f: (acc, f) => concat(acc, [f]))
+}
+
+test fn empty_list_concat_element_is_not_unit_at_eval() -> Bool {
+  match empty_list_eval_concat_from_empty() |> first {
+    Present { value: f } => f.path == "a"
+    Absent => false
+  }
+}

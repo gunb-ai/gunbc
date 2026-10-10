@@ -15,9 +15,9 @@
 .githooks/generated-artifact-merge merge=generated-artifact
 .githooks/pre-commit merge=generated-artifact
 .githooks/pre-push merge=generated-artifact
+.github/workflows/branch-run-grant-broker.yml merge=generated-artifact
 .github/workflows/fleet-converge.yml merge=generated-artifact
 .github/workflows/fleet-desired.yml merge=generated-artifact
-.github/workflows/heal-publish.yml merge=generated-artifact
 .github/workflows/heal.yml merge=generated-artifact
 .github/workflows/instrument-dispatch.yml merge=generated-artifact
 .github/workflows/microvm-shakedown.yml merge=generated-artifact

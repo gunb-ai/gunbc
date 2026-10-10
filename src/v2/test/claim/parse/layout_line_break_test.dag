@@ -1,6 +1,6 @@
 module v2.test.parse.layout_line_break
 
-import v2.compiler.parse { ParseArtifact, parse_module, parse_module_prepared, parse_token_stream_digest, parse_token_stream_layout_digest }
+import v2.compiler.parse { ParseArtifact, parse_module, parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex }
@@ -72,7 +72,7 @@ data same_line_text: String = "x - 1"
 data next_line_text: String = "x\n- 1"
 
 fn lexed(text: String, file: Symbol) -> Outcome<TokenStream> {
-  tokenize(text: text, file: file, rules: dag_lex())
+  tokenize_prepared(text: text, file: file, prepared: dag_prepared_lex())
 }
 
 // The gap before the second token (`-`): from the end of `x` to the start of `-`.
@@ -156,8 +156,8 @@ data identity_module_text: String = "module probe.layout_identity\n\ndata d: Int
 fn identity_parse(stream: TokenStream) -> Outcome<ParseArtifact> {
   match dag_prepared_grammar() {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: prepared, diagnostics: residue } =>
-      parse_module_prepared(tokens: stream, prepared: prepared, validation_residue: residue)
+    Accepted { value: prepared, diagnostics: _ } =>
+      parse_module_prepared(tokens: stream, prepared: prepared)
   }
 }
 
@@ -269,25 +269,6 @@ test fn a_layout_question_without_source_refuses_holds() -> Bool {
         start: 2,
         end: 3
       )
-  }
-}
-
-// THE MEMO CANNOT SERVE ONE LAYOUT'S ANSWER TO THE OTHER. `x - 1` and `x` newline `- 1` lex to the
-// same tokens at the same octets, so a stream digest over tokens alone would key them together and a
-// warm memo entry could replay a same-line acceptance for a next-line refusal. The layout (its line-break-preceded starts) is part of
-// the stream's digest (v2.compiler.parse parse_token_stream_layout_digest): same tokens, different
-// digest; and the token-only digest, which is what a sourceless stream keys by, is unchanged.
-test fn same_tokens_different_layout_have_different_stream_digests_holds() -> Bool {
-  match lexed(text: same_line_text, file: ^layout_digest) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: same, diagnostics: _ } =>
-      match lexed(text: next_line_text, file: ^layout_digest) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: next, diagnostics: _ } =>
-          (parse_token_stream_digest(all_tokens: token_stream_all(stream: same)) == parse_token_stream_digest(all_tokens: token_stream_all(stream: next)))
-            && (parse_token_stream_layout_digest(all_tokens: token_stream_all(stream: same), layout: token_stream_layout(stream: same))
-              != parse_token_stream_layout_digest(all_tokens: token_stream_all(stream: next), layout: token_stream_layout(stream: next)))
-      }
   }
 }
 

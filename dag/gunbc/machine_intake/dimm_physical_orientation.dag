@@ -1,12 +1,13 @@
 module gunbc.machine_intake_dimm_physical_orientation
 
+import extdeps.board_authority { BoardAuthorityRef, BoardAuthorityLookup }
+import gunbc.board_authority_binding { observed_board_authority }
 import v2.std.algebra { filter }
 import std.types { String, List, list_length }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.roster_frontier { FrontierRow, DeclSubject }
 import std.dissolution { UnboundDissolution }
-import extdeps.boards.types { BaseboardModel }
 import product.host_identity { HostIdentity }
 import extdeps.ampere.mt_collins_product_brief.memory_population { MtCollinsDimmPopulationRow }
 import gunbc.mt_collins_dimm_physical_identity {
@@ -48,17 +49,17 @@ import gunbc.machine_intake_dimm_row_orientation {
 // handed one host's name beside another board's figure.
 type DimmOrientedHost sole_constructor {
   host: HostIdentity
-  board: BaseboardModel
+  board: BoardAuthorityRef
   figure: BaseboardDimmFigure
   outcome: DimmOrientationOutcome
 }
 
 type HostDimmOrientation
   = HostDimmOriented { oriented: DimmOrientedHost }
-  | HostDimmBoardUnmodeled { host: HostIdentity, board: BaseboardModel }
+  | HostDimmBoardUnmodeled { host: HostIdentity, board: BoardAuthorityLookup }
 
 fn host_dimm_orientation(binding: ManagedHostBinding, anchors: List<DimmPlacementAnchor>) -> HostDimmOrientation {
-  match baseboard_dimm_figure(board: binding.observation.identity.baseboard) {
+  match baseboard_dimm_figure(board: observed_board_authority(observation: binding.observation.identity.board)) {
     BoardFigureUnmodeled { board: b } => HostDimmBoardUnmodeled { host: binding.host.host, board: b }
     BaseboardDimmFigureOf { board: b, figure: f } => HostDimmOriented { oriented: DimmOrientedHost {
       host: binding.host.host,

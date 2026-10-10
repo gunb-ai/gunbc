@@ -161,6 +161,16 @@ data gunbc_floor_uncensored_demand_receipt: FloorRunCgroupPeakReceipt = FloorRun
 // known to be too low; this receipt says 25 GiB is such a line. It is recorded rather than argued
 // away: a cell sized "to end welding to the throttle line" that welds a week later is a finding
 // about demand growth, and the fold below carries it into every consumer as the lower bound it is.
+// THE SLOT ENVELOPE THESE RECEIPTS WERE TAKEN UNDER, carried here because the live row moved. On
+// 2026-10-09 the v1 withdrawal (gunbc.rung_drop v1_required_lanes_withdrawn) deleted the floor from
+// the required gate and the operator re-ruled gunbc.runner_slot_desired to 22 GiB MemoryMax / 21 GiB
+// MemoryHigh / no swap for the native emit-and-build job. The receipts below are findings about the
+// 2026-09-12 envelope (26 GiB max, 25 GiB high) the floor ran in, and a claim that joined them to
+// the live row would from that day assert a relation between a dead instrument and a slot it never
+// inhabited. The floor is frozen, so its envelope is its own row.
+data gunbc_floor_pinned_memory_max: ByteSize = byte_size(27917287424)
+data gunbc_floor_pinned_memory_high: ByteSize = byte_size(26843545600)
+
 data gunbc_floor_throttle_pin_receipt_2026_09_19: FloorRunCgroupPeakReceipt = FloorRunCgroupPeakMeasured {
   run_id: "35408627003",
   runner_unit: "actions-runner@srv1-03.service",

@@ -43,6 +43,12 @@ fn getconf_clock_ticks_command() -> ArgvCommand {
   argv_command(program: getconf_program(), arguments: ["CLK_TCK"])
 }
 
+// _NPROCESSORS_ONLN is the number of processors online in the running system -- for a virtual
+// guest, the vCPUs the hypervisor presents, which is the figure a provider's offer entitles.
+fn getconf_online_processors_command() -> ArgvCommand {
+  argv_command(program: getconf_program(), arguments: ["_NPROCESSORS_ONLN"])
+}
+
 service posix.Getconf {
   operation ClockTicksPerSecond {
     requires none

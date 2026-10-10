@@ -513,6 +513,20 @@ type SystemdTimerDirective
   | RandomizedDelaySec { duration: NonEmptyStr }
   | Persistent { enabled: Bool }
 
+// A .path UNIT'S DIRECTIVES (systemd.path(5)). A path unit activates its unit when a condition on a
+// watched path becomes true, through inotify, with no polling and no clock -- which is what makes it
+// the event source for a directory other processes write into. The two conditions modeled differ in
+// a way that matters to their consumers: DirectoryNotEmpty= is a LEVEL (it is re-checked when the
+// activated unit finishes, so an entry that arrived while it ran starts it again), PathChanged= is an
+// EDGE (a change while the activated unit is still running is coalesced into that run, and is not
+// remembered after it). PathUnit= names the unit to activate; MakeDirectory= creates the watched
+// directory if it is missing.
+type SystemdPathDirective
+  = PathUnit { target: NonEmptyStr }
+  | DirectoryNotEmpty { path: NonEmptyStr }
+  | PathChanged { path: NonEmptyStr }
+  | MakeDirectory { enabled: Bool }
+
 type SystemdInstallDirective
   = WantedBy { target: NonEmptyStr }
   | RequiredBy { target: NonEmptyStr }
@@ -774,6 +788,15 @@ fn systemd_timer_directive_line(directive: SystemdTimerDirective) -> String {
   }
 }
 
+fn systemd_path_directive_line(directive: SystemdPathDirective) -> String {
+  match directive {
+    PathUnit { target: v } => join(["Unit=", v as String], "")
+    DirectoryNotEmpty { path: v } => join(["DirectoryNotEmpty=", v as String], "")
+    PathChanged { path: v } => join(["PathChanged=", v as String], "")
+    MakeDirectory { enabled: v } => if v { "MakeDirectory=yes" } else { "MakeDirectory=no" }
+  }
+}
+
 // THE LINE HAS NO MATCH LEFT TO GET WRONG. Both halves come from an authority: the knob name from
 // `systemd_unit_property_wire` and the value from `systemd_directive_value_wire`, so a fifth knob is
 // a mint above and no edit here.
@@ -836,6 +859,11 @@ type SystemdUnitFile
       slice: List<SystemdSliceDirective>,
       install: SystemdInstallSection,
     }
+  | PathUnitFile {
+      unit: List<SystemdUnitDirective>,
+      path: List<SystemdPathDirective>,
+      install: SystemdInstallSection,
+    }
 
 // THE INSTANCE SPECIFIER IS systemd's, SO IT IS SPELLED HERE AND NOWHERE ELSE.
 //
@@ -857,6 +885,8 @@ data systemd_service_section_header: String = "[Service]"
 data systemd_timer_section_header: String = "[Timer]"
 
 data systemd_slice_section_header: String = "[Slice]"
+
+data systemd_path_section_header: String = "[Path]"
 
 data systemd_install_section_header: String = "[Install]"
 
@@ -929,6 +959,16 @@ fn systemd_unit_file_lines(file: SystemdUnitFile) -> List<String> {
           [
             concat([systemd_unit_section_header], map(u, d => systemd_unit_directive_line(directive: d))),
             concat([systemd_slice_section_header], map(sl, d => systemd_slice_directive_line(directive: d))),
+          ],
+          systemd_install_section_block(section: inst),
+        ),
+      )
+    PathUnitFile { unit: u, path: pd, install: inst } =>
+      systemd_section_lines(
+        sections: concat(
+          [
+            concat([systemd_unit_section_header], map(u, d => systemd_unit_directive_line(directive: d))),
+            concat([systemd_path_section_header], map(pd, d => systemd_path_directive_line(directive: d))),
           ],
           systemd_install_section_block(section: inst),
         ),

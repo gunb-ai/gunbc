@@ -25,7 +25,7 @@ import gunbc.spark.serving_performance_subject {
   ServingPerformanceSubject, serving_subject_for_launch, serving_subject_standing, ServingPerformanceSubjectStanding,
 }
 import gunbc.spark.glm_group_b_relaunch_cli { with_group_b_access, rank_context }
-import gunbc.spark.fabric_switch_observed { FabricGroupB }
+import gunbc.spark.fabric_switch_observed { FabricGroupB, FabricGroup }
 import gunbc.spark.serving_load_probe {
   ClientRateQualificationFrontier, client_rate_qualification_frontier,
   ProtectedSubjectField, protected_subject_field,
@@ -160,7 +160,7 @@ fn glm_native_serving_load_subject() -> ServingLoadSubject? {
     Present { value: standing } => Present { value: ServingLoadSubject {
       host: operator_host_srv9,
       host_address: srv9_host_lan_endpoint.address,
-      group: FabricGroupB,
+      group: FabricGroupB {},
       container: glm_native_container_name,
       base_url: glm_native_serve_base_url(),
       served_alias: group_b_restoration_served_alias,

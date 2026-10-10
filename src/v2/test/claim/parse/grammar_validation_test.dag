@@ -28,7 +28,7 @@ import v2.compiler.parse {
   parse_skip_to_sync,
 }
 import v2.std.witness { Holds, Violates }
-import v2.std.diagnostic { Accepted, Diagnostics, None, Outcome, Rejected, Some, invariant_port_locus }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, declaration_locus, invariant_port_locus, locus_eq }
 import std.algebra { Cons, Empty }
 import v2.std.node { Atom, Node, Symbol, TypeNode }
 import v2.std.verification {
@@ -172,17 +172,19 @@ data validation_disjoint_choice_root: GrammarRoot = GrammarRoot {
   sync_tokens: grammar_empty_sync_tokens()
 }
 
-fn validation_overlap_choice_validate_accepts_with_residue() -> Bool {
+// An overlapping choice is REFUSED at validation, located at the production that owns it. The
+// single-overlap control is enrolled on the merge path in test.claim.parse_test_grammar_choice_overlap;
+// this one holds the same wall for an overlap in the TAIL of a three-way choice.
+fn validation_refuses_overlap_at_production(root: GrammarRoot, production: Symbol) -> Bool {
   let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_validation_grammar_contract)
-  match grammar_validate_for_parse(root: validation_ambiguous_choice_root, at: at) {
-    Accepted { value: _, diagnostics: d } =>
-      match d {
-        Some { diagnostics: residue } => residue.head.reason == ^parse_grammar_choice_overlap_residue
-        None => false
-      }
-    Rejected { diagnostics: _ } => false
+  match grammar_validate_for_parse(root: root, at: at) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      (d.head.reason == ^parse_grammar_choice_ambiguity)
+        && locus_eq(a: d.head.at, b: declaration_locus(declaration: Cons { head: production, tail: Empty }))
   }
 }
+
 
 data validation_nullable_ambiguous_choice_root: GrammarRoot = GrammarRoot {
   start: ^validation_start,
@@ -254,28 +256,8 @@ test fn validation_three_alt_inner_nullable_pair_rejects() -> Bool {
   }
 }
 
-test fn validation_three_alt_tail_overlap_accepts_with_residue() -> Bool {
-  let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_validation_grammar_contract)
-  match grammar_validate_for_parse(root: validation_three_alt_tail_overlap_root, at: at) {
-    Accepted { value: _, diagnostics: d } =>
-      match d {
-        Some { diagnostics: residue } => residue.head.reason == ^parse_grammar_choice_overlap_residue
-        None => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn validation_disjoint_choice_residue_is_none() -> Bool {
-  let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_validation_grammar_contract)
-  match grammar_validate_for_parse(root: validation_disjoint_choice_root, at: at) {
-    Accepted { value: _, diagnostics: d } =>
-      match d {
-        None => true
-        Some { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
+test fn validation_three_alt_tail_overlap_refuses_at_production() -> Bool {
+  validation_refuses_overlap_at_production(root: validation_three_alt_tail_overlap_root, production: ^validation_start)
 }
 
 fn validation_disjoint_choice_validate_accepts() -> Bool {
@@ -430,26 +412,10 @@ data claim_disjoint_choice_not_ambiguous: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_validate_accepts_overlap_with_counted_residue: TestClaim = EqualsClaim {
-  label: "grammar_validate_for_parse accepts non-nullable FIRST-overlap OrderedBacktrack as counted typed residue (reason parse_grammar_choice_overlap_residue); the roster is overlap/both-nullable rows, not every backtrack node",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: validation_bool_atom(b: validation_overlap_choice_validate_accepts_with_residue()),
-  rhs: validation_bool_atom(b: true),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
 data claim_validate_rejects_nullable_choice_ambiguity: TestClaim = EqualsClaim {
   label: "grammar_validate_for_parse stays fail-closed on genuine ambiguity: both-nullable Choice arms sharing a FIRST terminal are Rejected",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: validation_bool_atom(b: validation_nullable_ambiguity_validate_rejects()),
-  rhs: validation_bool_atom(b: true),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_disjoint_choice_validate_residue_none: TestClaim = EqualsClaim {
-  label: "disjoint-FIRST Choice validates with zero residue diagnostics (residue channel discriminates overlap from clean)",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: validation_bool_atom(b: validation_disjoint_choice_residue_is_none()),
   rhs: validation_bool_atom(b: true),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

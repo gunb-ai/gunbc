@@ -26,7 +26,8 @@ import v2.compiler.resolve {
 }
 import v2.std.resolution_policy { default_name_resolution_policy }
 import v2.compiler.fold_lowering { fold_carrier_binder_atom }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import v2.std.collection { Map, empty_map, list_at_optional, map_insert, map_lookup }
+import v2.std.node_query { node_positional_child_targets }
 import std.algebra { Cons, Empty }
 import v2.std.language_model { void_language_model }
 import v2.std.text { String }
@@ -56,10 +57,10 @@ import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrenceSynth
 // witness rule) -- and it is exactly the reach whose cost refused this lane's other claim sets at the
 // enrolment margin.
 //
-// WHAT THE SLICE ESTABLISHES. `fold(xs, init: false, f: fn(found, e) { found || ... })` refuses at
-// resolve with resolve_unbound_name_is_declared_in_several_modules on `found`. The rows below locate
-// that in the lowering rather than in resolve's binder model: the Arrow path admits its binders, and
-// the fold seam the step is lowered to carries none.
+// WHAT THE SLICE ESTABLISHES. A fn-literal-shaped Arrow admits every Named domain binder and no
+// undeclared name. The fold encoding's Loop positional is that same Arrow (v2.compiler.fold_lowering
+// fold_recurrence_encoding), so harvesting the step admits the handler's binders; harvesting the Loop
+// itself does not, because a Loop is not an Arrow.
 
 // THE LOOP THESE ROWS SUPPLY MIRRORS THE FOLD ENCODING'S, and it is built here rather than by calling the
 // producer because gunbc#12550 retired the old single-purpose seam builder: the encoding is now a Bind
@@ -130,22 +131,21 @@ test fn cbs_the_arrow_path_admits_no_undeclared_name_holds() -> Bool {
   !cbs_admits(locals: cbs_arrow_locals(), name: ^unrelated)
 }
 
-// (3) THE FOLD SEAM ADMITS NEITHER BINDER -- THE DISCRIMINATING RED FOR THIS SLICE. The step literal
-// is destructured into an iteration body and ONE carrier symbol (v2.compiler.fold_lowering
-// fold_call_seam_from_step), and the seam it builds is a Loop, not an Arrow. arrow_domain_frame_binders
-// answers the empty map for it because it is not an Arrow at all, and resolve harvests binders in
-// exactly two places -- an Arrow's domain and a Bind's atom -- with NO loop-carrier harvester. So the
-// body's `found` reaches the bare-name census and refuses as declared in several modules.
-//
-// THIS ROW FLIPS WHEN THE CONSOLIDATION LANDS: once the step lowers through the one callable Arrow
-// constructor and loop carriers go through the one binder-admission operation, the seam admits its
-// binders and this row must be rewritten to assert that, not deleted (DESIGN section 4b(4)).
-test fn cbs_the_fold_seam_admits_no_binder_today_holds() -> Bool {
-  let seam_locals = arrow_domain_frame_binders(
-    n: cbs_carrier_loop(body: cbs_atom(id: ^step_body), carrier: ^found)
-  ).locals
-  !cbs_admits(locals: seam_locals, name: ^found)
-    && !cbs_admits(locals: seam_locals, name: ^e)
+// (3) THE FOLD ENCODING'S STEP IS AN ARROW, SO ITS HANDLER BINDERS HARVEST. The Loop around it still
+// harvests none: arrow_domain_frame_binders is an Arrow reader. Resolve walks the positional step as
+// that Arrow (resolve_arrow_node), which is why a handler binder binds on the native ingest route
+// (v2.test.claim.resolve.fold_handler_binder_resolve).
+test fn cbs_the_fold_encoding_step_admits_handler_binders_holds() -> Bool {
+  let loop_node = cbs_carrier_loop(body: cbs_fn_literal_shaped_arrow(), carrier: ^found)
+  let loop_locals = arrow_domain_frame_binders(n: loop_node).locals
+  match list_at_optional(xs: node_positional_child_targets(node: loop_node), index: 0) {
+    Absent => false
+    Present { value: step } =>
+      let step_locals = arrow_domain_frame_binders(n: step).locals
+      !cbs_admits(locals: loop_locals, name: ^found)
+        && cbs_admits(locals: step_locals, name: ^found)
+        && cbs_admits(locals: step_locals, name: ^e)
+  }
 }
 
 // THE ADMISSION'S THREE RULES, each at its own interface with a supplied Scope. The scopes are
@@ -177,7 +177,7 @@ fn cbs_frame_binding(name: Symbol) -> Scope {
     fb: frame_binders_add(
       fb: frame_binders_empty(),
       name: name,
-      binding: LexicalBinding { binder_site: OccurrenceMinted { id: OccurrenceId { value: 1 } }, declared: optional_absent() }
+      binding: LexicalBinding { binder_site: OccurrenceMinted { id: OccurrenceId { value: 1 } }, declared: optional_absent(), value: optional_absent() }
     ),
     outer: cbs_root_scope()
   )

@@ -1,7 +1,7 @@
 module gunbc.contributor_onboarding_path
 
 import std.types { String, List, NonEmptyStr }
-import v2.std.integer { integer_int_to_decimal_string }
+import std.integer { int_to_decimal_string }
 import std.optional { Optional, Absent, Present }
 import std.markdown { MarkdownDocument, MarkdownBlock }
 import gunbc.plans.md_helpers { h1, h2, h3, p, li, ul, ol, hr }
@@ -111,11 +111,12 @@ type OnboardingBlocker
 
 // THE ORDINAL IS AN Int, AND THAT IS A CORRECTION RATHER THAN A PREFERENCE (review 64609).
 // It was first declared `std.nat` `Nat` -- `CommutativeSemiring<Magnitude>` -- and rendered with
-// `integer_nat_to_decimal_string`, whose parameter is `v2.std.nat.Nat`, the Peano `Zero | Succ`
+// `integer_nat_to_decimal_string` (then in `v2.std.integer`, since moved to `std.nat` as
+// `nat_to_decimal_string` by gunbc#13436), whose parameter was `v2.std.nat.Nat`, the Peano `Zero | Succ`
 // coproduct. Two materially different types sharing one spelling is the DESIGN section 3 meaning
 // fork, and this instance is invisible exactly where it is authored: under the interpreter's
 // numeric grounding the projection rendered 1 through 10 correctly, while the emitted closure
-// refuses it. `v2.std.integer` `integer_int_to_decimal_string` records that same class as already
+// refuses it. `std.integer` `int_to_decimal_string` records that same class as already
 // repaired for two Int-valued callers, so re-introducing it would have been a silent regression of
 // that fix. Every other `dag/gunbc` caller consumes the Int renderer; this one now does too.
 //
@@ -289,7 +290,7 @@ data onboarding_steps: List<OnboardingStep> = [
   },
   OnboardingStep {
     id: "run-witnesses" as NonEmptyStr,
-    goal: "Run the corpus lane the merge gate runs: the parse sweep and the witness floor. EXPECT TENS OF MINUTES, NOT SECONDS -- this and the emission lane are the two long steps on this page, and a reader who assumes a hang and kills it has thrown away the run rather than the wait." as NonEmptyStr,
+    goal: "Run the corpus lane that WAS the merge gate's floor until the v1 withdrawal of 2026-10-09 (gunbc.rung_drop v1_required_lanes_withdrawn): the parse sweep and the witness floor. Nothing on the required path executes a witness now, so this run is the only place the enrolled population is folded, and a red here reaches main unless you act on it. EXPECT TENS OF MINUTES, NOT SECONDS -- this and the emission lane are the two long steps on this page, and a reader who assumes a hang and kills it has thrown away the run rather than the wait." as NonEmptyStr,
     command: Present { value: onboarding_witness_command() as NonEmptyStr },
     verification: "The run announces one phase line per phase it owns and one routed line per phase it does not, and exits nonzero on any failed phase. QUALIFY THE HOST BEFORE SPENDING THE TIME: this is the longest step by a wide margin and the most memory-hungry, so read your own bound with `cat /sys/fs/cgroup/memory.max` and compare it against the declared per-slot allowance, which is gunbc.runner_slot_desired gunbc_runner_slot_memory_max -- the page names the symbol rather than copying the number, so look it up there and it cannot go stale on you. Confirm yours is at or above it first -- a host under it will run for a long time and then refuse or be killed. When it does refuse, classify the refusal with the three arms the run-witnesses obstacle rows carry before touching the corpus." as NonEmptyStr,
     blocker: NeedsMachine { resource: "a host whose cgroup exposes an enforceable memory bound large enough for the floor fold" as NonEmptyStr },
@@ -653,7 +654,7 @@ fn obstacles_with_undeclared_step() -> List<OnboardingObstacle> {
 // repair the rule roster above received, and the step ordinal was the last authored position left.
 
 fn step_blocks(s: OnboardingStep, position: Int) -> List<MarkdownBlock> {
-  let head = h3(text: join([integer_int_to_decimal_string(value: position), ". ", (s.id as String)], ""))
+  let head = h3(text: join([int_to_decimal_string(value: position), ". ", (s.id as String)], ""))
   let goal = p(text: (s.goal as String))
   let who = p(text: join(["Who is needed: ", blocker_rendered(b: s.blocker)], ""))
   let verify = p(text: join(["Done when: ", (s.verification as String)], ""))
@@ -690,7 +691,7 @@ fn onboarding_preamble_blocks() -> List<MarkdownBlock> {
     p(text: "Generated from `gunbc.contributor_onboarding_path`. Do not hand-edit — the generated-artifact phase adjudicates this file against that authority. Every command below is derived from the authority that owns it, so this page moves when the build, the lane partition or the source roots move."),
     p(text: "This page is an index of a path, not the proof that it works. What establishes the path is walking it: clone, build, run the lanes, make one change, get it reviewed, land it. If a step here does not work, that is a defect in the path and worth reporting as one — the obstacle roster below exists because each of its rows was hit rather than imagined."),
     p(text: "`DESIGN.md` is the authority for every judgement about a change and is not a first-day document. The reading order at the end of this page says what you need before your first build, what you need before your first commit, and what can wait."),
-    p(text: join(["**", integer_int_to_decimal_string(value: count(onboarding_rules)), " RULES APPLY TO EVERY STEP BELOW, because three strangers walking this page lost their build to them.**"], "")),
+    p(text: join(["**", int_to_decimal_string(value: count(onboarding_rules)), " RULES APPLY TO EVERY STEP BELOW, because three strangers walking this page lost their build to them.**"], "")),
     ol(items: map(onboarding_rules, r => li(text: join(["**", (r.name as String), ".** ", (r.rule as String)], "")))),
     hr(),
   ]
@@ -723,7 +724,7 @@ fn onboarding_step_blocks() -> List<MarkdownBlock> {
     [
       [
         h2(text: "The path"),
-        p(text: join([integer_int_to_decimal_string(value: count(onboarding_steps)), " steps in order. Run each verification before moving on: a step that half-worked is the expensive kind, because the failure surfaces several steps later attached to the wrong cause."], "")),
+        p(text: join([int_to_decimal_string(value: count(onboarding_steps)), " steps in order. Run each verification before moving on: a step that half-worked is the expensive kind, because the failure surfaces several steps later attached to the wrong cause."], "")),
       ],
       rendered_step_blocks(steps: onboarding_steps),
     ],

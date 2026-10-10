@@ -35,13 +35,11 @@ fn scrambled_str_map() -> Map<String, Int> {
 data canonical_int_map_rendering: String = "\{0: 0, 1: 10, 2: 20, 3: 30, 4: 40, 5: 50, 6: 60, 7: 70, 8: 80, 9: 90, 10: 100, 11: 110, 12: 120, 13: 130, 14: 140, 15: 150, 16: 160, 17: 170, 18: 180, 19: 190}"
 
 // Rendering a map is the canonical content order (Display of Value::Map through canonical_entries).
+// Interpolation of a Map is not a named conversion (DESIGN section 4: no implicit stringify); XL-2
+// admits only std.nat nat_to_decimal_string, std.integer int_to_decimal_string, and
+// v2.std.node symbol_lexeme at interpolating holes, so the order property is held here, not by a Map hole.
 test fn to_string_renders_a_map_in_canonical_key_order() -> Bool {
   to_string(scrambled_int_map()) == canonical_int_map_rendering
-}
-
-// Interpolation lowers to the same Display, so it must agree byte for byte.
-test fn interpolation_renders_a_map_in_the_same_order_as_to_string() -> Bool {
-  "{scrambled_int_map()}" == canonical_int_map_rendering
 }
 
 // sorted_map_keys over Int keys is numeric order -- native Ord on i64, which is what the emitted

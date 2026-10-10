@@ -5,7 +5,8 @@ import v2.std.node { symbol_lexeme }
 import v2.std.algebra { any, filter, fold_list, is_empty, length, list_flat_map, list_map }
 import std.algebra { list_append }
 import v2.std.collection { Map, map_lookup }
-import v2.std.integer { Int, integer_int_to_decimal_string }
+import v2.std.integer { Int }
+import std.integer { int_to_decimal_string }
 import std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import extdeps.bazel.target_pattern { TargetPattern, target_pattern_within }
 import v2.compiler.native_test_vocabulary {
@@ -321,7 +322,7 @@ fn native_frontier_flip_accept_to_refuse_row(f: NativeFrontierOwnedCorrectnessFl
 fn native_frontier_flip_citation(f: NativeFrontierOwnedCorrectnessFlip) -> String {
   join([
     "v2.workflow.compile_door_cause_ownership correctness flip of gunbc#",
-    integer_int_to_decimal_string(value: f.flip.pull_request), " (", f.flip.why, ")"
+    int_to_decimal_string(value: f.flip.pull_request), " (", f.flip.why, ")"
   ], "")
 }
 
@@ -659,7 +660,7 @@ fn native_frontier_report_lines(v: NativeFrontierVerdict) -> List<String> {
     FrontierAdvanced { advanced: a, proposal: _ } =>
       list_append(
         left: [join([
-          integer_int_to_decimal_string(value: length(xs: a)),
+          int_to_decimal_string(value: length(xs: a)),
           " roster change(s) the run supports, NOT YET APPLIED: the committed gunbc.native_frontier_roster stays authoritative until a reviewed pull request replaces it with the proposal below"
         ], "")],
         right: a
@@ -667,14 +668,14 @@ fn native_frontier_report_lines(v: NativeFrontierVerdict) -> List<String> {
     FrontierGrewByOwnedCorrectnessFlip { flips: fl, advanced: a, proposal: _ } =>
       list_append(
         left: [join([
-          integer_int_to_decimal_string(value: length(xs: fl)),
+          int_to_decimal_string(value: length(xs: fl)),
           " added identit(ies) owed debt under an owned correctness flip, NOT YET APPLIED: the committed gunbc.native_frontier_roster stays authoritative until a reviewed pull request replaces it with the proposal below"
         ], "")],
         right: list_append(left: list_map(xs: fl, f: native_frontier_flip_text), right: a)
       )
     FrontierLost { findings: fs } => fs
     FrontierUnminted { proposal: p } =>
-      [join(["UNMINTED: gunbc.native_frontier_roster carries no roster; this complete run proposes a universe of ", integer_int_to_decimal_string(value: length(xs: p.universe)), " identities and ", integer_int_to_decimal_string(value: length(xs: p.rows)), " debt row(s) for review"], "")]
+      [join(["UNMINTED: gunbc.native_frontier_roster carries no roster; this complete run proposes a universe of ", int_to_decimal_string(value: length(xs: p.universe)), " identities and ", int_to_decimal_string(value: length(xs: p.rows)), " debt row(s) for review"], "")]
     FrontierNotAMeasurement { reasons: rs } =>
       list_map(xs: rs, f: fn(r) { join(["NOT A MEASUREMENT ", r], "") })
   }

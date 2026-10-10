@@ -1,0 +1,43 @@
+module test.claim.controlled_host_forged_probe_witness
+
+import std.types { String, Bool, Int, List }
+import extdeps.filesystem.filesystem_io
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE FORGED CONTROL CLAIM, ENROLLED AS AN EXECUTED RED (DESIGN §4b). test.probe.controlled_host_forged_probe
+// writes a ControlledHost outside gunbc.host_control_route; it must refuse at ControlledHost, and a
+// control source that only NAMES the module must refuse at nothing, so the refusal is attributable to
+// the forgery rather than to importing the module.
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn blocking(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+data control_source: String = "module probe_controlled_host_harness_control\nimport std.types { Bool }\nimport gunbc.host_control_route { HostControlStanding, HostControlled }\nfn controlled(s: HostControlStanding) -> Bool { match s { HostControlled { controlled: _ } => true _ => false } }\n"
+
+test fn a_source_that_only_names_the_module_forges_nothing() -> Bool {
+  blocking(c: census_of(source: control_source), wanted: "SoleConstructorViolation", subject: "ControlledHost") == 0
+}
+
+test fn a_forged_control_claim_refuses_at_controlled_host() -> Bool {
+  blocking(
+    c: census_of(source: filesystem_read(path: "dag/test/probe/controlled_host_forged_probe.dag").content),
+    wanted: "SoleConstructorViolation",
+    subject: "ControlledHost",
+  ) >= 1
+}

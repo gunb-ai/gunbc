@@ -86,7 +86,13 @@ test fn w_every_figure_connector_resolves() -> Bool {
     DimmDiagramIdentityRefused { connector: _, cause: _ } => false
   }))
   && match resolve_dimm_diagram_identity(connector: 16, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs) {
-    DimmDiagramIdentityResolved { identity: i } => i.diagram_label == "J16" && i.bank.connectors_left_to_right.first() == 16 && i.bank.connectors_left_to_right.last() == 9 && i.channel.memory_controller == 7 && i.legend.slot_number == 1 && i.legend.drawing_colour == "blue" && i.bank.side == RightOfProcessor
+    DimmDiagramIdentityResolved { identity: i } => i.diagram_label == "J16" && match i.bank.connectors_left_to_right.first() {
+      Present { value: c } => c == 16
+      Absent => false
+    } && match i.bank.connectors_left_to_right.last() {
+      Present { value: c } => c == 9
+      Absent => false
+    } && i.channel.memory_controller == 7 && i.legend.slot_number == 1 && i.legend.drawing_colour == "blue" && i.bank.side == RightOfProcessor
     DimmDiagramIdentityRefused { connector: _, cause: _ } => false
   }
 }
@@ -97,7 +103,14 @@ test fn w_sixteen_dimm_join_keeps_orientation_and_physical_gaps() -> Bool {
       list_length(items: slots) == p.dimm_count && p.dimm_count == 16
       && o.left_processor_socket == 0 && o.right_processor_socket == 1
       && list_length(items: gaps) == 2
-      && colours.first() == "blue" && colours.last() == "black"
+      && match colours.first() {
+        Present { value: c } => c == "blue"
+        Absent => false
+      }
+      && match colours.last() {
+        Present { value: c } => c == "black"
+        Absent => false
+      }
       && citation.figure == 19 && citation.page == 52 && mirror.standing == RecordedReadBytesAgree
       && fold(slots, init: true, f: (acc, i) => acc && i.legend.slot_number == 0 && i.legend.drawing_colour == "yellow")
     PopulationDiagramRefused { unresolved: _ } => false
@@ -120,7 +133,11 @@ test fn w_bad_population_never_returns_partial_slots() -> Bool {
     PopulationConnectorRepeated { connectors: _ } => false
   }
   let repeated = match population_diagram_identity(population: MtCollinsDimmPopulationRow { dimm_count: 2, connectors: [1, 1] }) {
-    PopulationConnectorRepeated { connectors: cs } => cs.first() == 1
+    PopulationConnectorRepeated { connectors: cs } =>
+      match cs.first() {
+        Present { value: c } => c == 1
+        Absent => false
+      }
     PopulationDiagramResolved { population: _, slots: _, orientation: _, physical_gaps: _, photographed_colours: _, user_guide_citation: _, mirror_read: _ } => false
     PopulationDiagramRefused { unresolved: _ } => false
     PopulationCountDisagrees { declared: _, listed: _ } => false

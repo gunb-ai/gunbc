@@ -16,7 +16,7 @@ import product.capacity.pool_events {
 import product.capacity.lease { LeasePolicy, QuiescenceRequired }
 import gunbc.harness.harness_wire { OpenAiChatCompletionsShape }
 import gunbc.harness.harness_seat { harness_turn_request,
-  HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, harness_bind_seat, HarnessSeatReleased,
+  HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, HarnessHostedBound, harness_bind_seat, HarnessSeatReleased, HarnessHostedCredentialRemoved,
   HarnessSeatReleaseRefused, harness_release_seat, harness_seat_release_wire, harness_now_epoch,
   AnyAdmittedModel,
 }
@@ -62,6 +62,7 @@ fn fabric_seat_probe(receipt: NonEmptyStr) -> ProcessExit {
   match binding {
     HarnessSeatRefused { detail: d } => exit_failure(reason: join(["seat probe: bind refused: ", d], ""))
     HarnessSeatPending { detail: d } => exit_failure(reason: join(["seat probe: placement pending: ", d], ""))
+    HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } => exit_failure(reason: "seat probe: an any-model bind answered with a hosted binding, which harness_requirement_placement never yields")
     HarnessSeatBound { url: u, grant: g, partition: p, ceiling: _, group_wire: gw, launch: launch, store: _, model: m, unit: _, class: c, seat: _ } => {
       let line = join([
         "host=", short, " group=", gw, " launch=", launch.process_start_field as String,
@@ -73,6 +74,7 @@ fn fabric_seat_probe(receipt: NonEmptyStr) -> ProcessExit {
       let seat_release = harness_release_seat(binding: binding, reason: "seat-probe complete" as NonEmptyStr)
       let w = Filesystem.Write(path: receipt as String, content: join([line, harness_seat_release_wire(r: seat_release), "\n"], ""))
       match seat_release {
+        HarnessHostedCredentialRemoved => exit_failure(reason: "seat probe: a fleet seat release answered as a hosted credential removal")
         HarnessSeatReleased { partition: _ } => if w.success { ExitSuccess } else { exit_failure(reason: join(["seat probe: receipt write failed: ", w.error], "")) }
         HarnessSeatReleaseRefused { detail: d } => exit_failure(reason: join(["seat probe: granted but release refused: ", d], ""))
       }

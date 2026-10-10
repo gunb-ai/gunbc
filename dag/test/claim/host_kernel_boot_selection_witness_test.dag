@@ -1,0 +1,16 @@
+module test.claim.host_kernel_boot_selection_witness_test
+
+import std.types { Bool, String }
+import gunbc.host_kernel_boot_selection { kernel_maintenance_grub_selects }
+
+test fn activation_requires_exact_boot_images_and_no_pending_override() -> Bool {
+  let next_entry_reference = "$\{next_entry}"
+  let config = join(["if [ \"", next_entry_reference, "\" ] ; then\n set default=\"", next_entry_reference,
+    "\"\nelse\n set default=\"0\"\nfi\nmenuentry 'Ubuntu' {\n\tlinux\t/vmlinuz-7.0.0-38-generic root=UUID=fixture ro\n\tinitrd\t/initrd.img-7.0.0-38-generic\n}\n"], "")
+  kernel_maintenance_grub_selects(config: config, environment: "# GRUB Environment Block\n", target: "7.0.0-38-generic")
+    && !kernel_maintenance_grub_selects(config: config, environment: "next_entry=old-kernel\n", target: "7.0.0-38-generic")
+    && !kernel_maintenance_grub_selects(config: config, environment: "initrdfail=1\nprev_entry=old\n", target: "7.0.0-38-generic")
+    && !kernel_maintenance_grub_selects(config: config, environment: "", target: "6.8.0-138-generic")
+    && !kernel_maintenance_grub_selects(config: concat(config, "set default=\"2\"\n"), environment: "", target: "7.0.0-38-generic")
+    && !kernel_maintenance_grub_selects(config: "", environment: "", target: "7.0.0-38-generic")
+}

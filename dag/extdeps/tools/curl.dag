@@ -89,6 +89,11 @@ fn curl_bounded_get_argv(url: String, connect_timeout: Second, max_time: Second)
   ]
 }
 
+// THE SAME BOUNDED GET AS A COMMAND, its body on stdout.
+fn curl_bounded_get_command(url: String, connect_timeout: Second, max_time: Second) -> ArgvCommand {
+  argv_command(program: curl_program(), arguments: curl_bounded_get_argv(url: url, connect_timeout: connect_timeout, max_time: max_time).skip(n: 1))
+}
+
 fn curl_download_command(url: String, destination: String) -> ArgvCommand {
   argv_command(program: curl_program(), arguments: ["-fsL", "-o", destination, url])
 }

@@ -585,10 +585,38 @@ fn decls_parse_only_from_disk(
     }
     modules.sort();
     let module_count = modules.len();
+    // THE ACQUIRED POPULATION, so a module the index names but no file holds -- a derived ledger
+    // roster, contributed in memory by `derived_row_roster::acquire_dir_files` -- is parsed from
+    // the bytes acquisition contributed rather than from a path that has no file behind it.
+    let mut acquired: std::collections::HashMap<
+        PathBuf,
+        crate::cli_run::derived_row_roster::AcquiredDag,
+    > = std::collections::HashMap::new();
+    for root in roots {
+        let root_path = ws.join(root);
+        if root_path.is_dir() {
+            let mut files = Vec::new();
+            collect_dag_files_tolerant(&root_path, &mut files)
+                .map_err(|cause| format!("{caller}: acquiring {root}: {cause}"))?;
+            for file in files {
+                acquired.insert(file.path().to_path_buf(), file);
+            }
+        }
+    }
     let mut out = Vec::new();
     for (module_path, rel_path) in modules {
         let abs = ws.join(&rel_path);
-        let parsed = parse_dag_file(&abs).ok_or_else(|| {
+        let parsed = match acquired.get(&abs) {
+            Some(source) => {
+                let content = source.read().map_err(|e| {
+                    format!("{caller}: read `{rel_path}`: {e} (fail-closed; no silent skip)")
+                })?;
+                let filename = abs.file_name().and_then(|s| s.to_str()).unwrap_or("?");
+                parse_dag_content(&content, filename)
+            }
+            None => parse_dag_file(&abs),
+        }
+        .ok_or_else(|| {
             format!("{caller}: failed to parse `{rel_path}` (fail-closed; no silent skip)")
         })?;
         let si = parsed.source_indices;
@@ -624,9 +652,11 @@ fn dag_files_under_abs_roots(abs_roots: &[String]) -> Vec<PathBuf> {
     for root in abs_roots {
         let root_path = PathBuf::from(root);
         if root_path.is_dir() {
-            collect_dag_files_tolerant(&root_path, &mut files);
+            collect_dag_files_tolerant(&root_path, &mut files)
+                .unwrap_or_else(|cause| panic!("acquiring {root}: {cause}"));
         }
     }
+    let mut files: Vec<PathBuf> = files.iter().map(|f| f.path().to_path_buf()).collect();
     files.sort();
     files
 }
@@ -1764,13 +1794,16 @@ pub fn pool_root_refusal_message(
     )
 }
 
-fn corpus_dag_files_for_roots(roots: &[String]) -> Vec<PathBuf> {
+fn corpus_dag_files_for_roots(
+    roots: &[String],
+) -> Vec<crate::cli_run::derived_row_roster::AcquiredDag> {
     let ws = workspace_root();
     let mut files = Vec::new();
     for root in roots {
         let root_path = ws.join(root);
         if root_path.is_dir() {
-            collect_dag_files_tolerant(&root_path, &mut files);
+            collect_dag_files_tolerant(&root_path, &mut files)
+                .unwrap_or_else(|cause| panic!("acquiring {root}: {cause}"));
         }
     }
     files.sort();
@@ -1797,17 +1830,25 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
     let mut files_scanned = 0usize;
     let mut files_parsed = 0usize;
     for file in corpus_dag_files_for_roots(pool_roots) {
-        let rel = repo_rel(&file);
+        let rel = repo_rel(file.path());
         if is_test_dag(&rel) {
             continue;
         }
         files_scanned += 1;
-        let content = std::fs::read_to_string(&file).ok();
+        let content = file.read().ok();
         let module_path = content
             .as_ref()
             .and_then(|c| extract_module_path(c))
             .unwrap_or_default();
-        let Some(parsed) = parse_dag_file(&file) else {
+        // The acquired bytes, not a second read of the path: a derived roster has no file.
+        let filename = file
+            .path()
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("?");
+        let Some(parsed) = content.as_deref().and_then(|c| {
+            crate::module_path_index::parsed_dag_file::parse_dag_content(c, filename)
+        }) else {
             continue;
         };
         files_parsed += 1;

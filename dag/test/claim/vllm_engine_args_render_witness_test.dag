@@ -55,7 +55,13 @@ test fn an_explicit_utilization_renders_the_flag_and_its_value() -> Bool {
     utilization: Present { value: basis_point(count: 9200) },
     kv_cache_bytes: none,
   })
-  length(argv) == 2 && argv.first() == "--gpu-memory-utilization" && argv.skip(n: 1).first() == "0.92"
+  length(argv) == 2 && (match argv.first() {
+      Present { value: v } => v == "--gpu-memory-utilization"
+      Absent => false
+    }) && (match argv.skip(n: 1).first() {
+      Present { value: v } => v == "0.92"
+      Absent => false
+    })
 }
 
 // EXPLICIT KV BYTES RENDER AS AN EXACT INTEGER, never as a rounded rendering: this is the one term in
@@ -65,7 +71,13 @@ test fn explicit_kv_bytes_render_exactly() -> Bool {
     utilization: none,
     kv_cache_bytes: Present { value: byte_size(count: 23372437156) },
   })
-  length(argv) == 2 && argv.first() == "--kv-cache-memory" && argv.skip(n: 1).first() == "23372437156"
+  length(argv) == 2 && (match argv.first() {
+      Present { value: v } => v == "--kv-cache-memory"
+      Absent => false
+    }) && (match argv.skip(n: 1).first() {
+      Present { value: v } => v == "23372437156"
+      Absent => false
+    })
 }
 
 // ── PREFIX CACHING: THREE STATES, THREE RENDERINGS ─────────────────────────────────────────────
@@ -79,10 +91,16 @@ test fn an_omitted_prefix_caching_request_renders_no_flag() -> Bool {
 
 test fn an_explicit_prefix_caching_request_renders_the_flag_the_pair_route_sends() -> Bool {
   let argv = vllm_prefix_caching_argv(r: PrefixCachingExplicit { enabled: true })
-  length(argv) == 1 && argv.first() == "--enable-prefix-caching"
+  length(argv) == 1 && (match argv.first() {
+      Present { value: v } => v == "--enable-prefix-caching"
+      Absent => false
+    })
 }
 
 test fn an_explicit_disable_renders_the_negative_flag_rather_than_silence() -> Bool {
   let argv = vllm_prefix_caching_argv(r: PrefixCachingExplicit { enabled: false })
-  length(argv) == 1 && argv.first() == "--no-enable-prefix-caching"
+  length(argv) == 1 && (match argv.first() {
+      Present { value: v } => v == "--no-enable-prefix-caching"
+      Absent => false
+    })
 }

@@ -1,0 +1,585 @@
+# srv1 workspace VM bringup
+
+Scope: the operator-owned workspace on `srv1-13`, using the existing commissioning,
+allocation, controller and cleanup protocols. No customer create API, additional
+hosts, CI-runner migration, or automatic expiry scheduling is part of this change.
+
+Current status: the pinned image/controller, network receipt and slot resource
+boundary have passed live readback. srv1's running kernel cannot report attached
+TUN queues. Commissioning now models that capability dependency and derives a
+kernel installation/activation proposal in its existing convergence scope. Host
+maintenance actuation remains an explicit `AwaitingCapability` frontier; no kernel
+installation or reboot has been applied. No VM boot or authenticated guest SSH is
+yet proven. Guest access uses the dedicated key already on srv1.
+
+## Observed gaps
+
+The October 9, 2026 inspection found no successful workspace VM lifecycle receipt.
+The September 24 controller invocation `c0fceefc7d9643b0aaff0617907b1335`
+refused because it could not read the allocation store for `srv1-13`.
+[Run 36054790165](https://github.com/gunb-ai/gunbc/actions/runs/36054790165)
+collected that refusal; its green workflow conclusion is not a boot receipt.
+
+| Boundary | Observed state | Required change |
+| --- | --- | --- |
+| Deployment candidate | Compiler startup creates ignored `rung_drop/roster.dag`, which candidate admission rejects | Exclude that exact compiler-derived file alongside the existing failure-mode roster; preserve sibling and secret-file refusals |
+| Workflow dispatch | Main declares 28 inputs; GitHub accepts at most 25 | Keep printer selection separate and carry its five operation fields in one `printer_request` JSON input |
+| Guest image | Builder exists; no image delivery in controller install | Build under fakeroot, archive kernel/rootfs/digest receipt, pin the measured rootfs, verify installed bytes and custody |
+| Job selection | Controller install queues the shared credentialed job as well as its dedicated job | Derive shared job selection from the existing mode-to-job authority |
+| Network receipt | The historical TAP/firewall installation exists, but the controller receipt is absent and the workflow observer entry was overwritten | Restore the observer, publish a root-owned initial receipt from live reads, and keep later sanitation observation separate |
+| TAP IPv6 | Installed sysctl disables IPv6; networkd leaves it enabled on the live TAP | Disable networkd IPv6 autoconfiguration in the same generated TAP policy, then converge and read back |
+| Controller | Installed revision `cfb9ff80652fe0a74093f08cade64f59d9695266` | Install this PR through the existing controller installer |
+| Slot budget | `fabric-cell-srv1-13.slice` has no installed unit file | Converge the modeled execution-cell boundary; a synthesized systemd slice is not proof |
+| Cell inventory | Read-only plan `local-2026-10-09T03:18:35Z` refuses foreign `fabric-cell-zp444.slice` | Establish ownership before retiring it; the empty transient slice has no unit file or remaining journal, and is not silently ignored |
+| Commissioning | No commissioning or readiness record | Run reviewed commissioning plan/apply and verify its protected transaction |
+| Protected state service | Running revision `5b96cab749088aa5cec71ce9ad52e1857724d252` predates the authenticated state route | Converge fabric storage through its existing deployment path |
+| State-key custody | Key exists; operator can read it; `ghrunner` cannot | Preserve custody; exact installed helpers reconcile admitted intent and read the selected allocation |
+| SSH access | Guest enrollment reused the personal operator key and required gateway evidence even for a client on srv1 | Enroll a dedicated guest key on srv1; model host-local SSH explicitly and retain gateway proof for gateway clients |
+| Allocation dispatch | No workflow mode; release path came from an unrelated environment variable | Add `workspace_allocation_plan`, bind its installed release to the admitted run revision, reuse reviewed `apply` |
+| Operator lifecycle | Request producer exists; release/observation need CLI entries | Add generation-checked release and owner-scoped JSON receipts under operator authority |
+
+The historical refusal files are evidence. Do not delete them to manufacture an
+empty commissioning prestate. Do not restore the old CI reservation service:
+`srv1-13` is a workspace slot.
+
+## Operation
+
+1. Dispatch `fleet-converge`, `host=srv1`, `mode=workspace_image_build` at the
+   candidate revision. The `workspace-guest-image` artifact contains only the
+   kernel, rootfs and measured digest receipt. The filesystem build is not
+   reproducible: pin that build's measured digest in `workspace_artifact_policy`.
+2. Dispatch `microvm_controller_install` at the reviewed revision with
+   `workspace_image_run_id` naming that build. The run ID locates bytes; it does
+   not authorize them. The installer checks the reviewed kernel and rootfs pins
+   after copying into the root-owned release directory, then independently reads
+   back the image and installed executor.
+3. Converge the execution-cell boundary and authenticated state service. On srv1,
+   the local administrator can run `runner_microvm_network_plan_local_wet`,
+   review `target/microvm-network-local-plan.txt`, then run
+   `runner_microvm_network_apply_local_wet` from
+   `dag/gunbc/runner/runner_microvm_network_apply.dag`. Both require `host=srv1`,
+   `expected_revision` equal to the clean checkout's HEAD, and effective UID 0.
+   Run `runner_microvm_network_initialize_local_wet` from
+   `dag/gunbc/runner/runner_microvm_network_observe.dag` with those same arguments
+   to publish the controller receipt from live readback. This uses the installed
+   root-owned receipt directory and refuses replacement of a different generation.
+   These local entries require no SSH agent. Then run
+   `workspace_commissioning_plan` and its reviewed `apply` on srv1. The existing
+   operator-local fleet plan/apply path is available for pre-merge validation;
+   do not widen the main-only GCP login to run branch workflows.
+4. The installed operator enrollment uses a dedicated guest key whose private
+   file stays on srv1 at `/home/briansrls/.ssh/gunbc-workspace-srv1-13`, owned by
+   `briansrls` with mode `0600`. No agent forwarding is required. As the enrolled
+   operator on srv1, use `workspace_operator_request_wet` with
+   `GUNBC_WORKSPACE_REQUEST_KEY`, `GUNBC_WORKSPACE_REQUEST_PROFILE` and
+   `GUNBC_WORKSPACE_REQUEST_EXPIRES_AT`. Use a canonical UTC expiry within the
+   policy's one-hour lease. The owner and public key come from installed policy.
+5. Dispatch `workspace_allocation_plan` and review/apply its artifact. Observe
+   through `workspace_operator_observe_wet` with the same key. Each operator
+   command writes `target/workspace-operation.json`; a recorded request alone
+   is not evidence that the guest is usable.
+6. Authenticate SSH from srv1 using the allocation's connection data and verified
+   guest host key. The rendered command selects the dedicated identity file and
+   disables the agent and agent forwarding. Record the guest identity and a command
+   executed in the guest.
+7. Run `workspace_operator_release_wet` with the key and
+   `GUNBC_WORKSPACE_RELEASE_GENERATION` from `reservation.generation` in the
+   observation (not the owner-ledger generation). Reconcile with
+   another allocation plan/apply, and verify released state and absent guest.
+8. Request a second key, prove the same slot is reused with a new incarnation,
+   and let its short lease expire. Explicitly dispatch allocation plan/apply to
+   clean it up. No timer or scheduled expiry sweep is installed by this PR.
+
+Workflow jobs receive no state MAC key and no grant to create or release an
+operator request. Their installed helper can act only on already-admitted ledger
+intent. Apply re-reads the exact request and generation carried in the reviewed
+plan; it does not select the latest request again.
+
+## Acceptance evidence
+
+Keep the PR draft until all of the following have live receipts: image/controller
+readback, commissioned slot, ready allocation, authenticated SSH, explicit release,
+same-slot reuse with a new incarnation, expiry cleanup, and final released/ready
+state. Record run IDs, revisions, allocation IDs and generations here as they are
+observed. Never record private keys, tokens or signed state-request envelopes.
+
+The host-local SSH revision passes all 28 focused witnesses across access policy,
+owner enrollment, guest connection verification and allocation reconciliation.
+The full tree (8,268 source files) parses, and formatting checks pass. An independent
+`ssh -G` read on srv1 confirms the dedicated identity file, `IdentityAgent=none`,
+`IdentitiesOnly=yes` and `ForwardAgent=no`. This checks client selection; it is not
+a guest login receipt.
+
+Local validation of the preceding revision: 44 focused witnesses passed across allocation dispatch, lifecycle,
+launch directives, host offers, owner policy, gateway refresh, workflow dispatch and
+deployment candidate admission, including three deployment-readiness refusal controls and two cutover recovery/refusal controls. The generated compiler-pair build step was also executed with controlled compiler outcomes: both output streams were retained, and exit codes 0 and 37 were preserved. The image builder produced an ext4 image whose
+`/root` and `/usr/sbin/sshd` are owned by UID/GID 0. The fresh compiler parsed the
+full source tree, and full generated-artifact regeneration completed successfully.
+The combined workflow witness process needed a 24 GiB memory cap; its earlier
+16 GiB run was killed by the cgroup limit, then passed with the larger cap.
+
+[Image build 37878358778](https://github.com/gunb-ai/gunbc/actions/runs/37878358778)
+at revision `521085ab254290029f8dfbaa312a218f84a6be7b` built its compiler successfully,
+but packaging refused `BuildDiagnosticsMissing`: the compiler-pair build had not
+produced the log required by its pack. The build dispatch now uses the existing
+floor log-capture wrapper, preserving the compiler's exit status. [Retry 37882239644](https://github.com/gunb-ai/gunbc/actions/runs/37882239644)
+at revision `5504b52cd0001115afcfb47a98e98b16c44e199c` succeeded. The downloaded
+artifact's rootfs SHA-256 matches its receipt:
+`d15a55780a707ec832a09e3599306254b8d7c428ff25ff621b427b826eeb0b27`.
+That archived digest is now the reviewed image pin. The kernel matches
+`cb1291c66bca75bc11cb9c8357fcef9965bb1786dffcb42a60923c3e0e49f319`;
+independent ext4 inspection confirms `/root` and `/usr/sbin/sshd` belong to UID/GID 0.
+
+The operator identified `fabric-cell-zp444.slice` as a disposable test slice and
+authorized retirement. Immediately before stopping it, readback confirmed no unit
+file, drop-ins, child units or processes. Its unit and cgroup are now absent.
+Execution-cell plan `local-2026-10-09T03:37:32Z`, hash `76783579d393ed3d`,
+advanced generation 18 to 19. Apply `local-2026-10-09T03:47:17Z` completed
+`fully_applied`, receipt `34c5252f521bf5b3`. Independent systemd readback confirms
+active `fabric-cell-srv1-13.slice`, persistent limits of 28 GiB for MemoryMax and
+MemoryHigh, no swap, TasksMax 16384, and the modeled CPU settings. The cell and
+attempt directories have the modeled custody. Commissioning, allocation and VM
+boot remain unproven.
+
+The read-only deployment probe admitted clean candidate
+`19b12d88d6c0206c3f259cf85b0b664e65000b26` after the derived-roster repair. Its
+release-member plan is: install executable
+`sha256:5cbf98426843aebd1fad3c2f9cc52c6ba04ba6fbb71f6bbde1ea40eff8391543`,
+publish that source revision, write `gunbc-roadmap.service`, reload systemd and
+restart the roadmap service. The existing deployment additionally reinstalls its
+fabric-storage, approval-broker, tailnet-door and timer members, which do not yet
+have differential member identities. Consequently this prerequisite is a shared
+production deployment with service interruption, not a slot-only mutation.
+The operator approved this shared deployment, including temporary interruption.
+The first operator-local attempt installed the generated `ghrunner` sudoers but
+refused its exact `tailscale` grant probe under the operator account before other
+mutations. The operator's broad sudo grant does not satisfy this exact grant-list
+probe; the same probe admits the existing `ghrunner` grant. The retry uses the
+existing `live_deploy_apply_srv1_wet` entry as `ghrunner`, without expanding the
+operator grant roster. The failed attempt also exposed 720 unnecessary readiness
+waits after refusal. Readiness polling now requires a converged mutation; cutover
+recovery still runs so interrupted route changes can be rolled back.
+
+The dispatch transport repair preserves the printer's existing domain validation.
+Printer callers now supply `printer` and `printer_request`, for example
+`{"operation":"observe"}` or
+`{"operation":"print","project_path":"/absolute/project.3mf","project_sha256":"<reviewed digest>","credential_version":"<observed numeric version>","bed_clear":"true"}`.
+No printer action is performed by VM bringup.
+
+The approved deployment's tree sync and independent repository readback completed
+at revision `19b12d88d6c0206c3f259cf85b0b664e65000b26`. Dashboard, approval broker,
+tailnet door and fabric storage restarted between 04:11:48 and 04:12:04 UTC;
+dashboard readiness later passed through the existing HTTPS route. At 04:21 UTC the authenticated operator read returned `WorkspaceOperatorObserveRefused: request absent for operator`, proving the protected owner ledger is readable without creating an allocation. The preceding probe finished 19 seconds before the new storage listener opened and is not counted as acceptance.
+The nested deployment/readback interpreters peaked above the original 24 GiB
+scope bound, so that operation's cap was raised to 36 GiB with swap disabled.
+
+The operator selected SSH from srv1. A dedicated guest-only ED25519 key was
+created there, fingerprint `SHA256:sxhkzO98Tp3tSXi+nD2FJBfbRTnOYQn6QpuTlETnbQI`.
+Only its public key is enrolled in source. It is not authorized for fleet-host
+login or given to workflow jobs. Personal-agent forwarding was proposed earlier,
+then withdrawn; no forwarded personal agent was used. Host-local access and
+access through a gateway now have distinct policy and evidence types, so an
+observation on srv1 cannot assert gateway forwarding permission.
+
+The deployment installed its members but returned a cutover refusal: the existing
+`ghrunner` deployment entry cannot read the protected-state credential. Its final
+cutover gate therefore could not read the journal and performed no route effect.
+The dashboard's loopback `/healthz` independently reports revision `19b12d88d6c`;
+the existing tailnet root route still targets that loopback backend. The new
+parallel tailnet-door unit also failed binding `/opt/gunbc/tailnet-door.sock`:
+its service user cannot create entries in root-owned `/opt/gunbc`. These are
+shared-deployment gaps, not permission to distribute the state key or re-own the
+installation root. Full shared-deployment convergence is not claimed.
+
+During cold startup, the shared dashboard slice exceeded its 49 GiB memory-high
+threshold (53 GiB hard cap) and spent about 60% of wall time stalled. Publication
+and belt timers/helpers were temporarily stopped within the approved interruption
+window to let the services finish startup. Both timers were restored and read back active. The unused replacement
+tailnet-door service is stopped after its socket-permission failure; its failed
+cutover never changed the root route. An independent HTTPS `/healthz` read through
+that existing route returns the approved revision and surface identity
+`998c13f6282e889f`.
+
+Controller installation [37884238413](https://github.com/gunb-ai/gunbc/actions/runs/37884238413)
+was canceled before installation at `95037360ab1040b9de4efe4671bb53cad473cb34`
+when the operator selected host-local SSH. The verified image artifact from run
+`37882239644` remains the image to install. No commissioning or guest allocation
+has been performed yet.
+
+Controller installation [37887389027](https://github.com/gunb-ai/gunbc/actions/runs/37887389027)
+selects revision `a85cc481af5b07dc89f270925bb55bc6f025c8cd` and image build
+`37882239644`. Both srv1 operation checkouts have that revision. The first live
+readback before installation found no controller process or queued start, and both
+historical root-owned receipts are `ReservationNotObserved` refusals. They are
+preserved. Installation and commissioning remain in progress.
+
+The build job of `37887389027` succeeded. Its source tree is
+`5dcdc0feb191c93ac957850344c88796c5651a39`, with request key
+`release-bins-38e793db9ef32d629136be09416dabc9da34cdd3139f3541c9e025c146cb75a8`.
+The general converge job also queued for this dedicated mode, occupying its shared
+host-mutation concurrency key. Both queued jobs were canceled before starting;
+there was no installation effect from the workflow. The general job condition now derives
+from `fleet_converge_mode_job_id` to remove that second assignment.
+The successful build artifact was downloaded and verified on srv1 using the exact
+existing installer consumer script and the key recorded by the build job. All
+16 binaries passed verification, and the image/kernel hashes still match. The
+existing `microvm_controller_install_srv1_wet` entry is running as `ghrunner`
+under an operator-local 24 GiB/no-swap scope. No workflow identity was fabricated.
+
+The workflow-selection repair passes five focused witnesses. Regeneration succeeds,
+and an independent check of the emitted YAML finds exactly one consumer job for
+each of all 78 dispatch modes. The shared job selector is the only generated
+workflow field that changed. All 8,269 source files parse.
+
+The local `a85cc481af5` installation completed its mutations but returned
+`executor scripts or loaded unit failed exact readback`. The final read attempted
+to open root:root `0440` `/etc/sudoers.d/gunbc-workspace-commissioning` as
+`ghrunner`; that account has no read permission or read grant. `visudo` accepts the
+installed policy. Independent readback matches the compiler artifact's SHA-256
+`16f75c38f7b5a3eb7c3580dbe9f6bae59b5997630d808bd3cc3b39ad49dd9930`, both image pins,
+and the root-owned release/readiness/commissioning directories. The loaded slot
+unit selects `a85cc481af5` and has no running process. Installation convergence is
+not yet claimed: the readback needs an exact privileged read of its own policy.
+
+The repair derives that read's argv and permission from the same privileged
+operation, retaining root:root `0440` custody and exact content comparison. Seven
+focused dispatch/allocation witnesses pass, including the exact policy-file grant
+and the existing prohibition on workflow-created operator intent. The verified
+`a85cc481af5` compiler binary can interpret this DAG-only repair; its build identity
+remains `a85cc481af5`, separately from the new installed source revision. It is not
+represented as a rebuilt compiler pack for the new tree.
+
+
+The read-only commissioning preflight at `a85cc481af5` refused because
+`/var/lib/gunbc/microvm-network/converged-slot-network.txt` and its parent directory
+are absent. The network workflow still names `runner_microvm_network_observe_wet`,
+but that function was overwritten when the same module was repurposed for
+per-attempt sanitation. The previous implementation was recovered from source
+revision `34ac2fefab51e912e9499dd23aa92bb3ebdac824`; sanitation keeps its own current
+producer. The repair restores the workflow entry and adds an explicit local root
+initializer which observes the host, publishes once with create-only semantics,
+and verifies existing generations against fresh observations without overwriting.
+
+The live `gunbc-tap13` holds `172.30.13.1/30`, and the existing microVM nft service
+is active. However, `disable_ipv6` reads `0` despite the installed sysctl file
+requesting `1`. systemd 255's [link IPv6 decision](https://github.com/systemd/systemd/blob/v255/src/network/networkd-link.c)
+and [sysctl writer](https://github.com/systemd/systemd/blob/v255/src/network/networkd-sysctl.c)
+show why the generated `.network` file must also disable link-local IPv6:
+networkd re-enables IPv6 when its configuration calls for it. The local network
+plan/apply entries use the existing staged-file and ordered-operation producers,
+require root on the named host at the named revision, and use no forwarded agent.
+Network changes have not yet been applied.
+
+The `edad20b0ded` controller installer completed its mutations and installed the
+exact policy read grant. A real `ghrunner` invocation can now read that policy,
+and `visudo` accepts it, but exact adapter readback still refused. The next
+boundary diagnosis identified `bounded_shell_host_drain`'s `trim_end` capture contract:
+the final newline cannot survive a `cat` through that transport. Policy readback
+now compares the actual file's SHA-256 with a digest of the expected bytes. The
+exact grant becomes `sha256sum -- <policy path>`; it grants neither arbitrary
+file reads nor the protected-state credential. The focused validation passes all
+34 checks across network apply/convergence, observer production, policy readback
+and allocation dispatch. The final network-path retry passes its 12 checks after
+using the existing command executor and effective-UID reader. All 8,272 source
+files parse, and formatting checks pass. Live reinstallation and network
+convergence are next; no VM has been commissioned, allocated or booted.
+
+Controller installation at `682c32644e84da04dd4e73d334413057a659dbf3` now exits
+successfully, including exact executor/policy and guest-image readback. The network
+plan at that revision also succeeds. Comparison with the installed files finds
+only `LinkLocalAddressing=no` and `IPv6AcceptRA=no` added to the ten enrolled TAP
+configurations; firewall, TAP addresses and IPv4 forwarding remain identical.
+The reviewed apply refused before any network installation: its staging writer
+used exclusive creation against existing root-owned staging files. Network
+convergence is not yet claimed.
+
+Pre-commissioning review found the native executor started its bind interpreter
+alongside the controller in the same 24 GiB slice. The controller already binds
+its journal identity before commissioning effects. The executor now waits for
+that invocation to terminate before its independent bind/readback, keeping those
+two preparations sequential without changing the resource ceiling or recovery
+fences. This fixes the normal start overlap; recovery-path aggregate memory has
+not been measured. No live commissioning OOM is claimed.
+
+The manual transport experiment used `export_executor` from
+`dag/test/claim/workspace_commissioning_executor_witness_test.dag` and the local
+`target/srv1-bringup-evidence/executor-bind-order-controls.py` driver against
+`target/workspace-commissioning-executor.sh`. The Python driver is local dev
+tooling, excluded from the committed substrate by `gunbc.repo_workspace`; these
+results are not claimed as an ongoing CI regression gate.
+All eight revised-script cases pass: normal start, invocation replacement,
+surviving PID, refused finish, wait, settle, complete and drain. The optional
+`--reject-active-bind-script` control against the installed `682c32644e8`
+predecessor refuses its premature bind, distinguishing the two schedules.
+
+The local network staging writer now creates a private temporary inode in the
+verified directory, fills it, and atomically replaces the exact staged destination.
+The existing scope admission, root-custody checks and exact byte readback remain
+required. The manual native filesystem control
+`test.manual.runner_microvm_network_local_stage_probe.local_stage_replaces_owned_bytes_wet`
+passes creation, changed-content replacement, replay, 0600 mode, trailing-newline
+preservation, out-of-scope refusal and scratch cleanup. The out-of-scope control
+uses an existing allowed directory, so it distinguishes admission refusal from a
+missing-directory failure. It runs as an ordinary user in a fresh scratch directory;
+this is manual evidence, not an enrolled CI claim. The live network apply must
+still pass with the repaired writer before commissioning.
+
+Controller installation at `83dcbb4d6ab51e0e05a519dd930dc41ef0539eaa` passes
+its complete readback. The fresh network plan has identical staged bytes and
+operation argv to the reviewed `682c32644e8` plan. Network apply now passes,
+including replacement of existing staging files; its live nft digest is
+`da7a00c54f267b39227a02557ebef28c90282376673cef9c78784caca7479099`.
+Independent readback observes `gunbc-tap13.disable_ipv6=1`, IPv4 forwarding enabled,
+and both `gunbc-microvm-nft.service` and fabric storage active with successful
+results. The initializer passes and publishes root:root `0644`
+`/var/lib/gunbc/microvm-network/converged-slot-network.txt`, generation
+`local-83dcbb4d6ab51e0e05a519dd930dc41ef0539eaa-2026-10-09T07:45:19Z`.
+Its live readings cover all ten enrolled TAPs with IPv6 disabled and count zero
+helper attachments and expectations across all observed surfaces. The initial
+commissioning plan refused before writing an artifact; no commissioning effect or
+allocation has started. Its coordinator compiled in 451 seconds and its installed
+privileged observer in 327 seconds. The observer stopped immediately after reading
+the network receipt. The controller supplied `fabric_execution_slot_identities()`
+to the parser, which admits only slot 13 on srv1; the publisher's enrolled network
+population also contains TAPs 1 through 9. The reader now takes the host and derives
+the network population from the same deployment authority as the publisher.
+Workload admission remains a separate controller check. The regression fixture is
+the actual published ten-slot receipt, including the predecessor's rejecting parse.
+All three focused checks pass: the complete host population reaches the workspace
+consumer, another receipt host refuses, and an unenrolled network slot refuses.
+Commissioning diagnostics now retain the underlying network/sanitation refusal.
+
+Controller installation at `f99e440ce59874b10d0c9c65c27a3217a0a1cc3e` passes.
+Its commissioning preflight gets through the network receipt and sanitation reads,
+then refuses the installed cell boundary. Independent readback finds all five
+non-CPU limits correct, but `CPUQuotaPerSecUSec=infinity`; the persistent quota
+drop-in still dates to the initial cell apply at 03:47:23. The `MemberAdded` effect
+passed the fleet-wide unlimited quota instead of the slot's declared four-CPU quota.
+The earlier `FullyApplied` receipt therefore establishes successful commands,
+not full resource-boundary convergence. No VM or commissioning mutation ran.
+
+The add constructor now accepts only the slot and derives its own quota. Existing
+state repair admits only an enrolled workspace's unlimited CPU predecessor when
+all non-CPU limits already match and the target equals its declared boundary.
+`gunbc.change_realization` classifies the preserved address as `InPlaceUpdate`;
+the boundary effect emits only `CPUQuota=400%`. Other resource changes, finite predecessors,
+quota removal and changed addresses still refuse. This preserves the cell and
+its storage; it is not deletion/recreation to make drift look absent.
+All thirteen focused cell-effect and fleet-plan checks pass, including the actual
+slot-specific add path and the restricted repair. All 8,279 source files parse,
+and formatting checks pass. Live repair and commissioning remain outstanding.
+
+The read-only cell plan at `ce5bf60b507` records generation 20 and refuses
+`fabric-cell-srv1.slice`, the structural parent created by systemd for slot 13.
+It was not applied. The namespace census correctly observes both parent and child;
+the classifier lacked a subject for proper ancestors. Discovery now derives them
+from the local enrolled cell names through the existing systemd hierarchy authority
+and retains them without granting ownership or satisfying a cell address. Unrelated
+slices and ancestor-looking filesystem entries still refuse. The new controls use
+the actual srv1 two-unit census and production observation admission.
+
+Controller installation and full readback at `ce5bf60b507` pass. CI run
+[37903218933](https://github.com/gunb-ai/gunbc/actions/runs/37903218933) passes
+seed, emit-build and generated checks, but floor discovery refuses the manual
+filesystem probe's `*_test.dag` filename because it declares no enrolled test.
+It is renamed `runner_microvm_network_local_stage_probe.dag`; its manual entry and
+behavior are unchanged. The observer's first broader batch passes all six new
+ancestor controls and exposes four stale single-cell/unenrolled-slot fixtures:
+srv3 now enrolls slot 7 too. The isolated classification test now supplies only
+its selected slot's readback, and foreign-probe controls use slots 99 and 100.
+
+At `4fa60f7134239a58f91fced3e127e36a5861a303`, all 52 observer checks pass,
+all 8,280 source files parse, and formatting passes. Controller installation and
+full readback pass. The fresh cell plan `local-2026-10-09T09:17:53Z`, hash
+`e3dc463bbc6f76f8`, admits only `CPUQuota=400%`, a start of the existing slice,
+and the existing root-owned base-directory ensure. Its apply receipt
+`43cf1e08f8680971` records exit 0 and generation 19 → 20. Independent systemd
+readback confirms `CPUQuotaPerSecUSec=4s`, `MemoryHigh=MemoryMax=30064771072`,
+`MemorySwapMax=0`, `TasksMax=16384`, `CPUWeight=100`, and an active slice.
+The commissioning plan against this verified release refuses as detailed below;
+no VM boot or guest login is yet claimed. CI run
+[37910533190](https://github.com/gunb-ai/gunbc/actions/runs/37910533190) covers
+this pushed revision.
+
+The commissioning plan at `4fa60f71342` passes installed-runtime checks but
+refuses initial sanitation. Its TUN holder census invokes
+`ethtool --show-channels gunbc-tap13`, which returns `Operation not supported`
+on srv1's running `6.8.0-138-generic`. The installed `6.8.0-142-generic`
+System.map also lacks `tun_get_channels` (while naming `tun_fill_info` and
+`tun_ethtool_ops`), so the pending ordinary reboot does not establish this capability.
+The original refusal was hidden by three projections; the census cause, unproven
+sanitation fact and commissioning admission reason are now retained end to end.
+
+[Linux v6.8's TUN driver](https://github.com/torvalds/linux/blob/v6.8/drivers/net/tun.c)
+has no channel-count callback. [Linux v6.9's implementation](https://github.com/torvalds/linux/blob/v6.9/drivers/net/tun.c#L3442)
+reports the attached queue count. Descriptor sweeps alone cannot substitute for it,
+because file references can remain outside process descriptor tables. The v6.8
+netlink queue counters are emitted only for multi-queue devices; changing this TAP
+to multi-queue would not match [Firecracker v1.16.1's open flags](https://github.com/firecracker-microvm/firecracker/blob/v1.16.1/src/vmm/src/devices/virtio/net/tap.rs#L109).
+No refusal has been relaxed, no readiness record has been fabricated, and no VM
+has been commissioned or booted.
+
+### Host kernel dependency and maintenance
+
+The commissioning planner derives this proposal from the selected sanitation
+reader's `TunAttachedQueueRequirement`. Its observation now invokes Linux's
+`SIOCETHTOOL / ETHTOOL_GCHANNELS` ABI directly through the declared Python runtime
+boundary. Only numeric `EOPNOTSUPP` demands a provider. Permission failures,
+missing devices, malformed replies, a failed reader or multi-queue TAPs refuse;
+they cannot become a reason to upgrade. A successful count on a backported kernel
+needs no package lookup. A successful nonzero count establishes capability but
+still fails the unchanged sanitation census.
+
+The host policy in `gunbc.host_kernel_dependency` selects the Ubuntu provider;
+VM code does not select a version. Readback binds the proposal to host, source
+revision, interface, running release and boot identity. It checks the distribution,
+architecture, installed package identities, exact available candidate and a
+non-removing apt simulation. If the selected image/modules are already installed
+and their boot artifacts are readable, the proposal contains activation only.
+If the selected kernel already runs but the operation remains unsupported, it
+refuses instead of entering a reboot loop.
+
+The existing `workspace-slot-commissioning` plan carries the dependency, package
+simulation and continuation. It cannot mint a commissioning credential or initial
+readiness. Generic slot apply remains `AwaitingCapability` because a slot request
+alone does not authorize interruption of the shared host.
+
+`gunbc.host_kernel_dependency_apply` now supplies the administrator maintenance
+path for that exact canonical dependency. Its drain entry puts runtime masks on
+observed runner instances without stopping them, allowing their one current job
+to finish. Installation and activation require every instance inhibited, stopped,
+without a queued job, and with an empty or absent workload cgroup. The existing
+cgroup observer includes descendants. Unknown and foreign runner census rows,
+unreadable state, a live workspace controller, changed boot identity or changed
+package proposal refuse. Existing permanent masks are retained.
+
+The install entry uses the same exact, non-removing apt selection as planning,
+then reads package identities, boot image, initramfs and the TUN symbol back. An
+already installed target needs only activation. The separate activation entry
+checks srv1's observed GRUB default-zero realization, exact image/initramfs and
+absence of a pending boot override, then requests a normal OS reboot. The peer
+keeps the reviewed plan and invokes verification after SSH returns. Verification
+requires a new boot identity, the target release and the actual queue capability;
+commissioning must subsequently perform its full sanitation and readiness checks.
+
+These entries require root and are not included in the job-user commissioning
+sudo grant. They are the operator's explicitly approved maintenance action, not
+an unattended reboot policy. The BMC is the operator recovery fallback. Normal OS
+reboot does not require enrolling srv1 in the separate BMC-issued reset workflow
+(`host_reset_boot_selection`); treating that unrelated enrollment as a kernel
+installation dependency was an overly broad frontier in the earlier proposal.
+
+The four entries consume the planner's canonical JSON on stdin:
+`host_kernel_dependency_drain_cli`, `host_kernel_dependency_install_cli`,
+`host_kernel_dependency_activate_cli`, and `host_kernel_dependency_verify_cli`.
+An unfinished drain reports refusal and leaves its runtime masks in place; it
+never interrupts current jobs to force completion. Those masks disappear at
+reboot. If maintenance is abandoned before reboot, the operator removes only the
+runtime masks created by that attempt and starts those instances again, preserving
+previous permanent masks. The pre-maintenance unit census is retained as evidence.
+
+This is ordinary domain composition using the existing `ensure` decision and
+fleet plan, not a claim that the generic completion/elaboration engine proposed
+in `docs/plans/ensure-closure-design.md` has been implemented.
+
+The read-only package simulation on srv1 selects Ubuntu's arm64 HWE meta-package
+`linux-generic-hwe-24.04=7.0.0-38.38~24.04.4`. It adds eight packages, upgrades
+none and removes none: the image, modules, ZFS module package, header packages
+and HWE image/header meta-packages. This leaves the existing 6.8 kernels installed.
+The downloaded Ubuntu image/modules packages were inspected without installation.
+The modules package's `System.map-7.0.0-38-generic` contains `tun_get_channels`,
+`tun_fill_info` and `tun_ethtool_ops`; this checks the proposed binary's symbols,
+not merely its version. The install command whose simulation was reviewed is:
+
+```sh
+sudo env LC_ALL=C DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l \
+  apt-get --yes --no-install-recommends --no-remove install \
+  linux-generic-hwe-24.04=7.0.0-38.38~24.04.4
+```
+
+The operator approved this shared-host maintenance on 2026-10-09 after the
+interruption was explained. The reboot
+interrupts srv1's twelve runner services, dashboard, fabric storage, approval
+broker, ntfy and container services. Before installing or rebooting, drain work,
+establish console/boot recovery, and recheck the package plan and disk capacity.
+GRUB currently boots entry 0 with a hidden, zero-second menu; keeping an old
+kernel alone is not automatic rollback. After reboot, require successful
+`ethtool --show-channels gunbc-tap13`, verify KVM, network and service recovery,
+then rerun the commissioning plan. A newer version string alone is insufficient.
+Local read-only IPMI device/chassis queries succeed and SOL reports enabled.
+The BMC's HTTPS endpoint is reachable from srv2, firmware selects Ubuntu, and the
+BMC reports no boot-device override. An authenticated remote console session has
+not been tested. Runner drain uses the actual local service/cgroup population,
+not an incomplete GitHub organization runner listing.
+
+The first production drain used source snapshot SHA-256
+`d2ef5ab2f7d3d11bda59d5773ffd9ca2a41c8f14578d41746f6ced41da544646`
+and the existing canonical dependency for installed release `4fa60f71342`.
+It placed twelve runtime masks and returned the expected awaiting-jobs refusal;
+the existing jobs remained active and permanent masks were unchanged. Evidence:
+`target/srv1-bringup-evidence/kernel-maintenance-drain-r1.log` and the before/masked
+runner censuses. Package installation and reboot remain pending at this receipt.
+
+The seven maintenance controls pass: canonical input, permitted install progress,
+boot/transaction drift, runner population inclusion/refusal, complete drain
+readback, and exact GRUB image selection with override refusal. The boot-selection
+control resolves only its pure reader and passes at 1,216 evaluation steps.
+All 8,291 source files parse; formatting and whitespace checks pass. Logs are
+`target/srv1-kernel-maintenance-tests-r3.log`,
+`target/srv1-kernel-maintenance-drain-tests.log`,
+`target/srv1-kernel-maintenance-boot-tests-leaf-r2.log`, and
+`target/srv1-kernel-maintenance-parse-r2.log`.
+
+The diagnostics repair at `0fd9f91c7b1` passes all 29 focused commissioning,
+network-producer, TUN-census and initial-sanitation witnesses in
+`target/srv1-commissioning-diagnostics-tests.log` (exit 0). All 8,281 source files
+parse; formatting and whitespace checks pass. The new controls require the actual
+queue-query cause and unobservable sanitation fact to survive refusal reporting.
+
+A read-only manual invocation of the production `workspace_dispatch_plan_cli`
+from clean source `0fd9f91c7b1`, using the installed root-owned interpreter and
+observing release `4fa60f71342`, exits 1 with the complete live cause:
+
+```text
+privileged commissioning observation refused: initial cell sanitation is incomplete; no initial readiness may be published: srv1-13: quarantined — slot-network-quiescent: unobservable — tap-unheld: TUN attached-queue count is unavailable: ethtool --show-channels exited nonzero
+```
+
+The captured log is `target/srv1-bringup-evidence/commissioning-readback-0fd9f91.log`.
+This validates refusal reporting against the installed release; it is not a new
+controller installation, commissioning apply or ongoing CI claim. Independent
+post-readback checks find no allocation, commissioning or readiness files, and
+the historical controller remains stopped with `MainPID=0` and no queued job.
+
+### Dependency observation evidence
+
+The production `workspace_dispatch_plan_cli`, run read-only against release
+`4fa60f71342` from source snapshot SHA-256
+`9aeb7a306baf7e08d7a6d81801a7b4ed02f3e04ef6869c105ef8754b30593b45`,
+returns exit 0 and a canonical `commissioning-kernel-dependency` response for
+`srv1 / gunbc-tap13`. The response binds running release `6.8.0-138-generic`,
+the observed boot ID and selected `7.0.0-38-generic` provider. Its live apt
+simulation reports eight new packages, zero upgrades and zero removals. This is
+a successful **plan observation**, not completed commissioning or an installation
+of the new source. The log and decoded response are
+`target/srv1-bringup-evidence/kernel-dependency-live-r2.{log,json}`.
+
+The Python ABI program rendered by `linux_ethtool_channels_program` was also run
+read-only on srv1. `gunbc-tap13` returned numeric errno 95; `gunbcnotap0` returned
+19; the physical `enP3p3s0f1` returned a combined count of 63, independently
+matching `ethtool --show-channels`. The receipt is
+`target/srv1-bringup-evidence/ethtool-ioctl-live.txt`. The declared wet witness
+executes the same native reader and distinguishes unsupported from missing.
+
+The initial success-reply decoder witness exposed the seed's already-recorded
+`optional_equality_answers_by_representation` defect. The consumer now eliminates
+the optional by a match, following that ledger's existing discipline; it does not
+claim to repair the interpreter. The dependency, wire binding, fleet admission,
+network producer and dispatch controls pass. The workflow test responsible for
+CI run `37915381374`'s failure previously constructed every unrelated step merely
+to inspect the job condition. The production envelope now accepts its step list;
+the witness supplies an empty list at that boundary and still checks the actual
+condition assignment. It passes at 3,142 evaluation steps, versus the failed
+run's 446,125, below the new-witness budget. Workflow behavior is unchanged.
+
+Post-observation readback still finds `6.8.0-138-generic` running, no allocation,
+commissioning or readiness files, and controller `MainPID=0` with no queued job.

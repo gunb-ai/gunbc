@@ -1,7 +1,11 @@
 module test.claim.native_product_federation
 
+import gunbc.auth.heal_publisher_provision { standing_principal_set }
+import std.optional { Present, Absent }
 import std.types { Bool, String, List }
-import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_admit }
+import gunbc.auth.oidc_claim_pins {
+  OidcPresentedClaim, claim_pins_admit, presented_from_pins, with_presented_value, without_presented_claim,
+}
 import gunbc.auth.gcp_iam_converge { gcp_iam_converge_targets }
 import gunbc.auth.github_gcp_federation { github_wif_pool_id }
 import gunbc.native_product_federation {
@@ -9,8 +13,8 @@ import gunbc.native_product_federation {
   native_product_write_attribute_condition, native_product_read_service_account, native_product_write_service_account,
 }
 
-fn queue_claims() -> List<OidcClaimPin> {
-  map(native_product_write_claim_pins(), p => p)
+fn queue_claims() -> List<OidcPresentedClaim> {
+  presented_from_pins(pins: native_product_write_claim_pins())
 }
 
 // The accepting control: the merge queue's presented claims are admitted by the write provider.
@@ -21,9 +25,10 @@ test fn the_merge_queue_run_is_admitted_to_the_write_federation() -> Bool {
 // The refusing controls: a pull_request event, another repository and a missing event are each refused.
 test fn a_pull_request_or_foreign_run_is_refused_by_the_write_federation() -> Bool {
   let pins = native_product_write_claim_pins()
-  let pr = map(pins, p => if (p.claim as String) == "event_name" { OidcClaimPin { claim: p.claim, value: "pull_request" } } else { p })
-  let foreign = map(pins, p => if (p.claim as String) == "repository_id" { OidcClaimPin { claim: p.claim, value: "1" } } else { p })
-  let no_event = filter(pins, p => (p.claim as String) != "event_name")
+  let presented = presented_from_pins(pins: pins)
+  let pr = with_presented_value(claims: presented, claim: "event_name", value: "pull_request")
+  let foreign = with_presented_value(claims: presented, claim: "repository_id", value: "1")
+  let no_event = without_presented_claim(claims: presented, claim: "event_name")
   !claim_pins_admit(pins: pins, claims: pr) && !claim_pins_admit(pins: pins, claims: foreign) && !claim_pins_admit(pins: pins, claims: no_event)
 }
 
@@ -45,7 +50,7 @@ test fn each_account_holds_exactly_one_pinned_cell_on_its_own_token() -> Bool {
 // repository-wide principal set cannot reach the write account.
 test fn the_write_account_is_not_reachable_from_the_repository_pool() -> Bool {
   let w = native_product_write_federation()
-  (w.pool_id as String) != (github_wif_pool_id as String) && !w.principal_set.contains(github_wif_pool_id as String)
+  (w.pool_id as String) != (github_wif_pool_id as String) && match standing_principal_set(f: w) { Present { value: ps } => !ps.contains(github_wif_pool_id as String)  Absent => false }
 }
 
 // Deleting the roster row must fail this: both federations are converge targets.

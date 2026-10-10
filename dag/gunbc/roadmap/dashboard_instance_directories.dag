@@ -1,0 +1,41 @@
+module gunbc.roadmap.dashboard_instance_directories
+
+import std.types { List }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_own_directory_demands }
+import gunbc.owned_directory { OwnedDirectoryTarget }
+import gunbc.auth.session_store { session_store_directory }
+import gunbc.auth.login_transaction_store { login_transaction_store_directory }
+import gunbc.auth.oidc_id_token_verification { jwks_cache_directory }
+import gunbc.auth.profile_projection { profile_store_directory }
+import gunbc.roadmap_view_preference_store { issue_view_store_directory }
+import gunbc.roadmap.roadmap_event_carrier_directory { roadmap_event_carrier_directory }
+import gunbc.compute.host_capacity { compute_root_directory }
+import gunbc.fabric_storage_placement { fabric_storage_directory_demands }
+
+// THE ONLY LIST OF AN INSTANCE'S DIRECTORIES. Every row is the demand its consumer declares -- the
+// directory it writes into, as an owned-directory target (gunbc.owned_directory) -- and both routes
+// that create them read this list and nothing else: the dashboard apply
+// (gunbc.roadmap_dashboard_instance_apply dashboard_apply_owned_directories, which also reads them
+// back in dashboard_instance_observe) and the live_deploy transaction (gunbc.live_deploy.spec
+// DeploymentSpec.directories, emitted by gunbc.live_deploy.emit owned_directory_apply_steps and read
+// back as DirectoryRoot members by gunbc.live_deploy.member_observe).
+//
+// THIS IS STILL A CONSUMER LIST, AND THAT IS ITS DECLARED LIMIT. A consumer that writes a directory
+// and is not listed here gets no creator; the composition cannot see it. D14 step 4
+// (docs/plans/ensure-closure-design.md section 12) is what derives the demand from the code that
+// writes, at which point this list stops being authored. Until then, adding a directory writer means
+// declaring its demand in its own module and adding one row here.
+//
+// It lives above the consumers rather than in gunbc.roadmap_dashboard_instance because every consumer
+// imports the instance type from there; composing them there would close a cycle.
+fn dashboard_instance_directory_demands(instance: HostDashboardInstance) -> List<OwnedDirectoryTarget> {
+  concat(dashboard_instance_own_directory_demands(instance: instance), concat([
+    session_store_directory(instance: instance),
+    login_transaction_store_directory(instance: instance),
+    jwks_cache_directory(instance: instance),
+    profile_store_directory(instance: instance),
+    issue_view_store_directory(instance: instance),
+    roadmap_event_carrier_directory(instance: instance),
+    compute_root_directory(instance: instance),
+  ], fabric_storage_directory_demands(instance: instance)))
+}

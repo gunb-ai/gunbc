@@ -17,7 +17,7 @@ import gunbc.fleet_bootstrap_principal_session {
   FleetPrincipalLegRefused,
 }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { gunbc_spark_pair_runtime_dockerfile }
-import gunbc.spark.fabric_switch_observed { FabricGroup }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB }
 import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, pair_serving_apply_admits }
 import gunbc.spark.pair_serving_authority_log {
   CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authorities, current_authority_for, current_authority_wire,

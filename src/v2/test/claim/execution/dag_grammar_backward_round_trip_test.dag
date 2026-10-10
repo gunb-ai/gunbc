@@ -31,7 +31,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn rt_parse(text: String) -> Outcome<Node> {
   match dag_prepared_grammar() {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: prepared, diagnostics: residue } => dag_round_trip_parse(prepared: prepared, residue: residue, text: text)
+    Accepted { value: prepared, diagnostics: _ } => dag_round_trip_parse(prepared: prepared, text: text)
   }
 }
 

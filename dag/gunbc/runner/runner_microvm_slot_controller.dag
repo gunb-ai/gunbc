@@ -1,5 +1,7 @@
 module gunbc.runner_microvm_slot_controller
 
+import gunbc.runner_microvm_network_receipt_store { read_network_receipt, NetworkReceiptAbsent, NetworkReceiptPresent, StoredNetworkReceiptUnreadable }
+
 import gunbc.workspace_commissioning_executor_fence { workspace_executor_claim_controller, WorkspaceExecutorControllerAdmitted, WorkspaceExecutorControllerRefused }
 
 import std.durable_exclusive_hold { DurableHoldOwnerRef }
@@ -36,14 +38,16 @@ import gunbc.workspace_allocation_acquisition { workspace_apply_recorded_plan }
 import gunbc.workspace_allocation_lifecycle { workspace_complete_teardown, workspace_recover_release }
 import gunbc.runner_attempt_launch { LaunchWithdrawn }
 import gunbc.workspace_microvm { workspace_retirement_identity }
-import gunbc.workspace_allocation_policy { workspace_installed_policy }
+import gunbc.workspace_allocation_policy { workspace_installed_policy, workspace_enrolled_ssh_access }
+import gunbc.workspace_ssh_access { WorkspaceSshFromHost, WorkspaceSshThroughGateway, WorkspaceDirectSsh, WorkspaceGatewaySsh }
+import gunbc.principal_projection { PrincipalRef }
 import gunbc.workspace_allocation_admission { workspace_owner_enrollment, WorkspacePolicyAdmitted, WorkspacePolicyRefused }
 import gunbc.workspace_allocation { WorkspaceReservation }
 import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceReleased, WorkspaceWanted, workspace_read_owner, WorkspaceStoreReadOk, WorkspaceStoreUnreadable }
 import gunbc.workspace_reservation_record { workspace_reservation_plan_reservation }
 import gunbc.workspace_guest_image { workspace_installed_image, WorkspaceImageVerified, WorkspaceImageRefused }
 import gunbc.workspace_microvm { bind_workspace_launch, workspace_owner_public_key, WorkspacePublicKeyAdmitted, WorkspacePublicKeyNotAdmitted, WorkspaceLaunchBound, WorkspaceLaunchRefused }
-import gunbc.workspace_gateway { WorkspaceGateway, workspace_fleet_gateway }
+import gunbc.workspace_gateway { workspace_fleet_gateway }
 import gunbc.runner_microvm_attempt { microvm_attempt, MicroVmAttemptAccepted, MicroVmAttemptRefused, attempt_segment_refusal_text }
 import gunbc.fabric_required_build_cell { observe_required_build_cell_for_identity }
 import gunbc.fabric_control_plane { fabric_cell_allocation_key }
@@ -134,7 +138,7 @@ import gunbc.runner_group_restriction_observation {
   MicrovmRunnerGroupStanding, RunnerGroupRestrictionNotYetObserved, microvm_shakedown_runner_group_name,
   runner_group_restriction_not_yet_observed, observe_shakedown_runner_group_restriction,
 }
-import gunbc.runner_jit_mint { MicroVmSlotBinding }
+import gunbc.runner.jit_registration_subject { microvm_registration_subject }
 import gunbc.runner.runner_jit_perform {
   dispatch_jit_mint, JitMintDispatch, JitMintDispatchRefused, JitMintDispatchAuthorized,
   DispatchRefusedRunnerGroupUnrestricted,
@@ -335,7 +339,7 @@ fn attempt_dispatch(binding: MicroVmCellBinding, state: GitHubAppControlPlaneSta
   decl_ref(module_path: "gunbc.runner_microvm_slot_controller", decl_name: "mint_attempt_credential"),
 ] {
   dispatch_jit_mint(
-    binding: MicroVmSlotBinding { binding: binding },
+    subject: microvm_registration_subject(binding: binding),
     authority: controller_credential_authority(),
     control_plane: state,
     organization: github_organization_ref(),
@@ -403,18 +407,12 @@ type NetworkSubjectResolution
 fn resolve_network_subject(slot: RunnerSlotIdentity) -> NetworkSubjectResolution
   uses fs: Filesystem
 {
-  let read = Filesystem.Read(path: runner_microvm_converged_receipt_path)
-  if !read.success {
-    NetworkSubjectRefused { refusal: NetworkReceiptUnreadable { path: runner_microvm_converged_receipt_path, detail: read.error } }
-  } else {
-    match parse_converged_slot_network(text: read.content, candidates: fabric_execution_slot_identities()) {
-      ConvergedSlotNetworkMalformed { cause: c } =>
-        NetworkSubjectRefused { refusal: NetworkReceiptMalformed { path: runner_microvm_converged_receipt_path, cause: c } }
-      ConvergedSlotNetworkParsed { receipt: r } =>
-        match slot_network_sanitation_subject(slot: slot, receipt: r) {
-          SanitationSubjectRefused { refusal: rf } => NetworkSubjectRefused { refusal: SanitationSubjectNotAdmitted { refusal: rf } }
-          SanitationSubjectAdmitted { subject: s } => NetworkSubjectResolved { subject: s }
-        }
+  match read_network_receipt(host: slot.host) {
+    NetworkReceiptAbsent => NetworkSubjectRefused { refusal: NetworkReceiptUnreadable { path: runner_microvm_converged_receipt_path, detail: "network receipt is absent" } }
+    StoredNetworkReceiptUnreadable { reason } => NetworkSubjectRefused { refusal: NetworkReceiptUnreadable { path: runner_microvm_converged_receipt_path, detail: reason } }
+    NetworkReceiptPresent { receipt } => match slot_network_sanitation_subject(slot: slot, receipt: receipt) {
+      SanitationSubjectRefused { refusal } => NetworkSubjectRefused { refusal: SanitationSubjectNotAdmitted { refusal: refusal } }
+      SanitationSubjectAdmitted { subject } => NetworkSubjectResolved { subject: subject }
     }
   }
 }
@@ -531,7 +529,7 @@ fn minted_registration(mint: JitMintPerformance) -> Int? {
   match mint {
     JitMintReceived { delivery: d } =>
       match d {
-        JitCredentialBoundToAttempt { slot: _, credential: _, runner_id: id } => Present { value: id }
+        JitCredentialBoundToAttempt { bound: b } => Present { value: b.runner_id }
         JitCredentialNotDispatched { refusal: _ } => none
         JitCredentialMintNotCreated { outcome: _ } => none
       }
@@ -723,7 +721,6 @@ fn run_workspace_slot(
   bins: LocusBinaries,
   invocation_id: NonEmptyStr,
   allocation_store: FabricStorageBinding,
-  gateway: WorkspaceGateway,
 ) -> ControllerOutcome {
   let identity = workspace_attempt_identity(binding: binding, invocation_id: invocation_id, firecracker_binary: bins.firecracker)
   let plan = workspace_launch_plan(binding: binding, ground: observe_attempt_ground(attempt: binding.attempt), jailer_binary: bins.jailer, firecracker_binary: bins.firecracker)
@@ -734,7 +731,7 @@ fn run_workspace_slot(
         store: allocation_store, owner: binding.reservation.request.owner,
         idempotency_key: binding.reservation.request.idempotency_key,
         identity: live, launch: launch,
-        observe_connection: (observed, started) => workspace_observe_admitted_connection(store: allocation_store, identity: observed, launch: started, gateway: gateway),
+        observe_connection: (observed, started) => workspace_observe_admitted_connection(store: allocation_store, identity: observed, launch: started, owner: binding.reservation.request.owner),
       )
       let measured = workspace_capture_runtime_metrics(store: allocation_store, reservation: binding.reservation, identity: live, launch: launch)
       if measured { terminal } else { terminal }
@@ -742,13 +739,25 @@ fn run_workspace_slot(
   )
 }
 
-// Runtime reads the operator-context forwarding observation; it never borrows the operator's key.
-fn workspace_observe_admitted_connection(store: FabricStorageBinding, identity: AttemptIdentity, launch: AttemptLaunch, gateway: WorkspaceGateway) -> WorkspaceConnectionReading {
-  match clock_now_probed_at() {
-    Absent => WorkspaceConnectionUnavailable { reason: "gateway admission clock is unreadable" }
-    Present { value: now } => match workspace_current_gateway_connection(store: store, slot: identity.attempt.slot, now: now) {
-      WorkspaceGatewayUnavailable { reason } => WorkspaceConnectionUnavailable { reason: reason as String }
-      WorkspaceGatewayReady { known_host } => workspace_observe_connection(identity: identity, launch: launch, gateway: gateway, gateway_known_host: known_host)
+// The controller has already bound this host and allocation. A host-local client needs the
+// invocation-bound guest key exchange; only a gateway client additionally needs forwarding proof.
+fn workspace_observe_admitted_connection(store: FabricStorageBinding, identity: AttemptIdentity, launch: AttemptLaunch, owner: PrincipalRef) -> WorkspaceConnectionReading {
+  match workspace_enrolled_ssh_access(owner: owner) {
+    Absent => WorkspaceConnectionUnavailable { reason: "workspace owner has no admitted SSH access policy" }
+    Present { value: access } => match access {
+      WorkspaceSshFromHost { identity_file } => workspace_observe_connection(identity: identity, launch: launch,
+        route: WorkspaceDirectSsh { slot: identity.attempt.slot, identity_file: identity_file })
+      WorkspaceSshThroughGateway => match workspace_fleet_gateway(slot: identity.attempt.slot) {
+        Absent => WorkspaceConnectionUnavailable { reason: "fleet tailnet gateway is unconfigured" }
+        Present { value: gateway } => match clock_now_probed_at() {
+          Absent => WorkspaceConnectionUnavailable { reason: "gateway admission clock is unreadable" }
+          Present { value: now } => match workspace_current_gateway_connection(store: store, slot: identity.attempt.slot, now: now) {
+            WorkspaceGatewayUnavailable { reason } => WorkspaceConnectionUnavailable { reason: reason as String }
+            WorkspaceGatewayReady { known_host } => workspace_observe_connection(identity: identity, launch: launch,
+              route: WorkspaceGatewaySsh { gateway: gateway, known_host: known_host })
+          }
+        }
+      }
     }
   }
 }
@@ -962,12 +971,9 @@ fn workspace_slot_launch_under_exclusion(reservation: WorkspaceReservation, live
         ClockUnixMillisObserved { millis } => match bind_workspace_launch(reservation: reservation, snapshot: live, attempt: attempt,
           image: image, public_key: owner_key, now_unix: epoch_secs_of_millis(millis: millis)) {
           WorkspaceLaunchRefused { reason } => workspace_slot_refused(reason: reason)
-          WorkspaceLaunchBound { binding } => match workspace_fleet_gateway(slot: reservation.slot) {
-            Absent => workspace_slot_refused(reason: "fleet tailnet gateway is unconfigured")
-            Present { value: gateway } => workspace_settle_controller_outcome(reservation: reservation, store: store,
+          WorkspaceLaunchBound { binding } => workspace_settle_controller_outcome(reservation: reservation, store: store,
               outcome: run_workspace_slot(binding: binding, subject: subject, bins: bins,
-                invocation_id: invocation_id, allocation_store: store, gateway: gateway))
-          }
+                invocation_id: invocation_id, allocation_store: store))
         }
         ClockUnixMillisRefused { detail: _ } => workspace_slot_refused(reason: "workspace launch clock is unreadable")
       }

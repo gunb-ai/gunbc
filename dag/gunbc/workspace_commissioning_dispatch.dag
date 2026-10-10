@@ -1,5 +1,7 @@
 module gunbc.workspace_commissioning_dispatch
 
+import gunbc.workspace_allocation_dispatch { workspace_allocation_prepare_cli, workspace_allocation_readback_cli }
+
 import std.types { String, NonEmptyStr, Bool, CommitSha }
 import std.decl_ref { decl_ref }
 import std.algebra { trim }
@@ -19,7 +21,8 @@ import gunbc.workspace_commissioning_executor_input { workspace_executor_input_f
 import gunbc.workspace_commissioning_executor_unit { workspace_executor_unit_instance_name }
 import gunbc.workspace_commissioning_executor_store { workspace_executor_journal_observe, WorkspaceExecutorJournalObserved, WorkspaceExecutorJournalUnreadable }
 import gunbc.workspace_commissioning_executor_journal { ExecutorGenerationCommitted }
-import gunbc.workspace_commissioning_fleet { workspace_commissioning_basis_observe, workspace_commissioning_candidate, workspace_commissioning_basis_rows, WorkspaceCommissioningFleetObserved, WorkspaceCommissioningFleetRefused }
+import gunbc.host_kernel_dependency_wire { host_kernel_dependency_row }
+import gunbc.workspace_commissioning_fleet { workspace_commissioning_basis_observe, workspace_commissioning_candidate, workspace_commissioning_basis_rows, WorkspaceCommissioningFleetObserved, WorkspaceCommissioningFleetDependencyObserved, WorkspaceCommissioningFleetRefused }
 import gunbc.workspace_commissioning_start_observe { workspace_commissioning_start_observe, WorkspaceCommissioningStartObserved, WorkspaceCommissioningStartSnapshot, workspace_commissioning_start_quiescent, WorkspaceCommissioningStartUnreadable }
 import gunbc.build_cache_instance { runner_slot_instance_name }
 import gunbc.fleet_generation_execution { fleet_generation_publication_as_owner }
@@ -63,6 +66,7 @@ fn workspace_dispatch_stage(bytes: WorkspaceCommissioningInputBytes) -> CliWireR
           WorkspaceCommissioningInputPresent { bytes: stored, plan: _ } => stored == bytes
           WorkspaceCommissioningInputAbsent => match workspace_commissioning_basis_observe(provenance: plan.provenance) {
             WorkspaceCommissioningFleetObserved { basis } => !basis.already_committed && basis.prestate == plan.prestate
+            WorkspaceCommissioningFleetDependencyObserved { plan: _ } => false
             WorkspaceCommissioningFleetRefused { reason: _ } => false
           }
           WorkspaceCommissioningInputRefused { reason: _ } => false
@@ -178,7 +182,8 @@ fn workspace_dispatch_plan_cli() -> CliWireResponse {
       workspace_dispatch_refused(reason: "plan revision is malformed")
     } else { match workspace_commissioning_candidate(host: host as NonEmptyStr, revision: revision as CommitSha) {
       WorkspaceCommissioningFleetObserved { basis } => CliWirePrintable { bytes: workspace_commissioning_basis_rows(basis: basis), exit: ExitSuccess }
-      WorkspaceCommissioningFleetRefused { reason: _ } => workspace_dispatch_refused(reason: "privileged commissioning observation refused")
+      WorkspaceCommissioningFleetDependencyObserved { plan } => CliWirePrintable { bytes: host_kernel_dependency_row(plan: plan), exit: ExitSuccess }
+      WorkspaceCommissioningFleetRefused { reason } => workspace_dispatch_refused(reason: concat("privileged commissioning observation refused: ", reason))
     } }
   }
 }
@@ -199,3 +204,7 @@ fn workspace_dispatch_offer_cli() -> CliWireResponse {
     }
   } }
 }
+
+// Reconcile only already-admitted owner intent; these entries cannot create or release a request.
+fn workspace_dispatch_allocation_plan_cli() -> CliWireResponse { workspace_allocation_prepare_cli() }
+fn workspace_dispatch_allocation_readback_cli() -> CliWireResponse { workspace_allocation_readback_cli() }

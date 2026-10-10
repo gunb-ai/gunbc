@@ -92,7 +92,9 @@ import gunbc.roadmap_dispatch_actuator {
   GunbcHarnessProvider,
   DispatchProviderInnerArgvReady,
   CodexProviderExecutableAbsent,
-  CursorProviderSpawnUnwired,
+  CursorProviderOffCustodyHost,
+  CursorProviderCredentialUnbound,
+  CodexProviderOffCustodyHost,
   GunbcHarnessSpawnNeedsInstance,
   ClaudeProviderCredentialUnbound,
   RecordedAttemptFingerprint,
@@ -404,7 +406,9 @@ test fn the_setup_token_credential_binds_through_the_env_wrapper_never_argv() ->
         && !any(argv, a => starts_with(s: a, prefix: "CLAUDE_CODE_OAUTH_TOKEN=") && !string_contains(s: a, pattern: "\"$0\""))
     ClaudeProviderCredentialUnbound { reason: _ } => false
     CodexProviderExecutableAbsent { reason: _ } => false
-    CursorProviderSpawnUnwired { reason: _ } => false
+    CursorProviderOffCustodyHost { reason: _ } => false
+    CursorProviderCredentialUnbound { reason: _ } => false
+    CodexProviderOffCustodyHost { reason: _ } => false
     GunbcHarnessSpawnNeedsInstance { reason: _ } => false
   }
 }
@@ -418,7 +422,9 @@ test fn an_ambient_profile_tree_is_not_a_bindable_credential() -> Bool {
     ClaudeProviderCredentialUnbound { reason: _ } => true
     DispatchProviderInnerArgvReady { argv: _ } => false
     CodexProviderExecutableAbsent { reason: _ } => false
-    CursorProviderSpawnUnwired { reason: _ } => false
+    CursorProviderOffCustodyHost { reason: _ } => false
+    CursorProviderCredentialUnbound { reason: _ } => false
+    CodexProviderOffCustodyHost { reason: _ } => false
     GunbcHarnessSpawnNeedsInstance { reason: _ } => false
   }
 }
@@ -464,7 +470,9 @@ test fn a_snapshot_that_cannot_be_removed_refuses_the_launch() -> Bool {
       any(argv, a => string_contains(s: a, pattern: "'rm' '-f' '--' \"$0\" || exit 79"))
     ClaudeProviderCredentialUnbound { reason: _ } => false
     CodexProviderExecutableAbsent { reason: _ } => false
-    CursorProviderSpawnUnwired { reason: _ } => false
+    CursorProviderOffCustodyHost { reason: _ } => false
+    CursorProviderCredentialUnbound { reason: _ } => false
+    CodexProviderOffCustodyHost { reason: _ } => false
     GunbcHarnessSpawnNeedsInstance { reason: _ } => false
   }
 }
@@ -630,7 +638,9 @@ test fn the_captured_trip_reaches_a_credential_bound_claude_spawn_on_srv1() -> B
             && any(argv, a => a == "claude")
         ClaudeProviderCredentialUnbound { reason: _ } => false
         CodexProviderExecutableAbsent { reason: _ } => false
-        CursorProviderSpawnUnwired { reason: _ } => false
+        CursorProviderOffCustodyHost { reason: _ } => false
+        CursorProviderCredentialUnbound { reason: _ } => false
+        CodexProviderOffCustodyHost { reason: _ } => false
         GunbcHarnessSpawnNeedsInstance { reason: _ } => false
       }
   }

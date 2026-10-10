@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       attempt:
-        description: The attempt's registration name (its transient unit name, gunbc.runner_jit_mint jit_runner_name_for). It is REQUIRED in runs-on, so a wrong name queues forever rather than running on any other runner.
+        description: The attempt's registration name (its transient unit name, gunbc.runner.jit_registration_subject jit_runner_name_for). It is REQUIRED in runs-on, so a wrong name queues forever rather than running on any other runner.
         required: true
         type: string
 jobs:

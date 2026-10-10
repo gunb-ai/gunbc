@@ -2,12 +2,11 @@ module test.claim.live_deploy.unit_standing_witness
 
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import extdeps.systemd { systemd_duration_usec }
-import gunbc.live_deploy.emit { live_deploy_belt_service_unit_file, live_deploy_belt_timer_unit_file }
+import gunbc.live_deploy.emit { live_deploy_belt_service_unit_file, live_deploy_belt_exit_path_unit_file }
+import gunbc.live_deploy.spec { deployment_belt_exit_drain_service_unit_name }
 import gunbc.live_deploy.unit_standing {
   BeltOneshotConverged,
   BeltOneshotRefused,
-  BeltTimerConverged,
-  BeltTimerRefused,
   DashboardServiceConverged,
   DashboardServiceRefused,
   ExecStartArgv,
@@ -16,21 +15,16 @@ import gunbc.live_deploy.unit_standing {
   ServiceExpectationUnderivable,
   ServiceUnitExpectation,
   ServiceUnitObserved,
-  TimerExpectationDerived,
-  TimerExpectationUnderivable,
-  TimerUnitExpectation,
-  TimerUnitObserved,
   exec_start_argv_of_show_value,
   judge_belt_oneshot,
-  judge_belt_timer,
   judge_dashboard_service,
   service_unit_expectation_of,
-  timer_unit_expectation_of,
+  path_unit_target_of,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data unit_fixture_exec: String = "/opt/gunbc/bin/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function belt_run_once_cli"
+data unit_fixture_exec: String = "/opt/gunbc/bin/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function belt_launch_enqueue_cli"
 
 fn fixture_service_expectation() -> ServiceUnitExpectation {
   ServiceUnitExpectation { exec_start: unit_fixture_exec, user: "briansrls", working_directory: "/opt/gunbc/gunbc" }
@@ -54,25 +48,8 @@ fn fixture_oneshot_observed(unit_file_state: String, active_state: String, resul
   }
 }
 
-fn fixture_timer_expectation() -> TimerUnitExpectation {
-  TimerUnitExpectation { target_unit: "gunbc-belt.service", on_boot_usec: microsecond(count: 120000000), on_unit_inactive_usec: microsecond(count: 60000000), accuracy_usec: microsecond(count: 5000000) }
-}
 
-fn fixture_timer_observed(unit_file_state: String, active_state: String, target: String) -> TimerUnitObserved {
-  fixture_timer_observed_with_cadence(unit_file_state: unit_file_state, active_state: active_state, target: target, on_unit_inactive: "1min")
-}
 
-fn fixture_timer_observed_with_cadence(unit_file_state: String, active_state: String, target: String, on_unit_inactive: String) -> TimerUnitObserved {
-  TimerUnitObserved {
-    load_state: "loaded",
-    unit_file_state: unit_file_state,
-    active_state: active_state,
-    sub_state: if active_state == "active" { "waiting" } else { "dead" },
-    unit: target,
-    timers_monotonic: join(["{ OnBootUSec=2min ; next_elapse=1min 30s }, { OnUnitInactiveUSec=", on_unit_inactive, " ; next_elapse=5min 2s }"], ""),
-    accuracy_usec_value: "5s",
-  }
-}
 
 // (1) systemctl show's ExecStart rendering yields the exact argv text.
 test fn witness_exec_start_argv_is_read_from_the_show_rendering() -> Bool {
@@ -113,28 +90,8 @@ test fn witness_oneshot_under_wrong_user_refuses() -> Bool {
   }
 }
 
-// (5) RED: a DISABLED timer refuses on UnitFileState even when everything else reads clean --
-// this is the control the ruling names beside a fresh, manually fabricated tick.
-test fn witness_disabled_timer_refuses() -> Bool {
-  match judge_belt_timer(unit: "gunbc-belt.timer", expect: fixture_timer_expectation(), o: fixture_timer_observed(unit_file_state: "disabled", active_state: "active", target: "gunbc-belt.service")) {
-    BeltTimerConverged { unit: _ } => false
-    BeltTimerRefused { unit: _, property: p, expected: e, observed: o } => p == "UnitFileState" && e == "enabled" && o == "disabled"
-  }
-}
 
-test fn witness_enabled_waiting_timer_on_the_exact_service_is_converged() -> Bool {
-  match judge_belt_timer(unit: "gunbc-belt.timer", expect: fixture_timer_expectation(), o: fixture_timer_observed(unit_file_state: "enabled", active_state: "active", target: "gunbc-belt.service")) {
-    BeltTimerConverged { unit: u } => u == "gunbc-belt.timer"
-    BeltTimerRefused { unit: _, property: _, expected: _, observed: _ } => false
-  }
-}
 
-test fn witness_timer_targeting_another_service_refuses() -> Bool {
-  match judge_belt_timer(unit: "gunbc-belt.timer", expect: fixture_timer_expectation(), o: fixture_timer_observed(unit_file_state: "enabled", active_state: "active", target: "gunbc-belt-lab.service")) {
-    BeltTimerConverged { unit: _ } => false
-    BeltTimerRefused { unit: _, property: p, expected: _, observed: _ } => p == "Unit"
-  }
-}
 
 // (6) The dashboard service must be enabled AND active; ExecStart is compared exactly.
 test fn witness_dashboard_service_with_drifted_exec_start_refuses() -> Bool {
@@ -153,18 +110,18 @@ test fn witness_dashboard_service_with_drifted_exec_start_refuses() -> Bool {
 test fn witness_expectations_derive_from_the_emitted_srv1_units() -> Bool {
   let spec = deployment_spec_srv1()
   let belt = match service_unit_expectation_of(file: live_deploy_belt_service_unit_file(spec: spec)) {
-    ServiceExpectationDerived { expectation: e } => e.user == (spec.service.service_user as String) && string_contains(s: e.exec_start, pattern: "belt_run_once_cli")
+    ServiceExpectationDerived { expectation: e } => e.user == (spec.service.service_user as String) && string_contains(s: e.exec_start, pattern: "belt_launch_enqueue_cli")
     ServiceExpectationUnderivable { detail: _ } => false
   }
-  let timer = match timer_unit_expectation_of(file: live_deploy_belt_timer_unit_file(spec: spec)) {
-    TimerExpectationDerived { expectation: e } => e.target_unit == (deployment_belt_service_unit_name(names: spec.names) as String)
-    TimerExpectationUnderivable { detail: _ } => false
+  let exit_path = match path_unit_target_of(file: live_deploy_belt_exit_path_unit_file(spec: spec)) {
+    Present { value: t } => t == (deployment_belt_exit_drain_service_unit_name(names: spec.names) as String)
+    Absent => false
   }
-  let mismatched = match timer_unit_expectation_of(file: live_deploy_belt_service_unit_file(spec: spec)) {
-    TimerExpectationDerived { expectation: _ } => false
-    TimerExpectationUnderivable { detail: _ } => true
+  let mismatched = match path_unit_target_of(file: live_deploy_belt_service_unit_file(spec: spec)) {
+    Present { value: _ } => false
+    Absent => true
   }
-  belt && timer && mismatched
+  belt && exit_path && mismatched
 }
 
 // (8) systemd.time(7) normalization: "60s" == "1min" is decidable equality; unknown units, empty
@@ -181,19 +138,4 @@ test fn witness_systemd_duration_normalizes_equal_spellings() -> Bool {
     && (match systemd_duration_usec(text: "min") { Present { value: _ } => false  Absent => true })
 }
 
-// (9) RED (review 5061891290 P1-3): a timer whose EFFECTIVE cadence is not R's emitted value
-// refuses on the value, even though both directive names are present and everything else is clean.
-test fn witness_timer_with_wrong_cadence_value_refuses() -> Bool {
-  match judge_belt_timer(unit: "gunbc-belt.timer", expect: fixture_timer_expectation(), o: fixture_timer_observed_with_cadence(unit_file_state: "enabled", active_state: "active", target: "gunbc-belt.service", on_unit_inactive: "5min")) {
-    BeltTimerConverged { unit: _ } => false
-    BeltTimerRefused { unit: _, property: p, expected: e, observed: o } => p == "OnUnitInactiveUSec" && e == "60000000" && o == "300000000"
-  }
-}
 
-// (10) The derived expectation carries R's cadence VALUES from the emitted unit, one authority.
-test fn witness_derived_timer_expectation_carries_the_emitted_cadence() -> Bool {
-  match timer_unit_expectation_of(file: live_deploy_belt_timer_unit_file(spec: deployment_spec_srv1())) {
-    TimerExpectationDerived { expectation: e } => microsecond_count(e.on_unit_inactive_usec) == 60000000 && microsecond_count(e.on_boot_usec) == 120000000 && microsecond_count(e.accuracy_usec) == 5000000
-    TimerExpectationUnderivable { detail: _ } => false
-  }
-}

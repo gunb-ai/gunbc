@@ -29,6 +29,7 @@ import gunbc.runner_slot_allocation {
   runner_width_unresolved_cause_text,
 }
 import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet_enrollment { CiRunnerParticipation, hosts_enrolled_for }
 import std.algebra { Cons, Empty }
 
 // VOID CITATION RETIRED (operator ruling 2026-08-06): ctrl:scripts/session-dashboard/host/* path
@@ -317,29 +318,19 @@ type RunnerHostDeployResolution
 // is a second account of a fact the declaration already carries).
 
 fn runner_host_deploy_for(host: HostIdentity) -> RunnerHostDeployResolution {
-  if (host as String) == (operator_host_srv1 as String) {
-    admitted_deploy_or_refusal(host: host, spec: srv1_runner_host_spec)
-  } else if (host as String) == (operator_host_srv2 as String) {
-    admitted_deploy_or_refusal(host: host, spec: srv2_runner_host_spec)
-  } else if (host as String) == (operator_host_srv3 as String) {
-    admitted_deploy_or_refusal(host: host, spec: srv3_runner_host_spec)
-  } else if (host as String) == (operator_host_srv4 as String) {
-    admitted_deploy_or_refusal(host: host, spec: srv4_runner_host_spec)
-  } else {
-    RunnerHostDeployUnmodeled { host: host }
+  match runner_host_spec_for(host: host) {
+    RunnerHostSpecFound { spec: s } => admitted_deploy_or_refusal(host: host, spec: s)
+    RunnerHostSpecAbsent { host: h } => RunnerHostDeployUnmodeled { host: h }
   }
 }
 
-// THE FOUR-HOST ROSTER, EVERY ROW THROUGH THE SAME ADMISSION. srv2's refusal is a member of this list
-// rather than an absence from it, so "refused" cannot be read as "not modeled" and a fleet total that
-// walks this roster cannot look complete while one host cannot be sized.
-fn fleet_runner_host_admissions() -> List<RunnerHostDeployAdmission> {
-  [
-    runner_host_deploy_of(host: operator_host_srv1, spec: srv1_runner_host_spec),
-    runner_host_deploy_of(host: operator_host_srv2, spec: srv2_runner_host_spec),
-    runner_host_deploy_of(host: operator_host_srv3, spec: srv3_runner_host_spec),
-    runner_host_deploy_of(host: operator_host_srv4, spec: srv4_runner_host_spec),
-  ]
+// THE ROSTER IS THE ENROLLED CI POPULATION, EVERY HOST THROUGH THE SAME RESOLUTION. It is read off
+// gunbc.fleet_enrollment rather than listed here, so a host enrolled for CI appears with whatever
+// disposition it has: a refused width stays a member rather than an absence, and an enrolled host
+// with no runner spec -- a provider guest whose runner role is not modeled -- appears as Unmodeled,
+// so a fleet total that walks this roster cannot look complete while one host cannot be deployed.
+fn fleet_runner_host_resolutions() -> List<RunnerHostDeployResolution> {
+  map(hosts_enrolled_for(wanted: CiRunnerParticipation), h => runner_host_deploy_for(host: h))
 }
 
 // THE ADMITTED ROW FOR ONE HOST, OPTIONAL BECAUSE ADMISSION IS NOT GUARANTEED. A consumer that wants
@@ -356,17 +347,25 @@ type RunnerHostSpecLookup
   = RunnerHostSpecFound { spec: RunnerHostSpec }
   | RunnerHostSpecAbsent { host: HostIdentity }
 
+// One row per host that has a runner spec, keyed by the host's stable identity. The specs stay
+// per-host physical facts (ssh target, users, app); only the dispatch over them is a lookup now, so
+// adding a host's spec is a row here and never a new arm in every switch that used to repeat it.
+type RunnerHostSpecRow {
+  host: HostIdentity
+  spec: RunnerHostSpec
+}
+
+data runner_host_spec_rows: List<RunnerHostSpecRow> = [
+  RunnerHostSpecRow { host: operator_host_srv1, spec: srv1_runner_host_spec },
+  RunnerHostSpecRow { host: operator_host_srv2, spec: srv2_runner_host_spec },
+  RunnerHostSpecRow { host: operator_host_srv3, spec: srv3_runner_host_spec },
+  RunnerHostSpecRow { host: operator_host_srv4, spec: srv4_runner_host_spec },
+]
+
 fn runner_host_spec_for(host: HostIdentity) -> RunnerHostSpecLookup {
-  if (host as String) == (operator_host_srv1 as String) {
-    RunnerHostSpecFound { spec: srv1_runner_host_spec }
-  } else if (host as String) == (operator_host_srv2 as String) {
-    RunnerHostSpecFound { spec: srv2_runner_host_spec }
-  } else if (host as String) == (operator_host_srv3 as String) {
-    RunnerHostSpecFound { spec: srv3_runner_host_spec }
-  } else if (host as String) == (operator_host_srv4 as String) {
-    RunnerHostSpecFound { spec: srv4_runner_host_spec }
-  } else {
-    RunnerHostSpecAbsent { host: host }
+  match filter(runner_host_spec_rows, r => (r.host as String) == (host as String)).first() {
+    Present { value: r } => RunnerHostSpecFound { spec: r.spec }
+    Absent => RunnerHostSpecAbsent { host: host }
   }
 }
 
@@ -379,20 +378,21 @@ fn admitted_deploy_for(host: HostIdentity) -> RunnerHostDeploy? {
 }
 
 fn admitted_deploy_rows() -> List<RunnerHostDeploy> {
-  fleet_runner_host_admissions() |> flat_map(a => match a {
-    RunnerHostDeployAdmitted { deploy: d } => [d]
-    RunnerHostDeployWidthRefused { spec: _, host: _, cause: _ } => []
+  fleet_runner_host_resolutions() |> flat_map(r => match r {
+    RunnerHostDeployFound { deploy: d } => [d]
+    RunnerHostDeployRefused { host: _, cause: _ } => []
+    RunnerHostDeployUnmodeled { host: _ } => []
   })
 }
 
-// THE ADMITTED LIST CARRIES ONLY OPERATIONAL ROWS, and srv2 is absent from it because it has no such
-// row -- not because it was filtered. Its refusal is carried separately by
-// `fleet_runner_host_deploy_resolutions`, so a consumer that wants the whole fleet gets four
-// dispositions and a consumer that wants deployable hosts gets three positive rows. Neither can
-// silently read the other's population as complete.
+// THE ADMITTED LIST CARRIES ONLY OPERATIONAL ROWS, and a refused or unmodeled host is absent from it
+// because it has no such row -- not because it was filtered. Every disposition is carried separately
+// by `fleet_runner_host_deploy_resolutions`, so a consumer that wants the whole enrolled CI fleet gets
+// one disposition per host and a consumer that wants deployable hosts gets only the positive rows.
+// Neither can silently read the other's population as complete.
 data fleet_runner_host_deploys: List<RunnerHostDeploy> = admitted_deploy_rows()
 
-data fleet_runner_host_deploy_resolutions: List<RunnerHostDeployAdmission> = fleet_runner_host_admissions()
+data fleet_runner_host_deploy_resolutions: List<RunnerHostDeployResolution> = fleet_runner_host_resolutions()
 
 // runner_count names slots via runner_instance_names / runner_index_seq but does NOT reach
 // runner_host_installer_command_argv — install-actions-runner.sh has no slot-count parameter

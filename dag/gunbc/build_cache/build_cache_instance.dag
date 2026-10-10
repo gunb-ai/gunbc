@@ -176,7 +176,7 @@ type RunnerSlotIdentity {
 //
 // THE CORRECTION THAT MATTERS IS THAT ZERO IS THE WRONG ANSWER SHAPE, NOT THAT IT IS REACHED.
 // Were srv5 to arrive here it would be told it has a CI capacity of zero, when the truth is that the
-// question does not apply to an inference appliance. gunbc.host_phase_status fleet_subsumption_enrollments
+// question does not apply to an inference appliance. gunbc.fleet_enrollment fleet_enrollments
 // already carries that distinction as a participation per host, so the fact exists and this table
 // cannot see it.
 //

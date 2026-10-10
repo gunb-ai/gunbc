@@ -6,6 +6,7 @@ type GeneratedPartitionCrateKind
   = GeneratedFoundationCrate
   | GeneratedLayeredCoreCrate
   | GeneratedEmitCoreCrate
+  | GeneratedFacadeCrate
 
 type GeneratedPartitionCrateRow {
   package_name: String
@@ -79,7 +80,8 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "std_operator_realization",
         "std_import",
         "v1_std_core",
-        "gunbc_rust_emitted_edge"
+        "gunbc_rust_emitted_edge",
+        "gunbc_rust_emitted_crate"
       ],
       reexport_packages: [
         "v1-stage0-runtime"
@@ -191,6 +193,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
       crate_dir: "src/v1/stage0_emit_core",
       kind: GeneratedEmitCoreCrate,
       modules: [
+        "gunbc_rust_emitted_crate",
         "gunbc_rust_emitted_edge",
         "v1_compiler_artifact",
         "v1_compiler_infer_env",

@@ -1,0 +1,79 @@
+module test.claim.parse_test_typescript_grammar
+
+data ts_type_alias_task_source: String = "type Task = { id: TaskId, title: string, status: TaskStatus };"
+
+data ts_type_alias_minimal_source: String = "type Box = { value: number };"
+
+data ts_type_alias_missing_eq_source: String = "type Box { value: number };"
+
+fn ts_parse_bool_atom(b: Bool) -> Node {
+  match b {
+    true => Node { kind: TypeNode { connective: Atom { identity: ^ts_parse_bool_true } }, children: [],
+ occurrence_id: OccurrenceSynthetic
+}
+    false => Node { kind: TypeNode { connective: Atom { identity: ^ts_parse_bool_false } }, children: [],
+ occurrence_id: OccurrenceSynthetic
+}
+  }
+}
+
+fn ts_parse_accepted(out: Outcome<ParseTree>) -> Bool {
+  match out {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn ts_tokenize_and_parse_source(text: String) -> Outcome<ParseTree> {
+  match tokenize(
+    text: text,
+    file: ^ts_parse_file,
+    rules: ts_lex()
+  ) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: tokens, diagnostics: _ } =>
+      parse(tokens: tokens, grammar: ts_grammar())
+  }
+}
+
+// TS grammar accepts the Task record-type alias: type Task = { id: TaskId, title: string, status: TaskStatus };.
+// Formerly the data row `claim_ts_type_alias_task_parses: TestClaim = EqualsClaim`, which no runner executes (the
+// required floor runs `test fn` claims only): the same lhs == rhs predicate, made runnable by the
+// v2.test.parse census (gunbc#13372).
+test fn claim_ts_type_alias_task_parses_holds() -> Bool {
+  (ts_parse_accepted(
+      out: ts_tokenize_and_parse_source(text: ts_type_alias_task_source)
+    )) == true
+}
+
+// TS grammar accepts a minimal single-field record-type alias with the spec-required `=` token.
+// Formerly the data row `claim_ts_type_alias_minimal_parses: TestClaim = EqualsClaim`, which no runner executes (the
+// required floor runs `test fn` claims only): the same lhs == rhs predicate, made runnable by the
+// v2.test.parse census (gunbc#13372).
+test fn claim_ts_type_alias_minimal_parses_holds() -> Bool {
+  (ts_parse_accepted(
+      out: ts_tokenize_and_parse_source(text: ts_type_alias_minimal_source)
+    )) == true
+}
+
+// TS grammar REJECTS the no-`=` form `type Box { value: number };` — parse rejects missing ts_token_eq after ident.
+// Formerly the data row `claim_ts_type_alias_missing_eq_rejected: TestClaim = EqualsClaim`, which no runner executes (the
+// required floor runs `test fn` claims only): the same lhs == rhs predicate, made runnable by the
+// v2.test.parse census (gunbc#13372).
+test fn claim_ts_type_alias_missing_eq_rejected_holds() -> Bool {
+  (ts_parse_accepted(
+      out: ts_tokenize_and_parse_source(text: ts_type_alias_missing_eq_source)
+    )) == false
+}
+
+data ts_typed_fn_list_tasks_source: String = "function list_tasks(): Task[] { return x; }"
+
+// TS grammar accepts a typed-return fn with array-of-named-type: function list_tasks(): Task[] { return x; }.
+// Formerly the data row `claim_ts_typed_fn_list_tasks_parses: TestClaim = EqualsClaim`, which no runner executes (the
+// required floor runs `test fn` claims only): the same lhs == rhs predicate, made runnable by the
+// v2.test.parse census (gunbc#13372).
+test fn claim_ts_typed_fn_list_tasks_parses_holds() -> Bool {
+  (ts_parse_accepted(
+      out: ts_tokenize_and_parse_source(text: ts_typed_fn_list_tasks_source)
+    )) == true
+}

@@ -36,7 +36,6 @@ import gunbc.fleet_ssh_credential_verify {
 }
 import extdeps.ssh.session { ssh_session_exec_portable_words }
 import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent, filter }
-import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6 }
 import product.host_identity { HostIdentity }
 import gunbc.auth.access_token_source { GcloudPrintToken }
 import gunbc.spark.credential_workflow { run_with_materialized_fleet_ssh_binding, spark_administrator_credential_roster_hosts }
@@ -94,7 +93,7 @@ import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
 // It also replaces work rather than adding any: the deleted spark-canary-probe.yml asked exactly
 // this question in hand-authored shell, against this same principal list, and a hand-written
 // workflow is hand-applying (operator ruling, 2026-08-10).
-data multi_principal_probe_hosts: List<String> = ["srv3", "srv4", "srv5", "srv6"]
+data multi_principal_probe_hosts: List<String> = ["srv3", "srv4"]
 
 data multi_principal_probe_principals: List<String> = ["ubuntu", "briansrls", "ghrunner", "root", "gunbc-automation"]
 

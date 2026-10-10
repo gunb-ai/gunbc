@@ -4,6 +4,7 @@ import std.integer { NonNegativeInt, PositiveInt }
 import std.types { List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.nat { nat_to_decimal_string }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -36,13 +37,13 @@ type CronEntry {
 fn render_cron_field(f: CronField) -> String {
   match f {
     Wildcard => "*"
-    Exact { value: v } => "{v}"
-    Listed { values } => values |> map(v => "{v}") |> join(separator: ",")
-    Ranged { start: s, end: e } => "{s}-{e}"
+    Exact { value: v } => nat_to_decimal_string(value: v)
+    Listed { values } => values |> map(v => nat_to_decimal_string(value: v)) |> join(separator: ",")
+    Ranged { start: s, end: e } => concat(nat_to_decimal_string(value: s), concat("-", nat_to_decimal_string(value: e)))
     Step { start: st, step: sp } =>
       match st {
-        0 => "*/{sp}"
-        _ => "{st}/{sp}"
+        0 => concat("*/", nat_to_decimal_string(value: sp))
+        _ => concat(nat_to_decimal_string(value: st), concat("/", nat_to_decimal_string(value: sp)))
       }
   }
 }
