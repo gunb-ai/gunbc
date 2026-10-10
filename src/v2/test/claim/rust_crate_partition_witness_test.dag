@@ -1,34 +1,41 @@
 module v2.test.claim.rust_crate_partition_witness
 
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.perturbation { ForwardSameInSameOut, perturbation_consistent }
-import std.types { NonEmptyStr }
-import v2.std.collection { Absent, Present, empty_map, map_get_checked, map_insert }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.compilers.compilation_unit {
+import gunbc.crate_partition {
+  crate_partition_declared_core_target,
+  AssignmentNamesModuleOutsideDag,
+  AssignmentOmitsModule,
+  ByValueTypeCycle,
   CompilationUnitId,
+  EmittedEdgeEndpointOutsideDag,
+  EmitterReverseEdge,
+  ExplicitPartition,
+  ExplicitPartitionParam,
   HandExplicit,
-  ModuleDag,
+  LinkageCycle,
   ModuleDagEdge,
   ModuleId,
-  PolicyDerived,
-  ByValueTypeCycle,
+  PartitionEmittedEdgeRefused,
   PartitionInputRejected,
-  LinkageCycle,
+  PartitionParameter,
+  PartitionPolicy,
+  PartitionRustAdmissibilityRefused,
+  PolicyDerived,
+  PolicyPartitionParam,
+  PolicyTargetCountNotPositive,
+  ResolvePartitionOk,
+  ResolvePartitionOutcome,
+  ResolvePartitionRefused,
   SccSplit,
+  Stage0LayeredCoreCrate,
+  Stage0PartitionCrateRow,
+  UnitDepEdge,
   UnitGraphCycle,
-  partition_provenance_eq,
   partition_provenance_hand_explicit,
   partition_provenance_policy_derived,
-  partition_unit_by_id
+  stage0_module_id
 }
-import gunbc.rust_emitted_edge {
-  EmittedEdge,
-  EmittedModuleTarget,
-  RuntimePrelude,
-  rust_runtime_prelude_module
-}
-import v2.workflow.rust_crate_partition {
+
+import gunbc.crate_partition {
   AssignmentNamesModuleOutsideDag,
   AssignmentOmitsModule,
   ExplicitPartition,
@@ -42,8 +49,40 @@ import v2.workflow.rust_crate_partition {
   ResolvePartitionOutcome,
   ResolvePartitionRefused,
   ResolvePartitionOk,
+  EmitterReverseEdge,
+  EmittedEdgeEndpointOutsideDag,
+  Stage0PartitionCrateRow,
+  Stage0LayeredCoreCrate,
+  UnitDepEdge,
+  stage0_module_id,
+  CompilationUnitId,
+  HandExplicit,
+  ModuleDagEdge,
+  ModuleId,
+  PolicyDerived,
+  ByValueTypeCycle,
+  PartitionInputRejected,
+  LinkageCycle,
+  SccSplit,
+  UnitGraphCycle,
+  partition_provenance_hand_explicit,
+  partition_provenance_policy_derived
+}
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.perturbation { ForwardSameInSameOut, perturbation_consistent }
+import std.types { NonEmptyStr }
+import v2.std.collection { Absent, Present, empty_map, map_get_checked, map_insert }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.compilers.compilation_unit { ModuleDag, partition_provenance_eq, partition_unit_by_id }
+import gunbc.rust_emitted_edge {
+  EmittedEdge,
+  EmittedModuleTarget,
+  RuntimePrelude,
+  rust_runtime_prelude_module
+}
+import v2.workflow.rust_crate_partition {
   resolve_partition_outcome,
-  rust_crate_partition_declared_core_target,
   rust_crate_partition_module_bearing_unit_target,
   stage0_interim_explicit_assignment,
   stage0_source_module_dag,
@@ -56,11 +95,6 @@ import v2.workflow.rust_crate_partition {
   ModuleDagEmittedMerge,
   ModuleDagEmittedMerged,
   ModuleDagEmittedRefused,
-  EmitterReverseEdge,
-  EmittedEdgeEndpointOutsideDag,
-  Stage0PartitionCrateRow,
-  Stage0LayeredCoreCrate,
-  UnitDepEdge,
   ReexportDisagreementScanOk,
   ReexportDisagreementScanUnitHasNoRow,
   Stage0ReexportDisagreementsDerived,
@@ -76,7 +110,6 @@ import v2.workflow.rust_crate_partition {
   stage0_module_dag_interface_grounding_is_debt,
   stage0_module_interface_grounding_target,
   stage0_module_bearing_unit_count,
-  stage0_module_id,
   stage0_v1_infer_modules,
   stage0_partition_fold_ok,
   stage0_partition_member_coverage_consistent,
@@ -258,7 +291,7 @@ fn witness_owner(assignment: Map<ModuleId, CompilationUnitId>, module_id: Module
 test fn policy_partition_admits_a_balanced_acyclic_assignment() -> Bool {
   match resolve_partition_outcome(parameter: witness_policy_two(), module_dag: witness_chain_dag(edges: witness_chain_edges())) {
     ResolvePartitionOk { assignment: assignment, provenance: PolicyDerived { policy: policy } } =>
-      (policy.decl_name as String) == "policy_partition_assignment"
+      (policy.module_path as String) == "gunbc.crate_partition" && (policy.decl_name as String) == "policy_partition_assignment_over"
         && witness_owner(assignment: assignment, module_id: witness_chain_a) == "policy-unit-0"
         && witness_owner(assignment: assignment, module_id: witness_chain_b) == "policy-unit-0"
         && witness_owner(assignment: assignment, module_id: witness_chain_c) == "policy-unit-0"
@@ -296,7 +329,7 @@ test fn witness_partition_perturbation_member_coverage_holds() -> Bool {
 }
 
 test fn witness_interim_physical_crate_count_holds() -> Bool {
-  stage0_physical_crate_count() == rust_crate_partition_declared_core_target
+  stage0_physical_crate_count() == crate_partition_declared_core_target
 }
 
 test fn witness_interim_module_bearing_unit_count_holds() -> Bool {

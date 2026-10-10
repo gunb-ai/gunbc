@@ -288,28 +288,23 @@ fn sha256_file(path: &Path) -> Result<String, String> {
     Ok(format!("{:x}", sha2::Sha256::digest(&bytes)))
 }
 
-/// The emitted closure's identity: one digest over the crate's emitted sources, path and
-/// content in sorted order, so the receipt names WHAT was compiled, not merely that something
-/// was.
-fn emitted_closure_identity(crate_dir: &Path) -> Result<String, String> {
+/// The emitted closure's identity: one digest over EVERY file the realized workspace holds --
+/// module sources, the binary's entry, each crate's manifest and root -- path relative to the
+/// workspace root and content, in sorted path order. The population is the realization's own
+/// (`EmittedWorkspace::files`), so the identity names what was compiled and does not depend on
+/// where the workspace was written.
+fn emitted_closure_identity(emitted: &super::EmittedWorkspace) -> Result<String, String> {
     use sha2::Digest;
-    let src_dir = crate_dir.join("src");
-    let mut files: Vec<PathBuf> = std::fs::read_dir(&src_dir)
-        .map_err(|e| format!("could not list {}: {e}", src_dir.display()))?
-        .filter_map(|entry| entry.ok().map(|e| e.path()))
-        .filter(|path| path.extension().map(|ext| ext == "rs").unwrap_or(false))
-        .collect();
-    files.sort();
+    let mut paths: Vec<&String> = emitted.files.iter().collect();
+    paths.sort();
     let mut hasher = sha2::Sha256::new();
-    for path in &files {
+    for relative in paths {
+        let path = emitted.root.join(relative);
         let bytes =
-            std::fs::read(path).map_err(|e| format!("could not read {}: {e}", path.display()))?;
-        hasher.update(
-            path.file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default()
-                .as_bytes(),
-        );
+            std::fs::read(&path).map_err(|e| format!("could not read {}: {e}", path.display()))?;
+        hasher.update(relative.as_bytes());
+        hasher.update([0u8]);
+        hasher.update((bytes.len() as u64).to_le_bytes());
         hasher.update(&bytes);
     }
     Ok(format!("{:x}", hasher.finalize()))
@@ -515,10 +510,11 @@ fn prepare_emitted_compiler_for_entry(
             ))
         }
     }
-    let (crate_dir, written) =
-        super::emitted_closure_compile_host::write_probe_crate(&run, &probe_root, entry)
-            .map_err(|cause| format!("V2-NATIVE REFUSAL cause=EmittedCrateNotWritten — {cause}"))?;
-    let closure_identity = emitted_closure_identity(&crate_dir)?;
+    let emitted = super::emitted_closure_compile_host::write_probe_crate(&run, &probe_root, entry)
+        .map_err(|cause| format!("V2-NATIVE REFUSAL cause=EmittedCrateNotWritten — {cause}"))?;
+    let crate_dir = emitted.root.clone();
+    let written = emitted.files.len();
+    let closure_identity = emitted_closure_identity(&emitted)?;
     // THE BUILD'S PEAK MUST NOT STACK ON THE EMISSION'S RETAINED ARENA. The emission's resolved
     // graph died inside `compile_entry_emission` and the emitted file texts die with `run` here,
     // but glibc retains the freed arena — and the cargo build below needs gigabytes beside this
@@ -676,7 +672,7 @@ fn prepare_emitted_compiler_for_entry(
     } else {
         eprintln!("v2-native-route: establishing the discriminating red on {entry_module}");
         let mutation = super::emitted_closure_compile_host::establish_discriminating_red(
-            &crate_dir,
+            &emitted,
             &probe_root.target_dir(),
             &entry_module,
         );
@@ -3654,6 +3650,66 @@ fn run_required_v2_native_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// THE IDENTITY IS THE WORKSPACE'S FILES, NOT ITS MODULE DIRECTORY. Relocating identical files
+    /// keeps it; changing only the binary's entry, or only a crate root outside the module
+    /// directory, changes it. The last two are what an identity over the module directory alone
+    /// could not see.
+    #[test]
+    fn the_closure_identity_covers_the_entry_and_crate_roots_and_ignores_location() {
+        let base = std::env::temp_dir().join(format!("nlr-identity-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let files = [
+            ("Cargo.toml", "[package]\nname = \"fx\"\n"),
+            ("src/lib.rs", "pub mod a { pub use fx_a::a::*; }\n"),
+            ("src/main.rs", "fn main() {}\n"),
+            ("src/v1/stage0/src/a.rs", "pub fn a() {}\n"),
+        ];
+        let workspace =
+            |name: &str, overrides: &[(&str, &str)]| -> super::super::EmittedWorkspace {
+                let root = base.join(name);
+                for (path, content) in files.iter() {
+                    let content = overrides
+                        .iter()
+                        .find(|(p, _)| p == path)
+                        .map(|(_, c)| *c)
+                        .unwrap_or(content);
+                    let full = root.join(path);
+                    std::fs::create_dir_all(full.parent().expect("parent")).expect("mkdir");
+                    std::fs::write(&full, content).expect("write");
+                }
+                super::super::EmittedWorkspace {
+                    root: root.clone(),
+                    module_dir: root.join("src/v1/stage0/src"),
+                    modules: vec!["a".to_string()],
+                    crate_count: 2,
+                    files: files.iter().map(|(p, _)| p.to_string()).collect(),
+                }
+            };
+        let here = emitted_closure_identity(&workspace("here", &[])).expect("identity");
+        let there = emitted_closure_identity(&workspace("there", &[])).expect("identity");
+        let entry = emitted_closure_identity(&workspace(
+            "entry",
+            &[("src/main.rs", "fn main() { 1; }\n")],
+        ))
+        .expect("identity");
+        let facade =
+            emitted_closure_identity(&workspace("facade", &[("src/lib.rs", "pub mod b {}\n")]))
+                .expect("identity");
+        let _ = std::fs::remove_dir_all(&base);
+        assert_eq!(
+            here, there,
+            "relocating identical files changed the identity"
+        );
+        assert_ne!(
+            here, entry,
+            "changing only the entry left the identity unchanged"
+        );
+        assert_ne!(
+            here, facade,
+            "changing only the facade left the identity unchanged"
+        );
+    }
 
     /// A HEAD SHARED BY EVERY FILE IS NOT THE CAUSE. The old summary was `file_refusals=2` and
     /// named neither file; this control reds on any rendering that drops a path, leads with the

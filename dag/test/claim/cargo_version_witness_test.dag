@@ -20,20 +20,20 @@ test fn w_package_version_field_renders() -> Bool {
 test fn w_registry_dep_version_requirements() -> Bool {
   let serde = CargoDependency {
     name: "serde",
-    source: RegistryDep { version: "1", features: ["derive", "rc"] }
+    source: RegistryDep { version: "1", default_features: true, features: ["derive", "rc"] }
   }
   let stacker = CargoDependency {
     name: "stacker",
-    source: RegistryDep { version: "0.1", features: [] }
+    source: RegistryDep { version: "0.1", default_features: true, features: [] }
   }
   match serde.source {
-    RegistryDep { version: v, features: f } =>
+    RegistryDep { version: v, default_features: _, features: f } =>
       render_cargo_version_requirement_toml(req: v) == "\"1\""
         && (f |> count) == 2
     LocalPathDep { path: _ } => false
   }
     && match stacker.source {
-      RegistryDep { version: v, features: f } =>
+      RegistryDep { version: v, default_features: _, features: f } =>
         render_cargo_version_requirement_toml(req: v) == "\"0.1\""
           && (f |> count) == 0
       LocalPathDep { path: _ } => false
