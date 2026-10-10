@@ -2,12 +2,11 @@ module extdeps.openrouter.openrouter
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.algebra { trim }
-import std.nat { nat_range_inclusive }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.ietf.http_semantics {
   HttpRetryAfter, RetryAfterUnread, http_retry_after_wire,
 }
-import extdeps.http.header_dump { HttpHeaderDump, HeaderDumpRead, HeaderDumpUnread, http_header_dump_retry_after }
+import extdeps.http.header_dump { HttpHeaderDump, HeaderDumpRead, HeaderDumpUnread, http_header_dump_retry_after, http_header_dump_field }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.api_rate_limit { UpstreamRateLimit, PerMinute, PerDay }
@@ -422,66 +421,15 @@ type OpenRouterRateLimitHints {
   remaining: String?
 }
 
-// A header dump is the status line and headers of each response curl saw, in order; only the LAST block
-// describes the answer the caller got, so a status line starts a fresh reading.
-type HeaderScan {
-  reset: String?
-  limit: String?
-  remaining: String?
-}
-
-// HTTP FIELD NAMES ARE CASE-INSENSITIVE (RFC 9110 section 5.1): HTTP/2 sends them lowercase, HTTP/1.1 may
-// not, and a dump is read the same either way. Folded over ASCII letters only.
-data openrouter_ascii_upper: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-
-data openrouter_ascii_lower: String = "abcdefghijklmnopqrstuvwxyz"
-
-fn openrouter_ascii_fold(s: String) -> String {
-  fold(nat_range_inclusive(lo: 0, hi: 25), init: s, f: (acc, i) =>
-    replace(acc, substring(s: openrouter_ascii_upper, start: i, end: i + 1), substring(s: openrouter_ascii_lower, start: i, end: i + 1)))
-}
-
-fn openrouter_header_scan_line(acc: HeaderScan, line: String) -> HeaderScan {
-  let t = trim(s: line)
-  if openrouter_ascii_fold(s: t).starts_with("http/") {
-    HeaderScan { reset: none, limit: none, remaining: none }
-  } else {
-    match split(s: t, delimiter: ":").first() {
-      Absent => acc
-      Present { value: raw_name } => {
-        let name = openrouter_ascii_fold(s: trim(s: raw_name))
-        let value = if length(t) > length(raw_name) { trim(s: substring(s: t, start: length(raw_name) + 1, end: length(t))) } else { "" }
-        if length(t) <= length(raw_name) {
-          acc
-        } else if name == "x-ratelimit-reset" {
-          HeaderScan { reset: Present { value: value }, limit: acc.limit, remaining: acc.remaining }
-        } else if name == "x-ratelimit-limit" {
-          HeaderScan { reset: acc.reset, limit: Present { value: value }, remaining: acc.remaining }
-        } else if name == "x-ratelimit-remaining" {
-          HeaderScan { reset: acc.reset, limit: acc.limit, remaining: Present { value: value } }
-        } else {
-          acc
-        }
-      }
-    }
-  }
-}
-
 fn openrouter_rate_limit_hints(dump: HttpHeaderDump) -> OpenRouterRateLimitHints {
   match dump {
     HeaderDumpUnread { cause: c } => OpenRouterRateLimitHints { retry_after: RetryAfterUnread { cause: c }, reset: none, limit: none, remaining: none }
-    HeaderDumpRead { text: t } => openrouter_rate_limit_hints_of_text(dump: t, header_dump: dump)
-  }
-}
-
-fn openrouter_rate_limit_hints_of_text(dump: String, header_dump: HttpHeaderDump) -> OpenRouterRateLimitHints {
-  let scan = fold(split(s: dump, delimiter: "\n"), init: HeaderScan { reset: none, limit: none, remaining: none }, f: (acc, line) =>
-    openrouter_header_scan_line(acc: acc, line: line))
-  OpenRouterRateLimitHints {
-    retry_after: http_header_dump_retry_after(dump: header_dump),
-    reset: scan.reset,
-    limit: scan.limit,
-    remaining: scan.remaining,
+    HeaderDumpRead { text: _ } => OpenRouterRateLimitHints {
+      retry_after: http_header_dump_retry_after(dump: dump),
+      reset: http_header_dump_field(dump: dump, name: "x-ratelimit-reset"),
+      limit: http_header_dump_field(dump: dump, name: "x-ratelimit-limit"),
+      remaining: http_header_dump_field(dump: dump, name: "x-ratelimit-remaining"),
+    }
   }
 }
 
