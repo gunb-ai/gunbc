@@ -22,7 +22,7 @@ import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.actions_run_binding {
   actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent,
   fleet_converge_expected_host_env_name, rlm_expected_revision_env_name,
-  read_expected_revision, ExpectedRevisionPresent, ExpectedRevisionAbsent,
+  read_expected_revision, ExpectedRevisionPresent, ExpectedRevisionAbsent, ExpectedRevisionMalformed,
 }
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
@@ -824,6 +824,7 @@ fn apply_expected_revision() -> String {
   match read_expected_revision() {
     ExpectedRevisionPresent { revision: r } => r
     ExpectedRevisionAbsent { variable: _, detail: _ } => ""
+    ExpectedRevisionMalformed { variable: _, value: r } => r
   }
 }
 

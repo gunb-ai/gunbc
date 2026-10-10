@@ -8,14 +8,19 @@ import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_attribute_condition
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, StandingPoolImpersonation }
 import gunbc.gcp_estate_observation { fleet_cloud_convergence_sa_email }
 
-// ── fleet-cloud-convergence IS REACHABLE FROM THE FLEET-CONVERGE WORKFLOW AT MAIN, DISPATCHED, AND NOTHING ELSE ──
+// ── fleet-cloud-convergence IS REACHABLE FROM A FLEET-CONVERGE WORKFLOW_DISPATCH ON REVIEWED MAIN ──
 // The account holds secret access a pull request must never reach (the R2 write-token accessor among
 // it, gunbc.cloudflare.r2_mint_secret_access). Through the repository-wide github-oidc provider any
-// job in the repository -- a pull request's, the merge queue's, a branch dispatch, heal-publish,
-// witnesses -- could impersonate it. This pool's one provider pins the repository by numeric
-// identity, the fleet-converge workflow file at main, the main ref and a workflow_dispatch event
-// (the claim-pin shape of every dedicated fleet-converge federation, minus the job `environment`,
-// which the two consumer jobs below do not declare). Its principal set is this pool alone.
+// job in the repository -- a pull request's, the merge queue's, heal-publish, witnesses -- could
+// impersonate it. This pool's one provider pins the repository by numeric identity, the
+// fleet-converge workflow FILE at refs/heads/main, a dispatch on main, and a workflow_dispatch event
+// (the privileged claim-pin shape of every dedicated fleet-converge federation, minus the job
+// `environment`, which the two consumer jobs below do not declare). A pull_request event is refused.
+// A session-branch dispatch is refused. Operator 2026-10-10: this identity is not branch-dispatchable.
+// fleet_converge_development_workflow_claim_pins is the claim contract a future
+// fleet-development-convergence account may consume; no DedicatedFederation binds it in this tree
+// (witness-only). Approved one-run branch grants are gunbc.auth.branch_dispatch_federation, not this
+// account. Its principal set is this pool alone.
 //
 // PINNED CONSUMERS (the jobs of fleet-converge.yml that authenticate as this account): `fleet-converge`
 // and `rlm-launch-deployment-receipt`, both workflow_dispatch. They reach it through

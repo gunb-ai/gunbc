@@ -98,7 +98,7 @@ data iam_observe_service_account: ServiceAccountEmail = "iam-observe@gunbai-secr
 // WHO MAY BECOME iam-converge: the principal set of the job's dedicated pool
 // (gunbc.auth.gcp_iam_converge_federation), holding roles/iam.workloadIdentityUser on iam-converge's
 // own policy and no other grant. The provider's condition pins this repository, the fleet-converge
-// workflow file at main, a dispatch on main and the gcp-iam-converge environment. That binding is
+// workflow file at reviewed main, a workflow_dispatch on main and the gcp-iam-converge environment. That binding is
 // written once by the bootstrap ceremony; iam-converge's own policy is never a converge target.
 // THE ACTUATION TOKEN'S LIFETIME, passed to the impersonating auth step. Ten minutes covers a
 // provisioning run (three creates, one impersonation reconcile, a handful of secret grants, each with

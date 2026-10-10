@@ -7,7 +7,7 @@ import product.host_identity { HostIdentity }
 import product.fabric.provider_route { ProviderRoute }
 import gunbc.managed_host {
   ManagedHostBinding, ManagedHostBindingStanding, ManagedHostBound, ManagedHostAccessUnobserved,
-  ManagedHostNotSecured, ManagedHostEndpointMismatch, ManagedHostFound, ManagedHostNotManaged,
+  ManagedHostNotSecured, ManagedHostEndpointMismatch, ManagedHostFound, ManagedHostFoundUnderDeclaredDrop, ManagedHostNotManaged,
   managed_host_binding_for,
 }
 import gunbc.provider_acquisition { ProviderResourceAcquisition }

@@ -3,7 +3,10 @@ module test.claim.gcp_estate_convergence_binding
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, standing_principal_set }
 import std.optional { Present, Absent }
 import std.types { Bool, List }
-import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_admit }
+import gunbc.auth.oidc_claim_pins {
+  OidcPresentedClaim, claim_pins_admit, presented_from_pins, with_presented_value,
+  fleet_converge_development_workflow_claim_pins,
+}
 import gunbc.auth.github_gcp_federation { github_wif_principal_set }
 import gunbc.auth.gcp_iam_converge { gcp_iam_converge_targets }
 import gunbc.auth.fleet_convergence_federation {
@@ -13,35 +16,51 @@ import gunbc.auth.fleet_convergence_federation {
 import gunbc.fleet_host_key_enrollment { probe_identity_secret_access_requirement }
 import gunbc.gcp_estate_adoption { gcp_estate_desired_convergence_binding }
 
-fn dispatch_claims() -> List<OidcClaimPin> {
-  map(fleet_convergence_claim_pins(), p => p)
+fn dispatch_claims() -> List<OidcPresentedClaim> {
+  presented_from_pins(pins: fleet_convergence_claim_pins())
 }
 
-fn with_claim(claim: String, value: String) -> List<OidcClaimPin> {
-  map(fleet_convergence_claim_pins(), p => if (p.claim as String) == claim { OidcClaimPin { claim: p.claim, value: value } } else { p })
+fn with_claim(claim: String, value: String) -> List<OidcPresentedClaim> {
+  with_presented_value(claims: dispatch_claims(), claim: claim, value: value)
 }
 
-// Accepting control: the fleet-converge workflow dispatched at main is admitted.
+// Accepting control: the fleet-converge workflow dispatched on reviewed main is admitted to the
+// privileged account. A session-branch dispatch is refused there and admitted only on the
+// development pin list (not bound to this account).
 test fn the_fleet_converge_dispatch_at_main_is_admitted() -> Bool {
   claim_pins_admit(pins: fleet_convergence_claim_pins(), claims: dispatch_claims())
 }
 
-// Refusing controls: a pull request, the merge queue, a main-ref job of another workflow (heal-publish,
-// witnesses), a branch dispatch and another repository each fail a pin.
+test fn a_session_branch_dispatch_is_refused_by_the_privileged_account() -> Bool {
+  !claim_pins_admit(pins: fleet_convergence_claim_pins(), claims: with_claim("workflow_ref", "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/session/x"))
+}
+
+fn with_development_claim(claim: String, value: String) -> List<OidcPresentedClaim> {
+  with_presented_value(claims: presented_from_pins(pins: fleet_converge_development_workflow_claim_pins()), claim: claim, value: value)
+}
+
+test fn a_session_branch_dispatch_is_admitted_only_on_the_development_pins() -> Bool {
+  claim_pins_admit(pins: fleet_converge_development_workflow_claim_pins(), claims: with_development_claim("workflow_ref", "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/session/x"))
+    && !claim_pins_admit(pins: fleet_converge_development_workflow_claim_pins(), claims: with_development_claim("workflow_ref", "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/tags/x"))
+}
+
+// Refusing controls: a pull request, the merge queue, another workflow, a tag dispatch and another
+// repository each fail a pin.
 test fn no_other_run_is_admitted() -> Bool {
   let pins = fleet_convergence_claim_pins()
   !claim_pins_admit(pins: pins, claims: with_claim("event_name", "pull_request"))
     && !claim_pins_admit(pins: pins, claims: with_claim("event_name", "merge_group"))
     && !claim_pins_admit(pins: pins, claims: with_claim("event_name", "workflow_run"))
     && !claim_pins_admit(pins: pins, claims: with_claim("workflow_ref", "gunb-ai/gunbc/.github/workflows/witnesses.yml@refs/heads/main"))
-    && !claim_pins_admit(pins: pins, claims: with_claim("workflow_ref", "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/session/x"))
-    && !claim_pins_admit(pins: pins, claims: with_claim("ref", "refs/pull/13509/merge"))
+    && !claim_pins_admit(pins: pins, claims: with_claim("workflow_ref", "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/tags/x"))
+    && !claim_pins_admit(pins: pins, claims: with_claim("workflow_ref", "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/pull/13509/merge"))
+    && !claim_pins_admit(pins: pins, claims: with_claim("ref", "refs/heads/feature"))
     && !claim_pins_admit(pins: pins, claims: with_claim("repository_id", "1"))
 }
 
-test fn the_condition_names_the_workflow_and_the_dispatch() -> Bool {
+test fn the_condition_names_the_reviewed_main_file_and_the_dispatch() -> Bool {
   let c = fleet_convergence_attribute_condition()
-  c.contains("assertion.workflow_ref == ") && c.contains("fleet-converge.yml@refs/heads/main") && c.contains("assertion.event_name == 'workflow_dispatch'")
+  c.contains("assertion.workflow_ref == '") && c.contains("fleet-converge.yml@refs/heads/main") && c.contains("assertion.event_name == 'workflow_dispatch'") && c.contains("assertion.ref == 'refs/heads/main'") && !c.contains("assertion.workflow_ref.startsWith(")
 }
 
 // The estate binding, the consumers' provider and the converge target all name the pinned federation,

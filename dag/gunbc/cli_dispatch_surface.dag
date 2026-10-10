@@ -639,9 +639,9 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
         CliOptionRow {
           field: "candidate_branch",
           long: "candidate-branch",
-          value: CliTextValue { text_default: Present { value: "main" } },
+          value: CliTextValue { text_default: Present { value: "" } },
           arity: CliRequired,
-          doc: ["Branch the checkout must be on for --mode deploy; the candidate is HEAD of this checkout"],
+          doc: ["If set, the checkout must be on this branch for --mode deploy; empty admits HEAD's branch"],
           emission: CarriedByGeneratedDispatch
         }
       ],

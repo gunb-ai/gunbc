@@ -103,6 +103,7 @@ data fleet_converge_arrival_subject_env_name: String = "FLEET_CONVERGE_ARRIVAL_S
 type ExpectedRevisionRead
   = ExpectedRevisionPresent { revision: String }
   | ExpectedRevisionAbsent { variable: String, detail: String }
+  | ExpectedRevisionMalformed { variable: String, value: String }
 
 fn read_expected_revision() -> ExpectedRevisionRead {
   match actions_variable_read(name: rlm_expected_revision_env_name) {
@@ -111,7 +112,7 @@ fn read_expected_revision() -> ExpectedRevisionRead {
       if release_revision_text_valid(text: r) {
         ExpectedRevisionPresent { revision: r }
       } else {
-        ExpectedRevisionAbsent { variable: rlm_expected_revision_env_name, detail: join(["not a 40-digit lower-hex revision: ", r], "") }
+        ExpectedRevisionMalformed { variable: rlm_expected_revision_env_name, value: r }
       }
   }
 }
@@ -126,6 +127,25 @@ fn admit_run_revision(binding: ActionsRunBinding, expected: String) -> RunRevisi
   } else {
     RunRevisionRefused { expected: expected, observed: binding.run_revision }
   }
+}
+
+// A DISPATCH MAY OMIT expected_revision. The checkout is then the event sha (github.sha), and that
+// is R. Operator 2026-10-10: this optional input is a cross-check, not a second revision authority;
+// revision for a dispatch is the event sha. A present value still has to match the checkout. A
+// present-but-malformed value is its own arm and refuses: absence is not a 40-digit check hidden in
+// Absent.detail prose.
+fn admit_optional_expected_revision_given(read: ExpectedRevisionRead, binding: ActionsRunBinding) -> RunRevisionAdmission {
+  match read {
+    ExpectedRevisionPresent { revision: expected_r } => admit_run_revision(binding: binding, expected: expected_r)
+    ExpectedRevisionAbsent { variable: _, detail: _ } =>
+      RunRevisionAdmitted { revision: binding.run_revision }
+    ExpectedRevisionMalformed { variable: _, value: r } =>
+      RunRevisionRefused { expected: r, observed: binding.run_revision }
+  }
+}
+
+fn admit_optional_expected_revision(binding: ActionsRunBinding) -> RunRevisionAdmission {
+  admit_optional_expected_revision_given(read: read_expected_revision(), binding: binding)
 }
 
 // GITHUB_WORKFLOW_REF is `<repository>/<workflow path>@<ref>`; the binding names a FILE when the

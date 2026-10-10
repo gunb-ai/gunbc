@@ -281,7 +281,7 @@ test fn the_live_provider_list_decodes_its_camel_case_fields() -> Bool {
         (match p.oidc { Present { value: o } => o.issuer_uri == (github_wif_issuer_uri as String)  Absent => false })
           && (live_boot_federations() |> count) == 1
           && all(live_boot_federations(), f =>
-            (match p.attribute_condition { Present { value: c } => c == f.attribute_condition  Absent => false })
+            (match p.attribute_condition { Present { value: c } => c.contains("workflow_ref == ") && c.contains("assertion.ref == 'refs/heads/main'") && c == f.attribute_condition  Absent => false })
               && (match p.attribute_mapping { Present { value: m } => m == f.attribute_mapping  Absent => false }))
       Absent => false
     }
@@ -296,14 +296,12 @@ test fn the_live_pool_decodes_its_display_name() -> Bool {
   }
 }
 
-// THE ROUTE THE RERUN TAKES: the created pool and provider, read back off the wire, classify as
-// present and matching, so the operator's rerun adopts them and proceeds to the bindings.
-test fn the_live_mtcollins1_federation_read_back_from_the_wire_is_fully_present() -> Bool {
+// THE LIVE PROVIDER MATCHES THE DECLARED REVIEWED-MAIN PIN (operator 2026-10-10 recut).
+test fn the_live_mtcollins1_provider_matches_the_declared_main_pin() -> Bool {
   (live_boot_federations() |> count) == 1
-    && all(live_boot_federations(), f => {
-      let c = classify_dedicated_federation(f: f, pool: decoded_pool(), providers: decoded_providers(), account: AccountObserved { email: f.service_account as String })
-      classified(c: c) && federation_fully_present(c: c)
-    })
+    && all(live_boot_federations(), f => federation_fully_present(
+      c: classify_dedicated_federation(f: f, pool: decoded_pool(), providers: decoded_providers(), account: AccountObserved { email: f.service_account as String })
+    ))
 }
 
 // ── the authored name of a renamed field is RESERVED, not a second wire spelling ──────────────

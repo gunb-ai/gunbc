@@ -2353,14 +2353,15 @@ test fn locked_apply_runs_the_guard_as_the_lease_owner_for_any_invoker() -> Bool
 }
 
 
-// THE DEPLOY BRANCH POLICY IS A COMPARISON, NOT A TRUST. An empty requirement refuses even when it
-// would trivially match, because that is the "any branch" policy the mode must never default to.
-test fn deploy_branch_policy_compares_and_never_admits_any_branch() -> Bool {
+// Operator 2026-10-09: empty requirement admits the observed branch. A named requirement still
+// has to match. An empty checkout never admits.
+test fn deploy_branch_policy_admits_any_observed_branch_when_unconstrained() -> Bool {
   fleet_converge_deploy_branch_admits(observed: "main", required: "main")
     && fleet_converge_deploy_branch_admits(observed: " main\n", required: "main")
+    && fleet_converge_deploy_branch_admits(observed: "session/x", required: "")
     && !fleet_converge_deploy_branch_admits(observed: "worktree-fleet-converge-status", required: "main")
-    && !fleet_converge_deploy_branch_admits(observed: "main", required: "")
     && !fleet_converge_deploy_branch_admits(observed: "", required: "")
+    && !fleet_converge_deploy_branch_admits(observed: "", required: "main")
 }
 
 

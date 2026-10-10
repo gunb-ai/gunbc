@@ -1,0 +1,57 @@
+module gunbc.auth.github_deployment_environment
+
+import std.types { String, NonEmptyStr, List, Bool }
+import extdeps.github.deployment_environments {
+  GitHubEnvironmentProtectionSettings,
+  SelectedRefs,
+  RequiredReviewers,
+  EnvironmentDeploymentBranchPolicy,
+  EnvironmentReviewerRequirement,
+  AllBranchesAndTags,
+  ProtectedBranchesOnly,
+  NoRequiredReviewers,
+}
+
+// THE BOUNDARY FOR srv1 ROOT MUTATION is this environment's GitHub protection, applied by an
+// operator in the repository settings (deployment-branch policy: refs/heads/main only; required
+// reviewers). Jobs that bind ci_deploy_srv1_access name this environment. A github.ref == main
+// job `if` is not that boundary: a branch dispatch runs that branch's YAML.
+
+data srv1_production_environment_name: NonEmptyStr = "srv1-production"
+
+data srv1_production_required_protection: GitHubEnvironmentProtectionSettings = GitHubEnvironmentProtectionSettings {
+  name: srv1_production_environment_name as String,
+  deployment_branch_policy: SelectedRefs { refs: ["refs/heads/main"] },
+  reviewer_requirement: RequiredReviewers,
+}
+
+type EnvironmentProtectionStanding
+  = EnvironmentProtectionUnobserved { required: GitHubEnvironmentProtectionSettings, read_obligation: String }
+  | EnvironmentProtectionHolds { required: GitHubEnvironmentProtectionSettings }
+  | EnvironmentProtectionDiverges { required: GitHubEnvironmentProtectionSettings, detail: String }
+
+data srv1_production_protection_standing: EnvironmentProtectionStanding = EnvironmentProtectionUnobserved {
+  required: srv1_production_required_protection,
+  read_obligation: "GET /repos/gunb-ai/gunbc/environments/srv1-production (and its deployment-branch-policy / required-reviewers) must show SelectedRefs { refs/heads/main } and RequiredReviewers. The operator applies that in the GitHub environment UI; the workflow file cannot.",
+}
+
+fn environment_protection_restricts_to_main(settings: GitHubEnvironmentProtectionSettings) -> Bool {
+  match settings.deployment_branch_policy {
+    SelectedRefs { refs: rs } => count(rs) == 1 && any(rs, r => r == "refs/heads/main")
+    AllBranchesAndTags => false
+    ProtectedBranchesOnly => false
+  }
+}
+
+fn environment_protection_requires_reviewers(settings: GitHubEnvironmentProtectionSettings) -> Bool {
+  match settings.reviewer_requirement {
+    RequiredReviewers => true
+    NoRequiredReviewers => false
+  }
+}
+
+fn srv1_production_required_protection_is_the_boundary() -> Bool {
+  environment_protection_restricts_to_main(settings: srv1_production_required_protection)
+    && environment_protection_requires_reviewers(settings: srv1_production_required_protection)
+    && (srv1_production_required_protection.name as String) == (srv1_production_environment_name as String)
+}

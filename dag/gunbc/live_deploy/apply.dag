@@ -146,8 +146,7 @@ import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import extdeps.languages.json.emit { serialize_json }
 import gunbc.actions_run_binding {
   ActionsRunBinding, observe_actions_run_binding, ActionsRunBound, ActionsRunUnbound,
-  read_expected_revision, ExpectedRevisionPresent, ExpectedRevisionAbsent,
-  admit_run_revision, RunRevisionAdmitted, RunRevisionRefused,
+  admit_optional_expected_revision, RunRevisionAdmitted, RunRevisionRefused,
 }
 import gunbc.fleet_converge_receipt {
   read_fleet_converge_plan_receipt_at, FleetConvergePlanReceiptDecoded, FleetConvergePlanReceiptUnreadable,
@@ -1346,14 +1345,10 @@ fn live_deploy_transaction_admitted_wet_with_access(spec: DeploymentSpec, access
     ActionsRunUnbound { variable: v, detail: d } =>
       exit_failure(reason: join(["live_deploy transaction: RunUnbound — ", v, " ", d, "; the transaction entry runs only inside the fleet-converge workflow"], ""))
     ActionsRunBound { binding: run } =>
-      match read_expected_revision() {
-        ExpectedRevisionAbsent { variable: v, detail: d } =>
-          exit_failure(reason: join(["live_deploy transaction: ExpectedRevisionAbsent — ", v, " ", d], ""))
-        ExpectedRevisionPresent { revision: expected } =>
-          match admit_run_revision(binding: run, expected: expected) {
+      match admit_optional_expected_revision(binding: run) {
             RunRevisionRefused { expected: e, observed: o } =>
               exit_failure(reason: join(["live_deploy transaction: RunRevisionNotExpected — this run executes ", o, " but R is ", e], ""))
-            RunRevisionAdmitted { revision: _ } =>
+            RunRevisionAdmitted { revision: admitted } =>
               match read_live_deploy_fleet_provenance() {
                 FleetProvenanceAbsent { variable: v, detail: d } =>
                   exit_failure(reason: join(["live_deploy transaction: FleetProvenanceAbsent — ", v, " ", d], ""))
@@ -1373,12 +1368,11 @@ fn live_deploy_transaction_admitted_wet_with_access(spec: DeploymentSpec, access
                     plan_receipt_identity: fleet_converge_plan_receipt_identity_hex(r: plan_receipt),
                     apply_receipt_identity: fleet_converge_apply_receipt_identity_hex(r: fleet_apply_receipt),
                   }
-                  live_deploy_transaction_admitted(spec: spec, access: access, run: run, expected: expected, provenance: provenance)
+                  live_deploy_transaction_admitted(spec: spec, access: access, run: run, expected: admitted, provenance: provenance)
                   }
                   }
                   }
               }
-          }
       }
   }
 }

@@ -15,7 +15,7 @@ import gunbc.machine_intake_subject {
   compare_qualification_subject,
 }
 import gunbc.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
-import gunbc.hostname_allocation { HostnameAllocation, gunbc_fleet_hostname_allocations }
+import gunbc.hostname_allocation { HostnameAllocation, gunbc_fleet_hostname_allocations, allocated_canonical_hostname }
 import gunbc.rung_drop { RungDrop, Standing, Retired }
 import gunbc.rung_drop.standing { standing_rung_drops }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_access_standing, mtcollins1_capability_row }
