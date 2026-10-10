@@ -579,6 +579,14 @@ test fn jq_filter_bounds_claude_lines_and_classifies_none() -> Bool {
     && !string_contains(s: filter, pattern: "ProviderEventSkipped")
 }
 
+// RESTORED (review 78441): the guard against jq inventing is_error or subtype stays enrolled beside
+// the bound (DESIGN 4b(4): a climb never retires the discriminating red).
+test fn jq_result_arm_does_not_fabricate_is_error_or_subtype() -> Bool {
+  let filter = codex_provider_event_projection_filter as String
+  !string_contains(s: filter, pattern: "else true end")
+    && string_contains(s: filter, pattern: "then {\"is_error\":.is_error} else {} end")
+}
+
 // SUPPLIED-VALUE RED: the Claude bound (which lines count, which content blocks classify as
 // tool use / tool result, skip vs observe) is decided by classify_claude_code_stream_line over
 // a constructed ClaudeCodeStreamLine, not by jq. Mapping tool_use onto Reporting, or treating
