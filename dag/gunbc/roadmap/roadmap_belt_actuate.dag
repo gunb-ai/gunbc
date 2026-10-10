@@ -644,7 +644,7 @@ import extdeps.filesystem.filesystem_io {
   filesystem_file_observation,
   FilesystemFileObservation,
   FilesystemEntryPresence,
-  filesystem_established_absence_detail,
+  FilesystemEstablishedAbsence,
 }
 import gunbc.filesystem_file_observe { filesystem_file_observation_of_path, filesystem_entry_presence_of_path }
 import extdeps.llm.cli {
@@ -5160,7 +5160,7 @@ fn belt_occurrence_unit_row(unit: String) -> ObservedContainerRow {
 // could not be looked at, did not decode, or moved while observed still refuses, naming the attempt.
 type AttemptOccurrenceRecordRead
   = AttemptOccurrenceRecordDecoded { record: DurableAttemptRecord }
-  | AttemptOccurrenceRecordAbsent { absence: String }
+  | AttemptOccurrenceRecordAbsent { absence: FilesystemEstablishedAbsence }
   | AttemptOccurrenceRecordRefused { reason: NonEmptyStr }
 
 fn belt_occurrence_record_unobserved(attempt: DispatchAttemptRef, cause: String) -> AttemptOccurrenceRecordRead {
@@ -5206,7 +5206,7 @@ type AttemptDirectoryStanding
 fn belt_occurrence_attempt_directory_standing(attempt: DispatchAttemptRef, directory: FilesystemEntryPresence) -> AttemptDirectoryStanding {
   match directory {
     FilesystemEntryAbsent(absence) =>
-      AttemptDirectoryDecided { read: AttemptOccurrenceRecordAbsent { absence: filesystem_established_absence_detail(absence: absence) } }
+      AttemptDirectoryDecided { read: AttemptOccurrenceRecordAbsent { absence: absence } }
     FilesystemEntryPresenceIndeterminate { cause } => AttemptDirectoryDecided { read: belt_occurrence_record_unobserved(attempt: attempt, cause: cause) }
     FilesystemEntrySubjectRefused { directory: _, name: _, cause } => AttemptDirectoryDecided { read: belt_occurrence_record_unobserved(attempt: attempt, cause: cause) }
     FilesystemEntryListed { directory: _, name: _ } => AttemptDirectoryListed
@@ -5216,7 +5216,7 @@ fn belt_occurrence_attempt_directory_standing(attempt: DispatchAttemptRef, direc
 fn belt_occurrence_record_from_launch_observation(attempt: DispatchAttemptRef, launch: FilesystemFileObservation) -> AttemptOccurrenceRecordRead {
   match launch {
     FilesystemFileAbsent(absence) =>
-      AttemptOccurrenceRecordAbsent { absence: filesystem_established_absence_detail(absence: absence) }
+      AttemptOccurrenceRecordAbsent { absence: absence }
     FilesystemFileRead { path: _, content } => belt_occurrence_record_from_launch_content(attempt: attempt, content: content)
     FilesystemFileIndeterminate { cause } => belt_occurrence_record_unobserved(attempt: attempt, cause: cause)
     FilesystemFileObservationsDisagree { path: _, cause } => belt_occurrence_record_unobserved(attempt: attempt, cause: cause)
