@@ -16,9 +16,11 @@ import gunbc.gcp_estate_observation { fleet_cloud_convergence_sa_email }
 // fleet-converge workflow FILE at refs/heads/main, a dispatch on main, and a workflow_dispatch event
 // (the privileged claim-pin shape of every dedicated fleet-converge federation, minus the job
 // `environment`, which the two consumer jobs below do not declare). A pull_request event is refused.
-// A session-branch dispatch is refused. Operator 2026-10-10: this identity is not branch-dispatchable;
-// development plan/observe uses fleet_converge_development_workflow_claim_pins, not this account.
-// Its principal set is this pool alone.
+// A session-branch dispatch is refused. Operator 2026-10-10: this identity is not branch-dispatchable.
+// fleet_converge_development_workflow_claim_pins is the claim contract a future
+// fleet-development-convergence account may consume; no DedicatedFederation binds it in this tree
+// (witness-only). Approved one-run branch grants are gunbc.auth.branch_dispatch_federation, not this
+// account. Its principal set is this pool alone.
 //
 // PINNED CONSUMERS (the jobs of fleet-converge.yml that authenticate as this account): `fleet-converge`
 // and `rlm-launch-deployment-receipt`, both workflow_dispatch. They reach it through

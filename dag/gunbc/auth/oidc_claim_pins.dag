@@ -70,8 +70,9 @@ fn fleet_converge_workflow_ref_at_main() -> String {
 
 // THE FLEET-CONVERGE WORKFLOW FILE ON ANY HEADS REF. Bound only to
 // fleet_converge_development_workflow_claim_pins -- never to fleet-cloud-convergence or any
-// privileged job pin list. The development SA (fleet-development-convergence) is the next landing;
-// this list is the claim contract that SA may consume.
+// privileged job pin list. FRONTIER: no DedicatedFederation consumes this list yet (operator
+// 2026-10-10 split-identity; the SA landing is fleet-development-convergence). The witness
+// a_session_branch_dispatch_is_admitted_only_on_the_development_pins is the consumer until then.
 fn fleet_converge_workflow_ref_heads_prefix() -> String {
   join([
     gunbc_repository.full_name as String, "/",
