@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.rust_ingest_lexer_missing_a_bare_operator_spelling
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data rust_ingest_lexer_missing_a_bare_operator_spelling: RecurringFailureMode = RecurringFailureMode {
+  identity: "rust_ingest_lexer_missing_a_bare_operator_spelling" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: v2.extdeps.languages.rust rust_extended_lex_rules, the INGEST rule set that carries whitespace trivia and re-spells emission tokens as bare lexemes (kw_let, =, >, ;), has no bare spelling for an operator whose only spelling is the emission one with baked spacing (rust_fn_add_lex_rules spells plus as space-plus-space). Ordinary Rust source with an unspaced operator (`z=x+1`) is unlexable.",
+
+    "SPECIMEN: v2.test.parse rust's claim_rust_layout_tight_parses refused in tokenize with tokenize_lex_e1_unrecognized_char at the unspaced `+` (gunbc run, BuildBuddy invocation b9e2870f); the same source with spaced operators was accepted. The claim was a data TestClaim row that no runner executes, so the refusal stood unseen.",
+
+    "HARM: a grammar claim asserting ingestion of tight layout was false and silent. No production consumer ingests Rust today, so the harm is to the claim's truth, not to a compile.",
+
+    "REPAIR: the bare `+` rule in rust_extended_lex_rules. RED-FIRST CONTROL: test.claim.parse_test_rust_grammar claim_rust_layout_tight_parses_holds, false before the repair and true after.",
+
+    "RUNG FOUND AT: below the floor (a false claim, unexecuted). CEILING: 2 -- the claim is the wall; a structural guarantee would need the ingest set derived from the grammar's token classes rather than authored row by row, which is the separation named in rust_lex_resolves_two_tokenizations_by_rule_order. NEXT TRIGGER: that separation. OWNER: grammar program (stern-bear-500).",
+  ],
+
+  evidence: [],
+}

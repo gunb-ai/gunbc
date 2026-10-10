@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.ts_lexer_has_no_ingest_rule_set
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data ts_lexer_has_no_ingest_rule_set: RecurringFailureMode = RecurringFailureMode {
+  identity: "ts_lexer_has_no_ingest_rule_set" as NonEmptyStr,
+
+  receipts: [
+    "STATED FRONTIER, not a repaired defect. v2.extdeps.languages.typescript ts_lex has no whitespace trivia rule: every rule is an emission spelling with baked spacing (eq as space-equals, colon as colon-space), so TypeScript text not laid out exactly as the emitter writes it is unlexable. `const bit: string = bit;` refuses at the space after `=` (gunbc run, BuildBuddy invocation b9e2870f).",
+
+    "MEMBERS: v2.test.parse.typescript claim_ts_union_task_status_parses and claim_ts_union_minimal_parses. They assume an ingest lexer, stay ungated as data rows, and are red until this frontier closes; their string literals lex since ts_single_quoted_string_body_reuses_the_double_quoted_char_class was repaired.",
+
+    "WHY A FRONTIER: nothing in v2 ingests TypeScript today, and the operator's phase-4 ruling (via sharp-raven-357) keeps the grammar valid but unconsumed. An ingest set is new capability, not a repair of this one.",
+
+    "RUNG: outside the ladder for ingestion (no ingest lexer exists). NEXT TRIGGER: a TypeScript ingest rule set with trivia exists, the rust_extended_lex_rules pattern done disjointly (see rust_lex_resolves_two_tokenizations_by_rule_order). OWNER: grammar program (stern-bear-500).",
+  ],
+
+  evidence: [],
+}

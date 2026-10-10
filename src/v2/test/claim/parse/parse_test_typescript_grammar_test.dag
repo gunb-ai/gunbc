@@ -77,3 +77,15 @@ test fn claim_ts_typed_fn_list_tasks_parses_holds() -> Bool {
       out: ts_tokenize_and_parse_source(text: ts_typed_fn_list_tasks_source)
     )) == true
 }
+
+// A SINGLE-QUOTED STRING IS ONE string_lit TOKEN. The red-first control of
+// gunbc.recurring_failure_mode ts_single_quoted_string_body_reuses_the_double_quoted_char_class:
+// before its repair the rule's body consumed the closing quote and every single-quoted string refused.
+test fn a_single_quoted_ts_string_lexes_as_one_string_token_holds() -> Bool {
+  match tokenize(text: "'On'", file: ^ts_parse_file, rules: ts_lex()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ts, diagnostics: _ } =>
+      (length(xs: ts.all) == 1)
+        && fold_list(xs: ts.all, empty: true, cons: fn(acc, t) { acc && (t.class == ^ts_token_string_lit) && (t.lexeme == "'On'") })
+  }
+}
