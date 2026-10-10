@@ -347,3 +347,9 @@ test fn a_legacy_roster_file_is_not_exempt_from_candidate_admission() -> Bool {
     && path_is_deployed(path: "dag/gunbc/rung_drop/roster.dag")
     && path_is_deployed(path: "dag/gunbc/recurring_failure_mode/empty_capture_read_as_clean_result.dag")
 }
+
+test fn the_derived_rung_drop_roster_is_excluded_as_a_file_not_a_prefix() -> Bool {
+  !path_is_deployed(path: "dag/gunbc/rung_drop/roster.dag")
+    && path_is_deployed(path: "dag/gunbc/rung_drop/self_host_emit_derisk_claim_unobserved.dag")
+    && path_is_deployed(path: "dag/gunbc/rung_drop/roster.dag.bak")
+}

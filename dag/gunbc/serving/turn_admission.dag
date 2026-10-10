@@ -13,7 +13,7 @@ import product.fabric.selection {
 }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.work { TrustDomainRef }
-import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, fabric_group_wire }
 
 // ── CO-TENANCY IS AN ADMISSION CONSTRAINT, NOT A PRICE ────────────────────────────────────────
 //

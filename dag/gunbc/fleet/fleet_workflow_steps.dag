@@ -63,7 +63,6 @@ import gunbc.ci_spec {
 }
 import gunbc.fleet_host_key_enrollment { probe_identity_secret_access_requirement }
 import gunbc.spark.vllm_runtime_image_build { vllm_build_host_effect_term }
-import gunbc.spark.group_image_produce { image_distribution_host_effect_term }
 import std.types { List, String, Int }
 
 import gunbc.roadmap_execution_contract {
@@ -562,14 +561,12 @@ fn ci_release_bins_unpack_verify_step() -> Step {
   }
 }
 
-fn ci_fleet_wif_auth_step() -> Step {
-  ci_fleet_wif_auth_step_when(if_condition: none)
-}
+fn ci_fleet_wif_auth_step() -> Step { ci_fleet_wif_auth_step_when(if_condition: none) }
 
 fn ci_fleet_wif_auth_step_when(if_condition: String?) -> Step {
-  ci_wif_auth_step_with_id_when(
+  ci_wif_auth_step_with_condition(
     name: "WIF auth (OIDC -> fleet-cloud-convergence SA, access token only)",
-    id: "wif_auth",
+    id: "wif_auth", if_condition: if_condition,
     provider_resource: probe_identity_secret_access_requirement.wif_provider_resource,
     service_account: probe_identity_secret_access_requirement.service_account,
     if_condition: if_condition,
@@ -586,12 +583,10 @@ fn ci_wif_auth_step_for(name: String, provider_resource: String, service_account
 // The same step under a caller-chosen id, for a job that federates to more than one identity under
 // disjoint conditions (step ids are unique per job even when their conditions are exclusive).
 fn ci_wif_auth_step_with_id(name: String, id: String, provider_resource: String, service_account: String) -> Step {
-  ci_wif_auth_step_with_id_when(name: name, id: id, provider_resource: provider_resource, service_account: service_account, if_condition: none)
+  ci_wif_auth_step_with_condition(name: name, id: id, provider_resource: provider_resource, service_account: service_account, if_condition: none)
 }
 
-// THE SAME STEP UNDER A CONDITION, for a job whose modes federate to different identities: a mode
-// that must not mint the job's default identity skips it rather than minting and ignoring it.
-fn ci_wif_auth_step_with_id_when(name: String, id: String, provider_resource: String, service_account: String, if_condition: String?) -> Step {
+fn ci_wif_auth_step_with_condition(name: String, id: String, provider_resource: String, service_account: String, if_condition: String?) -> Step {
   UsesStep {
     name: Present { value: name },
     id: Present { value: id },
@@ -689,13 +684,6 @@ data gunbc_ci_spark_serving_step_timeout_minutes: Duration = 60
 // A different term is a different budget, automatically, and neither number can drift from the other.
 fn gunbc_ci_spark_runtime_image_build_step_timeout_minutes() -> Int {
   second_count(s: vllm_build_host_effect_term) / 60
-}
-
-// THE SAME DERIVATION FOR THE PRODUCED IMAGE'S DISTRIBUTION: its step budget is the term both of
-// its host-effect claims are admitted for (gunbc.spark.v41_runtime_image_converge
-// v41_image_distribution_host_effect_term).
-fn gunbc_ci_spark_runtime_image_distribute_step_timeout_minutes() -> Int {
-  second_count(s: image_distribution_host_effect_term) / 60
 }
 
 data gunbc_ci_spark_serving_step_timeout_note: String = "Spark serving converge/observe step budget, raised from the shared aux 5m (operator authorization 2026-08-19). STATED AS AN ENVELOPE, NOT A MEASUREMENT, because the neighbouring gates in this module earn their numbers and this one cannot yet. What IS modeled: the ollama runtime archive at 1542416321 bytes, cited on extdeps.ollama.binary_release. What is NOT: the model blob closure has no modeled byte size at all — the desired model is identified by its manifest digest rather than a size — and throughput from the executor to a spark target has never been measured. So a cold install downloads a ~1.5GB runtime plus a model of unmodeled size over a link of unmeasured bandwidth, and no honest derivation produces a minute count from that. 5m was not a considered budget for this step, it was the shared aux default, and it cannot cover a cold install under any plausible bandwidth.
@@ -856,10 +844,10 @@ data fleet_host_mutation_concurrency_group_expression: String = join([fleet_host
 // needed. This row stays the host-domain authority and is unchanged by that.
 data fleet_arm_mutation_group_glm_group_b_native: String = "gunbc-arm-mutation-glm-group-b-native"
 
-// Group A's arm key IS srv1's host key (gunbc.fleet.fleet_converge_workflow: the D0 door has two
-// domains, the srv1 control plane and Group A, and a job carries one group), so the pair-serving
-// apply keyed here queues behind D0 and behind every srv1 mutation whichever executor it names.
-data fleet_arm_mutation_group_deepseek_group_a: String = join([fleet_host_mutation_group_prefix, operator_host_srv1 as String], "")
+// THE srv1 CONTROL-PLANE KEY: srv1's host key, named for what it serialises. The pair-serving apply is
+// keyed here so it queues behind every srv1 mutation whichever executor it names. (It was Group A's arm
+// key while Group A and D0 existed; both were deleted on 2026-10-07.)
+data fleet_srv1_control_plane_mutation_group: String = join([fleet_host_mutation_group_prefix, operator_host_srv1 as String], "")
 
 // A SUBJECT NARROWER THAN ITS HOST GETS ITS OWN KEY WHEN NO OTHER MODE MUTATES IT (operator request
 // 2026-10-03). The approval device store -- gunbc.auth.approval_device_redemption

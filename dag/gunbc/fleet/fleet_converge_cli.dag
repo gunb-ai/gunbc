@@ -62,7 +62,7 @@ import gunbc.ci_runner_placement {
   runner_deployment_plan, runner_host_deployment_for,
   host_deployment_refusal_text,
 }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv5, operator_host_srv6 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import std.types { FilePath }
 
 data gunbc_converge_cli_stage0_receiver_disposition: Disposition = Terminal {
@@ -366,25 +366,6 @@ type FleetConvergeApplicability
   | ConvergeProviderGuestRoute { intent: HostEnrollmentIntent }
   | ConvergeOutsideFleet
 
-// MEASURED, not assumed: a read-only probe of srv5 and srv6 found briansrls the only admitted
-// principal and every managed-sounding candidate refused. The cause travels with the standing so a
-// reader is not left to infer which of several remedies applies.
-// THIS FUNCTION DOES NOT OBSERVE, AND NOW SAYS SO. It previously returned SparkManagedAccessAbsent
-// with a cause ending "(measured, read-only probe)" -- a constant that ignored its host argument,
-// executed nothing, and would keep reporting a measurement after the host changed. The measurement
-// it referred to was performed by the hand-authored spark-canary-probe.yml, which has been deleted;
-// a claim whose producer no longer exists is not evidence, and prose asserting a guarantee the
-// mechanism does not implement is the exact class this repo keeps catching.
-//
-// It returns Unobserved rather than Absent because the model cannot cite a receipt for either
-// answer. Absent would be the same lie one arm over.
-fn spark_managed_access_standing(host: String) -> SparkManagedAccessStanding {
-  SparkManagedAccessUnobserved {
-    host: host,
-    dissolves_on: "gunbc.fleet_multi_principal_probe fleet_multi_principal_probe_wet runs with srv5/srv6 in multi_principal_probe_hosts and its typed receipt grounds this standing",
-  }
-}
-
 fn enrolled_provider_guest(host: String) -> HostEnrollmentIntent? {
   match enrollment_for_host(host: host as HostIdentity) {
     Absent => none
@@ -409,11 +390,7 @@ fn fleet_converge_owned_applicability(host: String) -> FleetConvergeApplicabilit
     if host == (operator_host_srv2 as String) || host == (operator_host_srv4 as String) {
       ConvergeKnobFrontier
     } else {
-      if host == (operator_host_srv5 as String) || host == (operator_host_srv6 as String) {
-        ConvergeSparkRoute { access: spark_managed_access_standing(host: host) }
-      } else {
-        ConvergeOutsideFleet
-      }
+      ConvergeOutsideFleet
     }
   }
 }

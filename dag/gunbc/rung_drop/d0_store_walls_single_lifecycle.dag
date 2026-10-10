@@ -1,7 +1,7 @@
 module gunbc.rung_drop.d0_store_walls_single_lifecycle
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.rung_drop { RungDrop, Superseded, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // OPERATOR-RULED, SINGLE-USE (2026-09-30, relayed by proud-deer-538, option A): take the fabric store
@@ -30,7 +30,11 @@ data d0_store_walls_single_lifecycle: RungDrop = RungDrop {
 
   declared: "2026-09-30",
 
-  standing: Standing,
+  standing: Superseded {
+    ruling: "Group A decommissioned (operator, 2026-10-07, relayed by valiant-crab-775): srv5-srv8 were sold, so this drop's whole population -- D0 lifecycles for FabricGroupA -- no longer exists, and D0 itself (gunbc.spark.pair_serving_d0 and its door) was deleted with the group it was the only lifecycle of" as NonEmptyStr,
+    decision_record: "dashboard messages msg_5d88338f (the removal, operator-approved) and msg_9e5a2fee (the arm path and D0 with it), both 2026-10-07" as NonEmptyStr,
+    loss_holder: "none: with D0 gone, gunbc.fabric_store_operation_admission operation_requirement admits no scope for any operation D0 performed, so every such store write now refuses as NoApprovalFlowForOperation -- stricter than the walls this drop suspended, not weaker" as NonEmptyStr,
+  },
 
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,

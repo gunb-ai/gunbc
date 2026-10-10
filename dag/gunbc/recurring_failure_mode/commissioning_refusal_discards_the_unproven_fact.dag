@@ -1,0 +1,13 @@
+module gunbc.recurring_failure_mode.commissioning_refusal_discards_the_unproven_fact
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data commissioning_refusal_discards_the_unproven_fact: RecurringFailureMode = RecurringFailureMode {
+  identity: "commissioning_refusal_discards_the_unproven_fact" as NonEmptyStr,
+  receipts: [
+    "2026-10-09, PR #13607: the live commissioning plan at 4fa60f71342 passed runtime and store observations, then returned only initial commissioning obligations are not admitted. Its TUN census had already observed ethtool --show-channels gunbc-tap13 fail with Operation not supported on 6.8.0-138-generic. The census cause became a generic TAP refusal, sanitation discarded its unproven facts, and fleet planning reduced the admission sum to a Bool. Three lossy projections hid the failing external capability.",
+    "The producer now renders the typed census refusal, commissioning uses product.fabric.sanitation.cell_readiness_line, and fleet planning retains the admission refusal. The safety verdict is unchanged: an unavailable kernel queue count cannot become zero, and process descriptor sweeps alone cannot establish absence of SCM_RIGHTS/io_uring-held references. Linux v6.9 drivers/net/tun.c tun_get_channels supplies numqueues; v6.8 lacks that callback. Host capability must be read successfully after any kernel maintenance, not assumed from a version string. Tests distinguish unsupported queue observation and the exact unobservable sanitation fact. Rung: observed refusal with preserved cause, not a guarantee of host capability.",
+  ],
+  evidence: [],
+}

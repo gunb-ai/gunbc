@@ -73,6 +73,7 @@ import v1.compiler.infer { reconcile, reconcile_with_census_extra }
 import v1.compiler.infer_types { algebra_field_kind_name }
 
 import v1.compiler.emit_core_support { EmitResult, escape_json_string }
+import gunbc.rust_emitted_crate { EmittedRustCrate }
 import gunbc.rust_emitted_edge { EmittedEdge }
 import v1.compiler.emit { unmodeled_file_transport_diagnostics, unmodeled_shell_transport_diagnostics, unmodeled_rest_transport_diagnostics }
 
@@ -123,6 +124,7 @@ type PipelineResult {
   artifact_plan: ArtifactPlan
   newline_indices: List<NewlineIndex>
   emitted_edges: List<EmittedEdge>
+  rust_crates: List<EmittedRustCrate>
 }
 
 // The authored source annotation graph rides beside the semantic result rather than inside it.
@@ -642,7 +644,7 @@ fn emit_artifact(typed: ResolvedGraph, artifact: Artifact) -> EmitResult {
     unmodeled_shell_transport_diagnostics(typed: typed, target: artifact.target),
     unmodeled_rest_transport_diagnostics(typed: typed, target: artifact.target))
   if unmodeled_transports |> count > 0 {
-    return EmitResult { files: [], diagnostics: unmodeled_transports, emitted_edges: [] }
+    return EmitResult { files: [], diagnostics: unmodeled_transports, emitted_edges: [], rust_crates: [] }
   }
   match artifact.target {
     Rust => emit_rust_selected(typed: typed, selection: artifact.module_selection)
@@ -1356,13 +1358,13 @@ fn emit_dag_artifact(typed: ResolvedGraph) -> EmitResult {
   let collected = collect_dag_nodes(typed: typed)
   let _ = trace_mark("compile.emit.dag.collect.done")
   if collected.collision_errors |> count > 0 {
-    return EmitResult { files: [], diagnostics: collected.collision_errors, emitted_edges: [] }
+    return EmitResult { files: [], diagnostics: collected.collision_errors, emitted_edges: [], rust_crates: [] }
   }
   let order = collected.order
   let key_to_id = build_dag_key_to_id(order: order)
   let ref_errors = dag_emit_ref_errors(order: order, key_to_id: key_to_id)
   if ref_errors |> count > 0 {
-    return EmitResult { files: [], diagnostics: ref_errors, emitted_edges: [] }
+    return EmitResult { files: [], diagnostics: ref_errors, emitted_edges: [], rust_crates: [] }
   }
   let source_indices = dag_graph_source_indices(typed: typed)
   let nodes_json = serialize_dag_nodes_table(order: order, source_indices: source_indices, key_to_id: key_to_id)
@@ -1380,7 +1382,8 @@ fn emit_dag_artifact(typed: ResolvedGraph) -> EmitResult {
   EmitResult {
     files: [TextFile { path: "dag-artifact.json", content: json }],
     diagnostics: [],
-    emitted_edges: []
+    emitted_edges: [],
+    rust_crates: []
   }
 }
 
@@ -1425,17 +1428,18 @@ fn emit_from_artifact_plan(emittable: EmittableGraph, artifact_plan: ArtifactPla
     return EmitResult {
       files: [],
       diagnostics: [compile_bundle_error(message: "compile_sources planned no artifacts")],
-      emitted_edges: []
+      emitted_edges: [],
+      rust_crates: []
     }
   }
   let boundary_diags = validate_boundaries(plan: artifact_plan)
   if boundary_diags |> count > 0 {
-    return EmitResult { files: [], diagnostics: boundary_diags, emitted_edges: [] }
+    return EmitResult { files: [], diagnostics: boundary_diags, emitted_edges: [], rust_crates: [] }
   }
   let results = artifact_plan.artifacts |> map(artifact => emit_artifact(typed: typed, artifact: artifact))
   let all_files = results |> flat_map(r => r.files)
   let all_diags = results |> flat_map(r => r.diagnostics)
-  EmitResult { files: all_files, diagnostics: all_diags, emitted_edges: results |> flat_map(r => r.emitted_edges) }
+  EmitResult { files: all_files, diagnostics: all_diags, emitted_edges: results |> flat_map(r => r.emitted_edges), rust_crates: results |> flat_map(r => r.rust_crates) }
 }
 
 fn collect_diagnostics(parse_results: List<ParseResult>) -> List<ErrorNode> {
@@ -1966,7 +1970,8 @@ fn emit_resolved_for_target_selected(resolved: ResolvedPipelineResult, target: R
         ownership: resolved.ownership,
         artifact_plan: empty_artifact_plan(),
         newline_indices: resolved.newline_indices,
-        emitted_edges: []
+        emitted_edges: [],
+        rust_crates: []
       }
     Present { value: emittable } => {
       let typed = emittable.graph
@@ -1989,7 +1994,8 @@ fn emit_resolved_for_target_selected(resolved: ResolvedPipelineResult, target: R
         ownership: resolved.ownership,
         artifact_plan: artifact_plan,
         newline_indices: resolved.newline_indices,
-        emitted_edges: if emit_errors |> count > 0 { [] } else { emit_result.emitted_edges }
+        emitted_edges: if emit_errors |> count > 0 { [] } else { emit_result.emitted_edges },
+        rust_crates: if emit_errors |> count > 0 { [] } else { emit_result.rust_crates }
       }
     }
   }

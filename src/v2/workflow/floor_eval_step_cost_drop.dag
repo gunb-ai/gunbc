@@ -227,10 +227,6 @@ data floor_eval_step_cost_drop_app_attest_verifier_rows: List<EvalStepCostDropMe
 ]
 
 data floor_eval_step_cost_drop_span_program_rows: List<EvalStepCostDropMeasurement> = [
-  EvalStepCostDropMeasurement {
-    identity: "test.claim.spark.v41_checkpoint_materialize_witness.the_span_read_reads_exactly_its_region" as NonEmptyStr,
-    measured_by: "gunbc#12010, claim_batch over dag/test/claim/spark/v41_checkpoint_materialize_witness_test.dag; planned_as_changed_witness, verdict pass, over the new-witness budget. The billed work is the one real serialization of gunbc.sha256sum_byte_span sha256sum_byte_span_program through gunbc.shell_command_text, which this claim is the argv's only inhabitance route for" as NonEmptyStr,
-  },
 ]
 
 data floor_eval_step_cost_drop_approval_intent_digest_rows: List<EvalStepCostDropMeasurement> = [

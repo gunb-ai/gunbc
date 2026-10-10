@@ -22,13 +22,15 @@ import gunbc.fabric_control_plane { fabric_money_reservation_ref }
 import gunbc.workspace_allocation_release { workspace_release_derive, workspace_release_wire, workspace_release_decode, WorkspaceReleasePrepared, WorkspaceReleaseRefused }
 import gunbc.workspace_money_codec { workspace_money_json }
 
-fn launch_fixture_allocation() -> WorkspaceAllocation? {
+fn launch_fixture_allocation() -> WorkspaceAllocation? { launch_fixture_allocation_in_slot(index: 7) }
+
+fn launch_fixture_allocation_in_slot(index: Int) -> WorkspaceAllocation? {
   let request = allocation_test_request(key: "launch-fixture" as NonEmptyStr)
   let work = workspace_work(request: request).id
   match workspace_memory_grant(request: request, work: work, attempt: FabricIdentity { principal: work.principal, key: "fixture-attempt" as ExecutionAttemptKey }) {
     MemoryGrantIssued { grant: committed } => {
       let reserved = WorkspaceReservation {
-        request: request, slot: RunnerSlotIdentity { host: "srv1" as HostIdentity, slot_index: 7 }, generation: 1,
+        request: request, slot: RunnerSlotIdentity { host: "srv1" as HostIdentity, slot_index: index }, generation: 1,
         grant: committed, work: work,
         demand: FabricIdentity { principal: work.principal, key: "fixture-demand" as DemandKey },
         offer: FabricIdentity { principal: "fixture-provider", key: "fixture-offer" as OfferKey },

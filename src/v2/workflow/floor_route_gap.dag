@@ -954,63 +954,15 @@ fn floor_route_gap_expectation_chunk_08() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.devboot_text_blob_real_execution.a_lease_claim_is_stored_as_exactly_its_bytes_in_the_bare_store_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_authority_log_real_execution.a_standing_recovery_selects_the_one_claim_quiesces_after_selection_and_reads_back_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_authority_log_real_execution.a_transition_is_read_back_and_a_stale_one_names_the_current_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_authority_log_real_execution.an_unclaimed_group_is_refused_at_the_claim_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.the_production_route_settles_and_the_lease_governs_launch_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_authorization_witness.a_frozen_intent_re_derives_the_filed_request_and_refuses_another_transaction", operation: "DigestStdin", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.a_filing_frozen_once_is_read_back_as_the_same_request_without_a_live_subject_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.a_standing_release_resumes_from_its_frozen_approval_after_the_main_row_changes_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.the_door_reads_the_frozen_filing_to_decide_a_rerun_without_a_live_subject_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.a_grant_whose_window_passed_before_the_claim_takes_no_claim_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.a_rerun_resumes_its_own_pending_state_and_restores_the_exact_active_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.a_fence_and_a_restore_each_reach_their_terminal_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.a_seat_granted_after_the_suspension_landed_is_released_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.durable_cas_fabric_storage_real_execution.one_slot_is_one_head_and_two_bindings_see_one_generation_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.durable_cas_fabric_storage_real_execution.a_cycled_value_does_not_let_a_stale_writer_advance_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.the_same_grant_claimed_from_two_executors_is_held_once_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.a_crash_after_the_claim_and_before_the_first_write_is_recovered_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.a_crash_after_the_settling_write_and_before_completion_completes_the_claim_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.a_grant_over_another_host_population_is_refused_before_any_claim_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_front_door_real_execution.an_error_status_is_an_answer_and_no_listener_is_silence_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_front_door_real_execution.a_front_door_answering_500_fences_the_group_through_the_transaction_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.a_fresh_authorization_under_a_reused_word_is_not_completed_from_the_old_history_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.a_population_change_after_the_claim_aborts_before_a_write_and_fences_after_one_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_front_door_real_execution.a_listener_that_accepts_and_never_answers_fences_rather_than_reading_as_absent_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.a_second_executor_cannot_abort_a_pending_lifecycle_it_did_not_write_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_front_door_real_execution.a_failed_connect_fences_under_an_active_head_unit_and_suspends_only_under_a_quiet_one_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.any_executor_completes_a_settled_lifecycle_and_never_restarts_it_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.the_production_admission_commits_the_frozen_hosts_of_a_fenced_lifecycle_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_front_door_real_execution.a_listener_behind_a_failed_connect_is_read_on_the_host_and_fences_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_authority_log_real_execution.a_live_host_effect_claim_fences_the_reclaim_until_released_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_authority_log_real_execution.a_serving_arm_host_is_refused_by_the_real_commitment_and_nothing_is_appended_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_authority_log_real_execution.an_overdue_host_effect_claim_fences_until_released_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
@@ -1033,31 +985,7 @@ fn floor_route_gap_expectation_chunk_08() -> List<FloorRouteGapExpectation> {
   }
   }
   }
-  }
-  }
-  }
-  }
-  }
-  }
-  }
-  }
-  }
-  }
-  }
-  }
-  }
-  }
-  }
-  }
-  }
-  }
-  }
-  }
-  }
-  }
-  }
-  }
-  }
+    }
   }
   }
   }
@@ -1342,7 +1270,7 @@ fn floor_route_gap_expectation_chunk_12() -> List<FloorRouteGapExpectation> {
 // WetScheduledClaim row, and the gunbc.ci_layer_roots
 // LocalRepoWetLane row for approval_device_routes_wet_witness_test.dag.
 fn floor_route_gap_expectation_chunk_13() -> List<FloorRouteGapExpectation> {
-  Cons { head: FloorRouteGapExpectation { identity: "test.claim.spark.v41_row_store_encode_witness.the_receipt_was_produced_by_the_rendered_program_the_mode_ships", operation: "DigestStdin", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.spark.v41_engram_runtime_witness.the_live_storage_backed_patches_are_digestfile_of_committed_bytes", operation: "DigestFile", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.spark.v41_runtime_candidate_witness.observed_patches_do_not_mint_a_patched_source_tree", operation: "DigestFile", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.spark.v41_runtime_candidate_witness.the_live_candidate_is_keyed_end_to_end", operation: "DigestFile", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_authorization_witness.the_live_subject_exists_exactly_when_the_candidate_is_keyed_and_read_back", operation: "DigestFile", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.spark.v41_engram_runtime_witness.control_published_infeasibility_is_not_weakened_by_a_keyed_specification", operation: "DigestFile", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.spark.v41_source_patch_converge_witness.digestfile_inhabits_the_committed_patch_population", operation: "DigestFile", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.spark.v41_source_patch_converge_witness.empty_diff_has_a_real_digest", operation: "DigestStdin", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.spark.v41_source_patch_converge_witness.red5_the_arm_a_set_srv8_carried_is_derived_byte_exactly_from_history", operation: "Dir", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.approval_device_routes_wet_witness_test.a_bound_realization_passes_the_read_past_the_gate", operation: "Read", ground: NoMockResponse {} }, tail: Empty {} } } } } } } } } } }
+  Cons { head: FloorRouteGapExpectation { identity: "test.claim.approval_device_routes_wet_witness_test.a_bound_realization_passes_the_read_past_the_gate", operation: "Read", ground: NoMockResponse {} }, tail: Empty {} }
 }
 
 // THE DECLARED-UNIT DIGEST MINT IS THE ONE ROUTE GAP THESE IDENTITIES SHARE.
@@ -1386,8 +1314,6 @@ fn floor_route_gap_expectation_chunk_14() -> List<FloorRouteGapExpectation> {
       tail: Cons {
         head: FloorRouteGapExpectation { identity: "test.claim.serving.serving_availability_bind_wet_witness.a_ready_route_reaches_the_existing_incarnation_frontier_in_the_product_path", operation: "DigestStdin", ground: NoMockResponse {} },
         tail: Cons {
-        head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_incumbent_identity_wet_witness.the_production_declaration_keys_group_a_and_refuses_group_b", operation: "DigestStdin", ground: NoMockResponse {} },
-          tail: Cons {
             head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.a_different_reported_path_does_not_bind_an_offer", operation: "DigestStdin", ground: NoMockResponse {} },
             tail: Cons {
               head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.a_different_reported_path_refuses_the_service_without_claiming_a_different_launch", operation: "DigestStdin", ground: NoMockResponse {} },
@@ -1448,7 +1374,6 @@ fn floor_route_gap_expectation_chunk_14() -> List<FloorRouteGapExpectation> {
               }
             }
           }
-        }
       }
     }
   }
@@ -2217,9 +2142,7 @@ fn floor_route_gap_expectation_chunk_33() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.auth.login_callback_hold_wet_witness.foreign_browser_cannot_consume_and_cached_replay_cannot_exchange", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.fabric.fabric_state_namespace_wet_witness.witness_public_head_cannot_alias_private_state_object", operation: "DirWithTemplate", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_grant_row_wet_witness.the_captured_row_is_hashed_as_its_exact_bytes_by_real_execution", operation: "HashObjectStdinNoWrite", ground: NoMockResponse {} },
-    tail: Empty {} } } } } }
+    tail: Empty {} } } } }
 }
 
 // test.claim.roadmap.roadmap_dogfood_route_wet_witness (gunbc#13077): every claim builds a fresh

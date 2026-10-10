@@ -6,7 +6,7 @@ import std.nat { Nat, nat_range_inclusive, nat_min }
 import std.measure { Measure, Count, One, money_amount_micro, second, measure_count, TokenCount, Second, second_count }
 import extdeps.accounting.encumbrance { Held, Expended, Released }
 import extdeps.api_rate_limit { upstream_rate_limit_key }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire, fabric_group_hosts }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, fabric_group_wire, fabric_group_hosts }
 import gunbc.serving.serving_enrollment {
   ServingRoute, ServingRouteResolved, ServingRouteUnresolved, ServingRouteEndpoint,
   ServingRouteTurnCeiling, serving_enrolled_routes, serving_route_turn_ceiling_count,
@@ -679,7 +679,6 @@ fn harness_declared_unit_digest(group: FabricGroup) -> DeclaredUnitDigestStandin
 }
 
 type HarnessDeclaredUnitRoster {
-  group_a: DeclaredUnitDigestStanding
   group_b: DeclaredUnitDigestStanding
 }
 
@@ -690,15 +689,13 @@ type HarnessDeclaredUnitRoster {
 // repair is to carry the first value from the least common ancestor rather than to cache it.
 fn harness_declared_unit_roster() -> HarnessDeclaredUnitRoster {
   HarnessDeclaredUnitRoster {
-    group_a: harness_declared_unit_digest(group: FabricGroupA),
-    group_b: harness_declared_unit_digest(group: FabricGroupB),
+    group_b: harness_declared_unit_digest(group: FabricGroupB {}),
   }
 }
 
 fn harness_declared_unit_from_roster(roster: HarnessDeclaredUnitRoster, group: FabricGroup) -> DeclaredUnitDigestStanding {
   match group {
-    FabricGroupA => roster.group_a
-    FabricGroupB => roster.group_b
+    FabricGroupB {} => roster.group_b
   }
 }
 
@@ -734,21 +731,18 @@ fn harness_group_participation(access: FleetSshContextPreparation, group: Fabric
 }
 
 type HarnessGroupParticipationRoster {
-  group_a: ServingGroupRendezvousReach?
   group_b: ServingGroupRendezvousReach?
 }
 
 fn harness_group_participation_roster(access: FleetSshContextPreparation) -> HarnessGroupParticipationRoster {
   HarnessGroupParticipationRoster {
-    group_a: harness_group_participation(access: access, group: FabricGroupA),
-    group_b: harness_group_participation(access: access, group: FabricGroupB),
+    group_b: harness_group_participation(access: access, group: FabricGroupB {}),
   }
 }
 
 fn harness_participation_from_roster(roster: HarnessGroupParticipationRoster, group: FabricGroup) -> ServingGroupRendezvousReach? {
   match group {
-    FabricGroupA => roster.group_a
-    FabricGroupB => roster.group_b
+    FabricGroupB {} => roster.group_b
   }
 }
 

@@ -9,7 +9,7 @@ import gunbc.runner_slot_allocation { gunbc_microvm_shakedown_slot_memory_max, g
 import gunbc.runner_slot_desired { CpuQuotaResolved, SlotCpuQuotaUnbounded }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fleet_host_budget { HostAllocationVerdict, HostAllocationConserves, HostAllocationOversubscribed, HostAllocationUnchargeable }
-import product.fabric.sanitation { CellId, CellReady, CellQuarantined, SanitationObservation, SlotScopedNetwork, cell_readiness_from_observations }
+import product.fabric.sanitation { CellId, CellReady, CellQuarantined, SanitationObservation, SlotScopedNetwork, cell_readiness_from_observations, cell_readiness_line }
 
 // This is administrator commissioning intent bound to an existing convergence artifact. It is
 // not inferred from a missing directory or a failed unit. No current observation mints authorization; the effect may select WIF or app approval.
@@ -69,8 +69,12 @@ fn workspace_commissioning_admit(
           WorkspaceObligationHistoryUnreadable { reason: detail } => WorkspaceCommissioningRefused { reason: detail }
           WorkspaceNoPriorObligations { settled_generation: generation } => if generation != 0 {
             WorkspaceCommissioningRefused { reason: "initial commissioning requires an observed never-recorded slot; nonzero history must be recovered" }
-          } else { match cell_readiness_from_observations(cell: runner_slot_instance_name(slot: slot) as CellId, network_scope: SlotScopedNetwork, observations: sanitation) {
-            CellQuarantined { cell: _, unproven: _ } => WorkspaceCommissioningRefused { reason: "initial cell sanitation is incomplete; no initial readiness may be published" }
+          } else {
+            let readiness = cell_readiness_from_observations(cell: runner_slot_instance_name(slot: slot) as CellId, network_scope: SlotScopedNetwork, observations: sanitation)
+            match readiness {
+            CellQuarantined { cell: _, unproven: _ } => WorkspaceCommissioningRefused {
+              reason: concat("initial cell sanitation is incomplete; no initial readiness may be published: ", cell_readiness_line(readiness: readiness)),
+            }
             CellReady { cell: _ } => WorkspaceCommissioningReady { commissioned: WorkspaceCommissionedSlot {
               slot: slot, cpu_budget: cpu_budget, attempt_envelope: attempt_envelope,
               commissioning_plan_hash: approved_plan, settled_generation: generation,

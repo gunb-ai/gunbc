@@ -3,6 +3,7 @@ module gunbc.fabric_cell_observe
 import std.types { String, List, Bool, NonEmptyStr }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import product.host_identity { HostIdentity }
+import extdeps.systemd { systemd_slice_ancestor_names, systemd_slice_suffix }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name, runner_slot_identity_equal, runner_slot_instance_name_prefix, slot_name_could_belong_to_host }
 import gunbc.runner_slot_allocation {
   fabric_execution_slot_identities,
@@ -495,6 +496,7 @@ fn fabric_cell_observe_host(probe: FabricCellHostProbe) -> FabricCellHostReadbac
 // foreign-artifact remedy.
 type FabricCellDiscoveredSubject
   = DiscoveredExpectedCell { slot: RunnerSlotIdentity }
+  | DiscoveredCellSliceAncestor { observed_name: String, host: HostIdentity }
   | DiscoveredUnexpectedCommittedSlot { slot: RunnerSlotIdentity }
   | DiscoveredCrossHostNamedArtifact { observed_name: String, named_slot: RunnerSlotIdentity, observed_on: HostIdentity }
   | DiscoveredForeignArtifact { observed_name: String, location: String }
@@ -503,6 +505,8 @@ type FabricCellDiscoveredSubject
 fn fabric_cell_discovered_subject_wire(s: FabricCellDiscoveredSubject) -> String {
   match s {
     DiscoveredExpectedCell { slot: sl } => join(["expected:", runner_slot_instance_name(slot: sl)], "")
+    DiscoveredCellSliceAncestor { observed_name: n, host: h } =>
+      join(["cell-slice-ancestor:", h as String, ":", n], "")
     DiscoveredUnexpectedCommittedSlot { slot: sl } => join(["unexpected-committed:", runner_slot_instance_name(slot: sl)], "")
     DiscoveredCrossHostNamedArtifact { observed_name: n, named_slot: sl, observed_on: h } =>
       join(["cross-host-named:", h as String, ":", n, ":names:", runner_slot_instance_name(slot: sl)], "")
@@ -605,6 +609,21 @@ fn fabric_cell_slot_is_fabric_expected(slot: RunnerSlotIdentity) -> Bool {
   )
 }
 
+// A SLICE NAME ALSO CREATES ITS SYSTEMD ANCESTORS. The namespace enumeration legitimately
+// returns fabric-cell-srv1.slice alongside fabric-cell-srv1-13.slice. It is neither a slot nor
+// foreign residue. Derive proper ancestors forward from this host's enrolled cell names through
+// systemd's existing hierarchy authority; a prefix exclusion would also hide unrelated slices.
+// This classification grants no resource ownership or effect, and cannot satisfy a cell address.
+fn fabric_cell_is_expected_slice_ancestor(name: String, members: List<RunnerSlotIdentity>) -> Bool {
+  fold(members, init: false, f: (seen, slot) => {
+    let slice = fabric_cell_slice_name(slot: slot)
+    let stem = substring(s: slice, start: 0, end: string_length(s: slice) - string_length(s: systemd_slice_suffix))
+    seen || (fabric_cell_slot_is_fabric_expected(slot: slot) && name != slice
+      && fold(systemd_slice_ancestor_names(stem: stem), init: false, f: (matched, ancestor) =>
+        matched || name == join([ancestor, systemd_slice_suffix], "")))
+  })
+}
+
 // CLASSIFIED AGAINST THIS HOST'S COMMITTED SLOTS, NOT THE FLEET'S. An earlier cut searched the
 // complete fleet population with no host argument, so an artifact named `srv3-06` found in srv4's
 // `/opt/fabric-cells` classified as `DiscoveredExpectedCell { srv3-06 }` -- because that name is
@@ -629,7 +648,15 @@ fn fabric_cell_classify_discovered_name(
     CommittedPopulationDerived { members: members } =>
       fold(
         fabric_cell_named_among(members: members, name: name, rendering: rendering),
-        init: fabric_cell_classify_uncommitted_here(host: host, name: name, rendering: rendering),
+        init: match rendering {
+          CellRootRendering => fabric_cell_classify_uncommitted_here(host: host, name: name, rendering: rendering)
+          SliceRendering =>
+            if fabric_cell_is_expected_slice_ancestor(name: name, members: members) {
+              DiscoveredCellSliceAncestor { observed_name: name, host: host }
+            } else {
+              fabric_cell_classify_uncommitted_here(host: host, name: name, rendering: rendering)
+            }
+        },
         f: (acc, s) =>
           if fabric_cell_slot_is_fabric_expected(slot: s) {
             DiscoveredExpectedCell { slot: s }
@@ -838,7 +865,8 @@ fn fabric_cell_projection_refusals(projection: FabricCellObserverProjection) -> 
 
 // DISCOVERY PROJECTS INTO THE REFUSAL VOCABULARY gunbc.fabric_cell_converge OWNS, which is what
 // keeps the direction acyclic: this module imports that one, so that one cannot name
-// FabricCellDiscovery. ONLY ONE ARM PROJECTS NOTHING, and an earlier cut got that population wrong
+// FabricCellDiscovery. Expected cells and their structural slice ancestors project no refusal;
+// ancestors remain explicit discovery subjects but are not cell resources. An earlier cut got that population wrong
 // in a way worth recording: it also dropped DiscoveredUnexpectedCommittedSlot, on the reasoning that
 // a committed slot "reaches the classification kernel through the readback". Only EXPECTED slots do
 // -- fabric_cell_observe_host folds fabric_cell_expected_slots -- so a committed non-fabric slot
@@ -868,6 +896,7 @@ fn fabric_cell_discovery_refusals(discovery: FabricCellDiscovery) -> List<Fabric
 fn fabric_cell_discovered_refusal(host: HostIdentity, s: FabricCellDiscoveredSubject) -> List<FabricCellObservationRefusal> {
   match s {
     DiscoveredExpectedCell { slot: _ } => []
+    DiscoveredCellSliceAncestor { observed_name: _, host: _ } => []
     DiscoveredUnexpectedCommittedSlot { slot: sl } =>
       [UnexpectedCommittedSlotArtifact { host: host, slot: sl, location: fabric_cell_base_dir_name() }]
     DiscoveredCrossHostNamedArtifact { observed_name: n, named_slot: sl, observed_on: h } =>

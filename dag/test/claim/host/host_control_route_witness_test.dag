@@ -9,7 +9,7 @@ import product.host_identity { HostIdentity }
 import product.supplier.hetzner { hetzner_helsinki_route }
 import extdeps.cloud.hetzner { cax41_catalog }
 import std.decl_ref { decl_ref }
-import gunbc.fleet_host_identity { operator_host_183527, operator_host_3dde7f, operator_host_srv1, operator_host_srv5 }
+import gunbc.fleet_host_identity { operator_host_183527, operator_host_3dde7f, operator_host_srv1 }
 import gunbc.fleet_host_backing { ProviderGuest, ProviderResourceAwaited }
 import gunbc.hetzner_cloud_guest { hetzner_cloud_guest_entitlement }
 import gunbc.fleet_enrollment { HostEnrollmentIntent, enrollment_for_host, ci_runner_enrollment_participation }
@@ -76,14 +76,6 @@ test fn both_cax_guests_are_controlled_through_the_hetzner_project_account() -> 
 test fn an_owned_board_with_no_managed_host_row_is_not_controlled() -> Bool {
   match control_of(host: operator_host_srv1) {
     Present { value: HostControlRefused { refusal: BmcHostNotManaged { host: h } } } => (h as String) == (operator_host_srv1 as String)
-    _ => false
-  }
-}
-
-// RED: AN APPLIANCE THAT PROVISIONS ITSELF THROUGH FIRST BOOT HAS NO OUT-OF-BAND ROUTE, and says so.
-test fn an_appliance_has_no_out_of_band_route() -> Bool {
-  match control_of(host: operator_host_srv5) {
-    Present { value: HostControlRefused { refusal: NoOutOfBandRoute { host: h } } } => (h as String) == (operator_host_srv5 as String)
     _ => false
   }
 }

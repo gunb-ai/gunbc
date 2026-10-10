@@ -6,7 +6,7 @@ import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.runner_microvm_network_converge { runner_microvm_staging_dir }
 import gunbc.runner_microvm_network_apply {
   MicrovmNetworkApplyAdmission, MicrovmNetworkApplyAdmitted, MicrovmNetworkApplyRefused,
-  microvm_network_apply_admission, staging_ancestor_paths,
+  microvm_network_apply_admission, microvm_network_local_admission, staging_ancestor_paths,
   path_metadata_ok,
   OperationResult, ApplyLeg, ApplyLegRan, ApplyLegRefused, operation_result_ok,
   runner_microvm_root_only_probe_argv,
@@ -147,4 +147,18 @@ test fn the_root_only_probe_is_elevated_and_keeps_its_predicate() -> Bool {
     "find", "/var/lib/gunbc-microvm-network-stage/microvm.nft",
     "-maxdepth", "0", "-type", "f", "-user", "root", "-group", "root", "-not", "-perm", "/022",
   ]
+}
+
+
+test fn local_network_apply_requires_root_on_the_selected_host() -> Bool {
+  admitted(a: microvm_network_local_admission(host: "srv1", observed_host: "srv1", effective_uid: "0",
+    expected_revision: a_revision, checked_out_revision: a_revision))
+    && !admitted(a: microvm_network_local_admission(host: "srv1", observed_host: "srv2", effective_uid: "0",
+      expected_revision: a_revision, checked_out_revision: a_revision))
+    && !admitted(a: microvm_network_local_admission(host: "srv1", observed_host: "srv1", effective_uid: "999",
+      expected_revision: a_revision, checked_out_revision: a_revision))
+    && !admitted(a: microvm_network_local_admission(host: "srv1", observed_host: "srv1", effective_uid: "",
+      expected_revision: a_revision, checked_out_revision: a_revision))
+    && !admitted(a: microvm_network_local_admission(host: "srv1", observed_host: "srv1", effective_uid: "0",
+      expected_revision: a_revision, checked_out_revision: another_revision))
 }

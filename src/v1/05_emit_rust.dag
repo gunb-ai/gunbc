@@ -15,7 +15,8 @@ import std.repair_input_origin {
 import std.primitive_projection {
   primitive_identity_runtime_name, primitive_projection_row_for_declaration
 }
-import gunbc.rust_emitted_edge { EmittedEdge, rust_module_emit_filename, rust_prelude_emitted_edges, emitted_edge_target_module, semantic_source_reference_edge, RuntimePrelude, ReexportFacade }
+import gunbc.rust_emitted_crate { EmittedRustCrate, EmittedCrateDependencyDemand }
+import gunbc.rust_emitted_edge { EmittedEdge, rust_module_emit_filename, rust_prelude_emitted_edges, emitted_edge_target_module, semantic_source_reference_edge, declared_import_edge, inline_path_reference_edge, service_runtime_surface_edge, RuntimePrelude, ReexportFacade }
 import gunbc.reference_derived_candidate {
   ReferenceDerivedCandidateDisposition,
   CandidateSurvived,
@@ -3699,19 +3700,19 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
   let shared_types = emit_info.shared_types
   let anonymous_record_diags = ctx.anonymous_record_diags
   if anonymous_record_diags |> count > 0 {
-    return EmitResult { files: [], diagnostics: anonymous_record_diags, emitted_edges: [] }
+    return EmitResult { files: [], diagnostics: anonymous_record_diags, emitted_edges: [], rust_crates: [] }
   }
   let effectful_recursion_diags = ctx.effectful_recursion_diags
   if effectful_recursion_diags |> count > 0 {
-    return EmitResult { files: [], diagnostics: effectful_recursion_diags, emitted_edges: [] }
+    return EmitResult { files: [], diagnostics: effectful_recursion_diags, emitted_edges: [], rust_crates: [] }
   }
   let filename_collisions = module_filename_collision_diagnostics(typed: typed)
   if filename_collisions |> count > 0 {
-    return EmitResult { files: [], diagnostics: filename_collisions, emitted_edges: [] }
+    return EmitResult { files: [], diagnostics: filename_collisions, emitted_edges: [], rust_crates: [] }
   }
   let symbol_collisions = emitted_symbol_collision_diagnostics(typed: typed)
   if symbol_collisions |> count > 0 {
-    return EmitResult { files: [], diagnostics: symbol_collisions, emitted_edges: [] }
+    return EmitResult { files: [], diagnostics: symbol_collisions, emitted_edges: [], rust_crates: [] }
   }
   let test_projections = ctx.test_projections
   let module_emissions = typed.modules
@@ -3744,16 +3745,17 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
   let has_services = has_service_items(typed: typed)
   let has_pipeline = compiler_pipeline_entry_is_retained_host(modules: typed.modules)
   let crate_name = if has_pipeline { "v1_compiler" } else { "v1_compiled" }
-  let cargo = emit_cargo_toml(
+  let rust_crate = EmittedRustCrate {
     crate_name: crate_name,
     demand: EmittedCrateDependencyDemand {
       renders_clap_cli: has_pipeline,
       renders_async_services: has_services || closure_renders_async_trait_resource(typed: typed)
-    })
-  let native_effects = native_entry_effects(modules: typed.modules, registry: registry)
+    }
+  }
+  let native_effects = native_entry_effects(modules: typed.modules, registry: ctx.registry)
   let native_effect_refusals = native_entry_effect_diagnostics(effects: native_effects, modules: typed.modules)
   if native_effect_refusals |> count > 0 {
-    return EmitResult { files: [], diagnostics: native_effect_refusals, emitted_edges: [] }
+    return EmitResult { files: [], diagnostics: native_effect_refusals, emitted_edges: [], rust_crates: [] }
   }
   let main_file = emit_main_rs(modules: typed.modules, has_services: has_services, crate_name: crate_name, effects: native_effects)
   let cli_dispatch_file = if has_pipeline { [emit_gunbc_cli_dispatch_generated(crate_name: crate_name)] } else { [] }
@@ -3786,15 +3788,59 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
   )
   let lib_file = emit_lib_rs_from_paths(all_module_paths: all_mod_paths, has_compiler_tests: has_pipeline)
   let emitted_paths = concat(
-    [cargo.path, lib_file.path, main_file.path],
+    [lib_file.path, main_file.path],
     all_mod_paths,
     compiler_tests_file |> map(f => f.path),
     test_file_paths
   )
   let population_manifest = emit_emitted_population_manifest(paths: emitted_paths)
-  let emitted_files = concat([cargo, lib_file, main_file], all_mod_files, compiler_tests_file, test_files)
+  let emitted_files = concat([lib_file, main_file], all_mod_files, compiler_tests_file, test_files)
   let files = concat(emitted_files, [population_manifest])
-  EmitResult { files: files, diagnostics: module_refusals, emitted_edges: published_module_emissions |> flat_map(e => e.emitted_edges) }
+  let module_files_with_tests = concat(all_mod_files, compiler_tests_file)
+  let module_basenames = module_files_with_tests |> fold(init: empty_map(), f: (acc, f) => map_insert(acc, rust_emitted_module_basename(path: f.path), true))
+  let inline_edges = module_files_with_tests |> flat_map(f => emitted_inline_path_edges(file: f, module_basenames: module_basenames))
+  EmitResult {
+    files: files,
+    diagnostics: module_refusals,
+    emitted_edges: concat(published_module_emissions |> flat_map(e => e.emitted_edges), inline_edges),
+    rust_crates: [rust_crate]
+  }
+}
+
+fn rust_emitted_module_basename(path: String) -> String {
+  replace(replace(path, rust_source_root(), ""), rust_source_ext(), "")
+}
+
+fn rust_line_is_use_declaration(line: String) -> Bool {
+  starts_with(s: line, prefix: "use ") || starts_with(s: line, prefix: "pub use ") || starts_with(s: line, prefix: "pub(crate) use ")
+}
+
+// THE INLINE PATHS AN EMITTED MODULE'S CODE WRITES, RETURNED AS SOURCE EDGES. The renderers write a
+// resolved reference to another module's declaration as `crate::<module>::<item>` (emit_typed_call,
+// qualified types and values, rust_declaration_path) and return only the text, so the edge is read
+// back off the code they wrote: every `crate::<segment>` whose segment is a module of this emission.
+// That is the population rustc resolves, so a reference the source never imported -- and a
+// synthesized stub's paths -- reach the partition like any other. Comment lines and string literals
+// are not code (gunbc.recurring_failure_mode a_string_literal_attests_an_emitted_reference); use
+// declarations are excluded because they are returned with their own provenance, and the
+// reverse-edge refusal must keep judging them as emitter edges. NEXT RUNG: the renderers return the
+// edges they write (gunbc.guarantee_stall emitted_inline_crate_path_edges_unreturned_stall), and this
+// reading of the text dissolves.
+fn emitted_inline_path_edges(file: TextFile, module_basenames: Map<String, Bool>) -> List<EmittedEdge> {
+  let from = rust_emitted_module_basename(path: file.path)
+  let code = rust_code_outside_string_literals(s: file.content
+    |> split(delimiter: "\n")
+    |> filter(line => {
+      let t = trim(line)
+      !starts_with(s: t, prefix: "//") && !rust_line_is_use_declaration(line: t)
+    })
+    |> join(separator: "\n"))
+  let targets = rust_identifier_tokens(s: replace(code, "crate::", " @crate@"))
+    |> filter(t => starts_with(s: t, prefix: "@crate@"))
+    |> map(t => replace(t, "@crate@", ""))
+  unique_strings(items: targets)
+    |> filter(t => t != from && emit_map_has(m: module_basenames, key: t))
+    |> map(t => inline_path_reference_edge(from: from, to_module: t))
 }
 
 // A MODULE'S EMITTED PATH, read by the renderer and by every population-denominated aggregate that
@@ -5534,7 +5580,7 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
     let names_already_in_lines = lines |> flat_map(l => imported_names_in_use_line(line: l))
     let qualified_rows = qualified_type_reference_rows(emit_info: emit_info, names: qualified_item_emit_surface_compatibility_names(candidates: origin_candidates) |> filter(nm => emit_map_has(m: emitted_source_token_set, key: qualified_last_segment(name: nm))), this_module_name: this_module_name, already: already, names_already_in_lines: names_already_in_lines, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     let qualified_lines = qualified_type_reference_use_lines(rows: qualified_rows, registry: registry)
-    let this_module_filename = module_to_filename(name: this_module_name)
+    let this_module_filename = rust_module_emit_filename(module_name: this_module_name)
     ReferenceDerivedUseLinePlan {
       lines: concat(lines, qualified_lines |> map(l => l.text)),
       rows: concat(rows, qualified_rows),
@@ -5737,7 +5783,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     |> map(item => emit_typed_item(item: item, module_name: authored_name(env: scope.type_env, node: m), registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: scoped_data_items, module_items: wire_context_items, imports: wire_context_imports, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index))
     |> join(separator: "\n\n")
   let prelude = emit_prelude(module_name: this_module_name)
-  let rendered_imports = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index, supplement_items: typed_module.items, module_env: Present { value: scope.type_env }, from_module: module_to_filename(name: this_module_name))
+  let rendered_imports = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index, supplement_items: typed_module.items, module_env: Present { value: scope.type_env }, from_module: rust_module_emit_filename(module_name: this_module_name))
   let imports_str = rendered_imports.text
   let dag_import_lines = if imports_str == "" { [] } else { imports_str |> split(delimiter: "\n") }
   let already_imported_names = concat(
@@ -5764,6 +5810,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let merged_imports = merged_import_lines |> join(separator: "\n")
   let imports_section = if merged_imports == "" { "" } else { concat("\n", merged_imports) }
   let this_mod_filename = module_to_filename(name: authored_name(env: scope.type_env, node: m))
+  let this_mod_endpoint = rust_module_emit_filename(module_name: authored_name(env: scope.type_env, node: m))
   let all_svc_names = typed_module.items |> flat_map(item =>
     match lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: authored_name(env: scope.type_env, node: m), decl_name: authored_name(env: scope.type_env, node: item) }) {
       Present { value: info } => info.service_names
@@ -5810,9 +5857,11 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     file: TextFile { path: module_emit_path, content: content },
     reference_rows: reference_plan.rows,
     emitted_edges: concat(
-      rust_prelude_emitted_edges(module: this_mod_filename),
+      rust_prelude_emitted_edges(module: this_mod_endpoint),
+      declared_import_edges(from: this_mod_endpoint, imports: module_imports(n: m), source_indices: scope.type_env.source_indices, module_index: module_index),
+      if typed_module.items |> any(item => item.module_item_kind == ModuleItemService) { [service_runtime_surface_edge(from: this_mod_endpoint)] } else { [] },
       rust_use_line_edges_surviving(
-        edges: concat(rendered_imports.edges, reference_plan.edges, rust_use_line_edges(from: this_mod_filename, lines: uncovered_svc_use_lines)),
+        edges: concat(rendered_imports.edges, reference_plan.edges, rust_use_line_edges(from: this_mod_endpoint, lines: uncovered_svc_use_lines)),
         final_lines: concat(merged_import_lines, uncovered_svc_imports)
       )
     ),
@@ -6845,6 +6894,17 @@ fn authored_import_binds_provider_declaration(name: String, import_module: Strin
 // emitted file takes -- measured as EmitterReverseEdge std_content_hash -> v2_std_node over the
 // v2.compiler.compile closure, with no such line in std_content_hash.rs. The edge keeps its typed
 // provenance; this only removes the ones whose target no surviving line names.
+// ONE EDGE PER AUTHORED IMPORT OF AN EMITTED MODULE, NOT FILTERED BY SURVIVING USE-LINES
+// (gunbc.rust_emitted_edge DeclaredImport). An import naming a module outside the emitted closure
+// has no file to path into and returns no edge.
+fn declared_import_edges(from: String, imports: List<Node>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<EmittedEdge> {
+  unique_strings(items: imports |> map(imp => authored_name_at(source_indices: source_indices, node: imp)))
+    |> filter(name => match map_get(module_index.by_name, name) { Present { value: _ } => true  Absent => false })
+    |> map(name => rust_module_emit_filename(module_name: name))
+    |> filter(target => target != from)
+    |> map(target => declared_import_edge(from: from, to_module: target))
+}
+
 fn rust_use_line_edges_surviving(edges: List<EmittedEdge>, final_lines: List<String>) -> List<EmittedEdge> {
   let named = final_lines
     |> map(l => rust_use_after_crate(line: l))
@@ -18019,62 +18079,6 @@ fn emit_cargo_dep(name: String, version: String, features: List<String>) -> Stri
 fn emit_cargo_dep_no_default_features(name: String, version: String, features: List<String>) -> String {
   let feat_strs = features |> map(f => concat("\"", f, "\""))
   concat(name, " = { version = \"", version, "\", default-features = false, features = [", feat_strs |> join(separator: ", "), "] }\n")
-}
-
-// WHAT THE EMITTED CRATE DEPENDS ON IS DERIVED FROM WHAT WAS EMITTED, NOT DECLARED BESIDE IT.
-//
-// A fixed dependency list is a SECOND AUTHORITY for the crate's dependencies, free to disagree
-// with the sources the same run just wrote. It did disagree: `clap` was declared unconditionally
-// while the one thing that renders `use clap` -- the generated pipeline dispatch -- is selected by
-// the emission itself, so every crate emitted without it declared a dependency no emitted line
-// referenced. (A derived CLI over "workflow" functions was the second clap renderer; it is deleted.) DESIGN
-// section 5 prefers construction over validation, and the construction here is to make the demand
-// a FIELD THE EMISSION FILLS rather than a literal a reader must check against the output.
-//
-// THE RESIDUE IS NAMED RATHER THAN CLAIMED CLOSED. `ureq` sits in the base list on the same
-// footing `clap` used to: it is referenced only when a corpus reaches the HTTP extdep, and nothing
-// in this function's inputs says whether it did. It is not conditioned here because inventing a
-// predicate from the emitted TEXT would be a scan standing where a structural fact belongs.
-// NEXT-RUNG TRIGGER: an emission-level demand fact per external crate -- the renderer that emits a
-// `ureq` call recording that it did -- at which point this carrier gains one field per dependency
-// and the base list holds only what every emitted crate genuinely links.
-type EmittedCrateDependencyDemand {
-  renders_clap_cli: Bool
-  renders_async_services: Bool
-}
-
-fn emitted_crate_dependency_lines(demand: EmittedCrateDependencyDemand) -> List<String> {
-  let base_deps = [
-    emit_cargo_dep(name: "im", version: "15.1", features: ["serde"]),
-    emit_cargo_dep(name: "unicode-ident", version: "1", features: []),
-    emit_cargo_dep(name: "unicode-properties", version: "0.1", features: ["emoji"]),
-    emit_cargo_dep(name: "serde", version: "1", features: ["derive", "rc"]),
-    emit_cargo_dep(name: "serde_json", version: "1", features: []),
-    emit_cargo_dep(name: "libc", version: "0.2", features: []),
-    emit_cargo_dep(name: "stacker", version: "0.1", features: []),
-    emit_cargo_dep(name: "lazy_static", version: "1", features: []),
-    emit_cargo_dep(name: "ureq", version: "2", features: ["json"])
-  ]
-  let cli_deps = if demand.renders_clap_cli {
-    [emit_cargo_dep(name: "clap", version: "4", features: ["derive"])]
-  } else { [] }
-  let async_deps = if demand.renders_async_services {
-    [
-      emit_cargo_dep(name: "tokio", version: "1", features: ["full"]),
-      emit_cargo_dep_no_default_features(name: "reqwest", version: "0.12", features: ["json", "rustls-tls", "http2", "charset"]),
-      emit_cargo_dep(name: "async-trait", version: "0.1", features: [])
-    ]
-  } else { [] }
-  concat(base_deps, concat(cli_deps, async_deps))
-}
-
-// The emitted crate always carries v1_rt.rs, so its manifest declares the runtime's features.
-fn emit_cargo_toml(crate_name: String, demand: EmittedCrateDependencyDemand) -> TextFile {
-  let header = concat(render_cargo_package_header_prefix(name: crate_name), "\nedition = \"2021\"\n")
-  let workspace = "\n[workspace]\n"
-  let all_deps = emitted_crate_dependency_lines(demand: demand)
-  let features = emit_cargo_features_section(features: rust_runtime_cargo_features())
-  TextFile { path: "Cargo.toml", content: concat(header, workspace, features, "\n[dependencies]\n", all_deps |> join(separator: "")) }
 }
 
 fn emit_cargo_feature(feature: CargoFeature) -> String {

@@ -30,7 +30,7 @@
 //! in-memory `.dag` source shape a witness already hands `compile_dag_rust_emit_check`, emitted
 //! through the same `compile_sources`, written by the same crate writer, handed to the same cargo
 //! invocation. It exists because a substring oracle over emitted TEXT cannot see a meaning-level
-//! emitter defect, and rustc can. The two routes share `write_probe_crate_files`, `probe_manifest`
+//! emitter defect, and rustc can. The two routes share `write_probe_crate_files`
 //! and `run_cargo` deliberately: a separately authored fixture harness would make a green here and
 //! a green there two facts about two crates.
 //!
@@ -416,19 +416,11 @@ mod entry_own_subject {
     /// what this function used to do, making every roster verdict a statement about the shared
     /// core (see `MutationSubject`).
     pub fn mutation_subject(
-        crate_dir: &Path,
+        module_dir: &Path,
+        declared: &[String],
         entry_module: &str,
     ) -> Result<MutationSubject, MutationSubjectRefusal> {
-        let lib_rs = crate_dir.join("src/lib.rs");
-        let declared = match super::closure_modules(&lib_rs) {
-            Ok(modules) => modules,
-            Err(detail) => {
-                return Err(MutationSubjectRefusal::ClosureManifestUnreadable {
-                    lib_rs: lib_rs.display().to_string(),
-                    detail,
-                })
-            }
-        };
+        let declared = declared.to_vec();
         // DECLARED AND WRITTEN ARE TWO FACTS AND BOTH ARE REQUIRED. A `pub mod` with no file does
         // not compile; a file no `pub mod` reaches is not in the closure. Checking one would admit
         // a subject cargo did not compile, and the fault would prove nothing.
@@ -438,7 +430,7 @@ mod entry_own_subject {
                 declared,
             });
         }
-        let path = crate_dir.join(format!("src/{entry_module}.rs"));
+        let path = module_dir.join(format!("{entry_module}.rs"));
         if !path.is_file() {
             return Err(MutationSubjectRefusal::EntryModuleFileMissing {
                 entry_module: entry_module.to_string(),
@@ -475,10 +467,6 @@ pub fn mutation_subject_name(_subject: &MutationSubject) -> &'static str {
 /// directly, so its RED is authorable (DESIGN 4b).
 #[derive(Debug, Clone)]
 pub enum MutationSubjectRefusal {
-    ClosureManifestUnreadable {
-        lib_rs: String,
-        detail: String,
-    },
     EntryModuleNotDeclared {
         entry_module: String,
         declared: Vec<String>,
@@ -491,11 +479,6 @@ pub enum MutationSubjectRefusal {
 
 pub fn mutation_subject_refusal_summary(refusal: &MutationSubjectRefusal) -> String {
     match refusal {
-        MutationSubjectRefusal::ClosureManifestUnreadable { lib_rs, detail } => format!(
-            "EntryModuleAbsent/ClosureManifestUnreadable lib_rs={lib_rs} detail={detail} — the \
-             emitted crate's own module list could not be read, so the entry's own module can \
-             neither be found nor ruled out; nothing else may carry the fault in its place"
-        ),
         MutationSubjectRefusal::EntryModuleNotDeclared {
             entry_module,
             declared,
@@ -589,6 +572,8 @@ pub enum EmitCompileOutcome {
     Measured {
         entry: String,
         crate_dir: String,
+        /// Where the emitted module files are inside the workspace at `crate_dir`.
+        module_dir: String,
         emitted_files: usize,
         baseline: CargoVerdict,
         mutation: MutationVerdict,
@@ -627,45 +612,13 @@ pub fn emit_compile_outcome_summary(outcome: &EmitCompileOutcome) -> String {
             emitted_files,
             baseline,
             mutation,
+            ..
         } => format!(
             "{entry} Measured files={emitted_files} crate={crate_dir} baseline=[{}] mutation=[{}]",
             cargo_verdict_summary(baseline),
             mutation_verdict_summary(mutation)
         ),
     }
-}
-
-/// Consume the emission's manifest, preserving its dependency and feature demand. The old
-/// foundation-runtime roster omitted dependencies of emitted service drivers (Tokio), so a
-/// successful emission became an unbuildable probe. The host changes only the per-entry package
-/// identity and preserves the emitted crate's original library name for generated main.rs.
-fn probe_manifest(entry: &str, emitted: &str) -> Result<String, String> {
-    let mut manifest: toml::Value =
-        toml::from_str(emitted).map_err(|e| format!("invalid emitted Cargo.toml: {e}"))?;
-    let package = manifest
-        .get_mut("package")
-        .and_then(toml::Value::as_table_mut)
-        .ok_or_else(|| "emitted Cargo.toml has no package table".to_string())?;
-    let original_name = package
-        .get("name")
-        .and_then(toml::Value::as_str)
-        .ok_or_else(|| "emitted Cargo.toml has no package name".to_string())?
-        .to_string();
-    package.insert(
-        "name".to_string(),
-        toml::Value::String(probe_package_name(entry)),
-    );
-    let table = manifest
-        .as_table_mut()
-        .expect("package table belongs to a manifest table");
-    let lib = table
-        .entry("lib")
-        .or_insert_with(|| toml::Value::Table(Default::default()))
-        .as_table_mut()
-        .ok_or_else(|| "emitted Cargo.toml lib is not a table".to_string())?;
-    lib.entry("name")
-        .or_insert(toml::Value::String(original_name.replace('-', "_")));
-    toml::to_string(&manifest).map_err(|e| format!("serialize probe Cargo.toml: {e}"))
 }
 
 /// Where one entry's probe crate is written. Outside the repository: a crate under the workspace
@@ -848,73 +801,58 @@ fn probe_crate_dir(probe_root: &PrivateProbeRoot, entry: &str) -> PathBuf {
     probe_root.join(slug)
 }
 
-/// Write the emitted Rust files plus a manifest, and return the crate directory.
+/// Write the emission as its partitioned Cargo workspace (`cli_run::emitted_crate_workspace_host`
+/// `write_emitted_workspace`, the one writer every emitted-Rust route uses), named for the entry.
 ///
 /// `pub(crate)` for the required-v2-native lane's harness (cli_run::native_lane_runner), which
 /// prepares the emitted-native compiler through this same writer rather than growing a second
-/// one beside it (DESIGN §2 — the note on `write_probe_crate_files` is the argument).
+/// one beside it (DESIGN §2).
 pub(crate) fn write_probe_crate(
     run: &CompileRun,
     probe_root: &PrivateProbeRoot,
     entry: &str,
-) -> Result<(PathBuf, usize), String> {
+) -> Result<crate::cli_run::EmittedWorkspace, String> {
     let emission = run
         .emissions
         .iter()
         .find(|emission| emission.target_name == "rust")
         .ok_or_else(|| "the emission carries no rust target".to_string())?;
-    write_probe_crate_files(&emission.result.files, probe_root, entry)
+    write_probe_crate_files(
+        &emission.result.files,
+        &emission.result.emitted_edges,
+        &emission.result.rust_crates,
+        probe_root,
+        entry,
+    )
 }
 
-/// The crate writer both routes share: emitted files in, a written crate directory out.
+/// The writer both routes share: an emission in, a written workspace out.
 ///
 /// ONE WRITER, TWO CALLERS, AND THE SHARING IS THE POINT (DESIGN §2). The required phase reaches
-/// it through a `CompileRun`'s rust emission; the fixture route reaches it with the files a
-/// virtual source's `compile_sources` produced. A second writer beside this one would let the two
-/// routes disagree about what "the emitted crate" is -- manifest, stale-tree removal, or the
-/// `src/lib.rs` requirement -- so a green on one would stop being evidence about the other.
+/// it through a `CompileRun`'s rust emission; the fixture route reaches it with what a virtual
+/// source's `compile_sources` produced. The workspace directory is per entry and the binary is
+/// named `probe_package_name(entry)`, so entries sharing one target directory never share a binary
+/// path.
 fn write_probe_crate_files(
-    files: &im::Vector<std::rc::Rc<crate::v1_std_core::TextFile>>,
+    files: &std::rc::Rc<im::Vector<std::rc::Rc<crate::v1_std_core::TextFile>>>,
+    edges: &std::rc::Rc<im::Vector<std::rc::Rc<crate::gunbc_rust_emitted_edge::EmittedEdge>>>,
+    rust_crates: &std::rc::Rc<
+        im::Vector<std::rc::Rc<crate::gunbc_rust_emitted_crate::EmittedRustCrate>>,
+    >,
     probe_root: &PrivateProbeRoot,
     entry: &str,
-) -> Result<(PathBuf, usize), String> {
-    let manifests: Vec<_> = files
-        .iter()
-        .filter(|file| file.path == "Cargo.toml")
-        .collect();
-    if manifests.len() != 1 {
-        return Err(format!(
-            "emission must carry exactly one Cargo.toml, observed {}",
-            manifests.len()
-        ));
-    }
-    let manifest = probe_manifest(entry, &manifests[0].content)?;
+) -> Result<crate::cli_run::EmittedWorkspace, String> {
     let dir = probe_crate_dir(probe_root, entry);
     // A STALE TREE IS NOT A SUBJECT. A previous run's bytes under the same slug would let a module
     // deleted from the closure keep compiling, so the directory is removed, not written over.
     let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(dir.join("src"))
-        .map_err(|e| format!("creating {}: {e}", dir.display()))?;
-    let mut written = 0usize;
-    for file in files.iter() {
-        let path = dir.join(&*file.path);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("creating {}: {e}", parent.display()))?;
-        }
-        std::fs::write(&path, &*file.content)
-            .map_err(|e| format!("writing {}: {e}", path.display()))?;
-        written += 1;
-    }
-    if !dir.join("src/lib.rs").is_file() {
-        return Err(format!(
-            "the emission wrote no src/lib.rs into {} — there is no crate root to compile",
-            dir.display()
-        ));
-    }
-    std::fs::write(dir.join("Cargo.toml"), manifest)
-        .map_err(|e| format!("writing the manifest into {}: {e}", dir.display()))?;
-    Ok((dir, written))
+    crate::cli_run::write_emitted_workspace(
+        files,
+        edges,
+        rust_crates,
+        &dir,
+        &probe_package_name(entry),
+    )
 }
 
 /// Run cargo over the probe crate.
@@ -1358,7 +1296,9 @@ pub(crate) fn run_cargo(
     }
 }
 
-/// The rust module basenames the emitted `lib.rs` declares, in its own order.
+/// The rust module basenames the emitted `lib.rs` declares, in its own order -- public or not: a
+/// private `mod` (the host shell's `#[cfg(test)] mod compiler_tests;`) is a module of the crate as
+/// much as a `pub mod` is, and an edge from it is covered by this crate.
 ///
 /// AN UNREADABLE MANIFEST IS RETURNED, NOT RENDERED AS AN EMPTY CLOSURE. An empty vector reads as
 /// `this crate declares no modules`, so a caller would answer `entry module not declared` for a
@@ -1369,8 +1309,9 @@ pub(crate) fn closure_modules(lib_rs: &Path) -> Result<Vec<String>, String> {
     Ok(content
         .lines()
         .filter_map(|line| {
-            line.trim()
-                .strip_prefix("pub mod ")
+            let line = line.trim();
+            line.strip_prefix("pub mod ")
+                .or_else(|| line.strip_prefix("mod "))
                 .and_then(|rest| rest.strip_suffix(';'))
                 .map(|m| m.trim().to_string())
         })
@@ -1399,17 +1340,20 @@ fn unattributed_fault_refusal(red: &CargoVerdict) -> MutationVerdict {
 /// the second control. Several things changing at once would show cargo responds to damage, not
 /// that this instrument reads this closure.
 pub(crate) fn establish_discriminating_red(
-    crate_dir: &Path,
+    workspace: &crate::cli_run::EmittedWorkspace,
     target_dir: &Path,
     entry_module: &str,
 ) -> MutationVerdict {
+    let crate_dir = workspace.root.as_path();
     // NO FALLBACK ARM. A closure missing its own entry module is the finding -- substituting
     // another member would yield `Discriminated` over precisely the broken tree.
-    let subject = match mutation_subject(crate_dir, entry_module) {
+    let subject = match mutation_subject(&workspace.module_dir, &workspace.modules, entry_module) {
         Ok(subject) => subject,
         Err(refusal) => return MutationVerdict::SubjectRefused { refusal },
     };
-    let path = crate_dir.join(format!("src/{}.rs", mutation_subject_rust_module(&subject)));
+    let path = workspace
+        .module_dir
+        .join(format!("{}.rs", mutation_subject_rust_module(&subject)));
     let original = match std::fs::read_to_string(&path) {
         Ok(bytes) => bytes,
         Err(e) => {
@@ -1595,8 +1539,8 @@ pub fn run_emit_compile_entry(
         CompileDisposition::Completed { .. } => {}
     }
 
-    let (crate_dir, emitted_files) = match write_probe_crate(&run, probe_root, entry) {
-        Ok(pair) => pair,
+    let emitted = match write_probe_crate(&run, probe_root, entry) {
+        Ok(emitted) => emitted,
         Err(cause) => {
             return EmitCompileOutcome::CrateNotWritten {
                 entry: entry.to_string(),
@@ -1614,8 +1558,11 @@ pub fn run_emit_compile_entry(
         }
     };
 
+    let crate_dir = emitted.root.clone();
+    let emitted_files = emitted.files.len();
     eprintln!(
-        "emit-compile: {entry} emitted {emitted_files} file(s) into {} — cargo baseline",
+        "emit-compile: {entry} emitted {emitted_files} file(s) into {} crate(s) under {} — cargo baseline",
+        emitted.crate_count,
         crate_dir.display()
     );
     let baseline = run_cargo(&crate_dir, &probe_root.target_dir(), MUTATION_PROBE_SYMBOL);
@@ -1627,7 +1574,7 @@ pub fn run_emit_compile_entry(
     // tree goes red under the fault for a reason the fault did not cause -- a green control
     // wearing a red one's clothes.
     let mutation = if cargo_verdict_compiled(&baseline) {
-        establish_discriminating_red(&crate_dir, &probe_root.target_dir(), &entry_module)
+        establish_discriminating_red(&emitted, &probe_root.target_dir(), &entry_module)
     } else {
         MutationVerdict::NotAttempted {
             reason: format!(
@@ -1641,6 +1588,7 @@ pub fn run_emit_compile_entry(
     EmitCompileOutcome::Measured {
         entry: entry.to_string(),
         crate_dir: crate_dir.display().to_string(),
+        module_dir: emitted.module_dir.display().to_string(),
         emitted_files,
         baseline,
         mutation,
@@ -1843,11 +1791,18 @@ pub(crate) fn fixture_closure_rustc_verdict(
     // The crate slug is the fixture's own emitted module, so two fixtures never share a package
     // name in the shared target directory — the fingerprint-aliasing fail-open `probe_package_name`
     // records for the entry route applies identically here.
-    let (crate_dir, emitted_files) =
-        match write_probe_crate_files(&result.files, probe_root, &rust_module) {
-            Ok(pair) => pair,
-            Err(cause) => return FixtureClosureOutcome::CrateNotWritten { cause },
-        };
+    let emitted = match write_probe_crate_files(
+        &result.files,
+        &result.emitted_edges,
+        &result.rust_crates,
+        probe_root,
+        &rust_module,
+    ) {
+        Ok(emitted) => emitted,
+        Err(cause) => return FixtureClosureOutcome::CrateNotWritten { cause },
+    };
+    let crate_dir = emitted.root.clone();
+    let emitted_files = emitted.files.len();
     eprintln!(
         "fixture-closure: {rust_module} emitted {emitted_files} file(s) into {} — cargo",
         crate_dir.display()
@@ -2421,23 +2376,14 @@ pub(crate) fn fixture_arm_diagnostic_lines(
 /// from its own closure, so an emit-stage diagnostic reachable only from ITS entry is invisible.
 /// Splitting the two numerators is strictly better and not done here.
 pub fn emit_compile_modules_reached(outcomes: &[EmitCompileOutcome]) -> usize {
-    // `src/lib.rs` IS NOT DEDUPLICABLE BY NAME, AND UNIONING IT WOULD UNDER-COUNT. Each entry's
-    // root module is written as `lib.rs` (the compiler refuses a crate without one), so every
-    // entry contributes a DIFFERENT root under the SAME name; unioning would collapse N roots into
-    // one, a numerator shrinking as the cover grows. Roots are counted per measured entry and
-    // dependency modules unioned by name.
+    // Every emitted module, the entry's own included, is a file named for its module in the
+    // workspace's module directory, so modules are unioned by name across entries.
     let mut reached: Vec<String> = Vec::new();
-    let mut roots = 0usize;
     for outcome in outcomes {
-        if let EmitCompileOutcome::Measured { crate_dir, .. } = outcome {
-            let src = std::path::Path::new(crate_dir).join("src");
-            if let Ok(entries) = std::fs::read_dir(&src) {
-                roots += 1;
+        if let EmitCompileOutcome::Measured { module_dir, .. } = outcome {
+            if let Ok(entries) = std::fs::read_dir(module_dir) {
                 for entry in entries.flatten() {
                     if let Some(name) = entry.file_name().to_str() {
-                        if name == "lib.rs" {
-                            continue;
-                        }
                         reached.push(name.to_string());
                     }
                 }
@@ -2446,7 +2392,7 @@ pub fn emit_compile_modules_reached(outcomes: &[EmitCompileOutcome]) -> usize {
     }
     reached.sort();
     reached.dedup();
-    reached.len() + roots
+    reached.len()
 }
 
 /// THE SELECTION, WITH ITS REMAINDER CARRIED AT IDENTITY GRAIN.
@@ -3151,61 +3097,24 @@ mod tests {
         assert_eq!(cargo_verdict_summary(&green), "Completed status=0");
     }
 
-    #[test]
-    fn manifest_preserves_emitted_dependency_demand() {
-        use crate::v1_compiler_emit_rust::{emit_cargo_toml, EmittedCrateDependencyDemand};
-        for asynchronous in [false, true] {
-            let emitted = emit_cargo_toml(
-                "v1_compiled".to_string(),
-                EmittedCrateDependencyDemand {
-                    renders_clap_cli: false,
-                    renders_async_services: asynchronous,
-                },
-            );
-            let manifest = probe_manifest("dag/std/logic.dag", &emitted.content).expect("manifest");
-            let original: toml::Value = toml::from_str(&emitted.content).unwrap();
-            let probe: toml::Value = toml::from_str(&manifest).unwrap();
-            assert_eq!(probe["dependencies"], original["dependencies"]);
-            assert_eq!(probe["features"], original["features"]);
-            assert_eq!(probe["package"]["version"], original["package"]["version"]);
-            assert_eq!(
-                probe["package"]["name"].as_str(),
-                Some("gunbc-emitted-closure-dag-std-logic-dag")
-            );
-            assert_eq!(probe["lib"]["name"].as_str(), Some("v1_compiled"));
-            assert_eq!(probe["dependencies"].get("tokio").is_some(), asynchronous);
-            assert!(probe["dependencies"].get("v1-compiler").is_none());
-            assert!(!manifest.contains("src/v1"));
-        }
-    }
-
-    #[test]
-    fn manifest_refuses_missing_or_malformed_package_identity() {
-        for manifest in [
-            "",
-            "[dependencies]",
-            "[package]",
-            "[package]\nname = 42",
-            "not toml",
-        ] {
-            assert!(probe_manifest("entry.dag", manifest).is_err());
-        }
-    }
-
-    /// One emitted crate on disk, authored by the caller, so each test states the shape it means.
-    fn probe_tree(tag: &str, lib_rs: &str, files: &[&str]) -> PathBuf {
+    /// One emitted module directory on disk, authored by the caller, so each test states the
+    /// shape it means: the modules the workspace's top package declares, and the files written.
+    fn probe_tree(tag: &str, files: &[&str]) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
             "emit_compile_{tag}_{}_{:?}",
             std::process::id(),
             std::thread::current().id()
         ));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("src")).expect("src");
-        std::fs::write(dir.join("src/lib.rs"), lib_rs).expect("lib");
+        std::fs::create_dir_all(&dir).expect("module dir");
         for file in files {
-            std::fs::write(dir.join(format!("src/{file}.rs")), "// emitted\n").expect("member");
+            std::fs::write(dir.join(format!("{file}.rs")), "// emitted\n").expect("member");
         }
         dir
+    }
+
+    fn declared(modules: &[&str]) -> Vec<String> {
+        modules.iter().map(|m| m.to_string()).collect()
     }
 
     /// THE SUBJECT IS THE ENTRY'S OWN MODULE EVEN WHEN A SHARED MEMBER IS DECLARED FIRST.
@@ -3215,12 +3124,12 @@ mod tests {
     /// -- a verdict about the shared core wearing this entry's name.
     #[test]
     fn the_subject_is_the_entry_own_module_past_a_leading_shared_member() {
+        let decl = declared(&["std_error_primitives", "v2_std_node", "v1_rt"]);
         let dir = probe_tree(
             "shared_first",
-            "pub mod std_error_primitives;\npub mod v2_std_node;\npub mod v1_rt;\n",
             &["std_error_primitives", "v2_std_node", "v1_rt"],
         );
-        let subject = mutation_subject(&dir, "v2_std_node").expect("the entry's own module");
+        let subject = mutation_subject(&dir, &decl, "v2_std_node").expect("the entry's own module");
         assert_eq!(mutation_subject_rust_module(&subject), "v2_std_node");
         assert_eq!(mutation_subject_name(&subject), "EntryOwnModule");
         let _ = std::fs::remove_dir_all(&dir);
@@ -3231,12 +3140,9 @@ mod tests {
     /// module -- picks `v1_rt`, the emitted runtime, in all 8, strictly more shared.
     #[test]
     fn the_subject_is_the_entry_own_module_when_it_is_declared_first() {
-        let dir = probe_tree(
-            "entry_first",
-            "pub mod std_logic;\npub mod v1_rt;\n",
-            &["std_logic", "v1_rt"],
-        );
-        let subject = mutation_subject(&dir, "std_logic").expect("the entry's own module");
+        let decl = declared(&["std_logic", "v1_rt"]);
+        let dir = probe_tree("entry_first", &["std_logic", "v1_rt"]);
+        let subject = mutation_subject(&dir, &decl, "std_logic").expect("the entry's own module");
         assert_eq!(mutation_subject_rust_module(&subject), "std_logic");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -3248,12 +3154,9 @@ mod tests {
     /// dependency of the missing root and nothing references it back.
     #[test]
     fn an_entry_module_missing_from_the_closure_refuses_rather_than_substituting() {
-        let dir = probe_tree(
-            "entry_dropped",
-            "pub mod std_error_primitives;\npub mod v1_rt;\n",
-            &["std_error_primitives", "v1_rt"],
-        );
-        let refusal = mutation_subject(&dir, "v2_std_node").expect_err("no substitution");
+        let decl = declared(&["std_error_primitives", "v1_rt"]);
+        let dir = probe_tree("entry_dropped", &["std_error_primitives", "v1_rt"]);
+        let refusal = mutation_subject(&dir, &decl, "v2_std_node").expect_err("no substitution");
         match &refusal {
             MutationSubjectRefusal::EntryModuleNotDeclared {
                 entry_module,
@@ -3276,35 +3179,12 @@ mod tests {
     /// defect, not an emission one, and it gets its own refusal for that reason.
     #[test]
     fn an_entry_module_declared_without_a_file_refuses_as_a_write_defect() {
-        let dir = probe_tree(
-            "entry_unwritten",
-            "pub mod v2_std_node;\npub mod v1_rt;\n",
-            &["v1_rt"],
-        );
-        let refusal = mutation_subject(&dir, "v2_std_node").expect_err("no substitution");
+        let decl = declared(&["v2_std_node", "v1_rt"]);
+        let dir = probe_tree("entry_unwritten", &["v1_rt"]);
+        let refusal = mutation_subject(&dir, &decl, "v2_std_node").expect_err("no substitution");
         assert!(matches!(
             refusal,
             MutationSubjectRefusal::EntryModuleFileMissing { .. }
-        ));
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    /// AN UNREADABLE MANIFEST IS NOT AN EMPTY CLOSURE. Rendering it as one reports the EMISSION
-    /// arm -- `the entry's own module is not declared` -- for a crate nobody read, sending the
-    /// reader to the emitter over a filesystem fault.
-    #[test]
-    fn an_unreadable_closure_manifest_refuses_on_its_own_cause() {
-        let dir = std::env::temp_dir().join(format!(
-            "emit_compile_no_manifest_{}_{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("src")).expect("src");
-        let refusal = mutation_subject(&dir, "v2_std_node").expect_err("no manifest, no subject");
-        assert!(matches!(
-            refusal,
-            MutationSubjectRefusal::ClosureManifestUnreadable { .. }
         ));
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -3410,21 +3290,6 @@ mod tests {
             std::thread::current().id()
         ));
         let _ = std::fs::remove_dir_all(&base);
-        let tree = |marker: &str| -> im::Vector<std::rc::Rc<crate::v1_std_core::TextFile>> {
-            im::vector![
-                std::rc::Rc::new(crate::v1_std_core::TextFile {
-                    path: "src/lib.rs".to_string(),
-                    content: format!("// emitted by run {marker}\n"),
-                }),
-                crate::v1_compiler_emit_rust::emit_cargo_toml(
-                    "v1_compiled".to_string(),
-                    crate::v1_compiler_emit_rust::EmittedCrateDependencyDemand {
-                        renders_clap_cli: false,
-                        renders_async_services: false,
-                    }
-                )
-            ]
-        };
         let first = create_private_probe_root(&base).expect("the first run creates its root");
         let second = create_private_probe_root(&base).expect("the second run creates its root");
         assert_ne!(
@@ -3438,12 +3303,18 @@ mod tests {
             "two runs must not build, hash or spawn one executable path"
         );
 
-        let (first_crate, _) = write_probe_crate_files(&tree("A"), &first, "v2.compiler.compile")
-            .expect("the first run writes its tree");
-        write_probe_crate_files(&tree("B"), &second, "v2.compiler.compile")
-            .expect("the second run writes its tree");
+        // Each run writes its tree where the writer names an entry's workspace in its own root.
+        let write = |root: &PrivateProbeRoot, marker: &str| -> PathBuf {
+            let dir = probe_crate_dir(root, "v2.compiler.compile");
+            std::fs::create_dir_all(&dir).expect("the run creates its workspace");
+            std::fs::write(dir.join("marker"), format!("// emitted by run {marker}\n"))
+                .expect("the run writes its tree");
+            dir
+        };
+        let first_crate = write(&first, "A");
+        write(&second, "B");
         assert_eq!(
-            std::fs::read_to_string(first_crate.join("src/lib.rs")).expect("read back"),
+            std::fs::read_to_string(first_crate.join("marker")).expect("read back"),
             "// emitted by run A\n",
             "the first run must read the tree it wrote, not the second run's"
         );
@@ -3659,6 +3530,7 @@ error: could not compile `probe` (lib) due to 1 previous error
             let outcome = EmitCompileOutcome::Measured {
                 entry: "e.dag".to_string(),
                 crate_dir: "/tmp/x".to_string(),
+                module_dir: "/tmp/x/src/v1/stage0/src".to_string(),
                 emitted_files: 1,
                 baseline: green.clone(),
                 mutation,
@@ -3674,11 +3546,13 @@ error: could not compile `probe` (lib) due to 1 previous error
         // privacy boundary turned that into a COMPILE ERROR (`E0451: field rust_module is
         // private`) -- executed evidence the wall is structural, since module-scoped privacy
         // beside the constructor would have left the literal compiling.
-        let dir = probe_tree("passing_subject", "pub mod std_logic;\n", &["std_logic"]);
-        let subject = mutation_subject(&dir, "std_logic").expect("the entry's own module");
+        let decl = declared(&["std_logic"]);
+        let dir = probe_tree("passing_subject", &["std_logic"]);
+        let subject = mutation_subject(&dir, &decl, "std_logic").expect("the entry's own module");
         let discriminated = EmitCompileOutcome::Measured {
             entry: "e.dag".to_string(),
             crate_dir: "/tmp/x".to_string(),
+            module_dir: "/tmp/x/src/v1/stage0/src".to_string(),
             emitted_files: 1,
             baseline: green,
             mutation: MutationVerdict::Discriminated {

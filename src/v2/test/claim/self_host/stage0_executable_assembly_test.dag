@@ -1,5 +1,7 @@
 module v2.test.claim.self_host.stage0_executable_assembly_test
 
+import gunbc.crate_partition { Stage0FoundationCrate, Stage0LayeredCoreCrate, Stage0PartitionCrateRow }
+
 import std.types { List }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.compiler.self_host.stage0_executable_assembly {
@@ -38,14 +40,7 @@ import v2.compiler.self_host.seed_retention_frontier {
   SeedRetainedIntrinsicSource,
   retained_reason_undeclared
 }
-import v2.workflow.rust_crate_partition {
-  Stage0FoundationCrate,
-  Stage0LayeredCoreCrate,
-  Stage0PartitionCrateRow,
-  stage0_module_bearing_crate_rows,
-  stage0_unit_runtime,
-  stage0_unit_std_core
-}
+import v2.workflow.rust_crate_partition { stage0_module_bearing_crate_rows, stage0_unit_runtime, stage0_unit_std_core }
 import v2.std.algebra { any, length }
 import v2.std.text { String }
 

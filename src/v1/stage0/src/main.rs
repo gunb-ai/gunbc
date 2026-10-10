@@ -278,6 +278,11 @@ enum OutputWriteRefusal {
         path: String,
         cause: String,
     },
+    /// A Rust emission is written as its partitioned Cargo workspace, and the writer refused.
+    WorkspaceNotWritten {
+        path: String,
+        cause: String,
+    },
 }
 
 impl std::fmt::Display for OutputWriteRefusal {
@@ -298,6 +303,12 @@ impl std::fmt::Display for OutputWriteRefusal {
             }
             Self::FileNotWritten { path, cause } => {
                 write!(f, "could not write {path}: {cause}")
+            }
+            Self::WorkspaceNotWritten { path, cause } => {
+                write!(
+                    f,
+                    "could not write the emitted Rust workspace at {path}: {cause}"
+                )
             }
         }
     }
@@ -329,6 +340,29 @@ fn write_output_files(
     output_dir: &str,
     result: &v1_compiler::v1_compiler_compile::PipelineResult,
 ) -> Result<(), OutputWriteRefusal> {
+    // A RUST EMISSION NAMES ITS CRATE AND OWNS NO MANIFEST: its layout is the partition plan's,
+    // written by the one workspace writer every emitted-Rust route uses. The top package sits at
+    // `output_dir`, so a reader finds Cargo.toml, src/lib.rs and src/main.rs where a crate is.
+    if let (1, Some(rust_crate)) = (result.rust_crates.len(), result.rust_crates.front()) {
+        if let Err(e) = std::fs::create_dir_all(output_dir) {
+            return Err(OutputWriteRefusal::OutputDirectoryNotCreated {
+                path: output_dir.to_string(),
+                cause: e.to_string(),
+            });
+        }
+        return v1_compiler::cli_run::write_emitted_workspace(
+            &result.files,
+            &result.emitted_edges,
+            &result.rust_crates,
+            std::path::Path::new(output_dir),
+            &rust_crate.crate_name,
+        )
+        .map(|_| ())
+        .map_err(|cause| OutputWriteRefusal::WorkspaceNotWritten {
+            path: output_dir.to_string(),
+            cause,
+        });
+    }
     let src_dir = format!("{}/src", output_dir);
     if let Err(e) = std::fs::create_dir_all(&src_dir) {
         return Err(OutputWriteRefusal::OutputDirectoryNotCreated {

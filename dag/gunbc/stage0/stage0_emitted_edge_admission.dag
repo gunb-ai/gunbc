@@ -8,7 +8,10 @@ import gunbc.rust_emitted_edge {
   EmittedCrateRootTarget,
   RuntimePrelude,
   ReexportFacade,
-  SemanticSourceReference
+  SemanticSourceReference,
+  DeclaredImport,
+  InlinePathReference,
+  ServiceRuntimeSurface
 }
 import gunbc.stage0_crate_partition_generated { GeneratedPartitionCrateRow }
 import gunbc.stage0_partition_package_graph {
@@ -194,6 +197,9 @@ fn stage0_emitted_edge_provenance_name(provenance: EmittedEdgeProvenance) -> Str
     RuntimePrelude => "runtime-prelude"
     ReexportFacade => "reexport-facade"
     SemanticSourceReference => "semantic-source-reference"
+    DeclaredImport => "declared-import"
+    InlinePathReference => "inline-path-reference"
+    ServiceRuntimeSurface => "service-runtime-surface"
   }
 }
 

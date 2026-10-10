@@ -1,0 +1,487 @@
+module gunbc.emitted_crate_workspace
+
+import gunbc.crate_partition {
+  EmittedEdgeRefusal,
+  PartitionPolicy,
+  PolicyPartitionParam,
+  ResolvePartitionOk,
+  ResolvePartitionRefused,
+  ResolvePartitionRefusalCause,
+  EmitterReverseEdge,
+  EmittedEdgeEndpointOutsideDag,
+  PolicyTargetCountNotPositive,
+  AssignmentOmitsModule,
+  AssignmentNamesModuleOutsideDag,
+  PartitionRustAdmissibilityRefused,
+  PartitionEmittedEdgeRefused,
+  Stage0FoundationCrate,
+  Stage0LayeredCoreCrate,
+  Stage0PartitionCrateRow,
+  UnitDepEdge,
+  DerivedDepPackagesOk,
+  DerivedDepPackagesUnitHasNoRow,
+  derived_dep_packages,
+  unit_dep_closure,
+  unit_direct_deps,
+  CompilationUnitId,
+  ModuleDagEdge,
+  ModuleId,
+  list_unique_sorted_ids,
+  EmittedEdgesMerged,
+  EmittedEdgesRefused,
+  assignment_unit_dep_edges_over,
+  crate_partition_declared_core_target,
+  merge_emitted_edges,
+  resolve_partition_over,
+  EmittedEdgesMerge
+}
+
+import std.types { List, String, Bool, Int, NonEmptyStr }
+import std.optional { Absent, Optional, Present, optional_present }
+import extdeps.cargo { Bin, cargo_target_source_path }
+import gunbc.rust_emitted_edge {
+  EmittedEdge,
+  EmittedModuleTarget,
+  EmittedCrateRootTarget,
+  RuntimePrelude,
+  ReexportFacade,
+  SemanticSourceReference,
+  DeclaredImport,
+  InlinePathReference,
+  ServiceRuntimeSurface,
+  rust_module_emit_filename,
+  rust_runtime_prelude_module
+}
+import gunbc.stage0_crate_partition_generated {
+  GeneratedPartitionCrateRow,
+  GeneratedFoundationCrate,
+  GeneratedLayeredCoreCrate,
+  GeneratedFacadeCrate
+}
+
+// THE EMITTED COMPILER CLOSURE AS A CARGO WORKSPACE, DERIVED (Pkg7d render, Pkg7e build).
+//
+// Every fact here is derived from the EMISSION, and none is read from the committed stage0 rows or
+// from a corpus: the module graph is the emitted basenames with their source edges -- declared
+// imports and inline paths (emitted_workspace_merged_edges); the emitter's other edges
+// (gunbc.rust_emitted_edge, returned beside the text) are merged against them with the typed
+// reverse-edge refusal; the balanced policy
+// assigns modules to units; and each unit's dependency packages are the TRANSITIVE CLOSURE of the
+// unit dep edges the assignment induces (gunbc.crate_partition derived_dep_packages, the #12035
+// derivation). The rows produced here have the shape v1.compiler.stage0_crates renders, so the
+// manifests and lib.rs files come from the one partition renderer, not a second one. The plan is
+// pure over its arguments, which is what lets the seed call it compiled (v1.compiler.emitted_workspace)
+// rather than interpret it over a source tree on every emission.
+//
+// WHAT THE FACADE PROVES AND WHAT IT DOES NOT. A layered crate's lib.rs re-exports every package in
+// its transitive dependency closure as `pub use <ident>::*;`, which is how an emitted
+// `crate::<module>::` path resolves in a crate that does not own the module. That is an
+// OVER-APPROXIMATION of the direct edges: re-exporting only direct dependencies is the next rung
+// (gunbc.guarantee_stall emitted_inline_crate_path_edges_unreturned_stall). The plan reports
+// whether the facade degenerates to the whole closure (facade_is_whole_closure) so a green over that
+// degenerate case is never read as a partition.
+
+type EmittedWorkspaceRefusal
+  = EmittedWorkspaceEdgeMergeRefused { cause: EmittedEdgeRefusal }
+  | EmittedWorkspacePartitionRefused { cause: ResolvePartitionRefusalCause }
+  | EmittedWorkspaceUnitHasNoRow { unit_id: CompilationUnitId }
+  | EmittedWorkspaceNoDiscriminatingEdge
+
+// The one crate dependency the RED drops: a direct unit dep edge in the TRANSITIVE REDUCTION (no
+// other dependency of the source crate reaches the target, so no glob facade can re-export it by
+// another road) that the emitter also wrote as a use-line from a source-crate module into a
+// target-crate module, so rustc has a path that must stop resolving.
+type EmittedWorkspaceRedDrop {
+  package: String
+  dropped_package: String
+  from_module: String
+  to_module: String
+}
+
+// The layout is the production fact; the RED is the instrument's discriminator over it. A closure
+// with one module-bearing crate has no cross-crate edge to drop, so `red` is Absent there and the
+// layout is still a valid workspace. Only `emitted_workspace_red_over` refuses that absence.
+type EmittedWorkspacePlan {
+  rows: List<GeneratedPartitionCrateRow>
+  red: Optional<EmittedWorkspaceRedDrop>
+  module_count: Int
+  crate_count: Int
+  facade_is_whole_closure: Bool
+}
+
+type EmittedWorkspaceRedOutcome
+  = EmittedWorkspaceRedPlanned { red: EmittedWorkspaceRedDrop, red_rows: List<GeneratedPartitionCrateRow> }
+  | EmittedWorkspaceRedRefused { cause: EmittedWorkspaceRefusal }
+
+// The instrument's RED: the layout with one irredundant crate dependency dropped. Refuses when the
+// layout has no cross-crate edge rustc must stop resolving.
+fn emitted_workspace_red_over(plan: EmittedWorkspacePlan) -> EmittedWorkspaceRedOutcome {
+  match plan.red {
+    Absent => EmittedWorkspaceRedRefused { cause: EmittedWorkspaceNoDiscriminatingEdge }
+    Present { value: red } => EmittedWorkspaceRedPlanned { red: red, red_rows: emitted_workspace_red_rows(rows: plan.rows, red: red) }
+  }
+}
+
+type EmittedWorkspaceOutcome
+  = EmittedWorkspacePlanned { plan: EmittedWorkspacePlan }
+  | EmittedWorkspaceRefused { cause: EmittedWorkspaceRefusal }
+
+data emitted_workspace_runtime_package: String = "v2-emitted-runtime"
+
+// The module graph an emission partitions over: its module basenames and source edges.
+type EmittedModuleGraph {
+  modules: List<ModuleId>
+  edges: List<ModuleDagEdge>
+}
+
+fn emitted_workspace_package(unit_id: CompilationUnitId) -> String {
+  concat("v2-emitted-", unit_id as String)
+}
+
+fn emitted_workspace_crate_dir(package: String) -> String {
+  concat("src/v1/", package)
+}
+
+fn emitted_workspace_lookup(m: Map<String, String>, key: String) -> Optional<String> {
+  map_get(m, key)
+}
+
+// The runtime is a FIXED foundation crate every unit depends on, so the policy partitions the
+// closure without it: an edge into the runtime is a dependency on the runtime package, never a
+// reason to place a closure module beside it.
+fn emitted_workspace_without_runtime(graph: EmittedModuleGraph) -> EmittedModuleGraph {
+  EmittedModuleGraph {
+    modules: graph.modules |> filter(m => (m as String) != rust_runtime_prelude_module),
+    edges: graph.edges |> filter(e => (e.from as String) != rust_runtime_prelude_module && (e.to as String) != rust_runtime_prelude_module)
+  }
+}
+
+fn emitted_workspace_unit_rows(modules: List<ModuleId>, assignment: Map<ModuleId, CompilationUnitId>, unit_ids: List<CompilationUnitId>) -> List<Stage0PartitionCrateRow> {
+  unit_ids |> map(unit_id => {
+    let package = emitted_workspace_package(unit_id: unit_id)
+    Stage0PartitionCrateRow {
+      unit_id: unit_id,
+      package_name: package,
+      crate_dir: emitted_workspace_crate_dir(package: package),
+      kind: Stage0LayeredCoreCrate,
+      modules: modules |> filter(m => match map_get(assignment, m) {
+          Present { value: u } => u == unit_id
+          Absent => false
+        }) |> map(m => m as String) |> sort_by(m => m),
+      reexport_packages: [],
+      carries_non_empty_wrappers: false
+    }
+  })
+}
+
+fn emitted_workspace_generated_row(row: Stage0PartitionCrateRow, reexports: List<String>) -> GeneratedPartitionCrateRow {
+  GeneratedPartitionCrateRow {
+    package_name: row.package_name,
+    crate_dir: row.crate_dir,
+    kind: GeneratedLayeredCoreCrate,
+    modules: row.modules,
+    reexport_packages: reexports,
+    carries_non_empty_wrappers: false
+  }
+}
+
+fn emitted_workspace_runtime_row() -> GeneratedPartitionCrateRow {
+  GeneratedPartitionCrateRow {
+    package_name: emitted_workspace_runtime_package,
+    crate_dir: emitted_workspace_crate_dir(package: emitted_workspace_runtime_package),
+    kind: GeneratedFoundationCrate,
+    modules: [rust_runtime_prelude_module],
+    reexport_packages: [],
+    carries_non_empty_wrappers: true
+  }
+}
+
+type DerivedRowsBuild
+  = DerivedRowsOk { rows: List<GeneratedPartitionCrateRow> }
+  | DerivedRowsRefused { cause: EmittedWorkspaceRefusal }
+
+fn emitted_workspace_derived_rows(unit_rows: List<Stage0PartitionCrateRow>, unit_edges: List<UnitDepEdge>) -> DerivedRowsBuild {
+  unit_rows |> fold(init: DerivedRowsOk { rows: [emitted_workspace_runtime_row()] }, f: fn(acc, row) {
+    match acc {
+      DerivedRowsRefused { cause: c } => DerivedRowsRefused { cause: c }
+      DerivedRowsOk { rows: rows } =>
+        match derived_dep_packages(edges: unit_edges, rows: unit_rows, row: row) {
+          DerivedDepPackagesUnitHasNoRow { unit_id: u } => DerivedRowsRefused { cause: EmittedWorkspaceUnitHasNoRow { unit_id: u } }
+          DerivedDepPackagesOk { packages: packages } =>
+            DerivedRowsOk {
+              rows: rows |> list_push(emitted_workspace_generated_row(
+                row: row,
+                reexports: concat([emitted_workspace_runtime_package], packages |> sort_by(p => p))
+              ))
+            }
+        }
+    }
+  })
+}
+
+fn emitted_workspace_unit_of(assignment: Map<ModuleId, CompilationUnitId>, module: String) -> Optional<CompilationUnitId> {
+  map_get(assignment, module as ModuleId)
+}
+
+// An edge (from_unit -> to_unit) of the unit graph is in the TRANSITIVE REDUCTION when no OTHER
+// direct dependency of from_unit reaches to_unit. Only such an edge can be dropped without another
+// crate's glob facade re-exporting the target by a second road.
+fn emitted_workspace_edge_is_irredundant(unit_edges: List<UnitDepEdge>, from_unit: CompilationUnitId, to_unit: CompilationUnitId) -> Bool {
+  let others = unit_direct_deps(edges: unit_edges, unit_id: from_unit) |> filter(d => d != to_unit)
+  !(unit_dep_closure(edges: unit_edges, acc: others, fuel: (unit_edges |> count) + 1) |> any(u => u == to_unit))
+}
+
+fn emitted_workspace_red(
+  edges: List<EmittedEdge>,
+  assignment: Map<ModuleId, CompilationUnitId>,
+  unit_edges: List<UnitDepEdge>
+) -> Optional<EmittedWorkspaceRedDrop> {
+  edges |> fold(init: Absent, f: fn(acc, edge) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match edge.provenance {
+          SemanticSourceReference =>
+            match edge.to {
+              EmittedCrateRootTarget => Absent
+              EmittedModuleTarget { module: to_module } =>
+                match emitted_workspace_unit_of(assignment: assignment, module: edge.from) {
+                  Absent => Absent
+                  Present { value: from_unit } =>
+                    match emitted_workspace_unit_of(assignment: assignment, module: to_module) {
+                      Absent => Absent
+                      Present { value: to_unit } =>
+                        if from_unit != to_unit && emitted_workspace_edge_is_irredundant(unit_edges: unit_edges, from_unit: from_unit, to_unit: to_unit) {
+                          optional_present(
+                            value: EmittedWorkspaceRedDrop {
+                              package: emitted_workspace_package(unit_id: from_unit),
+                              dropped_package: emitted_workspace_package(unit_id: to_unit),
+                              from_module: edge.from,
+                              to_module: to_module
+                            }
+                          )
+                        } else { Absent }
+                    }
+                }
+            }
+          RuntimePrelude => Absent
+          ReexportFacade => Absent
+          DeclaredImport => Absent
+          InlinePathReference => Absent
+          ServiceRuntimeSurface => Absent
+        }
+    }
+  })
+}
+
+fn emitted_workspace_red_rows(rows: List<GeneratedPartitionCrateRow>, red: EmittedWorkspaceRedDrop) -> List<GeneratedPartitionCrateRow> {
+  rows |> map(row =>
+    if row.package_name == red.package {
+      GeneratedPartitionCrateRow {
+        package_name: row.package_name,
+        crate_dir: row.crate_dir,
+        kind: row.kind,
+        modules: row.modules,
+        reexport_packages: row.reexport_packages |> filter(p => p != red.dropped_package),
+        carries_non_empty_wrappers: row.carries_non_empty_wrappers
+      }
+    } else { row }
+  )
+}
+
+fn emitted_workspace_facade_is_whole_closure(rows: List<GeneratedPartitionCrateRow>) -> Bool {
+  let layered = rows |> filter(r => r.package_name != emitted_workspace_runtime_package)
+  layered |> all(r => (r.reexport_packages |> count) == (rows |> count) - 1)
+}
+
+// THE SOURCE EDGES OF AN EMISSION are its declared imports and the inline paths its renderers wrote
+// for resolved references (gunbc.rust_emitted_edge DeclaredImport, InlinePathReference); every
+// other returned edge is the emitter's.
+fn emitted_workspace_is_source_edge(edge: EmittedEdge) -> Bool {
+  match edge.provenance {
+    DeclaredImport => true
+    InlinePathReference => true
+    RuntimePrelude => false
+    ReexportFacade => false
+    SemanticSourceReference => false
+    ServiceRuntimeSurface => false
+  }
+}
+
+// The modules an emission partitions over are the basenames it wrote; its edges are merged in by
+// emitted_workspace_merged_edges.
+fn emitted_workspace_emission_graph(emitted_basenames: List<String>) -> EmittedModuleGraph {
+  EmittedModuleGraph { modules: emitted_basenames |> map(b => b as ModuleId), edges: [] }
+}
+
+// THE PRODUCTION PLAN: the layout of ANY emission, read from the emission alone -- its module
+// basenames and its returned edges -- with no corpus scan, so a fixture's virtual closure and the
+// emitted compiler partition by one route.
+fn emitted_workspace_plan_from_emission(
+  emitted_basenames: List<String>,
+  edges: List<EmittedEdge>,
+  target_crate_count: Int
+) -> EmittedWorkspaceOutcome {
+  emitted_workspace_plan_over_graph(
+    graph: emitted_workspace_emission_graph(emitted_basenames: emitted_basenames),
+    edges: edges,
+    target_crate_count: target_crate_count
+  )
+}
+
+// THE BUILDABLE WORKSPACE OF AN EMISSION: its layout plus the TOP PACKAGE the emitted main paths
+// through. The emitter names that package (gunbc.rust_emitted_crate EmittedRustCrate crate_name)
+// and its main.rs reaches the library as `<crate_name>::<module>::`, so the top package is a
+// facade (v1.compiler.stage0_crates render_partition_facade_lib_outcome) over every module of the layout -- `pub mod m { pub use <owner>::m::*; }` --
+// and the binary is a target of that package, at the workspace root. The registry dependencies are not the plan's: they
+// are the emission's demand (v1.compiler.stage0_crates emitted_crate_dependencies), which the
+// renderer reads straight from the emission. The binary's name is the caller's (one target
+// directory serves several entries, so each names its own), and its source path is Cargo's
+// convention for that name (extdeps.cargo cargo_target_source_path), never a path chosen here.
+type EmittedWorkspaceBuild {
+  layout: EmittedWorkspacePlan
+  rows: List<GeneratedPartitionCrateRow>
+  top_package: String
+  bin_name: String
+  bin_source_path: String
+}
+
+type EmittedWorkspaceBuildOutcome
+  = EmittedWorkspaceBuildPlanned { build: EmittedWorkspaceBuild }
+  | EmittedWorkspaceBuildRefused { cause: EmittedWorkspaceRefusal }
+
+// THE TOP PACKAGE IS THE WORKSPACE ROOT. A reader of an emitted workspace -- a harness appending its
+// own targets, a build reading the binary -- finds the package the emitted main paths through
+// where a single crate used to be: Cargo.toml, src/lib.rs and src/main.rs at the root, with the
+// partition crates beneath it under src/v1/.
+data emitted_workspace_root_crate_dir: String = "."
+
+fn emitted_workspace_top_row(crate_name: String, layout_rows: List<GeneratedPartitionCrateRow>) -> GeneratedPartitionCrateRow {
+  GeneratedPartitionCrateRow {
+    package_name: crate_name,
+    crate_dir: emitted_workspace_root_crate_dir,
+    kind: GeneratedFacadeCrate,
+    modules: layout_rows |> flat_map(r => r.modules),
+    reexport_packages: [],
+    carries_non_empty_wrappers: false
+  }
+}
+
+fn emitted_workspace_build_from_emission(
+  emitted_basenames: List<String>,
+  edges: List<EmittedEdge>,
+  target_crate_count: Int,
+  crate_name: String,
+  bin_name: String
+) -> EmittedWorkspaceBuildOutcome {
+  match emitted_workspace_plan_from_emission(
+    emitted_basenames: emitted_basenames,
+    edges: edges,
+    target_crate_count: target_crate_count
+  ) {
+    EmittedWorkspaceRefused { cause: c } => EmittedWorkspaceBuildRefused { cause: c }
+    EmittedWorkspacePlanned { plan: layout } => {
+      let top = emitted_workspace_top_row(crate_name: crate_name, layout_rows: layout.rows)
+      EmittedWorkspaceBuildPlanned {
+        build: EmittedWorkspaceBuild {
+          layout: layout,
+          rows: concat(layout.rows, [top]),
+          top_package: crate_name,
+          bin_name: bin_name,
+          bin_source_path: cargo_target_source_path(target: Bin { name: bin_name }, package_name: crate_name).segments |> join(separator: "/")
+        }
+      }
+    }
+  }
+}
+
+// The source edges seed the graph through the same merge -- over no prior edges, so every endpoint
+// is still checked and a source edge to a module the emission did not write refuses -- and the
+// EMITTER's edges then merge against them, so a source SCC is never judged as a reversed emitter
+// edge against its own other half.
+fn emitted_workspace_merged_edges(graph: EmittedModuleGraph, edges: List<EmittedEdge>) -> EmittedEdgesMerge {
+  match merge_emitted_edges(modules: graph.modules, edges: [], emitted: edges |> filter(e => emitted_workspace_is_source_edge(edge: e))) {
+    EmittedEdgesRefused { cause: c } => EmittedEdgesRefused { cause: c }
+    EmittedEdgesMerged { edges: source_edges } =>
+      merge_emitted_edges(modules: graph.modules, edges: source_edges, emitted: edges |> filter(e => !emitted_workspace_is_source_edge(edge: e)))
+  }
+}
+
+fn emitted_workspace_plan_over_graph(
+  graph: EmittedModuleGraph,
+  edges: List<EmittedEdge>,
+  target_crate_count: Int
+) -> EmittedWorkspaceOutcome {
+  match emitted_workspace_merged_edges(graph: graph, edges: edges) {
+    EmittedEdgesRefused { cause: c } => EmittedWorkspaceRefused { cause: EmittedWorkspaceEdgeMergeRefused { cause: c } }
+    EmittedEdgesMerged { edges: merged_edges } => {
+      let closure = emitted_workspace_without_runtime(graph: EmittedModuleGraph { modules: graph.modules, edges: merged_edges })
+      match resolve_partition_over(
+        parameter: PolicyPartitionParam { policy: PartitionPolicy { target_crate_count: target_crate_count } },
+        modules: closure.modules,
+        edges: closure.edges
+      ) {
+        ResolvePartitionRefused { cause: c } => EmittedWorkspaceRefused { cause: EmittedWorkspacePartitionRefused { cause: c } }
+        ResolvePartitionOk { assignment: assignment, provenance: _ } => {
+          let unit_ids = list_unique_sorted_ids(items: map_values(assignment))
+          let unit_edges = assignment_unit_dep_edges_over(edges: closure.edges, assignment: assignment)
+          match emitted_workspace_derived_rows(unit_rows: emitted_workspace_unit_rows(modules: closure.modules, assignment: assignment, unit_ids: unit_ids), unit_edges: unit_edges) {
+            DerivedRowsRefused { cause: c } => EmittedWorkspaceRefused { cause: c }
+            DerivedRowsOk { rows: rows } =>
+              EmittedWorkspacePlanned {
+                plan: EmittedWorkspacePlan {
+                  rows: rows,
+                  red: emitted_workspace_red(edges: edges, assignment: assignment, unit_edges: unit_edges),
+                  module_count: closure.modules |> count,
+                  crate_count: rows |> count,
+                  facade_is_whole_closure: emitted_workspace_facade_is_whole_closure(rows: rows)
+                }
+              }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE BUILD ENTRY every emitted-Rust route calls: an emission's workspace at the declared core
+// target. A closure smaller than the target packs into fewer crates; one module is one crate.
+fn emitted_workspace_build(
+  emitted_basenames: List<String>,
+  edges: List<EmittedEdge>,
+  crate_name: String,
+  bin_name: String
+) -> EmittedWorkspaceBuildOutcome {
+  emitted_workspace_build_from_emission(
+    emitted_basenames: emitted_basenames,
+    edges: edges,
+    target_crate_count: crate_partition_declared_core_target,
+    crate_name: crate_name,
+    bin_name: bin_name
+  )
+}
+
+// A refusal as the one line a writer reports. Each arm names its members, so the line says which
+// module or edge to look at; the nested admissibility cause is named by its own arm.
+fn emitted_workspace_edge_refusal_message(cause: EmittedEdgeRefusal) -> String {
+  match cause {
+    EmitterReverseEdge { from: f, to: t, provenance: _ } => concat("EmitterReverseEdge ", f as String, " -> ", t as String)
+    EmittedEdgeEndpointOutsideDag { from: f, to: t } => concat("EmittedEdgeEndpointOutsideDag ", f, " -> ", t)
+  }
+}
+
+fn emitted_workspace_refusal_message(cause: EmittedWorkspaceRefusal) -> String {
+  match cause {
+    EmittedWorkspaceEdgeMergeRefused { cause: c } => emitted_workspace_edge_refusal_message(cause: c)
+    EmittedWorkspacePartitionRefused { cause: c } =>
+      match c {
+        PolicyTargetCountNotPositive { policy: _ } => "PolicyTargetCountNotPositive"
+        AssignmentOmitsModule { module_id: m } => concat("AssignmentOmitsModule ", m as String)
+        AssignmentNamesModuleOutsideDag { module_id: m } => concat("AssignmentNamesModuleOutsideDag ", m as String)
+        PartitionRustAdmissibilityRefused { cause: _ } => "PartitionRustAdmissibilityRefused"
+        PartitionEmittedEdgeRefused { cause: e } => emitted_workspace_edge_refusal_message(cause: e)
+      }
+    EmittedWorkspaceUnitHasNoRow { unit_id: u } => concat("UnitHasNoRow ", u as String)
+    EmittedWorkspaceNoDiscriminatingEdge => "NoDiscriminatingEdge"
+  }
+}
