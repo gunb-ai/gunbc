@@ -1885,6 +1885,9 @@ test fn apply_retires_leftover_belt_and_publication_timers_and_installs_publicat
     && string_contains(s: live, pattern: deployment_publication_path_unit_name(names: spec.names) as String)
     && !string_contains(s: live, pattern: "OnUnitInactiveSec=")
     && any(pub_path, l => string_contains(s: l, pattern: "DirectoryNotEmpty="))
+    && any(pub_path, l => string_contains(s: l, pattern: "TriggerLimitIntervalSec="))
+    && any(pub_path, l => string_contains(s: l, pattern: "TriggerLimitBurst="))
+    && any(pub_path, l => string_contains(s: l, pattern: "StartLimitIntervalSec="))
     && any(pub_path, l => l == join(["Unit=", deployment_publication_service_unit_name(names: spec.names) as String], ""))
 }
 

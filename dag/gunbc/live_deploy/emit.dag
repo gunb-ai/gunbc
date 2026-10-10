@@ -20,7 +20,7 @@ import gunbc.fleet_generation_execution { fleet_generation_lock }
 import gunbc.runner_microvm_cell_readiness_location { cell_readiness_store_location }
 import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
 import gunbc.runner_microvm_network { runner_microvm_converged_receipt_root }
-import gunbc.live_deploy.belt_cadence { belt_tick_run_bound }
+import gunbc.live_deploy.belt_cadence { belt_tick_run_bound, belt_tick_cadence }
 
 import gunbc.auth.approval_device_redemption { approval_device_store_directory }
 import gunbc.live_deploy.release_locus {
@@ -100,9 +100,10 @@ import gunbc.cli_invoke { NamedArgumentAdmission, admit_named_argument }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, TimerUnitFile, SliceUnitFile, PathUnitFile,
   SystemdPathDirective, PathUnit, DirectoryNotEmpty, PathChanged,
+  TriggerLimitIntervalSec, TriggerLimitBurst,
   ServiceSlice, slice_memory_max, slice_memory_high, slice_memory_swap_max,
   SystemdInstallSection, NotInstallable, Installable,
-  SystemdUnitDirective, Description, After, Wants,
+  SystemdUnitDirective, Description, After, Wants, StartLimitIntervalSec, StartLimitBurst,
   SystemdServiceDirective, ServiceType, OneshotMode, SimpleMode, ExecStart, Restart,
   Environment, EnvironmentFile, EnvironmentFileIfPresent, WorkingDirectory, ServiceUser, ServiceGroup,
   TimeoutStartSec,
@@ -837,15 +838,25 @@ fn emit_publication_service_unit_doc(spec: DeploymentSpec) -> Doc {
 }
 
 // THE HELPER RUNS WHEN A REQUEST LANDS, not on a clock. A publication request is a file in the
-// instance's request spool; DirectoryNotEmpty starts the helper, and systemd restarts it if the
-// directory is still not empty when the oneshot exits. There is no reason a clock must stay: the
-// request is the event, and a leftover timer is retired on apply.
+// instance's request spool; DirectoryNotEmpty starts the helper. Stopping outcomes move the
+// request out of the pending set (publication_helper_retire_request); a leftover that cannot
+// move would otherwise retrigger immediately until systemd's default trigger limit failed the
+// .path unit until the next apply. TriggerLimit* / StartLimit* bound that residual to the
+// retired timer's cadence (belt_tick_cadence). A quarantine write is the re-ask: PathChanged on
+// refused/ starts belt discovery, which re-enqueues PublishObligation. The residual stall after
+// the bound is gunbc.rung_drop publication_path_unbounded_retrigger.
 fn live_deploy_publication_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
   PathUnitFile {
-    unit: [Description { text: "gunbc roadmap publication helper: a request was written" as NonEmptyStr }],
+    unit: [
+      Description { text: "gunbc roadmap publication helper: a request was written" as NonEmptyStr },
+      StartLimitIntervalSec { duration: systemd_time_span_of_seconds(d: belt_tick_cadence) },
+      StartLimitBurst { count: "2" as NonEmptyStr },
+    ],
     path: [
       PathUnit { target: deployment_publication_service_unit_name(names: spec.names) },
       DirectoryNotEmpty { path: publication_request_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
+      TriggerLimitIntervalSec { duration: systemd_time_span_of_seconds(d: belt_tick_cadence) },
+      TriggerLimitBurst { count: "2" as NonEmptyStr },
     ],
     install: Installable { directives: [WantedBy { target: "paths.target" as NonEmptyStr }] },
   }
@@ -977,7 +988,8 @@ fn apply_publication_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
 //
 // THE PUBLICATION ANSWER PATH IS AN EDGE: answers are kept, not moved, so a level would fire forever.
 // A change while discovery is running is coalesced into that run; discovery reads every attempt's
-// evidence, so the coalesced answer is still seen.
+// evidence, so the coalesced answer is still seen. refused/ is the same edge for a quarantine:
+// the helper left the pending set without an answer, and discovery is the re-ask (PublishObligation).
 fn live_deploy_belt_event_service_unit_file(spec: DeploymentSpec, description: String, function: String, install: SystemdInstallSection) -> SystemdUnitFile {
   let svc = spec.service
   ServiceUnitFile {
@@ -1033,6 +1045,7 @@ fn live_deploy_belt_answer_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFi
     path: [
       PathUnit { target: deployment_belt_discovery_service_unit_name(names: spec.names) },
       PathChanged { path: publication_answer_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
+      PathChanged { path: publication_refused_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
     ],
     install: Installable { directives: [WantedBy { target: "paths.target" as NonEmptyStr }] },
   }

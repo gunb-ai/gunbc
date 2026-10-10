@@ -526,6 +526,8 @@ type SystemdPathDirective
   | DirectoryNotEmpty { path: NonEmptyStr }
   | PathChanged { path: NonEmptyStr }
   | MakeDirectory { enabled: Bool }
+  | TriggerLimitIntervalSec { duration: NonEmptyStr }
+  | TriggerLimitBurst { count: NonEmptyStr }
 
 type SystemdInstallDirective
   = WantedBy { target: NonEmptyStr }
@@ -794,6 +796,8 @@ fn systemd_path_directive_line(directive: SystemdPathDirective) -> String {
     DirectoryNotEmpty { path: v } => join(["DirectoryNotEmpty=", v as String], "")
     PathChanged { path: v } => join(["PathChanged=", v as String], "")
     MakeDirectory { enabled: v } => if v { "MakeDirectory=yes" } else { "MakeDirectory=no" }
+    TriggerLimitIntervalSec { duration: v } => join(["TriggerLimitIntervalSec=", v as String], "")
+    TriggerLimitBurst { count: v } => join(["TriggerLimitBurst=", v as String], "")
   }
 }
 

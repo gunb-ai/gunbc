@@ -35,6 +35,7 @@ import gunbc.roadmap_served_observation {
   served_observation_freshness,
   served_observation_freshness_from_events,
   served_observation_newest_event_at,
+  served_events_after_snapshot_close,
   served_observation_apply_freshness,
   ObservationCurrent, ObservationStale, ObservationFreshnessUnread,
   served_observation_entry_for,
@@ -42,7 +43,9 @@ import gunbc.roadmap_served_observation {
   served_observation_standing_http_status,
 }
 import extdeps.languages.json.emit { serialize_json }
-import gunbc.roadmap.roadmap_event_carrier { AllEventsRead, AllEventsReadRefused }
+import gunbc.roadmap.roadmap_event_carrier {
+  AllEventsRead, AllEventsReadRefused, CarrierClosed, SnapshotCloseFailed,
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -388,6 +391,14 @@ test fn standing_and_surface_consume_freshness_from_supplied_events() -> Bool {
       ObservationFreshnessUnread { reason } => string_contains(s: reason, pattern: "fixture")
       ObservationCurrent => false
       ObservationStale { observed_at: _, newest_event_at: _ } => false
+    }
+    && match served_events_after_snapshot_close(read: CarrierClosed {
+      result: AllEventsRead { envelopes: [] },
+      close: SnapshotCloseFailed { worktree: "/tmp/events" as FilePath, exit_code: 1, stderr: "busy" },
+    }) {
+      AllEventsReadRefused { step, reason } =>
+        step == "snapshot-close" && string_contains(s: reason, pattern: "busy")
+      AllEventsRead { envelopes: _ } => false
     }
     && string_contains(s: standing_stale, pattern: "\"standing\": \"stale\"")
     && string_contains(s: standing_stale, pattern: "2026-10-10T18:00:01Z")

@@ -824,7 +824,13 @@ fn served_events_after_snapshot_close(read: CarrierClosed<RoadmapAllEventsRead>)
   match read.close {
     SnapshotNotOpened => read.result
     SnapshotClosed => read.result
-    SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => read.result
+    SnapshotCloseFailed { worktree, exit_code: _, stderr } =>
+      AllEventsReadRefused {
+        step: "snapshot-close",
+        reason: join([
+          "the event-log snapshot was not closed (", worktree as String, "): ", stderr,
+        ], ""),
+      }
   }
 }
 
