@@ -1363,7 +1363,7 @@ test fn witness_family_member_never_nests() -> Bool {
 // kinds, the decided activity arm and attention — never from the rendered text. Every class has a
 // discriminating fixture below, plus one unclassifiable-stays-neutral control; exec is the
 // declared vocabulary member with no on-page producer today (its trigger is named in the authority
-// comment: ProviderRunning carrying the typed CodexItemActivity).
+// comment: ProviderRunning carrying the typed ProviderItemActivity).
 
 fn fx_refused_activity() -> ActivityView {
   activity_view_from_parts(
