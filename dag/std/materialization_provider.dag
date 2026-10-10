@@ -76,6 +76,8 @@ import std.judgment_contract {
   output_compute_work_outcome,
   output_compute_work_log,
   output_compute_work_outputs,
+  output_compute_work_gunbc_binary,
+  output_compute_work_claim_batch_binary,
   output_module_test_verdicts,
   output_native_compiler_build_diagnostics,
   output_native_compiler_executable,
@@ -101,6 +103,7 @@ import std.materialization_ladder { DemandNature, PureComputation, IdempotentEff
 // reaches this one, so the edge is acyclic, which is the import graph's only law (DESIGN section 3).
 import gunbc.compute.work_request {
   WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, WorkToolchainIdentity,
+  GunbcBinary, GunbcDriver, ClaimBatchRunner, gunbc_binary_name,
   CargoRelease, CargoDebug,
 }
 import extdeps.git.object_store { git_object_id_wire_hex }
@@ -239,14 +242,15 @@ type ArtifactRequest
 // Required outputs: the outcome document (the ending and its identity), the run log (a build whose
 // log was dropped is not the build that ran), and the declared-outputs part: the MANIFEST of what
 // the operation declared (each declared path with its blob identity), empty for the checking
-// operations. The built bytes are NOT a part of this artifact. Per the materialization authority's
-// ruling (royal-moth-86, 2026-10-03), host-local binaries realize in the bounded per-host store under
-// this family's OWN byte budget, so they cannot evict other families' entries, and cross-host binaries
-// travel through std.fabric_blob, never the local store. Both are realizations of the manifest's blob
-// identities, and nothing in this key depends on which one serves them. DECLARED FRONTIER (DESIGN section 3c): the cutover that serves and commits
-// this family through extdeps.realization.materialization_store_local and deletes the provider's
-// private ComputeLayout store lands on the BOUNDED store (quick-gull-60's C1), never on the unbounded
-// one; until then the family's executing consumer is the provider's identity, which IS this key.
+// operations -- plus ONE BYTE PART PER DECLARED BINARY of a build (compute_work_binary_outputs). Per
+// the materialization authority's ruling (royal-moth-86, 2026-10-03) the binaries are byte parts of
+// this same record in the bounded per-host store, charged to the family's own budget and evicted with
+// the record; cross-host binaries travel through std.fabric_blob, never the local store.
+//
+// CONSUMED BY EXECUTION: gunbc.compute.work_provider_local files every compute request under this
+// key, reads it back through the bounded store (compute_store_read, compute_dependency_read) and
+// commits its outcome and binaries there (compute_store_commit); belt verification reaches it through
+// gunbc.roadmap_belt_actuate belt_run_claim_through_compute.
 type NativeModuleVerdictBundleSubject {
   route_binary_identity: Fnv1a64Structural
   module_identity: Fnv1a64Structural
@@ -678,15 +682,37 @@ fn compute_work_operation_preimage(operation: WorkOperation) -> NonEmptyStr {
     BuildGunbcBinaries { profile, bins } =>
       join(concat(
         [length_prefixed_encode(s: "build"), length_prefixed_encode(s: match profile { CargoRelease => "release"  CargoDebug => "debug" }), length_prefixed_encode(s: to_string(value: count(bins)))],
-        bins |> map(b => length_prefixed_encode(s: b as String))
+        bins |> map(b => length_prefixed_encode(s: gunbc_binary_name(b: b) as String))
       ), "") as NonEmptyStr
     CompileEntry { entry } =>
       join([length_prefixed_encode(s: "compile"), length_prefixed_encode(s: entry as String)], "") as NonEmptyStr
-    RunClaims { entry, functions, hermetic } =>
+    RunClaims { entry, functions, hermetic, window } =>
       join([
         length_prefixed_encode(s: "claims"), length_prefixed_encode(s: entry as String),
         length_prefixed_encode(s: functions as String), length_prefixed_encode(s: if hermetic { "hermetic" } else { "wet" }),
+        match window {
+          Present { value: w } => join([length_prefixed_encode(s: "window"), length_prefixed_encode(s: w.identity.digest as String)], "")
+          Absent => length_prefixed_encode(s: "no-window")
+        },
       ], "") as NonEmptyStr
+  }
+}
+
+// The binaries a build materializes are REQUIRED OUTPUTS of its record, one per declared bin, carried
+// as byte parts (extdeps.realization.materialization_store_local LocalStoreStagedPart). The checking
+// operations materialize none.
+fn compute_work_binary_output(b: GunbcBinary) -> ArtifactOutputId {
+  match b {
+    GunbcDriver => output_compute_work_gunbc_binary
+    ClaimBatchRunner => output_compute_work_claim_batch_binary
+  }
+}
+
+fn compute_work_binary_outputs(operation: WorkOperation) -> List<ArtifactOutputId> {
+  match operation {
+    BuildGunbcBinaries { profile: _, bins } => bins |> map(b => compute_work_binary_output(b: b))
+    CompileEntry { entry: _ } => []
+    RunClaims { entry: _, functions: _, hermetic: _, window: _ } => []
   }
 }
 
@@ -694,7 +720,7 @@ fn compute_work_demand_nature(operation: WorkOperation) -> DemandNature {
   match operation {
     BuildGunbcBinaries { profile: _, bins: _ } => IdempotentEffect
     CompileEntry { entry: _ } => IdempotentEffect
-    RunClaims { entry: _, functions: _, hermetic } => if hermetic { IdempotentEffect } else { FreshEffect }
+    RunClaims { entry: _, functions: _, hermetic, window: _ } => if hermetic { IdempotentEffect } else { FreshEffect }
   }
 }
 
@@ -724,11 +750,14 @@ fn compute_work_judgment_contract(
       ordered_diagnostics: true,
       carries_effect_requests_receipts: false,
       carries_refusal_arm: true,
-      required_persisted_outputs: [
-        persisted_output(id: output_compute_work_outcome, occurrence_contract: SemanticOnly),
-        persisted_output(id: output_compute_work_log, occurrence_contract: SemanticOnly),
-        persisted_output(id: output_compute_work_outputs, occurrence_contract: SemanticOnly)
-      ]
+      required_persisted_outputs: concat(
+        [
+          persisted_output(id: output_compute_work_outcome, occurrence_contract: SemanticOnly),
+          persisted_output(id: output_compute_work_log, occurrence_contract: SemanticOnly),
+          persisted_output(id: output_compute_work_outputs, occurrence_contract: SemanticOnly)
+        ],
+        compute_work_binary_outputs(operation: operation) |> map(id => persisted_output(id: id, occurrence_contract: SemanticOnly))
+      )
     },
     demand_nature: compute_work_demand_nature(operation: operation)
   }
@@ -974,7 +1003,9 @@ type MaterializedArtifact
       request_key: ContentHash,
       outcome: ArtifactPart,
       log: ArtifactPart,
-      outputs: ArtifactPart
+      outputs: ArtifactPart,
+      gunbc_binary: ArtifactPart?,
+      claim_batch_binary: ArtifactPart?
     }
   | LegacyIncompleteArtifact {
       kind: ArtifactKindId,
@@ -990,7 +1021,7 @@ fn artifact_fold<T>(
   native_compiler: fn(ContentHash, ArtifactPart, ArtifactPart) -> T,
   universe: fn(ContentHash, ArtifactPart, ArtifactPart) -> T,
   module_verdict_bundle: fn(ContentHash, ArtifactPart, ArtifactPart) -> T,
-  compute_work: fn(ContentHash, ArtifactPart, ArtifactPart, ArtifactPart) -> T,
+  compute_work: fn(ContentHash, ArtifactPart, ArtifactPart, ArtifactPart, ArtifactPart?, ArtifactPart?) -> T,
   legacy_incomplete: fn(ArtifactKindId, ContentHash, List<CarriedOutput>) -> T
 ) -> T {
   match artifact {
@@ -1009,7 +1040,7 @@ fn artifact_fold<T>(
       universe(k, p, c)
     ModuleVerdictBundleArtifact { request_key: k, test_verdicts: v, preparation_diagnostics: d } =>
       module_verdict_bundle(k, v, d)
-    ComputeWorkArtifact { request_key: k, outcome: o, log: l, outputs: x } => compute_work(k, o, l, x)
+    ComputeWorkArtifact { request_key: k, outcome: o, log: l, outputs: x, gunbc_binary: g, claim_batch_binary: c } => compute_work(k, o, l, x, g, c)
     LegacyIncompleteArtifact { kind: kd, request_key: k, carried_outputs: cs } =>
       legacy_incomplete(kd, k, cs)
   }
@@ -1024,7 +1055,7 @@ fn artifact_kind(artifact: MaterializedArtifact) -> ArtifactKindId {
     native_compiler: (k, e, d) => native_compiler_artifact_kind,
     universe: (k, p, c) => native_test_universe_artifact_kind,
     module_verdict_bundle: (k, v, d) => native_module_verdict_bundle_artifact_kind,
-    compute_work: (k, o, l, x) => compute_work_artifact_kind,
+    compute_work: (k, o, l, x, g, c) => compute_work_artifact_kind,
     legacy_incomplete: (kd, k, cs) => kd
   )
 }
@@ -1038,7 +1069,7 @@ fn artifact_request_key(artifact: MaterializedArtifact) -> ContentHash {
     native_compiler: (k, e, d) => k,
     universe: (k, p, c) => k,
     module_verdict_bundle: (k, v, d) => k,
-    compute_work: (k, o, l, x) => k,
+    compute_work: (k, o, l, x, g, c) => k,
     legacy_incomplete: (kd, k, cs) => k
   )
 }
@@ -1071,11 +1102,12 @@ fn artifact_carried_outputs(artifact: MaterializedArtifact) -> List<CarriedOutpu
       positioned_part(id: output_module_test_verdicts, part: v),
       positioned_part(id: output_module_preparation_diagnostics, part: d)
     ],
-    compute_work: (k, o, l, x) => [
+    compute_work: (k, o, l, x, g, c) => concat(concat([
       positioned_part(id: output_compute_work_outcome, part: o),
       positioned_part(id: output_compute_work_log, part: l),
       positioned_part(id: output_compute_work_outputs, part: x)
-    ],
+    ], match g { Present { value: p } => [positioned_part(id: output_compute_work_gunbc_binary, part: p)]  Absent => [] }),
+      match c { Present { value: p } => [positioned_part(id: output_compute_work_claim_batch_binary, part: p)]  Absent => [] }),
     legacy_incomplete: (kd, k, cs) => cs
   )
 }
@@ -1203,6 +1235,40 @@ fn manifest_three_part(
   }
 }
 
+// THE COMPUTE RECORD'S ROSTER IS FIVE DECLARED PARTS: three text parts every record carries, and one
+// optional byte part per GunbcBinary. Which binaries a record must carry is the REQUEST's fact
+// (compute_work_binary_outputs), so that completeness is the door's request-derived check, exactly as
+// for every other family; the decode refuses any id outside the five, and a record missing a text
+// part decodes to the named incompleteness.
+fn manifest_compute_work(m: ArtifactManifest) -> ManifestDecode {
+  let roster = [output_compute_work_outcome, output_compute_work_log, output_compute_work_outputs, output_compute_work_gunbc_binary, output_compute_work_claim_batch_binary]
+  match manifest_first_undeclared(parts: m.parts, roster: roster) {
+    Present { value: p } => ManifestPartUndeclared { kind: m.kind, part: p }
+    Absent =>
+      match manifest_first_repeated(parts: m.parts) {
+        Present { value: p } => ManifestPartRepeated { kind: m.kind, part: p }
+        Absent =>
+          match manifest_part(parts: m.parts, id: output_compute_work_outcome) {
+            Absent => ManifestDecoded { artifact: LegacyIncompleteArtifact { kind: m.kind, request_key: m.request_key, carried_outputs: m.parts } }
+            Present { value: o } =>
+              match manifest_part(parts: m.parts, id: output_compute_work_log) {
+                Absent => ManifestDecoded { artifact: LegacyIncompleteArtifact { kind: m.kind, request_key: m.request_key, carried_outputs: m.parts } }
+                Present { value: l } =>
+                  match manifest_part(parts: m.parts, id: output_compute_work_outputs) {
+                    Absent => ManifestDecoded { artifact: LegacyIncompleteArtifact { kind: m.kind, request_key: m.request_key, carried_outputs: m.parts } }
+                    Present { value: x } =>
+                      ManifestDecoded { artifact: ComputeWorkArtifact {
+                        request_key: m.request_key, outcome: o, log: l, outputs: x,
+                        gunbc_binary: manifest_part(parts: m.parts, id: output_compute_work_gunbc_binary),
+                        claim_batch_binary: manifest_part(parts: m.parts, id: output_compute_work_claim_batch_binary),
+                      } }
+                  }
+              }
+          }
+      }
+  }
+}
+
 fn artifact_from_manifest(m: ArtifactManifest) -> ManifestDecode {
   let k = m.request_key
   if m.kind == parse_source_artifact_kind {
@@ -1224,8 +1290,7 @@ fn artifact_from_manifest(m: ArtifactManifest) -> ManifestDecode {
     manifest_two_part(m: m, first: output_module_test_verdicts, second: output_module_preparation_diagnostics,
       build: (a, b) => ModuleVerdictBundleArtifact { request_key: k, test_verdicts: a, preparation_diagnostics: b })
   } else if m.kind == compute_work_artifact_kind {
-    manifest_three_part(m: m, first: output_compute_work_outcome, second: output_compute_work_log, third: output_compute_work_outputs,
-      build: (a, b, c) => ComputeWorkArtifact { request_key: k, outcome: a, log: b, outputs: c })
+    manifest_compute_work(m: m)
   } else {
     ManifestKindUndeclared { kind: m.kind }
   }

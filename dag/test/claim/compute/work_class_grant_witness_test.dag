@@ -17,7 +17,7 @@ import extdeps.systemd.systemd_run {
   SystemdFormattedBytes, FormattedBytesExact, FormattedBytesBounded, systemd_formatted_bytes_upper,
   SystemdSummaryPrintingWait,
 }
-import gunbc.compute.work_request { WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoRelease, CargoDebug, WorkSucceeded, WorkFailed, WorkOutcome, WorkRefusedByInfrastructure, UnitMemoryGrantExceeded, UnitEndingUnclassifiable }
+import gunbc.compute.work_request { GunbcDriver, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoRelease, CargoDebug, WorkSucceeded, WorkFailed, WorkOutcome, WorkRefusedByInfrastructure, UnitMemoryGrantExceeded, UnitEndingUnclassifiable }
 import gunbc.compute.work_class_grant {
   WorkClass, WorkClassBuild, WorkClassCompile, WorkClassClaims, work_class_of, work_class_wire,
   WorkClassPeakSample, WorkClassGrantRow, work_class_grant_rows,
@@ -159,10 +159,10 @@ test fn a_grant_is_the_largest_sample_plus_headroom_and_every_shortfall_is_the_c
 // that class and becomes the regression control that production rows reach the sized arm.
 test fn with_the_shipped_rows_every_class_reserves_the_ceiling() -> Bool {
   let ops = [
-    BuildGunbcBinaries { profile: CargoRelease, bins: ["gunbc" as NonEmptyStr] },
-    BuildGunbcBinaries { profile: CargoDebug, bins: ["gunbc" as NonEmptyStr] },
+    BuildGunbcBinaries { profile: CargoRelease, bins: [GunbcDriver] },
+    BuildGunbcBinaries { profile: CargoDebug, bins: [GunbcDriver] },
     CompileEntry { entry: "src/v2/compiler/compile.dag" },
-    RunClaims { entry: "dag/test/claim/x_test.dag", functions: "f" as NonEmptyStr, hermetic: true },
+    RunClaims { entry: "dag/test/claim/x_test.dag", functions: "f" as NonEmptyStr, hermetic: true, window: none },
   ]
   all(ops, op => match work_class_grant(class: work_class_of(op: op), rows: work_class_grant_rows, ceiling: ceiling()) {
     GrantAtCeiling { class: _, amount, reason } => kibibyte_count(k: amount) == 26 * gib && match reason { ClassUnmeasured => true  _ => false }
