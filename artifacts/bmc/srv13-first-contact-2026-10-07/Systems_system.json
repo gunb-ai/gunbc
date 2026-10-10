@@ -1,0 +1,117 @@
+{
+  "@odata.id": "/redfish/v1/Systems/system",
+  "@odata.type": "#ComputerSystem.v1_16_0.ComputerSystem",
+  "Actions": {
+    "#ComputerSystem.Reset": {
+      "@Redfish.ActionInfo": "/redfish/v1/Systems/system/ResetActionInfo",
+      "target": "/redfish/v1/Systems/system/Actions/ComputerSystem.Reset"
+    }
+  },
+  "AssetTag": "",
+  "Bios": {
+    "@odata.id": "/redfish/v1/Systems/system/Bios"
+  },
+  "BiosVersion": "null",
+  "Boot": {
+    "AutomaticRetryAttempts": 3,
+    "AutomaticRetryConfig": "Disabled",
+    "AutomaticRetryConfig@Redfish.AllowableValues": [
+      "Disabled",
+      "RetryAttempts"
+    ],
+    "BootSourceOverrideEnabled": "Disabled",
+    "BootSourceOverrideMode": "UEFI",
+    "BootSourceOverrideMode@Redfish.AllowableValues": [
+      "Legacy",
+      "UEFI"
+    ],
+    "BootSourceOverrideTarget": "None",
+    "BootSourceOverrideTarget@Redfish.AllowableValues": [
+      "None",
+      "Pxe",
+      "Hdd",
+      "Cd",
+      "Diags",
+      "BiosSetup",
+      "Usb"
+    ],
+    "RemainingAutomaticRetryAttempts": 3,
+    "StopBootOnFault": "Never",
+    "TrustedModuleRequiredToBoot": "Disabled"
+  },
+  "BootProgress": {
+    "LastState": "None",
+    "LastStateTime": "1970-01-01T00:00:00.000000+00:00"
+  },
+  "Description": "Computer System",
+  "FabricAdapters": {
+    "@odata.id": "/redfish/v1/Systems/system/FabricAdapters"
+  },
+  "GraphicalConsole": {
+    "ConnectTypesSupported": [
+      "KVMIP"
+    ],
+    "MaxConcurrentSessions": 4,
+    "ServiceEnabled": true
+  },
+  "Id": "system",
+  "IndicatorLED": "Off",
+  "LastResetTime": "2026-10-07T23:04:34+00:00",
+  "Links": {
+    "Chassis": [
+      {
+        "@odata.id": "/redfish/v1/Chassis/ALTRAD8UD_1L2T"
+      }
+    ],
+    "ManagedBy": [
+      {
+        "@odata.id": "/redfish/v1/Managers/bmc"
+      }
+    ]
+  },
+  "LocationIndicatorActive": false,
+  "LogServices": {
+    "@odata.id": "/redfish/v1/Systems/system/LogServices"
+  },
+  "Manufacturer": "ASRockRack",
+  "Memory": {
+    "@odata.id": "/redfish/v1/Systems/system/Memory"
+  },
+  "MemorySummary": {
+    "TotalSystemMemoryGiB": 0.0
+  },
+  "Model": "ALTRAD8UD-1L2T",
+  "Name": "system",
+  "PCIeDevices": [],
+  "PCIeDevices@odata.count": 0,
+  "PartNumber": "$PRODUCT_PART_NUMBER",
+  "PowerRestorePolicy": "AlwaysOn",
+  "PowerState": "On",
+  "ProcessorSummary": {
+    "Count": 0
+  },
+  "Processors": {
+    "@odata.id": "/redfish/v1/Systems/system/Processors"
+  },
+  "SerialConsole": {
+    "IPMI": {
+      "ServiceEnabled": true
+    },
+    "MaxConcurrentSessions": 15,
+    "SSH": {
+      "HotKeySequenceDisplay": "Press ~. to exit console",
+      "Port": 2200,
+      "ServiceEnabled": true
+    }
+  },
+  "SerialNumber": "$PRODUCT_SERIAL_NUMBER",
+  "Status": {
+    "Health": "OK",
+    "HealthRollup": "OK",
+    "State": "Enabled"
+  },
+  "Storage": {
+    "@odata.id": "/redfish/v1/Systems/system/Storage"
+  },
+  "SystemType": "Physical"
+}

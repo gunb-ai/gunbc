@@ -50,7 +50,7 @@ use crate::module_path_index::{
 };
 use crate::std_node::compiler_recursive_types;
 use crate::std_syntax::LiteralValue;
-use crate::std_types::{kernel_type_set, SourceSpan};
+use crate::std_types::{is_kernel_type, kernel_type_set, SourceSpan};
 use crate::v1_compiler_compile;
 use crate::v1_compiler_infer;
 use crate::v1_compiler_infer_env::{
@@ -77,9 +77,9 @@ use crate::v1_std_core::{
     has_child_named, inferred_to_node, intern, is_error_diagnostic,
     is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, make_error_node,
     match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
-    param_node_name_at, param_node_type_expr, Cardinality, CompilerDiagnostic, Connective,
-    ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable, LeafOwner, MatchPattern,
-    NewlineIndex, Node,
+    param_node_name_at, param_node_type_expr, type_reference_identity, Cardinality,
+    CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable,
+    LeafOwner, MatchPattern, NewlineIndex, Node, TypeDeclarationProvenance, TypeReferenceIdentity,
 };
 use serde::Serialize;
 
@@ -92,6 +92,7 @@ pub mod declaration_index;
 pub mod derived_row_roster;
 mod emitted_crate_workspace_host;
 mod native_lane_runner;
+mod native_product_cache;
 pub mod reach_base_standings;
 pub mod required_ci_measurement;
 mod required_floor_runner;
@@ -328,19 +329,16 @@ pub(crate) fn is_cargo_target_output_dir(
 
 pub(crate) fn collect_dag_files_result(
     dir: &std::path::Path,
-    files: &mut Vec<std::path::PathBuf>,
+    files: &mut Vec<derived_row_roster::AcquiredDag>,
 ) -> Result<(), String> {
-    derived_row_roster::ensure_if_row_dir(dir).map_err(|e| {
-        format!(
-            "failed to derive recurring_failure_mode roster in {:?}: {}",
-            dir, e
-        )
-    })?;
     let mut entries: Vec<_> = std::fs::read_dir(dir)
         .map_err(|e| format!("failed to read dir {:?}: {}", dir, e))?
         .map(|e| e.map_err(|e| format!("failed to read dir entry in {:?}: {}", dir, e)))
         .collect::<Result<Vec<_>, String>>()?;
     entries.sort_by_key(|e| e.file_name());
+    // This directory's own `.dag` files are admitted as one listing, so a ledger row directory
+    // contributes its derived roster from the same bytes (`derived_row_roster::acquire_dir_files`).
+    let mut here = Vec::new();
     for entry in entries {
         let path = entry.path();
         if path.is_dir() {
@@ -349,13 +347,14 @@ pub(crate) fn collect_dag_files_result(
             }
             collect_dag_files_result(&path, files)?;
         } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
-            files.push(path);
+            here.push(path);
         }
     }
+    files.extend(derived_row_roster::acquire_dir_files(dir, here)?);
     Ok(())
 }
 
-fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
+fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<derived_row_roster::AcquiredDag>) {
     collect_dag_files_result(dir, files).unwrap_or_else(|e| panic!("{e}"));
 }
 
@@ -404,8 +403,9 @@ fn moduleless_dag_entry_paths_under_root(root_prefix: &str) -> Result<Vec<String
         format!("cannot walk {root_prefix} while taking the module-less population: {cause}")
     })?;
     let mut entry_files: Vec<(String, String)> = Vec::new();
-    for path in paths {
-        let content = std::fs::read_to_string(&path).map_err(|error| {
+    for source in paths {
+        let path = source.path();
+        let content = source.read().map_err(|error| {
             format!(
                 "cannot read {} while taking the module-less population under {root_prefix}: \
                  {error} (the population exists to report which files were dropped from the \
@@ -3238,16 +3238,52 @@ mod process_workspace_root_tests {
 /// fixture spellings. Witness: `dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness_test.dag`.
 #[cfg(test)]
 mod cli_run_arg_channel_tests {
-    use super::parse_run_args;
-    use crate::v1_interpreter::Value;
+    use super::{
+        bind_run_arg_specs_against_admissions, bind_run_args_for_entry, parse_run_arg_specs,
+        CliArgAdmission,
+    };
+    use crate::v1_compiler_compile::{compile_to_resolved, SourceFile};
+    use crate::v1_interpreter::{run_in_context_with_args, ExecutionMode, InterpContext, Value};
+    use std::rc::Rc;
 
     fn spec(items: &[&str]) -> Vec<String> {
         items.iter().map(|s| s.to_string()).collect()
     }
 
+    fn admission(label: &str) -> CliArgAdmission {
+        match label {
+            "String" => CliArgAdmission::String,
+            "Int" => CliArgAdmission::Int,
+            "Bool" => CliArgAdmission::Bool,
+            "NonEmptyStr" => CliArgAdmission::RefinedString {
+                display: "NonEmptyStr".to_string(),
+                predicates: vec!["string_non_empty".to_string()],
+            },
+            other => CliArgAdmission::Unsupported {
+                display: other.to_string(),
+            },
+        }
+    }
+
+    fn declared(pairs: &[(&str, &str)]) -> Vec<(String, CliArgAdmission)> {
+        pairs
+            .iter()
+            .map(|(n, t)| (n.to_string(), admission(t)))
+            .collect()
+    }
+
+    fn bind(
+        function: &str,
+        declared: &[(String, CliArgAdmission)],
+        specs: &[(String, String)],
+    ) -> Result<Vec<(Option<String>, Value)>, String> {
+        bind_run_arg_specs_against_admissions(function, declared, specs)
+    }
+
     #[test]
     fn named_arg_parses_to_a_named_string_value() {
-        let got = parse_run_args(&spec(&["node_id=roadmap-7"])).expect("well-formed --arg");
+        let specs = parse_run_arg_specs(&spec(&["node_id=roadmap-7"])).expect("well-formed --arg");
+        let got = bind("entry", &declared(&[("node_id", "String")]), &specs).expect("String bind");
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].0.as_deref(), Some("node_id"));
         assert!(matches!(&got[0].1, Value::Str(s) if s.as_ref() == "roadmap-7"));
@@ -3255,13 +3291,16 @@ mod cli_run_arg_channel_tests {
 
     #[test]
     fn value_may_contain_further_equals_signs() {
-        let got = parse_run_args(&spec(&["diff=a=b=c"])).expect("split on the first `=` only");
+        let specs =
+            parse_run_arg_specs(&spec(&["diff=a=b=c"])).expect("split on the first `=` only");
+        let got = bind("entry", &declared(&[("diff", "String")]), &specs).expect("String bind");
         assert!(matches!(&got[0].1, Value::Str(s) if s.as_ref() == "a=b=c"));
     }
 
     #[test]
     fn empty_value_is_admitted_and_distinct_from_absent() {
-        let got = parse_run_args(&spec(&["flag="])).expect("empty value is a value");
+        let specs = parse_run_arg_specs(&spec(&["flag="])).expect("empty value is a value");
+        let got = bind("entry", &declared(&[("flag", "String")]), &specs).expect("String bind");
         assert!(matches!(&got[0].1, Value::Str(s) if s.is_empty()));
     }
 
@@ -3270,7 +3309,7 @@ mod cli_run_arg_channel_tests {
     // into one.
     #[test]
     fn bare_token_without_equals_refuses() {
-        let err = parse_run_args(&spec(&["node_id"])).expect_err("no `=` must refuse");
+        let err = parse_run_arg_specs(&spec(&["node_id"])).expect_err("no `=` must refuse");
         assert!(
             err.contains("name=value"),
             "diagnostic names the form: {err}"
@@ -3279,7 +3318,7 @@ mod cli_run_arg_channel_tests {
 
     #[test]
     fn empty_parameter_name_refuses() {
-        let err = parse_run_args(&spec(&["=orphan"])).expect_err("empty name must refuse");
+        let err = parse_run_arg_specs(&spec(&["=orphan"])).expect_err("empty name must refuse");
         assert!(
             err.contains("empty parameter name"),
             "diagnostic locates the fault: {err}"
@@ -3289,8 +3328,273 @@ mod cli_run_arg_channel_tests {
     #[test]
     fn one_malformed_spec_refuses_the_whole_list() {
         assert!(
-            parse_run_args(&spec(&["ok=1", "broken", "also_ok=2"])).is_err(),
+            parse_run_arg_specs(&spec(&["ok=1", "broken", "also_ok=2"])).is_err(),
             "a partial parse would silently drop a caller's argument"
+        );
+    }
+
+    #[test]
+    fn int_parameter_given_non_numeric_refuses() {
+        let err = bind(
+            "belt_scm_corrective_integrate_cli",
+            &declared(&[("supersedes", "Int")]),
+            &[("supersedes".into(), "stale".into())],
+        )
+        .expect_err("non-numeric Int must refuse");
+        assert!(
+            err.contains("supersedes") && err.contains("Int") && err.contains("stale"),
+            "diagnostic names parameter, type, and value: {err}"
+        );
+    }
+
+    #[test]
+    fn int_parameter_given_decimal_two_is_int_two() {
+        let got = bind(
+            "belt_scm_corrective_integrate_cli",
+            &declared(&[("supersedes", "Int")]),
+            &[("supersedes".into(), "2".into())],
+        )
+        .expect("decimal Int");
+        assert!(
+            matches!(got[0].1, Value::Int(2)),
+            "specimen: `--arg supersedes=2` must inhabit Int 2, not Str(\"2\")"
+        );
+    }
+
+    #[test]
+    fn unsupported_declared_type_refuses() {
+        let err = bind(
+            "entry",
+            &declared(&[("source", "List<String>")]),
+            &[("source".into(), "a".into())],
+        )
+        .expect_err("unsupported type must refuse");
+        assert!(
+            err.contains("List<String>") && err.contains("cannot inhabit"),
+            "diagnostic names the unsupported type: {err}"
+        );
+    }
+
+    #[test]
+    fn qualified_or_branded_int_label_refuses_rather_than_matching_the_leaf() {
+        for label in ["foo.Int", "std.integer.Int"] {
+            let err = bind(
+                "entry",
+                &declared(&[("source", label)]),
+                &[("source".into(), "2".into())],
+            )
+            .expect_err("leaf-name agreement must not inhabit a different type");
+            assert!(
+                err.contains(label) && err.contains("cannot inhabit"),
+                "diagnostic names the authored type {label}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn nonemptystr_non_empty_binds_as_string() {
+        let got = bind(
+            "fci1_assert_checkpoint_token",
+            &declared(&[("token", "NonEmptyStr")]),
+            &[("token".into(), "none".into())],
+        )
+        .expect("non-empty NonEmptyStr inhabits");
+        assert!(matches!(&got[0].1, Value::Str(s) if s.as_ref() == "none"));
+    }
+
+    #[test]
+    fn nonemptystr_empty_refuses_naming_the_parameter() {
+        let err = bind(
+            "fci1_assert_checkpoint_token",
+            &declared(&[("token", "NonEmptyStr")]),
+            &[("token".into(), "".into())],
+        )
+        .expect_err("empty NonEmptyStr must refuse");
+        assert!(
+            err.contains("token")
+                && err.contains("NonEmptyStr")
+                && err.contains("string_non_empty"),
+            "diagnostic names parameter, type, and admission: {err}"
+        );
+    }
+
+    #[test]
+    fn bool_parameter_accepts_true_false_only() {
+        let got = bind(
+            "entry",
+            &declared(&[("flag", "Bool")]),
+            &[("flag".into(), "true".into())],
+        )
+        .expect("Bool true");
+        assert!(matches!(got[0].1, Value::Bool(true)));
+        let err = bind(
+            "entry",
+            &declared(&[("flag", "Bool")]),
+            &[("flag".into(), "yes".into())],
+        )
+        .expect_err("non-canonical Bool must refuse");
+        assert!(err.contains("true") && err.contains("false"), "{err}");
+    }
+
+    fn compile_ctx(files: Vec<Rc<SourceFile>>) -> InterpContext {
+        let result = compile_to_resolved(Rc::new(files.into()));
+        let graph = result
+            .graph
+            .as_ref()
+            .unwrap_or_else(|| panic!("fixture must resolve: {:?}", result.diagnostics));
+        InterpContext::new(
+            graph,
+            result.source_indices.clone(),
+            ExecutionMode::Hermetic,
+        )
+    }
+
+    fn source(path: &str, content: &str) -> Rc<SourceFile> {
+        Rc::new(SourceFile {
+            path: path.to_string(),
+            content: content.to_string(),
+        })
+    }
+
+    fn kernel_int_entry_ctx() -> InterpContext {
+        compile_ctx(vec![source(
+            "probe_cli_arg_int.dag",
+            "module probe.cli_arg_int\nfn bind_probe(n: Int) -> Int { n }\n",
+        )])
+    }
+
+    fn std_types_nonempty_entry_ctx() -> InterpContext {
+        compile_ctx(vec![
+            source(
+                "std_types.dag",
+                "module std.types\n\
+                 type NonEmptyStr = String where string_non_empty\n\
+                 fn string_non_empty(value: String) -> Bool { value.length() > 0 }\n",
+            ),
+            source(
+                "probe_cli_arg_nes.dag",
+                "module probe.cli_arg_nes\n\
+                 import std.types { NonEmptyStr }\n\
+                 fn bind_token(token: NonEmptyStr) -> String { token }\n",
+            ),
+        ])
+    }
+
+    #[test]
+    fn bind_run_args_for_entry_int_executes_as_int_two() {
+        let ctx = kernel_int_entry_ctx();
+        let bound =
+            bind_run_args_for_entry(&ctx, "bind_probe", &[("n".to_string(), "2".to_string())])
+                .expect("kernel Int --arg n=2 must bind");
+        let got = run_in_context_with_args(&ctx, "bind_probe", &bound, false)
+            .expect("bound Int 2 must execute");
+        assert!(
+            matches!(got, Value::Int(2)),
+            "specimen: execute bind_probe after --arg n=2 must yield Int 2, got {got:?}"
+        );
+    }
+
+    #[test]
+    fn bind_run_args_for_entry_std_types_nonemptystr_inhabits_and_empty_refuses() {
+        let ctx = std_types_nonempty_entry_ctx();
+        let got = bind_run_args_for_entry(
+            &ctx,
+            "bind_token",
+            &[("token".to_string(), "none".to_string())],
+        )
+        .expect("std.types NonEmptyStr must inhabit through its declaration");
+        assert!(matches!(&got[0].1, Value::Str(s) if s.as_ref() == "none"));
+        let err =
+            bind_run_args_for_entry(&ctx, "bind_token", &[("token".to_string(), "".to_string())])
+                .expect_err("empty std.types NonEmptyStr must refuse");
+        assert!(
+            err.contains("token")
+                && err.contains("NonEmptyStr")
+                && err.contains("string_non_empty"),
+            "diagnostic names parameter, std.types alias, and declared predicate: {err}"
+        );
+    }
+
+    #[test]
+    fn isolated_std_types_nonemptystr_whose_string_is_int_refuses() {
+        let ctx = compile_ctx(vec![source(
+            "std_types.dag",
+            "module std.types\n\
+             type String = Int\n\
+             fn string_non_empty(value: String) -> Bool { true }\n\
+             type NonEmptyStr = String where string_non_empty\n\
+             fn bind_probe(n: NonEmptyStr) -> Int { n }\n",
+        )]);
+        let err = bind_run_args_for_entry(
+            &ctx,
+            "bind_probe",
+            &[("n".to_string(), "2".to_string())],
+        )
+        .expect_err(
+            "std.types NonEmptyStr whose ground is not kernel String must refuse, not Str(\"2\")",
+        );
+        assert!(
+            err.contains("cannot inhabit"),
+            "isolated std.types with type String = Int must refuse inhabitance: {err}"
+        );
+    }
+
+    #[test]
+    fn same_spelling_user_int_or_nonemptystr_refuses() {
+        let int_ctx = compile_ctx(vec![source(
+            "probe_shadow_int.dag",
+            "module probe.shadow_int\n\
+             type Int = String\n\
+             fn shadow_int(n: Int) -> String { n }\n",
+        )]);
+        let int_err = bind_run_args_for_entry(
+            &int_ctx,
+            "shadow_int",
+            &[("n".to_string(), "2".to_string())],
+        )
+        .expect_err("a user type spelled Int must not bind as kernel Int");
+        assert!(
+            int_err.contains("cannot inhabit"),
+            "user Int must refuse inhabitance: {int_err}"
+        );
+
+        let nes_ctx = compile_ctx(vec![source(
+            "probe_shadow_nes.dag",
+            "module probe.shadow_nes\n\
+             type NonEmptyStr = String where string_non_empty\n\
+             fn shadow_nes(token: NonEmptyStr) -> String { token }\n",
+        )]);
+        let nes_err = bind_run_args_for_entry(
+            &nes_ctx,
+            "shadow_nes",
+            &[("token".to_string(), "none".to_string())],
+        )
+        .expect_err("a user type spelled NonEmptyStr must not bind as std.types");
+        assert!(
+            nes_err.contains("cannot inhabit"),
+            "user NonEmptyStr must refuse inhabitance: {nes_err}"
+        );
+    }
+
+    #[test]
+    fn bind_run_args_for_entry_duplicate_or_unknown_name_refuses() {
+        let ctx = kernel_int_entry_ctx();
+        let dup = bind_run_args_for_entry(
+            &ctx,
+            "bind_probe",
+            &[
+                ("n".to_string(), "1".to_string()),
+                ("n".to_string(), "2".to_string()),
+            ],
+        )
+        .expect_err("duplicate --arg name must refuse on the production loop");
+        assert!(dup.contains("more than once"), "{dup}");
+        let unknown =
+            bind_run_args_for_entry(&ctx, "bind_probe", &[("nope".to_string(), "1".to_string())])
+                .expect_err("unknown --arg name must refuse on the production loop");
+        assert!(
+            unknown.contains("nope") && unknown.contains("declared:"),
+            "{unknown}"
         );
     }
 }
@@ -3510,14 +3814,15 @@ fn for_each_parsed_module_binding(
         let root_path = Path::new(&anchored_root);
         let mut dag_files = Vec::new();
         collect_dag_files(root_path, &mut dag_files);
-        for path in dag_files {
-            let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        for source in dag_files {
+            let path = source.path();
+            let content = source.read().unwrap_or_else(|e| {
                 panic!(
                     "for_each_parsed_module_binding: failed to read {:?}: {}",
                     path, e
                 )
             });
-            let binding = match parse_module_binding(&path, &content) {
+            let binding = match parse_module_binding(path, &content) {
                 Ok(ModuleBindingOutcome::Bound(binding)) => binding,
                 Ok(ModuleBindingOutcome::ModuleBindingUnclassified) => continue,
                 // Fail-closed, but the line stops with a TYPED, LOCATED refusal
@@ -3530,7 +3835,7 @@ fn for_each_parsed_module_binding(
                     continue;
                 }
             };
-            visit(root_idx, &path, binding);
+            visit(root_idx, path, binding);
         }
     }
     refuse_unparseable_module_sources(&refusals);
@@ -3606,29 +3911,29 @@ fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBi
     rows
 }
 
-/// The closure an in-memory (not-on-disk) fixture entry compiles against: the corpus modules its
-/// authored `import` lines name, read from the workspace through `module_index`, CLOSED BY THE
-/// ONE CLOSURE AUTHORITY (`extend_sources_to_both_closure_fixpoint`), then the entry itself.
-///
-/// WHY NOT THE IMPORT EDGES ALONE (DESIGN §3, §6b). This walker used to stop at `import` lines,
-/// a fourth closure rule beside the one the gate, the witness loader and regen share. An `import`
-/// line, a qualified reference and a bare reference are the same dependency edge, so the
-/// import-only walk was not a narrower closure but a blind one: `std.syllogism` reaches
-/// `std.graph` by the bare name `GraphEdge` and `v2.std.artifact` reaches `v2.std.refinement` by
-/// qualified reference, so a fixture whose imports reached either compiled it WITHOUT its
-/// provider and reported `unresolved type` / `undefined variable 'v2'` against a module that
-/// resolves in every closure the corpus authority builds. #13195's union render made that
-/// fork refuse the floor (46 such diagnostics on #13420's run, none in its own modules).
-///
-/// The extension is seeded from the corpus modules only. The entry is the fixture's subject,
-/// authored with an explicit import manifest a witness may be probing (an unlisted use, a
-/// refused import), so its own spelling stays exactly what it declares; every module it reaches
-/// is closed as the corpus closes it. An extension failure is returned, never widened past.
-pub(crate) fn resolve_virtual_source_with_imports(
-    entry_path: &str,
+/// Scratch index for one fixture-closure extension. Same `source_files` as the process-shared
+/// slot; own caches, dropped with the loader. Reads fall through to the shared slot; writes stay
+/// on the scratch (MegaRAC rows never land on the fold's index and do not outlive the compile).
+/// parse_cache is not underlaid: those rows are intern-paired with the slot that parsed them.
+/// RFM `fixture_compile_retained_on_the_process_shared_index`.
+fn scratch_index_for_fixture_closure_extension() -> Result<MultiEntryIndex, String> {
+    let layers = witness_layer_roots();
+    let shared = entry_resolve::try_process_shared_index(&layers)?;
+    let scratch = entry_resolve::new_multi_entry_index_scratch_over(
+        shared.source_files.clone(),
+        &shared.source_roots,
+    );
+    *scratch.scratch_underlay.borrow_mut() = Some(shared);
+    Ok(scratch)
+}
+
+/// Authored-import seeds of an in-memory fixture: the corpus modules its `import` lines name,
+/// read through `module_index`. The both-closure fixpoint is applied by the caller on a chosen
+/// index, so GREEN (scratch) and RED (process-shared) differ only by that index.
+fn fixture_imported_corpus_sources(
     entry_content: &str,
     module_index: &HashMap<String, String>,
-) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+) -> Vec<Rc<v1_compiler_compile::SourceFile>> {
     let ws = process_workspace_root();
     let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
     let mut queue: Vec<String> = vec![entry_content.to_string()];
@@ -3652,28 +3957,80 @@ pub(crate) fn resolve_virtual_source_with_imports(
             }
         }
     }
-    let imported: Vec<Rc<v1_compiler_compile::SourceFile>> =
-        seen.into_iter().map(|(_, v)| v).collect();
+    seen.into_iter().map(|(_, v)| v).collect()
+}
+
+fn close_fixture_imported_corpus(
+    imported: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    index: &MultiEntryIndex,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    if imported.is_empty() {
+        return Ok(imported);
+    }
+    Ok(extend_sources_to_both_closure_fixpoint(imported, index)?
+        .into_iter()
+        // One spelling per file: the index may carry a pulled module under its absolute
+        // path, and a recorder keyed by path must not see one file as two members.
+        .map(|source| {
+            let rel = workspace_relative_repo_path(&source.path);
+            if rel == source.path {
+                source
+            } else {
+                Rc::new(v1_compiler_compile::SourceFile {
+                    path: rel,
+                    content: source.content.clone(),
+                })
+            }
+        })
+        .collect())
+}
+
+/// THE PRE-FIX LOADER, test-only: the same import seeds and closure authority as
+/// `resolve_virtual_source_with_imports`, on `try_index_for_run_or_owned_pool` over the layer
+/// roots. That is the slot the claim fold reads. The only difference from production is the
+/// index. RFM `fixture_compile_retained_on_the_process_shared_index`.
+#[cfg(test)]
+pub(crate) fn extend_fixture_imports_on_process_shared_index(
+    entry_content: &str,
+    module_index: &HashMap<String, String>,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let imported = fixture_imported_corpus_sources(entry_content, module_index);
+    let layers = witness_layer_roots();
+    let index = entry_resolve::try_index_for_run_or_owned_pool(&layers)?;
+    close_fixture_imported_corpus(imported, &index)
+}
+
+/// The closure an in-memory (not-on-disk) fixture entry compiles against: the corpus modules its
+/// authored `import` lines name, read from the workspace through `module_index`, CLOSED BY THE
+/// ONE CLOSURE AUTHORITY (`extend_sources_to_both_closure_fixpoint`), then the entry itself.
+///
+/// WHY NOT THE IMPORT EDGES ALONE (DESIGN §3, §6b). This walker used to stop at `import` lines,
+/// a fourth closure rule beside the one the gate, the witness loader and regen share. An `import`
+/// line, a qualified reference and a bare reference are the same dependency edge, so the
+/// import-only walk was not a narrower closure but a blind one: `std.syllogism` reaches
+/// `std.graph` by the bare name `GraphEdge` and `v2.std.artifact` reaches `v2.std.refinement` by
+/// qualified reference, so a fixture whose imports reached either compiled it WITHOUT its
+/// provider and reported `unresolved type` / `undefined variable 'v2'` against a module that
+/// resolves in every closure the corpus authority builds. #13195's union render made that
+/// fork refuse the floor (46 such diagnostics on #13420's run, none in its own modules).
+///
+/// The extension is seeded from the corpus modules only. The entry is the fixture's subject,
+/// authored with an explicit import manifest a witness may be probing (an unlisted use, a
+/// refused import), so its own spelling stays exactly what it declares; every module it reaches
+/// is closed as the corpus closes it. An extension failure is returned, never widened past.
+/// The fixpoint mutates a scratch index (dropped with the loader), never the process-shared
+/// slot the claim fold reads.
+pub(crate) fn resolve_virtual_source_with_imports(
+    entry_path: &str,
+    entry_content: &str,
+    module_index: &HashMap<String, String>,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let imported = fixture_imported_corpus_sources(entry_content, module_index);
     let mut sources = if imported.is_empty() {
         imported
     } else {
-        let index = entry_resolve::try_index_for_run_or_owned_pool(&witness_layer_roots())?;
-        extend_sources_to_both_closure_fixpoint(imported, &index)?
-            .into_iter()
-            // One spelling per file: the index may carry a pulled module under its absolute
-            // path, and a recorder keyed by path must not see one file as two members.
-            .map(|source| {
-                let rel = workspace_relative_repo_path(&source.path);
-                if rel == source.path {
-                    source
-                } else {
-                    Rc::new(v1_compiler_compile::SourceFile {
-                        path: rel,
-                        content: source.content.clone(),
-                    })
-                }
-            })
-            .collect()
+        let index = scratch_index_for_fixture_closure_extension()?;
+        close_fixture_imported_corpus(imported, &index)?
     };
     sources.sort_by(|a, b| a.path.cmp(&b.path));
     sources.dedup_by(|a, b| a.path == b.path);
@@ -4520,9 +4877,11 @@ fn regen_input_sources_over_roots(
 
     // Seed: every `.dag` under the entry root that declares a module path.
     let mut seeds: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
-    for path in &entry_paths {
-        let content =
-            std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    for source in &entry_paths {
+        let path = source.path();
+        let content = source
+            .read()
+            .map_err(|e| format!("read {}: {e}", path.display()))?;
         let rel = workspace_relative_repo_path(&path.to_string_lossy());
         if extract_module_path(&content).is_some() {
             seeds.push(Rc::new(v1_compiler_compile::SourceFile {
@@ -4623,12 +4982,13 @@ pub(crate) fn is_test_dag(path: &str) -> bool {
 pub(crate) fn corpus_dag_files() -> Vec<(String, String)> {
     let mut paths = Vec::new();
     for root in witness_layer_roots() {
-        collect_dag_files_tolerant(&Path::new(&anchor_source_root(&root)), &mut paths);
+        collect_dag_files_tolerant(&Path::new(&anchor_source_root(&root)), &mut paths)
+            .unwrap_or_else(|cause| panic!("corpus walk over {root}: {cause}"));
     }
     let mut out = Vec::new();
     for p in paths {
-        let rel = repo_rel(&p);
-        if let Ok(content) = std::fs::read_to_string(&p) {
+        let rel = repo_rel(p.path());
+        if let Ok(content) = p.read() {
             out.push((rel, content));
         }
     }
@@ -4700,11 +5060,13 @@ fn try_build_module_index(source_roots: &[String]) -> Result<ModuleSourceIndex, 
         }
         let mut dag_files = Vec::new();
         collect_dag_files_result(root_path, &mut dag_files)?;
-        for path in dag_files {
-            let content = std::fs::read_to_string(&path)
+        for source in dag_files {
+            let path = source.path();
+            let content = source
+                .read()
                 .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
             if let Some(module_path) = extract_module_path(&content) {
-                let rel_path = module_index_path_key(&path);
+                let rel_path = module_index_path_key(path);
                 let rel_forward = rel_path.clone();
                 if manifest_stub_superseded_by_overlay(&rel_forward, source_roots, root_idx) {
                     continue;
@@ -4819,11 +5181,13 @@ fn try_index_source_root_into_module_index(
     let mut dag_files = Vec::new();
     collect_dag_files_result(root_path, &mut dag_files)?;
     let mut within_root: HashMap<String, String> = HashMap::new();
-    for path in dag_files {
-        let content = std::fs::read_to_string(&path)
+    for source in dag_files {
+        let path = source.path();
+        let content = source
+            .read()
             .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
         if let Some(module_path) = extract_module_path(&content) {
-            let rel_path = module_index_path_key(&path);
+            let rel_path = module_index_path_key(path);
             if pool_fill_only {
                 if index.contains_key(&module_path) {
                     continue;
@@ -4867,14 +5231,16 @@ fn load_compile_clean_entry_sources(
     if first_root.is_dir() {
         let mut dag_paths = Vec::new();
         collect_dag_files(first_root, &mut dag_paths);
-        for path in dag_paths {
+        for source in dag_paths {
+            let path = source.path();
             let rel = workspace_relative_repo_path(&path.to_string_lossy());
             if let Some(filter) = entry_path_filter {
                 if !filter.contains(&rel) {
                     continue;
                 }
             }
-            let content = std::fs::read_to_string(&path)
+            let content = source
+                .read()
                 .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
             entry_files.push((path.to_string_lossy().to_string(), content));
         }
@@ -5355,8 +5721,8 @@ pub const RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL: &str =
 /// deleted; the index stays, because which file declares a module is what any import walk needs.
 fn dag_module_index(
     roots: &[PathBuf],
-) -> Result<std::collections::HashMap<String, Vec<PathBuf>>, String> {
-    let mut index: std::collections::HashMap<String, Vec<PathBuf>> =
+) -> Result<std::collections::HashMap<String, Vec<derived_row_roster::AcquiredDag>>, String> {
+    let mut index: std::collections::HashMap<String, Vec<derived_row_roster::AcquiredDag>> =
         std::collections::HashMap::new();
     for root in roots {
         if !root.exists() {
@@ -5364,11 +5730,12 @@ fn dag_module_index(
         }
         let mut dag_paths = Vec::new();
         collect_dag_files(root, &mut dag_paths);
-        for path in dag_paths {
-            let content = std::fs::read_to_string(&path)
-                .map_err(|e| format!("read {}: {e}", path.display()))?;
+        for source in dag_paths {
+            let content = source
+                .read()
+                .map_err(|e| format!("read {}: {e}", source.path().display()))?;
             if let Some(module_path) = extract_module_path(&content) {
-                index.entry(module_path).or_default().push(path);
+                index.entry(module_path).or_default().push(source);
             }
         }
     }
@@ -8347,6 +8714,11 @@ fn parsed_file_references_of(
     if let Some(hit) = index.parsed_references.borrow().get(&file) {
         return hit.clone();
     }
+    if let Some(base) = index.scratch_underlay.borrow().as_ref() {
+        if let Some(hit) = base.parsed_references.borrow().get(&file) {
+            return hit.clone();
+        }
+    }
     let module_names = pool_module_names(index);
     let self_module = extract_module_path(&sf.content).unwrap_or_default();
     index
@@ -8715,6 +9087,11 @@ fn admit_bare_references_of_file(
     let file = workspace_relative_repo_path(&source.path);
     if let Some(verdict) = index.bare_reference_admission.borrow().get(&file) {
         return verdict.clone();
+    }
+    if let Some(base) = index.scratch_underlay.borrow().as_ref() {
+        if let Some(verdict) = base.bare_reference_admission.borrow().get(&file) {
+            return verdict.clone();
+        }
     }
     let verdict = if source_declares_import_lines(&source.content) {
         Ok(())
@@ -9241,6 +9618,13 @@ fn build_both_closure_edge_index(
     if let Some(hit) = index.both_closure_edges.borrow().as_ref() {
         if hit.ref_out.contains_key(&file) {
             return Ok(hit.clone());
+        }
+    }
+    if let Some(base) = index.scratch_underlay.borrow().as_ref() {
+        if let Some(hit) = base.both_closure_edges.borrow().as_ref() {
+            if hit.ref_out.contains_key(&file) {
+                return Ok(hit.clone());
+            }
         }
     }
     let ref_started = std::time::Instant::now();
@@ -9834,6 +10218,128 @@ mod closure_edge_demand_tests {
         assert_eq!(
             closure_of("module probe_provider\nfn probe() -> Int { 1 }\n"),
             BTreeSet::from(["probe_entry".into(), "probe_provider".into()])
+        );
+    }
+
+    /// Inhabitance: `load_sources_for_entry_with_pool` already binds by the ancestor chain.
+    /// The sibling plant is nearer by prefix and must not enter the compile closure.
+    #[test]
+    fn load_sources_binds_the_on_chain_ancestor_not_the_sibling_plant() {
+        let fixture = Fixture::new(&[
+            (
+                "parent.dag",
+                "module frontier\nfn duplicated() -> Int { 1 }\n",
+            ),
+            (
+                "plant.dag",
+                "module frontier.child.plant\nfn duplicated() -> Int { 99 }\n",
+            ),
+            (
+                "consumer.dag",
+                "module frontier.child.consumer\nfn read() -> Int { duplicated() }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let sources = load_sources_for_entry_with_pool(
+            &index,
+            &fixture.0.join("consumer.dag").to_string_lossy(),
+        )
+        .unwrap();
+        let modules: BTreeSet<String> = sources
+            .iter()
+            .map(|s| extract_module_path(&s.content).unwrap())
+            .collect();
+        assert!(modules.contains("frontier"), "{modules:?}");
+        assert!(!modules.contains("frontier.child.plant"), "{modules:?}");
+        assert!(modules.contains("frontier.child.consumer"), "{modules:?}");
+    }
+
+    /// Unique off-chain declarer: UniqueBinding still accepts, so UniqueBare must emit
+    /// (dropping it is an undercount) and the real resolve path must succeed.
+    #[test]
+    fn unique_off_chain_bare_name_compiles_and_keeps_its_uniquebare_edge() {
+        let fixture = Fixture::new(&[
+            (
+                "decl.dag",
+                "module test.decl\nfn shared_fn() -> Int { 1 }\n",
+            ),
+            (
+                "user.dag",
+                "module test.user\nfn use_it() -> Int { shared_fn() }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let sources =
+            load_sources_for_entry_with_pool(&index, &fixture.0.join("user.dag").to_string_lossy())
+                .expect("UniqueBinding pulls the census-unique off-chain provider");
+        let compiled = v1_compiler_compile::compile_sources(
+            Rc::new(sources.iter().cloned().collect()),
+            crate::v1_compiler_artifact::RenderTarget::Dag,
+        );
+        assert!(
+            !compiled
+                .diagnostics
+                .iter()
+                .any(|d| { is_interpreter_blocking_diagnostic(d.diagnostic.clone()) }),
+            "resolver-accepted UniqueBinding must compile: {:?}",
+            compiled.diagnostics
+        );
+        let roots = vec![fixture.0.to_string_lossy().into_owned()];
+        let facts = dependency_resolution_facts(&roots, &roots, &[]);
+        assert!(
+            facts
+                .iter()
+                .any(|f| f.path.contains("user.dag") && f.import_module == "test.decl"),
+            "resolver-accepted UniqueBinding must remain a UniqueBare edge: {facts:?}"
+        );
+    }
+
+    /// Two off-chain homonyms, none on the consumer's chain: proximity UniqueBare is gone,
+    /// and the real resolve path refuses rather than silently picking a neighbor.
+    #[test]
+    fn off_chain_homonym_with_no_lexical_binder_is_refused_on_the_resolve_path() {
+        let fixture = Fixture::new(&[
+            ("a.dag", "module aa.one\nfn shared() -> Int { 1 }\n"),
+            ("b.dag", "module bb.two\nfn shared() -> Int { 2 }\n"),
+            (
+                "user.dag",
+                "module cc.user\nfn use_it() -> Int { shared() }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let sources =
+            load_sources_for_entry_with_pool(&index, &fixture.0.join("user.dag").to_string_lossy())
+                .expect("admission does not fabricate a proximity provider");
+        let compiled = v1_compiler_compile::compile_sources(
+            Rc::new(sources.iter().cloned().collect()),
+            crate::v1_compiler_artifact::RenderTarget::Dag,
+        );
+        let msgs: Vec<String> = compiled
+            .diagnostics
+            .iter()
+            .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+            .map(|d| format!("{:?}", d.diagnostic))
+            .collect();
+        let joined = msgs.join("\n");
+        assert!(
+            !msgs.is_empty()
+                && joined.contains("shared")
+                && (joined.contains("undefined")
+                    || joined.contains("not found in scope")
+                    || joined.contains("AMBIGUOUS")
+                    || joined.contains("unresolved")),
+            "refusal must name the bare identifier: {joined:?}"
+        );
+        let roots = vec![fixture.0.to_string_lossy().into_owned()];
+        let facts = dependency_resolution_facts(&roots, &roots, &[]);
+        let user_targets: Vec<&str> = facts
+            .iter()
+            .filter(|f| f.path.contains("user.dag"))
+            .map(|f| f.import_module.as_str())
+            .collect();
+        assert!(
+            user_targets.is_empty(),
+            "no UniqueBare to a proximity winner: {user_targets:?}"
         );
     }
 
@@ -10586,6 +11092,18 @@ fn entry_source_from_index_or_disk(
     entry_path: &str,
 ) -> Result<Rc<v1_compiler_compile::SourceFile>, String> {
     let path = std::path::Path::new(entry_path);
+    // A DERIVED LEDGER ROSTER HAS NO FILE: it is contributed to the index in memory by source
+    // acquisition (`derived_row_roster::acquire_dir_files`), so an entry naming it is answered from
+    // the index the loader built, never from a file that would have to be written first.
+    if !path.exists() && derived_row_roster::is_derived_roster_path(entry_path) {
+        let wanted = workspace_relative_repo_path(entry_path);
+        if let Some(indexed) = index
+            .values()
+            .find(|s| workspace_relative_repo_path(&s.path) == wanted)
+        {
+            return Ok(indexed.clone());
+        }
+    }
     if !path.is_file() {
         return Err(format!(
             "entry file does not exist or is not a file: {}",
@@ -12567,6 +13085,8 @@ pub struct MultiEntryIndex {
     live_read_manifest: RefCell<Option<Result<Rc<LiveReadSelectionManifest>, String>>>,
     /// Only produced rows; consumers needing every row call whole_pool_closure_edge_index.
     both_closure_edges: RefCell<Option<Rc<BothClosureEdgeIndex>>>,
+    /// Fixture-scratch read-through: the process-shared index. Writes stay on this index.
+    scratch_underlay: RefCell<Option<Rc<MultiEntryIndex>>>,
     /// Admission and edge selection need declaration heads, not resolved signatures.
     /// None identifies the whole-pool name census; Some(root) the existing tree/import view.
     closure_name_censuses: RefCell<HashMap<Option<String>, Rc<SymbolIndex>>>,
@@ -12932,11 +13452,20 @@ fn next_index_generation() -> u64 {
 /// One `MultiEntryIndex` construction: the module-name set it indexes (as a digest over the sorted
 /// module paths, with its size) and the first caller outside the `#[track_caller]` chain of index
 /// builders that demanded it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MultiEntryIndexBuildKind {
+    /// One demand for a module-name set. Two of these with one digest refuse.
+    NameSetIndex,
+    /// Isolated caches over an already-indexed name set. Countable, not a second index.
+    ScratchCachesOverExistingSet,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct MultiEntryIndexBuild {
     pub(crate) name_set_digest: u64,
     pub(crate) modules: usize,
     pub(crate) site: String,
+    pub(crate) kind: MultiEntryIndexBuildKind,
 }
 
 static MULTI_ENTRY_INDEX_BUILDS: std::sync::Mutex<Vec<MultiEntryIndexBuild>> =
@@ -12945,6 +13474,7 @@ static MULTI_ENTRY_INDEX_BUILDS: std::sync::Mutex<Vec<MultiEntryIndexBuild>> =
 pub(crate) fn record_multi_entry_index_site(
     site: &std::panic::Location<'_>,
     source_files: &ModuleSourceIndex,
+    kind: MultiEntryIndexBuildKind,
 ) {
     use std::hash::{Hash, Hasher};
     // The POOL, not only its names: two scratch pools declaring one module path at different
@@ -12961,6 +13491,7 @@ pub(crate) fn record_multi_entry_index_site(
             name_set_digest: hasher.finish(),
             modules: pool.len(),
             site: format!("{}:{}", site.file(), site.line()),
+            kind,
         });
     }
 }
@@ -12972,15 +13503,18 @@ pub(crate) fn multi_entry_index_builds() -> Vec<MultiEntryIndexBuild> {
         .unwrap_or_default()
 }
 
-/// ONE INDEX PER MODULE-NAME SET. An index is a pure function of the name set it covers, so two
-/// constructions over one set are one demand built twice, and every file each serves is parsed
-/// again per index. Refuses with the sites of every set built more than once; distinct sets are
-/// distinct demands and are not limited.
+/// ONE NAME-SET INDEX PER MODULE-NAME SET. Two `NameSetIndex` constructions over one set are one
+/// demand built twice. `ScratchCachesOverExistingSet` is recorded (countable) and is not a second
+/// index of that set. Refuses with the sites of every set indexed more than once; distinct sets
+/// are distinct demands and are not limited.
 pub(crate) fn multi_entry_index_sharing_control(
     builds: &[MultiEntryIndexBuild],
 ) -> Result<usize, String> {
     let mut by_set: BTreeMap<u64, Vec<&MultiEntryIndexBuild>> = BTreeMap::new();
     for build in builds {
+        if build.kind != MultiEntryIndexBuildKind::NameSetIndex {
+            continue;
+        }
         by_set.entry(build.name_set_digest).or_default().push(build);
     }
     let repeated: Vec<String> = by_set
@@ -17455,7 +17989,7 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
     if roots.is_empty() {
         return Err(vec!["parse sweep called with no roots".to_string()]);
     }
-    let mut dag_paths: Vec<std::path::PathBuf> = Vec::new();
+    let mut dag_paths: Vec<derived_row_roster::AcquiredDag> = Vec::new();
     // PER-ROOT, so the empty-walk refusal below is per root: one root going missing must not
     // be absorbed by another root's files (the empty-observation narrow, DESIGN §5).
     for root in roots {
@@ -17463,14 +17997,11 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
         let before = dag_paths.len();
         let mut stack: Vec<std::path::PathBuf> = vec![root_dir.clone()];
         while let Some(dir) = stack.pop() {
-            // Derive gitignored `gunbc.recurring_failure_mode.roster` before this directory's
-            // listing, so the required-CI index contains the module the parse join reads.
-            derived_row_roster::ensure_if_row_dir(&dir).map_err(|e| {
-                vec![format!(
-                    "failed to derive recurring_failure_mode roster in {}: {e}",
-                    dir.display()
-                )]
-            })?;
+            // This directory's `.dag` files are admitted as one listing after the walk of its
+            // entries, so a ledger row directory contributes its derived roster IN MEMORY and the
+            // required-CI index contains the module the parse join reads -- with nothing written
+            // under the root.
+            let mut here: Vec<std::path::PathBuf> = Vec::new();
             let read_dir = match std::fs::read_dir(&dir) {
                 Ok(d) => d,
                 Err(e) => return Err(vec![format!("read_dir {}: {e}", dir.display())]),
@@ -17510,9 +18041,11 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
                     }
                     stack.push(path);
                 } else if path.extension().map(|ext| ext == "dag").unwrap_or(false) {
-                    dag_paths.push(path);
+                    here.push(path);
                 }
             }
+            dag_paths
+                .extend(derived_row_roster::acquire_dir_files(&dir, here).map_err(|e| vec![e])?);
         }
 
         // AN EMPTY WALK REFUSES, PER ROOT. Zero files found is not zero errors — it is the
@@ -17525,7 +18058,7 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
             )]);
         }
     }
-    dag_paths.sort();
+    dag_paths.sort_by(|a, b| a.path().cmp(b.path()));
 
     let errors: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let count = Arc::new(AtomicUsize::new(0));
@@ -17536,13 +18069,13 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
     // Each file gets its own `Rc<HashMap>` — no shared parse state — so parsing is
     // embarrassingly parallel. Thread panics propagate via scope (fail-closed).
     std::thread::scope(|scope| {
-        for path in &dag_paths {
+        for source in &dag_paths {
             let errors = Arc::clone(&errors);
             let count = Arc::clone(&count);
             let records = Arc::clone(&records);
-            let path = path.clone();
+            let path = source.path().to_path_buf();
             scope.spawn(move || {
-                let content = match std::fs::read_to_string(&path) {
+                let content = match source.read() {
                     Ok(c) => c,
                     Err(e) => {
                         errors
@@ -18325,10 +18858,14 @@ fn module_emit_repr_fingerprint(
 ) -> Result<String, String> {
     use crate::v1_compiler_infer_emit_info::TypeSummary;
 
+    // Summaries are keyed by declaration identity (`<module>.<name>`), so a module's own types are
+    // read under its own path and never under a same-leaf declaration elsewhere in the closure.
+    let module_path = authored_name_at(source_indices.clone(), module.module.clone());
     let type_names = module_defined_type_names(module, source_indices);
     let mut type_summaries = BTreeMap::<String, TypeSummary>::new();
     for name in type_names {
-        if let Some(summary) = emit_info.type_summaries.get(&name) {
+        let key = format!("{module_path}.{name}");
+        if let Some(summary) = emit_info.type_summaries.by_key.get(&key) {
             type_summaries.insert(name, summary.as_ref().clone());
         }
     }
@@ -19734,29 +20271,321 @@ pub fn handle_pre_push() -> std::process::ExitCode {
 /// after a `dag run` entry returns -- the periodic dump alone races the
 /// process's natural completion and under-reports on fast runs.
 
-/// Parse repeated `--arg name=value` into the interpreter's named-argument
-/// channel (`run_in_context_with_args`, v1_interpreter.rs:1564 — already the
-/// channel `claim_executor` uses internally; `Commands::Run` simply never grew
-/// the flag, which is why every parameter-shaped value reached `.dag` entries
-/// through the process environment instead).
+/// Parse repeated `--arg name=value` into named text pairs.
 ///
 /// Named-only by construction: a `.dag` entry's parameters are named, so
 /// positional order across the CLI boundary would be an unchecked coincidence.
-/// A missing `=` refuses (§5) rather than guessing a position. Values enter as
-/// `Value::Str` — no coercion is fabricated here; a parameter wanting another
-/// type is the typed-argument follow-on, not a silent conversion.
-fn parse_run_args(raw: &[String]) -> Result<Vec<(Option<String>, v1_interpreter::Value)>, String> {
+/// A missing `=` refuses (§5) rather than guessing a position. The pairs stay
+/// text until [`bind_run_args_for_entry`], which is the typed binder: argv is
+/// always text (`CliTextValue` on the run verb); inhabiting the declared
+/// parameter type is a later, located decision — never a silent `String`.
+pub fn parse_run_arg_specs(raw: &[String]) -> Result<Vec<(String, String)>, String> {
     raw.iter()
         .map(|spec| match spec.split_once('=') {
-            Some((name, value)) if !name.is_empty() => {
-                Ok((Some(name.to_string()), str_value(value.to_string())))
-            }
+            Some((name, value)) if !name.is_empty() => Ok((name.to_string(), value.to_string())),
             Some(_) => Err(format!("--arg `{spec}`: empty parameter name before `=`")),
             None => Err(format!(
                 "--arg `{spec}`: expected `name=value` (named arguments only)"
             )),
         })
         .collect()
+}
+
+fn parse_cli_decimal_int(text: &str) -> Option<i64> {
+    if text.is_empty() {
+        return None;
+    }
+    let digits = match text.as_bytes() {
+        [b'-', rest @ ..] | [b'+', rest @ ..] => rest,
+        rest => rest,
+    };
+    if digits.is_empty() || !digits.iter().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    text.parse().ok()
+}
+
+/// Admission derived from a parameter's resolved type (or supplied in tests).
+#[derive(Clone, Debug)]
+pub enum CliArgAdmission {
+    String,
+    Int,
+    Bool,
+    RefinedString {
+        display: String,
+        predicates: Vec<String>,
+    },
+    Unsupported {
+        display: String,
+    },
+}
+
+fn cli_arg_no_inhabitance_route(function: &str, param: &str, type_label: &str) -> String {
+    format!(
+        "--arg `{param}`: function `{function}` declares `{param}: {type_label}`, \
+         which `gunbc run --arg` cannot inhabit; only kernel String, Int, Bool, \
+         and std.types NonEmptyStr are admitted"
+    )
+}
+
+/// Bind one `--arg` text value against a resolved admission.
+pub fn bind_cli_arg_text(
+    function: &str,
+    param: &str,
+    admission: &CliArgAdmission,
+    text: &str,
+) -> Result<v1_interpreter::Value, String> {
+    match admission {
+        CliArgAdmission::String => Ok(str_value(text)),
+        CliArgAdmission::Int => bind_cli_int(function, param, "Int", text),
+        CliArgAdmission::Bool => match text {
+            "true" => Ok(Value::Bool(true)),
+            "false" => Ok(Value::Bool(false)),
+            _ => Err(format!(
+                "--arg `{param}`: function `{function}` declares `{param}: Bool`, \
+                 but `{text}` is not `true` or `false`"
+            )),
+        },
+        CliArgAdmission::RefinedString {
+            display,
+            predicates,
+        } => {
+            for pred in predicates {
+                match v1_compiler_infer::decidable_where_string_predicate_holds(
+                    pred.clone(),
+                    text.to_string(),
+                ) {
+                    Some(true) => {}
+                    Some(false) => {
+                        return Err(format!(
+                            "--arg `{param}`: function `{function}` declares `{param}: {display}`, \
+                             but the value fails `{pred}`"
+                        ));
+                    }
+                    None => {
+                        return Err(cli_arg_no_inhabitance_route(function, param, display));
+                    }
+                }
+            }
+            Ok(str_value(text))
+        }
+        CliArgAdmission::Unsupported { display } => {
+            Err(cli_arg_no_inhabitance_route(function, param, display))
+        }
+    }
+}
+
+fn bind_cli_int(
+    function: &str,
+    param: &str,
+    type_label: &str,
+    text: &str,
+) -> Result<v1_interpreter::Value, String> {
+    match parse_cli_decimal_int(text) {
+        Some(n) => Ok(Value::Int(n)),
+        None => Err(format!(
+            "--arg `{param}`: function `{function}` declares `{param}: {type_label}`, \
+             but `{text}` is not a decimal integer"
+        )),
+    }
+}
+
+fn cli_arg_resolved_type_node(type_expr: Rc<Node>) -> Rc<Node> {
+    match type_expr.inferred.as_deref() {
+        Some(InferredNode::Resolved { node }) => node.clone(),
+        _ => type_expr,
+    }
+}
+
+fn type_nodes_name_the_same_declaration(a: &Rc<Node>, b: &Rc<Node>) -> bool {
+    Rc::ptr_eq(a, b)
+        || match (&a.ident_span, &b.ident_span) {
+            (Some(left), Some(right)) => left.file == right.file && left.start == right.start,
+            _ => false,
+        }
+}
+
+fn std_types_nonempty_str_item(ctx: &v1_interpreter::InterpContext) -> Option<Rc<Node>> {
+    let tm = ctx.typed_module_for_authored_path("std.types")?;
+    tm.items
+        .iter()
+        .find(|item| authored_name_at(ctx.source_indices.clone(), (*item).clone()) == "NonEmptyStr")
+        .cloned()
+}
+
+fn nonempty_str_predicates_from_decl(
+    ctx: &v1_interpreter::InterpContext,
+    decl: &Rc<Node>,
+) -> Option<Vec<String>> {
+    let mut ty = v1_interpreter::type_declaration_rhs(decl)?;
+    let mut preds = Vec::new();
+    for _ in 0..8 {
+        if !v1_compiler_infer::is_where_refinement_type(ty.clone()) {
+            break;
+        }
+        for pred in v1_compiler_infer::type_expr_where_refinement_predicates(ty.clone())
+            .iter()
+            .cloned()
+        {
+            let pname = v1_compiler_infer::where_predicate_name_at(
+                pred.clone(),
+                ctx.source_indices.clone(),
+            );
+            if pname.is_empty()
+                || v1_compiler_infer::where_refinement_is_deferred_predicate(pname.clone())
+                || !v1_compiler_infer::where_refinement_is_string_literal_predicate(pname.clone())
+            {
+                return None;
+            }
+            preds.push(pname);
+        }
+        ty = ty.children.iter().next().cloned()?;
+    }
+    let kernel_string = match type_reference_identity(ty.clone()).as_ref() {
+        TypeReferenceIdentity::ReferenceResolvedToDeclaration { provenance }
+        | TypeReferenceIdentity::ReferenceIsTheDeclaration { provenance } => {
+            matches!(
+                provenance.as_ref(),
+                TypeDeclarationProvenance::KernelMinted { minted_name } if minted_name == "String"
+            )
+        }
+        TypeReferenceIdentity::ReferenceIsTypeVariableBinder { .. }
+        | TypeReferenceIdentity::ReferenceIdentityUnavailable { .. } => false,
+    };
+    if kernel_string && preds == ["string_non_empty".to_string()] {
+        Some(preds)
+    } else {
+        None
+    }
+}
+
+/// Admission from the parameter's resolved type identity (DESIGN §4): kernel
+/// String/Int/Bool, or the exact `std.types` `NonEmptyStr` declaration and its
+/// `string_non_empty` refinement. Leaf names do not authorize conversion.
+fn cli_arg_admission_from_type_expr(
+    ctx: &v1_interpreter::InterpContext,
+    type_expr: Rc<Node>,
+) -> CliArgAdmission {
+    let display = v1_compiler_infer::type_node_label(type_expr.clone(), ctx.source_indices.clone());
+    match type_reference_identity(type_expr.clone()).as_ref() {
+        TypeReferenceIdentity::ReferenceResolvedToDeclaration { provenance }
+        | TypeReferenceIdentity::ReferenceIsTheDeclaration { provenance } => {
+            match provenance.as_ref() {
+                TypeDeclarationProvenance::KernelMinted { minted_name } => {
+                    return cli_arg_admission_for_kernel(minted_name, display);
+                }
+                TypeDeclarationProvenance::CorpusDeclared { .. }
+                | TypeDeclarationProvenance::DeclarationIdentityAbsent => {}
+            }
+        }
+        TypeReferenceIdentity::ReferenceIsTypeVariableBinder { .. }
+        | TypeReferenceIdentity::ReferenceIdentityUnavailable { .. } => {}
+    }
+    std_types_nonempty_str_admission(ctx, type_expr, display)
+}
+
+fn refers_to_std_types_nonempty_str(
+    ctx: &v1_interpreter::InterpContext,
+    type_expr: Rc<Node>,
+    decl: &Rc<Node>,
+) -> bool {
+    let resolved = cli_arg_resolved_type_node(type_expr.clone());
+    if type_nodes_name_the_same_declaration(&resolved, decl) {
+        return true;
+    }
+    let decl_id =
+        v1_compiler_infer::node_declaration_identity(decl.clone(), ctx.source_indices.clone());
+    let ref_id = v1_compiler_infer::type_reference_identity(type_expr, ctx.source_indices.clone());
+    !decl_id.is_empty() && ref_id == decl_id
+}
+
+fn std_types_nonempty_str_admission(
+    ctx: &v1_interpreter::InterpContext,
+    type_expr: Rc<Node>,
+    display: String,
+) -> CliArgAdmission {
+    let Some(decl) = std_types_nonempty_str_item(ctx) else {
+        return CliArgAdmission::Unsupported { display };
+    };
+    if !refers_to_std_types_nonempty_str(ctx, type_expr, &decl) {
+        return CliArgAdmission::Unsupported { display };
+    }
+    match nonempty_str_predicates_from_decl(ctx, &decl) {
+        Some(predicates) => CliArgAdmission::RefinedString {
+            display,
+            predicates,
+        },
+        None => CliArgAdmission::Unsupported { display },
+    }
+}
+
+fn cli_arg_admission_for_kernel(ground: &str, display: String) -> CliArgAdmission {
+    match ground {
+        "String" => CliArgAdmission::String,
+        "Int" => CliArgAdmission::Int,
+        "Bool" => CliArgAdmission::Bool,
+        _ => CliArgAdmission::Unsupported { display },
+    }
+}
+
+/// Bind `--arg` specs against caller-supplied admissions (unit tests).
+pub fn bind_run_arg_specs_against_admissions(
+    function: &str,
+    declared: &[(String, CliArgAdmission)],
+    specs: &[(String, String)],
+) -> Result<Vec<(Option<String>, v1_interpreter::Value)>, String> {
+    let mut seen = HashSet::new();
+    let mut bound = Vec::with_capacity(specs.len());
+    for (name, text) in specs {
+        if !seen.insert(name.clone()) {
+            return Err(format!(
+                "--arg `{name}`: supplied more than once for function `{function}`"
+            ));
+        }
+        let admission = match declared.iter().find(|(n, _)| n == name) {
+            Some((_, a)) => a,
+            None => {
+                let known: Vec<&str> = declared.iter().map(|(n, _)| n.as_str()).collect();
+                return Err(format!(
+                    "--arg `{name}`: function `{function}` has no parameter `{name}` \
+                     (declared: {})",
+                    if known.is_empty() {
+                        "(none)".to_string()
+                    } else {
+                        known.join(", ")
+                    }
+                ));
+            }
+        };
+        bound.push((
+            Some(name.clone()),
+            bind_cli_arg_text(function, name, admission, text)?,
+        ));
+    }
+    Ok(bound)
+}
+
+/// Bind `--arg` text against `entry_fn`'s resolved parameter types.
+///
+/// No `.dag` binder exists: `gunbc.cli_dispatch_surface` owns the option as
+/// `CliTextValue` (argv is text). This seed function derives admissions from
+/// the resolved where-chain, then the one bind loop in
+/// [`bind_run_arg_specs_against_admissions`].
+pub fn bind_run_args_for_entry(
+    ctx: &v1_interpreter::InterpContext,
+    entry_fn: &str,
+    specs: &[(String, String)],
+) -> Result<Vec<(Option<String>, v1_interpreter::Value)>, String> {
+    if specs.is_empty() {
+        return Ok(Vec::new());
+    }
+    let declared = v1_interpreter::declared_parameter_type_exprs(ctx, entry_fn)
+        .ok_or_else(|| format!("--arg: function `{entry_fn}` is not in the loaded entry"))?;
+    let admissions: Vec<(String, CliArgAdmission)> = declared
+        .into_iter()
+        .map(|(name, ty)| (name, cli_arg_admission_from_type_expr(ctx, ty)))
+        .collect();
+    bind_run_arg_specs_against_admissions(entry_fn, &admissions, specs)
 }
 
 struct ScopedRunObservation {
@@ -22225,27 +23054,396 @@ fn extract_bool_witness_transport(
     (entry, function)
 }
 
-fn defining_module_for_resolved_type(
-    graph: &ResolvedGraph,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+fn module_from_qualified_identity(identity: &str) -> Option<String> {
+    let (module, name) = identity.rsplit_once('.')?;
+    if module.is_empty() || name.is_empty() {
+        None
+    } else {
+        Some(module.to_string())
+    }
+}
+
+fn defining_module_for_variant(
     variant_to_enum: &im::HashMap<String, String>,
-    type_name: &str,
+    variant_name: &str,
 ) -> Option<String> {
-    let si = Rc::new(source_indices.clone());
-    for tm in graph.modules.iter() {
-        let mod_name = authored_name_at(si.clone(), tm.module.clone());
-        if lookup_type_by_name(tm.type_env.clone(), type_name.to_string()).is_some() {
-            return Some(mod_name);
-        }
+    // variant_to_enum is keyed by VARIANT leaf. Values are owner identities `<module>.<name>`.
+    // No row, the collision sentinel "", or an unqualified identity has no module part:
+    // return None so the caller refuses. Do not scan type environments for a leaf match.
+    let parent_enum = variant_to_enum.get(variant_name)?;
+    module_from_qualified_identity(parent_enum)
+}
+
+fn defining_module_for_type_identity(
+    type_summaries: &Rc<crate::v1_compiler_infer_emit_info::TypeSummaryIndex>,
+    identity: &str,
+) -> Option<String> {
+    // Exact declaration key only. type_summary_lookup / type_summary_by_leaf are leaf scans.
+    if !identity.contains('.') {
+        return None;
     }
-    let parent_enum = variant_to_enum.get(type_name).cloned()?;
-    for tm in graph.modules.iter() {
-        let mod_name = authored_name_at(si.clone(), tm.module.clone());
-        if lookup_type_by_name(tm.type_env.clone(), parent_enum.clone()).is_some() {
-            return Some(mod_name);
+    match (*crate::v1_compiler_infer_emit_info::type_summary_at_key(
+        type_summaries.clone(),
+        identity.to_string(),
+    ))
+    .clone()
+    {
+        crate::v1_compiler_infer_emit_info::TypeSummaryLookup::TypeSummaryFound { summary } => {
+            module_from_qualified_identity(&summary.key)
         }
+        _ => None,
     }
-    None
+}
+
+fn defining_module_for_type_expr(
+    type_summaries: &Rc<crate::v1_compiler_infer_emit_info::TypeSummaryIndex>,
+    type_decls: &Rc<crate::v1_compiler_infer_emit_info::TypeDeclIndex>,
+    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    type_expr: &Rc<Node>,
+) -> Option<String> {
+    match (*crate::v1_compiler_infer_emit_info::type_summary_of_reference(
+        type_summaries.clone(),
+        type_decls.clone(),
+        type_expr.clone(),
+        Rc::new(source_indices.clone()),
+    ))
+    .clone()
+    {
+        crate::v1_compiler_infer_emit_info::TypeSummaryLookup::TypeSummaryFound { summary } => {
+            module_from_qualified_identity(&summary.key)
+        }
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod defining_module_lookup_tests {
+    use super::*;
+
+    #[test]
+    fn bool_witness_claim_variant_resolves_to_verification_module() {
+        let mut variant_to_enum = im::HashMap::new();
+        variant_to_enum.insert(
+            "BoolWitnessClaim".to_string(),
+            "v2.std.verification.UnifiedTestClaim".to_string(),
+        );
+        variant_to_enum.insert(
+            "NodeCorpus".to_string(),
+            "v2.std.verification.UnifiedTestClaim".to_string(),
+        );
+        assert_eq!(
+            defining_module_for_variant(&variant_to_enum, "BoolWitnessClaim"),
+            Some("v2.std.verification".to_string()),
+            "the owned-data BoolWitnessClaim path keys variant_to_enum by the variant leaf"
+        );
+        assert_eq!(
+            defining_module_for_variant(&variant_to_enum, "UnifiedTestClaim"),
+            None,
+            "the coproduct leaf is not a variant key"
+        );
+    }
+
+    #[test]
+    fn unqualified_or_sentinel_variant_identity_refuses() {
+        let mut variant_to_enum = im::HashMap::new();
+        variant_to_enum.insert("NoDot".to_string(), "UnifiedTestClaim".to_string());
+        variant_to_enum.insert("Sentinel".to_string(), "".to_string());
+        assert_eq!(defining_module_for_variant(&variant_to_enum, "NoDot"), None);
+        assert_eq!(
+            defining_module_for_variant(&variant_to_enum, "Sentinel"),
+            None
+        );
+        assert_eq!(
+            defining_module_for_variant(&variant_to_enum, "Missing"),
+            None
+        );
+    }
+
+    #[test]
+    fn type_identity_uses_exact_summary_key_not_a_leaf() {
+        use crate::v1_compiler_infer_emit_info::{
+            empty_type_summary_index, type_summary_index_insert, TypeRepr, TypeSummary,
+        };
+        let summary = Rc::new(TypeSummary {
+            name: "UnifiedTestClaim".to_string(),
+            key: "v2.std.verification.UnifiedTestClaim".to_string(),
+            repr: Rc::new(TypeRepr::EnumRepr { unit_only: false }),
+            field_summaries: crate::v1_rt::rc_empty_map(),
+            field_type_map: crate::v1_rt::rc_empty_map(),
+            field_import_surface_names: Rc::new(im::Vector::new()),
+            variant_name_set: crate::v1_rt::rc_empty_map(),
+            generic_param_names: Rc::new(im::Vector::new()),
+            has_fn_fields: false,
+        });
+        let index = type_summary_index_insert(
+            empty_type_summary_index(),
+            "v2.std.verification.UnifiedTestClaim".to_string(),
+            "UnifiedTestClaim".to_string(),
+            summary,
+        );
+        assert_eq!(
+            defining_module_for_type_identity(&index, "v2.std.verification.UnifiedTestClaim"),
+            Some("v2.std.verification".to_string())
+        );
+        assert_eq!(
+            defining_module_for_type_identity(&index, "UnifiedTestClaim"),
+            None,
+            "a bare type leaf must not scan keys_by_leaf"
+        );
+    }
+
+    #[test]
+    fn user_type_named_like_a_known_variant_keeps_its_module() {
+        use crate::v1_compiler_infer_emit_info::{
+            empty_type_decl_index, empty_type_summary_index, type_summary_index_insert, TypeRepr,
+            TypeSummary,
+        };
+        let mut variant_to_enum = im::HashMap::new();
+        variant_to_enum.insert(
+            "BoolWitnessClaim".to_string(),
+            "v2.std.verification.UnifiedTestClaim".to_string(),
+        );
+        let summary = Rc::new(TypeSummary {
+            name: "BoolWitnessClaim".to_string(),
+            key: "owner.types.BoolWitnessClaim".to_string(),
+            repr: Rc::new(TypeRepr::StructRepr),
+            field_summaries: crate::v1_rt::rc_empty_map(),
+            field_type_map: crate::v1_rt::rc_empty_map(),
+            field_import_surface_names: Rc::new(im::Vector::new()),
+            variant_name_set: crate::v1_rt::rc_empty_map(),
+            generic_param_names: Rc::new(im::Vector::new()),
+            has_fn_fields: false,
+        });
+        let index = type_summary_index_insert(
+            empty_type_summary_index(),
+            "owner.types.BoolWitnessClaim".to_string(),
+            "BoolWitnessClaim".to_string(),
+            summary,
+        );
+        let source_indices = HashMap::new();
+        let decls = empty_type_decl_index();
+        assert_eq!(
+            defining_module_for_inferred_result(
+                &variant_to_enum,
+                &index,
+                &decls,
+                &source_indices,
+                None,
+                "owner.types.BoolWitnessClaim",
+            ),
+            Some("owner.types".to_string()),
+            "a user type identity named like a variant leaf is not routed to v2.std.verification"
+        );
+        assert_eq!(
+            defining_module_for_variant(&variant_to_enum, "BoolWitnessClaim"),
+            Some("v2.std.verification".to_string()),
+            "the variant map still answers the record-lit arm"
+        );
+    }
+
+    fn synthetic_named_node(name: &str) -> Rc<Node> {
+        let span = no_span();
+        Rc::new(Node {
+            occurrence_identity: Rc::new(
+                crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+            ),
+            name: name.to_string(),
+            ident: None,
+            span: span.clone(),
+            ident_span: Some(span),
+            children: Rc::new(im::Vector::new()),
+            connective: Connective::NoConnective,
+            params: Rc::new(im::Vector::new()),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(im::Vector::new()),
+            body: None,
+            transport: None,
+            properties: Rc::new(im::Vector::new()),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
+            declaration: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+        })
+    }
+
+    #[test]
+    fn inferred_user_bool_witness_claim_keeps_its_module_at_initializer_ref() {
+        use crate::std_decl_ref::decl_ref;
+        use crate::v1_compiler_infer_emit_info::{
+            empty_emit_graph_info, empty_type_decl_index, empty_type_summary_index,
+            type_decl_index_insert, type_summary_index_insert, TypeRepr, TypeSummary,
+        };
+
+        let mut variant_to_enum = im::HashMap::new();
+        variant_to_enum.insert(
+            "BoolWitnessClaim".to_string(),
+            "v2.std.verification.UnifiedTestClaim".to_string(),
+        );
+
+        let mut type_node = (*synthetic_named_node("BoolWitnessClaim")).clone();
+        type_node.declaration = Some(decl_ref(
+            "owner.types".to_string(),
+            "BoolWitnessClaim".to_string(),
+        ));
+        let type_node = Rc::new(type_node);
+
+        let decl_item = type_node.clone();
+        let decls = type_decl_index_insert(
+            empty_type_decl_index(),
+            "owner.types".to_string(),
+            "BoolWitnessClaim".to_string(),
+            decl_item,
+        );
+        let summary = Rc::new(TypeSummary {
+            name: "BoolWitnessClaim".to_string(),
+            key: "owner.types.BoolWitnessClaim".to_string(),
+            repr: Rc::new(TypeRepr::StructRepr),
+            field_summaries: crate::v1_rt::rc_empty_map(),
+            field_type_map: crate::v1_rt::rc_empty_map(),
+            field_import_surface_names: Rc::new(im::Vector::new()),
+            variant_name_set: crate::v1_rt::rc_empty_map(),
+            generic_param_names: Rc::new(im::Vector::new()),
+            has_fn_fields: false,
+        });
+        let summaries = type_summary_index_insert(
+            empty_type_summary_index(),
+            "owner.types.BoolWitnessClaim".to_string(),
+            "BoolWitnessClaim".to_string(),
+            summary,
+        );
+
+        let mut emit_info = (*empty_emit_graph_info()).clone();
+        emit_info.variant_to_enum = Rc::new(variant_to_enum);
+        emit_info.type_summaries = summaries;
+        emit_info.type_decl_items = decls;
+
+        let mut body = (*synthetic_named_node("")).clone();
+        body.inferred = Some(Rc::new(InferredNode::Resolved { node: type_node }));
+        let body = Rc::new(body);
+
+        let graph = ResolvedGraph {
+            modules: Rc::new(im::Vector::new()),
+            item_registry: Rc::new(im::HashMap::new()),
+            item_leaf_owner_modules: Rc::new(im::HashMap::new()),
+            diagnostics: Rc::new(im::Vector::new()),
+        };
+        let source_indices = HashMap::new();
+        let resolved =
+            resolved_initializer_decl_ref(&graph, &source_indices, &emit_info, &body, None)
+                .expect("initializer ref must resolve the carried user declaration");
+        assert_eq!(
+            resolved.module, "owner.types",
+            "carried BoolWitnessClaim declaration must beat variant_to_enum UnifiedTestClaim"
+        );
+        assert_eq!(resolved.name, "BoolWitnessClaim");
+    }
+
+    #[test]
+    fn ambiguous_enum_name_is_not_answered_false() {
+        use crate::v1_compiler_infer_emit_info::{
+            empty_type_summary_index, is_enum_in_summaries, type_summary_index_insert, TypeRepr,
+            TypeSummary, TypeSummaryQuestion,
+        };
+        let enum_summary = Rc::new(TypeSummary {
+            name: "SharedName".to_string(),
+            key: "owner.enums.SharedName".to_string(),
+            repr: Rc::new(TypeRepr::EnumRepr { unit_only: false }),
+            field_summaries: crate::v1_rt::rc_empty_map(),
+            field_type_map: crate::v1_rt::rc_empty_map(),
+            field_import_surface_names: Rc::new(im::Vector::new()),
+            variant_name_set: crate::v1_rt::rc_empty_map(),
+            generic_param_names: Rc::new(im::Vector::new()),
+            has_fn_fields: false,
+        });
+        let struct_summary = Rc::new(TypeSummary {
+            name: "SharedName".to_string(),
+            key: "owner.types.SharedName".to_string(),
+            repr: Rc::new(TypeRepr::StructRepr),
+            field_summaries: crate::v1_rt::rc_empty_map(),
+            field_type_map: crate::v1_rt::rc_empty_map(),
+            field_import_surface_names: Rc::new(im::Vector::new()),
+            variant_name_set: crate::v1_rt::rc_empty_map(),
+            generic_param_names: Rc::new(im::Vector::new()),
+            has_fn_fields: false,
+        });
+        let index = type_summary_index_insert(
+            type_summary_index_insert(
+                empty_type_summary_index(),
+                "owner.enums.SharedName".to_string(),
+                "SharedName".to_string(),
+                enum_summary,
+            ),
+            "owner.types.SharedName".to_string(),
+            "SharedName".to_string(),
+            struct_summary,
+        );
+        assert!(
+            matches!(
+                (*is_enum_in_summaries(index, "SharedName".to_string())).clone(),
+                TypeSummaryQuestion::QuestionNameAmbiguous { leaf } if leaf == "SharedName"
+            ),
+            "disagreement must not collapse to a decided non-enum"
+        );
+    }
+
+    #[test]
+    fn ambiguous_enum_name_refuses_instead_of_non_enum_emission() {
+        use crate::v1_compiler_infer_emit_info::{
+            empty_type_summary_index, type_summary_index_insert, TypeRepr, TypeSummary,
+        };
+        let enum_summary = Rc::new(TypeSummary {
+            name: "SharedName".to_string(),
+            key: "owner.enums.SharedName".to_string(),
+            repr: Rc::new(TypeRepr::EnumRepr { unit_only: false }),
+            field_summaries: crate::v1_rt::rc_empty_map(),
+            field_type_map: crate::v1_rt::rc_empty_map(),
+            field_import_surface_names: Rc::new(im::Vector::new()),
+            variant_name_set: crate::v1_rt::rc_empty_map(),
+            generic_param_names: Rc::new(im::Vector::new()),
+            has_fn_fields: false,
+        });
+        let struct_summary = Rc::new(TypeSummary {
+            name: "SharedName".to_string(),
+            key: "owner.types.SharedName".to_string(),
+            repr: Rc::new(TypeRepr::StructRepr),
+            field_summaries: crate::v1_rt::rc_empty_map(),
+            field_type_map: crate::v1_rt::rc_empty_map(),
+            field_import_surface_names: Rc::new(im::Vector::new()),
+            variant_name_set: crate::v1_rt::rc_empty_map(),
+            generic_param_names: Rc::new(im::Vector::new()),
+            has_fn_fields: false,
+        });
+        let index = type_summary_index_insert(
+            type_summary_index_insert(
+                empty_type_summary_index(),
+                "owner.enums.SharedName".to_string(),
+                "SharedName".to_string(),
+                enum_summary,
+            ),
+            "owner.types.SharedName".to_string(),
+            "SharedName".to_string(),
+            struct_summary,
+        );
+        let parent = crate::v1_compiler_emit_rust::pattern_parent_enum(
+            "Arm".to_string(),
+            None,
+            "SharedName".to_string(),
+            index,
+        );
+        let refusal = crate::v1_compiler_emit_rust::rust_ambiguous_type_name_refusal(
+            "SharedName".to_string(),
+        );
+        assert_eq!(
+            parent,
+            Some(refusal),
+            "an ambiguous enum name must emit the typed refusal, not a non-enum parent"
+        );
+    }
 }
 
 fn lookup_resolved_type_node(graph: &ResolvedGraph, type_name: &str) -> Option<Rc<Node>> {
@@ -22270,27 +23468,53 @@ fn declared_type_name_from_annotation(
     }
 }
 
-fn resolved_decl_ref_from_type_name(
-    graph: &ResolvedGraph,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+fn defining_module_for_inferred_result(
     variant_to_enum: &im::HashMap<String, String>,
+    type_summaries: &Rc<crate::v1_compiler_infer_emit_info::TypeSummaryIndex>,
+    type_decls: &Rc<crate::v1_compiler_infer_emit_info::TypeDeclIndex>,
+    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    inferred_node: Option<&Rc<Node>>,
+    name: &str,
+) -> Option<String> {
+    // Type declaration identity first. A user type whose leaf matches a known variant
+    // (BoolWitnessClaim) must not be stolen by variant_to_enum spelling.
+    inferred_node
+        .and_then(|node| {
+            defining_module_for_type_expr(type_summaries, type_decls, source_indices, node)
+        })
+        .or_else(|| defining_module_for_type_identity(type_summaries, name))
+        .or_else(|| defining_module_for_variant(variant_to_enum, name))
+}
+
+fn resolved_decl_ref_from_type_name(
+    variant_to_enum: &im::HashMap<String, String>,
+    type_summaries: &Rc<crate::v1_compiler_infer_emit_info::TypeSummaryIndex>,
     name: &str,
 ) -> Result<ResolvedDeclRef, String> {
-    let module = defining_module_for_resolved_type(graph, source_indices, variant_to_enum, name)
+    let module = defining_module_for_type_identity(type_summaries, name)
+        .or_else(|| defining_module_for_variant(variant_to_enum, name))
         .ok_or_else(|| format!("no defining module for resolved type '{}'", name))?;
+    let stored_name = crate::v1_std_core::qualified_last_segment(name.to_string());
     Ok(ResolvedDeclRef {
         module,
-        name: name.to_string(),
+        name: if stored_name.is_empty() {
+            name.to_string()
+        } else {
+            stored_name
+        },
     })
 }
 
 fn resolved_initializer_decl_ref(
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
-    variant_to_enum: &im::HashMap<String, String>,
+    emit_info: &crate::v1_compiler_infer_emit_info::EmitGraphInfo,
     body: &Rc<Node>,
     type_annotation: Option<&Rc<Node>>,
 ) -> Result<ResolvedDeclRef, String> {
+    let variant_to_enum = emit_info.variant_to_enum.as_ref();
+    let type_summaries = &emit_info.type_summaries;
+    let type_decls = &emit_info.type_decl_items;
     let si = Rc::new(source_indices.clone());
     if let ExprData::ExprRecordLit { parent_enum } = &*body.expr_data {
         if let Some(parent_name) = parent_enum.as_deref() {
@@ -22320,18 +23544,13 @@ fn resolved_initializer_decl_ref(
                     variant_name, parent_name
                 ));
             }
-            let module = defining_module_for_resolved_type(
-                graph,
-                source_indices,
-                variant_to_enum,
-                parent_name,
-            )
-            .ok_or_else(|| {
-                format!(
-                    "no defining module for resolved coproduct '{}'",
-                    parent_name
-                )
-            })?;
+            let module =
+                defining_module_for_variant(variant_to_enum, &variant_name).ok_or_else(|| {
+                    format!(
+                        "no defining module for resolved coproduct variant '{}'",
+                        variant_name
+                    )
+                })?;
             return Ok(ResolvedDeclRef {
                 module,
                 name: variant_name,
@@ -22360,11 +23579,38 @@ fn resolved_initializer_decl_ref(
         None => None,
     };
     if let Some(name) = inferred_name {
-        return resolved_decl_ref_from_type_name(graph, source_indices, variant_to_enum, &name);
+        let inferred_node = match body.inferred.as_deref() {
+            Some(InferredNode::Resolved { node }) => Some(node),
+            _ => None,
+        };
+        if let Some(module) = defining_module_for_inferred_result(
+            variant_to_enum,
+            type_summaries,
+            type_decls,
+            source_indices,
+            inferred_node,
+            &name,
+        ) {
+            return Ok(ResolvedDeclRef {
+                module,
+                name: crate::v1_std_core::qualified_last_segment(name),
+            });
+        }
+        return Err(format!("no defining module for resolved type '{}'", name));
     }
     if let Some(ann) = type_annotation {
+        if let Some(module) =
+            defining_module_for_type_expr(type_summaries, type_decls, source_indices, ann)
+        {
+            let name = declared_type_name_from_annotation(source_indices, ann)
+                .unwrap_or_else(|| "type".to_string());
+            return Ok(ResolvedDeclRef {
+                module,
+                name: crate::v1_std_core::qualified_last_segment(name),
+            });
+        }
         if let Some(name) = declared_type_name_from_annotation(source_indices, ann) {
-            return resolved_decl_ref_from_type_name(graph, source_indices, variant_to_enum, &name);
+            return resolved_decl_ref_from_type_name(variant_to_enum, type_summaries, &name);
         }
     }
     Err(
@@ -22501,7 +23747,7 @@ pub fn discover_owned_data_decls(
 
     let mut files = Vec::new();
     collect_dag_files(scan_path, &mut files);
-    files.retain(|p| !path_excluded(p, exclude_subpaths));
+    files.retain(|p| !path_excluded(p.path(), exclude_subpaths));
 
     // The process-shared index, so every entry's reference closure reads the one parse per file
     // the floor's other closure walks already hold.
@@ -22511,9 +23757,11 @@ pub fn discover_owned_data_decls(
     let mut groups: Vec<DiscoveryResolveGroup> = Vec::new();
     let mut group_split_collisions: Vec<String> = Vec::new();
     let mut entry_count = 0usize;
-    for path in files {
+    for source in files {
+        let path = source.path();
         let entry = path.to_string_lossy().to_string();
-        let content = std::fs::read_to_string(&path)
+        let content = source
+            .read()
             .map_err(|e| format!("failed to read {:?}: {}", path, e))?;
         if !entry_likely_has_unified_claim_owned_data(&content) {
             continue;
@@ -22584,15 +23832,13 @@ pub fn discover_owned_data_decls(
         // THE ONE READER OF variant_to_enum BUILDS IT, once per group graph, through the builder
         // emission uses: the resolve no longer carries EmitGraphInfo (v1.compiler.infer_items
         // ResolvedGraph), and owned-data discovery is the consumer that demands this projection.
-        let variant_to_enum = v1_compiler_infer::build_emit_graph_info(
+        let emit_info = v1_compiler_infer::build_emit_graph_info(
             graph.modules.clone(),
             graph.item_registry.clone(),
-        )
-        .variant_to_enum
-        .clone();
+        );
         for (entry, entry_module, marker_count) in group.entries {
             let records =
-                owned_data_decls_for_entry(&graph, &si, &variant_to_enum, &entry, &entry_module)?;
+                owned_data_decls_for_entry(&graph, &si, &emit_info, &entry, &entry_module)?;
             if records.len() != marker_count {
                 return Err(format!(
                     "{}: merged-resolve discovery found {} owned unified_claim record(s) but the entry declares {} top-level `data unified_claim_` marker(s)",
@@ -24296,25 +25542,31 @@ pub(crate) fn dag_tree_holds_any_file(dir: &Path) -> bool {
     false
 }
 
-pub(crate) fn collect_dag_files_tolerant(dir: &Path, out: &mut Vec<PathBuf>) {
-    // This walk swallows unreadable directories. Write failure here must not abort it;
-    // `run_dag_parse_sweep` is the loud required-CI writer.
-    let _ = derived_row_roster::ensure_if_row_dir(dir);
+/// Tolerant of unreadable DIRECTORIES (they are skipped), never of a ledger row directory whose
+/// roster cannot be derived: a legacy physical roster or an unreadable row file is returned as a
+/// located refusal, because swallowing it would hand the caller a short or stale roster.
+pub(crate) fn collect_dag_files_tolerant(
+    dir: &Path,
+    out: &mut Vec<derived_row_roster::AcquiredDag>,
+) -> Result<(), String> {
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
-        Err(_) => return,
+        Err(_) => return Ok(()),
     };
+    let mut here = Vec::new();
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
             if is_cargo_target_output_dir(dir, &path) {
                 continue;
             }
-            collect_dag_files_tolerant(&path, out);
+            collect_dag_files_tolerant(&path, out)?;
         } else if path.extension().and_then(|e| e.to_str()) == Some("dag") {
-            out.push(path);
+            here.push(path);
         }
     }
+    out.extend(derived_row_roster::acquire_dir_files(dir, here)?);
+    Ok(())
 }
 
 fn scan_test_decl_names(content: &str) -> Vec<String> {
@@ -24977,6 +26229,101 @@ pub fn render_selected_entry_closure_overlap_json(m: &SelectedEntryClosureOverla
     out
 }
 
+/// One selected claim and what its evaluation observed. `module_path` is the entry's AUTHORED
+/// module name (read off the `module` line by the module index), which is what the claim's label
+/// is minted from (`gunbc.discovery_census` `site_label`).
+pub struct ClaimRouteMember {
+    pub module_path: String,
+    pub function: String,
+    pub outcome: ClaimOutcome,
+    pub eval_steps: u64,
+    pub cpu_ms: u128,
+}
+
+/// THE CLAIM ROUTE'S EXECUTOR: the floor's discovery authority over the modules the operand can
+/// reach, then the floor's claim evaluation over the claims it selects.
+///
+/// NOTHING HERE DECIDES WHAT A CLAIM IS. Which `test` declarations a source enrolls is
+/// `floor_discovery_rows_over_sources` -- the same per-file authority fold the required floor runs,
+/// over a narrower subject -- and whether a claim held is `run_claim_measured`, the evaluation
+/// `claim_batch` and the floor share. The caller supplies two predicates: `module_selected`
+/// narrows the SUBJECT before discovery (an operand naming one module never pays for a corpus
+/// walk), and `claim_selected` narrows discovery's rows to the operand's own population.
+///
+/// One context per ENTRY, as `claim_batch` builds it: every claim of a module shares that module's
+/// resolved graph, and the eval-call memo is released at each claim's frame exit. Floor ADMISSION
+/// policy -- gate prefixes, prepared-subject exclusions, eval-step budget tiers -- is deliberately
+/// not applied: that is the `//:required` aggregate's question, and this route answers what a
+/// named claim OBSERVED, the distinction `gunbc.target_invocation` keeps for every direct
+/// invocation.
+pub fn run_claim_route(
+    source_roots: &[String],
+    module_selected: &dyn Fn(&str) -> bool,
+    claim_selected: &dyn Fn(&str, &str) -> bool,
+) -> Result<Vec<ClaimRouteMember>, String> {
+    let index = process_shared_index(source_roots);
+    let mut selected: Vec<(&String, &Rc<v1_compiler_compile::SourceFile>)> = index
+        .source_files
+        .iter()
+        .filter(|(module_path, _)| module_selected(module_path))
+        .collect();
+    if selected.is_empty() {
+        return Ok(Vec::new());
+    }
+    selected.sort_by(|a, b| a.0.cmp(b.0));
+    let module_for_path: std::collections::HashMap<String, String> = selected
+        .iter()
+        .map(|(m, sf)| (sf.path.replace('\\', "/"), (*m).clone()))
+        .collect();
+    let (graph, indices) = resolve_workspace_entry(source_roots, FLOOR_DISCOVERY_PRODUCER_ENTRY)
+        .map_err(|e| format!("floor discovery authority resolve: {e}"))?;
+    let frame = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let rows =
+        floor_discovery_rows_over_sources(&frame, selected.iter().map(|(_, sf)| sf.as_ref()))
+            .map_err(|refusal| refusal.rendered())?;
+    let mut groups: Vec<(String, String, Vec<String>)> = Vec::new();
+    for row in rows {
+        let Some(module_path) = module_for_path.get(row.entry.as_str()) else {
+            return Err(format!(
+                "cause=FloorDiscoveryEntryOutsideSubject entry={} — the discovery authority \
+                 enrolled an entry the selected subject does not hold",
+                row.entry
+            ));
+        };
+        if !claim_selected(module_path, &row.function) {
+            continue;
+        }
+        match groups.last_mut() {
+            Some((entry, _, functions)) if *entry == row.entry => functions.push(row.function),
+            _ => groups.push((row.entry, module_path.clone(), vec![row.function])),
+        }
+    }
+    let mut members = Vec::new();
+    for (entry, module_path, functions) in groups {
+        let (graph, source_indices) = resolve_entry_with_index(&index, &entry)
+            .map_err(|e| format!("resolve {entry}: {e}"))?;
+        let closure_subject = closure_subject_for_entry(&index, &entry)
+            .map_err(|e| format!("closure subject {entry}: {e}"))?;
+        let ctx = make_eval_context(
+            &graph,
+            source_indices,
+            v1_interpreter::ExecutionMode::Hermetic,
+        );
+        for function in functions {
+            let (outcome, receipt) = run_claim_measured(&ctx, &closure_subject, &function);
+            v1_interpreter::eval_call_memo_frame_exit(&ctx);
+            members.push(ClaimRouteMember {
+                module_path: module_path.clone(),
+                function,
+                outcome,
+                eval_steps: receipt.eval_steps,
+                cpu_ms: receipt.cpu_nanos / 1_000_000,
+            });
+        }
+    }
+    Ok(members)
+}
+
 pub fn discover_floor_witness_roster(
     source_roots: &[String],
     scan_dirs: &[String],
@@ -25072,11 +26419,13 @@ pub fn construction_authority_graph_unresolved(
         std::collections::HashMap::new();
     let mut authorities: Vec<(String, String, String)> = Vec::new();
     for root in source_roots {
-        let mut dag_files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(Path::new(root), &mut dag_files);
+        let mut dag_files = Vec::new();
+        collect_dag_files_tolerant(Path::new(root), &mut dag_files)?;
         dag_files.sort();
-        for path in dag_files {
-            let content = std::fs::read_to_string(&path)
+        for source in dag_files {
+            let path = source.path();
+            let content = source
+                .read()
                 .map_err(|e| format!("read {}: {e}", path.display()))?;
             let file = path.to_string_lossy().into_owned();
             for (module_path, decl_name) in wall_now_authority_refs(&content) {
@@ -29055,12 +30404,14 @@ pub fn discover_source_root_reads(
     let mut dag_files = Vec::new();
     collect_dag_files(scan_path, &mut dag_files);
 
-    for path in dag_files {
+    for source in dag_files {
+        let path = source.path();
         let rel_forward = path.to_string_lossy().replace('\\', "/");
         if path_matches_any_subpath(&rel_forward, exclude_subpaths) {
             continue;
         }
-        let content = std::fs::read_to_string(&path)
+        let content = source
+            .read()
             .map_err(|e| format!("failed to read {:?}: {}", path, e))?;
         let module_path = extract_module_path(&content).ok_or_else(|| {
             format!(
@@ -29875,10 +31226,11 @@ fn collect_layer_import_scoped_paths(roots: &[String]) -> HashSet<String> {
         if !root_path.is_dir() {
             continue;
         }
-        let mut dag_files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut dag_files);
+        let mut dag_files = Vec::new();
+        collect_dag_files_tolerant(root_path, &mut dag_files)
+            .unwrap_or_else(|cause| panic!("layer-import scope over {root}: {cause}"));
         for file in dag_files {
-            scoped.insert(rel_path_for_layer_import(&file));
+            scoped.insert(rel_path_for_layer_import(file.path()));
         }
     }
     scoped
@@ -29896,10 +31248,11 @@ fn importer_roots_have_importless_dag_files(roots: &[String]) -> bool {
         if !root_path.is_dir() {
             continue;
         }
-        let mut dag_files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut dag_files);
+        let mut dag_files = Vec::new();
+        collect_dag_files_tolerant(root_path, &mut dag_files)
+            .unwrap_or_else(|cause| panic!("importless preflight over {root}: {cause}"));
         for file in dag_files {
-            let content = match std::fs::read_to_string(&file) {
+            let content = match file.read() {
                 Ok(c) => c,
                 Err(_) => continue,
             };
@@ -29927,18 +31280,19 @@ fn project_layer_import_syntax_facts(
     if !root_path.is_dir() {
         return;
     }
-    let mut dag_files: Vec<PathBuf> = Vec::new();
-    collect_dag_files_tolerant(root_path, &mut dag_files);
+    let mut dag_files = Vec::new();
+    collect_dag_files_tolerant(root_path, &mut dag_files)
+        .unwrap_or_else(|cause| panic!("[layer-import] declared root {root}: {cause}"));
     dag_files.sort();
     for file in dag_files {
-        let content = match std::fs::read_to_string(&file) {
+        let content = match file.read() {
             Ok(c) => c,
             Err(_) => continue,
         };
         if extract_import_paths(&content).is_empty() {
             continue;
         }
-        let rel = rel_path_for_layer_import(&file);
+        let rel = rel_path_for_layer_import(file.path());
         let importer = extract_module_path(&content).unwrap_or_default();
         let layer = layer_prefix_from_dotted_module(&importer);
         for import_module in extract_import_paths(&content) {
@@ -31151,12 +32505,45 @@ fn collect_node_refs_inner(
     bound.truncate(restore_to);
 }
 
-/// Count of shared leading dot-separated segments between two module paths (containment proximity).
-fn module_prefix_shared_len(a: &str, b: &str) -> usize {
-    a.split('.')
-        .zip(b.split('.'))
-        .take_while(|(x, y)| x == y)
-        .count()
+/// Declarers on the referencing module's ancestor chain, sorted for a stable AmbiguousBare dump.
+/// Containment is `type_ref_module_path_is_containment_prefix` (segment LCP), the same
+/// predicate `global_bare_chain_candidates` applies to each candidate — not a second rule.
+fn on_chain_declarers<'a>(
+    referencing_module: &str,
+    declarers: impl IntoIterator<Item = &'a String>,
+) -> Vec<&'a String> {
+    let mut out: Vec<&'a String> = declarers
+        .into_iter()
+        .filter(|m| {
+            crate::v1_compiler_infer_env::type_ref_module_path_is_containment_prefix(
+                (*m).clone(),
+                referencing_module.to_string(),
+            )
+        })
+        .collect();
+    out.sort();
+    out
+}
+
+/// Import-less UniqueBare pick: on-chain unique, else the census-unique declarer the
+/// resolver UniqueBinding-accepts, else nothing (never nearest-prefix among homonyms).
+enum ImportlessBarePick<'a> {
+    Unique(&'a String),
+    Ambiguous(Vec<&'a String>),
+    None,
+}
+
+fn pick_importless_bare<'a>(
+    referencing_module: &str,
+    mods: &'a std::collections::BTreeSet<String>,
+) -> ImportlessBarePick<'a> {
+    let on_chain = on_chain_declarers(referencing_module, mods.iter());
+    match on_chain.len() {
+        1 => ImportlessBarePick::Unique(on_chain[0]),
+        n if n > 1 => ImportlessBarePick::Ambiguous(on_chain),
+        _ if mods.len() == 1 => ImportlessBarePick::Unique(mods.iter().next().unwrap()),
+        _ => ImportlessBarePick::None,
+    }
 }
 
 /// Longest module-path prefix of a qualified chain that names a declared module.
@@ -31232,7 +32619,7 @@ pub struct BareRefReachability {
 
 #[cfg(test)]
 mod reference_edge_producer_tests {
-    use super::reference_resolution_facts;
+    use super::*;
 
     fn fixture_root(tag: &str) -> std::path::PathBuf {
         // Under the workspace `target/` (gitignored): `rel_path_for_layer_import` fail-closes on
@@ -31291,8 +32678,8 @@ mod reference_edge_producer_tests {
         let emits_any = |from_sub: &str| edges.iter().any(|e| e.path.contains(from_sub));
 
         assert!(
-            has_edge("refless.dag", "test.decl"),
-            "import-less file referencing shared_fn must yield an edge to its declaring module"
+            !has_edge("refless.dag", "test.decl"),
+            "test.decl and test.reflocal both declare shared_fn; neither is on test.refless's chain, so UniqueBare/AmbiguousBare must not pick a neighbor"
         );
         assert!(
             !emits_any("reflocal.dag"),
@@ -31302,6 +32689,82 @@ mod reference_edge_producer_tests {
             !emits_any("imported.dag"),
             "an import-bearing file is import-covered — the reference producer skips it"
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// THE IMPORT-LESS WRONG-EDGE RED on the real `dependency_resolution_facts` union
+    /// (`reference_edges_for_file` inside it — not a mutant of the producer).
+    ///
+    /// `frontier.child.consumer` calls `duplicated`. The lexical binder is the ancestor
+    /// `frontier`. A sibling `frontier.child.plant` also declares the spelling and shares a
+    /// longer module-path prefix, so proximity UniqueBare-binds the plant. After the climb the
+    /// edge is the ancestor, never the sibling.
+    #[test]
+    fn proximity_must_not_bind_an_importless_bare_name_to_a_sibling_homonym() {
+        let root = fixture_root("proximity-wrong-edge");
+        let _ = std::fs::remove_dir_all(&root);
+        write(
+            &root,
+            "parent.dag",
+            "module frontier\nfn duplicated() -> Int { 1 }\n",
+        );
+        write(
+            &root,
+            "plant.dag",
+            "module frontier.child.plant\nfn duplicated() -> Int { 99 }\n",
+        );
+        write(
+            &root,
+            "consumer.dag",
+            "module frontier.child.consumer\nfn read() -> Int { duplicated() }\n",
+        );
+        let roots = vec![root.to_string_lossy().into_owned()];
+        let facts = super::dependency_resolution_facts(&roots, &roots, &[]);
+        let consumer_targets: Vec<&str> = facts
+            .iter()
+            .filter(|f| f.path.contains("consumer.dag"))
+            .map(|f| f.import_module.as_str())
+            .collect();
+        assert!(
+            !consumer_targets.contains(&"frontier.child.plant"),
+            "proximity UniqueBare bound the sibling plant: {consumer_targets:?}"
+        );
+        assert!(
+            consumer_targets.contains(&"frontier"),
+            "the on-chain ancestor must remain the UniqueBare target: {consumer_targets:?}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Positive control: an import-less bare name whose only declarer is an ancestor still
+    /// produces a UniqueBare edge (lexical binding, not pool uniqueness).
+    #[test]
+    fn an_importless_bare_name_on_the_ancestor_chain_still_resolves() {
+        let root = fixture_root("lexical-on-chain");
+        let _ = std::fs::remove_dir_all(&root);
+        write(
+            &root,
+            "parent.dag",
+            "module frontier\nfn duplicated() -> Int { 1 }\n",
+        );
+        write(
+            &root,
+            "consumer.dag",
+            "module frontier.child.consumer\nfn read() -> Int { duplicated() }\n",
+        );
+        write(
+            &root,
+            "unrelated.dag",
+            "module other.real\nfn unused() -> Int { 0 }\n",
+        );
+        let roots = vec![root.to_string_lossy().into_owned()];
+        let facts = super::dependency_resolution_facts(&roots, &roots, &[]);
+        let consumer_targets: Vec<&str> = facts
+            .iter()
+            .filter(|f| f.path.contains("consumer.dag"))
+            .map(|f| f.import_module.as_str())
+            .collect();
+        assert_eq!(consumer_targets, vec!["frontier"]);
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -36321,9 +37784,10 @@ mod import_closure_equivalence_tests {
         let mut entries = BTreeSet::new();
         for root in default_source_roots() {
             let mut dag_files = Vec::new();
-            super::collect_dag_files_tolerant(Path::new(&root), &mut dag_files);
+            super::collect_dag_files_tolerant(Path::new(&root), &mut dag_files)
+                .expect("acquire witness layer root");
             for path in dag_files {
-                let rel = workspace_relative_repo_path(&path.to_string_lossy());
+                let rel = workspace_relative_repo_path(&path.path().to_string_lossy());
                 if !rel.ends_with("_test.dag") || floor_discovery_path_excluded(&rel) {
                     continue;
                 }
@@ -36446,12 +37910,18 @@ mod peel_alias_fixpoint_termination {
                     },
                 ),
             );
+            // No files in this probe: the peel tree is synthetic, module_path is empty.
+            // file_modules / module_named_imports therefore come from empty_symbol_index,
+            // the same constructor every other empty SymbolIndex uses.
+            let empty_index = crate::v1_compiler_infer_env::empty_symbol_index();
             let symbol_index = std::rc::Rc::new(crate::v1_compiler_infer_env::SymbolIndex {
-                entries: crate::v1_rt::rc_empty_map(),
+                entries: empty_index.entries.clone(),
                 global_bare,
-                services: crate::v1_rt::rc_empty_map(),
-                transparent_alias_rep: crate::v1_rt::rc_empty_map(),
-                type_head_exposures: crate::v1_rt::rc_empty_map(),
+                services: empty_index.services.clone(),
+                transparent_alias_rep: empty_index.transparent_alias_rep.clone(),
+                type_head_exposures: empty_index.type_head_exposures.clone(),
+                file_modules: empty_index.file_modules.clone(),
+                module_named_imports: empty_index.module_named_imports.clone(),
             });
             let env = std::rc::Rc::new(crate::v1_compiler_infer_env::TypeEnv {
                 module_path: "".to_string(),
@@ -37542,13 +39012,14 @@ mod import_bearing_reference_edges {
         assert!(!t.contains(&"test.fixture.planted".to_string()), "{t:?}");
     }
 
-    /// Control: the same bare name in an IMPORT-LESS file still resolves by proximity (unchanged),
-    /// and a qualified reference in an import-bearing file is still an edge (the other test).
+    /// After the proximity climb: neither homonym is on `test.claim.a`'s ancestor chain, so
+    /// the import-less file must not UniqueBare-bind the nearer planted fixture.
     #[test]
-    fn the_same_bare_name_without_the_import_still_resolves() {
+    fn the_same_bare_name_without_the_import_does_not_proximity_bind() {
         let src = "module test.claim.a\nfn g() -> Int { Present }\n";
         let t = homonym_edges(src);
-        assert!(t.contains(&"test.fixture.planted".to_string()), "{t:?}");
+        assert!(!t.contains(&"test.fixture.planted".to_string()), "{t:?}");
+        assert!(!t.contains(&"std.optional".to_string()), "{t:?}");
     }
 }
 
@@ -38311,6 +39782,7 @@ pub fn prepare_repository_from_corpus(
 ///
 /// So the repository holds a projection with the cache emptied. The resolve is a fresh compile
 /// with no process-level memo, so the original modules drop here and their caches with them.
+///
 /// Every other field is the same `Rc`, so no evaluated value changes.
 fn prepared_graph_without_typecheck_caches(
     graph: &Rc<v1_compiler_compile::ResolvedGraph>,
@@ -38993,20 +40465,16 @@ pub fn reference_targets_of(index: &ReferenceClosureIndex, module: &str) -> Vec<
         if mods.contains(module) {
             continue;
         }
-        let mut best_len = 0usize;
-        let mut winners: Vec<&String> = Vec::new();
-        for m in mods.iter() {
-            let shared = module_prefix_shared_len(module, m);
-            if winners.is_empty() || shared > best_len {
-                best_len = shared;
-                winners.clear();
-                winners.push(m);
-            } else if shared == best_len {
-                winners.push(m);
+        match pick_importless_bare(module, mods) {
+            ImportlessBarePick::None => {}
+            ImportlessBarePick::Unique(w) => {
+                out.insert(w.clone());
             }
-        }
-        for w in winners {
-            out.insert(w.clone());
+            ImportlessBarePick::Ambiguous(winners) => {
+                for w in winners {
+                    out.insert(w.clone());
+                }
+            }
         }
     }
     out.into_iter().collect()
@@ -42523,13 +43991,25 @@ mod reference_closure_single_parse_differential {
 
 #[cfg(test)]
 mod multi_entry_index_sharing_control_tests {
-    use super::{multi_entry_index_sharing_control, MultiEntryIndexBuild};
+    use super::{
+        multi_entry_index_sharing_control, MultiEntryIndexBuild, MultiEntryIndexBuildKind,
+    };
 
     fn build(digest: u64, site: &str) -> MultiEntryIndexBuild {
         MultiEntryIndexBuild {
             name_set_digest: digest,
             modules: 7,
             site: site.to_string(),
+            kind: MultiEntryIndexBuildKind::NameSetIndex,
+        }
+    }
+
+    fn scratch(digest: u64, site: &str) -> MultiEntryIndexBuild {
+        MultiEntryIndexBuild {
+            name_set_digest: digest,
+            modules: 7,
+            site: site.to_string(),
+            kind: MultiEntryIndexBuildKind::ScratchCachesOverExistingSet,
         }
     }
 
@@ -42555,6 +44035,18 @@ mod multi_entry_index_sharing_control_tests {
         assert!(
             err.contains("a:1") && err.contains("c:3") && !err.contains("b:2"),
             "{err}"
+        );
+    }
+
+    #[test]
+    fn scratch_kind_does_not_count_as_a_second_name_set_index() {
+        assert_eq!(
+            multi_entry_index_sharing_control(&[
+                build(1, "a:1"),
+                scratch(1, "s:1"),
+                scratch(1, "s:2"),
+            ]),
+            Ok(1)
         );
     }
 }

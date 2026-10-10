@@ -1,0 +1,46 @@
+module gunbc.rung_drop.belt_liveness_publication_answers_unconsumed
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+
+// DECLARED 2026-10-06 beside the change that removed the belt timer (dogfood intervention #4,
+// gunbc#13124; bold-bee-114 ruling the same day: replace tick freshness with an event backlog row, and
+// declare a drop for whatever half of it does not land).
+//
+// WHAT THE PREVIOUS RUNG WAS. The RLM launch receipt (gunbc.roadmap_launch_deployment_receipt) refused
+// when the belt tick receipt was older than three timer cadences. While a timer drove every pass, a
+// stale tick receipt meant nothing behind it was running -- capture, verify, publication-answer reads
+// alike -- so the receipt mechanically refused a dead belt.
+//
+// WHAT IT IS NOW. There is no timer, so the tick's age says nothing and the freshness row is gone. Its
+// replacement, the event backlog row (gunbc.roadmap_launch_deployment_observe event_backlog_judge),
+// refuses when a recorded unit exit sits unconsumed in the exit spool past its bound -- that half is
+// mechanically preventable again. The OTHER event source is not covered: a publication answer the
+// helper wrote and no publish obligation consumed. Answers are kept in place rather than moved through
+// stages, and nothing records which answer an obligation consumed, so "an answer older than its bound
+// and still unconsumed" has no observable carrier. A belt whose publication-answer path unit is armed
+// but whose discovery service never runs passes the receipt today; it is caught only by the attempt's
+// publication staying pending on the page, which an operator must notice -- mitigatable.
+
+data belt_liveness_publication_answers_unconsumed: RungDrop = RungDrop {
+  identity: "belt_liveness_publication_answers_unconsumed" as NonEmptyStr,
+
+  subject: "the RLM launch receipt's belt liveness: a publication answer that no publish obligation consumed within its bound is not refused, because nothing records which answer was consumed",
+
+  declared: "2026-10-06",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "gunbc.roadmap_launch_deployment_observe event_backlog_judge, which covers the exit spool's inbox and queued stages; the publication-answer half waits on a consumption record",
+    },
+    population: [
+      "every deployment's publication answer directory (gunbc.host_layout publication_answer_dir), for the window between the belt timer's removal and the restoration trigger below",
+    ],
+    restoration_trigger: "THE CAPABILITY: the launch receipt's event backlog row refuses with StaleBacklog naming a publication answer that is older than its bound and that no publish obligation has consumed -- which needs each consumption to be recorded against the answer it consumed (the attempt's obligation receipt naming the answer's spool key, or the answer moving to a consumed stage once the publish obligation's receipt exists). SUFFICIENT FOR: planting an answer older than the bound with no consuming receipt and observing the receipt refuse, and planting the same answer with its consuming receipt and observing it pass. An armed publication-answer path unit does NOT retire this row (it proves the watcher is armed, not that answers are consumed), and neither does a discovery receipt (it proves discovery ran, not that the answer it should have queued was consumed).",
+  }
+}

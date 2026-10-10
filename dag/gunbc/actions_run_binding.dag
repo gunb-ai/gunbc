@@ -98,6 +98,8 @@ data rlm_expected_revision_env_name: String = "RLM_EXPECTED_REVISION"
 
 data fleet_converge_expected_host_env_name: String = "FLEET_CONVERGE_EXPECTED_HOST"
 
+data fleet_converge_arrival_subject_env_name: String = "FLEET_CONVERGE_ARRIVAL_SUBJECT"
+
 type ExpectedRevisionRead
   = ExpectedRevisionPresent { revision: String }
   | ExpectedRevisionAbsent { variable: String, detail: String }

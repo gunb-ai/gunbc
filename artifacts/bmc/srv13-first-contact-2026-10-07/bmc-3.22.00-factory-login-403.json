@@ -1,0 +1,14 @@
+{
+  "@Message.ExtendedInfo": [
+    {
+      "@odata.type": "#Message.v1_1_1.Message",
+      "Message": "The password provided for this account must be changed before access is granted.  PATCH the Password property for this account located at the target URI '/redfish/v1/AccountService/Accounts/root' to complete this process.",
+      "MessageArgs": [
+        "/redfish/v1/AccountService/Accounts/root"
+      ],
+      "MessageId": "Base.1.16.0.PasswordChangeRequired",
+      "MessageSeverity": "Critical",
+      "Resolution": "Change the password for this account using a PATCH to the Password property at the URI provided."
+    }
+  ]
+}

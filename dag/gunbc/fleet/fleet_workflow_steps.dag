@@ -573,9 +573,15 @@ fn ci_fleet_wif_auth_step() -> Step {
 // (gunbc.auth.managed_host_boot_federation) binds its own provider and account; the step id stays
 // wif_auth so every consumer's ${{ steps.wif_auth.outputs.access_token }} reads the job's identity.
 fn ci_wif_auth_step_for(name: String, provider_resource: String, service_account: String) -> Step {
+  ci_wif_auth_step_with_id(name: name, id: "wif_auth", provider_resource: provider_resource, service_account: service_account)
+}
+
+// The same step under a caller-chosen id, for a job that federates to more than one identity under
+// disjoint conditions (step ids are unique per job even when their conditions are exclusive).
+fn ci_wif_auth_step_with_id(name: String, id: String, provider_resource: String, service_account: String) -> Step {
   UsesStep {
     name: Present { value: name },
-    id: Present { value: "wif_auth" },
+    id: Present { value: id },
     uses: google_auth_action,
     with: Present {
       value: [

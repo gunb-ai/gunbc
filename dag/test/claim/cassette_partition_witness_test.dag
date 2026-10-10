@@ -1,0 +1,43 @@
+module test.claim.cassette_partition_witness
+import std.types {Bool,Int}
+import std.measure {Micrometer,micrometer,micrometer_count}
+import product.printed_chassis.cassette_profiles {mt_jade_profile,mt_collins_profile,gh200_p4261_profile,altra_profile}
+import product.printed_chassis.cassette_layout {partition_profile,layout_for,current_layout,LayoutKnown,LayoutNeedsBoardOutline,proposed_panel_print_policy,panel_print_policy,TrayPartitionKnown,TrayPartitionInvalid,TrayPartitionNeedsOutline}
+import product.printed_chassis.bed_partition {AxisPrintAllowance,allocate_axis,AxisAllocated,AxisAllocationInvalid,AxisAllocationNoFit}
+test fn collins_uses_three_columns_without_exceeding_declared_print_envelopes() -> Bool {
+ match partition_profile(profile:mt_collins_profile,edge_margin:micrometer(count: 14000),policy:proposed_panel_print_policy) {
+ TrayPartitionKnown {partition:p}=>p.columns==3 && p.rows==4 && count(p.edges)==17 && all(p.cells,c=>micrometer_count(m: c.print_width_um)<=micrometer_count(m: p.policy.along_width.bed_um) && micrometer_count(m: c.print_depth_um)<=micrometer_count(m: p.policy.along_depth.bed_um)) && match layout_for(profile:mt_collins_profile,edge_margin:micrometer(count: 14000)) {LayoutKnown {layout:l}=>fold(p.cells,init:0,f:(a,c)=>a+(micrometer_count(m: c.x1_um)-micrometer_count(m: c.x0_um))*(micrometer_count(m: c.z1_um)-micrometer_count(m: c.z0_um)))==micrometer_count(m: l.tray_width)*micrometer_count(m: l.tray_depth) LayoutNeedsBoardOutline=>false}
+ TrayPartitionInvalid=>false TrayPartitionNeedsOutline=>false
+ }
+}
+test fn jade_uses_the_same_allocator_and_larger_brim_recomputes_collins() -> Bool {
+ let jade=match partition_profile(profile:mt_jade_profile,edge_margin:micrometer(count: 14000),policy:proposed_panel_print_policy) {TrayPartitionKnown {partition:p}=>p.columns==3 && p.rows==4 TrayPartitionInvalid=>false TrayPartitionNeedsOutline=>false}
+ let brim=match partition_profile(profile:mt_collins_profile,edge_margin:micrometer(count: 14000),policy:panel_print_policy(brim_each_side_um:micrometer(count: 6000),edge_clearance_each_side_um:micrometer(count: 500))) {TrayPartitionKnown {partition:p}=>p.columns==4 && p.rows==4 && all(p.cells,c=>micrometer_count(m: c.print_width_um)<=micrometer_count(m: p.policy.along_width.bed_um) && micrometer_count(m: c.print_depth_um)<=micrometer_count(m: p.policy.along_depth.bed_um)) TrayPartitionInvalid=>false TrayPartitionNeedsOutline=>false}
+ jade && brim
+}
+test fn altra_keeps_equal_four_cells_and_unknown_board_refuses() -> Bool {
+ let a=match partition_profile(profile:altra_profile,edge_margin:micrometer(count: 14000),policy:proposed_panel_print_policy) {TrayPartitionKnown {partition:p}=>count(p.cells)==4 && count(p.edges)==4 && all(p.cells,c=>micrometer_count(m: c.x1_um)-micrometer_count(m: c.x0_um)==micrometer_count(m: current_layout().tray_width)/2 && micrometer_count(m: c.z1_um)-micrometer_count(m: c.z0_um)==micrometer_count(m: current_layout().tray_depth)/2) TrayPartitionInvalid=>false TrayPartitionNeedsOutline=>false}
+ let u=match partition_profile(profile:gh200_p4261_profile,edge_margin:micrometer(count: 14000),policy:proposed_panel_print_policy) {TrayPartitionKnown {partition:_}=>false TrayPartitionInvalid=>false TrayPartitionNeedsOutline=>true}
+ let b=match partition_profile(profile:altra_profile,edge_margin:micrometer(count: 14000),policy:panel_print_policy(brim_each_side_um:micrometer(count: 90000),edge_clearance_each_side_um:micrometer(count: 0))) {TrayPartitionKnown {partition:_}=>false TrayPartitionInvalid=>true TrayPartitionNeedsOutline=>false}
+ a && u && b
+}
+fn um(n: Int) -> Micrometer { micrometer(count: n) }
+test fn unequal_edge_capacity_can_fit_when_uniform_cells_cannot() -> Bool {
+ let a=AxisPrintAllowance {bed_um:um(n: 100),brim_each_side_um:um(n: 0),edge_clearance_each_side_um:um(n: 0),outer_low_um:um(n: 30),outer_high_um:um(n: 10),internal_low_um:um(n: 0),internal_high_um:um(n: 20)}
+ match allocate_axis(span_um:um(n: 210),allowance:a) {AxisAllocated {cells:c}=>count(c)==3 && map(c,x=>micrometer_count(m: x.end_um)-micrometer_count(m: x.start_um))==[50,80,80] && all(c,x=>micrometer_count(m: x.occupied_with_process_um)<=micrometer_count(m: a.bed_um)) AxisAllocationInvalid=>false AxisAllocationNoFit=>false}
+}
+test fn rounding_conserves_span_and_unused_joint_does_not_prevent_single_piece() -> Bool {
+ let flat=AxisPrintAllowance {bed_um:um(n: 100),brim_each_side_um:um(n: 0),edge_clearance_each_side_um:um(n: 0),outer_low_um:um(n: 0),outer_high_um:um(n: 0),internal_low_um:um(n: 0),internal_high_um:um(n: 0)}
+ let rounded=match allocate_axis(span_um:um(n: 251),allowance:flat) {AxisAllocated {cells:c}=>map(c,x=>micrometer_count(m: x.end_um)-micrometer_count(m: x.start_um))==[83,84,84] && map(c,x=>micrometer_count(m: x.start_um))==[0,83,167] AxisAllocationInvalid=>false AxisAllocationNoFit=>false}
+ let unused=AxisPrintAllowance {bed_um:um(n: 100),brim_each_side_um:um(n: 0),edge_clearance_each_side_um:um(n: 0),outer_low_um:um(n: 0),outer_high_um:um(n: 0),internal_low_um:um(n: 200),internal_high_um:um(n: 200)}
+ let one=match allocate_axis(span_um:um(n: 100),allowance:unused) {AxisAllocated {cells:c}=>count(c)==1 AxisAllocationInvalid=>false AxisAllocationNoFit=>false}
+ let split=match allocate_axis(span_um:um(n: 101),allowance:unused) {AxisAllocated {cells:_}=>false AxisAllocationInvalid=>false AxisAllocationNoFit=>true}
+ rounded && one && split
+}
+
+test fn invalid_input_and_submicrometre_only_split_are_refused() -> Bool {
+ let a=AxisPrintAllowance {bed_um:um(n: 10),brim_each_side_um:um(n: 0),edge_clearance_each_side_um:um(n: 0),outer_low_um:um(n: 5),outer_high_um:um(n: 5),internal_low_um:um(n: 0),internal_high_um:um(n: 0)}
+ let invalid=match allocate_axis(span_um:um(n: 0),allowance:a) {AxisAllocationInvalid=>true AxisAllocated {cells:_}=>false AxisAllocationNoFit=>false}
+ let zero_width=match allocate_axis(span_um:um(n: 1),allowance:a) {AxisAllocationNoFit=>true AxisAllocated {cells:_}=>false AxisAllocationInvalid=>false}
+ invalid && zero_width
+}

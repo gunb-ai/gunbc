@@ -1,0 +1,36 @@
+module extdeps.power.fsp_crps
+import std.types {List,NonEmptyStr}
+import std.measure {Volt,volt,Milliampere,milliampere,Millimeter,millimeter}
+import std.decl_ref {DeclarationRef,WholeDeclaration}
+import extdeps.external_authority {ExternalAuthority,ExternalModelScope,ExternalSubjectRef}
+import extdeps.uri {Uri,Https}
+
+data extdeps_external_authority_anchor:ExternalAuthority=ExternalAuthority {uri:Uri {scheme:Https,locator:"www.fsp-group.com/download/pro/FSP800-50FS_Datasheet.pdf"}}
+data fsp1200_50fs_authority:ExternalAuthority=ExternalAuthority {uri:Uri {scheme:Https,locator:"www.fsp-group.com/download/pro/FSP1200-50FS_Datasheet.pdf"}}
+data fsp_catalog_authority:ExternalAuthority=ExternalAuthority {uri:Uri {scheme:Https,locator:"www.fsp-group.com/download/catalog/IPCPSU.pdf"}}
+data extdeps_model_scope:ExternalModelScope=ExternalModelScope {subject:ExternalSubjectRef {declaration:DeclarationRef {module_path:"extdeps.power.fsp_crps",decl_name:"fsp_server_power_references",field:WholeDeclaration}},first_citation:extdeps_external_authority_anchor,further_citations:[fsp1200_50fs_authority,fsp_catalog_authority]}
+
+type MainRailRating {input_min:Volt,input_max:Volt,current:Milliampere}
+type ServerPowerReference {
+ model:NonEmptyStr,main_voltage:Volt,main_ratings:List<MainRailRating>,
+ reservation_length:Millimeter,reservation_width:Millimeter,reservation_height:Millimeter,
+ authority:ExternalAuthority,
+}
+// Complete redundant-assembly references, not a claim that any loose CRPS module
+// mates with either assembly. May 2020 datasheets pp.1-2 and 2025-26 catalog.
+// Reserve the larger catalog envelope (265 x 76 x 84 mm); older sheets give
+// 250 x 76 x 83.8. Drawing/variant reconciliation is required before mount CAD.
+// Standby and other rails are NOT added to the main-12V budget.
+data fsp800_50fs_reference:ServerPowerReference=ServerPowerReference {
+ model:"FSP800-50FS",main_voltage:volt(count:12),
+ main_ratings:[MainRailRating {input_min:volt(count:100),input_max:volt(count:240),current:milliampere(count:65000)}],
+ reservation_length:millimeter(count:265),reservation_width:millimeter(count:76),reservation_height:millimeter(count:84),authority:extdeps_external_authority_anchor,
+}
+// Manufacturer lists 97 A at 180-264 Vac and 80.5 A at 100-127 Vac.
+// The gap between these ranges is deliberately not interpolated.
+data fsp1200_50fs_reference:ServerPowerReference=ServerPowerReference {
+ model:"FSP1200-50FS",main_voltage:volt(count:12),
+ main_ratings:[MainRailRating {input_min:volt(count:100),input_max:volt(count:127),current:milliampere(count:80500)},MainRailRating {input_min:volt(count:180),input_max:volt(count:264),current:milliampere(count:97000)}],
+ reservation_length:millimeter(count:265),reservation_width:millimeter(count:76),reservation_height:millimeter(count:84),authority:fsp1200_50fs_authority,
+}
+data fsp_server_power_references:List<ServerPowerReference> = [fsp800_50fs_reference,fsp1200_50fs_reference]

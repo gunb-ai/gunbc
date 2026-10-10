@@ -563,7 +563,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     text_default: std::option::Option::None,
 }),
     arity: CliOptionArity::CliRepeated,
-    doc: Rc::new(vec!["Named argument for the entry function, repeatable: `--arg name=value`.".to_string(), "Values enter as String; a missing `=` refuses rather than guessing.".to_string()]),
+    doc: Rc::new(vec!["Named argument for the entry function, repeatable: `--arg name=value`.".to_string(), "Bound against the parameter's resolved type identity: kernel String, Int, and Bool, and std.types NonEmptyStr (String where string_non_empty). Other types refuse.".to_string()]),
     emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 })]),
     realization: Rc::new(CliArmRealization::CliDelegatesToHostFn {
@@ -644,7 +644,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     text_default: Some("".to_string()),
 }),
     arity: CliOptionArity::CliRequired,
-    doc: Rc::new(vec!["Spark target host; required for scope:spark-serving, refused elsewhere".to_string()]),
+    doc: Rc::new(vec!["Spark target host (srv5 | srv6); required for scope:spark-serving, refused elsewhere".to_string()]),
     emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliOptionRow {
     field: "candidate_branch".to_string(),

@@ -1,7 +1,7 @@
 module product.spatial_dimension
 
 import std.types { Bool, NonEmptyStr, brand }
-import std.nat { Nat }
+import std.nat { Nat, nat_to_decimal_string }
 import std.measure { Millimeter, millimeter_count }
 import std.interval {
   OrderedClosedInterval,
@@ -148,11 +148,11 @@ fn render_wire(dimension: RoomDimensionKnowledge) -> String {
   let style = render_style_wire(style: render_style(rendering: rendering))
   match rendering {
     RenderMeasured { value: v, uncertainty: _ } =>
-      "<line class={style} data-mm={millimeter_count(m: v)}/>"
+      "<line class={style} data-mm={nat_to_decimal_string(value: millimeter_count(m: v))}/>"
     RenderEstimated { region: r } =>
-      "<band class={style} data-low={millimeter_count(m: interval_low(interval: r))} data-high={millimeter_count(m: interval_high(interval: r))}/>"
+      "<band class={style} data-low={nat_to_decimal_string(value: millimeter_count(m: interval_low(interval: r)))} data-high={nat_to_decimal_string(value: millimeter_count(m: interval_high(interval: r)))}/>"
     RenderHypothesis { value: v, purpose: _ } =>
-      "<line class={style} data-mm={millimeter_count(m: v)}/>"
+      "<line class={style} data-mm={nat_to_decimal_string(value: millimeter_count(m: v))}/>"
     RenderUnknown { obligation: o } =>
       "<obligation class={style} data-survey={o as String}/>"
   }

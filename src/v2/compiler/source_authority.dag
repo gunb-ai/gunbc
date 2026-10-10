@@ -25,12 +25,11 @@ import v2.extdeps.languages.dag {
 import v2.std.compilers.lexing { TokenStream }
 import v2.std.provenance { span_index_empty }
 import std.algebra { Empty, FreeMonoid, list_snoc_item }
-import v2.std.algebra { fold_list, length }
+import v2.std.algebra { HeadAbsent, HeadFound, fold_list, list_head, skip }
 import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
-  Diagnostics,
   ExternalContractUnknown,
   NonEmptyDiagnostics,
   Outcome,
@@ -483,18 +482,36 @@ fn source_ref_path(ref: SourceRef) -> String {
   ref.path
 }
 
-fn source_root_for_storage_path(path: String) -> SourceRootRef {
-  if starts_with(s: path, prefix: "src/") {
-    V2Tree
+// Tree identity is the --source-root argument that discovered the file, never a substring of
+// the file's storage path. SourceRootRef has two inhabitants (the dag tree and the src/v2
+// tree); an argument names one of those directories or is unrecognized. A parent of both, a
+// copied single-root dump, or any other spelling refuses rather than defaulting to DagTree.
+type SourceRootArgumentAdmission
+  = SourceRootArgumentAdmitted { tree: SourceRootRef }
+  | SourceRootArgumentUnrecognized { argument: String }
+
+fn admit_source_root_argument(argument: String) -> SourceRootArgumentAdmission {
+  if (argument == "src/v2")
+    || (argument == "./src/v2")
+    || (argument == "src/v2/")
+    || argument.ends_with(suffix: "/src/v2")
+    || argument.ends_with(suffix: "/src/v2/") {
+    SourceRootArgumentAdmitted { tree: V2Tree }
+  } else if (argument == "dag")
+    || (argument == "./dag")
+    || (argument == "dag/")
+    || argument.ends_with(suffix: "/dag")
+    || argument.ends_with(suffix: "/dag/") {
+    SourceRootArgumentAdmitted { tree: DagTree }
   } else {
-    DagTree
+    SourceRootArgumentUnrecognized { argument: argument }
   }
 }
 
-fn source_ref_for_storage_path(path: String) -> SourceRef {
+fn source_ref_for_storage_path(path: String, source_root: SourceRootRef) -> SourceRef {
   SourceRef {
     path: path,
-    source_root: source_root_for_storage_path(path: path),
+    source_root: source_root,
     content_hash: content_hash_of_value(value: "selection-unpinned" as NonEmptyStr)
   }
 }
@@ -791,8 +808,7 @@ fn module_storage_binding_from_parse_artifact(
 fn module_storage_binding_from_read_prepared(
   source_read: DagSourceReadWitness,
   lm: LanguageModel,
-  prepared: PreparedGrammar,
-  residue: Diagnostics
+  prepared: PreparedGrammar
 ) -> Outcome<ModuleStorageBinding> {
   match source_read.artifact.kind {
     SourceFile =>
@@ -806,8 +822,7 @@ fn module_storage_binding_from_read_prepared(
           bind_outcome(
             o: parse_module_prepared(
               tokens: token_stream,
-              prepared: prepared,
-              validation_residue: residue
+              prepared: prepared
             ),
             f: fn(artifact) {
               module_storage_binding_from_parse_artifact(
@@ -839,12 +854,11 @@ fn module_storage_binding_from_read_with_model(
 ) -> Outcome<ModuleStorageBinding> {
   match prepare_grammar(grammar: lm.grammar) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: prepared, diagnostics: residue } =>
+    Accepted { value: prepared, diagnostics: _ } =>
       module_storage_binding_from_read_prepared(
         source_read: source_read,
         lm: lm,
-        prepared: prepared,
-        residue: residue
+        prepared: prepared
       )
   }
 }
@@ -900,8 +914,7 @@ fn module_storage_fold_step(
   state: ModuleStorageFoldState,
   read: DagSourceReadWitness,
   lm: LanguageModel,
-  prepared: PreparedGrammar,
-  residue: Diagnostics
+  prepared: PreparedGrammar
 ) -> ModuleStorageFoldState {
   match state {
     ModuleStorageFoldFailed { diagnostics: d } =>
@@ -910,8 +923,7 @@ fn module_storage_fold_step(
       match module_storage_binding_from_read_prepared(
         source_read: read,
         lm: lm,
-        prepared: prepared,
-        residue: residue
+        prepared: prepared
       ) {
         Rejected { diagnostics: d } =>
           ModuleStorageFoldFailed { diagnostics: d }
@@ -929,8 +941,7 @@ fn module_storage_fold_step(
 fn module_storage_bindings_from_ingest_prepared(
   ingest: SourceRootIngest,
   lm: LanguageModel,
-  prepared: PreparedGrammar,
-  residue: Diagnostics
+  prepared: PreparedGrammar
 ) -> Outcome<ModuleStorageIndex> {
   match fold_list(
     xs: ingest,
@@ -940,8 +951,7 @@ fn module_storage_bindings_from_ingest_prepared(
         state: state,
         read: read,
         lm: lm,
-        prepared: prepared,
-        residue: residue
+        prepared: prepared
       )
     }
   ) {
@@ -959,12 +969,11 @@ fn module_storage_bindings_from_ingest_with_model(
     _ =>
       match prepare_grammar(grammar: lm.grammar) {
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
-        Accepted { value: prepared, diagnostics: residue } =>
+        Accepted { value: prepared, diagnostics: _ } =>
           module_storage_bindings_from_ingest_prepared(
             ingest: ingest,
             lm: lm,
-            prepared: prepared,
-            residue: residue
+            prepared: prepared
           )
       }
   }
@@ -1555,13 +1564,37 @@ fn source_authority_round_trip(
   )
 }
 
-// The native filesystem fold supplies observed bytes; provenance is constructed at the same
-// authority as every other source witness. Neither rendered main owns this conversion.
-fn source_root_ingest_from_files(files: List<SourceRootFile>) -> SourceRootIngest {
-  files |> map(file => DagSourceReadWitness {
-    source: Medium { carried: file.content, fidelity: Lossless },
-    artifact: Artifact { kind: SourceFile, id: file.path, file_path: file.path },
-    compilation_unit: file.path,
-    source_root: source_root_for_storage_path(path: file.path)
-  })
+// The native filesystem fold supplies observed bytes and the discovering --source-root
+// argument on each file. Tree identity is admitted from that argument. An unrecognized
+// argument refuses; the file path is never classified.
+type SourceRootIngestFromFiles
+  = SourceRootIngestFromFilesBuilt { ingest: SourceRootIngest }
+  | SourceRootIngestFromFilesUnrecognizedRoot { argument: String, path: String }
+
+fn source_root_ingest_from_files_go(
+  pending: List<SourceRootFile>,
+  acc: SourceRootIngest
+) -> SourceRootIngestFromFiles {
+  match list_head(xs: pending) {
+    HeadAbsent => SourceRootIngestFromFilesBuilt { ingest: acc }
+    HeadFound { value: file } =>
+      match admit_source_root_argument(argument: file.origin) {
+        SourceRootArgumentAdmitted { tree: tree } =>
+          source_root_ingest_from_files_go(
+            pending: skip(xs: pending, n: 1),
+            acc: list_snoc_item(xs: acc, item: DagSourceReadWitness {
+              source: Medium { carried: file.content, fidelity: Lossless },
+              artifact: Artifact { kind: SourceFile, id: file.path, file_path: file.path },
+              compilation_unit: file.path,
+              source_root: tree
+            })
+          )
+        SourceRootArgumentUnrecognized { argument: argument } =>
+          SourceRootIngestFromFilesUnrecognizedRoot { argument: argument, path: file.path }
+      }
+  }
+}
+
+fn source_root_ingest_from_files(files: List<SourceRootFile>) -> SourceRootIngestFromFiles {
+  source_root_ingest_from_files_go(pending: files, acc: Empty)
 }

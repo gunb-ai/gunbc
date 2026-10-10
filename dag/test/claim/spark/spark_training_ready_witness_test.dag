@@ -19,6 +19,7 @@ import gunbc.spark.training_ready {
   SparkTrainingReady,
   SparkTrainingNotReady,
   spark_training_readiness,
+  spark_training_readiness_in,
   spark_serving_absence_from_probe,
   spark_serving_absence_refusal,
   SparkServingAbsenceEvidence,
@@ -149,7 +150,7 @@ fn w_readiness_as(
   match w_pool_or_refused(meminfo_stdout: meminfo_stdout, after: retirement) {
     Absent => false
     Present { value: pool } =>
-      match spark_training_readiness(assignments: w_roster(role: role), pool: pool) {
+      match spark_training_readiness_in(pool: pool, assignments: w_roster(role: role)) {
         SparkTrainingReady { proof: _ } => true
         SparkTrainingNotReady { cause: _ } => false
       }
@@ -165,6 +166,20 @@ fn w_readiness(
 
 test fn w_a_fully_retired_training_cell_is_ready() -> Bool {
   w_readiness(retirement: w_retired_srv10(), meminfo_stdout: "97656250")
+}
+
+
+// THE PRODUCTION WRAPPER READS THE PRODUCTION ROSTER, which holds no assignment since Group A was
+// sold: the same observation the positive control admits is refused there, on role.
+test fn w_the_production_roster_holds_no_training_cell() -> Bool {
+  match w_pool_or_refused(meminfo_stdout: "97656250", after: w_retired_srv10()) {
+    Absent => false
+    Present { value: pool } =>
+      match spark_training_readiness(pool: pool) {
+        SparkTrainingReady { proof: _ } => false
+        SparkTrainingNotReady { cause: _ } => true
+      }
+  }
 }
 
 // THE SAME WELL-FORMED, FULLY ABSENT RETIREMENT ON A SERVING CELL REFUSES ON ROLE ALONE: if role were not

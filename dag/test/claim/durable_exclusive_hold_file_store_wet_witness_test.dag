@@ -11,6 +11,12 @@ import std.durable_exclusive_hold {
   HoldReleaseAgainstAnotherGeneration, HoldReleaseSlotUndecodable, HoldReleaseObservationUnavailable,
 }
 import gunbc.durable_cas_file_store { cas_file_slot_path }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.machine_intake_arrival_subject { admit_arrival_subject, ArrivalSubjectInPopulation }
+import gunbc.machine_intake_arrival_interlock {
+  arrival_after_acquire, arrival_archive_slot_acquire, arrival_archive_slot_release,
+  ArrivalArchiveSlotAcquired, ArrivalArchiveSlotAcquireRefused, ArrivalArchiveSlotReleaseRefused,
+}
 import gunbc.durable_exclusive_hold_file_store {
   FileHoldAcquireOutcome, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost,
   FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable,
@@ -352,4 +358,71 @@ test fn a_release_committed_after_the_slot_moved_is_lost_not_successful_by_real_
     && wh_release_lost(o: again)
     && no_third
     && removed.success
+}
+
+test fn w_after_acquire_invokes_the_real_slot_release() -> Bool {
+  let root_path = wh_fresh_root()
+  let root = root_path as NonEmptyStr
+  match admit_arrival_subject(wire: "mtjade1") {
+    ArrivalSubjectInPopulation { subject: s } =>
+      match arrival_after_acquire(
+        outcome: arrival_archive_slot_acquire(
+          root: root,
+          subject: s,
+          owner: "arrival-release-inhabitance" as DurableHoldOwnerRef,
+        ),
+        body: fn() { ExitSuccess },
+        release_fn: fn(h) { arrival_archive_slot_release(root: root, held: h) },
+      ) {
+        ExitFailure { code: _, reason: _ } =>
+          shell.Remove.RecursiveForce(path: root_path).success && false
+        ExitSuccess =>
+          match arrival_archive_slot_acquire(
+            root: root,
+            subject: s,
+            owner: "arrival-release-inhabitance-2" as DurableHoldOwnerRef,
+          ) {
+            ArrivalArchiveSlotAcquireRefused { cause: _ } =>
+              shell.Remove.RecursiveForce(path: root_path).success && false
+            ArrivalArchiveSlotAcquired { held: _ } =>
+              shell.Remove.RecursiveForce(path: root_path).success
+          }
+      }
+    _ => shell.Remove.RecursiveForce(path: root_path).success && false
+  }
+}
+
+fn arrival_body_writes_marker(marker: String) -> ProcessExit {
+  if Filesystem.WriteCreateNew(path: marker, content: "BODY").success {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: "marker write failed" }
+  }
+}
+
+test fn w_failed_acquire_runs_no_body() -> Bool {
+  let root_path = wh_fresh_root()
+  let marker = concat(root_path, "/body-ran")
+  match arrival_after_acquire(
+    outcome: ArrivalArchiveSlotAcquireRefused { cause: "slot occupied" as NonEmptyStr },
+    body: fn() { arrival_body_writes_marker(marker: marker) },
+    release_fn: fn(h) {
+      ArrivalArchiveSlotReleaseRefused { cause: "release must not run on refused acquire" as NonEmptyStr }
+    },
+  ) {
+    ExitSuccess => shell.Remove.RecursiveForce(path: root_path).success && false
+    ExitFailure { code: _, reason: _ } =>
+      !Filesystem.Read(path: marker).success && shell.Remove.RecursiveForce(path: root_path).success
+  }
+}
+
+test fn w_refused_acquire_body_writes_a_marker_when_called_directly() -> Bool {
+  let root_path = wh_fresh_root()
+  let marker = concat(root_path, "/body-ran")
+  match arrival_body_writes_marker(marker: marker) {
+    ExitFailure { code: _, reason: _ } =>
+      shell.Remove.RecursiveForce(path: root_path).success && false
+    ExitSuccess =>
+      Filesystem.Read(path: marker).success && shell.Remove.RecursiveForce(path: root_path).success
+  }
 }

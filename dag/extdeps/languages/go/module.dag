@@ -2,7 +2,8 @@ module extdeps.languages.go.module
 
 import std.types { NonEmptyStr, brand }
 import std.algebra { Ordering, Less, Equal, Greater }
-import extdeps.version { VersionIdentity, VersionScheme }
+import extdeps.version { VersionIdentity, VersionComparison, VersionCompared, VersionComparisonRefused, VersionScheme, ComparisonSide, LeftOperand, RightOperand }
+import extdeps.version.semver { semver_compare, semver_version_parse, SemVerVersion }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -38,37 +39,42 @@ fn go_semver_to_version_identity(v: GoSemVer) -> VersionIdentity {
   go_semver_label(v: v)
 }
 
-fn go_semver_compare(a: GoSemVer, b: GoSemVer) -> Ordering {
-  let mc = if a.major < b.major { Less } else { if a.major > b.major { Greater } else { Equal } }
-  let nc = if a.minor < b.minor { Less } else { if a.minor > b.minor { Greater } else { Equal } }
-  let pc = if a.patch < b.patch { Less } else { if a.patch > b.patch { Greater } else { Equal } }
-  let pre = match a.prerelease {
-    Absent => match b.prerelease {
-      Absent => Equal
-      Present { value: _bp } => Greater
-    }
-    Present { value: _ap } => match b.prerelease {
-      Absent => Less
-      Present { value: _bp } => Equal
-    }
-  }
-  match mc {
-    Less => Less
-    Greater => Greater
-    Equal => match nc {
-      Less => Less
-      Greater => Greater
-      Equal => match pc {
-        Less => Less
-        Greater => Greater
-        Equal => pre
+// ---- identity compare -----------------------------------------------------------------------
+// Go module versions are "v" followed by a SemVer 2.0.0 version (the cited authority:
+// module versions are semantic versions with a leading "v"), so the scheme strips the prefix and
+// reuses the SemVer grammar and semver_compare — the ONE implementation of the precedence rule.
+// The former go-local comparator is deleted: it ranked ANY two pre-release versions Equal
+// (v1.0.0-alpha == v1.0.0-beta), the exact widening the cited rule forbids, and its parser
+// accepted labels SemVer refuses (a leading-zero pre-release identifier, an empty identifier).
+// A label outside the grammar (no "v" prefix, or a non-SemVer remainder) is a located refusal:
+// the carrier names the failing side, the label, and the cause.
+
+fn go_module_semver_identity_parse(identity: VersionIdentity) -> SemVerVersion? {
+  let cps = chars(s: identity as String)
+  match cps.first() {
+    Absent => none
+    Present { value: h } =>
+      if h != 118 {
+        none
+      } else {
+        semver_version_parse(cps: cps.skip(n: 1))
       }
-    }
+  }
+}
+
+fn go_module_compare_identity(a: VersionIdentity, b: VersionIdentity) -> VersionComparison {
+  match go_module_semver_identity_parse(identity: a) {
+    Absent => VersionComparisonRefused { side: LeftOperand, identity: a as String, cause: "label is not a go module version: a go module version is 'v' followed by a SemVer 2.0.0 version" }
+    Present { value: va } =>
+      match go_module_semver_identity_parse(identity: b) {
+        Absent => VersionComparisonRefused { side: RightOperand, identity: b as String, cause: "label is not a go module version: a go module version is 'v' followed by a SemVer 2.0.0 version" }
+        Present { value: vb } => VersionCompared { ordering: semver_compare(a: va, b: vb) }
+      }
   }
 }
 
 data go_module_version_scheme: VersionScheme = VersionScheme {
-  compare: (a, b) => if a == b { Equal } else { Less }
+  compare: go_module_compare_identity
 }
 
 type GoModulePath = NonEmptyStr where brand("GoModulePath")

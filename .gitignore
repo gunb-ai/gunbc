@@ -77,12 +77,12 @@ __pycache__/
 # regenerable from committed source — symlink to target/release created by codegen
 /bin/
 
-# --- Derived failure-mode roster [owner: gunbc.recurring_failure_mode] ---
-# regenerable from committed source — membership list derived from sibling row files before compile; not a second authored authority
+# --- Retired failure-mode roster file [owner: gunbc.recurring_failure_mode] ---
+# superseded; canonical home: the in-memory roster module contributed by source acquisition (v1_compiler.cli_run.derived_row_roster acquire_dir_files); a file at this path is a legacy artifact of an older gunbc and is refused by the loader — legacy file an older gunbc wrote on every source walk; the roster module is now derived in memory and never written
 /dag/gunbc/recurring_failure_mode/roster.dag
 
-# --- Derived rung-drop roster [owner: gunbc.rung_drop] ---
-# regenerable from committed source — membership list derived from sibling RungDrop row files before compile; not a second authored authority
+# --- Retired rung-drop roster file [owner: gunbc.rung_drop] ---
+# superseded; canonical home: the in-memory roster module contributed by source acquisition (v1_compiler.cli_run.derived_row_roster acquire_dir_files); a file at this path is a legacy artifact of an older gunbc and is refused by the loader — legacy file an older gunbc wrote on every source walk; the roster module is now derived in memory and never written
 /dag/gunbc/rung_drop/roster.dag
 
 # --- Generator stamp files [owner: gunbc.generated_artifact] ---

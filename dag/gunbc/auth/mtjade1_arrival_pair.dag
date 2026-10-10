@@ -1,0 +1,76 @@
+module gunbc.auth.mtjade1_arrival_pair
+
+import std.types { List, Map, NonEmptyStr, String }
+import std.optional { Present }
+import extdeps.cloud.gcp.gcp {
+  ServiceAccountEmail, WifPool, WifProvider, wif_provider_resource, wif_pool_resource,
+}
+import gunbc.auth.github_gcp_federation {
+  fleet_secrets_project_id, fleet_secrets_project_number, github_wif_issuer_uri, federated_service_account_member,
+}
+import gunbc.auth.gcp_secret_access { SecretAccessGrant }
+import gunbc.auth.managed_host_boot_federation { pinned_version_accessor_grant_for }
+import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_attribute_condition, fleet_converge_job_claim_pins }
+import gunbc.secret_provision { mtjade1_bmc_gunbc_arrival_accessor_ref }
+
+// Names, WIF pair and the one version-pinned accessor. PrivilegedEffect rows live in
+// gunbc.auth.mtjade1_arrival_federation so gcp-iam-converge and fleet-converge.yml do not
+// close over the selection fold.
+
+data mtjade1_arrival_pool_id: NonEmptyStr = "github-mtjade1-arrival"
+data mtjade1_arrival_pool_display_name: NonEmptyStr = "Mt. Jade arrival (one job)"
+data mtjade1_arrival_provider_id: NonEmptyStr = "github-mtjade1-arrival-oidc"
+data mtjade1_arrival_service_account_id: NonEmptyStr = "mtjade1-arrival"
+data mtjade1_arrival_service_account: ServiceAccountEmail = "mtjade1-arrival@gunbai-secrets.iam.gserviceaccount.com"
+data mtjade1_arrival_environment: NonEmptyStr = "mtjade1-arrival"
+
+data mtjade1_arrival_wif_pool: WifPool = WifPool {
+  name: mtjade1_arrival_pool_id
+  project: fleet_secrets_project_id as String
+  display_name: Present { value: mtjade1_arrival_pool_display_name }
+  disabled: false
+}
+
+fn mtjade1_arrival_claim_pins() -> List<OidcClaimPin> {
+  fleet_converge_job_claim_pins(environment: mtjade1_arrival_environment)
+}
+
+data mtjade1_arrival_wif_attribute_mapping: Map<String, String> = {
+  "google.subject": "assertion.sub",
+  "attribute.repository_id": "assertion.repository_id",
+  "attribute.workflow_ref": "assertion.workflow_ref"
+}
+
+fn mtjade1_arrival_wif_provider() -> WifProvider {
+  WifProvider {
+    name: mtjade1_arrival_provider_id
+    pool: mtjade1_arrival_pool_id
+    issuer_uri: github_wif_issuer_uri
+    attribute_mapping: Present { value: mtjade1_arrival_wif_attribute_mapping }
+    attribute_condition: Present { value: claim_pins_attribute_condition(pins: mtjade1_arrival_claim_pins()) }
+  }
+}
+
+fn mtjade1_arrival_provider_resource() -> String {
+  wif_provider_resource(project_number: fleet_secrets_project_number, provider: mtjade1_arrival_wif_provider())
+}
+
+fn mtjade1_arrival_principal_set() -> String {
+  join([
+    "principalSet://iam.googleapis.com/",
+    wif_pool_resource(project_number: fleet_secrets_project_number, pool_id: mtjade1_arrival_pool_id as String),
+    "/*"
+  ], "")
+}
+
+fn mtjade1_arrival_principal_member() -> String {
+  federated_service_account_member(email: mtjade1_arrival_service_account)
+}
+
+fn mtjade1_arrival_secret_grants() -> List<SecretAccessGrant> {
+  [pinned_version_accessor_grant_for(
+    title_prefix: "mtjade1-arrival",
+    description: "gunbc.auth.mtjade1_arrival_pair: the one version the arrival job may read for BmcSecure (signed off msg_f03558d1)",
+    target: mtjade1_bmc_gunbc_arrival_accessor_ref,
+  )]
+}

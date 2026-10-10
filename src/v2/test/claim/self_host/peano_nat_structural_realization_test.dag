@@ -21,14 +21,14 @@ import std.operator_realization {
 }
 import std.syntax { BinOp, Lt, Le, Gt, Ge, Eq, Div, Mod, Sub, And, Add }
 import gunbc.structural_realization_bindings { literal_homomorphism_rows, structural_ordering_rows }
-import std.nat { Nat, Zero, Succ, nat_compare }
+import std.nat { Nat, Zero, Succ, nat_compare, nat_to_decimal_string, decimal_digit_nat, D0, D7 }
 import test.fixture.structural_peano_nat {
   StructuralNat, StructuralZero, StructuralSucc,
   StructuralNatDifference, StructuralNatSubtrahendExceedsMinuend,
   StructuralNatQuotientRemainder, StructuralNatDivisionByZero,
   structural_nat_compare, structural_nat_sub, structural_nat_div_rem, structural_nat_div_rem_by_succ
 }
-import v2.std.integer { integer_nat_to_decimal_string, integer_int_to_decimal_string, decimal_digit_nat, D0, D7 }
+import std.integer { int_to_decimal_string }
 
 // FALSIFIERS FOR THE STRUCTURAL PEANO NAT REALIZATION (XL-0N, adhoc-aec65f93-b00), the
 // interpreter-executed half. The emitted-bytes half -- that a kernel literal at a test.fixture.structural_peano_nat.StructuralNat
@@ -99,10 +99,13 @@ test fn nat_div_rem_by_succ_has_no_zero_arm_and_divides() -> Bool {
 fn std_seven() -> Nat { Succ { prev: Succ { prev: Succ { prev: Succ { prev: Succ { prev: Succ { prev: Succ { prev: Zero } } } } } } } }
 
 test fn nat_to_decimal_converts_nontrivial_values() -> Bool {
-  integer_nat_to_decimal_string(value: Zero) == "0"
-    && integer_nat_to_decimal_string(value: std_seven()) == "7"
-    && integer_nat_to_decimal_string(value: Succ { prev: Succ { prev: Succ { prev: std_seven() } } }) == "10"
-    && integer_nat_to_decimal_string(value: 23) == "23"
+  nat_to_decimal_string(value: Zero) == "0"
+    && nat_to_decimal_string(value: std_seven()) == "7"
+    && nat_to_decimal_string(value: Succ { prev: Succ { prev: Succ { prev: std_seven() } } }) == "10"
+    && nat_to_decimal_string(value: 23) == "23"
+    && nat_to_decimal_string(value: 9) == "9"
+    && nat_to_decimal_string(value: 19) == "19"
+    && nat_to_decimal_string(value: 100) == "100"
 }
 
 test fn decimal_digit_nat_supplies_the_peano_value() -> Bool {
@@ -130,10 +133,19 @@ test fn structural_peano_constructors_stay_constructors() -> Bool {
 }
 
 test fn int_to_decimal_is_the_machine_integer_formatter() -> Bool {
-  integer_int_to_decimal_string(value: 0) == "0"
-    && integer_int_to_decimal_string(value: 42) == "42"
-    && integer_int_to_decimal_string(value: 0 - 7) == "-7"
-    && integer_int_to_decimal_string(value: 1000) == "1000"
+  int_to_decimal_string(value: 0) == "0"
+    && int_to_decimal_string(value: 42) == "42"
+    && int_to_decimal_string(value: 0 - 7) == "-7"
+    && int_to_decimal_string(value: 1000) == "1000"
+    && int_to_decimal_string(value: 0 - 10) == "-10"
+    && int_to_decimal_string(value: 0 - 19) == "-19"
+    && int_to_decimal_string(value: 99) == "99"
+}
+
+// The minimum host integer has no representable negation, so a renderer that negates before it
+// divides overflows here; this one divides the signed value and never negates it.
+test fn int_to_decimal_renders_the_minimum_machine_integer() -> Bool {
+  int_to_decimal_string(value: 0 - 9223372036854775807 - 1) == "-9223372036854775808"
 }
 
 // ---------------------------------------------------------------------------------------------

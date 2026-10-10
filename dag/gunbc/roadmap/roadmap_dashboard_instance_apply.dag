@@ -5,6 +5,8 @@ import std.algebra { trim }
 import std.types { String, NonEmptyStr, Bool, List, FilePath, GitRef, CommitSha }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.shell
+import extdeps.gunbc
+import gunbc.output_policy { OutcomeIsData }
 import extdeps.filesystem.filesystem_io
 import extdeps.git {
   shape_git_bundle_create_argv,
@@ -78,8 +80,6 @@ import gunbc.roadmap_dashboard_instance {
   DashboardHydrateControllerHistory,
   DashboardPrepareGitBundle,
   DashboardStageGitBundle,
-  DashboardEnsureDirectory,
-  DashboardEnsureProviderStateRoot,
   DashboardEnsureServeBinary,
   DashboardEnsureOwnershipMarker,
   DashboardEnsureLocalOrigin,
@@ -114,8 +114,27 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_reconcile,
   dashboard_instance_dispatch_worktree_root,
   dashboard_instance_dispatch_attempt_state_root,
+  DashboardActuationPosture,
+  DashboardObserveOnly,
+  DashboardActuating,
 }
 import gunbc.dashboard_provider_readiness { dashboard_provider_device_login_command }
+import gunbc.roadmap.dashboard_instance_directories { dashboard_instance_directory_demands }
+import gunbc.ensure { EnsurePolicy, EnsureObserveOnly, EnsureMayApply, EnsureObservation, EnsureObserved, EnsureAbsent, EnsureInaccessible }
+import std.upsert_decision { Noop, Apply, Refuse }
+import gunbc.owned_directory {
+  OwnedDirectoryTarget,
+  OwnedDirectoryReading,
+  OwnedDirectoryInstallPlan,
+  owned_directory_path,
+  owned_directory_stat_args,
+  owned_directory_observe, ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverExited, ObserverTransportRefused,
+  owned_directory_install_args,
+  owned_directory_decide,
+  owned_directory_ensure,
+  owned_directory_outcome_converged,
+  owned_directory_outcome_detail,
+}
 
 // The wet path is an interpreter of HostDashboardInstance, not a parallel provisioning script. Its
 // high-level provision plan is pure and browser-visible; this module projects each operation to
@@ -583,18 +602,6 @@ fn dashboard_apply_provision_op(
         staged_bundle: staged_bundle,
         temp_bundle: temp_bundle,
       )
-    DashboardEnsureDirectory { path } =>
-      dashboard_target_exec(
-        instance: instance,
-        program: instance.toolchain.directory_create,
-        args: ["-p", path as String],
-      )
-    DashboardEnsureProviderStateRoot { path } =>
-      dashboard_target_exec(
-        instance: instance,
-        program: instance.toolchain.directory_create,
-        args: ["-p", path as String],
-      )
     DashboardEnsureServeBinary { controller_repo, built_binary, path } =>
       dashboard_ensure_serve_binary(
         instance: instance,
@@ -723,6 +730,178 @@ fn dashboard_apply_plan(
       }
     },
   )
+}
+
+// ── THE INSTANCE'S DIRECTORIES, THROUGH THE ONE PROVIDER ─────────────────────────────────────────
+//
+// This route's host operations for gunbc.owned_directory owned_directory_ensure, and nothing else: two
+// read-only metadata reads (list a directory, stat a directory) through the instance's toolchain as the
+// instance's principal, each returning what it read or the typed origin of why it read nothing, and the
+// owned install. The decision, the plan, presence and the readback classification are the provider's,
+// shared with the live_deploy transaction. No exit status or diagnostic text is interpreted here.
+fn dashboard_observer_read(instance: HostDashboardInstance, program: FilePath, args: List<String>) -> ObserverRead {
+  match instance.provision_transport {
+    DashboardLocalProvision => {
+      let r = gunbc.WitnessBin.Run(
+        workdir: dashboard_instance_controller_workdir(instance: instance),
+        bin_path: program,
+        args: args,
+        expect: OutcomeIsData,
+      )
+      if r.success { ObserverReadOut { stdout: r.stdout } }
+      else { ObserverReadFailed { origin: ObserverExited { exit_code: r.exit_code, stderr: r.stderr } } }
+    }
+    DashboardSshProvision { host } =>
+      match typed_argv_exec_over_ssh(host: host, argv: concat([program as String], args)) {
+        TypedArgvExecRefused { reason } => ObserverReadFailed { origin: ObserverTransportRefused { cause: reason } }
+        TypedArgvExecConverged { result } =>
+          if result.exit_code == 0 { ObserverReadOut { stdout: result.stdout } }
+          else { ObserverReadFailed { origin: ObserverExited { exit_code: result.exit_code, stderr: result.stderr } } }
+      }
+  }
+}
+
+fn dashboard_owned_directory_observe(
+  instance: HostDashboardInstance,
+  path: FilePath,
+) -> EnsureObservation<OwnedDirectoryReading> {
+  owned_directory_observe(
+    path: path,
+    list: p => dashboard_observer_read(instance: instance, program: instance.toolchain.path_list, args: ["-1A", "--", p as String]),
+    stat: p => dashboard_observer_read(instance: instance, program: instance.toolchain.path_stat, args: owned_directory_stat_args(path: p)),
+  )
+}
+
+fn dashboard_owned_directory_install(instance: HostDashboardInstance, plan: OwnedDirectoryInstallPlan) -> Bool {
+  dashboard_target_exec(
+    instance: instance,
+    program: instance.toolchain.install,
+    args: owned_directory_install_args(plan: plan),
+  ).success
+}
+
+// AN OBSERVE-ONLY INSTANCE CREATES NOTHING: its posture caps the provider at EnsureObserveOnly, so an
+// absent or drifted directory refuses instead of being installed.
+fn dashboard_directory_policy(instance: HostDashboardInstance) -> EnsurePolicy {
+  match instance.actuation {
+    DashboardObserveOnly => EnsureObserveOnly
+    DashboardActuating => EnsureMayApply
+  }
+}
+
+// EVERY DEMANDED DIRECTORY, ENSURED IN THE COMPOSITION'S ORDER, one receipt each, stopping at the first
+// that does not converge. The receipt's success is the provider's reconciled verdict -- the second
+// stat's -- never the install's exit status.
+fn dashboard_apply_owned_directories(instance: HostDashboardInstance) -> DashboardApplyFold {
+  fold(
+    dashboard_instance_directory_demands(instance: instance),
+    init: DashboardApplyFold { running: true, receipts: [], refused_step: "", refused_detail: "" },
+    f: (acc, target) =>
+      if !acc.running {
+        acc
+      } else {
+        let outcome = owned_directory_ensure(
+          policy: dashboard_directory_policy(instance: instance),
+          target: target,
+          observe: p => dashboard_owned_directory_observe(instance: instance, path: p),
+          run: plan => dashboard_owned_directory_install(instance: instance, plan: plan),
+        )
+        let ok = owned_directory_outcome_converged(o: outcome)
+        let detail = owned_directory_outcome_detail(o: outcome)
+        DashboardApplyFold {
+          running: ok,
+          receipts: concat(acc.receipts, [
+            DashboardProvisionStepReceipt {
+              kind: "ensure-owned-directory" as NonEmptyStr,
+              target: owned_directory_path(t: target) as String,
+              success: ok,
+              detail: detail,
+            },
+          ]),
+          refused_step: if ok { "" } else { "ensure-owned-directory" },
+          refused_detail: if ok { "" } else { detail },
+        }
+      },
+  )
+}
+
+// THE DIRECTORIES, THEN THE PLAN. The plan's ops write into directories (the marker into the instance
+// root, the bundle into the inbox), so they run only once every demanded directory has converged.
+fn dashboard_apply_directories_then_plan(
+  instance: HostDashboardInstance,
+  plan: List<DashboardInstanceProvisionOp>,
+  temp_bundle: FilePath,
+  temp_verify_repo: FilePath,
+) -> DashboardApplyFold {
+  let directories = dashboard_apply_owned_directories(instance: instance)
+  if !directories.running {
+    directories
+  } else {
+    let applied = dashboard_apply_plan(
+      instance: instance,
+      plan: plan,
+      temp_bundle: temp_bundle,
+      temp_verify_repo: temp_verify_repo,
+    )
+    DashboardApplyFold {
+      running: applied.running,
+      receipts: concat(directories.receipts, applied.receipts),
+      refused_step: applied.refused_step,
+      refused_detail: applied.refused_detail,
+    }
+  }
+}
+
+// THE READBACK OF EVERY DEMAND, for the reconcile: the same stat the provider reads, decided under the
+// apply policy. An unreadable directory is an observation refusal (no field is evidence); a foreign
+// owner, a non-directory or a refused mode derivation is a directory refusal; anything the provider
+// would install is not yet converged.
+type DashboardDirectoriesObserved {
+  observation_refusals: List<String>
+  directory_refusals: List<String>
+  converged: Bool
+}
+
+fn dashboard_observe_owned_directories(instance: HostDashboardInstance) -> DashboardDirectoriesObserved {
+  fold(
+    dashboard_instance_directory_demands(instance: instance),
+    init: DashboardDirectoriesObserved { observation_refusals: [], directory_refusals: [], converged: true },
+    f: (acc, target) => {
+      let observation = dashboard_owned_directory_observe(instance: instance, path: owned_directory_path(t: target))
+      match observation {
+        EnsureInaccessible { reason } =>
+          DashboardDirectoriesObserved {
+            observation_refusals: concat(acc.observation_refusals, [reason]),
+            directory_refusals: acc.directory_refusals,
+            converged: false,
+          }
+        EnsureObserved { evidence: _ } => dashboard_directory_decision_fold(acc: acc, target: target, observation: observation)
+        EnsureAbsent { reason: _ } => dashboard_directory_decision_fold(acc: acc, target: target, observation: observation)
+      }
+    },
+  )
+}
+
+fn dashboard_directory_decision_fold(
+  acc: DashboardDirectoriesObserved,
+  target: OwnedDirectoryTarget,
+  observation: EnsureObservation<OwnedDirectoryReading>,
+) -> DashboardDirectoriesObserved {
+  match owned_directory_decide(policy: EnsureMayApply, target: target, observation: observation) {
+    Noop => acc
+    Apply { plan: _ } =>
+      DashboardDirectoriesObserved {
+        observation_refusals: acc.observation_refusals,
+        directory_refusals: acc.directory_refusals,
+        converged: false,
+      }
+    Refuse { reason } =>
+      DashboardDirectoriesObserved {
+        observation_refusals: acc.observation_refusals,
+        directory_refusals: concat(acc.directory_refusals, [reason as String]),
+        converged: false,
+      }
+  }
 }
 
 type DashboardProductionSnapshot {
@@ -974,15 +1153,14 @@ fn dashboard_instance_observe(
   let obs_marker = dashboard_target_path_observe(instance: instance, flag: "-f", path: dashboard_instance_ownership_marker_path(instance: instance))
   let obs_origin = dashboard_target_path_observe(instance: instance, flag: "-d", path: instance.local_origin_root)
   let obs_source = dashboard_target_path_observe(instance: instance, flag: "-d", path: instance.repo_root)
-  let obs_attempts = dashboard_target_path_observe(instance: instance, flag: "-d", path: dashboard_instance_dispatch_worktree_root(instance: instance))
-  let obs_attempt_state = dashboard_target_path_observe(instance: instance, flag: "-d", path: dashboard_instance_dispatch_attempt_state_root(instance: instance))
+  let directories = dashboard_observe_owned_directories(instance: instance)
   let path_refusals = fold(
-    [obs_root, obs_marker, obs_origin, obs_source, obs_attempts, obs_attempt_state],
+    [obs_root, obs_marker, obs_origin, obs_source],
     init: [],
     f: fn(acc, o) { concat(acc, dashboard_path_observation_refusal(obs: o)) },
   )
   DashboardInstanceObserved {
-    observation_refusals: concat(path_refusals, probe_refusals),
+    observation_refusals: concat(concat(path_refusals, directories.observation_refusals), probe_refusals),
     root_present: dashboard_observation_present_bit(obs: obs_root),
     ownership_marker_present: dashboard_observation_present_bit(obs: obs_marker),
     bundle_present: bundle_present,
@@ -996,8 +1174,8 @@ fn dashboard_instance_observe(
       "\n",
       source_revision.stderr,
     ], "")),
-    attempts_present: dashboard_observation_present_bit(obs: obs_attempts),
-    attempt_state_present: dashboard_observation_present_bit(obs: obs_attempt_state),
+    directories_converged: directories.converged,
+    directory_refusals: directories.directory_refusals,
     provider_runtime_ready: provider_runtime.success
       && codex_runtime_version_identity_satisfied(
         combined_output: join([provider_runtime.stdout, "\n", provider_runtime.stderr], ""),
@@ -1703,7 +1881,7 @@ fn dashboard_instance_apply_after_preflight(
           } else {
             let temp_bundle = join([temp.path as String, "/source.bundle"], "") as FilePath
             let temp_verify_repo = join([temp.path as String, "/verify.git"], "") as FilePath
-            let applied = dashboard_apply_plan(
+            let applied = dashboard_apply_directories_then_plan(
               instance: instance,
               plan: plan,
               temp_bundle: temp_bundle,
@@ -1790,8 +1968,6 @@ fn dashboard_bootstrap_only_ops(
 ) -> List<DashboardInstanceProvisionOp> {
   dashboard_instance_provision_plan(instance: instance)
     |> filter(op => match op {
-      DashboardEnsureDirectory { path: _ } => true
-      DashboardEnsureProviderStateRoot { path: _ } => true
       DashboardEnsureServeBinary { controller_repo: _, built_binary: _, path: _ } => true
       DashboardHydrateControllerHistory { controller_repo: _, history_remote: _ } => false
       DashboardPrepareGitBundle { controller_repo: _, anchor_ref: _ } => false
@@ -1809,7 +1985,7 @@ fn dashboard_apply_bootstrap_then_escalate(
   state_root: FilePath,
   remediation: String,
 ) -> DashboardInstanceApplyResult {
-  let applied = dashboard_apply_plan(
+  let applied = dashboard_apply_directories_then_plan(
     instance: instance,
     plan: dashboard_bootstrap_only_ops(instance: instance),
     temp_bundle: dashboard_bootstrap_unused_temp_path,
@@ -1866,22 +2042,17 @@ fn dashboard_instance_apply(
   }
 }
 
-// THE ROOTS AN INSTANCE OWNS, PROVISIONED FROM THE INSTANCE'S OWN DECLARED PLAN.
+// THE DIRECTORIES AN INSTANCE'S CONSUMERS DEMAND, ENSURED ON THEIR OWN.
 //
 // This exists because the launch gates are ordered and the transition gate sits second: it reads
 // transition-inhibition.json under the instance root, and a root that does not exist makes the
 // ABSENCE of that file unestablished rather than established -- so it refuses, correctly, and no
-// later gate is ever reached. Provisioning the roots is therefore a prerequisite of evaluating any
-// launch at all, not a step of live_deploy. live_deploy CreateRoot's the same two dispatch
-// directories only for srv1_live; this filter is what creates them for every other instance that
-// still has an ensure-roots or apply entry.
+// later gate is ever reached. Ensuring the directories is therefore a prerequisite of evaluating any
+// launch at all.
 //
-// It is a FILTER over dashboard_instance_provision_plan, never a second list. The directory steps
-// are selected from the plan the instance already declares and executed through
-// dashboard_apply_provision_op -- the same executor the full apply runs -- so there is no second
-// spelling of which roots an instance owns, and adding a root to the plan adds it here with no edit.
-// A hand-authored mkdir would have been the out-of-band actuation DESIGN 6 names, and it would have
-// drifted from the plan the moment a root was added.
+// It is the same provider over the same list the full apply and the live_deploy transaction use
+// (gunbc.roadmap.dashboard_instance_directories dashboard_instance_directory_demands), never a second
+// list: adding a demand adds it here with no edit.
 //
 // WHAT IT DELIBERATELY DOES NOT DO. The full apply still ensures a serve binary and stages source.
 // Service launch is gunbc.live_deploy's systemd members, which have no macOS realization --
@@ -1893,25 +2064,7 @@ fn dashboard_instance_apply(
 fn dashboard_instance_ensure_dispatch_roots(
   instance: HostDashboardInstance,
 ) -> DashboardApplyFold {
-  dashboard_apply_plan(
-    instance: instance,
-    plan: dashboard_instance_provision_plan(instance: instance)
-      |> filter(op => match op {
-        DashboardEnsureDirectory { path: _ } => true
-        DashboardEnsureProviderStateRoot { path: _ } => true
-        DashboardHydrateControllerHistory { controller_repo: _, history_remote: _ } => false
-        DashboardPrepareGitBundle { controller_repo: _, anchor_ref: _ } => false
-        DashboardStageGitBundle { controller_repo: _, staged_bundle: _ } => false
-        DashboardEnsureServeBinary { controller_repo: _, built_binary: _, path: _ } => false
-        DashboardEnsureOwnershipMarker { path: _, instance_id: _ } => false
-        DashboardEnsureLocalOrigin { bundle: _, origin: _, source_ref: _, publish_ref: _ } => false
-        DashboardEnsureSourceRepo { origin: _, repo: _, anchor_ref: _ } => false
-        DashboardVerifyProviderRuntime { executable: _, state_root: _ } => false
-        DashboardVerifyProviderAuth { executable: _, state_root: _ } => false
-      }),
-    temp_bundle: "/dev/null" as FilePath,
-    temp_verify_repo: "/dev/null" as FilePath,
-  )
+  dashboard_apply_owned_directories(instance: instance)
 }
 
 fn dashboard_instance_ensure_roots_fold_for_id(instance_id: String) -> DashboardApplyFold? {

@@ -1,6 +1,10 @@
 module extdeps.boards.asrock_rack
 
-import extdeps.boards.types { BaseboardCatalogRow, DimmPopulation }
+import extdeps.boards.types {
+  BaseboardCatalogRow, DimmPopulation,
+  BaseboardPhysicalProfile,
+  PowerInputPopulationStanding, PowerInputMinimumOneStated,
+}
 import extdeps.vendor.asrock_rack { asrock_rack }
 import extdeps.bmc.webui.nbd_proxy { BmcwebNbdProxyEndpointVariant, VmSlotIndexEndpoint, NbdSlotEndpoint }
 import extdeps.bmc.types {
@@ -31,12 +35,16 @@ import extdeps.firmware.types {
   InstantFlashRom,
   firmware_semantic_version,
 }
-import std.measure { Micrometer, micrometer, ByteSize, MegatransfersPerSecond, byte_size, celsius, megatransfers_per_second, percent, positive_celsius_delta, positive_measure_count }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation }
+import std.measure {
+  Micrometer, micrometer, ByteSize, MegatransfersPerSecond, byte_size, celsius, megatransfers_per_second, percent, positive_celsius_delta, positive_measure_count,
+  Watt, watt, Millimeter, millimeter, Celsius, Ampere, Volt, volt,
+}
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation, CitedFigureStanding, TranscribedUncited }
 import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity }
 import std.affine_space { point2 }
 import std.orthogonal_geometry { AxisAlignedRectangle2, OrthogonalConstruction, axis_aligned_rectangle2 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.board_authority { BoardAuthorityRef }
 import extdeps.standards.micro_atx { MountingLocationId, LocB, LocC, LocF, LocH, LocJ, LocL, LocM, LocR, LocS }
 import extdeps.cpu.types { CpuSocket }
 import extdeps.cpu.ampere { ampere_lga4926_socket }
@@ -74,8 +82,16 @@ data asrock_altrad8ud_srv3_nbd_proxy_ws_dry_run_authority: ExternalAuthority = E
   }
 }
 
+data asrock_altrad8ud_board_authority: BoardAuthorityRef = BoardAuthorityRef {
+  subject: DeclarationRef {
+    module_path: "extdeps.boards.asrock_rack",
+    decl_name: "asrock_altrad8ud_1l2t_catalog",
+    field: WholeDeclaration
+  }
+}
+
 data asrock_altrad8ud_1l2t_catalog: BaseboardCatalogRow = BaseboardCatalogRow {
-  model: AsrockRackAltrad8ud1l2t,
+  model: asrock_altrad8ud_board_authority,
   model_label: "ASRock Rack ALTRAD8UD-1L2T",
   vendor: asrock_rack,
   bmc_firmware: OpenBmc,
@@ -360,7 +376,7 @@ fn live_probe_confirms_nbd_slot_ws_absent() -> Bool {
 // versioned and separately flashed: srv4 runs BMC 03.22.00 and still fails to
 // boot, so "this host is on the current firmware" is not a single fact.
 data asrock_altrad8ud_bios_3_10_instant_flash_release: FirmwareReleaseRow = FirmwareReleaseRow {
-  board: AsrockRackAltrad8ud1l2t,
+  board: asrock_altrad8ud_board_authority,
   target: HostBios,
   version: firmware_semantic_version(major: 3, minor: 10, patch: 0),
   released_on: 1776124800000,
@@ -381,7 +397,7 @@ data asrock_altrad8ud_bios_3_10_instant_flash_release: FirmwareReleaseRow = Firm
 }
 
 data asrock_altrad8ud_bios_3_10_openbmc_release: FirmwareReleaseRow = FirmwareReleaseRow {
-  board: AsrockRackAltrad8ud1l2t,
+  board: asrock_altrad8ud_board_authority,
   target: HostBios,
   version: firmware_semantic_version(major: 3, minor: 10, patch: 0),
   released_on: 1776124800000,
@@ -422,7 +438,7 @@ data asrock_altrad8ud_bios_3_10_obmc_manifest_purpose: NonEmptyStr = "xyz.openbm
 data asrock_altrad8ud_bios_3_10_obmc_manifest_machine_name: NonEmptyStr = "altrad8ud-1l2t"
 
 data asrock_altrad8ud_bmc_3_22_00_release: FirmwareReleaseRow = FirmwareReleaseRow {
-  board: AsrockRackAltrad8ud1l2t,
+  board: asrock_altrad8ud_board_authority,
   target: BmcController,
   version: firmware_semantic_version(major: 3, minor: 22, patch: 0),
   released_on: 1776124800000,
@@ -431,12 +447,32 @@ data asrock_altrad8ud_bmc_3_22_00_release: FirmwareReleaseRow = FirmwareReleaseR
     scheme: Https
     locator: "www.asrockrack.com/general/productdetail.asp?Model=ALTRAD8UD-1L2T"
   },
-  image_bytes: byte_size(count: 29056000),
-  image_digest: Absent,
+  image_bytes: byte_size(count: 29060210),
+  image_digest: Present {
+    value: sha256_digest(
+      hex: "0c1f458c396aff76ae0259509ea05c53eef57809fa202721875586792fa807bb",
+    ),
+  },
   release_notes: "1. A password change is enforced upon the first login to the WebUI  2. Improved BMC web information  3. Enhanced BMC system compatibility",
   prerequisite: NoFirmwarePrerequisite,
   authority: asrock_altrad8ud_download_authority,
 }
+
+// The push member inside the 03.22.00 distribution zip: a static-layout OpenBMC image
+// (u-boot, kernel, rofs, rwfs, each RSA-SHA256 signed) whose MANIFEST declares
+// purpose BMC, version 3.22.00, BuildId 20260217040008, MachineName altrad8ud-1l2t.
+// The zip's own bytes are the release row's image_digest; these are the bytes the
+// UpdateService consumes. Measured 2026-10-08 and pushed to srv13, which then
+// reported BMC image 3.22.00 in its firmware inventory.
+data asrock_altrad8ud_bmc_3_22_00_push_artifact_name: NonEmptyStr = "altrad8ud-1l2t_3.22.00.static.mtd.tar"
+
+data asrock_altrad8ud_bmc_3_22_00_push_artifact_bytes: ByteSize = byte_size(count: 29347840)
+
+data asrock_altrad8ud_bmc_3_22_00_push_artifact_digest: Digest = sha256_digest(
+  hex: "cb8b8e727174b8383f90f36e967838c46105bd42bc76cc08c4ac1383a88ca9de",
+)
+
+data asrock_altrad8ud_bmc_3_22_00_manifest_purpose: NonEmptyStr = "xyz.openbmc_project.Software.Version.VersionPurpose.BMC"
 
 data asrock_altrad8ud_firmware_release_catalog: List<FirmwareReleaseRow> = [
   asrock_altrad8ud_bios_3_10_instant_flash_release,
@@ -467,7 +503,7 @@ data asrock_altrad8ud_firmware_release_catalog: List<FirmwareReleaseRow> = [
 // the minimum evidence rather than an inference from the vendor page (which
 // states no such dependency at all).
 data asrock_altrad8ud_bios_310_push_refused_at_bmc_207: FirmwarePrerequisiteObservation = FirmwarePrerequisiteObservation {
-  board: AsrockRackAltrad8ud1l2t,
+  board: asrock_altrad8ud_board_authority,
   subject: HostBios,
   image_kind: OpenBmcWebUiTar,
   gating_target: BmcController,
@@ -479,7 +515,7 @@ data asrock_altrad8ud_bios_310_push_refused_at_bmc_207: FirmwarePrerequisiteObse
 }
 
 data asrock_altrad8ud_bios_310_push_accepted_at_bmc_322: FirmwarePrerequisiteObservation = FirmwarePrerequisiteObservation {
-  board: AsrockRackAltrad8ud1l2t,
+  board: asrock_altrad8ud_board_authority,
   subject: HostBios,
   image_kind: OpenBmcWebUiTar,
   gating_target: BmcController,
@@ -508,11 +544,11 @@ data asrock_altrad8ud_bios_openbmc_prerequisite_evidence: List<FirmwarePrerequis
 // modules installed in it — note in particular that the four-module
 // population is A1+B1+E1+F1 and is NOT one module per channel.
 data asrock_altrad8ud_documented_dimm_populations: List<DimmPopulation> = [
-  DimmPopulation { board: AsrockRackAltrad8ud1l2t, slots: ["A1"], authority: extdeps_external_authority_anchor },
-  DimmPopulation { board: AsrockRackAltrad8ud1l2t, slots: ["A1", "E1"], authority: extdeps_external_authority_anchor },
-  DimmPopulation { board: AsrockRackAltrad8ud1l2t, slots: ["A1", "B1", "E1", "F1"], authority: extdeps_external_authority_anchor },
+  DimmPopulation { board: asrock_altrad8ud_board_authority, slots: ["A1"], authority: extdeps_external_authority_anchor },
+  DimmPopulation { board: asrock_altrad8ud_board_authority, slots: ["A1", "E1"], authority: extdeps_external_authority_anchor },
+  DimmPopulation { board: asrock_altrad8ud_board_authority, slots: ["A1", "B1", "E1", "F1"], authority: extdeps_external_authority_anchor },
   DimmPopulation {
-    board: AsrockRackAltrad8ud1l2t,
+    board: asrock_altrad8ud_board_authority,
     slots: ["A1", "B1", "C1", "D1", "E1", "F1", "G1", "H1"],
     authority: extdeps_external_authority_anchor,
   },
@@ -701,8 +737,11 @@ data asrock_altrad8ud_standoff_figure_authority: ExternalAuthority = ExternalAut
 
 // WHAT IS KNOWN about a standard location on this specific board. Every arm names its evidence
 // route, so the grade is readable from the constructor rather than from prose beside it.
+// Image-position estimates (used by Jade review) do not establish a location; unlike
+// a correspondence to exact standard coordinates, they cannot admit a standoff.
 type BoardLocationStanding
   = HoleCorrespondenceInferred
+  | HolePositionEstimatedFromImage
   | HoleAbsenceExplicitlyDirected
   | HoleNotObservedInDrawing
   | HolePhysicallyConfirmedPresent
@@ -723,6 +762,7 @@ type StandoffPlacementDecision
 // physically-confirmed arms below are unpopulated today and are the shape the measurement lands in.
 fn standoff_placement(standing: BoardLocationStanding) -> StandoffPlacementDecision {
   match standing {
+    HolePositionEstimatedFromImage => StandoffProhibited { cause: NoAdmittedBoardHole }
     HoleCorrespondenceInferred => StandoffAdmitted
     HolePhysicallyConfirmedPresent => StandoffAdmitted
     HoleAbsenceExplicitlyDirected => StandoffProhibited { cause: ProductSaysRemove }
@@ -897,3 +937,195 @@ data asrock_altrad8ud_open_mounting_unknowns: List<Altrad8udMountingUnknown> = [
   MountingHoleGroundBondUnknown,
   StandoffHeightAndPadUnmeasured,
 ]
+
+
+// =============================================================================================
+// THE VENDOR MANUAL, READ FIRST-PARTY ON 2026-10-04 FROM AN OPERATOR-SUPPLIED COPY.
+//
+// extdeps_external_authority_anchor has named download.asrock.com/Manual/ALTRAD8UD-1L2T.pdf since
+// this module was written, and until today every row below this line that cited it was either a
+// relayed reading (the power-interface figures came from a routed review, as the former gigabyte
+// co-location recorded) or a reading of the geometry pages only. The copy read today is Version
+// 1.20, published Jul. 2025, 95 pages. Every row in this section names the manual section it was
+// read from, so a later revision of the manual can be diffed against the row rather than against
+// a memory of it.
+// =============================================================================================
+type HeldManualRevision {
+  version_label: NonEmptyStr
+  published_label: NonEmptyStr
+  page_count: Nat
+  authority: ExternalAuthority
+}
+
+data asrock_altrad8ud_manual_held: HeldManualRevision = HeldManualRevision {
+  version_label: "1.20",
+  published_label: "Jul. 2025",
+  page_count: 95,
+  authority: extdeps_external_authority_anchor,
+}
+
+// ---- 1.2 Specifications, the comparison profile. Moved here from extdeps.boards.gigabyte, where
+// it was co-located for a two-board comparison and carried a routed-review reading. The manual
+// confirms that reading on every field it covers: one 4-pin ATX PSU signal connector with a
+// 24-pin adapter cable, three 8-pin ATX 12V connectors supporting 12 V DC-in, no 24-pin socket.
+data asrock_altrad8ud_1l2t_physical_profile: BaseboardPhysicalProfile = BaseboardPhysicalProfile {
+  model_label: "ASRock Rack ALTRAD8UD-1L2T",
+  socket_count: 1,
+  max_tdp_per_socket: watt(count: 250),
+  form_factor_label: "Deep Micro-ATX",
+  width: millimeter(count: 244),
+  depth: millimeter(count: 267),
+  dimm_slots: 8,
+  max_data_rate: megatransfers_per_second(count: 3200),
+  atx_24pin_count: 0,
+  eps_8pin_count: 3,
+  onboard_10gbe_ports: 2,
+  dedicated_management_ports: 1,
+  pcie_slots: 4,
+}
+
+// max_tdp_per_socket is NOT in the manual. Section 1.2 names the processor family and socket and
+// states no socket power; the 250 W figure arrived with the relayed profile and is kept as the
+// value the comparison witness already consumes, graded below so no reader takes it for a manual
+// row. pcie_slots is 4 per section 2.5 (PCIE4..PCIE7), correcting the relayed 3.
+data asrock_altrad8ud_max_tdp_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Section 1.2 of manual v1.20 states no socket power limit. Ground 250 W against the ASRock Rack product page or the Ampere Altra Max datasheet's socket TDP ceiling, or delete the field from the comparison.",
+}
+
+// ---- 2.8 ATX PSU / DC-IN power connections, the section this program was blocked on.
+//
+// Verbatim, section 2.8: "This motherboard supports both +12V DC and ATX power input." The table
+// then marks the 12V 8pin connector O under DC-IN and O under ATX PSU, and the ATX 4pin X under
+// DC-IN and O under ATX PSU "(with the bundled ATX 24pin-to-4pin converter cable)".
+//
+// Verbatim, section 2.7 (ATX 12V Power Connectors): "This motherboard provides three 8-pin ATX
+// 12V power connectors. Under the lowest power supply, user can freely use ATX12V1, ATX12V2 or
+// ATX12V3 connector."
+//
+// Verbatim, section 2.7 (Micro-Fit ATX 4Pin Power Connector): "The motherboard provides one 4-pin
+// power/signal connector which is a required input for ATX power source. ... For DC-IN 12V
+// application, it is not necessary to use this ATX 4-PIN power connector."
+type BoardPowerInputMode = DcIn12V | AtxPsu
+
+type PowerInputRequirement
+  = InputRequired
+  | InputRequiredViaBundledConverter
+  | InputNotUsed
+
+type BoardPowerConnectorKind = Atx12V8Pin | MicroFitAtx4PinSignal
+
+// The 2.8 table as a total function: every (mode, connector) cell is one arm, so a fourth cell
+// cannot appear without a decision.
+fn asrock_altrad8ud_power_input_requirement(mode: BoardPowerInputMode, kind: BoardPowerConnectorKind) -> PowerInputRequirement {
+  match mode {
+    DcIn12V => match kind { Atx12V8Pin => InputRequired MicroFitAtx4PinSignal => InputNotUsed }
+    AtxPsu => match kind { Atx12V8Pin => InputRequired MicroFitAtx4PinSignal => InputRequiredViaBundledConverter }
+  }
+}
+
+// Pinout of each 8-pin ATX 12V connector, section 2.7 figure: pins 1-4 GND, pins 5-8 12V. Four
+// 12 V contacts per connector is the fact a current-per-connector derivation needs.
+data asrock_altrad8ud_atx12v_ground_pins: List<Nat> = [1, 2, 3, 4]
+data asrock_altrad8ud_atx12v_twelve_volt_pins: List<Nat> = [5, 6, 7, 8]
+data asrock_altrad8ud_atx12v_nominal_input: Volt = volt(count: 12)
+
+// Pinout of ATX4PIN1, section 2.7 figure: pin 1 ATX_PWROK, pin 2 GND, pin 3 ATX_+5VSB, pin 4 PSON#.
+type MicroFit4PinSignal = AtxPwrOk | SignalGround | Atx5Vsb | PsOnActiveLow
+fn asrock_altrad8ud_atx4pin_signal(pin: Nat) -> MicroFit4PinSignal? {
+  if pin == 1 { Present { value: AtxPwrOk } }
+  else { if pin == 2 { Present { value: SignalGround } }
+  else { if pin == 3 { Present { value: Atx5Vsb } }
+  else { if pin == 4 { Present { value: PsOnActiveLow } } else { none } } } }
+}
+
+// The population standing, upgraded from Unresolved by the quote above and no further: one input
+// suffices "under the lowest power supply", and the manual states no rule for higher power. What
+// a given processor needs above one is a derivation from the connector's rated current, owned by
+// the consumer (product.printed_chassis.node_power_feed), never a number authored here.
+data asrock_altrad8ud_required_input_population: PowerInputPopulationStanding = PowerInputMinimumOneStated {
+  available_inputs: 3,
+  stated_condition: "Under the lowest power supply, user can freely use ATX12V1, ATX12V2 or ATX12V3 connector. (manual v1.20 section 2.7)",
+}
+
+// STANDBY UNDER DC-IN IS AN INFERENCE, typed as one. The 4-pin carries ATX_+5VSB as an INPUT in
+// ATX mode and is not used in DC-IN mode; section 1.2 lists a Standby Power LED (5VSB) and section
+// 1.5 names SB_PWR1 "STB PWR Ready"; section 3.3.8 reads a 5VSB rail. So under DC-IN the board must
+// derive its standby rail from the 12 V input on-board. The manual never says so in those words.
+data asrock_altrad8ud_dc_in_standby_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Confirm on a held board under 12 V DC-IN with ATX4PIN1 unconnected that SB_PWR1 lights and the BMC boots; that observation is the receipt, recorded in the fleet layer.",
+}
+
+// Package contents, section 1.1: the ATX 4P-to-24P cable is 8 cm, so an ATX-mode supply must sit
+// within that reach of ATX4PIN1 or the converter is extended. DC-IN mode has no such tether.
+data asrock_altrad8ud_bundled_converter_cable_length: Millimeter = millimeter(count: 80)
+
+// ---- 2.7 System fan connectors: five 6-pin headers FAN1..FAN5 (layout items 17-21). Pinout from
+// the figure, pin 1 first: GND, FAN_VOLTAGE, FAN_SPEED_SENSOR1, FAN_SPEED_CONTROL,
+// FAN_SPEED_SENSOR2, NC. A 4-pin PWM fan occupies pins 1-4. Header current limit is NOT stated.
+data asrock_altrad8ud_system_fan_header_count: Nat = 5
+data asrock_altrad8ud_fan_header_pin_count: Nat = 6
+data asrock_altrad8ud_fan_header_current_limit_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Manual v1.20 states no per-header current limit for FAN1-FAN5. Ground against an ASRock Rack support statement before loading one header with a daisy-chained fan bank.",
+}
+
+// ---- 1.6 Rear I/O, left to right as the panel figure numbers them.
+type RearIoPort
+  = RearVga
+  | RearLan2TenGbe
+  | RearLan1TenGbeSharedNic
+  | RearUsb3Pair12
+  | RearLan3OneGbe
+  | RearUsb3Pair34
+  | RearIpmiLan
+  | RearUidSwitch
+data asrock_altrad8ud_rear_io_ports: List<RearIoPort> = [RearVga, RearLan2TenGbe, RearLan1TenGbeSharedNic, RearUsb3Pair12, RearLan3OneGbe, RearUsb3Pair34, RearIpmiLan, RearUidSwitch]
+
+// Which rear ports carry an Ethernet cable in service. The 1L2T has two 10GbE (LAN1 shared with
+// the BMC NC-SI path), one 1GbE and one dedicated IPMI port; how many a deployment plugs is a
+// fleet decision, so the row carries the available count and nothing about the plugged count.
+data asrock_altrad8ud_rear_rj45_count: Nat = 4
+
+// ---- 1.4 Layout: WHICH EDGE each service connector sits on, read from the to-scale layout figure
+// the standoff correspondence above already relies on. The board frame is x along the rear I/O
+// edge and y the depth from that edge (asrock_altrad8ud_orientation). The figure shows the rear
+// I/O at the left and the three ATX12V connectors, ATX4PIN1 and FAN1-FAN5 at the RIGHT edge, i.e.
+// the edge FARTHEST from rear I/O. That is the fact the cassette harness inherits: in a cassette
+// whose rear I/O faces the rear fan bank, the board's power and fan headers are at the FRONT.
+type BoardEdge = RearIoEdge | FrontEdge | SideEdgeNearDimmBankA | SideEdgeNearPcieSlots
+
+type LayoutConnectorEdge {
+  designator: NonEmptyStr
+  layout_item: Nat
+  edge: BoardEdge
+}
+
+data asrock_altrad8ud_service_connector_edges: List<LayoutConnectorEdge> = [
+  LayoutConnectorEdge { designator: "ATX4PIN1", layout_item: 6, edge: FrontEdge },
+  LayoutConnectorEdge { designator: "ATX12V1", layout_item: 7, edge: FrontEdge },
+  LayoutConnectorEdge { designator: "PSU_SMB1", layout_item: 8, edge: FrontEdge },
+  LayoutConnectorEdge { designator: "ATX12V2", layout_item: 13, edge: FrontEdge },
+  LayoutConnectorEdge { designator: "ATX12V3", layout_item: 15, edge: FrontEdge },
+  LayoutConnectorEdge { designator: "FAN1", layout_item: 17, edge: FrontEdge },
+  LayoutConnectorEdge { designator: "FAN2", layout_item: 18, edge: FrontEdge },
+  LayoutConnectorEdge { designator: "FAN3", layout_item: 19, edge: FrontEdge },
+  LayoutConnectorEdge { designator: "FAN4", layout_item: 20, edge: FrontEdge },
+  LayoutConnectorEdge { designator: "FAN5", layout_item: 21, edge: FrontEdge },
+  LayoutConnectorEdge { designator: "PANEL1", layout_item: 25, edge: SideEdgeNearPcieSlots },
+  LayoutConnectorEdge { designator: "AUX_PANEL1", layout_item: 26, edge: SideEdgeNearPcieSlots },
+]
+
+fn asrock_altrad8ud_connector_edge(designator: NonEmptyStr) -> BoardEdge? {
+  fold(asrock_altrad8ud_service_connector_edges, init: none, f: (acc, row) =>
+    if row.designator == designator { Present { value: row.edge } } else { acc })
+}
+
+// ---- 1.2 Environment: operation 10-35 C, non-operation -40-70 C. The ambient ceiling is an
+// input to the exhaust-temperature derivation, not a chassis target.
+data asrock_altrad8ud_operating_ambient_min: Celsius = celsius(count: 10)
+data asrock_altrad8ud_operating_ambient_max: Celsius = celsius(count: 35)
+
+// ---- 2.7 PSU SMBus header PSU_SMB1 (5-pin: ALERT, SMBCLK, +3V, SMBDATA, GND), "PSU SMBus
+// monitors the status of the power supply, fan and system temperature." One board can host a
+// PMBus supply; a supply shared by several boards can be monitored by at most one of them through
+// this header, which is a station design fact rather than a board one.
+data asrock_altrad8ud_psu_smbus_header_pin_count: Nat = 5

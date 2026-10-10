@@ -33,7 +33,8 @@ import std.cache_identity {
   resolved_graph_artifact_kind,
   native_compiler_artifact_kind,
   native_test_universe_artifact_kind,
-  native_module_verdict_bundle_artifact_kind
+  native_module_verdict_bundle_artifact_kind,
+  compute_work_artifact_kind
 }
 import std.computation_identity {
   ComputationIdentity, StructurallyIdentical, IdentityUnknown,
@@ -72,6 +73,9 @@ import std.judgment_contract {
   length_prefixed_encode,
   output_compile_clean_diagnostic_union,
   output_module_preparation_diagnostics,
+  output_compute_work_outcome,
+  output_compute_work_log,
+  output_compute_work_outputs,
   output_module_test_verdicts,
   output_native_compiler_build_diagnostics,
   output_native_compiler_executable,
@@ -90,7 +94,16 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.disposition { Disposition, Terminal }
 import std.measure { ByteSize, byte_size }
-import std.materialization_ladder { DemandNature, PureComputation, IdempotentEffect }
+import std.materialization_ladder { DemandNature, PureComputation, IdempotentEffect, FreshEffect }
+// THE SECOND STATED IMPORT DEPARTURE, for the same reason as the generation edge below: the compute
+// work vocabulary (the exact tree, the operation, the observed execution identity) has ONE home,
+// gunbc.compute.work_request, and restating it here would fork it. That module imports nothing that
+// reaches this one, so the edge is acyclic, which is the import graph's only law (DESIGN section 3).
+import gunbc.compute.work_request {
+  WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, WorkToolchainIdentity,
+  CargoRelease, CargoDebug,
+}
+import extdeps.git.object_store { git_object_id_wire_hex }
 
 // The typed materialization-provider CONTRACT (parent mandate 6B, model-only, 2026-07-28): the one
 // interface cli_run's ad-hoc caches consume when they flip — consumers ask for an ARTIFACT by typed
@@ -139,6 +152,7 @@ type ArtifactRequest
   | NativeCompilerArtifactRequest { generation: PreMaterializationIdentity }
   | UniverseArtifactRequest { tested_tree_identity: Fnv1a64Structural, route_binary: DeclaredInput }
   | NativeModuleVerdictBundleRequest(NativeModuleVerdictBundleSubject)
+  | ComputeWorkRequest { subject: WorkSubject, operation: WorkOperation, toolchain: WorkToolchainIdentity }
 
 // THE NATIVE ROUTE'S THREE REQUEST FAMILIES (operator rulings 2026-09-11: the replacement native CI
 // job is a materialization). Each is a VARIANT for the reason the header gives: kind, declared
@@ -204,6 +218,35 @@ type ArtifactRequest
 // gunbc.witness.v2_native_route's operator-invoked instrument), which lands in a later lane.
 // TRIGGER: the emitted native route constructs these requests from its own receipt identities and
 // serves or commits them through the local store instead of re-preparing every module per run.
+// ComputeWorkRequest: one host-run unit of compute work (gunbc.compute.work_provider_local) -- a cargo
+// build, a compile, or a claim run over ONE EXACT TREE. It carries the work vocabulary itself, never a
+// digest of it, so its key is derived here and nowhere else: gunbc.compute.work_request used to mint
+// a private tagged hash (work_identity) beside this contract's request_key, which is two keys for one
+// computation, and it is deleted. The subject is the git TREE (two commits with one tree are one
+// work); the operation's structural encoding and every execution-identity reading are declared
+// inputs, so a change in any of them keys apart. The execution identity (target triple, the executing rustc and cargo,
+// sccache, the provider's own source revision) is a RUNNER-READ input: observed by the provider, never
+// spelled by a caller. Its construction wall is the seed's sole_constructor/admit_callers today; on the
+// native route both are standing rung drops, so that wall is not yet structural there (see
+// gunbc.compute.work_request WorkToolchainIdentity).
+//
+// demand_nature IS DERIVED FROM THE OPERATION, which is what keeps the ladder honest about
+// recurrence: a build, a compile and a HERMETIC claim run repeat their answer over the same tree and
+// toolchain (IdempotentEffect, cache-admissible), while a WET claim run reads and touches the world,
+// so its demand is FreshEffect and the ladder exempts it from serving a prior commit. A caller cannot
+// declare a wet run shareable; the operation says what it is.
+//
+// Required outputs: the outcome document (the ending and its identity), the run log (a build whose
+// log was dropped is not the build that ran), and the declared-outputs part: the MANIFEST of what
+// the operation declared (each declared path with its blob identity), empty for the checking
+// operations. The built bytes are NOT a part of this artifact. Per the materialization authority's
+// ruling (royal-moth-86, 2026-10-03), host-local binaries realize in the bounded per-host store under
+// this family's OWN byte budget, so they cannot evict other families' entries, and cross-host binaries
+// travel through std.fabric_blob, never the local store. Both are realizations of the manifest's blob
+// identities, and nothing in this key depends on which one serves them. DECLARED FRONTIER (DESIGN section 3c): the cutover that serves and commits
+// this family through extdeps.realization.materialization_store_local and deletes the provider's
+// private ComputeLayout store lands on the BOUNDED store (quick-gull-60's C1), never on the unbounded
+// one; until then the family's executing consumer is the provider's identity, which IS this key.
 type NativeModuleVerdictBundleSubject {
   route_binary_identity: Fnv1a64Structural
   module_identity: Fnv1a64Structural
@@ -350,7 +393,8 @@ fn request_evaluation_bucket(identity: EvaluationIdentity, req: ArtifactRequest)
     resolve_closure: (cd, c) => evaluation_identity_fnv_bucket(evaluation: identity),
     native_compiler: g => evaluation_identity_fnv_bucket(evaluation: identity),
     universe: (tt, rb) => evaluation_identity_fnv_bucket(evaluation: identity),
-    module_verdict_bundle: s => evaluation_identity_fnv_bucket(evaluation: identity)
+    module_verdict_bundle: s => evaluation_identity_fnv_bucket(evaluation: identity),
+    compute_work: (sj, op, tc) => evaluation_identity_fnv_bucket(evaluation: identity)
   )
 }
 
@@ -613,6 +657,83 @@ fn module_verdict_bundle_judgment_contract(subject: NativeModuleVerdictBundleSub
   }
 }
 
+fn compute_work_subject_digest(subject: WorkSubject) -> Fnv1a64Structural {
+  match subject {
+    ExactTree { tree } =>
+      content_hash_tagged_structural(
+        tag: "materialization_provider.compute_work.tree",
+        payload: content_hash_atom(value: git_object_id_wire_hex(oid: tree) as NonEmptyStr)
+      )
+  }
+}
+
+// THE OPERATION'S KEY PREIMAGE IS STRUCTURAL, NOT ITS DISPLAY TEXT (ruling on gunbc#13072, item 1).
+// gunbc.compute.work_request work_operation_canonical joins fields with ':' and ',', so ["a,b"] and ["a", "b"] -- two builds with
+// different commands and outputs -- printed the same; an entry or a function containing ':' collided
+// the same way. Here every field is length-prefixed (std.judgment_contract length_prefixed_encode)
+// under the variant's own tag, and a list carries its count, so the encoding is injective over the
+// typed operation. The display text stays for documents and never reaches a key.
+fn compute_work_operation_preimage(operation: WorkOperation) -> NonEmptyStr {
+  match operation {
+    BuildGunbcBinaries { profile, bins } =>
+      join(concat(
+        [length_prefixed_encode(s: "build"), length_prefixed_encode(s: match profile { CargoRelease => "release"  CargoDebug => "debug" }), length_prefixed_encode(s: to_string(value: count(bins)))],
+        bins |> map(b => length_prefixed_encode(s: b as String))
+      ), "") as NonEmptyStr
+    CompileEntry { entry } =>
+      join([length_prefixed_encode(s: "compile"), length_prefixed_encode(s: entry as String)], "") as NonEmptyStr
+    RunClaims { entry, functions, hermetic } =>
+      join([
+        length_prefixed_encode(s: "claims"), length_prefixed_encode(s: entry as String),
+        length_prefixed_encode(s: functions as String), length_prefixed_encode(s: if hermetic { "hermetic" } else { "wet" }),
+      ], "") as NonEmptyStr
+  }
+}
+
+fn compute_work_demand_nature(operation: WorkOperation) -> DemandNature {
+  match operation {
+    BuildGunbcBinaries { profile: _, bins: _ } => IdempotentEffect
+    CompileEntry { entry: _ } => IdempotentEffect
+    RunClaims { entry: _, functions: _, hermetic } => if hermetic { IdempotentEffect } else { FreshEffect }
+  }
+}
+
+fn compute_work_judgment_contract(
+  subject: WorkSubject,
+  operation: WorkOperation,
+  toolchain: WorkToolchainIdentity
+) -> JudgmentContract {
+  JudgmentContract {
+    demand_identity: DemandIdentity {
+      kind: compute_work_artifact_kind,
+      subject: compute_work_subject_digest(subject: subject),
+      declared_inputs: [
+        DeclaredInput {
+          ref: "compute_work.operation",
+          digest: content_hash_atom(value: compute_work_operation_preimage(operation: operation))
+        },
+        DeclaredInput { ref: "compute_work.execution.rustc_verbose", digest: content_hash_atom(value: toolchain.rustc_verbose) },
+        DeclaredInput { ref: "compute_work.execution.target_triple", digest: content_hash_atom(value: toolchain.target_triple) },
+        DeclaredInput { ref: "compute_work.execution.cargo_version", digest: content_hash_atom(value: toolchain.cargo_version) },
+        DeclaredInput { ref: "compute_work.execution.cache_release", digest: content_hash_atom(value: toolchain.cache_release) },
+        DeclaredInput { ref: "compute_work.execution.provider_revision", digest: content_hash_atom(value: toolchain.provider_revision) }
+      ]
+    },
+    result: ResultContract {
+      carries_semantic_value: true,
+      ordered_diagnostics: true,
+      carries_effect_requests_receipts: false,
+      carries_refusal_arm: true,
+      required_persisted_outputs: [
+        persisted_output(id: output_compute_work_outcome, occurrence_contract: SemanticOnly),
+        persisted_output(id: output_compute_work_log, occurrence_contract: SemanticOnly),
+        persisted_output(id: output_compute_work_outputs, occurrence_contract: SemanticOnly)
+      ]
+    },
+    demand_nature: compute_work_demand_nature(operation: operation)
+  }
+}
+
 fn request_judgment_contract(req: ArtifactRequest) -> JudgmentContract {
   request_fold(
     req: req,
@@ -621,7 +742,8 @@ fn request_judgment_contract(req: ArtifactRequest) -> JudgmentContract {
     resolve_closure: resolve_closure_judgment_contract,
     native_compiler: native_compiler_judgment_contract,
     universe: universe_judgment_contract,
-    module_verdict_bundle: module_verdict_bundle_judgment_contract
+    module_verdict_bundle: module_verdict_bundle_judgment_contract,
+    compute_work: compute_work_judgment_contract
   )
 }
 
@@ -632,7 +754,8 @@ fn request_fold<T>(
   resolve_closure: fn(Fnv1a64Structural, DeclaredInput) -> T,
   native_compiler: fn(PreMaterializationIdentity) -> T,
   universe: fn(Fnv1a64Structural, DeclaredInput) -> T,
-  module_verdict_bundle: fn(NativeModuleVerdictBundleSubject) -> T
+  module_verdict_bundle: fn(NativeModuleVerdictBundleSubject) -> T,
+  compute_work: fn(WorkSubject, WorkOperation, WorkToolchainIdentity) -> T
 ) -> T {
   match req {
     ParseModuleRequest { source_digest: sd, compiler: c } => parse_module(sd, c)
@@ -642,6 +765,7 @@ fn request_fold<T>(
     NativeCompilerArtifactRequest { generation: g } => native_compiler(g)
     UniverseArtifactRequest { tested_tree_identity: tt, route_binary: rb } => universe(tt, rb)
     NativeModuleVerdictBundleRequest(subject) => module_verdict_bundle(subject)
+    ComputeWorkRequest { subject: sj, operation: op, toolchain: tc } => compute_work(sj, op, tc)
   }
 }
 
@@ -846,6 +970,12 @@ type MaterializedArtifact
       test_verdicts: ArtifactPart,
       preparation_diagnostics: ArtifactPart
     }
+  | ComputeWorkArtifact {
+      request_key: ContentHash,
+      outcome: ArtifactPart,
+      log: ArtifactPart,
+      outputs: ArtifactPart
+    }
   | LegacyIncompleteArtifact {
       kind: ArtifactKindId,
       request_key: ContentHash,
@@ -860,6 +990,7 @@ fn artifact_fold<T>(
   native_compiler: fn(ContentHash, ArtifactPart, ArtifactPart) -> T,
   universe: fn(ContentHash, ArtifactPart, ArtifactPart) -> T,
   module_verdict_bundle: fn(ContentHash, ArtifactPart, ArtifactPart) -> T,
+  compute_work: fn(ContentHash, ArtifactPart, ArtifactPart, ArtifactPart) -> T,
   legacy_incomplete: fn(ArtifactKindId, ContentHash, List<CarriedOutput>) -> T
 ) -> T {
   match artifact {
@@ -878,6 +1009,7 @@ fn artifact_fold<T>(
       universe(k, p, c)
     ModuleVerdictBundleArtifact { request_key: k, test_verdicts: v, preparation_diagnostics: d } =>
       module_verdict_bundle(k, v, d)
+    ComputeWorkArtifact { request_key: k, outcome: o, log: l, outputs: x } => compute_work(k, o, l, x)
     LegacyIncompleteArtifact { kind: kd, request_key: k, carried_outputs: cs } =>
       legacy_incomplete(kd, k, cs)
   }
@@ -892,6 +1024,7 @@ fn artifact_kind(artifact: MaterializedArtifact) -> ArtifactKindId {
     native_compiler: (k, e, d) => native_compiler_artifact_kind,
     universe: (k, p, c) => native_test_universe_artifact_kind,
     module_verdict_bundle: (k, v, d) => native_module_verdict_bundle_artifact_kind,
+    compute_work: (k, o, l, x) => compute_work_artifact_kind,
     legacy_incomplete: (kd, k, cs) => kd
   )
 }
@@ -905,6 +1038,7 @@ fn artifact_request_key(artifact: MaterializedArtifact) -> ContentHash {
     native_compiler: (k, e, d) => k,
     universe: (k, p, c) => k,
     module_verdict_bundle: (k, v, d) => k,
+    compute_work: (k, o, l, x) => k,
     legacy_incomplete: (kd, k, cs) => k
   )
 }
@@ -936,6 +1070,11 @@ fn artifact_carried_outputs(artifact: MaterializedArtifact) -> List<CarriedOutpu
     module_verdict_bundle: (k, v, d) => [
       positioned_part(id: output_module_test_verdicts, part: v),
       positioned_part(id: output_module_preparation_diagnostics, part: d)
+    ],
+    compute_work: (k, o, l, x) => [
+      positioned_part(id: output_compute_work_outcome, part: o),
+      positioned_part(id: output_compute_work_log, part: l),
+      positioned_part(id: output_compute_work_outputs, part: x)
     ],
     legacy_incomplete: (kd, k, cs) => cs
   )
@@ -1084,6 +1223,9 @@ fn artifact_from_manifest(m: ArtifactManifest) -> ManifestDecode {
   } else if m.kind == native_module_verdict_bundle_artifact_kind {
     manifest_two_part(m: m, first: output_module_test_verdicts, second: output_module_preparation_diagnostics,
       build: (a, b) => ModuleVerdictBundleArtifact { request_key: k, test_verdicts: a, preparation_diagnostics: b })
+  } else if m.kind == compute_work_artifact_kind {
+    manifest_three_part(m: m, first: output_compute_work_outcome, second: output_compute_work_log, third: output_compute_work_outputs,
+      build: (a, b, c) => ComputeWorkArtifact { request_key: k, outcome: a, log: b, outputs: c })
   } else {
     ManifestKindUndeclared { kind: m.kind }
   }
@@ -1256,7 +1398,7 @@ data resolved_graph_disk_format_unqualified_frontier: DissolutionCondition = unb
 )
 
 data in_process_fnv_producer_observation_frontier: DissolutionCondition = unbound_dissolution(
-  description: "A production producer must mint InProcessMaterialization at the seam that holds both the executed ArtifactRequest and the constructed artifact. Until that seam exists, in-process FNV sharing is not an admitted production route: only inhabitance claims and floor-preparation witnesses may call in_process_materialization, and a consumer must not derive the observed identity from the lookup request."
+  description: "A production producer must mint InProcessMaterialization at the seam that holds both the executed ArtifactRequest and the constructed artifact. Until that seam exists, in-process FNV sharing is not an admitted production route: only inhabitance claims may call in_process_materialization, and a consumer must not derive the observed identity from the lookup request."
 )
 
 fn in_process_materialization(
@@ -1264,9 +1406,7 @@ fn in_process_materialization(
   artifact: MaterializedArtifact,
   observed_digest: ContentHash
 ) -> ProviderProbe admit_callers: [
-  decl_ref(module_path: "test.claim.materialization_provider_witness", decl_name: "minted_in_process"),
-  decl_ref(module_path: "test.claim.floor_preparation_witness", decl_name: "probe_for"),
-  decl_ref(module_path: "test.claim.floor_preparation_witness", decl_name: "wrong_artifact_key_refuses")
+  decl_ref(module_path: "test.claim.materialization_provider_witness", decl_name: "minted_in_process")
 ] {
   InProcessProbe {
     observation: InProcessMaterialization {

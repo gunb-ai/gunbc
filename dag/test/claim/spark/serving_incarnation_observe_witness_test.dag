@@ -265,7 +265,10 @@ test fn a_non_sha256_image_id_refuses() -> Bool {
 
 test fn the_pgrep_listing_reads_pids() -> Bool {
   match pgrep_pid_listing(stdout: "1809052\n1809081\n") {
-    PgrepPidsRead { pids: ps } => count(ps) == 2 && (match ps.first() { Present { value: x } => x == 1809052  Absent => false })
+    PgrepPidsRead { pids: ps } => count(ps) == 2 && (match ps.first() {
+        Present { value: v } => v == 1809052
+        Absent => false
+      })
     PgrepPidLineUnparseable { line: _ } => false
   }
 }

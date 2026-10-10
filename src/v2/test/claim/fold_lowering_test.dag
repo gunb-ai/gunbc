@@ -82,7 +82,7 @@ data paramless_step_fold_snippet: String = "module paramless_step_probe\n\nfn f(
 // refusal it produced was correct.
 fn ingest(source_text: String, file: Symbol) -> Optional<Node> {
   let lm = dag_language_model()
-  match tokenize(text: source_text, file: file, rules: lm.lex) {
+  match tokenize_prepared(text: source_text, file: file, prepared: dag_prepared_lex()) {
     Rejected { diagnostics: _ } => Absent
     Accepted { value: ts, diagnostics: _ } =>
       match parse_module(tokens: ts, grammar: lm.grammar) {

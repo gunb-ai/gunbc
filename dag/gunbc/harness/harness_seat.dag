@@ -3,7 +3,9 @@ module gunbc.harness.harness_seat
 import product.host_identity { HostIdentity }
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat, nat_range_inclusive, nat_min }
-import std.measure { Measure, Count, One, money_amount_micro, second, measure_count }
+import std.measure { Measure, Count, One, money_amount_micro, second, measure_count, TokenCount, Second, second_count }
+import extdeps.accounting.encumbrance { Held, Expended, Released }
+import extdeps.api_rate_limit { upstream_rate_limit_key }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, fabric_group_wire, fabric_group_hosts }
 import gunbc.serving.serving_enrollment {
   ServingRoute, ServingRouteResolved, ServingRouteUnresolved, ServingRouteEndpoint,
@@ -27,7 +29,7 @@ import gunbc.fabric_storage_client { FabricStorageBinding }
 import gunbc.fabric_event_log {
   HeadExpectation, event_log_refusal_wire, SeatStoreRefused, SeatStandingStoreRefused, HeadObserved, HeadObservationRefused, event_log_observe_head, EventAppended,
   EventAppendStale, EventAppendRefused, event_log_append, SeatGranted, SeatFull, SeatContended,
-  SeatAcquireRefused, fabric_seat_acquire, SeatRoomObserved, SeatFullObserved, SeatStandingUnobserved,
+  SeatAcquireRefused, fabric_seat_acquire, seat_acquisition_wire, SeatRoomObserved, SeatFullObserved, SeatStandingUnobserved,
   fabric_seat_observe, PartitionRead, PartitionReadOk, PartitionReadRefused, event_log_read_partition,
   RedemptionReading, RedemptionReadAt, RedemptionReadRefused, fabric_redemption_read,
 }
@@ -38,7 +40,14 @@ import gunbc.harness.harness_backend {
   harness_route_availability, HarnessEngineReading, harness_observe_engine_at,
 }
 import gunbc.harness.harness_wire { HarnessWireShape, AnthropicMessagesShape, OpenAiChatCompletionsShape, harness_backend_url_for_endpoint }
-import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, harness_unit_model_id }
+import gunbc.harness.harness_reasoning_wire {
+  HarnessServingUnit, harness_unit_model_id, HarnessReasoningLevel, harness_unit_placement, HarnessUnitPlacement, PlacedOnFleetSeat,
+  LeasedFromHostedQuota, harness_serving_unit_wire,
+}
+import gunbc.harness.harness_hosted_route {
+  HarnessHostedAccess, HarnessHostedQuota, HostedBound, HostedBindRefused, harness_hosted_bind, HostedReleased, HostedReleaseRefused,
+  harness_hosted_release,
+}
 import product.fabric.work { ExecutionRequirements, ControlPlaneCapacity, Work, ServiceInterfaceRef, ArtifactManifestRef, EffectContractRef, OutputContractRef, identity_frame }
 import product.fabric.supply { EstimatedGrantDuration, GrantDuration, AffinityKeyedRendezvous, PlacementAffinityKey }
 import product.fabric.selection {
@@ -291,6 +300,7 @@ type HarnessSeatBinding
   = HarnessSeatBound { url: String, grant: LeaseGrant, partition: PartitionId, ceiling: Nat, group_wire: String, launch: VllmEndpointProcessLaunch, store: FabricStorageBinding, model: NonEmptyStr, unit: HarnessServingUnit, class: ServingCoTenancyClass, seat: HarnessSeatReference }
   | HarnessSeatPending { detail: String }
   | HarnessSeatRefused { detail: String }
+  | HarnessHostedBound { url: String, model: NonEmptyStr, unit: HarnessServingUnit, level: HarnessReasoningLevel, access: HarnessHostedAccess }
 
 fn seat_bind_detail(group: FabricGroup, text: String) -> String {
   join([fabric_group_wire(g: group) as String, ": ", text], "")
@@ -1198,6 +1208,7 @@ fn harness_seat_after_grant_authority(store: FabricStorageBinding, group: Fabric
     SeatAuthorityRefuses { cause: why } =>
       match release_retry(store: store, partition: partition, ceiling: ceiling, reference: grant.reference, reason: "the pair-serving authority moved between admission and the seat's acquisition" as NonEmptyStr, now: now) {
         HarnessSeatReleased { partition: _ } => SeatReleasedAuthorityMoved { cause: why }
+        HarnessHostedCredentialRemoved => SeatUnreleasedAuthorityMoved { cause: why, release_detail: "a fleet seat release answered as a hosted credential removal" }
         HarnessSeatReleaseRefused { detail: d } => SeatUnreleasedAuthorityMoved { cause: why, release_detail: d }
       }
   }
@@ -1217,6 +1228,8 @@ fn harness_fence_grant(candidate: HarnessCandidate, class: ServingCoTenancyClass
     }
     EndpointProcessWasReplaced { endpoint: _, expected: _, observed: _, observed_at: _, receipt: _ } =>
         match release_retry(store: store, partition: partition, ceiling: candidate.ceiling, reference: grant.reference, reason: "the engine was replaced between selection and acquisition" as NonEmptyStr, now: now) {
+          HarnessHostedCredentialRemoved =>
+            AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: "a fleet seat release answered as a hosted credential removal; the seat may still be held") }
           HarnessSeatReleased { partition: _ } =>
             AcquisitionLost {
               key: candidate.key,
@@ -1415,6 +1428,37 @@ data harness_placement_rounds: Nat = 3
 // that constructed the request itself could hand in a request naming one requirement beside a
 // screen argument naming another.
 fn harness_bind_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, inputs: List<String>, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy) -> HarnessSeatBinding {
+  match harness_requirement_placement(requirement: requirement) {
+    LeasedFromHostedQuota => HarnessSeatRefused { detail: "the required unit is reached through a hosted quota lease, not a fleet seat; bind it with harness_bind_hosted" }
+    PlacedOnFleetSeat => harness_bind_fleet_seat(short_hostname: short_hostname, class: class, requirement: requirement, shape: shape, inputs: inputs, actor: actor, attempt: attempt, policy: policy)
+  }
+}
+
+// WHERE A REQUIREMENT IS PLACED. Any admitted model is a fleet seat: the hosted listing is governed by
+// trial terms (extdeps.nvidia.api_trial_terms), and an unnamed requirement must not quietly route a turn
+// to an upstream whose terms the caller never chose. Only a caller naming the hosted unit reaches it.
+fn harness_requirement_placement(requirement: ServingModelRequirement) -> HarnessUnitPlacement {
+  match requirement {
+    AnyAdmittedModel => PlacedOnFleetSeat
+    ExactServingUnit { unit: u } => harness_unit_placement(unit: u)
+  }
+}
+
+// THE HOSTED BIND. A hosted unit takes no seat: the credential is materialized and its liveness read, the
+// level is selected, and the binding carries the two quota rows each request will lease. A fleet unit
+// handed here refuses by name rather than being placed on a seat behind the caller's back.
+fn harness_bind_hosted(short_hostname: String, unit: HarnessServingUnit, actor: NonEmptyStr, max_tokens: TokenCount) -> HarnessSeatBinding {
+  match harness_unit_placement(unit: unit) {
+    PlacedOnFleetSeat => HarnessSeatRefused { detail: join(["the unit ", harness_serving_unit_wire(unit: unit) as String, " is served on a fleet seat; bind it with harness_bind_seat"], "") }
+    LeasedFromHostedQuota =>
+      match harness_hosted_bind(unit: unit, short_hostname: short_hostname, actor: actor, max_tokens: max_tokens) {
+        HostedBindRefused { detail: d } => HarnessSeatRefused { detail: d }
+        HostedBound { url: u, model: m, unit: un, level: l, access: a } => HarnessHostedBound { url: u as String, model: m, unit: un, level: l, access: a }
+      }
+  }
+}
+
+fn harness_bind_fleet_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, inputs: List<String>, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy) -> HarnessSeatBinding {
   let subject = harness_turn_subject(request: harness_turn_request(shape: shape, requirement: requirement, inputs: inputs), attempt: attempt)
   match event_log_store_for_host(short_hostname: short_hostname) {
     HostStoreRefused { detail: d } => HarnessSeatRefused { detail: d }
@@ -1439,8 +1483,12 @@ fn harness_bind_seat(short_hostname: String, class: ServingCoTenancyClass, requi
 
 // RELEASE IS AN EVENT ON THE SAME PARTITION, appended against the head observed at release time
 // and retried on stale, because the seat's neighbours keep moving the head while this turn ran.
+// A HOSTED BINDING HOLDS NO SEAT, so its release is its own arm: each request already settled its quota
+// leases, and what remains to give back is the credential's header file. Reporting it as a released
+// partition would name a pool the binding never held.
 type HarnessSeatRelease
   = HarnessSeatReleased { partition: PartitionId }
+  | HarnessHostedCredentialRemoved
   | HarnessSeatReleaseRefused { detail: String }
 
 type ReleaseFold {
@@ -1537,6 +1585,7 @@ fn harness_seat_pointer_of(binding: HarnessSeatBinding) -> HarnessSeatPointer? {
       Present { value: HarnessSeatPointer { partition: p, reference: g.reference, owner: r.attempt } }
     HarnessSeatRefused { detail: _ } => none
     HarnessSeatPending { detail: _ } => none
+    HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } => none
   }
 }
 
@@ -1557,6 +1606,11 @@ fn harness_release_seat(binding: HarnessSeatBinding, reason: NonEmptyStr) -> Har
   match binding {
     HarnessSeatRefused { detail: d } => HarnessSeatReleaseRefused { detail: join(["nothing to release: ", d], "") }
     HarnessSeatPending { detail: d } => HarnessSeatReleaseRefused { detail: join(["nothing to release, the placement is pending: ", d], "") }
+    HarnessHostedBound { url: _, model: _, unit: _, level: _, access: a } =>
+      match harness_hosted_release(access: a) {
+        HostedReleased => HarnessHostedCredentialRemoved
+        HostedReleaseRefused { detail: d } => HarnessSeatReleaseRefused { detail: d }
+      }
     HarnessSeatBound { url: _, grant: g, partition: p, ceiling: ceiling, group_wire: _, launch: _, store: store, model: _, unit: _, class: _, seat: _ } =>
       match now_epoch_seconds() {
         Absent => HarnessSeatReleaseRefused { detail: "the clock could not be read as epoch seconds" }
@@ -1713,10 +1767,149 @@ fn harness_release_fenced(store: FabricStorageBinding, capability: HarnessReleas
 fn harness_seat_release_wire(r: HarnessSeatRelease) -> String {
   match r {
     HarnessSeatReleased { partition: p } => join(["released on ", p as String], "")
+    HarnessHostedCredentialRemoved => "hosted credential removed"
     HarnessSeatReleaseRefused { detail: d } => join(["release refused: ", d], "")
   }
 }
 
 fn harness_now_epoch() -> EpochSecs? {
   now_epoch_seconds()
+}
+
+data hosted_inflight_none: Nat = 0
+
+// ── IN-FLIGHT HOSTED SENDS: A CHARGE THAT SURVIVES THE ROLLOVER ─────────────────────────────────
+//
+// A hosted request is charged to the window it is admitted in (gunbc.harness.harness_hosted_route
+// harness_hosted_round_charge), but nothing on this side can bound WHEN its first byte leaves: curl's
+// connect deadline stops applying once the connection is open, and a process can pause between the
+// admission and the write for as long as it likes. Measured: a pause before the first header write put the
+// request's first byte 8.0 s after admission, past a 5.98 s deadline, with curl exiting 0. So a send that
+// has been admitted and whose transport has not returned may arrive in ANY later window, and it must be
+// counted there too.
+//
+// THE QUOTA POOLS CANNOT CARRY THAT, because every charge in a lapsing pool belongs to one window. So an
+// admitted send also holds a SEAT in a per-credential in-flight partition, under the same pool shape every
+// harness seat uses (harness_seat_pool_root: no replenishment, quiescence required -- a held seat charges
+// until evidence releases it, never by expiry). Each later admission counts the in-flight seats acquired
+// BEFORE its window began and charges its quota pools for them as well as for itself; the seat is released
+// when the transport returns, whatever it returned.
+//
+// TWO CONSEQUENCES, BOTH CONSERVATIVE AND STATED RATHER THAN ENGINEERED AWAY. Two admissions in one window
+// each count the same carried seats, so a carried send can be charged more than once in a window. And a
+// seat held by a process that crashed charges every later window until it is released; the refusal that
+// starvation produces names each held seat, its holder, and the release that frees it -- the same
+// harness_release_cli route a stuck serving seat takes.
+fn hosted_inflight_partition(quota: HarnessHostedQuota) -> PartitionId {
+  join(["inflight-", upstream_rate_limit_key(l: quota.per_minute) as String], "") as PartitionId
+}
+
+fn hosted_inflight_ceiling(quota: HarnessHostedQuota) -> Nat {
+  quota.per_minute.requests
+}
+
+type HostedInflightSeat {
+  reference: NonEmptyStr
+  acquired_at: EpochSecs
+}
+
+fn hosted_inflight_held(pool: Pool<Count, One>) -> List<HostedInflightSeat> {
+  let held = filter(pool.ledger.entries, e => match e.state {
+    Held { maximum_liability: _ } => true
+    Expended { actual: _, settled_at: _ } => false
+    Released { reason: _, released_at: _ } => false
+  })
+  fold(held, init: [] as List<HostedInflightSeat>, f: (acc, e) =>
+    match filter(pool.terms, t => (t.reference as String) == (e.reference as String)).first() {
+      Absent => acc
+      Present { value: t } => concat(acc, [HostedInflightSeat { reference: e.reference, acquired_at: t.acquired_at }])
+    })
+}
+
+// THE SENDS A WINDOW MUST COVER BESIDES ITS OWN: those admitted before it began and not yet returned.
+fn hosted_inflight_carried(pool: Pool<Count, One>, window_start: EpochSecs) -> Nat {
+  fold(filter(hosted_inflight_held(pool: pool), s => s.acquired_at < window_start), init: hosted_inflight_none, f: (n, _s) => n + 1)
+}
+
+type HostedInflightReading
+  = HostedInflightRead { pool: Pool<Count, One>, generation: Nat, store: FabricStorageBinding, release_hint: String }
+  | HostedInflightUnread { detail: String }
+
+fn hosted_inflight_release_hint(quota: HarnessHostedQuota, pool: Pool<Count, One>, generation: Nat, walk: ChainWalk<PoolEvent>) -> String {
+  let seats = hosted_inflight_held(pool: pool)
+  if count(seats) == 0 { "" } else {
+    join([
+      "; in-flight seats held on ", hosted_inflight_partition(quota: quota) as String, " (release each once its holder is known to be gone: gunbc run --entry dag/gunbc/harness/harness_cli.dag --function harness_release_cli --arg partition=", hosted_inflight_partition(quota: quota) as String,
+      " --arg ceiling=", to_string(hosted_inflight_ceiling(quota: quota)), " --arg generation=", to_string(generation), " --arg reason=<why> --arg reference=<seat> --arg grant=<grant>): ",
+      join(map(seats, s => join([
+        s.reference as String, " acquired_at=", to_string(s.acquired_at),
+        " grant=", match admitting_event_for(walk: walk, reference: s.reference) { Present { value: g } => g as String  Absent => "unknown" },
+      ], "")), "; "),
+    ], "")
+  }
+}
+
+fn harness_hosted_inflight_read(quota: HarnessHostedQuota) -> HostedInflightReading {
+  match event_log_store_for_host(short_hostname: quota.short_hostname) {
+    HostStoreRefused { detail: d } => HostedInflightUnread { detail: d }
+    HostStoreResolved { store: store, executor: _ } => {
+      let partition = hosted_inflight_partition(quota: quota)
+      match event_log_read_partition(store: store, partition: partition, budget: 4096) {
+        PartitionReadRefused { cause: c } => HostedInflightUnread { detail: join(["the in-flight partition could not be read: ", event_log_refusal_wire(cause: c)], "") }
+        PartitionReadOk { head: _, walk: walk } =>
+          match walk {
+            ChainIncomplete { missing: m, newest_first_so_far: _ } => HostedInflightUnread { detail: join(["the in-flight partition chain is missing event ", m as String], "") }
+            ChainBudgetExhausted { at: a } => HostedInflightUnread { detail: join(["the in-flight partition exceeded the read budget at ", a as String], "") }
+            ChainWalked { oldest_first: xs } =>
+              match pool_fold(root: harness_seat_pool_root(partition: partition, ceiling: hosted_inflight_ceiling(quota: quota)), oldest_first: xs) {
+                PoolFoldRefused { at_event: e, wire: w } => HostedInflightUnread { detail: join(["the in-flight partition does not fold at ", e as String, ": ", w], "") }
+                PoolFolded { pool: p, generation: g } =>
+                  HostedInflightRead { pool: p, generation: g, store: store, release_hint: hosted_inflight_release_hint(quota: quota, pool: p, generation: g, walk: walk) }
+              }
+          }
+      }
+    }
+  }
+}
+
+type HostedInflightHold
+  = HostedInflightHeld { reference: NonEmptyStr, store: FabricStorageBinding }
+  | HostedInflightRefused { detail: String }
+
+fn harness_hosted_inflight_acquire(quota: HarnessHostedQuota, store: FabricStorageBinding, reference: NonEmptyStr, term: Second) -> HostedInflightHold {
+  match now_epoch_seconds() {
+    Absent => HostedInflightRefused { detail: "the clock could not be read as epoch seconds" }
+    Present { value: now } => {
+      let partition = hosted_inflight_partition(quota: quota)
+      let term_seconds = second_count(s: term)
+      match fabric_seat_acquire(
+        store: store, partition: partition,
+        root: harness_seat_pool_root(partition: partition, ceiling: hosted_inflight_ceiling(quota: quota)),
+        actor: quota.actor,
+        request: SeatRequest { reference: reference, amount: Measure { count: 1 }, at: now, term_seconds: term_seconds },
+        policy: LeasePolicy { maximum_duration_seconds: term_seconds, release_law: QuiescenceRequired },
+        attempts: 3, budget: 4096,
+      ) {
+        SeatGranted { grant: _, generation: _, attempts_used: _ } => HostedInflightHeld { reference: reference, store: store }
+        SeatFull { wire: w, attempts_used: _ } => HostedInflightRefused { detail: join(["every in-flight seat is held (", w, "), so another send cannot be accounted for"], "") }
+        other => HostedInflightRefused { detail: seat_acquisition_wire(a: other) }
+      }
+    }
+  }
+}
+
+fn harness_hosted_inflight_release(quota: HarnessHostedQuota, hold: HostedInflightHold, reason: NonEmptyStr) -> String? {
+  match hold {
+    HostedInflightRefused { detail: _ } => none
+    HostedInflightHeld { reference: r, store: store } =>
+      match now_epoch_seconds() {
+        Absent => Present { value: join(["the in-flight seat ", r as String, " could not be released: the clock could not be read"], "") }
+        Present { value: now } =>
+          match release_retry(store: store, partition: hosted_inflight_partition(quota: quota), ceiling: hosted_inflight_ceiling(quota: quota), reference: r, reason: reason, now: now) {
+            HarnessSeatReleased { partition: _ } => none
+            HarnessHostedCredentialRemoved => Present { value: join(["the in-flight seat ", r as String, " release answered as a credential removal"], "") }
+            HarnessSeatReleaseRefused { detail: d } => Present { value: join(["the in-flight seat ", r as String, " could not be released: ", d], "") }
+          }
+      }
+  }
 }
