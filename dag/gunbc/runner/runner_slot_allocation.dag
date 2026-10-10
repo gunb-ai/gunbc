@@ -1378,14 +1378,31 @@ fn gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation(obs: R
 // discriminator (coproduct producer, alias-expanded generic at the parameter, cross-module
 // resolution) is unmeasured and the trigger is a probe matrix over producer kind x judgment
 // position with one-axis REDs and positive controls, enrolled where the floor folds it.
+// THE FLOOR CONJUNCTS ARE WITHDRAWN WITH THE FLOOR (operator ruling 2026-10-09, gunbc.rung_drop
+// v1_required_lanes_withdrawn). The paragraphs above describe MemoryHigh >= the floor's minimum
+// viable budget and >= its measured uncensored peak, guarded by the uncensored check: relations
+// between the slot and a TENANT. The floor lane is deleted and runs in no fleet slot, so a slot
+// sized to it would be a row sized to a dead tenant; the floor's own envelope lives on as
+// gunbc.floor_demand gunbc_floor_pinned_memory_max / _high, where its receipts join
+// (test.claim.floor.floor_demand_witness_test). The drop that described this conjunct's weakness,
+// gunbc.rung_drop slot_row_pinned_below_demonstrated_demand_unrefused, is Superseded under the
+// same ruling with v1_required_lanes_withdrawn as its loss holder.
+//
+// THE SWAP CONJUNCT IS INVERTED BY THE SAME RULING. It required MemorySwapMax ABOVE MemoryMax (the
+// spill the 2026-08 model allowed); the ruling is "MemorySwapMax=0 ... no thrashing allowed ever",
+// so the wall requires exactly zero, and gunbc test refuses a subject step that charged swap
+// anyway (gunbc.memory_envelope).
+//
+// WHAT THE SLOT MUST CLEAR NOW is the demand of the emit-and-build steps that run in it, and no
+// receipt measures it yet: the first cold required run's MEMORY RECEIPT (gunbc test, peak_bytes at
+// the slot grain) is that oracle, and a MemoryHigh >= measured-subject-peak conjunct returns here
+// with that receipt as its input -- a declared frontier, never a number copied from the tree
+// (DESIGN section 5, the oracle rule).
 fn gunbc_runner_slot_allocation_wall_holds() -> Bool {
   let per_slot = gunbc_runner_slot_desired()
   let gibibyte_bytes = 1073741824
   (byte_size_count(b: per_slot.memory_high) + gibibyte_bytes == byte_size_count(b: per_slot.memory_max))
-    && (byte_size_count(b: per_slot.memory_high) >= byte_size_count(b: gunbc_floor_minimum_viable_armed_budget))
-    && (byte_size_count(b: per_slot.memory_high) >= byte_size_count(b: gunbc_floor_measured_peak_observation))
-    && gunbc_floor_measured_peak_is_uncensored()
-    && (byte_size_count(b: per_slot.memory_swap_max) > byte_size_count(b: per_slot.memory_max))
+    && (byte_size_count(b: per_slot.memory_swap_max) == 0)
     && all(
       gunbc_admitted_runner_slot_allocations(),
       a =>

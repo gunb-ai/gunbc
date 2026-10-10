@@ -142,10 +142,10 @@ data gunbc_runner_slot_memory_max_ruling_note: String = "WHY 16GiB/15GiB, SUPERS
 // ever"), and a lower trip for the compiler itself -- gunbc.emitted_subject_build_gate
 // native_step_memory_trip, DERIVED from this row's MemoryHigh less that gate's declared headroom
 // (20 GiB today), to be bound per subject step by gunbc test once a fleet job can own a bounded
-// cgroup (declared drop gunbc.rung_drop.native_step_trip_awaits_fleet_job_cgroup; until it
-// retires every subject step REQUIRES this slot's envelope and is receipted at its grain) -- so
-// the kernel will trip the step under the throttle line and two GiB before it could reach this
-// maximum. MemoryHigh stays the authored max-minus-one line. The 26/25 derivation below this note is superseded and kept as the record of
+// cgroup (gunbc_runner_slot_job_cgroup_ownership below; until that fact flips every subject step
+// REQUIRES this slot's envelope and is receipted at its grain) -- so the kernel will trip the step
+// under the throttle line and two GiB before it could reach this maximum. MemoryHigh stays the
+// authored max-minus-one line. The 26/25 derivation below this note is superseded and kept as the record of
 // why the number was what it was.
 data gunbc_runner_slot_memory_max_bytes: Int = 23622320128
 
@@ -171,4 +171,19 @@ fn gunbc_runner_slot_desired() -> RunnerSlotDesired {
     cpu_quota: gunbc_runner_slot_cpu_quota(),
     labels: RunnerSlotLabels { github_labels: ["gunbc-heavy"] }
   }
+}
+
+// WHO OWNS A BOUNDED CGROUP INSIDE A SLOT -- a fleet fact, kept beside the envelope it governs and
+// consumed by gunbc.emitted_subject_build_gate native_step_memory_inputs to decide whether the
+// required subject steps ask gunbc test for a per-step bind. It is a fact about the hosts, not a
+// rung drop: nothing on the required path ever held the per-step trip (main's witnesses.yml never
+// carried the bind input), so the climb it blocks is rostered as a stall --
+// gunbc.guarantee_stall native_step_trip_awaits_fleet_job_cgroup_stall -- and this row flips when
+// the fleet earns the capability that stall names, observed on the hosts and nowhere else.
+type SlotJobCgroupOwnership
+  = JobOwnsNoBoundedCgroup { why: String }
+  | JobOwnsBoundedCgroup { staged_by: String }
+
+data gunbc_runner_slot_job_cgroup_ownership: SlotJobCgroupOwnership = JobOwnsNoBoundedCgroup {
+  why: "a fleet job runs as the setpriv'd job user under a root unit (gunbc.runner_host_deploy unit_user and job_user) and memory_governor apply_memory_cgroup_bind creates its leaf at the cgroup root, so no process of a job can create or join a bounded cgroup; the first required run that asked refused in four seconds (run 38002497388, MemoryCgroupBindRefused)"
 }
