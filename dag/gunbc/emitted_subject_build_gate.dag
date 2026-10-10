@@ -10,6 +10,7 @@ import extdeps.exec.command { ArgvCommand }
 import gunbc.gunbc_cli_command { gunbc_test_command }
 import gunbc.instrument_targets { self_host_label, v2_native_cli_label }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.rung_drop { RungDropStanding, Standing, Retired, Superseded }
 
 // THE SUBJECT OF THE REQUIRED EMIT-AND-BUILD LANE, AND WHAT IT IS CAREFULLY NOT.
 //
@@ -121,17 +122,33 @@ data native_product_reuse_fresh_value: String = "fresh"
 // THE MEMORY ENVELOPE OF A SUBJECT STEP (operator ruling 2026-10-09: "MemorySwapMax=0 and a fixed
 // hard memory maximum; a lower compiler abort/trip threshold; a peak and swap receipt; no larger-
 // runner retry"). The fleet slot is the fixed hard maximum and the ONE authority for its numbers
-// (gunbc.runner_slot_desired: MemoryMax, MemoryHigh one GiB under it, no swap). Each subject step
-// passes this input, which gunbc test reads as the kernel bind the governor already offers
-// claim_executor (memory_governor BIND_MEMORY_CGROUP_ENV): the step's own cgroup is capped at the
-// TRIP, so a product build that outgrows the envelope is tripped inside the step -- exit 137 --
-// before the slot's throttle line and before its maximum, and the job's runner process is never
-// the kernel's victim. THE TRIP IS DERIVED, NOT AUTHORED: it is the slot's MemoryHigh less the
-// headroom declared here, so this module states only how far under the throttle line the compiler
-// trips, a slot change moves the trip with it, and a step cannot be bound above the slot that holds
-// it. At exit gunbc test prints a MEMORY RECEIPT (peak, high/max events, OOM kills, swap charged)
-// from that cgroup and REFUSES the run on any OOM kill or any swap, whatever the producer answered.
-// There is no larger runner and no retry: a trip is the line stopping.
+// (gunbc.runner_slot_desired: MemoryMax, MemoryHigh one GiB under it, no swap). Two inputs carry
+// the envelope to gunbc test, and which of them a subject step passes is decided by the standing
+// of ONE declared drop (native_step_memory_inputs):
+//
+// 1. native_step_memory_envelope_env_name REQUIRES an envelope at the grain its value names.
+//    `slot` means a cgroup memory.max must already bind the step -- the fleet slot's -- and gunbc
+//    test refuses a run that none binds, reads that cgroup before the producer, prints a MEMORY
+//    RECEIPT at exit (the OOM kills the step added, swap charged at exit, the peak) and REFUSES the
+//    run on any OOM kill or any swap, whatever the producer answered. Every subject step passes
+//    it: a required step that cannot say what bounded it is not the measurement the gate names.
+// 2. native_step_memory_bind_env_name asks gunbc test to bind the step's OWN cgroup at the TRIP
+//    (memory_governor BIND_MEMORY_CGROUP_ENV, the bind claim_executor already takes), so a product
+//    build that outgrows the envelope trips inside the step -- exit 137 -- before the slot's
+//    throttle line, with a receipt at the step's own grain. THE TRIP IS DERIVED, NOT AUTHORED: it
+//    is the slot's MemoryHigh less the headroom declared here, so this module states only how far
+//    under the throttle line the compiler trips, a slot change moves the trip with it, and a step
+//    cannot be bound above the slot that holds it. The required steps pass this input ONLY ONCE
+//    THE FLEET CAN HONOUR IT: a fleet job runs as the deprivileged job user under a root unit and
+//    the governor creates its leaf at the cgroup root, so the bind refused on the first required
+//    run that asked (run 38002497388). That loss is the declared drop
+//    gunbc.rung_drop.native_step_trip_awaits_fleet_job_cgroup; while it stands the bind input is
+//    withheld, and retiring it -- by its trigger and nothing else -- puts the input back on every
+//    subject step with no other edit.
+//
+// There is no larger runner and no retry: a trip, at either grain, is the line stopping.
+data native_step_memory_envelope_env_name: String = "GUNBC_MEMORY_ENVELOPE_REQUIRED"
+data native_step_memory_envelope_slot_value: String = "slot"
 data native_step_memory_bind_env_name: String = "GUNBC_BIND_MEMORY_CGROUP_BYTES"
 data native_step_memory_headroom: ByteSize = byte_size(1073741824)
 
@@ -144,12 +161,40 @@ fn native_step_memory_trip_text() -> String {
   to_string(byte_size_count(b: native_step_memory_trip()))
 }
 
+fn slot_memory_max_text() -> String {
+  to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_max))
+}
+
+// ONE ENVELOPE INPUT OF A SUBJECT STEP: the environment name and the value it carries. The workflow
+// renders these as the step's env rows; the shape is this module's so the decision below owes
+// nothing to YAML.
+type NativeStepMemoryInput {
+  env_name: String
+  env_value: String
+}
+
+// WHICH ENVELOPE INPUTS A SUBJECT STEP PASSES, AS A FUNCTION OF THE DROP'S STANDING. The standing
+// is a parameter so a claim can exercise every arm by supplying it, and the workflow passes the
+// live row's. Standing: the slot requirement alone. Retired (the trigger fired: the fleet stages a
+// bounded cgroup a job can own): the requirement and the bind. Superseded: the loss moved to
+// another row, which then decides; the requirement alone here.
+fn native_step_memory_inputs(standing: RungDropStanding) -> List<NativeStepMemoryInput> {
+  let required = NativeStepMemoryInput { env_name: native_step_memory_envelope_env_name, env_value: native_step_memory_envelope_slot_value }
+  let bind = NativeStepMemoryInput { env_name: native_step_memory_bind_env_name, env_value: native_step_memory_trip_text() }
+  match standing {
+    Standing => [required]
+    Retired { trigger_fired: _ } => [required, bind]
+    Superseded { ruling: _, decision_record: _, loss_holder: _ } => [required]
+  }
+}
+
 // THE LINES THE FAILURE NOTICE CARRIES ABOUT THE ENVELOPE, so a reader of an exit-137 step is told
-// what tripped and that nothing will retry it bigger.
+// what tripped, which grain bounded the step, and that nothing will retry it bigger.
 fn emit_build_memory_envelope_lines() -> List<String> {
   [
-    join(["This step ran inside a cgroup bound at ", native_step_memory_trip_text(), " bytes (memory.max) with no swap, below the fleet slot's hard maximum."], ""),
-    "An exit of 137 here is the kernel tripping that bound: the compiler outgrew its envelope. There is no larger runner and no retry; the line stops until the growth is understood (DESIGN section 6b).",
+    join(["This step ran inside the fleet slot's memory envelope (gunbc.runner_slot_desired: MemoryMax ", slot_memory_max_text(), " bytes, no swap once converged), which gunbc test required (", native_step_memory_envelope_env_name, "=", native_step_memory_envelope_slot_value, ") and receipted at exit."], ""),
+    join(["The per-step trip at ", native_step_memory_trip_text(), " bytes is the declared drop native_step_trip_awaits_fleet_job_cgroup: a fleet job cannot create a bounded cgroup leaf today, so the bind input is withheld until that drop retires by its trigger."], ""),
+    "An exit of 137 here is the kernel tripping the envelope's memory.max: the compiler outgrew it. There is no larger runner and no retry; the line stops until the growth is understood (DESIGN section 6b).",
     "A MEMORY RECEIPT line precedes every successful subject step; a run that charged swap or was OOM-killed is refused even when its instrument held.",
   ]
 }
