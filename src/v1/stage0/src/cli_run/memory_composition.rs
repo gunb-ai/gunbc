@@ -13,10 +13,11 @@
 //! attributed in DROP ORDER: an `Rc` shared by two caches frees at the last holder, so a later
 //! stage's figure includes anything an earlier one only released a reference to.
 //!
-//! Instrument: `GUNBC_MEMORY_COMPOSITION=1 gunbc test //gunbc/instruments:self-host`; the rows
-//! are the `[memory-composition]` lines on stderr. Nothing parses them: the figures in
-//! `gunbc.floor.self_host_step_memory_demand` are transcribed from one recorded run, and a
-//! reader of that module re-derives them by running this instrument, not by reading the row.
+//! Instrument: `GUNBC_MEMORY_COMPOSITION=1 GUNBC_MEMORY_COMPOSITION_RECEIPT=<file> gunbc test
+//! //gunbc/instruments:self-host`. The seed itself appends the receipt that
+//! `gunbc.self_host_step_memory_demand` reads: one `bucket` line per released structure and one
+//! `stage` line per in-emission resident-set readback, both from the same run. The module reads
+//! the file it is pointed at; it never carries a figure of its own.
 
 use std::mem::take;
 
@@ -33,22 +34,22 @@ pub(super) fn readback(stage: &str) {
     if !enabled() {
         return;
     }
-    eprintln!(
-        "[memory-composition] stage={stage} rss_kb={:?} peak_kb={:?}",
-        rss_kb(),
-        super::peak_rss_vhwm_bytes().map(|b| b / 1024)
-    );
+    let rss = rss_kb();
+    let peak = super::peak_rss_vhwm_bytes().map(|b| b / 1024);
+    eprintln!("[memory-composition] stage={stage} rss_kb={rss:?} peak_kb={peak:?}");
+    record_line(&format!(
+        "stage\t{stage}\t{}\t{}",
+        rss.unwrap_or(0) * 1024,
+        peak.unwrap_or(0) * 1024
+    ));
 }
 
 /// The RECEIPT: one `bucket<TAB>name<TAB>bytes` line per released structure appended to the file
 /// named by `GUNBC_MEMORY_COMPOSITION_RECEIPT`, which `gunbc.self_host_step_memory_demand` reads.
 /// Bytes are what `malloc_trim` returned after the release, i.e. the structure's live size.
-fn record_bucket(name: &str, trimmed_kb: Option<u64>) {
+fn record_line(line: &str) {
     use std::io::Write;
-    let (Some(path), Some(kb)) = (
-        std::env::var_os("GUNBC_MEMORY_COMPOSITION_RECEIPT"),
-        trimmed_kb,
-    ) else {
+    let Some(path) = std::env::var_os("GUNBC_MEMORY_COMPOSITION_RECEIPT") else {
         return;
     };
     if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -56,7 +57,13 @@ fn record_bucket(name: &str, trimmed_kb: Option<u64>) {
         .append(true)
         .open(path)
     {
-        let _ = writeln!(f, "bucket\t{name}\t{}", kb * 1024);
+        let _ = writeln!(f, "{line}");
+    }
+}
+
+fn record_bucket(name: &str, trimmed_kb: Option<u64>) {
+    if let Some(kb) = trimmed_kb {
+        record_line(&format!("bucket\t{name}\t{}", kb * 1024));
     }
 }
 
