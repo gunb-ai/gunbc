@@ -155,7 +155,7 @@ test fn zero_exit_printing_nothing_is_absent_not_refused() -> Bool {
 //      refused and "mkdir" accepted, same file, one literal changed.
 //   3. That pair is NOT required-floor enrolled, and cannot be today (see the paragraph above).
 //   4. The Rust emission path is UNMEASURED. Nothing here says what an emitted mirror's own
-//      constructor admits, which is the same gap DESIGN records for extdeps.uri UriValidatedScalar.
+//      constructor admits, which is the same gap DESIGN records for extdeps.uri.percent_encoding UriValidatedScalar.
 //
 // So the honest reading is EVIDENCED BUT NOT FLOOR-ENROLLED on the source path, and unmeasured on
 // the emission path -- not a completed climb. Under the strict section 4b rule this repository
