@@ -11,11 +11,10 @@ type WitnessResourceBound
 
 // ResourceContract bound is axis-typed: wall/cpu limits are Millisecond; peak memory is ByteSize
 // (std.measure). A single Millisecond field on all axes was state-space conflation — PeakMemory
-// with a millisecond bound was writable. Aligns with discrete_cost derivation section 10 bound:
-// Measure; full Measure coproduct lands when the cost consumer derives bounds.
+// with a millisecond bound was writable. The full Measure coproduct lands when the cost consumer derives bounds.
 
 // DECLARED witness purpose taxonomy (operator ruling 2026-08-04; DESIGN
-// witness-cost-derives-from-purpose; discrete-cost-derivation section 10). What semantic fact the
+// witness-cost-derives-from-purpose). What semantic fact the
 // witness exists to prove — authored, not inferred from implementation. Cost and placement are
 // DERIVED consequences on ScheduledWitnessEnvelope (std.realization_schedule SpanEnrolled), not
 // here. Slice C-a lands only this stable vocabulary; placement and envelope derivation are separate

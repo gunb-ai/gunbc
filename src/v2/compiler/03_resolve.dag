@@ -3226,7 +3226,7 @@ fn resolve_elided_construct_walk(ctx: ResolveContext, n: Node, x: ResolveExpecta
   }
 }
 
-// THE MAP ARM OF THE ONE ELABORATION WRITER (docs/plans/map-literal-introduction-design.md). A
+// THE MAP ARM OF THE ONE ELABORATION WRITER. A
 // headless brace whose authored expected head is, by declaration identity, a Map
 // (v2.std.map_introduction map_introduction_expected_head_is_map) elaborates to the one
 // introduction v2.std.map_introduction lower_map_introduction builds, or refuses located:

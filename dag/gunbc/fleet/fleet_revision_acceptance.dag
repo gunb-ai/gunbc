@@ -435,20 +435,27 @@ fn run_is_merge_group(run: WorkflowRun) -> Bool {
   run.event == github_event_name_merge_group
 }
 
+// A run carries a verdict when GitHub states a terminal outcome for it: Success, Failure,
+// TimedOut, ActionRequired and StartupFailure say what happened. Neutral, Cancelled and Skipped
+// report that no verdict was rendered -- the run did not judge the revision -- so they are not
+// verdicts, and an unconcluded floor refuses as RequiredCiMergeGroupRunUnconcluded. A run that
+// has not completed (Queued, InProgress, Waiting, Requested, Pending) has rendered nothing yet.
+// Every status and every conclusion is named so an addition to either cannot inherit
+// verdict-carrying without an arm.
 fn merge_group_run_carries_verdict(run: WorkflowRun) -> Bool {
   match run.status {
     Completed =>
       match run.conclusion {
         Present { value: c } =>
           match c {
-            Cancelled => false
-            Skipped => false
             Success => true
             Failure => true
-            Neutral => true
             TimedOut => true
             ActionRequired => true
             StartupFailure => true
+            Neutral => false
+            Cancelled => false
+            Skipped => false
           }
         none => false
       }

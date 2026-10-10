@@ -1369,10 +1369,10 @@ pub fn trace_process_tree_cpu_ms() -> Option<u64> {
 /// `04_method.dag` (+ generated mirror `v1_compiler_infer_method.rs`), the nine
 /// `trace_mark(...)` marks in `compile.dag` (+ generated mirror `v1_compiler_compile.rs`), and
 /// the interpreter arm in `v1_interpreter.rs` when realization_measurement_loop **Phase 0**
-/// (`docs/plans/realization-measurement-loop.md`) lands a `.dag` `PerformanceReceipt`
+/// lands a `.dag` `PerformanceReceipt`
 /// per-stage carrier that a floor witness consumes by execution (the same retirement event
-/// as `phase_profile.rs` / `GUNBC_FLOOR_GANTT`, per `ci-floor-fractal-gantt (plan doc deleted 2026-08-28)`
-/// § dissolution). Receipt = that witness green with these marks deleted and stage walls
+/// as `phase_profile.rs` / `GUNBC_FLOOR_GANTT`).
+/// Receipt = that witness green with these marks deleted and stage walls
 /// still attributable from the model path.
 pub fn trace_mark(label: String) {
     use std::sync::{Mutex, OnceLock};
