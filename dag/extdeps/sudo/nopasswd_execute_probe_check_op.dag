@@ -13,7 +13,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_pipe,
   bash_build_with_redir,
   bash_build_or_else,
-  bash_build_subshell
+  bash_build_subshell_from_stmts
 }
 import v2.std.node { Node }
 
@@ -115,10 +115,10 @@ data sudo_nopasswd_grant_list_tag: String = "NOPASSWD:"
 // bash serializer, which poisoned deploy_sudoers_install_shell (#13705; the
 // deploy_mutation_gate and live_deploy emit witnesses went red on exactly that).
 fn sudo_nopasswd_grant_list_shell_condition(probe: SudoNopasswdGrantListProbeShape) -> Node {
-  bash_build_subshell(body: bash_build_or_else(
+  bash_build_subshell_from_stmts(stmts: [bash_build_or_else(
     left: sudo_nopasswd_grant_list_path_shell_condition(probe: probe),
     right: sudo_nopasswd_grant_list_all_shell_condition(),
-  ))
+  )])
 }
 
 // The ALL arm of the typed reading: a line that is, whole, one admitted run-as, the tag, and ALL.
