@@ -4,7 +4,10 @@ import std.types { Bool, String }
 import extdeps.tools.mosquitto_pub { mosquitto_pub_help_supports_private_options }
 import gunbc.fleet.printer_selection { print_inputs_admitted, select_printer, PrinterSelected, PrinterSelectionRefused }
 import gunbc.fleet.printer_federation { printer_claim_pins }
-import gunbc.auth.oidc_claim_pins { claim_pins_admit, OidcClaimPin }
+import gunbc.auth.oidc_claim_pins {
+  claim_pins_admit, presented_from_pins, with_presented_value, without_presented_claim,
+  fleet_converge_workflow_ref_at_main,
+}
 
 data project_digest: String = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
@@ -22,11 +25,12 @@ test fn w_unknown_printer_never_selects_a_default_machine() -> Bool {
 
 test fn w_printer_federation_rejects_other_workflow_tag_and_environment() -> Bool {
   let pins = printer_claim_pins()
-  claim_pins_admit(pins: pins, claims: pins) &&
-  claim_pins_admit(pins: pins, claims: map(pins, p => if p.claim == "workflow_ref" { OidcClaimPin { claim: p.claim, value: concat(p.value, "session/x"), relation: p.relation } } else { p })) &&
-  !claim_pins_admit(pins: pins, claims: map(pins, p => if p.claim == "workflow_ref" { OidcClaimPin { claim: p.claim, value: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/tags/x", relation: p.relation } } else { p })) &&
-  !claim_pins_admit(pins: pins, claims: map(pins, p => if p.claim == "environment" { OidcClaimPin { claim: p.claim, value: "namecheap-dns", relation: p.relation } } else { p })) &&
-  !claim_pins_admit(pins: pins, claims: filter(pins, p => p.claim != "workflow_ref"))
+  let presented = presented_from_pins(pins: pins)
+  claim_pins_admit(pins: pins, claims: presented) &&
+  !claim_pins_admit(pins: pins, claims: with_presented_value(claims: presented, claim: "workflow_ref", value: concat(fleet_converge_workflow_ref_at_main(), "session/x"))) &&
+  !claim_pins_admit(pins: pins, claims: with_presented_value(claims: presented, claim: "workflow_ref", value: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/tags/x")) &&
+  !claim_pins_admit(pins: pins, claims: with_presented_value(claims: presented, claim: "environment", value: "namecheap-dns")) &&
+  !claim_pins_admit(pins: pins, claims: without_presented_claim(claims: presented, claim: "workflow_ref"))
 }
 
 test fn w_tool_probe_requires_mosquitto_version_two_or_newer() -> Bool {

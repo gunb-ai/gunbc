@@ -27,6 +27,29 @@ type OidcClaimPin {
   relation: OidcClaimRelation
 }
 
+// A PRESENTED TOKEN CLAIM is a name and a value. It is not a pin: GitHub does not send a CEL
+// relation. Admission compares presented name+value against the pin's predicate.
+type OidcPresentedClaim {
+  claim: NonEmptyStr
+  value: String
+}
+
+fn oidc_presented(claim: NonEmptyStr, value: String) -> OidcPresentedClaim {
+  OidcPresentedClaim { claim: claim, value: value }
+}
+
+fn presented_from_pins(pins: List<OidcClaimPin>) -> List<OidcPresentedClaim> {
+  map(pins, p => oidc_presented(claim: p.claim, value: p.value))
+}
+
+fn with_presented_value(claims: List<OidcPresentedClaim>, claim: String, value: String) -> List<OidcPresentedClaim> {
+  map(claims, c => if (c.claim as String) == claim { oidc_presented(claim: c.claim, value: value) } else { c })
+}
+
+fn without_presented_claim(claims: List<OidcPresentedClaim>, claim: String) -> List<OidcPresentedClaim> {
+  filter(claims, c => (c.claim as String) != claim)
+}
+
 fn oidc_equals(claim: NonEmptyStr, value: String) -> OidcClaimPin {
   OidcClaimPin { claim: claim, value: value, relation: OidcClaimEquals }
 }
@@ -46,17 +69,14 @@ fn claim_pins_attribute_condition(pins: List<OidcClaimPin>) -> String {
   join(map(pins, p => claim_pin_cel(p: p)), " && ")
 }
 
-// A presented token's claims, as the provider sees them. An absent claim is simply not in the list,
-// which is how a job with no environment presents. Presented claims are compared by name and
-// VALUE; their own `relation` is ignored (the pin's relation is the predicate).
-fn claim_satisfies_pin(claims: List<OidcClaimPin>, pin: OidcClaimPin) -> Bool {
+fn claim_satisfies_pin(claims: List<OidcPresentedClaim>, pin: OidcClaimPin) -> Bool {
   filter(claims, c => (c.claim as String) == (pin.claim as String) && match pin.relation {
     OidcClaimEquals => c.value == pin.value
     OidcClaimStartsWith => starts_with(s: c.value, prefix: pin.value)
   }).length() > 0
 }
 
-fn claim_pins_admit(pins: List<OidcClaimPin>, claims: List<OidcClaimPin>) -> Bool {
+fn claim_pins_admit(pins: List<OidcClaimPin>, claims: List<OidcPresentedClaim>) -> Bool {
   filter(pins, p => !claim_satisfies_pin(claims: claims, pin: p)).length() == 0
 }
 
