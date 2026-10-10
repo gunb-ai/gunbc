@@ -2,6 +2,7 @@ module gunbc.documentary_refs
 
 import std.types { String }
 import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.design_ruling { design_rulings }
 
 // THE SYSTEMS A GENERATED DOCUMENT NAMES, CARRIED AS TYPED REFERENCES RATHER THAN SPELLED IN PROSE.
 // gunbc.doc_graph_roots already does exactly this for HAND-AUTHORED documents: HandAuthoredDocBind
@@ -47,5 +48,8 @@ fn documentary_ref_symbol_text(reference: DeclarationRef) -> String {
 }
 
 fn generated_document_declaration_refs() -> List<DeclarationRef> {
-  [v1_maintenance_standing_ref, required_gate_subjects_ref]
+  concat(
+    [v1_maintenance_standing_ref, required_gate_subjects_ref],
+    map(design_rulings(), r => r.reference),
+  )
 }

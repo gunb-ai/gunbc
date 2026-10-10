@@ -906,6 +906,10 @@ fn kernel_carrier_admits_numeral(name: String) -> Bool {
         spelling.text == name && carrier_spelling_row_present(m: spelling.method_surface))))
 }
 
+// Whether distinct keys of a finite map are decidably distinct: consumed by the map-literal
+// duplicate-key check (docs/plans/map-literal-introduction-design.md). The admission is
+// instantiation-blind at this rung -- an opaque brand or a type parameter admits unjudged -- and its
+// next-rung trigger is instantiation-grain admission (v1 infer equality_admission_wall_note).
 fn algebra_profile_equality_extensional(profile: AlgebraProfile) -> Bool {
   match algebra_profile_support(profile: profile) {
     FiniteSupport => true

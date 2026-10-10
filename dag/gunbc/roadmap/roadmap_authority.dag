@@ -5013,7 +5013,7 @@ fn preamble() -> List<MarkdownBlock> {
     HeadingBlock { level: H1, inlines: [TextInline { text: "gunbc — Roadmap" }] },
     ParagraphBlock { inlines: [TextInline { text: "`DESIGN.md` is the authority for why. This file projects the remaining committed deliverables and their dependency order from `dag/gunbc/roadmap/roadmap_authority.dag`. The authority declares every node and records a typed acceptance receipt per accepted node; the active set is derived as declared minus validly accepted minus withheld (revoked receipts whose disposition keeps a superseded node off the frontier), so acceptance never deletes a row and this projection stays active-only. It carries no mutable pull-request, CI, session, or attempt state. Implementation evidence does not equal acceptance; a merged but unaccepted deliverable remains active." }] },
     ParagraphBlock { inlines: [TextInline { text: "Indented rows depend on the row above them. Some deliverables have additional cross-chain prerequisites represented by `RoadmapEdge` in the authority. Every active row requires explicit manual acceptance. Automatic admission from this refreshed authority is future work; the existing manual dispatch path remains live and outside this model slice. Ready may schedule only after every dependency is accepted; it never overrides a dependency or refusal. Parked plans remain reachable through the documentation graph but are not active roadmap rows." }] },
-    ParagraphBlock { inlines: [TextInline { text: "Parked context (non-dispatchable): [compiler algorithm survey](docs/plans/compiler-algorithm-survey-2026-07-04.md) · [dispatch maintain CC](docs/plans/dispatch-maintain-cc.md) · [eval bind proposal](docs/plans/eval-bind-node-eval-propose.md) · [interpreter memory chronicle](docs/plans/interpreter-memory-chronicle.md) · [node/subtree visibility grants](docs/plans/node-subtree-visibility-grants.md) · [non-fold residue catalogue](docs/plans/non-fold-irreducible-residue-catalogue.md) · [post-engine roadmap](docs/plans/post-engine-pr-roadmap.md) · [post-zero regen placement](docs/plans/post-zero-regen-gate-placement.md) · [syntactic sample audit](docs/plans/real-debt-syntactic-sample-audit.md) · [regen 31/32 reconciliation](docs/plans/regen-divergence-31-vs-32-reconciliation.md) · [roadmap spawner](docs/plans/roadmap-spawner.md) · [seed honesty discharge](docs/plans/seed-honesty-discharge-design.md) · [space lens minimal project](docs/plans/space-lens-minimal-project.md)." }] },
+    ParagraphBlock { inlines: [TextInline { text: "Parked context (non-dispatchable): [compiler algorithm survey](docs/plans/compiler-algorithm-survey-2026-07-04.md) · [dispatch maintain CC](docs/plans/dispatch-maintain-cc.md) · [eval bind proposal](docs/plans/eval-bind-node-eval-propose.md) · [interpreter memory chronicle](docs/plans/interpreter-memory-chronicle.md) · [node/subtree visibility grants](docs/plans/node-subtree-visibility-grants.md) · [non-fold residue catalogue](docs/plans/non-fold-irreducible-residue-catalogue.md) · [post-engine roadmap](docs/plans/post-engine-pr-roadmap.md) · [post-zero regen placement](docs/plans/post-zero-regen-gate-placement.md) · [syntactic sample audit](docs/plans/real-debt-syntactic-sample-audit.md) · [regen 31/32 reconciliation](docs/plans/regen-divergence-31-vs-32-reconciliation.md) · [roadmap spawner](docs/plans/roadmap-spawner.md) · [seed honesty discharge](docs/plans/seed-honesty-discharge-design.md) · [space lens minimal project](docs/plans/space-lens-minimal-project.md) · [v2 closed-PR recovery](docs/plans/v2-closed-pr-recovery.md)." }] },
   ]
 }
 
@@ -5042,7 +5042,18 @@ fn active_section_for_acceptance(
   accepted: List<RoadmapNodeId>,
   withheld: List<RoadmapNodeId>,
 ) -> RoadmapSection {
-  let nodes = projected_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld)
+  active_section_for_acceptance_with(accepted: accepted, withheld: withheld, runtime: [])
+}
+
+// THE PLAN UNION. Runtime task records (gunbc.roadmap_task_store) are RoadmapNode VALUES supplied by
+// the caller and appended to the declared active nodes and the closing-contract pairs: one plan,
+// one document. They carry no prerequisite edges and are never in the acceptance sets.
+fn active_section_for_acceptance_with(
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+  runtime: List<RoadmapNode>,
+) -> RoadmapSection {
+  let nodes = concat(projected_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld), runtime)
   let edges = projected_roadmap_edges_for_accepted(accepted: accepted, withheld: withheld)
   RoadmapSection {
     title: "Active deliverables — dependency order",
@@ -5062,6 +5073,24 @@ fn accepted_node_ids_from_receipts(receipts: List<RoadmapAcceptanceReceipt>) -> 
 
 
 fn roadmap_authority_projection(history: RoadmapAcceptanceEventHistoryLoad) -> RoadmapAuthorityProjection {
+  roadmap_authority_projection_with(history: history, runtime: [])
+}
+
+// A runtime task whose node id is a declared node's id refuses the whole projection: two nodes
+// answering one id is the fork the plan never carries. (Two runtime tasks cannot share an id: the
+// task store's fold refuses a second creation of one identity.)
+fn runtime_node_ids_collide(runtime: List<RoadmapNode>) -> Bool {
+  let declared = roadmap_node_id_set(ids: declared_roadmap_nodes() |> map(n => n.node))
+  any(runtime, n => set_contains(declared, n.node))
+}
+
+fn roadmap_authority_projection_with(
+  history: RoadmapAcceptanceEventHistoryLoad,
+  runtime: List<RoadmapNode>,
+) -> RoadmapAuthorityProjection {
+  if runtime_node_ids_collide(runtime: runtime) {
+    RoadmapAuthorityProjectionRefused { detail: "a runtime task id collides with a declared or another runtime node id" }
+  } else {
   match frontier_sets_projection(history: history) {
     FrontierSetsProjectionRefused { detail: detail } =>
       RoadmapAuthorityProjectionRefused { detail: detail }
@@ -5070,14 +5099,16 @@ fn roadmap_authority_projection(history: RoadmapAcceptanceEventHistoryLoad) -> R
         doc: RoadmapDocument {
           preamble: preamble(),
           lead_lanes: [],
-          sections: [active_section_for_acceptance(
+          sections: [active_section_for_acceptance_with(
             accepted: accepted,
             withheld: withheld,
+            runtime: runtime,
           )],
         },
         accepted: accepted,
         withheld: withheld,
       }
+  }
   }
 }
 
