@@ -1,6 +1,7 @@
 module test.claim.roadmap_dashboard_instance_apply_witness
 
-import std.types { Bool, String, NonEmptyStr, FilePath, GitRef }
+import std.types { Bool, String, NonEmptyStr, FilePath, GitRef, List }
+import gunbc.deployment_risk { NoProdRole, ProdRoleHeldBy, prod_role_selection, srv2_deploy_deployment }
 import extdeps.git {
   shape_git_bundle_create_argv,
   shape_git_is_shallow_repository_argv,
@@ -21,6 +22,9 @@ import gunbc.host_layout { srv1_codex_bundled_executable }
 import gunbc.roadmap_dashboard_instance {
   srv1_lab_dashboard_instance,
   srv1_live_dashboard_instance,
+  srv2_lab_dashboard_instance,
+  srv2_deploy_dashboard_instance,
+  public_builtin_dashboard_instances,
   dashboard_instance_provider_state_root,
   dashboard_instance_provider_executable,
   dashboard_instances_have_disjoint_owned_paths,
@@ -28,18 +32,16 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_dispatch_platform_executables,
 }
 import gunbc.roadmap_dashboard_instance_apply {
-  DashboardProductionPeer,
-  ProductionPeer,
-  NoProductionPeer,
-  DashboardProductionReading,
-  ProductionRead,
-  ProductionUnpeered,
+  DashboardProtectedSibling,
+  DashboardProtectedSiblingReading,
+  dashboard_protected_siblings,
+  dashboard_protected_siblings_in,
   DashboardProductionSnapshot,
-  dashboard_peer_isolation_ok,
-  dashboard_production_read,
-  dashboard_production_reading_refused,
-  dashboard_production_reading_detail,
-  dashboard_production_readings_equal,
+  dashboard_sibling_isolation_ok,
+  dashboard_protected_sibling_read,
+  dashboard_protected_sibling_reading_refused,
+  dashboard_protected_sibling_reading_detail,
+  dashboard_protected_sibling_readings_equal,
   DashboardProvisionStepReceipt,
   DashboardInstanceApplyResult,
   DashboardApplyRefused,
@@ -583,61 +585,59 @@ test fn dashboard_unreachable_root_refuses_before_choosing_a_parent() -> Bool {
   }
 }
 
-// THE ARM THAT MATTERS IS THE MIXED ONE. An unpeered host has no production liveness to compare, so the tempting shortcut is to let an absent reading compare equal to anything and move on — which would let an apply that STARTED with production served and ENDED with it unreachable report untouched, the precise reading the post-apply check exists to prevent. Equality is therefore required to agree on the arm as well as the contents: two reads compare their snapshots, two unpeered readings compare their hosts, and one of each is never equal regardless of what happened in between.\n\nThe isolation claim is the counterpart. NoProductionPeer discharges the disjointness obligation because there is no peer to overlap with, but it must not discharge the instance's OWN ownership requirement — an unowned path is unowned whether or not a production dashboard shares the machine, and preflight checks the two separately for that reason.
-fn witness_peered() -> DashboardProductionPeer {
-  ProductionPeer { instance: srv1_live_dashboard_instance() }
-}
-
-fn witness_unpeered() -> DashboardProductionPeer {
-  NoProductionPeer { host: "srv2" as NonEmptyStr }
-}
-
-fn witness_reading_read() -> DashboardProductionReading {
-  ProductionRead {
-    snapshot: DashboardProductionSnapshot {
-      observed: true,
-      head: "abc123",
-      health: "ok",
-      detail: "",
-    },
+// THE MISSING READING IS THE ONE THAT MATTERS. A host with no protected sibling has no liveness to
+// compare; the tempting shortcut is to let a missing reading compare equal to anything, which would
+// let an apply that STARTED with the sibling served and ENDED with it unreachable report untouched.
+// So readings pair by instance_id: two equal populations compare equal, two empty ones compare
+// equal, and a sibling present on one side only is never equal.\n\nThe isolation claim is the
+// counterpart. An empty sibling population discharges disjointness because there is nothing to
+// overlap with, but it must not discharge the instance's OWN ownership requirement.
+fn witness_sibling_reading() -> DashboardProtectedSiblingReading {
+  DashboardProtectedSiblingReading {
+    instance_id: srv1_live_dashboard_instance().instance_id,
+    snapshot: DashboardProductionSnapshot { observed: true, head: "abc123", health: "ok", detail: "" },
   }
 }
 
-test fn production_reading_never_equates_absent_with_observed() -> Bool {
-  let read = witness_reading_read()
-  let unpeered = ProductionUnpeered { host: "srv2" as NonEmptyStr }
-  dashboard_production_readings_equal(before: read, after: read)
-    && dashboard_production_readings_equal(before: unpeered, after: unpeered)
-    && !dashboard_production_readings_equal(before: read, after: unpeered)
-    && !dashboard_production_readings_equal(before: unpeered, after: read)
-    && !dashboard_production_readings_equal(
-      before: unpeered,
-      after: ProductionUnpeered { host: "srv1" as NonEmptyStr },
-    )
+test fn protected_sibling_readings_never_equate_absent_with_observed() -> Bool {
+  let read = [witness_sibling_reading()]
+  let empty: List<DashboardProtectedSiblingReading> = []
+  dashboard_protected_sibling_readings_equal(before: read, after: read)
+    && dashboard_protected_sibling_readings_equal(before: empty, after: empty)
+    && !dashboard_protected_sibling_readings_equal(before: read, after: empty)
+    && !dashboard_protected_sibling_readings_equal(before: empty, after: read)
 }
 
-test fn unpeered_host_refuses_nothing_and_reads_nothing() -> Bool {
-  !dashboard_production_reading_refused(reading: dashboard_production_read(peer: witness_unpeered()))
-    && string_contains(
-      s: dashboard_production_reading_detail(
-        reading: dashboard_production_read(peer: witness_unpeered()),
-      ),
-      pattern: "no production peer on srv2",
-    )
+test fn a_host_without_a_protected_sibling_refuses_nothing_and_reads_nothing() -> Bool {
+  let empty = dashboard_protected_sibling_read(siblings: dashboard_protected_siblings(instance: srv2_lab_dashboard_instance()))
+  count(empty) == 0
+    && !dashboard_protected_sibling_reading_refused(readings: empty)
+    && string_contains(s: dashboard_protected_sibling_reading_detail(readings: empty), pattern: "no protected sibling")
 }
 
-test fn peer_isolation_still_requires_the_instance_to_own_its_paths() -> Bool {
-  dashboard_peer_isolation_ok(
-    instance: srv1_lab_dashboard_instance(),
-    peer: witness_peered(),
-  )
-    && dashboard_peer_isolation_ok(
-      instance: srv1_lab_dashboard_instance(),
-      peer: witness_unpeered(),
-    )
-    && !dashboard_peer_isolation_ok(
-      instance: srv1_live_dashboard_instance(),
-      peer: witness_peered(),
-    )
+// THE SIBLING IS DERIVED FROM THE SELECTION AND THE HOST. Today srv1's lab is protected from
+// srv1-live and srv2's lab from nothing; move the role to srv2-deploy and the protection moves with
+// it; under NoProdRole no lab has a protected sibling. A sibling list passed by name would fail the
+// moved-selection conjuncts.
+fn sibling_ids(xs: List<DashboardProtectedSibling>) -> List<String> {
+  map(xs, x => x.instance.instance_id as String)
+}
+
+test fn protected_siblings_follow_the_prod_role_selection_within_the_host() -> Bool {
+  let roster = public_builtin_dashboard_instances()
+  let today = prod_role_selection
+  let moved = ProdRoleHeldBy { deployment: srv2_deploy_deployment }
+  sibling_ids(xs: dashboard_protected_siblings_in(selection: today, instances: roster, instance: srv1_lab_dashboard_instance())) == [srv1_live_dashboard_instance().instance_id as String]
+    && count(dashboard_protected_siblings_in(selection: today, instances: roster, instance: srv2_lab_dashboard_instance())) == 0
+    && count(dashboard_protected_siblings_in(selection: moved, instances: roster, instance: srv1_lab_dashboard_instance())) == 0
+    && sibling_ids(xs: dashboard_protected_siblings_in(selection: moved, instances: roster, instance: srv2_lab_dashboard_instance())) == [srv2_deploy_dashboard_instance().instance_id as String]
+    && count(dashboard_protected_siblings_in(selection: NoProdRole, instances: roster, instance: srv1_lab_dashboard_instance())) == 0
+}
+
+test fn sibling_isolation_still_requires_the_instance_to_own_its_paths() -> Bool {
+  let srv1_siblings = dashboard_protected_siblings(instance: srv1_lab_dashboard_instance())
+  dashboard_sibling_isolation_ok(instance: srv1_lab_dashboard_instance(), siblings: srv1_siblings)
+    && dashboard_sibling_isolation_ok(instance: srv1_lab_dashboard_instance(), siblings: [])
+    && !dashboard_sibling_isolation_ok(instance: srv1_live_dashboard_instance(), siblings: srv1_siblings)
 }
 
