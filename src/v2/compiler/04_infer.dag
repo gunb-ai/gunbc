@@ -7768,6 +7768,9 @@ fn infer_caller_admission_application_diags(
           match resolved_reference_body_kind(target: child0) {
             NotMarkedReference => None
             MarkedReference { kind: DeclarationReferenceKind } =>
+              if infer_callee_is_roster_primitive_call(callee_ref: child0) {
+                None
+              } else {
               match infer_callee_declaration_from_declarations(declarations: declarations, callee_ref: child0) {
                 Absent =>
                   infer_admission_diags_of([
@@ -7796,6 +7799,7 @@ fn infer_caller_admission_application_diags(
                         declarations: declarations
                       )
                   }
+              }
               }
             MarkedReference { kind: _ } => None
           }
@@ -7829,6 +7833,26 @@ fn infer_callee_declaration_from_declarations(declarations: SymbolIndex, callee_
   match declaration_reference_path_optional(node: callee_ref) {
     Absent => optional_absent()
     Present { value: qn } => symbol_index_lookup(index: declarations, qualified_path: qn)
+  }
+}
+
+// A ROSTER PRIMITIVE-CALL HEAD IS NOT AN INDEXED FN. Resolve mints a DeclarationReference to the
+// row's path (std.algebra.collection_concat_shape) so infer can type the call from the roster
+// signature; that path names the template VALUE, not a callable with an admit_callers clause, and
+// the subject's symbol index often does not even contain it (one-module fixtures). Asking the
+// admission wall to resolve that mark in the index is the wrong authority: it refuses
+// caller_admission_callee_unresolved (or callee_unreadable if the template happens to be in
+// scope). The row itself carries no admit roster, so the wall imposes nothing -- the same Absent
+// as an unmarked callee.
+fn infer_callee_is_roster_primitive_call(callee_ref: Node) -> Bool {
+  match declaration_reference_path_optional(node: callee_ref) {
+    Absent => false
+    Present { value: qn } =>
+      match collection_roster_primitive_call_signature_at(path: qualified_name_to_dotted_string(qn: qn)) {
+        NotARosterPrimitiveCallRow => false
+        RosterPrimitiveCallSignature { arrow: _ } => true
+        RosterPrimitiveCallSignatureUnreadable => true
+      }
   }
 }
 
@@ -7925,6 +7949,9 @@ fn infer_caller_admission_roster_from_declarations(
       match resolved_reference_body_kind(target: child0) {
         NotMarkedReference => RosterLookupAbsent
         MarkedReference { kind: DeclarationReferenceKind } =>
+          if infer_callee_is_roster_primitive_call(callee_ref: child0) {
+            RosterLookupAbsent
+          } else {
           match infer_callee_declaration_from_declarations(declarations: declarations, callee_ref: child0) {
             Absent => RosterLookupUnresolved
             Present { value: decl } =>
@@ -7937,6 +7964,7 @@ fn infer_caller_admission_roster_from_declarations(
                     Found { target: roster } => RosterLookupFound { target: roster }
                   }
               }
+          }
           }
         MarkedReference { kind: _ } => RosterLookupAbsent
       }

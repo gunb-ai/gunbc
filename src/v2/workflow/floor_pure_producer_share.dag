@@ -932,12 +932,6 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.compiler.free_monoid_structure_bound",
-    claims: [
-      SingleClaimFillDebtClaim { claim: "fmb_kernel_text_concat_is_accepted_through_its_row", standing: ActiveFillDebt }
-    ]
-  },
-  SingleClaimFillDebtModule {
     module: "v2.test.claim.compiler.generic_formal_instantiation",
     claims: [
       SingleClaimFillDebtClaim { claim: "gfi_alias_argument_at_its_aliased_formal_is_accepted", standing: ActiveFillDebt },
