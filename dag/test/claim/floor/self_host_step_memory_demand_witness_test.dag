@@ -1,0 +1,101 @@
+module test.claim.floor.self_host_step_memory_demand_witness_test
+
+import std.types { Bool, String, NonEmptyStr, List, Int }
+import std.algebra { list_append }
+import std.measure { byte_size }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.self_host_step_memory_demand {
+  self_host_step_memory_readout_over, measured_lowering_holds, receipt_column,
+  self_host_step_memory_receipt_configuration, self_host_step_memory_structures, self_host_step_demand_trend,
+  StepPeakEffect, PeakLoweringMeasured, PeakLoweringExpected, PeakEffectUnclaimed,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED-VALUE CLAIMS AT THE READER'S INTERFACE (DESIGN 3): the receipt rows are constructed here
+// in the writer's own column layout rather than read from the committed file, so each refusal arm of
+// self_host_step_memory_readout_over is exercised by execution with a designed red. The real file's
+// execution is the instrument named in the module (gunbc run ... --function
+// self_host_step_memory_readout), whose result the PR body records per receipt.
+
+fn cfg() -> String { self_host_step_memory_receipt_configuration as String }
+
+fn bucket_line(name: String, released: String, configuration: String) -> List<String> {
+  ["bucket", name, released, "0", configuration]
+}
+
+fn stage_line(name: String, rss: String, configuration: String) -> List<String> {
+  ["stage", name, rss, rss, configuration]
+}
+
+// Every classified structure, one line each, under the row's own configuration.
+fn classified_bucket_lines(released: String) -> List<List<String>> {
+  map(self_host_step_memory_structures, s => bucket_line(name: s.receipt_name as String, released: released, configuration: cfg()))
+}
+
+// For every trend row that claims a MEASURED lowering, the two post_resolve lines it names, before above after.
+fn measured_lowering_lines(before: String, after: String) -> List<List<String>> {
+  flat_map(self_host_step_demand_trend, t => match t.step_peak {
+    PeakLoweringMeasured { before_configuration: b, after_configuration: a } =>
+      [stage_line(name: "compile_emission_over.post_resolve", rss: before, configuration: b as String),
+       stage_line(name: "compile_emission_over.post_resolve", rss: after, configuration: a as String)]
+    PeakLoweringExpected { ground: _ } => []
+    PeakEffectUnclaimed => []
+  })
+}
+
+fn complete_rows() -> List<List<String>> {
+  list_append(
+    left: list_append(left: classified_bucket_lines(released: "1048576"), right: [stage_line(name: "compile_emission_over.post_emit", rss: "104857600", configuration: cfg())]),
+    right: measured_lowering_lines(before: "20000000", after: "10000000"))
+}
+
+fn is_success(exit: ProcessExit) -> Bool {
+  match exit {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+}
+
+test fn a_complete_receipt_holds() -> Bool {
+  is_success(exit: self_host_step_memory_readout_over(rows: complete_rows()))
+}
+
+test fn a_missing_structure_line_refuses() -> Bool {
+  !is_success(exit: self_host_step_memory_readout_over(rows: filter(complete_rows(), r => !(receipt_column(cols: r, index: 1) == "pool_heads" && receipt_column(cols: r, index: 0) == "bucket"))))
+}
+
+test fn a_malformed_bytes_cell_refuses() -> Bool {
+  let rows = map(complete_rows(), r => if receipt_column(cols: r, index: 0) == "bucket" && receipt_column(cols: r, index: 1) == "resolve_index" { bucket_line(name: "resolve_index", released: "n/a", configuration: cfg()) } else { r })
+  !is_success(exit: self_host_step_memory_readout_over(rows: rows))
+}
+
+test fn a_resident_bound_violation_refuses() -> Bool {
+  let rows = map(complete_rows(), r => if receipt_column(cols: r, index: 0) == "stage" && receipt_column(cols: r, index: 1) == "compile_emission_over.post_emit" { stage_line(name: "compile_emission_over.post_emit", rss: "4096", configuration: cfg()) } else { r })
+  !is_success(exit: self_host_step_memory_readout_over(rows: rows))
+}
+
+// The measured-lowering check at its own interface: both cells present with after below before holds;
+// a missing before cell, or an after that is not below the before, refuses; expectations and unclaimed
+// rows are never refused by it.
+test fn a_measured_lowering_is_re_derived_from_both_cells() -> Bool {
+  let effect = PeakLoweringMeasured { before_configuration: "pool=held;scope=x;run=r" as NonEmptyStr, after_configuration: "pool=released;scope=x;run=r" as NonEmptyStr }
+  let both = [stage_line(name: "compile_emission_over.post_resolve", rss: "200", configuration: "pool=held;scope=x;run=r"),
+              stage_line(name: "compile_emission_over.post_resolve", rss: "100", configuration: "pool=released;scope=x;run=r")]
+  let after_only = [stage_line(name: "compile_emission_over.post_resolve", rss: "100", configuration: "pool=released;scope=x;run=r")]
+  let not_lower = [stage_line(name: "compile_emission_over.post_resolve", rss: "100", configuration: "pool=held;scope=x;run=r"),
+                   stage_line(name: "compile_emission_over.post_resolve", rss: "100", configuration: "pool=released;scope=x;run=r")]
+  measured_lowering_holds(rows: both, effect: effect)
+    && !measured_lowering_holds(rows: after_only, effect: effect)
+    && !measured_lowering_holds(rows: not_lower, effect: effect)
+    && measured_lowering_holds(rows: after_only, effect: PeakLoweringExpected { ground: "a bet" as NonEmptyStr })
+    && measured_lowering_holds(rows: after_only, effect: PeakEffectUnclaimed)
+}
+
+// A receipt written by the writer before review 78427 has four-column bucket lines; the reader must
+// refuse it rather than read a trimmed-only figure as a resident drop.
+test fn a_four_column_bucket_line_from_the_old_writer_refuses() -> Bool {
+  let rows = map(complete_rows(), r => if receipt_column(cols: r, index: 0) == "bucket" && receipt_column(cols: r, index: 1) == "resolve_store" { ["bucket", "resolve_store", "1048576", cfg()] } else { r })
+  !is_success(exit: self_host_step_memory_readout_over(rows: rows))
+}

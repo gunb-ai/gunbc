@@ -1,0 +1,322 @@
+module gunbc.self_host_step_memory_demand
+
+import std.types { String, NonEmptyStr, Bool, List, Int }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size, measure_add, measure_le }
+import std.algebra { trim }
+import std.optional { Optional, Present, Absent }
+import std.disposition { ConstructionMechanism, SingleAuthority }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
+
+data self_host_step_memory_demand_disposition: ConstructionMechanism = SingleAuthority
+
+// WHAT ONE `gunbc test //gunbc/instruments:self-host` (AND ITS SIBLING v2-native-cli) HOLDS, BY OWNER,
+// BY SCALE AND BY THE CHANGE THAT ENDS IT. This module carries the CLASSIFICATION of each structure
+// (owner, scale, ender: claims about the code, not measurements) and READS the bytes from the receipt
+// the instrument wrote. It declares no byte figure of its own.
+//
+// THE RECEIPT is `tools/self_host_step_memory_receipt.tsv`, tab separated, one reading per line, ALL
+// written by the seed itself under GUNBC_MEMORY_COMPOSITION=1 with
+// GUNBC_MEMORY_COMPOSITION_RECEIPT=<path> and GUNBC_MEMORY_COMPOSITION_CONFIGURATION=<cell>
+// during one `gunbc test //gunbc/instruments:self-host`. Every line carries that configuration
+// as its last column (pool released before resolution or not; the scope; the run name), and the
+// reader selects on that column, never on file position:
+//   bucket <name> <bytes> <configuration>
+//   stage  <name> <rss> <peak_rss> <configuration>
+// Nothing in the file is hand-assembled. What the seed cannot write (the cgroup sampler over rustc
+// and the controls, the two-closure regression) is the declared frontier in
+// docs/plans/self-host-step-memory-audit.md, not a line here.
+
+type StepDemandOwner
+  = SeedProcess
+  | CargoAndRustc
+  | ProductUnderTest
+
+// THE GROWTH AXES A STRUCTURE CAN HAVE, each naming what its bytes scale WITH:
+//   WholeTree    -- the modules the seed acquires under the source roots, independent of the entry;
+//   EntryClosure -- the emitted entry's transitive closure (v2.compiler.compile's size);
+//   EmittedCrate -- the Rust crate rustc compiles, a consequence of the closure;
+//   Fixed        -- the process baseline.
+type StepDemandScale
+  = WholeTree
+  | EntryClosure
+  | EmittedCrate
+  | Fixed
+
+// WHAT ENDS A STRUCTURE: a change, not a knob.
+type StepDemandEnder
+  = ClosureScopedIngestion
+  | PoolReleasedBeforeResolution
+  | NativeCompilerReplacesInterpreter
+  | ShrinksOnlyWithEmittedCrate
+  | NeverEnds
+
+type StepMemoryStructure {
+  receipt_kind: NonEmptyStr
+  receipt_name: NonEmptyStr
+  structure: NonEmptyStr
+  owner: StepDemandOwner
+  scale: StepDemandScale
+  live_at_seed_peak: Bool
+  ender: StepDemandEnder
+}
+
+data self_host_step_memory_structures: List<StepMemoryStructure> = [
+  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "resolve_store", structure: "shared resolve store (entry_resolve PROCESS_RESOLVE_STORE)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, ender: ClosureScopedIngestion },
+  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "scope_and_reference_indexes", structure: "scope fragment, reference closure, scope order and reference edge caches (cli_run)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, ender: ClosureScopedIngestion },
+  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "emit_check_and_census_memos", structure: "emit-check and diagnostic census memos (cli_run)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, ender: ClosureScopedIngestion },
+  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "pool_content_tokens_newline", structure: "whole-tree token pool: V1LexArtifact + content + newline index of every pooled module (pool_acquire POOL)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, ender: ClosureScopedIngestion },
+  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "pool_heads", structure: "whole-tree parsed heads (pool_acquire Acquired.heads)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, ender: ClosureScopedIngestion },
+  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "resolve_index", structure: "shared resolve index / name census (entry_resolve PROCESS_RESOLVE_INDEX)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, ender: ClosureScopedIngestion },
+  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "module_graph_facts_and_path_index", structure: "module path index and graph facts caches (cli_run)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, ender: ClosureScopedIngestion },
+]
+
+// ── reading the receipt ─────────────────────────────────────────────────────────────────────────
+
+data self_host_step_memory_receipt_path: NonEmptyStr = "tools/self_host_step_memory_receipt.tsv"
+
+// THE CONFIGURATION this tree's committed receipt was written under. The reader selects rows
+// whose last column equals this cell; a receipt from a different pool policy, scope or run is
+// not this measurement.
+data self_host_step_memory_receipt_configuration: NonEmptyStr = "pool=held_through_resolution;scope=srv1_systemd_scope_22g_swap0;run=smart-gull-336-20261010T1157Z"
+
+fn receipt_column(cols: List<String>, index: Int) -> String {
+  match cols.skip(n: index).first() {
+    Present { value: c } => trim(s: c)
+    Absent => ""
+  }
+}
+
+fn receipt_digit_value(c: String) -> Nat {
+  if c == "0" { 0 } else if c == "1" { 1 } else if c == "2" { 2 } else if c == "3" { 3 } else if c == "4" { 4 } else if c == "5" { 5 } else if c == "6" { 6 } else if c == "7" { 7 } else if c == "8" { 8 } else { 9 }
+}
+
+fn receipt_decimal_from(t: String, i: Int, acc: Nat) -> Nat {
+  if i >= string_length(s: t) { acc } else { receipt_decimal_from(t: t, i: i + 1, acc: acc * 10 + receipt_digit_value(c: char_at(s: t, pos: i))) }
+}
+
+fn receipt_is_decimal_from(t: String, i: Int) -> Bool {
+  if i >= string_length(s: t) { true } else { char_at(s: t, pos: i) >= "0" && char_at(s: t, pos: i) <= "9" && receipt_is_decimal_from(t: t, i: i + 1) }
+}
+
+fn receipt_is_decimal(t: String) -> Bool {
+  t != "" && receipt_is_decimal_from(t: t, i: 0)
+}
+
+fn receipt_rows(text: String) -> List<List<String>> {
+  map(filter(split(s: text, delimiter: "\n"), l => l != "" && char_at(s: l, pos: 0) != "#"), l => split(s: l, delimiter: "\t"))
+}
+
+// A reading the receipt may not hold: Absent is the refusal case (no, an ill-formed, or a duplicated
+// line), never a number. Every sum below goes through it and so stays Absent if any term is.
+fn bytes_none() -> Optional<ByteSize> {
+  Absent
+}
+
+fn bytes_some(b: ByteSize) -> Optional<ByteSize> {
+  Present { value: b }
+}
+
+// ONLY THE WRITER'S OWN SHAPE IS A RECEIPT LINE (review 78432): every line the seed writes has five
+// columns (stage: kind, seam, rss, peak, cell; bucket: kind, name, released, trimmed, cell). A line
+// of any other width -- the four-column bucket lines of the writer before review 78427, which
+// recorded only what malloc_trim returned -- carries no configuration cell here, so it never matches
+// a reading and the readout refuses the stale receipt instead of consuming it.
+fn receipt_configuration_cell(cols: List<String>) -> String {
+  if length(xs: cols) == 5 { receipt_column(cols: cols, index: 4) } else { "" }
+}
+
+fn receipt_bytes_at(rows: List<List<String>>, kind: String, name: String) -> Optional<ByteSize> {
+  receipt_bytes_at_in(rows: rows, kind: kind, name: name, configuration: self_host_step_memory_receipt_configuration as String)
+}
+
+// The same reading under a NAMED configuration cell: a trend row that claims a measured lowering
+// names the two configurations it compares, and this is how the readout re-derives both from the file.
+fn receipt_bytes_at_in(rows: List<List<String>>, kind: String, name: String, configuration: String) -> Optional<ByteSize> {
+  let found = filter(rows, r => receipt_column(cols: r, index: 0) == kind && receipt_column(cols: r, index: 1) == name && receipt_configuration_cell(cols: r) == configuration)
+  if length(xs: found) != 1 { bytes_none() } else {
+    match found.first() {
+      Present { value: r } =>
+        if receipt_is_decimal(t: receipt_column(cols: r, index: 2)) { bytes_some(b: byte_size(count: receipt_decimal_from(t: receipt_column(cols: r, index: 2), i: 0, acc: 0))) } else { bytes_none() }
+      Absent => bytes_none()
+    }
+  }
+}
+
+fn receipt_structure_bytes(rows: List<List<String>>, s: StepMemoryStructure) -> Optional<ByteSize> {
+  receipt_bytes_at(rows: rows, kind: s.receipt_kind as String, name: s.receipt_name as String)
+}
+
+// The seed's resident set at one named seam of the same run.
+fn receipt_stage_rss(rows: List<List<String>>, stage: String) -> Optional<ByteSize> {
+  receipt_bytes_at(rows: rows, kind: "stage", name: stage)
+}
+
+fn receipt_stage_rss_in(rows: List<List<String>>, stage: String, configuration: String) -> Optional<ByteSize> {
+  receipt_bytes_at_in(rows: rows, kind: "stage", name: stage, configuration: configuration)
+}
+
+fn step_structures_unreadable(rows: List<List<String>>) -> List<StepMemoryStructure> {
+  filter(self_host_step_memory_structures, s => match receipt_structure_bytes(rows: rows, s: s) { Present { value: _ } => false  Absent => true })
+}
+
+fn step_structure_sum(rows: List<List<String>>, chosen: List<StepMemoryStructure>) -> Optional<ByteSize> {
+  fold(chosen, init: bytes_some(b: byte_size(count: 0)), f: (acc, s) => match acc {
+    Absent => bytes_none()
+    Present { value: a } => match receipt_structure_bytes(rows: rows, s: s) {
+      Absent => bytes_none()
+      Present { value: b } => bytes_some(b: measure_add(a: a, b: b))
+    }
+  })
+}
+
+// WHAT IS LIVE at the seed's moment, summed from the receipt.
+fn step_seed_moment_bytes(rows: List<List<String>>) -> Optional<ByteSize> {
+  step_structure_sum(rows: rows, chosen: filter(self_host_step_memory_structures, s => s.live_at_seed_peak))
+}
+
+// ── THE TREND, AS A ROW ─────────────────────────────────────────────────────────────────────────
+//
+// IS THE DEMAND STRICTLY DECREASING OVER TIME? NO, and the row says what would make it so. Over a
+// growing corpus every WholeTree bucket grows monotonically with the module count (the seed pools and
+// censuses the whole tree to emit one closure), and the EntryClosure bucket grows with
+// v2.compiler.compile's own size; neither shrinks on its own. The demand falls only under a named
+// change, and each change removes a SET of buckets, so the trend is a staircase that is flat or rising
+// between changes, never a slope.
+// WHAT A ROW MAY SAY ABOUT THE STEP PEAK IS TYPED BY ITS EVIDENCE (DESIGN 4d; review 78422). A
+// measured lowering names the two receipt configurations the readout compares, so the claim is
+// re-derived from the committed file and refused when either side is missing or the after side is
+// not below the before; an expected lowering is a bet carrying its ground; a row that claims nothing
+// about the peak says so. A bare Bool could assert what its warrant disclaimed.
+type StepPeakEffect
+  = PeakLoweringMeasured { before_configuration: NonEmptyStr, after_configuration: NonEmptyStr }
+  | PeakLoweringExpected { ground: NonEmptyStr }
+  | PeakEffectUnclaimed
+
+type StepDemandTrend {
+  change: StepDemandEnder
+  removes_scale: StepDemandScale
+  step_peak: StepPeakEffect
+  evidence: NonEmptyStr
+}
+
+data self_host_step_demand_trend: List<StepDemandTrend> = [
+  StepDemandTrend {
+    change: PoolReleasedBeforeResolution,
+    removes_scale: WholeTree,
+    step_peak: PeakLoweringExpected { ground: "pool_heads and pool_content_tokens_newline are whole-tree and live at the seed's moment; a release of the pool before compile_to_resolved_with_options removes them from the post_resolve resident set, and resolution re-acquires only a closure-sized set" },
+    evidence: "the pool is held through resolution on this base; the change that releases it ships with its own receipt under a second configuration cell, and the row becomes PeakLoweringMeasured there, naming both cells",
+  },
+  StepDemandTrend {
+    change: ClosureScopedIngestion,
+    removes_scale: WholeTree,
+    step_peak: PeakLoweringExpected { ground: "every WholeTree structure in the receipt is built from the pooled modules, almost all of which are compiled for the census only" },
+    evidence: "every WholeTree structure in the receipt is built from the pooled modules of which almost all are compiled for the census only",
+  },
+  StepDemandTrend {
+    change: NativeCompilerReplacesInterpreter,
+    removes_scale: EntryClosure,
+    step_peak: PeakLoweringExpected { ground: "the native generation-two compiler would hold its own closure working set instead of the interpreter's; its footprint is unmeasured" },
+    evidence: "the native generation-two compiler would hold its own closure working set instead of the interpreter's; its footprint has not been measured and this row claims none",
+  },
+  StepDemandTrend {
+    change: ShrinksOnlyWithEmittedCrate,
+    removes_scale: EmittedCrate,
+    step_peak: PeakEffectUnclaimed,
+    evidence: "rustc's footprint scales with the emitted crate; it is read by the cgroup sampler, which is the declared frontier and not a line in the receipt, so this row is a classification not a reading",
+  },
+]
+
+
+// CONSUMERS (DESIGN 3c, review 78429). By execution in this change: test.claim.floor
+// .self_host_step_memory_demand_witness_test runs self_host_step_memory_readout_over and
+// measured_lowering_holds over supplied receipt rows, so every refusal arm here goes red by execution;
+// and the instrument that reads the committed receipt is this module's own entry
+// (gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/floor/self_host_step_memory_demand.dag
+// --function self_host_step_memory_readout), whose result each PR records per receipt. DECLARED
+// FRONTIER: a `gunbc test` label for that readout, which needs a TargetProducer arm in
+// gunbc.target_binding plus its seed arm (the trigger gunbc.memory_composition_seed_growth already
+// names); until it exists the readout is not on any required path, and gunbc.runner_slot_desired,
+// which is on main, sizes the slot as a policy row and does not import an effectful entry.
+
+// A trend row must exist for every classified structure's ender and scale (NeverEnds excepted): the
+// classification and the trend are one claim about what ends each structure, so a structure whose
+// ender no row speaks to is refused rather than left classified-but-unexplained.
+fn structure_has_trend_row(s: StepMemoryStructure) -> Bool {
+  let spoken_to = any(self_host_step_demand_trend, t => t.change == s.ender && t.removes_scale == s.scale)
+  match s.ender {
+    NeverEnds => true
+    ClosureScopedIngestion => spoken_to
+    PoolReleasedBeforeResolution => spoken_to
+    NativeCompilerReplacesInterpreter => spoken_to
+    ShrinksOnlyWithEmittedCrate => spoken_to
+  }
+}
+
+// THE READOUT. Reads the receipt the instrument wrote and refuses unless every classified structure
+// has exactly one well-formed line, every structure has a trend row, and the structures live at the
+// seed's moment fit inside the seed's own resident set at the post-emission seam of the same run
+// (a plain resident-set read, a different reading from the trim that produced the buckets).
+//
+// THE BOUND. Every bucket is a KB-granular resident-set difference, so a bucket can exceed its true
+// size by less than one KB and the sum of N buckets by less than N KB: the tolerance is
+// structure_count * 1024 bytes and nothing larger. A receipt violates it by reporting buckets that
+// together return more than the seed held resident. The classified structures are a LOWER bound on
+// the resident set, not a partition of it: the unclassified remainder (the closure-scale ASTs,
+// resolution and typecheck environments, emission buffers, allocator baseline) is the declared
+// frontier of docs/plans/self-host-step-memory-audit.md, so no check here asserts coverage or
+// scale ordering.
+fn self_host_step_memory_readout() -> ProcessExit {
+  let read = Filesystem.Read(path: self_host_step_memory_receipt_path as String)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error } => exit_failure(reason: concat("self-host step memory receipt unreadable: ", error))
+    FilesystemReadSucceeded { content } => self_host_step_memory_readout_over(rows: receipt_rows(text: content))
+  }
+}
+
+// A measured lowering is re-derived, never trusted: both configurations must carry a post_resolve
+// stage line and the after side must be strictly below the before side.
+fn measured_lowering_holds(rows: List<List<String>>, effect: StepPeakEffect) -> Bool {
+  match effect {
+    PeakLoweringMeasured { before_configuration: b, after_configuration: a } =>
+      match receipt_stage_rss_in(rows: rows, stage: "compile_emission_over.post_resolve", configuration: b as String) {
+        Absent => false
+        Present { value: before } =>
+          match receipt_stage_rss_in(rows: rows, stage: "compile_emission_over.post_resolve", configuration: a as String) {
+            Absent => false
+            Present { value: after } => !measure_le(a: before, b: after)
+          }
+      }
+    PeakLoweringExpected { ground: _ } => true
+    PeakEffectUnclaimed => true
+  }
+}
+
+fn unverifiable_measured_lowerings(rows: List<List<String>>) -> List<StepDemandTrend> {
+  filter(self_host_step_demand_trend, t => !measured_lowering_holds(rows: rows, effect: t.step_peak))
+}
+
+fn self_host_step_memory_readout_over(rows: List<List<String>>) -> ProcessExit {
+  if length(xs: step_structures_unreadable(rows: rows)) > 0 {
+    exit_failure(reason: "the receipt lacks exactly one well-formed line for a classified structure")
+  } else if length(xs: filter(self_host_step_memory_structures, s => !structure_has_trend_row(s: s))) > 0 {
+    exit_failure(reason: "a classified structure has no trend row for its ender and scale")
+  } else if length(xs: unverifiable_measured_lowerings(rows: rows)) > 0 {
+    exit_failure(reason: "a trend row claims a measured peak lowering that the receipt does not re-derive: post_resolve under both named configurations, after strictly below before")
+  } else {
+    match receipt_stage_rss(rows: rows, stage: "compile_emission_over.post_emit") {
+      Absent => exit_failure(reason: "the receipt has no post-emission stage line")
+      Present { value: resident } =>
+        match step_seed_moment_bytes(rows: rows) {
+          Absent => exit_failure(reason: "the structures live at the seed's moment are not all readable")
+          Present { value: moment } =>
+            if !measure_le(a: moment, b: measure_add(a: resident, b: byte_size(count: length(xs: self_host_step_memory_structures) * 1024))) {
+              exit_failure(reason: "the structures live at the seed's moment exceed the seed's own resident set at that seam beyond KB rounding")
+            } else {
+              ExitSuccess
+            }
+        }
+    }
+  }
+}

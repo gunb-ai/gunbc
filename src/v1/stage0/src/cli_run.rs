@@ -202,6 +202,7 @@ pub(crate) use test_migration::*;
 // and a second acquisition of the corpus to answer a second question is the cost-shape defect
 // DESIGN §6 names.
 pub(crate) mod floor_discovery_snapshot;
+mod memory_composition;
 #[path = "namespace_baseline.rs"]
 pub mod namespace_baseline;
 #[path = "phase_profile.rs"]
@@ -8320,10 +8321,12 @@ pub fn compile_emission_over(request: &CompileRequest, residency: IndexResidency
     // path through this pair is the same computation it was before multi-target routing --
     // not an equivalent-looking substitute (checked against that function's body, which is
     // exactly that composition).
+    memory_composition::readback("compile_emission_over.pre_resolve");
     let resolved = v1_compiler_compile::compile_to_resolved_with_options(
         Rc::new(closure.clone().into()),
         options,
     );
+    memory_composition::readback("compile_emission_over.post_resolve");
     let emissions: Vec<TargetEmission> = request
         .render_targets
         .iter()
@@ -8333,6 +8336,7 @@ pub fn compile_emission_over(request: &CompileRequest, residency: IndexResidency
         })
         .collect();
 
+    memory_composition::readback("compile_emission_over.post_emit");
     // THE REFUSAL IS OVER EVERY TARGET, NOT THE FIRST. Emission is per target, so a target
     // that emits nothing or emits a blocking diagnostic must stop the line even when an
     // earlier target completed -- citing target 1 while target 2 is silent is the

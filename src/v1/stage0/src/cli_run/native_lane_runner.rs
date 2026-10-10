@@ -568,6 +568,7 @@ fn prepare_emitted_compiler_for_entry(
          rss_kb_after={rss_after_kb:?}); cargo build",
         crate_dir.display()
     );
+    super::memory_composition::release_stages();
     // The invocation resolves and binds the one compiler the build runs under and takes its
     // identity from the crate's own directory; a compiler that cannot be resolved or named is
     // a refusal before the build is paid for.
