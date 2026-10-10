@@ -76,7 +76,7 @@ fn fleet_probe_endpoint_for(host: String) -> String {
 // one, which is what proves the harness refuses the shape rather than catching the cycle. So the
 // missing multi-module compile fixture is this class's next-rung trigger, not a ceiling: when one
 // exists, the acyclic/cyclic pair above becomes an ordinary enrolled regression control.
-data fleet_reach_probe_targets: List<String> = ["srv1", "srv2", "srv3", "srv4", "srv5", "srv6"]
+data fleet_reach_probe_targets: List<String> = ["srv1", "srv2", "srv3", "srv4"]
 
 // Ruling msg_43a8fd77 item 2: the REMOTE PRINCIPAL is an explicit typed fact per host,
 // never the implicit ssh default (local-username inheritance is an absorbing default —
@@ -108,18 +108,12 @@ type FleetProbePrincipal
 // (bootstrap actor unreachable) — a standing DISTINCT from refused and from reachable.
 
 fn fleet_probe_remote_user_for(host: String) -> FleetProbePrincipal {
-  if host == "srv5" || host == "srv6" {
-    ProbeUserPending {
-      note: "bold-eagle-107 (msg_7428d9fc): the account NAME briansrls is well-supported (operator-supplied login for both Sparks; operator confirmed the name collision with the human account is coincidence) but WHICH principal the fleet-key probe authenticated as is unverified recollection — no retained artifact records it, so this stays Pending until a receipt exists (re-measurement needs operator clearance, through the convergence path, per the interactive-Spark stop-order). The KEY axis is typed separately (fleet_ssh_access fleet_automation_ssh_key_fingerprint); both Sparks' authorized_keys carry exactly fleet-automation@gunbc today (bootstrap node-orch key installed then REMOVED from both).",
-    }
+  if host == "srv1" || host == "srv2" {
+    ProbeUserKnown { user: "gunbc-fleet" }
   } else {
-    if host == "srv1" || host == "srv2" {
-      ProbeUserKnown { user: "gunbc-fleet" }
-    } else {
-      PrincipalAllocationPending {
-        allocated: "gunbc-fleet",
-        note: "account allocated but not yet created on this host (msg_8cf3d762: bootstrap actor unreachable); probe targets the allocated name so the refusal is typed at auth, never a fabricated reachable",
-      }
+    PrincipalAllocationPending {
+      allocated: "gunbc-fleet",
+      note: "account allocated but not yet created on this host (msg_8cf3d762: bootstrap actor unreachable); probe targets the allocated name so the refusal is typed at auth, never a fabricated reachable",
     }
   }
 }

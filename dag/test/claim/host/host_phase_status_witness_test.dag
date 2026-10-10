@@ -465,68 +465,10 @@ test fn witness_matrix_hosts_are_exactly_the_enrolled_roster() -> Bool {
   covered.length() == fleet_subsumption_hosts.length() && stray.length() == 0
 }
 
-// The Spark enrollment itself, stated at the grain it is actually known: srv5 and srv6 are
-// ENROLLED as InferenceServingParticipation, which selects exactly four shared obligations and no
-// runner-only one. Enrolled is not converged — every one of these eight cells is honestly
-// unobserved, and nothing here claims identity convergence, reach, compute enrolment, or serving.
-test fn witness_enrolled_sparks_carry_exactly_the_shared_obligations() -> Bool {
-  let matrix = host_fleet_phase_matrix(enrollments: fleet_subsumption_enrollments)
-  let sparks = filter(
-    matrix,
-    c => c.cell.host == operator_host_srv5 || c.cell.host == operator_host_srv6,
-  )
-  let shared = filter(sparks, c => cell_label_is_shared(c: c))
-  let runner_only = filter(sparks, c => cell_label_is_runner_only(c: c))
-  sparks.length() == 8 && shared.length() == 8 && runner_only.length() == 0
-}
-
-// The unobserved half of the same claim, kept separate so a future producer landing on a Spark
-// cell reds this witness instead of silently upgrading the sentence above.
-// Re-derived on the join-4 flip: the executed probe observed BOTH P0 cells on each
-// Spark at the modeled endpoint (ProbeHostKeyUnenrolled -> Inaccessible — observed,
-// NOT satisfied), and every non-P0 Spark cell stays unobserved. The witness now pins
-// that exact split so a producer landing on any further Spark cell still reds here.
-test fn witness_enrolled_spark_cells_are_all_unobserved() -> Bool {
-  let matrix = host_fleet_phase_matrix(enrollments: fleet_subsumption_enrollments)
-  let sparks = filter(
-    matrix,
-    c => c.cell.host == operator_host_srv5 || c.cell.host == operator_host_srv6,
-  )
-  let observed = filter(
-    sparks,
-    c => match c.observation {
-      Present { value: _ } => true
-      Absent => false
-    },
-  )
-  let observed_p0 = filter(
-    observed,
-    c => (c.cell.phase_label == "P0:reach-secrets-network" || c.cell.phase_label == "P0:host-identity-converge")
-      && match c.observation {
-        Present { value: v } => v == Inaccessible
-        Absent => false
-      },
-  )
-  observed.length() == 4 && observed_p0.length() == 4
-}
-
 // Non-vacuity guard for the gap join above: if the spine carried no DeclaredGap step at all, that
 // witness would compare zero against zero and pass while proving nothing.
 test fn witness_spine_actually_carries_gap_phases() -> Bool {
   host_standup_gap_phase_count() > 0
-}
-
-// Positive control for the Spark witness above: cell_label_is_runner_only must actually match
-// something, or "the Sparks carry no runner-only obligation" is satisfied by a predicate that
-// matches nothing. The runner hosts are where those obligations live.
-test fn witness_runner_only_obligations_exist_on_runner_hosts() -> Bool {
-  let matrix = host_fleet_phase_matrix(enrollments: fleet_subsumption_enrollments)
-  let runner_only = filter(matrix, c => cell_label_is_runner_only(c: c))
-  let on_sparks = filter(
-    runner_only,
-    c => c.cell.host == operator_host_srv5 || c.cell.host == operator_host_srv6,
-  )
-  runner_only.length() > 0 && on_sparks.length() == 0
 }
 
 // THE SIBLING OF THE NOTE ABOVE, and the one the frontier does not yet catch. That note forbids
@@ -543,7 +485,7 @@ test fn witness_runner_only_obligations_exist_on_runner_hosts() -> Bool {
 // verdict by execution' -- which is why the defect is worth an executing control rather than a
 // correction in prose: the rule was already written down and was not enforceable, and no lens or
 // witness would have reddened if a second host were wired in the same way. That is the exact move
-// Spark collector-fact enrollment would have made for srv5 and srv6, which is how this was found.
+// Spark collector-fact enrollment would have made for the Spark hosts, which is how this was found.
 
 // THE DISCRIMINATING CONTROL. Both lease tables are authored data constants, and the verdict is a
 // pure function of WHICH ONE is wired into the frontier: the pre-install table (BMC row only)

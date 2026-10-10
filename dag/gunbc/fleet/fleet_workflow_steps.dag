@@ -63,7 +63,6 @@ import gunbc.ci_spec {
 }
 import gunbc.fleet_host_key_enrollment { probe_identity_secret_access_requirement }
 import gunbc.spark.vllm_runtime_image_build { vllm_build_host_effect_term }
-import gunbc.spark.group_image_produce { image_distribution_host_effect_term }
 import std.types { List, String, Int }
 
 import gunbc.roadmap_execution_contract {
@@ -679,13 +678,6 @@ fn gunbc_ci_spark_runtime_image_build_step_timeout_minutes() -> Int {
   second_count(s: vllm_build_host_effect_term) / 60
 }
 
-// THE SAME DERIVATION FOR THE PRODUCED IMAGE'S DISTRIBUTION: its step budget is the term both of
-// its host-effect claims are admitted for (gunbc.spark.v41_runtime_image_converge
-// v41_image_distribution_host_effect_term).
-fn gunbc_ci_spark_runtime_image_distribute_step_timeout_minutes() -> Int {
-  second_count(s: image_distribution_host_effect_term) / 60
-}
-
 data gunbc_ci_spark_serving_step_timeout_note: String = "Spark serving converge/observe step budget, raised from the shared aux 5m (operator authorization 2026-08-19). STATED AS AN ENVELOPE, NOT A MEASUREMENT, because the neighbouring gates in this module earn their numbers and this one cannot yet. What IS modeled: the ollama runtime archive at 1542416321 bytes, cited on extdeps.ollama.binary_release. What is NOT: the model blob closure has no modeled byte size at all — the desired model is identified by its manifest digest rather than a size — and throughput from the executor to a spark target has never been measured. So a cold install downloads a ~1.5GB runtime plus a model of unmodeled size over a link of unmeasured bandwidth, and no honest derivation produces a minute count from that. 5m was not a considered budget for this step, it was the shared aux default, and it cannot cover a cold install under any plausible bandwidth.
 
 WHAT IS OBSERVED, and why this is not a hypothetical envelope: run 32213195686 (2026-08-19T03:49:56Z, read-only spark_observe) reports state=absent for BOTH spark targets — on srv6 the user unit is-active exits 4, the api/version and api/tags probes exit 7 against a refused connection, and the runtime receipt file does not exist. So the first canary is a guaranteed cold install of the full closure rather than a converged no-op, and the step budget has to cover acquisition of an unmodeled model closure on a host observed to hold none of it. The 5m default would have killed that install mid-download every time, and because publication is split from acquisition it would have done so silently-safely — dying in the attempt workspace, publishing nothing, and looking like a timeout rather than a budget defect.
@@ -844,10 +836,10 @@ data fleet_host_mutation_concurrency_group_expression: String = join([fleet_host
 // needed. This row stays the host-domain authority and is unchanged by that.
 data fleet_arm_mutation_group_glm_group_b_native: String = "gunbc-arm-mutation-glm-group-b-native"
 
-// Group A's arm key IS srv1's host key (gunbc.fleet.fleet_converge_workflow: the D0 door has two
-// domains, the srv1 control plane and Group A, and a job carries one group), so the pair-serving
-// apply keyed here queues behind D0 and behind every srv1 mutation whichever executor it names.
-data fleet_arm_mutation_group_deepseek_group_a: String = join([fleet_host_mutation_group_prefix, operator_host_srv1 as String], "")
+// THE srv1 CONTROL-PLANE KEY: srv1's host key, named for what it serialises. The pair-serving apply is
+// keyed here so it queues behind every srv1 mutation whichever executor it names. (It was Group A's arm
+// key while Group A and D0 existed; both were deleted on 2026-10-07.)
+data fleet_srv1_control_plane_mutation_group: String = join([fleet_host_mutation_group_prefix, operator_host_srv1 as String], "")
 
 // A SUBJECT NARROWER THAN ITS HOST GETS ITS OWN KEY WHEN NO OTHER MODE MUTATES IT (operator request
 // 2026-10-03). The approval device store -- gunbc.auth.approval_device_redemption

@@ -5,13 +5,13 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash {
   compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable,
 }
-import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.spark.fabric_switch_observed { FabricGroupB, FabricGroup }
 import gunbc.spark.pair_serving_realization {
   SparkPairUnitRender, SparkPairUnitRendered,
   RenderedUnitDigestStanding, RenderedUnitDigested, RenderedUnitDigestUnavailable,
   DeclaredUnitDigested, DeclaredUnitDigestUnavailable,
   spark_pair_rendered_unit_digest, spark_pair_declared_head_digest,
-  spark_pair_head_unit_render_for_group, spark_pair_head_unit_name,
+  declared_head_unit_render_for_group, spark_pair_head_unit_name,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -24,7 +24,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // TWO PROPOSITIONS, TWO SETS OF ROWS, MATCHING THE PRODUCTION SPLIT. The byte-level rows below
 // drive spark_pair_rendered_unit_digest, whose result is UNSEALED -- they supply fixture bytes, so
-// there is nothing to protect and no seal to bypass. The Group A row drives
+// there is nothing to protect and no seal to bypass. The group B row drives
 // spark_pair_declared_head_digest, the corpus's only constructor of DeclaredUnitDigestEvidence,
 // which takes a modeled group and renders from the production declaration. THIS FILE CANNOT MINT
 // SEALED EVIDENCE OVER BYTES OF ITS OWN, and that is the point rather than a limitation.
@@ -75,19 +75,19 @@ test fn unit_text_differing_by_one_byte_gives_a_different_digest() -> Bool {
   }
 }
 
-// THE PRODUCTION GROUP-A PRODUCER, EXECUTED. spark_pair_declared_head_digest renders the head unit
-// from the CURRENT declarations and digests exactly those bytes -- no store, no receipt, no
-// currency check. This is the function harness_bind_seat calls once per bind, so deleting the
-// render-to-DigestStdin wire inside it turns this row red.
+// THE PRODUCTION GROUP-LEVEL PRODUCER, EXECUTED. spark_pair_declared_head_digest renders group B's
+// declared head unit from the CURRENT declarations and digests exactly those bytes -- no store, no
+// receipt, no currency check. This is the function harness_bind_seat calls once per bind, so deleting
+// the render-to-DigestStdin wire inside it turns this row red.
 //
-// AND IT IS THE SAME BYTES: re-digesting the group's render through the supplied-input mint above
-// must agree with what the group-level producer returned. RED if the group producer ever digested
-// something other than the unit text it renders.
+// AND IT IS THE SAME BYTES: re-digesting the group's declared render through the supplied-input mint
+// above must agree with what the group-level producer returned. RED if the group producer ever
+// digested something other than the unit text it renders.
 test fn spark_pair_head_unit_declared_digest_hashes_the_realized_head_unit() -> Bool {
-  match spark_pair_declared_head_digest(group: FabricGroupA) {
+  match spark_pair_declared_head_digest(group: FabricGroupB {}) {
     DeclaredUnitDigestUnavailable { obligation: _ } => false
     DeclaredUnitDigested { evidence: e } =>
-      match spark_pair_rendered_unit_digest(render: spark_pair_head_unit_render_for_group(group: FabricGroupA)) {
+      match spark_pair_rendered_unit_digest(render: declared_head_unit_render_for_group(group: FabricGroupB {})) {
         RenderedUnitDigestUnavailable { obligation: _ } => false
         RenderedUnitDigested { unit_name: _, digest: again } =>
           match compare_content_hash(left: e.digest, right: again) {

@@ -38,7 +38,6 @@ import extdeps.systemd.journalctl { journalctl_kernel_current_boot_argv, journal
 import gunbc.spark.dgx_procurement { dgx_spark_procurement_intent }
 import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun, ArgvLegMayHaveRun }
 import gunbc.fleet_host_identity {
-  operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8,
   operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
 }
 
@@ -125,7 +124,7 @@ fn spark_wireless_link_desired(host: HostIdentity) -> WirelessLinkDesired {
 // /etc/netplan/90-NM-a653b65d-....yaml, so it persists). The radio is now measured, so it has a row,
 // and wireless_link_uncovered_spark_hosts keeps the next omission from being silent.
 data wireless_link_desired_rows: List<WirelessLinkDesired> = map(
-  [operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12],
+  [operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12],
   h => spark_wireless_link_desired(host: h),
 )
 

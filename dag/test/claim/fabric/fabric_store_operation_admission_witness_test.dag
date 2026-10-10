@@ -10,10 +10,9 @@ import extdeps.crypto.mac { MacKey, HmacSha256 }
 import gunbc.auth.approval_decision_store { StoredApprovalRequest, ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyFileAbsent, approval_mac_key_id }
 import gunbc.auth.approval_store_receipt { approval_store_receipt_mac_key_id, approval_store_receipt_mac_key_path, store_receipt_claims }
 import gunbc.auth.approval_capability { ApprovalCapability }
-import gunbc.spark.pair_serving_d0 { d0_required_scope }
 import gunbc.fabric_store_operation_admission {
   protected_head_of, ConsentClaimSlotHead, ConsentFilingSlotHead, AuthorityPartitionHead,
-  admit_store_operation, StoreOperationAdmitted, StoreOperationRefused, StoreOperationCredential, StoreOperationAdmission,
+  admit_store_operation, approved_operation, ClaimConsent, NoApprovalFlowForOperation, StoreOperationAdmitted, StoreOperationRefused, StoreOperationCredential, StoreOperationAdmission,
   NoOperationCredential, PresentedApproval,
   ApprovalAbsent, IntentNotTheApprovedRevision, IntentScopeNotAdmissible, OperationUnclassifiable, ReceiptKeyUnavailable,
 }
@@ -30,6 +29,15 @@ data fw_consent_head: String = "cas-slot-scoped-authorization-esc-d0-1"
 
 fn fw_receipt_key() -> MacKey {
   MacKey { id: approval_store_receipt_mac_key_id, suite: HmacSha256, material: fw_receipt_key_hex as Secret }
+}
+
+// THE SCOPE D0 STATED, KEPT BYTE-FOR-BYTE AS A SUPPLIED VALUE: the pinned receipts below are digests and
+// tags over intent text that frames exactly this scope. D0 itself was deleted with Group A (2026-10-07), so
+// the store now admits no scope for a consent write (gunbc.fabric_store_operation_admission
+// operation_requirement); the receipt check is exercised at its own interface, approved_operation, with
+// this scope supplied as the admissible one.
+fn fw_d0_scope() -> AuthorizationScope {
+  AuthorizationScope { verb: Write, resource: NamespacePosition { tree: CodeNameTree, path: ["gunbc", "spark", "pair_serving_authority"] }, action: ("suspend-pair-serving-authority" as NonEmptyStr) as AuthorizedAction }
 }
 
 fn fw_other_scope() -> AuthorizationScope {
@@ -64,7 +72,7 @@ fn fw_pinned_receipt(intent: String, revision: NonEmptyStr, tag: NonEmptyStr) ->
 }
 
 fn fw_receipt_d0() -> StoreOperationCredentialOrNone {
-  fw_pinned_receipt(intent: fw_intent(scope: d0_required_scope()), revision: "sha256:c9bd53d25b2756f52cbffe878e28dfb8e121ec0177e8da265adcb1e5221af1ca" as NonEmptyStr, tag: "KadxLVqCx5DF7rP9FT1ENLSKl7rLJhiMAyXDil5SOyQ=" as NonEmptyStr)
+  fw_pinned_receipt(intent: fw_intent(scope: fw_d0_scope()), revision: "sha256:c9bd53d25b2756f52cbffe878e28dfb8e121ec0177e8da265adcb1e5221af1ca" as NonEmptyStr, tag: "KadxLVqCx5DF7rP9FT1ENLSKl7rLJhiMAyXDil5SOyQ=" as NonEmptyStr)
 }
 
 fn fw_receipt_other_scope() -> StoreOperationCredentialOrNone {
@@ -76,12 +84,24 @@ type StoreOperationCredentialOrNone
   | NoReceipt
 
 fn fw_admit(credential: StoreOperationCredential) -> StoreOperationAdmission {
-  admit_store_operation(
-    head: ConsentClaimSlotHead, target_text: "", credential: credential,
-    principal_grants: [] as List<Grant>,
+  approved_operation(
+    op: ClaimConsent, admissible: [fw_d0_scope()], credential: credential,
     receipt_keyring: ApprovalKeyLoaded { key: fw_receipt_key() },
     observed_at: "2026-09-28T00:20:00Z",
   )
+}
+
+// THE STORE DOOR ITSELF NOW REFUSES THE CONSENT WRITE THAT D0'S RECEIPT ONCE ADMITTED: with no approval
+// flow admitted for the operation, the door refuses before it reads the receipt.
+test fn the_store_refuses_a_consent_write_now_that_no_flow_is_admitted() -> Bool {
+  match fw_receipt_d0() {
+    NoReceipt => false
+    HaveReceipt { credential: c } =>
+      match admit_store_operation(head: ConsentClaimSlotHead, target_text: "", credential: c, principal_grants: [] as List<Grant>, receipt_keyring: ApprovalKeyLoaded { key: fw_receipt_key() }, observed_at: "2026-09-28T00:20:00Z") {
+        StoreOperationRefused { operation: _, refusal: NoApprovalFlowForOperation } => true
+        _ => false
+      }
+  }
 }
 
 // THE POSITIVE CONTROL: a receipt the broker minted over an approved intent that states D0's scope
@@ -136,7 +156,7 @@ test fn a_store_without_the_receipt_key_refuses() -> Bool {
   match fw_receipt_d0() {
     NoReceipt => false
     HaveReceipt { credential: c } =>
-      match admit_store_operation(head: ConsentClaimSlotHead, target_text: "", credential: c, principal_grants: [] as List<Grant>, receipt_keyring: ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: approval_store_receipt_mac_key_path } }, observed_at: "2026-09-28T00:20:00Z") {
+      match approved_operation(op: ClaimConsent, admissible: [fw_d0_scope()], credential: c, receipt_keyring: ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: approval_store_receipt_mac_key_path } }, observed_at: "2026-09-28T00:20:00Z") {
         StoreOperationRefused { operation: _, refusal: ReceiptKeyUnavailable } => true
         _ => false
       }

@@ -31,7 +31,7 @@ import gunbc.fleet.fleet_site_locale {
 }
 import product.placement_supply { SiteIdentity }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_host_identity { operator_host_srv4, operator_host_srv5, operator_host_srv6 }
+import gunbc.fleet_host_identity { operator_host_srv4, operator_host_srv9, operator_host_srv10 }
 import std.types { Int }
 import gunbc.fleet.fleet_site_locale {
   HostZoneConverged,
@@ -115,18 +115,18 @@ test fn w_fleet_policy_follows_the_site_civil_zone() -> Bool {
 // below names a zone for a host, so moving the site's civil zone moves every verdict.
 
 // The population check, kept SEPARATE from the identity check below because a total and an
-// identity answer different questions. Under the ruling, srv4 and srv5 run Etc/UTC against a
-// New York civil zone and srv6 already matches.
+// identity answer different questions. Under the ruling, srv4 runs Etc/UTC against a New York
+// civil zone, and no observed host already matches.
 test fn w_census_counts_the_three_dispositions_apart() -> Bool {
-  host_zone_census(site: operator_premises_civil_time, policy: fleet_host_zone_policy).divergent == 2
-    && host_zone_census(site: operator_premises_civil_time, policy: fleet_host_zone_policy).converged == 1
+  host_zone_census(site: operator_premises_civil_time, policy: fleet_host_zone_policy).divergent == 1
+    && host_zone_census(site: operator_premises_civil_time, policy: fleet_host_zone_policy).converged == 0
     && host_zone_census(site: operator_premises_civil_time, policy: fleet_host_zone_policy).undecidable == 0
 }
 
 // An unruled policy must not be counted as divergence. The previous revision folded the two
 // together behind a function named for one of them, so this arm had no reader at all.
 test fn w_unruled_policy_is_counted_as_undecidable_not_divergent() -> Bool {
-  host_zone_census(site: operator_premises_civil_time, policy: HostZonePolicyUnruled).undecidable == 3
+  host_zone_census(site: operator_premises_civil_time, policy: HostZonePolicyUnruled).undecidable == 1
     && host_zone_census(site: operator_premises_civil_time, policy: HostZonePolicyUnruled).divergent == 0
     && host_zone_census(site: operator_premises_civil_time, policy: HostZonePolicyUnruled).converged == 0
 }
@@ -137,9 +137,9 @@ test fn w_unruled_policy_is_counted_as_undecidable_not_divergent() -> Bool {
 // diverge while preserving cardinality, both left it green. A count defends a population size and
 // says nothing about which members occupy which state.
 //
-// This names each host and asserts its disposition FLIPS. Under a New York civil zone the two
-// UTC machines are divergent and srv6 is converged; move the site to UTC and every one of those
-// three verdicts inverts, with the same observations underneath.
+// This names the host and asserts its disposition FLIPS. Under a New York civil zone the UTC
+// machine is divergent; move the site to UTC and that verdict inverts, with the same observation
+// underneath.
 // THE RELOCATION PROBE KEEPS THE SAME SITE IDENTITY, and the earlier version did not -- it
 // invented "relocated-probe", which under the host-to-site join is now a MISMATCH rather than a
 // move. That distinction is the point of the join: relocating the operator's premises changes the
@@ -167,7 +167,7 @@ fn foreign_site_facts() -> SiteCivilTimeFacts {
 }
 
 test fn w_facts_from_another_site_are_refused_not_adjudicated() -> Bool {
-  host_zone_census(site: foreign_site_facts(), policy: fleet_host_zone_policy).site_refused == 3
+  host_zone_census(site: foreign_site_facts(), policy: fleet_host_zone_policy).site_refused == 1
     && host_zone_census(site: foreign_site_facts(), policy: fleet_host_zone_policy).converged == 0
     && host_zone_census(site: foreign_site_facts(), policy: fleet_host_zone_policy).divergent == 0
 }
@@ -238,12 +238,12 @@ test fn w_unassigned_host_is_missing_not_mismatched() -> Bool {
 // The reach label is DERIVED from the procurement allocation, never restated here. Re-authoring
 // the pair would put a private second copy of an owned relation in this module.
 test fn w_reach_labels_come_from_the_procurement_binding() -> Bool {
-  match reach_label_of(host: operator_host_srv5) {
-    ReachLabelFromReservation { label: l } => l == ("spark-a3ee" as NonEmptyStr)
+  match reach_label_of(host: operator_host_srv9) {
+    ReachLabelFromReservation { label: l } => l == ("spark-0c75" as NonEmptyStr)
     ReachLabelUnmodeled => false
   }
-    && match reach_label_of(host: operator_host_srv6) {
-      ReachLabelFromReservation { label: l } => l == ("spark-3bd5" as NonEmptyStr)
+    && match reach_label_of(host: operator_host_srv10) {
+      ReachLabelFromReservation { label: l } => l == ("spark-3336" as NonEmptyStr)
       ReachLabelUnmodeled => false
     }
 }
@@ -282,23 +282,15 @@ fn converged_reading() -> HostZoneReading {
 test fn w_moving_the_site_inverts_each_named_hosts_disposition() -> Bool {
   host_zone_disposition_of(host: operator_host_srv4, site: operator_premises_civil_time, policy: fleet_host_zone_policy)
       == divergent_reading(observed: zone_etc_utc, desired: zone_america_new_york)
-    && host_zone_disposition_of(host: operator_host_srv5, site: operator_premises_civil_time, policy: fleet_host_zone_policy)
-      == divergent_reading(observed: zone_etc_utc, desired: zone_america_new_york)
-    && host_zone_disposition_of(host: operator_host_srv6, site: operator_premises_civil_time, policy: fleet_host_zone_policy)
-      == converged_reading()
     && host_zone_disposition_of(host: operator_host_srv4, site: relocated_probe_site(), policy: fleet_host_zone_policy)
       == converged_reading()
-    && host_zone_disposition_of(host: operator_host_srv5, site: relocated_probe_site(), policy: fleet_host_zone_policy)
-      == converged_reading()
-    && host_zone_disposition_of(host: operator_host_srv6, site: relocated_probe_site(), policy: fleet_host_zone_policy)
-      == divergent_reading(observed: zone_america_new_york, desired: zone_etc_utc)
 }
 
 // The counts move too, and asymmetrically -- which is itself evidence the site is being read,
 // since a derivation ignoring it would report the same totals on both sides.
 test fn w_relocation_changes_the_census_totals() -> Bool {
-  host_zone_census(site: operator_premises_civil_time, policy: fleet_host_zone_policy).divergent == 2
-    && host_zone_census(site: relocated_probe_site(), policy: fleet_host_zone_policy).divergent == 1
+  host_zone_census(site: operator_premises_civil_time, policy: fleet_host_zone_policy).divergent == 1
+    && host_zone_census(site: relocated_probe_site(), policy: fleet_host_zone_policy).divergent == 0
 }
 
 // AN OBSERVATION KEYED ON A LABEL RATHER THAN AN IDENTITY IS THE DEFECT THIS GUARDS, and the
@@ -308,7 +300,7 @@ test fn w_relocation_changes_the_census_totals() -> Bool {
 // rows. The reach label and the identity coincide sometimes and diverge sometimes; neither is
 // the property. The property is that the HOST FIELD CARRIES A CANONICAL FLEET IDENTITY.
 fn is_canonical_fleet_host(h: HostIdentity) -> Bool {
-  h == operator_host_srv4 || h == operator_host_srv5 || h == operator_host_srv6
+  h == operator_host_srv4
 }
 
 test fn w_every_observation_keys_on_a_canonical_fleet_host() -> Bool {

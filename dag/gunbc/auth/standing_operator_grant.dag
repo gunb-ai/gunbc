@@ -7,8 +7,8 @@ import std.optional { Present }
 import std.list { list_member }
 import std.scoped_authorization { OperatorGrant, ScopedAuthorization, AuthorizationGranted, AuthorizationRequest, Unclaimed }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_mtjade1 }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, fabric_group_wire }
+import gunbc.fleet_host_identity { operator_host_mtjade1 }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, fabric_group_wire }
 import gunbc.auth.authorization_pattern_selection {
   StandingDestructiveAuthorization, StandingRulingInterlock,
   InterlockPending, InterlockedBy,
@@ -32,12 +32,12 @@ import gunbc.auth.authorization_pattern_selection {
 // its claim, its fresh readings and its readback. And it does not widen: a group, a host or an effect
 // outside the row is not covered, and the consumer falls back to the per-effect approval it always had.
 //
-// THE EFFECTS ARE ONLY THOSE A GATE CONSUMES (DESIGN §3c, review 74624). D0's release is consumed here
-// (gunbc.spark.pair_serving_d0_door d0_gate). ArmLaunch is consumed by gunbc.spark.group_arm_launch
-// group_arm_released_launch_causes. HostEffectRecover is consumed by gunbc.spark.standing_host_effect_recover
-// recover_covering_grant. The image, checkpoint and teardown effects the Group A ruling also covers are
-// NOT rows: nothing gates them on a grant (they are fenced by the per-host claim), and an effect row
-// nothing reads would pre-authorize what no wall asks about.
+// THE EFFECTS ARE ONLY THOSE A GATE CONSUMES (DESIGN §3c, review 74624) -- AND TODAY NONE IS. The three
+// arms below were consumed by D0's release door, the group arm launch and the standing host-effect
+// recovery, all deleted with Group A (decommissioned and sold, 2026-10-07) together with the Group A grant
+// that named them. They remain only because the type cannot be empty while the mtjade1 grant's consuming
+// gates (gunbc#13497) have not landed their own arms; that change replaces them, and no grant row names
+// them now.
 //
 // MTJADE1 LIVE OPS (operator ruling 2026-10-06, msg_7402f8df-7917-4b24-bb86-c4e7d51991f7) names BMC
 // reads/writes, boots, and firmware qualification. StandingBmcSecureAccountWrite is owned by
@@ -64,8 +64,8 @@ fn standing_grant_effect_wire(e: StandingGrantEffect) -> NonEmptyStr {
   }
 }
 
-// A GRANT BOUNDS EITHER A FABRIC GROUP AND ITS HOSTS, OR ONE NAMED HOST. Group A is the first;
-// mtjade1 is the second. Hosts live in the arm: a host-scoped grant does not restate its host in a
+// A GRANT BOUNDS EITHER A FABRIC GROUP AND ITS HOSTS, OR ONE NAMED HOST. Group A was the first (deleted
+// with the group, 2026-10-07); mtjade1 is the second. Hosts live in the arm: a host-scoped grant does not restate its host in a
 // parallel list. Coverage still requires every requested host to be in the grant's derived hosts.
 type StandingGrantScope
   = StandingGrantFabricGroup { group: FabricGroup, hosts: List<HostIdentity> }
@@ -100,25 +100,6 @@ fn standing_grant_scope_matches(g: StandingOperatorGrant, scope: StandingGrantSc
         StandingGrantFabricGroup { group: _, hosts: _ } => false
       }
   }
-}
-
-// THE GROUP A DEVELOPMENT GRANT. The words are the operator's, given directly in the parent session on
-// 2026-10-03 and relayed by valiant-crab-775 (dashboard message msg_2940687d): "you have my permission to
-// use group A however you want from now on." The operator also ruled that the approval broker and app
-// are a separate lane and will not be set up now, so a per-effect approval for Group A cannot be met.
-// The interlock is D0's own durable claim of the consent (gunbc.spark.pair_serving_d0 d0_claim_grant):
-// the release runs only under that claim, its pending state and its fresh all-quiescent reading.
-data group_a_dev_standing_grant: StandingOperatorGrant = StandingOperatorGrant {
-  identity: "group-a-dev-standing-grant-2026-10-03" as NonEmptyStr,
-  principal: "operator" as NonEmptyStr,
-  ruled_at: "2026-10-03T05:00:00Z",
-  ruling: StandingDestructiveAuthorization {
-    ruling_text: "Operator ruling 2026-10-03, given directly in valiant-crab-775's session and relayed by dashboard message msg_2940687d: 'you have my permission to use group A however you want from now on.' The approval broker and app are a separate lane and will not be set up now. Scope as relayed: FabricGroupA hosts srv5-srv8; the D0 release-to-fleet plus the GLM staircase's host effects (image produce and distribute, checkpoint materialize, arm launch and teardown), and, per valiant-crab-775 on 2026-10-03, recovering a dead lane's host-effect claim on a Group A host after a fresh quiescence read. Group B is outside it." as NonEmptyStr,
-    effect_subject: "Group A development effects: the D0 release-to-fleet of Group A's pair-serving authority and the GLM-5.3-Flash staircase's host effects on srv5-srv8" as NonEmptyStr,
-    interlock: InterlockedBy { hold: decl_ref(module_path: "gunbc.spark.pair_serving_d0", decl_name: "d0_claim_grant") },
-  },
-  scope: StandingGrantFabricGroup { group: FabricGroupA, hosts: [operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8] },
-  effects: [StandingD0ReleaseToFleet, StandingArmLaunch, StandingHostEffectRecover],
 }
 
 // THE MTJADE1 LIVE-OPS GRANT. The words are the operator's, given directly in eager-gull-22's session

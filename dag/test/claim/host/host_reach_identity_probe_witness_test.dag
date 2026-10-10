@@ -7,13 +7,13 @@ import extdeps.tools.hostname { hostname_read_argv }
 import std.types { Bool, String, NonEmptyStr, List }
 import std.upsert_decision { ObservationVerdict, Converged, Drifted, Conflict, Inaccessible, UnknownRefused }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv5 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv9 }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for, spark_endpoint_for_binding }
 import gunbc.spark.dgx_procurement {
   DgxSparkRouterBinding,
   SlotUnassigned,
-  srv5_router_binding,
-  srv6_router_binding,
+  srv9_router_binding,
+  srv10_router_binding,
 }
 import gunbc.host_reach_identity_probe {
   ReachProbeOutcome,
@@ -200,18 +200,18 @@ test fn mismatch_expectation_threads_without_fabrication() -> Bool {
       ProbeHostKeyUnenrolled { transport_diagnostic: _ } => true
       _ => false
     }
-    && match classify_reach_probe_wire_with_expectation(success: true, stdout: "srv5\n", stderr: "", expected_fingerprint: Present { value: "SHA256:abc" }) {
-      ProbeReachable { observed_short_hostname: h, observed_principal: _ } => h == "srv5"
+    && match classify_reach_probe_wire_with_expectation(success: true, stdout: "srv9\n", stderr: "", expected_fingerprint: Present { value: "SHA256:abc" }) {
+      ProbeReachable { observed_short_hostname: h, observed_principal: _ } => h == "srv9"
       _ => false
     }
 }
 
 // Endpoint resolution (msg_1c4e0bce): the Sparks' probe target is the MODELED
-// reservation address — 'srv5'/'srv6' are not published names anywhere — while
+// reservation address — 'srv9'/'srv10' are not published names anywhere — while
 // name-resolvable hosts pass through unchanged. Identity stays the receipt key.
 test fn spark_probe_targets_are_modeled_addresses_not_names() -> Bool {
-  fleet_probe_endpoint_for(host: "srv5") == "192.168.1.226"
-    && fleet_probe_endpoint_for(host: "srv6") == "192.168.1.225"
+  fleet_probe_endpoint_for(host: "srv9") == "192.168.1.236"
+    && fleet_probe_endpoint_for(host: "srv10") == "192.168.1.237"
     && fleet_probe_endpoint_for(host: "srv1") == "srv1"
 }
 
@@ -220,7 +220,7 @@ test fn spark_probe_targets_are_modeled_addresses_not_names() -> Bool {
 // guard being quiet — SlotUnassigned is a constructible variant a third unit lands in before its
 // allocation is decided, and it is reachable from this projection's denominator, which is any
 // binding at all.
-data fixture_undecided_spark_slot: DgxSparkRouterBinding = SlotUnassigned { identity: operator_host_srv5 }
+data fixture_undecided_spark_slot: DgxSparkRouterBinding = SlotUnassigned { identity: operator_host_srv9 }
 
 fn spark_endpoint_or_empty(binding: DgxSparkRouterBinding) -> String {
   match spark_endpoint_for_binding(binding: binding) {
@@ -250,8 +250,8 @@ test fn undecided_spark_slot_projects_no_endpoint() -> Bool {
 // the executing evidence that the two entry points have not forked again (§4b meta-obligation 4 —
 // a climb deletes the redundant production machinery, never the evidence).
 test fn probe_endpoint_agrees_with_the_projection_it_consumes() -> Bool {
-  fleet_probe_endpoint_for(host: "srv5") == spark_endpoint_or_empty(binding: srv5_router_binding)
-    && fleet_probe_endpoint_for(host: "srv6") == spark_endpoint_or_empty(binding: srv6_router_binding)
+  fleet_probe_endpoint_for(host: "srv9") == spark_endpoint_or_empty(binding: srv9_router_binding)
+    && fleet_probe_endpoint_for(host: "srv10") == spark_endpoint_or_empty(binding: srv10_router_binding)
 }
 
 // THE HANDBACK CONTROL FOR THE HAND-ARGV DISSOLUTION (roadmap shell-dag-host-reach-identity-probe).
