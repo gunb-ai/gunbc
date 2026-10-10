@@ -1,0 +1,35 @@
+module gunbc.rung_drop.publication_path_unbounded_retrigger
+
+import std.types { String, List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+
+// DECLARED 4b(3) DROP (2026-10-10, review 78515 on gunbc#13709). The publication helper used to
+// re-ask on belt_tick_cadence after a oneshot exit that left the request in requests/. The path
+// unit is the event source (DirectoryNotEmpty=); a leftover pending file retriggers immediately
+// and systemd then fails the .path unit (trigger-limit-hit) until apply. Stopping outcomes now
+// leave the pending set, discovery PathChanged on refused/ re-enqueues PublishObligation, and
+// TriggerLimit*/StartLimit* bound the residual (HelperRequestNotQuarantined). After that bound
+// the helper stays failed until reset-failed — slower than the timer, and named here.
+data publication_path_unbounded_retrigger: RungDrop = RungDrop {
+  identity: "publication_path_unbounded_retrigger" as NonEmptyStr,
+
+  subject: "publication helper retry after a oneshot exit that left a request in the pending spool: previously the retired OnUnitInactiveSec timer re-asked at belt_tick_cadence; the path unit either storms or, once TriggerLimit* fires, stays failed until apply reset-failed",
+
+  declared: "2026-10-10",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "gunbc.live_deploy.emit live_deploy_publication_path_unit_file TriggerLimit*/StartLimit* at belt_tick_cadence, publication_helper_retire_request on stopping leftover-pending outcomes, and PathChanged on publication_refused_dir waking belt discovery",
+    },
+    population: [
+      "gunbc.live_deploy.emit live_deploy_publication_path_unit_file on each deployed dashboard instance",
+      "gunbc.roadmap_publication_helper HelperAnswerWriteFailed, HelperRequestNotConsumed, HelperRequestUnreadable, HelperRequestNotQuarantined",
+    ],
+    restoration_trigger: "THE CAPABILITY: every stopping helper outcome either consumes the request or moves it out of the DirectoryNotEmpty set, and a failed quarantine is reset-failed and re-asked by a modeled belt obligation without waiting for the next apply. SUFFICIENT FOR: a leftover pending file no longer reaches trigger-limit-hit, and a disk-full quarantine still produces a later helper start. An apply-only reset-failed does not retire this row.",
+  }
+}

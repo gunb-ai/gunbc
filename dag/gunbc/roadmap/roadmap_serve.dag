@@ -191,6 +191,12 @@ import gunbc.roadmap_belt_actuate {
   belt_publish_node_for_instance,
   belt_publish_outcome_http_status,
   belt_publish_outcome_json_value,
+  belt_enqueue_operator_follow_ups,
+  belt_obligation_enqueue_pass, BeltPassRecorded, BeltPassFailed,
+  BeltObligationEnqueue,
+}
+import gunbc.roadmap.roadmap_belt_obligation {
+  BeltOperatorAction, OperatorDispatch, OperatorStop, OperatorPublish, OperatorIssueWrite,
 }
 import gunbc.dashboard_provider_readiness { dashboard_provider_readiness_json }
 import gunbc.roadmap_dashboard_instance {
@@ -516,6 +522,30 @@ fn belt_dispatch_response(r: BeltSpawnOutcome) -> ServeHttpResponse {
   )
 }
 
+fn serve_attaching_follow_ups(response: ServeHttpResponse, enqueues: List<BeltObligationEnqueue>) -> ServeHttpResponse {
+  match belt_obligation_enqueue_pass(enqueues: enqueues) {
+    BeltPassRecorded => response
+    BeltPassFailed { reason } =>
+      ServeHttpResponse {
+        status: response.status,
+        content_type: response.content_type,
+        body: join([response.body, "\nfollow-up enqueue refused: ", reason, " — the write stands\n"], ""),
+        headers: response.headers,
+      }
+  }
+}
+
+fn serve_with_operator_follow_ups(
+  instance: HostDashboardInstance,
+  action: BeltOperatorAction,
+  response: ServeHttpResponse,
+) -> ServeHttpResponse {
+  serve_attaching_follow_ups(
+    response: response,
+    enqueues: belt_enqueue_operator_follow_ups(instance: instance, action: action),
+  )
+}
+
 // The node_id param is bound by the route template, so an empty value is unreachable by
 // construction (match_path_template refuses empty segments); the empty-check below is the typed
 // backstop for that unreachable arm — a 400 refusal, never a dispatch with a fabricated id (DESIGN
@@ -548,8 +578,12 @@ fn serve_dispatch_handler_response_over(
           body: join(["dispatch executor ", word, " is not a known executor; accepted: ", join(known, ", "), "\n"], ""),
         )
       DispatchExecutorRequestDecoded { request: executor } =>
-        belt_dispatch_response(
-          r: belt_dispatch_node_for_instance_over(instance: instance, plan: plan, node_id: node_id, request: LaunchAutonomous, executor: executor),
+        serve_with_operator_follow_ups(
+          instance: instance,
+          action: OperatorDispatch,
+          response: belt_dispatch_response(
+            r: belt_dispatch_node_for_instance_over(instance: instance, plan: plan, node_id: node_id, request: LaunchAutonomous, executor: executor),
+          ),
         )
     }
   }
@@ -591,10 +625,14 @@ fn serve_publish_handler_response_for_instance(
     )
   } else {
     let outcome = belt_publish_node_for_instance(instance: instance, node_id: node_id)
-    serve_text_response(
-      status: belt_publish_outcome_http_status(o: outcome),
-      content_type: application_json_utf8,
-      body: serialize_json(v: belt_publish_outcome_json_value(o: outcome)),
+    serve_with_operator_follow_ups(
+      instance: instance,
+      action: OperatorPublish,
+      response: serve_text_response(
+        status: belt_publish_outcome_http_status(o: outcome),
+        content_type: application_json_utf8,
+        body: serialize_json(v: belt_publish_outcome_json_value(o: outcome)),
+      ),
     )
   }
 }
@@ -908,8 +946,8 @@ fn serve_issue_assign_response_over(
                     expected: if expected == "" { none } else { Present { value: expected as NonEmptyStr as RoadmapEventId } } },
                     assignee: EventPrincipalAuthenticated { ref: assignee }, return_to: EventPrincipalAuthenticated { ref: return_to } }, recorded_at: observed_at))
                 match outcome {
-                  EventAppended { id } => serve_assignment_launch_follow_through(instance: instance, plan: plan, node_id: node_id, assignee: assignee, event_id: id as String)
-                  EventAlreadyPresent { id } => serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " (already recorded event ", id as String, ")\n"], ""))
+                  EventAppended { id } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response: serve_assignment_launch_follow_through(instance: instance, plan: plan, node_id: node_id, assignee: assignee, event_id: id as String))
+                  EventAlreadyPresent { id } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response: serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " (already recorded event ", id as String, ")\n"], "")))
                   EventAppendRefused { id: _, step, reason } => issue_command_refusal_response(step: step, reason: reason)
                 }
               }
@@ -928,6 +966,7 @@ fn serve_issue_assign_response_over(
 // authorship authority; the record has no author field and `owner` stays the work owner. A task
 // missing any required field is refused naming the fields, never created half-shaped.
 fn serve_issue_create_response_over(
+  instance: HostDashboardInstance,
   request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
 ) -> ServeHttpResponse {
   let observed_at = human_write_observed_at(security: request.security)
@@ -944,7 +983,7 @@ fn serve_issue_create_response_over(
             Absent => serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["create refused: required fields missing or empty: ", join(roadmap_task_form_missing(get: get), ", "), "\n"], ""))
             Present { value: draft } => match clock_unix_millis_read() {
               ClockUnixMillisRefused { detail: d } => serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["create refused: clock unread: ", d, "\n"], ""))
-              ClockUnixMillisObserved { millis: ms } => serve_issue_create_answer(write: roadmap_task_create(store: fabric_state_storage_binding(), actor: principal_ref_label(p: author) as NonEmptyStr, at: epoch_secs_of_millis(millis: ms), operation_key: issue_form_field(body: request.body, name: "key") as NonEmptyStr, draft: draft))
+              ClockUnixMillisObserved { millis: ms } => serve_issue_create_answer(instance: instance, write: roadmap_task_create(store: fabric_state_storage_binding(), actor: principal_ref_label(p: author) as NonEmptyStr, at: epoch_secs_of_millis(millis: ms), operation_key: issue_form_field(body: request.body, name: "key") as NonEmptyStr, draft: draft))
             }
           }
         }
@@ -952,10 +991,10 @@ fn serve_issue_create_response_over(
   }
 }
 
-fn serve_issue_create_answer(write: RuntimeTaskWrite) -> ServeHttpResponse {
+fn serve_issue_create_answer(instance: HostDashboardInstance, write: RuntimeTaskWrite) -> ServeHttpResponse {
   match write {
-    RuntimeTaskCommitted { task: t, events: n } => serve_text_response(status: 201, content_type: application_json_utf8, body: join([match roadmap_task_encode(node: t) { Present { value: x } => x Absent => "" }, match roadmap_task_capacity(events: n) { CapacityWithin => "" CapacityCompactionDue => "\ncompaction due: the task roster is past three quarters of its read bound" CapacityFull => "\nroster full" }], ""))
-    RuntimeTaskReplayed { task: t } => serve_text_response(status: 200, content_type: application_json_utf8, body: match roadmap_task_encode(node: t) { Present { value: x } => x Absent => "" })
+    RuntimeTaskCommitted { task: t, events: n } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response: serve_text_response(status: 201, content_type: application_json_utf8, body: join([match roadmap_task_encode(node: t) { Present { value: x } => x Absent => "" }, match roadmap_task_capacity(events: n) { CapacityWithin => "" CapacityCompactionDue => "\ncompaction due: the task roster is past three quarters of its read bound" CapacityFull => "\nroster full" }], "")))
+    RuntimeTaskReplayed { task: t } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response: serve_text_response(status: 200, content_type: application_json_utf8, body: match roadmap_task_encode(node: t) { Present { value: x } => x Absent => "" }))
     RuntimeTaskConflict => serve_text_response(status: 409, content_type: text_plain_utf8, body: "create refused: the roster head moved; retry with the same key\n")
     RuntimeTaskStale { reason: r } => serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["create refused: ", r, "\n"], ""))
     RuntimeTaskChainFull { events: n } => serve_text_response(status: 507, content_type: text_plain_utf8, body: "create refused: the task roster is at its read bound; compaction is required before more tasks\n")
@@ -1150,8 +1189,8 @@ fn serve_issue_comment_response_over(
               expected: if expected == "" { none } else { Present { value: expected as NonEmptyStr as RoadmapEventId } } }, body: body as NonEmptyStr }, recorded_at: observed_at))
             match outcome {
               EventAppendRefused { id: _, step, reason } => issue_command_refusal_response(step: step, reason: reason)
-              EventAppended { id } => issue_comment_readback_response(layout: layout, node_id: node_id, operation: operation, event_id: id as String, already_present: false)
-              EventAlreadyPresent { id } => issue_comment_readback_response(layout: layout, node_id: node_id, operation: operation, event_id: id as String, already_present: true)
+              EventAppended { id } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response: issue_comment_readback_response(layout: layout, node_id: node_id, operation: operation, event_id: id as String, already_present: false))
+              EventAlreadyPresent { id } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response: issue_comment_readback_response(layout: layout, node_id: node_id, operation: operation, event_id: id as String, already_present: true))
             }
           }
         }
@@ -1340,7 +1379,7 @@ fn roadmap_serve_invoke_over(
     IssueAssignmentContextHandler => serve_issue_assignment_context_over(instance: instance, plan: plan(), request: request, params: params)
     IssueAssignHandler => serve_issue_assign_response_over(instance: instance, plan: plan(), request: request, params: params)
     IssueCommentHandler => serve_issue_comment_response_over(instance: instance, request: request, params: params)
-    IssueCreateHandler => serve_issue_create_response_over(request: request)
+    IssueCreateHandler => serve_issue_create_response_over(instance: instance, request: request)
     IssueCreatePageHandler => serve_page_response(page: issue_create_page(command_context: match request.security.authentication {
       GoogleOidcSession { session } => IssueFormContext { operation: match issue_operation_nonce() { Present { value: nonce } => nonce Absent => "" }, csrf: session.csrf.token as String }
       FabricServiceEvidence { kind: _, authenticated_at: _ } => IssueFormContext { operation: "", csrf: "" }
@@ -1408,10 +1447,14 @@ fn serve_stop_handler_response_for_instance(
     )
   } else {
     let r = belt_stop_node_for_instance(instance: instance, node_id: node_id)
-    serve_text_response(
-      status: belt_stop_http_status(r: r),
-      content_type: application_json_utf8,
-      body: serialize_json(v: belt_stop_result_json_value(r: r)))
+    serve_with_operator_follow_ups(
+      instance: instance,
+      action: OperatorStop,
+      response: serve_text_response(
+        status: belt_stop_http_status(r: r),
+        content_type: application_json_utf8,
+        body: serialize_json(v: belt_stop_result_json_value(r: r))),
+    )
   }
 }
 

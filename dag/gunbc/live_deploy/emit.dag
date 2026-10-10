@@ -20,7 +20,7 @@ import gunbc.fleet_generation_execution { fleet_generation_lock }
 import gunbc.runner_microvm_cell_readiness_location { cell_readiness_store_location }
 import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
 import gunbc.runner_microvm_network { runner_microvm_converged_receipt_root }
-import gunbc.live_deploy.belt_cadence { belt_tick_cadence, belt_tick_run_bound }
+import gunbc.live_deploy.belt_cadence { belt_tick_run_bound, belt_tick_cadence }
 
 import gunbc.auth.approval_device_redemption { approval_device_store_directory }
 import gunbc.live_deploy.release_locus {
@@ -100,9 +100,10 @@ import gunbc.cli_invoke { NamedArgumentAdmission, admit_named_argument }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, TimerUnitFile, SliceUnitFile, PathUnitFile,
   SystemdPathDirective, PathUnit, DirectoryNotEmpty, PathChanged,
+  TriggerLimitIntervalSec, TriggerLimitBurst,
   ServiceSlice, slice_memory_max, slice_memory_high, slice_memory_swap_max,
   SystemdInstallSection, NotInstallable, Installable,
-  SystemdUnitDirective, Description, After, Wants,
+  SystemdUnitDirective, Description, After, Wants, StartLimitIntervalSec, StartLimitBurst,
   SystemdServiceDirective, ServiceType, OneshotMode, SimpleMode, ExecStart, Restart,
   Environment, EnvironmentFile, EnvironmentFileIfPresent, WorkingDirectory, ServiceUser, ServiceGroup,
   TimeoutStartSec,
@@ -164,7 +165,7 @@ import gunbc.live_deploy.spec {
   EnsuredSubject, EnsuredPackage, ensured_subject_identity,
   deployment_directory_demands,
   DeploymentArtifactStep,
-  ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit,
+  ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit,
   deployment_tailnet_door_socket, deployment_tailnet_door_unit_name, deployment_tailnet_door_function_suffix,
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
@@ -172,8 +173,13 @@ import gunbc.live_deploy.spec {
   deployment_belt_exit_drain_service_unit_path, deployment_belt_answer_path_unit_path, deployment_belt_discovery_service_unit_path,
   deployment_belt_service_unit_path, deployment_belt_unit_install_target,
   deployment_publication_service_unit_name,
+  deployment_publication_path_unit_name,
   deployment_publication_timer_unit_name,
+  deployment_retired_belt_timer_unit_name,
   deployment_publication_service_unit_path,
+  deployment_publication_path_unit_path,
+  deployment_publication_timer_unit_path,
+  deployment_retired_belt_timer_unit_path,
   deployment_credential_env_path,
   deployment_fleet_converge_service_unit_name,
   deployment_fleet_converge_timer_unit_name,
@@ -798,7 +804,7 @@ fn emit_belt_service_unit_doc(spec: DeploymentSpec) -> Doc {
 // absent file leaves the unit startable and the helper answers with a recorded refusal naming the
 // variable -- the located refusal is a FEATURE, and the required form would replace it with a unit
 // that will not start. Type=oneshot with no Restart, because a run either answers its spool or
-// reports why it could not, and the timer is what asks again.
+// reports why it could not, and the path unit is what asks again.
 //
 // THERE IS NO Environment= LINE AND NO SPAWN ROOT. The belt unit carries GUNBC_BELT_SPAWN_WORKDIR
 // because a tick creates worktrees and launches provider sessions; this unit reads documents and
@@ -831,26 +837,33 @@ fn emit_publication_service_unit_doc(spec: DeploymentSpec) -> Doc {
   }))
 }
 
-// THE HELPER'S CADENCE MIRRORS THE BELT'S, and the mirroring is load-bearing rather than tidy: a
-// publication request is written by a belt tick and answered by a helper run, so the two cadences
-// compose into the latency an operator actually sees. Equal periods make that one tick of extra
-// latency; a slower helper would make the belt's own cadence meaningless for this pass.
-//
-// OnUnitInactiveSec for the same reason belt_tick_cadence's annotation gives: it measures from when the
-// previous run FINISHED, so a run that outlasts the period cannot schedule its own successor. A
-// helper run performs one network read per unanswered request, so that property matters here for
-// the same reason it matters there.
-fn emit_publication_timer_unit_doc(spec: DeploymentSpec) -> Doc {
-  doc_text(text: serialize_systemd_unit_file(file: TimerUnitFile {
-    unit: [Description { text: "gunbc roadmap publication helper cadence" as NonEmptyStr }],
-    timer: [
-      TimerUnit { target: deployment_publication_service_unit_name(names: spec.names) },
-      OnBootSec { duration: "2min" as NonEmptyStr },
-      OnUnitInactiveSec { duration: systemd_time_span_of_seconds(d: belt_tick_cadence) },
-      AccuracySec { duration: "5s" as NonEmptyStr },
+// THE HELPER RUNS WHEN A REQUEST LANDS, not on a clock. A publication request is a file in the
+// instance's request spool; DirectoryNotEmpty starts the helper. Stopping outcomes move the
+// request out of the pending set (publication_helper_retire_request); a leftover that cannot
+// move would otherwise retrigger immediately until systemd's default trigger limit failed the
+// .path unit until the next apply. TriggerLimit* / StartLimit* bound that residual to the
+// retired timer's cadence (belt_tick_cadence). A quarantine write is the re-ask: PathChanged on
+// refused/ starts belt discovery, which re-enqueues PublishObligation. The residual stall after
+// the bound is gunbc.rung_drop publication_path_unbounded_retrigger.
+fn live_deploy_publication_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  PathUnitFile {
+    unit: [
+      Description { text: "gunbc roadmap publication helper: a request was written" as NonEmptyStr },
+      StartLimitIntervalSec { duration: systemd_time_span_of_seconds(d: belt_tick_cadence) },
+      StartLimitBurst { count: "2" as NonEmptyStr },
     ],
-    install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
-  }))
+    path: [
+      PathUnit { target: deployment_publication_service_unit_name(names: spec.names) },
+      DirectoryNotEmpty { path: publication_request_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
+      TriggerLimitIntervalSec { duration: systemd_time_span_of_seconds(d: belt_tick_cadence) },
+      TriggerLimitBurst { count: "2" as NonEmptyStr },
+    ],
+    install: Installable { directives: [WantedBy { target: "paths.target" as NonEmptyStr }] },
+  }
+}
+
+fn emit_publication_path_unit_doc(spec: DeploymentSpec) -> Doc {
+  doc_text(text: serialize_systemd_unit_file(file: live_deploy_publication_path_unit_file(spec: spec)))
 }
 
 fn apply_publication_service_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
@@ -860,11 +873,45 @@ fn apply_publication_service_unit_write_step(spec: DeploymentSpec) -> PipelineSt
   ))
 }
 
-fn apply_publication_timer_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
+fn apply_publication_path_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
   deploy_raw(command: deploy_stage_write_command(
-    stage_name: deployment_publication_timer_unit_name(names: spec.names) as String,
-    content: render(doc: emit_publication_timer_unit_doc(spec: spec), proto: live_deploy_protocol),
+    stage_name: deployment_publication_path_unit_name(names: spec.names) as String,
+    content: render(doc: emit_publication_path_unit_doc(spec: spec), proto: live_deploy_protocol),
   ))
+}
+
+// Leftover timer retirement (FleetConvergeTimerUnit teardown shape): disable if loaded, remove the
+// unit file, daemon-reload, read back LoadState=not-found. Absence is converged — the disable is
+// gated on not-found, and rm -f is a no-op on a missing file.
+data leftover_systemd_timer_retire_dissolution: DissolutionCondition = unbound_dissolution(description: "delete leftover_systemd_timer_retire_steps and the retired belt/publication timer name functions once every deployed instance's apply readback has reported LoadState=not-found for both leftover units" as NonEmptyStr)
+
+fn leftover_systemd_timer_retire_steps(unit: NonEmptyStr, path: NonEmptyStr) -> List<PipelineStep> {
+  concat(
+    systemctl_disable_now_if_present_steps(unit: unit, privileged: true),
+    [
+      deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [path as String])),
+      deploy_effect(inv: systemctl_daemon_reload_effect()),
+      deploy_raw(command: bash_intent_command_or_poison(intent: systemctl_load_state_assignment_intent(unit: unit))),
+      deploy_raw(command: bash_intent_command_or_poison(intent: leftover_timer_not_found_readback_intent())),
+    ]
+  )
+}
+
+fn leftover_timer_not_found_readback_intent() -> Node {
+  bash_build_if_from_stmts(
+    cond: bash_build_test_bracket(words: [
+      bash_build_word_var(name: "_gunbc_load_state"),
+      bash_build_word_lit(text: "!="),
+      bash_build_word_lit(text: systemd_unit_load_state_not_found_wire as String),
+    ]),
+    then_stmts: [
+      bash_build_command_from_lits(lits: [
+        "echo",
+        "leftover timer still loaded after retire — LoadState is not not-found (fail-closed)",
+      ]),
+      bash_build_command_from_lits(lits: ["exit", "1"]),
+    ]
+  )
 }
 
 // THE TWO SPOOL DIRECTORIES CARRY OPPOSITE PERMISSIONS, AND THAT IS THE WHOLE ENFORCEMENT.
@@ -941,7 +988,8 @@ fn apply_publication_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
 //
 // THE PUBLICATION ANSWER PATH IS AN EDGE: answers are kept, not moved, so a level would fire forever.
 // A change while discovery is running is coalesced into that run; discovery reads every attempt's
-// evidence, so the coalesced answer is still seen.
+// evidence, so the coalesced answer is still seen. refused/ is the same edge for a quarantine:
+// the helper left the pending set without an answer, and discovery is the re-ask (PublishObligation).
 fn live_deploy_belt_event_service_unit_file(spec: DeploymentSpec, description: String, function: String, install: SystemdInstallSection) -> SystemdUnitFile {
   let svc = spec.service
   ServiceUnitFile {
@@ -997,6 +1045,7 @@ fn live_deploy_belt_answer_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFi
     path: [
       PathUnit { target: deployment_belt_discovery_service_unit_name(names: spec.names) },
       PathChanged { path: publication_answer_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
+      PathChanged { path: publication_refused_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
     ],
     install: Installable { directives: [WantedBy { target: "paths.target" as NonEmptyStr }] },
   }
@@ -1024,7 +1073,7 @@ fn emit_belt_unit_file_doc(file: SystemdUnitFile) -> Doc {
 // inside the GunbcSourceTree step, and ServeBinary is installed in the step AFTER it, so the gunbc
 // binary this invocation needs does not exist yet on a fresh instance. Ordering this member AFTER
 // ServeBinary in deployment_owned_steps is what makes the binary a precondition the membership
-// establishes -- concretely THIRD, before the belt timer that depends on the remote, not last
+// establishes -- concretely THIRD, before the belt event units that depend on the remote, not last
 // (see deployment_tree_remote_unit_name's header for why last was wrong).
 //
 // The ExecStart names the tree explicitly rather than deriving it, because a host can run two slots
@@ -1193,7 +1242,7 @@ fn identity_member_of_step(step: DeploymentStep) -> ConvergedMember? {
       FleetConvergeTimerUnit => none
       TailscaleServeMapping => none
       DeployedTreeRemoteUnit => none
-      PublicationHelperTimerUnit => none
+      PublicationHelperPathUnit => none
       FabricStorageServeUnit => none
       FabricStorageServeMapping => none
       ApprovalBrokerFrontDoor => none
@@ -1656,7 +1705,7 @@ fn deploy_apply_preamble_steps(access: DeployAccess, spec: DeploymentSpec) -> Li
 // A member the plan makes no claim about is emitted, never skipped (plan_mutation_of's rule).
 //
 // These run after the preamble (the sudoers grant they ride) and before every owned step, so no
-// member -- the unit's process, the belt timer's tick -- starts before the directories it writes.
+// member -- the unit's process, the belt event units -- starts before the directories it writes.
 fn owned_directory_apply_steps(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> List<PipelineStep> {
   flat_map(deployment_directory_demands(spec: spec), t =>
     match plan_mutation_of(plan: plan, member: DirectoryRoot { path: owned_directory_path(t: t) as String as NonEmptyStr }) {
@@ -2878,58 +2927,73 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
       deploy_effect(inv: systemctl_enable_effect(unit: spec.service.unit_name)),
       deploy_effect(inv: systemctl_restart_effect(unit: spec.service.unit_name)),
     ], approval_broker_lifecycle_steps(spec: spec)))
-    PublicationHelperTimerUnit => concat(
-      apply_publication_spool_steps(spec: spec),
-      [
-        apply_publication_service_unit_write_step(spec: spec),
-        apply_publication_timer_unit_write_step(spec: spec),
-        deploy_raw(command: deploy_stage_install_command(
-          stage_name: deployment_publication_service_unit_name(names: spec.names) as String,
-          mode: install_file_shared_mode,
-          dest: deployment_publication_service_unit_path(names: spec.names) as String,
-        )),
-        deploy_raw(command: deploy_stage_install_command(
-          stage_name: deployment_publication_timer_unit_name(names: spec.names) as String,
-          mode: install_file_shared_mode,
-          dest: art.path as String,
-        )),
-        deploy_effect(inv: systemctl_daemon_reload_effect()),
-        deploy_effect(inv: systemctl_enable_effect(unit: deployment_publication_timer_unit_name(names: spec.names))),
-        deploy_effect(inv: systemctl_restart_effect(unit: deployment_publication_timer_unit_name(names: spec.names))),
-      ]
+    PublicationHelperPathUnit => concat(
+      concat(
+        apply_publication_spool_steps(spec: spec),
+        [
+          apply_publication_service_unit_write_step(spec: spec),
+          apply_publication_path_unit_write_step(spec: spec),
+          deploy_raw(command: deploy_stage_install_command(
+            stage_name: deployment_publication_service_unit_name(names: spec.names) as String,
+            mode: install_file_shared_mode,
+            dest: deployment_publication_service_unit_path(names: spec.names) as String,
+          )),
+          deploy_raw(command: deploy_stage_install_command(
+            stage_name: deployment_publication_path_unit_name(names: spec.names) as String,
+            mode: install_file_shared_mode,
+            dest: art.path as String,
+          )),
+        ]
+      ),
+      concat(
+        leftover_systemd_timer_retire_steps(
+          unit: deployment_publication_timer_unit_name(names: spec.names),
+          path: deployment_publication_timer_unit_path(names: spec.names),
+        ),
+        [
+          deploy_effect(inv: systemctl_enable_effect(unit: deployment_publication_path_unit_name(names: spec.names))),
+          deploy_effect(inv: systemctl_restart_effect(unit: deployment_publication_path_unit_name(names: spec.names))),
+        ]
+      )
     )
-    BeltEventPathUnit => [
-      deploy_raw(command: install_d_owned_command(
-        spec: spec,
-        path: instance_receipts_dir(instance_root: spec.service.instance_root as String),
-      )),
-      deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_spool_root(instance_root: spec.service.instance_root as String))),
-      deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_inbox_dir(instance_root: spec.service.instance_root as String))),
-      deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_queued_dir(instance_root: spec.service.instance_root as String))),
-      deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_running_dir(instance_root: spec.service.instance_root as String))),
-      deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_done_dir(instance_root: spec.service.instance_root as String))),
-      deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_refused_dir(instance_root: spec.service.instance_root as String))),
-      apply_belt_service_unit_write_step(spec: spec),
-      apply_belt_unit_file_write_step(stage_name: deployment_belt_exit_drain_service_unit_name(names: spec.names), file: live_deploy_belt_exit_drain_service_unit_file(spec: spec)),
-      apply_belt_unit_file_write_step(stage_name: deployment_belt_discovery_service_unit_name(names: spec.names), file: live_deploy_belt_discovery_service_unit_file(spec: spec)),
-      apply_belt_unit_file_write_step(stage_name: deployment_belt_exit_path_unit_name(names: spec.names), file: live_deploy_belt_exit_path_unit_file(spec: spec)),
-      apply_belt_unit_file_write_step(stage_name: deployment_belt_answer_path_unit_name(names: spec.names), file: live_deploy_belt_answer_path_unit_file(spec: spec)),
-      deploy_raw(command: deploy_stage_install_command(
-        stage_name: deployment_belt_service_unit_name(names: spec.names) as String,
-        mode: install_file_shared_mode,
-        dest: deployment_belt_service_unit_path(names: spec.names) as String,
-      )),
-      apply_belt_unit_file_install_step(stage_name: deployment_belt_exit_drain_service_unit_name(names: spec.names), dest: deployment_belt_exit_drain_service_unit_path(names: spec.names)),
-      apply_belt_unit_file_install_step(stage_name: deployment_belt_discovery_service_unit_name(names: spec.names), dest: deployment_belt_discovery_service_unit_path(names: spec.names)),
-      apply_belt_unit_file_install_step(stage_name: deployment_belt_answer_path_unit_name(names: spec.names), dest: deployment_belt_answer_path_unit_path(names: spec.names)),
-      apply_belt_unit_file_install_step(stage_name: deployment_belt_exit_path_unit_name(names: spec.names), dest: art.path),
-      deploy_effect(inv: systemctl_daemon_reload_effect()),
-      deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_exit_drain_service_unit_name(names: spec.names))),
-      deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_exit_path_unit_name(names: spec.names))),
-      deploy_effect(inv: systemctl_restart_effect(unit: deployment_belt_exit_path_unit_name(names: spec.names))),
-      deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_answer_path_unit_name(names: spec.names))),
-      deploy_effect(inv: systemctl_restart_effect(unit: deployment_belt_answer_path_unit_name(names: spec.names))),
-    ]
+    BeltEventPathUnit => concat(
+      [
+        deploy_raw(command: install_d_owned_command(
+          spec: spec,
+          path: instance_receipts_dir(instance_root: spec.service.instance_root as String),
+        )),
+        deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_spool_root(instance_root: spec.service.instance_root as String))),
+        deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_inbox_dir(instance_root: spec.service.instance_root as String))),
+        deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_queued_dir(instance_root: spec.service.instance_root as String))),
+        deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_running_dir(instance_root: spec.service.instance_root as String))),
+        deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_done_dir(instance_root: spec.service.instance_root as String))),
+        deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_refused_dir(instance_root: spec.service.instance_root as String))),
+        apply_belt_service_unit_write_step(spec: spec),
+        apply_belt_unit_file_write_step(stage_name: deployment_belt_exit_drain_service_unit_name(names: spec.names), file: live_deploy_belt_exit_drain_service_unit_file(spec: spec)),
+        apply_belt_unit_file_write_step(stage_name: deployment_belt_discovery_service_unit_name(names: spec.names), file: live_deploy_belt_discovery_service_unit_file(spec: spec)),
+        apply_belt_unit_file_write_step(stage_name: deployment_belt_exit_path_unit_name(names: spec.names), file: live_deploy_belt_exit_path_unit_file(spec: spec)),
+        apply_belt_unit_file_write_step(stage_name: deployment_belt_answer_path_unit_name(names: spec.names), file: live_deploy_belt_answer_path_unit_file(spec: spec)),
+        deploy_raw(command: deploy_stage_install_command(
+          stage_name: deployment_belt_service_unit_name(names: spec.names) as String,
+          mode: install_file_shared_mode,
+          dest: deployment_belt_service_unit_path(names: spec.names) as String,
+        )),
+        apply_belt_unit_file_install_step(stage_name: deployment_belt_exit_drain_service_unit_name(names: spec.names), dest: deployment_belt_exit_drain_service_unit_path(names: spec.names)),
+        apply_belt_unit_file_install_step(stage_name: deployment_belt_discovery_service_unit_name(names: spec.names), dest: deployment_belt_discovery_service_unit_path(names: spec.names)),
+        apply_belt_unit_file_install_step(stage_name: deployment_belt_answer_path_unit_name(names: spec.names), dest: deployment_belt_answer_path_unit_path(names: spec.names)),
+        apply_belt_unit_file_install_step(stage_name: deployment_belt_exit_path_unit_name(names: spec.names), dest: art.path),
+        deploy_effect(inv: systemctl_daemon_reload_effect()),
+        deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_exit_drain_service_unit_name(names: spec.names))),
+        deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_exit_path_unit_name(names: spec.names))),
+        deploy_effect(inv: systemctl_restart_effect(unit: deployment_belt_exit_path_unit_name(names: spec.names))),
+        deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_answer_path_unit_name(names: spec.names))),
+        deploy_effect(inv: systemctl_restart_effect(unit: deployment_belt_answer_path_unit_name(names: spec.names))),
+      ],
+      leftover_systemd_timer_retire_steps(
+        unit: deployment_retired_belt_timer_unit_name(names: spec.names),
+        path: deployment_retired_belt_timer_unit_path(names: spec.names),
+      )
+    )
     FleetConvergeTimerUnit => [
       deploy_raw(command: "__GUNBC_FLEET_CONVERGE_REFUSED__ FleetConvergeTimerUnit retired from deployment membership — timer cadence is on-demand via fleet-converge.yml plan/apply, not live_deploy apply (sleek-heron-218)"),
     ]
@@ -3040,8 +3104,14 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
     )
     BeltEventPathUnit => concat(
       concat(
-        systemctl_disable_now_if_present_steps(unit: deployment_belt_exit_path_unit_name(names: spec.names), privileged: true),
-        systemctl_disable_now_if_present_steps(unit: deployment_belt_answer_path_unit_name(names: spec.names), privileged: true),
+        concat(
+          systemctl_disable_now_if_present_steps(unit: deployment_belt_exit_path_unit_name(names: spec.names), privileged: true),
+          systemctl_disable_now_if_present_steps(unit: deployment_belt_answer_path_unit_name(names: spec.names), privileged: true),
+        ),
+        leftover_systemd_timer_retire_steps(
+          unit: deployment_retired_belt_timer_unit_name(names: spec.names),
+          path: deployment_retired_belt_timer_unit_path(names: spec.names),
+        ),
       ),
       [
         deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
@@ -3064,8 +3134,14 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
         deploy_effect(inv: systemctl_daemon_reload_effect()),
       ]
     )
-    PublicationHelperTimerUnit => concat(
-      systemctl_disable_now_if_present_steps(unit: deployment_publication_timer_unit_name(names: spec.names), privileged: true),
+    PublicationHelperPathUnit => concat(
+      concat(
+        systemctl_disable_now_if_present_steps(unit: deployment_publication_path_unit_name(names: spec.names), privileged: true),
+        leftover_systemd_timer_retire_steps(
+          unit: deployment_publication_timer_unit_name(names: spec.names),
+          path: deployment_publication_timer_unit_path(names: spec.names),
+        ),
+      ),
       [
         deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
           art.path as String,
