@@ -99,7 +99,7 @@ fn observations_with(
   PublisherObservations {
     repository_full_name: "gunb-ai/gunbc",
     default_branch: "main",
-    candidate_producer_workflow_path: ".github/workflows/witnesses.yml",
+    candidate_producer_workflow_path: ".github/workflows/heal.yml",
     run: run,
     pull_request: pull,
     branch_head_sha: branch_head,

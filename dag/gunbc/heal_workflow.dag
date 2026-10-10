@@ -51,15 +51,25 @@ import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
 // IT HOLDS NO WRITE AUTHORITY AND PUSHES NOTHING. Until this cut, this job checked out the branch,
 // regenerated, committed and pushed with the Actions job credential -- and GitHub holds the
 // pull_request run that such a push causes (docs: a push made with GITHUB_TOKEN creates workflow runs
-// in an approval-required state), so every healed head waited for a human. The repair now leaves as a
-// CANDIDATE ARTIFACT, and gunbc.heal_publisher_workflow publishes it from the default branch under an
-// App installation token, whose pushes run without approval.
+// in an approval-required state), so every healed head waited for a human. The repair leaves as a
+// CANDIDATE ARTIFACT, which gunbc.heal_publisher_workflow published from the default branch under an
+// App installation token, whose pushes ran without approval.
 //
-// WHY A SEPARATE WORKFLOW RATHER THAN A LANE OF `witnesses`. The publisher is triggered by
+// FROZEN SINCE 2026-10-09 (operator ruling, the v1 withdrawal): the publisher workflow is DELETED
+// with the required lanes that sealed candidates for it, so a candidate this workflow seals and
+// uploads has NO PUBLICATION CONSUMER -- a dispatch of it produces an artifact nobody reads. The
+// route is not deleted with the publisher because its subject, a repair candidate for a regenerated
+// projection, returns the day a native regen instrument joins the required path and a publisher
+// row stands beside it; until then it is frozen in the DESIGN section 3 sense -- no new investment,
+// no new rows on its growth surfaces -- and the loss is declared, not silent: it is a member of
+// gunbc.rung_drop v1_required_lanes_withdrawn's population, which also names the publisher's
+// revalidation hook (`expected_healed_sha` on witnesses.yml) as unused for the same reason.
+//
+// WHY IT WAS A SEPARATE WORKFLOW RATHER THAN A LANE OF `witnesses`. The publisher was triggered by
 // workflow_run on THIS workflow's completion, and a workflow_run fires when the whole run finishes.
-// Left inside `witnesses`, publication would wait for the required floor of a head the repair is
-// about to supersede. Heal was never a required lane -- it remediates, the build lane's
-// generated-artifact phase adjudicates -- so nothing of the gate moves with it.
+// Left inside `witnesses`, publication would have waited for the required floor of a head the
+// repair was about to supersede. Heal was never a required lane -- it remediated, the build lane's
+// generated-artifact phase adjudicated -- so nothing of the gate moved with it.
 //
 // THE CHECKOUT IS THE EXACT HEAD, NOT THE BRANCH NAME. The candidate describes the commit it was
 // derived from, and the publisher refuses any candidate whose expected head is not the branch's

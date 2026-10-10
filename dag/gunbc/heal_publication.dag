@@ -18,7 +18,7 @@ import extdeps.github.workflow_run_event {
 import extdeps.git.object_store { git_object_id_wire_hex, git_sha1_object_id, git_encode_tree_mode, git_tree_mode_object_type }
 import extdeps.github.github { Repository }
 import gunbc.repository { gunbc_repository }
-import gunbc.generated_artifact { artifact_path, WitnessFloorYamlArtifact }
+import gunbc.generated_artifact { artifact_path, WitnessFloorYamlArtifact, HealWorkflowYamlArtifact }
 import gunbc.generated_artifact_registry { committed_generated_artifact_paths }
 import gunbc.heal_candidate { blob_id_of, BlobIdComputed, BlobIdRefused }
 import gunbc.heal_publication_boundary {
@@ -69,7 +69,7 @@ type HealPublicationSubject {
 fn public_heal_publication_subject() -> HealPublicationSubject {
   HealPublicationSubject {
     repository: gunbc_repository,
-    candidate_producer_workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
+    candidate_producer_workflow_path: artifact_path(a: HealWorkflowYamlArtifact),
     committed_artifact_paths: committed_generated_artifact_paths(),
   }
 }
