@@ -1,0 +1,78 @@
+module test.claim.roadmap_task_store_wet_witness_test
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.optional { Present, Absent }
+import extdeps.shell
+import gunbc.fabric_storage_client { FabricStorageLocalFiles }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.roadmap_model { RoadmapNode }
+import gunbc.roadmap_status { TicketLine }
+import gunbc.roadmap_task_record { roadmap_task_encode }
+import gunbc.roadmap_task_store { roadmap_task_create, roadmap_task_revise, roadmap_task_supersede, roadmap_task_roster, roadmap_tasks_listed, roadmap_task_definition_digest, roadmap_task_minted, RuntimeTaskCommitted, RuntimeTaskReplayed, RuntimeTaskRefused, RuntimeTaskStale, RuntimeTaskRosterRead }
+import test.claim.roadmap_task_record_witness_test { sample_task, sample_ticket }
+
+fn titled(n: RoadmapNode, headline: String) -> RoadmapNode {
+  RoadmapNode { identity: n.identity, node: n.node, line: TicketLine { done: false, ticket: gunbc.roadmap_status.TicketFields { headline: headline, brief: "", displaced_cost: "", current_state: "", first_slice: "", red_control: "", out_of_scope: "", handback: "", updates: [], authored_on: "", last_verified_on: "" } }, carriers: n.carriers, dispatch: n.dispatch, execution: n.execution, owner: n.owner, signoff: n.signoff, parent: n.parent, centering: n.centering }
+}
+
+// THE WRITE LANDS against a real file store: create commits, the same key replays without a new
+// link, a reused key with different fields refuses, a revision naming the current digest commits and
+// the roster lists the NEW definition, a second revision from the now-stale digest refuses, and a
+// supersession retires the task from the listing.
+test fn task_store_create_replay_and_conflicting_key() -> Bool {
+  let directory = shell.Mktemp.Dir()
+  let root = fabric_storage_file_root(root: directory.path)
+  let store = FabricStorageLocalFiles { root: root }
+  if !directory.success { false } else { match fabric_storage_file_root_ensure(root: root) {
+    FabricStorageRootReady => {
+      let actor = "briansrls" as NonEmptyStr
+      let k1 = "op-1" as NonEmptyStr
+      let k2 = "op-2" as NonEmptyStr
+      let first = roadmap_task_create(store: store, actor: actor, at: 1, operation_key: k1, draft: sample_task())
+      let replay = roadmap_task_create(store: store, actor: actor, at: 2, operation_key: k1, draft: sample_task())
+      let conflicting = roadmap_task_create(store: store, actor: actor, at: 3, operation_key: k1, draft: titled(n: sample_task(), headline: "Different"))
+      let second = roadmap_task_create(store: store, actor: actor, at: 4, operation_key: k2, draft: titled(n: sample_task(), headline: "Second"))
+      let ok_first = match first { RuntimeTaskCommitted { task: _, events: _ } => true other => false }
+      let ok_replay = match replay { RuntimeTaskReplayed { task: _ } => true other => false }
+      let ok_conflict = match conflicting { RuntimeTaskRefused { reason: _ } => true other => false }
+      let ok_second = match second { RuntimeTaskCommitted { task: _, events: _ } => true other => false }
+      let ok_listed = match roadmap_tasks_listed(roster: roadmap_task_roster(store: store)) { Present { value: ts } => count(ts) == 2 && (first_identity(ts: ts) != second_identity(ts: ts)) Absent => false }
+      ok_first && ok_replay && ok_conflict && ok_second && ok_listed
+    }
+    other => false
+  } }
+}
+
+test fn task_store_revise_stale_and_supersede() -> Bool {
+  let directory = shell.Mktemp.Dir()
+  let root = fabric_storage_file_root(root: directory.path)
+  let store = FabricStorageLocalFiles { root: root }
+  if !directory.success { false } else { match fabric_storage_file_root_ensure(root: root) {
+    FabricStorageRootReady => {
+      let actor = "briansrls" as NonEmptyStr
+      let created = roadmap_task_create(store: store, actor: actor, at: 1, operation_key: "op-1" as NonEmptyStr, draft: sample_task())
+      match created {
+        RuntimeTaskCommitted { task: t, events: _ } => match roadmap_task_definition_digest(task: t) {
+          Absent => false
+          Present { value: digest } => {
+            let revised_def = titled(n: t, headline: "Revised")
+            let revised = roadmap_task_revise(store: store, actor: actor, at: 2, operation_key: "op-2" as NonEmptyStr, task: t.identity as String as NonEmptyStr, expected_definition_digest: digest, replacement: revised_def)
+            let stale = roadmap_task_revise(store: store, actor: actor, at: 3, operation_key: "op-3" as NonEmptyStr, task: t.identity as String as NonEmptyStr, expected_definition_digest: digest, replacement: titled(n: t, headline: "Lost"))
+            let ok_revised = match revised { RuntimeTaskCommitted { task: _, events: _ } => true other => false }
+            let ok_stale = match stale { RuntimeTaskStale { reason: _ } => true other => false }
+            let current_title = match roadmap_tasks_listed(roster: roadmap_task_roster(store: store)) { Present { value: ts } => match first(ts) { Present { value: x } => match roadmap_task_encode(node: x) { Present { value: t } => if contains(t, "Revised") { "Revised" } else { t } Absent => "" } Absent => "" } Absent => "" }
+            let superseded = roadmap_task_supersede(store: store, actor: actor, at: 4, operation_key: "op-4" as NonEmptyStr, task: t.identity as String as NonEmptyStr, replacement: none)
+            let ok_super = match superseded { RuntimeTaskCommitted { task: _, events: _ } => true other => false }
+            let ok_gone = match roadmap_tasks_listed(roster: roadmap_task_roster(store: store)) { Present { value: ts } => count(ts) == 0 Absent => false }
+            ok_revised && ok_stale && current_title == "Revised" && ok_super && ok_gone
+          }
+        }
+        other => false
+      }
+    }
+    other => false
+  } }
+}
+
+fn first_identity(ts: List<RoadmapNode>) -> String { match first(ts) { Present { value: t } => t.identity as String Absent => "" } }
+fn second_identity(ts: List<RoadmapNode>) -> String { match first(reverse(ts)) { Present { value: t } => t.identity as String Absent => "" } }
