@@ -1,0 +1,77 @@
+module gunbc.branding.seal
+
+import std.types { List, String }
+import std.nat { Nat }
+import std.markup { Fragment, Element, attr }
+import extdeps.gunb_ai.frontend {
+  MarkFeature, MarkRoundedRect, MarkCircle, StoicGiantMark, mark_frame_length_tenths, mark_frame_span,
+}
+
+// THE STOIC GIANT SEAL, PLACED ON A CANVAS. Every gunb.ai artwork that shows the seal -- the
+// Workspace logo, each colourway -- draws it through this module, so the seal has one rendering and
+// a change to extdeps.gunb_ai.frontend reaches all of them at once.
+//
+// A placement is a square box in canvas units with its top-left corner. Every frame coordinate is
+// multiplied by box/span and must land on a whole canvas unit: a re-derived seal with a coordinate
+// that does not divide would put one feature a fraction off its neighbours, so placement is exact or
+// the caller refuses. The seal is drawn as two groups, the body in one paint and the features in
+// another; painting the features in the field's colour is the cut-through form (stoic-idle), and in
+// any other colour the solid-feature form (mark.svg).
+type SealPlacement { box: Nat, x: Nat, y: Nat }
+
+type SealCoordinate
+  = SealPlaced { units: Nat }
+  | SealInexact { frame_tenths: Nat, remainder: Nat }
+
+fn seal_place(box: Nat, frame_tenths: Nat) -> SealCoordinate {
+  let scaled = frame_tenths * box
+  let r = scaled - ((scaled / mark_frame_span) * mark_frame_span)
+  if r == 0 { SealPlaced { units: scaled / mark_frame_span } } else { SealInexact { frame_tenths: frame_tenths, remainder: r } }
+}
+
+fn seal_feature_frame_values(f: MarkFeature) -> List<Nat> {
+  match f {
+    MarkRoundedRect { x: x, y: y, width: w, height: h, corner_radius: cr } =>
+      [mark_frame_length_tenths(l: x), mark_frame_length_tenths(l: y), mark_frame_length_tenths(l: w), mark_frame_length_tenths(l: h), mark_frame_length_tenths(l: cr)]
+    MarkCircle { center_x: cx, center_y: cy, radius: r } =>
+      [mark_frame_length_tenths(l: cx), mark_frame_length_tenths(l: cy), mark_frame_length_tenths(l: r)]
+  }
+}
+
+fn seal_inexact_coordinates(box: Nat, mark: StoicGiantMark) -> List<SealCoordinate> {
+  let values = fold(concat([mark.body], mark.features), init: [], f: (acc, f) => concat(acc, seal_feature_frame_values(f: f)))
+  filter(map(values, v => seal_place(box: box, frame_tenths: v)), p => match p { SealPlaced { units: _ } => false SealInexact { frame_tenths: _, remainder: _ } => true })
+}
+
+// Callers draw only once seal_inexact_coordinates is empty, so the inexact arm is unreachable from
+// any emission; it answers the frame value unscaled, which would be visibly wrong rather than
+// plausibly wrong.
+fn seal_scaled(box: Nat, frame_tenths: Nat) -> Nat {
+  match seal_place(box: box, frame_tenths: frame_tenths) { SealPlaced { units } => units SealInexact { frame_tenths: v, remainder: _ } => v }
+}
+
+fn seal_n(v: Nat) -> String { to_string(v) }
+
+fn seal_feature_element(p: SealPlacement, f: MarkFeature) -> Fragment {
+  match f {
+    MarkRoundedRect { x: x, y: y, width: w, height: h, corner_radius: cr } => Element { tag: "rect", attributes: [
+      attr(name: "x", value: seal_n(v: p.x + seal_scaled(box: p.box, frame_tenths: mark_frame_length_tenths(l: x)))),
+      attr(name: "y", value: seal_n(v: p.y + seal_scaled(box: p.box, frame_tenths: mark_frame_length_tenths(l: y)))),
+      attr(name: "width", value: seal_n(v: seal_scaled(box: p.box, frame_tenths: mark_frame_length_tenths(l: w)))),
+      attr(name: "height", value: seal_n(v: seal_scaled(box: p.box, frame_tenths: mark_frame_length_tenths(l: h)))),
+      attr(name: "rx", value: seal_n(v: seal_scaled(box: p.box, frame_tenths: mark_frame_length_tenths(l: cr)))),
+    ], children: [] }
+    MarkCircle { center_x: cx, center_y: cy, radius: r } => Element { tag: "circle", attributes: [
+      attr(name: "cx", value: seal_n(v: p.x + seal_scaled(box: p.box, frame_tenths: mark_frame_length_tenths(l: cx)))),
+      attr(name: "cy", value: seal_n(v: p.y + seal_scaled(box: p.box, frame_tenths: mark_frame_length_tenths(l: cy)))),
+      attr(name: "r", value: seal_n(v: seal_scaled(box: p.box, frame_tenths: mark_frame_length_tenths(l: r)))),
+    ], children: [] }
+  }
+}
+
+fn seal_fragments(p: SealPlacement, mark: StoicGiantMark, body_paint: String, feature_paint: String) -> List<Fragment> {
+  [
+    Element { tag: "g", attributes: [attr(name: "fill", value: body_paint)], children: [seal_feature_element(p: p, f: mark.body)] },
+    Element { tag: "g", attributes: [attr(name: "fill", value: feature_paint)], children: map(mark.features, f => seal_feature_element(p: p, f: f)) },
+  ]
+}

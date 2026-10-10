@@ -8,9 +8,9 @@ import extdeps.google.workspace {
   workspace_admin_control, workspace_admin_read_surface,
 }
 import gunbc.auth.google_workspace_admin_convergence { WorkspaceAdminObligation }
+import gunbc.branding.seal { SealPlaced, SealInexact, seal_place }
 import gunbc.branding.workspace_logo {
   WorkspaceLogoArtwork, WorkspaceLogoEmitted, WorkspaceLogoRefused, workspace_logo_artwork, workspace_logo_admin_obligation,
-  LogoPlaced, LogoPlacementInexact, logo_place,
   logo_canvas_width, logo_edge_margin, logo_mark_min_gap, wordmark_ink_left, wordmark_ink_width, logo_mark_text_gap, wordmark_glyph_text, wordmark_text,
 }
 
@@ -50,8 +50,8 @@ test fn w_the_obligation_binds_the_emitted_artwork_to_the_console_logo_control()
 // THE DISCRIMINATING RED for placement. 1000/1200 sends a frame tenth of 6 to exactly 5, and a
 // frame tenth of 7 to 5.83: the second must refuse rather than round.
 test fn w_an_inexact_seal_coordinate_refuses_rather_than_rounding() -> Bool {
-  match logo_place(frame_tenths: 6) { LogoPlaced { tenths } => tenths == 5 LogoPlacementInexact { frame_tenths: _, remainder: _ } => false }
-    && match logo_place(frame_tenths: 7) { LogoPlaced { tenths: _ } => false LogoPlacementInexact { frame_tenths, remainder } => frame_tenths == 7 && remainder == 1000 }
+  match seal_place(box: 1000, frame_tenths: 6) { SealPlaced { units } => units == 5 SealInexact { frame_tenths: _, remainder: _ } => false }
+    && match seal_place(box: 1000, frame_tenths: 7) { SealPlaced { units: _ } => false SealInexact { frame_tenths, remainder } => frame_tenths == 7 && remainder == 1000 }
 }
 
 // The seal sits on the left margin and the wordmark's ink ends exactly on the right margin, with at

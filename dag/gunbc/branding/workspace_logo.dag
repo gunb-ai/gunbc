@@ -14,10 +14,8 @@ import extdeps.google.workspace {
   WorkspaceLogoSlot, workspace_logo_slot, workspace_logo_slot_width_px, workspace_logo_slot_height_px,
   workspace_logo_slot_backdrop_color, workspace_logo_slot_backdrop_standing,
 }
-import extdeps.gunb_ai.frontend {
-  MarkFeature, MarkRoundedRect, MarkCircle, StoicGiantMark, gunb_stoic_giant_mark,
-  mark_frame_length_tenths, mark_frame_span, mark_ink,
-}
+import extdeps.gunb_ai.frontend { gunb_stoic_giant_mark, mark_ink }
+import gunbc.branding.seal { SealPlacement, seal_fragments, seal_inexact_coordinates }
 import gunbc.auth.google_workspace_admin_convergence { WorkspaceAdminObligation, workspace_branding_admin_obligation }
 
 // THE GOOGLE WORKSPACE LOGO: the gunb.ai lockup -- Stoic Giant seal, then the wordmark -- in ink
@@ -65,62 +63,13 @@ data logo_mark_min_gap: Nat = 240
 
 // ═══ THE SEAL, PLACED ═══
 //
-// Every frame coordinate is multiplied by box/span and must land on a whole tenth. With a 1000-tenth
-// box over the 1200-tenth frame every coordinate the seal declares does (they are all multiples of
-// 6), but that is a property of today's geometry, not of the method: a re-derived seal with a
-// coordinate that does not divide would put one feature a fraction off its neighbours. So placement
-// is exact or the emission refuses.
-type LogoPlacement
-  = LogoPlaced { tenths: Nat }
-  | LogoPlacementInexact { frame_tenths: Nat, remainder: Nat }
-
-fn logo_place(frame_tenths: Nat) -> LogoPlacement {
-  let scaled = frame_tenths * logo_mark_box
-  let r = scaled - ((scaled / mark_frame_span) * mark_frame_span)
-  if r == 0 { LogoPlaced { tenths: scaled / mark_frame_span } } else { LogoPlacementInexact { frame_tenths: frame_tenths, remainder: r } }
-}
-
-fn logo_feature_frame_values(f: MarkFeature) -> List<Nat> {
-  match f {
-    MarkRoundedRect { x: x, y: y, width: w, height: h, corner_radius: cr } =>
-      [mark_frame_length_tenths(l: x), mark_frame_length_tenths(l: y), mark_frame_length_tenths(l: w), mark_frame_length_tenths(l: h), mark_frame_length_tenths(l: cr)]
-    MarkCircle { center_x: cx, center_y: cy, radius: r } =>
-      [mark_frame_length_tenths(l: cx), mark_frame_length_tenths(l: cy), mark_frame_length_tenths(l: r)]
-  }
-}
-
-fn logo_mark_inexact_placements(mark: StoicGiantMark) -> List<LogoPlacement> {
-  let values = fold(concat([mark.body], mark.features), init: [], f: (acc, f) => concat(acc, logo_feature_frame_values(f: f)))
-  filter(map(values, v => logo_place(frame_tenths: v)), p => match p { LogoPlaced { tenths: _ } => false LogoPlacementInexact { frame_tenths: _, remainder: _ } => true })
-}
-
-// Called only once logo_mark_inexact_placements is empty (workspace_logo_artwork checks first), so
-// the inexact arm is unreachable from the emission; it answers the frame value unscaled, which
-// would be visibly wrong rather than plausibly wrong.
-fn logo_scaled(frame_tenths: Nat) -> Nat {
-  match logo_place(frame_tenths: frame_tenths) { LogoPlaced { tenths } => tenths LogoPlacementInexact { frame_tenths: v, remainder: _ } => v }
+// Through gunbc.branding.seal, on the left margin and centred vertically; the 1000-unit box over the
+// 1200-tenth frame must place every coordinate exactly or the artwork refuses.
+fn logo_seal_placement() -> SealPlacement {
+  SealPlacement { box: logo_mark_box, x: logo_edge_margin, y: (logo_canvas_height() - logo_mark_box) / 2 }
 }
 
 fn logo_n(v: Nat) -> String { to_string(v) }
-
-fn logo_mark_origin_y() -> Nat { (logo_canvas_height() - logo_mark_box) / 2 }
-
-fn logo_feature_element(f: MarkFeature) -> Fragment {
-  match f {
-    MarkRoundedRect { x: x, y: y, width: w, height: h, corner_radius: cr } => Element { tag: "rect", attributes: [
-      attr(name: "x", value: logo_n(v: logo_edge_margin + logo_scaled(frame_tenths: mark_frame_length_tenths(l: x)))),
-      attr(name: "y", value: logo_n(v: logo_mark_origin_y() + logo_scaled(frame_tenths: mark_frame_length_tenths(l: y)))),
-      attr(name: "width", value: logo_n(v: logo_scaled(frame_tenths: mark_frame_length_tenths(l: w)))),
-      attr(name: "height", value: logo_n(v: logo_scaled(frame_tenths: mark_frame_length_tenths(l: h)))),
-      attr(name: "rx", value: logo_n(v: logo_scaled(frame_tenths: mark_frame_length_tenths(l: cr)))),
-    ], children: [] }
-    MarkCircle { center_x: cx, center_y: cy, radius: r } => Element { tag: "circle", attributes: [
-      attr(name: "cx", value: logo_n(v: logo_edge_margin + logo_scaled(frame_tenths: mark_frame_length_tenths(l: cx)))),
-      attr(name: "cy", value: logo_n(v: logo_mark_origin_y() + logo_scaled(frame_tenths: mark_frame_length_tenths(l: cy)))),
-      attr(name: "r", value: logo_n(v: logo_scaled(frame_tenths: mark_frame_length_tenths(l: r)))),
-    ], children: [] }
-  }
-}
 
 // ═══ THE WORDMARK ═══
 //
@@ -228,22 +177,19 @@ fn logo_svg() -> String {
     attr(name: "viewBox", value: join(["0 0 ", logo_n(v: logo_canvas_width()), " ", logo_n(v: logo_canvas_height())], "")),
     attr(name: "role", value: "img"),
     attr(name: "aria-label", value: wordmark_text as String),
-  ], children: [
+  ], children: concat([
     Element { tag: "desc", attributes: [], children: [FragmentText { content: wordmark_attribution(font: wordmark_glyph_font) }] },
     Element { tag: "rect", attributes: [
       attr(name: "width", value: logo_n(v: logo_canvas_width())),
       attr(name: "height", value: logo_n(v: logo_canvas_height())),
       attr(name: "fill", value: field),
     ], children: [] },
-    Element { tag: "g", attributes: [attr(name: "fill", value: srgb8_hex(c: mark_ink))], children: [logo_feature_element(f: gunb_stoic_giant_mark.body)] },
-    Element { tag: "g", attributes: [attr(name: "fill", value: field)], children: map(gunb_stoic_giant_mark.features, f => logo_feature_element(f: f)) },
-    wordmark_element(),
-  ] }
+  ], concat(seal_fragments(p: logo_seal_placement(), mark: gunb_stoic_giant_mark, body_paint: srgb8_hex(c: mark_ink), feature_paint: field), [wordmark_element()])) }
   serialize_html_source(node: svg)
 }
 
 fn workspace_logo_artwork() -> WorkspaceLogoArtwork {
-  if count(logo_mark_inexact_placements(mark: gunb_stoic_giant_mark)) > 0 {
+  if count(seal_inexact_coordinates(box: logo_mark_box, mark: gunb_stoic_giant_mark)) > 0 {
     WorkspaceLogoRefused { reason: "a seal coordinate does not scale to a whole canvas tenth" }
   } else if wordmark_glyph_text() != (wordmark_text as String) {
     WorkspaceLogoRefused { reason: "the glyph rows do not spell the wordmark text" }

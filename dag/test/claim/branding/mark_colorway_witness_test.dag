@@ -1,0 +1,29 @@
+module test.claim.branding.mark_colorway_witness_test
+
+import std.types { Bool, List }
+import extdeps.gunb_ai.frontend { gunb_team_palettes, team_palette_salmon_and_void, team_palette_stark }
+import gunbc.branding.colorways { BrandColorway, brand_colorways, brand_colorways_cover }
+import gunbc.branding.colorway_svg { MarkColorwayEmitted, MarkColorwayRefused, mark_colorway_svg }
+
+// Every team palette is emitted exactly once under a distinct file name, and the join refuses in
+// each direction: a palette with no row, and a row whose stem another row already uses.
+test fn w_every_team_palette_has_exactly_one_emitted_file() -> Bool {
+  brand_colorways_cover(rows: brand_colorways, palettes: gunb_team_palettes)
+    && count(brand_colorways) == count(gunb_team_palettes)
+    && !brand_colorways_cover(rows: filter(brand_colorways, c => c.file_stem != "stark"), palettes: gunb_team_palettes)
+    && !brand_colorways_cover(rows: concat(brand_colorways, [BrandColorway { colorway: team_palette_stark, file_stem: "salmon-and-void" }]), palettes: gunb_team_palettes)
+}
+
+// THE REAL PATH. Salmon & Void is the cut-through seal: field and features both #ffb5b0, body
+// #0a0a0a, on the seal's own frame -- body spanning the full 1200-tenth width, inset 120 top and
+// bottom, eyes at the authored centres.
+test fn w_a_colourway_is_the_cut_through_seal_in_its_two_paints() -> Bool {
+  match mark_colorway_svg(c: team_palette_salmon_and_void) {
+    MarkColorwayRefused { reason: _ } => false
+    MarkColorwayEmitted { svg } =>
+      starts_with(s: svg, prefix: "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"120\" height=\"120\" viewBox=\"0 0 1200 1200\" role=\"img\" aria-label=\"gunb.ai, Salmon &amp; Void\">")
+        && contains(svg, "<rect width=\"1200\" height=\"1200\" fill=\"#ffb5b0\">")
+        && contains(svg, "<g fill=\"#0a0a0a\"><rect x=\"0\" y=\"120\" width=\"1200\" height=\"960\" rx=\"360\">")
+        && contains(svg, "<g fill=\"#ffb5b0\"><circle cx=\"300\" cy=\"456\" r=\"96\">")
+  }
+}

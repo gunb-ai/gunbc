@@ -1,0 +1,42 @@
+module gunbc.branding.colorway_svg
+
+import std.types { List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.markup { Fragment, Element, attr }
+import extdeps.color.srgb { srgb8_hex }
+import extdeps.languages.html { serialize_html_source }
+import extdeps.gunb_ai.frontend { MarkColorway, mark_colorway_name, mark_colorway_field, mark_colorway_ink, gunb_stoic_giant_mark, mark_frame_span }
+import gunbc.branding.seal { SealPlacement, seal_fragments, seal_inexact_coordinates }
+import gunbc.branding.colorways { BrandColorway, brand_colorway_palette }
+
+// ONE COLOURWAY AS AN SVG: the seal in the colourway's ink on its field, features cut through to the
+// field -- the stoic-idle form the frontend's team-palette cards render. The canvas is the seal's
+// own frame (mark.svg's 120-unit square, carried in tenths), so the body spans the full width and
+// sits 12 units in from top and bottom exactly as the authored mark does; no margin is invented.
+type MarkColorwayArtwork
+  = MarkColorwayEmitted { svg: String }
+  | MarkColorwayRefused { reason: String }
+
+fn colorway_n(v: Nat) -> String { to_string(v) }
+
+fn mark_colorway_svg(c: MarkColorway) -> MarkColorwayArtwork {
+  if count(seal_inexact_coordinates(box: mark_frame_span, mark: gunb_stoic_giant_mark)) > 0 {
+    MarkColorwayRefused { reason: "a seal coordinate does not place exactly on the frame" }
+  } else {
+    let field = srgb8_hex(c: mark_colorway_field(c: c))
+    let side = colorway_n(v: mark_frame_span)
+    let svg = Element { tag: "svg", attributes: [
+      attr(name: "xmlns", value: "http://www.w3.org/2000/svg"),
+      attr(name: "width", value: colorway_n(v: mark_frame_span / 10)),
+      attr(name: "height", value: colorway_n(v: mark_frame_span / 10)),
+      attr(name: "viewBox", value: join(["0 0 ", side, " ", side], "")),
+      attr(name: "role", value: "img"),
+      attr(name: "aria-label", value: join(["gunb.ai, ", mark_colorway_name(c: c) as String], "")),
+    ], children: concat([
+      Element { tag: "rect", attributes: [attr(name: "width", value: side), attr(name: "height", value: side), attr(name: "fill", value: field)], children: [] },
+    ], seal_fragments(p: SealPlacement { box: mark_frame_span, x: 0, y: 0 }, mark: gunb_stoic_giant_mark, body_paint: srgb8_hex(c: mark_colorway_ink(c: c)), feature_paint: field)) }
+    MarkColorwayEmitted { svg: serialize_html_source(node: svg) }
+  }
+}
+
+fn brand_colorway_artwork(c: BrandColorway) -> MarkColorwayArtwork { mark_colorway_svg(c: brand_colorway_palette(c: c)) }

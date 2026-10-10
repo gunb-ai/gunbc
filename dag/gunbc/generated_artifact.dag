@@ -7,6 +7,7 @@ import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_s
 import gunbc.whole_corpus_compile_demand_projection { whole_corpus_compile_demand_projection_directory, whole_corpus_compile_demand_projection_name }
 import gunbc.fleet_intent { ComputeHost }
 import product.host_identity { HostIdentity }
+import gunbc.branding.colorways { BrandColorway, brand_colorway_stem, brand_colorway_directory }
 import std.decl_ref { DeclarationRef, decl_ref }
 
 type GeneratedArtifact
@@ -51,6 +52,7 @@ type GeneratedArtifact
   | ApproveIosWireSwiftArtifact
   | ApproveIosProtocolVectorTestsSwiftArtifact
   | WorkspaceLogoSvgArtifact
+  | MarkColorwaySvgArtifact { colorway: BrandColorway }
 
 // CompilerRunInput: the compiler reads the file as a declared input at arm time, before any source
 // resolves (gunbc.whole_corpus_compile_demand_projection).
@@ -63,6 +65,8 @@ type GeneratedArtifact
 // and the target's Info.plist from it (gunbc.approve_ios_project); neither output is committed.
 // WorkspaceAdminConsole: a Google Workspace administrator rasterizes the file at the logo slot's size
 // and uploads it in the Admin console, which has no API for it (gunbc.branding.workspace_logo).
+// BrandAssetUse: a person takes the file from the tree to place the mark somewhere this repository
+// does not render -- a profile picture, a team avatar, a slide (gunbc.branding.colorway_svg).
 // SwiftCompiler: swiftc, driven by xcodebuild on the operator's Mac, compiles the file into the app
 // or its test bundle (gunbc.approve_ios_swift_protocol and its siblings, printed by
 // the Swift grammar rows v2.extdeps.languages.swift.rows).
@@ -77,6 +81,7 @@ type RepoConsumer
   | XcodeProjectGenerator
   | SwiftCompiler
   | WorkspaceAdminConsole
+  | BrandAssetUse
 
 type CommitPolicy
   = CommitRequired { consumer: RepoConsumer }
@@ -207,6 +212,7 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     ApproveIosWireSwiftArtifact => ArtifactLocation { directory: "apps/approve-ios/Approve", name: "Wire.swift" }
     ApproveIosProtocolVectorTestsSwiftArtifact => ArtifactLocation { directory: "apps/approve-ios/ApproveTests", name: "ProtocolVectorTests.swift" }
     WorkspaceLogoSvgArtifact => ArtifactLocation { directory: "dag/gunbc/branding", name: "workspace_logo.svg" }
+    MarkColorwaySvgArtifact { colorway } => ArtifactLocation { directory: brand_colorway_directory as String, name: concat(brand_colorway_stem(c: colorway) as String, ".svg") }
     Stage0CrateLayoutGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_crate_layout_generated.dag" }
     Stage0CrateLayoutGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "bootstrap_stage0_crate_layout_generated.rs" }
     Stage0CratePartitionGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_crate_partition_generated.dag" }
@@ -295,6 +301,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     ApproveIosWireSwiftArtifact => CommitRequired { consumer: SwiftCompiler }
     ApproveIosProtocolVectorTestsSwiftArtifact => CommitRequired { consumer: SwiftCompiler }
     WorkspaceLogoSvgArtifact => CommitRequired { consumer: WorkspaceAdminConsole }
+    MarkColorwaySvgArtifact { colorway: _ } => CommitRequired { consumer: BrandAssetUse }
     Stage0CrateLayoutGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CrateLayoutGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CratePartitionGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
@@ -355,6 +362,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     ApproveIosWireSwiftArtifact => match b { ApproveIosWireSwiftArtifact => true  _ => false }
     ApproveIosProtocolVectorTestsSwiftArtifact => match b { ApproveIosProtocolVectorTestsSwiftArtifact => true  _ => false }
     WorkspaceLogoSvgArtifact => match b { WorkspaceLogoSvgArtifact => true  _ => false }
+    MarkColorwaySvgArtifact { colorway } => match b { MarkColorwaySvgArtifact { colorway: other } => (brand_colorway_stem(c: colorway) as String) == (brand_colorway_stem(c: other) as String)  _ => false }
     Stage0CrateLayoutGeneratedDagArtifact => match b { Stage0CrateLayoutGeneratedDagArtifact => true  _ => false }
     Stage0CrateLayoutGeneratedRsArtifact => match b { Stage0CrateLayoutGeneratedRsArtifact => true  _ => false }
     Stage0CratePartitionGeneratedDagArtifact => match b { Stage0CratePartitionGeneratedDagArtifact => true  _ => false }
@@ -432,6 +440,7 @@ fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
     ApproveIosWireSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_wire", decl_name: "expected_approve_ios_wire_swift")
     ApproveIosProtocolVectorTestsSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_protocol_vector_tests", decl_name: "expected_approve_ios_protocol_vector_tests_swift")
     WorkspaceLogoSvgArtifact => decl_ref(module_path: "gunbc.branding.workspace_logo", decl_name: "workspace_logo_artwork")
+    MarkColorwaySvgArtifact { colorway: _ } => decl_ref(module_path: "gunbc.branding.colorway_svg", decl_name: "brand_colorway_artwork")
     Stage0CrateLayoutGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0_crate_layout_emit", decl_name: "expected_stage0_crate_layout_generated_dag")
     Stage0CrateLayoutGeneratedRsArtifact => decl_ref(module_path: "gunbc.stage0_crate_layout_emit", decl_name: "expected_stage0_crate_layout_generated_rs")
     Stage0CratePartitionGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0_crate_partition_emit", decl_name: "expected_stage0_crate_partition_generated_dag")
