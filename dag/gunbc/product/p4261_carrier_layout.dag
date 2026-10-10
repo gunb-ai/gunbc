@@ -1,6 +1,5 @@
 module product.p4261_carrier_layout
 
-import v2.std.algebra { filter }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { Volt, Ampere, volt, ampere, volt_count, ampere_count }

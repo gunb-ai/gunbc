@@ -8,7 +8,6 @@ import gunbc.compile_diagnostic_census {
   census_total_count,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.algebra { filter }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

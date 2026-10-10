@@ -32,7 +32,6 @@ import gunbc.floor_demand {
   SeamInterfaceConsumerPlanning, floor_seam_of_token, gunbc_floor_pinned_memory_max,
   gunbc_floor_pinned_memory_high
 }
-import v2.std.algebra { any }
 
 fn receipt(peak: Int, high: Int) -> FloorRunCgroupPeakReceipt {
   FloorRunCgroupPeakMeasured {

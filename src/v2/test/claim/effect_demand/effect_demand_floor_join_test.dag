@@ -16,7 +16,7 @@ import v2.compiler.effect_demand_floor_join {
 import v2.compiler.effect_demand { effect_demand_seam_roster }
 import v2.lens.module_graph { ModuleDeclarationFact, ModuleDependencyEdge }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.algebra { Cons, Empty, any, filter, length }
+import v2.std.algebra { Cons, Empty, length }
 import v2.std.live_tree { SubstrateInputsOnly }
 import v2.std.text { String }
 import v2.workflow.floor_discovery_row { FloorDiscoveryRow }

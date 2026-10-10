@@ -2,7 +2,7 @@ module v2.compiler.self_host.emit_coverage_frontier
 
 import std.types { List }
 import v2.std.text { String }
-import v2.std.algebra { length, any }
+import v2.std.algebra { length }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.realization_schedule { ScheduleWitnessEntry }
 import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_template_entries }

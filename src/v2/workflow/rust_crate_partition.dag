@@ -64,7 +64,7 @@ import gunbc.rust_emitted_edge {
 import std.disposition { RealizationDispatch }
 import std.types { List, String, Bool, Int, NonEmptyStr }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import v2.std.algebra { any, fold_list, length }
+import v2.std.algebra { fold_list, length }
 import v2.std.collection {
   empty_map,
   map_get_checked,

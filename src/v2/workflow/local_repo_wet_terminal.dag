@@ -3,7 +3,7 @@ module v2.workflow.local_repo_wet_terminal
 import std.types { List }
 import v2.std.text { String }
 import v2.std.integer { Int }
-import v2.std.algebra { Cons, Empty, filter, length }
+import v2.std.algebra { Cons, Empty, length }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
 import v2.workflow.floor_terminal_ledger {
   ClaimAttemptTerminal, ClaimExpectation, ExpectedToHold,

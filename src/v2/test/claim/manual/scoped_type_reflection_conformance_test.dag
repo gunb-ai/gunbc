@@ -1,7 +1,7 @@
 module v2.test.manual.scoped_type_reflection_conformance
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.algebra { any, for_all, length }
+import v2.std.algebra { for_all, length }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node { Symbol }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }

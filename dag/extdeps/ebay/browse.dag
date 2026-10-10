@@ -4,7 +4,7 @@ import std.resources { Network }
 import std.types { NonEmptyStr, String, Int, Bool, List }
 import std.measure { MoneyAmountMicro, money_amount_micro_count }
 import std.decimal { fixed_point_wire }
-import v2.std.algebra { filter, fold_list }
+import v2.std.algebra { fold_list }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }

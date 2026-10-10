@@ -1,6 +1,5 @@
 module gunbc.site.dependency_graph
 import gunbc.site.status { status_badge }
-import v2.std.algebra { filter }
 import gunbc.design.scale { graph_row_height_px, graph_rail_width_px }
 import std.types { String, Int, Bool }
 import std.markup { Fragment, Element, attr }

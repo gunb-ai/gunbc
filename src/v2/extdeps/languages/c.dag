@@ -36,7 +36,7 @@ import std.graph {
   graph_has_multi_node_scc
 }
 import std.types { Int, NonEmptyStr, String, List }
-import v2.std.algebra { any, length }
+import v2.std.algebra { length }
 import v2.std.collection {
   Absent,
   Map,

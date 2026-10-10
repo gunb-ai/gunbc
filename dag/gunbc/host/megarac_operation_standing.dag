@@ -6,7 +6,6 @@ import std.types { Bool, EpochMs, List, NonEmptyStr, String }
 import std.content_hash { ContentHash }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.optional { Present, Absent }
-import v2.std.algebra { filter, any }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq }
 import extdeps.bmc.access_profile { BmcObservedIdentity }

@@ -4,7 +4,6 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import gunbc.machine_intake_mtcollins1_power_on_account { BmcAnomaly, SensorNotNominal, SensorLineWithoutReadingNotNominal, SocketSensorsAbsent }
 import std.algebra { trim }
 import std.optional { Present }
-import v2.std.algebra { filter }
 import extdeps.bmc.ipmi_sdr { SdrLineResult, SdrLineDecoded, SdrLineUnstructured, SdrTypeLine }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq }
 import extdeps.bmc.megarac { megarac_firmware_0_32 }

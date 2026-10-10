@@ -1,6 +1,5 @@
 module test.claim.machine_intake.ampere_smpro_observation_witness_test
 
-import v2.std.algebra { filter, any }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable }

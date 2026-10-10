@@ -24,7 +24,6 @@ import v2.lens.production_qualification_origin_probe {
 import v2.test.claim.self_host.production_qualification_origin_probe_structural_fixture {
   structural_red_control_mint_site_qualified_name
 }
-import v2.std.algebra { any }
 import v2.std.integer { int_eq }
 import v2.std.text { String }
 

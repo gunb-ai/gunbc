@@ -1,7 +1,7 @@
 module tools.module_impact_query_front_door
 
 import std.types { List }
-import v2.std.algebra { any, fold_list, list_reverse }
+import v2.std.algebra { fold_list, list_reverse }
 import std.algebra { Cons }
 import v2.std.text { String }
 import gunbc.namespace_reference_derived_closure_admission {

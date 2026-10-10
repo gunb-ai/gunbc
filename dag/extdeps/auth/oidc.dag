@@ -19,7 +19,6 @@ import extdeps.auth.jwt {
   jwt_string_or_uri_wire,
   jwt_audience_values,
 }
-import v2.std.algebra { any }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -1,7 +1,6 @@
 module test.claim.ipmitool_hpm_check_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.algebra { any, filter }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import extdeps.bmc.ipmitool_observed_output { ipmitool_hpm_check_bmc0_32 }

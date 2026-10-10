@@ -5,7 +5,6 @@ import extdeps.uri { Uri, Https }
 import std.types { Bool, Int, NonEmptyStr, Unit }
 import std.optional { Present, Absent }
 import std.algebra { trim }
-import v2.std.algebra { filter }
 import std.resources { Network }
 import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

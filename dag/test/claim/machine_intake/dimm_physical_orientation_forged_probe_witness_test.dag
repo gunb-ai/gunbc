@@ -1,6 +1,5 @@
 module test.claim.machine_intake.dimm_physical_orientation_forged_probe_witness
 
-import v2.std.algebra { filter }
 import std.types { String, Bool, Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.compile_diagnostic_census {

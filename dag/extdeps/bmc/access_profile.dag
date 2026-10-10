@@ -3,7 +3,6 @@ module extdeps.bmc.access_profile
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.content_hash { ContentHash }
-import v2.std.algebra { filter }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.credentials { FactoryLogin }

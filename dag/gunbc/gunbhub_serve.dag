@@ -1,6 +1,5 @@
 module gunbc.gunbhub_serve
 
-import v2.std.algebra { filter }
 import std.types { HttpStatus }
 import extdeps.uri_path { PathTemplate, UrlPathToken }
 import extdeps.uri_path {

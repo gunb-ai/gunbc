@@ -1,7 +1,7 @@
 module test.claim.operation_argv_corpus_witness
 
 import std.types { String, List, Bool, Int }
-import v2.std.algebra { fold_list, any, length, list_head, HeadFound, HeadAbsent }
+import v2.std.algebra { fold_list, length, list_head, HeadFound, HeadAbsent }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.operation_argv {
   ArgvMaterialization,

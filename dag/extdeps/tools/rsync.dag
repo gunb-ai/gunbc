@@ -4,7 +4,6 @@ import std.types { String, NonEmptyStr, Bool, List }
 import std.nat { Nat }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import v2.std.algebra { any }
 
 // rsync, AS ITS UPSTREAM DOCUMENTS IT: the client (rsync(1)) and the daemon with its configuration
 // file (rsyncd.conf(5)). This module carries what rsync IS -- its argv shapes, its configuration

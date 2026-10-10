@@ -1,6 +1,5 @@
 module test.claim.product.p4261_carrier_layout_witness
 
-import v2.std.algebra { any }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { volt, volt_count, ampere }

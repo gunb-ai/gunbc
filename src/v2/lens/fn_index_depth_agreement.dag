@@ -4,7 +4,7 @@ import std.types { List }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
-import v2.std.algebra { any, contains, fold_list, length }
+import v2.std.algebra { contains, fold_list, length }
 import std.algebra { list_snoc_item }
 import v2.std.collection { Absent, Present }
 import v2.std.grammar { node_atom_identity_optional }

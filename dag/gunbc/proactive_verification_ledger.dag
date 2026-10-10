@@ -3,7 +3,7 @@ module gunbc.proactive_verification_ledger
 import gunbc.ci_layer_roots { known_red_probe_roster }
 import std.realization_schedule { ScheduleWitnessEntry }
 import std.types { String, Int, List }
-import v2.std.algebra { any, filter, fold_list, length }
+import v2.std.algebra { fold_list, length }
 import v2.std.node { Symbol }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 

@@ -1,6 +1,5 @@
 module gunbc.machine_intake_ampere_smpro_observation
 
-import v2.std.algebra { filter, any }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
 import std.measure { Second }

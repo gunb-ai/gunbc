@@ -2,12 +2,10 @@ module extdeps.google.issue_tracker
 
 import std.types { Bool, Int, List, NonEmptyStr, String, Timestamp }
 import std.algebra { trim }
-import v2.std.algebra { any }
 import extdeps.color.srgb { Srgb8 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, File, Https }
-import v2.std.algebra { any, filter }
 
 // Google's Issue Tracker (Buganizer) modeled as an external authority interface, per DESIGN §3:
 // the interface shape lives here in extdeps under the product's real vocabulary; any transport to

@@ -7,7 +7,6 @@ import gunbc.machine_intake_oob_boot_handoff { ObservedPowerTransition, PoweredO
 import gunbc.machine_intake_ampere_smpro_observation {
   SmproProbeOutcome, SmproWordRead, SmproControllerRefused, SmproTransportFailed, SmproResponseMalformed, SmproNotSent, SmproRequestUnencodable,
 }
-import v2.std.algebra { any }
 
 // THE INSTRUMENT FOR THE BOOT STEP'S OWN TIME (operator ruling 2026-09-27: mtcollins1_boot time
 // toward 0, including avoidable delay inside the step). Each wait in the boot path is removed or

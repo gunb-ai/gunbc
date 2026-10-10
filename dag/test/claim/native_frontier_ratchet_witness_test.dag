@@ -1,6 +1,6 @@
 module test.claim.native_frontier_ratchet_witness_test
 
-import v2.std.algebra { any, is_empty, length }
+import v2.std.algebra { is_empty, length }
 import std.optional { Present, Absent, optional_absent }
 import std.types { NonEmptyStr, List }
 import extdeps.bazel.label { PackagePath }

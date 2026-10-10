@@ -1,6 +1,5 @@
 module test.claim.machine_intake.power_on_console_readers_witness_test
 
-import v2.std.algebra { any, filter }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, String }
 import extdeps.crypto.hash { sha256_digest }

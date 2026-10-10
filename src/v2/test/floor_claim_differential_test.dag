@@ -2,7 +2,7 @@ module v2.test.floor_claim_differential
 
 import v2.std.logic { Bool }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
-import v2.std.algebra { Cons, Empty, filter }
+import v2.std.algebra { Cons, Empty }
 import v2.std.collection { List }
 import gunbc.explicit_witness_admission { ExplicitWitnessAdmission, explicit_witness_admissions, explicit_witness_admission_is_known_red }
 import v2.workflow.required_floor {

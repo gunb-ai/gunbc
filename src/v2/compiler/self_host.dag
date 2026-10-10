@@ -3,7 +3,7 @@ module v2.compiler.self_host
 import std.types { List }
 import extdeps.communication.medium { Lossless, Medium }
 import extdeps.filesystem.filesystem_io
-import v2.std.algebra { filter, fold_list }
+import v2.std.algebra { fold_list }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,

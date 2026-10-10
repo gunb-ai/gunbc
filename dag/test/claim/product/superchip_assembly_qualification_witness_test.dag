@@ -1,6 +1,5 @@
 module test.claim.product.superchip_assembly_qualification_witness
 
-import v2.std.algebra { any }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { gibibyte, gibibyte_to_byte_size }

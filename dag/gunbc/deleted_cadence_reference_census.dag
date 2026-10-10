@@ -11,7 +11,7 @@ import std.witness_admission {
 }
 import gunbc.rung_drop { RungDrop }
 import gunbc.rung_drop.deleted_cadence_reference_drop { deleted_cadence_reference_drop }
-import v2.std.algebra { fold_list, any }
+import v2.std.algebra { fold_list }
 
 // THE CENSUS OF AUTHORITY ROWS THAT CITE A DELETED EXECUTION CADENCE, AND THE ONE
 // QUESTION EVERY ROW MUST ANSWER: WHICH EXACT CONSUMER EXECUTES THIS POPULATION NOW?

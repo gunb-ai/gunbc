@@ -51,7 +51,7 @@ import gunbc.capability_origin {
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import v2.std.algebra { any, length, list_map }
+import v2.std.algebra { length, list_map }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data planted_observed_tree: RustObservedTree = RustObservedTree { revision: "0000000000000000000000000000000000000001", tree: "0000000000000000000000000000000000000002" }

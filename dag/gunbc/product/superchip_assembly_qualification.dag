@@ -1,6 +1,5 @@
 module product.superchip_assembly_qualification
 
-import v2.std.algebra { filter }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size_count, gibibyte, gibibyte_to_byte_size, watt_count, volt_count }

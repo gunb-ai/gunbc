@@ -6,7 +6,6 @@ import gunbc.runner_microvm_attempt { bind_owned_attempt }
 import gunbc.runner.runner_jit_admission { jit_admission_axis_standing, AttemptBindingAxis }
 import test.claim.github_app_registry { app_credential, observed_grant, runner_grant, gunbai_org_ref, restricted_group_1 }
 import extdeps.github.actions_jit_runner { jit_config_mint_outcome }
-import v2.std.algebra { any }
 import std.algebra { list_append }
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat }

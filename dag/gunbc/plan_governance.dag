@@ -1,7 +1,6 @@
 module gunbc.plan_governance
 
 import std.types { String, Bool, List }
-import v2.std.algebra { filter }
 
 // THE ONE AUTHORED FACT OF THE PLAN DOCUMENT GRAPH: which design authority governs a plan, and in
 // what role. Everything a reader sees about that relation -- the banner on the child, the children

@@ -1,6 +1,5 @@
 module gunbc.machine_intake_mtcollins1_power_on_account
 
-import v2.std.algebra { any, filter }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }

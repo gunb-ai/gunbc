@@ -16,7 +16,7 @@ import std.materialization_ladder {
 }
 import std.measure { Millisecond, Nanosecond, byte_size, millisecond_count, nanosecond, nanosecond_count }
 import v2.workflow.required_floor { required_floor_new_witness_envelope_ms }
-import v2.std.algebra { any, list_flat_map, list_map }
+import v2.std.algebra { list_flat_map, list_map }
 import v2.std.collection { empty_map, map_get_checked, map_insert }
 import v2.std.diagnostic { Accepted, Rejected, Outcome }
 import std.optional { Absent, Present, Optional }

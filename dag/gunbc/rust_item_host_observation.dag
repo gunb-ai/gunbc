@@ -36,7 +36,7 @@ import gunbc.rust_item_scan {
 import std.algebra { trim, list_append, list_snoc_item }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Bool, FilePath, GitRef, Int, List, NonEmptyStr, Set, String }
-import v2.std.algebra { HeadAbsent, HeadFound, any, filter, fold_list, length, list_head, list_map }
+import v2.std.algebra { HeadAbsent, HeadFound, fold_list, length, list_head, list_map }
 
 // TWO POPULATIONS, TWO FUNCTIONS, AND THEY MAY NOT BE COLLAPSED.
 //

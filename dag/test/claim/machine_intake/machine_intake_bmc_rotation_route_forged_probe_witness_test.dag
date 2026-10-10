@@ -1,6 +1,5 @@
 module test.claim.machine_intake_bmc_rotation_route_forged_probe_witness
 
-import v2.std.algebra { filter }
 import std.types { String, Bool, Int, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.compile_diagnostic_census {

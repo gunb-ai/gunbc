@@ -8,7 +8,6 @@ import extdeps.tools.curl { curl_exit_status_is_unreachable }
 import gunbc.artifact_acquisition { AcquisitionSource, SourceArgv, SourceUrl, ContentDigestSha256, UpstreamRevision }
 import gunbc.spark.fabric_reach { ReachFabricRail, spark_reach_endpoint }
 import gunbc.spark.spark_file_blob { spark_file_blob_status_is_unreachable }
-import v2.std.algebra { any }
 import gunbc.spark.fabric_blob_peer {
   FabricBlobHolder, fabric_blob_rsync_module, fabric_blob_root, fabric_blob_path, fabric_blob_staging_path,
   fabric_blob_peer_source, fabric_blob_subject, fabric_blob_rsyncd_conf_path,

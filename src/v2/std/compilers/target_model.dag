@@ -19,21 +19,7 @@ import std.algebra {
   list_snoc_item
 }
 import v2.std.text { String, string_replace }
-import v2.std.algebra {
-  Equal,
-  Greater,
-  Less,
-  Ordering,
-  TailAbsent,
-  TailFound,
-  any,
-  fold_list,
-  fold_list_node,
-  fold_list_right,
-  is_empty,
-  length,
-  list_tail
-}
+import v2.std.algebra { Equal, Greater, Less, Ordering, TailAbsent, TailFound, fold_list, fold_list_node, fold_list_right, is_empty, length, list_tail }
 import v2.std.collection {
   Map,
   empty_map,

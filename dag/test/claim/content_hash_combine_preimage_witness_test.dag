@@ -7,7 +7,7 @@ import std.content_hash {
   content_hash_combine_preimage,
   content_hash_combine_structural
 }
-import v2.std.algebra { any, length }
+import v2.std.algebra { length }
 import v2.std.fn_index { FnArrowDecl, callee_texts_in_decl, fn_arrow_decl_facts_live }
 import v2.std.text { String }
 

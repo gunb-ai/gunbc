@@ -26,7 +26,7 @@ import v2.compiler.native_test_vocabulary {
   NativeTestVerdict
 }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.std.algebra { any, count_where, fold_list, length }
+import v2.std.algebra { count_where, fold_list, length }
 import v2.std.collection { Map }
 import v2.std.integer { Int }
 import std.algebra { Cons, Empty }

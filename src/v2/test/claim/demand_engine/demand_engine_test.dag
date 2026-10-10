@@ -1,7 +1,7 @@
 module v2.test.demand_engine.demand_engine
 
 import std.types { List }
-import v2.std.algebra { length, list_map, fold_list, contains, filter }
+import v2.std.algebra { length, list_map, fold_list, contains }
 import std.algebra { Cons, Empty }
 import v2.std.dependency { DataDependsOn, DependencyRelation }
 import v2.std.demand_engine {

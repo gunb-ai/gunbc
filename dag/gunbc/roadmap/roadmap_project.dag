@@ -2,7 +2,6 @@ module gunbc.roadmap.roadmap_project
 
 import std.types { String, List, Bool }
 import gunbc.roadmap_nesting { RoadmapMembership }
-import v2.std.algebra { any }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 
 // One independently authored nesting relation serves UI, alignment, supervision and fanin.

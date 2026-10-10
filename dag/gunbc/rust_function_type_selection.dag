@@ -3,7 +3,6 @@ module gunbc.rust_function_type_selection
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.interval { degenerate_interval }
-import v2.std.algebra { filter }
 import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
 import std.decision {
   ChoiceDomain,

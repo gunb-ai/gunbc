@@ -400,7 +400,7 @@ fn lex_pattern_first(pattern: LexPattern) -> LexFirst {
 fn lex_first_admits(first: LexFirst, c: Char) -> Bool {
   first.nullable
     || v2.std.algebra.contains(xs: first.chars, item: c, eq: fn(a, b) { a == b })
-    || v2.std.algebra.any(xs: first.classes, predicate: fn(k) { char_in_class(c: c, class: k) })
+    || any(xs: first.classes, predicate: fn(k) { char_in_class(c: c, class: k) })
 }
 
 // Rules whose FIRST is only literal characters are reached through by_char; every other rule --

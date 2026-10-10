@@ -2,7 +2,6 @@ module test.claim.site_build_meter_witness_test
 
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.markup { Fragment }
-import v2.std.algebra { filter }
 import extdeps.languages.html { serialize_html_source }
 import gunbc.harness.harness_throughput { HarnessRoundLedger, RoundObservation, RoundsObserved, RoundsUnobserved }
 import gunbc.roadmap_provider_events {

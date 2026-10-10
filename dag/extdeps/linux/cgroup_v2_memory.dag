@@ -1,6 +1,5 @@
 module extdeps.linux.cgroup_v2_memory
 
-import v2.std.algebra { filter }
 import v2.std.collection { list_at_optional }
 import std.algebra { trim }
 import std.checked_arithmetic { nat_magnitude }
