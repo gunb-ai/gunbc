@@ -5130,7 +5130,7 @@ fn local_coproduct_variant_names(items: List<Node>, source_indices: Map<String, 
 // is therefore STRUCTURAL rather than asserted: the emitted use-lines cannot move unless this
 // function's answer moves, because there is no second copy of the decision to drift from.
 fn reference_derived_candidate_disposition(name: String, this_module_name: String, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, type_summaries: TypeSummaryIndex, variant_to_enum: Map<String, String>, in_type_position: Bool) -> ReferenceDerivedCandidateDisposition {
-  if is_known_variant(type_summaries: type_summaries, name: name) && !in_type_position {
+  if is_known_variant(variant_to_enum: variant_to_enum, name: name) && !in_type_position {
     match map_get(variant_to_enum, name) {
       Present { value: parent } =>
         if parent == "" { CandidateVariantParentUnresolved }
@@ -5520,7 +5520,7 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
       let block_lines = emit_specific_import_use_lines(import_module: provider, mod_name: module_to_filename(name: provider), filtered_names: names, type_position_names: applied_type_argument_names, emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, module_env: plan_module_env)
       let emitted_here = block_lines |> flat_map(l => imported_names_in_use_line(line: l.text))
       let fallback = names |> flat_map(nm =>
-        if (emitted_here |> any(e => e == nm)) || (is_known_variant(type_summaries: emit_info.type_summaries, name: nm) && !emit_map_has(m: type_position_set, key: nm)) {
+        if (emitted_here |> any(e => e == nm)) || (is_known_variant(variant_to_enum: emit_info.variant_to_enum, name: nm) && !emit_map_has(m: type_position_set, key: nm)) {
           []
         } else if provider_proven_exports_symbol(name: nm, provider_module: provider, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
           [RustUseLine { target_module: module_to_filename(name: provider), text: concat(rust_visibility_prefix(), concat("use crate::", concat(module_to_filename(name: provider), concat("::", concat(emit_import_name(owner_module: provider, n: nm, registry: registry), ";"))))) }]
@@ -5852,7 +5852,7 @@ fn graph_type_import_module_path(name: String, import_module: String, mod_name: 
   }
 }
 
-fn is_import_graph_type_name(name: String, import_module: String, typed_modules: List<TypedModule>, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, type_summaries: TypeSummaryIndex, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> Bool {
+fn is_import_graph_type_name(name: String, import_module: String, typed_modules: List<TypedModule>, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, type_summaries: TypeSummaryIndex, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> Bool {
   if has_physical_type_def_in_module_filename(rhs_name: name, mod_filename: module_to_filename(name: import_module), typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
     true
   } else if match reexport_source_module_name(name: name, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
@@ -5866,7 +5866,7 @@ fn is_import_graph_type_name(name: String, import_module: String, typed_modules:
     QuestionNotDeclared => false
   } {
     false
-  } else if is_known_variant(type_summaries: type_summaries, name: name) {
+  } else if is_known_variant(variant_to_enum: variant_to_enum, name: name) {
     false
   } else {
     match map_get(export_sets, import_module) {
@@ -6156,12 +6156,12 @@ fn reexport_source_module_name_with_visited(name: String, import_module: String,
   }
 }
 
-fn import_module_enum_scope(import_module: String, registry: Map<String, ItemInfo>, type_summaries: TypeSummaryIndex, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
+fn import_module_enum_scope(import_module: String, registry: Map<String, ItemInfo>, type_summaries: TypeSummaryIndex, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> List<String> {
   let physical = enum_names_in_module(module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
   let reexport_parents = match map_get(export_sets, import_module) {
     Present { value: exported } =>
       sorted_map_keys(exported) |> filter(n =>
-        is_known_variant(type_summaries: type_summaries, name: n)
+        is_known_variant(variant_to_enum: variant_to_enum, name: n)
         && match is_enum_in_summaries(type_summaries: type_summaries, type_name: n) {
           QuestionDecided { value: v } => v == false
           QuestionNotDeclared => true
@@ -6701,8 +6701,8 @@ fn is_emittable_parametric_type_alias_item(item: Node, item_text: String, source
   }
 }
 
-fn import_variant_parent_for_name(n: String, import_module: String, registry: Map<String, ItemInfo>, type_summaries: TypeSummaryIndex, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, imported_enums: List<String>, import_module_enums: List<String>) -> String {
-  if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index) {
+fn import_variant_parent_for_name(n: String, import_module: String, registry: Map<String, ItemInfo>, type_summaries: TypeSummaryIndex, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, imported_enums: List<String>, import_module_enums: List<String>, variant_to_enum: Map<String, String>) -> String {
+  if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum) {
     ""
   } else if import_module_enums |> any(e => e == n) {
     ""
@@ -6887,11 +6887,11 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
   if deduped_names |> count == 0 {
     []
   } else {
-    let import_module_enums = import_module_enum_scope(import_module: import_module, registry: registry, type_summaries: type_summaries, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+    let import_module_enums = import_module_enum_scope(import_module: import_module, registry: registry, type_summaries: type_summaries, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum)
     let top_level = non_marker_names |> filter(n =>
-      if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index) {
+      if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum) {
         true
-      } else if is_known_variant(type_summaries: type_summaries, name: n) {
+      } else if is_known_variant(variant_to_enum: variant_to_enum, name: n) {
         import_module_enums |> any(e => e == n)
       } else if imported_name_is_non_emittable_type(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
         false
@@ -6901,13 +6901,13 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
     )
     let imported_enums = non_marker_names |> filter(n => import_module_enums |> any(e => e == n))
     let all_parents = non_marker_names |> map(n =>
-      import_variant_parent_for_name(n: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index, imported_enums: imported_enums, import_module_enums: import_module_enums)
+      import_variant_parent_for_name(n: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index, imported_enums: imported_enums, import_module_enums: import_module_enums, variant_to_enum: emit_info.variant_to_enum)
     ) |> filter(p => p != "")
     let parent_list = unique_strings(items: all_parents)
     let non_variant_top = top_level |> filter(n =>
-      if import_variant_parent_for_name(n: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index, imported_enums: imported_enums, import_module_enums: import_module_enums) != "" {
+      if import_variant_parent_for_name(n: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index, imported_enums: imported_enums, import_module_enums: import_module_enums, variant_to_enum: emit_info.variant_to_enum) != "" {
         false
-      } else if is_known_variant(type_summaries: type_summaries, name: n)
+      } else if is_known_variant(variant_to_enum: variant_to_enum, name: n)
         && authored_import_binds_provider_declaration(name: n, import_module: import_module, module_env: module_env, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) == false {
         import_module_enums |> any(e => e == n)
       } else { true }
@@ -6945,10 +6945,10 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
     )
     let merged_direct_names = unique_strings(items: concat(direct_names, local_parent_names))
     let type_direct_names = merged_direct_names |> filter(n =>
-      is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index)
+      is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum)
     )
     let other_direct_names = merged_direct_names |> filter(n =>
-      is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index) == false
+      is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum) == false
     )
     let type_direct_mods = unique_strings(items: type_direct_names |> map(n =>
       graph_type_import_module_filename(name: n, import_module: import_module, mod_name: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index)
@@ -7015,7 +7015,7 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
       let variants = deduped_names |> filter(n =>
         if n == "None" || n == "Some" {
           false
-        } else if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index) {
+        } else if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum) {
           false
         } else if import_module_enums |> any(e => e == n) {
           false
@@ -12506,7 +12506,7 @@ fn discriminant_zero_field_variant_tag(arg: Node, scope: InferScope, emit_info: 
         match record_lit_type_name_at(texpr: arg, source_indices: scope.type_env.source_indices) {
           Present { value: tn } =>
             let last = qualified_last_segment(name: tn)
-            if last != "" && is_known_variant(type_summaries: emit_info.type_summaries, name: last) {
+            if last != "" && is_known_variant(variant_to_enum: emit_info.variant_to_enum, name: last) {
               Present { value: last }
             } else { none }
           Absent => none
