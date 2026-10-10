@@ -1,6 +1,5 @@
 module test.claim.http_serve_route_witness
 
-import v2.std.algebra { any }
 import extdeps.http.server {
   text_html_utf8,
   ServedStaticRoute,

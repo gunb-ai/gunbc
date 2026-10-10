@@ -2,7 +2,7 @@ module v2.compiler.self_host.witness_bulk_routing
 
 import std.types { List }
 import v2.std.text { String }
-import v2.std.algebra { Cons, Empty, length, filter }
+import v2.std.algebra { Cons, Empty, length }
 import v2.std.witness_execution_routing {
   WitnessExecutionDisposition,
   InterpretedRetained,

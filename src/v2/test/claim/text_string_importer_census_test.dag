@@ -26,7 +26,7 @@ import v2.lens.module_graph { ModuleDeclarationFact }
 import std.decl_ref { decl_ref }
 import std.types { List, NonEmptyStr }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import v2.std.algebra { any, fold_list, list_reverse }
+import v2.std.algebra { fold_list, list_reverse }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
@@ -473,7 +473,7 @@ fn tsic_window_coverage_outcome() -> WindowCoverage {
     RawTreeNotEstablished { cause: _ } => WindowCoverage { established: false, text_import_read: false, literal_at_annotation: false, plus_concatenation: false, primitive_call: false, method_call: false, literal_argument: false, binder_argument: false, structural_other: false, structural_call_argument: false, structural_literal_argument: false }
     RawTreeEstablished { root: root, spans: _, text: _ } => {
       let w = walk_atoms(atoms: tree_atoms(root: root), r: rosters_supplied)
-      let has = fn(pred) { any(xs: w.sites, predicate: pred) }
+      let has = fn(pred) { any(xs: w.sites, predicate: s => pred(s)) }
       WindowCoverage {
         established: true,
         text_import_read: w.imports_text_string,

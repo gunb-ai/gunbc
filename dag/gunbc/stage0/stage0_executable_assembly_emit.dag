@@ -8,7 +8,7 @@ import v2.compiler.self_host.stage0_executable_assembly {
   stage0_host_shell_partition_dependencies,
   stage0_next_pass_bin_name
 }
-import v2.std.algebra { fold_list, list_map, filter, any, length }
+import v2.std.algebra { fold_list, list_map, length }
 import v2.std.text { String }
 import v2.workflow.rust_crate_partition { stage0_partition_crate_rows }
 

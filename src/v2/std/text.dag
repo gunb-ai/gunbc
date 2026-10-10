@@ -1,7 +1,7 @@
 module v2.std.text
 
 import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append }
-import v2.std.algebra { HeadAbsent, HeadFound, ListHeadResult, ListTailResult, TailAbsent, TailFound, any, contains, fold_list, for_all, is_empty, length, list_head, list_reverse, list_starts_with, list_tail, skip }
+import v2.std.algebra { HeadAbsent, HeadFound, ListHeadResult, ListTailResult, TailAbsent, TailFound, contains, fold_list, for_all, is_empty, length, list_head, list_reverse, list_starts_with, list_tail, skip }
 import std.types { Char }
 type String = FreeMonoid<Char>
 
@@ -190,6 +190,6 @@ fn string_all_chars_in(s: String, alphabet: String) -> Bool {
 }
 
 fn string_any_char_in(s: String, alphabet: String) -> Bool {
-  any(xs: s, predicate: fn(c) { string_contains_char(s: alphabet, c: c) })
+  any(s, c => string_contains_char(s: alphabet, c: c))
 }
 

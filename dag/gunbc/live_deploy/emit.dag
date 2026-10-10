@@ -206,7 +206,7 @@ import gunbc.host_axis_caps {
   host_axis_caps_author_before_revert_enforced,
 }
 import gunbc.ownership { Ownership }
-import v2.std.algebra { list_tail, TailFound, TailAbsent, any }
+import v2.std.algebra { list_tail, TailFound, TailAbsent }
 import gunbc.membership_reconcile {
   MembershipPlan,
   MemberEffect, EffectAdd, EffectReplace, EffectRemove,

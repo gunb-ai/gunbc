@@ -17,7 +17,6 @@ import gunbc.design.theme {
   theme_root_css,
 }
 import gunbc.site.moodboard { moodboard_rules, moodboard_css }
-import v2.std.algebra { any, filter }
 import extdeps.languages.css.selectors { selector_subject_wire }
 import gunbc.design.theme_transition { rule_decls, unthemed_color_decls, untokened_length_decls }
 import gunbc.design.scale { scale_root_css }

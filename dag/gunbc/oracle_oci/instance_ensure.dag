@@ -5,7 +5,6 @@ import std.resources { Network }
 import std.measure { Gigabyte, gigabyte, gigabyte_count, Second, second, second_count, measure_sub, measure_le, MeasureDifference, MeasureSubtrahendExceedsMinuend }
 import std.algebra { trim }
 import extdeps.clock { Clock }
-import v2.std.algebra { any }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_bool, json_int, serialize_json }
 import extdeps.cloud.oracle_oci_request_signing { OciPostJson }
 import extdeps.cloud.oracle_oci { VmStandardA1Flex, VmStandardE21Micro, OnDemandCapacity, oci_shape_wire_name }

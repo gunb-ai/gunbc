@@ -22,7 +22,7 @@ import gunbc.stage0_rust_source_lifecycle_scaffold {
   path_in_list
 }
 import std.content_hash { Fnv1a64Structural }
-import v2.std.algebra { any, length }
+import v2.std.algebra { length }
 
 test fn honest_frontier_exact_unclassified_paths_preserve_identity_and_order() -> Bool {
   exact_unclassified_tracked_paths(

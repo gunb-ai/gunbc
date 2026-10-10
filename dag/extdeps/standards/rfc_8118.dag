@@ -1,6 +1,5 @@
 module extdeps.standards.rfc_8118
 
-import v2.std.algebra { any }
 import std.optional { Optional }
 import std.dissolution { DissolutionCondition, retires_dissolution, unbound_dissolution }
 

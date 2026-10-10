@@ -3,7 +3,7 @@ module v2.compiler.self_host.seed_retention_frontier
 import std.types { List }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import v2.std.algebra { any, filter, length, list_map }
+import v2.std.algebra { length, list_map }
 import v2.std.integer { Int }
 import v2.std.text { String }
 

@@ -16,7 +16,7 @@ import v2.lens.testgen {
   lbe_subject_transform_dag_surface,
   testgen_scheduled_language_behavior_generators
 }
-import v2.std.algebra { any, for_all, length }
+import v2.std.algebra { for_all, length }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.verification {
   ManualLbeConjDagSurface,

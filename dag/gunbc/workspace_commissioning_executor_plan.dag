@@ -1,7 +1,6 @@
 module gunbc.workspace_commissioning_executor_plan
 
 import std.types { String, NonEmptyStr, Bool, List }
-import v2.std.algebra { filter }
 import gunbc.fleet_plan_bundle { fleet_plan_bundle_hash }
 import gunbc.fleet_converge_receipt {
   FleetConvergePlanReceipt, fleet_converge_plan_receipt_decode, FleetConvergePlanReceiptDecoded, FleetConvergePlanReceiptUnreadable,

@@ -1,7 +1,6 @@
 module test.claim.self_host_behavioral_equivalence_receipt_witness
 
 import std.types { Bool, Int, String, NonEmptyStr, CommitSha }
-import v2.std.algebra { any }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import tools.self_host_module_behavioral_transport_roster { ModuleBehavioralTransportConfig, BehavioralReceiptSetupRefused }
 import tools.self_host_behavioral_equivalence_take { no_verdict_cause }

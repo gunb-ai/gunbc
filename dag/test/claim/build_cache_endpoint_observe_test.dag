@@ -3,7 +3,6 @@ module test.claim.build_cache_endpoint_observe
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.build_cache_instance { ProcessIdentity }
 import extdeps.systemd.unit_file { systemd_unit_file_lines }
-import v2.std.algebra { filter, any }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.tools.gnu_coreutils { printf_command }
 import gunbc.host_effect { SshShell }

@@ -11,7 +11,6 @@ import std.goal_assessment {
   assess_by_deviations_and_unknowns,
   GoalAssessmentRefused,
 }
-import v2.std.algebra { any }
 import v2.std.cardinality { Never }
 import gunbc.spark.fabric_switch_desired {
   DesiredSpeedUndecidedCause,

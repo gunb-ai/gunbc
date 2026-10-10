@@ -15,7 +15,7 @@ import v2.lens.module_graph {
   module_declaration_facts_live,
   strip_leading_dot_slash
 }
-import v2.std.algebra { Cons, Empty, any, contains, fold_list, length, list_reverse }
+import v2.std.algebra { Cons, Empty, contains, fold_list, length, list_reverse }
 import v2.std.collection { Map, empty_map, map_insert }
 import v2.std.integer { Int }
 import std.optional { Absent, Optional, Present }

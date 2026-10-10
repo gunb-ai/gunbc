@@ -5,7 +5,6 @@ import gunbc.workspace_allocation_dispatch { workspace_allocation_prepare_cli, w
 import std.types { String, NonEmptyStr, Bool, CommitSha }
 import std.decl_ref { decl_ref }
 import std.algebra { trim }
-import v2.std.algebra { any }
 import gunbc.runner_slot_allocation { workspace_execution_slot_identities }
 import std.content_hash { content_hash_validate_lower_hex_length }
 import std.process { ExitSuccess, exit_failure }

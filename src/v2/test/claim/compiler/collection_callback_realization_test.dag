@@ -34,6 +34,12 @@ data ccr_declared_any: String = "module p\n\nimport v2.std.collection { List }\n
 
 data ccr_all_records: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  all(xs, e => e.target == 0)\n}\n"
 
+data ccr_filter_records: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> List<Pair> {\n  filter(xs: xs, predicate: e => e.target == 0)\n}\n"
+
+data ccr_any_records: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  any(xs: xs, predicate: e => e.target == 0)\n}\n"
+
+data ccr_filter_named_predicate: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn zero(e: Pair) -> Bool {\n  e.target == 0\n}\n\nfn f(xs: List<Pair>) -> List<Pair> {\n  filter(xs: xs, predicate: zero)\n}\n"
+
 data ccr_map_piped: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> List<Int> {\n  xs |> map(e => e.target)\n}\n"
 
 fn ccr_loops(tree: ResolvedTree) -> List<Node> {
@@ -176,14 +182,25 @@ fn ccr_all_binds_its_row() -> Bool {
   ccr_assembled_realizes(src: ccr_all_records, row: "std.algebra.collection_all_shape")
 }
 
-fn ccr_declared_any_lowers_no_loop() -> Bool {
+fn ccr_filter_binds_its_row() -> Bool {
+  ccr_assembled_realizes(src: ccr_filter_records, row: "std.algebra.collection_filter_shape")
+}
+
+fn ccr_any_binds_its_row() -> Bool {
+  ccr_assembled_realizes(src: ccr_any_records, row: "std.algebra.collection_any_shape")
+}
+
+fn ccr_filter_named_predicate_refuses() -> Bool {
+  match fmi_assemble(src: ccr_filter_named_predicate) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn ccr_declared_any_refuses() -> Bool {
   match fmi_assemble(src: ccr_declared_any) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: tree, diagnostics: _ } =>
-      match ccr_loops(tree: tree) {
-        Empty => true
-        Cons { head: _, tail: _ } => false
-      }
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
   }
 }
 
@@ -213,14 +230,34 @@ test fn ccr_all_head_binds_its_row() -> Bool {
   ccr_all_binds_its_row()
 }
 
-// (3b) A HEAD A CORPUS DECLARATION BINDS STAYS AN ORDINARY CALL. filter and any are NOT realized,
-// because v2.std.algebra declares ordinary fns of those names and lowering classifies a head by spelling;
-// a realized row would lower such a call to a Loop that resolve refuses as shadowed
-// (gunbc.recurring_failure_mode collection_callback_operation_unrealized_in_v2_lowering). The guard: a
-// module declaring its own `any` and calling it positionally assembles, and lowers to no Loop. Adding
-// any's row to v2.compiler.fold_lowering collection_roster_rows makes this control red.
-test fn ccr_declared_any_stays_an_ordinary_call() -> Bool {
-  ccr_declared_any_lowers_no_loop()
+// (3b) A COLLECTION OPERATION'S NAME IS THE ROSTER'S (calm-boar-904, ruling B'): filter and any are realized, and
+// lowering classifies a head by spelling, so a module that declares its OWN `any` and calls it is lowered to the
+// roster's Loop, which resolve refuses as shadowed. RED: that module refuses, typed -- it never binds one of the two
+// silently. (This control was the guard that any had NO row; it flipped to a refusal when the row landed.)
+test fn ccr_declared_any_refuses_rather_than_binding_silently() -> Bool {
+  ccr_declared_any_refuses()
+}
+
+// (3c) FILTER AND ANY ARE THE ROSTER'S, and the declarations that stood for them in v2.std.algebra are gone:
+// the head binds the row, with the callback written under the name every caller used (`predicate`). A named
+// function in the predicate slot is a refusal, never a silent lowering: the callback form lowers a function VALUE.
+test fn ccr_filter_head_binds_its_row() -> Bool {
+  ccr_filter_binds_its_row()
+}
+
+test fn ccr_any_head_binds_its_row() -> Bool {
+  ccr_any_binds_its_row()
+}
+
+test fn ccr_filter_with_a_named_predicate_refuses() -> Bool {
+  ccr_filter_named_predicate_refuses()
+}
+
+// filter conses the kept member, so it is order-preserving only right to left, like map; any joins with ||
+// and runs left to right with all.
+test fn ccr_filter_and_any_directions() -> Bool {
+  ccr_direction_is(d: fold_realized_path_iteration_direction(path: "std.algebra.collection_filter_shape"), want_right: true)
+    && ccr_direction_is(d: fold_realized_path_iteration_direction(path: "std.algebra.collection_any_shape"), want_right: false)
 }
 
 // (4) THE STRUCTURAL COST CONTROL: map's synthesized step body is a construct whose `tail` is the step's

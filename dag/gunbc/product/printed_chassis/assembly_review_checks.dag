@@ -1,6 +1,6 @@
 module product.printed_chassis.assembly_review_checks
 import std.types {Bool,Int,List,Map,String}
-import v2.std.algebra {any,length}
+import v2.std.algebra { length }
 import v2.std.collection {empty_map,map_insert,map_lookup}
 import std.measure {micrometer_count,millimeter_count}
 import std.affine_space {Point3,signed_frame_component_count}

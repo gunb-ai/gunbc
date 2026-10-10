@@ -3,7 +3,6 @@ module gunbc.site.element.tokens
 import std.types { Bool, Int, List, String }
 import std.list { distinct_by_key }
 import std.decimal { fixed_point_wire }
-import v2.std.algebra { filter }
 import extdeps.google.issue_tracker {
   IssueTrackerMeasuredText,
   IssueTrackerMeasuredFace, IssueTrackerFaceBody, IssueTrackerFaceHeading, IssueTrackerFaceMonospace,

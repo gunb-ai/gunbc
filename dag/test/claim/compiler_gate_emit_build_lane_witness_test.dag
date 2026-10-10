@@ -34,7 +34,7 @@ import gunbc.runner_slot_desired {
   JobOwnsNoBoundedCgroup, JobOwnsBoundedCgroup, gunbc_runner_slot_job_cgroup_ownership
 }
 import extdeps.exec.command { shell_command_render }
-import v2.std.algebra { length, filter }
+import v2.std.algebra { length }
 import extdeps.filesystem.filesystem_io
 import gunbc.instrument_targets { self_host_entry, v2_native_cli_entry }
 
