@@ -2,7 +2,6 @@
 
 **Governs** (derived from gunbc.plan_governance):
 
-- [native-obligation-population](native-obligation-population.md) -- implementation program: the native route on the required path
 - [demand-engine-program](demand-engine-program.md) -- compiler-stage authority: demand minimization and the demand engine; materialization, realization and placement
 - [ensure-closure-design](ensure-closure-design.md) -- compiler-stage specialization: completion, residual and closure -- environmental completion at a concrete placement
 

@@ -28,7 +28,6 @@ import gunbc.plans.for_while_loop_sugar { for_while_loop_sugar_plan }
 import gunbc.plans.demand_engine_program { demand_engine_program_plan }
 import gunbc.plans.ensure_closure_design { ensure_closure_design_plan }
 import gunbc.plans.v2_compiler_architecture { v2_compiler_architecture_plan }
-import gunbc.plans.native_obligation_population { native_obligation_population_plan }
 
 data batch_g_plans: List<Plan> = [
   ci_humming_plan,
@@ -58,5 +57,4 @@ data batch_g_plans: List<Plan> = [
   demand_engine_program_plan,
   ensure_closure_design_plan,
   v2_compiler_architecture_plan,
-  native_obligation_population_plan,
 ]

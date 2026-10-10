@@ -45,12 +45,6 @@ data compiler_architecture_root_slug: String = "v2-compiler-architecture"
 
 data plan_governance_rows: List<PlanGovernance> = [
   PlanGovernance {
-    plan_slug: "native-obligation-population",
-    governed_by_slug: "v2-compiler-architecture",
-    role: ImplementationProgram,
-    stage: "the native route on the required path",
-  },
-  PlanGovernance {
     plan_slug: "demand-engine-program",
     governed_by_slug: "v2-compiler-architecture",
     role: CompilerStageAuthority,
