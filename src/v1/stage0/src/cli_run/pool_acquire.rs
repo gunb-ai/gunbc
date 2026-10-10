@@ -107,6 +107,30 @@ thread_local! {
     static POOL: RefCell<HashMap<(String, usize, u64), Rc<Acquired>>> = RefCell::new(HashMap::new());
 }
 
+/// MEMORY-COMPOSITION MEASUREMENT (`cli_run::memory_composition`): the pool's shape, then its
+/// release in two staged steps so the two halves are read back separately. Measurement only --
+/// nothing on a production path calls these.
+pub(crate) fn pool_shape() -> (usize, usize, usize) {
+    POOL.with(|p| {
+        let p = p.borrow();
+        let content: usize = p.values().map(|a| a.content.len()).sum();
+        let heads = p.values().filter(|a| a.heads.borrow().is_some()).count();
+        (p.len(), content, heads)
+    })
+}
+
+pub(crate) fn drop_pool_heads_for_measurement() {
+    POOL.with(|p| {
+        for a in p.borrow().values() {
+            *a.heads.borrow_mut() = None;
+        }
+    });
+}
+
+pub(crate) fn drop_pool_for_measurement() {
+    POOL.with(|p| p.borrow_mut().clear());
+}
+
 thread_local! {
     /// Everything `attribute` has recorded on this thread, so a caller timing a span that forces
     /// acquisitions can report itself NET of them instead of counting the same work twice.
