@@ -146,7 +146,7 @@ fn fixture_push_at(head_sha: String) -> PushRefUpdate {
 }
 
 fn fixture_merge_group_runs_at(head_sha: String) -> WorkflowRunList {
-  let r = WorkflowRun {
+  let r = WorkflowRun { display_title: none,
     id: 1,
     name: Present { value: witness_floor_workflow_name },
     path: Present { value: artifact_path(a: WitnessFloorYamlArtifact) },

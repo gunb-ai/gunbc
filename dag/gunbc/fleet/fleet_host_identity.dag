@@ -72,6 +72,14 @@ data operator_host_srv14: HostIdentity = "srv14"
 data operator_host_srv15: HostIdentity = "srv15"
 data operator_host_srv16: HostIdentity = "srv16"
 
+// OPAQUE IDENTITIES (2026-10-07). From here on a new fleet subject's identity carries no meaning in
+// its spelling -- not a provider, an architecture, a role or a rack position -- because every such
+// fact has its own authority and a spelling that encodes one becomes a second, unmaintained copy of
+// it. People address these hosts by the names gunbc.hostname_allocation draws for them; srv1..srv16,
+// mtcollins1 and mtjade1 keep their historical identities, whose spellings are now just keys.
+data operator_host_183527: HostIdentity = "host-183527"
+data operator_host_3dde7f: HostIdentity = "host-3dde7f"
+
 // THE NAMED ROSTER, ONE LIST BESIDE THE ROWS. A step subject or other label resolves to a host only
 // by joining this membership; a spelling that is not a row here is not a fleet host.
 data operator_hosts: List<HostIdentity> = [
@@ -89,6 +97,8 @@ data operator_hosts: List<HostIdentity> = [
   operator_host_srv14,
   operator_host_srv15,
   operator_host_srv16,
+  operator_host_183527,
+  operator_host_3dde7f,
 ]
 
 fn operator_host_named(label: NonEmptyStr) -> HostIdentity? {

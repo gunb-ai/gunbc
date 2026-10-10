@@ -43,6 +43,18 @@ import gunbc.host_effect {
 import gunbc.host_effect_realize { host_effect_apply }
 import std.realization_reconcile { Converged, NotConverged }
 import product.host_identity { HostIdentity }
+import gunbc.hostname_allocation { resolve_host_selector, HostSelectorResolved, HostSelectorAmbiguous, HostSelectorUnknown }
+import gunbc.fleet_enrollment { HostEnrollmentIntent, enrollment_for_host }
+import gunbc.fleet_host_backing { OwnedMachine, ProviderGuest }
+import gunbc.provider_guest_adoption {
+  GuestAdopted,
+  GuestAdoptionRefused,
+  MicroVmExecutionAdmissible,
+  MicroVmExecutionRefused,
+  adopt_local_provider_guest,
+  guest_adoption_refusal_text,
+  microvm_execution_refusal_text,
+}
 import gunbc.ci_runner_placement {
   HostRunnerDeploymentRefusal,
   HostRunnerDeploymentRefused, HostRunnerDeploymentDerived,
@@ -73,6 +85,8 @@ type ConvergeCliRefusalCause
   = PolicyUnsound { reason: String }
   | UnknownHost { host: String }
   | SparkPreEnrollment { host: String }
+  | ProviderGuestNotAdopted { host: String, cause: String }
+  | ProviderGuestExecutionRefused { host: String, cause: String }
   | SparkManagedAccessUnmeasured { host: String, dissolves_on: String }
   | ComputeInventoryAbsent { host: String }
   | KnobFrontier { reason: String }
@@ -143,6 +157,8 @@ fn converge_cli_refusal_message(cause: ConvergeCliRefusalCause) -> String {
   match cause {
     PolicyUnsound { reason: why } => concat("gunbc converge: fleet policy unsound — ", why)
     UnknownHost { host: h } => converge_cli_unknown_host_reason(host: h)
+    ProviderGuestNotAdopted { host: h, cause: c } => join(["gunbc converge: provider guest ", h, " is not adopted -- ", c], "")
+    ProviderGuestExecutionRefused { host: h, cause: c } => join(["gunbc converge: provider guest ", h, " is adopted; its runner role cannot run -- ", c], "")
     SparkPreEnrollment { host: h } => concat(concat("gunbc converge: ", h), " is a Spark pre-enrollment host — no runner slots or host layout exist yet (SPARK-SERVE-0 owns the repair); reach is probed at its modeled endpoint, and no converge route exists until enrollment")
     SparkManagedAccessUnmeasured { host: h, dissolves_on: trigger } => concat(concat(concat("gunbc converge: ", h), " is enrolled, but its managed automation principal has never been observed — refusing rather than assuming absent. Discharged by: "), trigger)
     ComputeInventoryAbsent { host: h } => converge_cli_compute_inventory_absent_reason(host: h)
@@ -171,11 +187,14 @@ fn converge_cli_receipt_converged(r: ConvergeCliReceipt) -> Bool {
   r.verdict == VerdictConverged
 }
 
+// A fleet compute host is one the hardware catalog carries (gunbc.fleet_intent) -- read from that
+// catalog rather than re-listed here, so a host added to it is a compute host without editing this
+// predicate. A rented guest has no hardware row; it converges through the provider-guest route.
 fn converge_cli_is_fleet_compute_host(host: String) -> Bool {
-  host == (operator_host_srv1 as String)
-    || host == (operator_host_srv2 as String)
-    || host == (operator_host_srv3 as String)
-    || host == (operator_host_srv4 as String)
+  match fleet_compute_host_for_identity(identity: host as HostIdentity) {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
 
 // Provider-runtime cadence (Option A): srv1–srv4 fleet compute converge runs reconcile the
@@ -198,8 +217,26 @@ fn converge_local_kernel_short_hostname() -> String {
   }
 }
 
+// THE KERNEL HOSTNAME IS AN OBSERVATION, NOT AN IDENTITY. It is resolved through the naming
+// authority (gunbc.hostname_allocation resolve_host_selector) to the stable HostIdentity it was
+// allocated to, and everything downstream carries that identity. A hostname nobody allocated, or one
+// that names more than one host, resolves to "" -- which no enrolled identity equals -- so a machine
+// answering to an unallocated name is never mistaken for a fleet host.
+fn converge_host_selector_identity(selector: String) -> String {
+  match resolve_host_selector(selector: selector) {
+    HostSelectorResolved { host: h } => h as String
+    HostSelectorAmbiguous { selector: _, candidates: _ } => ""
+    HostSelectorUnknown { selector: _ } => ""
+  }
+}
+
+fn converge_local_host_identity() -> String {
+  let kernel = converge_local_kernel_short_hostname()
+  if kernel == "" { "" } else { converge_host_selector_identity(selector: kernel) }
+}
+
 fn converge_codex_runtime_local_locus_matches_host(host: String) -> Bool {
-  let local = converge_local_kernel_short_hostname()
+  let local = converge_local_host_identity()
   local != "" && host == local
 }
 
@@ -207,7 +244,7 @@ fn converge_provider_runtime_codex_receipt(host: String) -> ConvergeCliReceipt? 
   if !converge_cli_is_fleet_compute_host(host: host) {
     none
   } else {
-    let local_hostname = converge_local_kernel_short_hostname()
+    let local_hostname = converge_local_host_identity()
     if local_hostname == "" || host != local_hostname {
       Present {
         value: ConvergeCliReceipt {
@@ -326,9 +363,27 @@ type FleetConvergeApplicability
   = ConvergeSlice1Route
   | ConvergeKnobFrontier
   | ConvergeSparkRoute { access: SparkManagedAccessStanding }
+  | ConvergeProviderGuestRoute { intent: HostEnrollmentIntent }
   | ConvergeOutsideFleet
 
+fn enrolled_provider_guest(host: String) -> HostEnrollmentIntent? {
+  match enrollment_for_host(host: host as HostIdentity) {
+    Absent => none
+    Present { value: e } => match e.backing {
+      ProviderGuest { route: _, entitlement: _, resource: _ } => Present { value: e }
+      OwnedMachine { provisioning: _ } => none
+    }
+  }
+}
+
 fn fleet_converge_applicability(host: String) -> FleetConvergeApplicability {
+  match enrolled_provider_guest(host: host) {
+    Present { value: e } => ConvergeProviderGuestRoute { intent: e }
+    Absent => fleet_converge_owned_applicability(host: host)
+  }
+}
+
+fn fleet_converge_owned_applicability(host: String) -> FleetConvergeApplicability {
   if converge_cli_routes_to_slice1(host: host) {
     ConvergeSlice1Route
   } else {
@@ -770,16 +825,17 @@ fn converge_cli_verify_output(host: String) -> ConvergeCliOutput {
 // deploy could skew. Any other value routes unchanged (the operator/CI form). An
 // unresolvable read falls through as the literal, landing in UnknownHost — a typed
 // refusal, never a fabricated identity.
+// `self` resolves through the local kernel hostname; any other selector -- a stable identity, an
+// allocated hostname, or a drawn name's shorter form -- resolves through the same naming authority.
+// An unresolvable selector is returned unchanged so the applicability below refuses it by name.
 fn converge_cli_resolve_self(host: String) -> String {
   if host == "self" {
-    let line = converge_local_kernel_short_hostname()
-    if line == "" {
-      host
-    } else {
-      line
-    }
+    let kernel = converge_local_kernel_short_hostname()
+    let resolved = if kernel == "" { "" } else { converge_host_selector_identity(selector: kernel) }
+    if resolved != "" { resolved } else if kernel != "" { kernel } else { host }
   } else {
-    host
+    let resolved = converge_host_selector_identity(selector: host)
+    if resolved == "" { host } else { resolved }
   }
 }
 
@@ -864,7 +920,41 @@ fn converge_cli_run_host_knobs(host: String) -> ConvergeCliReceipt {
               }
           }
         ConvergeKnobFrontier => converge_cli_receipt_for_listed_host(hosts: hosts, host: host)
+        ConvergeProviderGuestRoute { intent: e } => converge_cli_provider_guest_receipt(host: host, intent: e)
         ConvergeOutsideFleet => converge_cli_receipt_for_listed_host(hosts: hosts, host: host)
       }
+  }
+}
+
+// THE PROVIDER-GUEST ROUTE. The adoption runs where this process runs and refuses unless the provider
+// says that machine is the named guest (gunbc.provider_guest_adoption adopt_local_provider_guest); the receipt keeps its two
+// answers apart: a refused adoption is NotAdopted with its cause; an adopted guest whose microVM
+// execution is refused is reported as exactly that -- adopted, and unable to run the runner role --
+// so a green adoption is never presented as runnable capacity. An adopted guest whose execution is
+// admissible has no runner converge modeled yet, and says so as a frontier rather than reporting
+// convergence.
+fn converge_cli_provider_guest_receipt(host: String, intent: HostEnrollmentIntent) -> ConvergeCliReceipt {
+  match adopt_local_provider_guest(intent: intent) {
+    GuestAdoptionRefused { host: _, cause: c } => ConvergeCliReceipt {
+      host: host,
+      applied: 0,
+      drifted: 0,
+      verdict: VerdictAbsent,
+      reason: Present { value: ProviderGuestNotAdopted { host: host, cause: guest_adoption_refusal_text(cause: c) } },
+    }
+    GuestAdopted { host: _, resource_id: _, observation: _, execution: MicroVmExecutionRefused { cause: c } } => ConvergeCliReceipt {
+      host: host,
+      applied: 0,
+      drifted: 0,
+      verdict: VerdictAbsent,
+      reason: Present { value: ProviderGuestExecutionRefused { host: host, cause: microvm_execution_refusal_text(cause: c) } },
+    }
+    GuestAdopted { host: _, resource_id: _, observation: _, execution: MicroVmExecutionAdmissible } => ConvergeCliReceipt {
+      host: host,
+      applied: 0,
+      drifted: 0,
+      verdict: VerdictAbsent,
+      reason: Present { value: KnobFrontier { reason: join(["gunbc converge: provider guest ", host, " is adopted and microVM-capable; its runner converge is not modeled yet"], "") } },
+    }
   }
 }

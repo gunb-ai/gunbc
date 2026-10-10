@@ -50,6 +50,16 @@ fn rest_refusal_text(o: RestRefusal) -> String {
 // differing only in those names would be two authorities for one provisioning protocol (DESIGN §3),
 // so the names are a record and each federation binds its own. Everything else -- the 409 handling,
 // the impersonation reconcile with readback, the grant last -- is the one protocol.
+// WHO MAY ACT AS A FEDERATION'S ACCOUNT. Every federation but one binds its whole pool standing: the
+// provider's attribute condition is the wall, and any token that passes it may impersonate. A
+// run-scoped federation binds nothing standing -- its pool admits branch dispatches, so a standing
+// binding would hand the account to unreviewed code -- and a run gains the account only through a
+// time-conditioned cell naming that run's id, written after the operator approves that exact run
+// (gunbc.auth.branch_run_grant).
+type FederationImpersonation
+  = StandingPoolImpersonation { principal_set: String }
+  | RunScopedImpersonation
+
 type DedicatedFederation {
   label: String
   pool_id: NonEmptyStr
@@ -57,7 +67,7 @@ type DedicatedFederation {
   provider_id: NonEmptyStr
   attribute_mapping: Map<String, String>
   attribute_condition: String
-  principal_set: String
+  impersonation: FederationImpersonation
   service_account: ServiceAccountEmail
   service_account_id: NonEmptyStr
   service_account_display_name: NonEmptyStr
@@ -75,7 +85,7 @@ fn publisher_dedicated_federation(label: String, f: HealPublisherFederation) -> 
     provider_id: f.provider_id,
     attribute_mapping: heal_publisher_wif_attribute_mapping,
     attribute_condition: heal_publisher_federation_attribute_condition(f: f),
-    principal_set: heal_publisher_federation_principal_set(f: f),
+    impersonation: StandingPoolImpersonation { principal_set: heal_publisher_federation_principal_set(f: f) },
     service_account: f.service_account,
     service_account_id: f.service_account_id,
     service_account_display_name: f.service_account_display_name,
@@ -111,26 +121,42 @@ fn private_heal_publisher_dedicated_federation() -> DedicatedFederation {
 //
 // Until then the pool is the honest description of the member, and the guard that actually holds is
 // the provider's attribute condition -- one provider, whose condition is the wall.
-fn impersonation_cell(f: DedicatedFederation) -> GcpIamBindingCell {
+fn standing_impersonation_cell(principal_set: String) -> GcpIamBindingCell {
   GcpIamBindingCell {
     role: role_iam_workload_identity_user,
-    member: f.principal_set,
+    member: principal_set,
     condition: none
   }
 }
 
+// THE STANDING CELLS A FEDERATION OWNS on its account's policy: one for a standing pool, none for a
+// run-scoped federation, whose run cells are owned by the grant that writes them.
+fn impersonation_cells(f: DedicatedFederation) -> List<GcpIamBindingCell> {
+  match f.impersonation {
+    StandingPoolImpersonation { principal_set: ps } => [standing_impersonation_cell(principal_set: ps)]
+    RunScopedImpersonation => []
+  }
+}
+
+fn standing_principal_set(f: DedicatedFederation) -> String? {
+  match f.impersonation {
+    StandingPoolImpersonation { principal_set: ps } => Present { value: ps }
+    RunScopedImpersonation => none
+  }
+}
+
 fn heal_publisher_impersonation_cell() -> GcpIamBindingCell {
-  impersonation_cell(f: heal_publisher_dedicated_federation())
+  standing_impersonation_cell(principal_set: heal_publisher_federation_principal_set(f: public_heal_publisher_federation()))
 }
 
 fn impersonation_owned(f: DedicatedFederation) -> GcpIamOwnedCellUniverse {
-  GcpIamOwnedCellUniverse { cells: [impersonation_cell(f: f)] }
+  GcpIamOwnedCellUniverse { cells: impersonation_cells(f: f) }
 }
 
 // A WHOLE-POLICY REPLACE THAT RETURNED 200 HAS NOT BEEN SHOWN TO CONTAIN THE CELL IT WAS WRITTEN FOR,
 // so the write is followed by looking for that cell in what came back.
 fn impersonation_binding_present_for(f: DedicatedFederation, policy: GcpPolicy) -> Bool {
-  gcp_cell_in(c: impersonation_cell(f: f), xs: gcp_policy_cells(p: policy))
+  all(impersonation_cells(f: f), c => gcp_cell_in(c: c, xs: gcp_policy_cells(p: policy)))
 }
 
 fn impersonation_binding_present(policy: GcpPolicy) -> Bool {
@@ -150,7 +176,7 @@ fn bind_impersonation(f: DedicatedFederation, token: Secret) -> ProcessExit
       let observed_policy = gcp_policy_from_wire(bindings: observed.bindings, etag: observed.etag, version: observed.version)
       match reconcile_gcp_policy(
         observed: observed_policy,
-        desired_owned: [impersonation_cell(f: f)],
+        desired_owned: impersonation_cells(f: f),
         owned_universe: impersonation_owned(f: f)
       ) {
         GcpPolicyRepresentationLossy { conditional_roles: _ } =>

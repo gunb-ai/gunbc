@@ -91,6 +91,7 @@ type WorkflowRunPullRequest {
 type WorkflowRun {
   id: Int
   name: String?
+  display_title: String?
   path: String?
   head_sha: CommitSha
   head_branch: String?

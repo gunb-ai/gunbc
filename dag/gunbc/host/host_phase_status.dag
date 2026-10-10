@@ -11,13 +11,8 @@ import gunbc.host_standup {
   DeclaredGap,
   host_standup_spine,
 }
-import gunbc.host_assimilation_program {
-  FleetParticipation,
-  HostEnrollmentIntent,
-  assimilation_program_for,
-  ci_runner_enrollment_participation,
-  inference_serving_enrollment_participation,
-}
+import gunbc.host_assimilation_program { assimilation_program_for }
+import gunbc.fleet_enrollment { FleetParticipation, HostEnrollmentIntent, fleet_enrollments }
 import gunbc.host_standup_assimilation_deduction { srv3_post_install_actuation_verdict }
 import gunbc.host_reach_identity_probe {
   observe_host_identity_converge,
@@ -256,19 +251,6 @@ fn host_fleet_phase_matrix(enrollments: List<HostEnrollmentIntent>) -> List<Host
   flat_map(enrollments, e => host_phase_cells_for_enrollment(intent: e))
 }
 
-// The enrolled fleet, read from gunbc.fleet_intent_network's host rows rather than re-listed here —
-// the matrix must never be able to disagree with the intent about WHICH hosts exist. This is also
-// the enrollment prerequisite the srv4 OOM incident priced (fleet_subsumption_manual_gaps section
-// C): a host takes no fleet work until it is an intent row, so a host absent from this list has no
-// cells at all, and one that appears gains a full column of UnknownRefused cells — the work
-// becoming visible the moment the host is enrolled, which is the behaviour the incident wanted.
-
-data fleet_subsumption_enrollments: List<HostEnrollmentIntent> = [
-  HostEnrollmentIntent { host: operator_host_srv1, participation: ci_runner_enrollment_participation },
-  HostEnrollmentIntent { host: operator_host_srv2, participation: ci_runner_enrollment_participation },
-  HostEnrollmentIntent { host: operator_host_srv3, participation: ci_runner_enrollment_participation },
-  HostEnrollmentIntent { host: operator_host_srv4, participation: ci_runner_enrollment_participation },
-]
 
 // The bare host list is DERIVED from the enrollments, never authored beside them. Consumers that
 // legitimately care only about WHICH hosts exist -- toolchain components, network diagnosis, swap
@@ -277,7 +259,7 @@ data fleet_subsumption_enrollments: List<HostEnrollmentIntent> = [
 // Authoring both lists would rebuild the parallel representation this refactor removes.
 
 data fleet_subsumption_hosts: List<HostIdentity> = map(
-  fleet_subsumption_enrollments,
+  fleet_enrollments,
   e => e.host,
 )
 

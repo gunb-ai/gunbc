@@ -10,6 +10,9 @@ import std.decl_ref { DeclarationRef }
 import std.durable_compare_and_set { cas_generation_count, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
 import std.durable_exclusive_hold { HoldSlotAbsent, HoldSlotFree, HoldObservationUnavailable, HoldSlotHeld, HoldSlotUndecodable }
 import product.host_identity { HostIdentity }
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
+import gunbc.fleet_enrollment { enrollment_for_host }
+import gunbc.provider_guest_adoption { provider_microvm_refusal, microvm_execution_refusal_text }
 import product.fabric.identity { fabric_identity_eq }
 import product.fabric.provider_route { CompliancePostureRevision }
 import product.fabric.provider_admission { RouteScopeSanction, ProviderUseScope }
@@ -52,11 +55,41 @@ type WorkspaceHostSupplyRead
 
 // Readiness and hold paths are host-local authorities. Refuse another host before probing any
 // supply or reading readiness; remote orchestration must execute this observer on that host.
+// A HOST WHOSE PROVIDER FORBIDS THE MICROVM PATH HAS NO MICROVM SUPPLY, and says why before any cell
+// is probed: an enrolled provider guest is refused on its offer's cited nested-virtualization fact
+// (gunbc.provider_guest_adoption provider_microvm_refusal), so a fabric reader sees the cause rather
+// than an empty cell list it would have to interpret.
+fn workspace_host_supply_refusal(host: HostIdentity) -> NonEmptyStr? {
+  match enrollment_for_host(host: host) {
+    Absent => none
+    Present { value: e } => match provider_microvm_refusal(backing: e.backing) {
+      Absent => none
+      Present { value: r } => Present { value: microvm_execution_refusal_text(cause: r) as NonEmptyStr }
+    }
+  }
+}
+
+// The local kernel hostname is joined to the requested identity through the hostname the naming
+// authority allocated to it, never by assuming the spellings agree.
+fn workspace_local_host_is(host: HostIdentity, kernel_hostname: String) -> Bool {
+  match canonical_hostname_for_fleet_slot(fleet_slot: host) {
+    Present { value: h } => kernel_hostname != "" && (h as String) == kernel_hostname
+    Absent => false
+  }
+}
+
 fn workspace_observe_host_supply(host: HostIdentity) -> WorkspaceHostSupplyRead {
+  match workspace_host_supply_refusal(host: host) {
+    Present { value: reason } => WorkspaceHostSupplyUnavailable { reason: reason }
+    Absent => workspace_observe_local_host_supply(host: host)
+  }
+}
+
+fn workspace_observe_local_host_supply(host: HostIdentity) -> WorkspaceHostSupplyRead {
   match run_shell_command_capture(command: hostname_short_read_command(), transport: LocalExec) {
     ProcessOutputAbsent => WorkspaceHostSupplyUnavailable { reason: "local host identity is absent" }
     ProcessRefused { exit_code: _, stderr: _ } => WorkspaceHostSupplyUnavailable { reason: "local host identity is unreadable" }
-    ProcessOutputPresent { text: hostname } => if trim(s: hostname) == "" || trim(s: hostname) != (host as String) {
+    ProcessOutputPresent { text: hostname } => if !workspace_local_host_is(host: host, kernel_hostname: trim(s: hostname)) {
       WorkspaceHostSupplyUnavailable { reason: "workspace supply must be observed on the requested host" }
     } else {
       WorkspaceHostSupplyObserved { observation: WorkspaceHostSupplyObservation {

@@ -2,7 +2,7 @@ module gunbc.auth.managed_host_boot_federation_provision
 
 import std.types { list_length }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import gunbc.auth.heal_publisher_provision { DedicatedFederation, dedicated_federation_provision_with_supplied_token }
+import gunbc.auth.heal_publisher_provision { DedicatedFederation, dedicated_federation_provision_with_supplied_token, StandingPoolImpersonation }
 import gunbc.auth.managed_host_boot_federation {
   ManagedHostBootFederation, provisioned_boot_federations, boot_federation_wif_attribute_mapping,
   boot_federation_attribute_condition, boot_federation_principal_set, boot_federation_service_account_member,
@@ -22,7 +22,7 @@ fn boot_dedicated_federation(f: ManagedHostBootFederation) -> DedicatedFederatio
     provider_id: f.names.provider_id,
     attribute_mapping: boot_federation_wif_attribute_mapping,
     attribute_condition: boot_federation_attribute_condition(f: f),
-    principal_set: boot_federation_principal_set(f: f),
+    impersonation: StandingPoolImpersonation { principal_set: boot_federation_principal_set(f: f) },
     service_account: f.names.service_account,
     service_account_id: f.names.service_account_id,
     service_account_display_name: f.names.service_account_display_name,

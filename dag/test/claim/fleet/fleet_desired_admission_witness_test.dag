@@ -73,7 +73,7 @@ fn admitting_push() -> PushRefUpdate {
 }
 
 fn admitting_runs() -> WorkflowRunList {
-  let r = WorkflowRun {
+  let r = WorkflowRun { display_title: none,
     id: 1,
     name: Present { value: witness_floor_workflow_name },
     path: Present { value: ".github/workflows/witnesses.yml" },

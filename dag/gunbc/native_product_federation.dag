@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, List, Map }
 import std.optional { Present }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifProvider, wif_provider_resource, wif_pool_resource }
 import gunbc.repository { gunbc_repository_numeric_identity }
-import gunbc.auth.heal_publisher_provision { DedicatedFederation }
+import gunbc.auth.heal_publisher_provision { DedicatedFederation, StandingPoolImpersonation }
 import gunbc.auth.gcp_secret_access { SecretAccessGrant }
 import gunbc.auth.managed_host_boot_federation { pinned_version_accessor_grant_for }
 import gunbc.auth.github_gcp_federation {
@@ -45,7 +45,7 @@ fn native_product_read_federation() -> DedicatedFederation {
     provider_id: github_wif_provider_id,
     attribute_mapping: github_wif_attribute_mapping,
     attribute_condition: github_wif_attribute_condition(),
-    principal_set: github_wif_principal_set(),
+    impersonation: StandingPoolImpersonation { principal_set: github_wif_principal_set() },
     service_account: native_product_read_service_account,
     service_account_id: "native-product-read",
     service_account_display_name: "Native product store reader (WIF-only, one pinned secret version, no keys)",
@@ -121,7 +121,7 @@ fn native_product_write_federation() -> DedicatedFederation {
     provider_id: native_product_write_wif_provider_id,
     attribute_mapping: native_product_write_attribute_mapping,
     attribute_condition: native_product_write_attribute_condition(),
-    principal_set: native_product_write_principal_set(),
+    impersonation: StandingPoolImpersonation { principal_set: native_product_write_principal_set() },
     service_account: native_product_write_service_account,
     service_account_id: "native-product-write",
     service_account_display_name: "Native product store writer (WIF-only, merge_group only, no keys)",

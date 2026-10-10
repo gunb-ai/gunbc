@@ -1,0 +1,182 @@
+module gunbc.fleet_enrollment
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.decl_ref { decl_ref }
+import product.host_identity { HostIdentity }
+import extdeps.cloud.hetzner { cax41_catalog }
+import product.supplier.hetzner { hetzner_nuremberg_route, hetzner_helsinki_route }
+import product.fabric.provider_route { ProviderRoute }
+import gunbc.fleet_host_backing {
+  HostBacking,
+  OwnedMachine,
+  BmcVirtualMediaInstall,
+  ApplianceFirstBoot,
+  ProviderGuest,
+  ProviderResourceAcquired,
+  ProviderResourceBinding,
+  backing_microvm_forbidding_offer,
+}
+import gunbc.hetzner_cloud_guest { hetzner_cloud_guest_entitlement }
+import gunbc.hetzner_cloud_acquisition { hetzner_cax41_nbg1_1_acquisition, hetzner_cax41_hel1_1_acquisition }
+import gunbc.fleet_host_identity {
+  operator_host_srv1,
+  operator_host_srv2,
+  operator_host_srv3,
+  operator_host_srv4,
+  operator_host_183527,
+  operator_host_3dde7f,
+}
+
+// THE FLEET'S ENROLLMENT ROOT. Which hosts are in the fleet, what each is for and what supplies it
+// are declared ONCE, here, and every fleet population is derived from this roster -- the standup
+// phase matrix (gunbc.host_phase_status), the runner population, capacity control and session
+// residency's denominator. Before this module the same membership was re-listed as literal srv1-srv4
+// lists in several consumers, and adding a machine meant finding every list; now it is one row.
+// This module is deliberately light: a consumer that only needs WHO is enrolled imports it without
+// pulling in standup programs, provider APIs, physical inventory or convergence.
+
+// Participation is what a host DOES for the fleet, and it is a LIST because the axes are
+// independent rather than exclusive: nothing in the model forbids a host that both runs CI and
+// serves inference, and a coproduct would have forced a third fused variant the first time that
+// happened. It is deliberately NOT a host KIND enum (AltraRunner | SparkAppliance) -- kind is
+// hardware, participation is role, and binding obligations to hardware would mean a future Altra
+// dedicated to serving inherits BMC obligations because of what it is made of rather than what it
+// is for. srv5 and srv6 stay opaque host identities for the same reason: the identity survives a
+// role change or a hardware replacement, and DGX Spark remains a product fact recorded elsewhere,
+// never part of the host's permanent name.
+
+type FleetParticipation
+  = CiRunnerParticipation
+  | InferenceServingParticipation
+  | InteractiveSessionParticipation
+
+fn fleet_participation_label(p: FleetParticipation) -> String {
+  match p {
+    CiRunnerParticipation => "ci-runner"
+    InferenceServingParticipation => "inference-serving"
+    InteractiveSessionParticipation => "interactive-session"
+  }
+}
+
+fn fleet_participation_eq(a: FleetParticipation, b: FleetParticipation) -> Bool {
+  fleet_participation_label(p: a) == fleet_participation_label(p: b)
+}
+
+// An enrollment joins three separate facts about one stable identity: what the host is FOR
+// (participation), and what SUPPLIES it (backing, gunbc.fleet_host_backing). Its allocated names live
+// in gunbc.hostname_allocation and are not repeated here. A known identity can exist without a
+// participation, a participation can exist before its readiness is established, and only the
+// applicable admission downstream produces runnable capacity.
+type HostEnrollmentIntent {
+  host: HostIdentity
+  participation: List<FleetParticipation>
+  backing: HostBacking
+}
+
+fn participation_list_contains(ps: List<FleetParticipation>, wanted: FleetParticipation) -> Bool {
+  filter(ps, p => fleet_participation_eq(a: p, b: wanted)).length() > 0
+}
+
+// The CI-runner program is the identity anchor for the refactor: it must select the WHOLE spine,
+// because every phase authored to date exists to serve runner hosts. If a later phase is added that
+// no participation claims, or one that CI does not claim, this equality breaks and the witness reds
+// -- which is the intended alarm, not a maintenance burden. It is the discriminating control that
+// distinguishes 'the refactor preserved srv1-srv4 exactly' from 'the refactor produced a
+// plausible-looking matrix'.
+
+data ci_runner_enrollment_participation: List<FleetParticipation> = [CiRunnerParticipation]
+
+data inference_serving_enrollment_participation: List<FleetParticipation> = [InferenceServingParticipation]
+
+// Interactive agent sessions are their own participation, not an attribute of CI: which hosts run
+// session containers is the fact that charges a host a sessions reservation (gunbc.session_residency)
+// and scopes CLI-provider capacity control (gunbc.fleet_capacity_control). It coincided with the CI
+// hosts on srv1-srv4, and the coincidence was carried as copies of the same four-host list; a rented
+// CI guest runs no sessions, so the two are separate rows the first time they differ.
+data ci_runner_and_session_enrollment_participation: List<FleetParticipation> = [
+  CiRunnerParticipation,
+  InteractiveSessionParticipation,
+]
+
+data both_participation_enrollment_participation: List<FleetParticipation> = [
+  InferenceServingParticipation,
+  CiRunnerParticipation,
+]
+
+// THE TWO HETZNER CLOUD CAX41 GUESTS (ordered by the operator 2026-10-07 and recreated 2026-10-08: one in Nuremberg, one in Helsinki). Their
+// participation is the CI runner role the operator intends for them; whether that role can RUN is
+// not decided here -- the entitlement says nested virtualization is unavailable on Hetzner Cloud, so
+// the Firecracker execution path downstream refuses on it with that cause. Each is bound to its
+// provider resource id (gunbc.hetzner_cloud_acquisition), never to a console display name, because a
+// display name is not the resource an operation may target.
+fn cax41_guest(route: ProviderRoute, resource: ProviderResourceBinding) -> HostBacking {
+  ProviderGuest {
+    route: route,
+    entitlement: hetzner_cloud_guest_entitlement(
+      row: cax41_catalog,
+      offer: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "cax41_catalog"),
+    ),
+    resource: resource,
+  }
+}
+
+// The enrolled fleet. gunbc.host_phase_status reads it rather than re-listing it, so the standup
+// matrix can never disagree with the roster about WHICH hosts exist. This is also
+// the enrollment prerequisite the srv4 OOM incident priced (fleet_subsumption_manual_gaps section
+// C): a host takes no fleet work until it is an intent row, so a host absent from this list has no
+// cells at all, and one that appears gains a full column of UnknownRefused cells — the work
+// becoming visible the moment the host is enrolled, which is the behaviour the incident wanted.
+
+data fleet_enrollments: List<HostEnrollmentIntent> = [
+  HostEnrollmentIntent { host: operator_host_srv1, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: BmcVirtualMediaInstall } },
+  HostEnrollmentIntent { host: operator_host_srv2, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: BmcVirtualMediaInstall } },
+  HostEnrollmentIntent { host: operator_host_srv3, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: BmcVirtualMediaInstall } },
+  HostEnrollmentIntent { host: operator_host_srv4, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: BmcVirtualMediaInstall } },
+  HostEnrollmentIntent {
+    host: operator_host_183527,
+    participation: ci_runner_enrollment_participation,
+    backing: cax41_guest(
+      route: hetzner_nuremberg_route(),
+      resource: ProviderResourceAcquired { acquisition: hetzner_cax41_nbg1_1_acquisition },
+    ),
+  },
+  HostEnrollmentIntent {
+    host: operator_host_3dde7f,
+    participation: ci_runner_enrollment_participation,
+    backing: cax41_guest(
+      route: hetzner_helsinki_route(),
+      resource: ProviderResourceAcquired { acquisition: hetzner_cax41_hel1_1_acquisition },
+    ),
+  },
+]
+
+// The hosts enrolled for one participation, in roster order. Every per-role population a consumer
+// needs is this one filter, so a consumer can never hold a host list that disagrees with the roster.
+fn hosts_enrolled_for(wanted: FleetParticipation) -> List<HostIdentity> {
+  map(
+    filter(fleet_enrollments, e => participation_list_contains(ps: e.participation, wanted: wanted)),
+    e => e.host,
+  )
+}
+
+// THE RUNNER-EXECUTOR POPULATION: hosts enrolled for CI whose backing does not forbid the microVM
+// execution path. It is narrower than the CI enrollment on purpose -- a CAX guest is enrolled for CI
+// and refused execution by its provider, so it is a member of hosts_enrolled_for(CiRunnerParticipation)
+// (its refusal is visible there) and NOT of this set, which is what a pinned runner, a workflow host
+// choice or a slot census walks. A provider whose offer permits nesting joins it with no edit here.
+fn runner_executor_hosts() -> List<HostIdentity> {
+  map(
+    filter(fleet_enrollments, e =>
+      participation_list_contains(ps: e.participation, wanted: CiRunnerParticipation)
+        && match backing_microvm_forbidding_offer(backing: e.backing) {
+          Present { value: _ } => false
+          Absent => true
+        }
+    ),
+    e => e.host,
+  )
+}
+
+fn enrollment_for_host(host: HostIdentity) -> HostEnrollmentIntent? {
+  filter(fleet_enrollments, e => (e.host as String) == (host as String)).first()
+}
