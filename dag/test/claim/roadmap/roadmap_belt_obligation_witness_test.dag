@@ -12,6 +12,7 @@ import gunbc.roadmap.roadmap_belt_obligation {
   belt_attempt_outstanding, belt_attempt_next_after, belt_attempt_obligation_kind_key,
   belt_attempt_obligation_unit_name, belt_instance_obligation_unit_name,
   ServedObservationObligation, LaunchObligation, belt_record_moved_obligation_kinds, belt_instance_obligation_kind_key,
+  BeltOperatorAction, OperatorDispatch, OperatorStop, OperatorPublish, OperatorIssueWrite, belt_operator_follow_up_kinds,
 }
 import gunbc.roadmap_belt_actuate {
   belt_obligation_hold_decision, BeltObligationMayStart, BeltObligationIsHeld, BeltObligationHoldUnread,
@@ -114,4 +115,15 @@ test fn the_deployment_wakes_the_drain_on_an_exit_and_installs_no_belt_timer() -
     && any(lines, l => l == join(["Unit=", deployment_belt_exit_drain_service_unit_name(names: spec.names) as String], ""))
     && !any(steps, st => string_contains(s: st.path as String, pattern: "-belt.timer"))
     && any(systemd_unit_file_lines(file: live_deploy_belt_exit_drain_service_unit_file(spec: spec)), l => string_contains(s: l, pattern: "--function belt_exit_drain_cli"))
+}
+
+fn follow_up_keys(action: BeltOperatorAction) -> String {
+  join(belt_operator_follow_up_kinds(action: action) |> map(k => belt_instance_obligation_kind_key(kind: k)), ",")
+}
+
+test fn each_operator_route_declares_the_obligations_it_enqueues() -> Bool {
+  follow_up_keys(action: OperatorDispatch) == "observe,launch"
+    && follow_up_keys(action: OperatorStop) == "observe,launch"
+    && follow_up_keys(action: OperatorPublish) == "observe"
+    && follow_up_keys(action: OperatorIssueWrite) == "observe"
 }

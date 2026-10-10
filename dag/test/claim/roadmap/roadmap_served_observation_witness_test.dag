@@ -32,6 +32,8 @@ import gunbc.roadmap_served_observation {
   served_observation_body_read_from_observation,
   served_observation_body_response,
   served_observation_index_refusal,
+  served_observation_freshness,
+  ObservationCurrent, ObservationStale,
   served_observation_entry_for,
   served_observation_standing_json_value,
   served_observation_standing_http_status,
@@ -335,4 +337,17 @@ test fn the_snapshot_files_are_homed_in_the_instance_receipts_dir_not_the_shared
 
 test fn the_standing_route_is_served() -> Bool {
   any(roadmap_serve_route_specs(), r => r.raw == "/observation.json" && (match r.handler { ObservationJsonHandler => true  _ => false }))
+}
+
+// An index older than the newest event is stale; equal or newer is current. Serving the older
+// bytes without this standing would be silent wrongness (DESIGN §5).
+test fn a_newer_event_makes_the_served_observation_stale() -> Bool {
+  match served_observation_freshness(observed_at: "2026-10-10T18:00:00Z", newest_event_at: "2026-10-10T18:00:01Z") {
+    ObservationStale { observed_at, newest_event_at } => observed_at == "2026-10-10T18:00:00Z" && newest_event_at == "2026-10-10T18:00:01Z"
+    ObservationCurrent => false
+  }
+    && match served_observation_freshness(observed_at: "2026-10-10T18:00:01Z", newest_event_at: "2026-10-10T18:00:01Z") {
+      ObservationCurrent => true
+      ObservationStale { observed_at: _, newest_event_at: _ } => false
+    }
 }

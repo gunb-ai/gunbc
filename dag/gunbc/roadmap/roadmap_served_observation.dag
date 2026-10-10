@@ -687,15 +687,15 @@ fn served_observation_body_response(entry: ServedObservationEntry, body: ServedO
   }
 }
 
-// The reader's refusals are distinct states with distinct owners: Absent means the belt has not
-// ticked since the receipts dir was created (or the timer is not running); Unreadable means a
+// The reader's refusals are distinct states with distinct owners: Absent means no follow-up has
+// written a served observation for this instance yet; Unreadable means a
 // producer and this reader disagree about the index wire; Missing means the index was written by a
 // producer that did not render this surface; BodyMissing and BodyMismatch mean the body on disk is
 // not the one the index names. None of them observes the host as a substitute.
 fn served_observation_index_refusal(read: ServedObservationRead, kind: ServedObservationKind) -> ServeHttpResponse {
   match read {
     ServedObservationAbsent =>
-      served_observation_refusal_response(refusal: "ServedObservationAbsent", detail: "no belt tick has published a served observation for this instance yet")
+      served_observation_refusal_response(refusal: "ServedObservationAbsent", detail: "no follow-up has published a served observation for this instance yet")
     ServedObservationUnreadable { reason } =>
       served_observation_refusal_response(refusal: "ServedObservationUnreadable", detail: reason)
     ServedObservationPresent { index } =>
@@ -711,6 +711,25 @@ fn served_observation_entry_for(read: ServedObservationRead, kind: ServedObserva
     ServedObservationPresent { index } => served_observation_entry_lookup(index: index, kind: kind)
     ServedObservationAbsent => ServedObservationEntryMissing
     ServedObservationUnreadable { reason: _ } => ServedObservationEntryMissing
+  }
+}
+
+// FRESHNESS IS A COMPARISON, NOT A CLOCK. The pre-render is last-known-good bytes. Serving them
+// as current when a newer event exists is silent wrongness (DESIGN §5). A request-time rescan of
+// the event log would restore the per-request observation the split exists to remove. The check is
+// therefore this fold over two supplied instants: the index's observed_at and the newest event's
+// recorded_at. When the event is newer the standing is stale; the surface still returns the stored
+// body but names the standing so the bytes are not presented as current. Routes enqueue
+// ServedObservationObligation so the window is the obligation's latency, not a minute-timer.
+type ServedObservationFreshness
+  = ObservationCurrent
+  | ObservationStale { observed_at: String, newest_event_at: String }
+
+fn served_observation_freshness(observed_at: String, newest_event_at: String) -> ServedObservationFreshness {
+  if newest_event_at > observed_at {
+    ObservationStale { observed_at: observed_at, newest_event_at: newest_event_at }
+  } else {
+    ObservationCurrent
   }
 }
 

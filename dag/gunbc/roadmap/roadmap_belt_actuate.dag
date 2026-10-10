@@ -558,6 +558,7 @@ import gunbc.roadmap.roadmap_belt_obligation {
   BeltAttemptObligationKind, CaptureObligation, VerifyObligation, ReviewObligation, AuditObligation, PublishObligation,
   belt_attempt_obligation_order, belt_attempt_obligation_outstanding, belt_attempt_obligation_kind_key, belt_attempt_outstanding,
   BeltInstanceObligationKind, belt_instance_obligation_kinds, belt_record_moved_obligation_kinds, belt_instance_obligation_kind_key, LaunchObligation,
+  BeltOperatorAction, belt_operator_follow_up_kinds,
   belt_attempt_obligation_unit_name, belt_instance_obligation_unit_name, belt_discovery_attempt_bound,
   BeltObligationEnqueue, BeltObligationStarted, BeltObligationHeld, BeltObligationEnqueueRefused,
 }
@@ -13912,6 +13913,10 @@ fn belt_instance_obligation_enqueue(instance: HostDashboardInstance, kind: BeltI
     args: [join(["kind=", belt_instance_obligation_kind_key(kind: kind)], "")],
     stop_hook: Absent,
   )
+}
+
+fn belt_enqueue_operator_follow_ups(instance: HostDashboardInstance, action: BeltOperatorAction) -> List<BeltObligationEnqueue> {
+  belt_operator_follow_up_kinds(action: action) |> map(k => belt_instance_obligation_enqueue(instance: instance, kind: k))
 }
 
 fn belt_obligation_enqueue_json(e: BeltObligationEnqueue) -> JsonValue {

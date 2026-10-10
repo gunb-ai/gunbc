@@ -42,6 +42,7 @@ import gunbc.host_layout {
 import gunbc.live_deploy.emit {
   live_deploy_protocol,
   emit_publication_service_unit_doc,
+  live_deploy_publication_path_unit_file,
   emit_belt_service_unit_doc,
   emit_systemd_unit_doc,
 }
@@ -52,8 +53,13 @@ import gunbc.live_deploy.release_locus {
 import gunbc.live_deploy.spec {
   DeploymentSpec,
   deployment_credential_env_path,
+  deployment_publication_service_unit_name,
+  deployment_owned_steps,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import extdeps.systemd.unit_file { systemd_unit_file_lines }
+import v2.std.algebra { any }
 
 // WHAT THIS FILE ASSERTS, AND WHAT IT CANNOT.
 //
@@ -474,4 +480,14 @@ test fn a_request_and_its_answer_are_addressed_in_different_directories() -> Boo
 test fn two_instances_do_not_share_a_spool() -> Bool {
   publication_request_dir(instance_root: "/opt/gunbc")
     != publication_request_dir(instance_root: "/opt/gunbc-lab")
+}
+
+test fn the_publication_helper_is_triggered_by_a_path_unit_not_a_timer() -> Bool {
+  let spec = live_spec()
+  let lines = systemd_unit_file_lines(file: live_deploy_publication_path_unit_file(spec: spec))
+  let request_dir = publication_request_dir(instance_root: spec.service.instance_root as String)
+  any(lines, l => l == join(["DirectoryNotEmpty=", request_dir], ""))
+    && any(lines, l => l == join(["Unit=", deployment_publication_service_unit_name(names: spec.names) as String], ""))
+    && !any(lines, l => string_contains(s: l, pattern: "OnUnitInactiveSec"))
+    && !any(deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names), s => string_contains(s: s.path as String, pattern: "-publication.timer"))
 }
