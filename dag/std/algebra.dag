@@ -243,7 +243,7 @@ type FinitelySupportedFunction<K, V> {
 
 // THE MAP-LITERAL INTRODUCTION: the declaration a map literal `{ "k": v, .. }` elaborates to, as
 // `FreeMonoid` is the one a list literal elaborates to (v2.std.map_introduction carries its head
-// path and constructor; docs/plans/map-literal-introduction-design.md). It is NOT a second
+// path and constructor). It is NOT a second
 // constructor of the carrier: it is the carrier's own insert (the `map_insert` row of
 // `finitely_supported_function_templates`) folded over its own empty (the `empty_map` row), in
 // authored order. It lives HERE, below `std.types`, because `std.types`' own map literals elaborate
@@ -907,7 +907,7 @@ fn kernel_carrier_admits_numeral(name: String) -> Bool {
 }
 
 // Whether distinct keys of a finite map are decidably distinct: consumed by the map-literal
-// duplicate-key check (docs/plans/map-literal-introduction-design.md). The admission is
+// duplicate-key check. The admission is
 // instantiation-blind at this rung -- an opaque brand or a type parameter admits unjudged -- and its
 // next-rung trigger is instantiation-grain admission (v1 infer equality_admission_wall_note).
 fn algebra_profile_equality_extensional(profile: AlgebraProfile) -> Bool {

@@ -362,7 +362,9 @@ fn route_control_plane_write_count(route: List<QualificationStage>) -> Int {
   )
 }
 
-// EVERY BMC WRITE IS UNDER THE APPROVAL GATE, by declaration identity.
+// EVERY BMC WRITE IS UNDER THE APPROVAL GATE, by declaration identity. The arms are named, not
+// wildcarded: a stage effect added later must state here what the gate audit reads from it, or the
+// route stops compiling -- a fresh write-shaped effect may not inherit the audit's pass.
 fn route_bmc_writes_are_gated(route: List<QualificationStage>) -> Bool {
   route |> all(s =>
     match stage_effect(stage: s) {
@@ -414,6 +416,8 @@ fn route_deregisters_what_it_registered(route: List<QualificationStage>) -> Bool
     && (registered |> all(u => deregistered |> any(d => d == u)))
 }
 
+// Only a dispatch stage is asked to name the attempt; the other four stages say so by name, not
+// by wildcard, so a stage added later must state that here rather than inherit the vacuous pass.
 fn route_dispatch_selector_names_the_attempt(route: List<QualificationStage>, attempt: NonEmptyStr) -> Bool {
   route |> all(s =>
     match s {

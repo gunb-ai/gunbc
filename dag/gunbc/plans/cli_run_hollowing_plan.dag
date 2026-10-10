@@ -114,7 +114,7 @@ fn cli_run_hollowing_plan_body() -> List<MarkdownBlock> {
         ]),
         row(cells: [
           cell(text: "Floor observability & width"),
-          cell(text: "`gunbc.floor_materialization` · `dag/std/realization_width.dag` · [realization-measurement-loop.md](realization-measurement-loop.md)"),
+          cell(text: "`gunbc.floor_materialization` · `dag/std/realization_width.dag`"),
           cell(text: "partial"),
           cell(text: "Scheduler emits receipts; HAND timing deletes with floor native routing"),
         ]),
