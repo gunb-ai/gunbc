@@ -573,10 +573,28 @@ fn dag_string_escape_char_pattern() -> LexPattern {
   )
 }
 
-fn dag_string_escape_sequence_pattern() -> LexPattern {
+// v1.compiler.tokenize scan_string_body consumes `\u{` as the escape prefix (backslash, u, brace)
+// before the interpolation check, so a Unicode-escape brace is never a hole opener. Digit
+// accumulation stays with decode (dag_string_decode_step). Without this prefix, `\u{E9}` lexes
+// `\` and `u` as StringTextChar and `{E` as dag_string_hole_opener_pattern (E is IdentStartChar) —
+// a documented escape read as a template hole (review 78485).
+fn dag_string_unicode_escape_prefix_pattern() -> LexPattern {
   SequencePattern {
     left: CharPattern { char: 92 },
-    right: dag_string_escape_char_pattern()
+    right: SequencePattern {
+      left: CharPattern { char: 117 },
+      right: CharPattern { char: 123 }
+    }
+  }
+}
+
+fn dag_string_escape_sequence_pattern() -> LexPattern {
+  ChoicePattern {
+    left: dag_string_unicode_escape_prefix_pattern(),
+    right: SequencePattern {
+      left: CharPattern { char: 92 },
+      right: dag_string_escape_char_pattern()
+    }
   }
 }
 
