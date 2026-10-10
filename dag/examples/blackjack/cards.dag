@@ -5,4 +5,53 @@ module examples.blackjack.cards
 // section 4.1 (authority gunbc.plans.blackjack_onboarding) and is written by the contributor
 // working that brief. This anchor is the one declaration given, so the file parses on day one
 // and shows the shape of a closed set of alternatives.
-type Suit = Clubs | Diamonds | Hearts | Spades
+
+type Suit
+    = Clubs
+    | Diamonds
+    | Hearts
+    | Spades
+
+type Rank
+    = Ace
+    | Two
+    | Three
+    | Four
+    | Five
+    | Six
+    | Seven
+    | Eight
+    | Nine
+    | Ten
+    | Jack
+    | Queen
+    | King
+
+type Card {
+    rank: Rank
+    suit: Suit
+    }
+
+fn rank_pips(r: Rank) -> Int {
+    match r {
+        Ace => 11
+        Two => 2
+        Three => 3
+        Four => 4
+        Five => 5
+        Six => 6
+        Seven => 7
+        Eight => 8
+        Nine => 9
+        Ten => 10
+        Jack => 10
+        Queen => 10
+        King => 10
+    }
+}
+
+fn is_ace(c: Card) -> Bool {
+    c.rank == Ace
+}
+
+data standard_deck: List<Card> = [Ace, Two, Three, Four, Five, Six, Seven, Eight, Nine, Ten, Jack, Queen, King] |> flat_map(r => [Clubs, Diamonds, Hearts, Spades] |> map(s => Card { rank: r, suit: s}))

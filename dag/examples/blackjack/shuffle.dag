@@ -5,4 +5,56 @@ module examples.blackjack.shuffle
 // (authority gunbc.plans.blackjack_onboarding). The anchor is the replay handle: a recorded
 // value, not an entropy source. Entropy is reached only through extdeps.entropy and only from
 // the one integration claim that section 6 of the brief describes.
+
+import std.integer { UInt8 }
+
+import examples.blackjack.cards { Card }
+import examples.blackjack.round { Shoe }
+
 type ShuffleSeed { value: Int }
+
+type ShuffleState {
+    cards:List<Card>
+    seed: ShuffleSeed
+}
+
+fn shuffle(deck: List<Card>, seed: ShuffleSeed) -> Shoe {
+    let final_state = fold(
+        deck,
+        init: ShuffleState {
+            cards: [],
+            seed: seed,
+        },
+        f: (state, card) =>
+            if ((next_seed(seed: state.seed).value / 65536) % 2) == 0 {
+                ShuffleState {
+                    cards: concat([card], state.cards),
+                    seed: next_seed(seed: state.seed),
+                }
+            } else {
+                ShuffleState {
+                    cards: concat(state.cards, [card]),
+                    seed: next_seed(seed: state.seed),
+                }
+            }
+    )
+
+    Shoe { cards: final_state.cards }
+}
+
+fn next_seed(seed: ShuffleSeed) -> ShuffleSeed {
+    ShuffleSeed {
+        value: (seed.value * 1103515245 + 12345) % 2147483648
+    }
+}
+
+fn seed_from_octets(octets: List<UInt8>) -> ShuffleSeed {
+    ShuffleSeed {
+        value: fold(
+            octets,
+            init: 0,
+            f: (acc, octet) =>
+                (acc * 256 + octet) % 2147483648,
+        )
+    }
+}

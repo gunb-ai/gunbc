@@ -7,4 +7,335 @@ module examples.blackjack.simulation
 // specified in docs/plans/blackjack-onboarding.md section 4.5 (authority
 // gunbc.plans.blackjack_onboarding). The anchor is a teaching fixture and not
 // blackjack advice: the two thresholds the brief compares are both inhabitants of it.
-type Strategy = HitBelow { threshold: Int }
+
+import examples.blackjack.cards { Card, standard_deck }
+import examples.blackjack.hand { Hand, hand_value }
+import examples.blackjack.round {
+    BlackjackRules,
+    RoundOutcome,
+    RoundRefusal,
+    RoundState,
+    RoundStep,
+    Shoe,
+    PlayerAction,
+    PlayerHits,
+    PlayerStands,
+    deal,
+    apply_player_action,
+    play_dealer_turn,
+    RoundComplete,
+    PlayerTurn,
+    DealerTurn,
+    RoundStepped,
+    RoundRefused,
+    PlayerWon,
+    DealerWon,
+    Pushed,
+}
+import examples.blackjack.shuffle { ShuffleSeed, shuffle, next_seed }
+
+type Strategy
+    = HitBelow { threshold: Int }
+
+type SimulationPlan {
+    rounds: Int
+    seed: ShuffleSeed
+    rules: BlackjackRules
+    strategy: Strategy
+}
+
+type SimulatedRound {
+    round_index: Int
+    seed: ShuffleSeed
+    player_actions: List<PlayerAction>
+    player_total: Int
+    dealer_total: Int
+    outcome: RoundOutcome
+}
+
+type RoundPlay
+    = RoundPlayed { round: SimulatedRound }
+    | RoundPlayRefused { cause: RoundRefusal }
+
+type BlackjackSimulation
+    = SimulationCompleted { rounds: List<SimulatedRound> }
+    | SimulationRefused {
+        round_index: Int
+        seed: ShuffleSeed
+        cause: RoundRefusal
+    }
+
+type SimulationSummary {
+    rounds: Int
+    player_wins: Int
+    dealer_wins: Int
+    pushes: Int
+    player_blackjacks: Int
+    player_busts: Int
+}
+
+type SeededShoe {
+    seed: ShuffleSeed
+    shoe: Shoe
+}
+
+fn choose(strategy: Strategy, player: Hand) -> PlayerAction {
+    match strategy {
+        HitBelow { threshold: threshold } =>
+            if hand_value(hand: player).total < threshold {
+                PlayerHits
+            } else {
+                PlayerStands
+            }
+    }
+}
+
+fn play_round_from_shoe(
+    index: Int,
+    seed: ShuffleSeed,
+    shoe: Shoe,
+    rules: BlackjackRules,
+    strategy: Strategy,
+) -> RoundPlay {
+    match deal(shoe: shoe) {
+        RoundStepped { state: state } =>
+            drive_round(
+                index: index,
+                seed: seed,
+                state: state,
+                rules: rules,
+                strategy: strategy,
+                player_actions: [],
+            )
+        RoundRefused { cause: cause } =>
+            RoundPlayRefused { cause: cause }
+    }
+}
+
+fn drive_round(
+    index: Int,
+    seed: ShuffleSeed,
+    state: RoundState,
+    rules: BlackjackRules,
+    strategy: Strategy,
+    player_actions: List<PlayerAction>,
+) -> RoundPlay {
+    match state {
+        RoundComplete { player: player, dealer: dealer, outcome: outcome } =>
+            RoundPlayed {
+                round: SimulatedRound {
+                    round_index: index,
+                    seed: seed,
+                    player_actions: player_actions,
+                    player_total: hand_value(hand: player).total,
+                    dealer_total: hand_value(hand: dealer).total,
+                    outcome: outcome,
+                }
+            }
+
+        PlayerTurn { player: player, dealer: dealer, shoe: shoe } =>
+            let action = choose(strategy: strategy, player: player)
+            match apply_player_action(
+                state: PlayerTurn {
+                    player: player,
+                    dealer: dealer,
+                    shoe: shoe,
+                },
+                action: action,
+            ) {
+                RoundStepped { state: next_state } =>
+                    drive_round(
+                        index: index,
+                        seed: seed,
+                        state: next_state,
+                        rules: rules,
+                        strategy: strategy,
+                        player_actions: concat(player_actions, [action]),
+                    )
+                RoundRefused { cause: cause } =>
+                    RoundPlayRefused { cause: cause }
+            }
+
+        DealerTurn { player: player, dealer: dealer, shoe: shoe } =>
+            match play_dealer_turn(
+                state: DealerTurn {
+                    player: player,
+                    dealer: dealer,
+                    shoe: shoe,
+                },
+                rules: rules,
+            ) {
+                RoundStepped { state: next_state } =>
+                    drive_round(
+                        index: index,
+                        seed: seed,
+                        state: next_state,
+                        rules: rules,
+                        strategy: strategy,
+                        player_actions: player_actions,
+                    )
+                RoundRefused { cause: cause } =>
+                    RoundPlayRefused { cause: cause }
+            }
+    }
+}
+
+fn play_round(
+    index: Int,
+    seed: ShuffleSeed,
+    rules: BlackjackRules,
+    strategy: Strategy,
+) -> RoundPlay {
+    play_round_from_shoe(
+        index: index,
+        seed: seed,
+        shoe: shuffle(deck: standard_deck, seed: seed),
+        rules: rules,
+        strategy: strategy,
+    )
+}
+
+fn seeded_shoes(plan: SimulationPlan) -> List<SeededShoe> {
+    seeded_shoes_from(
+        remaining: plan.rounds,
+        seed: plan.seed,
+    )
+}
+
+fn seeded_shoes_from(
+    remaining: Int,
+    seed: ShuffleSeed,
+) -> List<SeededShoe> {
+    if remaining <= 0 {
+        []
+    } else {
+        concat(
+            [
+                SeededShoe {
+                    seed: seed,
+                    shoe: shuffle(deck: standard_deck, seed: seed),
+                }
+            ],
+            seeded_shoes_from(
+                remaining: remaining - 1,
+                seed: next_seed(seed: seed),
+            ),
+        )
+    }
+}
+
+fn simulate_shoes(
+    shoes: List<SeededShoe>,
+    rules: BlackjackRules,
+    strategy: Strategy,
+) -> BlackjackSimulation {
+    simulate_shoes_from(
+        round_index: 0,
+        shoes: shoes,
+        rules: rules,
+        strategy: strategy,
+    )
+}
+
+fn simulate_shoes_from(
+    round_index: Int,
+    shoes: List<SeededShoe>,
+    rules: BlackjackRules,
+    strategy: Strategy,
+) -> BlackjackSimulation {
+    match shoes.first() {
+        Absent =>
+            SimulationCompleted { rounds: [] }
+
+        Present { value: seeded_shoe } =>
+            match play_round_from_shoe(
+                index: round_index,
+                seed: seeded_shoe.seed,
+                shoe: seeded_shoe.shoe,
+                rules: rules,
+                strategy: strategy,
+            ) {
+                RoundPlayRefused { cause: cause } =>
+                    SimulationRefused {
+                        round_index: round_index,
+                        seed: seeded_shoe.seed,
+                        cause: cause,
+                    }
+
+                RoundPlayed { round: round } =>
+                    match simulate_shoes_from(
+                        round_index: round_index + 1,
+                        shoes: shoes.skip(n: 1),
+                        rules: rules,
+                        strategy: strategy,
+                    ) {
+                        SimulationCompleted { rounds: later_rounds } =>
+                            SimulationCompleted {
+                                rounds: concat([round], later_rounds)
+                            }
+
+                        SimulationRefused {
+                            round_index: refused_index,
+                            seed: refused_seed,
+                            cause: refused_cause,
+                        } =>
+                            SimulationRefused {
+                                round_index: refused_index,
+                                seed: refused_seed,
+                                cause: refused_cause,
+                            }
+                    }
+            }
+    }
+}
+
+fn simulate(plan: SimulationPlan) -> BlackjackSimulation {
+    simulate_shoes(
+        shoes: seeded_shoes(plan: plan),
+        rules: plan.rules,
+        strategy: plan.strategy,
+    )
+}
+
+fn summarize(rounds: List<SimulatedRound>) -> SimulationSummary {
+    fold(
+        rounds,
+        init: SimulationSummary {
+            rounds: 0,
+            player_wins: 0,
+            dealer_wins: 0,
+            pushes: 0,
+            player_blackjacks: 0,
+            player_busts: 0,
+        },
+        f: (summary, round) =>
+            SimulationSummary {
+                rounds: summary.rounds + 1,
+
+                player_wins: summary.player_wins
+                    + if round.outcome == PlayerWon { 1 } else { 0 },
+
+                dealer_wins: summary.dealer_wins
+                    + if round.outcome == DealerWon { 1 } else { 0 },
+
+                pushes: summary.pushes
+                    + if round.outcome == Pushed { 1 } else { 0 },
+
+                player_blackjacks: summary.player_blackjacks
+                    + if round.outcome == PlayerWon
+                        && round.player_total == 21
+                        && round.player_actions.length() == 0 {
+                        1
+                    } else {
+                        0
+                    },
+
+                player_busts: summary.player_busts
+                    + if round.player_total > 21 { 1 } else { 0 },
+            },
+    )
+}
+
+fn summary_reconciles(s: SimulationSummary) -> Bool {
+    s.player_wins + s.dealer_wins + s.pushes == s.rounds
+}

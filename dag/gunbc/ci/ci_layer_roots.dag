@@ -409,6 +409,10 @@ data excl_local_repo_wet_tempdir_write_dissolve: DissolutionCondition = unbound_
 
 data excl_local_repo_wet_enrolment_code_reason: String = "real host-effect execution witness over the approval broker's enrolment code whose subjects are reached only through two effects with no mock_response: a FILESYSTEM WRITE INTO A THROWAWAY TEMP DIRECTORY (shell.Mktemp.DirWithTemplate, then the enrolment slot's file CAS, then shell.Remove.RecursiveForce of that directory -- the same admitted effect excl_local_repo_wet_tempdir_write_reason names) and ONE READ OF THE KERNEL ENTROPY SOURCE (Urandom.ReadBytes, sixteen octets). The entropy read is named rather than folded into the tempdir row because it is a different effect: it writes nothing, and its value is deliberately unpredictable, so the claim that reads it asserts only the SHAPE the real read produces (32 lowercase hex characters) -- the inhabitance half of DESIGN section 3's pairing obligation, whose supplied-octets half runs hermetically in test.claim.approval_device_enrolment_code_witness_test. Shared negative half: no network, no cargo, no remote host, nothing outside a directory the witness created and removes. Excluded from the discovery corpus and executed by the required floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule), every function in the named file on that schedule."
 
+data excl_local_repo_wet_blackjack_shuffle_reason: String = "real host-effect execution witness over the Blackjack shuffle: the claim makes one kernel-entropy read through Urandom.ReadBytes, writes nothing, and asserts only that decoding the result, deriving a seed, and shuffling the standard deck produces a 52-card permutation. Its deterministic counterpart supplies fixed octets in test.claim.examples.blackjack_shuffle_witness_test. Excluded from the discovery corpus and executed by the required floor's local-repo wet lane."
+
+data excl_local_repo_wet_blackjack_shuffle_dissolve: DissolutionCondition = unbound_dissolution(description: "a fixed-octets mock_response lands for Urandom.ReadBytes; then this claim re-enrols as an ordinary hermetic discovery row, drops off local_repo_wet_schedule, and this row deletes")
+
 data excl_local_repo_wet_enrolment_code_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for shell.Mktemp.DirWithTemplate and the file CAS writes sufficient for the enrolment slot write to be driven under a fixed store, and a fixed-octets mock_response lands for Urandom.ReadBytes; then both fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes")
 
 data excl_local_repo_wet_ntfy_runtime_readback_reason: String = "real host-effect execution witness over the approval broker's enrolment-code root, gunbc.auth.approval_device_enrolment_code issue_device_enrolment_code, which accepts only a release revision and whose first effect is gunbc.auth.approval_ntfy_access_readback approval_ntfy_runtime_reading: READ-ONLY HOST PROCESS READS through shell.Exec.RunArgv (systemctl show, cat of /proc files, getconf, stat, id, the ntfy binary's version and access listing, tailscale serve status, several under sudo -n), for which the hermetic route has no published mock case. None of them writes; the claim asserts the verb refuses before any code is minted and that the store root is never created, and that holds on EVERY host because every reading's verdict is a refusal (a failed or inactive unit, a runtime gap, or -- the claim passing a revision that is never installed -- the per-release process-observation helper's read failing), so admitting it imports no host-conditional red. The same module's second claim runs that helper entry (gunbc.auth.approval_ntfy_runtime_observe approval_ntfy_runtime_observe) for real and asserts its printed outcome decodes through the verb's codec, which holds on every host (a refusal naming its read, or an observation). Every refusal arm is witnessed hermetically over supplied readings in test.claim.approval_ntfy_access_readback_witness_test; this is the one claim that runs the real root. Excluded from the discovery corpus and executed by the required floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule)."
@@ -1190,6 +1194,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_enrolment_code_reason,
     dissolution: excl_local_repo_wet_enrolment_code_dissolve},
   WitnessExclusionRow {
+    pattern: "blackjack_shuffle_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_blackjack_shuffle_reason,
+    dissolution: excl_local_repo_wet_blackjack_shuffle_dissolve,
+},
+  WitnessExclusionRow {
     pattern: "approval_ntfy_access_readback_wet_witness_test.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_ntfy_runtime_readback_reason,
@@ -1282,6 +1292,7 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tun_real_reader_reason,
     dissolution: excl_local_repo_wet_tun_real_reader_dissolve}
+
 ]
 
 fn witness_exclusion_row_is_offline(row: WitnessExclusionRow) -> Bool {
