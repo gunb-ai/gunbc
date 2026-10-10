@@ -59,7 +59,10 @@ type CodexItemActivity
   | HarnessRefusingUnrecognizedTool
   | CodexUnclassifiedItem
 
-// THE GUNBC HARNESS INTERLEAVES EVENTS OF ITS OWN in the Codex-shaped stream: round.usage, the
+// ONE SHARED EVENT VOCABULARY. Codex, Claude Code, and the gunbc harness write one JSONL
+// stream the belt reads; the kind is not a Codex type that other providers nickname into.
+// CodexProviderEventKind is deleted (DESIGN §3 replacement migration at the root).
+// THE GUNBC HARNESS INTERLEAVES EVENTS OF ITS OWN in that stream: round.usage, the
 // per-round token and clock accounting the dashboard's round strip reads (gunbc.harness.harness_throughput);
 // turn.alignment_checkpoint_due, the epoch-boundary announcement a chain-carrying turn ends on;
 // and turn.wire_log_unwritable, the non-terminal notice that a round's durable wire-log write
@@ -68,37 +71,48 @@ type CodexItemActivity
 // serving seat before any provider call (gunbc.harness.harness_cli harness_bind_seat_waiting). Before these arms the whole stream was refused at such a line as an unknown
 // event type, so a live harness attempt rendered as "Agent evidence refused" with no strip
 // (first belt-dispatched attempt, 2026-09-04).
-type CodexProviderEventKind
-  = CodexThreadStarted
-  | CodexTurnStarted
-  | CodexItemStarted { activity: CodexItemActivity }
-  | CodexItemCompleted { activity: CodexItemActivity }
-  | CodexTurnCompleted
-  | CodexTurnFailed
-  | CodexError
+type ProviderEventKind
+  = ThreadStarted
+  | TurnStarted
+  | ItemStarted { activity: CodexItemActivity }
+  | ItemCompleted { activity: CodexItemActivity }
+  | TurnCompleted
+  | TurnFailed
+  | ProviderStreamError
   | HarnessRoundUsage
   | HarnessBudgetExhausted
   | HarnessAlignmentCheckpointDue
   | HarnessWireLogUnwritable
   | HarnessPlacementWaiting
 
-type CodexProviderEvent {
+// Skip is not refuse: a line the classifier names as noise is dropped and the stream continues.
+// Refuse is a located stream failure. The classifier decides which; jq does not.
+type ProviderEventSkipReason
+  = SkipRateLimitEvent
+  | SkipClaudeUserWithoutToolResult
+
+type ProviderEventLineDisposition
+  = ProviderEventObserved { kind: ProviderEventKind }
+  | ProviderEventSkipped { reason: ProviderEventSkipReason }
+  | ProviderEventLineRefused { reason: String }
+
+type ProviderEvent {
   line_number: Int
   raw: String
-  kind: CodexProviderEventKind
+  kind: ProviderEventKind
 }
 
-type CodexEventParse
-  = CodexEventsParsed { events: List<CodexProviderEvent> }
-  | CodexEventsRefused {
-      events_before_refusal: List<CodexProviderEvent>,
+type ProviderEventParse
+  = ProviderEventsParsed { events: List<ProviderEvent> }
+  | ProviderEventStreamRefused {
+      events_before_refusal: List<ProviderEvent>,
       line_number: Int,
       raw: String,
       reason: String,
     }
 
-type CodexParseFold {
-  events: List<CodexProviderEvent>
+type ProviderParseFold {
+  events: List<ProviderEvent>
   next_line_number: Int
   total_lines: Int
   refused: Bool
@@ -175,7 +189,7 @@ data codex_provider_event_projection_filter: NonEmptyStr = join([
   to_string(character_count_value(c: codex_provider_projection_type_budget)),
   "] else \"unknown\" end),\"is_error\":(if (.is_error | type) == \"boolean\" then .is_error else true end)} elif $type == \"system\" then {\"type\":$type} elif $type == \"assistant\" or $type == \"user\" then {\"type\":$type,\"message\":{\"content\":(if (.message.content | type) == \"array\" then [.message.content[] | {\"type\":(if (.type | type) == \"string\" then .type[0:",
   to_string(character_count_value(c: codex_provider_projection_type_budget)),
-  "] else \"unknown\" end)}] else [] end)}} elif $type == \"rate_limit_event\" then empty else {\"type\":$type} end",
+  "] else \"unknown\" end)}] else [] end)}} else {\"type\":$type} end",
 ], "") as NonEmptyStr
 
 fn codex_provider_event_projection_args(path: FilePath) -> List<String> {
@@ -187,30 +201,34 @@ fn codex_provider_event_projection_args(path: FilePath) -> List<String> {
   ]
 }
 
-fn claude_code_line_codex_kind(line: ClaudeCodeStreamLine) -> CodexProviderEventKind? {
+fn classify_claude_code_stream_line(line: ClaudeCodeStreamLine) -> ProviderEventLineDisposition {
   match line {
-    ClaudeCodeSystemLine => Present { value: CodexThreadStarted }
+    ClaudeCodeSystemLine =>
+      ProviderEventObserved { kind: ThreadStarted }
     ClaudeCodeAssistantLine { has_tool_use } =>
       if has_tool_use {
-        Present { value: CodexItemStarted { activity: CodexRunningCommand } }
+        ProviderEventObserved { kind: ItemStarted { activity: CodexRunningCommand } }
       } else {
-        Present { value: CodexItemCompleted { activity: CodexReporting } }
+        ProviderEventObserved { kind: ItemCompleted { activity: CodexReporting } }
       }
     ClaudeCodeUserLine { has_tool_result } =>
       if has_tool_result {
-        Present { value: CodexItemCompleted { activity: CodexRunningCommand } }
+        ProviderEventObserved { kind: ItemCompleted { activity: CodexRunningCommand } }
       } else {
-        none
+        ProviderEventSkipped { reason: SkipClaudeUserWithoutToolResult }
       }
     ClaudeCodeResultLine { result } =>
       if result.is_error {
-        Present { value: CodexTurnFailed }
+        ProviderEventObserved { kind: TurnFailed }
       } else {
-        Present { value: CodexTurnCompleted }
+        ProviderEventObserved { kind: TurnCompleted }
       }
-    ClaudeCodeRateLimitEventLine { info: _ } => none
-    ClaudeCodeOtherLine { event_type: _ } => none
-    ClaudeCodeLineUnreadable { gap: _ } => none
+    ClaudeCodeRateLimitEventLine { info: _ } =>
+      ProviderEventSkipped { reason: SkipRateLimitEvent }
+    ClaudeCodeOtherLine { event_type: _ } =>
+      ProviderEventLineRefused { reason: "unknown provider JSONL event type" }
+    ClaudeCodeLineUnreadable { gap: _ } =>
+      ProviderEventLineRefused { reason: "malformed Claude stream-json line" }
   }
 }
 
@@ -225,7 +243,7 @@ fn claude_code_line_codex_kind(line: ClaudeCodeStreamLine) -> CodexProviderEvent
 // visible as an observation refusal for retained attempts. A malformed raw event makes jq nonzero,
 // so no parsed prefix is accepted as a complete observation.
 
-data codex_projection_filter_scaffold_note: String = "DECLARED SCAFFOLD (review 44058, DESIGN 6). codex_provider_event_projection_filter is a jq PROGRAM assembled by join — a foreign language built as a string, the same class the tmux pipe payload was in before it moved onto the bash backend (gunbc.dispatch_pipe_pane_emit). It is marked rather than fixed because the two available routes are not equivalent: minting a jq grammar to read backward would buy a modeled emitter for a filter that exists ONLY to bound a line before the substrate reads it, which is the purity trap DESIGN 6 names — the displaced cost is zero once the read itself is bounded. DISSOLVES ON: the observation reading the attempt JSONL directly under a substrate-side line bound instead of shelling to a projector — the witness-realization lane's typed file read (docs/plans/witness-realization-plan.md), at which point BOTH the filter string and the ProviderEventProjectionCapability jq dependency delete together. Until then the interpolated values are the two bounds above (both Int data rows), never caller input, and the classifier downstream is anchored and total, so a projector drift refuses rather than reclassifying. Claude Code stream-json is bounded here (type, is_error, content-block types) and classified by claude_code_line_codex_kind from parse_codex_jsonl; the jq does not mint Codex event types for Claude lines."
+data codex_projection_filter_scaffold_note: String = "DECLARED SCAFFOLD (review 44058, DESIGN 6). codex_provider_event_projection_filter is a jq PROGRAM assembled by join — a foreign language built as a string, the same class the tmux pipe payload was in before it moved onto the bash backend (gunbc.dispatch_pipe_pane_emit). It is marked rather than fixed because the two available routes are not equivalent: minting a jq grammar to read backward would buy a modeled emitter for a filter that exists ONLY to bound a line before the substrate reads it, which is the purity trap DESIGN 6 names — the displaced cost is zero once the read itself is bounded. DISSOLVES ON: the observation reading the attempt JSONL directly under a substrate-side line bound instead of shelling to a projector — the witness-realization lane's typed file read (docs/plans/witness-realization-plan.md), at which point BOTH the filter string and the ProviderEventProjectionCapability jq dependency delete together. Until then the interpolated values are the two bounds above (both Int data rows), never caller input, and classify_provider_event_line is the one typed classifier: jq bounds and preserves fields and makes no skip-or-refuse verdict."
 
 // Codex --json is the provider protocol authority: one JSON object per line with thread.started,
 // turn.started, item.*, turn.completed, turn.budget_exhausted, turn.failed, and error event types,
@@ -432,102 +450,43 @@ fn codex_item_activity_label(activity: CodexItemActivity) -> String {
   }
 }
 
-fn codex_event_from_complete_line(
-  raw: String,
-  line_number: Int,
-) -> CodexProviderEvent? {
+fn classify_provider_event_line(raw: String) -> ProviderEventLineDisposition {
   if codex_line_has_top_level_type(raw: raw, event_type: "thread.started") {
-    Present { value: CodexProviderEvent {
-      line_number: line_number,
-      raw: raw,
-      kind: CodexThreadStarted,
-    } }
+    ProviderEventObserved { kind: ThreadStarted }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.started") {
-    Present { value: CodexProviderEvent {
-      line_number: line_number,
-      raw: raw,
-      kind: CodexTurnStarted,
-    } }
+    ProviderEventObserved { kind: TurnStarted }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "item.started") {
-    Present { value: CodexProviderEvent {
-      line_number: line_number,
-      raw: raw,
-      kind: CodexItemStarted { activity: codex_item_activity(raw: raw) },
-    } }
+    ProviderEventObserved { kind: ItemStarted { activity: codex_item_activity(raw: raw) } }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "item.completed") {
-    Present { value: CodexProviderEvent {
-      line_number: line_number,
-      raw: raw,
-      kind: CodexItemCompleted { activity: codex_item_activity(raw: raw) },
-    } }
+    ProviderEventObserved { kind: ItemCompleted { activity: codex_item_activity(raw: raw) } }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.completed") {
-    Present { value: CodexProviderEvent {
-      line_number: line_number,
-      raw: raw,
-      kind: CodexTurnCompleted,
-    } }
+    ProviderEventObserved { kind: TurnCompleted }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.failed") {
-    Present { value: CodexProviderEvent {
-      line_number: line_number,
-      raw: raw,
-      kind: CodexTurnFailed,
-    } }
+    ProviderEventObserved { kind: TurnFailed }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.budget_exhausted") {
-    Present { value: CodexProviderEvent {
-      line_number: line_number,
-      raw: raw,
-      kind: HarnessBudgetExhausted,
-    } }
+    ProviderEventObserved { kind: HarnessBudgetExhausted }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "round.usage") {
-    Present { value: CodexProviderEvent {
-      line_number: line_number,
-      raw: raw,
-      kind: HarnessRoundUsage,
-    } }
+    ProviderEventObserved { kind: HarnessRoundUsage }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.alignment_checkpoint_due") {
-    Present { value: CodexProviderEvent {
-      line_number: line_number,
-      raw: raw,
-      kind: HarnessAlignmentCheckpointDue,
-    } }
+    ProviderEventObserved { kind: HarnessAlignmentCheckpointDue }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.placement_waiting") {
-    Present { value: CodexProviderEvent {
-      line_number: line_number,
-      raw: raw,
-      kind: HarnessPlacementWaiting,
-    } }
+    ProviderEventObserved { kind: HarnessPlacementWaiting }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.wire_log_unwritable") {
-    Present { value: CodexProviderEvent {
-      line_number: line_number,
-      raw: raw,
-      kind: HarnessWireLogUnwritable,
-    } }
+    ProviderEventObserved { kind: HarnessWireLogUnwritable }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "error") {
-    Present { value: CodexProviderEvent {
-      line_number: line_number,
-      raw: raw,
-      kind: CodexError,
-    } }
+    ProviderEventObserved { kind: ProviderStreamError }
   } else {
-    match claude_code_line_codex_kind(line: claude_code_stream_line(line: raw)) {
-      Present { value: kind } =>
-        Present { value: CodexProviderEvent {
-          line_number: line_number,
-          raw: raw,
-          kind: kind,
-        } }
-      Absent => none
-    }
+    classify_claude_code_stream_line(line: claude_code_stream_line(line: raw))
   }
 }
 
-fn codex_parse_fold_line(
-  state: CodexParseFold,
+fn provider_parse_fold_line(
+  state: ProviderParseFold,
   line: String,
   line_budget: CharacterCount,
-) -> CodexParseFold {
+) -> ProviderParseFold {
   if state.refused {
-    CodexParseFold {
+    ProviderParseFold {
       events: state.events,
       next_line_number: state.next_line_number + 1,
       total_lines: state.total_lines,
@@ -542,7 +501,7 @@ fn codex_parse_fold_line(
     let is_trailing_empty = raw == ""
       && state.next_line_number == state.total_lines
     if is_trailing_empty {
-      CodexParseFold {
+      ProviderParseFold {
         events: state.events,
         next_line_number: state.next_line_number + 1,
         total_lines: state.total_lines,
@@ -552,51 +511,52 @@ fn codex_parse_fold_line(
         refused_reason: "",
       }
     } else if !measure_le(a: raw_chars, b: line_budget) {
-      CodexParseFold {
+      ProviderParseFold {
         events: state.events,
         next_line_number: state.next_line_number + 1,
         total_lines: state.total_lines,
         refused: true,
         refused_line_number: state.next_line_number,
         refused_raw: join([
-          "<oversized Codex JSONL event elided: ",
+          "<oversized provider JSONL event elided: ",
           to_string(character_count_value(c: raw_chars)),
           " chars>",
         ], ""),
         refused_reason: join([
-          "Codex JSONL event exceeds observation line budget ",
+          "provider JSONL event exceeds observation line budget ",
           to_string(character_count_value(c: line_budget)),
           " chars; full raw remains in attempt evidence",
         ], ""),
       }
     } else if raw == "" {
-      CodexParseFold {
+      ProviderParseFold {
         events: state.events,
         next_line_number: state.next_line_number + 1,
         total_lines: state.total_lines,
         refused: true,
         refused_line_number: state.next_line_number,
         refused_raw: line,
-        refused_reason: "empty line inside Codex JSONL stream",
+        refused_reason: "empty line inside provider JSONL stream",
       }
     } else if !json_text_parseable(s: raw) {
-      CodexParseFold {
+      ProviderParseFold {
         events: state.events,
         next_line_number: state.next_line_number + 1,
         total_lines: state.total_lines,
         refused: true,
         refused_line_number: state.next_line_number,
         refused_raw: line,
-        refused_reason: "malformed or truncated Codex JSONL object",
+        refused_reason: "malformed or truncated provider JSONL object",
       }
     } else {
-      match codex_event_from_complete_line(
-        raw: raw,
-        line_number: state.next_line_number,
-      ) {
-        Present { value: event } =>
-          CodexParseFold {
-            events: append(state.events, [event]),
+      match classify_provider_event_line(raw: raw) {
+        ProviderEventObserved { kind } =>
+          ProviderParseFold {
+            events: append(state.events, [ProviderEvent {
+              line_number: state.next_line_number,
+              raw: raw,
+              kind: kind,
+            }]),
             next_line_number: state.next_line_number + 1,
             total_lines: state.total_lines,
             refused: false,
@@ -604,15 +564,25 @@ fn codex_parse_fold_line(
             refused_raw: "",
             refused_reason: "",
           }
-        Absent =>
-          CodexParseFold {
+        ProviderEventSkipped { reason: _ } =>
+          ProviderParseFold {
+            events: state.events,
+            next_line_number: state.next_line_number + 1,
+            total_lines: state.total_lines,
+            refused: false,
+            refused_line_number: 0,
+            refused_raw: "",
+            refused_reason: "",
+          }
+        ProviderEventLineRefused { reason } =>
+          ProviderParseFold {
             events: state.events,
             next_line_number: state.next_line_number + 1,
             total_lines: state.total_lines,
             refused: true,
             refused_line_number: state.next_line_number,
             refused_raw: line,
-            refused_reason: "unknown Codex JSONL event type",
+            refused_reason: reason,
           }
       }
     }
@@ -622,14 +592,14 @@ fn codex_parse_fold_line(
 fn parse_codex_jsonl_with_line_budget(
   text: String,
   line_budget: CharacterCount,
-) -> CodexEventParse {
+) -> ProviderEventParse {
   if text == "" {
-    CodexEventsParsed { events: [] }
+    ProviderEventsParsed { events: [] }
   } else {
     let lines = split(s: text, delimiter: "\n")
     let state = fold(
       lines,
-      init: CodexParseFold {
+      init: ProviderParseFold {
         events: [],
         next_line_number: 1,
         total_lines: count(lines),
@@ -639,7 +609,7 @@ fn parse_codex_jsonl_with_line_budget(
         refused_reason: "",
       },
       f: fn(acc, line) {
-        codex_parse_fold_line(
+        provider_parse_fold_line(
           state: acc,
           line: line,
           line_budget: line_budget,
@@ -647,19 +617,19 @@ fn parse_codex_jsonl_with_line_budget(
       },
     )
     if state.refused {
-      CodexEventsRefused {
+      ProviderEventStreamRefused {
         events_before_refusal: state.events,
         line_number: state.refused_line_number,
         raw: state.refused_raw,
         reason: state.refused_reason,
       }
     } else {
-      CodexEventsParsed { events: state.events }
+      ProviderEventsParsed { events: state.events }
     }
   }
 }
 
-fn parse_codex_jsonl(text: String) -> CodexEventParse {
+fn parse_codex_jsonl(text: String) -> ProviderEventParse {
   parse_codex_jsonl_with_line_budget(
     text: text,
     line_budget: codex_provider_event_line_observation_budget,
@@ -694,7 +664,7 @@ fn harness_placement_waiting_detail(raw: String) -> String {
 
 fn provider_execution_fold_event(
   state: ProviderExecutionState,
-  event: CodexProviderEvent,
+  event: ProviderEvent,
 ) -> ProviderExecutionState {
   match state {
     ProviderCompleted { activity: _ } => state
@@ -703,8 +673,8 @@ fn provider_execution_fold_event(
     ProviderEventsRefused { activity: _, detail: _ } => state
     _ =>
       match event.kind {
-        CodexThreadStarted => ProviderStarting { activity: "thread started" }
-        CodexTurnStarted => ProviderRunning { activity: "agent started" }
+        ThreadStarted => ProviderStarting { activity: "thread started" }
+        TurnStarted => ProviderRunning { activity: "agent started" }
         HarnessRoundUsage => state
         HarnessWireLogUnwritable => state
         HarnessPlacementWaiting => ProviderAwaitingSeat { detail: harness_placement_waiting_detail(raw: event.raw) }
@@ -713,14 +683,14 @@ fn provider_execution_fold_event(
             activity: "Alignment checkpoint due · adjudication decides resume",
             detail: event.raw,
           }
-        CodexItemStarted { activity } =>
+        ItemStarted { activity } =>
           ProviderRunning {
             activity: join(
               ["Agent working · ", codex_item_activity_label(activity: activity)],
               "",
             ),
           }
-        CodexItemCompleted { activity } =>
+        ItemCompleted { activity } =>
           ProviderRunning {
             activity: match activity {
               CodexReporting => "Agent finishing"
@@ -731,21 +701,21 @@ fn provider_execution_fold_event(
                 ),
             },
           }
-        CodexTurnCompleted =>
+        TurnCompleted =>
           ProviderCompleted { activity: "Agent complete" }
-        CodexTurnFailed =>
+        TurnFailed =>
           ProviderFailed { activity: "agent turn failed", detail: event.raw }
         HarnessBudgetExhausted =>
           ProviderBudgetSpent { activity: "Agent stopped at its round budget", detail: event.raw }
-        CodexError =>
+        ProviderStreamError =>
           ProviderFailed { activity: "provider error", detail: event.raw }
       }
   }
 }
 
-fn provider_execution_state(parsed: CodexEventParse) -> ProviderExecutionState {
+fn provider_execution_state(parsed: ProviderEventParse) -> ProviderExecutionState {
   match parsed {
-    CodexEventsParsed { events } =>
+    ProviderEventsParsed { events } =>
       fold(
         events,
         init: ProviderNotStarted,
@@ -753,7 +723,7 @@ fn provider_execution_state(parsed: CodexEventParse) -> ProviderExecutionState {
           provider_execution_fold_event(state: state, event: event)
         },
       )
-    CodexEventsRefused {
+    ProviderEventStreamRefused {
       events_before_refusal,
       line_number,
       raw,
