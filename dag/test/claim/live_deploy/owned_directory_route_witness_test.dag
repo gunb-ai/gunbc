@@ -21,7 +21,8 @@ import gunbc.owned_directory {
   owned_directory_observe, owned_directory_parent, owned_directory_basename, ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverExited,
 }
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv1_lab_dashboard_instance }
-import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance, roadmap_event_carrier_directory }
+import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance }
+import gunbc.roadmap.roadmap_event_carrier_directory { roadmap_event_carrier_directory }
 import gunbc.auth.login_transaction_store { login_transaction_store_layout_for_instance, login_transaction_store_directory }
 import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_target, deploy_witness_spec_with_only_directory }

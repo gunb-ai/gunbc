@@ -8,7 +8,7 @@ import gunbc.auth.login_transaction_store { login_transaction_store_directory }
 import gunbc.auth.oidc_id_token_verification { jwks_cache_directory }
 import gunbc.auth.profile_projection { profile_store_directory }
 import gunbc.roadmap_view_preference_store { issue_view_store_directory }
-import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_directory }
+import gunbc.roadmap.roadmap_event_carrier_directory { roadmap_event_carrier_directory }
 import gunbc.compute.host_capacity { compute_root_directory }
 import gunbc.fabric_storage_placement { fabric_storage_directory_demands }
 

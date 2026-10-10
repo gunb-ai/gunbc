@@ -40,6 +40,7 @@ import extdeps.git {
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance, srv2_dashboard_preview_id, dashboard_instance_shared_directory, dashboard_instance_child }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
+import gunbc.roadmap.roadmap_event_carrier_directory { roadmap_events_worktree_child, roadmap_event_carrier_directory }
 import gunbc.roadmap_dispatch_actuator { dispatch_capability_program }
 import gunbc.roadmap_execution_contract { GitWorkspaceCapability, AttemptStateDirectoryCapability }
 import gunbc.roadmap.roadmap_event_log {
@@ -65,18 +66,6 @@ type RoadmapEventCarrierLayout {
   git_program: String
   directory_program: String
   remote: String
-}
-
-data roadmap_events_worktree_child: String = "roadmap-events"
-
-// THE DIRECTORY THE CARRIER DEMANDS: the worktree it checks the event branch out into, under the instance
-// root. The carrier's `git worktree add` cannot create it where the instance root is not the service
-// principal's to write (srv1's /opt/gunbc is root-owned), which is what answered every issue page 503;
-// so the directory is a target both deployment routes ensure (gunbc.roadmap.dashboard_instance_directories)
-// and the layout's worktree is read off it. The worktree is checked out INTO the ensured directory --
-// roadmap_event_carrier_ensure treats an empty directory as one to check out into, not as a worktree.
-fn roadmap_event_carrier_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
-  dashboard_instance_shared_directory(instance: instance, member: "roadmap-events" as NonEmptyStr, child: roadmap_events_worktree_child)
 }
 
 // Built from the instance the way the dispatch actuator builds attempt roots: the repository, the
