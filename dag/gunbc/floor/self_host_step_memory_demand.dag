@@ -14,17 +14,14 @@ data self_host_step_memory_demand_disposition: ConstructionMechanism = SingleAut
 // (owner, scale, ender: claims about the code, not measurements) and READS the bytes from the receipt
 // the instrument wrote. It declares no byte figure of its own.
 //
-// THE RECEIPT is `tools/self_host_step_memory_receipt.tsv`, tab separated, one reading per line:
-//   bucket   <stage> <bytes>   written by the seed under GUNBC_MEMORY_COMPOSITION=1 with
-//                              GUNBC_MEMORY_COMPOSITION_RECEIPT=<path>: what malloc_trim returned
-//                              after releasing that structure
-//   inferred <name>  <bytes>   a two-closure regression: a BET, never a fact
-//   sampler  <name>  <bytes>   the 1 s beat sampler over the systemd-run scope
-//   phase    <step> <phase> <seed_rss> <rustc_rss_sum> <cgroup_current>   the sampler cut at log seams
-// The recipe producing the sampler and phase lines is in docs/plans/self-host-step-memory-audit.md.
-//
-// MEASURED VS INFERRED (DESIGN 4d) is the receipt's line kind: `bucket` and `sampler` are measured,
-// `inferred` is a bet and the reader who consumes it as a fact is the defect.
+// THE RECEIPT is `tools/self_host_step_memory_receipt.tsv`, tab separated, one reading per line, ALL
+// written by the seed itself under GUNBC_MEMORY_COMPOSITION=1 with
+// GUNBC_MEMORY_COMPOSITION_RECEIPT=<path> during one `gunbc test //gunbc/instruments:self-host`:
+//   bucket <name> <bytes>              what malloc_trim returned after releasing that structure
+//   stage  <name> <rss> <peak_rss>     the seed's own resident set at a seam inside the emission
+// Nothing in the file is hand-assembled; the PR that commits it names the run that wrote it. What the
+// seed cannot write (the cgroup sampler over rustc and the controls, the two-closure regression) is
+// the declared frontier in docs/plans/self-host-step-memory-audit.md, not a line here.
 
 type StepDemandOwner
   = SeedProcess
@@ -67,10 +64,6 @@ data self_host_step_memory_structures: List<StepMemoryStructure> = [
   StepMemoryStructure { receipt_kind: "bucket", receipt_name: "pool_heads", structure: "whole-tree parsed heads (pool_acquire Acquired.heads)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, live_during_cargo: true, ender: ClosureScopedIngestion },
   StepMemoryStructure { receipt_kind: "bucket", receipt_name: "resolve_index", structure: "shared resolve index / name census (entry_resolve PROCESS_RESOLVE_INDEX)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, live_during_cargo: true, ender: ClosureScopedIngestion },
   StepMemoryStructure { receipt_kind: "bucket", receipt_name: "module_graph_facts_and_path_index", structure: "module path index and graph facts caches (cli_run)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, live_during_cargo: true, ender: ClosureScopedIngestion },
-  StepMemoryStructure { receipt_kind: "inferred", receipt_name: "reconcile_closure_independent", structure: "reconcile/emission working set the same for a smaller and a larger closure; read obligation: tagged allocation attribution inside compile.reconcile", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, live_during_cargo: false, ender: ClosureScopedIngestion },
-  StepMemoryStructure { receipt_kind: "inferred", receipt_name: "reconcile_closure_proportional", structure: "closure-proportional part of the same working set", owner: SeedProcess, scale: EntryClosure, live_at_seed_peak: true, live_during_cargo: false, ender: NativeCompilerReplacesInterpreter },
-  StepMemoryStructure { receipt_kind: "sampler", receipt_name: "rustc_rss_sum", structure: "rustc over the emitted crate: sum of RSS of all rustc processes at the cargo phase maximum", owner: CargoAndRustc, scale: EmittedCrate, live_at_seed_peak: false, live_during_cargo: true, ender: ShrinksOnlyWithEmittedCrate },
-  StepMemoryStructure { receipt_kind: "sampler", receipt_name: "product_controls", structure: "the built emitted compiler running its controls", owner: ProductUnderTest, scale: Fixed, live_at_seed_peak: false, live_during_cargo: false, ender: NeverEnds },
 ]
 
 // ── reading the receipt ─────────────────────────────────────────────────────────────────────────
@@ -117,12 +110,15 @@ fn receipt_structure_bytes(rows: List<List<String>>, s: StepMemoryStructure) -> 
   }
 }
 
-fn receipt_phase_cgroup(rows: List<List<String>>, step: String, phase: String) -> Int {
-  let found = filter(rows, r => receipt_column(cols: r, index: 0) == "phase" && receipt_column(cols: r, index: 1) == step && receipt_column(cols: r, index: 2) == phase)
-  match found.first() {
-    Present { value: r } =>
-      if receipt_is_decimal(t: receipt_column(cols: r, index: 5)) { receipt_decimal_from(t: receipt_column(cols: r, index: 5), i: 0, acc: 0) } else { -1 }
-    Absent => -1
+// The seed's resident set at one named seam of the same run, or -1 when absent or ill-formed.
+fn receipt_stage_rss(rows: List<List<String>>, stage: String) -> Int {
+  let found = filter(rows, r => receipt_column(cols: r, index: 0) == "stage" && receipt_column(cols: r, index: 1) == stage)
+  if length(xs: found) != 1 { -1 } else {
+    match found.first() {
+      Present { value: r } =>
+        if receipt_is_decimal(t: receipt_column(cols: r, index: 2)) { receipt_decimal_from(t: receipt_column(cols: r, index: 2), i: 0, acc: 0) } else { -1 }
+      Absent => -1
+    }
   }
 }
 
@@ -163,7 +159,7 @@ data self_host_step_demand_trend: List<StepDemandTrend> = [
     removes_from_seed_peak: false,
     removes_from_cargo_phase: true,
     lowers_step_peak: false,
-    evidence: "the staged release at the cargo seam (receipt: the seed's resident set after the release, then the phase lines for cargo) lowers the cargo phase but not the seed's own reconcile stage, which still needs the pool",
+    evidence: "the staged release at the cargo seam is a read obligation: the receipt carries the seed's own seams only, so the cargo-phase effect is the declared sampler frontier; the pool is still needed by the seed's own resolution stage",
   },
   StepDemandTrend {
     change: PoolReleasedBeforeResolution,
@@ -195,7 +191,7 @@ data self_host_step_demand_trend: List<StepDemandTrend> = [
     removes_from_seed_peak: false,
     removes_from_cargo_phase: true,
     lowers_step_peak: false,
-    evidence: "rustc's sampler reading scales with the emitted crate's file count across the two steps in the receipt, independent of the seed",
+    evidence: "rustc's footprint scales with the emitted crate; it is read by the cgroup sampler, which is the declared frontier and not a line in the receipt, so this row is a classification not a reading",
   },
 ]
 
@@ -207,8 +203,8 @@ data self_host_step_demand_trend: List<StepDemandTrend> = [
 
 // THE READOUT. Reads the receipt the instrument wrote and refuses unless every classified structure
 // has exactly one well-formed line and the structures live at the seed's moment fit inside the
-// sampler's recorded cgroup reading for that phase. The oracle is the sampler's phase line, a
-// different instrument from the staged release that produced the bucket lines.
+// seed's own resident-set reading at the post-emission seam of the same run. The oracle is a plain
+// resident-set read, a different reading from the trim that produced the bucket lines.
 fn self_host_step_memory_readout() -> ProcessExit {
   let read = Filesystem.Read(path: self_host_step_memory_receipt_path as String)
   match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
@@ -221,11 +217,11 @@ fn self_host_step_memory_readout_over(rows: List<List<String>>) -> ProcessExit {
   if length(xs: step_structures_unreadable(rows: rows)) > 0 {
     exit_failure(reason: "the receipt lacks exactly one well-formed line for a classified structure")
   } else {
-    let reading = receipt_phase_cgroup(rows: rows, step: "self-host", phase: "compile.reconcile")
+    let reading = receipt_stage_rss(rows: rows, stage: "compile_emission_over.post_emit")
     if reading < 0 {
-      exit_failure(reason: "the receipt has no self-host compile.reconcile phase line")
+      exit_failure(reason: "the receipt has no post-emission stage line")
     } else if step_seed_moment_bytes(rows: rows) > reading + reading / 20 {
-      exit_failure(reason: "the structures live at the seed's moment exceed the sampler's cgroup reading for that phase")
+      exit_failure(reason: "the structures live at the seed's moment exceed the seed's own resident set at that seam")
     } else {
       ExitSuccess
     }

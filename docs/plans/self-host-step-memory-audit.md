@@ -4,19 +4,20 @@ Subject: the slot memory peak of `gunbc test //gunbc/instruments:self-host` and 
 `//gunbc/instruments:v2-native-cli`. This page carries NO measured figure (DESIGN §6): every number
 lives in the receipt the instrument wrote, and the model reads it.
 
-- Receipt: `tools/self_host_step_memory_receipt.tsv` (line kinds `bucket`, `inferred`, `sampler`, `phase`, documented in the model's header).
+- Receipt: `tools/self_host_step_memory_receipt.tsv` (line kinds `bucket` and `stage`, both written by the seed in one run; documented in the model's header).
 - Model and reader: `gunbc.self_host_step_memory_demand` (`dag/gunbc/floor/self_host_step_memory_demand.dag`). Re-derive the readout from the repo root, under a cgroup budget:
   `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/floor/self_host_step_memory_demand.dag --function self_host_step_memory_readout`
 - Instrument, buckets: `GUNBC_MEMORY_COMPOSITION=1 GUNBC_MEMORY_COMPOSITION_RECEIPT=<file> gunbc test //gunbc/instruments:self-host` (`src/v1/stage0/src/cli_run/memory_composition.rs`) appends one `bucket` line per released structure; the hook releases only after emission and only when the env is set.
-- Instrument, phases: a 1 s sampler over `systemd-run --user --scope -p MemoryMax=22G -p MemorySwapMax=0` reading the scope's `memory.current`/`memory.peak` and each pid's `VmRSS`, cut at the step's own log seams (`[pre-entry]`, `compile.*`, cargo invocations); one `phase` line per seam with the seed RSS, the rustc RSS sum and the cgroup maximum.
+- Instrument, stages: the same hook appends one `stage` line (resident set and VmHWM) at each seam inside the emission; the model's readout checks the buckets against the post-emission stage line of the same run.
+- DECLARED FRONTIER, not in the receipt: the cgroup-level phase attribution (a 1 s sampler over `systemd-run --user --scope -p MemoryMax=22G -p MemorySwapMax=0` cut at the step's log seams, covering cargo/rustc and the controls) and the two-closure regression that splits the reconcile transient. The seed cannot write either. Trigger: an instrument entry (an `instrument_targets` row or a seed-side sampler) that writes `phase` lines into the same receipt; until then the figures for cargo/rustc are not claimed by this page or the model.
 
 ## What the receipt shows (read it there)
-- The step's high-water mark is held by the seed process in `compile.reconcile`, not by rustc or the product under test.
-- The tree-scale structures (token pool, parsed heads, resolve index, path/graph caches) are `WholeTree`; the reconcile transient splits into a closure-independent part and a closure-proportional part by regression, and both are `inferred` lines: bets, not facts.
+- The tree-scale structures (token pool, parsed heads, resolve index, path/graph caches) are `WholeTree` and are read as `bucket` lines.
 - Whether demand is strictly decreasing: no. Tree-scale structures grow with the module count and nothing shrinks by itself; each ender in `self_host_step_demand_trend` is a named change.
+- Which phase holds the step's high-water mark, and the rustc/product shares, are the sampler frontier above and are not asserted here.
 
 ## Provenance and standing (DESIGN §4d)
-The committed receipt was assembled from one srv1 run set (composition run, two cold runs) by the recipe above. `bucket` and `sampler`/`phase` lines are measured; `inferred` lines are a two-closure regression with a stated read obligation (tagged allocation attribution inside `compile.reconcile`). Growth rate over time is NOT in the receipt: it is one week of tree history and is a bet.
+The committed receipt is the unedited output of one instrumented run of `gunbc test //gunbc/instruments:self-host` on srv1 under the 22G/swap0 scope; the PR body names the run. Growth rate over time is NOT in the receipt: it is one week of tree history and is a bet.
 
 ## Levers and recommendation
 Levers and the slot/trip recommendation are the lane report's, not this page's, because the pool-release lever is a production-path change measured in its own PR with its own receipt (dissolution trigger: closure-scoped ingestion). This page does not restate it.
