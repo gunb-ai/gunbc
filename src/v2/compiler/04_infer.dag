@@ -62,6 +62,13 @@ import v2.extdeps.languages.typescript {
   ts_declared_inhabitants_subject_field
 }
 import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
+import v2.std.optional_layers {
+  CardinalityWrapperMalformed,
+  TypeNodeCardinality,
+  peel_optional_layer,
+  type_node_cardinality_read,
+  wrap_type_node_cardinality
+}
 import v2.std.integer { integer_decimal_digit_type_node, integer_decimal_digits_type_node }
 import v2.std.collection {
   Map,
@@ -3814,11 +3821,24 @@ fn infer_no_type_variable_instances() -> List<TypeVariableInstance> {
 // After matching, the formal is instantiated and handed to the SAME judge every formal uses -- one judge,
 // no second inhabitance relation. A constructor or arity mismatch refuses there, typed and located, with
 // the judge's own application_argument_does_not_inhabit. An argument whose type is not derived stays the
-// counted frontier and binds nothing; a variable inside a shape this match does not open (an Arrow, an
-// optional) stays the judge's UndecidableGenericFormal, as before.
+// counted frontier and binds nothing; a variable inside an Arrow stays the judge's UndecidableGenericFormal.
+// Cardinality wrappers are opened (gunbc#13488): T? against U? peels one layer each and matches the
+// bases; a layer-count mismatch is InferFormalShapeMismatch, never a collapsed Optional.
 type InferFormalMatch
   = InferFormalMatched { instances: List<TypeVariableInstance> }
   | InferFormalShapeMismatch
+
+// THE CONTAINER ELEMENT IS THE INSTANTIATION ARGUMENT. Relation: generic-parameter instance for one
+// infer_match_generic_formal step. Scope: one Instantiation type node. Canonical preimage: the
+// positional children after the constructor head (infer_type_head_and_args.args) -- never the
+// Instantiation node itself and never a child that only spells the parameter (v1 unify_generics bound
+// T to the slot named T; gunbc#13330). Home for the identity verdict: std.derived_type_origin
+// generic_identity_of; this read is the v2 analogue of v1.compiler.types child_type_node. Not
+// occurrence identity (the built argument has none) and not content_hash (this is a slot, not a
+// structural digest).
+fn infer_container_instantiation_args(actual: Node) -> List<Node> {
+  infer_type_head_and_args(t: actual).args
+}
 
 fn infer_type_variable_binder(t: Node, type_params: List<Symbol>) -> Optional<Symbol> {
   match t.kind {
@@ -3847,14 +3867,15 @@ fn infer_match_generic_formal(formal: Node, produced: Node, type_params: List<Sy
             TypeNode { connective: Instantiation } =>
               let f = infer_type_head_and_args(t: formal)
               let p = infer_type_head_and_args(t: produced)
-              if length(xs: f.args) != length(xs: p.args) {
+              let p_args = infer_container_instantiation_args(actual: produced)
+              if length(xs: f.args) != length(xs: p_args) {
                 InferFormalShapeMismatch
               } else if inhabitance_node_mentions_type_variable(n: f.head, type_variables: type_params) {
                 InferFormalMatched { instances: instances }
               } else if !infer_type_equal_ignoring_provenance(a: f.head, b: p.head) {
                 InferFormalShapeMismatch
               } else {
-                fold(zip_map(a: f.args, b: p.args, f: fn(fa, pa) { InferTypePair { formal: fa, produced: pa } }), init: InferFormalMatched { instances: instances }, f: fn(acc, pair) {
+                fold(zip_map(a: f.args, b: p_args, f: fn(fa, pa) { InferTypePair { formal: fa, produced: pa } }), init: InferFormalMatched { instances: instances }, f: fn(acc, pair) {
                   match acc {
                     InferFormalShapeMismatch => acc
                     InferFormalMatched { instances: so_far } => infer_match_generic_formal(formal: pair.formal, produced: pair.produced, type_params: type_params, instances: so_far, declarations: declarations)
@@ -3863,6 +3884,30 @@ fn infer_match_generic_formal(formal: Node, produced: Node, type_params: List<Sy
               }
             TypeNode { connective: _ } => InferFormalShapeMismatch
             ComputationNode { behavior: _ } => InferFormalShapeMismatch
+          }
+        TypeNode { connective: Cardinality } =>
+          match type_node_cardinality_read(n: formal) {
+            CardinalityWrapperMalformed { wrapper: _ } => InferFormalShapeMismatch
+            TypeNodeCardinality { card: fcard, base: fbase } =>
+              match peel_optional_layer(card: fcard) {
+                Absent => InferFormalShapeMismatch
+                Present { value: frest } =>
+                  match type_node_cardinality_read(n: produced) {
+                    CardinalityWrapperMalformed { wrapper: _ } => InferFormalShapeMismatch
+                    TypeNodeCardinality { card: pcard, base: pbase } =>
+                      match peel_optional_layer(card: pcard) {
+                        Absent => InferFormalShapeMismatch
+                        Present { value: prest } =>
+                          infer_match_generic_formal(
+                            formal: wrap_type_node_cardinality(base: fbase, card: frest),
+                            produced: wrap_type_node_cardinality(base: pbase, card: prest),
+                            type_params: type_params,
+                            instances: instances,
+                            declarations: declarations
+                          )
+                      }
+                  }
+              }
           }
         TypeNode { connective: _ } => InferFormalMatched { instances: instances }
         ComputationNode { behavior: _ } => InferFormalMatched { instances: instances }

@@ -1,6 +1,6 @@
 module v2.std.inhabitance
 
-import std.types { List }
+import std.types { Bool, List }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -22,6 +22,7 @@ import v2.std.find_witness {
 import v2.std.node {
   Atom,
   Cardinality,
+  ComputationNode,
   Conj,
   Edge,
   Authored,
@@ -35,6 +36,13 @@ import v2.std.node {
 import std.algebra { list_append }
 import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
+import v2.std.optional_layers {
+  CardOptional,
+  CardinalityWrapperMalformed,
+  Required,
+  TypeNodeCardinality,
+  type_node_cardinality_read
+}
 
 // WHAT A FORMAL IS DECLARED AS, READ AGAINST ITS OWN ARROW. A formal declared as one of the
 // callee Arrow's type parameters (v2.std.type_binder type_param_names) is a DECLARED TYPE VARIABLE:
@@ -241,7 +249,7 @@ fn inhabitance_node_undecidable_reason(
   }
 }
 
-fn inhabitance_pair_undecidable_reason(
+fn inhabitance_pair_undecidable_reason_declared_then_produced(
   declared: Node,
   produced: Node,
   type_variables: List<Symbol>
@@ -249,6 +257,32 @@ fn inhabitance_pair_undecidable_reason(
   match inhabitance_node_undecidable_reason(n: declared, type_variables: type_variables) {
     Present { value: reason } => optional_present(value: reason)
     Absent => inhabitance_node_undecidable_reason(n: produced, type_variables: type_variables)
+  }
+}
+
+fn inhabitance_pair_undecidable_reason(
+  declared: Node,
+  produced: Node,
+  type_variables: List<Symbol>
+) -> Optional<InhabitanceUndecidableReason> {
+  if inhabitance_node_mentions_type_variable(n: declared, type_variables: type_variables)
+    || inhabitance_node_mentions_type_variable(n: produced, type_variables: type_variables) {
+    inhabitance_pair_undecidable_reason_declared_then_produced(declared: declared, produced: produced, type_variables: type_variables)
+  } else {
+    match declared.kind {
+      TypeNode { connective: Cardinality } =>
+        match produced.kind {
+          TypeNode { connective: Cardinality } => Absent
+          TypeNode { connective: _ } =>
+            inhabitance_pair_undecidable_reason_declared_then_produced(declared: declared, produced: produced, type_variables: type_variables)
+          ComputationNode { behavior: _ } =>
+            inhabitance_pair_undecidable_reason_declared_then_produced(declared: declared, produced: produced, type_variables: type_variables)
+        }
+      TypeNode { connective: _ } =>
+        inhabitance_pair_undecidable_reason_declared_then_produced(declared: declared, produced: produced, type_variables: type_variables)
+      ComputationNode { behavior: _ } =>
+        inhabitance_pair_undecidable_reason_declared_then_produced(declared: declared, produced: produced, type_variables: type_variables)
+    }
   }
 }
 
@@ -303,6 +337,44 @@ fn inhabitance_optional_at_required_reason() -> Symbol {
   ^inhabitance_optional_produced_at_required_declared
 }
 
+fn inhabitance_optional_layer_depth_mismatch_reason() -> Symbol {
+  ^inhabitance_optional_layer_depth_mismatch
+}
+
+fn inhabitance_optional_layer_wrapper_malformed_reason() -> Symbol {
+  ^inhabitance_optional_layer_wrapper_malformed
+}
+
+// Malformed is not "no depth mismatch": Bool false conflated those arms (review 78513).
+type OptionalLayerInhabitanceVerdict
+  = OptionalLayerInhabitanceHolds
+  | OptionalLayerDepthMismatch
+  | OptionalLayerWrapperMalformed
+
+fn inhabitance_optional_layer_judgement(declared: Node, produced: Node) -> OptionalLayerInhabitanceVerdict {
+  match type_node_cardinality_read(n: declared) {
+    CardinalityWrapperMalformed { wrapper: _ } => OptionalLayerWrapperMalformed
+    TypeNodeCardinality { card: dc, base: _ } =>
+      match type_node_cardinality_read(n: produced) {
+        CardinalityWrapperMalformed { wrapper: _ } => OptionalLayerWrapperMalformed
+        TypeNodeCardinality { card: pc, base: _ } =>
+          match dc {
+            CardOptional { layers: _ } =>
+              match pc {
+                CardOptional { layers: _ } =>
+                  if dc == pc {
+                    OptionalLayerInhabitanceHolds
+                  } else {
+                    OptionalLayerDepthMismatch
+                  }
+                Required => OptionalLayerInhabitanceHolds
+              }
+            Required => OptionalLayerInhabitanceHolds
+          }
+      }
+  }
+}
+
 fn declared_type_inhabitance(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
   if inhabitance_optional_produced_at_required_declared(
     declared: obligation.declared,
@@ -311,7 +383,13 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation) -> InhabitanceV
   ) {
     InhabitanceRefused { find_witness_reason: inhabitance_optional_at_required_reason() }
   } else {
-    declared_type_inhabitance_structural(obligation: obligation)
+    match inhabitance_optional_layer_judgement(declared: obligation.declared, produced: obligation.produced) {
+      OptionalLayerDepthMismatch =>
+        InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_depth_mismatch_reason() }
+      OptionalLayerWrapperMalformed =>
+        InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_wrapper_malformed_reason() }
+      OptionalLayerInhabitanceHolds => declared_type_inhabitance_structural(obligation: obligation)
+    }
   }
 }
 
