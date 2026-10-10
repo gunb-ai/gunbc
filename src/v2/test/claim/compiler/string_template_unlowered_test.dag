@@ -1,0 +1,29 @@
+module v2.test.claim.compiler.string_template_unlowered
+
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data stu_template_src: String = "module p\n\nfn f(x: String) -> String {\n  \"hello \{x}\"\n}\n"
+
+data stu_literal_src: String = "module p\n\nfn f(x: String) -> String {\n  \"hello\"\n}\n"
+
+// DISCRIMINATING RED: a hole in a string is a template shell. Lowering must refuse it as
+// body_lowering_reason_string_template_unlowered, located on the real assemble path — not as a
+// later incidental fatal that names something else.
+test fn a_string_template_refuses_unlowered_at_itself() -> Bool {
+  match fmi_assemble(src: stu_template_src) {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_string_template_unlowered
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// GREEN: a hole-free string literal is not that refusal.
+test fn a_plain_string_literal_assembles() -> Bool {
+  match fmi_assemble(src: stu_literal_src) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
