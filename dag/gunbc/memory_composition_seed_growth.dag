@@ -1,0 +1,21 @@
+module gunbc.memory_composition_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust that writes the self-host step memory receipt read by
+// gunbc.self_host_step_memory_demand. It measures and records; it decides nothing about the emission
+// and it refuses (exit 2) rather than writing a partial receipt.
+data memory_composition_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run.memory_composition", decl_name: "readback", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.memory_composition", decl_name: "release_stages", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.memory_composition", decl_name: "record_line", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.memory_composition", decl_name: "record_bucket", field: WholeDeclaration }
+  ],
+  reason: "PURPOSE admission serves the v2 self-host program: the self-host step's slot envelope is sized from a peak nobody had decomposed, and the structures live in the seed's own thread-locals, which only the seed can read and release. The hooks are gated on an env var that selects a stopped-line audit, not a production behavior.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete these declarations when the instrument entry is a .dag-declared TargetProducer row (gunbc.target_binding) that reads the seed's structure sizes through a modeled host fact, or when ingestion is closure-scoped and the whole-tree structures no longer exist.",
+  current_boundary: "One module, called from compile_emission_over at three readback seams plus the post-emission release; writes only the file named by GUNBC_MEMORY_COMPOSITION_RECEIPT and only when GUNBC_MEMORY_COMPOSITION is set.",
+}

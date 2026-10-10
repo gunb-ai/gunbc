@@ -146,11 +146,7 @@ fn step_structure_sum(rows: List<List<String>>, chosen: List<StepMemoryStructure
   })
 }
 
-// WHAT SCALES WITH THE CORPUS, and what is live at the seed's moment, summed from the receipt.
-fn step_whole_tree_bytes(rows: List<List<String>>) -> Optional<ByteSize> {
-  step_structure_sum(rows: rows, chosen: filter(self_host_step_memory_structures, s => match s.scale { WholeTree => true  EntryClosure => false  EmittedCrate => false  Fixed => false }))
-}
-
+// WHAT IS LIVE at the seed's moment, summed from the receipt.
 fn step_seed_moment_bytes(rows: List<List<String>>) -> Optional<ByteSize> {
   step_structure_sum(rows: rows, chosen: filter(self_host_step_memory_structures, s => s.live_at_seed_peak))
 }
@@ -225,17 +221,30 @@ data self_host_step_demand_trend: List<StepDemandTrend> = [
 // classification and the trend are one claim about what ends each structure, so a structure whose
 // ender no row speaks to is refused rather than left classified-but-unexplained.
 fn structure_has_trend_row(s: StepMemoryStructure) -> Bool {
+  let spoken_to = any(self_host_step_demand_trend, t => t.change == s.ender && t.removes_scale == s.scale)
   match s.ender {
     NeverEnds => true
-    _ => any(self_host_step_demand_trend, t => t.change == s.ender && t.removes_scale == s.scale)
+    ClosureScopedIngestion => spoken_to
+    PoolReleasedAfterCensus => spoken_to
+    PoolReleasedBeforeResolution => spoken_to
+    NativeCompilerReplacesInterpreter => spoken_to
+    ShrinksOnlyWithEmittedCrate => spoken_to
   }
 }
 
 // THE READOUT. Reads the receipt the instrument wrote and refuses unless every classified structure
-// has exactly one well-formed line, every structure has a trend row, the structures live at the
+// has exactly one well-formed line, every structure has a trend row, and the structures live at the
 // seed's moment fit inside the seed's own resident set at the post-emission seam of the same run
-// (a plain resident-set read, a different reading from the trim that produced the buckets), and the
-// tree-scale subset is no larger than that sum.
+// (a plain resident-set read, a different reading from the trim that produced the buckets).
+//
+// THE BOUND. Every bucket is a KB-granular resident-set difference, so a bucket can exceed its true
+// size by less than one KB and the sum of N buckets by less than N KB: the tolerance is
+// structure_count * 1024 bytes and nothing larger. A receipt violates it by reporting buckets that
+// together return more than the seed held resident. The classified structures are a LOWER bound on
+// the resident set, not a partition of it: the unclassified remainder (the closure-scale ASTs,
+// resolution and typecheck environments, emission buffers, allocator baseline) is the declared
+// frontier of docs/plans/self-host-step-memory-audit.md, so no check here asserts coverage or
+// scale ordering.
 fn self_host_step_memory_readout() -> ProcessExit {
   let read = Filesystem.Read(path: self_host_step_memory_receipt_path as String)
   match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
@@ -256,16 +265,10 @@ fn self_host_step_memory_readout_over(rows: List<List<String>>) -> ProcessExit {
         match step_seed_moment_bytes(rows: rows) {
           Absent => exit_failure(reason: "the structures live at the seed's moment are not all readable")
           Present { value: moment } =>
-            match step_whole_tree_bytes(rows: rows) {
-              Absent => exit_failure(reason: "the tree-scale structures are not all readable")
-              Present { value: tree } =>
-                if !measure_le(a: moment, b: measure_add(a: resident, b: byte_size(count: resident.count / 20))) {
-                  exit_failure(reason: "the structures live at the seed's moment exceed the seed's own resident set at that seam")
-                } else if !measure_le(a: tree, b: moment) {
-                  exit_failure(reason: "the tree-scale structures exceed the sum live at the seed's moment")
-                } else {
-                  ExitSuccess
-                }
+            if !measure_le(a: moment, b: measure_add(a: resident, b: byte_size(count: length(xs: self_host_step_memory_structures) * 1024))) {
+              exit_failure(reason: "the structures live at the seed's moment exceed the seed's own resident set at that seam beyond KB rounding")
+            } else {
+              ExitSuccess
             }
         }
     }

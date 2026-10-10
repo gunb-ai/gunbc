@@ -27,6 +27,7 @@ import gunbc.keyed_declaration_read_seed_growth { keyed_declaration_read_seed_gr
 import gunbc.keyed_dependency_edge_read_seed_growth { keyed_dependency_edge_read_seed_growth_justification }
 import gunbc.host_crypto_digest_seed_growth { host_crypto_digest_seed_growth_justification }
 import gunbc.census_memo_seed_growth { census_memo_seed_growth_justification }
+import gunbc.memory_composition_seed_growth { memory_composition_seed_growth_justification }
 import gunbc.fixture_render_selection_seed_growth { fixture_render_selection_seed_growth_justification }
 import gunbc.fixture_closure_union_emit_seed_growth { fixture_closure_union_emit_seed_growth_justification }
 import gunbc.fabric_door_socket_seed_growth { fabric_door_socket_seed_growth_justification }
@@ -319,6 +320,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     native_route_refusal_summary_seed_growth_justification,
     native_route_advisory_summary_seed_growth_justification,
     census_memo_seed_growth_justification,
+    memory_composition_seed_growth_justification,
     fixture_render_selection_seed_growth_justification,
     fixture_closure_union_emit_seed_growth_justification,
     fabric_door_socket_seed_growth_justification,

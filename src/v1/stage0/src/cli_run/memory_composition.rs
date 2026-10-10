@@ -29,19 +29,24 @@ fn rss_kb() -> Option<u64> {
     super::current_rss_bytes().map(|b| b / 1024)
 }
 
+/// The receipt is the measurement's only output, so a reading the writer cannot make or cannot
+/// write stops the instrument run (exit 2: no observation) rather than leaving a partial file or a
+/// fabricated number the reader would accept.
+fn refuse(what: &str) -> ! {
+    eprintln!("[memory-composition] REFUSED: {what}; the receipt is not a measurement");
+    std::process::exit(2)
+}
+
 /// One resident-set reading with no side effect, for the seams inside the emission.
 pub(super) fn readback(stage: &str) {
     if !enabled() {
         return;
     }
-    let rss = rss_kb();
-    let peak = super::peak_rss_vhwm_bytes().map(|b| b / 1024);
-    eprintln!("[memory-composition] stage={stage} rss_kb={rss:?} peak_kb={peak:?}");
-    record_line(&format!(
-        "stage\t{stage}\t{}\t{}",
-        rss.unwrap_or(0) * 1024,
-        peak.unwrap_or(0) * 1024
-    ));
+    let (Some(rss), Some(peak)) = (rss_kb(), super::peak_rss_vhwm_bytes().map(|b| b / 1024)) else {
+        refuse(&format!("resident set unreadable at stage={stage}"));
+    };
+    eprintln!("[memory-composition] stage={stage} rss_kb={rss} peak_kb={peak}");
+    record_line(&format!("stage\t{stage}\t{}\t{}", rss * 1024, peak * 1024));
 }
 
 /// The RECEIPT: one `bucket<TAB>name<TAB>bytes` line per released structure appended to the file
@@ -52,19 +57,26 @@ fn record_line(line: &str) {
     let Some(path) = std::env::var_os("GUNBC_MEMORY_COMPOSITION_RECEIPT") else {
         return;
     };
-    if let Ok(mut f) = std::fs::OpenOptions::new()
+    let mut f = match std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(path)
+        .open(&path)
     {
-        let _ = writeln!(f, "{line}");
+        Ok(f) => f,
+        Err(e) => refuse(&format!("cannot open receipt {path:?}: {e}")),
+    };
+    if let Err(e) = writeln!(f, "{line}") {
+        refuse(&format!("cannot write receipt {path:?}: {e}"));
     }
 }
 
 fn record_bucket(name: &str, trimmed_kb: Option<u64>) {
-    if let Some(kb) = trimmed_kb {
-        record_line(&format!("bucket\t{name}\t{}", kb * 1024));
-    }
+    let Some(kb) = trimmed_kb else {
+        refuse(&format!(
+            "malloc_trim reading unavailable for bucket={name}"
+        ));
+    };
+    record_line(&format!("bucket\t{name}\t{}", kb * 1024));
 }
 
 fn stage(name: &str, release: impl FnOnce()) {
