@@ -6,15 +6,14 @@ import v2.std.algebra { any }
 
 // THE RECEIPT A V2 CUTOVER ROADMAP NODE HANDS BACK, AS A TYPED STANDING.
 //
-// Each cutover node (gunbc.roadmap_authority: fleet-slot-no-swap-envelope-converged,
-// witnesses-cold-run-phase-peaks, seed-build-dependency-cache-measurement,
-// materialization-verified-exact-reuse-arm, v1-maintenance-admission-first-purpose-receipt) ends in
-// an OBSERVATION of a named run, not in a statement about the code. A reading copied from nowhere is
+// Each cutover node that ends in a run (gunbc.roadmap_authority: fleet-slot-no-swap-envelope-converged,
+// witnesses-cold-run-envelope-receipt) ends in an OBSERVATION of a named run, not in a statement about the code. A reading copied from nowhere is
 // the fabricated field DESIGN section 5 forbids, so the standing has exactly two arms and the
 // recorded one cannot be written without the runs it came from: no run id, no receipt.
 //
-// The rows below are born ReceiptUnrecorded, and that is the RED each node's acceptance witness
-// pins. A worker flips a row by recording the run -- readings are typed by the kinds the gunbc test MEMORY RECEIPT and the slot readback print, never free text -- and never by editing the witness. Each row dissolves
+// The rows below are born ReceiptUnrecorded, so roadmap readiness reads the node unaccepted; no
+// witness is red for it (nothing on the required path would execute one). The witnesses stay green
+// over supplied values. A worker flips a row by recording the run -- readings are typed by the kinds the gunbc test MEMORY RECEIPT and the slot readback print, never free text -- and never by editing the witness. Each row dissolves
 // into its consumer's own carrier when that carrier exists (the roster the node builds), at which
 // point the row is deleted in the same change.
 
@@ -22,12 +21,17 @@ import v2.std.algebra { any }
 // is a std.measure ByteSize, never a String: the kinds are the fields the gunbc test MEMORY RECEIPT
 // prints (peak, swap charged) and the slot readback (MemoryMax, MemorySwapMax), so the producer that
 // re-derives a reading is named by its kind. A label reading carries an identifier, not a number.
-type ByteReadingKind = PeakSelfHost | PeakNativeCli | SwapCharged | SlotMemoryMax | SlotSwapMax
+// The cold run's readings are SLOT-GRAIN: the job's high-water mark, and per-step deltas and
+// observations. They are per-phase peaks only once per-job/per-step cgroups exist.
+type ByteReadingKind = JobHighWater | StepSwapObserved | SlotMemoryMax | SlotSwapMax
 
-type LabelReadingKind = CacheDecision | CacheStateLine | ProducingReceipt | RequestKey | Purpose | Control | RefusedClass
+type CountReadingKind = StepOomEventDelta | StepHighEventDelta | StepMaxEventDelta | StepWallSeconds
+
+type LabelReadingKind = CacheStateLine | CacheKeyLine
 
 type CutoverReading
   = ByteReading { kind: ByteReadingKind, bytes: ByteSize }
+  | CountReading { kind: CountReadingKind, count: Int }
   | LabelReading { kind: LabelReadingKind, label: NonEmptyStr }
 
 type CutoverReceipt
@@ -45,6 +49,7 @@ fn cutover_receipt_is_recorded(r: CutoverReceipt) -> Bool {
 fn reading_is_byte_kind(x: CutoverReading, kind: ByteReadingKind) -> Bool {
   match x {
     ByteReading { kind: k, bytes: _ } => k == kind
+    CountReading { kind: _, count: _ } => false
     LabelReading { kind: _, label: _ } => false
   }
 }
@@ -52,6 +57,7 @@ fn reading_is_byte_kind(x: CutoverReading, kind: ByteReadingKind) -> Bool {
 fn reading_is_label_kind(x: CutoverReading, kind: LabelReadingKind) -> Bool {
   match x {
     ByteReading { kind: _, bytes: _ } => false
+    CountReading { kind: _, count: _ } => false
     LabelReading { kind: k, label: _ } => k == kind
   }
 }
@@ -73,17 +79,18 @@ fn cutover_receipt_has_label_reading(r: CutoverReceipt, kind: LabelReadingKind) 
 fn reading_is_a_peak_above(x: CutoverReading, trip: ByteSize) -> Bool {
   match x {
     ByteReading { kind: k, bytes: b } =>
-      (k == PeakSelfHost || k == PeakNativeCli) && byte_size_count(b: b) > byte_size_count(b: trip)
+      k == JobHighWater && byte_size_count(b: b) > byte_size_count(b: trip)
+    CountReading { kind: _, count: _ } => false
     LabelReading { kind: _, label: _ } => false
   }
 }
 
-// A recorded receipt holds the trip only if it carries a peak and no peak exceeds the trip.
+// A recorded receipt holds the trip only if it carries a job high-water mark and none exceeds the trip.
 fn cutover_receipt_peaks_within(r: CutoverReceipt, trip: ByteSize) -> Bool {
   match r {
     ReceiptUnrecorded => false
     ReceiptRecorded { run_ids: _, host: _, readings: readings } =>
-      (any(readings, x => reading_is_byte_kind(x: x, kind: PeakSelfHost)) || any(readings, x => reading_is_byte_kind(x: x, kind: PeakNativeCli)))
+      any(readings, x => reading_is_byte_kind(x: x, kind: JobHighWater))
         && !any(readings, x => reading_is_a_peak_above(x: x, trip: trip))
   }
 }
@@ -99,8 +106,18 @@ fn cutover_receipt_swap_free(r: CutoverReceipt) -> Bool {
 
 fn reading_is_nonzero_swap(x: CutoverReading) -> Bool {
   match x {
-    ByteReading { kind: k, bytes: b } => (k == SwapCharged || k == SlotSwapMax) && byte_size_count(b: b) > 0
+    ByteReading { kind: k, bytes: b } => (k == StepSwapObserved || k == SlotSwapMax) && byte_size_count(b: b) > 0
+    CountReading { kind: _, count: _ } => false
     LabelReading { kind: _, label: _ } => false
+  }
+}
+
+// A live row is either unrecorded or a recorded receipt that names its run: a hand-edited Recorded
+// row with no run, host or readings is malformed, and this stays green while the row is Unrecorded.
+fn cutover_receipt_is_unrecorded_or_names_its_run(r: CutoverReceipt) -> Bool {
+  match r {
+    ReceiptUnrecorded => true
+    ReceiptRecorded { run_ids: _, host: _, readings: _ } => cutover_receipt_is_recorded(r: r)
   }
 }
 
@@ -114,6 +131,3 @@ fn cutover_receipt_names_runs(r: CutoverReceipt, count: Int) -> Bool {
 
 data fleet_slot_envelope_readback: CutoverReceipt = ReceiptUnrecorded
 data witnesses_cold_run_receipt: CutoverReceipt = ReceiptUnrecorded
-data seed_build_cache_pair_receipt: CutoverReceipt = ReceiptUnrecorded
-data verified_exact_reuse_first_run_receipt: CutoverReceipt = ReceiptUnrecorded
-data v1_maintenance_first_admission_receipt: CutoverReceipt = ReceiptUnrecorded

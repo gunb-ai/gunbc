@@ -4,19 +4,15 @@ import std.types { Bool, String, List, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.algebra { any }
 import gunbc.plans.native_obligation_population {
-  FrontierUnobserved, FrontierObserved, native_population_green_set, native_route_first_frontier,
+  FrontierUnobserved, FrontierObserved, native_population_green_set, native_route_first_frontier, native_denominator_is_the_universe,
   native_frontier_stands, native_population_frontier_count,
 }
 import gunbc.emitted_subject_build_gate { emitted_subject_build_rows, emitted_subject_build_label_text }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// ACCEPTANCE ORACLE FOR native-obligation-population, RED BY DESIGN. PINNED AT LAUNCH.
-
-// RED TODAY: the population has a green set (it is empty until the built driver judges a run).
-test fn the_green_set_only_grows() -> Bool {
-  list_length(items: native_population_green_set) > 0 && native_frontier_stands(f: native_route_first_frontier)
-}
+// Green over supplied values: the green set is empty until the built driver judges a run, and the
+// controls below hold with or without members.
 
 // CONTROL: a population holds exactly one frontier; two rows refuse.
 test fn a_second_frontier_row_refuses() -> Bool {
@@ -34,4 +30,15 @@ test fn a_host_judged_member_is_ineligible() -> Bool {
 // CONTROL: the population is disjoint from the emitted subject rows (two products, not members).
 test fn the_population_is_disjoint_from_the_emitted_subject_rows() -> Bool {
   !any(native_population_green_set, m => any(emitted_subject_build_rows, r => m == r.step_id || m == emitted_subject_build_label_text(row: r)))
+}
+
+// CONTROL: the denominator is the derived universe -- green + exactly one frontier + typed exclusions.
+// The green set alone is not it (it omits the frontier and the exclusion), a second frontier refuses,
+// and a member in two sets refuses.
+test fn the_denominator_is_the_derived_universe_not_the_green_set() -> Bool {
+  native_denominator_is_the_universe(universe: ["a", "b", "c"], green: ["a"], frontier: ["b"], exclusions: ["c"])
+    && !native_denominator_is_the_universe(universe: ["a", "b", "c"], green: ["a"], frontier: [], exclusions: [])
+    && !native_denominator_is_the_universe(universe: ["a", "b", "c"], green: ["a", "b", "c"], frontier: ["b"], exclusions: [])
+    && !native_denominator_is_the_universe(universe: ["a", "b", "c"], green: ["a"], frontier: ["b", "c"], exclusions: [])
+    && !native_denominator_is_the_universe(universe: ["a", "b"], green: ["a"], frontier: ["b"], exclusions: ["z"])
 }

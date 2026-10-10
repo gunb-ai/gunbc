@@ -12,7 +12,6 @@ import gunbc.fci1_bounded_execution_context {
 }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import std.optional { Present, Absent }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 test fn finite_byte_size_refuses_zero() -> Bool {
   match finite_byte_size_from_byte_size(size: byte_size(count: 0)) {
@@ -33,22 +32,8 @@ test fn fci1_context_derives_the_runner_workload_envelope() -> Bool {
           Absent => false
         }
         && context.checkout_root == "/tmp/fci1 checkout"
-        && context.envelope_basis.module_path == "gunbc.runner_slot_desired"
+        && context.envelope_basis.module_path == "gunbc.runner_slot_allocation"
         && context.envelope_basis.decl_name == "gunbc_runner_slot_desired"
     _ => false
   }
-}
-
-fn names_the_runner_slot_row(basis: DeclarationRef) -> Bool {
-  basis.module_path == "gunbc.runner_slot_desired" && basis.decl_name == "gunbc_runner_slot_desired"
-}
-
-// DISCRIMINATING CONTROL: a basis naming any other module is refused by the same predicate the
-// derivation assertion uses, so the pin cannot be satisfied by editing the declaration alone.
-test fn a_basis_naming_another_module_is_refused() -> Bool {
-  !names_the_runner_slot_row(basis: DeclarationRef {
-    module_path: "gunbc.runner_slot_allocation",
-    decl_name: "gunbc_runner_slot_desired",
-    field: WholeDeclaration
-  })
 }

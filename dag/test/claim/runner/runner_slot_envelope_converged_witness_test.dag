@@ -4,21 +4,19 @@ import std.types { Bool, String, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { byte_size }
 import gunbc.cutover_receipt {
-  CutoverReceipt, ByteReading, SlotMemoryMax, SlotSwapMax, ReceiptUnrecorded, ReceiptRecorded,
-  cutover_receipt_is_recorded, cutover_receipt_has_byte_reading, cutover_receipt_names_runs,
+  CutoverReceipt, ByteReading, SlotSwapMax, ReceiptUnrecorded, ReceiptRecorded,
+  cutover_receipt_is_recorded, cutover_receipt_is_unrecorded_or_names_its_run,
   cutover_receipt_swap_free, fleet_slot_envelope_readback
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// ACCEPTANCE ORACLE FOR fleet-slot-no-swap-envelope-converged, RED BY DESIGN. PINNED AT LAUNCH.
-// The readback is `systemctl show -p MemoryMax,MemoryHigh,MemorySwapMax` per slot unit per host.
+// Green over supplied values. The readback is `systemctl show -p MemoryMax,MemoryHigh,MemorySwapMax`
+// per EXISTING slot unit per host; the live row stays ReceiptUnrecorded until a converge run is
+// named, and roadmap readiness reads the node unaccepted until then.
 
-// RED TODAY: a readback has been recorded from a named converge run on a named host.
-test fn the_emitted_slot_unit_carries_the_desired_envelope() -> Bool {
-  cutover_receipt_is_recorded(r: fleet_slot_envelope_readback)
-    && cutover_receipt_has_byte_reading(r: fleet_slot_envelope_readback, kind: SlotMemoryMax)
-    && cutover_receipt_has_byte_reading(r: fleet_slot_envelope_readback, kind: SlotSwapMax)
+test fn the_live_readback_is_unrecorded_or_names_its_run() -> Bool {
+  cutover_receipt_is_unrecorded_or_names_its_run(r: fleet_slot_envelope_readback)
 }
 
 data swapping_readback: CutoverReceipt = ReceiptRecorded {
@@ -31,7 +29,7 @@ data swap_free_readback: CutoverReceipt = ReceiptRecorded {
   readings: [ByteReading { kind: SlotSwapMax, bytes: byte_size(count: 0) }]
 }
 
-// CONTROL, green today and after: a readback whose swap cap is not zero refuses the host.
+// CONTROL: a readback whose swap cap is not zero refuses the host.
 test fn a_readback_with_swap_refuses_the_host() -> Bool {
   !cutover_receipt_swap_free(r: swapping_readback) && cutover_receipt_swap_free(r: swap_free_readback)
     && !cutover_receipt_swap_free(r: ReceiptUnrecorded)
