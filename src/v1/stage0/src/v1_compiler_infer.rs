@@ -2340,25 +2340,23 @@ pub fn declared_type_conformance_diags_core(
                             scope.module_name.clone(),
                         )])
                     } else {
-                        if nominal_coproduct_applied_argument_conflict(
+                        if product_at_scalar_declared_type(
                             declared.clone(),
                             produced.clone(),
                             scope.clone(),
                         ) {
-                            Rc::new(vec![type_mismatch_error(
-                                crate::v1_compiler_infer_types::node_type_shape(
-                                    declared.clone(),
-                                    si.clone(),
-                                ),
-                                crate::v1_compiler_infer_types::node_type_shape(
-                                    produced.clone(),
-                                    si.clone(),
-                                ),
-                                span.clone(),
-                                scope.module_name.clone(),
-                            )])
+                            declared_type_obligation_diags(
+                                Rc::new(DeclaredTypeObligation {
+                                    position: position.clone(),
+                                    subject: subject.clone(),
+                                    declared: declared.clone(),
+                                    produced: produced.clone(),
+                                    span: span.clone(),
+                                }),
+                                scope.clone(),
+                            )
                         } else {
-                            if coproduct_payload_where_parent_required(
+                            if nominal_coproduct_applied_argument_conflict(
                                 declared.clone(),
                                 produced.clone(),
                                 scope.clone(),
@@ -2376,14 +2374,11 @@ pub fn declared_type_conformance_diags_core(
                                     scope.module_name.clone(),
                                 )])
                             } else {
-                                if ((type_node_is_arrow(declared.clone())
-                                    && type_node_is_arrow(produced.clone()))
-                                    && callable_signature_mismatch(
-                                        declared.clone(),
-                                        produced.clone(),
-                                        si.clone(),
-                                    ))
-                                {
+                                if coproduct_payload_where_parent_required(
+                                    declared.clone(),
+                                    produced.clone(),
+                                    scope.clone(),
+                                ) {
                                     Rc::new(vec![type_mismatch_error(
                                         crate::v1_compiler_infer_types::node_type_shape(
                                             declared.clone(),
@@ -2397,11 +2392,14 @@ pub fn declared_type_conformance_diags_core(
                                         scope.module_name.clone(),
                                     )])
                                 } else {
-                                    if callable_element_signature_mismatch(
-                                        declared.clone(),
-                                        produced.clone(),
-                                        si.clone(),
-                                    ) {
+                                    if ((type_node_is_arrow(declared.clone())
+                                        && type_node_is_arrow(produced.clone()))
+                                        && callable_signature_mismatch(
+                                            declared.clone(),
+                                            produced.clone(),
+                                            si.clone(),
+                                        ))
+                                    {
                                         Rc::new(vec![type_mismatch_error(
                                             crate::v1_compiler_infer_types::node_type_shape(
                                                 declared.clone(),
@@ -2415,31 +2413,34 @@ pub fn declared_type_conformance_diags_core(
                                             scope.module_name.clone(),
                                         )])
                                     } else {
-                                        if !both_ground.clone() {
-                                            Rc::new(vec![])
+                                        if callable_element_signature_mismatch(
+                                            declared.clone(),
+                                            produced.clone(),
+                                            si.clone(),
+                                        ) {
+                                            Rc::new(vec![type_mismatch_error(
+                                                crate::v1_compiler_infer_types::node_type_shape(
+                                                    declared.clone(),
+                                                    si.clone(),
+                                                ),
+                                                crate::v1_compiler_infer_types::node_type_shape(
+                                                    produced.clone(),
+                                                    si.clone(),
+                                                ),
+                                                span.clone(),
+                                                scope.module_name.clone(),
+                                            )])
                                         } else {
-                                            if crate::v1_compiler_infer_types::node_type_compatible(
-                                                declared.clone(),
-                                                produced.clone(),
-                                                si.clone(),
-                                                Rc::new(TextJudgment::TextJudgedIn {
-                                                    env: scope.type_env.clone(),
-                                                }),
-                                            ) {
+                                            if !both_ground.clone() {
                                                 Rc::new(vec![])
                                             } else {
-                                                Rc::new(vec![type_mismatch_error(
-                                                    crate::v1_compiler_infer_types::node_type_shape(
-                                                        declared.clone(),
-                                                        si.clone(),
-                                                    ),
-                                                    crate::v1_compiler_infer_types::node_type_shape(
-                                                        produced.clone(),
-                                                        si.clone(),
-                                                    ),
-                                                    span.clone(),
-                                                    scope.module_name.clone(),
-                                                )])
+                                                if crate::v1_compiler_infer_types::node_type_compatible(declared.clone(), produced.clone(), si.clone(), Rc::new(TextJudgment::TextJudgedIn {
+    env: scope.type_env.clone(),
+})) {
+                                                    Rc::new(vec![])
+                                                } else {
+                                                    Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(declared.clone(), si.clone()), crate::v1_compiler_infer_types::node_type_shape(produced.clone(), si.clone()), span.clone(), scope.module_name.clone())])
+                                                }
                                             }
                                         }
                                     }
@@ -5954,6 +5955,7 @@ pub enum InhabitanceRefusalReason {
     RefusedDistinctProductConstructor,
     RefusedDistinctAppliedTypeArgument,
     RefusedOptionalAtRequired,
+    RefusedProductAtScalar,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -6307,13 +6309,13 @@ pub fn declared_type_inhabitance(
     reason: InhabitanceRefusalReason::RefusedCollectionAtEstablishedIdentity,
 })
                                             } else {
-                                                if record_at_scalar_needs_identity(
+                                                if product_at_scalar_declared_type(
                                                     declared.clone(),
                                                     produced.clone(),
                                                     scope.clone(),
                                                 ) {
-                                                    Rc::new(InhabitanceVerdict::InhabitanceUndecidable {
-    reason: InhabitanceUndecidableReason::UndecidableProducedIdentityErased,
+                                                    Rc::new(InhabitanceVerdict::InhabitanceRefused {
+    reason: InhabitanceRefusalReason::RefusedProductAtScalar,
 })
                                                 } else {
                                                     if product_versus_coproduct_head_mismatch(
@@ -6590,16 +6592,42 @@ pub fn collection_versus_established_identity(
     }
 }
 
-pub fn record_at_scalar_needs_identity(
+pub fn product_at_scalar_declared_type(
     declared: Rc<Node>,
     produced: Rc<Node>,
     scope: Rc<InferScope>,
 ) -> bool {
-    (crate::v1_compiler_type_head_exposure::type_head_exposure_is_kernel_scalar(
-        expected_type_head_exposure(declared.clone(), scope.clone()),
-    ) && crate::v1_compiler_type_head_exposure::type_head_exposure_is_product(
+    (crate::v1_compiler_type_head_exposure::type_head_exposure_is_product(
         expected_type_head_exposure(produced.clone(), scope.clone()),
-    ))
+    ) && declared_head_is_kernel_scalar_through_refinement(declared.clone(), scope.clone()))
+}
+
+pub fn declared_head_is_kernel_scalar_through_refinement(
+    declared: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    if crate::v1_compiler_type_head_exposure::type_head_exposure_is_kernel_scalar(
+        expected_type_head_exposure(declared.clone(), scope.clone()),
+    ) {
+        true
+    } else {
+        {
+            let resolved = match crate::v1_compiler_infer_env::lookup_type_for(
+                scope.type_env.clone(),
+                declared.clone(),
+            ) {
+                Some(r) => r.clone(),
+                std::option::Option::None => declared.clone(),
+            };
+            (is_where_refinement_type(resolved.clone())
+                && crate::v1_compiler_type_head_exposure::type_head_exposure_is_kernel_scalar(
+                    expected_type_head_exposure(
+                        peel_where_refinement_base(resolved.clone(), scope.type_env.clone()),
+                        scope.clone(),
+                    ),
+                ))
+        }
+    }
 }
 
 pub fn product_versus_coproduct_head_mismatch(
@@ -32631,6 +32659,8 @@ pub struct RefusedDistinctProductConstructor;
 pub struct RefusedDistinctAppliedTypeArgument;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RefusedOptionalAtRequired;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RefusedProductAtScalar;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RefinementWidensToDeclaredBase;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
