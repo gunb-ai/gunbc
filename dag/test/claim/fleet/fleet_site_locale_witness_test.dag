@@ -235,16 +235,17 @@ test fn w_unassigned_host_is_missing_not_mismatched() -> Bool {
   }
 }
 
-// The reach label is DERIVED from the procurement allocation, never restated here. Re-authoring
-// the pair would put a private second copy of an owned relation in this module.
+// The reach label is DERIVED from the procurement allocation, never restated here. srv9 and srv10 were
+// sold with Group B (2026-10-10), their bindings are gone, so the derivation answers Unmodeled rather
+// than a restated label.
 test fn w_reach_labels_come_from_the_procurement_binding() -> Bool {
   match reach_label_of(host: operator_host_srv9) {
-    ReachLabelFromReservation { label: l } => l == ("spark-0c75" as NonEmptyStr)
-    ReachLabelUnmodeled => false
+    ReachLabelFromReservation { label: _ } => false
+    ReachLabelUnmodeled => true
   }
     && match reach_label_of(host: operator_host_srv10) {
-      ReachLabelFromReservation { label: l } => l == ("spark-3336" as NonEmptyStr)
-      ReachLabelUnmodeled => false
+      ReachLabelFromReservation { label: _ } => false
+      ReachLabelUnmodeled => true
     }
 }
 

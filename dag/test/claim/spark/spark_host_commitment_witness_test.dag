@@ -12,6 +12,7 @@ import gunbc.spark.cell_role {
 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB }
 import gunbc.spark.dgx_procurement { dgx_spark_reserved_identities }
+import gunbc.spark.pair_serving_authority { spark_pair_serving_authorities }
 import gunbc.spark.serving_arm_placement { ServingArmHostClaim, glm_canary_host_claim, glm_group_b_serving_arm, spark_serving_arm_host_claims }
 import gunbc.spark.serving_subject {
   ServingSubject, PairServingUnitOn, PlacedServingArm, serving_subject_eq,
@@ -19,8 +20,10 @@ import gunbc.spark.serving_subject {
   glm_group_b_serving_subject, glm_group_b_serving_reservation, spark_serving_reservations,
 }
 import gunbc.spark.host_commitment {
+  spark_claimed_members_under,
+  spark_standing_of,
   spark_host_standings,
-  spark_host_standing,
+  spark_admissibility_to,
   SparkHostCommitment,
   AuthorityHeldCommitment,
   RulingDerivedCommitment,
@@ -38,9 +41,9 @@ import gunbc.spark.host_commitment {
   SparkHostCommitted,
   SparkHostAdmitted,
   SparkHostRefused,
-  admit_unplaced_host,
+  admit_unplaced_host_in,
+  SparkHostAdmission,
   admit_unplaced_host_among,
-  spark_host_commitment_causes_wire,
   spark_commitment_causes_text,
   spark_commitment_causes,
   spark_host_standing_in,
@@ -48,7 +51,6 @@ import gunbc.spark.host_commitment {
   spark_unplaced_hosts_of,
   spark_committed_standings_of,
   spark_unplaced_hosts,
-  spark_host_is_unplaced,
   spark_host_commitment_wire,
   spark_authority_held_causes_of,
   spark_ruling_derived_causes_of,
@@ -57,8 +59,6 @@ import gunbc.spark.host_commitment {
   SparkHostHeldAgainst,
   spark_host_admissibility_to,
   spark_admissible_hosts_to,
-  spark_serving_admissibility,
-  spark_serving_admissible_hosts,
   admit_host_held_by_subject_among,
 }
 
@@ -77,6 +77,58 @@ data fixture_duplicate_assignments: List<SparkCellRoleAssignment> = [
   SparkCellRoleAssignment { host: operator_host_srv9, role: SparkServingCell },
   SparkCellRoleAssignment { host: operator_host_srv9, role: SparkTrainingCell },
 ]
+
+// ── GROUP B AS FIXTURE ────────────────────────────────────────────────────────────────────────
+//
+// srv9-srv12 were sold 2026-10-10, so the production unit roster is empty (rung drop
+// `serving_fixtures_name_sold_group_b_hosts`). The serving subject still names them, so the
+// population these claims discriminate on is supplied here: the production placement, claim and
+// reservation rows folded over the four Group B identities. `production_unit_roster_is_empty` is the
+// inhabitance claim that keeps the real roster honest.
+data fixture_group_b_units: List<HostIdentity> = [operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12]
+
+data group_b_standings: List<SparkHostStanding> = spark_host_standings_in(
+  units: fixture_group_b_units,
+  assignments: spark_cell_role_assignments,
+  claimed_group_members: spark_claimed_members_under(authorities: spark_pair_serving_authorities),
+  arm_claims: spark_serving_arm_host_claims,
+  serving_reservations: spark_serving_reservations,
+  host_effects: [] as List<HostEffectRecord>,
+)
+
+fn spark_host_standing(host: HostIdentity) -> SparkHostStanding? {
+  spark_standing_of(standings: group_b_standings, host: host)
+}
+
+fn spark_host_is_unplaced(host: HostIdentity) -> Bool {
+  any(spark_unplaced_hosts_of(standings: group_b_standings), h => host_identity_eq(a: h, b: host))
+}
+
+fn spark_serving_admissible_hosts(subject: ServingSubject) -> List<HostIdentity> {
+  spark_admissible_hosts_to(standings: group_b_standings, subject: subject)
+}
+
+fn spark_serving_admissibility(subject: ServingSubject) -> List<SparkHostAdmissibility> {
+  spark_admissibility_to(standings: group_b_standings, subject: subject)
+}
+
+fn admit_unplaced_host(raw: String, purpose: NonEmptyStr) -> SparkHostAdmission {
+  admit_unplaced_host_in(raw: raw, purpose: purpose, standings: group_b_standings)
+}
+
+fn spark_host_commitment_causes_wire(host: HostIdentity) -> NonEmptyStr {
+  match spark_host_standing(host: host) {
+    Absent => "outside the fixture population" as NonEmptyStr
+    Present { value: SparkHostUncommitted { host: _ } } => "nothing has claimed that host" as NonEmptyStr
+    Present { value: SparkHostCommitted { host: _, commitments: c } } => spark_commitment_causes_text(c: c) as NonEmptyStr
+  }
+}
+
+test fn production_unit_roster_is_empty_and_standings_cover_no_host() -> Bool {
+  length(dgx_spark_reserved_identities()) == 0
+    && length(spark_host_standings) == 0
+    && length(spark_unplaced_hosts) == 0
+}
 
 fn member(group: FabricGroup, host: HostIdentity) -> ClaimedServingGroupMember {
   ClaimedServingGroupMember { group: group, host: host }
@@ -369,7 +421,7 @@ fn production_standing_is_committed(host: HostIdentity) -> Bool {
 // expected to have and it is asserted rather than assumed, because an empty set would satisfy every
 // "not in the set" claim above without saying anything.
 test fn every_production_unit_is_committed_so_the_uncommitted_set_is_empty_by_identity() -> Bool {
-  all(dgx_spark_reserved_identities(), h => production_standing_is_committed(host: h))
+  all(fixture_group_b_units, h => production_standing_is_committed(host: h))
     && production_standing_is_committed(host: operator_host_srv10)
     && production_standing_is_committed(host: operator_host_srv12)
 }
@@ -486,10 +538,10 @@ fn production_host_has_authority_held_cause(host: HostIdentity) -> Bool {
 }
 
 test fn the_derivation_partitions_the_unit_population() -> Bool {
-  let units = dgx_spark_reserved_identities()
-  all(spark_unplaced_hosts, h => contains_host(hosts: units, host: h))
+  let units = fixture_group_b_units
+  all(spark_unplaced_hosts_of(standings: group_b_standings), h => contains_host(hosts: units, host: h))
     && all(units, h => spark_host_is_unplaced(host: h) != production_host_has_authority_held_cause(host: h))
-    && all(spark_committed_standings_of(standings: spark_host_standings), s => match s {
+    && all(spark_committed_standings_of(standings: group_b_standings), s => match s {
          SparkHostUncommitted { host: _ } => false
          SparkHostCommitted { host: h, commitments: _ } => contains_host(hosts: units, host: h)
        })

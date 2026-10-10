@@ -82,10 +82,6 @@ data declared_topology_endpoints: List<NetworkEndpoint> = [
   srv2_host_lan_endpoint,
   srv3_host_lan_endpoint,
   srv4_host_lan_endpoint,
-  srv9_host_lan_endpoint,
-  srv10_host_lan_endpoint,
-  srv11_host_lan_endpoint,
-  srv12_host_lan_endpoint,
   srv1_bmc_endpoint,
   srv2_bmc_endpoint,
   srv3_bmc_endpoint,
@@ -126,7 +122,8 @@ test fn fleet_intent_network_srv3_addresses_holds() -> Bool {
     && srv3_bmc_endpoint.role == BmcOutOfBand
 }
 
-// The Spark host slots are enrolled, each bound to its own identity, at the address its CR1000A
+// The sold Group B slots are no longer in the topology (rung drop serving_fixtures_name_sold_group_b_hosts), but their
+// endpoint rows stay as fixtures for serving; this pins them against the transcribed reservation values. The Spark host slots were enrolled, each bound to its own identity, at the address its CR1000A
 // static reservation carries in gunbc.spark.dgx_procurement, with the role split asserted so a model
 // that collapses a Spark's host OS onto some other attachment role reds rather than shifting a count.
 // It pins the corpus against the transcribed reservation authority -- a citation check, not a
