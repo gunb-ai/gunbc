@@ -190,6 +190,6 @@ fn string_all_chars_in(s: String, alphabet: String) -> Bool {
 }
 
 fn string_any_char_in(s: String, alphabet: String) -> Bool {
-  any(s, c => string_contains_char(s: alphabet, c: c))
+  !(for_all(xs: s, predicate: fn(c) { !(string_contains_char(s: alphabet, c: c)) }))
 }
 
