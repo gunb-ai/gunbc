@@ -129,10 +129,11 @@ fn admit_run_revision(binding: ActionsRunBinding, expected: String) -> RunRevisi
   }
 }
 
-// A DISPATCH MAY OMIT expected_revision (operator 2026-10-09: fleet-converge on an arbitrary
-// branch). The checkout is then the event sha (github.sha), and that is R. A present value still
-// has to match the checkout. A present-but-malformed value is its own arm and refuses: absence is
-// not a 40-digit check hidden in Absent.detail prose.
+// A DISPATCH MAY OMIT expected_revision. The checkout is then the event sha (github.sha), and that
+// is R. Operator 2026-10-10: this optional input is a cross-check, not a second revision authority;
+// revision for a dispatch is the event sha. A present value still has to match the checkout. A
+// present-but-malformed value is its own arm and refuses: absence is not a 40-digit check hidden in
+// Absent.detail prose.
 fn admit_optional_expected_revision(binding: ActionsRunBinding) -> RunRevisionAdmission {
   match read_expected_revision() {
     ExpectedRevisionPresent { revision: expected_r } => admit_run_revision(binding: binding, expected: expected_r)

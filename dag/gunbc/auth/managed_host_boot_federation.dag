@@ -24,8 +24,8 @@ import std.decl_ref { DeclarationRef }
 // (docs/plans/managed-host-untangle.md, cut 4c; operator ruling (b), 2026-10-03.) A boot of a
 // managed host is a recurring automated effect, so gunbc.auth.privileged_effect_census derives
 // FederatedScopedGrant for it: the run's own workload identity, holding one cell per secret it reads,
-// with no human per run, scoped to ONE job -- this repository, the fleet-converge workflow file on
-// a branch, a workflow_dispatch, and the job's GitHub environment -- never repo-wide.
+// with no human per run, scoped to ONE job -- this repository, the fleet-converge workflow file at
+// reviewed main, a workflow_dispatch on main, and the job's GitHub environment -- never repo-wide.
 // None of the ids below is a field of gunbc.managed_host ManagedHost: a second operation on the same
 // host federates through its own pool, and the same host under another policy is a different pair.
 //
@@ -40,10 +40,10 @@ import std.decl_ref { DeclarationRef }
 // THE JOB IS PINNED BY THE ENVIRONMENT CLAIM. OIDC tokens carry no job id; the one job-grain claim
 // GitHub asserts is `environment`, present only for a job that declares one. The honest residue: any
 // job in that branch's fleet-converge.yml that declared the same environment would also be admitted.
-// The path pin does not pin reviewed-main bytes; the YAML on the dispatched heads ref is the run's
-// workflow (operator 2026-10-09). THE RUNNER IS NOT PINNED: the boot runs on the hold store host's
+// Operator 2026-10-10: this privileged boot identity is equality-pinned at main; a session-branch
+// dispatch cannot impersonate it. THE RUNNER IS NOT PINNED: the boot runs on the hold store host's
 // self-hosted runner, so `runner_environment == 'github-hosted'` would refuse it. Pull-request code
-// stays off it because event_name is workflow_dispatch, not because the file was reviewed at main.
+// stays off it because event_name is workflow_dispatch and workflow_ref is the reviewed main file.
 
 // THE LIVE NAMES OF ONE PAIR'S FEDERATION, which ruling (b) keeps byte-identical: they exist in GCP
 // and GitHub today, and a renamed id is a different pool, account, environment or cell to

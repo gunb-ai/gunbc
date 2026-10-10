@@ -52,7 +52,7 @@ test fn w_mtcollins1_is_the_one_provisioned_pair_under_its_live_names() -> Bool 
     }
 }
 
-// ── The federation: only this workflow, on a branch, dispatched, in the boot environment ───────────
+// ── The federation: only this workflow, at reviewed main, dispatched, in the boot environment ────
 fn with_claim(claims: List<OidcClaimPin>, claim: NonEmptyStr, value: String) -> List<OidcClaimPin> {
   concat(filter(claims, c => (c.claim as String) != (claim as String)), [OidcClaimPin { claim: claim, value: value, relation: OidcClaimEquals }])
 }
@@ -61,17 +61,17 @@ fn without_claim(claims: List<OidcClaimPin>, claim: NonEmptyStr) -> List<OidcCla
   filter(claims, c => (c.claim as String) != (claim as String))
 }
 
-// THE CONTROL: the boot job's own token, including a session-branch dispatch, is admitted. THE REDS:
-// another workflow file, a tag ref, a pull_request event, another environment, and a job with no
-// environment (every other job in fleet-converge.yml) are each refused -- one claim changed at a
-// time, so each red is attributable.
+// THE CONTROL: the boot job's own token at reviewed main is admitted. THE REDS: a session-branch
+// dispatch, another workflow file, a tag ref, a pull_request event, another environment, and a job
+// with no environment (every other job in fleet-converge.yml) are each refused -- one claim changed
+// at a time, so each red is attributable.
 test fn only_the_boot_jobs_oidc_subject_is_admitted_to_the_dedicated_pool() -> Bool {
   match mtcollins1_federation() {
     Absent => false
     Present { value: f } => {
     let c = f.claim_pins
     boot_federation_claims_admitted(f: f, claims: c)
-      && boot_federation_claims_admitted(f: f, claims: with_claim(claims: c, claim: "workflow_ref", value: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/feature"))
+      && !boot_federation_claims_admitted(f: f, claims: with_claim(claims: c, claim: "workflow_ref", value: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/feature"))
       && !boot_federation_claims_admitted(f: f, claims: with_claim(claims: c, claim: "workflow_ref", value: "gunb-ai/gunbc/.github/workflows/witnesses.yml@refs/heads/main"))
       && !boot_federation_claims_admitted(f: f, claims: with_claim(claims: c, claim: "workflow_ref", value: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/tags/x"))
       && !boot_federation_claims_admitted(f: f, claims: with_claim(claims: c, claim: "event_name", value: "pull_request"))
@@ -89,8 +89,9 @@ test fn the_provider_condition_carries_every_pin() -> Bool {
     Present { value: f } => {
     let cond = boot_federation_attribute_condition(f: f)
     all(f.claim_pins, p => string_contains(s: cond, pattern: join(["assertion.", p.claim as String], "")))
-      && string_contains(s: cond, pattern: "fleet-converge.yml@refs/heads/")
-      && string_contains(s: cond, pattern: ".startsWith('")
+      && string_contains(s: cond, pattern: "fleet-converge.yml@refs/heads/main")
+      && string_contains(s: cond, pattern: "assertion.workflow_ref == '")
+      && !string_contains(s: cond, pattern: ".startsWith('")
       && string_contains(s: cond, pattern: "assertion.environment == 'mtcollins1-boot'")
   }
   }
