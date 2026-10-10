@@ -219,7 +219,7 @@ fn host_is_allocated(allocations: List<HostnameAllocation>, host: HostIdentity) 
 }
 
 fn store_host_is_allocated(allocations: List<HostnameAllocation>, store_host: NonEmptyStr) -> Bool {
-  any(allocations, a => (a.fleet_slot as String) == (store_host as String) || (a.canonical_hostname as String) == (store_host as String))
+  any(allocations, a => (a.fleet_slot as String) == (store_host as String) || (allocated_canonical_hostname(allocation: a) as String) == (store_host as String))
 }
 
 fn access_controller_host(access: BmcAccessObservationStanding) -> NonEmptyStr? {

@@ -78,6 +78,7 @@ fn enrolled_host_control(intent: HostEnrollmentIntent, provider_reads: List<Acqu
       BmcVirtualMediaInstall => match managed_host_binding_for(host: intent.host as NonEmptyStr) {
         ManagedHostNotManaged { host: _ } => HostControlRefused { refusal: BmcHostNotManaged { host: intent.host } }
         ManagedHostFound { standing: s } => bmc_controlled_host(standing: s)
+        ManagedHostFoundUnderDeclaredDrop { standing: s, drop: _, standing_subject: _, current_subject: _ } => bmc_controlled_host(standing: s)
       }
       ApplianceFirstBoot => HostControlRefused { refusal: NoOutOfBandRoute { host: intent.host } }
     }
