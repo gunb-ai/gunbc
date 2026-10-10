@@ -47,7 +47,7 @@ on:
         required: false
         type: string
       expected_revision:
-        description: R — the exact main revision this transaction installs and proves; every run of the transaction must execute at it (RLM_EXPECTED_REVISION). Required for dashboard_deploy and rlm_launch_deployment_receipt — and for microvm_network_apply, whose installed bytes are rendered from it
+        description: Optional cross-check of the event sha (RLM_EXPECTED_REVISION). Omit to admit github.sha. Present must match the checkout. Malformed refuses. rlm_launch_deployment_receipt and microvm_network_apply still require a named revision in their own admission; dashboard_deploy does not.
         required: false
         type: string
       apply_workflow_run_id:
@@ -106,7 +106,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
-          ref: ${{ (github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'namecheap_observe' || github.event.inputs.mode == 'arrival_converge' || github.event.inputs.mode == 'printer') && github.sha || github.event.inputs.expected_revision || github.sha }}
+          ref: ${{ github.sha }}
       - name: Isolate toolchain dirs
         run: |-
           rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
@@ -610,7 +610,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
-          ref: ${{ (github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'namecheap_observe' || github.event.inputs.mode == 'arrival_converge' || github.event.inputs.mode == 'printer') && github.sha || github.event.inputs.expected_revision || github.sha }}
+          ref: ${{ github.sha }}
       - name: Download release-bins artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
@@ -2368,7 +2368,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
-          ref: ${{ (github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'namecheap_observe' || github.event.inputs.mode == 'arrival_converge' || github.event.inputs.mode == 'printer') && github.sha || github.event.inputs.expected_revision || github.sha }}
+          ref: ${{ github.sha }}
       - name: Download release-bins artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
@@ -2473,7 +2473,7 @@ jobs:
     needs: [build]
     environment: srv1-production
     timeout-minutes: 50
-    if: github.event.inputs.mode == 'dashboard_deploy' && github.ref == 'refs/heads/main'
+    if: github.event.inputs.mode == 'dashboard_deploy'
     concurrency:
       group: gunbc-host-mutation-${{ github.event.inputs.host }}
       cancel-in-progress: false
@@ -2482,7 +2482,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
-          ref: ${{ (github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'namecheap_observe' || github.event.inputs.mode == 'arrival_converge' || github.event.inputs.mode == 'printer') && github.sha || github.event.inputs.expected_revision || github.sha }}
+          ref: ${{ github.sha }}
       - name: Download release-bins artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
@@ -2606,6 +2606,7 @@ jobs:
   approval-broker-dark-install:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
+    environment: srv1-production
     timeout-minutes: 50
     if: github.event.inputs.mode == 'approval_broker_dark_install'
     concurrency:
@@ -2616,7 +2617,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
-          ref: ${{ (github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'namecheap_observe' || github.event.inputs.mode == 'arrival_converge' || github.event.inputs.mode == 'printer') && github.sha || github.event.inputs.expected_revision || github.sha }}
+          ref: ${{ github.sha }}
       - name: Download release-bins artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
@@ -2705,6 +2706,7 @@ jobs:
   microvm-controller-install:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
+    environment: srv1-production
     timeout-minutes: 50
     if: github.event.inputs.mode == 'microvm_controller_install'
     concurrency:
@@ -2715,7 +2717,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
-          ref: ${{ (github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'namecheap_observe' || github.event.inputs.mode == 'arrival_converge' || github.event.inputs.mode == 'printer') && github.sha || github.event.inputs.expected_revision || github.sha }}
+          ref: ${{ github.sha }}
       - name: Download release-bins artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
@@ -2827,7 +2829,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
-          ref: ${{ (github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'namecheap_observe' || github.event.inputs.mode == 'arrival_converge' || github.event.inputs.mode == 'printer') && github.sha || github.event.inputs.expected_revision || github.sha }}
+          ref: ${{ github.sha }}
       - name: Download release-bins artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
