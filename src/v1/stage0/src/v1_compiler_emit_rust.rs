@@ -20277,6 +20277,54 @@ pub fn emit_fn_def(
                 return v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visibility_prefix(), kw.clone()), " ".to_string()), crate::v1_compiler_emit::emit_ident(name.clone(), RenderTarget::Rust)), type_params_str.clone()), "(".to_string()), params_str.clone()), ")".to_string()), ret_str.clone()), " {\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(1)), "panic!(\"unrealized host seam '".to_string()), name.clone()), "' in ".to_string()), scope.module_name.clone()), ": this declaration's whole body is a self-call, so it has no behaviour on this target. ".to_string()), "It compiles as a refusal rather than as recursion. Give it a row in ".to_string()), "extdeps.languages.rust.emit rt_function_registry and a body in v1.runtime_rust, or delete its consumers.\")\n}".to_string());
             }
         }
+        if (realized_seam.clone() && ((value_params.clone().len() as i64) == 0)) {
+            {
+                let kw = rust_items().func_keyword.clone();
+                return v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            rust_visibility_prefix(),
+                                                            kw.clone(),
+                                                        ),
+                                                        " ".to_string(),
+                                                    ),
+                                                    crate::v1_compiler_emit::emit_ident(
+                                                        name.clone(),
+                                                        RenderTarget::Rust,
+                                                    ),
+                                                ),
+                                                type_params_str.clone(),
+                                            ),
+                                            "()".to_string(),
+                                        ),
+                                        ret_str.clone(),
+                                    ),
+                                    " {\n".to_string(),
+                                ),
+                                crate::v1_compiler_emit_core_support::make_indent(1),
+                            ),
+                            "v1_rt::".to_string(),
+                        ),
+                        crate::v1_compiler_emit::emit_ident(
+                            rust_runtime_bridge_name(rust_seam_primitive_name(
+                                scope.module_name.clone(),
+                                name.clone(),
+                            )),
+                            RenderTarget::Rust,
+                        ),
+                    ),
+                    "()\n}".to_string(),
+                );
+            }
+        }
         if use_tco.clone() {
             {
                 let tco_params_str = emit_tco_params(
