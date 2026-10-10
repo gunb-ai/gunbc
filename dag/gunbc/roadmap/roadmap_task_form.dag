@@ -1,0 +1,39 @@
+module gunbc.roadmap_task_form
+
+import std.types { String, NonEmptyStr, FilePath, List, Bool }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import v2.std.algebra { filter }
+import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity, Pointer, Dispatchable, PrsMerged, MemberOf }
+import gunbc.roadmap_status { TicketLine, TicketFields, Unsigned }
+import gunbc.roadmap_execution_contract { gunbc_claims_execution_contract }
+
+// THE COMPOSER'S FIELDS AS A RoadmapNode DRAFT. A task is created READY-SHAPED or refused (operator
+// default (c)): parent project, contribution, centering, repo, a plan pointer, the claim-execution
+// entry with its functions, a headline and the ticket prose are all required. The identity and node
+// id here are placeholders -- gunbc.roadmap_task_store roadmap_task_minted replaces both with the
+// id minted from the operation key. `get` reads one form field by name ("" when absent). There is no
+// author field: authorship is the chain event's authenticated actor, and `owner` is the WORK owner.
+fn roadmap_task_form_missing(get: fn(String) -> String) -> List<String> {
+  filter(["headline", "brief", "displaced_cost", "current_state", "first_slice", "red_control", "out_of_scope", "handback", "authored_on", "parent_project", "parent_contribution", "centering", "repo", "plan_path", "entry", "functions", "owner"], name => get(name) == "")
+}
+
+fn roadmap_task_functions(raw: String) -> List<NonEmptyStr> {
+  filter(map(split(s: raw, delimiter: ","), f => trim(s: f)), f => f != "") |> map(f => f as NonEmptyStr)
+}
+
+fn roadmap_task_draft_from_form(get: fn(String) -> String) -> RoadmapNode? {
+  let functions = roadmap_task_functions(raw: get("functions"))
+  if count(roadmap_task_form_missing(get: get)) != 0 || count(functions) == 0 { none } else {
+    Present { value: RoadmapNode {
+      identity: "draft" as RoadmapNodeIdentity, node: "draft" as RoadmapNodeId,
+      line: TicketLine { done: false, ticket: TicketFields { headline: get("headline"), brief: get("brief"), displaced_cost: get("displaced_cost"), current_state: get("current_state"), first_slice: get("first_slice"), red_control: get("red_control"), out_of_scope: get("out_of_scope"), handback: get("handback"), updates: [], authored_on: get("authored_on"), last_verified_on: "" } },
+      carriers: [Pointer { label: "plan", path: get("plan_path") }],
+      dispatch: Dispatchable { repo: get("repo"), acceptance: PrsMerged },
+      execution: gunbc_claims_execution_contract(entry: get("entry") as FilePath, functions: functions),
+      owner: get("owner"), signoff: Unsigned,
+      parent: Present { value: MemberOf { project: get("parent_project"), contribution: get("parent_contribution") as NonEmptyStr } },
+      centering: Present { value: get("centering") as NonEmptyStr },
+    } }
+  }
+}
