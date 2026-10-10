@@ -6,7 +6,9 @@ import extdeps.tailscale.identity { TailnetIdentity, TailnetUser, TailnetIdentit
 import product.host_identity { HostIdentity }
 import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
 import gunbc.fabric_storage_file_store { fabric_storage_file_root }
-import gunbc.fabric_storage_placement { fabric_storage_placement, fabric_storage_store_root, fabric_storage_door_local_writers, fabric_storage_door_proxy_peer }
+import gunbc.fabric_storage_binding { fabric_storage_placement }
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.fabric_storage_placement { fabric_storage_store_root, fabric_storage_door_local_writers, fabric_storage_door_proxy_peer }
 import std.fabric_storage { FabricStoreUnreachable, FabricWriterRefusal, WriterLoginAbsent, WriterLoginUnrostered, WriterPeerUnrostered, WriterPeerUnattested }
 import gunbc.fabric_storage_wire { FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused, FabricDoorPrincipal, DoorProxied, DoorLocalPeer, DoorUnattested }
 import gunbc.fabric_writer_identity_observe {
@@ -37,6 +39,8 @@ type FabricWriterIdentityObservation {
   receipt: FabricWriterIdentityReceipt
 }
 
+// THE srv1 ROW IS A RECORDED RECEIPT: that run observed srv1, so it names srv1's instance, not the
+// role's holder (a receipt is history, not a placement).
 // THE READINGS, 2026-09-27 (fleet-converge mode fabric_writer_identity_observe, one run per host).
 // NONE IS A LOGIN: srv1 is the placed host and, before the door cutover, read unproxied; srv3 and
 // srv4 could not resolve the placed host's tailnet name (curl exit 6). So the roster is EMPTY and
@@ -54,7 +58,7 @@ fn door_unresolved() -> NonEmptyStr {
 fn fabric_writer_identity_observations() -> List<FabricWriterIdentityObservation> {
   [
     FabricWriterIdentityObservation { run: "36347411725" as NonEmptyStr, receipt: FabricWriterIdentityReceipt {
-      host: "srv1" as HostIdentity, binding: FabricStorageLocalFiles { root: fabric_storage_file_root(root: fabric_storage_store_root()) },
+      host: "srv1" as HostIdentity, binding: FabricStorageLocalFiles { root: fabric_storage_file_root(root: fabric_storage_store_root(instance: srv1_live_dashboard_instance())) },
       read: FabricIdentityUnproxied, observed_at: "2026-09-27T20:29Z" as NonEmptyStr } },
     FabricWriterIdentityObservation { run: "36347414620" as NonEmptyStr, receipt: FabricWriterIdentityReceipt {
       host: "srv3" as HostIdentity, binding: recorded_binding(host: "srv3"),

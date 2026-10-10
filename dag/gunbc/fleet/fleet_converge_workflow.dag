@@ -18,6 +18,7 @@ import gunbc.auth.approval_request_submission {approval_submission_mac_key_path}
 import gunbc.auth.approval_store_receipt {approval_store_receipt_mac_key_path}
 import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
 
+import gunbc.live_deploy.desired { prod_role_actuated_realization }
 import extdeps.github.expressions { Expression, ContextAccess, Github, StringLiteral, Equals, LogicalOr, LogicalAnd, interpolate }
 import gunbc.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEnvironment, FabricAllocationStoreOnly, WorkspaceSlotCommissioningOnly, WorkspaceAllocationOnly, LiveDeploy }
 import gunbc.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
@@ -84,6 +85,10 @@ import gunbc.workflow_capability_closure {
   capability_closure_is_closed,
 }
 import v2.std.algebra { list_map }
+import v2.std.diagnostic { Outcome, Accepted, Rejected }
+import v2.std.node { Node }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.extdeps.languages.bash_build { bash_build_with_redir, bash_build_command_with_words, bash_build_word_lit, bash_build_exit }
 import gunbc.fleet_workflow_steps {
   ci_prelude_steps_with_checkout, ci_prelude_annotations, ci_release_build_step, ci_release_bins_pack_step, ci_release_bins_key_step, ci_release_bins_lookup_step, release_bins_key_step_name, release_bins_lookup_step_name, release_bins_cache_step_name, release_bins_outcome_step_name, ci_release_bins_cache_step, ci_release_bins_outcome_step, ci_cache_cargo_step, ci_release_bins_upload_step, ci_release_bins_download_step, ci_release_bins_unpack_verify_step, ci_release_bins_unpack_verify_step_for, ci_release_bins_key_step_for, ci_release_bins_outcome_step_for, ci_release_build_step_for, ci_release_bins_pack_step_for, ci_fleet_wif_auth_step, ci_fleet_wif_auth_step_when, ci_fleet_key_agent_step, ci_fleet_key_agent_step_when, ci_fleet_key_agent_cleanup_step, ci_wif_auth_step_for, gunbc_ci_mtcollins1_boot_job_backstop_timeout_minutes, gunbc_ci_aux_step_timeout_minutes, gunbc_ci_fleet_converge_plan_step_timeout_minutes, gunbc_ci_runner_guest_image_step_timeout_minutes, gunbc_ci_mtcollins1_census_image_step_timeout_minutes, gunbc_ci_gunbc_run_resolve_step_timeout_minutes, gunbc_ci_spark_serving_step_timeout_minutes, gunbc_ci_spark_runtime_image_build_step_timeout_minutes, gunbc_ci_artifact_transfer_step_timeout_minutes, gunbc_ci_fleet_job_backstop_timeout_minutes, gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes, gunbc_ci_live_deploy_step_timeout_minutes, gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes, gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout, fleet_host_mutation_concurrency_group_expression, fleet_host_mutation_group_prefix, fleet_arm_mutation_group_glm_group_b_native, fleet_srv1_control_plane_mutation_group, fleet_subject_mutation_group_approval_device_store, checked_job_timeout_minutes, JobTimeoutWithinCeiling, JobTimeoutExceedsCeiling, fleet_host_mutation_group_prefix, fleet_host_input_expression,
 }
@@ -97,7 +102,8 @@ import gunbc.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 
 import gunbc.auth.gcp_iam_converge_federation { gcp_iam_converge_environment, gcp_iam_observe_wif_provider_resource }
 import gunbc.auth.gcp_iam_converge { iam_observe_service_account, iam_converge_service_account, iam_converge_token_lifetime }
 import gunbc.auth.gcp_iam_converge_run { gcp_iam_converge_step_timeout_minutes, iam_converge_token_env, gcp_iam_converge_approved_output }
-import gunbc.auth.approval_broker_endpoint { approval_broker_host_identity }
+import gunbc.auth.approval_broker_placement { approval_broker_host_under, ApprovalBrokerHostResolved, ApprovalBrokerHostRefused }
+import gunbc.roadmap_dashboard_instance { ProdRoleRealization, ProdRoleRealizationRefusal, prod_role_realization, prod_role_realization_refusal_detail }
 import gunbc.auth.managed_host_boot_federation {
   ManagedHostBootFederationStanding, BootFederationProvisioned, BootFederationProvisionedUnderDeclaredDrop,
   BootFederationUnprovisioned, boot_federation_for, boot_federation_provider_resource,
@@ -2915,7 +2921,7 @@ fn fleet_converge_microvm_runner_group_ensure_receipt_upload_step() -> Step {
 
 fn fleet_converge_approval_keyring_converge_step() -> Step {
   RunStep {
-    name: Present { value: "Materialize approval MAC keys on srv1 (SM pinned -> sha256 prefix -> /etc/gunbc-roadmap 0640)" },
+    name: Present { value: "Materialize approval MAC keys on the approval broker host (SM pinned -> sha256 prefix -> /etc/gunbc-roadmap 0640)" },
     id: Present { value: "approval_keyring_converge" },
     run: gunbc_ci_approval_keyring_converge_invoke(),
     shell: none,
@@ -2931,14 +2937,14 @@ fn fleet_converge_approval_keyring_converge_step() -> Step {
 }
 
 // THE ENROLMENT-CODE STEP: one remote invocation of gunbc.auth.approval_device_enrolment_code
-// issue_device_enrolment_code on srv1 as the operator's user, from the release the dispatch names;
+// issue_device_enrolment_code on the approval broker host as the operator's user, from the release the dispatch names;
 // the step prints the delivery receipt and NEVER the code (decision msg_a1d8d1b9 -- the code goes
 // over the operator's ntfy topic, whose deny-by-default policy is DECLARED and not yet read back:
 // gunbc.auth.approval_ntfy_deployment's access rows are NoDischargeSiteModeled). No WIF token: the verb needs no secret the host does not
 // already hold.
 fn fleet_converge_approval_device_enrolment_code_issue_step() -> Step {
   RunStep {
-    name: Present { value: "Issue a device enrolment code on srv1 and deliver it to the operator channel (receipt only in this log)" },
+    name: Present { value: "Issue a device enrolment code on the approval broker host and deliver it to the operator channel (receipt only in this log)" },
     id: Present { value: "approval_device_enrolment_code_issue" },
     run: gunbc_ci_approval_device_enrolment_code_issue_invoke(),
     shell: none,
@@ -3459,7 +3465,7 @@ data fleet_converge_approval_broker_dark_install_step_if: String = fleet_converg
 
 fn fleet_converge_approval_broker_dark_install_step() -> Step {
   RunStep {
-    name: Present { value: "Install the approval broker dark on srv1 (additive unit + slice; does not restart gunbc-roadmap.service)" },
+    name: Present { value: "Install the approval broker dark on the approval broker host (additive unit + slice; does not restart gunbc-roadmap.service)" },
     id: Present { value: "approval_broker_dark_install" },
     run: gunbc_ci_approval_broker_dark_install_invoke(),
     shell: none,
@@ -4610,11 +4616,105 @@ fn fleet_converge_gcp_iam_apply_step() -> Step {
   }
 }
 
+// THE JOB RUNS WHERE THE APPROVAL BROKER RUNS, which follows the prod role
+// (gunbc.auth.approval_broker_endpoint approval_broker_host_under). Under a refused realization it is
+// still EMITTED, so a dispatch of this mode is not silently absent, but as a refused job whose only
+// step fails with the typed cause: no federation, no approval filing, no host it could be pinned to.
 fn fleet_converge_gcp_iam_converge_job() -> Job {
+  fleet_converge_gcp_iam_converge_job_under(realization: prod_role_actuated_realization())
+}
+
+fn fleet_converge_gcp_iam_converge_job_under(realization: ProdRoleRealization) -> Job {
+  match approval_broker_host_under(realization: realization) {
+    ApprovalBrokerHostResolved { host } => fleet_converge_gcp_iam_converge_job_on(host: host)
+    ApprovalBrokerHostRefused { cause } => fleet_converge_gcp_iam_converge_refused_job(cause: cause)
+  }
+}
+
+// THE REFUSED JOB'S SCRIPT IS EMITTED, NOT SPELLED: an echo of the typed cause to stderr and exit 1,
+// as v2.extdeps.languages.bash_build nodes through v2.workflow.bash_emit bash_emit_stmts. A script
+// bash_emit rejects has no text here; the generation gate fleet_converge_gcp_iam_refusal_script_admitted
+// refuses the whole workflow instead of emitting a step with no script.
+fn gcp_iam_converge_refusal_statements(cause: ProdRoleRealizationRefusal) -> List<Node> {
+  [
+    bash_build_with_redir(
+      inner: bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "echo"),
+        bash_build_word_lit(text: join(["REFUSED gunbc.fleet_converge_workflow gcp-iam-converge: ", prod_role_realization_refusal_detail(cause: cause)], "")),
+      ]),
+      redir: ^bash_production_fold_redir_stdout_to_stderr,
+    ),
+    bash_build_exit(code: "1"),
+  ]
+}
+
+fn gcp_iam_converge_refusal_script(cause: ProdRoleRealizationRefusal) -> Outcome<String> {
+  bash_emit_stmts(statements: gcp_iam_converge_refusal_statements(cause: cause), set_e: true)
+}
+
+fn gcp_iam_converge_refusal_script_text(outcome: Outcome<String>) -> String {
+  match outcome {
+    Accepted { value: v, diagnostics: _ } => v
+    Rejected { diagnostics: _ } => ""
+  }
+}
+
+// Admitted when the live realization resolves (no refused job is emitted) or bash_emit accepts the
+// refusal script for its cause.
+fn fleet_converge_gcp_iam_refusal_script_admitted() -> Bool {
+  match approval_broker_host_under(realization: prod_role_actuated_realization()) {
+    ApprovalBrokerHostResolved { host: _ } => true
+    ApprovalBrokerHostRefused { cause } =>
+      match gcp_iam_converge_refusal_script(cause: cause) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn fleet_converge_gcp_iam_converge_refused_job(cause: ProdRoleRealizationRefusal) -> Job {
   Job {
     id: fleet_converge_mode_job_id(mode: GcpIamConverge) as String,
     name: none,
-    runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", approval_broker_host_identity() as String] },
+    runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
+    environment: none,
+    steps: [
+      RunStep {
+        name: Present { value: "REFUSED: the approval broker has no host (prod role unresolved)" },
+        id: none,
+        run: gcp_iam_converge_refusal_script_text(outcome: gcp_iam_converge_refusal_script(cause: cause)),
+        shell: none,
+        env: none,
+        working_directory: none,
+        if_condition: none,
+        continue_on_error: none,
+        timeout_minutes: Present { value: 1 }
+      },
+    ],
+    needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: GcpIamConverge)),
+    env: none,
+    outputs: none,
+    if_condition: Present { value: fleet_converge_gcp_iam_converge_step_if },
+    timeout_minutes: Present { value: 5 },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present {
+      value: WorkflowPermissions {
+        contents: Present { value: PermRead },
+        pull_requests: none,
+        issues: none,
+        actions: none,
+        id_token: none,
+      }
+    }
+  }
+}
+
+fn fleet_converge_gcp_iam_converge_job_on(host: NonEmptyStr) -> Job {
+  Job {
+    id: fleet_converge_mode_job_id(mode: GcpIamConverge) as String,
+    name: none,
+    runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", host as String] },
     environment: Present { value: gcp_iam_converge_environment as String },
     steps: [
       fleet_converge_event_sha_checkout_step(),
@@ -4920,6 +5020,10 @@ fn fleet_converge_yml_after_toolchain_admission() -> FleetConvergeYamlGeneration
         }
       } else if !fleet_converge_boot_federation_admitted() {
         FleetConvergeYamlGenerationRefused { reason: fleet_converge_boot_federation_unprovisioned_refusal }
+      } else if !fleet_converge_gcp_iam_refusal_script_admitted() {
+        FleetConvergeYamlGenerationRefused {
+          reason: "REFUSED gunbc.fleet_converge_workflow: v2.workflow.bash_emit refused the gcp-iam-converge refusal script, so no workflow is emitted rather than a step with no script",
+        }
       } else if !release_bins_scripts_admitted() {
         FleetConvergeYamlGenerationRefused {
           reason: "REFUSED gunbc.fleet_converge_workflow: v2.workflow.bash_emit refused a release-bins runner (gunbc.fleet_release_bins_key), so no workflow is emitted rather than a step with no script",

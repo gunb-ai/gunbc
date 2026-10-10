@@ -1,6 +1,6 @@
 module gunbc.fabric_writer_identity_observe
 
-import gunbc.fabric_storage_binding { fabric_storage_binding_for }
+import gunbc.fabric_storage_binding { fabric_storage_binding_for, fabric_storage_placement }
 
 import std.types { String, NonEmptyStr, List, Bool }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -8,7 +8,6 @@ import std.fabric_storage { fabric_storage_fault_wire }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tailscale.identity { TailnetIdentity, TailnetUser, TailnetIdentityAbsent }
 import product.host_identity { HostIdentity, host_identity_eq }
-import gunbc.fabric_storage_placement { fabric_storage_placement, FabricStoragePlaced, FabricStorageUnplaced }
 import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles, FabricStorageDoorSocket, FabricStorageServed, FabricStorageBindingUnplaced, FabricStorageBindingRefused, fabric_storage_presented_identity }
 import gunbc.fabric_storage_wire { FabricIdentityRead, FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused, FabricIdentityLocalPeer, FabricIdentityUnattested }
 import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
