@@ -644,7 +644,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     text_default: Some("".to_string()),
 }),
     arity: CliOptionArity::CliRequired,
-    doc: Rc::new(vec!["Spark target host (srv5 | srv6); required for scope:spark-serving, refused elsewhere".to_string()]),
+    doc: Rc::new(vec!["Spark target host; required for scope:spark-serving, refused elsewhere".to_string()]),
     emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliOptionRow {
     field: "candidate_branch".to_string(),
