@@ -39,7 +39,7 @@ import std.measure { Second, minute_count, second_count }
 import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, yaml_int, yaml_bool, kv }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep, 
-  WorkflowTrigger, WorkflowDispatch, DispatchInput, InputString, InputChoice,
+  WorkflowTrigger, WorkflowDispatch, DispatchInput, InputString, InputBoolean, InputChoice, InputEnvironment,
   WorkflowPermissions, PermRead, PermWrite, 
   RunnerSpec, RunsOnExpression, SelfHosted,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
@@ -245,6 +245,12 @@ data fleet_converge_enrolled_host_options: List<String> = map(fleet_hosts(), h =
 // seven enrolled units because the list was typed when there were two. The choice list is now the
 // administrator credential roster (gunbc.spark.credential_workflow), which is itself an identity join
 // with procurement, so enrolling a Spark makes it dispatchable and nothing else can.
+//
+// AN EMPTY ROSTER MUST NOT BECOME options: []. GitHub's choice input is a closed set; an empty
+// set is not a form, it is a parser/dispatch refusal (review 78408). The sold-out administrator
+// roster (gunbc.spark.credential_workflow spark_administrator_credential_roster, 2026-10-10) is
+// that emptiness. Emission omits the target input and the spark_* mode options until a host is
+// rostered again -- it does not fabricate srv5..srv12, and it does not emit a plausible empty choice.
 data fleet_converge_spark_target_options: List<String> = map(spark_administrator_credential_roster_hosts(), h => h as String)
 
 // ONE NAME PER MODE, SPELLED ONCE. The dispatch options and every `if:` expression that selects on
@@ -768,7 +774,25 @@ data fleet_converge_fleet_ssh_key_modes: List<FleetConvergeWorkflowMode> = filte
 
 data fleet_converge_fleet_ssh_key_step_if: String = fleet_converge_any_mode_step_if(modes: fleet_converge_fleet_ssh_key_modes)
 
-data fleet_converge_mode_options: List<String> = map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m))
+data fleet_converge_spark_target_modes: List<FleetConvergeWorkflowMode> = [
+  SparkGrants,
+  SparkBootstrap,
+  SparkServingApply,
+  SparkNativeServingApply,
+  SparkRuntimeImageProbe,
+  SparkWirelessLinkConverge,
+  SparkGrantsObserve,
+]
+
+fn fleet_converge_mode_is_spark_target_mode(mode: FleetConvergeWorkflowMode) -> Bool {
+  any(fleet_converge_spark_target_modes, m => fleet_converge_workflow_mode_wire(mode: m) == fleet_converge_workflow_mode_wire(mode: mode))
+}
+
+fn fleet_converge_dispatchable_modes() -> List<FleetConvergeWorkflowMode> {
+  filter(fleet_converge_workflow_modes, m => count(fleet_converge_spark_target_options) > 0 || !fleet_converge_mode_is_spark_target_mode(mode: m))
+}
+
+data fleet_converge_mode_options: List<String> = map(fleet_converge_dispatchable_modes(), m => fleet_converge_workflow_mode_wire(mode: m))
 
 
 // ── the host reset-return mode ─────────────────────────────────────────────────────────────────
@@ -4638,7 +4662,7 @@ fn fleet_converge_gcp_iam_converge_job() -> Job {
 
 // THE DISPATCH INPUTS, AS THEIR OWN ROW: the workflow consumes them below, and a witness over
 // what the operator can name reads this list rather than building every job to reach it.
-data fleet_converge_dispatch_inputs: List<DispatchInput> = [
+data fleet_converge_dispatch_input_rows: List<DispatchInput> = [
   DispatchInput { name: "workspace_image_run_id", description: Present { value: "Image build run to download for controller install; installed bytes must match the reviewed image pin" }, required: false, default: none, type: InputString },
 
   DispatchInput {
@@ -4771,6 +4795,25 @@ data fleet_converge_dispatch_inputs: List<DispatchInput> = [
   },
 ]
 
+// Omit `target` when the Spark administrator roster is empty. Emitting InputChoice { options: [] }
+// is GitHub-invalid and dispatch-dead (review 78408). Other empty choices still refuse below.
+data fleet_converge_dispatch_inputs: List<DispatchInput> = filter(
+  fleet_converge_dispatch_input_rows,
+  i => i.name != "target" || count(fleet_converge_spark_target_options) > 0
+)
+
+fn fleet_converge_empty_choice_input_names() -> List<String> {
+  map(
+    filter(fleet_converge_dispatch_inputs, i => match i.type {
+      InputChoice { options: opts } => count(opts) == 0
+      InputString => false
+      InputBoolean => false
+      InputEnvironment => false
+    }),
+    i => i.name
+  )
+}
+
 data fleet_converge_workflow: Workflow = Workflow {
   name: "fleet-converge",
   run_name: Present { value: "fleet-converge ${{ inputs.mode }} ${{ inputs.host }} nonce=${{ inputs.transaction_nonce }}" },
@@ -4802,7 +4845,15 @@ type FleetConvergeYamlGenerationOutcome
 data fleet_converge_capability_closure_refusal: String = "REFUSED gunbc.fleet_converge_workflow: a step consumes a capability that no preceding step provides (gunbc.workflow_capability_closure). No workflow yaml was emitted. Fix the step roles in ci_prelude_bound_steps_with_checkout / fleet_converge_build_job_annotations, or the order of the steps themselves."
 
 fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
-  if count(fleet_converge_dispatch_inputs) > workflow_dispatch_max_inputs {
+  if count(fleet_converge_empty_choice_input_names()) > 0 {
+    FleetConvergeYamlGenerationRefused {
+      reason: join([
+        "fleet-converge InputChoice has no options: ",
+        join(fleet_converge_empty_choice_input_names(), ", "),
+        " (GitHub rejects an empty closed choice; DESIGN §5: refuse, do not emit options: [])",
+      ], "")
+    }
+  } else if count(fleet_converge_dispatch_inputs) > workflow_dispatch_max_inputs {
     FleetConvergeYamlGenerationRefused { reason: "fleet-converge exceeds GitHub's workflow_dispatch input limit" }
   } else { fleet_converge_yml_after_input_admission() }
 }
