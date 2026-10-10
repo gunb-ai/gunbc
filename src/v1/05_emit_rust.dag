@@ -9669,6 +9669,12 @@ fn rust_host_seam_is_unrealized(module_path: String, name: String, body: Node, s
     && rust_runtime_primitive_has_bridge(primitive_name: rust_seam_primitive_name(module_path: module_path, name: name)) == false
 }
 
+// A NULLARY REALIZED SEAM BELOW THE ROSTER IS ITS OWN BRIDGE CALL. std.error_primitives is
+// imported (transitively) by every module the projection roster's own imports reach, so no
+// closure of it can contain the roster; its self-call therefore never resolves to the roster's
+// RuntimePrimitiveCall and would emit as recursion. The declaration is the one place that still
+// knows it is the seam (rust_host_seam_is_realized above reads the roster directly), and a
+// nullary seam has no by-ref or result-wrapping choice to get wrong.
 fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
   let host_text_op = rust_host_string_op_fn_emit(name: name)
@@ -9814,12 +9820,6 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
       "It compiles as a refusal rather than as recursion. Give it a row in ",
       "extdeps.languages.rust.emit rt_function_registry and a body in v1.runtime_rust, or delete its consumers.\")\n}")
   }
-  // A NULLARY REALIZED SEAM BELOW THE ROSTER IS ITS OWN BRIDGE CALL. std.error_primitives is
-  // imported (transitively) by every module the projection roster's own imports reach, so no
-  // closure of it can contain the roster; its self-call therefore never resolves to the roster's
-  // RuntimePrimitiveCall and would emit as recursion. The declaration is the one place that still
-  // knows it is the seam (rust_host_seam_is_realized above reads the roster directly), and a
-  // nullary seam has no by-ref or result-wrapping choice to get wrong.
   if realized_seam && (value_params |> count) == 0 {
     let kw = rust_items().func_keyword
     return concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), type_params_str, "()", ret_str, " {\n",
