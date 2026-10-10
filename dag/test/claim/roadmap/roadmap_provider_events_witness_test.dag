@@ -562,13 +562,21 @@ test fn classify_non_array_assistant_content_is_refused() -> Bool {
   }
 }
 
-test fn jq_filter_carries_no_claude_stream_semantics() -> Bool {
+// THE FILTER BOUNDS CLAUDE LINES AND CLASSIFIES NONE (reviews 78437 and 78439 together): the belt
+// reads Claude's attempt JSONL through this filter, so the result / system / assistant / user arms
+// must pass the bounded fields through (dropping them starved the typed reader and misread tool
+// activity as Reporting); what they may never carry is a classification -- none of the
+// provider-neutral activity names appears in the jq text.
+test fn jq_filter_bounds_claude_lines_and_classifies_none() -> Bool {
   let filter = projection_filter_text()
-  !string_contains(s: filter, pattern: "$type == \"result\"")
-    && !string_contains(s: filter, pattern: "$type == \"system\"")
-    && !string_contains(s: filter, pattern: "$type == \"assistant\"")
-    && !string_contains(s: filter, pattern: "message.content")
-    && !string_contains(s: filter, pattern: "is_error")
+  string_contains(s: filter, pattern: "$type == \"result\"")
+    && string_contains(s: filter, pattern: "$type == \"assistant\"")
+    && string_contains(s: filter, pattern: "message.content")
+    && !string_contains(s: filter, pattern: "RunningCommand")
+    && !string_contains(s: filter, pattern: "Reporting")
+    && !string_contains(s: filter, pattern: "EditingFiles")
+    && !string_contains(s: filter, pattern: "ProviderEventObserved")
+    && !string_contains(s: filter, pattern: "ProviderEventSkipped")
 }
 
 // SUPPLIED-VALUE RED: the Claude bound (which lines count, which content blocks classify as

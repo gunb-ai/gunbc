@@ -171,14 +171,18 @@ data codex_provider_projection_message_budget: CharacterCount = character_count(
 
 // TRUNCATION IS REPORTED, NEVER SILENT — the one place this projection could otherwise fabricate a plausible output (DESIGN §5). Everywhere else the bounds guard a machine-read classification, where a cut string simply fails to match and refuses; here the bounded value is PROSE AN OPERATOR READS AND ACTS ON, so a report severed mid-sentence and presented as if complete is a wrong answer delivered confidently — the operator would judge the work on a fragment while the screen gave no sign anything was missing. The projected envelope therefore carries the boundedness as its own member — a `message` object pairing the bounded text with a `truncated` flag — where truncated is computed from the ORIGINAL length before slicing, so it is a statement about the provider's actual output rather than about the slice. A consumer that renders text without consulting truncated is re-opening the arm this row closes, which is why the flag is a sibling of the text and not a derived guess about whether the slice happens to sit on the budget.
 // DECLARED SCAFFOLD (review 44058, DESIGN 6). This is a jq PROGRAM assembled by join — a foreign
-// language built as a string. It is Codex-only: which Claude lines count, which content blocks
-// are projected, and slicing of Claude wire fields live in claude_code_stream_line and
-// classify_claude_code_stream_line, never here. Minting a jq grammar would buy an emitter for a
-// filter that exists ONLY to bound a Codex JSONL line before the substrate reads it (DESIGN 6
-// purity trap). DISSOLVES ON: observation reading the attempt JSONL under a substrate-side line
-// bound instead of shelling to a projector, at which point BOTH this filter and
-// ProviderEventProjectionCapability delete together. Interpolated values are the CharacterCount
-// budgets above, never caller input.
+// language built as a string. It exists ONLY to BOUND a provider JSONL line (Codex, and since
+// gunbc#13670 Claude stream-json) before the substrate reads it; every semantic decision — which
+// lines count, how a line classifies, skip versus observe versus refuse — lives in the typed
+// readers (claude_code_stream_line, parse_codex_jsonl) and in classify_*, never here. The Claude
+// arms are the growth review 78437 named; dropping them is not the repair (review 78439: the belt
+// reads Claude's attempt JSONL through this same filter, so without them every Claude line reaches
+// the classifier with only its type and tool activity is misread or dropped). They retire with
+// the filter: DISSOLVES ON observation reading the attempt JSONL under a substrate-side line bound
+// instead of shelling to a projector, at which point BOTH this filter and
+// ProviderEventProjectionCapability delete together, or earlier under a provider-neutral bound
+// (a generic string walk with reported truncation) that carries no provider field names.
+// Interpolated values are the CharacterCount budgets above, never caller input.
 data codex_provider_event_projection_filter: NonEmptyStr = join([
   "fromjson | def event_type: if (.type | type) == \"string\" then .type[0:",
   to_string(character_count_value(c: codex_provider_projection_type_budget)),
@@ -194,7 +198,11 @@ data codex_provider_event_projection_filter: NonEmptyStr = join([
   to_string(character_count_value(c: codex_provider_projection_message_budget)),
   "]),\"truncated\":((.item.text | length) > ",
   to_string(character_count_value(c: codex_provider_projection_message_budget)),
-  ")} else null end; (event_type) as $type | if $type == \"item.started\" or $type == \"item.completed\" then (if item_type == \"agent_message\" and (agent_report != null) then {\"type\":$type,\"item\":{\"type\":item_type,\"message\":agent_report}} else {\"type\":$type,\"item\":{\"type\":item_type}} end) elif $type == \"turn.failed\" then {\"type\":$type,\"error\":{\"message\":(.error | bounded_text)}} elif $type == \"turn.budget_exhausted\" then {\"type\":$type,\"steps_taken\":(.steps_taken | num)} elif $type == \"turn.placement_waiting\" then {\"type\":$type,\"wait\":(.wait | num),\"wait_cap\":(.wait_cap | num),\"reason\":(.reason | bounded_text)} elif $type == \"error\" then {\"type\":$type,\"message\":((.message // .error) | bounded_text)} elif $type == \"round.usage\" then ({\"type\":$type,\"step\":(.step | num),\"input_tokens\":(.input_tokens | num),\"output_tokens\":(.output_tokens | num),\"epoch_ms\":(.epoch_ms | num)} + (if (.files_changed | type) == \"number\" then {\"files_changed\":.files_changed} else {} end) + (if (.tool_calls | type) == \"number\" then {\"tool_calls\":.tool_calls} else {} end)) else {\"type\":$type} end",
+  ")} else null end; (event_type) as $type | if $type == \"item.started\" or $type == \"item.completed\" then (if item_type == \"agent_message\" and (agent_report != null) then {\"type\":$type,\"item\":{\"type\":item_type,\"message\":agent_report}} else {\"type\":$type,\"item\":{\"type\":item_type}} end) elif $type == \"turn.failed\" then {\"type\":$type,\"error\":{\"message\":(.error | bounded_text)}} elif $type == \"turn.budget_exhausted\" then {\"type\":$type,\"steps_taken\":(.steps_taken | num)} elif $type == \"turn.placement_waiting\" then {\"type\":$type,\"wait\":(.wait | num),\"wait_cap\":(.wait_cap | num),\"reason\":(.reason | bounded_text)} elif $type == \"error\" then {\"type\":$type,\"message\":((.message // .error) | bounded_text)} elif $type == \"round.usage\" then ({\"type\":$type,\"step\":(.step | num),\"input_tokens\":(.input_tokens | num),\"output_tokens\":(.output_tokens | num),\"epoch_ms\":(.epoch_ms | num)} + (if (.files_changed | type) == \"number\" then {\"files_changed\":.files_changed} else {} end) + (if (.tool_calls | type) == \"number\" then {\"tool_calls\":.tool_calls} else {} end)) elif $type == \"result\" then ({\"type\":$type} + (if (.subtype | type) == \"string\" then {\"subtype\":.subtype[0:",
+  to_string(character_count_value(c: codex_provider_projection_type_budget)),
+  "]} else {} end) + (if (.is_error | type) == \"boolean\" then {\"is_error\":.is_error} else {} end)) elif $type == \"system\" then {\"type\":$type} elif $type == \"assistant\" or $type == \"user\" then {\"type\":$type,\"message\":(if (.message | type) == \"object\" then {\"content\":(if (.message.content | type) == \"array\" then [.message.content[] | {\"type\":(if (.type | type) == \"string\" then .type[0:",
+  to_string(character_count_value(c: codex_provider_projection_type_budget)),
+  "] else .type end)}] else .message.content end)} else .message end)} else {\"type\":$type} end",
 ], "") as NonEmptyStr
 
 fn codex_provider_event_projection_args(path: FilePath) -> List<String> {
