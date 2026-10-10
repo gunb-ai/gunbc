@@ -11,6 +11,9 @@ import extdeps.llm.claude_code_stream_json {
   ClaudeCodeRateLimitEventLine,
   ClaudeCodeResultLine,
   ClaudeCodeOtherLine,
+  ClaudeCodeSystemLine,
+  ClaudeCodeAssistantLine,
+  ClaudeCodeUserLine,
   ClaudeCodeLineUnreadable,
   StreamLineNotJson,
   StreamLineMemberMissing,
@@ -169,6 +172,9 @@ test fn the_captured_rate_limit_line_decodes_both_windows_in_basis_points() -> B
         && any(info.windows, w => w.name as String == "seven_day" && basis_point_count(bp: w.utilization) == 4500)
     ClaudeCodeResultLine { result: _ } => false
     ClaudeCodeOtherLine { event_type: _ } => false
+    ClaudeCodeSystemLine => false
+    ClaudeCodeAssistantLine { has_tool_use: _ } => false
+    ClaudeCodeUserLine { has_tool_result: _ } => false
     ClaudeCodeLineUnreadable { gap: _ } => false
   }
 }
@@ -184,6 +190,9 @@ test fn the_unauthorized_result_carries_is_error_and_numeric_status() -> Bool {
            }
     ClaudeCodeRateLimitEventLine { info: _ } => false
     ClaudeCodeOtherLine { event_type: _ } => false
+    ClaudeCodeSystemLine => false
+    ClaudeCodeAssistantLine { has_tool_use: _ } => false
+    ClaudeCodeUserLine { has_tool_result: _ } => false
     ClaudeCodeLineUnreadable { gap: _ } => false
   }
 }
@@ -199,6 +208,9 @@ test fn a_string_utilization_refuses_naming_the_member() -> Bool {
     ClaudeCodeRateLimitEventLine { info: _ } => false
     ClaudeCodeResultLine { result: _ } => false
     ClaudeCodeOtherLine { event_type: _ } => false
+    ClaudeCodeSystemLine => false
+    ClaudeCodeAssistantLine { has_tool_use: _ } => false
+    ClaudeCodeUserLine { has_tool_result: _ } => false
   }
 }
 
@@ -219,6 +231,9 @@ fn refuses_naming(line: String, member: String) -> Bool {
     ClaudeCodeRateLimitEventLine { info: _ } => false
     ClaudeCodeResultLine { result: _ } => false
     ClaudeCodeOtherLine { event_type: _ } => false
+    ClaudeCodeSystemLine => false
+    ClaudeCodeAssistantLine { has_tool_use: _ } => false
+    ClaudeCodeUserLine { has_tool_result: _ } => false
   }
 }
 
