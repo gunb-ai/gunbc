@@ -574,10 +574,11 @@ fn ci_fleet_wif_auth_step() -> Step { ci_fleet_wif_auth_step_when(if_condition: 
 
 fn ci_fleet_wif_auth_step_when(if_condition: String?) -> Step {
   ci_wif_auth_step_with_condition(
-    name: "WIF auth (OIDC -> fleet-cloud-convergence SA, access token only)",
-    id: "wif_auth",
-    provider_resource: probe_identity_secret_access_requirement.wif_provider_resource,
-    service_account: probe_identity_secret_access_requirement.service_account,
+    "WIF auth (OIDC -> fleet-cloud-convergence SA, access token only)",
+    "wif_auth",
+    probe_identity_secret_access_requirement.wif_provider_resource,
+    probe_identity_secret_access_requirement.service_account,
+    if_condition,
   )
 }
 

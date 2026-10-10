@@ -28,7 +28,7 @@ import gunbc.fleet_converge_workflow {
   reset_subject_map_json,
   fleet_converge_workflow, expected_fleet_converge_yml,
   FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused,
-  fleet_converge_dispatch_inputs,
+  fleet_converge_dispatch_inputs, fleet_converge_dispatchable_modes, fleet_converge_spark_target_options,
 }
 import gunbc.host_reset_return {
   DispatchAssignment, DispatchAssignmentRefused, reset_dispatch_pairings,
@@ -639,9 +639,15 @@ test fn the_browser_toolchain_mode_is_on_the_roster_with_distinct_wires() -> Boo
 // to a hand-kept list that merely happens to agree with it today. The join is both directions, so
 // a roster row with no option and an option with no row are both red.
 test fn every_dispatch_option_is_a_wire_value_of_the_vocabulary() -> Bool {
-  let wires = map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m))
+  let wires = map(fleet_converge_dispatchable_modes(), m => fleet_converge_workflow_mode_wire(mode: m))
   all(fleet_converge_mode_options, o => any(wires, w => w == o))
     && all(wires, w => any(fleet_converge_mode_options, o => o == w))
+}
+
+test fn empty_spark_roster_does_not_emit_an_empty_choice_or_spark_dispatch_modes() -> Bool {
+  count(fleet_converge_spark_target_options) == 0
+    && !any(fleet_converge_mode_options, o => o == "spark_grants")
+    && !any(fleet_converge_dispatch_inputs, i => i.name == "target")
 }
 
 // THE STEP CONDITION IS DERIVED, not spelled beside the option. The discriminating half is the
