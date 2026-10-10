@@ -19,7 +19,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn test_marker_parsed(src: String, file: Symbol) -> Outcome<ParseArtifact> {
   let lm = dag_language_model()
-  match tokenize(text: src, file: file, rules: lm.lex) {
+  match tokenize_prepared(text: src, file: file, prepared: dag_prepared_lex()) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: ts, diagnostics: _ } => parse_module(tokens: ts, grammar: lm.grammar)
   }

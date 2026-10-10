@@ -1,8 +1,8 @@
 module gunbc.compute.work_request
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
+import std.algebra { trim }
 import std.measure { Kibibyte, kibibyte_count }
-import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural }
 import extdeps.systemd.systemd_run { SystemdRunOptionWordsRefusedCause, systemd_run_option_words_refused_cause_detail }
 import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
 import extdeps.languages.json.emit {
@@ -95,27 +95,63 @@ fn work_declared_outputs(op: WorkOperation) -> List<DeclaredOutput> {
   }
 }
 
-// The toolchain half of the identity: the OBSERVED rustc version line and the sccache release the
-// host serves, because the same tree under a different compiler is different work. A provider
-// observes these before computing an identity; it never spells them.
-type WorkToolchainIdentity {
-  rustc_version: NonEmptyStr
+// THE EXECUTION HALF OF THE IDENTITY: everything that can change what the same tree and operation
+// produce on a host, OBSERVED rather than spelled. Hidden fleet uniformity is not an identity axis
+// (ruling on gunbc#13072, item 4): two hosts with the same rustc release line can still target
+// different triples, run a different cargo, or interpret the operation through a different provider.
+//   rustc_verbose     -- `rustc -vV` whole: release, commit hash, LLVM version and host triple
+//   target_triple     -- the `host:` line of that output, the platform every built binary targets
+//   cargo_version     -- `cargo --version` of the cargo the build actually runs
+//   cache_release     -- the sccache release that wraps rustc
+//   provider_revision -- the git tree of the compute provider's own source (dag/gunbc/compute) in the
+//                        repository the provider runs from, which decides how an operation becomes a
+//                        command without changing the subject tree
+//
+// THE PROVENANCE WALL IS NOT YET STRUCTURAL ON THE NATIVE ROUTE, and this says so rather than claiming
+// a seal. sole_constructor and admit_callers are enforced by the seed; on the native route both are
+// standing rung drops (gunbc.rung_drop admit_callers_discarded_on_the_native_route and
+// g0_type_decl_modifier_parse_without_sealing_property), so there the mint below is callable by any
+// declaration. The provider's observation fold is its only production caller.
+type WorkToolchainIdentity sole_constructor {
+  rustc_verbose: NonEmptyStr
+  target_triple: NonEmptyStr
+  cargo_version: NonEmptyStr
   cache_release: NonEmptyStr
+  provider_revision: NonEmptyStr
 }
 
-fn work_identity(subject: WorkSubject, op: WorkOperation, toolchain: WorkToolchainIdentity) -> Fnv1a64Structural {
-  let tree = match subject { ExactTree { tree } => git_object_id_wire_hex(oid: tree) as String }
-  content_hash_tagged_structural(
-    tag: "gunbc-compute-work-v1" as NonEmptyStr,
-    payload: content_hash_atom(value: join([
-      tree, "|", work_operation_canonical(op: op), "|", toolchain.rustc_version as String, "|", toolchain.cache_release as String,
-    ], "") as NonEmptyStr),
-  )
+fn work_toolchain_observed(
+  rustc_verbose: NonEmptyStr,
+  target_triple: NonEmptyStr,
+  cargo_version: NonEmptyStr,
+  cache_release: NonEmptyStr,
+  provider_revision: NonEmptyStr,
+) -> WorkToolchainIdentity
+  admit_callers: [
+    decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_toolchain_decide"),
+    decl_ref(module_path: "test.claim.compute.work_request_witness_test", decl_name: "tc"),
+  ]
+  = WorkToolchainIdentity {
+    rustc_verbose: rustc_verbose,
+    target_triple: target_triple,
+    cargo_version: cargo_version,
+    cache_release: cache_release,
+    provider_revision: provider_revision,
+  }
+
+// The host triple a `rustc -vV` reports, read from its one `host: ` line; absent is a refusal.
+fn rustc_verbose_host_triple(verbose: String) -> String? {
+  match verbose.split(sep: "\n") |> filter(l => starts_with(s: l, prefix: "host: ")) |> first() {
+    Present { value: l } => Present { value: trim(s: l.replace(from: "host: ", to: "")) }
+    Absent => none
+  }
 }
 
-fn work_identity_hex(id: Fnv1a64Structural) -> String {
-  id.digest as String
-}
+// THERE IS NO work_identity HERE ANY MORE. It was a second key for one computation -- a private
+// tagged hash beside std.materialization_provider's request_key -- and the identity of a compute
+// request is now that provider's derived key over the ComputeWorkRequest family
+// (gunbc.compute.work_provider_local compute_work_identity). This module keeps the work VOCABULARY;
+// the materialization contract owns the key.
 
 // One returned output: the declared path, the blob identity of its bytes (git's blob object id, a
 // content hash the same authority every subject already uses), and where the store holds it.
@@ -179,6 +215,7 @@ type WorkInfrastructureRefusal
   | SubjectUnresolved { detail: String }
   | UnitMemoryGrantExceeded { class: String, granted: Kibibyte, peak_upper: Kibibyte?, grant_was_ceiling: Bool }
   | UnitEndingUnclassifiable { exit_code: Int, cause: String }
+  | FreshEffectNotServed { detail: String }
   | UnitLaunchRefused { cause: SystemdRunOptionWordsRefusedCause }
 
 fn work_outcome_identity(o: WorkOutcome) -> String {
@@ -246,6 +283,7 @@ fn work_refusal_detail(r: WorkInfrastructureRefusal) -> String {
     ToolchainUnobserved { detail } => join(["toolchain unobserved: ", detail], "")
     DependencyNotSucceeded { dependency_identity, ending } => join(["dependency ", dependency_identity, " ended ", ending], "")
     SubjectUnresolved { detail } => join(["subject unresolved: ", detail], "")
+    FreshEffectNotServed { detail } => join(["this provider does not serve a fresh effect: ", detail], "")
     UnitEndingUnclassifiable { exit_code, cause } =>
       join(["the unit exited ", to_string(value: exit_code), " and its ending could not be classified, so it is neither reported as failed nor as grant-exceeded: ", cause], "")
     UnitLaunchRefused { cause } =>

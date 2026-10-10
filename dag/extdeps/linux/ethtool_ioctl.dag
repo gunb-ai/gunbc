@@ -1,0 +1,90 @@
+module extdeps.linux.ethtool_ioctl
+
+import std.types { String, NonEmptyStr, Int, List, Bool }
+import std.algebra { trim }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.python { PythonProgramText, python_run_program_argv, python_program }
+import extdeps.exec.command { ArgvCommand, argv_command, LocalExec }
+import gunbc.command_runner { run_shell_command_observe_outcome }
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "github.com/torvalds/linux/blob/v6.9/include/uapi/linux/ethtool.h" }
+}
+
+// Linux's ETHTOOL_GCHANNELS/SIOCETHTOOL ABI, not ethtool's diagnostic prose. The Python
+// realization only marshals the native ABI and returns the syscall's errno or all nine u32s.
+// No package selection or repair policy lives in it. PythonProgramText carries the same
+// declared second-medium boundary as extdeps.nvidia.cuda_driver. This realization admits
+// Linux's 64-bit ifreq layout (16-byte name, 24-byte union); other ABIs fail before ioctl.
+// include/uapi/linux/{ethtool.h,sockios.h,if.h}; include/uapi/asm-generic/errno.h.
+data linux_siocethtool: Int = 35142
+data linux_ethtool_gchannels: Int = 60
+data linux_eopnotsupp: Int = 95
+
+type LinuxEthtoolChannels
+  = LinuxEthtoolChannelsRead { combined: Int }
+  | LinuxEthtoolChannelsUnsupported
+  | LinuxEthtoolChannelsUnreadable { cause: NonEmptyStr }
+
+fn linux_ethtool_channels_program() -> PythonProgramText {
+  join([
+    "import array, fcntl, socket, struct, sys",
+    "name = sys.argv[1]",
+    "assert struct.calcsize('P') == 8 and array.array('I').itemsize == 4",
+    "encoded = name.encode('ascii')",
+    "assert 0 < len(encoded) < 16 and chr(0) not in name",
+    concat("channels = array.array('I', [", concat(to_string(linux_ethtool_gchannels), "] + [0] * 8)")),
+    "with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:",
+    "    request = struct.pack('16sP', encoded, channels.buffer_info()[0]).ljust(40, bytes([0]))",
+    "    try:",
+    concat("        fcntl.ioctl(sock.fileno(), ", concat(to_string(linux_siocethtool), ", request)")),
+    "    except OSError as error:",
+    "        print('errno:' + name + ':' + str(error.errno))",
+    "    else:",
+    "        print('channels:' + name + ':' + ':'.join(str(x) for x in channels))",
+  ], "\n") as PythonProgramText
+}
+
+fn linux_ethtool_channels_command(device: NonEmptyStr) -> ArgvCommand {
+  let words = python_run_program_argv(program: linux_ethtool_channels_program())
+  argv_command(program: python_program(), arguments: words.skip(n: 1) + [device as String])
+}
+
+// Eliminate first() by a match, following optional_equality_answers_by_representation:
+// the seed's raw optional carrier cannot be compared with a Present literal.
+fn linux_ethtool_channels_decode(device: NonEmptyStr, text: String) -> LinuxEthtoolChannels {
+  let fields = split(s: trim(s: text), delimiter: ":")
+  let prefix = concat("channels:", concat(device as String, ":"))
+  if trim(s: text) == concat("errno:", concat(device as String, concat(":", to_string(linux_eopnotsupp)))) {
+    LinuxEthtoolChannelsUnsupported
+  } else if fields.count() == 11 && starts_with(s: trim(s: text), prefix: prefix) {
+    let numbers = fields.skip(n: 2)
+    let valid = all(numbers, word => string_length(s: word) > 0 && string_length(s: word) <= 10
+      && all(chars(word), cp => cp >= 48 && cp <= 57)
+      && (match parse_int(s: word) { Present { value: n } => n >= 0 && n <= 4294967295 Absent => false }))
+    let command_matches = match numbers.first() {
+      Present { value: command } => command == to_string(linux_ethtool_gchannels)
+      Absent => false
+    }
+    if !valid || !command_matches {
+      LinuxEthtoolChannelsUnreadable { cause: "ETHTOOL_GCHANNELS returned malformed fields or another command" as NonEmptyStr }
+    } else { match numbers.last() {
+      Present { value: last } => match parse_int(s: last) {
+        Present { value: count } => LinuxEthtoolChannelsRead { combined: count }
+        Absent => LinuxEthtoolChannelsUnreadable { cause: "ETHTOOL_GCHANNELS combined count is malformed" as NonEmptyStr }
+      }
+      Absent => LinuxEthtoolChannelsUnreadable { cause: "ETHTOOL_GCHANNELS combined count is missing" as NonEmptyStr }
+    } }
+  } else { LinuxEthtoolChannelsUnreadable { cause: concat("ETHTOOL_GCHANNELS read refused: ", trim(s: text)) as NonEmptyStr } }
+}
+
+fn linux_ethtool_channels_observe(device: NonEmptyStr) -> LinuxEthtoolChannels {
+  match run_shell_command_observe_outcome(command: linux_ethtool_channels_command(device: device), transport: LocalExec) {
+    ProcessRan { observation } => if observation.exit_code == 0 {
+      linux_ethtool_channels_decode(device: device, text: observation.stdout)
+    } else { LinuxEthtoolChannelsUnreadable { cause: "ETHTOOL_GCHANNELS reader could not execute successfully" as NonEmptyStr } }
+    ProcessNotSpawned { program: _, cause } => LinuxEthtoolChannelsUnreadable { cause: cause }
+  }
+}

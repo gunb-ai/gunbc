@@ -1,15 +1,16 @@
 //! THE EMITTED CLOSURE, BUILT AS A MULTI-CRATE CARGO WORKSPACE (Pkg7e), with its discriminating red.
 //!
-//! `//gunbc/instruments:emitted-crate-workspace`. The seed emits `v2.compiler.compile`'s closure
-//! once; `v2.workflow.emitted_crate_workspace` `emitted_workspace_plan` partitions it into crate
-//! rows from the derived module DAG, the emission's own returned edges and the transitive unit
-//! dependencies; `v1.compiler.stage0_crates` `partition_crate_boundary_emit_outcome_over` renders
-//! those rows with the one partition renderer; this host writes the tree and runs cargo.
+//! Two callers share one realization. `write_emitted_workspace` is the writer every emitted-Rust
+//! route uses: `v1.compiler.emitted_workspace` `emitted_workspace_realization` -- compiled into the
+//! seed, not interpreted -- turns an emission into the complete file population of its workspace
+//! (layout from `gunbc.emitted_crate_workspace` `emitted_workspace_build`, manifests and crate
+//! roots from `v1.compiler.stage0_crates`, every emitted file placed or refused), and this file
+//! writes those files. `//gunbc/instruments:emitted-crate-workspace` emits `v2.compiler.compile`,
+//! writes it through the same realization, builds it, then lays the RED over it
+//! (`emitted_workspace_red_realization`) and builds again.
 //!
-//! WHAT THIS FILE DECIDES: nothing about the partition. Every row, dependency and the dropped edge
-//! come from the `.dag` plan; the manifests and lib.rs files come from the stage0 renderer. What is
-//! here is the effect boundary -- the emission, the file writes, the two cargo runs -- plus the
-//! transport that carries the emission's edges into the plan and the plan's rows back out.
+//! WHAT THIS FILE DECIDES: nothing about the workspace. Every path and byte comes from the `.dag`
+//! realization; what is here is the effect boundary -- the emission, the file writes, the cargo runs.
 //!
 //! THE RED IS A DROPPED DERIVED DEPENDENCY THE GLOB FACADE CANNOT RE-EXPORT BY ANOTHER ROAD. The
 //! plan picks a unit dep edge in the transitive reduction that the emitter also wrote as a use-line;
@@ -20,13 +21,13 @@
 use std::path::Path;
 use std::rc::Rc;
 
-use crate::gunbc_stage0_crate_partition_generated::{
-    GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
+use crate::v1_compiler_emitted_workspace::{
+    emitted_workspace_realization, emitted_workspace_realization_refusal_message,
+    emitted_workspace_red_realization, EmittedWorkspaceRealization, EmittedWorkspaceRealized,
+    EmittedWorkspaceRedRealization,
 };
-use crate::v1_interpreter::{self, ExecutionMode, Value};
 
 const WORKSPACE_ENTRY: &str = "src/v2/compiler/00_compile.dag";
-const PLAN_MODULE: &str = "src/v2/workflow/emitted_crate_workspace.dag";
 
 pub struct EmittedCrateWorkspaceHeld {
     pub head: String,
@@ -43,231 +44,15 @@ pub struct EmittedCrateWorkspaceHeld {
     pub red_diagnostic: String,
 }
 
-struct PlanRows {
-    rows: Vec<GeneratedPartitionCrateRow>,
-    red_rows: Vec<GeneratedPartitionCrateRow>,
-    red_package: String,
-    red_dropped_package: String,
-    red_from_module: String,
-    red_to_module: String,
-    module_count: i64,
-    crate_count: i64,
-    facade_is_whole_closure: bool,
-}
-
 fn refusal(cause: &str, detail: impl std::fmt::Display) -> String {
     format!("EMITTED-WORKSPACE REFUSAL cause={cause} — {detail}")
 }
 
-fn field<'a>(
-    ctx: &v1_interpreter::InterpContext,
-    fields: &'a [(v1_interpreter::Symbol, Value)],
-    name: &str,
-) -> Result<&'a Value, String> {
-    fields
-        .iter()
-        .find(|(sym, _)| ctx.sym_eq(*sym, name))
-        .map(|(_, v)| v)
-        .ok_or_else(|| refusal("PlanShapeUnexpected", format!("no field `{name}`")))
-}
-
-fn as_str(v: &Value, what: &str) -> Result<String, String> {
-    match v {
-        Value::Str(s) => Ok(s.to_string()),
-        other => Err(refusal(
-            "PlanShapeUnexpected",
-            format!("{what} is {} not a String", other.type_label_public()),
-        )),
-    }
-}
-
-fn as_int(v: &Value, what: &str) -> Result<i64, String> {
-    match v {
-        Value::Int(i) => Ok(*i),
-        other => Err(refusal(
-            "PlanShapeUnexpected",
-            format!("{what} is {} not an Int", other.type_label_public()),
-        )),
-    }
-}
-
-fn as_bool(v: &Value, what: &str) -> Result<bool, String> {
-    match v {
-        Value::Bool(b) => Ok(*b),
-        other => Err(refusal(
-            "PlanShapeUnexpected",
-            format!("{what} is {} not a Bool", other.type_label_public()),
-        )),
-    }
-}
-
-fn as_str_list(v: &Value, what: &str) -> Result<Vec<String>, String> {
-    match v {
-        Value::List(items) => items.iter().map(|i| as_str(i, what)).collect(),
-        other => Err(refusal(
-            "PlanShapeUnexpected",
-            format!("{what} is {} not a List", other.type_label_public()),
-        )),
-    }
-}
-
-fn str_list(xs: &[String]) -> Value {
-    Value::List(Rc::new(
-        xs.iter()
-            .map(|s| v1_interpreter::str_value(s))
-            .collect::<Vec<Value>>()
-            .into(),
-    ))
-}
-
-fn row_from_value(
-    ctx: &v1_interpreter::InterpContext,
-    v: &Value,
-) -> Result<GeneratedPartitionCrateRow, String> {
-    let Value::Record { fields, .. } = v else {
-        return Err(refusal(
-            "PlanShapeUnexpected",
-            "a crate row is not a record",
-        ));
-    };
-    let kind = match field(ctx, fields, "kind")? {
-        Value::Variant { variant_name, .. }
-            if ctx.sym_eq(*variant_name, "GeneratedFoundationCrate") =>
-        {
-            GeneratedPartitionCrateKind::GeneratedFoundationCrate
-        }
-        Value::Variant { variant_name, .. }
-            if ctx.sym_eq(*variant_name, "GeneratedLayeredCoreCrate") =>
-        {
-            GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate
-        }
-        other => {
-            return Err(refusal(
-                "PlanShapeUnexpected",
-                format!(
-                "a crate row's kind is {} — the plan derives foundation and layered crates only",
-                other.type_label_public()
-            ),
-            ))
-        }
-    };
-    Ok(GeneratedPartitionCrateRow {
-        package_name: as_str(field(ctx, fields, "package_name")?, "package_name")?,
-        crate_dir: as_str(field(ctx, fields, "crate_dir")?, "crate_dir")?,
-        kind,
-        modules: Rc::new(
-            as_str_list(field(ctx, fields, "modules")?, "modules")?
-                .into_iter()
-                .collect(),
-        ),
-        reexport_packages: Rc::new(
-            as_str_list(
-                field(ctx, fields, "reexport_packages")?,
-                "reexport_packages",
-            )?
-            .into_iter()
-            .collect(),
-        ),
-        carries_non_empty_wrappers: as_bool(
-            field(ctx, fields, "carries_non_empty_wrappers")?,
-            "carries_non_empty_wrappers",
-        )?,
-    })
-}
-
-fn rows_from_value(
-    ctx: &v1_interpreter::InterpContext,
-    v: &Value,
-    what: &str,
-) -> Result<Vec<GeneratedPartitionCrateRow>, String> {
-    match v {
-        Value::List(items) => items.iter().map(|i| row_from_value(ctx, i)).collect(),
-        other => Err(refusal(
-            "PlanShapeUnexpected",
-            format!("{what} is {} not a List", other.type_label_public()),
-        )),
-    }
-}
-
-/// Evaluate `emitted_workspace_plan` over the emission's basenames and edges. The plan derives the
-/// module DAG from the live dependency facts itself, so the corpus it reads is the source roots.
-fn evaluate_plan(
-    source_roots: &[String],
-    emitted_basenames: &[String],
-    edge_froms: &[String],
-    edge_tos: &[String],
-    edge_provenances: &[String],
-) -> Result<PlanRows, String> {
-    let index = super::process_shared_index(source_roots);
-    let (graph, indices) = super::resolve_entry_with_index(&index, PLAN_MODULE)
-        .map_err(|e| refusal("PlanModuleUnresolved", format!("{PLAN_MODULE}: {e}")))?;
-    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Wet);
-    let args = vec![
-        (
-            Some("emitted_basenames".to_string()),
-            str_list(emitted_basenames),
-        ),
-        (Some("edge_froms".to_string()), str_list(edge_froms)),
-        (Some("edge_tos".to_string()), str_list(edge_tos)),
-        (
-            Some("edge_provenances".to_string()),
-            str_list(edge_provenances),
-        ),
-    ];
-    let outcome = v1_interpreter::with_active_context(&ctx, || {
-        v1_interpreter::run_in_context_with_args(&ctx, "emitted_workspace_plan", &args, false)
-    })
-    .map_err(|e| refusal("PlanNotEvaluated", e))?;
-    let Value::Variant {
-        variant_name,
-        fields,
-        ..
-    } = &outcome
-    else {
-        return Err(refusal(
-            "PlanShapeUnexpected",
-            "the plan outcome is not a variant",
-        ));
-    };
-    if !ctx.sym_eq(*variant_name, "EmittedWorkspacePlanned") {
-        return Err(refusal("PlanRefused", format!("{outcome:?}")));
-    }
-    let Value::Record { fields: plan, .. } = field(&ctx, fields, "plan")? else {
-        return Err(refusal("PlanShapeUnexpected", "plan is not a record"));
-    };
-    let Value::Record { fields: red, .. } = field(&ctx, plan, "red")? else {
-        return Err(refusal("PlanShapeUnexpected", "red is not a record"));
-    };
-    Ok(PlanRows {
-        rows: rows_from_value(&ctx, field(&ctx, plan, "rows")?, "rows")?,
-        red_rows: rows_from_value(&ctx, field(&ctx, plan, "red_rows")?, "red_rows")?,
-        red_package: as_str(field(&ctx, red, "package")?, "red.package")?,
-        red_dropped_package: as_str(field(&ctx, red, "dropped_package")?, "red.dropped_package")?,
-        red_from_module: as_str(field(&ctx, red, "from_module")?, "red.from_module")?,
-        red_to_module: as_str(field(&ctx, red, "to_module")?, "red.to_module")?,
-        module_count: as_int(field(&ctx, plan, "module_count")?, "module_count")?,
-        crate_count: as_int(field(&ctx, plan, "crate_count")?, "crate_count")?,
-        facade_is_whole_closure: as_bool(
-            field(&ctx, plan, "facade_is_whole_closure")?,
-            "facade_is_whole_closure",
-        )?,
-    })
-}
-
-/// Render rows through the one partition renderer and write them, with the workspace manifest that
-/// lists exactly those crates. The emitted module files sit where the renderer's includes expect
-/// them (`src/v1/stage0/src`).
-fn write_workspace(root: &Path, rows: &[GeneratedPartitionCrateRow]) -> Result<(), String> {
-    let rows_value = Rc::new(rows.iter().cloned().map(Rc::new).collect());
-    let files = match &*crate::v1_compiler_stage0_crates::partition_crate_boundary_emit_outcome_over(rows_value) {
-        crate::v1_compiler_stage0_crates::Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk { files } => files.clone(),
-        crate::v1_compiler_stage0_crates::Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused { cause } => {
-            return Err(refusal(
-                "RenderRefused",
-                crate::v1_compiler_stage0_crates::stage0_crate_boundary_emit_refusal_message(cause.clone()),
-            ))
-        }
-    };
+/// Write realized files under `root`, each at its workspace-relative path.
+fn write_files(
+    root: &Path,
+    files: &im::Vector<Rc<crate::v1_std_core::TextFile>>,
+) -> Result<(), String> {
     for file in files.iter() {
         let path = root.join(&*file.path);
         if let Some(parent) = path.parent() {
@@ -278,16 +63,7 @@ fn write_workspace(root: &Path, rows: &[GeneratedPartitionCrateRow]) -> Result<(
         std::fs::write(&path, &*file.content)
             .map_err(|e| refusal("WorkspaceNotWritten", format!("{}: {e}", path.display())))?;
     }
-    let members = rows
-        .iter()
-        .map(|r| format!("    \"{}\",", r.crate_dir))
-        .collect::<Vec<_>>()
-        .join("\n");
-    std::fs::write(
-        root.join("Cargo.toml"),
-        format!("[workspace]\nresolver = \"2\"\nmembers = [\n{members}\n]\n"),
-    )
-    .map_err(|e| refusal("WorkspaceNotWritten", format!("root manifest: {e}")))
+    Ok(())
 }
 
 /// The receipt names the revision it measured; an unreadable head refuses rather than printing a
@@ -346,72 +122,49 @@ pub fn run_emitted_crate_workspace(
         .iter()
         .find(|e| e.target_name == "rust")
         .ok_or_else(|| refusal("EmissionRefused", "no rust target"))?;
+    let bin_name = emission
+        .result
+        .rust_crates
+        .front()
+        .map(|c| c.crate_name.to_string())
+        .ok_or_else(|| refusal("EmissionRefused", "the emission names no Rust crate"))?;
 
-    // The module files the emission wrote, by basename; the crate root, entry file and population
-    // manifest are the single-crate assembly's and have no place in a partition crate.
     let root = probe_root.target_dir().join("emitted_crate_workspace");
     let _ = std::fs::remove_dir_all(&root);
-    let module_dir = root.join("src/v1/stage0/src");
-    std::fs::create_dir_all(&module_dir).map_err(|e| refusal("WorkspaceNotWritten", e))?;
-    let mut emitted_basenames = Vec::new();
-    for file in emission.result.files.iter() {
-        let Some(basename) = file
-            .path
-            .strip_prefix("src/")
-            .and_then(|p| p.strip_suffix(".rs"))
-        else {
-            continue;
-        };
-        if basename.contains('/') || matches!(basename, "lib" | "main" | "emitted_population") {
-            continue;
-        }
-        std::fs::write(module_dir.join(format!("{basename}.rs")), &*file.content)
-            .map_err(|e| refusal("WorkspaceNotWritten", format!("{basename}: {e}")))?;
-        emitted_basenames.push(basename.to_string());
-    }
-    let (mut froms, mut tos, mut provenances) = (Vec::new(), Vec::new(), Vec::new());
-    for edge in emission.result.emitted_edges.iter() {
-        froms.push(edge.from.clone());
-        tos.push(match &*edge.to {
-            crate::gunbc_rust_emitted_edge::EmittedEdgeTarget::EmittedModuleTarget { module } => {
-                module.clone()
-            }
-            crate::gunbc_rust_emitted_edge::EmittedEdgeTarget::EmittedCrateRootTarget => {
-                String::new()
-            }
-        });
-        provenances.push(
-            crate::gunbc_stage0_emitted_edge_admission::stage0_emitted_edge_provenance_name(
-                edge.provenance.clone(),
-            ),
-        );
-    }
-    eprintln!(
-        "emitted-crate-workspace: emitted {} module files and {} edges; evaluating the partition plan",
-        emitted_basenames.len(),
-        froms.len()
-    );
+    let realized = realize(
+        &emission.result.files,
+        &emission.result.emitted_edges,
+        &emission.result.rust_crates,
+        &bin_name,
+    )?;
     drop(run);
     let _ = super::trim_retained_heap();
-
-    let plan = evaluate_plan(source_roots, &emitted_basenames, &froms, &tos, &provenances)?;
+    let layout = &realized.build.layout;
+    let red_realized = match &*emitted_workspace_red_realization(realized.clone()) {
+        EmittedWorkspaceRedRealization::EmittedWorkspaceRedRealized { red, files } => {
+            (red.clone(), files.clone())
+        }
+        EmittedWorkspaceRedRealization::EmittedWorkspaceRedRealizationRefused { message } => {
+            return Err(refusal("RedRefused", message))
+        }
+    };
+    let (red, red_files) = red_realized;
     eprintln!(
         "emitted-crate-workspace: plan modules={} crates={} facade_is_whole_closure={} red={} drops {} ({} -> {})",
-        plan.module_count, plan.crate_count, plan.facade_is_whole_closure, plan.red_package, plan.red_dropped_package,
-        plan.red_from_module, plan.red_to_module
+        layout.module_count, layout.crate_count, layout.facade_is_whole_closure, red.package, red.dropped_package,
+        red.from_module, red.to_module
     );
 
     let target_dir = probe_root
         .target_dir()
         .join("emitted_crate_workspace_target");
+    // POSITIVE CONTROL: the production layout builds. The files land first: the compiler
+    // identity is asked from the crate's own directory, which must exist to spawn in.
+    write_files(&root, &realized.files)?;
     let invocation =
         super::emitted_closure_compile_host::probe_cargo_invocation(&root, &target_dir)
             .map_err(|c| refusal("CargoNotResolved", c))?;
-
-    // POSITIVE CONTROL: the derived partition builds.
-    write_workspace(&root, &plan.rows)?;
-    let green =
-        super::emitted_closure_compile_host::run_cargo(&root, &target_dir, &plan.red_to_module);
+    let green = super::emitted_closure_compile_host::run_cargo(&root, &target_dir, &red.to_module);
     let (green_exit_status, green_warning_count) = match &green {
         super::emitted_closure_compile_host::CargoVerdict::Completed {
             status,
@@ -431,38 +184,40 @@ pub fn run_emitted_crate_workspace(
         invocation.rustc_identity
     );
 
+    let held = |red_diagnostic: String| EmittedCrateWorkspaceHeld {
+        head: head.clone(),
+        closure_modules: layout.module_count,
+        crate_count: layout.crate_count,
+        facade_is_whole_closure: layout.facade_is_whole_closure,
+        rustc_identity: invocation.rustc_identity.clone(),
+        green_exit_status,
+        green_warning_count,
+        red_package: red.package.to_string(),
+        red_dropped_package: red.dropped_package.to_string(),
+        red_from_module: red.from_module.to_string(),
+        red_to_module: red.to_module.to_string(),
+        red_diagnostic,
+    };
+
     if green_exit_status != 0 {
         // The positive control did not build, so there is no clean baseline for a red to be read
         // against. That is the observation not holding, reported with cargo's own tail; the red is
         // not attempted rather than reported as refused.
-        return Ok(EmittedCrateWorkspaceHeld {
-            head,
-            closure_modules: plan.module_count,
-            crate_count: plan.crate_count,
-            facade_is_whole_closure: plan.facade_is_whole_closure,
-            rustc_identity: invocation.rustc_identity,
-            green_exit_status,
-            green_warning_count,
-            red_package: plan.red_package,
-            red_dropped_package: plan.red_dropped_package,
-            red_from_module: plan.red_from_module,
-            red_to_module: plan.red_to_module,
-            red_diagnostic: format!(
-                "not attempted: the positive control did not build — {}",
-                super::emitted_closure_compile_host::cargo_verdict_summary(&green)
-            ),
-        });
+        return Ok(held(format!(
+            "not attempted: the positive control did not build — {}",
+            super::emitted_closure_compile_host::cargo_verdict_summary(&green)
+        )));
     }
 
     // RED: the same tree with one derived dependency dropped from one crate.
-    write_workspace(&root, &plan.red_rows)?;
-    let red =
-        super::emitted_closure_compile_host::run_cargo(&root, &target_dir, &plan.red_to_module);
-    let red_diagnostic = match &red {
+    write_files(&root, &red_files)?;
+    let red_build =
+        super::emitted_closure_compile_host::run_cargo(&root, &target_dir, &red.to_module);
+    let red_diagnostic = match &red_build {
         super::emitted_closure_compile_host::CargoVerdict::Completed { status, .. } if *status != 0 => {
             match (
-                super::emitted_closure_compile_host::cargo_verdict_probe_diagnostic(&red),
-                super::emitted_closure_compile_host::cargo_verdict_probe_line(&red),
+                super::emitted_closure_compile_host::cargo_verdict_probe_diagnostic(&red_build),
+                super::emitted_closure_compile_host::cargo_verdict_probe_line(&red_build),
             ) {
                 (Some(diag), Some(line)) => format!("{diag} @ {line}"),
                 _ => {
@@ -470,8 +225,8 @@ pub fn run_emitted_crate_workspace(
                         "RedNotAttributed",
                         format!(
                             "the red build failed but no error names {} — {}",
-                            plan.red_to_module,
-                            super::emitted_closure_compile_host::cargo_verdict_summary(&red)
+                            red.to_module,
+                            super::emitted_closure_compile_host::cargo_verdict_summary(&red_build)
                         ),
                     ))
                 }
@@ -482,28 +237,329 @@ pub fn run_emitted_crate_workspace(
                 "RedBuiltGreen",
                 format!(
                     "dropping {} from {} still built — the facade re-exports it by another road, or cargo never read the tree",
-                    plan.red_dropped_package, plan.red_package
+                    red.dropped_package, red.package
                 ),
             ))
         }
         other => return Err(refusal("RedBuildNotCompleted", super::emitted_closure_compile_host::cargo_verdict_summary(other))),
     };
     eprintln!("emitted-crate-workspace: RED refused as required — {red_diagnostic}");
-    // Leave the tree as the green plan rendered it, so the directory describes the positive control.
-    write_workspace(&root, &plan.rows)?;
+    // Leave the tree as the green realization wrote it, so the directory describes the positive control.
+    write_files(&root, &realized.files)?;
+    Ok(held(red_diagnostic))
+}
 
-    Ok(EmittedCrateWorkspaceHeld {
-        head,
-        closure_modules: plan.module_count,
-        crate_count: plan.crate_count,
-        facade_is_whole_closure: plan.facade_is_whole_closure,
-        rustc_identity: invocation.rustc_identity,
-        green_exit_status,
-        green_warning_count,
-        red_package: plan.red_package,
-        red_dropped_package: plan.red_dropped_package,
-        red_from_module: plan.red_from_module,
-        red_to_module: plan.red_to_module,
-        red_diagnostic,
+/// AN EMITTED CLOSURE, WRITTEN AS THE CARGO WORKSPACE ITS REALIZATION DERIVES. The one writer every
+/// emitted-Rust build route uses. Every path and byte is `v1.compiler.emitted_workspace`
+/// `emitted_workspace_realization`'s; what is here is the file writes.
+pub struct EmittedWorkspace {
+    /// The workspace root: the directory whose Cargo.toml `run_cargo` builds.
+    pub root: std::path::PathBuf,
+    /// Where the emitted module files are, by basename.
+    pub module_dir: std::path::PathBuf,
+    /// The modules the top package re-exports -- the closure the binary links.
+    pub modules: Vec<String>,
+    pub crate_count: usize,
+    /// Every file the workspace holds, by path relative to `root`, in the realization's order --
+    /// the one population a completeness check or an identity over the workspace reads.
+    pub files: Vec<String>,
+}
+
+fn realize(
+    files: &Rc<im::Vector<Rc<crate::v1_std_core::TextFile>>>,
+    edges: &Rc<im::Vector<Rc<crate::gunbc_rust_emitted_edge::EmittedEdge>>>,
+    rust_crates: &Rc<im::Vector<Rc<crate::gunbc_rust_emitted_crate::EmittedRustCrate>>>,
+    bin_name: &str,
+) -> Result<Rc<EmittedWorkspaceRealized>, String> {
+    match &*emitted_workspace_realization(
+        files.clone(),
+        edges.clone(),
+        rust_crates.clone(),
+        bin_name.to_string(),
+    ) {
+        EmittedWorkspaceRealization::EmittedWorkspaceRealizedOk { workspace } => {
+            Ok(workspace.clone())
+        }
+        EmittedWorkspaceRealization::EmittedWorkspaceRealizationRefused { cause } => Err(refusal(
+            "WorkspaceNotRealized",
+            emitted_workspace_realization_refusal_message(cause.clone()),
+        )),
+    }
+}
+
+pub fn write_emitted_workspace(
+    files: &Rc<im::Vector<Rc<crate::v1_std_core::TextFile>>>,
+    edges: &Rc<im::Vector<Rc<crate::gunbc_rust_emitted_edge::EmittedEdge>>>,
+    rust_crates: &Rc<im::Vector<Rc<crate::gunbc_rust_emitted_crate::EmittedRustCrate>>>,
+    root: &Path,
+    bin_name: &str,
+) -> Result<EmittedWorkspace, String> {
+    let realized = realize(files, edges, rust_crates, bin_name)?;
+    write_files(root, &realized.files)?;
+    let top_package = realized.build.top_package.to_string();
+    let modules = realized
+        .build
+        .rows
+        .iter()
+        .find(|r| *r.package_name == *top_package)
+        .map(|r| r.modules.iter().map(|m| m.to_string()).collect())
+        .ok_or_else(|| refusal("TopPackageAbsent", format!("no row names {top_package}")))?;
+    Ok(EmittedWorkspace {
+        root: root.to_path_buf(),
+        module_dir: root.join(&*realized.module_dir),
+        modules,
+        crate_count: realized.build.rows.len(),
+        files: realized.files.iter().map(|f| f.path.to_string()).collect(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    //! The seed's workspace functions are v1 `.dag` compiled into this crate, so their claims run
+    //! here, against the compiled functions, rather than in a `.dag` witness whose source roots
+    //! cannot import a v1 module. Inputs are supplied; the real emission reaching them is the
+    //! v2-native-cli and self-host instruments' build.
+    use std::rc::Rc;
+
+    use crate::gunbc_rust_emitted_crate::{EmittedCrateDependencyDemand, EmittedRustCrate};
+    use crate::gunbc_rust_emitted_edge::{
+        declared_import_edge, rust_module_emit_filename, rust_prelude_emitted_edges, EmittedEdge,
+        EmittedEdgeProvenance, EmittedEdgeTarget,
+    };
+    use crate::v1_compiler_emitted_workspace::{
+        emitted_workspace_realization, EmittedWorkspaceRealization,
+        EmittedWorkspaceRealizationRefusal,
+    };
+    use crate::v1_std_core::TextFile;
+
+    fn text(path: &str, content: &str) -> Rc<TextFile> {
+        Rc::new(TextFile {
+            path: path.to_string(),
+            content: content.to_string(),
+        })
+    }
+
+    fn demand(services: bool) -> EmittedCrateDependencyDemand {
+        EmittedCrateDependencyDemand {
+            renders_clap_cli: false,
+            renders_async_services: services,
+        }
+    }
+
+    fn edges(modules: &[&str], extra: Vec<Rc<EmittedEdge>>) -> Vec<Rc<EmittedEdge>> {
+        let mut all: Vec<Rc<EmittedEdge>> = std::iter::once("v1_rt")
+            .chain(modules.iter().copied())
+            .flat_map(|m| {
+                rust_prelude_emitted_edges(m.to_string())
+                    .iter()
+                    .cloned()
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        all.extend(extra);
+        all
+    }
+
+    fn base_files(extra: Vec<Rc<TextFile>>) -> Vec<Rc<TextFile>> {
+        let mut files = vec![
+            text("src/lib.rs", "pub mod fx_a;\n"),
+            text("src/main.rs", "fn main() {}\n"),
+            text("src/emitted_population.rs", "// src/lib.rs\n"),
+            text("src/v1_rt.rs", "// runtime\n"),
+            text("src/fx_a.rs", "pub fn a() {}\n"),
+        ];
+        files.extend(extra);
+        files
+    }
+
+    fn realize(
+        files: Vec<Rc<TextFile>>,
+        edges: Vec<Rc<EmittedEdge>>,
+        services: bool,
+    ) -> Rc<EmittedWorkspaceRealization> {
+        emitted_workspace_realization(
+            Rc::new(files.into_iter().collect()),
+            Rc::new(edges.into_iter().collect()),
+            Rc::new(
+                std::iter::once(Rc::new(EmittedRustCrate {
+                    crate_name: "fx_app".to_string(),
+                    demand: demand(services),
+                }))
+                .collect(),
+            ),
+            "fx_app".to_string(),
+        )
+    }
+
+    fn realized_files(outcome: &EmittedWorkspaceRealization) -> Vec<(String, String)> {
+        match outcome {
+            EmittedWorkspaceRealization::EmittedWorkspaceRealizedOk { workspace } => workspace
+                .files
+                .iter()
+                .map(|f| (f.path.to_string(), f.content.to_string()))
+                .collect(),
+            EmittedWorkspaceRealization::EmittedWorkspaceRealizationRefused { cause } => {
+                panic!("realization refused: {cause:?}")
+            }
+        }
+    }
+
+    fn content_of<'a>(files: &'a [(String, String)], path: &str) -> &'a str {
+        files
+            .iter()
+            .find(|(p, _)| p == path)
+            .map(|(_, c)| c.as_str())
+            .unwrap_or_else(|| {
+                panic!(
+                    "{path} not realized; have {:?}",
+                    files.iter().map(|f| &f.0).collect::<Vec<_>>()
+                )
+            })
+    }
+
+    /// Every emitted file has a place: modules where the partition crates include them from, the
+    /// entry at Cargo's binary path, generated tests in the top package's `tests/`, and a population
+    /// manifest over the realized paths. The single-package crate root is superseded by the
+    /// facade's, so `src/lib.rs` appears once.
+    #[test]
+    fn every_emitted_file_lands_at_its_workspace_path_and_tests_are_kept() {
+        let outcome = realize(
+            base_files(vec![text("tests/fx_a_test.rs", "#[test] fn t() {}\n")]),
+            edges(&["fx_a"], vec![]),
+            false,
+        );
+        let files = realized_files(&outcome);
+        for path in [
+            "src/v1/stage0/src/fx_a.rs",
+            "src/v1/stage0/src/v1_rt.rs",
+            "src/main.rs",
+            "tests/fx_a_test.rs",
+            "Cargo.toml",
+            "src/emitted_population.rs",
+        ] {
+            content_of(&files, path);
+        }
+        assert_eq!(files.iter().filter(|(p, _)| p == "src/lib.rs").count(), 1);
+        let population = content_of(&files, "src/emitted_population.rs");
+        assert!(
+            population.contains("tests/fx_a_test.rs")
+                && population.contains("src/v1/stage0/src/fx_a.rs")
+        );
+        assert!(content_of(&files, "Cargo.toml").contains("[workspace]"));
+    }
+
+    #[test]
+    fn an_emitted_file_with_no_workspace_place_refuses_by_path() {
+        let outcome = realize(
+            base_files(vec![text("assets/logo.svg", "<svg/>")]),
+            edges(&["fx_a"], vec![]),
+            false,
+        );
+        match &*outcome {
+            EmittedWorkspaceRealization::EmittedWorkspaceRealizationRefused { cause } => {
+                match &**cause {
+                    EmittedWorkspaceRealizationRefusal::EmittedWorkspaceFileUnplaced { path } => {
+                        assert_eq!(path.as_str(), "assets/logo.svg")
+                    }
+                    other => panic!("refused for the wrong reason: {other:?}"),
+                }
+            }
+            EmittedWorkspaceRealization::EmittedWorkspaceRealizedOk { .. } => {
+                panic!("an unplaceable file was dropped from a successful realization")
+            }
+        }
+    }
+
+    /// A source module named `main` is written as `main_mod.rs` beside the binary's `main.rs`, and
+    /// its edges name it by that basename, so the plan finds every endpoint among the modules.
+    #[test]
+    fn a_module_named_main_realizes_under_its_emitted_basename() {
+        let main_mod = rust_module_emit_filename("main".to_string());
+        assert_eq!(main_mod, "main_mod");
+        let outcome = realize(
+            base_files(vec![text("src/main_mod.rs", "pub fn run() {}\n")]),
+            edges(
+                &["fx_a", "main_mod"],
+                vec![declared_import_edge(main_mod.clone(), "fx_a".to_string())],
+            ),
+            false,
+        );
+        content_of(&realized_files(&outcome), "src/v1/stage0/src/main_mod.rs");
+    }
+
+    /// v1_rt gates on `text_lookup_work_counter`; the crate that owns it must declare the feature
+    /// or `-D warnings` refuses every cfg site as unexpected (paired with test.claim
+    /// .emitted_manifest_runtime_features emitted_runtime_gates_on_the_declared_feature).
+    #[test]
+    fn the_runtime_crate_manifest_declares_the_runtime_gated_feature() {
+        let files = realized_files(&realize(
+            base_files(vec![]),
+            edges(&["fx_a"], vec![]),
+            false,
+        ));
+        let manifest = content_of(&files, "src/v1/v2-emitted-runtime/Cargo.toml");
+        assert!(manifest.contains("[features]"), "{manifest}");
+        assert!(
+            manifest.contains("text_lookup_work_counter = []"),
+            "{manifest}"
+        );
+    }
+
+    /// An emission that renders async services links reqwest over Rustls with the native-tls
+    /// default switched off; one that renders none does not link reqwest at all.
+    #[test]
+    fn a_service_emission_links_reqwest_over_rustls_without_default_features() {
+        let with = realized_files(&realize(base_files(vec![]), edges(&["fx_a"], vec![]), true));
+        let top = content_of(&with, "Cargo.toml");
+        assert!(
+            top.contains("reqwest")
+                && top.contains("rustls-tls")
+                && top.contains("default-features = false"),
+            "{top}"
+        );
+        let without = realized_files(&realize(
+            base_files(vec![]),
+            edges(&["fx_a"], vec![]),
+            false,
+        ));
+        assert!(!content_of(&without, "Cargo.toml").contains("reqwest"));
+    }
+
+    fn inline_targets(content: &str) -> Vec<String> {
+        let modules: im::HashMap<String, bool> = ["fx_a", "fx_b", "fx_c", "fx_d", "fx_e"]
+            .iter()
+            .map(|m| (m.to_string(), true))
+            .collect();
+        crate::v1_compiler_emit_rust::emitted_inline_path_edges(
+            text("src/fx_a.rs", content),
+            Rc::new(modules),
+        )
+        .iter()
+        .filter(|e| matches!(e.provenance, EmittedEdgeProvenance::InlinePathReference))
+        .filter_map(|e| match &*e.to {
+            EmittedEdgeTarget::EmittedModuleTarget { module } => Some(module.to_string()),
+            EmittedEdgeTarget::EmittedCrateRootTarget => None,
+        })
+        .collect()
+    }
+
+    /// A call by path is an edge; a comment, a string literal, a `use` line (returned with its own
+    /// provenance) and the module's own path are not.
+    #[test]
+    fn a_call_by_path_is_an_edge_and_prose_strings_and_use_lines_are_not() {
+        let targets = inline_targets(concat!(
+            "use crate::fx_e::Thing;\n",
+            "// calls crate::fx_c::nothing\n",
+            "pub fn a() -> i64 { let s = \"crate::fx_d::f\"; crate::fx_b::b() + crate::fx_a::own() }\n"
+        ));
+        assert_eq!(targets, vec!["fx_b".to_string()]);
+    }
+
+    #[test]
+    fn a_path_into_a_name_that_is_no_module_of_the_emission_is_not_an_edge() {
+        assert!(
+            inline_targets("pub fn a() { crate::NonEmptyVec::new(); crate::fx_zz::f(); }\n")
+                .is_empty()
+        );
+    }
 }

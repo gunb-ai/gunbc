@@ -1,0 +1,45 @@
+module gunbc.machine_intake_arrival_admission
+
+import std.types { String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.actions_run_binding {
+  actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent,
+  fleet_converge_expected_host_env_name, fleet_converge_arrival_subject_env_name,
+}
+import gunbc.fleet_host_identity { operator_host_srv1 }
+import gunbc.machine_intake_arrival_subject {
+  admit_arrival_subject,
+  ArrivalSubjectInPopulation, ArrivalSubjectUnknown,
+  ArrivalSubjectIsManagedHostExecutorConfusion, ArrivalSubjectOutsideGrant,
+}
+
+// CREDENTIAL-FREE ARRIVAL ADMISSION. Same split as mtcollins1_boot_admission: the job's first
+// gunbc run typechecks this closure only. The dispatch's host input must name the store host
+// (srv1); the arrival_subject input must be in arrival_converge_population. Neither skip nor
+// WIF happens first (review 70894).
+
+fn arrival_admit_executor() -> ProcessExit {
+  match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+    ActionsVariableAbsent { variable: v, detail: d } =>
+      exit_failure(reason: concat("arrival_converge: ", concat(v, concat(" ", concat(d, "; the arrival store host is srv1 only")))))
+    ActionsVariablePresent { value: host } =>
+      if host == (operator_host_srv1 as String) {
+        match actions_variable_read(name: fleet_converge_arrival_subject_env_name) {
+          ActionsVariableAbsent { variable: v, detail: d } =>
+            exit_failure(reason: concat("arrival_converge: ", concat(v, concat(" ", d))))
+          ActionsVariablePresent { value: wire } =>
+            match admit_arrival_subject(wire: wire) {
+              ArrivalSubjectInPopulation { subject: _ } => ExitSuccess
+              ArrivalSubjectUnknown { wire: w } =>
+                exit_failure(reason: concat("arrival_converge refuses unknown arrival_subject '", concat(w, "'")))
+              ArrivalSubjectIsManagedHostExecutorConfusion { wire: w } =>
+                exit_failure(reason: concat("arrival_converge refuses executor/host as arrival_subject '", concat(w, "'")))
+              ArrivalSubjectOutsideGrant { wire: w } =>
+                exit_failure(reason: concat("arrival_converge refuses arrival_subject '", concat(w, "' outside the standing grant")))
+            }
+        }
+      } else {
+        exit_failure(reason: concat("arrival_converge refuses host '", concat(host, concat("': the arrival slot store is on ", operator_host_srv1 as String))))
+      }
+  }
+}

@@ -1,5 +1,10 @@
 module gunbc.live_deploy.emit
 
+import gunbc.workspace_artifact_policy { workspace_demo_image_identity }
+import gunbc.workspace_image_delivery { workspace_image_staging_root }
+import gunbc.workspace_guest_image { workspace_image_path, workspace_installed_image_root }
+import gunbc.microvm_guest_artifacts { runner_guest_kernel_artifact, runner_guest_base_artifact_path, ArtifactDigestPinned, ArtifactDigestUnpinned, ArtifactDigestNotPinnable }
+
 import gunbc.workspace_commissioning_dispatch_operations { workspace_dispatch_grant_path, workspace_dispatch_grant_content }
 
 import gunbc.live_deploy.release_environment { installed_release_environment, installed_release_unit }
@@ -14,7 +19,8 @@ import gunbc.fleet_generation_execution { fleet_generation_lock }
 
 import gunbc.runner_microvm_cell_readiness_location { cell_readiness_store_location }
 import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
-import gunbc.live_deploy.belt_cadence { belt_tick_cadence }
+import gunbc.runner_microvm_network { runner_microvm_converged_receipt_root }
+import gunbc.live_deploy.belt_cadence { belt_tick_cadence, belt_tick_run_bound }
 
 import gunbc.auth.approval_device_redemption { approval_device_store_directory }
 import gunbc.live_deploy.release_locus {
@@ -47,7 +53,6 @@ import gunbc.managed_directory {
   managed_directory_admit,
   ManagedDirectoryAdmission, ManagedDirectoryAdmitted, ManagedDirectoryRefused,
   managed_directory_mode_octal,
-  attempt_state_directory_at,
   EntriesUnmanaged, EntriesReadableByDependents,
   managed_directory_entry_mode, ManagedEntryModeDerived, ManagedEntryModeRefused, entry_mode_add_read_symbolic,
 }
@@ -66,7 +71,7 @@ import extdeps.systemd.systemctl {
   systemctl_disable_now_argv,
   systemctl_show_load_state_argv,
 }
-import extdeps.systemd { systemd_unit_load_state_not_found_wire }
+import extdeps.systemd { systemd_unit_load_state_not_found_wire, systemd_time_span_of_seconds }
 import gunbc.live_deploy.repository_convergence_placement {
   convergence_receipt_path,
   convergence_unit_doc,
@@ -93,7 +98,8 @@ import gunbc.executor_privileged_operation {
 import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path, fleet_posix_operator_user, fleet_posix_ci_runner_user, fleet_rm_binary_path }
 import gunbc.cli_invoke { NamedArgumentAdmission, admit_named_argument }
 import extdeps.systemd.unit_file {
-  SystemdUnitFile, ServiceUnitFile, TimerUnitFile, SliceUnitFile,
+  SystemdUnitFile, ServiceUnitFile, TimerUnitFile, SliceUnitFile, PathUnitFile,
+  SystemdPathDirective, PathUnit, DirectoryNotEmpty, PathChanged,
   ServiceSlice, slice_memory_max, slice_memory_high, slice_memory_swap_max,
   SystemdInstallSection, NotInstallable, Installable,
   SystemdUnitDirective, Description, After, Wants,
@@ -139,6 +145,12 @@ import gunbc.live_deploy.slice_bounds {
   repository_convergence_slice_memory_swap_max,
 }
 import gunbc.fabric_storage_placement { fabric_storage_door_socket }
+import gunbc.owned_directory {
+  OwnedDirectoryTarget, OwnedDirectoryManaged, OwnedDirectoryDeclared,
+  owned_directory_path, owned_directory_member, owned_directory_install_plan_of, owned_directory_install_argv,
+}
+import gunbc.ensure { EnsurePlanAvailable, EnsurePlanUnavailable }
+import gunbc.roadmap_dashboard_instance { dashboard_dispatch_worktree_member, dashboard_attempt_state_member }
 import gunbc.live_deploy.spec {
   deployment_slice_unit_name, deployment_slice_unit_path,
   deployment_fabric_storage_unit_name, deployment_fabric_storage_serve_endpoint, deployment_approval_broker_front_door_endpoints,
@@ -149,15 +161,16 @@ import gunbc.live_deploy.spec {
   DeploymentSpec,
   DeploymentStep, ArtifactStep, Dependency,
   DeploymentDependencyStep,
-  EnsuredSubject, EnsuredPackage, EnsuredHostDirectory, EnsuredManagedHostDirectory, ensured_subject_identity,
-  deployment_provider_state_step,
+  EnsuredSubject, EnsuredPackage, ensured_subject_identity,
+  deployment_directory_demands,
   DeploymentArtifactStep,
-  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit,
+  ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit,
   deployment_tailnet_door_socket, deployment_tailnet_door_unit_name, deployment_tailnet_door_function_suffix,
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
-  deployment_belt_timer_unit_name,
-  deployment_belt_service_unit_path,
+  deployment_belt_exit_path_unit_name, deployment_belt_exit_drain_service_unit_name, deployment_belt_answer_path_unit_name, deployment_belt_discovery_service_unit_name,
+  deployment_belt_exit_drain_service_unit_path, deployment_belt_answer_path_unit_path, deployment_belt_discovery_service_unit_path,
+  deployment_belt_service_unit_path, deployment_belt_unit_install_target,
   deployment_publication_service_unit_name,
   deployment_publication_timer_unit_name,
   deployment_publication_service_unit_path,
@@ -180,6 +193,7 @@ import gunbc.host_layout {
   publication_request_dir,
   publication_answer_dir,
   publication_refused_dir,
+  attempt_exit_spool_root, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir,
 }
 import gunbc.host_axis_caps {
   CapAuthorizationRefused, CapAuthorizationWithheld,
@@ -740,36 +754,18 @@ fn emit_approval_broker_unit_doc_on(spec: DeploymentSpec, revision: ReleaseRevis
 
 
 
-// THE PER-TICK WATCHDOG, and the 2026-09-21 measurement that put it here. A Type=oneshot unit with
-// no start bound runs as long as the tick runs, and OnUnitInactiveSec only schedules the next tick
-// from INACTIVITY -- so one tick that wedged in the SCM seed (measured that night: 2.25 hours at
-// 100% CPU inside one capture, the timer showing no next elapse and no receipt distinguishing
-// "nothing to do" from "stuck") halted the whole pipeline invisibly; the operator could not tell
-// the frozen cadence from an idle belt. TimeoutStartSec is the bounded-reconciliation backstop in
-// the workflow-execution ruling's sense: past the bound systemd kills the tick, the unit goes
-// inactive(failed) LOUDLY, and the timer resumes on the next cadence -- one lost pass, never a
-// lost night. The bound must clear the worst HONEST tick, which is first-capture-heavy: a fresh
-// project envelope seeds the whole ~7,050-path intake base through the git bridge once (measured
-// 2026-09-21 at roughly seven minutes of bridge time per project), and verification then runs the
-// node's validations; it must stay far below the hours a wedge needs to be noticed by a human.
-// The bound names the instrument that re-derives it, never a transcribed number (DESIGN section 6):
-// a green tick's receipt at receipts/belt-last-tick.json carries its observed_at, and the belt's
-// own stage timings re-derive the worst honest pass. 45min is the policy row: roughly six times
-// the 2026-09-21 measured seed-bridge cost, far below the hours a wedge needs to be noticed by a
-// human, and any honest growth beyond it must move this row with a reason, not the wedge.
-data belt_tick_run_bound: String = "45min"
 
 fn live_deploy_belt_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
   let svc = spec.service
   ServiceUnitFile {
     unit: [
-      Description { text: "gunbc roadmap belt tick (one reconcile pass over the ready frontier)" as NonEmptyStr },
+      Description { text: "gunbc roadmap belt launch (queues the one launch obligation: admission, spawn, teardown, discovery)" as NonEmptyStr },
       After { target: "network-online.target" as NonEmptyStr },
       Wants { target: "network-online.target" as NonEmptyStr },
     ],
     service: concat([
       ServiceType { mode: OneshotMode },
-      TimeoutStartSec { duration: belt_tick_run_bound as NonEmptyStr },
+      TimeoutStartSec { duration: systemd_time_span_of_seconds(d: belt_tick_run_bound) },
       ServiceUser { name: svc.service_user },
       ServiceGroup { name: svc.service_user },
       ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
@@ -781,7 +777,7 @@ fn live_deploy_belt_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
       ExecStart { command: join([
         svc.serve_binary as String,
         " run --source-root dag --source-root src/v2",
-        " --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function belt_run_once_cli",
+        " --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function belt_launch_enqueue_cli",
       ], "") as NonEmptyStr },
     ])),
     install: NotInstallable,
@@ -850,7 +846,7 @@ fn emit_publication_timer_unit_doc(spec: DeploymentSpec) -> Doc {
     timer: [
       TimerUnit { target: deployment_publication_service_unit_name(names: spec.names) },
       OnBootSec { duration: "2min" as NonEmptyStr },
-      OnUnitInactiveSec { duration: belt_tick_cadence as NonEmptyStr },
+      OnUnitInactiveSec { duration: systemd_time_span_of_seconds(d: belt_tick_cadence) },
       AccuracySec { duration: "5s" as NonEmptyStr },
     ],
     install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
@@ -923,21 +919,91 @@ fn apply_publication_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   ]
 }
 
-fn live_deploy_belt_timer_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
-  TimerUnitFile {
-    unit: [Description { text: "gunbc roadmap belt tick cadence" as NonEmptyStr }],
-    timer: [
-      TimerUnit { target: deployment_belt_service_unit_name(names: spec.names) },
-      OnBootSec { duration: "2min" as NonEmptyStr },
-      OnUnitInactiveSec { duration: belt_tick_cadence as NonEmptyStr },
-      AccuracySec { duration: "5s" as NonEmptyStr },
+// THE BELT'S EVENT UNITS (dogfood intervention #4). Each service is one `gunbc run` entry of
+// gunbc.roadmap_belt_tick_cli under the belt service's principal, slice and spawn root, so the two
+// event services resolve the same instance the belt service does and start obligation units in the
+// same user manager the belt's workers run in.
+//
+// THE EXIT PATH IS A LEVEL, NOT AN EDGE (extdeps.systemd.unit_file SystemdPathDirective): with
+// DirectoryNotEmpty= systemd re-checks the inbox when the drain finishes, so an exit recorded while
+// the drain was running starts it again instead of waiting for the next one. The drain moves every
+// entry it hands off out of the inbox, so the inbox empties and the path goes quiet. `queued` is a
+// second level on the same unit: it holds exits no run has CLAIMED (a run claims queued -> running
+// before its first observation, so a long run does not keep the level up), so an exit that arrived
+// while its attempt's unit was held, or that a lost unit or a reboot left behind, starts the drain
+// again with no other event, and the drain's sweep hands it to a run.
+//
+// THE DRAIN SERVICE IS ALSO WANTED BY multi-user.target: starting once at boot is the reconciliation that
+// returns a claim orphaned by a reboot (no stop hook ran) to `queued`. The path unit cannot do it -- the
+// orphan sits in `running`, and DirectoryNotEmpty= on a directory a long run legitimately holds would
+// re-trigger while the run lives and fail the path unit at its rate limit. A unit that ends while the
+// manager is up is rescued by its own stop hook instead (belt_attempt_obligations_enqueue).
+//
+// THE PUBLICATION ANSWER PATH IS AN EDGE: answers are kept, not moved, so a level would fire forever.
+// A change while discovery is running is coalesced into that run; discovery reads every attempt's
+// evidence, so the coalesced answer is still seen.
+fn live_deploy_belt_event_service_unit_file(spec: DeploymentSpec, description: String, function: String, install: SystemdInstallSection) -> SystemdUnitFile {
+  let svc = spec.service
+  ServiceUnitFile {
+    unit: [
+      Description { text: description as NonEmptyStr },
+      After { target: "network-online.target" as NonEmptyStr },
+      Wants { target: "network-online.target" as NonEmptyStr },
     ],
-    install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
+    service: concat([
+      ServiceType { mode: OneshotMode },
+      TimeoutStartSec { duration: systemd_time_span_of_seconds(d: belt_tick_run_bound) },
+      ServiceUser { name: svc.service_user },
+      ServiceGroup { name: svc.service_user },
+      ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
+      WorkingDirectory { path: svc.repo_root },
+      Environment { assignment: join([
+        belt_spawn_workdir_env_var as String, "=", svc.repo_root as String,
+      ], "") as NonEmptyStr },
+    ], concat(user_manager_environment_directives(uid: svc.service_uid), [
+      ExecStart { command: join([
+        svc.serve_binary as String,
+        " run --source-root dag --source-root src/v2",
+        " --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function ", function,
+      ], "") as NonEmptyStr },
+    ])),
+    install: install,
   }
 }
 
-fn emit_belt_timer_unit_doc(spec: DeploymentSpec) -> Doc {
-  doc_text(text: serialize_systemd_unit_file(file: live_deploy_belt_timer_unit_file(spec: spec)))
+fn live_deploy_belt_exit_drain_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  live_deploy_belt_event_service_unit_file(spec: spec, description: "gunbc roadmap belt exit drain (hands recorded unit exits to their attempt obligations)", function: "belt_exit_drain_cli", install: Installable { directives: [WantedBy { target: deployment_belt_unit_install_target(names: spec.names) }] })
+}
+
+fn live_deploy_belt_discovery_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  live_deploy_belt_event_service_unit_file(spec: spec, description: "gunbc roadmap belt discovery (queues outstanding obligations, bounded)", function: "belt_discover_once_cli", install: NotInstallable)
+}
+
+fn live_deploy_belt_exit_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  PathUnitFile {
+    unit: [Description { text: "gunbc roadmap belt: a unit exit was recorded" as NonEmptyStr }],
+    path: [
+      PathUnit { target: deployment_belt_exit_drain_service_unit_name(names: spec.names) },
+      DirectoryNotEmpty { path: attempt_exit_inbox_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
+      DirectoryNotEmpty { path: attempt_exit_queued_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
+    ],
+    install: Installable { directives: [WantedBy { target: "paths.target" as NonEmptyStr }] },
+  }
+}
+
+fn live_deploy_belt_answer_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  PathUnitFile {
+    unit: [Description { text: "gunbc roadmap belt: a publication answer arrived" as NonEmptyStr }],
+    path: [
+      PathUnit { target: deployment_belt_discovery_service_unit_name(names: spec.names) },
+      PathChanged { path: publication_answer_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
+    ],
+    install: Installable { directives: [WantedBy { target: "paths.target" as NonEmptyStr }] },
+  }
+}
+
+fn emit_belt_unit_file_doc(file: SystemdUnitFile) -> Doc {
+  doc_text(text: serialize_systemd_unit_file(file: file))
 }
 
 // THE DEPLOYED TREE'S REMOTE, CONVERGED BY ITS OWNER.
@@ -1014,7 +1080,7 @@ fn apply_belt_service_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
 // Receipt *directory bootstrap* (existence + service-principal ownership) is on deploy, but NOT
 // here: this member's apply arm is a retirement poison (the cadence is on-demand via
 // fleet-converge.yml plan/apply, sleek-heron-218), so the bootstrap it used to carry has not run
-// on any fresh instance root since that retirement. It rides BeltTimerUnit apply against the
+// on any fresh instance root since that retirement. It rides BeltEventPathUnit apply against the
 // per-instance receipts directory instead — see the annotation on emit_artifact_upsert. Publication and
 // bootstrap remain orthogonal problems; only the bootstrap's home moved.
 fn emit_fleet_converge_service_unit_doc(spec: DeploymentSpec) -> Doc {
@@ -1066,10 +1132,18 @@ fn apply_fleet_converge_timer_unit_write_step(spec: DeploymentSpec) -> PipelineS
   ))
 }
 
-fn apply_belt_timer_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
+fn apply_belt_unit_file_write_step(stage_name: NonEmptyStr, file: SystemdUnitFile) -> PipelineStep {
   deploy_raw(command: deploy_stage_write_command(
-    stage_name: deployment_belt_timer_unit_name(names: spec.names) as String,
-    content: render(doc: emit_belt_timer_unit_doc(spec: spec), proto: live_deploy_protocol),
+    stage_name: stage_name as String,
+    content: render(doc: emit_belt_unit_file_doc(file: file), proto: live_deploy_protocol),
+  ))
+}
+
+fn apply_belt_unit_file_install_step(stage_name: NonEmptyStr, dest: NonEmptyStr) -> PipelineStep {
+  deploy_raw(command: deploy_stage_install_command(
+    stage_name: stage_name as String,
+    mode: install_file_shared_mode,
+    dest: dest as String,
   ))
 }
 
@@ -1115,10 +1189,7 @@ fn identity_member_of_step(step: DeploymentStep) -> ConvergedMember? {
       GunbcSourceTree => Present { value: TreePublication }
       ServeBinary => Present { value: Executable }
       SystemdUnit => Present { value: UnitFile }
-      DispatchWorktreeRoot => Present { value: DirectoryRoot { path: art.path } }
-      AttemptStateRoot => Present { value: DirectoryRoot { path: art.path } }
-      ComputeRoot => Present { value: DirectoryRoot { path: art.path } }
-      BeltTimerUnit => none
+      BeltEventPathUnit => none
       FleetConvergeTimerUnit => none
       TailscaleServeMapping => none
       DeployedTreeRemoteUnit => none
@@ -1463,26 +1534,12 @@ fn install_d_owned_command(spec: DeploymentSpec, path: String) -> String {
   install_d_owned_for_user(user: spec.service.service_user, path: path)
 }
 
-// THE DISPATCH THAT ADMITS A SECOND KIND OF ENSURED RESOURCE, written so the package arm is
-// untouched. A package still lowers to exactly the ensure step it always did, at both privilege
-// settings, so no existing emitted byte moves -- the widening adds a kind, it does not redefine
-// what ensuring a package means.\n\nA directory lowers to the same owned install -d the artifact
-// steps use, through the same single authority, with the owner taken from the ensured subject
-// rather than from a deployment spec. That is what lets a host-level resource be stated without an
-// instance: an ensured host directory is a fact about the host, and threading a spec through it
-// would have made it look like a per-instance fact again -- the exact confusion that put this root
-// in the owned roster to begin with.\n\nprivileged is consumed only by the package arm because it
-// describes how apt is invoked; install -d is privileged in both contexts and takes the same form
-// either way.
+// AN ENSURED DEPENDENCY IS A PACKAGE. The directory arms that lowered an ensured host directory to an
+// owned install -d are gone: every directory is an owned-directory target, emitted by
+// owned_directory_apply_steps below from the provider's plan. privileged describes how apt is invoked.
 fn ensure_dependency_steps(dep: DeploymentDependencyStep, privileged: Bool) -> List<PipelineStep> {
   match dep.subject {
     EnsuredPackage { package } => [ensure_apt_package_step(pkg: package, privileged: privileged)]
-    EnsuredHostDirectory { path, owner } => [
-      deploy_raw(command: install_d_owned_for_user(user: owner, path: path as String)),
-    ]
-    EnsuredManagedHostDirectory { admission } =>
-      concat([deploy_raw(command: ensure_managed_directory_command(admission: admission))],
-        map(managed_directory_entry_repair_commands(admission: admission), c => deploy_raw(command: c)))
   }
 }
 
@@ -1581,28 +1638,52 @@ fn deploy_publication_principal_ensure_command(spec: DeploymentSpec) -> String {
   })
 }
 
-// THE PROVIDER-STATE ENSURE RIDES THE PREAMBLE, DERIVED FROM THE SPEC RATHER THAN FOUND IN ITS STEP
-// LIST (C7). Every apply emits it because gunbc.live_deploy.spec deployment_provider_state_step is a
-// function of the spec, not a row an author may forget: there is no spec for which it returns
-// nothing, so there is no state in which the deploy silently stops creating the directory the
-// provider login writes into. That is the construction the earlier refusal arm was standing in for.
-//
-// Ensured means converged on every apply and never torn down, so it emits unconditionally rather
-// than gated on a plan mutation: `install -d` is idempotent, and a converged host re-running it is
-// what the category means. The read-back member reports the directory's OWNER; it does not decide
-// whether the directory is created.
-fn provider_state_ensure_steps(spec: DeploymentSpec) -> List<PipelineStep> {
-  ensure_dependency_steps(dep: deployment_provider_state_step(spec: spec), privileged: true)
+fn deploy_apply_preamble_steps(access: DeployAccess, spec: DeploymentSpec) -> List<PipelineStep> {
+  [
+    deploy_raw(command: deploy_sudoers_install_shell(access: access)),
+    deploy_raw(command: deploy_publication_principal_ensure_command(spec: spec)),
+  ]
 }
 
-fn deploy_apply_preamble_steps(access: DeployAccess, spec: DeploymentSpec) -> List<PipelineStep> {
-  concat(
-    [
-      deploy_raw(command: deploy_sudoers_install_shell(access: access)),
-      deploy_raw(command: deploy_publication_principal_ensure_command(spec: spec)),
-    ],
-    provider_state_ensure_steps(spec: spec),
-  )
+// ── EVERY DIRECTORY THE DEPLOYMENT DEMANDS, THROUGH THE ONE PROVIDER ─────────────────────────────
+//
+// The apply half of gunbc.owned_directory's lifecycle on this route. The decision was made at plan time
+// over a host observation (gunbc.live_deploy.member_observe observe_owned_directory, the provider's
+// owned_directory_decide), and it arrives here as each DirectoryRoot member's mutation: keep emits
+// nothing, create and repair emit the provider's install plan (owned_directory_install_plan_of) as the
+// granted `sudo -n install -d -m -o -g`. A refused decision never reaches the emitter -- it refused
+// the whole derivation -- and the post-apply readback re-derives the plan through the same observer.
+// A member the plan makes no claim about is emitted, never skipped (plan_mutation_of's rule).
+//
+// These run after the preamble (the sudoers grant they ride) and before every owned step, so no
+// member -- the unit's process, the belt timer's tick -- starts before the directories it writes.
+fn owned_directory_apply_steps(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> List<PipelineStep> {
+  flat_map(deployment_directory_demands(spec: spec), t =>
+    match plan_mutation_of(plan: plan, member: DirectoryRoot { path: owned_directory_path(t: t) as String as NonEmptyStr }) {
+      MemberNotInPlan => owned_directory_install_steps(t: t)
+      MutationInPlan { mutation } =>
+        if mutation_is_keep(e: mutation) { [] } else { owned_directory_install_steps(t: t) }
+    })
+}
+
+// A TARGET WHOSE MODE DOES NOT DERIVE LOWERS TO A MARKER THAT IS NOT SHELL, never to an install with a
+// guessed mode. A managed target whose dependents read each other's entries also carries the entry
+// repair (managed_directory_entry_repair_commands), riding the same ensure as before.
+data owned_directory_unplannable_poison: String = "__GUNBC_DEPLOY_REFUSED__ owned directory NOT ENSURED: gunbc.owned_directory owned_directory_install_plan_of has no plan: "
+
+fn owned_directory_install_steps(t: OwnedDirectoryTarget) -> List<PipelineStep> {
+  match owned_directory_install_plan_of(t: t) {
+    EnsurePlanUnavailable { reason } => [deploy_raw(command: concat(owned_directory_unplannable_poison, reason))]
+    EnsurePlanAvailable { plan } =>
+      concat(
+        [deploy_raw(command: shell_privileged_command_text_of_argv(argv: owned_directory_install_argv(plan: plan)))],
+        match t {
+          OwnedDirectoryManaged { directory } =>
+            map(managed_directory_entry_repair_commands(admission: managed_directory_admit(d: directory)), c => deploy_raw(command: c))
+          OwnedDirectoryDeclared { member: _, path: _, owner: _, mode: _ } => []
+        },
+      )
+  }
 }
 
 // THE CAP APPLY CONSUMES RETIREMENT AUTHORIZATION, AND WITHOUT ONE IT REFUSES.
@@ -2245,7 +2326,7 @@ fn microvm_controller_install_intent(revision: ReleaseRevisionBinding) -> Pipeli
             base_root: microvm_controller_root,
             revision: revision,
           ),
-          microvm_controller_vmm_install_steps(revision: revision),
+          microvm_controller_vmm_install_steps(revision: revision) + workspace_image_install_steps(revision: revision),
         ),
       ),
       concat(
@@ -2253,6 +2334,7 @@ fn microvm_controller_install_intent(revision: ReleaseRevisionBinding) -> Pipeli
           deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: microvm_slot_controller_receipt_dir)),
           deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: cell_readiness_store_location)),
           deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: workspace_commissioning_store_location)),
+          deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: runner_microvm_converged_receipt_root)),
         ],
         concat(microvm_slot_unit_write_steps(revision: revision) + workspace_executor_install_steps(revision: revision) + workspace_dispatch_grant_steps(revision: revision), [deploy_effect(inv: systemctl_daemon_reload_effect())]),
       ),
@@ -2784,17 +2866,6 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
       tree_sync_restart_step_with_diagnosis(spec: spec),
       deploy_raw(command: repository_convergence_readback_command(spec: spec)),
     ]))
-    DispatchWorktreeRoot => [
-      deploy_raw(command: install_d_owned_command(spec: spec, path: art.path as String)),
-    ]
-    AttemptStateRoot => [
-      deploy_raw(command: install_d_managed_command(
-        dir: attempt_state_directory_at(path: art.path as String as FilePath),
-      )),
-    ]
-    ComputeRoot => [
-      deploy_raw(command: install_d_owned_command(spec: spec, path: art.path as String)),
-    ]
     SystemdUnit => concat(concat([
       apply_systemd_unit_write_step(spec: spec, revision: revision),
       deploy_raw(command: deploy_stage_install_command(
@@ -2827,26 +2898,37 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         deploy_effect(inv: systemctl_restart_effect(unit: deployment_publication_timer_unit_name(names: spec.names))),
       ]
     )
-    BeltTimerUnit => [
+    BeltEventPathUnit => [
       deploy_raw(command: install_d_owned_command(
         spec: spec,
         path: instance_receipts_dir(instance_root: spec.service.instance_root as String),
       )),
+      deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_spool_root(instance_root: spec.service.instance_root as String))),
+      deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_inbox_dir(instance_root: spec.service.instance_root as String))),
+      deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_queued_dir(instance_root: spec.service.instance_root as String))),
+      deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_running_dir(instance_root: spec.service.instance_root as String))),
+      deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_done_dir(instance_root: spec.service.instance_root as String))),
+      deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_refused_dir(instance_root: spec.service.instance_root as String))),
       apply_belt_service_unit_write_step(spec: spec),
-      apply_belt_timer_unit_write_step(spec: spec),
+      apply_belt_unit_file_write_step(stage_name: deployment_belt_exit_drain_service_unit_name(names: spec.names), file: live_deploy_belt_exit_drain_service_unit_file(spec: spec)),
+      apply_belt_unit_file_write_step(stage_name: deployment_belt_discovery_service_unit_name(names: spec.names), file: live_deploy_belt_discovery_service_unit_file(spec: spec)),
+      apply_belt_unit_file_write_step(stage_name: deployment_belt_exit_path_unit_name(names: spec.names), file: live_deploy_belt_exit_path_unit_file(spec: spec)),
+      apply_belt_unit_file_write_step(stage_name: deployment_belt_answer_path_unit_name(names: spec.names), file: live_deploy_belt_answer_path_unit_file(spec: spec)),
       deploy_raw(command: deploy_stage_install_command(
         stage_name: deployment_belt_service_unit_name(names: spec.names) as String,
         mode: install_file_shared_mode,
         dest: deployment_belt_service_unit_path(names: spec.names) as String,
       )),
-      deploy_raw(command: deploy_stage_install_command(
-        stage_name: deployment_belt_timer_unit_name(names: spec.names) as String,
-        mode: install_file_shared_mode,
-        dest: art.path as String,
-      )),
+      apply_belt_unit_file_install_step(stage_name: deployment_belt_exit_drain_service_unit_name(names: spec.names), dest: deployment_belt_exit_drain_service_unit_path(names: spec.names)),
+      apply_belt_unit_file_install_step(stage_name: deployment_belt_discovery_service_unit_name(names: spec.names), dest: deployment_belt_discovery_service_unit_path(names: spec.names)),
+      apply_belt_unit_file_install_step(stage_name: deployment_belt_answer_path_unit_name(names: spec.names), dest: deployment_belt_answer_path_unit_path(names: spec.names)),
+      apply_belt_unit_file_install_step(stage_name: deployment_belt_exit_path_unit_name(names: spec.names), dest: art.path),
       deploy_effect(inv: systemctl_daemon_reload_effect()),
-      deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_timer_unit_name(names: spec.names))),
-      deploy_effect(inv: systemctl_restart_effect(unit: deployment_belt_timer_unit_name(names: spec.names))),
+      deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_exit_drain_service_unit_name(names: spec.names))),
+      deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_exit_path_unit_name(names: spec.names))),
+      deploy_effect(inv: systemctl_restart_effect(unit: deployment_belt_exit_path_unit_name(names: spec.names))),
+      deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_answer_path_unit_name(names: spec.names))),
+      deploy_effect(inv: systemctl_restart_effect(unit: deployment_belt_answer_path_unit_name(names: spec.names))),
     ]
     FleetConvergeTimerUnit => [
       deploy_raw(command: "__GUNBC_FLEET_CONVERGE_REFUSED__ FleetConvergeTimerUnit retired from deployment membership — timer cadence is on-demand via fleet-converge.yml plan/apply, not live_deploy apply (sleek-heron-218)"),
@@ -2914,11 +2996,11 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
 // remove this store even by mistake -- the property the previous `rm -d` arm tried to approximate
 // by refusing on a non-empty directory is now structural, and the awkward consequence that arm
 // carried (a full retract could never complete once the store existed) simply does not arise.
-// DispatchWorktreeRoot teardown is rm -d (empty-directory removal via the granted rm — the
+// The dispatch worktree root's refusal is rm -d (empty-directory removal via the granted rm — the
 // unprivileged principal has no rmdir grant and no write on the root-owned parent), NEVER rm -rf: a
 // non-empty worktree root means live agent worktrees exist, so the retract FAILS LOUDLY there
 // instead of silently destroying sessions (DESIGN 5 — the refusal is the empty-dir precondition
-// itself, identical to the former rmdir). GunbcSourceTree teardown runs AFTER the worktree rm -d
+// itself, identical to the former rmdir). GunbcSourceTree teardown runs its rm -rf only AFTER that rm -d
 // succeeds, so the repo the worktrees are registered in is never deleted from under them.
 
 fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> List<PipelineStep> {
@@ -2956,11 +3038,17 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
         deploy_effect(inv: systemctl_daemon_reload_effect()),
       ]
     )
-    BeltTimerUnit => concat(
-      systemctl_disable_now_if_present_steps(unit: deployment_belt_timer_unit_name(names: spec.names), privileged: true),
+    BeltEventPathUnit => concat(
+      concat(
+        systemctl_disable_now_if_present_steps(unit: deployment_belt_exit_path_unit_name(names: spec.names), privileged: true),
+        systemctl_disable_now_if_present_steps(unit: deployment_belt_answer_path_unit_name(names: spec.names), privileged: true),
+      ),
       [
         deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
           art.path as String,
+          deployment_belt_answer_path_unit_path(names: spec.names) as String,
+          deployment_belt_exit_drain_service_unit_path(names: spec.names) as String,
+          deployment_belt_discovery_service_unit_path(names: spec.names) as String,
           deployment_belt_service_unit_path(names: spec.names) as String,
         ])),
         deploy_effect(inv: systemctl_daemon_reload_effect()),
@@ -2993,28 +3081,36 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
         deploy_effect(inv: systemctl_daemon_reload_effect()),
       ]
     )
-    DispatchWorktreeRoot => [
-      deploy_raw(command: rm_empty_directory_command(path: art.path as String)),
-    ]
-    AttemptStateRoot => [
-      deploy_raw(command: rm_empty_directory_command(path: art.path as String)),
-    ]
-    ComputeRoot => [
-      deploy_raw(command: rm_force_recursive_command(path: art.path as String)),
-    ]
     ServeBinary => [
       deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
     ]
-    GunbcSourceTree => [
-      deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
-        tree_sync_unit_path(names: spec.names) as String,
-        spec.names.tree_sync_env_path as String,
-        deployment_slice_unit_path(names: spec.names) as String,
-      ])),
-      deploy_effect(inv: systemctl_daemon_reload_effect()),
-      deploy_raw(command: rm_force_recursive_command(path: art.path as String)),
-    ]
+    GunbcSourceTree => concat(
+      map(dispatch_root_refusal_paths(spec: spec), p => deploy_raw(command: rm_empty_directory_command(path: p))),
+      [
+        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
+          tree_sync_unit_path(names: spec.names) as String,
+          spec.names.tree_sync_env_path as String,
+          deployment_slice_unit_path(names: spec.names) as String,
+        ])),
+        deploy_effect(inv: systemctl_daemon_reload_effect()),
+        deploy_raw(command: rm_force_recursive_command(path: art.path as String)),
+      ],
+    )
   }
+}
+
+// THE SOURCE TREE'S TEARDOWN KEEPS THE DISPATCH ROOTS' EMPTY-DIRECTORY REFUSAL. The two roots were
+// owned steps whose teardown ran before the tree's and refused on a live worktree or published attempt
+// evidence; they are owned-directory demands now and a retract does not tear directories down, but
+// deleting the tree a live worktree is registered in is the hazard that refusal stood for, so the
+// tree's own teardown begins with it. The paths are the spec's demands, read by member name.
+fn dispatch_root_refusal_paths(spec: DeploymentSpec) -> List<String> {
+  map(
+    filter(xs: spec.directories, predicate: t =>
+      (owned_directory_member(t: t) as String) == (dashboard_dispatch_worktree_member as String)
+        || (owned_directory_member(t: t) as String) == (dashboard_attempt_state_member as String)),
+    t => owned_directory_path(t: t) as String,
+  )
 }
 
 // The per-member realization HANDLER: share the DIFF (membership_reconcile), dispatch the APPLY
@@ -3093,12 +3189,7 @@ fn apply_step_effects(
 ) -> List<PipelineStep> {
   match identity_member_of_step(step: step) {
     Present { value: member } => match member {
-      DirectoryRoot { path: _ } => match plan_mutation_of(plan: plan, member: member) {
-        MemberNotInPlan => step_membership_effects(step: step, effects: effects, spec: spec, plan: plan)
-        MutationInPlan { mutation } =>
-          if mutation_is_keep(e: mutation) { [] }
-          else { step_membership_effects(step: step, effects: effects, spec: spec, plan: plan) }
-      }
+      DirectoryRoot { path: _ } => []
       TreePublication => emit_release_member_effects(member: member, plan: plan, spec: spec)
       Executable => emit_release_member_effects(member: member, plan: plan, spec: spec)
       UnitFile => emit_release_member_effects(member: member, plan: plan, spec: spec)
@@ -3168,7 +3259,10 @@ fn apply_intent_from_effects(
     steps: concat(
       deploy_apply_frame_steps(spec: spec),
       concat(
-        deploy_apply_preamble_steps(access: access, spec: spec),
+        concat(
+          deploy_apply_preamble_steps(access: access, spec: spec),
+          owned_directory_apply_steps(spec: spec, plan: plan),
+        ),
         concat(
           deploy_memory_cap_apply_steps(spec: spec, authorization: cap_authorization),
           concat(
@@ -3550,7 +3644,8 @@ fn workspace_executor_install_steps(revision: ReleaseRevisionBinding) -> List<Pi
 }
 
 // The installer has already installed the exact controller release under root custody. These
-// argument-free grants name that binary, tree and three fixed entries; no job code is elevated.
+// argument-free grants name that binary, tree and the fixed entry roster; no job code is elevated.
+// The same policy also grants its exact readback operation to the installation observer.
 fn workspace_dispatch_grant_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   let stage = "workspace-commissioning-sudoers"
   let pending = concat(workspace_dispatch_grant_path, ".pending")
@@ -3563,4 +3658,27 @@ fn workspace_dispatch_grant_steps(revision: ReleaseRevisionBinding) -> List<Pipe
     deploy_raw(command: rename_no_target_directory_command(source: pending, dest: workspace_dispatch_grant_path)),
     deploy_raw(command: installed_visudo_policy_check_command(path: workspace_dispatch_grant_path)),
   ]
+}
+
+// Copy only the named files, never extract an archive as root. Verify the administrator-owned
+// destination after copying: a transport/staging race cannot turn different bytes into admission.
+fn workspace_image_install_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  let dir = workspace_installed_image_root(release_dir: microvm_controller_release_dir(revision: revision), identity: workspace_demo_image_identity())
+  let kernel = concat(concat(dir, "/"), runner_guest_kernel_artifact.filename as String)
+  let rootfs = concat(dir, "/workspace.ext4")
+  match runner_guest_kernel_artifact.integrity {
+    ArtifactDigestPinned { digest, provenance: _ } => [
+      deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: dir)),
+      deploy_raw(command: install_file_owned_command(mode: install_file_shared_mode,
+        owner: microvm_controller_owner, group: microvm_controller_owner,
+        source: runner_guest_base_artifact_path(root: workspace_image_staging_root, artifact: runner_guest_kernel_artifact), dest: kernel)),
+      deploy_raw(command: digest_shell_verify_line(digest: digest, file_path: kernel as NonEmptyStr)),
+      deploy_raw(command: install_file_owned_command(mode: install_file_shared_mode,
+        owner: microvm_controller_owner, group: microvm_controller_owner,
+        source: workspace_image_path(root: workspace_image_staging_root), dest: rootfs)),
+      deploy_raw(command: digest_shell_verify_line(digest: sha256_digest(hex: workspace_demo_image_identity()), file_path: rootfs as NonEmptyStr)),
+    ]
+    ArtifactDigestUnpinned { cause: _ } => [deploy_raw(command: "exit 1")]
+    ArtifactDigestNotPinnable { cause: _ } => [deploy_raw(command: "exit 1")]
+  }
 }

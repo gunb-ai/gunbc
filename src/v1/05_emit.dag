@@ -1,5 +1,10 @@
 module v1.compiler.emit
 
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.compiler_entry {
+  CompilerEntryDriver, RetainedHostCliKernel, DirectIngestDriver, SourceRootEvalDriver, NativeCliDriver, NativeClaimDriver, NativeServeDriver,
+  NativeEffectClass, NativeEffectDeclaration, NativeOutgoingHttp, NativeEffectScope, NativeAdmitAllExcept, NativeAdmitOnly, NativeEffectDenominator
+}
 import std.occurrence_identity { OccurrenceSynthetic, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceId, NodeOccurrenceIdentity, occurrence_id_eq }
 
 import std.coercion { TypeRealizationDecision }
@@ -34,12 +39,14 @@ import v1.std.core {
   is_file_transport, is_local_transport, TransportKind, RestTransport, ShellTransport,
   FileTransport, LocalTransport, classify_transport, transport_verb, transport_base_path, transport_has_auth, field_init_operation_modifier,
   operation_modifier_name, with_required_cardinality, tuple_type_name, find_child_named,
-  Connective, Conj, Disj, NoConnective, Arrow, CardOptional
+  Connective, Conj, Disj, NoConnective, Arrow, Required, CardOptional
 }
 
-import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index }
+import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index, type_reference_declaration_reading, TypeReferenceNamesDeclaration }
 
 import std.induction { InductiveField, SubValueUnknown }
+
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 
 import v1.compiler.infer_types { resolved_type, is_product_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, for_each_element_type_node, is_unit_like, is_declared_container_alias_spelling }
 
@@ -64,7 +71,8 @@ import v1.compiler.infer_lookup { lookup_func_sig }
 
 import v1.compiler.infer {
   InferScope, is_where_refinement_type,
-  build_params_scope, extend_scope, call_param_caller_labels
+  build_params_scope, extend_scope, call_param_caller_labels,
+  resolved_type_name
 }
 
 import v1.compiler.infer_emit_info { TypeSummary, EmitGraphInfo }
@@ -490,6 +498,49 @@ fn emit_data_fields_json(value: Node, source_indices: Map<String, NewlineIndex>,
       outcome: emit_data_value_json(value: field_init_node_value(n: fld), source_indices: source_indices, variant_wire: variant_wire)
     )
   )
+}
+
+// A DATA ROW DECLARED `T?` IS SPELLED AS THE TARGET'S NATIVE OPTION, selected by the row's DECLARED
+// cardinality -- never by the spelling of a variant's parent. Every target realizes `T?` natively
+// (Rust Option, Python None, Go nil), and each one's JSON reading of it is transparent: absent is
+// `null`, present is the payload itself. The caller (v1.compiler.emit_rust emit_data_def_body) asks
+// this only for a row whose declared type carries CardOptional, so an unrelated coproduct that happens
+// to be NAMED Optional keeps its own wire policy (review on gunbc#13202: a leaf-name test here was a
+// second, unrostered authority that would have serialized such a coproduct as null or a bare payload).
+// Within an optional row, a variant literal whose parent IS the declared inner type is a bare T under
+// T?: an implicit lift no declared coercion admits. That arm REFUSES, and it is the refusal exhaustive
+// matching requires -- NOT coverage. It is unreachable: v1.compiler.infer refuses a bare T data
+// initializer under a declared T? (the C5 wall, optional_at_required_obligation_diags at
+// PositionDataInitializer), and an accepted row of that shape takes the typed-expression path, never
+// this serializer (measured on gunbc#13202). Any other one-field variant literal is the option's
+// present arm and is unwrapped to its payload. Control: gunbc.instruments.native_emission_controls optional_data_row_cases
+// -- the present and absent rows. A coproduct merely NAMED Optional
+// cannot be emitted at all today (type rendering decides host-option by leaf name); that case is
+// lane 2K's RED, not covered here. Neither refusal arm (a bare inner-type literal, a present literal
+// with more than one field) is coverage of anything; both exist only so the match is exhaustive.
+fn emit_declared_optional_row_json(value: Node, inner_type_name: String, source_indices: Map<String, NewlineIndex>, variant_wire: Map<String, DataVariantWireSpelling>) -> EmitterOutcome {
+  match value.expr_data {
+    ExprLiteral { value: LitNull } => Emitted { json: "null" }
+    ExprRecordLit { parent_enum: pe } =>
+      match pe {
+        Present { value: parent } =>
+          if qualified_last_segment(name: parent) == qualified_last_segment(name: inner_type_name) {
+            Refused { reason: concat("a data row declared ", inner_type_name, "? is initialized with a bare ", inner_type_name, " literal: no declared coercion lifts T into T? (DESIGN 4, 2026-09-26), so spell it Present { value: .. } or none") }
+          } else {
+            match value.children |> first {
+              Absent => Emitted { json: "null" }
+              Present { value: payload_field } =>
+                if (value.children |> count) == 1 {
+                  emit_data_value_json(value: field_init_node_value(n: payload_field), source_indices: source_indices, variant_wire: variant_wire)
+                } else {
+                  Refused { reason: concat("an optional row's present literal carries ", to_string(value.children |> count), " fields; the option's present arm carries exactly its payload") }
+                }
+            }
+          }
+        Absent => emit_data_value_json(value: value, source_indices: source_indices, variant_wire: variant_wire)
+      }
+    _ => emit_data_value_json(value: value, source_indices: source_indices, variant_wire: variant_wire)
+  }
 }
 
 fn emit_data_value_json(value: Node, source_indices: Map<String, NewlineIndex>, variant_wire: Map<String, DataVariantWireSpelling>) -> EmitterOutcome {
@@ -1327,6 +1378,7 @@ type ShellResultField {
 type ShellEmissionRefusal
   = ShellOutputKeyNotModeled { key: String }
   | ShellChannelNotRealizedByTarget { key: String, target_name: String }
+  | ShellCapturePolicyInputAbsent { key: String }
 
 // The single authority for which declared output keys the shell realization can
 // answer. Read by the binding; there is no second list.
@@ -1336,17 +1388,11 @@ type ShellEmissionRefusal
 // when no `from` key is authored -- so the two directions of the one procedure
 // (DESIGN section 4) read the same rule rather than agreeing by coincidence.
 //
-// NOT MODELED, named rather than left to be inferred, because each names a fact
-// the emitted realization cannot honestly produce:
-//
-//   the byte-accounting and truncation channels -- stdout/stderr_total_bytes,
-//   _retained_bytes and _truncated. An operation declaring them also declares a
-//   capture policy (gunbc.WitnessBin.Run carries a WitnessStderrCapturePolicy
-//   input), and the emitted `std::process::Command` body implements no policy at
-//   all. Answering `false` and a raw length would not be a conservative default,
-//   it would assert that the declared policy ran and did not truncate. The
-//   next-rung trigger is the emitted realization implementing the declared
-//   capture policy; until then these refuse as a counted capability gap.
+// The byte-accounting and truncation channels are modeled. The rust handler
+// answers them from the declared WitnessStderrCapturePolicy (concurrent drain).
+// Answering `false` and a raw length without running that policy is still
+// forbidden; python and go refuse the three channels until they bind the same
+// handler fact.
 //
 //   the digest channels -- stdout/stderr_digest_hex, which the interpreter
 //   answers and the emitted realization has no digest facility for. The
@@ -1381,23 +1427,36 @@ fn shell_result_channel_key(c: ShellResultChannel) -> String {
 // WHETHER A TARGET CAN REALIZE A CHANNEL IS A FACT ABOUT THE TARGET, and keeping
 // it here rather than in the roster is the whole point of the split.
 //
-// The three capture-accounting channels are REAL shell channels -- the interpreter
-// answers all three from the declared WitnessStderrCapturePolicy -- and no emitted
-// realization implements a capture policy at all. The emitted `Command` body
-// captures whole streams, so `truncated` would always be false and total would
-// always equal retained: not a conservative default but an assertion that the
-// declared policy ran and did not truncate.
-//
-// NEXT-RUNG TRIGGER, at capability grain: the emitted realization implementing the
-// declared capture policy, sufficient to answer truncation and both byte counts
-// from the policy the operation declares. Until then every realizing target
-// refuses these three, and the refusal is LOCATED AT THE FIELD.
-fn shell_channel_realized_by_target(c: ShellResultChannel, target: RenderTarget) -> Bool {
+// The three capture-accounting channels are REAL shell channels. The rust
+// realization handler (v1.compiler.emit_rust emit_shell_call) implements the
+// declared WitnessStderrCapturePolicy: concurrent drain, BoundedTail retains a
+// tail, Complete retains within the host budget
+// (`v1_rt::read_host_budget_bytes` over `v1_rt::resolve_host_budget_join`,
+// the one composer `memory_governor::resolve_host_budget` also calls) or
+// refuses. Python and go still realize no capture policy, so they refuse these
+// three at field grain rather than answering false / raw length (that answer
+// would assert the declared policy ran).
+fn shell_channel_is_capture_accounting(c: ShellResultChannel) -> Bool {
   match c {
-    ShellChanStderrTruncated => false
-    ShellChanStderrTotalBytes => false
-    ShellChanStderrRetainedBytes => false
-    _ => target_renders_shell_transport(target: target)
+    ShellChanStderrTruncated => true
+    ShellChanStderrTotalBytes => true
+    ShellChanStderrRetainedBytes => true
+    _ => false
+  }
+}
+
+fn shell_channel_realized_by_target(c: ShellResultChannel, target: RenderTarget) -> Bool {
+  if shell_channel_is_capture_accounting(c: c) {
+    target_is_rust(target: target)
+  } else {
+    target_renders_shell_transport(target: target)
+  }
+}
+
+fn target_is_rust(target: RenderTarget) -> Bool {
+  match target {
+    Rust => true
+    _ => false
   }
 }
 
@@ -1416,6 +1475,9 @@ fn shell_emission_refusal_fact(refusal: ShellEmissionRefusal) -> String {
     ShellChannelNotRealizedByTarget { key: k, target_name: tn } =>
       concat("shell output channel '", k, "' is a modeled channel that target ", tn,
         " cannot realize -- the emitted realization implements no stderr capture policy, so answering it would assert that the declared policy ran")
+    ShellCapturePolicyInputAbsent { key: k } =>
+      concat("shell output channel '", k,
+        "' is a capture-accounting channel and this operation does not declare a required scalar stderr_capture: WitnessStderrCapturePolicy -- answering it would apply a policy nobody declared")
   }
 }
 
@@ -1528,6 +1590,201 @@ fn bind_operation_transport(t: Node, op_node: Node, source_indices: Map<String, 
     Present { value: FileTransport } => bind_file_operation(t: t, op_node: op_node, source_indices: source_indices)
     Present { value: LocalTransport } => LocalBound
     Absent => BindingRefused { cause: TransportMatchesNoRosterMember }
+  }
+}
+
+// ── NATIVE EFFECT REALIZATION ADMISSION ────────────────────────────────────────────────────────
+// docs/plans/demand-engine-program.md section 2.9, GAP A, carrier E3. A native entry (a
+// NativeCliDriver or NativeServeDriver main) hands its entry function one handle per effect the
+// function demands: a reference per `uses` resource and per service it reaches (the parameter list
+// v1.compiler.emit_rust emit_func_params renders). Before this verdict existed the rendered main
+// wrote those handles by hand, and an effect it did not write was found by rustc at the handler
+// call -- or, for a resource trait with no implementor, by the linker -- which is evidence of the
+// gap, not a refusal. This is the refusal: each demanded effect is admitted once, and the rendered
+// main binds exactly the handlers this verdict names and nothing else.
+//
+// SCOPE (two rulings, cited): the operator's 2026-09-16 ruling (plan D11) kept Clock, Network,
+// Entropy and AuthContext out of the native COMPILER route. gentle-dove-36's 2026-10-04 ruling
+// extends it for native SERVICE entries: a NativeServeDriver entry (first consumer, the approval
+// broker) needs a clock reading and outgoing HTTP. That extension adds NO transport. The broker's
+// clock is extdeps.clock Clock, a service bound to the existing shell transport, and its outgoing
+// HTTP is a `transport rest` service bound to the existing REST lowering (RestResult). So a service
+// is admitted when every operation binds through bind_operation_transport, and the handler it names
+// is that binding -- one handler per effect, never a second transport.
+// An effect is identified by the declaration its demand resolves to (module and name), never by a
+// leaf spelling, so a renamed or homonymous service cannot slip out of a denominator.
+type NativeEffectContract
+  = NativeServiceEffect { declaration: DeclarationRef }
+  | NativeResourceEffect { binding: String, declaration: DeclarationRef }
+
+// A resource with no capability is a capability token: it is rendered as a unit struct, and every
+// effect performed under it goes through a service. A resource with capabilities is a trait.
+type NativeEffectHandler
+  = NativeTransportHandler { transports: List<TransportKind> }
+  | NativeCapabilityToken
+
+type NativeEffectUnavailableCause
+  = NativeOperationBindingRefused { operation: String, refusal: TransportBindingRefusal }
+  | NativeResourceTraitHasNoImplementor { capability_count: Int }
+  | NativeEffectDeclarationAbsent
+  | NativeEffectDeclarationAmbiguous { candidates: Int }
+
+type NativeEffectRealizationAdmission
+  = NativeEffectHandlerBound { effect_contract: NativeEffectContract, handler_identity: NativeEffectHandler }
+  | NativeEffectOutsideProductionDenominator { effect_contract: NativeEffectContract, denominator: NativeEffectDenominator }
+  | NativeEffectRealizationUnavailable { effect_contract: NativeEffectContract, cause: NativeEffectUnavailableCause }
+
+// The demanded effect's resolved declaration, or why there is none. A name that resolves to no
+// declaration in the closure, or to more than one, is refused rather than guessed.
+type NativeEffectDeclSite {
+  item: Node
+  module_name: String
+}
+
+type NativeEffectResolution
+  = NativeEffectResolved { site: NativeEffectDeclSite }
+  | NativeEffectUnresolved { cause: NativeEffectUnavailableCause }
+
+fn native_effect_resolution(sites: List<NativeEffectDeclSite>) -> NativeEffectResolution {
+  match sites |> first {
+    Absent => NativeEffectUnresolved { cause: NativeEffectDeclarationAbsent }
+    Present { value: site } =>
+      if (sites |> count) == 1 { NativeEffectResolved { site: site } }
+      else { NativeEffectUnresolved { cause: NativeEffectDeclarationAmbiguous { candidates: sites |> count } } }
+  }
+}
+
+fn native_effect_class_matches(class: NativeEffectClass, declaration: DeclarationRef, transports: List<TransportKind>) -> Bool {
+  match class {
+    NativeEffectDeclaration { declaration: d } =>
+      (d.module_path as String) == (declaration.module_path as String) && (d.decl_name as String) == (declaration.decl_name as String)
+    NativeOutgoingHttp => transports |> any(t => t == RestTransport)
+  }
+}
+
+fn native_effect_outside_denominator(denominator: NativeEffectDenominator, declaration: DeclarationRef, transports: List<TransportKind>) -> Bool {
+  match denominator.scope {
+    NativeAdmitAllExcept { excluded: xs } => xs |> any(x => native_effect_class_matches(class: x, declaration: declaration, transports: transports))
+    NativeAdmitOnly { admitted: xs } => (xs |> any(x => native_effect_class_matches(class: x, declaration: declaration, transports: transports))) == false
+  }
+}
+
+fn bound_operation_transport_kind(bound: BoundOperation) -> TransportKind? {
+  match bound {
+    RestBound { transport: _ } => Present { value: RestTransport }
+    ShellBound { transport: _, result_fields: _ } => Present { value: ShellTransport }
+    FileBound { verb: _, path_template: _, result_fields: _ } => Present { value: FileTransport }
+    LocalBound => Present { value: LocalTransport }
+    BindingRefused { cause: _ } => none
+  }
+}
+
+fn native_transport_kinds_insert(kinds: List<TransportKind>, kind: TransportKind) -> List<TransportKind> {
+  if kinds |> any(k => k == kind) { kinds } else { concat(kinds, [kind]) }
+}
+
+type BoundOperationAt {
+  operation: String
+  bound: BoundOperation
+}
+
+fn native_service_bound_operations(svc: Node, source_indices: Map<String, NewlineIndex>) -> List<BoundOperationAt> {
+  let fallback = service_fallback_transport(item: svc)
+  svc.children |> map(op => BoundOperationAt {
+    operation: authored_name_at(source_indices: source_indices, node: op),
+    bound: bind_operation_transport(t: effective_operation_transport(op_node: op, fallback: fallback), op_node: op, source_indices: source_indices)
+  })
+}
+
+// A service is admitted when every operation binds through bind_operation_transport, and the handler
+// it names is that binding. Whether the route admits it at all is asked first, of the resolved
+// declaration and the transports it binds.
+fn admit_native_service_effect(service: String, resolution: NativeEffectResolution, denominator: NativeEffectDenominator, source_indices: Map<String, NewlineIndex>) -> NativeEffectRealizationAdmission {
+  match resolution {
+    NativeEffectUnresolved { cause: cz } =>
+      NativeEffectRealizationUnavailable { effect_contract: NativeServiceEffect { declaration: decl_ref(module_path: "<unresolved>", decl_name: service) }, cause: cz }
+    NativeEffectResolved { site: site } => {
+      let declaration = decl_ref(module_path: site.module_name, decl_name: service)
+      let contract = NativeServiceEffect { declaration: declaration }
+      let bounds = native_service_bound_operations(svc: site.item, source_indices: source_indices)
+      let transports = bounds |> fold(init: [], f: (acc, b) =>
+        match bound_operation_transport_kind(bound: b.bound) {
+          Present { value: k } => native_transport_kinds_insert(kinds: acc, kind: k)
+          Absent => acc
+        })
+      if native_effect_outside_denominator(denominator: denominator, declaration: declaration, transports: transports) {
+        NativeEffectOutsideProductionDenominator { effect_contract: contract, denominator: denominator }
+      } else {
+        match bounds |> filter(b => bound_operation_transport_kind(bound: b.bound) == none) |> first {
+          Present { value: r } => match r.bound {
+            BindingRefused { cause: cz } => NativeEffectRealizationUnavailable { effect_contract: contract, cause: NativeOperationBindingRefused { operation: r.operation, refusal: cz } }
+            _ => NativeEffectRealizationUnavailable { effect_contract: contract, cause: NativeEffectDeclarationAbsent }
+          }
+          Absent => NativeEffectHandlerBound { effect_contract: contract, handler_identity: NativeTransportHandler { transports: transports } }
+        }
+      }
+    }
+  }
+}
+
+fn admit_native_resource_effect(binding: String, resource: String, resolution: NativeEffectResolution, denominator: NativeEffectDenominator) -> NativeEffectRealizationAdmission {
+  match resolution {
+    NativeEffectUnresolved { cause: cz } =>
+      NativeEffectRealizationUnavailable { effect_contract: NativeResourceEffect { binding: binding, declaration: decl_ref(module_path: "<unresolved>", decl_name: resource) }, cause: cz }
+    NativeEffectResolved { site: site } => {
+      let declaration = decl_ref(module_path: site.module_name, decl_name: resource)
+      let contract = NativeResourceEffect { binding: binding, declaration: declaration }
+      let capability_count = site.item.children |> count
+      if native_effect_outside_denominator(denominator: denominator, declaration: declaration, transports: []) {
+        NativeEffectOutsideProductionDenominator { effect_contract: contract, denominator: denominator }
+      } else if capability_count == 0 {
+        NativeEffectHandlerBound { effect_contract: contract, handler_identity: NativeCapabilityToken }
+      } else {
+        NativeEffectRealizationUnavailable { effect_contract: contract, cause: NativeResourceTraitHasNoImplementor { capability_count: capability_count } }
+      }
+    }
+  }
+}
+
+fn native_declaration_label(d: DeclarationRef) -> String {
+  concat(d.module_path as String, concat(" ", d.decl_name as String))
+}
+
+fn native_effect_contract_label(c: NativeEffectContract) -> String {
+  match c {
+    NativeServiceEffect { declaration: d } => concat("service ", native_declaration_label(d: d))
+    NativeResourceEffect { binding: b, declaration: d } => concat("resource ", concat(native_declaration_label(d: d), concat(" (uses ", concat(b, ")"))))
+  }
+}
+
+fn native_route_label(route: CompilerEntryDriver) -> String {
+  match route {
+    NativeCliDriver => "NativeCliDriver"
+    NativeClaimDriver => "NativeClaimDriver"
+    NativeServeDriver => "NativeServeDriver"
+    SourceRootEvalDriver => "SourceRootEvalDriver"
+    DirectIngestDriver => "DirectIngestDriver"
+    RetainedHostCliKernel => "RetainedHostCliKernel"
+  }
+}
+
+// The refusal text for an admission that is not bound; none for a bound one.
+fn native_effect_admission_refusal(a: NativeEffectRealizationAdmission) -> String? {
+  match a {
+    NativeEffectHandlerBound { effect_contract: _, handler_identity: _ } => none
+    NativeEffectOutsideProductionDenominator { effect_contract: c, denominator: d } =>
+      Present { value: concat(native_effect_contract_label(c: c), concat(" is outside the ", concat(native_route_label(route: d.route), concat(" denominator (ruling: ", concat(native_declaration_label(d: d.ruling), ")"))))) }
+    NativeEffectRealizationUnavailable { effect_contract: c, cause: cz } =>
+      Present { value: concat(native_effect_contract_label(c: c), concat(" has no native realization: ", native_effect_unavailable_fact(cause: cz))) }
+  }
+}
+
+fn native_effect_unavailable_fact(cause: NativeEffectUnavailableCause) -> String {
+  match cause {
+    NativeOperationBindingRefused { operation: op, refusal: r } => concat("operation '", concat(op, concat("' binds no transport: ", transport_binding_refusal_fact(cause: r))))
+    NativeResourceTraitHasNoImplementor { capability_count: n } => concat("it is a resource trait with ", concat(to_string(value: n), " capabilities and no native implementor"))
+    NativeEffectDeclarationAbsent => "its declaration is not in the emitted closure"
+    NativeEffectDeclarationAmbiguous { candidates: n } => concat(to_string(value: n), " declarations in the closure carry its name, so which one it demands is not decided")
   }
 }
 
@@ -2577,6 +2834,31 @@ fn file_operation_has_content_input(op_node: Node, source_indices: Map<String, N
   file_operation_has_input(op_node: op_node, name: "content", source_indices: source_indices)
 }
 
+fn required_stderr_capture_policy_declaration() -> DeclarationRef {
+  decl_ref(module_path: "std.shell_stream_capture", decl_name: "WitnessStderrCapturePolicy")
+}
+
+fn param_type_is_stderr_capture_policy_declaration(p: Node, env: TypeEnv) -> Bool {
+  match type_reference_declaration_reading(n: param_node_type_expr(n: p), source_indices: env.source_indices, env: env) {
+    TypeReferenceNamesDeclaration { declaration: d } =>
+      declaration_ref_eq(a: d, b: required_stderr_capture_policy_declaration())
+    _ => false
+  }
+}
+
+fn param_is_required_stderr_capture_policy(p: Node, env: TypeEnv) -> Bool {
+  let ty = param_node_type_expr(n: p)
+  param_node_name_at(n: p, source_indices: env.source_indices) == "stderr_capture"
+    && p.return_cardinality == Required
+    && ty.return_cardinality == Required
+    && !node_is_collection(n: ty, source_indices: env.source_indices)
+    && param_type_is_stderr_capture_policy_declaration(p: p, env: env)
+}
+
+fn operation_declares_required_stderr_capture_policy(op_node: Node, env: TypeEnv) -> Bool {
+  op_node.params |> any(p => param_is_required_stderr_capture_policy(p: p, env: env))
+}
+
 // The channels the interpreter's map_file_outputs answers, read back as the emitter's obligation.
 // Emission and interpretation are one decision procedure run in two directions (DESIGN §4), so
 // this list is the emitted side of that map and diverging from it is a behavioral fork.
@@ -2816,7 +3098,24 @@ fn unmodeled_shell_transport_operation_diagnostics(tm: TypedModule, item: Node, 
                 },
                 module_name: module_name)] }
             Present { value: c } =>
-              if shell_channel_realized_by_target(c: c, target: target) { [] }
+              if shell_channel_is_capture_accounting(c: c)
+                && target_is_rust(target: target)
+                && !operation_declares_required_stderr_capture_policy(op_node: op_node, env: env)
+              {
+                [make_error_node(
+                  diagnostic: TransportEmissionNotModeled {
+                    transport_kind: "shell",
+                    service: service_name,
+                    operation: authored_name(env: env, node: op_node),
+                    declaring_module: module_name,
+                    target: render_target_name(target: target),
+                    missing_realization_fact: shell_emission_refusal_fact(refusal: ShellCapturePolicyInputAbsent {
+                      key: shell_result_channel_key(c: c)
+                    }),
+                    span: ch.span
+                  },
+                  module_name: module_name)]
+              } else if shell_channel_realized_by_target(c: c, target: target) { [] }
               else { [make_error_node(
                 diagnostic: TransportEmissionNotModeled {
                   transport_kind: "shell",

@@ -37,8 +37,9 @@ test fn observer_has_no_fleet_ssh_demand() -> Bool {
   match fleet_converge_mode_fleet_ssh_key_demand(mode: PrinterWorkflow) { FleetSshKeyNotConsumed => true _ => false }
 }
 test fn trusted_code_cannot_be_replaced_by_dispatch_revision() -> Bool {
-  string_contains(s: fleet_converge_checkout_ref_expr, pattern: "github.event.inputs.mode == 'printer'")
+  fleet_converge_checkout_ref_expr == "${{ github.sha }}"
     && fleet_converge_event_sha_checkout_ref_expr == "${{ github.sha }}"
+    && !string_contains(s: fleet_converge_checkout_ref_expr, pattern: "expected_revision")
     && string_contains(s: fleet_converge_shared_job_if, pattern: "github.event.inputs.mode != 'printer'")
 }
 test fn observer_is_a_registered_dispatch_and_run_target() -> Bool {

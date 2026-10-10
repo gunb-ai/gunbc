@@ -51,6 +51,8 @@ import gunbc.scm.repository_load {
   rows_by_digest, shard_objects_agree_with_roster,
   load_repository_indexed, RepositoryLoaded, RepositoryLoadRefused, RepositoryDocumentRefused,
 }
+import gunbc.roadmap_belt_actuate { belt_scm_rebound_identities }
+import gunbc.scm.worktree_inventory { WorktreeChange, WorktreeBind }
 import gunbc.scm.write_spine {
   commit_staged, StagedCommitMinted, StagedCommitCandidateRefused, StagedCommitNothingToFreeze,
   StagedCommitAllocatorInvalid, StagedCommitSourceUnrecoverable,
@@ -597,5 +599,34 @@ fn envelope_over(indexed: RepositoryEnvelope, store: ObjectStore) -> RepositoryE
     commit_allocator: indexed.commit_allocator,
     checked_out: indexed.checked_out,
     staged: indexed.staged,
+  }
+}
+
+fn rebound_changes(from: Int, to: Int) -> List<WorktreeChange> {
+  map(planted_indices(n: to, i: from, acc: []), i => WorktreeBind { path: join(["src/planted/file_", to_string(i), ".dag"], "") as NonEmptyStr })
+}
+
+fn rebound_texts(from: Int, to: Int) -> Map<String, String> {
+  fold(planted_indices(n: to, i: from, acc: []), init: empty_map(), f: fn(m, i) { map_insert(m, join(["src/planted/file_", to_string(i), ".dag"], ""), planted_text(i: i)) })
+}
+
+// THE REBIND'S SHARD DEMAND IS DERIVED FROM THE WHOLE CHANGE POPULATION, so a shard holding k of its
+// re-bound members is planned once. The srv2 recapture demanded each re-bound identity separately
+// and read the one shard k times (30x for the largest). The control is the receipt shape: the
+// population demanded together names exactly one shard, while the same identities demanded one at a
+// time name k -- the count the per-path route paid.
+test fn a_rebound_population_plans_each_shard_once() -> Bool {
+  match planted_base(n: planted_files) {
+    Absent => false
+    Present { value: whole } =>
+      match indexed_of(whole: whole) {
+        Absent => false
+        Present { value: indexed } => {
+          let ids = belt_scm_rebound_identities(store: indexed.store, changes: rebound_changes(from: 1, to: 5), texts: rebound_texts(from: 1, to: 5))
+          count(ids) == 4
+            && demand_shard_count(repo: indexed, identities: ids) == 1
+            && fold(ids, init: 0, f: fn(n, id) { n + demand_shard_count(repo: indexed, identities: [id]) }) == 4
+        }
+      }
   }
 }

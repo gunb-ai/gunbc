@@ -1,0 +1,96 @@
+module test.claim.live_deploy.desired_apply_selection_witness_test
+
+import std.types { Bool, String, Int }
+import gunbc.live_deploy.apply {
+  live_deploy_desired_apply_selection,
+  srv1_production_instance_id,
+  DesiredApplySelected,
+  DesiredApplyRefused,
+}
+import gunbc.live_deploy.desired { deployment_spec_srv1, selected_deployment_spec, srv1_lab_desired_deployment }
+import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands }
+import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_member }
+import gunbc.fabric_storage_placement { fabric_storage_store_directories }
+import gunbc.ci_deploy_access { ci_deploy_srv1_operator_local_access }
+import gunbc.roadmap_dashboard_instance { srv1_dashboard_lab_id, srv2_deploy_dashboard_id }
+
+// THE ONE APPLY ROUTE SELECTS BY INSTANCE ID (gunbc.live_deploy.apply
+// live_deploy_desired_apply_selection). This claim's subject is the SELECTION: the lab id yields
+// the lab roster row's spec, never production's. What that spec emits -- its own unit, port,
+// slice and repo, disjoint from production -- is witnessed at the emitter's interface by
+// test.claim.live_deploy.desired_roster_witness_test selecting_lab_changes_emitted_unit_bytes and
+// same_host_production_and_lab_do_not_share_port_unit_or_handler, over the same
+// selected_deployment_spec(srv1_lab_desired_deployment()) value this asserts was chosen; rendering
+// the apply program here would re-pay that emission (~1.3M eval steps measured) per claim.
+test fn the_lab_instance_id_selects_the_lab_spec_and_never_the_production_unit() -> Bool {
+  match live_deploy_desired_apply_selection(
+    instance_id: srv1_dashboard_lab_id as String,
+    access: ci_deploy_srv1_operator_local_access,
+  ) {
+    DesiredApplyRefused { reason: _ } => false
+    DesiredApplySelected { spec } => lab_spec_selected(spec: spec)
+  }
+}
+
+fn lab_spec_selected(spec: DeploymentSpec) -> Bool {
+  let lab = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  (spec.instance_id as String) == (srv1_dashboard_lab_id as String)
+    && (spec.service.unit_name as String) == (lab.service.unit_name as String)
+    && (spec.service.repo_root as String) == (lab.service.repo_root as String)
+    && (spec.service.unit_name as String) != (deployment_spec_srv1().service.unit_name as String)
+    && (spec.service.unit_name as String) != "gunbc-roadmap.service"
+}
+
+// Positive control for the production entries, which now route through the same selection:
+// production's id must yield exactly deployment_spec_srv1, so the byte oracles over that spec
+// keep describing what the production entry applies.
+test fn the_production_instance_id_selects_deployment_spec_srv1() -> Bool {
+  match live_deploy_desired_apply_selection(
+    instance_id: srv1_production_instance_id(),
+    access: ci_deploy_srv1_operator_local_access,
+  ) {
+    DesiredApplyRefused { reason: _ } => false
+    DesiredApplySelected { spec } =>
+      (spec.instance_id as String) == (deployment_spec_srv1().instance_id as String)
+        && (spec.service.unit_name as String) == (deployment_spec_srv1().service.unit_name as String)
+        && (spec.service.repo_root as String) == (deployment_spec_srv1().service.repo_root as String)
+  }
+}
+
+test fn an_unknown_instance_id_refuses_with_its_typed_cause() -> Bool {
+  match live_deploy_desired_apply_selection(
+    instance_id: "no-such-dashboard-instance",
+    access: ci_deploy_srv1_operator_local_access,
+  ) {
+    DesiredApplySelected { spec: _ } => false
+    DesiredApplyRefused { reason } => string_contains(s: reason, pattern: "DesiredDeploymentUnknownInstanceId")
+  }
+}
+
+// A rostered row on ANOTHER host refuses under srv1's access rather than mutating srv1 with it.
+test fn a_row_on_another_host_refuses_under_srv1_access() -> Bool {
+  match live_deploy_desired_apply_selection(
+    instance_id: srv2_deploy_dashboard_id as String,
+    access: ci_deploy_srv1_operator_local_access,
+  ) {
+    DesiredApplySelected { spec: _ } => false
+    DesiredApplyRefused { reason } => string_contains(s: reason, pattern: "DesiredApplyHostMismatch")
+  }
+}
+
+// THE FABRIC STORE IS THE PLACED INSTANCE'S (gunbc.fabric_storage_placement fabric_storage_directory_demands).
+// Directories are owned-directory demands (gunbc.live_deploy.spec deployment_directory_demands), not
+// step kinds: the lab row demands none of the fabric store's directories; production's does.
+fn is_fabric_store_demand(t: OwnedDirectoryTarget) -> Bool {
+  let m = owned_directory_member(t: t)
+  count(filter(xs: fabric_storage_store_directories(), predicate: d => d.member == m)) > 0
+}
+
+fn fabric_store_step_count(spec: DeploymentSpec) -> Int {
+  count(filter(xs: deployment_directory_demands(spec: spec), predicate: t => is_fabric_store_demand(t: t)))
+}
+
+test fn the_lab_row_does_not_converge_the_fabric_store_and_production_does() -> Bool {
+  fabric_store_step_count(spec: selected_deployment_spec(row: srv1_lab_desired_deployment())) == 0
+    && fabric_store_step_count(spec: deployment_spec_srv1()) > 0
+}

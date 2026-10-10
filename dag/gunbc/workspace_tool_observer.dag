@@ -10,6 +10,8 @@ import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
 import gunbc.runner_microvm_host_ready { FirecrackerHostStanding, observe_firecracker_host_standing_at_binary_wet, firecracker_host_ready_in_this_process }
 import gunbc.runner_microvm_slot_unit { microvm_controller_vmm_binary, microvm_controller_jailer_binary }
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
+import product.host_identity { HostIdentity }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 
 type WorkspaceToolsObserved sole_constructor { host: NonEmptyStr, observed_at: Timestamp, release_dir: NonEmptyStr, standing: FirecrackerHostStanding }
@@ -35,8 +37,19 @@ fn workspace_observe_tools(release_dir: NonEmptyStr, login: NonEmptyStr) -> Work
   }
 }
 
+// The observation carries the controller's KERNEL hostname, and the slot carries a stable identity;
+// they are joined through the hostname the naming authority allocated to that identity, never by
+// assuming the two spellings agree. A slot host with no allocated hostname cannot be matched, so the
+// observation is refused as belonging elsewhere rather than accepted on a coincidence.
+fn workspace_observation_is_slot_host(observed: NonEmptyStr, slot_host: HostIdentity) -> Bool {
+  match canonical_hostname_for_fleet_slot(fleet_slot: slot_host) {
+    Present { value: h } => (h as String) == (observed as String)
+    Absent => false
+  }
+}
+
 fn workspace_tools_refusal(observation: WorkspaceToolsObserved, slot: RunnerSlotIdentity, now: Timestamp) -> NonEmptyStr? {
-  if (observation.host as String) != (slot.host as String) { Present { value: "tool observation belongs to another host" } }
+  if !workspace_observation_is_slot_host(observed: observation.host, slot_host: slot.host) { Present { value: "tool observation belongs to another host" } }
   else if !utc_instant_is_canonical(t: now) || !utc_instant_is_canonical(t: observation.observed_at)
     || utc_instant_seconds_after(later: now, earlier: observation.observed_at) < 0
     || utc_instant_seconds_after(later: now, earlier: observation.observed_at) > 60 { Present { value: "controller tool observation is stale or unclocked" } }

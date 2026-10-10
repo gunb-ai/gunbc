@@ -1,0 +1,14 @@
+module gunbc.recurring_failure_mode.network_receipt_decoded_against_workload_population
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data network_receipt_decoded_against_workload_population: RecurringFailureMode = RecurringFailureMode {
+  identity: "network_receipt_decoded_against_workload_population" as NonEmptyStr,
+  receipts: [
+    "2026-10-09, PR #13607: live network convergence at 83dcbb4d6ab published ten enrolled srv1 TAPs (1 through 9 and 13). Commissioning refused immediately after reading the receipt: resolve_network_subject supplied fabric_execution_slot_identities, whose srv1 member is only 13. The receipt parsed successfully for its publisher and failed for its consumer before sanitation. Network enrollment and workload admission had been conflated at decoding.",
+    "Repair: the root-authoritative receipt reader takes a host, derives candidates through the same runner_slot_identities_of deployment authority as the publisher, and checks the decoded receipt host. A caller can no longer substitute its workload roster. Fabric execution membership remains separately enforced by the slot controller. Initial publication reads back through this same host reader; it does not replace the existing generation.",
+    "Discriminator: workspace_network_receipt_population_witness_test feeds the captured live ten-slot receipt to the production host decoder and selects the workspace sanitation subject; the old fabric-only candidate list refuses those same bytes. Separate controls refuse another receipt host and an unenrolled slot. Rung: the arbitrary caller-population choice is removed from the store interface; external receipt bytes still require observed custody and decoding. Ceiling: structural separation of network enrollment from workload admission. Trigger: every future network receipt consumer uses the host reader instead of supplying workload membership.",
+  ],
+  evidence: [],
+}

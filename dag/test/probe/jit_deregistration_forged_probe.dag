@@ -14,7 +14,7 @@ import extdeps.github.effect { GitHubOrganizationRef }
 import extdeps.github.actions_jit_runner { JitRunnerConfigRequest, JitRunnerName, JitRunnerGroupId, JitWorkFolder }
 import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire }
 import gunbc.auth.github_apps { DeclaredGitHubApp }
-import gunbc.runner_jit_mint { JitSlot }
+import gunbc.runner.jit_registration_subject { JitRegistrationSubject }
 import gunbc.runner.runner_jit_perform { JitMintDispatch, JitMintDispatchAuthorized, AuthorizedJitMintDispatch }
 import gunbc.github_effect_perform { OrganizationRunnerListRead }
 import gunbc.runner.runner_jit_deregistration {
@@ -32,10 +32,10 @@ fn victim_request() -> JitRunnerConfigRequest {
 }
 
 // (a) AN OUTSIDE-AUTHORED AUTHORIZED ARM. Refuses at AuthorizedJitMintDispatch.
-fn forged_dispatch(slot: JitSlot, app: DeclaredGitHubApp, installation: GitHubAppInstallationId) -> JitMintDispatch {
+fn forged_dispatch(slot: JitRegistrationSubject, app: DeclaredGitHubApp, installation: GitHubAppInstallationId) -> JitMintDispatch {
   JitMintDispatchAuthorized {
     dispatch: AuthorizedJitMintDispatch {
-      slot: slot,
+      subject: slot,
       app: app,
       installation: installation,
       organization: GitHubOrganizationRef { login: "gunb-ai" },
@@ -45,14 +45,20 @@ fn forged_dispatch(slot: JitSlot, app: DeclaredGitHubApp, installation: GitHubAp
 }
 
 // (b) A HAND-BUILT DEREGISTRATION SUBJECT. Refuses at JitRegistration.
-fn forged_registration(slot: JitSlot, app: DeclaredGitHubApp, installation: GitHubAppInstallationId) -> JitRegistration {
+fn forged_registration(slot: JitRegistrationSubject, app: DeclaredGitHubApp, installation: GitHubAppInstallationId) -> JitRegistration {
   JitRegistration {
     organization: GitHubOrganizationRef { login: "gunb-ai" },
     name: JitRunnerName { value: "victim-runner" },
-    slot: slot,
+    subject: slot,
     app: app,
     installation: installation,
   }
+}
+
+// (b2) A HAND-BUILT REGISTRATION SUBJECT, the value a mint is planned for. Refuses at
+// JitRegistrationSubject: only a producer that proved its slot may build one.
+fn forged_subject() -> JitRegistrationSubject {
+  JitRegistrationSubject { name: JitRunnerName { value: "victim-runner" }, workflow: "gunb-ai/gunbc/x.yml@refs/heads/main", labels: [] }
 }
 
 // (c) A HAND-BUILT EMPTY LISTING FOR victim-runner. Refuses at OrganizationRunnerListRead.

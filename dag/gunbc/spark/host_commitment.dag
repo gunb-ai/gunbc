@@ -16,7 +16,7 @@ import gunbc.spark.cell_role {
   spark_cell_role_in,
   spark_cell_role_assignments,
 }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_hosts, fabric_group_wire, fabric_group_of_host }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, fabric_group_hosts, fabric_group_wire, fabric_group_of_host }
 import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, spark_pair_serving_authorities, pair_serving_commits_hosts, pair_serving_authority_group, pair_serving_committed_hosts, pair_serving_authority_for }
 import gunbc.spark.pair_serving_authority_log {
   CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authorities, current_pair_serving_authority,
@@ -41,7 +41,6 @@ import std.measure { Second, second_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
 import gunbc.fabric_event_log_host { now_epoch_seconds }
-import gunbc.spark.llama_cpp_rpc_observed { llama_cpp_rpc_undischarged_peer_reservation_hosts }
 import gunbc.spark.serving_arm_placement { ServingArmHostClaim, spark_serving_arm_host_claims }
 import gunbc.spark.dgx_procurement { dgx_spark_reserved_identities }
 import gunbc.spark.serving_subject {
@@ -195,7 +194,6 @@ type SparkHostAuthorityCommitment
   = CommittedToCellRole { role: SparkCellRole }
   | MemberOfClaimedServingGroup { group: FabricGroup }
   | OccupiedByServingArm { claim: ServingArmHostClaim }
-  | HoldsUndischargedRpcReservation
   | OccupiedByHostEffect { purpose: NonEmptyStr, executor: NonEmptyStr }
   | CellRoleUndecidable { assignments: List<SparkCellRoleAssignment> }
 
@@ -238,7 +236,6 @@ fn spark_host_commitments_in(
   assignments: List<SparkCellRoleAssignment>,
   claimed_group_members: List<ClaimedServingGroupMember>,
   arm_claims: List<ServingArmHostClaim>,
-  held_reservation_hosts: List<HostIdentity>,
   serving_reservations: List<SparkServingReservation>,
   host_effects: List<HostEffectRecord>,
   host: HostIdentity,
@@ -257,16 +254,10 @@ fn spark_host_commitments_in(
       init: ruled,
       f: fn(acc, r) { Cons { head: AuthorityHeldCommitment { cause: OccupiedByHostEffect { purpose: r.purpose, executor: r.executor } }, tail: acc } },
     )
-  let reserved =
-    if any(held_reservation_hosts, h => host_identity_eq(a: h, b: host)) {
-      Cons { head: AuthorityHeldCommitment { cause: HoldsUndischargedRpcReservation }, tail: effected }
-    } else {
-      effected
-    }
   let armed =
     fold(
       filter(arm_claims, c => host_identity_eq(a: c.host, b: host)),
-      init: reserved,
+      init: effected,
       f: fn(acc, c) { Cons { head: AuthorityHeldCommitment { cause: OccupiedByServingArm { claim: c } }, tail: acc } },
     )
   let serving =
@@ -324,7 +315,6 @@ fn spark_host_standings_in(
   assignments: List<SparkCellRoleAssignment>,
   claimed_group_members: List<ClaimedServingGroupMember>,
   arm_claims: List<ServingArmHostClaim>,
-  held_reservation_hosts: List<HostIdentity>,
   serving_reservations: List<SparkServingReservation>,
   host_effects: List<HostEffectRecord>,
 ) -> List<SparkHostStanding> {
@@ -332,7 +322,6 @@ fn spark_host_standings_in(
     assignments: assignments,
     claimed_group_members: claimed_group_members,
     arm_claims: arm_claims,
-    held_reservation_hosts: held_reservation_hosts,
     serving_reservations: serving_reservations,
     host_effects: host_effects,
     host: h,
@@ -351,7 +340,6 @@ fn spark_host_standing_in(
   assignments: List<SparkCellRoleAssignment>,
   claimed_group_members: List<ClaimedServingGroupMember>,
   arm_claims: List<ServingArmHostClaim>,
-  held_reservation_hosts: List<HostIdentity>,
   serving_reservations: List<SparkServingReservation>,
   host_effects: List<HostEffectRecord>,
   host: HostIdentity,
@@ -362,7 +350,6 @@ fn spark_host_standing_in(
       assignments: assignments,
       claimed_group_members: claimed_group_members,
       arm_claims: arm_claims,
-      held_reservation_hosts: held_reservation_hosts,
       serving_reservations: serving_reservations,
       host_effects: host_effects,
     ),
@@ -449,7 +436,6 @@ fn serving_subject_claims_host(subject: ServingSubject, siblings: FreeSemigroup<
         MemberOfClaimedServingGroup { group: g } => serving_subject_eq(a: subject, b: PairServingUnitOn { group: g })
         OccupiedByServingArm { claim: cl } => serving_subject_eq(a: subject, b: PlacedServingArm { arm: cl.arm })
         CommittedToCellRole { role: _ } => false
-        HoldsUndischargedRpcReservation => false
         OccupiedByHostEffect { purpose: _, executor: _ } => false
         CellRoleUndecidable { assignments: _ } => false
       }
@@ -471,7 +457,6 @@ fn spark_commitment_held_by(c: SparkHostCommitment, siblings: FreeSemigroup<Spar
           }
         MemberOfClaimedServingGroup { group: g } => serving_subject_eq(a: subject, b: PairServingUnitOn { group: g })
         OccupiedByServingArm { claim: cl } => serving_subject_eq(a: subject, b: PlacedServingArm { arm: cl.arm })
-        HoldsUndischargedRpcReservation => false
         OccupiedByHostEffect { purpose: _, executor: _ } => false
         CellRoleUndecidable { assignments: _ } => false
       }
@@ -553,10 +538,6 @@ fn spark_claimed_serving_group_members() -> List<ClaimedServingGroupMember> {
   spark_claimed_members_under(authorities: spark_pair_serving_authorities)
 }
 
-fn spark_claimed_serving_group_hosts() -> List<HostIdentity> {
-  map(spark_claimed_serving_group_members(), m => m.host)
-}
-
 // THE STANDINGS OVER SUPPLIED AUTHORITIES. The resting projection below hands in the source rows
 // (pure, the population every pure consumer reads); the effectful admission seams hand in the
 // CURRENT authorities read from the event log (spark_host_standings_current), so an effect that
@@ -567,7 +548,6 @@ fn spark_host_standings_under(authorities: List<PairServingGroupAuthority>, host
     assignments: spark_cell_role_assignments,
     claimed_group_members: spark_claimed_members_under(authorities: authorities),
     arm_claims: spark_serving_arm_host_claims,
-    held_reservation_hosts: llama_cpp_rpc_undischarged_peer_reservation_hosts(),
     serving_reservations: spark_serving_reservations,
     host_effects: host_effects,
   )
@@ -636,7 +616,7 @@ fn group_standing_over(group: FabricGroup, partition: GroupPartitionRead, placem
 // re-reads of a live store that could disagree with each other.
 fn spark_host_standings_over(store: FabricStorageBinding, at: EpochSecs) -> CurrentStandings {
   let placement = placement_fold_read(store: store)
-  let groups = map([FabricGroupA, FabricGroupB], g => GroupSnapshot { group: g, partition: read_group_partition(store: store, group: g) })
+  let groups = map([FabricGroupB {}], g => GroupSnapshot { group: g, partition: read_group_partition(store: store, group: g) })
   let standings = map(groups, gs => group_standing_over(group: gs.group, partition: gs.partition, placement: placement, at: at))
   let unread = flat_map(standings, st => match st { GroupStandingUnread { cause: c } => [c]  GroupStandingEstablished { current: _ } => [] as List<String>  GroupStandingUnclaimed => [] as List<String> })
   if length(unread) != 0 {
@@ -769,7 +749,6 @@ fn spark_authority_commitment_wire(c: SparkHostAuthorityCommitment) -> NonEmptyS
     CommittedToCellRole { role: _ } => "committed to a Spark cell role" as NonEmptyStr
     MemberOfClaimedServingGroup { group: g } => join(["a member of a serving group this repository claims (", fabric_group_wire(g: g) as String, ")"], "") as NonEmptyStr
     OccupiedByServingArm { claim: c2 } => join(["a serving arm is placed on it (", declaration_ref_display_key(ref: c2.arm), ")"], "") as NonEmptyStr
-    HoldsUndischargedRpcReservation => "holding an undischarged llama.cpp RPC peer reservation" as NonEmptyStr
     OccupiedByHostEffect { purpose: p, executor: x } => join(["held by a live host effect (", p as String, " by ", x as String, ") until it is released"], "") as NonEmptyStr
     CellRoleUndecidable { assignments: _ } => "carrying more than one cell role row, so its commitment cannot be decided" as NonEmptyStr
   }

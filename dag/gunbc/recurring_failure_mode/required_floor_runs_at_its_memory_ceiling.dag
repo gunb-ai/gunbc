@@ -17,9 +17,11 @@ data required_floor_runs_at_its_memory_ceiling: RecurringFailureMode = Recurring
     "CONSEQUENCE FOR ANY STEP ADDED TO THE SAME JOB: another memory-heavy pass fits only as a SEPARATE process after the floor process exits (sequential peaks), never inside the floor's invocation (additive). That is a note, not a wall: claim_executor --required-ci with no --required-lane selects every phase in one process (required_ci_phase_selected with no lane answers true), so the additive form remains writable. With the floor at its ceiling, an invocation selecting all phases in the floor job is an OOM of a working required lane, and that is a consequence of the missing margin, not a defect in the CLI: running every phase in one process is an ordinary invocation, dangerous only because the floor has no headroom. Walling off the CLI would leave the no-margin condition ready to kill the next thing that grows; restoring headroom makes the additive form merely slow. The boundary this row names is the margin.",
 
     "RUNG FOUND AT: silent -- no gate or diagnostic refuses a floor at its slot ceiling; the throttling is visible only in [floor-cgroup] beats nobody adjudicates. ATTAINABLE CEILING: mechanically preventable -- a required step can refuse a floor whose measured slot peak comes within a declared margin of memory.high, from the beats the run already writes. NEXT-RUNG TRIGGER, stated as the capability: the required run adjudicates the floor's measured slot peak against a declared headroom budget and refuses a landing that consumes it. UNRANKED: this row records the finding; no lane is dispatched for it.",
+
+    "DISPOSITION OF THE LANE THIS ROW WAS FOUND ON (2026-10-09, operator ruling, the v1 withdrawal): the floor lane was DELETED rather than given headroom (gunbc.rung_drop v1_required_lanes_withdrawn). The gate's floor run step this row cited as evidence no longer exists, so the evidence names the run command that step wrapped. THE CLASS OUTLIVES THE LANE: it is stated over a required lane and its slot, not over the floor. The surviving `emit-build` lane runs in the same slot class and no step adjudicates its measured peak either, so the next-rung trigger above stands unchanged with that lane as its subject.",
   ],
 
   evidence: [
-    DeclarationRef { module_path: "gunbc.compiler_gate_workflow", decl_name: "compiler_gate_floor_run_step", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.witness_floor_workflow", decl_name: "witness_floor_run_script", field: WholeDeclaration },
   ],
 }

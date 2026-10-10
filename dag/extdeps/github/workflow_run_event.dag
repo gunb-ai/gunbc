@@ -247,7 +247,7 @@ fn workflow_run_event_nested_text(v: JsonValue, outer: String, inner: String) ->
 // conclusion is REQUIRED by this decoder and a null one is a located malformation rather than an
 // Absent field, because of what the envelope is FOR. GitHub delivers workflow_run at three
 // activities and leaves conclusion null until the run completes; this module is read only from a
-// WorkflowRunCompleted trigger, where the activity is `completed` and a conclusion therefore
+// WorkflowRunTriggered trigger with WorkflowRunCompletedActivity, where the activity is `completed` and a conclusion therefore
 // exists. Modeling it as optional would push a state that cannot occur on this path onto every
 // consumer as an arm they must invent an answer for — and the plausible answer (treat null as `not
 // finished yet, do nothing`) is indistinguishable from the real defect (the payload changed shape

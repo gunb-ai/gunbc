@@ -1,6 +1,9 @@
 module gunbc.required_ci_phase_roster
 
-import std.types { String, Bool, List }
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.measure { Millisecond, millisecond }
+import std.checked_arithmetic { nat_magnitude }
+import std.optional { Present, Absent }
 
 // THE SUBSTRATE AUTHORITY FOR WHICH PHASES REQUIRED CI RUNS, AND WHICH LANE OWNS EACH.
 // gunbc.required_ci_host_verdict_census recorded the gap this module closes: "Phase existence and
@@ -195,4 +198,98 @@ fn required_ci_lane_phase_rows() -> List<RequiredCiLanePhaseRow> {
       lane: required_ci_lane_name(l: required_ci_phase_lane(p: p)),
       phase: required_ci_phase_name(p: p)
     })
+}
+
+// ── THE FLOOR PHASE'S OWN PROGRESS ROWS, READ BACK FROM A RUN'S LOG ─────────────────────────────
+//
+// FloorPhase is one RequiredCiPhase; inside it the host prints `[floor-phase] phase=<word> ...` rows
+// for its own preparation stages (claim_executor, cli_run). Those stage WORDS are not this roster's
+// vocabulary -- they are an open host vocabulary with no substrate authority, so a reading carries
+// the word as the host spelled it and never maps it onto RequiredCiPhase. What this module owns is
+// the reading's denominator: these rows are the timings OF required_ci_phases' FloorPhase, which is
+// why gunbc.runner_throughput_qualification_route names this module as their producer.
+//
+// THE LINE ENCODING IS `[tag] key=value key=value`, one row per line, possibly behind the timestamp
+// GitHub prefixes to each job-log line. floor_log_row_fields is the one reader of that encoding; the
+// [floor-cgroup] reader (gunbc.host_budget_source) uses it rather than tokenizing a second time. A
+// value may itself contain `=` (the cgroup pressure field does), so only the FIRST `=` splits.
+type FloorLogField {
+  key: String
+  value: String
+}
+
+fn floor_log_field(token: String) -> FloorLogField? {
+  let parts = split(s: token, delimiter: "=")
+  match parts.first() {
+    Absent => none
+    Present { value: k } =>
+      if count(parts) < 2 {
+        none
+      } else {
+        let v = substring(s: token, start: string_length(s: k) + 1, end: string_length(s: token))
+        Present { value: FloorLogField { key: k, value: v } }
+      }
+  }
+}
+
+// none: the line is not a row of this tag. A row of the tag yields its fields, possibly empty.
+fn floor_log_row_fields(line: String, tag: String) -> List<FloorLogField>? {
+  let halves = split(s: line, delimiter: concat(tag, " "))
+  match halves.skip(n: 1).first() {
+    Absent => none
+    Present { value: payload } =>
+      if count(halves) != 2 {
+        none
+      } else {
+        let tokens = split(s: payload, delimiter: " ")
+        let fields = tokens |> flat_map(t => match floor_log_field(token: t) { Absent => [] Present { value: f } => [f] })
+        Present { value: fields }
+      }
+  }
+}
+
+fn floor_log_field_value(fields: List<FloorLogField>, key: String) -> String? {
+  match fields |> filter(f => f.key == key) |> first {
+    Absent => none
+    Present { value: f } => Present { value: f.value }
+  }
+}
+
+data floor_phase_row_tag: String = "[floor-phase]"
+
+// A STAGE ROW EITHER CARRIES ITS WALL OR DOES NOT, and the two are not one row with a zero. The host
+// prints `state=started` rows and classification rows with no wall_ms; reporting those as 0 ms would
+// fabricate a timing. A row with no phase word, or a wall_ms that is not a count, is garbled and is
+// carried with its line, never skipped.
+type FloorPhaseRow
+  = FloorPhaseTimed { phase: NonEmptyStr, wall: Millisecond }
+  | FloorPhaseUntimed { phase: NonEmptyStr }
+
+type FloorPhaseRowReading
+  = FloorPhaseRowRead { row: FloorPhaseRow }
+  | FloorPhaseRowGarbled { line: String, cause: NonEmptyStr }
+
+fn read_floor_phase_row(line: String) -> FloorPhaseRowReading? {
+  match floor_log_row_fields(line: line, tag: floor_phase_row_tag) {
+    Absent => none
+    Present { value: fields } =>
+      match floor_log_field_value(fields: fields, key: "phase") {
+        Absent => Present { value: FloorPhaseRowGarbled { line: line, cause: "[floor-phase] row carries no phase= field" as NonEmptyStr } }
+        Present { value: "" } => Present { value: FloorPhaseRowGarbled { line: line, cause: "[floor-phase] row carries an empty phase= field" as NonEmptyStr } }
+        Present { value: phase } =>
+          match floor_log_field_value(fields: fields, key: "wall_ms") {
+            Absent => Present { value: FloorPhaseRowRead { row: FloorPhaseUntimed { phase: phase as NonEmptyStr } } }
+            Present { value: raw } =>
+              match parse_int(s: raw) {
+                Absent => Present { value: FloorPhaseRowGarbled { line: line, cause: "[floor-phase] wall_ms is not a count" as NonEmptyStr } }
+                Present { value: ms } =>
+                  if ms < 0 {
+                    Present { value: FloorPhaseRowGarbled { line: line, cause: "[floor-phase] wall_ms is negative" as NonEmptyStr } }
+                  } else {
+                    Present { value: FloorPhaseRowRead { row: FloorPhaseTimed { phase: phase as NonEmptyStr, wall: millisecond(count: nat_magnitude(a: ms)) } } }
+                  }
+              }
+          }
+      }
+  }
 }

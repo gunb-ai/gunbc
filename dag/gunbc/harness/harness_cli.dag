@@ -14,7 +14,7 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.harness.harness_tool { HarnessToolEnvironment }
 import gunbc.harness.harness_turn {
   HarnessTurnConfig, HarnessTurnOutcome, TurnProviderStopped, TurnCompletedByArtifact, TurnAlignmentCheckpointDue, harness_tool_contract_wire,
-  CompletesOnProviderStop, CompletesWhenEntryPresent, harness_run_turn, harness_outcome_label,
+  CompletesOnProviderStop, CompletesWhenEntryPresent, harness_run_turn, harness_outcome_label, TurnHostedQuotaFull, TurnHostedQuotaUnleasable, TurnHostedRateLimited,
   harness_outcome_detail, harness_event_placement_waiting,
 }
 import gunbc.harness.harness_guidance {
@@ -29,15 +29,16 @@ import gunbc.harness.harness_supervisor_guidance { supervisor_system_prompt_at }
 import gunbc.harness.harness_goal_audit_guidance { harness_auditor_guidance_at, audit_guidance_prose }
 import gunbc.roadmap.roadmap_review_role { review_verdict_shape_text }
 import gunbc.harness.harness_wire { harness_context_budget_for }
-import gunbc.harness.harness_reasoning_wire { HarnessServingUnit }
+import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, NemotronUltraFreeOnOpenRouter }
+import gunbc.harness.harness_hosted_route { HarnessBackendAccess, BackendAdmittedBySeat, harness_hosted_backend_access, harness_hosted_access_wire }
 import gunbc.serving.turn_admission {
   ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant, serving_co_tenancy_class_wire,
 }
 import gunbc.harness.harness_seat_pointer { harness_seat_pointer_path, harness_seat_pointer_json }
 import gunbc.serving.caller_retry_contract { caller_backlog_wire, serving_route_caller_backlog }
 import gunbc.harness.harness_seat { harness_turn_request, harness_seat_pointer_of,
-  HarnessSeatBinding, HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, harness_bind_seat,
-  HarnessSeatRelease, HarnessSeatReleased, HarnessSeatReleaseRefused, harness_release_seat,
+  HarnessSeatBinding, HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, HarnessHostedBound, harness_bind_seat, harness_bind_hosted,
+  HarnessSeatRelease, HarnessSeatReleased, HarnessHostedCredentialRemoved, HarnessSeatReleaseRefused, harness_release_seat,
   harness_seat_release_wire, harness_release_held, harness_release_capability,
   HarnessReleaseCapability, harness_release_capability_wire,
   ServingModelRequirement, AnyAdmittedModel,
@@ -152,7 +153,9 @@ data harness_default_wire_shape: HarnessWireShape = OpenAiChatCompletionsShape
 // One longer round would have ended the run through the truncation refusal, correctly. At the
 // declared floor 16,384 tokens is about eleven minutes of decode, and the deadline below follows
 // by derivation rather than being re-guessed beside it.
-data harness_default_max_tokens: Int = token_count_value(t: token_count(count: 16384))
+data harness_default_max_token_count: TokenCount = token_count(count: 16384)
+
+data harness_default_max_tokens: Int = token_count_value(t: harness_default_max_token_count)
 
 // THE SLOWEST DECODE THIS DEPLOYMENT IS EXPECTED TO SUSTAIN, in tokens per second. It is a declared
 // policy floor rather than a measurement of any one run: observed rates here span 2.4 tok/s under
@@ -206,6 +209,7 @@ fn harness_executor_short_hostname() -> String {
 fn harness_turn_exit_released(outcome: HarnessTurnOutcome, seat: HarnessSeatRelease) -> ProcessExit {
   match seat {
     HarnessSeatReleased { partition: _ } => harness_turn_exit(outcome: outcome)
+    HarnessHostedCredentialRemoved => harness_turn_exit(outcome: outcome)
     HarnessSeatReleaseRefused { detail: d } =>
       ExitFailure { code: 1, reason: join([harness_outcome_label(outcome: outcome), "; seat ", harness_seat_release_wire(r: seat)], "") }
   }
@@ -236,22 +240,23 @@ fn harness_macbook_environment() -> HarnessToolEnvironment {
 // field the way it takes the worktree, the timeout program and its two paths -- so the same loop
 // runs against a different serving surface by being handed a different number, not by importing a
 // different authority.
-fn harness_macbook_config(backend_url: String, model: NonEmptyStr, unit: HarnessServingUnit) -> HarnessTurnConfig {
+fn harness_macbook_config(backend: HarnessBoundBackend) -> HarnessTurnConfig {
   HarnessTurnConfig {
-    backend_url: backend_url,
-    model: model as String,
+    backend_url: backend.url,
+    model: backend.model as String,
     max_tokens: harness_default_max_tokens,
-    serving_unit: unit,
-    reasoning_mode: harness_reasoning_mode,
+    serving_unit: backend.unit,
+    reasoning_mode: backend.reasoning,
     wire_shape: harness_default_wire_shape,
     system_prompt: harness_default_system_prompt,
     alignment_chain_fingerprint: "",
     request_scratch_path: harness_request_scratch_path,
     events_path: harness_probe_events_path,
-    context_budget: harness_context_budget_for(unit: unit),
+    context_budget: harness_context_budget_for(unit: backend.unit),
     request_deadline: harness_request_deadline,
     environment: harness_macbook_environment(),
     completion: CompletesOnProviderStop,
+    backend_access: backend.access,
   }
 }
 
@@ -262,9 +267,9 @@ fn harness_macbook_config(backend_url: String, model: NonEmptyStr, unit: Harness
 // posted, received a tool_use, executed it, posted the result back, and received a terminal.
 data harness_probe_prompt: String = "How many files in the dag/gunbc/harness directory of this repository end in .dag? Use run_command to find out, then state the number."
 
-fn harness_probe_outcome(backend_url: String, model: NonEmptyStr, unit: HarnessServingUnit) -> HarnessTurnOutcome {
+fn harness_probe_outcome(backend: HarnessBoundBackend) -> HarnessTurnOutcome {
   harness_run_turn(
-    config: harness_macbook_config(backend_url: backend_url, model: model, unit: unit),
+    config: harness_macbook_config(backend: backend),
     prompt: harness_probe_prompt,
     step_budget: harness_default_step_budget,
   )
@@ -291,6 +296,9 @@ fn harness_turn_exit(outcome: HarnessTurnOutcome) -> ProcessExit {
     TurnThinkingFormatInvalid { cause: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnUsageUnavailable { cause: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnSubmissionUndecodable { reason: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnHostedQuotaFull { wire: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnHostedQuotaUnleasable { detail: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnHostedRateLimited { refusal: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnAlignmentCheckpointDue { steps_taken: _ } =>
       ExitFailure { code: 3, reason: harness_outcome_label(outcome: outcome) }
   }
@@ -367,6 +375,7 @@ fn harness_bind_seat_waiting(
         }
         HarnessSeatRefused { detail: _ } => acc
         HarnessSeatBound { url: _, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: _, unit: _, class: _, seat: _ } => acc
+        HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } => acc
       },
   )
   waited.binding
@@ -500,6 +509,8 @@ fn harness_place_for(request: String, attempt: String, receipt: String) -> Proce
         SeatPermitMinted { permit: permit } => harness_place_receipt(binding: binding, url: url, group_wire: group_wire, bound_model: bound_model, launch: launch, capability: capability, grant: grant, permit: permit, receipt: receipt)
       }
     }
+    HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } =>
+      harness_place_receipt_failed(binding: binding, cause: "an any-model placement answered with a hosted binding, which holds no seat a router can be handed")
   }
 }
 
@@ -588,6 +599,7 @@ fn harness_release_admitted(partition: String, reference: String, grant: String,
   }
   match harness_release_held(short_hostname: harness_executor_short_hostname(), capability: capability, reason: reason as NonEmptyStr) {
     HarnessSeatReleased { partition: _ } => ExitSuccess
+    HarnessHostedCredentialRemoved => ExitFailure { code: 1, reason: join(["harness seat release for ", harness_release_capability_wire(c: capability), " answered as a hosted credential removal; the seat may still be held"], "") }
     HarnessSeatReleaseRefused { detail: d } =>
       ExitFailure { code: 1, reason: join(["harness seat release refused for ", harness_release_capability_wire(c: capability), ": ", d], "") }
   }
@@ -602,11 +614,11 @@ fn harness_release_admitted(partition: String, reference: String, grant: String,
 // while something else is in flight.
 fn harness_probe_cli() -> ProcessExit {
   let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "probe", shape: harness_default_wire_shape, system_prompt: harness_default_system_prompt, user_input: harness_probe_prompt), actor: "probe" as NonEmptyStr, attempt: harness_probe_attempt(label: "probe"), policy: harness_seat_policy)
-  match binding {
-    HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
-    HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: bound_model, unit: bound_unit, class: _, seat: _ } => {
-      let outcome = harness_probe_outcome(backend_url: url, model: bound_model, unit: bound_unit)
+  match harness_binding_answer(binding: binding) {
+    BindingRefused { detail } => harness_backend_refusal_exit(detail: detail)
+    BindingPending { detail } => harness_placement_pending_exit(detail: detail)
+    BindingReady { backend } => {
+      let outcome = harness_probe_outcome(backend: backend)
       let seat_release = harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr)
       harness_turn_exit_released(outcome: outcome, seat: seat_release)
     }
@@ -642,24 +654,22 @@ fn harness_worker_config(
   timeout_program: FilePath,
   request_scratch_path: FilePath,
   events_path: FilePath,
-  backend_url: String,
-  model: NonEmptyStr,
-  unit: HarnessServingUnit,
+  backend: HarnessBoundBackend,
   system_prompt: String,
   alignment_chain_fingerprint: String,
 ) -> HarnessTurnConfig {
   HarnessTurnConfig {
-    backend_url: backend_url,
-    model: model as String,
+    backend_url: backend.url,
+    model: backend.model as String,
     max_tokens: harness_default_max_tokens,
-    serving_unit: unit,
-    reasoning_mode: harness_reasoning_mode,
+    serving_unit: backend.unit,
+    reasoning_mode: backend.reasoning,
     wire_shape: harness_default_wire_shape,
     system_prompt: system_prompt,
     alignment_chain_fingerprint: alignment_chain_fingerprint,
     request_scratch_path: request_scratch_path,
     events_path: events_path,
-    context_budget: harness_context_budget_for(unit: unit),
+    context_budget: harness_context_budget_for(unit: backend.unit),
     request_deadline: harness_request_deadline,
     environment: HarnessToolEnvironment {
       working_directory: worktree,
@@ -667,6 +677,7 @@ fn harness_worker_config(
       duration_limit_seconds: harness_default_duration_limit_seconds,
     },
     completion: CompletesOnProviderStop,
+    backend_access: backend.access,
   }
 }
 
@@ -732,10 +743,10 @@ fn harness_worker_cli(
 ) -> ProcessExit {
   let system_prompt = harness_worker_system_prompt_at(worktree: worktree, repo_root: repo_root, gunbc_program: gunbc_program)
   let binding = harness_bind_seat_waiting(role: "worker", system_prompt: system_prompt, brief: brief, actor: join(["worker:", worktree], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, events_path: events_path)
-  match binding {
-    HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
-    HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: bound_model, unit: bound_unit, class: _, seat: _ } => {
+  match harness_binding_answer(binding: binding) {
+    BindingRefused { detail } => harness_backend_refusal_exit(detail: detail)
+    BindingPending { detail } => harness_placement_pending_exit(detail: detail)
+    BindingReady { backend } => {
       match harness_seat_pointer_persist(events_path: events_path, binding: binding) {
         HarnessSeatPointerUnwritten { detail: pointer_detail } => harness_seat_pointer_refused_exit(binding: binding, detail: pointer_detail)
         HarnessSeatPointerWritten => {
@@ -745,9 +756,7 @@ fn harness_worker_cli(
               timeout_program: timeout_program as FilePath,
               request_scratch_path: request_scratch_path as FilePath,
               events_path: events_path as FilePath,
-              backend_url: url,
-              model: bound_model,
-              unit: bound_unit,
+              backend: backend,
               system_prompt: system_prompt,
               alignment_chain_fingerprint: alignment_chain_fingerprint,
             ),
@@ -787,23 +796,21 @@ fn harness_reviewer_config(
   events_path: FilePath,
   verdict_dir: String,
   verdict_name: String,
-  backend_url: String,
-  model: NonEmptyStr,
-  unit: HarnessServingUnit,
+  backend: HarnessBoundBackend,
   system_prompt: String,
 ) -> HarnessTurnConfig {
   HarnessTurnConfig {
-    backend_url: backend_url,
-    model: model as String,
+    backend_url: backend.url,
+    model: backend.model as String,
     max_tokens: harness_default_max_tokens,
-    serving_unit: unit,
-    reasoning_mode: harness_reasoning_mode,
+    serving_unit: backend.unit,
+    reasoning_mode: backend.reasoning,
     wire_shape: harness_default_wire_shape,
     system_prompt: system_prompt,
     alignment_chain_fingerprint: "",
     request_scratch_path: request_scratch_path,
     events_path: events_path,
-    context_budget: harness_context_budget_for(unit: unit),
+    context_budget: harness_context_budget_for(unit: backend.unit),
     request_deadline: harness_request_deadline,
     environment: HarnessToolEnvironment {
       working_directory: worktree,
@@ -811,6 +818,7 @@ fn harness_reviewer_config(
       duration_limit_seconds: harness_default_duration_limit_seconds,
     },
     completion: CompletesWhenEntryPresent { directory: verdict_dir, name: verdict_name },
+    backend_access: backend.access,
   }
 }
 
@@ -831,10 +839,10 @@ fn harness_reviewer_cli(
   let verdict_path = join([verdict_dir, "/", verdict_name], "")
   let system_prompt = harness_reviewer_system_prompt_at(worktree: worktree, verdict_path: verdict_path)
   let binding = harness_bind_seat_waiting(role: "reviewer", system_prompt: system_prompt, brief: brief, actor: join(["reviewer:", verdict_path], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, events_path: events_path)
-  match binding {
-    HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
-    HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: bound_model, unit: bound_unit, class: _, seat: _ } => {
+  match harness_binding_answer(binding: binding) {
+    BindingRefused { detail } => harness_backend_refusal_exit(detail: detail)
+    BindingPending { detail } => harness_placement_pending_exit(detail: detail)
+    BindingReady { backend } => {
       match harness_seat_pointer_persist(events_path: events_path, binding: binding) {
         HarnessSeatPointerUnwritten { detail: pointer_detail } => harness_seat_pointer_refused_exit(binding: binding, detail: pointer_detail)
         HarnessSeatPointerWritten => {
@@ -846,9 +854,7 @@ fn harness_reviewer_cli(
               events_path: events_path as FilePath,
               verdict_dir: verdict_dir,
               verdict_name: verdict_name,
-              backend_url: url,
-              model: bound_model,
-              unit: bound_unit,
+              backend: backend,
               system_prompt: system_prompt,
             ),
             prompt: brief,
@@ -874,23 +880,21 @@ fn harness_auditor_config(
   events_path: FilePath,
   verdict_dir: String,
   verdict_name: String,
-  backend_url: String,
-  model: NonEmptyStr,
-  unit: HarnessServingUnit,
+  backend: HarnessBoundBackend,
   system_prompt: String,
 ) -> HarnessTurnConfig {
   HarnessTurnConfig {
-    backend_url: backend_url,
-    model: model as String,
+    backend_url: backend.url,
+    model: backend.model as String,
     max_tokens: harness_default_max_tokens,
-    serving_unit: unit,
-    reasoning_mode: harness_reasoning_mode,
+    serving_unit: backend.unit,
+    reasoning_mode: backend.reasoning,
     wire_shape: harness_default_wire_shape,
     system_prompt: system_prompt,
     alignment_chain_fingerprint: "",
     request_scratch_path: request_scratch_path,
     events_path: events_path,
-    context_budget: harness_context_budget_for(unit: unit),
+    context_budget: harness_context_budget_for(unit: backend.unit),
     request_deadline: harness_request_deadline,
     environment: HarnessToolEnvironment {
       working_directory: worktree,
@@ -898,6 +902,7 @@ fn harness_auditor_config(
       duration_limit_seconds: harness_default_duration_limit_seconds,
     },
     completion: CompletesWhenEntryPresent { directory: verdict_dir, name: verdict_name },
+    backend_access: backend.access,
   }
 }
 
@@ -917,10 +922,10 @@ fn harness_auditor_cli(
   let verdict_path = join([verdict_dir, "/", verdict_name], "")
   let system_prompt = harness_auditor_system_prompt_at(worktree: worktree, verdict_path: verdict_path)
   let binding = harness_bind_seat_waiting(role: "auditor", system_prompt: system_prompt, brief: brief, actor: join(["auditor:", verdict_path], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, events_path: events_path)
-  match binding {
-    HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
-    HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: bound_model, unit: bound_unit, class: _, seat: _ } => {
+  match harness_binding_answer(binding: binding) {
+    BindingRefused { detail } => harness_backend_refusal_exit(detail: detail)
+    BindingPending { detail } => harness_placement_pending_exit(detail: detail)
+    BindingReady { backend } => {
       match harness_seat_pointer_persist(events_path: events_path, binding: binding) {
         HarnessSeatPointerUnwritten { detail: pointer_detail } => harness_seat_pointer_refused_exit(binding: binding, detail: pointer_detail)
         HarnessSeatPointerWritten => {
@@ -932,9 +937,7 @@ fn harness_auditor_cli(
               events_path: events_path as FilePath,
               verdict_dir: verdict_dir,
               verdict_name: verdict_name,
-              backend_url: url,
-              model: bound_model,
-              unit: bound_unit,
+              backend: backend,
               system_prompt: system_prompt,
             ),
             prompt: brief,
@@ -970,23 +973,21 @@ fn harness_supervisor_config(
   events_path: FilePath,
   verdict_dir: String,
   verdict_name: String,
-  backend_url: String,
-  model: NonEmptyStr,
-  unit: HarnessServingUnit,
+  backend: HarnessBoundBackend,
   system_prompt: String,
 ) -> HarnessTurnConfig {
   HarnessTurnConfig {
-    backend_url: backend_url,
-    model: model as String,
+    backend_url: backend.url,
+    model: backend.model as String,
     max_tokens: harness_default_max_tokens,
-    serving_unit: unit,
-    reasoning_mode: harness_reasoning_mode,
+    serving_unit: backend.unit,
+    reasoning_mode: backend.reasoning,
     wire_shape: harness_default_wire_shape,
     system_prompt: system_prompt,
     alignment_chain_fingerprint: "",
     request_scratch_path: request_scratch_path,
     events_path: events_path,
-    context_budget: harness_context_budget_for(unit: unit),
+    context_budget: harness_context_budget_for(unit: backend.unit),
     request_deadline: harness_request_deadline,
     environment: HarnessToolEnvironment {
       working_directory: worktree,
@@ -994,6 +995,7 @@ fn harness_supervisor_config(
       duration_limit_seconds: harness_default_duration_limit_seconds,
     },
     completion: CompletesWhenEntryPresent { directory: verdict_dir, name: verdict_name },
+    backend_access: backend.access,
   }
 }
 
@@ -1010,10 +1012,10 @@ fn harness_supervisor_cli(
   let verdict_path = join([verdict_dir, "/", verdict_name], "")
   let system_prompt = supervisor_system_prompt_at(worktree: worktree, verdict_path: verdict_path)
   let binding = harness_bind_seat_waiting(role: "supervisor", system_prompt: system_prompt, brief: brief, actor: join(["supervisor:", verdict_path], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, events_path: events_path)
-  match binding {
-    HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
-    HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: bound_model, unit: bound_unit, class: _, seat: _ } => {
+  match harness_binding_answer(binding: binding) {
+    BindingRefused { detail } => harness_backend_refusal_exit(detail: detail)
+    BindingPending { detail } => harness_placement_pending_exit(detail: detail)
+    BindingReady { backend } => {
       match harness_seat_pointer_persist(events_path: events_path, binding: binding) {
         HarnessSeatPointerUnwritten { detail: pointer_detail } => harness_seat_pointer_refused_exit(binding: binding, detail: pointer_detail)
         HarnessSeatPointerWritten => {
@@ -1025,9 +1027,7 @@ fn harness_supervisor_cli(
               events_path: events_path as FilePath,
               verdict_dir: verdict_dir,
               verdict_name: verdict_name,
-              backend_url: url,
-              model: bound_model,
-              unit: bound_unit,
+              backend: backend,
               system_prompt: system_prompt,
             ),
             prompt: brief,
@@ -1045,17 +1045,104 @@ fn harness_supervisor_cli(
 // with a door beside it.
 fn harness_probe_report() -> String {
   let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "probe", shape: harness_default_wire_shape, system_prompt: harness_default_system_prompt, user_input: harness_probe_prompt), actor: "probe-report" as NonEmptyStr, attempt: harness_probe_attempt(label: "probe-report"), policy: harness_seat_policy)
-  match binding {
-    HarnessSeatRefused { detail } => join(["harness probe refused before the turn: ", detail, "\n"], "")
-    HarnessSeatPending { detail } => join(["harness probe is pending placement: ", detail, "\n"], "")
-    HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: bound_model, unit: bound_unit, class: _, seat: _ } => {
-      let outcome = harness_probe_outcome(backend_url: url, model: bound_model, unit: bound_unit)
+  match harness_binding_answer(binding: binding) {
+    BindingRefused { detail } => join(["harness probe refused before the turn: ", detail, "\n"], "")
+    BindingPending { detail } => join(["harness probe is pending placement: ", detail, "\n"], "")
+    BindingReady { backend } => {
+      let outcome = harness_probe_outcome(backend: backend)
       let seat_release = harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr)
       join([
         "harness probe outcome: ", harness_outcome_label(outcome: outcome), "\n",
         harness_outcome_detail(outcome: outcome), "\n",
         "seat: ", harness_seat_release_wire(r: seat_release), "\n",
       ], "")
+    }
+  }
+}
+
+// ── ONE BACKEND PER BINDING, WHICHEVER WAY IT WAS ADMITTED ────────────────────────────────────
+//
+// Every entry runs the same turn against what its binding names: where requests go, which model and
+// unit answer them, at which reasoning level, and how each request is admitted. A fleet seat runs at
+// the operator's declared level and posts unauthenticated over the fleet network; a hosted binding runs
+// at the level its route SELECTED and leases quota before each request. Deriving that once here is what
+// keeps the hosted arm from being a second copy of every entry body.
+type HarnessBoundBackend {
+  url: String
+  model: NonEmptyStr
+  unit: HarnessServingUnit
+  reasoning: HarnessReasoningLevel
+  access: HarnessBackendAccess
+}
+
+type HarnessBindingAnswer
+  = BindingRefused { detail: String }
+  | BindingPending { detail: String }
+  | BindingReady { backend: HarnessBoundBackend }
+
+fn harness_binding_answer(binding: HarnessSeatBinding) -> HarnessBindingAnswer {
+  match binding {
+    HarnessSeatRefused { detail: d } => BindingRefused { detail: d }
+    HarnessSeatPending { detail: d } => BindingPending { detail: d }
+    HarnessSeatBound { url: u, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: m, unit: un, class: _, seat: _ } =>
+      BindingReady { backend: HarnessBoundBackend { url: u, model: m, unit: un, reasoning: harness_reasoning_mode, access: BackendAdmittedBySeat } }
+    HarnessHostedBound { url: u, model: m, unit: un, level: l, access: a } =>
+      BindingReady { backend: HarnessBoundBackend { url: u, model: m, unit: un, reasoning: l, access: harness_hosted_backend_access(access: a) } }
+  }
+}
+
+// THE HOSTED PROBE: the probe turn, placed on the hosted Nemotron 3 Ultra free listing by NAME. It is the
+// one entry that reaches a hosted unit, because an unnamed requirement never does (gunbc.harness.harness_seat
+// harness_requirement_placement): the listing is governed by NVIDIA's trial terms, so reaching it is an
+// operator's explicit act, not a placement default. It takes its tool environment as arguments, as the
+// worker does, so it runs on whatever host invokes it rather than assuming the MacBook's.
+// THE ROUTE'S STANDING IS WRITTEN BESIDE THE EVENTS BEFORE THE HOSTED PROBE'S TURN RUNS: the tier and daily
+// counters the key read reported, the quota rows each request is charged to, and the NVIDIA trial terms
+// that govern the endpoint. A run whose receipt cannot be written does not run, and gives its credential back.
+fn harness_hosted_route_receipt(binding: HarnessSeatBinding) -> String? {
+  match binding {
+    HarnessHostedBound { url: _, model: _, unit: _, level: _, access: a } => Present { value: harness_hosted_access_wire(access: a) }
+    HarnessSeatBound { url: _, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: _, unit: _, class: _, seat: _ } => none
+    HarnessSeatPending { detail: _ } => none
+    HarnessSeatRefused { detail: _ } => none
+  }
+}
+
+fn harness_hosted_probe_cli(worktree: String, timeout_program: String, request_scratch_path: String, events_path: String) -> ProcessExit {
+  let binding = harness_bind_hosted(short_hostname: harness_executor_short_hostname(), unit: NemotronUltraFreeOnOpenRouter, actor: join(["hosted-probe:", worktree], "") as NonEmptyStr, max_tokens: harness_default_max_token_count)
+  match harness_binding_answer(binding: binding) {
+    BindingRefused { detail } => harness_backend_refusal_exit(detail: detail)
+    BindingPending { detail } => harness_placement_pending_exit(detail: detail)
+    BindingReady { backend } => {
+      match harness_hosted_route_receipt(binding: binding) {
+        Absent => {
+          let seat_release = harness_release_seat(binding: binding, reason: "the hosted route receipt could not be derived" as NonEmptyStr)
+          ExitFailure { code: 1, reason: join(["hosted probe: the binding carries no hosted access to describe; ", harness_seat_release_wire(r: seat_release)], "") }
+        }
+        Present { value: receipt } => {
+          let written = Filesystem.Write(path: join([events_path, ".route"], ""), content: concat(receipt, "\n"))
+          if !written.success {
+            let seat_release = harness_release_seat(binding: binding, reason: "the hosted route receipt could not be written" as NonEmptyStr)
+            ExitFailure { code: 1, reason: join(["hosted probe: the route receipt could not be written to ", events_path, ".route: ", written.error, "; ", harness_seat_release_wire(r: seat_release)], "") }
+          } else {
+            let outcome = harness_run_turn(
+              config: harness_worker_config(
+                worktree: worktree as FilePath,
+                timeout_program: timeout_program as FilePath,
+                request_scratch_path: request_scratch_path as FilePath,
+                events_path: events_path as FilePath,
+                backend: backend,
+                system_prompt: harness_default_system_prompt,
+                alignment_chain_fingerprint: "",
+              ),
+              prompt: harness_probe_prompt,
+              step_budget: harness_default_step_budget,
+            )
+            let seat_release = harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr)
+            harness_turn_exit_released(outcome: outcome, seat: seat_release)
+          }
+        }
+      }
     }
   }
 }

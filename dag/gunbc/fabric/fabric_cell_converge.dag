@@ -209,6 +209,12 @@ fn fabric_cell_member_ownership(member: FabricCellMember) -> Optional<Ownership>
 // every other slot, and a digest rendered from the fleet row alone would report the converged
 // shakedown cell as drifted on every observation (or, worse, converge it to the wrong ceiling).
 fn fabric_cell_resource_boundary_state_digest(slot: RunnerSlotIdentity) -> NonEmptyStr {
+  fabric_cell_resource_boundary_state_digest_with_quota(slot: slot, quota: gunbc_runner_slot_desired_for(slot: slot).cpu_quota)
+}
+
+// Also identifies the precise predecessor admitted by the CPU-only repair. All other
+// resource fields retain this slot's desired values; no unrelated drift is normalized.
+fn fabric_cell_resource_boundary_state_digest_with_quota(slot: RunnerSlotIdentity, quota: RunnerSlotCpuQuota) -> NonEmptyStr {
   let desired = gunbc_runner_slot_desired_for(slot: slot)
   fabric_cell_boundary_state_digest_of(
     memory_max: to_string(byte_size_count(b: desired.memory_max)),
@@ -216,7 +222,7 @@ fn fabric_cell_resource_boundary_state_digest(slot: RunnerSlotIdentity) -> NonEm
     memory_swap_max: to_string(byte_size_count(b: desired.memory_swap_max)),
     tasks_max: to_string(desired.tasks_max),
     cpu_weight: to_string(desired.cpu_weight),
-    cpu_quota_per_sec: fabric_cell_desired_cpu_quota_identity(quota: desired.cpu_quota),
+    cpu_quota_per_sec: fabric_cell_desired_cpu_quota_identity(quota: quota),
   )
 }
 
@@ -534,6 +540,11 @@ type FabricCellAddressEvidence
   | EvidenceObserved { member: FabricCellMember }
   | EvidenceConflict
 
+// TWO REFUSALS JOIN TO THE LEAST CAUSE (byte-lexicographic String order), not the first seen, so
+// the full value -- AddressUnreadable.cause included -- is a semilattice join and independent of the
+// order observations arrive in (test.claim.fabric_cell_evidence_algebra_witness
+// evidence_full_value_is_order_independent). Keeping the first cause made the class order-free
+// while the payload still moved with caller order.
 fn fabric_cell_address_evidence(
   observations: List<FabricCellAddressObservation>,
 ) -> FabricCellAddressEvidence {
@@ -541,7 +552,8 @@ fn fabric_cell_address_evidence(
     match o {
       AddressObservationRefused { slot: _, address: _, cause: c } =>
         match acc {
-          EvidenceRefused { cause: first } => EvidenceRefused { cause: first }
+          EvidenceRefused { cause: seen } =>
+            if c < seen { EvidenceRefused { cause: c } } else { EvidenceRefused { cause: seen } }
           NoEvidence => EvidenceRefused { cause: c }
           EvidenceAbsent => EvidenceRefused { cause: c }
           EvidenceObserved { member: _ } => EvidenceRefused { cause: c }

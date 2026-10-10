@@ -3,7 +3,7 @@ module gunbc.fleet_release_bins_key
 import std.types { String, List, Bool, Int, list_length }
 import std.measure { Second, second, second_count, seconds_per_day }
 import v2.std.node { Node }
-import v2.std.diagnostic { Outcome, Accepted, Rejected, outcome_accepted }
+import v2.std.diagnostic { Outcome, Accepted, Rejected, NonEmptyDiagnostics, outcome_accepted, diagnostics_reason_lexemes }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import extdeps.shell.exec { TransportScript, transport_script_seal }
 import std.optional { Present, Absent }
@@ -45,7 +45,7 @@ import extdeps.git.object_store { git_object_type_wire_name }
 import gunbc.ci_release_bins { ci_floor_required_artifact_names, ci_floor_invoked_bins }
 import gunbc.repo_self_build { repo_self_build_command }
 import gunbc.ci_spec { ci_release_build_line, ci_release_bins_archive_name }
-import gunbc.ci_failure_class { floor_attempt_command_log_filename }
+import gunbc.ci_failure_class { floor_attempt_command_log_filename, wrap_command_with_floor_attempt_receipt }
 
 // THE RELEASE-BINS PACK IS A CONTENT-ADDRESSED MATERIALIZATION, KEYED BEFORE IT IS BUILT (operator
 // ruling 2026-09-27, route B chosen by eager-owl-205: the fleet-converge build job is the keyed
@@ -337,9 +337,11 @@ type ReleaseBinsRefusal
   | BuildDiagnosticsMissing { file: String }
   | SidecarMissing { file: String }
   | ConsumerProductKindMismatch { kind: String }
+  | ScriptEmissionRefused { script: String, reasons: String }
 
 fn release_bins_refusal_name(refusal: ReleaseBinsRefusal) -> String {
   match refusal {
+    ScriptEmissionRefused { script: _, reasons: _ } => "ScriptEmissionRefused"
     AddressFamilyNotAdmitted => "AddressFamilyNotAdmitted"
     SourceTreeDirty => "SourceTreeDirty"
     AxisValueUnread { variable: _ } => "AxisValueUnread"
@@ -373,6 +375,7 @@ fn release_bins_refusal_name(refusal: ReleaseBinsRefusal) -> String {
 
 fn release_bins_refusal_message(refusal: ReleaseBinsRefusal) -> String {
   match refusal {
+    ScriptEmissionRefused { script: sc, reasons: rs } => join(["REFUSED ", sc, ": v2.workflow.bash_emit refused its statements (", rs, ")"], "")
     AddressFamilyNotAdmitted => "std.materialization_provider no longer admits sha256 at CrossRunScope; the release-bins address has no admitted family"
     AxisValueUnread { variable: v } => join(["the key input ", v, " read back empty, so the key would not name the build; refusing to key"], "")
     SourceTreeDirty => "tracked files differ from HEAD, so HEAD^\{tree} does not name the build input; refusing to key"
@@ -1380,8 +1383,12 @@ fn release_bins_consumer_script_dispatch(pair_modes: List<String>) -> String {
   release_bins_mode_dispatch(pair_modes: pair_modes, pair_text: release_bins_consumer_key_check_script_for(product: compiler_pair_release_product()), fleet_text: release_bins_consumer_key_check_script())
 }
 
+// The pair's pack includes the build diagnostics. Use the floor's existing capture wrapper,
+// which writes that log and preserves a failed compiler exit through tee.
 fn release_bins_build_script_dispatch(pair_modes: List<String>, fleet_build: String) -> String {
-  release_bins_mode_dispatch(pair_modes: pair_modes, pair_text: compiler_pair_release_product().build_line, fleet_text: fleet_build)
+  release_bins_mode_dispatch(pair_modes: pair_modes,
+    pair_text: wrap_command_with_floor_attempt_receipt(command: compiler_pair_release_product().build_line),
+    fleet_text: fleet_build)
 }
 
 // THE EMITTED SCRIPTS, and the one admission the workflow generation consumes: if the fold refuses any
@@ -1415,10 +1422,23 @@ fn release_bins_joined(parts: List<Outcome<String>>) -> Outcome<String> {
   })
 }
 
+// A REFUSED RUNNER IS A REFUSING STEP, NEVER AN EMPTY ONE. Its text is the ScriptEmissionRefused
+// refusal built from nodes and emitted through bash_emit like every other statement. The last arm is
+// reached only if the emitter refuses that fixed refusal statement too: its text is a marker that is
+// not shell, so the step cannot run and the committed-workflow drift gate goes red.
+data script_emission_refusal_unemittable_marker: String = "__GUNBC_SCRIPT_EMISSION_REFUSAL_UNEMITTABLE__"
+
+fn script_emission_refused_text(script: String, diagnostics: NonEmptyDiagnostics) -> String {
+  match release_bins_emitted(statements: [refuse(r: ScriptEmissionRefused { script: script, reasons: diagnostics_reason_lexemes(diagnostics: diagnostics) })]) {
+    Accepted { value: v, diagnostics: _ } => v
+    Rejected { diagnostics: _ } => script_emission_refusal_unemittable_marker
+  }
+}
+
 fn release_bins_script_text(outcome: Outcome<String>) -> String {
   match outcome {
     Accepted { value: v, diagnostics: _ } => v
-    Rejected { diagnostics: _ } => ""
+    Rejected { diagnostics: ds } => script_emission_refused_text(script: "gunbc.fleet_release_bins_key release_bins_script_text", diagnostics: ds)
   }
 }
 

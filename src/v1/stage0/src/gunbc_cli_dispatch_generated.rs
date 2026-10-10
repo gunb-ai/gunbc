@@ -62,7 +62,7 @@ pub enum Commands {
         #[arg(long)]
         claim_run: bool,
         /// Named argument for the entry function, repeatable: `--arg name=value`.
-        /// Values enter as String; a missing `=` refuses rather than guessing.
+        /// Bound against the parameter's resolved type identity: kernel String, Int, and Bool, and std.types NonEmptyStr (String where string_non_empty). Other types refuse.
         #[arg(long = "arg")]
         args: Vec<String>,
     },
@@ -93,11 +93,11 @@ pub enum Commands {
         /// Fnv1a64Structural bundle digest printed by the plan; required for --mode apply
         #[arg(long, default_value = "")]
         plan_hash: String,
-        /// Spark target host (srv5 | srv6); required for scope:spark-serving, refused elsewhere
+        /// Spark target host; required for scope:spark-serving, refused elsewhere
         #[arg(long, default_value = "")]
         target: String,
-        /// Branch the checkout must be on for --mode deploy; the candidate is HEAD of this checkout
-        #[arg(long, default_value = "main")]
+        /// If set, the checkout must be on this branch for --mode deploy; empty admits HEAD's branch
+        #[arg(long, default_value = "")]
         candidate_branch: String,
     },
     /// Long-running HTTP server: compile once, then answer each request by

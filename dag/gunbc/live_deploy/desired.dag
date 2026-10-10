@@ -108,7 +108,7 @@ fn deployment_srv2_target() -> DeploymentHostTarget {
     tailscale_client: ScopedRemovalUnobserved {
       reason: "srv2 tailscale Serve scoped-removal capability has not been observed",
     },
-    ensured_directories: [],
+    host_directories: [],
   }
 }
 

@@ -68,11 +68,11 @@ use crate::v1_std_core::{
     index_base, index_expr, is_file_transport, is_rest_transport, is_shell_transport, lambda_body,
     lambda_param_names_at, let_binding_name_at, let_body, let_value, match_arm_nodes,
     match_scrutinee, method_arg_nodes, method_receiver, param_node_default_value,
-    param_node_name_at, qualified_last_segment, record_lit_type_name_at, return_value, slice_base,
-    slice_end, slice_start, transport_stdin, type_name_compatible, unaryop_operand, CallSemantics,
-    Cardinality, Connective, ErrorNode, ExprData, FieldAccessStyle, FieldSummary, FieldValueShape,
-    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart,
-    UnaryOpKind, VarBindingKind,
+    param_node_name_at, param_node_type_expr, qualified_last_segment, record_lit_type_name_at,
+    return_value, slice_base, slice_end, slice_start, transport_stdin, type_name_compatible,
+    unaryop_operand, CallSemantics, Cardinality, Connective, ErrorNode, ExprData, FieldAccessStyle,
+    FieldSummary, FieldValueShape, InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node,
+    SourceSpan, StringPart, UnaryOpKind, VarBindingKind,
 };
 
 #[path = "bounded_shell_host_drain.rs"]
@@ -1100,14 +1100,72 @@ fn value_eq_calls() -> u64 {
 /// onto a heap worklist and dropped from there with its own children already detached. Shared
 /// children (`Rc` strong count above one) are left in place; their last owner detaches them.
 /// Class: gunbc.recurring_failure_mode recursion_over_value_depth_uncounted_by_the_call_limit.
+///
+/// A PERSISTENT CARRIER IS DETACHED ONLY ONCE DROP NESTING IS DEEP. A List or Map is an RRB / HAMT
+/// tree whose nodes may be shared with other values -- a `skip` or `map_insert` result shares
+/// all but a logarithmic boundary with its source -- and consuming one into the worklist clones
+/// every member out of the shared nodes, so dropping a slice cost its source's length and a walk
+/// that slices by offset was quadratic in the drop alone. Detaching exists for host-stack depth,
+/// and depth only accrues where one carrier's drop nests another's: below
+/// `VALUE_DROP_INLINE_DEPTH` nested drops the carrier is released by its own drop, which frees
+/// shared nodes by reference count and runs each member's `Value::drop` (itself iterative over
+/// Variant / Record depth); at or beyond it the carrier is detached as before, so a list nested
+/// to any depth still drops in bounded host stack (`value_depth_walker_tests::a_deep_list_drops`).
 impl Drop for Value {
     fn drop(&mut self) {
+        let depth = VALUE_DROP_DEPTH
+            .try_with(|d| {
+                let depth = d.get();
+                d.set(depth + 1);
+                depth
+            })
+            .unwrap_or(VALUE_DROP_INLINE_DEPTH);
+        let detach_carriers = depth >= VALUE_DROP_INLINE_DEPTH;
         let mut pending: Vec<Value> = Vec::new();
-        detach_owned_children(self, &mut pending);
+        detach_owned_children(self, &mut pending, detach_carriers);
         while let Some(mut child) = pending.pop() {
-            detach_owned_children(&mut child, &mut pending);
+            detach_owned_children(&mut child, &mut pending, detach_carriers);
         }
+        // A carrier left attached is released HERE, while the depth is raised: drop glue would
+        // release it only after this function returns and the depth is restored, and a nested
+        // carrier's members would then never see the depth they are at.
+        match self {
+            Value::List(items) => drop(std::mem::replace(items, empty_list_carrier())),
+            Value::Map(entries) => drop(std::mem::replace(entries, empty_map_carrier())),
+            _ => {}
+        }
+        let _ = VALUE_DROP_DEPTH.try_with(|d| d.set(depth));
     }
+}
+
+thread_local! {
+    static EMPTY_LIST_CARRIER: Rc<RrbVector<Value>> = Rc::new(RrbVector::new());
+    static EMPTY_MAP_CARRIER: Rc<HamtMap<CanonKey, Value>> = Rc::new(HamtMap::new());
+}
+
+fn empty_list_carrier() -> Rc<RrbVector<Value>> {
+    EMPTY_LIST_CARRIER
+        .try_with(Rc::clone)
+        .unwrap_or_else(|_| Rc::new(RrbVector::new()))
+}
+
+fn empty_map_carrier() -> Rc<HamtMap<CanonKey, Value>> {
+    EMPTY_MAP_CARRIER
+        .try_with(Rc::clone)
+        .unwrap_or_else(|_| Rc::new(HamtMap::new()))
+}
+
+const VALUE_DROP_INLINE_DEPTH: u32 = 64;
+
+thread_local! {
+    static VALUE_DROP_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+// TEST-ONLY WORK OBSERVATION: members moved out of a persistent carrier by drop, so the drop's
+// cost contract is observed as work rather than time.
+#[cfg(test)]
+thread_local! {
+    static DROP_DETACHED_CARRIER_MEMBERS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
 /// The portable form is a plain tree with no sharing, so it is as deep as the value it was taken
@@ -1141,15 +1199,19 @@ fn detach_portable_children(value: &mut PortableValue, pending: &mut Vec<Portabl
     }
 }
 
-fn detach_owned_children(value: &mut Value, pending: &mut Vec<Value>) {
+fn detach_owned_children(value: &mut Value, pending: &mut Vec<Value>, detach_carriers: bool) {
     match value {
-        Value::List(items) => {
+        Value::List(items) if detach_carriers => {
             if let Some(items) = Rc::get_mut(items) {
+                #[cfg(test)]
+                DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.set(c.get() + items.len() as u64));
                 pending.extend(std::mem::take(items));
             }
         }
-        Value::Map(entries) => {
+        Value::Map(entries) if detach_carriers => {
             if let Some(entries) = Rc::get_mut(entries) {
+                #[cfg(test)]
+                DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.set(c.get() + entries.len() as u64));
                 pending.extend(std::mem::take(entries).into_iter().map(|(_, v)| v));
             }
         }
@@ -5530,12 +5592,6 @@ mod cross_claim_memo_tests {
     }
 }
 
-#[derive(Default)]
-struct ParseTableMemo {
-    map: HashMap<(String, String, i64, Symbol), Value>,
-    keepalive: Vec<Value>,
-}
-
 // Recompute-trace ledger (diagnostic READ mode: reports, never gates — DESIGN §5 stopped-line
 // audit). Counts evaluations of pure named fns (empty `uses` row) per (fn identity, argument
 // identity). Keying is SOUND-ONLY: an argument without a cheap sound identity (composite
@@ -6518,7 +6574,6 @@ pub struct InterpContext {
     cast_source_name_cache: std::cell::RefCell<HashMap<usize, String>>,
     cast_source_name_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
     pure_call_memo: std::cell::RefCell<PureCallMemo>,
-    parse_table_memo: std::cell::RefCell<ParseTableMemo>,
     eval_recompute_trace: std::cell::RefCell<EvalRecomputeTrace>,
     eval_call_memo: std::cell::RefCell<EvalCallMemo>,
     // Effect-dispatch odometer, incremented per service-operation dispatch. The eval-call memo
@@ -6944,7 +6999,6 @@ impl InterpContext {
             cast_source_name_cache: std::cell::RefCell::new(HashMap::new()),
             cast_source_name_cache_keepalive: std::cell::RefCell::new(Vec::new()),
             pure_call_memo: std::cell::RefCell::new(PureCallMemo::default()),
-            parse_table_memo: std::cell::RefCell::new(ParseTableMemo::default()),
             eval_recompute_trace: std::cell::RefCell::new(EvalRecomputeTrace::default()),
             eval_call_memo: std::cell::RefCell::new(EvalCallMemo::default()),
             effect_dispatch_count: std::cell::Cell::new(0),
@@ -7362,6 +7416,26 @@ pub fn declared_parameter_names(ctx: &InterpContext, entry_fn: &str) -> Option<V
             .params
             .iter()
             .map(|p| authored_name_at(ctx.si(), p.clone()))
+            .collect(),
+    )
+}
+
+/// Authored `(name, type-expr)` pairs `entry_fn` declares, in declaration order.
+pub fn declared_parameter_type_exprs(
+    ctx: &InterpContext,
+    entry_fn: &str,
+) -> Option<Vec<(String, Rc<Node>)>> {
+    let fn_node = ctx.lookup_fn(entry_fn)?;
+    Some(
+        fn_node
+            .params
+            .iter()
+            .map(|p| {
+                (
+                    authored_name_at(ctx.si(), p.clone()),
+                    param_node_type_expr(p.clone()),
+                )
+            })
             .collect(),
     )
 }
@@ -8463,7 +8537,24 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
             ),
         }),
 
-        ExprData::NoExprData => Ok(Value::Unit),
+        ExprData::NoExprData => {
+            // A List/Set type node (make_container_type) is NoExprData. Evaluating it as
+            // [] was a fabricated default (review 77868, DESIGN §5/§6b). Empty list
+            // values keep ExprListLit and evaluate in that arm. A type used as a value
+            // refuses.
+            let ty = match node.inferred.as_deref() {
+                Some(InferredNode::Resolved { node: t, .. }) => t.clone(),
+                _ => node.clone(),
+            };
+            if crate::v1_compiler_infer_types::node_is_element_collection(ty, ctx.si()) {
+                Err(InterpError::TypeError {
+                    msg: "type node used as a value (empty list must remain ExprListLit)"
+                        .to_string(),
+                })
+            } else {
+                Ok(Value::Unit)
+            }
+        }
     }
 }
 
@@ -11232,10 +11323,6 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         return result;
     }
 
-    if let Some(result) = try_parse_table_memo_dispatch(ctx, &func_name, &fn_node, &args, env)? {
-        return Ok(result);
-    }
-
     if let Some(key) = pure_call_memo_key(&fn_node, &func_name, &args) {
         if let Some(v) = pure_call_memo_get(ctx, &key) {
             return Ok(v);
@@ -11461,147 +11548,12 @@ fn eval_fold_list_right_native(
     Ok(acc)
 }
 
-fn witness_holds(value: Value, ctx: &InterpContext) -> Value {
-    Value::Variant {
-        type_name: ctx.sym("Witness"),
-        variant_name: ctx.sym("Holds"),
-        fields: Rc::new(vec![(ctx.sym("value"), value)]),
-    }
-}
-
 fn witness_violates(diagnostic: Value, ctx: &InterpContext) -> Value {
     Value::Variant {
         type_name: ctx.sym("Witness"),
         variant_name: ctx.sym("Violates"),
         fields: Rc::new(vec![(ctx.sym("diagnostic"), diagnostic)]),
     }
-}
-
-fn parse_table_materialization_allows_memo(ctx: &InterpContext, table: &Value) -> bool {
-    // SCAFFOLD (§7 seed-retained): extdeps/realization/parse_table_memo.dag
-    // parse_table_memo_seed_handler_dissolution_trigger (Disposition Scaffold) — seed
-    // try_parse_table_memo_dispatch gates ParseTableMemo map insert/serve on Memoize;
-    // .dag authority: v2.compiler.materialization_allows_memo_store.
-    let table_fields = match table {
-        Value::Record { fields, .. } | Value::Variant { fields, .. } => fields,
-        _ => return false,
-    };
-    let Some(mat) = ctx.field(table_fields, "materialization") else {
-        return false;
-    };
-    match mat {
-        Value::Variant { variant_name, .. } => resolve_sym(*variant_name) == "Memoize",
-        _ => false,
-    }
-}
-
-fn parse_table_memo_scope_and_key(
-    ctx: &InterpContext,
-    table: &Value,
-    key: &Value,
-) -> Option<(String, String, i64, Symbol)> {
-    if !parse_table_materialization_allows_memo(ctx, table) {
-        return None;
-    }
-    let table_fields = match table {
-        Value::Record { fields, .. } | Value::Variant { fields, .. } => fields,
-        _ => return None,
-    };
-    let grammar_digest = match ctx.field(table_fields, "grammar_digest")? {
-        Value::Str(s) => s.to_string(),
-        _ => return None,
-    };
-    let token_stream_digest = match ctx.field(table_fields, "token_stream_digest")? {
-        Value::Str(s) => s.to_string(),
-        _ => return None,
-    };
-    let key_fields = match key {
-        Value::Record { fields, .. } | Value::Variant { fields, .. } => fields,
-        _ => return None,
-    };
-    let position = match fields_get(key_fields, ctx.sym("position")) {
-        Some(Value::Int(n)) => *n,
-        _ => return None,
-    };
-    let production = match fields_get(key_fields, ctx.sym("production")) {
-        Some(Value::Str(s)) => ctx.sym(s.as_ref()),
-        _ => return None,
-    };
-    Some((grammar_digest, token_stream_digest, position, production))
-}
-
-/// Handler bodies for parse-table memo dispatch. Roster authority is
-/// `v1_interpreter_authored_roster_arms()`; generated lookup routes spellings
-/// before this macro matches on the generated enum variant.
-macro_rules! v1_parse_table_arms {
-    ($cb:ident, $func_name:ident, $ctx:ident, $fn_node:ident, $args:ident, $env:ident) => {
-        $cb! {
-            $func_name, $ctx, $fn_node, $args, $env;
-                arm "parse_table_memo.parse_table_lookup" { "parse_table_lookup" } => {
-                    let positional: Vec<&Value> = $args.iter().map(|(_, v)| v).collect();
-                    let [table, key] = match positional.as_slice() {
-                        [table, key] => [table, key],
-                        _ => return Ok(None),
-                    };
-                    let Some(memo_key) = parse_table_memo_scope_and_key($ctx, table, key) else {
-                        return Ok(None);
-                    };
-                    let allows_memo = parse_table_materialization_allows_memo($ctx, table);
-                    let mut st = $ctx.parse_table_memo.borrow_mut();
-                    if allows_memo {
-                        if let Some(v) = st.map.get(&memo_key).cloned() {
-                            drop(st);
-                            record_parse_memo_lookup(&memo_key, true);
-                            return Ok(Some(witness_holds(v, $ctx)));
-                        }
-                    }
-                    drop(st);
-                    record_parse_memo_lookup(&memo_key, false);
-                    let result = call_function($ctx, $fn_node, $args, $env)?;
-                    Ok(Some(result))
-                },
-                arm "parse_table_memo.parse_table_insert" { "parse_table_insert" } => {
-                    let positional: Vec<&Value> = $args.iter().map(|(_, v)| v).collect();
-                    let [table, key, value] = match positional.as_slice() {
-                        [table, key, value] => [table, key, value],
-                        _ => return Ok(None),
-                    };
-                    let result = call_function($ctx, $fn_node, $args, $env)?;
-                    if parse_table_materialization_allows_memo($ctx, table) {
-                        if let Some(memo_key) = parse_table_memo_scope_and_key($ctx, table, key) {
-                            let mut st = $ctx.parse_table_memo.borrow_mut();
-                            st.keepalive.push((*table).clone());
-                            st.keepalive.push((*key).clone());
-                            st.keepalive.push((*value).clone());
-                            st.map.insert(memo_key, (*value).clone());
-                        }
-                    }
-                    Ok(Some(result))
-                },
-        }
-    };
-}
-
-/// Expansion 1: the dispatch.
-macro_rules! v1_parse_table_dispatch {
-    ($f:ident, $c:ident, $n:ident, $a:ident, $e:ident; $(arm $id:tt { $lit:literal } => $body:expr ,)*) => {
-        match $crate::v1_interpreter_dispatch_generated::lookup_try_parse_table_memo_dispatch(&$f) {
-            Some(arm) => match arm {
-                $( try_parse_table_memo_dispatch_arm!($id) => $body , )*
-            },
-            None => Ok(None),
-        }
-    };
-}
-
-fn try_parse_table_memo_dispatch(
-    ctx: &InterpContext,
-    func_name: &str,
-    fn_node: &Rc<Node>,
-    args: &[(Option<String>, Value)],
-    env: &Rc<Env>,
-) -> InterpResult<Option<Value>> {
-    v1_parse_table_arms!(v1_parse_table_dispatch, func_name, ctx, fn_node, args, env)
 }
 
 fn is_structural_pure_fn(name: &str) -> bool {
@@ -13395,6 +13347,17 @@ fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Opti
     ctx.indexes.type_items.get(type_name).cloned()
 }
 
+/// RHS of a type declaration, when the item is an alias or resolved target.
+pub fn type_declaration_rhs(item: &Rc<Node>) -> Option<Rc<Node>> {
+    if let Some(rhs) = item.children.iter().next().cloned() {
+        return Some(rhs);
+    }
+    match item.inferred.as_deref() {
+        Some(InferredNode::Resolved { node }) => Some(node.clone()),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod cast_scope_index_tests {
     use super::*;
@@ -14229,17 +14192,13 @@ macro_rules! v1_algebra_method_arms {
             arm "method_call.skip" { "skip" } => {
                 let items = expect_list(&$receiver, "skip")?;
                 let n = expect_int($args.first(), "skip")?;
-                Ok(list_value(
-                    items.iter().skip(n as usize).cloned().collect::<Vec<_>>(),
-                ))
+                Ok(Value::List(Rc::new(rrb_skip(&items, n))))
             },
 
             arm "method_call.take" { "take" } => {
                 let items = expect_list(&$receiver, "take")?;
                 let n = expect_int($args.first(), "take")?;
-                Ok(list_value(
-                    items.iter().take(n as usize).cloned().collect::<Vec<_>>(),
-                ))
+                Ok(Value::List(Rc::new(rrb_take(&items, n))))
             },
 
             arm "method_call.enumerate" { "enumerate" } => {
@@ -18076,7 +18035,7 @@ fn dispatch_shell(
             let (budget, source) = crate::memory_governor::read_host_budget_bytes();
             Some(budget.ok_or_else(|| InterpError::TypeError {
                 msg: format!(
-                    "WitnessStderrCaptureCompleteBudgetUnreadable: Complete stderr capture requires the active GUNBC_MEMORY_BUDGET_BYTES authority ({source})"
+                    "WitnessStderrCaptureCompleteBudgetUnreadable: Complete stderr capture requires the active host budget authority ({source})"
                 ),
             })? as usize)
         }
@@ -23604,7 +23563,7 @@ macro_rules! v1_builtin_arms {
 
             arm "free_call.chars_to_string" { "chars_to_string" } => {
                 let cps = match $positional.first().copied() {
-                    Some(v) => free_monoid_to_vec(v).ok_or_else(|| InterpError::TypeError {
+                    Some(v) => free_monoid_items(v).ok_or_else(|| InterpError::TypeError {
                         msg: "chars_to_string expects a list of code points".to_string(),
                     })?,
                     None => {
@@ -23621,7 +23580,9 @@ macro_rules! v1_builtin_arms {
                     .max(0)
                     .min(len)
                     .max(start);
-                let s: String = cps[start as usize..end as usize]
+                let s: String = cps
+                    .skip(start as usize)
+                    .take((end - start) as usize)
                     .iter()
                     .filter_map(|v| match v {
                         Value::Int(cp) => char::from_u32(*cp as u32),
@@ -23632,6 +23593,10 @@ macro_rules! v1_builtin_arms {
             },
 
             arm "free_call.get" { "get" } => match $positional.as_slice() {
+                [Value::List(items), idx_val] => {
+                    let idx = expect_int(Some(idx_val), "get")?;
+                    Ok(Some(list_get_at_or_null(items, idx)))
+                }
                 [list_val, idx_val] if free_monoid_to_vec(list_val).is_some() => {
                     let items = expect_list(list_val, "get")?;
                     let idx = expect_int(Some(idx_val), "get")?;
@@ -23712,6 +23677,7 @@ macro_rules! v1_builtin_arms {
             },
 
             arm "free_call.count" { "count" } => match $positional.first() {
+                Some(Value::List(items)) => Ok(Some(Value::Int(items.len() as i64))),
                 Some(v) => match free_monoid_to_vec(v) {
                     Some(items) => Ok(Some(Value::Int(items.len() as i64))),
                     None => Ok(None),
@@ -25735,45 +25701,6 @@ static CALL_FREQUENCY_WATCHLIST: std::sync::Mutex<
     Option<std::collections::HashMap<&'static str, u64>>,
 > = std::sync::Mutex::new(None);
 
-/// adhoc-c328b166-bca memo-effectiveness discriminator: distinct (grammar_digest,
-/// token_stream_digest, position, production) keys ever looked up vs total lookups/hits.
-/// `lookups >> distinct` with `hits == 0` is the smoking gun for "memo never serves a
-/// re-attempted span"; `lookups == distinct` is the benign "every position visited once"
-/// signature. Global (not per-InterpContext) so the periodic dump thread
-/// (GUNBC_FLATTEN_SITE_DUMP_SECS), which never enters with_active_context, can read it --
-/// survives a DNF, unlike ctx-scoped stats.
-static PARSE_MEMO_LOOKUPS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-static PARSE_MEMO_HITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-static PARSE_MEMO_DISTINCT_KEYS: std::sync::Mutex<
-    Option<std::collections::HashSet<(String, String, i64, Symbol)>>,
-> = std::sync::Mutex::new(None);
-
-fn record_parse_memo_lookup(key: &(String, String, i64, Symbol), hit: bool) {
-    if !residual_hunt_forensics_enabled() {
-        return;
-    }
-    PARSE_MEMO_LOOKUPS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    if hit {
-        PARSE_MEMO_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    }
-    let mut guard = PARSE_MEMO_DISTINCT_KEYS.lock().unwrap();
-    guard
-        .get_or_insert_with(std::collections::HashSet::new)
-        .insert(key.clone());
-}
-
-pub fn parse_memo_global_snapshot() -> (u64, u64, u64) {
-    let lookups = PARSE_MEMO_LOOKUPS.load(std::sync::atomic::Ordering::Relaxed);
-    let hits = PARSE_MEMO_HITS.load(std::sync::atomic::Ordering::Relaxed);
-    let distinct = PARSE_MEMO_DISTINCT_KEYS
-        .lock()
-        .unwrap()
-        .as_ref()
-        .map(|s| s.len() as u64)
-        .unwrap_or(0);
-    (lookups, hits, distinct)
-}
-
 fn record_call_frequency(func_name: &str) {
     if !residual_hunt_forensics_enabled() {
         return;
@@ -25797,17 +25724,10 @@ fn record_call_frequency(func_name: &str) {
         "parse_expr_sequence",
         "parse_expr_choice",
         "parse_expr_optional",
-        "parse_production_memo_stats",
         "filter",
         "upsert_production_first_row",
         "parse_current_position",
-        "parse_nonterminal_memoized",
-        "parse_nonterminal_memoized_core",
-        "parse_table_record_lookup_call",
-        "parse_table_record_hit",
-        "parse_table_record_miss",
-        "parse_table_lookup",
-        "parse_table_insert",
+        "parse_nonterminal",
         "parse_choice_plan",
         "parse_choice_ordered_backtrack",
         "uri_percent_encode_scalar_fragment",
@@ -26483,6 +26403,183 @@ fn value_to_list_carrier(val: &Value) -> Option<(Rc<RrbVector<Value>>, u64)> {
             let copied = items.len() as u64;
             (Rc::new(RrbVector::from(items)), copied)
         }),
+    }
+}
+
+/// The members of a code-point (or any FreeMonoid) value as the persistent carrier, sharing a
+/// `Value::List`'s tree rather than flattening it. `free_monoid_to_vec` copies all n members, so a
+/// consumer that reads a slice through it pays O(n) per read and O(n^2) over a walk; this reads the
+/// list form in O(1) and flattens only the Str and Cons forms, which have no shared tree to borrow.
+fn free_monoid_items(val: &Value) -> Option<Rc<RrbVector<Value>>> {
+    match val {
+        Value::List(items) => Some(Rc::clone(items)),
+        other => free_monoid_to_vec(other).map(|items| Rc::new(RrbVector::from(items))),
+    }
+}
+
+/// std.primitives skip_contract on the persistent carrier: the suffix after `n` members, sharing
+/// the receiver's tree, O(log n) rather than a copy of the remainder. A negative `n` keeps the
+/// reading the copying form had (`n as usize` saturates past the end), which skips everything.
+pub(crate) fn rrb_skip<T: Clone>(items: &RrbVector<T>, n: i64) -> RrbVector<T> {
+    let k = if n < 0 {
+        items.len()
+    } else {
+        (n as usize).min(items.len())
+    };
+    items.skip(k)
+}
+
+/// std.primitives take_contract on the persistent carrier: the first `n` members, sharing the
+/// receiver's tree. A negative `n` keeps every member, as the copying form's saturating cast did.
+pub(crate) fn rrb_take<T: Clone>(items: &RrbVector<T>, n: i64) -> RrbVector<T> {
+    let k = if n < 0 {
+        items.len()
+    } else {
+        (n as usize).min(items.len())
+    };
+    items.take(k)
+}
+
+#[cfg(test)]
+mod slice_cost_tests {
+    use super::*;
+    use std::cell::Cell;
+
+    thread_local! {
+        static CLONES: Cell<u64> = const { Cell::new(0) };
+    }
+
+    /// A code point whose every copy is counted, so a slice's cost is read off the carrier's
+    /// own work rather than a clock.
+    #[derive(Debug, PartialEq)]
+    struct CountedCodePoint(u32);
+
+    impl Clone for CountedCodePoint {
+        fn clone(&self) -> Self {
+            CLONES.with(|c| c.set(c.get() + 1));
+            CountedCodePoint(self.0)
+        }
+    }
+
+    fn clones_during<R>(f: impl FnOnce() -> R) -> (R, u64) {
+        let before = CLONES.with(|c| c.get());
+        let r = f();
+        (r, CLONES.with(|c| c.get()) - before)
+    }
+
+    // Non-ASCII on purpose: the interpreter's string carrier is O(1) per index only on ASCII,
+    // which is the case a byte-offset decode is NOT linear on.
+    fn non_ascii_code_points(n: usize) -> RrbVector<CountedCodePoint> {
+        "\u{e9}\u{4e2d}\u{1f600}a"
+            .chars()
+            .cycle()
+            .take(n)
+            .map(|c| CountedCodePoint(c as u32))
+            .collect()
+    }
+
+    const N: usize = 200_000;
+    // im's RRB split copies at most one boundary chunk per tree level; this is that bound with
+    // headroom, and three orders of magnitude below N.
+    const SLICE_COPY_BUDGET: u64 = 2_048;
+
+    #[test]
+    fn a_slice_from_the_middle_copies_only_boundary_chunks() {
+        let cps = non_ascii_code_points(N);
+        let (slice, copied) = clones_during(|| rrb_take(&rrb_skip(&cps, (N / 2) as i64), 7));
+        assert!(
+            copied <= SLICE_COPY_BUDGET,
+            "skip+take copied {copied} members of {N}"
+        );
+        let expected: Vec<u32> = cps.iter().skip(N / 2).take(7).map(|c| c.0).collect();
+        assert_eq!(slice.iter().map(|c| c.0).collect::<Vec<_>>(), expected);
+    }
+
+    // THE RED CONTROL: the copying form these arms had, on the same input and bound. It must
+    // exceed the budget, or the budget does not discriminate the quadratic.
+    #[test]
+    fn the_copying_slice_form_exceeds_the_budget() {
+        let cps = non_ascii_code_points(N);
+        let (_, copied) = clones_during(|| {
+            let rest: RrbVector<_> = cps.iter().skip(N / 2).cloned().collect();
+            rest.iter().take(7).cloned().collect::<RrbVector<_>>()
+        });
+        assert!(
+            copied > SLICE_COPY_BUDGET,
+            "copying form copied only {copied}"
+        );
+    }
+
+    #[test]
+    fn negative_and_overlong_counts_keep_the_copying_forms_reading() {
+        let cps: RrbVector<i64> = (0..10).collect();
+        let copying_skip = |n: i64| {
+            cps.iter()
+                .skip(n as usize)
+                .cloned()
+                .collect::<RrbVector<_>>()
+        };
+        let copying_take = |n: i64| {
+            cps.iter()
+                .take(n as usize)
+                .cloned()
+                .collect::<RrbVector<_>>()
+        };
+        for n in [-3, 0, 4, 10, 11, i64::MAX] {
+            assert_eq!(rrb_skip(&cps, n), copying_skip(n), "skip {n}");
+            assert_eq!(rrb_take(&cps, n), copying_take(n), "take {n}");
+        }
+    }
+
+    fn detached() -> u64 {
+        DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.get())
+    }
+
+    // The slice's drop is part of the slice's cost: a walk drops one slice per step. Below the
+    // nesting threshold the RRB tree releases its nodes by reference count, so dropping a slice
+    // of a shared list moves no member; the copying drop moved the whole suffix.
+    #[test]
+    fn dropping_a_slice_of_a_shared_list_moves_no_member() {
+        let base = list_value((0..N as i64).map(Value::Int).collect::<Vec<_>>());
+        let Value::List(items) = &base else {
+            unreachable!("list_value builds a list")
+        };
+        let slice = Value::List(Rc::new(rrb_skip(items, (N / 2) as i64)));
+        let before = detached();
+        drop(slice);
+        assert_eq!(detached() - before, 0, "dropping a shared slice walked it");
+        assert_eq!(items.len(), N, "the source survives its slice's drop");
+    }
+
+    // THE RED CONTROL: the same drop once nesting is past the threshold, which is the detaching
+    // path every list drop used to take. It moves the slice's members, so the counter discriminates.
+    #[test]
+    fn the_detaching_drop_moves_the_slice_members() {
+        let base = list_value((0..N as i64).map(Value::Int).collect::<Vec<_>>());
+        let Value::List(items) = &base else {
+            unreachable!("list_value builds a list")
+        };
+        let mut slice = Value::List(Rc::new(rrb_skip(items, (N / 2) as i64)));
+        let before = detached();
+        let mut pending = Vec::new();
+        detach_owned_children(&mut slice, &mut pending, true);
+        assert_eq!(detached() - before, (N - N / 2) as u64);
+    }
+
+    #[test]
+    fn reading_a_list_value_does_not_flatten_it() {
+        let list = list_value((0..N as i64).map(Value::Int).collect::<Vec<_>>());
+        let before = flatten_counters_snapshot();
+        let items = free_monoid_items(&list).expect("a list is a free monoid");
+        assert_eq!(items.len(), N);
+        assert_eq!(
+            flatten_counters_snapshot(),
+            before,
+            "free_monoid_items flattened a Value::List"
+        );
+        // RED CONTROL: the flattening read the get / count / chars_to_string arms used.
+        free_monoid_to_vec(&list).expect("a list is a free monoid");
+        assert_eq!(flatten_counters_snapshot().1 - before.1, N as u64);
     }
 }
 

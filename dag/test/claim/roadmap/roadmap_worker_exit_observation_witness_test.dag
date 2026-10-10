@@ -1,0 +1,87 @@
+module test.claim.roadmap.roadmap_worker_exit_observation_witness_test
+
+import std.types { Bool, String, List, NonEmptyStr }
+import gunbc.roadmap_dispatch_actuator {
+  AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable,
+  AttemptUnitStartRecorded, AttemptUnitNeverStarted, AttemptUnitStartUnread,
+  attempt_worker_unit_observation_of, worker_process_from_attempt_unit,
+}
+import gunbc.worker_lifecycle { WorkerProcessEvidence, WorkerProcessUnobserved, WorkerProcessAbsent, WorkerProcessRunning, WorkerProcessExited }
+import gunbc.roadmap.roadmap_attempt_exit_spool {
+  AttemptWorkerRole, AttemptReviewerRole, AttemptAuditorRole,
+  attempt_exit_record_from_listings, AttemptExitStageNames, AttemptExitStageUnreadable,
+}
+import gunbc.compute.attempt_lifecycle { UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown, UnitStillRunning, UnitLifecycleUnknown }
+import gunbc.roadmap_session_placement { session_worker_unit_lifecycle }
+
+// The worker unit's observation now that the unit is collected when its process ends (the
+// 2026-09-05 RemainAfterExit is reversed). Each claim supplies the manager's answer and the spool's
+// listings and runs the production decision and the production WorkerProcessEvidence projection; the
+// wet witness beside this file runs the real spool read.
+
+data unit: NonEmptyStr = "gunbc-attempt-n-1-k1.service" as NonEmptyStr
+
+fn evidence(loaded: AttemptUnitObservation, names: List<String>, start_recorded: Bool) -> WorkerProcessEvidence {
+  worker_process_from_attempt_unit(
+    observation: attempt_worker_unit_observation_of(
+      unit: unit,
+      loaded: loaded,
+      record: attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [AttemptExitStageNames { names: names }, AttemptExitStageNames { names: [] }, AttemptExitStageNames { names: [] }]),
+      start: if start_recorded { AttemptUnitStartRecorded } else { AttemptUnitNeverStarted },
+    ),
+    unit: unit,
+  )
+}
+
+fn exited_with(e: WorkerProcessEvidence, code: Int) -> Bool {
+  match e { WorkerProcessExited { exit_code, last_command: _ } => exit_code == code _ => false }
+}
+
+fn unobserved(e: WorkerProcessEvidence) -> Bool {
+  match e { WorkerProcessUnobserved { reason: _ } => true _ => false }
+}
+
+fn absent(e: WorkerProcessEvidence) -> Bool {
+  match e { WorkerProcessAbsent => true _ => false }
+}
+
+// The collected worker is read from its record: a success exits 0, a failure carries its status, and
+// a SIGTERM reads 15 -- the number ExecMainStatus reported before, so no consumer's decision moves.
+test fn a_collected_worker_is_read_from_its_exit_record() -> Bool {
+  exited_with(e: evidence(loaded: AttemptUnitAbsent, names: ["n-1+k1+worker+inv+success+exited+0"], start_recorded: true), code: 0)
+    && exited_with(e: evidence(loaded: AttemptUnitAbsent, names: ["n-1+k1+worker+inv+exit-code+exited+3"], start_recorded: true), code: 3)
+    && exited_with(e: evidence(loaded: AttemptUnitAbsent, names: ["n-1+k1+worker+inv+signal+killed+TERM"], start_recorded: true), code: 15)
+}
+
+// Condition 1: a started worker whose unit is gone with NO record is indeterminate, never "never ran";
+// only an attempt with no start receipt (no placement record) answers absent.
+test fn a_gone_unit_without_a_record_is_unobserved_unless_it_never_started() -> Bool {
+  unobserved(e: evidence(loaded: AttemptUnitAbsent, names: ["other+k9+worker+inv+success+exited+0"], start_recorded: true))
+    && absent(e: evidence(loaded: AttemptUnitAbsent, names: [], start_recorded: false))
+}
+
+// A loaded unit is the manager's answer and the record is not consulted: a retained failed unit reads
+// its own ExecMainStatus, and a running one is running even if a stale record names it.
+test fn a_loaded_unit_is_read_from_the_manager() -> Bool {
+  exited_with(e: evidence(loaded: AttemptUnitFinished { exit_status: "1" }, names: ["n-1+k1+worker+inv+success+exited+0"], start_recorded: true), code: 1)
+    && (match evidence(loaded: AttemptUnitActive, names: ["n-1+k1+worker+inv+success+exited+0"], start_recorded: true) { WorkerProcessRunning { command: _ } => true _ => false })
+}
+
+// The settlement's read: a collected worker that exited 0 settles as SUCCESS (it read cause-unknown
+// before the record existed); a gone unit with no record keeps cause-unknown, the arm that still frees
+// only after the launch deadline; an unreadable spool frees nothing.
+test fn settlement_reads_the_record_and_keeps_cause_unknown_without_one() -> Bool {
+  let success = match session_worker_unit_lifecycle(unit: unit, loaded: AttemptUnitAbsent, record: attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [AttemptExitStageNames { names: ["n-1+k1+worker+inv+success+exited+0"] }])) {
+    UnitTerminatedSuccess { detail: _ } => true
+    _ => false
+  }
+  let unknown = match session_worker_unit_lifecycle(unit: unit, loaded: AttemptUnitAbsent, record: attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [AttemptExitStageNames { names: [] }])) {
+    UnitTerminatedCauseUnknown { detail: _ } => true
+    _ => false
+  }
+  let unreadable = match session_worker_unit_lifecycle(unit: unit, loaded: AttemptUnitAbsent, record: attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [AttemptExitStageUnreadable { reason: "EACCES" }])) {
+    UnitLifecycleUnknown { detail: _ } => true
+    _ => false
+  }
+  success && unknown && unreadable
+}

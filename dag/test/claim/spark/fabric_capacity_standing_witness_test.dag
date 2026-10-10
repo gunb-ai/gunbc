@@ -3,11 +3,10 @@ module test.claim.spark.fabric_capacity_standing_witness
 import std.types { Bool, String, NonEmptyStr, List, EpochSecs }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.optional { Present, Absent }
-import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
+import gunbc.spark.fabric_switch_observed { FabricGroupB, fabric_group_hosts, FabricGroup }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
 import std.measure { concurrent_request_hundredths_count, token_count }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision, vllm_source_revision_read }
-import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
 import gunbc.spark.vllm_kv_layout_observe { KvLayoutUnreadable }
 import gunbc.instruments.fabric_capacity_standing {
@@ -27,7 +26,6 @@ import std.temporal_effect { held_lease, LeaseEpoch, LeaseRunningExpected }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
 import gunbc.spark.pair_serving_authority {
   PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, ReleasedToFleet, PairRealizationUnestablished,
-  spark_pair_serving_authorities,
 }
 
 fn w_cell(name: ProbeFieldName) -> String {
@@ -105,7 +103,7 @@ test fn decode_identity_fields_are_the_launch_join_keys() -> Bool {
   match w_fields() {
     ProbeUnreadable { detail: _ } => false
     ProbeFields { fields: f } =>
-      match launch_from_fields(group: FabricGroupA, head: spark_pair_serving_head(group: FabricGroupA), f: f) {
+      match launch_from_fields(group: FabricGroupB {}, head: spark_pair_serving_head(group: FabricGroupB {}), f: f) {
         LaunchUnidentified { detail: _ } => false
         LaunchIdentified { launch: l } => (l.systemd_invocation as String) == "inv-a"
       }
@@ -172,7 +170,7 @@ test fn a_supplied_revision_is_the_one_the_readings_carry() -> Bool {
   match w_fields() {
     ProbeUnreadable { detail: _ } => false
     ProbeFields { fields: f } =>
-      match launch_from_fields(group: FabricGroupA, head: spark_pair_serving_head(group: FabricGroupA), f: f) {
+      match launch_from_fields(group: FabricGroupB {}, head: spark_pair_serving_head(group: FabricGroupB {}), f: f) {
         LaunchUnidentified { detail: _ } => false
         LaunchIdentified { launch: launch } =>
           match readings_from_fields(
@@ -299,7 +297,7 @@ test fn one_refusing_member_refuses_the_whole_standing() -> Bool {
 // THE PAIRING OBLIGATION FOR THE SUPPLIED STANDINGS. The three claims above hand
 // capacity_standing_verdict its population instead of computing it, which is what lets the empty case
 // exist at all -- but supplied inputs may never be the only thing that runs. This claim executes the
-// real route end to end: the live roster, the real group_report producer, and the binding that joins
+// real route end to end: a supplied roster, the real group_report producer, and the binding that joins
 // them, AND IT ASSERTS THE ROUTE RATHER THAN TWO MATCHING ANSWERS. That distinction is the whole
 // content of the claim: asking only whether the producer refuses AND the entry refuses is satisfied by
 // an entry that ignores the roster entirely and returns a constant refusal, so it would prove the two
@@ -312,39 +310,25 @@ test fn one_refusing_member_refuses_the_whole_standing() -> Bool {
 // the entry refuses until a modeled host-effect realizes remote inventory, so refusal IS today's
 // correct answer on the live path. When that frontier fires this claim flips, and it should -- it is
 // the control that notices, rather than a green that would have said nothing either way.
-// THE ROSTER IS SUPPLIED AT GENERATION 0 -- every claimed group's resting row, which is what the
+// THE ROSTER IS SUPPLIED AT GENERATION 0 -- one group's resting Active row, which is what the
 // authority log folds to when no transition is recorded -- so the claim stays hermetic while the
 // real group_report producer and the binding that maps it over the roster both execute. The
-// roster READ is exercised by the supplied-host claim below.
+// production roster claims no group, so the row is supplied rather than read from it.
+fn w_resting_roster() -> List<PairServingGroupAuthority> {
+  [PairServingActive { group: FabricGroupB {}, exact_realization: PairRealizationUnestablished { obligation: "witness" as NonEmptyStr } }]
+}
+
 fn w_resting_current() -> List<CurrentAuthority> {
-  map(spark_pair_serving_authorities, a => CurrentAuthorityRead { authority: a, head: HeadAbsent, generation: 0, grant: none, entry_state: none, previous: none, admitted_by: none, transitions: [] as List<AuthorityTransitionRecord> })
+  map(w_resting_roster(), a => CurrentAuthorityRead { authority: a, head: HeadAbsent, generation: 0, grant: none, entry_state: none, previous: none, admitted_by: none, transitions: [] as List<AuthorityTransitionRecord> })
 }
 
 test fn the_verdict_over_the_resting_roster_runs_its_real_producer_and_refuses_today() -> Bool {
-  let live = group_report(group: FabricGroupA)
+  let live = group_report(group: FabricGroupB {})
   match fabric_capacity_standing_current(current: w_resting_current()) {
     ExitSuccess => false
     ExitFailure { code: _, reason: reason } =>
       (live.admitting == false)
         && string_contains(s: reason, pattern: live.text)
-  }
-}
-
-// THE OFF-FLEET PREMISE IS SUPPLIED, NOT READ FROM THE RUNNER. The live entry differs from
-// fabric_capacity_standing_for only in taking the executor from the host's `hostname` and the
-// instant from its clock; both are supplied here, so the verdict does not depend on which runner
-// executes it (gunbc.recurring_failure_mode wet_witness_premise_read_from_the_runner_it_happens_to_land_on).
-// Everything beneath the seam is real: store resolution for a host that declares no dashboard
-// instance, the per-group CurrentAuthorityUnread, and the verdict text naming that read. Letting an
-// unreadable log fall back to the resting row turns this red.
-data witness_host_declaring_no_dashboard_instance: String = "gunbc-witness-host-without-dashboard-instance"
-data witness_instant: EpochSecs = 1000
-
-test fn the_live_entry_reads_the_authority_before_judging_and_refuses_off_fleet() -> Bool {
-  match fabric_capacity_standing_for(executor: witness_host_declaring_no_dashboard_instance, at: witness_instant) {
-    ExitSuccess => false
-    ExitFailure { code: _, reason: reason } =>
-      string_contains(s: reason, pattern: "group-a: serving authority could not be read at store: no dashboard instance is declared for host gunbc-witness-host-without-dashboard-instance")
   }
 }
 
@@ -367,7 +351,7 @@ fn with_capacity_hash(scenario: fn(ContentHash) -> Bool) -> Bool {
 
 fn w_suspended_authority(h: ContentHash) -> PairServingGroupAuthority {
   SuspensionPendingReconciliation {
-    group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA),
+    group: FabricGroupB {}, hosts: fabric_group_hosts(g: FabricGroupB {}),
     transaction: "witness-transaction" as NonEmptyStr,
     authorization_binding: h,
     lease: held_lease(
@@ -390,7 +374,7 @@ test fn a_suspended_authority_stands_without_admitting() -> Bool {
 
 test fn a_released_authority_says_the_hosts_are_not_ours() -> Bool {
   with_capacity_hash(scenario: h => {
-    let st = standing_for_authority(a: ReleasedToFleet { group: FabricGroupA, release_receipt: h })
+    let st = standing_for_authority(a: ReleasedToFleet { group: FabricGroupB {}, release_receipt: h })
     (st.admitting == false) && string_contains(s: st.text, pattern: "no longer claims these hosts")
   })
 }
@@ -399,9 +383,9 @@ test fn a_released_authority_says_the_hosts_are_not_ours() -> Bool {
 // being satisfied by a fold that refuses everything.
 test fn an_ordinary_authority_routes_to_the_live_probe() -> Bool {
   let via_authority = standing_for_authority(a: PairServingActive {
-    group: FabricGroupA,
+    group: FabricGroupB {},
     exact_realization: PairRealizationUnestablished { obligation: "witness" as NonEmptyStr },
   })
-  let direct = group_report(group: FabricGroupA)
+  let direct = group_report(group: FabricGroupB {})
   (via_authority.admitting == direct.admitting) && (via_authority.text == direct.text)
 }

@@ -28,7 +28,14 @@ import std.contract_identity { ContractEpoch }
 // diligence until a contract-surface digest or a classifier distinguishes material from internal
 // change. That distinction is the next-rung trigger for this row, and it is a capability, not an
 // artifact: acceptance deriving contract materiality from the contract's own surface.
-data required_ci_contract_epoch: ContractEpoch = "2026-09-01.1" as ContractEpoch
+//
+// BUMPED 2026-10-09 (operator ruling, the v1 withdrawal). Until then a success of the required
+// context also meant the v1 interpreter had folded the rostered witnesses, the stage0 mirrors and the
+// registry-rostered generated artifacts matched their authorities, and the v1 unit tests passed. From
+// this epoch it means only that the seed emitted the two retained v2 closures and the emitted crates built and
+// started (gunbc.compiler_gate_workflow header; the loss is gunbc.rung_drop
+// v1_required_lanes_withdrawn). That is a change in what a success entitles a consumer to conclude.
+data required_ci_contract_epoch: ContractEpoch = "2026-10-09.1" as ContractEpoch
 
 // The env member name the workflow authority emits and the exact-commit reader looks up. It is
 // declared here beside the value because the KEY and the VALUE are one fact about how this epoch is

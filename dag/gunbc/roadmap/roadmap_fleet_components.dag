@@ -3,7 +3,7 @@ module gunbc.roadmap_fleet_components
 import std.types { String, List, Int }
 import product.host_identity { HostIdentity }
 import extdeps.google.issue_tracker { Component }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
 import gunbc.spark.fabric_switch_observed { fabric_group_of_host, fabric_group_wire }
 
 // Tracker component identifiers are existing external identities, retained across this move.
@@ -15,10 +15,6 @@ data fleet_component_bindings: List<FleetComponentBinding> = [
   FleetComponentBinding { id: 2, host: operator_host_srv2 },
   FleetComponentBinding { id: 3, host: operator_host_srv3 },
   FleetComponentBinding { id: 4, host: operator_host_srv4 },
-  FleetComponentBinding { id: 5, host: operator_host_srv5 },
-  FleetComponentBinding { id: 6, host: operator_host_srv6 },
-  FleetComponentBinding { id: 7, host: operator_host_srv7 },
-  FleetComponentBinding { id: 8, host: operator_host_srv8 },
   FleetComponentBinding { id: 9, host: operator_host_srv9 },
   FleetComponentBinding { id: 10, host: operator_host_srv10 },
   FleetComponentBinding { id: 11, host: operator_host_srv11 },
