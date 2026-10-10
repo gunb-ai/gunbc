@@ -22,7 +22,7 @@ import gunbc.auth.approval_gate {
 }
 import gunbc.auth.approval_request_client { stored_request_from_authorization, ApprovalPollStanding }
 import gunbc.auth.gcp_iam_converge {
-  GcpIamEstateDiff, GcpIamEstatePlan, GcpIamEstateNoop, GcpIamEstateApply, GcpIamEstateRefused,
+  GcpIamEstateDiff, GcpIamEstatePlan, GcpIamEstateNoop, GcpIamEstateApply, GcpIamEstatePartialNoop, GcpIamEstateRefused, estate_refused_texts,
   GcpIamRequest, GcpIamRequested, GcpIamUnrequestable,
   gcp_iam_converge_request, observe_and_plan_estate, diff_targets, execute_approved_estate,
 }
@@ -155,6 +155,7 @@ fn gcp_iam_converge_request_wet() -> ProcessExit
         Present { value: observe } =>
           match observe_and_plan_estate(token: observe) {
             GcpIamEstateNoop => ExitSuccess
+            GcpIamEstatePartialNoop { refused: rf } => exit_failure(reason: concat("gcp iam converge: PARTIAL, nothing to apply; targets NOT converged: ", join(estate_refused_texts(refused: rf), "; ")))
             GcpIamEstateRefused { reasons: rs } => exit_failure(reason: concat("gcp iam converge: refused, nothing requested: ", join(rs, "; ")))
             GcpIamEstateApply { diff: d } =>
               match gcp_iam_converge_request(d: d, attempt: attempt) {
@@ -172,6 +173,7 @@ fn readback_converged(observe: Secret) -> ProcessExit
 {
   match observe_and_plan_estate(token: observe) {
     GcpIamEstateNoop => ExitSuccess
+    GcpIamEstatePartialNoop { refused: rf } => exit_failure(reason: concat("gcp iam converge: PARTIAL, the approved targets converged but these did not: ", join(estate_refused_texts(refused: rf), "; ")))
     GcpIamEstateRefused { reasons: rs } => exit_failure(reason: concat("gcp iam converge: readback refuses: ", join(rs, "; ")))
     GcpIamEstateApply { diff: d } => exit_failure(reason: concat("gcp iam converge: actuation returned, but the independent readback still shows a diff for ", join(diff_targets(d: d), ", ")))
   }
@@ -205,6 +207,7 @@ fn gcp_iam_converge_apply_wet() -> ProcessExit
         Present { value: observe } =>
           match observe_and_plan_estate(token: observe) {
             GcpIamEstateNoop => exit_failure(reason: "gcp iam converge: the estate converged between the tap and the apply; the iam-converge token is unused")
+            GcpIamEstatePartialNoop { refused: rf } => exit_failure(reason: concat("gcp iam converge: the estate converged between the tap and the apply but is PARTIAL; targets NOT converged: ", join(estate_refused_texts(refused: rf), "; ")))
             GcpIamEstateRefused { reasons: rs } => exit_failure(reason: concat("gcp iam converge: the estate now refuses; nothing applied: ", join(rs, "; ")))
             GcpIamEstateApply { diff: d } =>
               match gcp_iam_converge_request(d: d, attempt: attempt) {

@@ -248,6 +248,7 @@ fn subject_creation(o: RestRefusal) -> SubjectCreation {
 type PoolReading
   = PoolObservedAbsent
   | PoolObserved { pool: WifPoolWire }
+  | PoolForbidden { cause: String }
   | PoolUnreadable { cause: String }
 
 type ProvidersReading
@@ -257,6 +258,7 @@ type ProvidersReading
 type AccountReading
   = AccountObservedAbsent
   | AccountObserved { email: String }
+  | AccountForbidden { cause: String }
   | AccountUnreadable { cause: String }
 
 type FederationClassification
@@ -269,6 +271,27 @@ fn outcome_is_not_found(o: RestRefusal) -> Bool {
     RestTransportRefused { cause: _ } => false
     RestBodyUndecodable { status: _, cause: _ } => false
   }
+}
+
+fn outcome_is_forbidden(o: RestRefusal) -> Bool {
+  match o {
+    RestStatusRefused { status, body: _ } => (status as Int) == 403
+    RestTransportRefused { cause: _ } => false
+    RestBodyUndecodable { status: _, cause: _ } => false
+  }
+}
+
+// A 403 ON A DECLARED POOL OR ACCOUNT CANNOT SAY WHICH OF TWO THINGS HOLDS: the subject does not
+// exist, or it exists and the reader holds no read binding on it. GCP answers 403 for both, because a
+// per-resource binding cannot exist on a resource that does not. So the text names both, never
+// "absent", and names the one repair that settles it: the operator bootstrap ceremony
+// (gunbc.auth.gcp_iam_bootstrap iam_bootstrap_apply), whose identities stage creates the pool and
+// account and whose capabilities stage binds iam-observe's per-pool and per-account read roles.
+fn not_bootstrapped_text(subject: String, cause: String) -> String {
+  join([
+    "the ", subject, " is absent or not yet bootstrapped: the reading identity holds no read binding on it (", cause,
+    "). Repair: run the bootstrap ceremony, gunbc.auth.gcp_iam_bootstrap iam_bootstrap_apply, whose identities stage creates it and whose capabilities stage binds the read roles",
+  ], "")
 }
 
 fn string_or_empty(v: String?) -> String {
@@ -299,6 +322,7 @@ fn mapping_equal(a: Map<String, String>?, b: Map<String, String>) -> Bool {
 fn pool_reasons(f: DedicatedFederation, pool: PoolReading) -> List<String> {
   match pool {
     PoolObservedAbsent => []
+    PoolForbidden { cause: c } => [not_bootstrapped_text(subject: "workload identity pool", cause: c)]
     PoolUnreadable { cause: c } => [concat("the pool could not be read: ", c)]
     PoolObserved { pool: p } => concat(
       if ends_with_segment(name: p.name, segment: f.pool_id as String) { [] } else { [concat("the pool read back as ", p.name)] },
@@ -345,6 +369,7 @@ fn providers_reasons(f: DedicatedFederation, providers: ProvidersReading) -> Lis
 fn account_reasons(f: DedicatedFederation, account: AccountReading) -> List<String> {
   match account {
     AccountObservedAbsent => []
+    AccountForbidden { cause: c } => [not_bootstrapped_text(subject: "service account", cause: c)]
     AccountUnreadable { cause: c } => [concat("the service account could not be read: ", c)]
     AccountObserved { email: e } =>
       if e == (f.service_account as String) { [] } else { [join(["the service account read back as ", e, ", not ", f.service_account as String], "")] }
@@ -366,9 +391,9 @@ fn classify_dedicated_federation(f: DedicatedFederation, pool: PoolReading, prov
     FederationUnclassified { reasons: reasons }
   } else {
     FederationClassified {
-      create_pool: match pool { PoolObservedAbsent => true  PoolObserved { pool: _ } => false  PoolUnreadable { cause: _ } => false },
+      create_pool: match pool { PoolObservedAbsent => true  PoolObserved { pool: _ } => false  PoolForbidden { cause: _ } => false  PoolUnreadable { cause: _ } => false },
       create_provider: providers_absent(providers: providers),
-      create_account: match account { AccountObservedAbsent => true  AccountObserved { email: _ } => false  AccountUnreadable { cause: _ } => false },
+      create_account: match account { AccountObservedAbsent => true  AccountObserved { email: _ } => false  AccountForbidden { cause: _ } => false  AccountUnreadable { cause: _ } => false },
     }
   }
 }
@@ -389,7 +414,11 @@ fn read_pool(f: DedicatedFederation, token: Secret) -> PoolReading
       if outcome_is_not_found(o: refusal) {
         PoolObservedAbsent
       } else {
-        PoolUnreadable { cause: rest_refusal_text(o: refusal) }
+        if outcome_is_forbidden(o: refusal) {
+          PoolForbidden { cause: rest_refusal_text(o: refusal) }
+        } else {
+          PoolUnreadable { cause: rest_refusal_text(o: refusal) }
+        }
       }
   }
 }
@@ -417,7 +446,11 @@ fn read_account(f: DedicatedFederation, token: Secret) -> AccountReading
       if outcome_is_not_found(o: refusal) {
         AccountObservedAbsent
       } else {
-        AccountUnreadable { cause: rest_refusal_text(o: refusal) }
+        if outcome_is_forbidden(o: refusal) {
+          AccountForbidden { cause: rest_refusal_text(o: refusal) }
+        } else {
+          AccountUnreadable { cause: rest_refusal_text(o: refusal) }
+        }
       }
   }
 }
