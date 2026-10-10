@@ -15,6 +15,7 @@ import gunbc.fleet_main_revision {
   classify_landed_on_main,
   RevisionLandedOnMain,
   RevisionNotLandedOnMain,
+  RevisionLandedUnobserved,
   converge_target_revision,
   RemoteRevisionPresent,
   RemoteRevisionAbsent,
@@ -35,6 +36,7 @@ test fn equal_to_main_is_landed() -> Bool {
   match classify_landed_on_main(relation: SameRevision) {
     RevisionLandedOnMain => true
     RevisionNotLandedOnMain { relation: _ } => false
+    RevisionLandedUnobserved { cause: _ } => false
   }
 }
 
@@ -42,6 +44,7 @@ test fn ancestor_of_main_is_landed() -> Bool {
   match classify_landed_on_main(relation: DeployedIsAncestor) {
     RevisionLandedOnMain => true
     RevisionNotLandedOnMain { relation: _ } => false
+    RevisionLandedUnobserved { cause: _ } => false
   }
 }
 
@@ -49,6 +52,7 @@ test fn tree_ahead_of_main_is_not_landed() -> Bool {
   match classify_landed_on_main(relation: CandidateIsAncestor) {
     RevisionNotLandedOnMain { relation: r } => match r { CandidateIsAncestor => true  _ => false }
     RevisionLandedOnMain => false
+    RevisionLandedUnobserved { cause: _ } => false
   }
 }
 
@@ -58,14 +62,17 @@ test fn unrelated_and_diverged_are_not_landed() -> Bool {
       match classify_landed_on_main(relation: DivergedHistories) {
         RevisionNotLandedOnMain { relation: _ } => true
         RevisionLandedOnMain => false
+        RevisionLandedUnobserved { cause: _ } => false
       }
     RevisionLandedOnMain => false
+    RevisionLandedUnobserved { cause: _ } => false
   }
 }
 
-test fn unverifiable_is_not_landed() -> Bool {
+test fn unverifiable_is_unobserved_not_a_landing_verdict() -> Bool {
   match classify_landed_on_main(relation: RelationUnverifiable { cause: "x" as NonEmptyStr }) {
-    RevisionNotLandedOnMain { relation: _ } => true
+    RevisionLandedUnobserved { cause: c } => c == "x"
+    RevisionNotLandedOnMain { relation: _ } => false
     RevisionLandedOnMain => false
   }
 }

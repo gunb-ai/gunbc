@@ -114,10 +114,12 @@ fn relation_from_merge_base_oid(
 
 // current is the local (or candidate) tree; accepted is origin/main head.
 // Landed = equal to main, or an ancestor of main (behind tip, still on the landed line).
-// Not landed = ahead of main, diverged, unrelated, or unverifiable.
+// Not landed = ahead of main, diverged, or unrelated. Unverifiable is not a landing
+// verdict: the merge-base was not observed, so the answer is unobserved, not "not on main".
 type LandedOnMainVerdict
   = RevisionLandedOnMain
   | RevisionNotLandedOnMain { relation: DeployRevisionRelation }
+  | RevisionLandedUnobserved { cause: String }
 
 fn classify_landed_on_main(relation: DeployRevisionRelation) -> LandedOnMainVerdict {
   match relation {
@@ -126,6 +128,6 @@ fn classify_landed_on_main(relation: DeployRevisionRelation) -> LandedOnMainVerd
     CandidateIsAncestor => RevisionNotLandedOnMain { relation: relation }
     UnrelatedHistories => RevisionNotLandedOnMain { relation: relation }
     DivergedHistories => RevisionNotLandedOnMain { relation: relation }
-    RelationUnverifiable { cause: _ } => RevisionNotLandedOnMain { relation: relation }
+    RelationUnverifiable { cause: c } => RevisionLandedUnobserved { cause: c as String }
   }
 }

@@ -25,6 +25,7 @@ import gunbc.fleet_main_revision {
   classify_landed_on_main,
   RevisionLandedOnMain,
   RevisionNotLandedOnMain,
+  RevisionLandedUnobserved,
 }
 
 // Operator verdict join 1 (2026-08-09): the LIVE half of gunbc.fleet_main_revision.
@@ -266,12 +267,18 @@ fn landed_on_admitted_standing(
   ref_name: GitRef,
   local: GitObjectId,
 ) -> LandedOnAdmittedStanding {
-  match converge_target_revision(observed: observe_admitted_revision(repo: repo, remote: remote, ref_name: ref_name)) {
-    Absent =>
+  let observed = observe_admitted_revision(repo: repo, remote: remote, ref_name: ref_name)
+  match observed {
+    RemoteRevisionUnobserved { cause: c } => TreeLandedUnobserved { cause: c }
+    RemoteRevisionAbsent =>
       TreeLandedUnobserved {
-        cause: join(["fleet_landed_observe: remote ", remote, " advertises no landed ", ref_name as String], ""),
+        cause: join(["fleet_landed_observe: remote ", remote, " advertises no ", ref_name as String], ""),
       }
-    Present { value: admitted } =>
+    RemoteRevisionUndecodable { advertised: line } =>
+      TreeLandedUnobserved {
+        cause: concat("fleet_landed_observe: advertisement is not a decodable object id: ", line),
+      }
+    RemoteRevisionPresent { revision: admitted } =>
       match classify_landed_on_main(
         relation: observe_fleet_revision_relation_in(
           repository_path: repo as String,
@@ -282,6 +289,7 @@ fn landed_on_admitted_standing(
         RevisionLandedOnMain => TreeLandedOnAdmitted { local: local, admitted: admitted }
         RevisionNotLandedOnMain { relation: _ } =>
           TreeNotLandedOnAdmitted { local: local, admitted: admitted }
+        RevisionLandedUnobserved { cause: c } => TreeLandedUnobserved { cause: c }
       }
   }
 }
