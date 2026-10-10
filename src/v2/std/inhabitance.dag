@@ -37,14 +37,12 @@ import std.algebra { list_append }
 import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 import v2.std.optional_layers {
-  CardinalityWrapperMalformed,
-  TypeNodeCardinality,
-  type_node_cardinality_read
-}
-import std.optional_layers {
   CardOptional,
+  CardinalityWrapperMalformed,
   Required,
-  exact_optional_layers
+  TypeNodeCardinality,
+  exact_optional_layers,
+  type_node_cardinality_read
 }
 
 // WHAT A FORMAL IS DECLARED AS, READ AGAINST ITS OWN ARROW. A formal declared as one of the
@@ -352,9 +350,9 @@ fn inhabitance_optional_layer_depth_mismatch(declared: Node, produced: Node) -> 
         CardinalityWrapperMalformed { wrapper: _ } => false
         TypeNodeCardinality { card: pc, base: _ } =>
           match dc {
-            CardOptional { extra: _ } =>
+            CardOptional { layers: _ } =>
               match pc {
-                CardOptional { extra: _ } => !exact_optional_layers(a: dc, b: pc)
+                CardOptional { layers: _ } => !exact_optional_layers(a: dc, b: pc)
                 Required => false
               }
             Required => false
