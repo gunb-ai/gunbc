@@ -1975,8 +1975,9 @@ fn dag_grammar_primary_expr_core() -> GrammarExpr {
             )
           )
         )
-        )
+      )
     )
+  )
   )
 }
 
