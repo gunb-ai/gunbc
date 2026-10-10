@@ -8321,6 +8321,7 @@ pub fn compile_emission_over(request: &CompileRequest, residency: IndexResidency
     // path through this pair is the same computation it was before multi-target routing --
     // not an equivalent-looking substitute (checked against that function's body, which is
     // exactly that composition).
+    pool_acquire::release_whole_tree_after_census();
     memory_composition::readback("compile_emission_over.pre_resolve");
     let resolved = v1_compiler_compile::compile_to_resolved_with_options(
         Rc::new(closure.clone().into()),

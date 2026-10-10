@@ -1,0 +1,22 @@
+module gunbc.pool_release_after_census_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the one hand Rust item that releases the seed's whole-tree acquisition
+// pool once the pre-entry census has finished. It deletes retention past the last demand; it adds no
+// arm, no mode and no decision. The measurement that motivated it is the receipt
+// instrument of gunbc.self_host_step_memory_demand (`gunbc test //gunbc/instruments:self-host` with
+// GUNBC_MEMORY_COMPOSITION_RECEIPT set), re-derived per head, never transcribed here; the derivation
+// is the doc comment on pool_acquire release_whole_tree_after_census, and the measurement is its
+// adversary, not its justification.
+data pool_release_after_census_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run.pool_acquire", decl_name: "release_whole_tree_after_census", field: WholeDeclaration }
+  ],
+  reason: "PURPOSE admission serves the v2 self-host program: the self-host gate's slot envelope is set by the seed process holding the whole-tree pool beside the closure's resolution. The pool is a host structure of the seed's acquisition, so its release is a property of the host that built it; the substrate has no representation of it to attach the release to. The change is unconditional on the production path and has no env gate or mode.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete this declaration and justification when ingestion is closure-scoped, so that the seed never builds a whole-tree pool and there is nothing to release: the census then reads per-module content-keyed facts for the closure only.",
+  current_boundary: "One call site, in compile_emission_over immediately before compile_to_resolved_with_options, one thread-local, one process. It changes no verdict: a later demand for a released file takes the pool's own miss path and re-acquires the identical bytes.",
+}

@@ -66,8 +66,8 @@ data self_host_step_memory_structures: List<StepMemoryStructure> = [
   StepMemoryStructure { receipt_kind: "bucket", receipt_name: "resolve_store", structure: "shared resolve store (entry_resolve PROCESS_RESOLVE_STORE)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, ender: ClosureScopedIngestion },
   StepMemoryStructure { receipt_kind: "bucket", receipt_name: "scope_and_reference_indexes", structure: "scope fragment, reference closure, scope order and reference edge caches (cli_run)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, ender: ClosureScopedIngestion },
   StepMemoryStructure { receipt_kind: "bucket", receipt_name: "emit_check_and_census_memos", structure: "emit-check and diagnostic census memos (cli_run)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, ender: ClosureScopedIngestion },
-  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "pool_content_tokens_newline", structure: "whole-tree token pool: V1LexArtifact + content + newline index of every pooled module (pool_acquire POOL)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, ender: ClosureScopedIngestion },
-  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "pool_heads", structure: "whole-tree parsed heads (pool_acquire Acquired.heads)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, ender: ClosureScopedIngestion },
+  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "pool_content_tokens_newline", structure: "whole-tree token pool: V1LexArtifact + content + newline index of every pooled module (pool_acquire POOL)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: false, ender: PoolReleasedBeforeResolution },
+  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "pool_heads", structure: "whole-tree parsed heads (pool_acquire Acquired.heads)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: false, ender: PoolReleasedBeforeResolution },
   StepMemoryStructure { receipt_kind: "bucket", receipt_name: "resolve_index", structure: "shared resolve index / name census (entry_resolve PROCESS_RESOLVE_INDEX)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, ender: ClosureScopedIngestion },
   StepMemoryStructure { receipt_kind: "bucket", receipt_name: "module_graph_facts_and_path_index", structure: "module path index and graph facts caches (cli_run)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, ender: ClosureScopedIngestion },
 ]
@@ -79,7 +79,7 @@ data self_host_step_memory_receipt_path: NonEmptyStr = "tools/self_host_step_mem
 // THE CONFIGURATION this tree's committed receipt was written under. The reader selects rows
 // whose last column equals this cell; a receipt from a different pool policy, scope or run is
 // not this measurement.
-data self_host_step_memory_receipt_configuration: NonEmptyStr = "pool=held_through_resolution;scope=srv1_systemd_scope_22g_swap0;run=smart-gull-336-20261010T1157Z"
+data self_host_step_memory_receipt_configuration: NonEmptyStr = "pool=released_before_resolution;scope=srv1_systemd_scope_22g_swap0;run=smart-gull-336-20261010T1157Z"
 
 fn receipt_column(cols: List<String>, index: Int) -> String {
   match cols.skip(n: index).first() {
@@ -205,8 +205,8 @@ data self_host_step_demand_trend: List<StepDemandTrend> = [
   StepDemandTrend {
     change: PoolReleasedBeforeResolution,
     removes_scale: WholeTree,
-    step_peak: PeakLoweringExpected { ground: "pool_heads and pool_content_tokens_newline are whole-tree and live at the seed's moment; a release of the pool before compile_to_resolved_with_options removes them from the post_resolve resident set, and resolution re-acquires only a closure-sized set" },
-    evidence: "the pool is held through resolution on this base; the change that releases it ships with its own receipt under a second configuration cell, and the row becomes PeakLoweringMeasured there, naming both cells",
+    step_peak: PeakLoweringMeasured { before_configuration: "pool=held_through_resolution;scope=srv1_systemd_scope_22g_swap0;run=smart-gull-336-20261010T1157Z", after_configuration: "pool=released_before_resolution;scope=srv1_systemd_scope_22g_swap0;run=smart-gull-336-20261010T1157Z" },
+    evidence: "release_whole_tree_after_census clears pool_acquire POOL immediately before compile_to_resolved_with_options, so the pool buckets are not live at the seed's moment. What the two cells of the committed receipt show, and the readout re-derives (review 78431): the lowering of the post-resolution resident set is the pool's EXCLUSIVE share, not its whole size, because the resolve index retains per-module artifacts it shares with the pool; under the held cell those shared bytes are attributed to the pool (dropped last), under the released cell to resolve_index, whose bucket is larger by exactly that retention. Same instrument, same 22 GiB / swap 0 scope on srv1, same run name",
   },
   StepDemandTrend {
     change: ClosureScopedIngestion,

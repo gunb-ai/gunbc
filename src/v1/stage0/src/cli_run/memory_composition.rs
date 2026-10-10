@@ -164,6 +164,6 @@ pub(super) fn release_stages() {
     );
     stage(
         "pool_content_tokens_newline",
-        super::pool_acquire::drop_pool_for_measurement,
+        super::pool_acquire::release_whole_tree_after_census,
     );
 }
