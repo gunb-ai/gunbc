@@ -54,6 +54,7 @@ test fn no_other_run_is_admitted() -> Bool {
     && !claim_pins_admit(pins: pins, claims: with_claim("workflow_ref", "gunb-ai/gunbc/.github/workflows/witnesses.yml@refs/heads/main"))
     && !claim_pins_admit(pins: pins, claims: with_claim("workflow_ref", "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/tags/x"))
     && !claim_pins_admit(pins: pins, claims: with_claim("workflow_ref", "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/pull/13509/merge"))
+    && !claim_pins_admit(pins: pins, claims: with_claim("ref", "refs/heads/feature"))
     && !claim_pins_admit(pins: pins, claims: with_claim("repository_id", "1"))
 }
 

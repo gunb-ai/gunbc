@@ -1,6 +1,6 @@
 module test.claim.managed_host_boot_federation_witness
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Present, Absent }
 import gunbc.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
@@ -65,6 +65,7 @@ test fn only_the_boot_jobs_oidc_subject_is_admitted_to_the_dedicated_pool() -> B
     let c = presented_from_pins(pins: f.claim_pins)
     boot_federation_claims_admitted(f: f, claims: c)
       && !boot_federation_claims_admitted(f: f, claims: with_presented_value(claims: c, claim: "workflow_ref", value: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/feature"))
+      && !boot_federation_claims_admitted(f: f, claims: with_presented_value(claims: c, claim: "ref", value: "refs/heads/feature"))
       && !boot_federation_claims_admitted(f: f, claims: with_presented_value(claims: c, claim: "workflow_ref", value: "gunb-ai/gunbc/.github/workflows/witnesses.yml@refs/heads/main"))
       && !boot_federation_claims_admitted(f: f, claims: with_presented_value(claims: c, claim: "workflow_ref", value: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/tags/x"))
       && !boot_federation_claims_admitted(f: f, claims: with_presented_value(claims: c, claim: "event_name", value: "pull_request"))
