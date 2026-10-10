@@ -433,37 +433,70 @@ fn claude_result_line(doc: JsonValue) -> ClaudeCodeStreamLine {
   }
 }
 
-fn claude_content_blocks_have_type(content: JsonValue, block_type: String) -> Bool {
+type ClaudeContentTypeProbe
+  = ContentBlocksHaveType
+  | ContentBlocksLackType
+  | ContentBlocksUnreadable { gap: ClaudeCodeStreamLineGap }
+
+fn claude_content_blocks_have_type(content: JsonValue, block_type: String) -> ClaudeContentTypeProbe {
   match content {
     JsonArray { elements } =>
-      any(elements, e =>
-        match claude_string_member(v: e, key: "type") {
-          StringMemberRead { value: s } => s == block_type
-          StringMemberNull => false
-          StringMemberAbsent => false
-          StringMemberMalformed => false
-        }
+      fold(
+        elements,
+        init: ContentBlocksLackType,
+        f: fn(acc, e) {
+          match acc {
+            ContentBlocksUnreadable { gap } => ContentBlocksUnreadable { gap: gap }
+            ContentBlocksHaveType =>
+              match claude_string_member(v: e, key: "type") {
+                StringMemberRead { value: _ } => ContentBlocksHaveType
+                StringMemberAbsent => ContentBlocksHaveType
+                StringMemberNull =>
+                  ContentBlocksUnreadable { gap: StreamLineMemberMissing { member: "message.content[].type" } }
+                StringMemberMalformed =>
+                  ContentBlocksUnreadable { gap: StreamLineMemberMalformed { member: "message.content[].type" } }
+              }
+            ContentBlocksLackType =>
+              match claude_string_member(v: e, key: "type") {
+                StringMemberRead { value: s } =>
+                  if s == block_type {
+                    ContentBlocksHaveType
+                  } else {
+                    ContentBlocksLackType
+                  }
+                StringMemberAbsent => ContentBlocksLackType
+                StringMemberNull =>
+                  ContentBlocksUnreadable { gap: StreamLineMemberMissing { member: "message.content[].type" } }
+                StringMemberMalformed =>
+                  ContentBlocksUnreadable { gap: StreamLineMemberMalformed { member: "message.content[].type" } }
+              }
+          }
+        },
       )
-    JsonNull => false
-    JsonBool { value: _ } => false
-    JsonNumber { lexeme: _ } => false
-    JsonString { value: _ } => false
-    JsonObject { members: _ } => false
+    JsonNull => ContentBlocksUnreadable { gap: StreamLineMemberMalformed { member: "message.content" } }
+    JsonBool { value: _ } => ContentBlocksUnreadable { gap: StreamLineMemberMalformed { member: "message.content" } }
+    JsonNumber { lexeme: _ } => ContentBlocksUnreadable { gap: StreamLineMemberMalformed { member: "message.content" } }
+    JsonString { value: _ } => ContentBlocksUnreadable { gap: StreamLineMemberMalformed { member: "message.content" } }
+    JsonObject { members: _ } => ContentBlocksUnreadable { gap: StreamLineMemberMalformed { member: "message.content" } }
   }
 }
 
-fn claude_message_content_has_type(doc: JsonValue, block_type: String) -> Bool {
+fn claude_message_content_has_type(doc: JsonValue, block_type: String) -> ClaudeContentTypeProbe {
   match json_object_unique_member(v: doc, key: "message") {
     JsonMemberFound { value: msg } =>
       match json_object_unique_member(v: msg, key: "content") {
         JsonMemberFound { value: content } => claude_content_blocks_have_type(content: content, block_type: block_type)
-        JsonMemberAbsent => false
-        JsonMemberDuplicated { count: _ } => false
-        JsonMemberNotAnObject => false
+        JsonMemberAbsent => ContentBlocksLackType
+        JsonMemberDuplicated { count: _ } =>
+          ContentBlocksUnreadable { gap: StreamLineMemberMalformed { member: "message.content" } }
+        JsonMemberNotAnObject =>
+          ContentBlocksUnreadable { gap: StreamLineMemberMalformed { member: "message" } }
       }
-    JsonMemberAbsent => false
-    JsonMemberDuplicated { count: _ } => false
-    JsonMemberNotAnObject => false
+    JsonMemberAbsent => ContentBlocksLackType
+    JsonMemberDuplicated { count: _ } =>
+      ContentBlocksUnreadable { gap: StreamLineMemberMalformed { member: "message" } }
+    JsonMemberNotAnObject =>
+      ContentBlocksUnreadable { gap: StreamLineMemberMalformed { member: "message" } }
   }
 }
 
@@ -488,13 +521,17 @@ fn claude_code_stream_line(line: String) -> ClaudeCodeStreamLine {
                 ClaudeCodeSystemLine
               } else {
                 if t == claude_code_stream_event_type_assistant {
-                  ClaudeCodeAssistantLine {
-                    has_tool_use: claude_message_content_has_type(doc: doc, block_type: claude_code_content_block_type_tool_use),
+                  match claude_message_content_has_type(doc: doc, block_type: claude_code_content_block_type_tool_use) {
+                    ContentBlocksHaveType => ClaudeCodeAssistantLine { has_tool_use: true }
+                    ContentBlocksLackType => ClaudeCodeAssistantLine { has_tool_use: false }
+                    ContentBlocksUnreadable { gap } => ClaudeCodeLineUnreadable { gap: gap }
                   }
                 } else {
                   if t == claude_code_stream_event_type_user {
-                    ClaudeCodeUserLine {
-                      has_tool_result: claude_message_content_has_type(doc: doc, block_type: claude_code_content_block_type_tool_result),
+                    match claude_message_content_has_type(doc: doc, block_type: claude_code_content_block_type_tool_result) {
+                      ContentBlocksHaveType => ClaudeCodeUserLine { has_tool_result: true }
+                      ContentBlocksLackType => ClaudeCodeUserLine { has_tool_result: false }
+                      ContentBlocksUnreadable { gap } => ClaudeCodeLineUnreadable { gap: gap }
                     }
                   } else {
                     ClaudeCodeOtherLine { event_type: t }

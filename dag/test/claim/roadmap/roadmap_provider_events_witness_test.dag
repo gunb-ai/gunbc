@@ -531,6 +531,36 @@ test fn classify_malformed_claude_result_line_is_refused() -> Bool {
   }
 }
 
+test fn classify_result_with_non_boolean_is_error_is_refused() -> Bool {
+  match classify_provider_event_line(raw: "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":\"yes\"}") {
+    ProviderEventLineRefused { reason } =>
+      string_contains(s: reason, pattern: "malformed Claude stream-json line")
+    _ => false
+  }
+}
+
+test fn classify_malformed_assistant_block_type_is_refused() -> Bool {
+  match classify_provider_event_line(raw: "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":1}]}}") {
+    ProviderEventLineRefused { reason } =>
+      string_contains(s: reason, pattern: "malformed Claude stream-json line")
+    _ => false
+  }
+}
+
+test fn classify_non_array_assistant_content_is_refused() -> Bool {
+  match classify_provider_event_line(raw: "{\"type\":\"assistant\",\"message\":{\"content\":\"tool_use\"}}") {
+    ProviderEventLineRefused { reason } =>
+      string_contains(s: reason, pattern: "malformed Claude stream-json line")
+    _ => false
+  }
+}
+
+test fn jq_result_arm_does_not_fabricate_is_error_or_subtype() -> Bool {
+  let filter = codex_provider_event_projection_filter as String
+  !string_contains(s: filter, pattern: "else true end")
+    && string_contains(s: filter, pattern: "then {\"is_error\":.is_error} else {} end")
+}
+
 // INHABITANCE: the real parse fold over a captured stream shape, including a skipped rate-limit
 // line between observations. Deleting parse_codex_jsonl would make this fail.
 test fn a_claude_stream_json_turn_is_read_as_provider_events_including_skipped_rate_limit() -> Bool {
