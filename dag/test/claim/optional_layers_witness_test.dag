@@ -3,14 +3,12 @@ module test.claim.optional_layers_witness_test
 import std.types { Bool }
 import std.optional { Absent, Present }
 import std.optional_layers {
-  CardOptional,
-  MoreLayers,
-  OneLayer,
   Required,
   compose_optional_layers,
   exact_optional_layers,
   one_optional_layer,
-  peel_optional_layer
+  peel_optional_layer,
+  two_optional_layers
 }
 
 // SUBJECT: std.optional_layers. Inputs are supplied TypeCardinality values (DESIGN §3). Production
@@ -23,7 +21,7 @@ test fn required_composed_with_one_layer_is_one_layer() -> Bool {
 test fn substituting_an_optional_into_an_optional_adds_a_layer() -> Bool {
   exact_optional_layers(
     a: compose_optional_layers(outer: one_optional_layer(), inner: one_optional_layer()),
-    b: CardOptional { layers: MoreLayers { inner: OneLayer } }
+    b: two_optional_layers()
   )
 }
 
@@ -49,7 +47,7 @@ test fn peel_of_required_refuses() -> Bool {
 }
 
 test fn one_layer_is_not_two() -> Bool {
-  !exact_optional_layers(a: one_optional_layer(), b: CardOptional { layers: MoreLayers { inner: OneLayer } })
+  !exact_optional_layers(a: one_optional_layer(), b: two_optional_layers())
 }
 
 test fn required_is_not_one_layer() -> Bool {

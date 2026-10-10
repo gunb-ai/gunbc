@@ -1,11 +1,9 @@
 module v2.std.optional_layers
 
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.nat { Nat, Succ, Zero }
 import std.optional_layers {
   CardOptional,
-  OneLayer,
-  MoreLayers,
-  OptionalLayers,
   Required,
   TypeCardinality,
   compose_optional_layers,
@@ -64,16 +62,16 @@ fn wrap_one_optional_layer(base: Node) -> Node {
   }
 }
 
-fn wrap_optional_layer_tower(base: Node, layers: OptionalLayers) -> Node {
-  match layers {
-    OneLayer => wrap_one_optional_layer(base: base)
-    MoreLayers { inner: rest } => wrap_one_optional_layer(base: wrap_optional_layer_tower(base: base, layers: rest))
+fn wrap_optional_layer_extra(base: Node, extra: Nat) -> Node {
+  match extra {
+    Zero => wrap_one_optional_layer(base: base)
+    Succ { prev: rest } => wrap_one_optional_layer(base: wrap_optional_layer_extra(base: base, extra: rest))
   }
 }
 
 fn wrap_type_node_cardinality(base: Node, card: TypeCardinality) -> Node {
   match card {
     Required => base
-    CardOptional { layers: layers } => wrap_optional_layer_tower(base: base, layers: layers)
+    CardOptional { extra: extra } => wrap_optional_layer_extra(base: base, extra: extra)
   }
 }

@@ -1,45 +1,35 @@
 module std.optional_layers
 
 import std.types { Bool }
+import std.nat { Nat, Succ, Zero, nat_add }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 
-// INHABITANCE OPTIONALITY AS A STRUCTURALLY POSITIVE TOWER. Zero optional layers has only the
-// Required constructor. One layer is OneLayer. Two is MoreLayers { inner: OneLayer }. CardOptional
-// cannot carry zero: OptionalLayers has no zero arm (DESIGN §4b; gunbc#13488 review: a Nat or Int
-// layer count made zero and negatives representable).
+// INHABITANCE OPTIONALITY COUNTED ON std.nat (review 78490: OptionalLayers was a second Peano
+// tower). Zero optional layers is only Required. One or more is CardOptional { extra: Nat }, where
+// extra is the count BEYOND the first layer (Zero = T?, Succ{Zero} = T??). CardOptional cannot
+// express zero layers; Nat cannot express a negative. gunbc#13488's named OneLayer|MoreLayers
+// tower is the same successor algebra; this spelling inhabits std.nat instead of minting it again
+// (DESIGN §2). Host Nat is kernel-integer cost (std.nat).
 //
 // CONSUMERS (DESIGN §3c): v2.std.optional_layers type_node_cardinality_read and
-// wrap_type_node_cardinality (the Node reading of v2.std.node TypeNode { connective: Cardinality }
-// wrappers). Production: v2.compiler.infer infer_match_generic_formal peels with peel_optional_layer
-// over that reading and rematerializes the rest with wrap_type_node_cardinality;
-// v2.std.inhabitance declared_type_inhabitance refuses two CardOptional towers that
-// exact_optional_layers denies (inhabitance_optional_layer_depth_mismatch). Claims:
+// wrap_type_node_cardinality. Production: v2.compiler.infer infer_match_generic_formal peels with
+// peel_optional_layer; v2.std.inhabitance declared_type_inhabitance refuses two CardOptional
+// counts that exact_optional_layers denies (inhabitance_optional_layer_depth_mismatch). Claims:
 // test.claim.optional_layers_witness_test and v2.test.claim.compiler.optional_layers_test.
 //
-// Named operations, not one max-join (gunbc#13488): composition is addition; peel is one eliminator;
-// exact is conformance; competing observations agree or name an authority (not modeled here).
-type OptionalLayers
-  = OneLayer
-  | MoreLayers { inner: OptionalLayers }
-
+// Named operations, not one max-join (gunbc#13488): composition is nat_add of extras plus the
+// extra first layer; peel is predecessor; exact is Nat equality of extras.
 type TypeCardinality
   = Required
-  | CardOptional { layers: OptionalLayers }
-
-fn compose_optional_layer_towers(outer: OptionalLayers, inner: OptionalLayers) -> OptionalLayers {
-  match outer {
-    OneLayer => MoreLayers { inner: inner }
-    MoreLayers { inner: rest } => MoreLayers { inner: compose_optional_layer_towers(outer: rest, inner: inner) }
-  }
-}
+  | CardOptional { extra: Nat }
 
 fn compose_optional_layers(outer: TypeCardinality, inner: TypeCardinality) -> TypeCardinality {
   match outer {
     Required => inner
-    CardOptional { layers: ol } =>
+    CardOptional { extra: oe } =>
       match inner {
-        Required => CardOptional { layers: ol }
-        CardOptional { layers: il } => CardOptional { layers: compose_optional_layer_towers(outer: ol, inner: il) }
+        Required => CardOptional { extra: oe }
+        CardOptional { extra: ie } => CardOptional { extra: Succ { prev: nat_add(a: oe, b: ie) } }
       }
   }
 }
@@ -47,13 +37,17 @@ fn compose_optional_layers(outer: TypeCardinality, inner: TypeCardinality) -> Ty
 fn peel_optional_layer(card: TypeCardinality) -> Optional<TypeCardinality> {
   match card {
     Required => optional_absent()
-    CardOptional { layers: OneLayer } => optional_present(value: Required)
-    CardOptional { layers: MoreLayers { inner: rest } } => optional_present(value: CardOptional { layers: rest })
+    CardOptional { extra: Zero } => optional_present(value: Required)
+    CardOptional { extra: Succ { prev: rest } } => optional_present(value: CardOptional { extra: rest })
   }
 }
 
 fn one_optional_layer() -> TypeCardinality {
-  CardOptional { layers: OneLayer }
+  CardOptional { extra: Zero }
+}
+
+fn two_optional_layers() -> TypeCardinality {
+  CardOptional { extra: Succ { prev: Zero } }
 }
 
 fn exact_optional_layers(a: TypeCardinality, b: TypeCardinality) -> Bool {
@@ -61,27 +55,12 @@ fn exact_optional_layers(a: TypeCardinality, b: TypeCardinality) -> Bool {
     Required =>
       match b {
         Required => true
-        CardOptional { layers: _ } => false
+        CardOptional { extra: _ } => false
       }
-    CardOptional { layers: al } =>
+    CardOptional { extra: ae } =>
       match b {
         Required => false
-        CardOptional { layers: bl } => exact_optional_layer_towers(a: al, b: bl)
-      }
-  }
-}
-
-fn exact_optional_layer_towers(a: OptionalLayers, b: OptionalLayers) -> Bool {
-  match a {
-    OneLayer =>
-      match b {
-        OneLayer => true
-        MoreLayers { inner: _ } => false
-      }
-    MoreLayers { inner: ai } =>
-      match b {
-        OneLayer => false
-        MoreLayers { inner: bi } => exact_optional_layer_towers(a: ai, b: bi)
+        CardOptional { extra: be } => ae == be
       }
   }
 }

@@ -352,9 +352,9 @@ fn inhabitance_optional_layer_depth_mismatch(declared: Node, produced: Node) -> 
         CardinalityWrapperMalformed { wrapper: _ } => false
         TypeNodeCardinality { card: pc, base: _ } =>
           match dc {
-            CardOptional { layers: _ } =>
+            CardOptional { extra: _ } =>
               match pc {
-                CardOptional { layers: _ } => !exact_optional_layers(a: dc, b: pc)
+                CardOptional { extra: _ } => !exact_optional_layers(a: dc, b: pc)
                 Required => false
               }
             Required => false
