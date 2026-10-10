@@ -32,6 +32,7 @@ import v2.std.node {
   node_subtree_nodes,
   node_synthetic
 }
+import v2.std.optional_layers { node_is_cardinality_wrapper }
 import std.algebra { list_append }
 import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
@@ -246,9 +247,19 @@ fn inhabitance_pair_undecidable_reason(
   produced: Node,
   type_variables: List<Symbol>
 ) -> Optional<InhabitanceUndecidableReason> {
-  match inhabitance_node_undecidable_reason(n: declared, type_variables: type_variables) {
-    Present { value: reason } => optional_present(value: reason)
-    Absent => inhabitance_node_undecidable_reason(n: produced, type_variables: type_variables)
+  if inhabitance_node_mentions_type_variable(n: declared, type_variables: type_variables)
+    || inhabitance_node_mentions_type_variable(n: produced, type_variables: type_variables) {
+    match inhabitance_node_undecidable_reason(n: declared, type_variables: type_variables) {
+      Present { value: reason } => optional_present(value: reason)
+      Absent => inhabitance_node_undecidable_reason(n: produced, type_variables: type_variables)
+    }
+  } else if node_is_cardinality_wrapper(n: declared) && node_is_cardinality_wrapper(n: produced) {
+    Absent
+  } else {
+    match inhabitance_node_undecidable_reason(n: declared, type_variables: type_variables) {
+      Present { value: reason } => optional_present(value: reason)
+      Absent => inhabitance_node_undecidable_reason(n: produced, type_variables: type_variables)
+    }
   }
 }
 

@@ -1,0 +1,219 @@
+module v2.test.claim.compiler.optional_layers
+
+import std.types { Bool }
+import std.algebra { Empty }
+import std.optional { Absent, Present }
+import std.optional_layers {
+  CardOptional,
+  MoreLayers,
+  OneLayer,
+  Required,
+  exact_optional_layers,
+  one_optional_layer
+}
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.infer {
+  InferFormalMatched,
+  InferFormalShapeMismatch,
+  infer_container_instantiation_args,
+  infer_match_generic_formal,
+  infer_type_instantiated
+}
+import v2.std.inhabitance {
+  DeclaredTypeObligation,
+  InhabitanceRefused,
+  InhabitanceUndecidable,
+  Inhabits,
+  PositionDirectCallArgument,
+  declared_type_inhabitance,
+  inhabitance_pair_undecidable_reason
+}
+import v2.std.optional_layers {
+  CardinalityWrapperMalformed,
+  TypeNodeCardinality,
+  type_node_cardinality_read,
+  wrap_type_node_cardinality
+}
+import v2.std.symbol_index { empty_symbol_index }
+import v2.std.collection { list_at_optional }
+import v2.std.node { Atom, Cardinality, ComputationNode, Edge, Instantiation, Node, Positional, Symbol, TypeNode }
+import v2.std.list_introduction { list_introduction_head_path }
+import v2.std.qualified_name { declaration_reference_node }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn ol_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn ol_list_of(element: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge { label: Positional, target: declaration_reference_node(qn: list_introduction_head_path(), occurrence_id: OccurrenceSynthetic) },
+      Edge { label: Positional, target: element }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn ol_obligation(declared: Node, produced: Node) -> DeclaredTypeObligation {
+  DeclaredTypeObligation {
+    position: PositionDirectCallArgument,
+    parameter_identity: ^ol_param,
+    declared: declared,
+    produced: produced,
+    produced_declared_carrier: Absent,
+    application: ol_atom(id: ^ol_app),
+    type_variables: []
+  }
+}
+
+test fn a_nested_cardinality_tree_reads_as_two_layers() -> Bool {
+  match type_node_cardinality_read(n: wrap_type_node_cardinality(base: ol_atom(id: ^ol_int), card: CardOptional { layers: MoreLayers { inner: OneLayer } })) {
+    TypeNodeCardinality { card: c, base: b } =>
+      exact_optional_layers(a: c, b: CardOptional { layers: MoreLayers { inner: OneLayer } })
+        && (match b.kind {
+          TypeNode { connective: Atom { identity: id } } => id == ^ol_int
+          TypeNode { connective: _ } => false
+          ComputationNode { behavior: _ } => false
+        })
+    CardinalityWrapperMalformed { wrapper: _ } => false
+  }
+}
+
+test fn wrapping_required_is_the_base() -> Bool {
+  wrap_type_node_cardinality(base: ol_atom(id: ^ol_int), card: Required) == ol_atom(id: ^ol_int)
+}
+
+test fn a_malformed_cardinality_wrapper_refuses() -> Bool {
+  match type_node_cardinality_read(n: Node {
+    kind: TypeNode { connective: Cardinality },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }) {
+    CardinalityWrapperMalformed { wrapper: _ } => true
+    TypeNodeCardinality { card: _, base: _ } => false
+  }
+}
+
+// Container identity (gunbc#13330 in v2): unify reads Instantiation arguments, never the
+// Instantiation node and never a child that only spells the parameter.
+test fn container_instantiation_args_are_the_element_not_the_slot_spelling() -> Bool {
+  let produced = ol_list_of(element: ol_atom(id: ^ol_int))
+  match list_at_optional(xs: infer_container_instantiation_args(actual: produced), index: 0) {
+    Absent => false
+    Present { value: arg } =>
+      match arg.kind {
+        TypeNode { connective: Atom { identity: id } } => id == ^ol_int
+        TypeNode { connective: _ } => false
+        ComputationNode { behavior: _ } => false
+      }
+  }
+}
+
+test fn list_of_t_binds_t_to_the_element_type() -> Bool {
+  match infer_match_generic_formal(
+    formal: ol_list_of(element: ol_atom(id: ^ol_t)),
+    produced: ol_list_of(element: ol_atom(id: ^ol_int)),
+    type_params: [^ol_t],
+    instances: Empty,
+    declarations: empty_symbol_index()
+  ) {
+    InferFormalShapeMismatch => false
+    InferFormalMatched { instances: bound } =>
+      infer_type_instantiated(t: ol_list_of(element: ol_atom(id: ^ol_t)), instances: bound)
+        == ol_list_of(element: ol_atom(id: ^ol_int))
+  }
+}
+
+test fn an_int_at_a_list_formal_is_a_shape_mismatch() -> Bool {
+  match infer_match_generic_formal(
+    formal: ol_list_of(element: ol_atom(id: ^ol_t)),
+    produced: ol_atom(id: ^ol_int),
+    type_params: [^ol_t],
+    instances: Empty,
+    declarations: empty_symbol_index()
+  ) {
+    InferFormalShapeMismatch => true
+    InferFormalMatched { instances: _ } => false
+  }
+}
+
+test fn optional_t_matches_optional_int_and_binds_t() -> Bool {
+  let formal = wrap_type_node_cardinality(base: ol_atom(id: ^ol_t), card: one_optional_layer())
+  let produced = wrap_type_node_cardinality(base: ol_atom(id: ^ol_int), card: one_optional_layer())
+  match infer_match_generic_formal(
+    formal: formal,
+    produced: produced,
+    type_params: [^ol_t],
+    instances: Empty,
+    declarations: empty_symbol_index()
+  ) {
+    InferFormalShapeMismatch => false
+    InferFormalMatched { instances: bound } =>
+      infer_type_instantiated(t: formal, instances: bound) == produced
+  }
+}
+
+test fn substituting_u_optional_into_t_optional_composes_two_layers() -> Bool {
+  let formal = wrap_type_node_cardinality(base: ol_atom(id: ^ol_t), card: one_optional_layer())
+  let u_opt = wrap_type_node_cardinality(base: ol_atom(id: ^ol_u), card: one_optional_layer())
+  match infer_match_generic_formal(
+    formal: formal,
+    produced: wrap_type_node_cardinality(base: u_opt, card: one_optional_layer()),
+    type_params: [^ol_t],
+    instances: Empty,
+    declarations: empty_symbol_index()
+  ) {
+    InferFormalShapeMismatch => false
+    InferFormalMatched { instances: bound } =>
+      infer_type_instantiated(t: formal, instances: bound)
+        == wrap_type_node_cardinality(base: ol_atom(id: ^ol_u), card: CardOptional { layers: MoreLayers { inner: OneLayer } })
+  }
+}
+
+test fn one_optional_layer_does_not_match_a_required_int() -> Bool {
+  match infer_match_generic_formal(
+    formal: wrap_type_node_cardinality(base: ol_atom(id: ^ol_t), card: one_optional_layer()),
+    produced: ol_atom(id: ^ol_int),
+    type_params: [^ol_t],
+    instances: Empty,
+    declarations: empty_symbol_index()
+  ) {
+    InferFormalShapeMismatch => true
+    InferFormalMatched { instances: _ } => false
+  }
+}
+
+test fn two_optional_layers_are_not_one_at_inhabitance() -> Bool {
+  let one = wrap_type_node_cardinality(base: ol_atom(id: ^ol_int), card: one_optional_layer())
+  let two = wrap_type_node_cardinality(base: ol_atom(id: ^ol_int), card: CardOptional { layers: MoreLayers { inner: OneLayer } })
+  match inhabitance_pair_undecidable_reason(declared: one, produced: two, type_variables: []) {
+    Absent =>
+      match declared_type_inhabitance(obligation: ol_obligation(declared: one, produced: two)) {
+        InhabitanceRefused { find_witness_reason: _ } => true
+        Inhabits { homomorphism: _ } => false
+        InhabitanceUndecidable { reason: _ } => false
+      }
+    Present { value: _ } => false
+  }
+}
+
+test fn matching_optional_depths_are_decidable_not_a_collapsed_carrier() -> Bool {
+  let one = wrap_type_node_cardinality(base: ol_atom(id: ^ol_int), card: one_optional_layer())
+  match inhabitance_pair_undecidable_reason(declared: one, produced: one, type_variables: []) {
+    Absent =>
+      match declared_type_inhabitance(obligation: ol_obligation(declared: one, produced: one)) {
+        Inhabits { homomorphism: _ } => true
+        InhabitanceRefused { find_witness_reason: _ } => false
+        InhabitanceUndecidable { reason: _ } => false
+      }
+    Present { value: _ } => false
+  }
+}

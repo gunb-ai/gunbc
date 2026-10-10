@@ -1,0 +1,98 @@
+module v2.std.optional_layers
+
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional_layers {
+  CardOptional,
+  OneLayer,
+  MoreLayers,
+  OptionalLayers,
+  Required,
+  TypeCardinality,
+  compose_optional_layers,
+  one_optional_layer,
+  peel_optional_layer
+}
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.node {
+  Cardinality,
+  ComputationNode,
+  Edge,
+  Node,
+  Positional,
+  TypeNode
+}
+import v2.std.node_query { node_positional_child_targets }
+import v2.std.collection { list_at_optional }
+
+type TypeNodeCardinalityRead
+  = TypeNodeCardinality { card: TypeCardinality, base: Node }
+  | CardinalityWrapperMalformed { wrapper: Node }
+
+fn node_is_cardinality_wrapper(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Cardinality } => true
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn type_node_cardinality_child(n: Node) -> Optional<Node> {
+  match n.kind {
+    TypeNode { connective: Cardinality } =>
+      match list_at_optional(xs: node_positional_child_targets(node: n), index: 0) {
+        Present { value: inner } => optional_present(value: inner)
+        Absent => optional_absent()
+      }
+    TypeNode { connective: _ } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
+  }
+}
+
+fn type_node_cardinality_read(n: Node) -> TypeNodeCardinalityRead {
+  match type_node_cardinality_child(n: n) {
+    Absent =>
+      match n.kind {
+        TypeNode { connective: Cardinality } => CardinalityWrapperMalformed { wrapper: n }
+        TypeNode { connective: _ } => TypeNodeCardinality { card: Required, base: n }
+        ComputationNode { behavior: _ } => TypeNodeCardinality { card: Required, base: n }
+      }
+    Present { value: inner } =>
+      match type_node_cardinality_read(n: inner) {
+        CardinalityWrapperMalformed { wrapper: w } => CardinalityWrapperMalformed { wrapper: w }
+        TypeNodeCardinality { card: inner_card, base: base } =>
+          TypeNodeCardinality { card: compose_optional_layers(outer: one_optional_layer(), inner: inner_card), base: base }
+      }
+  }
+}
+
+fn wrap_one_optional_layer(base: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Cardinality },
+    children: [Edge { label: Positional, target: base }],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn wrap_optional_layer_tower(base: Node, layers: OptionalLayers) -> Node {
+  match layers {
+    OneLayer => wrap_one_optional_layer(base: base)
+    MoreLayers { inner: rest } => wrap_one_optional_layer(base: wrap_optional_layer_tower(base: base, layers: rest))
+  }
+}
+
+fn wrap_type_node_cardinality(base: Node, card: TypeCardinality) -> Node {
+  match card {
+    Required => base
+    CardOptional { layers: layers } => wrap_optional_layer_tower(base: base, layers: layers)
+  }
+}
+
+fn peel_type_node_optional_layer(n: Node) -> Optional<Node> {
+  match peel_optional_layer(card: match type_node_cardinality_read(n: n) {
+    TypeNodeCardinality { card: c, base: _ } => c
+    CardinalityWrapperMalformed { wrapper: _ } => Required
+  }) {
+    Absent => optional_absent()
+    Present { value: _ } => type_node_cardinality_child(n: n)
+  }
+}

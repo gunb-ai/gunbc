@@ -13,12 +13,14 @@ import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, T
 // key (v2.compiler.inferred_tree InferSite answers which site of one tree a fact is about).
 //
 // CONSUMERS, stated per DESIGN section 3c. Today: test.claim.derived_type_origin_witness_test, which
-// executes laws L1-L4 over supplied origins. Production: v1.compiler.infer unify_generics and
-// substitute_generics_apply, together with that function's self-binding guard. They read
-// generic_identity_of and self_binding_of in place of the spellings they compare today
-// (gunbc.recurring_failure_mode generic_identity_decided_by_spelling). That is a DECLARED FRONTIER.
-// Its trigger is step 2 of docs/plans/derived-node-identity-design.md, the infer implementation
-// across the node-copying paths, which starts after eager-newt-412's facts work lands its last stage.
+// executes laws L1-L4 over supplied origins. Production: v2.compiler.infer infer_match_generic_formal
+// reads a container Instantiation through infer_container_instantiation_args (the Instantiation
+// arguments, never a slot spelling; gunbc#13330). Re-keying TypeVariableInstance from a Symbol to a
+// TypeParameter DeclarationRef, and carrying DerivedTypeOrigin on every copied node, remains a
+// DECLARED FRONTIER: v2 Node has no origin field yet, so generic_identity_of cannot be asked of a
+// produced type without reconstructing origin from shape (this module forbids that). The residual
+// spelling key is the same class gunbc.recurring_failure_mode generic_identity_decided_by_spelling
+// names. v1.compiler.infer unify_generics is history; do not edit it.
 //
 // Every identity here is a reference, never a spelling: `container` is the DeclarationRef of the
 // carrier's declaration (std.algebra FreeMonoid, FinitePowerSet, PartialFunction, ...), which the

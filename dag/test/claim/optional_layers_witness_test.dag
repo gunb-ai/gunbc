@@ -1,0 +1,57 @@
+module test.claim.optional_layers_witness_test
+
+import std.types { Bool }
+import std.optional { Absent, Present }
+import std.optional_layers {
+  CardOptional,
+  MoreLayers,
+  OneLayer,
+  Required,
+  compose_optional_layers,
+  exact_optional_layers,
+  one_optional_layer,
+  peel_optional_layer
+}
+
+// SUBJECT: std.optional_layers. Inputs are supplied TypeCardinality values (DESIGN §3). Production
+// inhabitance of the Node reading is v2.test.claim.compiler.optional_layers_test.
+
+test fn required_composed_with_one_layer_is_one_layer() -> Bool {
+  exact_optional_layers(a: compose_optional_layers(outer: Required, inner: one_optional_layer()), b: one_optional_layer())
+}
+
+test fn substituting_an_optional_into_an_optional_adds_a_layer() -> Bool {
+  exact_optional_layers(
+    a: compose_optional_layers(outer: one_optional_layer(), inner: one_optional_layer()),
+    b: CardOptional { layers: MoreLayers { inner: OneLayer } }
+  )
+}
+
+test fn max_would_collapse_two_ones_and_this_does_not() -> Bool {
+  !exact_optional_layers(
+    a: compose_optional_layers(outer: one_optional_layer(), inner: one_optional_layer()),
+    b: one_optional_layer()
+  )
+}
+
+test fn peel_of_one_layer_is_required() -> Bool {
+  match peel_optional_layer(card: one_optional_layer()) {
+    Present { value: inner } => exact_optional_layers(a: inner, b: Required)
+    Absent => false
+  }
+}
+
+test fn peel_of_required_refuses() -> Bool {
+  match peel_optional_layer(card: Required) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn one_layer_is_not_two() -> Bool {
+  !exact_optional_layers(a: one_optional_layer(), b: CardOptional { layers: MoreLayers { inner: OneLayer } })
+}
+
+test fn required_is_not_one_layer() -> Bool {
+  !exact_optional_layers(a: Required, b: one_optional_layer())
+}
