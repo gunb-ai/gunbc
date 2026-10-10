@@ -67,8 +67,8 @@ data self_host_step_memory_structures: List<StepMemoryStructure> = [
   StepMemoryStructure { receipt_kind: "bucket", receipt_name: "resolve_store", structure: "shared resolve store (entry_resolve PROCESS_RESOLVE_STORE)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, live_during_cargo: true, ender: ClosureScopedIngestion },
   StepMemoryStructure { receipt_kind: "bucket", receipt_name: "scope_and_reference_indexes", structure: "scope fragment, reference closure, scope order and reference edge caches (cli_run)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, live_during_cargo: true, ender: ClosureScopedIngestion },
   StepMemoryStructure { receipt_kind: "bucket", receipt_name: "emit_check_and_census_memos", structure: "emit-check and diagnostic census memos (cli_run)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, live_during_cargo: true, ender: ClosureScopedIngestion },
-  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "pool_content_tokens_newline", structure: "whole-tree token pool: V1LexArtifact + content + newline index of every pooled module (pool_acquire POOL)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: false, live_during_cargo: false, ender: ClosureScopedIngestion },
-  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "pool_heads", structure: "whole-tree parsed heads (pool_acquire Acquired.heads)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: false, live_during_cargo: false, ender: ClosureScopedIngestion },
+  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "pool_content_tokens_newline", structure: "whole-tree token pool: V1LexArtifact + content + newline index of every pooled module (pool_acquire POOL)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: false, live_during_cargo: false, ender: PoolReleasedBeforeResolution },
+  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "pool_heads", structure: "whole-tree parsed heads (pool_acquire Acquired.heads)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: false, live_during_cargo: false, ender: PoolReleasedBeforeResolution },
   StepMemoryStructure { receipt_kind: "bucket", receipt_name: "resolve_index", structure: "shared resolve index / name census (entry_resolve PROCESS_RESOLVE_INDEX)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, live_during_cargo: true, ender: ClosureScopedIngestion },
   StepMemoryStructure { receipt_kind: "bucket", receipt_name: "module_graph_facts_and_path_index", structure: "module path index and graph facts caches (cli_run)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, live_during_cargo: true, ender: ClosureScopedIngestion },
 ]
@@ -80,7 +80,7 @@ data self_host_step_memory_receipt_path: NonEmptyStr = "tools/self_host_step_mem
 // THE CONFIGURATION this tree's committed receipt was written under. The reader selects rows
 // whose last column equals this cell; a receipt from a different pool policy, scope or run is
 // not this measurement.
-data self_host_step_memory_receipt_configuration: NonEmptyStr = "pool=held_through_resolution;scope=container_no_cgroup;run=proud-swift-735"
+data self_host_step_memory_receipt_configuration: NonEmptyStr = "pool=released_before_resolution;scope=container_no_cgroup;run=proud-swift-735"
 
 fn receipt_column(cols: List<String>, index: Int) -> String {
   match cols.skip(n: index).first() {
@@ -193,7 +193,7 @@ data self_host_step_demand_trend: List<StepDemandTrend> = [
     removes_from_seed_peak: true,
     removes_from_cargo_phase: true,
     lowers_step_peak: true,
-    evidence: "release_whole_tree_after_census clears pool_acquire POOL immediately before compile_to_resolved_with_options; resolution then re-acquires only a closure-sized set, so the whole-tree pool is not live at the seed moment or during cargo. This audit head does not ship that call, so no classified structure carries this ender. The lever head applies it; its receipt configuration names the run that measured the before/after at compile_emission_over.pre_resolve and compile_emission_over.post_resolve",
+    evidence: "release_whole_tree_after_census clears pool_acquire POOL immediately before compile_to_resolved_with_options; resolution re-acquires only a closure-sized set. pool_heads and pool_content_tokens_newline carry this ender and are not live at the seed moment or during cargo. The committed receipt configuration pool=released_before_resolution;scope=container_no_cgroup;run=proud-swift-735 records stage compile_emission_over.pre_resolve and compile_emission_over.post_resolve of that run; the audit receipt under pool=held_through_resolution;scope=container_no_cgroup;run=proud-swift-735 is the before at those same seams",
   },
   StepDemandTrend {
     change: ClosureScopedIngestion,
