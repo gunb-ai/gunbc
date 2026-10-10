@@ -1220,7 +1220,7 @@ fn activity_summary_line(a: ActivityView) -> String {
 // the one-line state classifies from the decided arm and attention (a completed attempt is done; a
 // refused arm or an anomalous — failed-segment — attempt is error-refusal; everything else is
 // neutral). The vocabulary names an EXEC class for command execution, which NO line on the page
-// produces today: the typed source exists (gunbc.roadmap_provider_events CodexItemActivity) but the
+// produces today: the typed source exists (gunbc.roadmap_provider_events ProviderItemActivity) but the
 // provider fold flattens it into the current-activity string, and the honest thread —
 // ProviderRunning carrying the typed item — touches nine modules; it is the named trigger for the
 // day a tool-call line lands, so exec is declared here and deliberately unproduced rather than

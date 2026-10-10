@@ -1,5 +1,6 @@
 module gunbc.roadmap_forecast
 
+import gunbc.roadmap_runtime_plan { roadmap_plan_projection }
 import std.types { EpochMs, NonEmptyStr }
 import std.measure {
   Millisecond,
@@ -54,7 +55,7 @@ import gunbc.roadmap_authority {
   declared_roadmap_nodes,
   active_roadmap_nodes_for_accepted,
   active_roadmap_edges_for_accepted,
-  RoadmapAuthorityProjection, roadmap_authority_projection,
+  RoadmapAuthorityProjection,
   RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
   roadmap_acceptance_receipts,
   RoadmapAcceptanceReceiptsProjected,
@@ -1096,7 +1097,7 @@ fn live_roadmap_schedule_forecast(
   anchor: ForecastAnchorObservation,
 ) -> ScheduleForecastResult {
   roadmap_schedule_forecast_over(
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: roadmap_plan_projection(),
     assumptions: assumptions,
     anchor: anchor,
   )

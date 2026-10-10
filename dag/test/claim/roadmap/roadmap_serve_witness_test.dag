@@ -12,7 +12,7 @@ import gunbc.roadmap_serve {
   BeltDispatchHandler, DispatchAssetHandler,
   SessionsJsonHandler, AttemptsJsonHandler, WorkflowJsonHandler, BeltStopHandler,
   BeltPublishHandler,
-  IssueDetailPageHandler, IssueAssignHandler, IssueCommentHandler, IssueAssignmentContextHandler,
+  IssueDetailPageHandler, IssueAssignHandler, IssueCommentHandler, IssueAssignmentContextHandler, IssueCreateHandler, IssueCreatePageHandler,
   serve_issue_assignment_context_over, serve_issue_view_preferences_over,
   IssueViewPreferencesReadHandler, IssueViewPreferencesSaveHandler,
   AuthSessionHandler, AuthLoginHandler, AuthGoogleCallbackHandler, AuthLogoutHandler,
@@ -611,6 +611,12 @@ test fn witness_issue_detail_route_selects() -> Bool {
     && selects(method: GET, path: "/issue/some-node/assignment", want: IssueAssignmentContextHandler)
     && selects(method: POST, path: "/issue/some-node/assign", want: IssueAssignHandler)
     && selects(method: POST, path: "/issue/some-node/comment", want: IssueCommentHandler)
+}
+
+// THE CREATE ROUTES: POST /issues is the write, GET /issues/new is the composer page.
+test fn witness_issue_create_routes_select() -> Bool {
+  selects(method: POST, path: "/issues", want: IssueCreateHandler)
+    && selects(method: GET, path: "/issues/new", want: IssueCreatePageHandler)
 }
 
 // ── The durable assign route: validation, concurrency, and the fabric execution entry point ──────

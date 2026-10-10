@@ -1,5 +1,6 @@
 module gunbc.roadmap_belt_actuate
 
+import gunbc.roadmap_runtime_plan { roadmap_plan_projection }
 import gunbc.roadmap.roadmap_attempt_request_binding {
   AttemptLaunchRequest, LaunchForClaim, LaunchAutonomous, attempt_launch_request_for_origin,
   attempt_request_binding_commit_for_instance, RequestBindingCommitted, RequestBindingCommitRefused,
@@ -45,8 +46,7 @@ import gunbc.roadmap_dispatch_actuator {
 import extdeps.systemd.systemd_run { systemd_run_option_words_refused_cause_detail }
 import extdeps.git { shape_git_merge_base_args }
 import gunbc.roadmap_authority {
-  roadmap_acceptance_event_history_load,
-  RoadmapAuthorityProjection, roadmap_authority_projection,
+  RoadmapAuthorityProjection,
   RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
   authored_merged_prs,
 }
@@ -4345,7 +4345,7 @@ fn belt_tick_for_instance(
     standing: standing,
     state: state,
     frontier: frontier,
-    graph: launch_graph_of_projection(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load())),
+    graph: launch_graph_of_projection(proj: roadmap_plan_projection()),
     merged: authored_merged_prs(),
     tmux_live: match belt_sessions_observe_for_instance(instance: instance) {
       BeltSessionsObserved { live } => live
@@ -4601,7 +4601,7 @@ fn belt_run_once_in(
   instance: HostDashboardInstance,
   spawn_workdir: String,
 ) -> BeltTickResult {
-  match roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) {
+  match roadmap_plan_projection() {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       BeltTickResult {
         host_refusal: Present { value: LaunchAuthorityUnobserved { detail: detail } },
@@ -9755,7 +9755,7 @@ fn belt_find_node_in(nodes: List<RoadmapNode>, node_id: String) -> BeltNodeLooku
 }
 
 fn belt_lookup_node(node_id: String) -> BeltNodeLookup {
-  match roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) {
+  match roadmap_plan_projection() {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       AuthorityProjectionRefused { detail: detail }
     RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } =>
@@ -10054,7 +10054,7 @@ fn belt_dispatch_node_staged(
   belt_dispatch_node_staged_over(
     instance: instance,
     standing: standing,
-    graph: launch_graph_of_projection(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load())),
+    graph: launch_graph_of_projection(proj: roadmap_plan_projection()),
     merged: authored_merged_prs(),
     node_id: node_id,
     request: LaunchAutonomous,
