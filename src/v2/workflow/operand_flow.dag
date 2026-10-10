@@ -19,7 +19,7 @@ import v2.workflow.realization_runner {
   node_keyed_graph_transitive_bytes
 }
 
-// Phase 2 of machine-shape-orthogonal-scheduling.md §4: DependencyView carries no operand today, so
+// DependencyView carries no operand today, so
 // the scheduler's DependencyKindClassifier<Bool> collapse (v2.workflow.scheduler) discards
 // shared-operand structure. operand_root/operand_flow_for_edge derive it without touching
 // DependencyView's shape: operand identity is the producer node's content_hash (the identity

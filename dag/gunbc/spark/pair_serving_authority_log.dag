@@ -2097,6 +2097,19 @@ fn placement_cleanup_line(c: PlacementCleanup) -> String {
   }
 }
 
+// THE CLEANUP EXIT IS DECIDED BY THE OUTCOME, BY NAME. Finalized and aborted report completion;
+// still-fencing fails loudly; and an UNREADABLE outcome is not evidence that the fence is down, so
+// it fails loudly with its cause too -- a failure arm must refuse, never widen (DESIGN 5). A
+// cleanup state added later must state its exit here instead of inheriting success.
+fn placement_cleanup_step_exit(c: PlacementCleanup) -> ProcessExit {
+  match c {
+    PlacementFinalizedAt { preparation: _, id: _ } => ExitSuccess
+    PlacementAbortedAt { preparation: _, id: _ } => ExitSuccess
+    PlacementCleanupStillFencing { preparation: _, cause: why } => exit_failure(reason: why)
+    PlacementCleanupUnread { cause: unread } => exit_failure(reason: unread)
+  }
+}
+
 // THE OPERATOR'S ENTRIES, for a saga that died between its steps. The group is the preparation's
 // own, read from the record. Finalize when the authority event landed (the join finds it); abort
 // when it did not, under a typed disposition of the writer that claimed the append:
@@ -2124,6 +2137,8 @@ fn host_placement_abort_wet(preparation: String, reason: String, claimant: Strin
   }
 }
 
+// The outcome-to-exit decision is placement_cleanup_step_exit, by name; this step is its wet
+// caller, after the executor, the host store and the clock are identified.
 fn host_placement_cleanup_wet(preparation: String, cleanup: fn(FabricStorageBinding, NonEmptyStr, EpochSecs) -> PlacementCleanup) -> ProcessExit
 {
   match observe_executor_reach() {
@@ -2134,13 +2149,7 @@ fn host_placement_cleanup_wet(preparation: String, cleanup: fn(FabricStorageBind
         HostStoreResolved { store: store, executor: _ } =>
           match now_epoch_seconds() {
             Absent => exit_failure(reason: "the clock could not be read as epoch seconds")
-            Present { value: at } =>
-              match cleanup(store, executor as NonEmptyStr, at) {
-                PlacementCleanupStillFencing { preparation: _, cause: why } => exit_failure(reason: why)
-                PlacementFinalizedAt { preparation: _, id: _ } => ExitSuccess
-                PlacementAbortedAt { preparation: _, id: _ } => ExitSuccess
-                PlacementCleanupUnread { cause: why } => exit_failure(reason: why)
-              }
+            Present { value: at } => placement_cleanup_step_exit(c: cleanup(store, executor as NonEmptyStr, at))
           }
       }
   }

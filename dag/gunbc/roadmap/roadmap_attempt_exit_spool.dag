@@ -18,8 +18,8 @@ import extdeps.filesystem.filesystem_io {
   filesystem_listing_observation, filesystem_listing_entry_names,
 }
 
-// THE RECORD A WORKER UNIT LEAVES WHEN ITS PROCESS ENDS (dogfood interventions #4 and #6, gunbc#13124;
-// docs/plans/belt-event-driven-obligations.md). The unit's stop hook creates ONE directory in the
+// THE RECORD A WORKER UNIT LEAVES WHEN ITS PROCESS ENDS (dogfood interventions #4 and #6, gunbc#13124).
+// The unit's stop hook creates ONE directory in the
 // instance's exit inbox, and the directory's NAME is the record: the attempt it belongs to, the
 // manager's invocation id, and the three stop-time facts systemd hands the hook
 // (extdeps.systemd.service_exec ServiceStopVariable). There is no file to write and no shell to write

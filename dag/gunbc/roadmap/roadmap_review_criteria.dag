@@ -3,7 +3,7 @@ module gunbc.roadmap.roadmap_review_criteria
 import std.types { String, Bool, List }
 import std.syllogism { Proposition }
 import std.decl_ref { DeclarationRef, declaration_ref_display_key }
-import gunbc.design_argument { design_propositions, design_rows, DesignRow, PropositionReview, DefectReview, ConformanceReview, PropositionReviewDisposition, ReviewableOnChange, NotReviewableOnChange, ReviewAnswerAlgebra, YesIsADefect, ConformanceThreeValued, ConformanceDomain, conformance_home_list }
+import gunbc.design_argument { design_propositions, design_rows, DesignRow, PropositionReview, DefectReview, ConformanceReview, PropositionReviewDisposition, ReviewableOnChange, NotReviewableOnChange, ReviewAnswerAlgebra, YesIsADefect, ConformanceThreeValued, ConformanceDomain, conformance_domain_homes }
 
 // ONE CRITERION PER DESIGN PROPOSITION, ONE REVIEWER PER CRITERION. A review that asks "is this
 // change good" is one judgment over every concern at once, and its verdict cannot say which concern
@@ -60,7 +60,7 @@ fn conformance_criterion_from_domain(domain: ConformanceDomain, proposition_id: 
     question: domain.question,
     tells: domain.tells,
     answer: ConformanceThreeValued,
-    homes: conformance_home_list(h: domain.homes),
+    homes: conformance_domain_homes(d: domain),
   }
 }
 
