@@ -107,6 +107,6 @@ test fn a_listed_record_that_does_not_decode_still_refuses() -> Bool {
   is_refused(r: belt_occurrence_record_from_launch_observations(
     attempt: attempt(),
     directory: directory_listed_as(success: true, entries: "ts-wf-lamps-v0-ad3401a4a71e004e9"),
-    launch: launch_observed_as(entries: "launch-identity.json", read_success: true, content: "{not json"),
+    launch: launch_observed_as(entries: "launch-identity.json", read_success: true, content: "\{not json"),
   ))
 }
