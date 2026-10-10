@@ -1445,7 +1445,21 @@ data fleet_converge_spark_runtime_image_probe_step_if: String = fleet_converge_m
 data fleet_converge_spark_wireless_link_converge_step_if: String = fleet_converge_mode_step_if(mode: SparkWirelessLinkConverge)
 data fleet_converge_spark_grants_observe_step_if: String = fleet_converge_mode_step_if(mode: SparkGrantsObserve)
 
-data fleet_converge_dashboard_deploy_step_if: String = fleet_converge_mode_step_if(mode: DashboardDeploy)
+// Production deploy / root-host mutation is not branch-dispatchable (operator 2026-10-10).
+// The job names GitHub environment srv1-production so a protected-environment gate can sit on
+// the same subject; the YAML also requires github.ref == refs/heads/main so omitting the
+// environment protection cannot reopen an arbitrary-branch path.
+data fleet_converge_dashboard_deploy_environment: NonEmptyStr = "srv1-production"
+
+fn fleet_converge_reviewed_main_ref_guard() -> String {
+  "github.ref == 'refs/heads/main'"
+}
+
+data fleet_converge_dashboard_deploy_step_if: String = join([
+  fleet_converge_mode_step_if(mode: DashboardDeploy),
+  " && ",
+  fleet_converge_reviewed_main_ref_guard(),
+], "")
 
 data fleet_converge_rlm_receipt_step_if: String = fleet_converge_mode_step_if(mode: RlmLaunchDeploymentReceipt)
 
@@ -3342,10 +3356,10 @@ fn fleet_converge_dashboard_deploy_step() -> Step {
 // revisions already superseded before they were installed. QueueNotMax holds at most one pending and
 // REPLACES it with the newest arrival, which is what fleet_host_mutation_concurrency_group_expression's
 // annotation describes: an older pending deployment gives way to the newest arrival. NOTE the
-// weaker claim -- "newest arrival", not "newest main revision". While the trigger is
-// workflow_dispatch over a caller-selected ref, the newest arrival is whatever was dispatched last
-// and need not be main at all, so the stronger sentence would assert an ordering nothing
-// establishes. cancel_in_progress
+// weaker claim -- "newest arrival", not "newest main revision". The job if_condition now also
+// requires github.ref == refs/heads/main, so a branch dispatch never enters this job; the queue
+// still orders arrivals that passed that guard, not an ordering over every dispatched ref.
+// cancel_in_progress
 // is false in both readings and that is the half that matters most -- a queued deploy must never
 // interrupt the one currently holding the host mutation window, which is the state that produces a
 // half-applied cutover.
@@ -3354,7 +3368,7 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
     id: fleet_converge_mode_job_id(mode: DashboardDeploy) as String,
     name: none,
     runner: fleet_converge_host_pinned_runner_spec(),
-    environment: none,
+    environment: Present { value: fleet_converge_dashboard_deploy_environment as String },
     steps: concat(
       fleet_converge_consumer_prelude_steps(),
       [
@@ -4638,10 +4652,14 @@ fn fleet_converge_gcp_iam_converge_job() -> Job {
 
 // THE DISPATCH INPUTS, AS THEIR OWN ROW: the workflow consumes them below, and a witness over
 // what the operator can name reads this list rather than building every job to reach it.
-// MODE DESCRIPTION IS SHORT ON PURPOSE. The previous value restated every mode's contract in one
-// GitHub input description (~10k characters on one YAML line). After #13334 GitHub's workflow
-// parser refused the file on every push (zero-job runs named `.github/workflows/fleet-converge.yml`).
-// Per-mode contracts stay on this module; the input description names the authority.
+// GITHUB'S LIMIT IS workflow_dispatch_max_inputs (25). A hand-edited fleet-converge.yml that
+// drifted above this list (30 names, including undeclared runtime_image / checkpoint / arm /
+// staircase_step / incumbent / d0_consent / printer_*) made GitHub refuse the file on push
+// (zero-job runs; 422 at 28 inputs, gunbc.recurring_failure_mode workflow_dispatch_input_limit_unchecked).
+// The repair is regeneration of FleetConvergeYamlArtifact from this list via expected_fleet_converge_yml,
+// which refuses emission when count exceeds the limit. The mode description being long was a
+// misattribution: a 25-input file with the long description dispatched. Per-mode contracts stay
+// on this module; keep the input description short anyway.
 data fleet_converge_dispatch_inputs: List<DispatchInput> = [
   DispatchInput { name: "workspace_image_run_id", description: Present { value: "Image build run to download for controller install; installed bytes must match the reviewed image pin" }, required: false, default: none, type: InputString },
 
