@@ -1,0 +1,50 @@
+module test.claim.native.native_route_first_frontier_witness_test
+
+import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.plans.native_obligation_population {
+  NativeFrontierObservation, FrontierUnobserved, FrontierObserved, SubjectQualified, SubjectDerivedSingle,
+  native_frontier_subject_is_stable,
+  native_route_first_frontier, native_frontier_stands, native_terminal_is_in_vocabulary,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Green over supplied values. The frontier row is flipped by a run (tested tree, executable identity,
+// command, subject), never by editing these controls; until then the row reads FrontierUnobserved
+// and roadmap readiness reads the node unaccepted.
+
+// CONTROL: a row with no provenance does not stand, whether unobserved or
+// observed with an empty command, so the RED above discriminates on provenance.
+test fn an_unobserved_frontier_refuses() -> Bool {
+  !native_frontier_stands(f: FrontierUnobserved)
+    && !native_frontier_stands(f: FrontierObserved {
+      terminal: "eval:body_lowering_reason_service_realization_unreachable",
+      tested_tree: "t",
+      executable_identity: "e",
+      command: "",
+      subject: SubjectQualified { identity: "v2.test.m.t" }
+    })
+}
+
+// CONTROL: a terminal outside the native vocabulary refuses; one inside
+// it, with full provenance, stands (positive control).
+test fn a_terminal_outside_the_native_vocabulary_refuses() -> Bool {
+  !native_terminal_is_in_vocabulary(terminal: "linker:undefined_symbol")
+    && native_terminal_is_in_vocabulary(terminal: "eval:some_reason")
+    && native_frontier_stands(f: FrontierObserved {
+      terminal: "eval:some_reason", tested_tree: "t", executable_identity: "e", command: "c",
+      subject: SubjectQualified { identity: "v2.test.m.t" }
+    })
+}
+
+// CONTROL: a subject is a qualified identity, or a derived target resolved to exactly one member that
+// is the recorded identity; an empty identity, a group of two (the "smallest member" pick) and a
+// resolved identity outside the resolved members all refuse.
+test fn a_frontier_subject_is_a_qualified_identity_or_a_counted_single_member() -> Bool {
+  native_frontier_subject_is_stable(subject: SubjectQualified { identity: "v2.test.m.t" })
+    && native_frontier_subject_is_stable(subject: SubjectDerivedSingle { target: "//v2/test:one", resolved_members: ["v2.test.m.t"], resolved_identity: "v2.test.m.t" })
+    && !native_frontier_subject_is_stable(subject: SubjectQualified { identity: "" })
+    && !native_frontier_subject_is_stable(subject: SubjectDerivedSingle { target: "//v2/test:all", resolved_members: ["v2.test.a", "v2.test.b"], resolved_identity: "v2.test.a" })
+    && !native_frontier_subject_is_stable(subject: SubjectDerivedSingle { target: "//v2/test:one", resolved_members: ["v2.test.a"], resolved_identity: "v2.test.b" })
+}

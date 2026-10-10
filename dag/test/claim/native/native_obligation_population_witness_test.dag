@@ -1,0 +1,33 @@
+module test.claim.native.native_obligation_population_witness_test
+
+import std.types { Bool, String, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.plans.native_obligation_population {
+  native_denominator_is_the_universe, native_member_is_eligible, native_member_is_a_subject_row,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// CONTROL over supplied members: a host-judged producer identity is ineligible, a native one is not.
+test fn a_host_judged_member_is_ineligible() -> Bool {
+  !native_member_is_eligible(member: "NativeClaimProgramProducer")
+    && !native_member_is_eligible(member: "NativeServeProgramProducer")
+    && native_member_is_eligible(member: "v2.test.m.t")
+}
+
+// CONTROL over supplied members: a member naming an emitted subject row label refuses as a second home.
+test fn the_population_is_disjoint_from_the_emitted_subject_rows() -> Bool {
+  native_member_is_a_subject_row(member: "//gunbc/instruments:self-host", subject_labels: ["//gunbc/instruments:self-host", "//gunbc/instruments:v2-native-cli"])
+    && !native_member_is_a_subject_row(member: "v2.test.m.t", subject_labels: ["//gunbc/instruments:self-host", "//gunbc/instruments:v2-native-cli"])
+}
+
+// CONTROL: the denominator is the derived universe -- green + exactly one frontier + typed exclusions.
+// The green set alone is not it (it omits the frontier and the exclusion), a second frontier refuses,
+// and a member in two sets refuses.
+test fn the_denominator_is_the_derived_universe_not_the_green_set() -> Bool {
+  native_denominator_is_the_universe(universe: ["a", "b", "c"], green: ["a"], frontier: ["b"], exclusions: ["c"])
+    && !native_denominator_is_the_universe(universe: ["a", "b", "c"], green: ["a"], frontier: [], exclusions: [])
+    && !native_denominator_is_the_universe(universe: ["a", "b", "c"], green: ["a", "b", "c"], frontier: ["b"], exclusions: [])
+    && !native_denominator_is_the_universe(universe: ["a", "b", "c"], green: ["a"], frontier: ["b", "c"], exclusions: [])
+    && !native_denominator_is_the_universe(universe: ["a", "b"], green: ["a"], frontier: ["b"], exclusions: ["z"])
+}

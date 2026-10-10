@@ -861,6 +861,140 @@ fn edge(child: String, parent: String) -> RoadmapEdge {
 fn declared_roadmap_nodes() -> List<RoadmapNode> {
   concat([
     roadmap_node(
+      identity: "rn_NR7EMKG5BAGPKL5NMF6ZPDERGN",
+      id: "witnesses-one-required-job",
+      owner: "ci-control",
+      carriers: carrier(path: "dag/gunbc/witness/compiler_gate_workflow.dag"),
+      line: ticket(t: fields(
+        headline: "Acceptance receipt: the composed revision's witnesses run is green with exactly one required job, two fresh products and the moved contract epoch",
+        boundary: "gunbc.compiler_gate_workflow emits witnesses.yml with ONE job, witnesses (compiler_gate_required_job_id), on the fleet: build the seed with the Cargo cache (gunbc.fleet_workflow_steps ci_cache_cargo_step_under), then one gunbc test step per row of gunbc.emitted_subject_build_gate emitted_subject_build_rows (self-host, v2-native-cli), each passing native_product_reuse_env_name=fresh and requiring the fleet slot's envelope (GUNBC_MEMORY_ENVELOPE_REQUIRED=slot), the per-step bind withheld by the fleet fact gunbc.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership (climb: gunbc.guarantee_stall native_step_trip_awaits_fleet_job_cgroup_stall), each printing a slot-grain MEMORY RECEIPT and refusing OOM kills or swap. The four v1 lanes are deleted under gunbc.rung_drop v1_required_lanes_withdrawn, the heal publisher workflow is deleted, and gunbc.required_ci_contract_epoch moves. Carried by gunbc#13658.",
+        displaced_cost: "Every pull request and queued landing paid four v1-judged lanes that ran at the slot's throttle line (gunbc.recurring_failure_mode required_floor_runs_at_its_memory_ceiling) and judged an implementation the ruling retires; a restored native product could green a run that emitted nothing.",
+        first_slice: "After the composed head of the cutover stack (gunbc#13641 with #13658) runs the witnesses job green, read that run: the required context set is exactly witnesses, both subject steps built a fresh product, and the contract epoch is the one the cut moved.",
+        red_control: "A workflow carrying any withdrawn lane id as a job refuses (w_RED_the_withdrawn_lanes_are_not_jobs); a subject step without the fresh-product input or the memory bind refuses; a run that charged swap or was OOM-killed is refused even when its instrument held.",
+        out_of_scope: "The native obligation population (native-obligation-population), the VerifiedExactReuse arm for pull-request feedback, the fleet-desired withdrawal, and converging the slot envelope onto hosts.",
+        handback: "The accepted receipt: the exact composed revision, the run id of its green witnesses run, the two subject steps' fresh-product lines, and gunbc.required_ci_contract_epoch as that run saw it -- cited by run id and not transcribed. This is an acceptance, not a long-lived task: it closes when the receipt is read."
+      )),
+      dispatch: dispatchable(),
+      execution: bound(contract: gunbc_claims_execution_contract(
+        entry: "dag/test/claim/compiler_gate_emit_build_lane_witness_test.dag" as FilePath,
+        functions: [
+          "the_workflow_runs_exactly_the_required_job" as NonEmptyStr,
+          "w_RED_the_withdrawn_lanes_are_not_jobs" as NonEmptyStr,
+          "every_subject_step_requires_a_fresh_product" as NonEmptyStr,
+          "every_subject_step_carries_the_memory_envelope" as NonEmptyStr,
+          "w_RED_the_job_binds_no_native_product_store" as NonEmptyStr,
+          "the_notice_names_the_trip_and_refuses_a_bigger_retry" as NonEmptyStr,
+        ],
+      )),
+      parent: in_project(project: "native-route-to-live", contribution: "The one required job is the carrier the native route joins as rows judged by a binary built from the seed's emission; until it exists there is no required path for a native verdict to join."),
+      centering: plan(text: "Target: dag/gunbc/witness/compiler_gate_workflow.dag and dag/gunbc/emitted_subject_build_gate.dag, authored on gunbc#13658. This node is an ACCEPTANCE RECEIPT, not work to author. (1) Wait for the composed head of the cutover stack to run the witnesses job green on the merge queue. (2) Read that run for four facts: the required context set is exactly witnesses; the composed revision is the one that ran; each subject step (emit_build_self_host, emit_build_v2_native_cli) built a fresh product; the contract epoch moved. (3) Hand back the revision, the run id and those lines. Stop and return if a subject step exits 137 or the receipt reports an OOM kill or swap: that is the line stopping, not a retry."),
+    ),
+    roadmap_node(
+      identity: "rn_67VQAAWAAQLT3QBA3NF3DRTFUX",
+      id: "native-route-first-frontier",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/witness/v2_native_route.dag"),
+      line: ticket(t: fields(
+        headline: "Execute the one-file native route through the built SourceRootEvalDriver and take its first typed terminal as the frontier",
+        boundary: "Build the self-host product (gunbc test //gunbc/instruments:self-host) and invoke the built SourceRootEvalDriver (std.compiler_entry) in adjudication mode over a universe of exactly one identity, named by a stable qualified identity (a full v2.test.* module path plus test fn) or by a derived single-member target with a cardinality assertion of one -- never 'the smallest member' of a group, which names a different subject whenever the group changes -- with the declared source roots. The FIRST typed terminal the driver reports for that identity (v2.compiler.native_test_vocabulary NativeTestVerdict, or the NativeTestFileRefusal chain's fatal link) is recorded as the frontier in a typed row, with the tested tree, the executable identity and the exact command. The frontier is OBSERVED, never reasoned from source: a derived reading that filesystem_io refuses in normalize is a hypothesis this run confirms or refutes.",
+        displaced_cost: "Two lanes are ordered by a guess: if the first terminal is body_lowering_reason_service_realization_unreachable then the XL-2 service-member carrier (xl2-body-lowering) precedes the parked native-seven inference chain, and if it is not, the chain stays as planned. Nobody has run the route to find out, so either order can be committed on reasoning alone.",
+        first_slice: "Run the route once on a fleet host and write the terminal into the frontier row of the native obligation plan; the row refuses to stand as FrontierUnobserved.",
+        red_control: "A frontier row whose terminal was not produced by a run (no tested tree, no executable identity, no command) refuses; a subject that is neither a qualified identity nor a derived target asserted to have exactly one member refuses; a row carrying a reason symbol the native vocabulary does not mint refuses; the positive control is the recorded run reproducing the same terminal at the same tested tree.",
+        out_of_scope: "Fixing whatever the terminal names; the whole v2.test.* universe (that is the native obligation population); any change to the driver.",
+        handback: "The frontier row with its terminal, tested tree, executable identity and command, and the ordering consequence stated: either an edge making native-seven wait on xl2-body-lowering, or a sentence saying why not."
+      )),
+      dispatch: dispatchable(),
+      execution: bound(contract: gunbc_claims_execution_contract(
+        entry: "dag/test/claim/native/native_route_first_frontier_witness_test.dag" as FilePath,
+        functions: [
+          "an_unobserved_frontier_refuses" as NonEmptyStr,
+          "a_terminal_outside_the_native_vocabulary_refuses" as NonEmptyStr,
+          "a_frontier_subject_is_a_qualified_identity_or_a_counted_single_member" as NonEmptyStr,
+        ],
+      )),
+      parent: in_project(project: "native-route-to-live", contribution: "The first observed frontier is the one row the native obligation population may carry beside its green set; without a run there is no frontier, only a reading."),
+      centering: plan(text: "Target: a new typed row native_route_first_frontier in dag/gunbc/plans/native_obligation_population.dag (FrontierUnobserved | FrontierObserved { terminal, tested_tree, executable_identity, command }). Exemplar for the row shape: gunbc.native_frontier_roster native_frontier_roster (RosterUnminted | RosterMinted with a NativeFrontierMintReceipt). (1) On a fleet host run gunbc test //gunbc/instruments:self-host at the head you check out; keep the emitted closure's built binary path from the instrument's log. (2) Write a universe file holding one line, a stable qualified identity (module path plus test fn), or resolve a derived target to a set, assert its cardinality is exactly one and record the resolved qualified identity -- never pick 'the smallest member'. Invoke the built driver in adjudicate mode over the declared roots dag and src/v2 with that universe. (3) Copy the one verdict row's terminal (stage, fatal reason symbol) verbatim into FrontierObserved with the tested tree sha, the executable identity the driver prints, and the command. (4) The witness is green over supplied values (subject controls and provenance controls); the frontier row is flipped by the observed run, never by editing the witness. Stop and return if the driver refuses to start or prints no terminal for the identity: that absence is the finding, and reasoning a terminal from source is refused."),
+    ),
+    roadmap_node(
+      identity: "rn_BNR2UWEN65WJ7INS2Q7HLFM74H",
+      id: "native-obligation-population",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/native_obligation_population.dag"),
+      line: ticket(t: fields(
+        headline: "The native obligation is one population, judged by one built SourceRootEvalDriver: a green set that only grows and exactly one observed frontier",
+        boundary: "A population SEPARATE from gunbc.emitted_subject_build_gate emitted_subject_build_rows (which stays the two compiler products): a typed carrier of native test identities (gunbc.witness_v2_native_route NativeRouteTestIdentity) executed on the required witnesses job by the self-host product's built SourceRootEvalDriver, holding a monotone green set and exactly one frontier row; its DENOMINATOR is the derived universe -- green identities plus exactly one observed frontier plus typed exclusions and refusals -- and the green set alone is never a production-admission denominator. A run that reds a green member refuses the landing; a run that advances the frontier proposes the next row. Members are eligible only when their adjudication is native: a label whose standing is judged by the host (gunbc.native_claim_program native_claim_program_standing, the native-serve probe standing, both evaluated by the v1 interpreter through cli_run classify_exit) is ineligible until that adjudication moves into the emitted binary. The plan rules whether the green set is the complement of gunbc.native_frontier_roster over its minted universe or replaces that debt roster in one root cut. REQUIREMENT (operator chat ruling of 2026-10-10, relayed by smart-gull-336): v2-native work -- the built SourceRootEvalDriver judging the green set and the frontier, a native regen instrument, anything the native job runs -- runs in its OWN slot class, sized separately; the 22 GiB / 21 GiB / swap-0 slot (gunbc.runner_slot_desired) stays the emit-and-build slot. That means a second RunnerSlotDesired row with its own MemoryMax, MemoryHigh and MemorySwapMax=0 and its own runs-on label, the gunbc.runner_slot_allocation math splitting hosts across the two classes, and the native job's demand measured by its own MEMORY RECEIPT before the number is fixed (no number copied from the emit-build slot).",
+        displaced_cost: "The required context proves only that two closures emit and build; no native verdict lands on the merge path, so every native regression lands silently, and the native-frontier ratchet still has no required step to run in (gunbc.rung_drop v2_native_route_off_the_merge_path, as amended for the witnesses job).",
+        first_slice: "Author the plan module with the carrier types and the eligibility rule, seed the green set from a run over the derived v2.test.* universe at a named tree, and bind the first frontier row from native-route-first-frontier.",
+        red_control: "A member leaving the green set without a typed disposition refuses; a second frontier row refuses; a member whose verdict was produced by the interpreter refuses as ineligible; a population row that names an emitted_subject_build_rows label refuses as a second home; a denominator that is the green set alone (omitting the frontier or an exclusion the universe holds) refuses. All run green over supplied values.",
+        out_of_scope: "Production admission (native-production-admission, D10); a new CI job (the step lives in the witnesses job); the realization of effects the route needs (D11).",
+        handback: "The plan module, the carrier with its green set and one frontier row, the witnesses job step that executes it through the built driver, and the run id of the first merge_group run whose log prints the green set and the frontier."
+      )),
+      dispatch: dispatchable(),
+      execution: bound(contract: gunbc_claims_execution_contract(
+        entry: "dag/test/claim/native/native_obligation_population_witness_test.dag" as FilePath,
+        functions: [
+          "a_host_judged_member_is_ineligible" as NonEmptyStr,
+          "the_population_is_disjoint_from_the_emitted_subject_rows" as NonEmptyStr,
+          "the_denominator_is_the_derived_universe_not_the_green_set" as NonEmptyStr,
+        ],
+      )),
+      parent: in_project(project: "native-route-to-live", contribution: "This is the shape the native route takes on the required path: the drop v2_native_route_off_the_merge_path retires only when this population is judged on a landing, and D10 admission reads its green set as the subject denominator."),
+      centering: plan(text: "Target: new module dag/gunbc/plans/native_obligation_population.dag (the plan, gunbc.plan Plan, registered in gunbc.plan_registry_batch_g) carrying the carrier types beside the prose; the step joins gunbc.compiler_gate_workflow after the two emitted_subject_build_rows steps and is NOT a row of emitted_subject_build_rows. Exemplars: gunbc.native_frontier_debt and gunbc.native_frontier_roster for a monotone contract over a discovered universe; gunbc.emitted_subject_build_gate for a step bound to a label. (1) Plan first: rule reuse-versus-replace of native_frontier_roster in the plan body with its reason, and state the eligibility test as a typed predicate over gunbc.target_binding TargetProducer arms (NativeClaimProgramProducer and NativeServeProgramProducer refuse). (2) Carrier: green set keyed by NativeRouteTestIdentity, one frontier row, both with the mint receipt shape of NativeFrontierMintReceipt. (3) Step: one gunbc test label executed by the built self-host driver, printing the green set and the frontier, refusing on a green member regressing. (4) The acceptance witness in the contract is authored green over supplied values; make it green by execution. Stop and return if the plan question in (1) needs the operator: do not pick silently."),
+    ),
+    roadmap_node(
+      identity: "rn_ZYWEOZ66GSJSEKEF4UOQOCISST",
+      id: "fleet-slot-no-swap-envelope-converged",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/runner/runner_slot_desired.dag"),
+      line: ticket(t: fields(
+        headline: "Every EXISTING fleet runner slot reads back MemoryMax 22 GiB, MemoryHigh 21 GiB and MemorySwapMax 0",
+        boundary: "The row gunbc.runner_slot_desired gunbc_runner_slot_desired (memory_max 23622320128, memory_high 22548578304, memory_swap_max 0) is converged onto every host's runner slot units through the one checked route (fleet-converge, gunbc.fleet_converge_workflow and gunbc.runner_host_deploy), and read back from systemd on each host. The model landed with the one-job cut; this node is the host effect and its readback. Prerequisite outside the roadmap: the fleet-converge workflow must parse and dispatch from the landing branch (gunbc#13660), which is referenced and not re-planned here.",
+        displaced_cost: "The witnesses job binds each subject step at 20 GiB below a slot maximum the hosts may not yet enforce; a slot still carrying the 26/25 GiB rows or swap unlimited lets a build thrash instead of trip, which is the memory instability the pivot was ruled on.",
+        first_slice: "Run the converge for the runner slot scope on one host, read MemoryMax, MemoryHigh and MemorySwapMax back from systemctl show for each slot unit, then the rest of the fleet.",
+        red_control: "A readback reporting MemorySwapMax other than 0 or MemoryMax other than the row refuses the host as not converged; a converge that reports success from its own write with no readback does not pass.",
+        out_of_scope: "Runner-population expansion: converge the caps FIRST with the slot population held fixed; extra slots are considered only after the cold run (witnesses-cold-run-envelope-receipt) has read the job's high-water mark. srv2's unresolved width (gunbc.runner_slot_allocation RunnerWidthUnresolved); any change to the row's values; the compiler-side trip (gunbc.emitted_subject_build_gate native_step_memory_trip). The native job's separately sized slot class (a second RunnerSlotDesired row; operator chat ruling 2026-10-10 via smart-gull-336), owned by native-obligation-population.",
+        handback: "Per host, the readback of the three properties for every runner slot unit, as a typed observation row naming host, unit and values, with the converge receipt."
+      )),
+      dispatch: dispatchable(),
+      execution: bound(contract: gunbc_claims_execution_contract(
+        entry: "dag/test/claim/runner/runner_slot_envelope_converged_witness_test.dag" as FilePath,
+        functions: [
+          "a_readback_with_swap_refuses_the_host" as NonEmptyStr,
+          "every_fleet_host_readback_matches_the_row" as NonEmptyStr,
+          "the_live_readback_is_unrecorded_or_names_its_run" as NonEmptyStr,
+        ],
+      )),
+      parent: in_project(project: "ci-end-to-end-execution", contribution: "The required job fits the fleet only if the slot it runs in enforces the envelope the verdict assumes; an unconverged host makes the MEMORY RECEIPT a claim about a cgroup the host never bound."),
+      centering: plan(text: "Target: dag/gunbc/runner/runner_host_deploy.dag (the emitted slot units) and the fleet-converge route gunbc.fleet_converge_workflow; readback carrier beside gunbc.host_memory_observation. Exemplar: gunbc.fleet.fleet_converge_receipt for a converge receipt with readback. (1) Confirm the emitted runner slot unit renders MemoryMax, MemoryHigh and MemorySwapMax from gunbc_runner_slot_desired (extdeps.systemd.unit_file slice_memory_swap_max). (2) Dispatch fleet-converge for the runner slot scope from the landing branch; if the workflow does not parse, stop: that is gunbc#13660's subject, not yours. Hold the slot population fixed: do not add slots in this node. (3) Read back with systemctl show -p MemoryMax,MemoryHigh,MemorySwapMax for each existing slot unit on each host and record a typed row per host. (4) The witness is green over planted readbacks (a swapping readback refuses, a swap-free one holds); the live receipt row stays ReceiptUnrecorded until a converge run is named, and recording it is the acceptance. Stop and return on any host whose readback disagrees with the row after converge."),
+    ),
+    roadmap_node(
+      identity: "rn_MKYS3QV2ZWJGBE72YVSQM7UXGP",
+      id: "witnesses-cold-run-envelope-receipt",
+      owner: "ci-cost",
+      carriers: carrier(path: "dag/gunbc/emitted_subject_build_gate.dag"),
+      line: ticket(t: fields(
+        headline: "One cold required run records the job's slot high-water mark, per-step OOM and high/max event deltas, per-step swap and wall",
+        boundary: "One run of the witnesses job with an empty Cargo cache and the converged slot envelope, read for the job as a whole and for each step: the slot/job high-water mark (the peak the slot cgroup reached across the job), the OOM-kill delta, the high-event delta and the max-event delta each subject step added, each step's swap observation, and the wall by step, recorded in a typed receipt row that names the run id and the host. These are slot-grain readings; they are called per-phase peaks only once per-job and per-step cgroups exist (gunbc.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership). The row is the baseline every later envelope decision is judged against. Its carrier is the model row of the forensic memory audit of the self-host step (work item adhoc-f4b37356-593), not a second one minted here; until that row lands the receipt uses gunbc.cutover_receipt.",
+        displaced_cost: "The 22/20 GiB envelope was ruled on a measured peak of the former lane (17.7 to 18.0 GB over 281 jobs, operator's receipt); no run under the new job and the new slot has recorded its own peaks, so the margin between the compiler trip and the slot maximum is assumed, not read.",
+        first_slice: "Trigger the run cold on a converged host, read both MEMORY RECEIPT lines and the seed build step's wall, and write the receipt row.",
+        red_control: "A receipt row without a run id refuses; a recorded high-water mark above the slot trip refuses; a row claiming a cold cache while the Cache Cargo step reported a hit refuses. These controls run green over supplied values; the live row stays ReceiptUnrecorded until a run is named.",
+        out_of_scope: "Cutting any peak; changing the envelope; adding runner slots; the warm-cache measurement and any reuse of a native product (not reopened until slot converge, one cold run, the first frontier and a measured reason exist).",
+        handback: "The typed cold-run receipt row naming run id, host, the job high-water mark, per-step event deltas, swap and wall, cited by producer."
+      )),
+      dispatch: dispatchable(),
+      execution: bound(contract: gunbc_claims_execution_contract(
+        entry: "dag/test/claim/ci/witnesses_cold_run_receipt_witness_test.dag" as FilePath,
+        functions: [
+          "a_high_water_mark_above_the_trip_refuses" as NonEmptyStr,
+          "a_reading_with_no_run_id_is_not_recorded" as NonEmptyStr,
+          "a_cold_claim_beside_a_cache_hit_refuses" as NonEmptyStr,
+          "the_live_receipt_is_unrecorded_or_names_its_run" as NonEmptyStr,
+        ],
+      )),
+      parent: in_project(project: "ci-end-to-end-execution", contribution: "The required run's cost and peak are attributed on the run that owns the number; this row is the first reading of the new job under the new slot."),
+      centering: plan(text: "Target: dag/gunbc/cutover_receipt.dag (the typed receipt carrier) keyed to the witnesses job. (1) Wait for fleet-slot-no-swap-envelope-converged on the host you will use. (2) Dispatch the witnesses workflow with the Cargo cache absent, confirm the Cache Cargo step reported a miss. (3) Read the slot/job high-water mark, the MEMORY RECEIPT event deltas and swap of emit_build_self_host and emit_build_v2_native_cli, and each step's wall from the run log; write them into witnesses_cold_run_receipt with the run id and host. Do not call them per-phase peaks. (4) The witness is green over supplied values; recording the row is the acceptance. Stop and return if any step exits 137: record the trip as the receipt and do not retry bigger."),
+    ),
+    roadmap_node(
       identity: "rn_44VKSHNX2ZNTDRCPGGNSFJWCWN",
       id: "2-scm-git-upstream-model",
       owner: "source-intent",
@@ -2609,7 +2743,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "native-frontier-required-lane",
       owner: "self-host",
       carriers: carrier(path: "dag/gunbc/rung_drop.dag"),
-      line: ticket(t: fields(
+      line: ticket(t: updated(t: fields(
           headline: "The native-frontier ratchet runs on every landing",
           boundary: "Mint gunbc.native_frontier_roster (RosterUnminted today) from a //gunbc/instruments:v2-native-frontier run. Then add a merge-queue-only STEP inside an existing fleet lane: no new job, and the job roster stays closed (operator ruling Q4, 2026-09-30). Time budget: about 35 minutes per landing; revisit trigger: re-examine the step if it exceeds about 35 minutes per landing or stops catching regressions. Retires drops v2_native_route_off_the_merge_path and v2_native_frontier_nightly_cadence. The emit-build job was made blocking by #12468 but is still labelled NON-REQUIRED; fix the label.",
           displaced_cost: "Nothing runs the ratchet between the deleted nightly and a lane that is not yet live.",
@@ -2617,7 +2751,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           red_control: "A landing that adds a debt row refuses. A green run over an unminted roster refuses.",
           out_of_scope: "Production admission; a new CI job.",
           handback: "The roster minted, the step required, and both drops Retired."
-        )),
+        ), on: "2026-10-09", note: "The 2026-10-09 ruling puts the merge-queue native step inside the one witnesses job (witnesses-one-required-job), not an existing v1 lane; the roster mint is the first green set of native-obligation-population, with the first frontier recorded by native-route-first-frontier.")),
       parent: in_project(project: "native-route-to-live", contribution: "The ratchet running on every landing is what turns native regressions from silent into refused."),
       centering: plan(text: "Roster mint slice only. Run gunbc test //gunbc/instruments:v2-native-frontier on a fleet host. Capture the [native-frontier-roster] proposal it prints. Open one PR that sets gunbc.native_frontier_roster from RosterUnminted to the minted proposal, citing the run. Do not touch CI YAML or rung drops. Stop if the run refuses or prints no proposal."),
     ),
@@ -2794,7 +2928,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           red_control: "A term the tool cannot measure refuses; it never reads as zero.",
           out_of_scope: "Wall-time cost (ci-required-run-cost).",
           handback: "The attributed peak, with one cut landed against it."
-        ), on: "2026-09-30", note: "Not yet centered: memory tool first (#12774).")),
+        ), on: "2026-09-30", note: "Superseded 2026-10-09: the floor lane is deleted under gunbc.rung_drop v1_required_lanes_withdrawn; the live envelope question is fleet-slot-no-swap-envelope-converged.")),
       parent: in_project(project: "ci-end-to-end-execution", contribution: "The floor must fit the fleet's memory, and its peak today is one v1 type check."),
     ),
     roadmap_node(
@@ -2810,7 +2944,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           red_control: "A red unit test fails the aggregate.",
           out_of_scope: "Re-adding the hosted job.",
           handback: "The lane required, with the drop Retired."
-        ), on: "2026-09-30", note: "Not yet centered: #12753 open.")),
+        ), on: "2026-09-30", note: "Superseded 2026-10-09: the unit lane runs nowhere after the one-job cut (witnesses-one-required-job).")),
       parent: in_project(project: "ci-end-to-end-execution", contribution: "Unit tests red on main behind green checks is exactly what a required lane exists to stop."),
     ),
     roadmap_node(
@@ -3240,7 +3374,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "ci-cost-floor-memory-term-attribution",
       owner: "ci-cost",
       carriers: carrier(path: "docs/plans/floor-memory-envelope-2026-09-12.md"),
-      line: ticket(t: fields(
+      line: ticket(t: updated(t: fields(
         headline: "Attribute the floor's memory to the terms that hold it, starting with pool_parse",
         boundary: "Give the existing per-term retention machinery a byte-measuring driver. v1_compiler.cli_run drop_attributable_terms_for_test and drop_private_term_for_test already state that the live-heap release measured across a call is that term's EXCLUSIVE retention, and already enumerate the terms -- pool_parse among them -- with NO driver and a single unit-test caller counting entries. A TIME accumulator for the same term exists in claim_batch's cost partition; only the memory side is missing. Read the term roster from those two declarations rather than from a count quoted here.",
         displaced_cost: "The floor's largest memory component cannot be named. First-touch attribution puts pool_parse's bytes on gate-closure or the whole-corpus resolve, and pool-root-index-warm reports zero growth because something upstream forced the parse first -- so the one number that would rank the work is the one nobody can produce. A cap or a slot sized without it is sized against an unattributed total.",
@@ -3248,7 +3382,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "A term whose retention the driver cannot measure REFUSES rather than reporting zero -- zero and unmeasured are the conflation this lane exists to prevent, and it is the same distinction the landed floor-memory carrier draws between a bound and a demand.",
         out_of_scope: "Re-measuring the whole-run peak, which the landed instrument already does; and fixing the floor's inability to report its own peak, which is a separate defect recorded below.",
         handback: "The driver, a pool_parse byte figure re-derivable by naming its producer, and a refusal receipt for a term it cannot measure. RELATED AND DELIBERATELY NOT BUNDLED: floor_cgroup_envelope is documented as emitted at entry AND EXIT and has no exit call, so a run outside the supervisor cannot report its maximum. If that is fixed it must be an RAII GUARD rather than a placed call, and the reason is countable in v1_compiler.cli_run run_required_floor rather than quotable from here: its early-return and propagation sites vastly outnumber its explicit successful returns, so a placed call is unreachable on most paths."
-      )),
+      ), on: "2026-10-09", note: "Superseded with floor-memory by the 2026-10-09 ruling; the floor lane it attributes no longer exists.")),
       dispatch: dispatchable(),
       parent: in_project(project: "ci-end-to-end-execution", contribution: "The required run is the factory verification half; a gap in what it counts, bills or reports is a gap in every landing it gates."),
     ),
@@ -3257,7 +3391,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "ci-cost-floor-preparation-cut",
       owner: "ci-cost",
       carriers: carrier(path: "docs/design-rung-drops.md"),
-      line: ticket(t: fields(
+      line: ticket(t: updated(t: fields(
         headline: "Make the floor affordable enough to be a merge gate again",
         boundary: "Cut the required fold's PREPARATION cost until the floor fits the fleet, then put it back on the merge path. THE CLAIMS WERE NEVER THE EXPENSE -- claim execution is a small fraction of the floor's wall time while strict-preparation and reach probes dominate it. Re-derive that split from the phase lines a required-witnesses-floor run prints (gunbc.witness_floor_workflow); THAT NO ENTRY POINT RE-DERIVES IT IS PART OF WHAT THIS NODE FIXES, which is why no figure is carried here. The two candidate constructions are reusing resolved-module and reach-probe results across runs, or scoping preparation to a diff's closure.",
         displaced_cost: "The required gate is currently a compiler build. The witness floor, namespace-wave-admission, generated-artifact, the regen fixed point and the parse sweep all left the merge path, so main can break for any of them while every required check stays green -- which it already has, within three hours of the cut. Every session pays that risk on every change.",
@@ -3265,7 +3399,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "A change that breaks a floor claim is refused on the revision that lands, at a whole-run cost the fleet can carry concurrently with the build lane.",
         out_of_scope: "Re-emitting witnesses.yml from the old authority without the preparation repair, which restores the cost that caused the cut; and making the floor faster without returning it to the merge path.",
         handback: "The preparation measurement WITH AN ENTRY POINT THAT RE-DERIVES IT rather than a figure quoted from a log, the landed construction, a required run that planned and executed the enrolled population on a landing revision, and the retirement of gunbc.rung_drop witness_floor_off_the_required_gate."
-      )),
+      ), on: "2026-10-09", note: "Superseded by the 2026-10-09 ruling: the ruling withdraws the floor from the merge path, so putting it back is not this row's work.")),
       dispatch: dispatchable(),
       parent: in_project(project: "ci-end-to-end-execution", contribution: "The required run is the factory verification half; a gap in what it counts, bills or reports is a gap in every landing it gates."),
     ),
@@ -4061,7 +4195,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "typed-store-cold-warm-measurement",
       owner: "v1-performance",
       carriers: carrier(path: "docs/plans/typed-module-cross-run-materialization.md"),
-      line: ticket(t: fields(
+      line: ticket(t: updated(t: fields(
         headline: "Measure the host-persisted typed-module store on the real route, or delete it",
         boundary: "One cold/warm receipt from the two sibling processes the provider row names -- the nominal witnesses fold and the generated-artifact drift gate, one job, one built binary. Report end-to-end wall, peak RSS, and the fold's subject digest, which must be EQUAL between armed and unarmed: a store that changes a verdict is a defect, not a saving. Read hits, misses, rejections, refusals, throughput and LIVE OCCUPANCY off the [typed-store-persist] line the floor receipt already emits.",
         displaced_cost: "The store is armed by nothing today, so it displaces nothing until this runs. Until then the tier is implemented and unmeasured, and the design's projected figures (8.3 min -> ~1 min preparation, 32 -> ~20 min per push) are withdrawn rather than carried, because they do not follow from the key the design proposed.",
@@ -4069,7 +4203,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "An unarmed and an armed run of the same commit must print the SAME subject digest; a difference falsifies the store rather than the measurement. A second armed run over a warm store must show hits, or the store is not being reached and the whole tier is inert.",
         out_of_scope: "No widening of required_gate_prefixes, no seeding workflow, no scheduled verification job, and no parallelism work.",
         handback: "The cold/warm receipt with both wall times, both peak RSS figures, the two digests, and the decision it implies: keep and arm, or delete the tier."
-      )),
+      ), on: "2026-10-09", note: "Superseded by the 2026-10-09 ruling in its floor-lane arming step: there is no floor lane to arm GUNBC_TYPED_STORE_PERSIST on; cold-run measurement now belongs to witnesses-cold-run-envelope-receipt.")),
       dispatch: dispatchable(),
       parent: in_project(project: "v2-compiler-live", contribution: "Primitive egress, interpreter cost and self-host admission are what the self-hosted compiler needs before it is the one that runs."),
     ),
@@ -4109,6 +4243,13 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
 // centering plans, not a dependency, and the graph has no exclusion-edge vocabulary.
 fn declared_roadmap_edges() -> List<RoadmapEdge> {
   concat([
+    edge(child: "native-obligation-population", parent: "witnesses-one-required-job"),
+    edge(child: "native-obligation-population", parent: "native-route-first-frontier"),
+    edge(child: "fleet-slot-no-swap-envelope-converged", parent: "witnesses-one-required-job"),
+    edge(child: "witnesses-cold-run-envelope-receipt", parent: "witnesses-one-required-job"),
+    edge(child: "witnesses-cold-run-envelope-receipt", parent: "fleet-slot-no-swap-envelope-converged"),
+    edge(child: "native-frontier-required-lane", parent: "witnesses-one-required-job"),
+    edge(child: "native-production-admission", parent: "native-obligation-population"),
     edge(child: "review-sheet-properties-write-and-legacy-retirement", parent: "review-sheet-identity-producer-and-admission"),
     edge(child: "census-installation-token-via-app-jws-route", parent: "census-app-registration-installation-and-custody"),
     edge(child: "census-job-level-observation-and-reprojection", parent: "census-installation-token-via-app-jws-route"),

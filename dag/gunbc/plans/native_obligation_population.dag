@@ -1,0 +1,124 @@
+module gunbc.plans.native_obligation_population
+
+import std.types { String, List, Bool, Int, list_length }
+import v2.std.algebra { any }
+import v2.compiler.native_test_vocabulary { NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval, native_test_stage_text }
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
+import std.markdown { MarkdownBlock }
+import gunbc.plans.md_helpers { h2, p, li, ul, ol, quote }
+
+// The typed rows this plan carries, because an annotation is not a declaration (DESIGN section 4c).
+// The frontier is born unobserved; roadmap node native-route-first-frontier flips it by a RUN.
+// The frontier's subject is named by a stable qualified identity, or by a derived target that was
+// resolved to its members with the cardinality asserted; "the smallest member" names a different
+// subject whenever the group changes, so no arm carries a selection rule.
+type NativeFrontierSubject
+  = SubjectQualified { identity: String }
+  | SubjectDerivedSingle { target: String, resolved_members: List<String>, resolved_identity: String }
+
+type NativeFrontierObservation
+  = FrontierUnobserved
+  | FrontierObserved { terminal: String, tested_tree: String, executable_identity: String, command: String, subject: NativeFrontierSubject }
+
+data native_route_first_frontier: NativeFrontierObservation = FrontierUnobserved
+
+// The green set: identities the built driver adjudicated as agreeing. Empty until the first run.
+data native_population_green_set: List<String> = []
+
+data native_terminal_stages: List<NativeTestStage> = [NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval]
+
+// A terminal is "<stage>:<reason>" where <stage> is a stage the native vocabulary mints.
+fn native_terminal_is_in_vocabulary(terminal: String) -> Bool {
+  any(native_terminal_stages, s => starts_with(s: terminal, prefix: concat(native_test_stage_text(stage: s), ":")))
+}
+
+// A frontier stands only when a run produced it: every provenance field is non-empty and the
+// terminal is in the native vocabulary. FrontierUnobserved never stands.
+fn native_frontier_stands(f: NativeFrontierObservation) -> Bool {
+  match f {
+    FrontierUnobserved => false
+    FrontierObserved { terminal: t, tested_tree: tree, executable_identity: exe, command: cmd, subject: subject } =>
+      native_terminal_is_in_vocabulary(terminal: t) && tree != "" && exe != "" && cmd != ""
+        && native_frontier_subject_is_stable(subject: subject)
+  }
+}
+
+// A subject is stable when it is a non-empty qualified identity, or a derived target whose resolved
+// members number exactly one and whose resolved identity is that member.
+fn native_frontier_subject_is_stable(subject: NativeFrontierSubject) -> Bool {
+  match subject {
+    SubjectQualified { identity: id } => id != ""
+    SubjectDerivedSingle { target: t, resolved_members: members, resolved_identity: id } =>
+      t != "" && list_length(items: members) == 1 && any(members, m => m == id)
+  }
+}
+
+// Typed exclusions and refusals the universe holds that are neither green nor the frontier.
+data native_population_exclusions: List<String> = []
+
+// The denominator is the DERIVED UNIVERSE: every universe member is exactly one of green, the one
+// frontier, or a typed exclusion, and nothing outside the universe is counted. The green set alone
+// is never a denominator, because it omits the frontier and every exclusion the universe holds.
+fn native_denominator_is_the_universe(universe: List<String>, green: List<String>, frontier: List<String>, exclusions: List<String>) -> Bool {
+  list_length(items: frontier) == 1
+    && !any(universe, u => !(any(green, g => g == u) || any(frontier, f => f == u) || any(exclusions, e => e == u)))
+    && !any(green, g => !any(universe, u => u == g))
+    && !any(frontier, f => !any(universe, u => u == f))
+    && !any(exclusions, e => !any(universe, u => u == e))
+    && !any(green, g => any(frontier, f => f == g) || any(exclusions, e => e == g))
+    && !any(frontier, f => any(exclusions, e => e == f))
+}
+
+// Producers whose standing the host (the v1 interpreter through classify_exit) judges: ineligible.
+data native_host_judged_producers: List<String> = ["NativeClaimProgramProducer", "NativeServeProgramProducer"]
+
+// A member is eligible only when its adjudication is native.
+fn native_member_is_eligible(member: String) -> Bool {
+  !any(native_host_judged_producers, h => h == member)
+}
+
+// A member is a second home when it names one of the emitted subject rows' labels.
+fn native_member_is_a_subject_row(member: String, subject_labels: List<String>) -> Bool {
+  any(subject_labels, l => l == member)
+}
+
+fn native_obligation_population_body() -> List<MarkdownBlock> {
+  [
+    quote(blocks: [
+      p(text: "**Status: designed 2026-10-09 (operator ruling: every v2 task carries a design and is handed to a dispatch worker). No implementation lands from this document.** It is the model behind roadmap nodes `native-route-first-frontier` and `native-obligation-population`."),
+    ]),
+    h2(text: "1. Goal and displaced cost"),
+    p(text: "After the 2026-10-09 ruling the required path has one job, `witnesses`, which emits and builds the two retained products. Nothing on that path yet judges the `v2.test.*` universe with a binary the seed emitted, so `gunbc.rung_drop` `v2_native_route_off_the_merge_path` stands and the native verdict is reasoned rather than observed. The displaced cost is every landing that cannot tell whether the native compiler agrees with the tree it just built."),
+    h2(text: "2. The model"),
+    ul(items: [
+      li(text: "**Population, separate from the subject rows.** `gunbc.emitted_subject_build_gate` `emitted_subject_build_rows` name what is emitted and built (two products). The population is what the BUILT product then adjudicates; it is a different set with a different executor and is not appended to those rows."),
+      li(text: "**Executor.** The self-host product's built `std.compiler_entry` `SourceRootEvalDriver`, run in adjudicate mode over a universe of identities. Not the interpreter, not the seed's Rust."),
+      li(text: "**Denominator.** The denominator production admission reads is the derived universe: green identities plus exactly one observed frontier plus typed exclusions and refusals (`native_denominator_is_the_universe` joins them at identity grain). The green set alone is never a denominator."),
+      li(text: "**Frontier subject.** The first frontier is observed over a subject named by a stable qualified identity, or by a derived single-member target with its cardinality asserted; \"the smallest member\" is not a subject (`native_frontier_subject_is_stable`)."),
+      li(text: "**Green set plus exactly one frontier.** `native_population_green_set` holds identities the driver adjudicated as agreeing; the frontier is the FIRST typed terminal the driver reports beyond it. A second frontier row refuses: the line stops at the first deficit (DESIGN section 5)."),
+      li(text: "**Eligibility is native adjudication only.** A member judged by the host (`NativeClaimProgramProducer`, `NativeServeProgramProducer`) is ineligible; admitting it would let the interpreter's verdict stand in for the native one."),
+      li(text: "**Separately sized slot class (operator chat ruling 2026-10-10, relayed by smart-gull-336).** The 22 GiB / 21 GiB / swap-0 slot of `gunbc.runner_slot_desired` is the emit-and-build slot and stays so; every v2-native job (the built `SourceRootEvalDriver`, a native regen instrument) runs in its own class: a second `RunnerSlotDesired` row with its own MemoryMax, MemoryHigh, MemorySwapMax=0 and runs-on label, the `gunbc.runner_slot_allocation` math splitting hosts across the two, and the size fixed only after the native job's own MEMORY RECEIPT, never copied from the emit-build slot."),
+      li(text: "**Reuse versus replace.** `gunbc.native_frontier_roster` and `gunbc.native_frontier_debt` stay the debt contract; the first green set is what mints the roster, so this plan feeds that carrier and does not fork it."),
+    ]),
+    h2(text: "3. Milestones"),
+    ol(items: [
+      li(text: "**M1 native-route-first-frontier.** Makes true: `native_route_first_frontier` is `FrontierObserved` from one driver run over a one-identity universe named by a stable subject. Deletes in the same change: nothing. Production consumer: the ordering decision between `xl2-body-lowering` and `native-seven`. Qualification: the witness functions, green over supplied values. Exit: the row carries tested tree, executable identity and command."),
+      li(text: "**M2 native-obligation-population.** Makes true: a green set and the one frontier judged by a step in the `witnesses` job. Deletes in the same change: the `v2_native_route_off_the_merge_path` population it discharges. Production consumer: `native-production-admission`, whose denominator is the derived universe (green + one frontier + typed exclusions), not the green set alone. Qualification: the witness functions, green over supplied values. Exit: the first merge_group run printing the green set and the frontier."),
+    ]),
+    h2(text: "4. Decisions"),
+    ol(items: [
+      li(text: "Ruled 2026-10-09: the frontier is observed from a run, never reasoned from source."),
+      li(text: "Ruled 2026-10-10 (operator, relayed by smart-gull-336): the denominator is the derived universe -- green identities, exactly one observed frontier and typed exclusions/refusals -- and the green set alone is never a production-admission denominator; the first frontier's subject is a stable qualified identity or a derived single-member target with a cardinality assertion, never \"the smallest member\"."),
+      li(text: "Deferred: widening the universe from one identity to all of `v2.test.*`; trigger is M1 landed with a terminal that the driver can pass."),
+    ]),
+  ]
+}
+
+data native_obligation_population_plan: Plan = Plan {
+  projection: PlanProjectsCommittedMarkdown,
+  slug: "native-obligation-population",
+  title: "Native obligation population: the built driver judges the v2 universe on the required path",
+  body: native_obligation_population_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete when the population is judged on every landing by the binary built from the seed's emission, retiring gunbc.rung_drop v2_native_route_off_the_merge_path and discharging v1_required_lanes_withdrawn member (1), and native_population_green_set has become the minted gunbc.native_frontier_roster. A terminal refusal is evidence and never dissolves this plan.") }
+}

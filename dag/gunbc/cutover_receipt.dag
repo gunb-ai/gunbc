@@ -1,0 +1,133 @@
+module gunbc.cutover_receipt
+
+import std.types { String, List, Bool, Int, NonEmptyStr, list_length }
+import std.measure { ByteSize, byte_size_count }
+import v2.std.algebra { any }
+
+// THE RECEIPT A V2 CUTOVER ROADMAP NODE HANDS BACK, AS A TYPED STANDING.
+//
+// Each cutover node that ends in a run (gunbc.roadmap_authority: fleet-slot-no-swap-envelope-converged,
+// witnesses-cold-run-envelope-receipt) ends in an OBSERVATION of a named run, not in a statement about the code. A reading copied from nowhere is
+// the fabricated field DESIGN section 5 forbids, so the standing has exactly two arms and the
+// recorded one cannot be written without the runs it came from: no run id, no receipt.
+//
+// The rows below are born ReceiptUnrecorded, so roadmap readiness reads the node unaccepted; no
+// witness is red for it (nothing on the required path would execute one). The witnesses stay green
+// over supplied values. A worker flips a row by recording the run -- readings are typed by the kinds the gunbc test MEMORY RECEIPT and the slot readback print, never free text -- and never by editing the witness. Each row dissolves
+// into its consumer's own carrier when that carrier exists (the roster the node builds), at which
+// point the row is deleted in the same change.
+
+// A reading is a MEASUREMENT of a named quantity, so it is keyed on a closed kind and a byte quantity
+// is a std.measure ByteSize, never a String: the kinds are the fields the gunbc test MEMORY RECEIPT
+// prints (peak, swap charged) and the slot readback (MemoryMax, MemorySwapMax), so the producer that
+// re-derives a reading is named by its kind. A label reading carries an identifier, not a number.
+// The cold run's readings are SLOT-GRAIN: the job's high-water mark, and per-step deltas and
+// observations. They are per-phase peaks only once per-job/per-step cgroups exist.
+type ByteReadingKind = JobHighWater | StepSwapObserved | SlotMemoryMax | SlotSwapMax
+
+type CountReadingKind = StepOomEventDelta | StepHighEventDelta | StepMaxEventDelta | StepWallSeconds
+
+type LabelReadingKind = CacheStateLine | CacheKeyLine
+
+type CutoverReading
+  = ByteReading { kind: ByteReadingKind, bytes: ByteSize }
+  | CountReading { kind: CountReadingKind, count: Int }
+  | LabelReading { kind: LabelReadingKind, label: NonEmptyStr }
+
+type CutoverReceipt
+  = ReceiptUnrecorded
+  | ReceiptRecorded { run_ids: List<String>, host: String, readings: List<CutoverReading> }
+
+fn cutover_receipt_is_recorded(r: CutoverReceipt) -> Bool {
+  match r {
+    ReceiptUnrecorded => false
+    ReceiptRecorded { run_ids: runs, host: host, readings: readings } =>
+      list_length(items: runs) > 0 && host != "" && list_length(items: readings) > 0
+  }
+}
+
+fn reading_is_byte_kind(x: CutoverReading, kind: ByteReadingKind) -> Bool {
+  match x {
+    ByteReading { kind: k, bytes: _ } => k == kind
+    CountReading { kind: _, count: _ } => false
+    LabelReading { kind: _, label: _ } => false
+  }
+}
+
+fn reading_is_label_kind(x: CutoverReading, kind: LabelReadingKind) -> Bool {
+  match x {
+    ByteReading { kind: _, bytes: _ } => false
+    CountReading { kind: _, count: _ } => false
+    LabelReading { kind: k, label: _ } => k == kind
+  }
+}
+
+fn cutover_receipt_has_byte_reading(r: CutoverReceipt, kind: ByteReadingKind) -> Bool {
+  match r {
+    ReceiptUnrecorded => false
+    ReceiptRecorded { run_ids: _, host: _, readings: readings } => any(readings, x => reading_is_byte_kind(x: x, kind: kind))
+  }
+}
+
+fn cutover_receipt_has_label_reading(r: CutoverReceipt, kind: LabelReadingKind) -> Bool {
+  match r {
+    ReceiptUnrecorded => false
+    ReceiptRecorded { run_ids: _, host: _, readings: readings } => any(readings, x => reading_is_label_kind(x: x, kind: kind))
+  }
+}
+
+fn reading_is_a_peak_above(x: CutoverReading, trip: ByteSize) -> Bool {
+  match x {
+    ByteReading { kind: k, bytes: b } =>
+      k == JobHighWater && byte_size_count(b: b) > byte_size_count(b: trip)
+    CountReading { kind: _, count: _ } => false
+    LabelReading { kind: _, label: _ } => false
+  }
+}
+
+// A recorded receipt holds the trip only if it carries a job high-water mark and none exceeds the trip.
+fn cutover_receipt_peaks_within(r: CutoverReceipt, trip: ByteSize) -> Bool {
+  match r {
+    ReceiptUnrecorded => false
+    ReceiptRecorded { run_ids: _, host: _, readings: readings } =>
+      any(readings, x => reading_is_byte_kind(x: x, kind: JobHighWater))
+        && !any(readings, x => reading_is_a_peak_above(x: x, trip: trip))
+  }
+}
+
+// A readback is swap-free only if its swap cap and any charged swap are zero bytes.
+fn cutover_receipt_swap_free(r: CutoverReceipt) -> Bool {
+  match r {
+    ReceiptUnrecorded => false
+    ReceiptRecorded { run_ids: _, host: _, readings: readings } =>
+      !any(readings, x => reading_is_nonzero_swap(x: x))
+  }
+}
+
+fn reading_is_nonzero_swap(x: CutoverReading) -> Bool {
+  match x {
+    ByteReading { kind: k, bytes: b } => (k == StepSwapObserved || k == SlotSwapMax) && byte_size_count(b: b) > 0
+    CountReading { kind: _, count: _ } => false
+    LabelReading { kind: _, label: _ } => false
+  }
+}
+
+// A live row is either unrecorded or a recorded receipt that names its run: a hand-edited Recorded
+// row with no run, host or readings is malformed, and this stays green while the row is Unrecorded.
+fn cutover_receipt_is_unrecorded_or_names_its_run(r: CutoverReceipt) -> Bool {
+  match r {
+    ReceiptUnrecorded => true
+    ReceiptRecorded { run_ids: _, host: _, readings: _ } => cutover_receipt_is_recorded(r: r)
+  }
+}
+
+fn cutover_receipt_names_runs(r: CutoverReceipt, count: Int) -> Bool {
+  match r {
+    ReceiptUnrecorded => false
+    ReceiptRecorded { run_ids: runs, host: _, readings: _ } =>
+      list_length(items: runs) == count && !any(runs, x => x == "")
+  }
+}
+
+data fleet_slot_envelope_readback: CutoverReceipt = ReceiptUnrecorded
+data witnesses_cold_run_receipt: CutoverReceipt = ReceiptUnrecorded
