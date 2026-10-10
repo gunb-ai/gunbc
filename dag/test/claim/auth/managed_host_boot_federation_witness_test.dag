@@ -5,7 +5,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Present, Absent }
 import gunbc.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
 import gunbc.managed_host { managed_host_fixture, managed_hosts }
-import gunbc.auth.oidc_claim_pins { OidcClaimPin, OidcClaimEquals }
+import gunbc.auth.oidc_claim_pins { presented_from_pins, with_presented_value, without_presented_claim }
 import gunbc.auth.gcp_secret_access { SecretAccessGrant }
 import gunbc.auth.managed_host_boot_federation {
   ManagedHostBootFederation, ManagedHostBootFederationStanding, BootFederationProvisioned,
@@ -53,13 +53,6 @@ test fn w_mtcollins1_is_the_one_provisioned_pair_under_its_live_names() -> Bool 
 }
 
 // ── The federation: only this workflow, at reviewed main, dispatched, in the boot environment ────
-fn with_claim(claims: List<OidcClaimPin>, claim: NonEmptyStr, value: String) -> List<OidcClaimPin> {
-  concat(filter(claims, c => (c.claim as String) != (claim as String)), [OidcClaimPin { claim: claim, value: value, relation: OidcClaimEquals }])
-}
-
-fn without_claim(claims: List<OidcClaimPin>, claim: NonEmptyStr) -> List<OidcClaimPin> {
-  filter(claims, c => (c.claim as String) != (claim as String))
-}
 
 // THE CONTROL: the boot job's own token at reviewed main is admitted. THE REDS: a session-branch
 // dispatch, another workflow file, a tag ref, a pull_request event, another environment, and a job
@@ -69,14 +62,14 @@ test fn only_the_boot_jobs_oidc_subject_is_admitted_to_the_dedicated_pool() -> B
   match mtcollins1_federation() {
     Absent => false
     Present { value: f } => {
-    let c = f.claim_pins
+    let c = presented_from_pins(pins: f.claim_pins)
     boot_federation_claims_admitted(f: f, claims: c)
-      && !boot_federation_claims_admitted(f: f, claims: with_claim(claims: c, claim: "workflow_ref", value: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/feature"))
-      && !boot_federation_claims_admitted(f: f, claims: with_claim(claims: c, claim: "workflow_ref", value: "gunb-ai/gunbc/.github/workflows/witnesses.yml@refs/heads/main"))
-      && !boot_federation_claims_admitted(f: f, claims: with_claim(claims: c, claim: "workflow_ref", value: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/tags/x"))
-      && !boot_federation_claims_admitted(f: f, claims: with_claim(claims: c, claim: "event_name", value: "pull_request"))
-      && !boot_federation_claims_admitted(f: f, claims: with_claim(claims: c, claim: "environment", value: "production"))
-      && !boot_federation_claims_admitted(f: f, claims: without_claim(claims: c, claim: "environment"))
+      && !boot_federation_claims_admitted(f: f, claims: with_presented_value(claims: c, claim: "workflow_ref", value: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/feature"))
+      && !boot_federation_claims_admitted(f: f, claims: with_presented_value(claims: c, claim: "workflow_ref", value: "gunb-ai/gunbc/.github/workflows/witnesses.yml@refs/heads/main"))
+      && !boot_federation_claims_admitted(f: f, claims: with_presented_value(claims: c, claim: "workflow_ref", value: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/tags/x"))
+      && !boot_federation_claims_admitted(f: f, claims: with_presented_value(claims: c, claim: "event_name", value: "pull_request"))
+      && !boot_federation_claims_admitted(f: f, claims: with_presented_value(claims: c, claim: "environment", value: "production"))
+      && !boot_federation_claims_admitted(f: f, claims: without_presented_claim(claims: c, claim: "environment"))
   }
   }
 }
