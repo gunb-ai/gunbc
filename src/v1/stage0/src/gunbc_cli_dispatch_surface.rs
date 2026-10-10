@@ -650,10 +650,10 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     field: "candidate_branch".to_string(),
     long: "candidate-branch".to_string(),
     value: Rc::new(CliOptionValue::CliTextValue {
-    text_default: Some("main".to_string()),
+    text_default: Some("".to_string()),
 }),
     arity: CliOptionArity::CliRequired,
-    doc: Rc::new(vec!["Branch the checkout must be on for --mode deploy; the candidate is HEAD of this checkout".to_string()]),
+    doc: Rc::new(vec!["If set, the checkout must be on this branch for --mode deploy; empty admits HEAD's branch".to_string()]),
     emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 })]),
     realization: Rc::new(CliArmRealization::CliInvokesBootstrapDagOperation {

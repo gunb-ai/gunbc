@@ -96,8 +96,8 @@ pub enum Commands {
         /// Spark target host; required for scope:spark-serving, refused elsewhere
         #[arg(long, default_value = "")]
         target: String,
-        /// Branch the checkout must be on for --mode deploy; the candidate is HEAD of this checkout
-        #[arg(long, default_value = "main")]
+        /// If set, the checkout must be on this branch for --mode deploy; empty admits HEAD's branch
+        #[arg(long, default_value = "")]
         candidate_branch: String,
     },
     /// Long-running HTTP server: compile once, then answer each request by
