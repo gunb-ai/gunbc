@@ -2857,6 +2857,7 @@ fn dispatch_worker_unit_properties(
     stderr_path: worker_log_path,
     granted: granted,
     process_bounds: process_bounds,
+    exit_hook: exit_hook,
   )
 }
 
@@ -2867,6 +2868,7 @@ fn dispatch_worker_unit_stream_properties(
   stderr_path: String,
   granted: Kibibyte,
   process_bounds: UnitProcessBounds,
+  exit_hook: NonEmptyStr,
 ) -> List<SystemdRunProperty> {
   concat(
     compute_grant_unit_properties(granted: granted, working_directory: working_directory, process_bounds: Present { value: process_bounds }),
