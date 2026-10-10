@@ -17,7 +17,7 @@ import gunbc.fleet_intent {
 }
 import gunbc.fleet_intent { IsolationBoundary, PerJobFilesystem }
 import extdeps.cpu.ampere { altra_q6430_catalog, altra_q8030_catalog }
-import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, CitedToAuthority, ObservedByReceipt }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
 import extdeps.memory.types { MemoryKind, Dram }
@@ -145,14 +145,6 @@ data srv4_offer: ComputeOffer = ComputeOffer {
 // compute_host_cpu_admitted_width reads its processors.
 data mtcollins1_socket0_cpu_part_standing: CitedFigureStanding = TranscribedUncited {
   read_obligation: "read the Ampere model number and advertised per-thread frequency off socket 0 on a one-socket census boot (lscpu Model name / dmidecode type 4); until that read, binding altra_q8030_catalog (and its Hertz) is a bet matching the measured 80 threads, not a deduced part identity",
-}
-
-fn mtcollins1_socket0_cpu_part_is_established() -> Bool {
-  match mtcollins1_socket0_cpu_part_standing {
-    CitedToAuthority { authority: _ } => true
-    ObservedByReceipt { observed: _ } => true
-    TranscribedUncited { read_obligation: _ } => false
-  }
 }
 
 data mtcollins1_socket0_cpu: CpuFacts = CpuFacts {
