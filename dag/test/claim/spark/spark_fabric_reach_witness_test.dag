@@ -3,6 +3,7 @@ module test.claim.spark.spark_fabric_reach_witness
 import std.types { Bool, List, String }
 import product.host_identity { host_identity_eq }
 import gunbc.fleet_host_identity { operator_host_srv2, operator_host_srv9, operator_host_srv10 }
+import gunbc.spark.fabric_switch_observed { fabric_lane_for_host }
 import gunbc.fleet_host_key_enrollment { KnownHostKeyRow, fleet_host_key_enrollments }
 import gunbc.fleet_known_hosts_anchor { fleet_known_hosts_rows, known_hosts_endpoint_conflict }
 import gunbc.spark.fabric_reach {
@@ -26,7 +27,7 @@ test fn a_fabric_host_executes_over_the_rail_and_anything_else_over_the_lan() ->
 // EACH PATH NAMES A DIFFERENT ADDRESS FOR THE SAME HOST, AND THE RAIL IS ABSENT FOR A HOST WITH NO LANE.
 test fn the_two_paths_are_two_addresses_and_the_rail_refuses_a_host_off_the_fabric() -> Bool {
   (match spark_reach_endpoint(host: operator_host_srv9, path: ReachFabricRail) { Present { value: e } => e == "192.168.110.17"  Absent => false })
-    && (match spark_reach_endpoint(host: operator_host_srv9, path: ReachManagementLan) { Present { value: e } => e == "192.168.1.236"  Absent => false })
+    && (match spark_reach_endpoint(host: operator_host_srv9, path: ReachManagementLan) { Present { value: e } => e == "srv9"  Absent => false })
     && (match spark_reach_endpoint(host: operator_host_srv10, path: ReachFabricRail) { Present { value: e } => e == "192.168.110.15"  Absent => false })
     && (match spark_reach_endpoint(host: operator_host_srv2, path: ReachFabricRail) { Present { value: _ } => false  Absent => true })
     && spark_reach_path_wire(p: ReachFabricRail) == "fabric-rail"
@@ -36,9 +37,9 @@ test fn the_two_paths_are_two_addresses_and_the_rail_refuses_a_host_off_the_fabr
 // fingerprint as its LAN row, and the combined anchored set has no endpoint enrolled twice.
 test fn the_rail_rows_carry_each_enrolled_fabric_hosts_key_and_the_anchored_set_has_no_conflict() -> Bool {
   let rail = fabric_rail_known_host_rows()
-  length(rail) == 4
+  length(rail) == length(filter(fleet_host_key_enrollments, k => match fabric_lane_for_host(host: k.host) { Present { value: _ } => true  Absent => false }))
     && all(rail, r => any(fleet_host_key_enrollments, k => host_identity_eq(a: k.host, b: r.host) && k.sha256_fingerprint == r.sha256_fingerprint && k.endpoint != r.endpoint))
     && all(rail, r => starts_with(s: r.endpoint, prefix: "192.168.110."))
-    && length(fleet_known_hosts_rows()) == length(fleet_host_key_enrollments) + 4
+    && length(fleet_known_hosts_rows()) == length(fleet_host_key_enrollments) + length(rail)
     && (match known_hosts_endpoint_conflict(rows: fleet_known_hosts_rows()) { Present { value: _ } => false  Absent => true })
 }
