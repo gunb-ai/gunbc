@@ -18,12 +18,8 @@ import gunbc.fleet_revision_acceptance {
   RequiredCiRunsNotEventScoped, RequiredCiRunAttemptHistoryUnestablished,
   DefaultBranchAdmitted, DefaultBranchRefused, BranchRefIsNotTheDefaultBranch, BranchRepositoryNotThisRepository,
   accept_required_ci_merge_group_runs, observe_default_branch_push, required_ci_refusal_message,
+  admit_fleet_revision, FleetRevisionAccepted, RequiredCiAndDefaultBranchRevisionMismatch,
 }
-import gunbc.fleet_desired_admission {
-  FleetDesiredRevisionAccepted, FleetDesiredRevisionRefused,
-  fleet_desired_accepted_from_push,
-}
-import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml, FleetDesiredGenerated, FleetDesiredGenerationRefused }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestResponseObserved, RestBodyRead }
 import v2.std.witness_evaluation { WitnessReturned, WitnessRefused, evaluate_in_witness_frame }
@@ -83,13 +79,21 @@ fn runs(rs: List<WorkflowRun>) -> WorkflowRunList {
 }
 
 fn admits(push: PushRefUpdate, rs: WorkflowRunList) -> Bool {
-  match fleet_desired_accepted_from_push(push: push, runs: rs, observed_epoch: epoch_match()) {
-    FleetDesiredRevisionAccepted { accepted: a } =>
+  match observe_default_branch_push(push: push, evidence: "e") {
+    DefaultBranchRefused { cause: _ } => false
+    DefaultBranchAdmitted { observed: db } =>
       match git_object_id_from_untagged_hex(hex: push.after) {
-        Present { value: expected } => git_object_id_eq(left: a.revision, right: expected)
         none => false
+        Present { value: expected } =>
+          match accept_required_ci_merge_group_runs(revision: expected, runs: rs, observed_epoch: epoch_match()) {
+            RequiredCiRefused { cause: _ } => false
+            RequiredCiAdmitted { succeeded: ci } =>
+              match admit_fleet_revision(required_ci: ci, default_branch: db) {
+                FleetRevisionAccepted { accepted: a } => git_object_id_eq(left: a.revision, right: expected)
+                RequiredCiAndDefaultBranchRevisionMismatch { required_ci_revision: _, default_branch_revision: _ } => false
+              }
+          }
       }
-    FleetDesiredRevisionRefused { cause: _ } => false
   }
 }
 
@@ -331,18 +335,6 @@ test fn a_push_payload_without_after_refuses_naming_the_member() -> Bool {
 // event that route keyed on. The two NOT-contains are the discriminating RED for that deletion --
 // restoring either the trigger or the entry reds this row -- and `actions: read` stays because the
 // push route reads the forge for the revision's merge_group runs.
-test fn the_emitted_fleet_desired_workflow_routes_push_to_its_entry_and_carries_no_floor_event_route() -> Bool {
-  match expected_fleet_desired_yml() {
-    FleetDesiredGenerated { content: y } =>
-      contains(y, "push:")
-        && contains(y, "--function admit_fleet_desired_from_push_wet")
-        && contains(y, "actions: read")
-        && !contains(split(s: y, delimiter: "jobs:").first(), "workflow_run")
-        && !contains(y, "admit_fleet_desired_from_floor_event_wet")
-    FleetDesiredGenerationRefused { reason: _ } => false
-  }
-}
-
 // THE REFUSAL TEXT RENDERS ONLY WHAT THE PREDICATE ESTABLISHED. Absence of a qualifying run is not a
 // diagnosis of queue bypass, a missing verdict is not a temporal claim about the push, and a
 // non-merge_group run in the response is not a diagnosis of the request. Restoring any earlier

@@ -41,8 +41,11 @@ import gunbc.live_deploy.apply_receipt {
   observe_candidate_root_tree_oid, CandidateTreeOidObserved, CandidateTreeOidUnobservable,
 }
 import gunbc.fleet_desired_observe {
-  observe_fleet_desired_revision, FleetDesiredAdmitted, FleetDesiredAbsent, FleetDesiredUndecodable, FleetDesiredUnobserved,
+  observe_origin_main_revision,
   LocalTreeRevisionObserved, LocalTreeRevisionUnobserved,
+}
+import gunbc.fleet_main_revision {
+  RemoteRevisionPresent, RemoteRevisionAbsent, RemoteRevisionUndecodable, RemoteRevisionUnobserved,
 }
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused, fleet_locus_ssh_target }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
@@ -195,11 +198,11 @@ fn read_remote_main_hex() -> RemoteRefRead {
 }
 
 fn read_desired_hex() -> RemoteRefRead {
-  match observe_fleet_desired_revision(repo: rlm_receipt_vantage as FilePath) {
-    FleetDesiredAdmitted { revision: r } => RemoteRefHex { hex: git_object_id_wire_hex(oid: r) as String }
-    FleetDesiredAbsent => RemoteRefUnreadable { detail: "origin advertises no refs/fleet/desired" }
-    FleetDesiredUndecodable { advertised: a } => RemoteRefUnreadable { detail: join(["refs/fleet/desired undecodable: ", a], "") }
-    FleetDesiredUnobserved { cause: c } => RemoteRefUnreadable { detail: join(["refs/fleet/desired unobserved: ", c], "") }
+  match observe_origin_main_revision(repo: rlm_receipt_vantage as FilePath) {
+    RemoteRevisionPresent { revision: r } => RemoteRefHex { hex: git_object_id_wire_hex(oid: r) as String }
+    RemoteRevisionAbsent => RemoteRefUnreadable { detail: "origin advertises no refs/heads/main" }
+    RemoteRevisionUndecodable { advertised: a } => RemoteRefUnreadable { detail: join(["refs/heads/main undecodable: ", a], "") }
+    RemoteRevisionUnobserved { cause: c } => RemoteRefUnreadable { detail: join(["refs/heads/main unobserved: ", c], "") }
   }
 }
 

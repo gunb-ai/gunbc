@@ -561,7 +561,7 @@ data v1_static_consumers: List<V1ConsumerRow> = [
     boundary: v1cc_boundary(
       consumer: decl_ref(module_path: "gunbc.fleet_desired_admission_workflow", decl_name: "fleet_desired_admission_build_step"),
       authority: gunbc_cli_bin,
-      disposition: retained_open(justification: "fleet desired-state admission builds the gunbc binary; a product workflow outside the floor cut's boundary by that cut's own exclusion. Closes on: the native v2 binary answering the verbs the fleet workflows actually pass among the five the v1 clap surface declares (Compile, Test, Run, Converge, Serve), with a REFUSAL for any verb it does not answer -- a verb that silently forwards is the falsifier XL-5 lists, not the migration"),
+      disposition: retired(reason: "fleet-desired withdrawal deleted gunbc.fleet_desired_admission_workflow; this consumer no longer exists. The admitted revision is origin/main."),
     ),
     medium: WorkflowArgv,
     subject: V1Cli,
@@ -571,7 +571,7 @@ data v1_static_consumers: List<V1ConsumerRow> = [
     boundary: v1cc_boundary(
       consumer: decl_ref(module_path: "gunbc.fleet_desired_admission_workflow", decl_name: "fleet_desired_admission_decide_push_step"),
       authority: gunbc_cli_bin,
-      disposition: retained_open(justification: "the decide step owns the argv and invokes `gunbc run` over the corpus to evaluate the admission. It was one of two, one per admission route, until the workflow_run route was deleted with the push-on-main required run. Same closing capability as the build step's row; a separate relation because the key is consumer x authority and this step depends on the RUN verb, not merely on the binary existing"),
+      disposition: retired(reason: "fleet-desired withdrawal deleted the decide-push step with its workflow. No remaining production consumer of that argv."),
     ),
     medium: WorkflowArgv,
     subject: V1Cli,

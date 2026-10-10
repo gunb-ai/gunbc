@@ -64,13 +64,14 @@ import gunbc.roadmap_belt {
 import gunbc.roadmap_launch_admission {
   LaunchCause, Operator, Timer,
   LaunchRefusal,
-  LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
+  LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved, LaunchRevisionNotLanded,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNotReady, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated, LaunchNoPlacementGrant,
   LaunchAdmission, LaunchAdmitted, LaunchRefused,
   LaunchHostStanding, LaunchHostObserved, LaunchHostObserveOnly, LaunchHostHalted, LaunchHostUnobserved,
-  launch_host_halt_transition, launch_host_stage_revision, LaunchHostRevisionStage, HostRevisionObserved, HostRevisionHalted,
+  launch_host_halt_transition, launch_host_stage_revision, launch_gate_landed, LaunchHostRevisionStage, HostRevisionObserved, HostRevisionHalted, HostRevisionGate,
+  LaunchGateVerdict, GatePassed, GateRefused, GateNotReached,
   launch_host_refusal,
   LaunchSessionsStanding, LaunchSessionsObserved, LaunchSessionsUnobserved, LaunchSessionsPending,
   launch_host_with_sessions, LaunchStagedAdmission, LaunchStageDecided, LaunchStageNeedsSessions, launch_admission_staged,
@@ -421,6 +422,7 @@ import gunbc.git_diff_change_window {
 import extdeps.git.object_store { git_object_id_from_untagged_hex, git_object_id_wire_hex }
 import gunbc.fleet_desired_observe {
   local_tree_revision,
+  landed_on_admitted_standing,
   FleetRevisionStanding,
   LocalTreeRevisionObserved, LocalTreeRevisionUnobserved,
 }
@@ -4550,6 +4552,8 @@ fn belt_spawn_tally(outcomes: List<BeltSpawnOutcome>) -> BeltSpawnTally {
         LaunchTransitionInhibited { reason: _ } =>
           BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
         LaunchRevisionUnobserved { cause: _ } =>
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+        LaunchRevisionNotLanded { local: _, admitted: _ } =>
           BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
         LaunchAuthorityUnobserved { detail: _ } =>
           BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
@@ -9905,14 +9909,37 @@ fn belt_launch_host_standing_for_instance_with_capacity(
           ) {
             HostRevisionHalted { standing } => standing
             HostRevisionObserved { revision } =>
-              LaunchHostObserved {
-                instance_id: instance.instance_id,
-                actuation: DashboardActuating,
-                transition: ActuationAdmitted,
-                revision: revision,
-                sessions: LaunchSessionsPending,
-                capacity: capacity,
-                mode: mode,
+              match revision {
+                LocalTreeRevisionUnobserved { cause } =>
+                  LaunchHostHalted {
+                    instance_id: instance_id,
+                    gate: HostRevisionGate,
+                    refusal: LaunchRevisionUnobserved { cause: cause },
+                  }
+                LocalTreeRevisionObserved { revision: oid } =>
+                  match launch_gate_landed(
+                    standing: landed_on_admitted_standing(
+                      repo: instance.repo_root,
+                      remote: instance.admitted_revision.remote,
+                      ref_name: instance.admitted_revision.ref_name,
+                      local: oid,
+                    ),
+                  ) {
+                    GatePassed =>
+                      LaunchHostObserved {
+                        instance_id: instance.instance_id,
+                        actuation: DashboardActuating,
+                        transition: ActuationAdmitted,
+                        revision: revision,
+                        sessions: LaunchSessionsPending,
+                        capacity: capacity,
+                        mode: mode,
+                      }
+                    GateRefused { refusal } =>
+                      LaunchHostHalted { instance_id: instance_id, gate: HostRevisionGate, refusal: refusal }
+                    GateNotReached =>
+                      LaunchHostUnobserved { reason: "landed-on-main gate answered not-reached; refused fail-closed" }
+                  }
               }
           }
       }
@@ -10189,6 +10216,7 @@ fn launch_refusal_band(r: LaunchRefusal) -> DispatchBand {
     LaunchCauseNotPermitted { cause: _, mode: _ } => BandFail
     LaunchTransitionInhibited { reason: _ } => BandLoud
     LaunchRevisionUnobserved { cause: _ } => BandLoud
+    LaunchRevisionNotLanded { local: _, admitted: _ } => BandLoud
     LaunchAuthorityUnobserved { detail: _ } => BandLoud
     LaunchSessionsUnobservable { reason: _ } => BandLoud
     LaunchStaleSession { session_name: _, detail: _ } => BandLoud

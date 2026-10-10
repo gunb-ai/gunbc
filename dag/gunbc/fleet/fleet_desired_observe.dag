@@ -15,13 +15,16 @@ import gunbc.output_policy { OutcomeIsData }
 import gunbc.fleet_main_revision {
   FleetRevisionRelationObservation,
   fleet_revision_relation_from_merge_base,
-  fleet_desired_ref_name,
-  FleetDesiredRevision,
-  FleetDesiredAdmitted,
-  FleetDesiredAbsent,
-  FleetDesiredUndecodable,
-  FleetDesiredUnobserved,
+  fleet_landed_main_ref_name,
+  ObservedRemoteRevision,
+  RemoteRevisionPresent,
+  RemoteRevisionAbsent,
+  RemoteRevisionUndecodable,
+  RemoteRevisionUnobserved,
   converge_target_revision,
+  classify_landed_on_main,
+  RevisionLandedOnMain,
+  RevisionNotLandedOnMain,
 }
 
 // Operator verdict join 1 (2026-08-09): the LIVE half of gunbc.fleet_main_revision.
@@ -54,22 +57,22 @@ import gunbc.fleet_main_revision {
 // still admitted by a named ref, the comparison is still HEAD against that ref, and drift still
 // refuses. What changes is only which authority is asked, which is a real per-instance fact rather
 // than a permission.
-fn observe_admitted_revision(repo: FilePath, remote: String, ref_name: GitRef) -> FleetDesiredRevision {
+fn observe_admitted_revision(repo: FilePath, remote: String, ref_name: GitRef) -> ObservedRemoteRevision {
   let read = git.Core.LsRemoteRefInRepo(repo: repo, remote: remote, ref_name: ref_name)
   if read.exit_code == 0 {
     let line = trim(s: read.advertised)
     if line == "" {
-      FleetDesiredAbsent
+      RemoteRevisionAbsent
     } else {
       match (match split(s: line, delimiter: "\t").first() { Absent => none  Present { value: wire_field } => git_object_id_from_untagged_hex(hex: wire_field) }) {
-        Present { value: oid } => FleetDesiredAdmitted { revision: oid }
-        Absent => FleetDesiredUndecodable { advertised: line }
+        Present { value: oid } => RemoteRevisionPresent { revision: oid }
+        Absent => RemoteRevisionUndecodable { advertised: line }
       }
     }
   } else {
-    FleetDesiredUnobserved {
+    RemoteRevisionUnobserved {
       cause: join([
-        "fleet_desired_observe: ls-remote of ", ref_name as String, " on remote ", remote,
+        "fleet_landed_observe: ls-remote of ", ref_name as String, " on remote ", remote,
         " refused: ", read.stderr,
       ], ""),
     }
@@ -189,12 +192,12 @@ fn local_tree_revision(repo: FilePath) -> LocalTreeRevision {
       Present { value: oid } => LocalTreeRevisionObserved { revision: oid }
       Absent =>
         LocalTreeRevisionUnobserved {
-          cause: concat("fleet_desired_observe: HEAD is not a decodable object id: ", trim(s: read.revision)),
+          cause: concat("fleet_landed_observe: HEAD is not a decodable object id: ", trim(s: read.revision)),
         }
     }
   } else {
     LocalTreeRevisionUnobserved {
-      cause: "fleet_desired_observe: local tree revision unreadable (not a git repository, or HEAD undecodable)",
+      cause: "fleet_landed_observe: local tree revision unreadable (not a git repository, or HEAD undecodable)",
     }
   }
 }
@@ -210,8 +213,8 @@ type FleetRevisionStanding
   | RevisionDrifted { desired: GitObjectId, local: GitObjectId }
   | RevisionUnobserved { cause: String }
 
-fn observe_fleet_desired_revision(repo: FilePath) -> FleetDesiredRevision {
-  observe_admitted_revision(repo: repo, remote: "origin", ref_name: fleet_desired_ref_name)
+fn observe_origin_main_revision(repo: FilePath) -> ObservedRemoteRevision {
+  observe_admitted_revision(repo: repo, remote: "origin", ref_name: fleet_landed_main_ref_name as GitRef)
 }
 
 fn admitted_revision_standing(repo: FilePath, remote: String, ref_name: GitRef) -> FleetRevisionStanding {
@@ -229,25 +232,56 @@ fn admitted_revision_standing(repo: FilePath, remote: String, ref_name: GitRef) 
       }
     Absent =>
       match observed {
-        FleetDesiredUnobserved { cause: c } => RevisionUnobserved { cause: c }
-        FleetDesiredAbsent =>
+        RemoteRevisionUnobserved { cause: c } => RevisionUnobserved { cause: c }
+        RemoteRevisionAbsent =>
           RevisionUnobserved {
             cause: join([
-              "fleet_desired_observe: remote ", remote, " advertises no ", ref_name as String,
+              "fleet_landed_observe: remote ", remote, " advertises no ", ref_name as String,
             ], ""),
           }
-        FleetDesiredUndecodable { advertised: line } =>
+        RemoteRevisionUndecodable { advertised: line } =>
           RevisionUnobserved {
-            cause: concat("fleet_desired_observe: advertisement is not a decodable object id: ", line),
+            cause: concat("fleet_landed_observe: advertisement is not a decodable object id: ", line),
           }
-        FleetDesiredAdmitted { revision: _ } =>
+        RemoteRevisionPresent { revision: _ } =>
           RevisionUnobserved {
-            cause: "fleet_desired_observe: admitted revision projected no target (unreachable by construction)",
+            cause: "fleet_landed_observe: admitted revision projected no target (unreachable by construction)",
           }
       }
   }
 }
 
 fn fleet_revision_standing(repo: FilePath) -> FleetRevisionStanding {
-  admitted_revision_standing(repo: repo, remote: "origin", ref_name: fleet_desired_ref_name)
+  admitted_revision_standing(repo: repo, remote: "origin", ref_name: fleet_landed_main_ref_name as GitRef)
+}
+
+type LandedOnAdmittedStanding
+  = TreeLandedOnAdmitted { local: GitObjectId, admitted: GitObjectId }
+  | TreeNotLandedOnAdmitted { local: GitObjectId, admitted: GitObjectId }
+  | TreeLandedUnobserved { cause: String }
+
+fn landed_on_admitted_standing(
+  repo: FilePath,
+  remote: String,
+  ref_name: GitRef,
+  local: GitObjectId,
+) -> LandedOnAdmittedStanding {
+  match converge_target_revision(observed: observe_admitted_revision(repo: repo, remote: remote, ref_name: ref_name)) {
+    Absent =>
+      TreeLandedUnobserved {
+        cause: join(["fleet_landed_observe: remote ", remote, " advertises no landed ", ref_name as String], ""),
+      }
+    Present { value: admitted } =>
+      match classify_landed_on_main(
+        relation: observe_fleet_revision_relation_in(
+          repository_path: repo as String,
+          current: local,
+          accepted: admitted,
+        ).relation,
+      ) {
+        RevisionLandedOnMain => TreeLandedOnAdmitted { local: local, admitted: admitted }
+        RevisionNotLandedOnMain { relation: _ } =>
+          TreeNotLandedOnAdmitted { local: local, admitted: admitted }
+      }
+  }
 }

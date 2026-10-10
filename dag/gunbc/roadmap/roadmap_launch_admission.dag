@@ -19,7 +19,10 @@ import gunbc.roadmap.roadmap_attempt_occurrence {
   AttemptOccurrenceForeign, AttemptOccurrenceMalformed, attempt_container_name,
 }
 import gunbc.deploy_transition { ActuationAdmission, ActuationAdmitted, ActuationRefused }
-import gunbc.fleet_desired_observe { LocalTreeRevision, LocalTreeRevisionObserved, LocalTreeRevisionUnobserved }
+import gunbc.fleet_desired_observe {
+  LocalTreeRevision, LocalTreeRevisionObserved, LocalTreeRevisionUnobserved,
+  LandedOnAdmittedStanding, TreeLandedOnAdmitted, TreeNotLandedOnAdmitted, TreeLandedUnobserved,
+}
 import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, git_object_id_wire_hex, git_object_id_from_untagged_hex }
 import gunbc.worker_lifecycle {
   WorkerProcessEvidence, WorkerProcessRunning, WorkerProcessExited, WorkerProcessAbsent, WorkerProcessUnobserved,
@@ -263,6 +266,7 @@ type LaunchRefusal
   | LaunchInstanceActuationRefused { instance_id: String, reason: String }
   | LaunchTransitionInhibited { reason: String }
   | LaunchRevisionUnobserved { cause: String }
+  | LaunchRevisionNotLanded { local: String, admitted: String }
   | LaunchAuthorityUnobserved { detail: String }
   | LaunchNodeUnknown
   | LaunchNotReady { missing: List<ReadinessGap> }
@@ -292,6 +296,7 @@ fn launch_refusal_label(r: LaunchRefusal) -> String {
     LaunchInstanceActuationRefused { instance_id: _, reason: _ } => "disabled"
     LaunchTransitionInhibited { reason: _ } => "deployment_transition_inhibited"
     LaunchRevisionUnobserved { cause: _ } => "deployed_revision_unobserved"
+    LaunchRevisionNotLanded { local: _, admitted: _ } => "revision_not_landed_on_main"
     LaunchAuthorityUnobserved { detail: _ } => "authority_refused"
     LaunchNodeUnknown => "node_not_found"
     LaunchNotReady { missing: _ } => "not_ready"
@@ -313,6 +318,8 @@ fn launch_refusal_reason(r: LaunchRefusal) -> String {
     LaunchInstanceActuationRefused { instance_id, reason } => join(["instance ", instance_id, ": ", reason], "")
     LaunchTransitionInhibited { reason } => reason
     LaunchRevisionUnobserved { cause } => join(["deployed revision could not be observed: ", cause], "")
+    LaunchRevisionNotLanded { local, admitted } =>
+      join(["dispatch tree ", local, " has not landed on the admitted revision ", admitted], "")
     LaunchAuthorityUnobserved { detail } => join(["roadmap authority projection refused: ", detail], "")
     LaunchNodeUnknown => "node is not in the roadmap authority"
     LaunchNotReady { missing } => join([readiness_text(r: NotReady { missing: missing }), " -- ", readiness_reason_text(r: NotReady { missing: missing })], "")
@@ -334,6 +341,7 @@ fn launch_refusal_exemplars() -> List<LaunchRefusal> {
     LaunchInstanceActuationRefused { instance_id: "i", reason: "r" },
     LaunchTransitionInhibited { reason: "r" },
     LaunchRevisionUnobserved { cause: "c" },
+    LaunchRevisionNotLanded { local: "l", admitted: "a" },
     LaunchAuthorityUnobserved { detail: "d" },
     LaunchNodeUnknown,
     LaunchNotReady { missing: [GapCentering] },
@@ -753,6 +761,21 @@ fn launch_gate_revision(revision: LocalTreeRevision) -> LaunchGateVerdict {
   match launch_revision_outcome(revision: revision) {
     LaunchRevisionBound { oid: _ } => GatePassed
     LaunchRevisionRefused { refusal } => GateRefused { refusal: refusal }
+  }
+}
+
+fn launch_gate_landed(standing: LandedOnAdmittedStanding) -> LaunchGateVerdict {
+  match standing {
+    TreeLandedOnAdmitted { local: _, admitted: _ } => GatePassed
+    TreeNotLandedOnAdmitted { local, admitted } =>
+      GateRefused {
+        refusal: LaunchRevisionNotLanded {
+          local: git_object_id_wire_hex(oid: local) as String,
+          admitted: git_object_id_wire_hex(oid: admitted) as String,
+        },
+      }
+    TreeLandedUnobserved { cause } =>
+      GateRefused { refusal: LaunchRevisionUnobserved { cause: cause } }
   }
 }
 

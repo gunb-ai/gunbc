@@ -22,7 +22,7 @@ import gunbc.deployment_risk {
   srv2_lab_v1_deletion_deployment,
   macbook_local_deployment,
 }
-import gunbc.fleet_main_revision { fleet_desired_ref_name }
+import gunbc.fleet_main_revision { fleet_landed_main_ref_name }
 import gunbc.provider_account {
   AdmittedAccountBinding,
   CodexAccountSelection,
@@ -279,11 +279,11 @@ fn dashboard_instance_risk_class(instance: HostDashboardInstance) -> DeploymentR
   deployment_risk_class(selection: prod_role_selection, deployment: instance.deployment)
 }
 
-// The fleet's authority, unchanged: origin advertises refs/fleet/desired. Named here rather than
-// spelled at each instance so that the fleet answer stays one value across every fleet host.
+// The fleet's authority is origin/main: a revision is admitted when it has landed on the default
+// branch. Named here rather than spelled at each instance so the fleet answer stays one value.
 data fleet_admitted_revision_source: DashboardAdmittedRevisionSource = DashboardAdmittedRevisionSource {
   remote: "origin",
-  ref_name: fleet_desired_ref_name,
+  ref_name: fleet_landed_main_ref_name as GitRef,
 }
 
 // A dashboard is an explicit host instance, not an ambient serve process. One value moves the
