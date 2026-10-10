@@ -37,8 +37,11 @@ fn compose_optional_layers(outer: TypeCardinality, inner: TypeCardinality) -> Ty
 fn peel_optional_layer(card: TypeCardinality) -> Optional<TypeCardinality> {
   match card {
     Required => optional_absent()
-    CardOptional { extra: Zero } => optional_present(value: Required)
-    CardOptional { extra: Succ { prev: rest } } => optional_present(value: CardOptional { extra: rest })
+    CardOptional { extra: e } =>
+      match e {
+        Zero => optional_present(value: Required)
+        Succ { prev: rest } => optional_present(value: CardOptional { extra: rest })
+      }
   }
 }
 
