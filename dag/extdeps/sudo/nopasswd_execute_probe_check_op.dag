@@ -11,7 +11,9 @@ import v2.std.algebra { any, length }
 import v2.extdeps.languages.bash_build {
   bash_build_command_from_lits,
   bash_build_pipe,
-  bash_build_with_redir
+  bash_build_with_redir,
+  bash_build_or_else,
+  bash_build_subshell
 }
 import v2.std.node { Node }
 
@@ -36,6 +38,15 @@ fn sudo_nopasswd_grant_list_argv() -> List<String> {
   ["sudo", "-n", "-l"]
 }
 
+// THE ALL GRANT IS A GRANT OF EVERY COMMAND, and sudo lists it as `ALL`, not as each path: an
+// operator principal whose entry is `(ALL) NOPASSWD: ALL` read as holding no roster command, so an
+// operator-local deploy refused every grant-list probe after installing the drop-in (srv1 lab apply,
+// 2026-10-10; the 2026-10-09 bringup ran as the CI job user for the same reason). Only a run-as of
+// every user or of root admits it -- `(gunbc-ntfy) NOPASSWD: ALL` grants nothing as root, so its
+// run-as is read rather than stripped. The shell twin (sudo_nopasswd_grant_list_shell_condition)
+// admits exactly these run-as spellings.
+data sudo_nopasswd_all_grant_runas: List<String> = ["(ALL)", "(ALL : ALL)", "(root)"]
+
 fn sudo_nopasswd_grant_list_line_admits_probe(
   line: String,
   probe: SudoNopasswdGrantListProbeShape,
@@ -45,7 +56,12 @@ fn sudo_nopasswd_grant_list_line_admits_probe(
     false
   } else {
     match parts.skip(n: 1).first() {
-      Present { value: second } => second.trim() == probe as String
+      Present { value: second } =>
+        second.trim() == probe as String
+          || (second.trim() == "ALL" && match parts.first() {
+            Present { value: runas } => any(xs: sudo_nopasswd_all_grant_runas, predicate: r => r == runas.trim())
+            Absent => false
+          })
       Absent => false
     }
   }
@@ -99,6 +115,24 @@ data sudo_nopasswd_grant_list_tag: String = "NOPASSWD:"
 // bash serializer, which poisoned deploy_sudoers_install_shell (#13705; the
 // deploy_mutation_gate and live_deploy emit witnesses went red on exactly that).
 fn sudo_nopasswd_grant_list_shell_condition(probe: SudoNopasswdGrantListProbeShape) -> Node {
+  bash_build_subshell(body: bash_build_or_else(
+    left: sudo_nopasswd_grant_list_path_shell_condition(probe: probe),
+    right: sudo_nopasswd_grant_list_all_shell_condition(),
+  ))
+}
+
+// The ALL arm of the typed reading: a line that is, whole, one admitted run-as, the tag, and ALL.
+fn sudo_nopasswd_grant_list_all_shell_condition() -> Node {
+  bash_build_pipe(
+    left: bash_build_with_redir(
+      inner: bash_build_command_from_lits(lits: sudo_nopasswd_grant_list_argv()),
+      redir: ^bash_production_fold_redir_stderr_null
+    ),
+    right: bash_build_command_from_lits(lits: ["grep", "-Ex", "--", "[[:space:]]*\\((ALL|ALL : ALL|root)\\)[[:space:]]+NOPASSWD:[[:space:]]*ALL[[:space:]]*"])
+  )
+}
+
+fn sudo_nopasswd_grant_list_path_shell_condition(probe: SudoNopasswdGrantListProbeShape) -> Node {
   let tag = sudo_nopasswd_grant_list_tag
   bash_build_pipe(
     left: bash_build_with_redir(
