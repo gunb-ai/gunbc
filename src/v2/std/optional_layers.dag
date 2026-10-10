@@ -9,8 +9,7 @@ import std.optional_layers {
   Required,
   TypeCardinality,
   compose_optional_layers,
-  one_optional_layer,
-  peel_optional_layer
+  one_optional_layer
 }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.node {
@@ -27,14 +26,6 @@ import v2.std.collection { list_at_optional }
 type TypeNodeCardinalityRead
   = TypeNodeCardinality { card: TypeCardinality, base: Node }
   | CardinalityWrapperMalformed { wrapper: Node }
-
-fn node_is_cardinality_wrapper(n: Node) -> Bool {
-  match n.kind {
-    TypeNode { connective: Cardinality } => true
-    TypeNode { connective: _ } => false
-    ComputationNode { behavior: _ } => false
-  }
-}
 
 fn type_node_cardinality_child(n: Node) -> Optional<Node> {
   match n.kind {
@@ -84,15 +75,5 @@ fn wrap_type_node_cardinality(base: Node, card: TypeCardinality) -> Node {
   match card {
     Required => base
     CardOptional { layers: layers } => wrap_optional_layer_tower(base: base, layers: layers)
-  }
-}
-
-fn peel_type_node_optional_layer(n: Node) -> Optional<Node> {
-  match peel_optional_layer(card: match type_node_cardinality_read(n: n) {
-    TypeNodeCardinality { card: c, base: _ } => c
-    CardinalityWrapperMalformed { wrapper: _ } => Required
-  }) {
-    Absent => optional_absent()
-    Present { value: _ } => type_node_cardinality_child(n: n)
   }
 }

@@ -22,6 +22,7 @@ import v2.std.find_witness {
 import v2.std.node {
   Atom,
   Cardinality,
+  ComputationNode,
   Conj,
   Edge,
   Authored,
@@ -32,7 +33,6 @@ import v2.std.node {
   node_subtree_nodes,
   node_synthetic
 }
-import v2.std.optional_layers { node_is_cardinality_wrapper }
 import std.algebra { list_append }
 import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
@@ -253,12 +253,32 @@ fn inhabitance_pair_undecidable_reason(
       Present { value: reason } => optional_present(value: reason)
       Absent => inhabitance_node_undecidable_reason(n: produced, type_variables: type_variables)
     }
-  } else if node_is_cardinality_wrapper(n: declared) && node_is_cardinality_wrapper(n: produced) {
-    Absent
   } else {
-    match inhabitance_node_undecidable_reason(n: declared, type_variables: type_variables) {
-      Present { value: reason } => optional_present(value: reason)
-      Absent => inhabitance_node_undecidable_reason(n: produced, type_variables: type_variables)
+    match declared.kind {
+      TypeNode { connective: Cardinality } =>
+        match produced.kind {
+          TypeNode { connective: Cardinality } => Absent
+          TypeNode { connective: _ } =>
+            match inhabitance_node_undecidable_reason(n: declared, type_variables: type_variables) {
+              Present { value: reason } => optional_present(value: reason)
+              Absent => inhabitance_node_undecidable_reason(n: produced, type_variables: type_variables)
+            }
+          ComputationNode { behavior: _ } =>
+            match inhabitance_node_undecidable_reason(n: declared, type_variables: type_variables) {
+              Present { value: reason } => optional_present(value: reason)
+              Absent => inhabitance_node_undecidable_reason(n: produced, type_variables: type_variables)
+            }
+        }
+      TypeNode { connective: _ } =>
+        match inhabitance_node_undecidable_reason(n: declared, type_variables: type_variables) {
+          Present { value: reason } => optional_present(value: reason)
+          Absent => inhabitance_node_undecidable_reason(n: produced, type_variables: type_variables)
+        }
+      ComputationNode { behavior: _ } =>
+        match inhabitance_node_undecidable_reason(n: declared, type_variables: type_variables) {
+          Present { value: reason } => optional_present(value: reason)
+          Absent => inhabitance_node_undecidable_reason(n: produced, type_variables: type_variables)
+        }
     }
   }
 }
