@@ -70,9 +70,17 @@ fn native_denominator_is_the_universe(universe: List<String>, green: List<String
     && !any(frontier, f => any(exclusions, e => e == f))
 }
 
-// The population carries exactly one frontier beside its green set.
-fn native_population_frontier_count(rows: List<NativeFrontierObservation>) -> Int {
-  list_length(items: rows)
+// Producers whose standing the host (the v1 interpreter through classify_exit) judges: ineligible.
+data native_host_judged_producers: List<String> = ["NativeClaimProgramProducer", "NativeServeProgramProducer"]
+
+// A member is eligible only when its adjudication is native.
+fn native_member_is_eligible(member: String) -> Bool {
+  !any(native_host_judged_producers, h => h == member)
+}
+
+// A member is a second home when it names one of the emitted subject rows' labels.
+fn native_member_is_a_subject_row(member: String, subject_labels: List<String>) -> Bool {
+  any(subject_labels, l => l == member)
 }
 
 fn native_obligation_population_body() -> List<MarkdownBlock> {

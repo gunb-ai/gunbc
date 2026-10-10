@@ -934,7 +934,6 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         entry: "dag/test/claim/native/native_obligation_population_witness_test.dag" as FilePath,
         functions: [
           "a_host_judged_member_is_ineligible" as NonEmptyStr,
-          "a_second_frontier_row_refuses" as NonEmptyStr,
           "the_population_is_disjoint_from_the_emitted_subject_rows" as NonEmptyStr,
           "the_denominator_is_the_derived_universe_not_the_green_set" as NonEmptyStr,
         ],

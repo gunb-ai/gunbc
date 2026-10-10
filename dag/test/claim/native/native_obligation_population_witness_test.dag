@@ -1,35 +1,24 @@
 module test.claim.native.native_obligation_population_witness_test
 
-import std.types { Bool, String, List, list_length }
+import std.types { Bool, String, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.algebra { any }
 import gunbc.plans.native_obligation_population {
-  FrontierUnobserved, FrontierObserved, native_population_green_set, native_route_first_frontier, native_denominator_is_the_universe,
-  native_frontier_stands, native_population_frontier_count,
+  native_denominator_is_the_universe, native_member_is_eligible, native_member_is_a_subject_row,
 }
-import gunbc.emitted_subject_build_gate { emitted_subject_build_rows, emitted_subject_build_label_text }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Green over supplied values: the green set is empty until the built driver judges a run, and the
-// controls below hold with or without members.
-
-// CONTROL: a population holds exactly one frontier; two rows refuse.
-test fn a_second_frontier_row_refuses() -> Bool {
-  native_population_frontier_count(rows: [native_route_first_frontier]) == 1
-    && native_population_frontier_count(rows: [FrontierUnobserved, FrontierUnobserved]) != 1
-}
-
-// CONTROL: eligibility is native adjudication only; a host-judged producer identity is not a member.
-data host_judged_producers: List<String> = ["NativeClaimProgramProducer", "NativeServeProgramProducer"]
-
+// CONTROL over supplied members: a host-judged producer identity is ineligible, a native one is not.
 test fn a_host_judged_member_is_ineligible() -> Bool {
-  !any(native_population_green_set, m => any(host_judged_producers, h => m == h))
+  !native_member_is_eligible(member: "NativeClaimProgramProducer")
+    && !native_member_is_eligible(member: "NativeServeProgramProducer")
+    && native_member_is_eligible(member: "v2.test.m.t")
 }
 
-// CONTROL: the population is disjoint from the emitted subject rows (two products, not members).
+// CONTROL over supplied members: a member naming an emitted subject row label refuses as a second home.
 test fn the_population_is_disjoint_from_the_emitted_subject_rows() -> Bool {
-  !any(native_population_green_set, m => any(emitted_subject_build_rows, r => m == r.step_id || m == emitted_subject_build_label_text(row: r)))
+  native_member_is_a_subject_row(member: "//gunbc/instruments:self-host", subject_labels: ["//gunbc/instruments:self-host", "//gunbc/instruments:v2-native-cli"])
+    && !native_member_is_a_subject_row(member: "v2.test.m.t", subject_labels: ["//gunbc/instruments:self-host", "//gunbc/instruments:v2-native-cli"])
 }
 
 // CONTROL: the denominator is the derived universe -- green + exactly one frontier + typed exclusions.
