@@ -108,8 +108,8 @@ thread_local! {
 }
 
 /// MEMORY-COMPOSITION MEASUREMENT (`cli_run::memory_composition`): the pool's shape, then its
-/// release in two staged steps so the two halves are read back separately. Measurement only --
-/// nothing on a production path calls these.
+/// heads release, read back separately. Measurement only -- nothing on a production path calls
+/// `pool_shape` or `drop_pool_heads_for_measurement`.
 pub(crate) fn pool_shape() -> (usize, usize, usize) {
     POOL.with(|p| {
         let p = p.borrow();
@@ -127,7 +127,19 @@ pub(crate) fn drop_pool_heads_for_measurement() {
     });
 }
 
-pub(crate) fn drop_pool_for_measurement() {
+/// Release the whole-tree acquisition pool at the last demand that needs the WHOLE tree.
+///
+/// WHY HERE. Two walks demand every pooled module: the pre-entry census (the name census, the bare
+/// reference index and the module path index, which read tokens, newline indexes and heads of all
+/// of the tree) and nothing after it. By the time `compile_emission_over` reaches resolution the
+/// census has produced its products, which live in their own structures (`PROCESS_RESOLVE_INDEX`,
+/// `MODULE_PATH_INDEX_CACHE`, `MODULE_GRAPH_FACTS_CACHE`) and hold no pointer into the pool. The
+/// resolution of the entry closure re-demands only the closure's own files, through the same
+/// `tokens_for` / `newline_index_for` / `heads_reading_for` miss path, so it re-acquires a
+/// closure-sized set rather than the tree. Retaining the rest past this call is retention past the
+/// last demand, which is the whole of the cost this removes; it is not a cache policy and has no
+/// mode. Its dissolution is closure-scoped ingestion, which never builds the whole-tree pool.
+pub(crate) fn release_whole_tree_after_census() {
     POOL.with(|p| p.borrow_mut().clear());
 }
 
