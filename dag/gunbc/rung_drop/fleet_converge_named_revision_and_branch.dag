@@ -1,0 +1,36 @@
+module gunbc.rung_drop.fleet_converge_named_revision_and_branch
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// ============================================================================================
+// THE DECLARED RUNG DROP for the two refusals that named R and the deploy branch, deleted so a
+// dispatch / `gunbc converge --mode deploy` can run on an arbitrary heads ref (operator 2026-10-09;
+// DESIGN 4b(3)). Separate from gunbc.rung_drop fleet_converge_wif_reviewed_main_pin: that row's
+// subject is who may mint a WIF token; this row's subject is whether plan/apply/deploy may proceed
+// without an operator-typed revision and branch. One population, one trigger — not those sites
+// stuffed into the WIF row.
+// ============================================================================================
+
+data fleet_converge_named_revision_and_branch: RungDrop = RungDrop {
+  identity: "fleet_converge_named_revision_and_branch" as NonEmptyStr,
+
+  subject: "whether fleet-converge plan, apply and live-deploy, and gunbc converge --mode deploy, refuse unless the operator typed a 40-digit expected_revision and a nonempty --candidate-branch",
+
+  declared: "2026-10-10",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: [
+      "gunbc.actions_run_binding admit_optional_expected_revision: ExpectedRevisionAbsent admits binding.run_revision (the dispatched / checked-out sha). Callers: gunbc.fleet_converge_plan_cli fleet_converge_scoped_plan_wet, fleet_converge_apply_wet; gunbc.live_deploy.apply live_deploy_transaction_admitted_wet_with_access. A present expected_revision still has to match; ExpectedRevisionMalformed still refuses",
+      "gunbc.fleet_converge_plan_cli fleet_converge_deploy_branch_admits: an empty required branch admits a nonempty observed branch. An empty observed branch still refuses. A named required branch still has to equal the checkout",
+      "NOT in the population: pair_serving_d0, which still refuses an empty expected_revision. NOT: apply's plan-receipt / plan-hash lock, which still names a predecessor plan. NOT: the WIF main-pin loss, which is gunbc.rung_drop fleet_converge_wif_reviewed_main_pin",
+    ],
+    restoration_trigger: "THE CAPABILITY: R and the deploy branch are bound to a locked identity the operator produced (a plan receipt, or a required dispatch input with no silent default) so plan/apply/deploy cannot mutate a host at a revision or branch that was never named, WHILE a heads-ref workflow_dispatch remains admissible. WHAT THAT MUST BE SUFFICIENT FOR: omitting RLM_EXPECTED_REVISION and omitting --candidate-branch each refuse, or each is filled from that locked identity, and a session-branch dispatch still federates. Restoring the old main-only expected_revision / candidate-branch == main refusals does NOT discharge it — that re-locks the branch the operator ruled out. Folding these sites into fleet_converge_wif_reviewed_main_pin does NOT discharge it — that row's trigger is STS bytes-pin, a different subject. A comment citing an operator date does NOT discharge it.",
+  }
+}
