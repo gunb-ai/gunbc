@@ -7,7 +7,6 @@ import v2.std.optional_layers {
   CardinalityWrapperMalformed,
   Required,
   TypeNodeCardinality,
-  exact_optional_layers,
   one_optional_layer,
   two_optional_layers,
   type_node_cardinality_read,
@@ -73,7 +72,7 @@ fn ol_obligation(declared: Node, produced: Node) -> DeclaredTypeObligation {
 test fn a_nested_cardinality_tree_reads_as_two_layers() -> Bool {
   match type_node_cardinality_read(n: wrap_type_node_cardinality(base: ol_atom(id: ^ol_int), card: two_optional_layers())) {
     TypeNodeCardinality { card: c, base: b } =>
-      exact_optional_layers(a: c, b: two_optional_layers())
+      c == two_optional_layers()
         && (match b.kind {
           TypeNode { connective: Atom { identity: id } } => id == ^ol_int
           TypeNode { connective: _ } => false
@@ -87,14 +86,27 @@ test fn wrapping_required_is_the_base() -> Bool {
   wrap_type_node_cardinality(base: ol_atom(id: ^ol_int), card: Required) == ol_atom(id: ^ol_int)
 }
 
-test fn a_malformed_cardinality_wrapper_refuses() -> Bool {
-  match type_node_cardinality_read(n: Node {
+fn ol_malformed_cardinality() -> Node {
+  Node {
     kind: TypeNode { connective: Cardinality },
     children: [],
     occurrence_id: OccurrenceSynthetic
-  }) {
+  }
+}
+
+test fn a_malformed_cardinality_wrapper_refuses() -> Bool {
+  match type_node_cardinality_read(n: ol_malformed_cardinality()) {
     CardinalityWrapperMalformed { wrapper: _ } => true
     TypeNodeCardinality { card: _, base: _ } => false
+  }
+}
+
+test fn a_malformed_cardinality_wrapper_is_refused_at_inhabitance() -> Bool {
+  let one = wrap_type_node_cardinality(base: ol_atom(id: ^ol_int), card: one_optional_layer())
+  match declared_type_inhabitance(obligation: ol_obligation(declared: ol_malformed_cardinality(), produced: one)) {
+    InhabitanceRefused { find_witness_reason: r } => r == ^inhabitance_optional_layer_wrapper_malformed
+    Inhabits { homomorphism: _ } => false
+    InhabitanceUndecidable { reason: _ } => false
   }
 }
 

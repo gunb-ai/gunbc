@@ -5,37 +5,31 @@ import std.optional { Absent, Present }
 import v2.std.optional_layers {
   Required,
   compose_optional_layers,
-  exact_optional_layers,
   one_optional_layer,
   peel_optional_layer,
   two_optional_layers
 }
 
 // SUBJECT: v2.std.optional_layers TypeCardinality (Required vs CardOptional { layers: NonZeroNat }).
-// Inputs are supplied TypeCardinality values (DESIGN §3). Production inhabitance of the Node
-// reading is v2.test.claim.compiler.optional_layers_test.
+// Inputs are supplied TypeCardinality values (DESIGN §3). Equality is the language `==` on that
+// sum (review 78513). Production inhabitance of the Node reading is
+// v2.test.claim.compiler.optional_layers_test.
 
 test fn required_composed_with_one_layer_is_one_layer() -> Bool {
-  exact_optional_layers(a: compose_optional_layers(outer: Required, inner: one_optional_layer()), b: one_optional_layer())
+  compose_optional_layers(outer: Required, inner: one_optional_layer()) == one_optional_layer()
 }
 
 test fn substituting_an_optional_into_an_optional_adds_a_layer() -> Bool {
-  exact_optional_layers(
-    a: compose_optional_layers(outer: one_optional_layer(), inner: one_optional_layer()),
-    b: two_optional_layers()
-  )
+  compose_optional_layers(outer: one_optional_layer(), inner: one_optional_layer()) == two_optional_layers()
 }
 
 test fn max_would_collapse_two_ones_and_this_does_not() -> Bool {
-  !exact_optional_layers(
-    a: compose_optional_layers(outer: one_optional_layer(), inner: one_optional_layer()),
-    b: one_optional_layer()
-  )
+  !(compose_optional_layers(outer: one_optional_layer(), inner: one_optional_layer()) == one_optional_layer())
 }
 
 test fn peel_of_one_layer_is_required() -> Bool {
   match peel_optional_layer(card: one_optional_layer()) {
-    Present { value: inner } => exact_optional_layers(a: inner, b: Required)
+    Present { value: inner } => inner == Required
     Absent => false
   }
 }
@@ -48,9 +42,9 @@ test fn peel_of_required_refuses() -> Bool {
 }
 
 test fn one_layer_is_not_two() -> Bool {
-  !exact_optional_layers(a: one_optional_layer(), b: two_optional_layers())
+  !(one_optional_layer() == two_optional_layers())
 }
 
 test fn required_is_not_one_layer() -> Bool {
-  !exact_optional_layers(a: Required, b: one_optional_layer())
+  !(Required == one_optional_layer())
 }

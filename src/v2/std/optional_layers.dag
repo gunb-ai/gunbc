@@ -1,6 +1,5 @@
 module v2.std.optional_layers
 
-import std.types { Bool }
 import std.nat { Nat, Succ, Zero, nat_add }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -17,7 +16,7 @@ import v2.std.node_query { node_positional_child_targets }
 import v2.std.collection { list_at_optional }
 
 // WHAT NonZeroNat CANNOT CARRY (parent ruling B, smart-gull-336): zero optional layers
-// (`Required`), compose/peel/exact over Required mixed with a positive count, and the Node
+// (`Required`), compose/peel over Required mixed with a positive count, and the Node
 // Cardinality-wrapper reading. Layer COUNT is v2.std.cardinality NonZeroNat { prev: Nat } — every
 // value is a successor, so zero layers is unconstructible on CardOptional (gunbc#13488: `layers:
 // Nat` was forbidden because Nat admits Zero). Mapping: OneLayer = NonZeroNat { prev: Zero };
@@ -26,7 +25,7 @@ import v2.std.collection { list_at_optional }
 // CONSUMERS (DESIGN §3c): type_node_cardinality_read / wrap_type_node_cardinality; production
 // v2.compiler.infer infer_match_generic_formal peels with peel_optional_layer;
 // v2.std.inhabitance declared_type_inhabitance refuses two CardOptional counts that
-// exact_optional_layers denies. Claims: test.claim.optional_layers_witness_test and
+// TypeCardinality equality (`==`) denies. Claims: test.claim.optional_layers_witness_test and
 // v2.test.claim.compiler.optional_layers_test.
 type TypeCardinality
   = Required
@@ -66,21 +65,6 @@ fn peel_optional_layer(card: TypeCardinality) -> Optional<TypeCardinality> {
             Zero => optional_present(value: Required)
             Succ { prev: rest } => optional_present(value: CardOptional { layers: NonZeroNat { prev: rest } })
           }
-      }
-  }
-}
-
-fn exact_optional_layers(a: TypeCardinality, b: TypeCardinality) -> Bool {
-  match a {
-    Required =>
-      match b {
-        Required => true
-        CardOptional { layers: _ } => false
-      }
-    CardOptional { layers: al } =>
-      match b {
-        Required => false
-        CardOptional { layers: bl } => al.prev == bl.prev
       }
   }
 }

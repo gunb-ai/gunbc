@@ -1,6 +1,6 @@
 module v2.std.inhabitance
 
-import std.types { List }
+import std.types { Bool, List }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -41,7 +41,6 @@ import v2.std.optional_layers {
   CardinalityWrapperMalformed,
   Required,
   TypeNodeCardinality,
-  exact_optional_layers,
   type_node_cardinality_read
 }
 
@@ -342,20 +341,35 @@ fn inhabitance_optional_layer_depth_mismatch_reason() -> Symbol {
   ^inhabitance_optional_layer_depth_mismatch
 }
 
-fn inhabitance_optional_layer_depth_mismatch(declared: Node, produced: Node) -> Bool {
+fn inhabitance_optional_layer_wrapper_malformed_reason() -> Symbol {
+  ^inhabitance_optional_layer_wrapper_malformed
+}
+
+// Malformed is not "no depth mismatch": Bool false conflated those arms (review 78513).
+type OptionalLayerInhabitanceVerdict
+  = OptionalLayerInhabitanceHolds
+  | OptionalLayerDepthMismatch
+  | OptionalLayerWrapperMalformed
+
+fn inhabitance_optional_layer_judgement(declared: Node, produced: Node) -> OptionalLayerInhabitanceVerdict {
   match type_node_cardinality_read(n: declared) {
-    CardinalityWrapperMalformed { wrapper: _ } => false
+    CardinalityWrapperMalformed { wrapper: _ } => OptionalLayerWrapperMalformed
     TypeNodeCardinality { card: dc, base: _ } =>
       match type_node_cardinality_read(n: produced) {
-        CardinalityWrapperMalformed { wrapper: _ } => false
+        CardinalityWrapperMalformed { wrapper: _ } => OptionalLayerWrapperMalformed
         TypeNodeCardinality { card: pc, base: _ } =>
           match dc {
             CardOptional { layers: _ } =>
               match pc {
-                CardOptional { layers: _ } => !exact_optional_layers(a: dc, b: pc)
-                Required => false
+                CardOptional { layers: _ } =>
+                  if dc == pc {
+                    OptionalLayerInhabitanceHolds
+                  } else {
+                    OptionalLayerDepthMismatch
+                  }
+                Required => OptionalLayerInhabitanceHolds
               }
-            Required => false
+            Required => OptionalLayerInhabitanceHolds
           }
       }
   }
@@ -368,10 +382,14 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation) -> InhabitanceV
     type_variables: obligation.type_variables
   ) {
     InhabitanceRefused { find_witness_reason: inhabitance_optional_at_required_reason() }
-  } else if inhabitance_optional_layer_depth_mismatch(declared: obligation.declared, produced: obligation.produced) {
-    InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_depth_mismatch_reason() }
   } else {
-    declared_type_inhabitance_structural(obligation: obligation)
+    match inhabitance_optional_layer_judgement(declared: obligation.declared, produced: obligation.produced) {
+      OptionalLayerDepthMismatch =>
+        InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_depth_mismatch_reason() }
+      OptionalLayerWrapperMalformed =>
+        InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_wrapper_malformed_reason() }
+      OptionalLayerInhabitanceHolds => declared_type_inhabitance_structural(obligation: obligation)
+    }
   }
 }
 
