@@ -94,7 +94,10 @@ data sudo_nopasswd_grant_list_tag: String = "NOPASSWD:"
 // writing, and under pipefail the writer's SIGPIPE (141) fails the pipeline -- so a grant that IS
 // listed early in a long listing read as absent, every time once the listing outgrew the pipe
 // buffer (srv1, 2026-10-10: ~13 KB after the gunbc-ghrunner drop-in, 20/20 runs exit 141). `grep -Fx`
-// with stdout discarded consumes all of it and still answers by its exit status alone.
+// without -q consumes all of it and answers by its exit status; the matched line it prints is the
+// grant it found. It carries no redirect: a redirect on a pipeline's right operand is refused by the
+// bash serializer, which poisoned deploy_sudoers_install_shell (#13705; the
+// deploy_mutation_gate and live_deploy emit witnesses went red on exactly that).
 fn sudo_nopasswd_grant_list_shell_condition(probe: SudoNopasswdGrantListProbeShape) -> Node {
   let tag = sudo_nopasswd_grant_list_tag
   bash_build_pipe(
@@ -108,10 +111,7 @@ fn sudo_nopasswd_grant_list_shell_condition(probe: SudoNopasswdGrantListProbeSha
         left: bash_build_command_from_lits(lits: ["sed", "-n", concat(concat("s/^.*", tag), "//p")]),
         right: bash_build_pipe(
           left: bash_build_command_from_lits(lits: ["sed", "s/^[[:space:]]*//;s/[[:space:]]*$//"]),
-          right: bash_build_with_redir(
-            inner: bash_build_command_from_lits(lits: ["grep", "-Fx", "--", probe as String]),
-            redir: ^bash_production_fold_redir_stdout_null
-          )
+          right: bash_build_command_from_lits(lits: ["grep", "-Fx", "--", probe as String])
         )
       )
     )
