@@ -59,7 +59,7 @@ import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseRow }
 import gunbc.fleet_host_identity { operator_host_srv3, operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
 import gunbc.spark.dgx_procurement {
-  dgx_spark_procurement_intent, DgxSparkDisposedUnit, DgxSparkAssetSold, dgx_spark_disposed_units, dgx_spark_router_bindings, dgx_spark_reserved_identities, srv9_router_binding, srv10_router_binding, dgx_spark_router_binding_batch_allocation_2026_09_05, spark_0c75_reservation, spark_3336_reservation, spark_b66c_reservation, spark_2196_reservation, observed_dgx_spark_router_reservations, DgxSparkRouterBinding, SlotAssigned, SlotUnassigned, router_binding_identity, OperatorAllocation, dgx_spark_arrival_standing, AllOrderedUnitsAccounted, OrderedUnitsOutstanding, admit_dgx_spark_deployment, DgxSparkAdmissionOutcome, DgxSparkDeploymentAdmitted, DgxSparkDeploymentRefused, DgxSparkAdmissionRefusalReason, DeploymentAdmissionNoEvidence, DeploymentAdmissionAmbiguousEvidence, DeploymentAdmissionSubjectMismatch, DeploymentAdmissionEndpointBindingMismatch, DeploymentAdmissionExecutionEvidenceDisagrees, admit_dgx_spark_pair, admit_dgx_spark_pair_deployments, DgxSparkPairAdmitted, DgxSparkPairRefused, PairUnitNotAdmitted, PairSubjectsNotDistinct, PairHardwareIdentityUnobserved, PairHardwareIdentityNotDistinct, PairHardwareIdentityIncomparable, DeploymentAdmissionWrongTool, DeploymentAdmissionObservationNotOk, DeploymentAdmissionIdentityNotReserved, DeploymentAdmissionRouterBindingMismatch, DeploymentAdmissionRouterBindingPending, converge_dgx_spark_procurement, dgx_spark_procurement_convergence, DgxSparkProcurementConverged, DgxSparkProcurementPending, DgxSparkUnitDeployed, DgxSparkUnitPending,
+  dgx_spark_procurement_intent, DgxSparkDisposedUnit, DgxSparkAssetSold, dgx_spark_disposed_units, dgx_spark_router_bindings, dgx_spark_reserved_identities, observed_dgx_spark_router_reservations, DgxSparkRouterBinding, SlotAssigned, SlotUnassigned, router_binding_identity, OperatorAllocation, dgx_spark_arrival_standing, AllOrderedUnitsAccounted, OrderedUnitsOutstanding, admit_dgx_spark_deployment, DgxSparkAdmissionOutcome, DgxSparkDeploymentAdmitted, DgxSparkDeploymentRefused, DgxSparkAdmissionRefusalReason, DeploymentAdmissionNoEvidence, DeploymentAdmissionAmbiguousEvidence, DeploymentAdmissionSubjectMismatch, DeploymentAdmissionEndpointBindingMismatch, DeploymentAdmissionExecutionEvidenceDisagrees, admit_dgx_spark_pair, admit_dgx_spark_pair_deployments, DgxSparkPairAdmitted, DgxSparkPairRefused, PairUnitNotAdmitted, PairSubjectsNotDistinct, PairHardwareIdentityUnobserved, PairHardwareIdentityNotDistinct, PairHardwareIdentityIncomparable, DeploymentAdmissionWrongTool, DeploymentAdmissionObservationNotOk, DeploymentAdmissionIdentityNotReserved, DeploymentAdmissionRouterBindingMismatch, DeploymentAdmissionRouterBindingPending, converge_dgx_spark_procurement, dgx_spark_procurement_convergence, DgxSparkProcurementConverged, DgxSparkProcurementPending, DgxSparkUnitDeployed, DgxSparkUnitPending,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -102,12 +102,7 @@ test fn w_tool_names_match_the_cited_page() -> Bool {
 }
 
 
-data all_spark_identities: List<HostIdentity> = [
-  operator_host_srv9,
-  operator_host_srv10,
-  operator_host_srv11,
-  operator_host_srv12,
-]
+data all_spark_identities: List<HostIdentity> = []
 
 test fn w_procurement_intent_reserves_the_bound_identities() -> Bool {
   dgx_spark_procurement_intent.unit_count == 8
@@ -116,10 +111,8 @@ test fn w_procurement_intent_reserves_the_bound_identities() -> Bool {
 }
 
 test fn w_reserved_identities_derive_from_the_router_binding_roster() -> Bool {
-  count(dgx_spark_router_bindings) == 4
+  count(dgx_spark_router_bindings) == 0
     && dgx_spark_reserved_identities() == map(dgx_spark_router_bindings, b => router_binding_identity(binding: b))
-    && router_binding_identity(binding: srv9_router_binding) == operator_host_srv9
-    && router_binding_identity(binding: srv10_router_binding) == operator_host_srv10
 }
 
 // The live state: each unit holds a Static, Active CR1000A reservation, and each slot is ASSIGNED to
@@ -129,24 +122,7 @@ test fn w_reserved_identities_derive_from_the_router_binding_roster() -> Bool {
 // an arbitrary tie-break between identical units, which is exactly why it must be recorded as a
 // choice someone made.
 test fn w_slots_are_assigned_by_an_attributable_operator_allocation() -> Bool {
-  count(observed_dgx_spark_router_reservations) == 4
-    && spark_0c75_reservation.ipv4_address == ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 236)
-    && spark_3336_reservation.ipv4_address == ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 237)
-    && spark_b66c_reservation.ipv4_address == ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 238)
-    && spark_2196_reservation.ipv4_address == ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 239)
-    && match srv9_router_binding {
-      SlotAssigned { identity: _, reservation: r, allocation: a } =>
-        r.ipv4_address == spark_0c75_reservation.ipv4_address
-          && r.mac_address == spark_0c75_reservation.mac_address
-          && a.decided_on == dgx_spark_router_binding_batch_allocation_2026_09_05.decided_on
-      SlotUnassigned { identity: _ } => false
-    }
-    && match srv10_router_binding {
-      SlotAssigned { identity: _, reservation: r, allocation: _ } =>
-        r.ipv4_address == spark_3336_reservation.ipv4_address
-          && r.mac_address == spark_3336_reservation.mac_address
-      SlotUnassigned { identity: _ } => false
-    }
+  count(observed_dgx_spark_router_reservations) == 0
     && fold(
       dgx_spark_router_bindings,
       init: true,
@@ -163,9 +139,9 @@ test fn w_slots_are_assigned_by_an_attributable_operator_allocation() -> Bool {
 // arrived while they sat on the LAN: prose cannot be kept in step with facts by discipline alone.
 // Asserted against the derivation's own inputs, so either arm is checked for agreeing with the rows.
 test fn w_arrival_standing_derives_from_the_observed_reservation_rows() -> Bool {
-  count(observed_dgx_spark_router_reservations) == 4
+  count(observed_dgx_spark_router_reservations) == 0
     && match dgx_spark_arrival_standing() {
-      AllOrderedUnitsAccounted { on_lan: l, disposed: d } => l == 4 && d == 4 && l + d == dgx_spark_procurement_intent.unit_count
+      AllOrderedUnitsAccounted { on_lan: l, disposed: d } => l == 0 && d == 8 && l + d == dgx_spark_procurement_intent.unit_count
       OrderedUnitsOutstanding { ordered_count: _, observed_count: _ } => false
     }
 }
@@ -178,14 +154,15 @@ fn w_sold_on(u: DgxSparkDisposedUnit, date: String) -> Bool {
 // The disposed units are typed sales under one attributable decision; the reserved identities (the
 // roster fleet, convergence, reservations and admission derive from) are exactly the retained bindings,
 // and no disposed unit's former slot is among them.
-test fn w_eight_procured_four_sold_four_retained_and_only_the_retained_are_rostered() -> Bool {
+test fn w_eight_procured_eight_sold_and_none_is_rostered() -> Bool {
   dgx_spark_procurement_intent.unit_count == 8
-    && count(dgx_spark_disposed_units) == 4
-    && all(dgx_spark_disposed_units, u => w_sold_on(u: u, date: "2026-10-07"))
-    && count(dgx_spark_reserved_identities()) == 4
+    && count(dgx_spark_disposed_units) == 8
+    && count(filter(dgx_spark_disposed_units, u => w_sold_on(u: u, date: "2026-10-07"))) == 4
+    && count(filter(dgx_spark_disposed_units, u => w_sold_on(u: u, date: "2026-10-10"))) == 4
+    && count(dgx_spark_reserved_identities()) == 0
     && count(dgx_spark_reserved_identities()) + count(dgx_spark_disposed_units) == dgx_spark_procurement_intent.unit_count
     && !any(dgx_spark_disposed_units, u => any(dgx_spark_reserved_identities(), h => (h as String) == (u.former_slot as String)))
-    && map(dgx_spark_disposed_units, u => u.router_label as String) == ["spark-a3ee", "spark-3bd5", "spark-c2b1", "spark-ac79"]
+    && map(dgx_spark_disposed_units, u => u.router_label as String) == ["spark-a3ee", "spark-3bd5", "spark-c2b1", "spark-ac79", "spark-0c75", "spark-3336", "spark-b66c", "spark-2196"]
 }
 
 fn synthetic_envelope_for(host: NonEmptyStr) -> FleetLifecycleEnvelope {

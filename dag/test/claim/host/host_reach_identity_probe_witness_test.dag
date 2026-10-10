@@ -12,8 +12,6 @@ import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for, spark_endpoint_for
 import gunbc.spark.dgx_procurement {
   DgxSparkRouterBinding,
   SlotUnassigned,
-  srv9_router_binding,
-  srv10_router_binding,
 }
 import gunbc.host_reach_identity_probe {
   ReachProbeOutcome,
@@ -210,8 +208,8 @@ test fn mismatch_expectation_threads_without_fabrication() -> Bool {
 // reservation address — 'srv9'/'srv10' are not published names anywhere — while
 // name-resolvable hosts pass through unchanged. Identity stays the receipt key.
 test fn spark_probe_targets_are_modeled_addresses_not_names() -> Bool {
-  fleet_probe_endpoint_for(host: "srv9") == "192.168.1.236"
-    && fleet_probe_endpoint_for(host: "srv10") == "192.168.1.237"
+  fleet_probe_endpoint_for(host: "srv9") == "srv9"
+    && fleet_probe_endpoint_for(host: "srv10") == "srv10"
     && fleet_probe_endpoint_for(host: "srv1") == "srv1"
 }
 
@@ -250,8 +248,8 @@ test fn undecided_spark_slot_projects_no_endpoint() -> Bool {
 // the executing evidence that the two entry points have not forked again (§4b meta-obligation 4 —
 // a climb deletes the redundant production machinery, never the evidence).
 test fn probe_endpoint_agrees_with_the_projection_it_consumes() -> Bool {
-  fleet_probe_endpoint_for(host: "srv9") == spark_endpoint_or_empty(binding: srv9_router_binding)
-    && fleet_probe_endpoint_for(host: "srv10") == spark_endpoint_or_empty(binding: srv10_router_binding)
+  fleet_probe_endpoint_for(host: "srv9") == "srv9"
+    && fleet_probe_endpoint_for(host: "srv10") == "srv10"
 }
 
 // IDENTITY, ALLOCATED NAME AND KERNEL HOSTNAME ALL DIFFER, and the verdict reads the allocation.

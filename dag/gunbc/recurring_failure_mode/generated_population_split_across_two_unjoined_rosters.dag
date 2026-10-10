@@ -23,7 +23,6 @@ data generated_population_split_across_two_unjoined_rosters: RecurringFailureMod
 
   evidence: [
     DeclarationRef { module_path: "gunbc.generated_artifact_registry", decl_name: "committed_generated_artifacts", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.compiler_gate_workflow", decl_name: "compiler_gate_drift_step", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.rung_drop.witness_floor_off_the_required_gate", decl_name: "witness_floor_off_the_required_gate", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.required_ci_phase_roster", decl_name: "RequiredCiPhase", field: WholeDeclaration },
   ],

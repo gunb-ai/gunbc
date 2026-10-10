@@ -229,6 +229,31 @@ pub fn read_cgroup_memory(dir: &Path) -> Result<CgroupMemoryRead, QualificationR
     })
 }
 
+/// The swap half of a cgroup's envelope (extdeps.linux.cgroup_v2_memory MemorySwapMax,
+/// MemorySwapCurrent, MemorySwapPeak): `memory.swap.max` as written (`max` when unlimited -- a third
+/// state, not a large number), `memory.swap.current` (resident swap, an instantaneous gauge) and
+/// `memory.swap.peak` (the lifetime maximum, ABSENT on kernels that predate it -- reported as absent,
+/// never as zero, because a reader that cannot see the peak must say so rather than report no rise).
+/// An unreadable max or gauge is a refusal like every other file here.
+pub struct CgroupSwapRead {
+    pub swap_max: String,
+    pub swap_current: u64,
+    pub swap_peak: Option<u64>,
+}
+
+pub fn read_cgroup_swap(dir: &Path) -> Result<CgroupSwapRead, QualificationRefusal> {
+    let swap_peak = if dir.join("memory.swap.peak").is_file() {
+        Some(read_count(dir, "memory.swap.peak")?)
+    } else {
+        None
+    };
+    Ok(CgroupSwapRead {
+        swap_max: read_file(dir, "memory.swap.max")?,
+        swap_current: read_count(dir, "memory.swap.current")?,
+        swap_peak,
+    })
+}
+
 /// Locate the cgroup whose counters this invocation may honestly report, BEFORE the child starts.
 /// Refusing here rather than after a 35-minute run is the same discipline the failure-mode row
 /// `suppressed_precondition_failure_runs_the_workload_unconstrained` states: verify the

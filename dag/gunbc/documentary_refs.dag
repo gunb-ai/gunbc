@@ -36,12 +36,16 @@ import std.decl_ref { DeclarationRef, decl_ref }
 
 data v1_maintenance_standing_ref: DeclarationRef = decl_ref(module_path: "gunbc.v1_maintenance_standing", decl_name: "v1_seed_standing")
 
-data required_gate_prefixes_ref: DeclarationRef = decl_ref(module_path: "v2.workflow.required_floor", decl_name: "required_gate_prefixes")
+// THE REQUIRED GATE'S SUBJECTS. Until the 2026-10-09 ruling (the v1 withdrawal) this row named
+// v2.workflow.required_floor required_gate_prefixes, the roster the deleted floor lane prepared. The
+// one required lane now compiles the import closures of the entries these rows emit, so this is the
+// declaration that says what "inside the required gate" means.
+data required_gate_subjects_ref: DeclarationRef = decl_ref(module_path: "gunbc.emitted_subject_build_gate", decl_name: "emitted_subject_build_rows")
 
 fn documentary_ref_symbol_text(reference: DeclarationRef) -> String {
   concat("`", reference.module_path as String, " ", reference.decl_name as String, "`")
 }
 
 fn generated_document_declaration_refs() -> List<DeclarationRef> {
-  [v1_maintenance_standing_ref, required_gate_prefixes_ref]
+  [v1_maintenance_standing_ref, required_gate_subjects_ref]
 }
