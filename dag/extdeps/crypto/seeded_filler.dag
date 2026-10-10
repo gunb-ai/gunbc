@@ -1,0 +1,94 @@
+module extdeps.crypto.seeded_filler
+
+import std.types { String, NonEmptyStr, Int, FilePath }
+import std.measure { ByteSize, byte_size, measure_count }
+import std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.shell
+import extdeps.tools.coreutils_truncate
+import extdeps.tools.coreutils_stat
+import extdeps.tools.openssl
+
+// A DETERMINISTIC, NON-SECRET, INCOMPRESSIBLE FILE OF EXACTLY N BYTES, KEYED BY A SEED.
+//
+// The construction is the GNU coreutils manual's own seeded random source ("Sources of random data"):
+// the AES-256-CTR keystream that `openssl enc -aes-256-ctr -pass pass:<seed> -nosalt` produces over
+// zeros. Here the zeros are a file `truncate -s N` sized exactly, so the keystream is exactly N bytes
+// long without a pipe: CTR is a stream mode, so output length equals input length. It is
+// reproducible (one seed, one key, one stream), two seeds give unrelated streams, and an AES
+// keystream is indistinguishable from random, so neither gzip nor a chunk store's dedup finds
+// structure in it -- which is why it, and not zeros or a repeated pattern, stands in for content
+// whose SIZE must be carried while its bytes must not be: a compressible filler would understate
+// what storing the real content costs. The seed is in argv and is NOT a secret; the filler carries
+// no information beyond its seed and its length.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "www.gnu.org/software/coreutils/manual/html_node/Random-sources.html" }
+}
+
+data seeded_filler_openssl_enc_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.openssl.org/3.0/man1/openssl-enc/" }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef { module_path: "extdeps.crypto.seeded_filler", decl_name: "seeded_filler_write", field: WholeDeclaration }
+  },
+  first_citation: extdeps.crypto.seeded_filler.extdeps_external_authority_anchor,
+  further_citations: [extdeps.crypto.seeded_filler.seeded_filler_openssl_enc_authority]
+}
+
+// WHICH STEP REFUSED. The size readback is a step: a filler whose stat size is not the requested
+// size is refused, never returned.
+type SeededFillerStep
+  = FillerZeroSized
+  | FillerKeystreamWritten
+  | FillerZeroRemoved
+  | FillerSizeReadBack
+
+type SeededFiller
+  = SeededFillerWritten { path: NonEmptyStr, size: ByteSize }
+  | SeededFillerRefused { path: NonEmptyStr, step: SeededFillerStep, detail: String }
+
+fn seeded_filler_step_words(step: SeededFillerStep) -> String {
+  match step {
+    FillerZeroSized => "truncate"
+    FillerKeystreamWritten => "openssl-enc"
+    FillerZeroRemoved => "zero-input-removal"
+    FillerSizeReadBack => "size-readback"
+  }
+}
+
+// WRITE THE FILLER AT `path`, whose parent directory must exist. The zero input is a sibling
+// `<path>.zero`, sparse on every filesystem truncate extends, and removed before returning.
+fn seeded_filler_write(seed: NonEmptyStr, size: ByteSize, path: NonEmptyStr) -> SeededFiller {
+  let zero = concat(path as String, ".zero") as NonEmptyStr
+  let sized = coreutils.Truncate.ToSize(size_bytes: to_string(measure_count(m: size)) as NonEmptyStr, path: zero)
+  if sized.success == false {
+    SeededFillerRefused { path: path, step: FillerZeroSized, detail: "truncate could not size the zero input" }
+  } else {
+    let enc = openssl.Enc.Aes256CtrPassphrase(passphrase: seed, input_path: zero, output_path: path)
+    let removed = shell.Remove.FileForce(path: zero as FilePath)
+    if enc.success == false {
+      SeededFillerRefused { path: path, step: FillerKeystreamWritten, detail: enc.stderr }
+    } else if removed.success == false {
+      SeededFillerRefused { path: path, step: FillerZeroRemoved, detail: concat("the zero input could not be removed: ", zero as String) }
+    } else {
+      seeded_filler_readback(path: path, size: size)
+    }
+  }
+}
+
+fn seeded_filler_readback(path: NonEmptyStr, size: ByteSize) -> SeededFiller {
+  let st = coreutils.Stat.PathSize(path: path)
+  match parse_int(s: replace(st.size_text, "\n", "")) {
+    Absent => SeededFillerRefused { path: path, step: FillerSizeReadBack, detail: concat("stat printed no size: ", st.size_text) }
+    Present { value: n } =>
+      if st.success && n == measure_count(m: size) {
+        SeededFillerWritten { path: path, size: size }
+      } else {
+        SeededFillerRefused { path: path, step: FillerSizeReadBack, detail: join(["the filler is ", to_string(n), " bytes, not ", to_string(measure_count(m: size))], "") }
+      }
+  }
+}

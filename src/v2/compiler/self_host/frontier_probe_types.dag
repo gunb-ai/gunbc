@@ -32,10 +32,6 @@ import std.content_hash {
 }
 import std.types { CommitSha, GitRef, List }
 import v2.std.algebra { fold_list }
-import v2.std.grammar_choice_ambiguity {
-  GrammarChoiceAmbiguityRow,
-  NonEmptyGrammarChoiceAmbiguityRows
-}
 import v2.std.integer { Int }
 import v2.std.diagnostic { DeclarationLocus, Extent, InvariantPortLocus, Locus, NodeLocus, SourcePortLocus, Textual }
 import v2.std.node { Symbol, symbol_lexeme }
@@ -112,8 +108,7 @@ type NonEmptySymbolChain {
 }
 
 type AssembleRejectionCause
-  = GrammarChoiceOverlap { rows: NonEmptyGrammarChoiceAmbiguityRows }
-  | AssembleMissingModule { requested: QualifiedName }
+  = AssembleMissingModule { requested: QualifiedName }
   | MissingModuleIdentityUnavailable
   | OtherAssembleRefusal { reason: Symbol }
 
@@ -163,14 +158,11 @@ type FrontierProbeAssembleDetail
       at: FrontierProbeCauseLocation
     }
 
-// AssembleRejectionDetail binds only parse-stage-carried evidence — never a global grammar roster.
-// GrammarChoiceOverlap rows are extracted from ParseDiagnosticEvidence on the parse-stage
-// diagnostic carrier. The cause is read from the chain's FATAL element: an overlap residue that
-// heads a chain only rode along, and the refusal is classified by what refused.
-// AssembleMissingModule in assemble_detail awaits parse-stage
-// ModuleRootMissingEvidence; FrontierProbeDetail.MissingModule (#7762) is the structural
-// resolve_module_not_found authority on detail. MissingModuleIdentityUnavailable remains when
-// assemble cause cannot bind parse-stage evidence. Emit-stage receipts use NoFrontierProbeDetail.
+// AssembleRejectionDetail binds only what the rejection's own diagnostics carry -- never a global
+// grammar roster. AssembleMissingModule awaits a ModuleRootMissing evidence carrier on the
+// diagnostic; FrontierProbeDetail.MissingModule (#7762) is the structural resolve_module_not_found
+// authority on detail. MissingModuleIdentityUnavailable remains when the assemble cause cannot bind
+// that evidence. Emit-stage receipts use NoFrontierProbeDetail.
 
 type FrontierProbeReceipt {
   module_path: String

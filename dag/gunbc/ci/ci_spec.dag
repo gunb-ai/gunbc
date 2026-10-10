@@ -78,6 +78,7 @@ import gunbc.machine_intake_mtcollins1_sol_notice { mtcollins1_sol_notice_stop_s
 import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_credential_path_env, mtcollins1_fan_observation_receipt_path }
 import gunbc.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
 import gunbc.fabric.workspace_source { workspace_source_receipt_path }
+import gunbc.fabric.workspace_transcript_rate { workspace_transcript_rate_receipt_path }
 import gunbc.fabric.workspace_checkpoint_instrument { workspace_measure_receipt_path, workspace_restore_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_image_publish { mtcollins1_census_image_receipt_path }
 import gunbc.machine_intake_mtcollins1_census_member_readback { census_member_readback_receipt_path }
@@ -881,6 +882,11 @@ data gunbc_ci_workspace_checkpoint_restore_target: GunbcRunStepTarget = GunbcRun
   function: "workspace_checkpoint_restore_wet",
 }
 
+data gunbc_ci_workspace_transcript_rate_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fabric/workspace_transcript_rate.dag",
+  function: "workspace_transcript_rate_observe_wet",
+}
+
 // THE MICRO-VM GUEST IMAGE HAS TWO TARGETS BECAUSE OBSERVE AND CONVERGE ARE TWO OPERATIONS, and
 // this repository's ordering law is what keeps them apart: an observation reports a host's standing
 // and repairs nothing, so it may run anywhere at any time; a converge builds an image on the host it
@@ -966,6 +972,16 @@ data gunbc_ci_printer_workflow_target: GunbcRunStepTarget = GunbcRunStepTarget {
 data gunbc_ci_namecheap_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/namecheap/observe.dag",
   function: "namecheap_observe_ci_wet",
+}
+
+data gunbc_ci_arrival_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/arrival_admission.dag",
+  function: "arrival_admit_executor",
+}
+
+data gunbc_ci_arrival_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/arrival_run.dag",
+  function: "arrival_converge_wet",
 }
 
 data gunbc_ci_host_credential_custody_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1076,11 +1092,6 @@ data gunbc_ci_runner_guest_image_converge_target: GunbcRunStepTarget = GunbcRunS
 data gunbc_ci_mtcollins1_fan_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/machine_intake/mtcollins1_fan_observe.dag",
   function: "mtcollins1_fan_observe_wet",
-}
-
-data gunbc_ci_mtcollins1_ui_bundle_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/machine_intake/mtcollins1_ui_bundle_observe.dag",
-  function: "mtcollins1_ui_bundle_observe_wet",
 }
 
 data gunbc_ci_mtcollins1_kvm_observer_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1427,6 +1438,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_workspace_source_pack_target,
     gunbc_ci_workspace_checkpoint_measure_target,
     gunbc_ci_workspace_checkpoint_restore_target,
+    gunbc_ci_workspace_transcript_rate_observe_target,
     gunbc_ci_runner_guest_image_observe_target,
     gunbc_ci_runner_guest_image_converge_target,
     gunbc_ci_runner_microvm_host_converge_target,
@@ -1449,7 +1461,6 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_host_reset_return_target,
     gunbc_ci_host_reset_dispatch_admission_target,
     gunbc_ci_mtcollins1_fan_observe_target,
-    gunbc_ci_mtcollins1_ui_bundle_observe_target,
     gunbc_ci_mtcollins1_kvm_observer_observe_target,
     gunbc_ci_mtcollins1_kvm_observer_release_target,
     gunbc_ci_mtcollins1_census_image_publish_target,
@@ -1486,7 +1497,9 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_pair_serving_d0_target,
     gunbc_ci_pair_serving_d0_admit_target,
     gunbc_ci_gcp_iam_converge_request_target,
-    gunbc_ci_gcp_iam_converge_apply_target
+    gunbc_ci_gcp_iam_converge_apply_target,
+    gunbc_ci_arrival_admit_target,
+    gunbc_ci_arrival_converge_target
   ]
 }
 
@@ -2046,10 +2059,6 @@ fn gunbc_ci_mtcollins1_probe_invoke(stem: String, target: GunbcRunStepTarget) ->
     gunbc_ci_mtcollins1_probe_rendered(stmts: gunbc_ci_mtcollins1_probe_credential_statements(stem: stem), set_e: false), "\n",
     gunbc_run_command(source_roots: witness_layer_roots, entry: target.entry, function: target.function, claim_run: false), "\n",
   ], "")
-}
-
-fn gunbc_ci_mtcollins1_ui_bundle_observe_invoke() -> String {
-  gunbc_ci_mtcollins1_probe_invoke(stem: "mtcollins1-ui-bundle", target: gunbc_ci_mtcollins1_ui_bundle_observe_target)
 }
 
 fn gunbc_ci_mtcollins1_kvm_observer_observe_invoke() -> String {
@@ -2841,6 +2850,16 @@ fn gunbc_ci_workspace_checkpoint_restore_invoke() -> String {
     function: gunbc_ci_workspace_checkpoint_restore_target.function,
     claim_run: false,
     receipt_rel: workspace_restore_receipt_path
+  )
+}
+
+fn gunbc_ci_workspace_transcript_rate_observe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_workspace_transcript_rate_observe_target.entry,
+    function: gunbc_ci_workspace_transcript_rate_observe_target.function,
+    claim_run: false,
+    receipt_rel: workspace_transcript_rate_receipt_path
   )
 }
 
@@ -4140,6 +4159,26 @@ fn gunbc_ci_namecheap_observe_invoke() -> String {
     function: gunbc_ci_namecheap_observe_target.function,
     claim_run: false,
     receipt_rel: namecheap_observation_receipt_path
+  )
+}
+
+fn gunbc_ci_arrival_admit_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_arrival_admit_target.entry,
+    function: gunbc_ci_arrival_admit_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_arrival_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_arrival_converge_target.entry,
+    function: gunbc_ci_arrival_converge_target.function,
+    claim_run: false,
+    receipt_rel: none
   )
 }
 

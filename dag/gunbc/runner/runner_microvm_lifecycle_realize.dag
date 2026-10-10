@@ -5,6 +5,7 @@ import gunbc.runner_microvm_network_observe { observe_slot_network_readings }
 import extdeps.virtualization.firecracker { FirecrackerVmConfig, firecracker_vm_config_document }
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
+import std.optional { Present, Absent }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
 import extdeps.clock { clock_unix_millis_read, epoch_secs_of_millis, ClockUnixMillisObserved, ClockUnixMillisRefused }
@@ -162,6 +163,8 @@ type CgroupWalkNode { path: NonEmptyStr, pids: List<Int> }
 
 type CgroupWalk { nodes: List<CgroupWalkNode> }
 
+type CgroupWalkPending { path: NonEmptyStr, depth: Int }
+
 fn cgroup_procs_path(cgroup_path: NonEmptyStr) -> NonEmptyStr {
   cgroup_v2_child_path(parent: cgroup_path, child: cgroup_v2_procs_interface_file)
 }
@@ -192,17 +195,26 @@ fn cgroup_child_names(cgroup_path: NonEmptyStr) -> List<String>
 
 fn walk_cgroup(cgroup_path: NonEmptyStr, depth: Int) -> CgroupWalk
 {
-  let here = CgroupWalkNode { path: cgroup_path, pids: cgroup_procs_pids(cgroup_path: cgroup_path) }
-  if depth <= 0 {
-    CgroupWalk { nodes: [here] }
-  } else {
-    fold(cgroup_child_names(cgroup_path: cgroup_path), init: CgroupWalk { nodes: [here] }, f: (acc, name) =>
-      CgroupWalk {
-        nodes: concat(
-          acc.nodes,
-          walk_cgroup(cgroup_path: cgroup_v2_child_path(parent: cgroup_path, child: trim(s: name) as NonEmptyStr), depth: depth - 1).nodes,
-        ),
-      })
+  walk_cgroup_pending(pending: [CgroupWalkPending { path: cgroup_path, depth: depth }], nodes: [])
+}
+
+// The subtree walk in tail position, so the Rust realization lowers it to a loop. The pending
+// list is the unvisited frontier in preorder: a node's children go ahead of its later siblings,
+// so nodes come out in the order the nested walk produced, and each cgroup is read the same way.
+fn walk_cgroup_pending(pending: List<CgroupWalkPending>, nodes: List<CgroupWalkNode>) -> CgroupWalk
+{
+  match pending.first() {
+    Absent => CgroupWalk { nodes: nodes }
+    Present { value: next } => {
+      let here = CgroupWalkNode { path: next.path, pids: cgroup_procs_pids(cgroup_path: next.path) }
+      let children = if next.depth <= 0 {
+        []
+      } else {
+        map(cgroup_child_names(cgroup_path: next.path), name =>
+          CgroupWalkPending { path: cgroup_v2_child_path(parent: next.path, child: trim(s: name) as NonEmptyStr), depth: next.depth - 1 })
+      }
+      walk_cgroup_pending(pending: concat(children, pending.skip(n: 1)), nodes: concat(nodes, [here]))
+    }
   }
 }
 

@@ -5,7 +5,7 @@ import std.algebra { trim }
 import std.decl_ref { DeclarationRef }
 import std.measure { ByteSize, HardwareThreadCount, Kibibyte, byte_size_count, hardware_thread_count_value, kibibyte_count }
 import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
-import extdeps.tools.uname { uname_machine_command, uname_nodename_command, uname_machine_architecture }
+import extdeps.tools.uname { uname_machine_command, uname_nodename_command, uname_linux_machine_architecture }
 import extdeps.posix.getconf { getconf_online_processors_command }
 import extdeps.posix.test_utility { test_exists_command }
 import extdeps.tools.gnu_coreutils { cat_command }
@@ -214,7 +214,7 @@ fn observe_provider_guest_shape(host: CommandHost, provider_resource_id: String)
   let kvm_out = host_command(host: host, command: test_exists_command(path: firecracker_requires_kvm_device as String))
   match guest_read_stdout(reading: "uname -m", outcome: machine_out) {
     Absent => guest_read_refusal(reading: "uname -m", outcome: machine_out)
-    Present { value: machine } => match uname_machine_architecture(machine: machine) {
+    Present { value: machine } => match uname_linux_machine_architecture(spelling: machine) {
       Absent => GuestObservationRefused { reading: "uname -m", cause: join(["unread machine name '", machine, "'"], "") }
       Present { value: arch } => match guest_read_stdout(reading: "uname -n", outcome: nodename_out) {
         Absent => guest_read_refusal(reading: "uname -n", outcome: nodename_out)

@@ -1,6 +1,7 @@
 module test.claim.repository_convergence_witness_test
 
 import std.types { String, Bool, List }
+import v2.std.algebra { any }
 import extdeps.git.enumeration {
   GitRefSetObservation, GitRefSetReadRefused, git_ref_set_observation_of,
 }
@@ -8,6 +9,8 @@ import extdeps.git.worktree_enumeration {
   GitWorktreeSetObservation, git_worktree_set_observation_of,
 }
 import gunbc.live_deploy.repository_convergence {
+  superseded_workspace_file_paths,
+  ConvergenceSupersededFileNotRetired,
   RepositoryState,
   GitTextObserved,
   RepositoryCoherenceObservation, RepositoryCoherenceObserved,
@@ -687,3 +690,20 @@ test fn a_symref_targeting_another_ref_that_moved_still_refuses() -> Bool {
   }
 }
 
+// THE RETIREMENT POPULATION IS THE FILE-GRAIN SupersededAuthority ROWS OF gunbc.repo_workspace AND
+// NOTHING ELSE: both legacy roster files are in it, and the superseded DIRECTORY rows
+// (`/gunbc-planning/`, `/scripts/fixtures/`) are not -- a directory pattern is never retired here.
+test fn superseded_file_retirement_population_is_the_two_legacy_roster_files() -> Bool {
+  let paths = superseded_workspace_file_paths()
+  length(xs: paths) == 2
+    && any(paths, p => p == "dag/gunbc/recurring_failure_mode/roster.dag")
+    && any(paths, p => p == "dag/gunbc/rung_drop/roster.dag")
+    && !any(paths, p => string_contains(s: p, pattern: "gunbc-planning"))
+}
+
+test fn an_unretired_superseded_file_is_not_converged() -> Bool {
+  !repository_convergence_converged(outcome: ConvergenceSupersededFileNotRetired {
+    path: "/opt/gunbc/gunbc/dag/gunbc/rung_drop/roster.dag",
+    detail: "delete refused: permission denied",
+  })
+}

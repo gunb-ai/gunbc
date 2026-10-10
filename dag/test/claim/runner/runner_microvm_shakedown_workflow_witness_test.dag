@@ -19,7 +19,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 test fn the_shakedown_job_asks_for_the_provenance_label_and_the_attempt_alone() -> Bool {
   match microvm_shakedown_job(script: "").runner {
     SelfHosted { labels: ls } =>
-      ls == [self_hosted_provenance_label, microvm_shakedown_attempt_expression()]
+      count(ls) == 2
+        && match ls[0] {
+          Present { value: l } => l == self_hosted_provenance_label
+          Absent => false
+        }
+        && match ls[1] {
+          Present { value: l } => l == microvm_shakedown_attempt_expression()
+          Absent => false
+        }
     _ => false
   }
 }

@@ -11,10 +11,7 @@ fn fixture_v4_tick() -> BeltTickReceipt {
     launches: [],
     spawn_pass: BeltPassRecorded,
     teardown_pass: BeltPassRecorded,
-    commit_pass: BeltPassRecorded,
-    verify_pass: BeltPassRecorded,
-    publish_pass: BeltPassRecorded,
-    metering_pass: BeltPassRecorded,
+    discovery_pass: BeltPassRecorded,
   }
 }
 
@@ -33,14 +30,29 @@ test fn witness_iso8601_utc_epoch_seconds_matches_known_instants() -> Bool {
     && (match iso8601_utc_epoch_seconds(text: iso8601_utc_text(unix: 4102444799)) { Present { value: s } => second_count(s) == 4102444799  Absent => false })
 }
 
-// (2) Freshness: fresh within the cadence bound, stale beyond it, refused before the deploy, and
-// refused on an unparseable instant -- four typed arms, none of which is a default.
-test fn witness_tick_freshness_arms() -> Bool {
-  let deploy = "2026-08-30T12:00:00Z"
-  (match belt_tick_freshness(observed_at: "2026-08-30T12:01:00Z", deploy_completed_at: deploy, now: "2026-08-30T12:02:00Z") { TickFresh { age_seconds: a } => second_count(a) == 60  _ => false })
-    && (match belt_tick_freshness(observed_at: "2026-08-30T12:01:00Z", deploy_completed_at: deploy, now: "2026-08-30T12:10:00Z") { TickStale { age_seconds: a, bound_seconds: b } => second_count(a) == 540 && second_count(b) == 180  _ => false })
-    && (match belt_tick_freshness(observed_at: "2026-08-30T11:59:00Z", deploy_completed_at: deploy, now: "2026-08-30T12:00:30Z") { TickBeforeDeploy { observed_at: _, deploy_completed_at: _ } => true  _ => false })
-    && (match belt_tick_freshness(observed_at: "clock-unreadable", deploy_completed_at: deploy, now: "2026-08-30T12:00:30Z") { TickInstantUnparseable { which: w, text: _ } => string_contains(s: w, pattern: "observed_at")  _ => false })
+// (2) Event backlog, the liveness row that replaced tick freshness when the belt timer was removed:
+// entries within their stage's bound are clear and counted; an inbox entry past the drain bound and a
+// queued entry past the obligation bound each refuse with StaleBacklog naming the OLDEST stale entry;
+// a fresh queued entry older than the drain bound is not stale (the bounds are per stage).
+fn queued_bound_count() -> Nat {
+  match event_backlog_queued_bound() { Present { value: b } => second_count(s: b)  Absent => 0 }
+}
+
+test fn witness_event_backlog_arms() -> Bool {
+  let clear = match event_backlog_judge(entries: [
+    EventBacklogEntry { stage: AttemptExitInbox, entry: "a", age: second(count: 10) },
+    EventBacklogEntry { stage: AttemptExitQueued, entry: "b", age: second(count: 1200) },
+  ]) { EventBacklogClear { inbox, queued } => inbox == 1 && queued == 1  _ => false }
+  let stale_inbox = match event_backlog_judge(entries: [
+    EventBacklogEntry { stage: AttemptExitInbox, entry: "young", age: second(count: 30) },
+    EventBacklogEntry { stage: AttemptExitInbox, entry: "old", age: second(count: second_count(s: event_backlog_drain_bound) + 1) },
+  ]) { StaleBacklog { stage, entry, age: _, bound } => stage == AttemptExitInbox && entry == "old" && second_count(s: bound) == second_count(s: event_backlog_drain_bound)  _ => false }
+  let oldest_named = match event_backlog_judge(entries: [
+    EventBacklogEntry { stage: AttemptExitInbox, entry: "stale-inbox", age: second(count: second_count(s: event_backlog_drain_bound) + 5) },
+    EventBacklogEntry { stage: AttemptExitQueued, entry: "stale-queued", age: second(count: queued_bound_count() + 100) },
+  ]) { StaleBacklog { stage, entry, age: _, bound: _ } => stage == AttemptExitQueued && entry == "stale-queued"  _ => false }
+  let empty = match event_backlog_judge(entries: []) { EventBacklogClear { inbox, queued } => inbox == 0 && queued == 0  _ => false }
+  clear && stale_inbox && oldest_named && empty
 }
 
 // (3) /instance.json decodes the members the serve route writes, and refuses another schema.
@@ -158,4 +170,10 @@ test fn witness_root_tree_standing_refuses_a_mismatched_tree() -> Bool {
         }
       }
   }
+}
+
+// THE QUEUED BOUND IS DERIVED, NOT COPIED: it is the obligation unit's RuntimeMaxSec plus the drain bound,
+// so changing belt_tick_run_bound moves it (plus the drain bound).
+test fn witness_queued_bound_is_the_run_bound_plus_the_drain_bound() -> Bool {
+  queued_bound_count() == second_count(s: belt_tick_run_bound) + second_count(s: event_backlog_drain_bound)
 }

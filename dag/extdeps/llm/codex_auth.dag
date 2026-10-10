@@ -251,3 +251,33 @@ fn codex_default_organization(token: CodexIdToken) -> CodexOrganizationMembershi
 fn codex_organization_ids(token: CodexIdToken) -> List<NonEmptyStr> {
   token.openai_auth.organizations |> map(o => o.id)
 }
+
+// WHAT THE SOURCE SAYS, BESIDE WHAT ONE HOST SHOWED. codex_observed_refresh_persistence records an
+// observation on codex-cli 0.145.0 and stays as observed; this row records a separate fact, read from
+// the CLI's source at a pinned revision, so neither one gets rewritten into the other. At
+// github.com/openai/codex 7f892275e31002f0422477c6219189284560e689 (2026-10-04), crate codex-rs/login,
+// module auth/manager.rs: AuthManager::auth refreshes when should_refresh_proactively holds, meaning
+// the access_token JWT exp falls within CHATGPT_ACCESS_TOKEN_REFRESH_WINDOW_MINUTES (5) of now, or
+// last_refresh is older than TOKEN_REFRESH_INTERVAL (8 days). refresh_and_persist_chatgpt_token then
+// calls persist_tokens, which writes id_token, access_token, the refresh_token the response returned
+// and last_refresh back to the auth storage (CODEX_HOME/auth.json under the default
+// AuthCredentialsStoreMode::File). So at this revision the file is rewritten about once an hour
+// during use, not only at login.\n\nRotation stays a separate fact. The response's refresh_token is
+// an Option, and the client maps the issuer's error code refresh_token_reused to
+// RefreshTokenFailedReason::Exhausted, so the issuer detects reuse. The source shows the CLIENT is
+// ready for rotation; whether the issuer actually rotates on every exchange is server behaviour, and
+// codex_observed_refresh_rotation stays CodexRotationUnobserved until it is observed.\n\nThe source
+// also has no cross-process lock on the file: the refresh lock is per process, and the guarded
+// reload compares account ids, not a lock token. So two processes refreshing one copy can both
+// present the same refresh token.
+data codex_source_revision: NonEmptyStr = "github.com/openai/codex@7f892275e31002f0422477c6219189284560e689" as NonEmptyStr
+data codex_source_refresh_persistence: CodexRefreshPersistence = CodexPersistsOnRefresh
+data codex_source_access_token_refresh_window: Second = second(count: 300)
+
+// THE auth.json KEYS THE HARNESS READS to decide a write-back, as named by codex-rs/login
+// token_data.rs TokenData and auth/storage.rs AuthDotJson. They are wire names of the observed file layout above, not new
+// vocabulary.
+data codex_auth_file_auth_mode_key: NonEmptyStr = "auth_mode" as NonEmptyStr
+data codex_auth_file_tokens_key: NonEmptyStr = "tokens" as NonEmptyStr
+data codex_auth_file_refresh_token_key: NonEmptyStr = "refresh_token" as NonEmptyStr
+data codex_auth_file_account_id_key: NonEmptyStr = "account_id" as NonEmptyStr

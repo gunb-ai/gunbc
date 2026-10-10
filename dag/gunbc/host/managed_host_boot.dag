@@ -15,8 +15,10 @@ import gunbc.managed_host {
   ManagedHostBound,
   ManagedHostEndpointMismatch,
   ManagedHostNotSecured,
+  OrdinaryMember,
+  MemberUnderDeclaredDrop,
   managed_host_binding,
-  managed_hosts,
+  managed_membership_for,
 }
 
 // THE BOOT'S ONE-SHOT SELECTION IS BOOT POLICY for the pair (host, boot), so it is decided here and
@@ -80,7 +82,15 @@ fn boot_subject_admission_in(hosts: List<ManagedHost>, host: HostIdentity, mediu
 }
 
 fn boot_subject_admission_for(host: HostIdentity, medium: BootMedium, execution_revision: NonEmptyStr) -> BootSubjectAdmission {
-  boot_subject_admission_in(hosts: managed_hosts(), host: host, medium: medium, execution_revision: execution_revision)
+  match managed_membership_for(host: host) {
+    Absent => BootSubjectRefused { host: host, cause: BootSubjectHostNotManaged }
+    Present { value: m } =>
+      match m {
+        OrdinaryMember { host: h } => admit_boot_subject(host: h, medium: medium, execution_revision: execution_revision)
+        MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } =>
+          admit_boot_subject(host: h, medium: medium, execution_revision: execution_revision)
+      }
+  }
 }
 
 fn boot_subject_refusal_cause_text(cause: BootSubjectRefusalCause) -> String {

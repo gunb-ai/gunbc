@@ -1,7 +1,7 @@
 module product.altra_motherboard.placement
 
 import std.types { String, Bool, NonEmptyStr, List }
-import std.integer { Int }
+import std.integer { Int, int_to_decimal_string }
 import std.decl_ref { DeclarationRef, declaration_ref_eq, decl_ref }
 import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity }
 import std.affine_space { Point2, point2 }
@@ -748,7 +748,7 @@ fn memory_slot_obligations(d: AltraMinimalMotherboard) -> List<PlannedComponent>
     let pos = dimm_slot_position_ordinal(p: s.position)
     concat(acc, [obligation(
       g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the MemoryModuleSlot role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" },
-      id: "dimm_ddr{ch}_slot{pos}",
+      id: "dimm_ddr{int_to_decimal_string(value: ch)}_slot{int_to_decimal_string(value: pos)}",
       r: MemoryModuleSlot { slot: s },
       x: 150000 + (pos * 14000),
       y: 20000 + (ch * 12000)

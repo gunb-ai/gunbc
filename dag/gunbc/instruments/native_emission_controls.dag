@@ -1,7 +1,7 @@
 module gunbc.instruments.native_emission_controls
 
 import std.types { Bool, Int, List, NonEmptyStr, Set, String }
-import v2.std.algebra { filter }
+import v2.std.algebra { filter, length }
 import std.list { duplicated_by_key }
 import gunbc.instruments.native_emission_controls_homonym { ControlBoxed, narrow_slot_value, narrow_slots_equal }
 import std.resource_contract { Observation, Read }
@@ -247,6 +247,38 @@ fn filter_in_branch_condition_cases() -> List<NativeEmissionCase> {
   ]
 }
 
+// RULE: a data row keeps its declared `?`, in its signature and in its body (v1.compiler.emit_rust
+// emit_data_def's named-refinement arm; v1.compiler.emit emit_optional_data_value_json). A
+// where-refinement such as NonEmptyStr took the one arm of emit_data_def with no optional wrap, so
+// gunbc.fleet_tailnet fleet_tailnet_domain (`NonEmptyStr? = Present { .. }`) was emitted
+// `-> NonEmptyStr`; and the JSON body spelled Present as a tagged map the native option cannot
+// parse.
+// Both optional rows pass through a `T?`-typed parameter, so a dropped `?` stops this closure
+// compiling, and a wrong body stops it at run time; the cases decide each row answers as declared.
+data control_optional_brand_present: NonEmptyStr? = Present { value: "tailnet.example" }
+
+data control_optional_brand_absent: NonEmptyStr? = none
+
+fn control_optional_brand_value(d: NonEmptyStr?) -> String {
+  match d {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+fn optional_data_row_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase {
+      identity: "optional_data_row_present_answers_its_value",
+      held: control_optional_brand_value(d: control_optional_brand_present) == "tailnet.example"
+    },
+    NativeEmissionCase {
+      identity: "optional_data_row_red_absent_answers_absent",
+      held: control_optional_brand_value(d: control_optional_brand_absent) == ""
+    }
+  ]
+}
+
 // RULE: a data row takes the JSON serializer only when its value is a literal tree
 // (v1.compiler.emit_rust data_value_is_json_literal_tree). A `"x" as NonEmptyStr` brand cast, bare or
 // inside a record literal, and an operator inside a record literal used to reach the serializer and
@@ -350,7 +382,7 @@ fn list_index_cases() -> List<NativeEmissionCase> {
 }
 
 // RULE: the NativeClaimDriver binds its declared Filesystem resource (std.compiler_entry
-// NativeClaimDriver; v1.compiler.emit_rust native_claim_report_effect_demand). Reaching Filesystem
+// NativeClaimDriver; v1.compiler.emit NativeEffectRealizationAdmission under native_claim_route_denominator). Reaching Filesystem
 // makes native_claim_report effectful, so this whole program runs only if the rendered main binds
 // the filesystem_io handler and awaits the report: remove the binding and the main calls an async,
 // handler-taking report with neither, which rustc refuses -- the red is the label's, not a row's.
@@ -414,6 +446,47 @@ fn effectful_fold_step_cases() -> List<NativeEmissionCase> {
     NativeEmissionCase { identity: "effectful_fold_step_counts_every_refused_read", held: control_tally_absent_reads(paths: control_absent_paths()).refused == 3 },
     NativeEmissionCase { identity: "effectful_fold_step_red_seen_counts_elements", held: control_tally_absent_reads(paths: control_absent_paths()).seen == 3 },
     NativeEmissionCase { identity: "effectful_fold_step_red_empty_keeps_init", held: control_tally_absent_reads(paths: []).seen == 0 }
+  ]
+}
+
+// RULE: a type parameter carries its own cardinality (v1.compiler.emit_rust rust_carrier_optional_wrap,
+// gunbc.recurring_failure_mode optional_type_parameter_emitted_without_its_cardinality). `get: K?` on a
+// generic record emitted `pub get: K`, so an Absent had no representation and this carrier's
+// construction with Absent did not compile -- the red is the label's. The cases read the field back
+// both ways, and each has a red asking for an answer it does not give.
+type ControlOptionalParam<K> {
+  get: K?
+  pair: K
+}
+
+fn control_optional_param_absent() -> ControlOptionalParam<Int> {
+  ControlOptionalParam { get: Absent, pair: 1 }
+}
+
+fn control_optional_param_present() -> ControlOptionalParam<Int> {
+  ControlOptionalParam { get: Present { value: 7 }, pair: 2 }
+}
+
+fn optional_param_is_absent(c: ControlOptionalParam<Int>) -> Bool {
+  match c.get {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+fn optional_param_value_or_zero(c: ControlOptionalParam<Int>) -> Int {
+  match c.get {
+    Present { value: v } => v
+    Absent => 0
+  }
+}
+
+fn optional_type_parameter_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "optional_type_param_holds_absent", held: optional_param_is_absent(c: control_optional_param_absent()) },
+    NativeEmissionCase { identity: "optional_type_param_red_present_is_not_absent", held: !optional_param_is_absent(c: control_optional_param_present()) },
+    NativeEmissionCase { identity: "optional_type_param_holds_present_value", held: optional_param_value_or_zero(c: control_optional_param_present()) == 7 },
+    NativeEmissionCase { identity: "optional_type_param_red_absent_reads_no_value", held: optional_param_value_or_zero(c: control_optional_param_absent()) == 0 }
   ]
 }
 
@@ -481,11 +554,101 @@ fn control_outcome_is_bad(o: ControlOutcome<Int, String>) -> Bool {
   }
 }
 
+// RULE: `v2.std.algebra` `length` over HOST text (kernel `String`) lowers to
+// `v1_rt::string_length`. Corpus `v2.std.text.String` is structural FreeMonoid and keeps the
+// generic body. Without the host arm, kernel `String` at `request_field` is E0308; with a
+// leaf-name arm, structural text at `string_split_step` is E0308 the other way.
+fn control_algebra_length_of_string(s: String) -> Int {
+  length(xs: s)
+}
+
+fn algebra_length_on_string_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "algebra_length_of_a_string_counts_scalars", held: control_algebra_length_of_string(s: "abc") == 3 },
+    NativeEmissionCase { identity: "algebra_length_of_a_string_red_is_not_another_count", held: control_algebra_length_of_string(s: "abc") != 4 },
+    NativeEmissionCase { identity: "algebra_length_of_a_list_is_unchanged", held: length(xs: ["a", "b"]) == 2 }
+  ]
+}
+
 fn fold_accumulator_formals_cases() -> List<NativeEmissionCase> {
   [
     NativeEmissionCase { identity: "fold_constructor_init_sums_all_nonnegative", held: control_outcome_good_value(o: control_sum_until_negative(xs: [1, 2, 3])) == 6 },
     NativeEmissionCase { identity: "fold_constructor_init_red_negative_switches_arm", held: control_outcome_is_bad(o: control_sum_until_negative(xs: [1, 0 - 2, 3])) },
     NativeEmissionCase { identity: "fold_constructor_init_red_empty_keeps_init", held: control_outcome_good_value(o: control_sum_until_negative(xs: [])) == 0 }
+  ]
+}
+
+// RULE: a variant literal of a generic owner takes the expected application of that owner
+// (v1.compiler.infer variant_literal_expected_application). Seeded with a bare constructor in result
+// position, the fold's accumulator used to type as the uninstantiated declaration, so the payload
+// binding `items` carried the formal and `items |> list_push(x)` emitted a `.list_push(` method no
+// Rust type has -- E0599, extdeps.dns.domain_name parse_dns_label_list.
+fn control_collect_nonempty(xs: List<String>) -> ControlOutcome<List<String>, String> {
+  fold(xs, init: ControlGood { value: [] }, f: (acc, x) => match acc {
+    ControlBad { value: e } => ControlBad { value: e }
+    ControlGood { value: items } => if x == "" { ControlBad { value: "empty" } } else { ControlGood { value: items |> list_push(x) } }
+  })
+}
+
+fn control_collected_count(o: ControlOutcome<List<String>, String>) -> Int {
+  match o {
+    ControlGood { value: items } => items |> count
+    ControlBad { value: _ } => 0 - 1
+  }
+}
+
+fn variant_literal_application_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "variant_literal_application_collects_every_element", held: control_collected_count(o: control_collect_nonempty(xs: ["a", "b", "c"])) == 3 },
+    NativeEmissionCase { identity: "variant_literal_application_red_empty_element_refuses", held: control_collected_count(o: control_collect_nonempty(xs: ["a", "", "c"])) == 0 - 1 },
+    NativeEmissionCase { identity: "variant_literal_application_red_empty_list_keeps_init", held: control_collected_count(o: control_collect_nonempty(xs: [])) == 0 }
+  ]
+}
+
+// RULE: every match whose Rc scrutinee is dereferenced and cloned owes Clone on the generics it
+// carries, wherever the match sits (v1.compiler.emit_rust v1_fn_body_rc_match_clone_bound_param_names).
+// control_first_refusal has the shape of gunbc.product.data_class admit_data_effect: one generic
+// (B) earns Clone elsewhere because the seed stores it by value, the other (A) is carried only in a
+// phantom position (ControlTag<A>, as Sink<C>), and the step matches on the accumulator, a generic
+// coproduct it clones out of its Rc. Read only at the fn body's top level, the bound was
+// missed and the header stayed `<A, B: Clone>`: E0599, `clone` exists for ControlAdmission<A, B> but its
+// trait bounds were not satisfied.
+type ControlTag<A> {
+  name: String
+}
+
+type ControlAdmission<A, B> = ControlAdmitted { tag: ControlTag<A>, value: B } | ControlRefused { cause: String }
+
+fn control_admitted_seed<A, B>(tag: ControlTag<A>, value: B) -> ControlAdmission<A, B> {
+  ControlAdmitted { tag: tag, value: value }
+}
+
+fn control_first_refusal<A, B>(tag: ControlTag<A>, value: B, causes: List<String>) -> ControlAdmission<A, B> {
+  fold(causes, init: control_admitted_seed(tag: tag, value: value), f: (acc, c) => match acc {
+    ControlAdmitted { tag: _, value: _ } => ControlRefused { cause: c }
+    ControlRefused { cause: _ } => acc
+  })
+}
+
+fn control_admitted_value(a: ControlAdmission<Int, Int>) -> Int {
+  match a {
+    ControlAdmitted { tag: _, value: v } => v
+    ControlRefused { cause: _ } => 0 - 1
+  }
+}
+
+fn control_refusal_cause(a: ControlAdmission<Int, Int>) -> String {
+  match a {
+    ControlAdmitted { tag: _, value: _ } => ""
+    ControlRefused { cause: c } => c
+  }
+}
+
+fn rc_match_clone_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "rc_match_clone_no_refusal_keeps_the_seed", held: control_admitted_value(a: control_first_refusal(tag: ControlTag { name: "t" }, value: 7, causes: [])) == 7 },
+    NativeEmissionCase { identity: "rc_match_clone_red_first_refusal_wins", held: control_refusal_cause(a: control_first_refusal(tag: ControlTag { name: "t" }, value: 7, causes: ["a", "b"])) == "a" },
+    NativeEmissionCase { identity: "rc_match_clone_red_refused_is_not_admitted", held: control_admitted_value(a: control_first_refusal(tag: ControlTag { name: "t" }, value: 7, causes: ["x"])) == 0 - 1 }
   ]
 }
 
@@ -526,6 +689,9 @@ data native_emission_expected_identities: List<String> = [
   "effectful_fold_step_red_empty_keeps_init",
   "capability_alias_output_octet_in_range",
   "capability_alias_output_red_octet_out_of_range",
+  "algebra_length_of_a_string_counts_scalars",
+  "algebra_length_of_a_string_red_is_not_another_count",
+  "algebra_length_of_a_list_is_unchanged",
   "fold_constructor_init_sums_all_nonnegative",
   "fold_constructor_init_red_negative_switches_arm",
   "fold_constructor_init_red_empty_keeps_init",
@@ -535,15 +701,27 @@ data native_emission_expected_identities: List<String> = [
   "list_index_past_the_end_is_absent",
   "list_index_negative_is_absent",
   "list_index_into_empty_is_absent",
+  "optional_data_row_present_answers_its_value",
+  "optional_data_row_red_absent_answers_absent",
+  "rc_match_clone_no_refusal_keeps_the_seed",
+  "rc_match_clone_red_first_refusal_wins",
+  "rc_match_clone_red_refused_is_not_admitted",
   "generic_return_full_arm_answers_its_value",
   "generic_return_red_empty_arm_answers_empty",
   "generic_return_effectful_call_answers_empty_on_absent_path",
   "generic_empty_map_duplicated_by_key_reports_each_repeat_once",
-  "generic_empty_map_red_no_repeat_reports_nothing"
+  "generic_empty_map_red_no_repeat_reports_nothing",
+  "variant_literal_application_collects_every_element",
+  "variant_literal_application_red_empty_element_refuses",
+  "variant_literal_application_red_empty_list_keeps_init",
+  "optional_type_param_holds_absent",
+  "optional_type_param_red_present_is_not_absent",
+  "optional_type_param_holds_present_value",
+  "optional_type_param_red_absent_reads_no_value"
 ]
 
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases())
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases()), rc_match_clone_cases()), optional_type_parameter_cases()), algebra_length_on_string_cases())
 }
 
 fn case_row(c: NativeEmissionCase) -> String {

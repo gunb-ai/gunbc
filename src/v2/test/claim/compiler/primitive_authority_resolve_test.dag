@@ -1,0 +1,135 @@
+module v2.test.claim.compiler.primitive_authority_resolve
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer }
+import v2.compiler.primitive_authority { primitive_authority_path }
+import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_q_artifact, bla_r_artifact, bla_source }
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_infer_tree }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.qualified_name { qualified_name_to_dotted_string }
+import v2.std.node { symbol_intern_lexeme }
+import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: a free kernel call head no frame, import or indexed declaration claims binds to its std.primitives contract
+// row (v2.compiler.resolve resolve_atom_primitive_authority, the LAST tier), and v2.compiler.infer REFUSES the call
+// with infer_reason_primitive_without_declared_signature_authority -- the primitive has a cost row but no .dag type
+// signature authority, and typing it as unknown would be silent wrongness (DESIGN section 5).
+//
+// THE PEERS RESTATE the contract row (std.primitives) and, for the shadowing control, the ordinary v2.std.algebra
+// declaration; the real corpus is covered by the bounded native re-measure cited in the PR.
+
+fn par_primitives_peer(rows: String) -> DagSourceReadWitness {
+  bla_source(src: rows, artifact: bla_q_artifact, cu: ^body_let_annotation_q_cu)
+}
+
+data par_reverse_row: String = "module std.primitives\n\ntype PrimitiveContract {\n  name: String\n}\n\ndata reverse_contract: PrimitiveContract = {\n  name: \"reverse\"\n}\n"
+data par_any_row: String = "module std.primitives\n\ntype PrimitiveContract {\n  name: String\n}\n\ndata any_contract: PrimitiveContract = {\n  name: \"any\"\n}\n"
+data par_decoy_row: String = "module std.primitives\n\ntype PrimitiveContract {\n  metadata: Meta\n}\n\ntype Meta {\n  name: String\n}\n\ndata reverse_contract: PrimitiveContract = {\n  metadata: { name: \"reverse\" }\n}\n"
+data par_label_fn_row: String = "module std.primitives\n\ntype Label {\n  name: String\n}\n\nfn helper_contract(x: Int) -> Label {\n  Label { name: \"helper\" }\n}\n"
+data par_label_typed_row: String = "module std.primitives\n\ntype Label {\n  name: String\n}\n\ndata reverse_contract: Label = {\n  name: \"reverse\"\n}\n"
+data par_disagreeing_row: String = "module std.primitives\n\ntype PrimitiveContract {\n  name: String\n}\n\ndata reverse_contract: PrimitiveContract = {\n  name: \"rewind\"\n}\n"
+
+fn par_reason(o: Outcome<ResolvedTree>) -> Symbol {
+  match o {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+    Accepted { value: tree, diagnostics: _ } =>
+      match fmi_infer_tree(tree: tree) {
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+        Accepted { value: _, diagnostics: _ } => ^accepted
+      }
+  }
+}
+
+// (1) THE REAL PATH: resolves (the assembly is Accepted), then infer refuses with the typed variant.
+test fn par_primitive_call_resolves_then_infer_refuses_without_signature() -> Bool {
+  let assembled = bla_assemble_with_peers(p_src: "module p\n\nfn f(x: Int) -> Int {\n  reverse(x)\n}\n", peers: [par_primitives_peer(rows: par_reverse_row)])
+  (match assembled {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }) && par_reason(o: assembled) == ^infer_reason_primitive_without_declared_signature_authority
+}
+
+// (2) RED WHERE THE COLLISION WOULD MIS-BIND: a local fn named like a primitive wins; infer accepts the call.
+test fn par_local_fn_wins_over_primitive() -> Bool {
+  par_reason(o: bla_assemble_with_peers(
+    p_src: "module p\n\nfn reverse(x: Int) -> Int {\n  x\n}\n\nfn f(x: Int) -> Int {\n  reverse(x)\n}\n",
+    peers: [par_primitives_peer(rows: par_reverse_row)]
+  )) == ^accepted
+}
+
+// (3) CONTROL: with std.primitives indexed AND holding any_contract, an imported ordinary `any` (as v2.std.algebra any) still wins.
+test fn par_imported_ordinary_fn_wins_over_primitive() -> Bool {
+  par_reason(o: bla_assemble_with_peers(
+    p_src: "module p\n\nimport q { any }\n\nfn f(x: Int) -> Int {\n  any(x)\n}\n",
+    peers: [par_primitives_peer(rows: par_any_row), bla_source(src: "module q\n\nfn any(x: Int) -> Int {\n  x\n}\n", artifact: bla_r_artifact, cu: ^body_let_annotation_r_cu)]
+  )) == ^accepted
+}
+
+// (4) A NAME IN NO AUTHORITY refuses unbound, typed (the variant, not text), even with std.primitives indexed.
+test fn par_name_in_no_authority_is_unbound() -> Bool {
+  par_reason(o: bla_assemble_with_peers(
+    p_src: "module p\n\nfn f(x: Int) -> Int {\n  nonesuch(x)\n}\n",
+    peers: [par_primitives_peer(rows: par_reverse_row)]
+  )) == ^resolve_reason_unbound_symbol
+}
+
+// (5) PATH DERIVATION ONLY (not six bound rows): each name derives exactly std.primitives.<name>_contract. Binding is claims 1, 6, 7.
+data par_census: List<String> = ["reverse", "none", "sorted_map_keys", "replace", "any", "filter"]
+
+test fn par_census_names_map_to_their_contract_identity() -> Bool {
+  fold(par_census, init: true, f: fn(ok, name) {
+    ok
+      && qualified_name_to_dotted_string(qn: primitive_authority_path(head: symbol_intern_lexeme(lexeme: name))) == concat("std.primitives.", name, "_contract")
+  })
+}
+
+
+// (6) IDENTITY JOIN: the row is joined on its own name field. A row declared reverse_contract whose name field says
+// "rewind" is neither bound for `reverse` nor silently accepted: resolve refuses with the typed variant.
+test fn par_row_whose_name_field_disagrees_is_refused() -> Bool {
+  par_reason(o: bla_assemble_with_peers(
+    p_src: "module p\n\nfn f(x: Int) -> Int {\n  reverse(x)\n}\n",
+    peers: [par_primitives_peer(rows: par_disagreeing_row)]
+  )) == ^resolve_reason_primitive_row_name_disagrees
+}
+
+// (7) NESTED DECOY: a row with no own `name` whose nested `metadata` record carries name "reverse" is not an identity;
+// only the contract record's OWN field joins, so resolve refuses (nothing found by a deeper search).
+test fn par_nested_name_decoy_is_not_an_identity() -> Bool {
+  par_reason(o: bla_assemble_with_peers(
+    p_src: "module p\n\nfn f(x: Int) -> Int {\n  reverse(x)\n}\n",
+    peers: [par_primitives_peer(rows: par_decoy_row)]
+  )) == ^resolve_reason_primitive_row_name_disagrees
+}
+
+// (8) CLASSIFIED BY THE ADMITTED DECLARATION, NOT NAME SHAPE: an ordinary fn at std.primitives.helpers.helper_contract
+// is an ordinary fn; infer reads its real signature and accepts the call.
+test fn par_ordinary_fn_at_contract_shaped_path_still_infers() -> Bool {
+  par_reason(o: bla_assemble_with_peers(
+    p_src: "module p\n\nimport std.primitives.helpers { helper_contract }\n\nfn f(x: Int) -> Int {\n  helper_contract(x)\n}\n",
+    peers: [bla_source(src: "module std.primitives.helpers\n\nfn helper_contract(x: Int) -> Int {\n  x\n}\n", artifact: bla_r_artifact, cu: ^body_let_annotation_r_cu)]
+  )) == ^accepted
+}
+
+// (9) CONTRACT-SHAPED PATH AND MATCHING NAME FIELD ARE NOT ADMISSION: an ordinary fn at std.primitives.helper_contract returning
+// Label { name: "helper" } is not a PrimitiveContract row (its declared type is Label), so it stays ordinary and infer reads its signature.
+test fn par_ordinary_fn_with_matching_name_field_stays_ordinary() -> Bool {
+  par_reason(o: bla_assemble_with_peers(
+    p_src: "module p\n\nimport std.primitives { Label, helper_contract }\n\nfn f(x: Int) -> Label {\n  helper_contract(x)\n}\n",
+    peers: [par_primitives_peer(rows: par_label_fn_row)]
+  )) == ^accepted
+}
+
+// (10) AN UNRELATED DECLARATION AT std.primitives.reverse_contract WITH name "reverse" DOES NOT BIND: its declared type is not
+// PrimitiveContract, so `reverse` stays unbound at resolve.
+test fn par_wrong_typed_row_at_contract_path_does_not_bind() -> Bool {
+  par_reason(o: bla_assemble_with_peers(
+    p_src: "module p\n\nfn f(x: Int) -> Int {\n  reverse(x)\n}\n",
+    peers: [par_primitives_peer(rows: par_label_typed_row)]
+  )) == ^resolve_reason_unbound_symbol
+}

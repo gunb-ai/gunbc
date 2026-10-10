@@ -102,8 +102,8 @@ data created_body: JitConfigCreatedBody = JitConfigCreatedBody {
 test fn witness_generate_step_delivers_refuses_or_reports_ambiguity_by_what_github_answered() -> Bool {
   let d = dispatched(owned: true, perms: runner_grant)
   let delivered = match jit_mint_performance_of_generate(dispatch: d, outcome: RestAnswered { answer: created_body }) {
-    JitMintReceived { delivery: JitCredentialBoundToAttempt { subject: _, credential: c, runner_id: id } } =>
-      (c.encoded as String) == "ZmFrZS1qaXQtY29uZmln" && id == 4242
+    JitMintReceived { delivery: JitCredentialBoundToAttempt { bound: b } } =>
+      (b.credential.encoded as String) == "ZmFrZS1qaXQtY29uZmln" && b.runner_id == 4242
     _ => false
   }
   let conflicted = match jit_mint_performance_of_generate(

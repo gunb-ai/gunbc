@@ -48,7 +48,7 @@ import v2.std.collection { empty_map, map_insert, map_lookup }
 import std.optional { Absent, Present }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import gunbc.namespace_step0_subject_collector { Step0SubjectCollected, Step0SubjectCollectionRefused, collect_step0_subject_vector_at }
-import v2.std.integer { integer_int_to_decimal_string }
+import std.integer { int_to_decimal_string }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.text { String }
@@ -120,14 +120,13 @@ fn sample_path_parts(path: String) -> SamplePathParts {
 fn sample_path_measured(path: String, text: String) -> SamplePathObservation {
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => SamplePathGrammarUnprepared { path: path }
-    Accepted { value: prepared, diagnostics: residue } =>
+    Accepted { value: prepared, diagnostics: _ } =>
       SamplePathMeasured {
         report: reference_conservation_of_read(
           read: conservation_read_of(path: path, text: text),
           lm: dag_language_model(),
           lex: prepare_lex_rules(rules: dag_language_model().lex),
-          prepared: prepared,
-          residue: residue
+          prepared: prepared
         )
       }
   }
@@ -243,9 +242,9 @@ fn changed_scope_row_lines(rows: FreeMonoid<ChangedScopeRow>) -> String {
 fn changed_scope_verdict_line(observation: ChangedScopeConservationObservation) -> String {
   match observation {
     NoBodyLoweringChange { rows: _ } => "observation no-body-lowering-change"
-    ChangedScopeObservedConserved { rows: _, in_scope: n } => "observation conserved in_scope=" + integer_int_to_decimal_string(value: n)
+    ChangedScopeObservedConserved { rows: _, in_scope: n } => "observation conserved in_scope=" + int_to_decimal_string(value: n)
     ChangedScopeObservedDropped { rows: _, in_scope: n, refused: k } =>
-      "observation dropped in_scope=" + integer_int_to_decimal_string(value: n) + " refused=" + integer_int_to_decimal_string(value: k)
+      "observation dropped in_scope=" + int_to_decimal_string(value: n) + " refused=" + int_to_decimal_string(value: k)
   }
 }
 
@@ -441,7 +440,6 @@ data reference_conservation_stratified_sample_paths: List<String> = [
   "dag/gunbc/repo/repo_self_warning_policy.dag",
   "dag/gunbc/roadmap/roadmap_acceptance_history_projection.dag",
   "dag/gunbc/roadmap/roadmap_publish_admission.dag",
-  "dag/gunbc/rung_drop/admit_callers_discarded_on_the_native_route.dag",
   "dag/gunbc/rung_drop/dashboard_merge_ready_semantic_admissibility.dag",
   "dag/gunbc/rung_drop/floor_cut_effect_gates.dag",
   "dag/gunbc/rung_drop/lens_enforcement_censuses.dag",
@@ -811,7 +809,7 @@ fn reference_conservation_sample_by_rule_at_pin_exit() -> ProcessExit {
       if length(xs: missing) == 0 && length(xs: extra) == 0 && length(xs: derived) == length(xs: pinned) {
         ExitSuccess
       } else {
-        exit_failure(reason: "the rule at " + reference_conservation_stratified_sample_revision + " selects " + integer_int_to_decimal_string(value: length(xs: derived)) + " paths; the pin lists " + integer_int_to_decimal_string(value: length(xs: pinned)) + "; rule-only " + integer_int_to_decimal_string(value: length(xs: missing)) + fold_list(xs: missing, empty: "", cons: fn(a, p) { a + " " + p }) + "; pin-only " + integer_int_to_decimal_string(value: length(xs: extra)) + fold_list(xs: extra, empty: "", cons: fn(a, p) { a + " " + p }))
+        exit_failure(reason: "the rule at " + reference_conservation_stratified_sample_revision + " selects " + int_to_decimal_string(value: length(xs: derived)) + " paths; the pin lists " + int_to_decimal_string(value: length(xs: pinned)) + "; rule-only " + int_to_decimal_string(value: length(xs: missing)) + fold_list(xs: missing, empty: "", cons: fn(a, p) { a + " " + p }) + "; pin-only " + int_to_decimal_string(value: length(xs: extra)) + fold_list(xs: extra, empty: "", cons: fn(a, p) { a + " " + p }))
       }
   }
 }

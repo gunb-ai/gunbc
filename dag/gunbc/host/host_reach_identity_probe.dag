@@ -1,6 +1,8 @@
 module gunbc.host_reach_identity_probe
 
 import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.id { id_user_name_argv }
+import extdeps.tools.hostname { hostname_read_argv }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.typed_argv_exec {
@@ -335,11 +337,13 @@ type FleetReachProbeRun {
 // receipt stays keyed by fleet IDENTITY — addressing is transport, never identity.
 // Repairs #1 + #2: consult fleet_probe_target_for FIRST. A refused target (unobserved
 // principal) yields ProbeTargetUnobserved and NEVER touches SSH. A ready target runs two
-// typed argv ops against the SAME explicit principal@endpoint — `hostname` for host
-// identity and `id -un` for the account actually reached — so ProbeReachable carries both
-// dimensions and the receipt carries the requested principal for the identity verdict.
+// typed argv ops against the SAME explicit principal@endpoint — `hostname_read_argv` for
+// host identity and `id_user_name_argv` for the account actually reached — so ProbeReachable
+// carries both dimensions and the receipt carries the requested principal for the identity
+// verdict. The argv is spelled by the tool module that owns the tool, not hand-typed here:
+// the probe no longer decides how `hostname` or `id` get their flags.
 fn probe_reachable_with_principal(target: String, hostname_stdout: String) -> ReachProbeOutcome {
-  match typed_argv_probe_over_ssh(host: target as NonEmptyStr, argv: ["id", "-un"]) {
+  match typed_argv_probe_over_ssh(host: target as NonEmptyStr, argv: id_user_name_argv()) {
     TypedArgvExecConverged { result: idr } =>
       if idr.success {
         ProbeReachable { observed_short_hostname: trim(hostname_stdout), observed_principal: trim(idr.stdout) }
@@ -352,7 +356,7 @@ fn probe_reachable_with_principal(target: String, hostname_stdout: String) -> Re
 
 fn probe_ready_target_once(host: String, endpoint: String, remote_principal: String) -> ReachProbeOutcome {
   let target = fleet_probe_ready_ssh_target(t_host: host, endpoint: endpoint, remote_principal: remote_principal)
-  match typed_argv_probe_over_ssh(host: target as NonEmptyStr, argv: ["hostname"]) {
+  match typed_argv_probe_over_ssh(host: target as NonEmptyStr, argv: hostname_read_argv()) {
     TypedArgvExecConverged { result: r } =>
       if r.success {
         probe_reachable_with_principal(target: target, hostname_stdout: r.stdout)

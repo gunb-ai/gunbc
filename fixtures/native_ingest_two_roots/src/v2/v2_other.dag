@@ -1,0 +1,3 @@
+module fixture.native_ingest.v2_other
+
+data native_ingest_v2_other_value: Int = 2

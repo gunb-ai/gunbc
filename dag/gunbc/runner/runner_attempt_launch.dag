@@ -40,7 +40,7 @@ import gunbc.guarantee_rung {
 import extdeps.github.actions_jit_runner { EncodedJitConfig, JitRunnerName }
 import gunbc.github_effect_perform { JitMintPerformance, JitMintReceived }
 import gunbc.runner.runner_jit_perform {
-  JitCredentialDelivery, JitCredentialBoundToAttempt,
+  JitCredentialDelivery, JitCredentialBoundToAttempt, bound_jit_subject,
 }
 import gunbc.runner.jit_registration_subject { JitRegistrationSubject, microvm_registration_subject_of }
 import gunbc.runner.runner_jit_admission {
@@ -215,7 +215,10 @@ fn admit_jit_credential_for(expected: JitRegistrationSubject, mint: JitMintPerfo
   match mint {
     JitMintReceived { delivery: delivery } =>
       match delivery {
-        JitCredentialBoundToAttempt { subject: bound, credential: c, runner_id: id } =>
+        JitCredentialBoundToAttempt { bound: b } => {
+          let bound = bound_jit_subject(bound: b)
+          let c = b.credential
+          let id = b.runner_id
           if !host_mint_admission_is_required() {
             JitCredentialRefused { refusal: JitMintAdmissionAxisNotRequired }
           } else if !(bound == expected) {
@@ -229,6 +232,7 @@ fn admit_jit_credential_for(expected: JitRegistrationSubject, mint: JitMintPerfo
               admitted: AdmittedJitCredential { credential: c, runner_name: expected.name, registration_id: id },
             }
           }
+        }
         other => JitCredentialRefused { refusal: JitCredentialNotDelivered { delivery: other } }
       }
     other => JitCredentialRefused { refusal: JitMintNotReceived { performance: other } }

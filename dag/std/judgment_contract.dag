@@ -108,6 +108,12 @@ data output_module_test_verdicts: ArtifactOutputId = "module_test_verdicts"
 
 data output_module_preparation_diagnostics: ArtifactOutputId = "module_preparation_diagnostics"
 
+data output_compute_work_outcome: ArtifactOutputId = "compute_work_outcome"
+
+data output_compute_work_log: ArtifactOutputId = "compute_work_log"
+
+data output_compute_work_outputs: ArtifactOutputId = "compute_work_outputs"
+
 
 type DeclaredInput {
   ref: NonEmptyStr

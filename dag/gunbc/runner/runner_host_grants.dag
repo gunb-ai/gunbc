@@ -11,11 +11,16 @@ import gunbc.fleet_converge_state_path { fleet_converge_state_root }
 import gunbc.workspace_allocation_operations { workspace_launch_operations }
 import gunbc.runner_slot_allocation { workspace_execution_slot_identities }
 import gunbc.fleet_bootstrap_principal { ExecutorBootstrapPrincipal, executor_bootstrap_principal }
-import std.types { String, NonEmptyStr, List, list_length }
+import std.types { String, NonEmptyStr, List, FilePath, list_length }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.spec { deployment_directory_demands }
+import gunbc.owned_directory { owned_directory_path, owned_directory_listed_ancestors }
 import extdeps.virtualization.firecracker { kvm_device_group }
 import extdeps.github.actions_runner { actions_runner_base_dir, actions_runner_cache_dir }
 import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation,
+  ReadDirectoryIdentity,
+  ListDirectoryEntries,
   EnsureOwnedDirectory,
   SystemdDaemonReload,
   SystemdEnableUnit,
@@ -386,6 +391,7 @@ fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorP
     + microvm_slot_reserve_start_operations(deploy: deploy)
     + runner_host_wide_privileged_operations(deploy: deploy)
     + microvm_network_granted_operations()
+    + dashboard_directory_observation_operations(deploy: deploy)
 }
 
 // THE HEADER IS THE INSTALLED FILE'S ONLY POINTER BACK TO ITS AUTHORITY, so it names the module
@@ -497,4 +503,25 @@ fn bootstrap_principal_is_not_the_job_user(
   job_user: NonEmptyStr,
 ) -> Bool {
   bootstrap.login != job_user
+}
+
+// THE DASHBOARD DEPLOYMENT'S DIRECTORY OBSERVATIONS, AS PINNED READ-ONLY GRANTS. The live_deploy
+// transaction plans and reads back every directory its spec demands (gunbc.live_deploy.spec
+// deployment_directory_demands) under the job user, and a managed directory may admit only its owner,
+// so the job user is granted exactly two read-only metadata operations per bound directory: stat of each
+// demanded directory, and a listing of each directory whose listing establishes a demand's presence
+// (its parent and ancestors, gunbc.owned_directory owned_directory_listed_ancestors). Every path is named
+// in full; nothing here mutates. Empty on every host that does not run the dashboard deployment.
+fn dashboard_directory_observation_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  let spec = deployment_spec_srv1()
+  if (deploy.host_label as String) != (spec.target.host.identity as String) {
+    []
+  } else {
+    let demanded = map(deployment_directory_demands(spec: spec), t => owned_directory_path(t: t) as String)
+    let listed = fold(flat_map(demanded, p => map(owned_directory_listed_ancestors(path: p as FilePath), a => a as String)), init: [], f: (acc, a) => if any(acc, x => x == a) { acc } else { concat(acc, [a]) })
+    concat(
+      map(demanded, p => ReadDirectoryIdentity { path: p as NonEmptyStr }),
+      map(listed, p => ListDirectoryEntries { path: p as NonEmptyStr }),
+    )
+  }
 }

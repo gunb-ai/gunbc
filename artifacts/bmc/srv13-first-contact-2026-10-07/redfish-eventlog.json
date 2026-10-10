@@ -1,0 +1,457 @@
+{
+  "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries",
+  "@odata.type": "#LogEntryCollection.LogEntryCollection",
+  "Description": "Collection of System Event Log Entries",
+  "Members": [
+    {
+      "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/1",
+      "@odata.type": "#LogEntry.v1_9_0.LogEntry",
+      "AdditionalDataURI": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/1/attachment",
+      "Additiondata": [
+        "CHASSIS_ID=0"
+      ],
+      "Created": "2023-04-03T21:00:02.839+00:00",
+      "EntryType": "Event",
+      "Id": "1",
+      "Message": "xyz.openbmc_project.State.Info.ChassisPowerOnStarted",
+      "Modified": "2023-04-03T21:00:02.839+00:00",
+      "Name": "System Event Log Entry",
+      "Resolved": false,
+      "Severity": "OK"
+    },
+    {
+      "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/10",
+      "@odata.type": "#LogEntry.v1_9_0.LogEntry",
+      "AdditionalDataURI": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/10/attachment",
+      "Additiondata": [
+        "Over temperature = Assert"
+      ],
+      "Created": "2026-10-06T23:31:22.586+00:00",
+      "EntryType": "Event",
+      "Id": "10",
+      "Message": "Thermal trip",
+      "Modified": "2026-10-06T23:31:22.586+00:00",
+      "Name": "System Event Log Entry",
+      "Resolved": false,
+      "Severity": "OK"
+    },
+    {
+      "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/11",
+      "@odata.type": "#LogEntry.v1_9_0.LogEntry",
+      "AdditionalDataURI": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/11/attachment",
+      "Additiondata": [
+        "CHASSIS_ID=0"
+      ],
+      "Created": "2026-10-06T23:33:39.774+00:00",
+      "EntryType": "Event",
+      "Id": "11",
+      "Message": "xyz.openbmc_project.State.Info.ChassisPowerOnStarted",
+      "Modified": "2026-10-06T23:33:39.774+00:00",
+      "Name": "System Event Log Entry",
+      "Resolved": false,
+      "Severity": "OK"
+    },
+    {
+      "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/12",
+      "@odata.type": "#LogEntry.v1_9_0.LogEntry",
+      "AdditionalDataURI": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/12/attachment",
+      "Additiondata": [
+        "Over temperature = Assert"
+      ],
+      "Created": "2026-10-06T23:39:02.664+00:00",
+      "EntryType": "Event",
+      "Id": "12",
+      "Message": "Thermal trip",
+      "Modified": "2026-10-06T23:39:02.664+00:00",
+      "Name": "System Event Log Entry",
+      "Resolved": false,
+      "Severity": "OK"
+    },
+    {
+      "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/13",
+      "@odata.type": "#LogEntry.v1_9_0.LogEntry",
+      "AdditionalDataURI": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/13/attachment",
+      "Additiondata": [
+        "_PID=281"
+      ],
+      "Created": "2026-10-06T23:38:46.201+00:00",
+      "EntryType": "Event",
+      "Id": "13",
+      "Message": "xyz.openbmc_project.State.Shutdown.Power.Error.Blackout",
+      "Modified": "2026-10-06T23:38:46.201+00:00",
+      "Name": "System Event Log Entry",
+      "Resolved": false,
+      "Severity": "Critical"
+    },
+    {
+      "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/14",
+      "@odata.type": "#LogEntry.v1_9_0.LogEntry",
+      "AdditionalDataURI": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/14/attachment",
+      "Additiondata": [
+        "CHASSIS_ID=0"
+      ],
+      "Created": "2026-10-06T23:39:04.724+00:00",
+      "EntryType": "Event",
+      "Id": "14",
+      "Message": "xyz.openbmc_project.State.Info.ChassisPowerOnStarted",
+      "Modified": "2026-10-06T23:39:04.724+00:00",
+      "Name": "System Event Log Entry",
+      "Resolved": false,
+      "Severity": "OK"
+    },
+    {
+      "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/15",
+      "@odata.type": "#LogEntry.v1_9_0.LogEntry",
+      "AdditionalDataURI": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/15/attachment",
+      "Additiondata": [
+        "Over temperature = Assert"
+      ],
+      "Created": "2026-10-06T23:43:37.297+00:00",
+      "EntryType": "Event",
+      "Id": "15",
+      "Message": "Thermal trip",
+      "Modified": "2026-10-06T23:43:37.297+00:00",
+      "Name": "System Event Log Entry",
+      "Resolved": false,
+      "Severity": "OK"
+    },
+    {
+      "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/16",
+      "@odata.type": "#LogEntry.v1_9_0.LogEntry",
+      "AdditionalDataURI": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/16/attachment",
+      "Additiondata": [
+        "CHASSIS_ID=0"
+      ],
+      "Created": "2026-10-06T23:45:48.253+00:00",
+      "EntryType": "Event",
+      "Id": "16",
+      "Message": "xyz.openbmc_project.State.Info.ChassisPowerOnStarted",
+      "Modified": "2026-10-06T23:45:48.253+00:00",
+      "Name": "System Event Log Entry",
+      "Resolved": false,
+      "Severity": "OK"
+    },
+    {
+      "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/17",
+      "@odata.type": "#LogEntry.v1_9_0.LogEntry",
+      "AdditionalDataURI": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/17/attachment",
+      "Additiondata": [
+        "_PID=285"
+      ],
+      "Created": "2026-10-06T23:49:05.270+00:00",
+      "EntryType": "Event",
+      "Id": "17",
+      "Message": "xyz.openbmc_project.State.Shutdown.Power.Error.Blackout",
+      "Modified": "2026-10-06T23:49:05.270+00:00",
+      "Name": "System Event Log Entry",
+      "Resolved": false,
+      "Severity": "Critical"
+    },
+    {
+      "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/18",
+      "@odata.type": "#LogEntry.v1_9_0.LogEntry",
+      "AdditionalDataURI": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/18/attachment",
+      "Additiondata": [
+        "CHASSIS_ID=0"
+      ],
+      "Created": "2026-10-06T23:49:23.943+00:00",
+      "EntryType": "Event",
+      "Id": "18",
+      "Message": "xyz.openbmc_project.State.Info.ChassisPowerOnStarted",
+      "Modified": "2026-10-06T23:49:23.943+00:00",
+      "Name": "System Event Log Entry",
+      "Resolved": false,
+      "Severity": "OK"
+    },
+    {
+      "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/19",
+      "@odata.type": "#LogEntry.v1_9_0.LogEntry",
+      "AdditionalDataURI": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/19/attachment",
+      "Additiondata": [
+        "_PID=281"
+      ],
+      "Created": "2026-10-06T23:54:04.503+00:00",
+      "EntryType": "Event",
+      "Id": "19",
+      "Message": "xyz.openbmc_project.State.Shutdown.Power.Error.Blackout",
+      "Modified": "2026-10-06T23:54:04.503+00:00",
+      "Name": "System Event Log Entry",
+      "Resolved": false,
+      "Severity": "Critical"
+    },
+    {
+      "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/2",
+      "@odata.type": "#LogEntry.v1_9_0.LogEntry",
+      "AdditionalDataURI": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/2/attachment",
+      "Additiondata": [
+        "_PID=283"
+      ],
+      "Created": "2023-04-03T21:02:50.303+00:00",
+      "EntryType": "Event",
+      "Id": "2",
+      "Message": "xyz.openbmc_project.State.Shutdown.Power.Error.Blackout",
+      "Modified": "2023-04-03T21:02:50.303+00:00",
+      "Name": "System Event Log Entry",
+      "Resolved": false,
+      "Severity": "Critical"
+    },
+    {
+      "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/20",
+      "@odata.type": "#LogEntry.v1_9_0.LogEntry",
+      "AdditionalDataURI": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/20/attachment",
+      "Additiondata": [
+        "CHASSIS_ID=0"
+      ],
+      "Created": "2026-10-06T23:54:23.237+00:00",
+      "EntryType": "Event",
+      "Id": "20",
+      "Message": "xyz.openbmc_project.State.Info.ChassisPowerOnStarted",
+      "Modified": "2026-10-06T23:54:23.237+00:00",
+      "Name": "System Event Log Entry",
+      "Resolved": false,
+      "Severity": "OK"
+    },
+    {
+      "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/21",
+      "@odata.type": "#LogEntry.v1_9_0.LogEntry",
+      "AdditionalDataURI": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/21/attachment",
+      "Additiondata": [
+        "_PID=286"
+      ],
+      "Created": "2026-10-07T02:56:41.255+00:00",
+      "EntryType": "Event",
+      "Id": "21",
+      "Message": "xyz.openbmc_project.State.Shutdown.Power.Error.Blackout",
+      "Modified": "2026-10-07T02:56:41.255+00:00",
+      "Name": "System Event Log Entry",
+      "Resolved": false,
+      "Severity": "Critical"
+    },
+    {
+      "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/22",
+      "@odata.type": "#LogEntry.v1_9_0.LogEntry",
+      "AdditionalDataURI": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/22/attachment",
+      "Additiondata": [
+        "CHASSIS_ID=0"
+      ],
+      "Created": "2026-10-07T02:56:59.887+00:00",
+      "EntryType": "Event",
+      "Id": "22",
+      "Message": "xyz.openbmc_project.State.Info.ChassisPowerOnStarted",
+      "Modified": "2026-10-07T02:56:59.887+00:00",
+      "Name": "System Event Log Entry",
+      "Resolved": false,
+      "Severity": "OK"
+    },
+    {
+      "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/23",
+      "@odata.type": "#LogEntry.v1_9_0.LogEntry",
+      "AdditionalDataURI": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/23/attachment",
+      "Additiondata": [
+        "Over temperature = Assert"
+      ],
+      "Created": "2026-10-07T23:13:17.681+00:00",
+      "EntryType": "Event",
+      "Id": "23",
+      "Message": "Thermal trip",
+      "Modified": "2026-10-07T23:13:17.681+00:00",
+      "Name": "System Event Log Entry",
+      "Resolved": false,
+      "Severity": "OK"
+    },
+    {
+      "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/24",
+      "@odata.type": "#LogEntry.v1_9_0.LogEntry",
+      "AdditionalDataURI": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/24/attachment",
+      "Additiondata": [
+        "CHASSIS_ID=0"
+      ],
+      "Created": "2026-10-07T23:20:18.594+00:00",
+      "EntryType": "Event",
+      "Id": "24",
+      "Message": "xyz.openbmc_project.State.Info.ChassisPowerOnStarted",
+      "Modified": "2026-10-07T23:20:18.594+00:00",
+      "Name": "System Event Log Entry",
+      "Resolved": false,
+      "Severity": "OK"
+    },
+    {
+      "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/25",
+      "@odata.type": "#LogEntry.v1_9_0.LogEntry",
+      "AdditionalDataURI": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/25/attachment",
+      "Additiondata": [
+        "_PID=285"
+      ],
+      "Created": "2026-10-07T23:41:45.868+00:00",
+      "EntryType": "Event",
+      "Id": "25",
+      "Message": "xyz.openbmc_project.State.Shutdown.Power.Error.Blackout",
+      "Modified": "2026-10-07T23:41:45.868+00:00",
+      "Name": "System Event Log Entry",
+      "Resolved": false,
+      "Severity": "Critical"
+    },
+    {
+      "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/26",
+      "@odata.type": "#LogEntry.v1_9_0.LogEntry",
+      "AdditionalDataURI": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/26/attachment",
+      "Additiondata": [
+        "CHASSIS_ID=0"
+      ],
+      "Created": "2026-10-07T23:42:04.490+00:00",
+      "EntryType": "Event",
+      "Id": "26",
+      "Message": "xyz.openbmc_project.State.Info.ChassisPowerOnStarted",
+      "Modified": "2026-10-07T23:42:04.490+00:00",
+      "Name": "System Event Log Entry",
+      "Resolved": false,
+      "Severity": "OK"
+    },
+    {
+      "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/27",
+      "@odata.type": "#LogEntry.v1_9_0.LogEntry",
+      "AdditionalDataURI": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/27/attachment",
+      "Additiondata": [
+        "Over temperature = Assert"
+      ],
+      "Created": "2026-10-07T23:51:23.327+00:00",
+      "EntryType": "Event",
+      "Id": "27",
+      "Message": "Thermal trip",
+      "Modified": "2026-10-07T23:51:23.327+00:00",
+      "Name": "System Event Log Entry",
+      "Resolved": false,
+      "Severity": "OK"
+    },
+    {
+      "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/28",
+      "@odata.type": "#LogEntry.v1_9_0.LogEntry",
+      "AdditionalDataURI": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/28/attachment",
+      "Additiondata": [
+        "CHASSIS_ID=0"
+      ],
+      "Created": "2026-10-08T00:30:37.304+00:00",
+      "EntryType": "Event",
+      "Id": "28",
+      "Message": "xyz.openbmc_project.State.Info.ChassisPowerOnStarted",
+      "Modified": "2026-10-08T00:30:37.304+00:00",
+      "Name": "System Event Log Entry",
+      "Resolved": false,
+      "Severity": "OK"
+    },
+    {
+      "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/3",
+      "@odata.type": "#LogEntry.v1_9_0.LogEntry",
+      "AdditionalDataURI": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/3/attachment",
+      "Additiondata": [
+        "CHASSIS_ID=0"
+      ],
+      "Created": "2023-04-03T21:03:08.663+00:00",
+      "EntryType": "Event",
+      "Id": "3",
+      "Message": "xyz.openbmc_project.State.Info.ChassisPowerOnStarted",
+      "Modified": "2023-04-03T21:03:08.663+00:00",
+      "Name": "System Event Log Entry",
+      "Resolved": false,
+      "Severity": "OK"
+    },
+    {
+      "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/4",
+      "@odata.type": "#LogEntry.v1_9_0.LogEntry",
+      "AdditionalDataURI": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/4/attachment",
+      "Additiondata": [
+        "_PID=283"
+      ],
+      "Created": "2026-10-06T23:08:15.850+00:00",
+      "EntryType": "Event",
+      "Id": "4",
+      "Message": "xyz.openbmc_project.State.Shutdown.Power.Error.Blackout",
+      "Modified": "2026-10-06T23:08:15.850+00:00",
+      "Name": "System Event Log Entry",
+      "Resolved": false,
+      "Severity": "Critical"
+    },
+    {
+      "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/5",
+      "@odata.type": "#LogEntry.v1_9_0.LogEntry",
+      "AdditionalDataURI": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/5/attachment",
+      "Additiondata": [
+        "CHASSIS_ID=0"
+      ],
+      "Created": "2026-10-06T23:08:34.210+00:00",
+      "EntryType": "Event",
+      "Id": "5",
+      "Message": "xyz.openbmc_project.State.Info.ChassisPowerOnStarted",
+      "Modified": "2026-10-06T23:08:34.210+00:00",
+      "Name": "System Event Log Entry",
+      "Resolved": false,
+      "Severity": "OK"
+    },
+    {
+      "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/6",
+      "@odata.type": "#LogEntry.v1_9_0.LogEntry",
+      "AdditionalDataURI": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/6/attachment",
+      "Additiondata": [
+        "_PID=285"
+      ],
+      "Created": "2026-10-06T23:11:02.914+00:00",
+      "EntryType": "Event",
+      "Id": "6",
+      "Message": "xyz.openbmc_project.State.Shutdown.Power.Error.Blackout",
+      "Modified": "2026-10-06T23:11:02.914+00:00",
+      "Name": "System Event Log Entry",
+      "Resolved": false,
+      "Severity": "Critical"
+    },
+    {
+      "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/7",
+      "@odata.type": "#LogEntry.v1_9_0.LogEntry",
+      "AdditionalDataURI": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/7/attachment",
+      "Additiondata": [
+        "CHASSIS_ID=0"
+      ],
+      "Created": "2026-10-06T23:11:20.849+00:00",
+      "EntryType": "Event",
+      "Id": "7",
+      "Message": "xyz.openbmc_project.State.Info.ChassisPowerOnStarted",
+      "Modified": "2026-10-06T23:11:20.849+00:00",
+      "Name": "System Event Log Entry",
+      "Resolved": false,
+      "Severity": "OK"
+    },
+    {
+      "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/8",
+      "@odata.type": "#LogEntry.v1_9_0.LogEntry",
+      "AdditionalDataURI": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/8/attachment",
+      "Additiondata": [
+        "_PID=287"
+      ],
+      "Created": "2026-10-06T23:22:21.209+00:00",
+      "EntryType": "Event",
+      "Id": "8",
+      "Message": "xyz.openbmc_project.State.Shutdown.Power.Error.Blackout",
+      "Modified": "2026-10-06T23:22:21.209+00:00",
+      "Name": "System Event Log Entry",
+      "Resolved": false,
+      "Severity": "Critical"
+    },
+    {
+      "@odata.id": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/9",
+      "@odata.type": "#LogEntry.v1_9_0.LogEntry",
+      "AdditionalDataURI": "/redfish/v1/Systems/system/LogServices/EventLog/Entries/9/attachment",
+      "Additiondata": [
+        "CHASSIS_ID=0"
+      ],
+      "Created": "2026-10-06T23:22:39.790+00:00",
+      "EntryType": "Event",
+      "Id": "9",
+      "Message": "xyz.openbmc_project.State.Info.ChassisPowerOnStarted",
+      "Modified": "2026-10-06T23:22:39.790+00:00",
+      "Name": "System Event Log Entry",
+      "Resolved": false,
+      "Severity": "OK"
+    }
+  ],
+  "Members@odata.count": 28,
+  "Name": "System Event Log Entries"
+}

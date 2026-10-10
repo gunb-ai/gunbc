@@ -1323,17 +1323,13 @@ test fn witness_a_minted_credential_is_bound_to_the_dispatched_attempt() -> Bool
   )
   jit_credential_delivered(delivery: delivery)
     && match delivery {
-      JitCredentialBoundToAttempt {
-        subject: a,
-        credential: c,
-        runner_id: id,
-      } =>
+      JitCredentialBoundToAttempt { bound: b } =>
         match dispatched(owned: true, perms: runner_grant) {
-          JitMintDispatchAuthorized { dispatch: d } => a == d.subject
+          JitMintDispatchAuthorized { dispatch: d } => b.dispatch.subject == d.subject && b.dispatch == d
           _ => false
         }
-          && (c.encoded as String) == "ZmFrZS1qaXQtY29uZmln"
-          && id == 4242
+          && (b.credential.encoded as String) == "ZmFrZS1qaXQtY29uZmln"
+          && b.runner_id == 4242
       _ => false
     }
 }
