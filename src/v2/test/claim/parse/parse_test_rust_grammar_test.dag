@@ -22,6 +22,8 @@ fn rust_parse_accepted(out: Outcome<ParseTree>) -> Bool {
   }
 }
 
+data rust_layout_tight_source: String = "fn choose(x: i32, y: i32) -> i32 { let\nz=x+1;\nif z>0 { return z; }\nreturn 0; }"
+
 fn rust_tokenize_and_parse_source(text: String) -> Outcome<ParseTree> {
   match tokenize(
     text: text,
@@ -56,3 +58,12 @@ test fn claim_rust_return_semi_parses_holds() -> Bool {
     )) == true
 }
 
+
+// Rust grammar accepts tight/newline-separated layout with trivia-separated tokens.
+// Formerly the data row `claim_rust_layout_tight_parses: TestClaim = EqualsClaim`, which no runner
+// executes; red on main when made runnable (`z=x+1` refused at the unspaced `+`:
+// tokenize_lex_e1_unrecognized_char), and the red-first control of
+// gunbc.recurring_failure_mode rust_ingest_lexer_missing_a_bare_operator_spelling.
+test fn claim_rust_layout_tight_parses_holds() -> Bool {
+  (rust_parse_accepted(out: rust_tokenize_and_parse_source(text: rust_layout_tight_source))) == true
+}
