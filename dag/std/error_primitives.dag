@@ -3,3 +3,62 @@ module std.error_primitives
 type Result<ok, err> = Ok { value: ok } | Err { value: err }
 
 type DivError = DivideByZero | Overflow
+
+// BOTTOM IS NOT A BYTES FACT, SO IT LIVES IN THE LEAF. The divergent seam and its result-type
+// projections lived in std.bytes, which imports std.types, which imports std.algebra -- so
+// std.algebra could not name the seam and spelled its own divergence as an unnamed `1 / 0`. This
+// module imports nothing, so every std module (std.algebra included) can import the seam without a
+// cycle.
+
+// THE DIVERGENT SEAM IS A DECLARED HOST SEAM, NOT A DIVISION. Its job is to be bottom: a value an
+// arm the author proved unreachable can hold, which diverges if the proof was wrong. It was spelled
+// `1 / 0`, and that spelling carried a meaning to each realization that it did not declare: the
+// interpreter refused with DivisionByZero only if reached, while rustc's deny-by-default
+// unconditional_panic lint refused every emitted crate whose closure contained the module, reached
+// or not (native App Attest, gunbc#12251). Relaxing that lint for generated code would have removed
+// a real check to admit one placeholder (review 71098 of gunbc#12261). As a rostered
+// HostRealizedSeam each realization states the divergence itself: the interpreter's
+// free_call.pure_dag_seam_unreachable arm refuses with a typed error naming the seam, and
+// v1_rt::pure_dag_seam_unreachable panics with the same name -- an intentional divergence, which is
+// what `!` is for, rather than a constant expression the target's own checker must reject.
+fn pure_dag_seam_unreachable() -> Int {
+  pure_dag_seam_unreachable()
+}
+
+fn pure_dag_seam_unreachable_float() -> Float {
+  if pure_dag_seam_unreachable() == 0 { 0.0 } else { 0.0 }
+}
+
+// One divergent seam, projected once per result type, because a divergent expression HAS no result
+// type to project from. `1 / 0` never returns, so the honest type is bottom — the type that
+// inhabits every type — and .dag has no bottom, so the seam is typed at whatever it is used as.
+// Typing it Int alone was a silent lie wherever the enclosing declaration was not Int: `fn ... ->
+// List<Float> { [pure_dag_seam_unreachable()] }` in the simd and wgsl float kernels declared
+// List<Float> and produced List<Int>, and the declaration was the correct half — those are float
+// kernels taking List<Float> arguments. The declared-type conformance wall found both by execution
+// once it was widened to containers of ground kernel scalars; before that the gate required a plain
+// shape and a List is not one, so the mismatch was indistinguishable from a conforming declaration
+// (codex review 45398). The bodies are unreachable, so nothing MISBEHAVED — which is exactly why
+// this had to be caught by construction rather than by a consumer. THE FLOAT PROJECTION MUST BORROW
+// THE INT SEAM'S DIVERGENCE, and the first version did not — it was written `1.0 / 0.0`, which
+// under IEEE-754 is not a trap at all but positive infinity, so the seam RETURNED and the kernels
+// asserted to be unreachable would have produced [+inf]. That is a fabricated plausible output, the
+// precise thing §5 forbids, introduced while fixing a different fabrication (codex review 45493).
+// Integer division by zero traps; float division by zero does not, and the two do not have the same
+// failure semantics however similar they look. The Float projection therefore forces the Int seam
+// to evaluate in its condition, so divergence happens before any Float is produced; both arms are
+// the same literal because neither is ever reached, and the literal is there to give the expression
+// its type, not to be a value. The two fns are a §2 duplication and are deliberately marked as one:
+// dissolve-on a bottom type, at which point one divergent seam inhabits every result type and the
+// Float projection deletes.
+
+// The String projection of the same divergence, added for the same reason the Float one exists and
+// borrowing the Int seam's divergence the same way: a caller whose result type is String and whose
+// refusal arm is unreachable BY CONSTRUCTION has nowhere to put a value, and "" is a perfectly good
+// String, which is exactly what makes it a fabricated plausible output. The condition forces the
+// Int seam to evaluate, so divergence happens before any String is produced; both arms are the same
+// literal because neither is ever reached. DISSOLVE-ON: the same bottom type the Float projection
+// names -- one divergent seam inhabits every result type and both projections delete.
+fn pure_dag_seam_unreachable_string() -> String {
+  if pure_dag_seam_unreachable() == 0 { "" } else { "" }
+}

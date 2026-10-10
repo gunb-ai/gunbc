@@ -1,7 +1,7 @@
 module std.algebra
 import std.optional { Absent, Present }
 
-import std.error_primitives { DivError, Result }
+import std.error_primitives { DivError, Result, pure_dag_seam_unreachable_string }
 
 type Magma<T> {
   op: fn(T, T) -> T
@@ -1182,8 +1182,10 @@ fn all_algebra_template_names() -> List<String> {
 // already in the compilation pool (#6985 Class B pool coincidence closed on trim by #8062).
 
 // The seam diverges before producing anything; `s` is read in the condition so the declared
-// input reaches the result (wiring-liveness), mirroring the bytes.dag float-seam pattern --
-// both arms are the same unreached literal, there to give the expression its type.
+// input reaches the result (wiring-liveness). Both arms are std.error_primitives
+// pure_dag_seam_unreachable_string, the named seam refusal, so whichever arm the condition selects
+// diverges by name rather than as an unnamed division by zero; the body is never reached because
+// resolution routes trim to free_call.trim.
 fn trim(s: String) -> String {
-  if s == s { from_code_point(1 / 0) } else { from_code_point(1 / 0) }
+  if s == s { pure_dag_seam_unreachable_string() } else { pure_dag_seam_unreachable_string() }
 }
