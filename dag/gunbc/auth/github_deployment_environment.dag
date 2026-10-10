@@ -55,3 +55,18 @@ fn srv1_production_required_protection_is_the_boundary() -> Bool {
     && environment_protection_requires_reviewers(settings: srv1_production_required_protection)
     && (srv1_production_required_protection.name as String) == (srv1_production_environment_name as String)
 }
+
+// FALSE WHILE UNOBSERVED. The required constant naming main+reviewers is not evidence the
+// repository has that setting. GitHub creates an unprotected environment on first job use
+// (GET /environments/srv1-production was 404 on 2026-10-10). Root-mutation jobs and dispatch
+// modes emit only when this is true.
+fn srv1_production_protection_admits_root_mutation() -> Bool {
+  match srv1_production_protection_standing {
+    EnvironmentProtectionHolds { required: r } =>
+      environment_protection_restricts_to_main(settings: r)
+        && environment_protection_requires_reviewers(settings: r)
+        && (r.name as String) == (srv1_production_environment_name as String)
+    EnvironmentProtectionUnobserved { required: _, read_obligation: _ } => false
+    EnvironmentProtectionDiverges { required: _, detail: _ } => false
+  }
+}

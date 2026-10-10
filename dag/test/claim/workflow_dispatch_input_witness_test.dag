@@ -39,6 +39,9 @@ import gunbc.host_reset_return_run { host_reset_dispatch_mode_env }
 import gunbc.ci_spec { gunbc_ci_host_reset_dispatch_admission_target, gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_org_actions_inspect_invoke, gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_serving_apply_invoke, gunbc_ci_approval_broker_dark_install_invoke, gunbc_ci_sm_max_time, gunbc_ci_approval_keyring_converge_invoke, gunbc_ci_mtcollins1_boot_invoke, gunbc_ci_mtcollins1_fan_observe_invoke }
 import std.measure { second_count }
 import gunbc.spark.pair_serving_apply { spark_pair_apply_receipt_path }
+import gunbc.auth.github_deployment_environment {
+  srv1_production_protection_admits_root_mutation,
+}
 import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
 import extdeps.languages.yaml.types {
   YamlValue, YamlNull, YamlBool, YamlString, YamlInt, YamlFloat, YamlSequence, YamlMapping, YamlKeyValue
@@ -372,6 +375,10 @@ test fn fleet_converge_workflow_has_no_heal_revalidation_paste_through() -> Bool
   let yml = expected_fleet_converge_yml_content()
   !string_contains(s: yml, pattern: "expected_healed_sha")
     && !string_contains(s: yml, pattern: "secrets.GUNBC_ORG_ADMIN_TOKEN")
+    && (srv1_production_protection_admits_root_mutation()
+      || (!string_contains(s: yml, pattern: "dashboard-deploy:")
+        && !string_contains(s: yml, pattern: "approval-broker-dark-install:")
+        && !string_contains(s: yml, pattern: "microvm-controller-install:")))
 }
 
 // ONE EMISSION, READ TWICE. Both conjuncts ask about the same rendered workflow, so emitting it
@@ -648,6 +655,13 @@ test fn empty_spark_roster_does_not_emit_an_empty_choice_or_spark_dispatch_modes
   count(fleet_converge_spark_target_options) == 0
     && !any(fleet_converge_mode_options, o => o == "spark_grants")
     && !any(fleet_converge_dispatch_inputs, i => i.name == "target")
+}
+
+test fn unobserved_srv1_protection_omits_root_mutation_dispatch_modes() -> Bool {
+  !srv1_production_protection_admits_root_mutation()
+    && !any(fleet_converge_mode_options, o => o == "dashboard_deploy")
+    && !any(fleet_converge_mode_options, o => o == "approval_broker_dark_install")
+    && !any(fleet_converge_mode_options, o => o == "microvm_controller_install")
 }
 
 // THE STEP CONDITION IS DERIVED, not spelled beside the option. The discriminating half is the

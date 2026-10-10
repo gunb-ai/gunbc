@@ -189,7 +189,10 @@ import gunbc.ci_spec {
 }
 import gunbc.fleet_converge_receipt { fleet_converge_plan_run_id_env_name }
 import gunbc.actions_run_binding { rlm_expected_revision_env_name, fleet_converge_expected_host_env_name, fleet_converge_arrival_subject_env_name }
-import gunbc.auth.github_deployment_environment { srv1_production_environment_name }
+import gunbc.auth.github_deployment_environment {
+  srv1_production_environment_name,
+  srv1_production_protection_admits_root_mutation,
+}
 import gunbc.host_credential_custody_converge { host_custody_credential_options, host_credential_custody_env_name }
 import gunbc.spark.credential_workflow { spark_administrator_credential_roster_hosts }
 import gunbc.fleet_runner_connectivity { fleet_hosts }
@@ -789,8 +792,21 @@ fn fleet_converge_mode_is_spark_target_mode(mode: FleetConvergeWorkflowMode) -> 
   any(fleet_converge_spark_target_modes, m => fleet_converge_workflow_mode_wire(mode: m) == fleet_converge_workflow_mode_wire(mode: mode))
 }
 
+data fleet_converge_srv1_root_mutation_modes: List<FleetConvergeWorkflowMode> = [
+  DashboardDeploy,
+  ApprovalBrokerDarkInstall,
+  MicrovmControllerInstall,
+]
+
+fn fleet_converge_mode_is_srv1_root_mutation(mode: FleetConvergeWorkflowMode) -> Bool {
+  any(fleet_converge_srv1_root_mutation_modes, m => fleet_converge_workflow_mode_wire(mode: m) == fleet_converge_workflow_mode_wire(mode: mode))
+}
+
 fn fleet_converge_dispatchable_modes() -> List<FleetConvergeWorkflowMode> {
-  filter(fleet_converge_workflow_modes, m => count(fleet_converge_spark_target_options) > 0 || !fleet_converge_mode_is_spark_target_mode(mode: m))
+  filter(fleet_converge_workflow_modes, m =>
+    (count(fleet_converge_spark_target_options) > 0 || !fleet_converge_mode_is_spark_target_mode(mode: m))
+      && (srv1_production_protection_admits_root_mutation() || !fleet_converge_mode_is_srv1_root_mutation(mode: m))
+  )
 }
 
 data fleet_converge_mode_options: List<String> = map(fleet_converge_dispatchable_modes(), m => fleet_converge_workflow_mode_wire(mode: m))
@@ -1475,6 +1491,8 @@ data fleet_converge_spark_grants_observe_step_if: String = fleet_converge_mode_s
 // protection (deployment branches = refs/heads/main, required reviewers) -- an operator-applied
 // setting with a readback row, not a job `if`. A workflow_dispatch runs the DISPATCHED ref's YAML,
 // so github.ref == refs/heads/main in this file is not a trust boundary: a branch can delete it.
+// While srv1_production_protection_standing is Unobserved, these modes and jobs are omitted from
+// emission: GitHub would otherwise create an unprotected environment on first use (review 78418).
 data fleet_converge_srv1_root_mutation_environment: NonEmptyStr = srv1_production_environment_name
 
 data fleet_converge_dashboard_deploy_step_if: String = fleet_converge_mode_step_if(mode: DashboardDeploy)
@@ -4404,20 +4422,30 @@ fn fleet_converge_job_needs(id: NonEmptyStr) -> List<String> {
 }
 
 fn fleet_converge_jobs() -> List<Job> {
-  [
-    fleet_converge_build_job(),
-    fleet_converge_job(),
-    fleet_converge_mtcollins1_boot_job(),
-    fleet_converge_host_reset_return_job(),
-    fleet_converge_dashboard_deploy_job(),
-    fleet_converge_approval_broker_dark_install_job(),
-    fleet_converge_microvm_controller_install_job(),
-    fleet_converge_rlm_launch_deployment_receipt_job(),
-    fleet_converge_gcp_iam_converge_job(),
-    fleet_converge_namecheap_observe_job(),
-    fleet_converge_arrival_converge_job(),
-    fleet_converge_printer_job(),
-  ]
+  concat(
+    [
+      fleet_converge_build_job(),
+      fleet_converge_job(),
+      fleet_converge_mtcollins1_boot_job(),
+      fleet_converge_host_reset_return_job(),
+    ],
+    concat(
+      if srv1_production_protection_admits_root_mutation() {
+        [
+          fleet_converge_dashboard_deploy_job(),
+          fleet_converge_approval_broker_dark_install_job(),
+          fleet_converge_microvm_controller_install_job(),
+        ]
+      } else { [] },
+      [
+        fleet_converge_rlm_launch_deployment_receipt_job(),
+        fleet_converge_gcp_iam_converge_job(),
+        fleet_converge_namecheap_observe_job(),
+        fleet_converge_arrival_converge_job(),
+        fleet_converge_printer_job(),
+      ]
+    )
+  )
 }
 
 // ── RUN-SCOPED ACCOUNTS (gunbc.auth.branch_dispatch_federation) ─────────────────────────────
