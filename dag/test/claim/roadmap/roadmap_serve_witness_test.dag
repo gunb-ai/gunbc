@@ -34,10 +34,13 @@ import gunbc.roadmap_serve {
   issue_comment_body_of,
   serve_comment_recorded_response,
   auth_session_body,
+  serve_attaching_follow_ups,
+  serve_text_response,
 }
 import gunbc.roadmap_belt_actuate {
   BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted,
   belt_dispatch_result_exemplars,
+  BeltObligationStarted, BeltObligationHeld, BeltObligationEnqueueRefused,
 }
 import gunbc.roadmap_launch_admission {
   LaunchRefusal, launch_identity_exemplar,
@@ -64,6 +67,7 @@ import extdeps.http.server {
   HttpMethodParse, KnownMethod, UnknownMethod,
   parse_http_method_label,
   media_type_wire_label,
+  text_plain_utf8,
 }
 import extdeps.uri_path { PathParamBinding, path_param_value }
 import gunbc.auth.approval_broker_serve { approval_broker_route_specs }
@@ -1087,4 +1091,21 @@ test fn issue_query_selects_read_only_route_and_refuses_invalid_views() -> Bool 
   let request = ServeHttpRequest { method: POST, path: "/issues/query", body: "preferences=invalid&offset=0", security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent } }
   selects(method: POST, path: "/issues/query", want: IssueQueryHandler)
     && serve_issue_query(instance: srv2_preview_dashboard_instance(), request: request).status == 400
+}
+
+test fn a_refused_follow_up_enqueue_is_a_502_and_a_held_one_keeps_the_write() -> Bool {
+  let ok = serve_text_response(status: 200, content_type: text_plain_utf8, body: "assigned\n")
+  let recorded = serve_attaching_follow_ups(response: ok, enqueues: [
+    BeltObligationStarted { unit: "gunbc-obligation-srv1-live-observe.service" as NonEmptyStr },
+    BeltObligationHeld { unit: "gunbc-obligation-srv1-live-launch.service" as NonEmptyStr },
+  ])
+  let refused = serve_attaching_follow_ups(response: ok, enqueues: [
+    BeltObligationEnqueueRefused { unit: "gunbc-obligation-srv1-live-observe.service" as NonEmptyStr, reason: "user manager unread" },
+  ])
+  recorded.status == 200 && recorded.body == "assigned\n"
+    && refused.status == 502
+    && string_contains(s: refused.body, pattern: "assigned")
+    && string_contains(s: refused.body, pattern: "follow-up enqueue refused")
+    && string_contains(s: refused.body, pattern: "user manager unread")
+    && string_contains(s: refused.body, pattern: "the write stands")
 }

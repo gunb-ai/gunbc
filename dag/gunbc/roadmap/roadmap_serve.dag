@@ -192,6 +192,8 @@ import gunbc.roadmap_belt_actuate {
   belt_publish_outcome_http_status,
   belt_publish_outcome_json_value,
   belt_enqueue_operator_follow_ups,
+  belt_obligation_enqueue_pass, BeltPassRecorded, BeltPassFailed,
+  BeltObligationEnqueue,
 }
 import gunbc.roadmap.roadmap_belt_obligation {
   BeltOperatorAction, OperatorDispatch, OperatorStop, OperatorPublish, OperatorIssueWrite,
@@ -520,17 +522,36 @@ fn belt_dispatch_response(r: BeltSpawnOutcome) -> ServeHttpResponse {
   )
 }
 
+fn serve_follow_up_refused_status(status: HttpStatus) -> HttpStatus {
+  if status >= 200 && status < 300 {
+    502
+  } else {
+    status
+  }
+}
+
+fn serve_attaching_follow_ups(response: ServeHttpResponse, enqueues: List<BeltObligationEnqueue>) -> ServeHttpResponse {
+  match belt_obligation_enqueue_pass(enqueues: enqueues) {
+    BeltPassRecorded => response
+    BeltPassFailed { reason } =>
+      ServeHttpResponse {
+        status: serve_follow_up_refused_status(status: response.status),
+        content_type: response.content_type,
+        body: join([response.body, "\nfollow-up enqueue refused: ", reason, " — the write stands\n"], ""),
+        headers: response.headers,
+      }
+  }
+}
+
 fn serve_with_operator_follow_ups(
   instance: HostDashboardInstance,
   action: BeltOperatorAction,
   response: ServeHttpResponse,
 ) -> ServeHttpResponse {
-  let enqueues = belt_enqueue_operator_follow_ups(instance: instance, action: action)
-  if count(enqueues) < 0 {
-    response
-  } else {
-    response
-  }
+  serve_attaching_follow_ups(
+    response: response,
+    enqueues: belt_enqueue_operator_follow_ups(instance: instance, action: action),
+  )
 }
 
 // The node_id param is bound by the route template, so an empty value is unreachable by
