@@ -123,20 +123,29 @@ fn free_monoid_structure_node(inhabitant: Node, generator: Node) -> Node {
   )
 }
 
-fn free_monoid_structure_generator_optional(inhabitance: Node) -> Optional<Node> {
+// THE GENERATOR BINDER, THREE-VALUED: Optional collapsed NamedChildAmbiguous and binder_node_parts Absent
+// into the same Absent as a missing field, so an unreadable or duplicated generator was read as "not declared"
+// (DESIGN section 5 fail-open). Same shape as AlgebraFieldDeclaration: a declared generator, a genuine absence,
+// or a malformed binder with its cause.
+type FreeMonoidGeneratorDeclaration
+  = GeneratorDeclared { generator: Node }
+  | GeneratorNotDeclared
+  | GeneratorMalformed { cause: Symbol }
+
+fn free_monoid_structure_generator_declaration(inhabitance: Node) -> FreeMonoidGeneratorDeclaration {
   match named_child_lookup(root: inhabitance, name: ^algebra_edge) {
+    NamedChildMissing => GeneratorMalformed { cause: ^algebra_inhabitance_algebra_edge_missing }
+    NamedChildAmbiguous => GeneratorMalformed { cause: ^algebra_inhabitance_algebra_edge_ambiguous }
     NamedChildFound { target: algebra } =>
       match named_child_lookup(root: algebra, name: ^free_monoid_structure_field_generator) {
+        NamedChildMissing => GeneratorNotDeclared
+        NamedChildAmbiguous => GeneratorMalformed { cause: ^algebra_free_monoid_generator_ambiguous }
         NamedChildFound { target: binder } =>
           match binder_node_parts(n: binder) {
-            Present { value: parts } => optional_present(value: parts.type_node)
-            Absent => optional_absent()
+            Present { value: parts } => GeneratorDeclared { generator: parts.type_node }
+            Absent => GeneratorMalformed { cause: ^algebra_structure_field_not_a_binder }
           }
-        NamedChildMissing => optional_absent()
-        NamedChildAmbiguous => optional_absent()
       }
-    NamedChildMissing => optional_absent()
-    NamedChildAmbiguous => optional_absent()
   }
 }
 

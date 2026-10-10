@@ -31,7 +31,7 @@ import v2.compiler.inferred_tree {
   ObligatedInferredTree,
   NodeGrounding
 }
-import v2.std.algebra_structure_signature { FieldDeclared, FieldNotDeclared, InhabitanceFieldRead, InhabitanceFieldReadMalformed, InhabitanceMalformed, algebra_inhabitance_field_declaration, algebra_inhabitance_field_reading, free_monoid_structure_generator_optional }
+import v2.std.algebra_structure_signature { FieldDeclared, FieldNotDeclared, GeneratorDeclared, GeneratorMalformed, GeneratorNotDeclared, InhabitanceFieldRead, InhabitanceFieldReadMalformed, InhabitanceMalformed, algebra_inhabitance_field_declaration, algebra_inhabitance_field_reading, free_monoid_structure_generator_declaration }
 import v2.std.model_core { AlgebraInhabitanceDecl }
 import std.literal_elaboration { DirectLiteral, HomomorphismDuplicated, KernelGroundingAbsent, KernelGroundingAmbiguous, KernelGroundingFound, KernelIntLiteral, LiteralElaborationRefusal, LiteralElaborationRefused, ViaHomomorphism, elaborate_literal_at, kernel_grounding_admits, kernel_grounding_for }
 import gunbc.structural_realization_bindings { kernel_grounding_rows, literal_homomorphism_rows }
@@ -4452,18 +4452,25 @@ fn infer_bound_structure_fields(structure: Node) -> List<Symbol> {
 }
 
 // THE BOUND'S GENERATOR, DERIVED AND CONSUMED (ruling B). A free-monoid bound is free over its generator E
-// (v2.std.algebra_structure_signature free_monoid_structure_generator_optional); the row that admits M's instance
+// (v2.std.algebra_structure_signature free_monoid_structure_generator_declaration); the row that admits M's instance
 // declares that instance's generator, instantiated over the row's matched parameters (List<Edge> -> Edge, kernel
 // String -> std.types Char). Its CONSUMER here: when the call has already fixed E from an argument, the two must
 // agree, or the application refuses at the bound, typed and located (infer_reason_bound_generator_disagrees). A
 // bound declaring a generator whose admitting row declares none is the AUTHORITY's defect and refuses with its own
-// cause. DECLARED FRONTIER: the derived E as the element of the call's RESULT type (first : M -> Optional<E>) is
+// cause. A MALFORMED generator binder (ambiguous or unreadable) refuses with that cause -- it is not "not declared"
+// (DESIGN section 5). DECLARED FRONTIER: the derived E as the element of the call's RESULT type (first : M -> Optional<E>) is
 // not consumed here -- that is result typing for a callee's declared codomain (gunbc.recurring_failure_mode
 // call_result_of_a_declared_return_type_unjudged_in_v2_infer), which the collection 'first' row lands on.
 fn infer_bound_generator_agreement(node: Node, structure: Node, derived: Optional<Node>, declarations: SymbolIndex, instances: List<TypeVariableInstance>) -> Optional<Diagnostic> {
-  match free_monoid_structure_generator_optional(inhabitance: structure) {
-    Absent => optional_absent()
-    Present { value: declared } =>
+  match free_monoid_structure_generator_declaration(inhabitance: structure) {
+    GeneratorNotDeclared => optional_absent()
+    GeneratorMalformed { cause: c } =>
+      optional_present(value: Diagnostic {
+        reason: c,
+        at: node_locus(node: node),
+        correction: Unavailable { reason: CorrectionNotModeled }
+      })
+    GeneratorDeclared { generator: declared } =>
       match derived {
         Absent =>
           optional_present(value: Diagnostic {
@@ -4517,11 +4524,11 @@ fn infer_instance_structure_inhabitance_in(rows: List<AlgebraInhabitanceDecl>, i
           Present { value: matched } =>
             match infer_row_declares_fields(row: row, fields: fields) {
               StructureInhabited { generator: _ } =>
-                StructureInhabited {
-                  generator: match free_monoid_structure_generator_optional(inhabitance: row.algebra) {
-                    Present { value: g } => optional_present(value: infer_type_instantiated(t: g, instances: matched))
-                    Absent => optional_absent()
-                  }
+                match free_monoid_structure_generator_declaration(inhabitance: row.algebra) {
+                  GeneratorDeclared { generator: g } =>
+                    StructureInhabited { generator: optional_present(value: infer_type_instantiated(t: g, instances: matched)) }
+                  GeneratorNotDeclared => StructureInhabited { generator: optional_absent() }
+                  GeneratorMalformed { cause: c } => StructureRowMalformed { cause: c }
                 }
               StructureNotInhabited => StructureNotInhabited
               StructureRowMalformed { cause: c } => StructureRowMalformed { cause: c }

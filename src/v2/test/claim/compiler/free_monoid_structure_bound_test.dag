@@ -8,7 +8,8 @@ import std.optional { Absent, Optional, Present, optional_absent, optional_prese
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Atom, Authored, BinderStructureEdge, BinderTypeEdge, Conj, CoreEdgeLabel, Edge, Instantiation, Node, Positional, Symbol, TypeNode, core_edge_label, host_text_concatenation, node_subtree_nodes, node_synthetic }
 import v2.std.type_binder { ArgumentOutsideKind, KindUnresolved, edge_is_type_params, TypeApplicationArityMismatch, TypeApplicationBinderOrderMalformed, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, type_application_conformance, type_binder_set_children }
-import v2.std.algebra_structure_signature { free_monoid_structure_node }
+import v2.std.algebra_structure_signature { algebra_binary_fn_node, algebra_inhabitance_node, free_monoid_structure_node, monoid_type_node }
+import v2.std.node_query { binder_edge }
 import std.types { Bool, List }
 import std.algebra { Empty }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -271,4 +272,79 @@ test fn fmb_fixed_element_disagreeing_with_the_generator_refuses() -> Bool {
       TypeVariableInstance { binder: ^collection_roster_carrier, instance: edges },
       TypeVariableInstance { binder: ^collection_roster_element, instance: fmb_declared(dotted: "v2.std.node.Edge") }
     ]) == ^accepted
+}
+
+fn fmb_structure_from_algebra_children(inhabitant: Node, algebra_children: List<Edge>) -> Node {
+  algebra_inhabitance_node(
+    algebra: node_synthetic(kind: TypeNode { connective: Conj }, children: algebra_children),
+    inhabitant: inhabitant
+  )
+}
+
+fn fmb_ambiguous_generator_structure(inhabitant: Node, generator: Node) -> Node {
+  fmb_structure_from_algebra_children(
+    inhabitant: inhabitant,
+    algebra_children: [
+      binder_edge(name: ^free_monoid_structure_field_monoid, type_node: monoid_type_node(inhabitant: inhabitant)),
+      binder_edge(name: ^free_monoid_field_concat, type_node: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)),
+      binder_edge(name: ^free_monoid_structure_field_generator, type_node: generator),
+      binder_edge(name: ^free_monoid_structure_field_generator, type_node: generator)
+    ]
+  )
+}
+
+fn fmb_unreadable_generator_structure(inhabitant: Node) -> Node {
+  fmb_structure_from_algebra_children(
+    inhabitant: inhabitant,
+    algebra_children: [
+      binder_edge(name: ^free_monoid_structure_field_monoid, type_node: monoid_type_node(inhabitant: inhabitant)),
+      binder_edge(name: ^free_monoid_field_concat, type_node: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)),
+      Edge { label: Authored { name: ^free_monoid_structure_field_generator }, target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^fmb_unreadable_generator } }, children: []) }
+    ]
+  )
+}
+
+fn fmb_ambiguous_generator_row() -> AlgebraInhabitanceDecl {
+  let inhabitant = fmb_kernel_type(spelling: "String")
+  AlgebraInhabitanceDecl {
+    algebra: fmb_ambiguous_generator_structure(inhabitant: inhabitant, generator: fmb_declared(dotted: "std.types.Char")),
+    inhabitant: inhabitant,
+    witness: fmb_carrier()
+  }
+}
+
+fn fmb_bound_reason_at(structure: Node, instance: Node) -> Symbol {
+  match infer_binder_set_structure_bounds(
+    node: fmb_carrier(),
+    binders: fmb_binders(marker: BinderStructureEdge, annotation: structure),
+    declarations: empty_symbol_index(),
+    instances: [TypeVariableInstance { binder: ^fmb_carrier, instance: instance }]
+  ) {
+    Absent => ^accepted
+    Present { value: d } => d.reason
+  }
+}
+
+// SUPPLIED, RED, REVIEW 78494: two generator binders are NamedChildAmbiguous, not "no generator". The row
+// that matches kernel String must refuse with that cause -- never StructureInhabited, never
+// infer_reason_inhabitance_row_declares_no_generator.
+test fn fmb_ambiguous_generator_binder_refuses_with_its_own_cause() -> Bool {
+  match infer_instance_structure_inhabitance_in(rows: [fmb_ambiguous_generator_row()], instance: fmb_kernel_type(spelling: "String"), structure: free_monoid_structure_node(inhabitant: fmb_carrier(), generator: fmb_carrier()), declarations: empty_symbol_index()) {
+    StructureRowMalformed { cause: c } => c == ^algebra_free_monoid_generator_ambiguous
+    StructureInhabited { generator: _ } => false
+    StructureNotInhabited => false
+  }
+}
+
+// SUPPLIED, RED, REVIEW 78494: a generator edge whose target is not a binder is unreadable. The bound
+// walk must refuse with algebra_structure_field_not_a_binder -- not skip agreement and admit.
+test fn fmb_unreadable_generator_binder_refuses_with_its_own_cause() -> Bool {
+  fmb_bound_reason_at(
+    structure: fmb_unreadable_generator_structure(inhabitant: collection_roster_carrier_type()),
+    instance: fmb_kernel_type(spelling: "String")
+  ) == ^algebra_structure_field_not_a_binder
+    && fmb_bound_reason_at(
+      structure: fmb_ambiguous_generator_structure(inhabitant: collection_roster_carrier_type(), generator: collection_roster_element_type()),
+      instance: fmb_kernel_type(spelling: "String")
+    ) == ^algebra_free_monoid_generator_ambiguous
 }
