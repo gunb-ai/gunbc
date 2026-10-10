@@ -1,6 +1,7 @@
-module test.claim.machine_intake.mtcollins1_kvm_observer_observe_witness_test
+module test.claim.machine_intake.megarac_kvm_observer_observe_witness_test
 
 import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
 import std.measure { second, millisecond }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.crypto.hash { sha256_digest }
@@ -14,17 +15,20 @@ import gunbc.machine_intake_megarac_kvm_still {
   KvmSessionReleased, KvmSessionReleaseHttp, KvmSessionReleaseFailed, KvmSessionLoginUnobserved, KvmSessionNoSession, KvmSessionReleaseUnrecognized,
   KvmBrowserClosed, KvmBrowserNotLaunched, KvmBrowserCloseFailed, KvmBrowserCloseUnrecognized, kvm_session_release_of, kvm_browser_close_of,
 }
-import gunbc.machine_intake_mtcollins1_kvm_observer_observe {
-  KvmProbeVerdict, KvmProbeHeld, KvmProbeFell, kvm_probe_verdict,
-  mtcollins1_kvm_observer_probe_attempt, mtcollins1_kvm_observer_observe_receipt_path, mtcollins1_kvm_observer_probe_artifact_glob,
+import gunbc.machine_intake_mtcollins1_kvm_observer_observe { mtcollins1_kvm_observer_probe_paths, mtcollins1_kvm_observer_probe_artifact_glob }
+import gunbc.machine_intake_megarac_kvm_observer_observe {
+  KvmProbeVerdict, KvmProbeHeld, KvmProbeFell, kvm_probe_verdict, kvm_probe_receipt_text,
+  KvmObserverProbePaths, megarac_kvm_observer_probe_attempt, megarac_kvm_observer_probe_receipt_path, megarac_kvm_observer_probe_artifact_glob, megarac_kvm_observer_dir,
   kvm_probe_seat_parts_gap, kvm_probe_seat_hold_gap, kvm_probe_seat_gap_from_journal,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE VERDICT IS READ FROM THE RECORD megarac_kvm_observer_finish RETURNS, so its inputs are SUPPLIED
-// records (DESIGN §3: a witness discriminates at one interface). No public KVM client drives the
-// observer (rung drop handoff_observer_is_sol_not_kvm_viewer), so its start is a typed refusal.
+// records (DESIGN §3: a witness discriminates at one interface). The real producer runs twice elsewhere:
+// against the loopback controller in test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness,
+// which holds the same finish, stop and release to what the controller saw, and against the real BMC
+// in the fleet-converge mode this module's subject belongs to.
 
 fn at() -> KvmInstant {
   KvmInstant { since_epoch: millisecond(count: 1790000000000), iso: "2026-09-30T20:00:00.000Z" }
@@ -129,11 +133,40 @@ test fn every_teardown_word_reads_into_its_own_arm() -> Bool {
 // THE ARTIFACT GLOB CARRIES WHAT THE PROBE WRITES: its observer directory and its receipt, both derived
 // from the observer's own directory authority, and not a boot's directory.
 test fn the_upload_glob_covers_the_probe_directory_and_receipt_and_no_boot_directory() -> Bool {
-  let dir = mtcollins1_kvm_observer_dir(attempt: mtcollins1_kvm_observer_probe_attempt(run_id: "36800000000" as NonEmptyStr))
+  let p = mtcollins1_kvm_observer_probe_paths
+  let dir = megarac_kvm_observer_dir(paths: p, attempt: megarac_kvm_observer_probe_attempt(run_id: "36800000000" as NonEmptyStr))
   let prefix = substring(s: mtcollins1_kvm_observer_probe_artifact_glob, start: 0, end: string_length(mtcollins1_kvm_observer_probe_artifact_glob) - 1)
   starts_with(s: dir, prefix: prefix)
-    && starts_with(s: mtcollins1_kvm_observer_observe_receipt_path, prefix: prefix)
+    && starts_with(s: megarac_kvm_observer_probe_receipt_path(paths: p), prefix: prefix)
     && !starts_with(s: mtcollins1_kvm_observer_dir(attempt: "36800000000"), prefix: prefix)
+}
+
+// THE BINDING'S PREFIX IS THE BOOT'S OBSERVER-DIRECTORY AUTHORITY, so a probe directory is a boot
+// directory's sibling under one prefix and the workflow's glob is unchanged by the re-root.
+test fn the_mtcollins1_probe_paths_are_derived_from_the_boots_observer_directory() -> Bool {
+  megarac_kvm_observer_dir(paths: mtcollins1_kvm_observer_probe_paths, attempt: "probe-1") == mtcollins1_kvm_observer_dir(attempt: "probe-1")
+    && mtcollins1_kvm_observer_probe_artifact_glob == "artifacts/mtcollins1-boot-kvm-probe-*"
+}
+
+// THE DIRECTORY AND THE RECEIPT ARE THE CALLER'S PATHS, NEVER A UNIT CONSTANT: two prefixes differing in
+// nothing else land the same attempt in two places.
+test fn the_probe_directory_and_receipt_follow_the_supplied_prefix() -> Bool {
+  let a = KvmObserverProbePaths { dir_prefix: "artifacts/host-a-kvm-" }
+  let b = KvmObserverProbePaths { dir_prefix: "artifacts/host-b-kvm-" }
+  megarac_kvm_observer_dir(paths: a, attempt: "probe-7") == "artifacts/host-a-kvm-probe-7"
+    && megarac_kvm_observer_dir(paths: b, attempt: "probe-7") == "artifacts/host-b-kvm-probe-7"
+    && megarac_kvm_observer_probe_receipt_path(paths: a) == "artifacts/host-a-kvm-probe-receipt.txt"
+    && megarac_kvm_observer_probe_artifact_glob(paths: b) == "artifacts/host-b-kvm-probe-*"
+}
+
+// THE RECEIPT NAMES THE ADMITTED CONTROLLER: the same verdict and record under two subjects differ in the
+// subject line and nowhere else.
+test fn the_receipt_subject_is_the_admitted_controller() -> Bool {
+  let a = kvm_probe_receipt_text(subject: "192.0.2.10" as NonEmptyStr, verdict: KvmProbeHeld, rec: held_record())
+  let b = kvm_probe_receipt_text(subject: "192.0.2.20" as NonEmptyStr, verdict: KvmProbeHeld, rec: held_record())
+  starts_with(s: a, prefix: "subject=192.0.2.10\nverdict=held\n")
+    && starts_with(s: b, prefix: "subject=192.0.2.20\nverdict=held\n")
+    && substring(s: a, start: string_length("subject=192.0.2.10"), end: string_length(a)) == substring(s: b, start: string_length("subject=192.0.2.20"), end: string_length(b))
 }
 
 // ── THE UNIT HOLD IS FREED ONLY OVER A SEAT OBSERVED LET GO (side-chat blocker 4a) ─────────────────────
