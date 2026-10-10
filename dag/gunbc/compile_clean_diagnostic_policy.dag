@@ -10,8 +10,8 @@ type UnlistedImportUseEnforcement
   = FloorNotYet
   | Enforced
 
-// Single policy authority for whether UnlistedImportUse blocks compile-clean (issue 11 /
-// ci-floor-child-spawn-attribution section 7). FloorNotYet = advisory (current namespace-lane
+// Single policy authority for whether UnlistedImportUse blocks compile-clean (issue 11).
+// FloorNotYet = advisory (current namespace-lane
 // staging: the resolver emits UnlistedImportUse but compile-clean does not red). Enforced =
 // blocking (terminal promotion when namespace-only resolution deletes the import grammar —
 // DISSOLVES WHEN UnlistedImportUse promoted to an error per

@@ -188,8 +188,8 @@ fn builtin_kernel_seed_diagnostics() -> List<ErrorNode> {
 // typed not-runnable, the top-as-answer/top-as-ignorance split), following
 // shell_materialize_operation_argv's argv_materialization_result precedent;
 // filesystem_read_result_type's make_kernel_record_type idiom is the right one only for a product.
-// DISSOLUTION, answering the compile_clean_forcecheck objection in place: this registry is itself a
-// flat global map that plan argues is a section-3 fork awaiting the PrimitiveDefinition identity
+// DISSOLUTION: this registry is itself a
+// flat global map, a section-3 fork awaiting the PrimitiveDefinition identity
 // join, and this row inherits that trigger EXACTLY as its sibling does - when the join dissolves
 // the registry, the two migrate together. One additive row is linear cost against that dissolution;
 // the alternative was a schema no v1 probe could inhabit.

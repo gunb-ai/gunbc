@@ -3159,13 +3159,11 @@ fn cross_claim_args_hash(ctx: &InterpContext, args: &[(Option<String>, Value)]) 
     Some(hasher.finish())
 }
 
-// 🟡 dissolve-on (narrowed, not discharged): gunbc.roadmap_authority
-// five_minute_ci_gate_program_note — this tier is the generic cross-claim pure memo that note
-// asked for, keyed on fn-node identity + content-hashed args, admission held to a DECLARED
+// This tier is the generic cross-claim pure memo, keyed on fn-node identity +
+// content-hashed args, admission held to a DECLARED
 // roster (`v2.workflow.floor_pure_producer_share`) plus the built-in `prepare_grammar` arm,
 // not every pure call: cross-claim retention is byte-unbounded by construction (the
-// 2026-07-10 20GiB ctx-lifetime regression), so admission stays a bounded row. Widening
-// beyond the roster is that note's remaining work, not this arm's.
+// 2026-07-10 20GiB ctx-lifetime regression), so admission stays a bounded row.
 fn try_cross_claim_pure_memo(
     ctx: &InterpContext,
     fn_node: &Rc<Node>,
@@ -7267,7 +7265,7 @@ impl InterpContext {
     /// The bare slot is one map entry owned by the last-visited module (first, under precedence);
     /// every other module's references to that spelling execute the winner's body. Not authored
     /// shadowing -- a module losing its own declaration to a homonym. It produced
-    /// `docs/plans/import-namespace-program.md` carrying `v2-corpus-self-host`'s entire body,
+    /// the `import-namespace-program` plan document carrying `v2-corpus-self-host`'s entire body,
     /// both plan carriers declaring `section_1` .. `section_9` and `status_block`.
     ///
     /// THE TIER IS GATED ON `ambiguous_bare_function_names`: every name exactly one module
@@ -23615,9 +23613,8 @@ macro_rules! v1_builtin_arms {
 
             arm "free_call.record_source_chars_index_lookup" { "record_source_chars_index_lookup" } => Ok(Some(Value::Unit)),
 
-            // Scaffold arm — dissolution trigger lives on `v1_rt::trace_mark`'s doc comment
-            // (realization_measurement_loop Phase 0, docs/plans/realization-measurement-loop.md):
-            // delete this arm with the rest of the trace_mark deletion set named there.
+            // Scaffold arm — a member of the trace_mark scaffold set named on
+            // `v1_rt::trace_mark`'s doc comment.
             arm "free_call.trace_mark" { "trace_mark" } => {
                 if let [Value::Str(s)] = $positional.as_slice() {
                     v1_rt::trace_mark(s.to_string());

@@ -3,7 +3,7 @@ module test.claim.session_residency_witness
 import std.logic { Bool }
 import std.types { String, List }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_mtcollins1 }
 import gunbc.session_residency {
   SessionResidency,
   HostsInteractiveSessions,
@@ -87,7 +87,8 @@ test fn observed_present_arms_carry_a_positive_count() -> Bool {
 test fn managed_host_absence_is_declared_not_observed() -> Bool {
   host_absence_is_operator_declared(host: operator_host_srv3)
     && host_absence_is_operator_declared(host: operator_host_srv4)
+    && host_absence_is_operator_declared(host: operator_host_mtcollins1)
     && !host_absence_is_operator_declared(host: operator_host_srv1)
     && !host_absence_is_operator_declared(host: operator_host_srv2)
-    && operator_declared_absent_host_count() == 2
+    && operator_declared_absent_host_count() == 3
 }

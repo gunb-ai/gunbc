@@ -815,14 +815,14 @@ jobs:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
           RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
         if: github.event.inputs.mode == 'launch_environment_plan'
-        timeout-minutes: 5
+        timeout-minutes: 15
       - name: Fleet allocation-store substrate plan
         id: allocation_store_plan
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_converge_plan_cli.dag --function fleet_converge_allocation_store_plan_wet
         if: github.event.inputs.mode == 'allocation_store_plan'
-        timeout-minutes: 5
+        timeout-minutes: 15
       - name: Fleet workspace slot commissioning plan
         id: workspace_commissioning_plan
         run: |-
