@@ -6,7 +6,7 @@ import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifProvider, wif_provider_re
 import extdeps.cloud.gcp.iam { GcpIamBindingCell, IamCondition }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_number, github_wif_issuer_uri, federated_service_account_member }
 import gunbc.auth.oidc_claim_pins {
-  OidcClaimPin, claim_pins_attribute_condition, workflow_dispatch_event_name, fleet_converge_workflow_claim_pins,
+  OidcClaimPin, oidc_equals, claim_pins_attribute_condition, workflow_dispatch_event_name, fleet_converge_workflow_claim_pins,
 }
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, RunScopedImpersonation }
 import gunbc.gcp_estate_observation { role_iam_workload_identity_user }
@@ -48,7 +48,7 @@ data branch_dispatch_attribute_mapping: Map<String, String> = {
 fn branch_dispatch_claim_pins() -> List<OidcClaimPin> {
   concat(
     filter(fleet_converge_workflow_claim_pins(), p => (p.claim as String) == "repository_id" || (p.claim as String) == "repository_owner_id"),
-    [OidcClaimPin { claim: "event_name", value: workflow_dispatch_event_name }],
+    [oidc_equals(claim: "event_name", value: workflow_dispatch_event_name)],
   )
 }
 
