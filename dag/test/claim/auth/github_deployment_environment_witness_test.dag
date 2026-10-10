@@ -1,8 +1,12 @@
 module test.claim.auth.github_deployment_environment_witness
 
 import std.types { Bool, String }
+import extdeps.github.deployment_environments {
+  GitHubEnvironmentProtectionSettings, SelectedBranchesAndTags, DeploymentBranchPolicyRule, PolicyRefBranch, PolicyRefTag, RequiredReviewers,
+}
 import gunbc.auth.github_deployment_environment {
   srv1_production_required_protection_is_the_boundary,
+  environment_protection_restricts_to_main,
   srv1_production_protection_standing,
   EnvironmentProtectionUnobserved,
   EnvironmentProtectionHolds,
@@ -20,4 +24,24 @@ test fn srv1_production_protection_is_unobserved_until_read_back() -> Bool {
     EnvironmentProtectionHolds { required: _ } => false
     EnvironmentProtectionDiverges { required: _, detail: _ } => false
   }
+}
+
+// CONTROL over a supplied setting: a TAG rule named main is not the main-branch boundary, and two
+// rules are not "main only"; the real row above is the inhabitance of the accepting shape.
+test fn a_tag_rule_or_a_second_rule_is_not_the_main_branch_boundary() -> Bool {
+  !environment_protection_restricts_to_main(settings: GitHubEnvironmentProtectionSettings {
+      name: "srv1-production",
+      deployment_branch_policy: SelectedBranchesAndTags { rules: [DeploymentBranchPolicyRule { name: "main", ref_type: PolicyRefTag }] },
+      reviewer_requirement: RequiredReviewers,
+    })
+    && !environment_protection_restricts_to_main(settings: GitHubEnvironmentProtectionSettings {
+      name: "srv1-production",
+      deployment_branch_policy: SelectedBranchesAndTags { rules: [DeploymentBranchPolicyRule { name: "main", ref_type: PolicyRefBranch }, DeploymentBranchPolicyRule { name: "release", ref_type: PolicyRefBranch }] },
+      reviewer_requirement: RequiredReviewers,
+    })
+    && environment_protection_restricts_to_main(settings: GitHubEnvironmentProtectionSettings {
+      name: "srv1-production",
+      deployment_branch_policy: SelectedBranchesAndTags { rules: [DeploymentBranchPolicyRule { name: "main", ref_type: PolicyRefBranch }] },
+      reviewer_requirement: RequiredReviewers,
+    })
 }

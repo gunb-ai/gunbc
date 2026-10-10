@@ -18,10 +18,26 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // github.ref guard in that file. The environment name on the job is what GitHub consults for
 // those settings, and only those settings can refuse a branch.
 
+// THE SHAPE IS GITHUB'S, NOT A REF LIST (review 78420 on gunbc#13660). The environment object
+// carries `deployment_branch_policy`: null (all branches and tags), or
+// { protected_branches, custom_branch_policies }; the custom rules are a second resource,
+// GET /repos/{owner}/{repo}/environments/{name}/deployment-branch-policies, whose
+// `branch_policies` rows are { name, type } with type "branch" or "tag". A reading of the real
+// API therefore yields a NAME and a kind, never "refs/heads/main", so a model that stores refs can
+// never be discharged by a faithful GET.
+type DeploymentBranchPolicyRefType
+  = PolicyRefBranch
+  | PolicyRefTag
+
+type DeploymentBranchPolicyRule {
+  name: String
+  ref_type: DeploymentBranchPolicyRefType
+}
+
 type EnvironmentDeploymentBranchPolicy
   = AllBranchesAndTags
   | ProtectedBranchesOnly
-  | SelectedRefs { refs: List<String> }
+  | SelectedBranchesAndTags { rules: List<DeploymentBranchPolicyRule> }
 
 type EnvironmentReviewerRequirement
   = NoRequiredReviewers
