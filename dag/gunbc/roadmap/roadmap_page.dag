@@ -2184,6 +2184,62 @@ fn issue_comment_composer_node(node_id: String, expected_revision: String, profi
   ])
 }
 
+// THE NEW-ISSUE COMPOSER: the form behind POST /issues (gunbc.roadmap_serve
+// serve_issue_create_response_over). Every field is required -- a task is created READY-SHAPED or
+// refused -- and the field names are the ones gunbc.roadmap_task_form reads. Without a session the
+// submit is disabled, exactly as the comment composer is.
+fn issue_create_field_node(name: String, label: String, long: Bool) -> Fragment {
+  el_class("label", "issue-create-field", [
+    el_class("span", "issue-create-label", [ txt(label) ]),
+    if long {
+      el_attrs("textarea", [ attr(name: "name", value: name), attr(name: "required", value: ""), attr(name: "class", value: "issue-comment-input") ], [])
+    } else {
+      el_attrs("input", [ attr(name: "name", value: name), attr(name: "type", value: "text"), attr(name: "required", value: "") ], [])
+    },
+  ])
+}
+
+fn issue_create_composer_node(command_context: IssueFormContext) -> Fragment {
+  el_attrs("form", [
+    attr(name: "class", value: "issue-create-form"),
+    attr(name: "method", value: "post"),
+    attr(name: "enctype", value: "application/x-www-form-urlencoded"),
+    attr(name: "action", value: "/issues"),
+  ], concat([
+    el_attrs("input", [ attr(name: "name", value: "key"), attr(name: "type", value: "hidden"), attr(name: "value", value: if command_context.operation == "" { "" } else { concat(command_context.operation, "-create") }) ], []),
+    el_attrs("input", [ attr(name: "name", value: "csrf"), attr(name: "type", value: "hidden"), attr(name: "value", value: command_context.csrf) ], []),
+  ], concat([
+    issue_create_field_node(name: "headline", label: "Headline", long: false),
+    issue_create_field_node(name: "brief", label: "Brief", long: true),
+    issue_create_field_node(name: "displaced_cost", label: "Displaced cost", long: true),
+    issue_create_field_node(name: "current_state", label: "Current state", long: true),
+    issue_create_field_node(name: "first_slice", label: "First slice", long: true),
+    issue_create_field_node(name: "red_control", label: "Red control", long: true),
+    issue_create_field_node(name: "out_of_scope", label: "Out of scope", long: true),
+    issue_create_field_node(name: "handback", label: "Handback", long: true),
+    issue_create_field_node(name: "authored_on", label: "Authored on (YYYY-MM-DD)", long: false),
+    issue_create_field_node(name: "parent_project", label: "Parent project", long: false),
+    issue_create_field_node(name: "parent_contribution", label: "Contribution to the parent", long: false),
+    issue_create_field_node(name: "centering", label: "Centering", long: false),
+    issue_create_field_node(name: "repo", label: "Repository", long: false),
+    issue_create_field_node(name: "plan_path", label: "Plan or design path", long: false),
+    issue_create_field_node(name: "entry", label: "Claim entry file", long: false),
+    issue_create_field_node(name: "functions", label: "Claim functions (comma separated)", long: false),
+    issue_create_field_node(name: "owner", label: "Work owner", long: false),
+  ], [
+    el_attrs("button", concat(if command_context.csrf == "" { [attr(name: "disabled", value: ""), attr(name: "title", value: "Sign in to create an issue")] } else { [] }, [
+      attr(name: "class", value: "issue-comment-submit issue-action-text"),
+      attr(name: "type", value: "submit"),
+    ]), [ txt("Create issue") ]),
+  ])))
+}
+
+fn issue_create_page(command_context: IssueFormContext) -> Fragment {
+  site_document(title: "gunbc — new issue", heading: "new issue", styles: roadmap_styles(), content: [
+    el_class("main", "issue-detail", [ issue_create_composer_node(command_context: command_context) ])
+  ])
+}
+
 fn issue_work_tab_nodes(view: WorkRowView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>) -> List<Fragment> {
   let rounds = issue_work_history_rounds(ledger: view.rounds)
   concat(
@@ -2687,7 +2743,7 @@ el_class("main", "issue-detail", [
 fn workspace_markup(ws: DailyWorkspaceView, edges: List<RoadmapEdge>, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
   el_class("section", "roadmap-frontier", [
     el_class("div", "view-table", [
-      el_class("div", "workspace-toolbar", [issue_controls_markup()]),
+      el_class("div", "workspace-toolbar", [issue_controls_markup(), el_attrs("a", [attr(name: "href", value: "/issues/new"), attr(name: "class", value: "issue-new-link")], [txt("New issue")])]),
       el_class("div", "issue-table-scroll", [issue_table_markup(rows: ws.table, observation: ws.observation, edges: edges, memberships: memberships)])
     ])
   ])

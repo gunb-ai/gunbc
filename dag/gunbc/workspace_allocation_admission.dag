@@ -12,7 +12,7 @@ import extdeps.ssh { SshPublicKey, Ed25519, ssh_ed25519_key_identity }
 import gunbc.roadmap_allocation_location { allocation_page_path }
 import gunbc.auth.request_authentication { RequestAccessPath,
   RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid, AuthAbsent, DeploymentAccessPolicy,
-  ServeActionCreateAllocation, ServeActionReleaseAllocation, ServeActionAssignIssue, ServeActionCommentIssue, ServeActionSaveOwnView, ServeActionApproveDecision, ServeRouteAction,
+  ServeActionCreateAllocation, ServeActionReleaseAllocation, ServeActionAssignIssue, ServeActionCreateIssue, ServeActionCommentIssue, ServeActionSaveOwnView, ServeActionApproveDecision, ServeRouteAction,
   human_authentication_decision, csrf_write_decision, deployment_path_decision, write_refused,
 }
 
@@ -104,6 +104,7 @@ fn workspace_write_admission(
     ServeActionCreateAllocation => workspace_mutation_admission(security: security, owner: owner, policy: policy, deployment_policy: deployment_policy, observed_at: observed_at, route_path: route_path, action: action, csrf_presented: csrf_presented)
     ServeActionReleaseAllocation => workspace_mutation_admission(security: security, owner: owner, policy: policy, deployment_policy: deployment_policy, observed_at: observed_at, route_path: route_path, action: action, csrf_presented: csrf_presented)
     ServeActionAssignIssue => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
+    ServeActionCreateIssue => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
     ServeActionCommentIssue => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
     ServeActionSaveOwnView => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
     ServeActionApproveDecision => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
