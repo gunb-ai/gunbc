@@ -9814,6 +9814,17 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
       "It compiles as a refusal rather than as recursion. Give it a row in ",
       "extdeps.languages.rust.emit rt_function_registry and a body in v1.runtime_rust, or delete its consumers.\")\n}")
   }
+  // A NULLARY REALIZED SEAM BELOW THE ROSTER IS ITS OWN BRIDGE CALL. std.error_primitives is
+  // imported (transitively) by every module the projection roster's own imports reach, so no
+  // closure of it can contain the roster; its self-call therefore never resolves to the roster's
+  // RuntimePrimitiveCall and would emit as recursion. The declaration is the one place that still
+  // knows it is the seam (rust_host_seam_is_realized above reads the roster directly), and a
+  // nullary seam has no by-ref or result-wrapping choice to get wrong.
+  if realized_seam && (value_params |> count) == 0 {
+    let kw = rust_items().func_keyword
+    return concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), type_params_str, "()", ret_str, " {\n",
+      make_indent(level: 1), "v1_rt::", emit_ident(name: rust_runtime_bridge_name(function_name: rust_seam_primitive_name(module_path: scope.module_name, name: name)), target: Rust), "()\n}")
+  }
   if use_tco {
     let tco_params_str = emit_tco_params(params: value_params, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
     let body_str = emit_typed_tco_body(texpr: body, fn_name: name, params: value_params, registry: registry, scope: body_scope, depth: depth + 1, shared_types: shared_types, emit_info: body_emit_info)
