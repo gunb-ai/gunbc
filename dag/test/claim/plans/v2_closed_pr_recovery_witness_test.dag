@@ -1,0 +1,33 @@
+module test.claim.plans.v2_closed_pr_recovery_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, Int, NonEmptyStr }
+import gunbc.plans.v2_closed_pr_recovery {
+  ClosedPrRecoveryRow, DeadWork, Scratch,
+  closed_pr_recovery_rows,
+  pr_numbers_are_unique,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A dead row with a revival disposition and a revival with an empty first step have no
+// constructor (review 78443), so the one property left to check is across rows: no PR number
+// is named by two rows.
+
+fn supplied_row(n: Int) -> ClosedPrRecoveryRow {
+  ClosedPrRecoveryRow {
+    pr_numbers: [n],
+    subject: "supplied row" as NonEmptyStr,
+    why_closed: "synthetic" as NonEmptyStr,
+    standing: DeadWork { kind: Scratch, why: "synthetic" as NonEmptyStr },
+  }
+}
+
+test fn live_pr_numbers_are_unique() -> Bool {
+  pr_numbers_are_unique(rows: closed_pr_recovery_rows)
+}
+
+test fn a_pr_named_by_two_rows_is_refused() -> Bool {
+  !pr_numbers_are_unique(rows: [supplied_row(n: 1), supplied_row(n: 1)])
+    && pr_numbers_are_unique(rows: [supplied_row(n: 1), supplied_row(n: 2)])
+}

@@ -78,8 +78,8 @@ import gunbc.harness.harness_throughput {
   RoundSegment, RoundSegmentKind, ReadRound, WriteRound, ReasonRound, UnmeasuredRound, round_segments,
 }
 
-// THE PRESENTATION SEAM (A2, operator-directed 2026-08-01;
-// docs/plans/roadmap-presentation-seam-design.md). One projection layer between the
+// THE PRESENTATION SEAM (A2, operator-directed 2026-08-01).
+// One projection layer between the
 // roadmap/workflow authorities and every renderer: the renderer receives an ALREADY-DECIDED
 // presentation — no punctuation splitting, title reconstruction, policy on string content,
 // availability-implies-emphasis, or evidence smuggled into an actuator region. Governing law: a

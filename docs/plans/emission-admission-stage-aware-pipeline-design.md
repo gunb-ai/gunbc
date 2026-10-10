@@ -45,9 +45,7 @@ accept-anyway), §4b (discriminating RED: regression vs declared-change controls
 after walls land), §6 (model-before-implement; scaffolds name dissolution triggers), §7
 (behavioral equivalence over byte identity for self-host).
 
-Related: [five-minute-ci-gate-design.md](five-minute-ci-gate-design.md)
-(`warm-merge-admission`, `phased-single-process-ci`) ·
-[seed-honesty-discharge-design.md](seed-honesty-discharge-design.md) ·
+Related:
 [module-identity-storage-binding-design.md](module-identity-storage-binding-design.md)
 (BothWays delta lens) · [post-zero-regen-gate-placement.md](post-zero-regen-gate-placement.md) ·
 `gunbc.bootstrap` · `gunbc.guarantee_measurement` · `v2.compiler.self_host` ·

@@ -1979,8 +1979,8 @@ fn body_lower_unwrap_captured(shell: Node) -> Optional<Node> {
 // -- grammar_infix_left, grammar_infix_operator, grammar_infix_right -- and an operand with no
 // operator after it as the operand itself. Precedence and associativity are already decided by the
 // tree, so this reader lowers an application's two operands and applies its operator; it neither
-// re-folds a continuation spine nor strips precedence levels, because the tree carries neither
-// (docs/plans/precedence-climbing-tree-contract.md). The operand is dag_grammar_unary_expr_expr: a
+// re-folds a continuation spine nor strips precedence levels, because the tree carries neither.
+// The operand is dag_grammar_unary_expr_expr: a
 // prefix `!` or `-` over another unary, or a postfix expression.
 //
 // THE READER BEFORE THE TOWER READER READ ONE OPERATOR AND DROPPED THE REST, SILENTLY: `a && b && c`
@@ -9689,8 +9689,7 @@ fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
 
 // A STRING-KEYED ITEM `"k": v` (a map literal's entry), recognised by the grammar's own production
 // (body_lower_field_init_is_string_keyed, the one reader). Its key is lowered as the VALUE any string
-// literal lowers to, never read as a field name, so the key's kind survives to resolve
-// (docs/plans/map-literal-introduction-design.md).
+// literal lowers to, never read as a field name, so the key's kind survives to resolve.
 fn body_lower_map_literal_entry_edge_from_item(captured: Node, item: Node, refuse: Outcome<Edge>) -> Outcome<Edge> {
   match sugar_sequence_pair_optional(node: parse_production_captured_child_optional_or_self(node: captured)) {
     Absent => refuse
@@ -9891,7 +9890,7 @@ fn body_lower_record_literal_tag_optional(captured: Node) -> Optional<RecordLite
 // writes the expected record's reference or refuses located
 // (docs/plans/anonymous-record-literal-design.md). The field set is never consulted to choose. A
 // string-keyed brace (a map literal) carries its pairs on one MapLiteralEntriesEdge edge; resolve's map arm reads
-// it (docs/plans/map-literal-introduction-design.md).
+// it.
 fn body_lower_try_headless_record_literal(captured: Node) -> Outcome<Optional<Node>> {
   match body_lower_record_brace_items_optional(brace: captured) {
     Absent => outcome_accepted(value: optional_absent())

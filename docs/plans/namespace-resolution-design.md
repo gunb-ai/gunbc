@@ -275,11 +275,11 @@ it unique?"* (Rule 2).
 ## 7.5 Substrate — this rides on the `SymbolIndex` (do NOT fork the index)
 
 This design is the **resolver half**; the **index half** already exists:
-`docs/plans/type-env-single-authority-design.md` (owner cool-hawk-899; realization lane
+the type-env single-authority lane (owner cool-hawk-899; realization lane
 lively-raven-355) builds `SymbolIndex : Map<QualifiedName, Node>` (04_env.dag:36) as the *single*
 qualified-name authority, filled once by a topo-order DFS prepass, replacing the O(M²)
 `ancestry_str_bindings` materialization. **That `SymbolIndex` is exactly the index
-`resolve(name, position)` queries** — Rule 1 forbids a second. The two docs compose:
+`resolve(name, position)` queries** — Rule 1 forbids a second. The two halves compose:
 
 - **`SymbolIndex` = the containment tree materialized** (qualified path → Node, one authority — §3:
   built from nesting, not a separate index with its own reach rules). Shared; consumed here, not
@@ -366,7 +366,7 @@ step 5 deletes the syntax outright.
 
 **Import-from-definer migration (PR-4 scope; census seeded 2026-07-07).** The corpus relies on
 **re-export transitivity** — `import M { X }` where `M` re-exports `X` from its defining module
-(proven by execution in `type-env-single-authority-design.md` §3.1: `compile.dag` imports
+(proven by execution: `compile.dag` imports
 `EmitResult` from `v1.compiler.emit`, which re-exports it from `emit_core_support`). The PR-2 perf
 reform *preserves* this (own bindings + a memoized re-export-chain walk), byte-identical. PR-4
 **migrates each import to name the *defining* module**, eliminating re-export reliance so
@@ -401,9 +401,7 @@ closure-independent binding mechanism (substantively: namespace-only resolution 
 typecheck env — the §8 flip) or a provable-coverage construction check lands; additionally a strip
 wave must be closed under the imports-from relation (or PR-4 land first) — partial strips sever
 re-export chains at hub files. Mechanism receipts, controlled experiments, and the consolidated wave
-rule:
-[import-strip witness-discovery cascade diagnosis](import-strip-witness-discovery-cascade-diagnosis.md)
-§12–13 (PR #7061).
+rule: PR #7061.
 
 ## 9. Open / to-verify
 
@@ -696,7 +694,7 @@ pre-existing on main): `gunbc.falsifier_workflow` bare `ci_repo_root_shell` firs
 (fn_parent_first_hit=1) — a real §3 fork needing consolidation or qualification, and
 the live specimen of the class §8 step 1's refusal arm makes loud under the flip.
 
-Related: [type environment: single import authority + scope cursor](type-env-single-authority-design.md) — the type-env/SymbolIndex lane design this walk-rule migration rides on · [interface summaries and the declared↔use arity family](interface-summary-declared-use-arity.md) — the `std.interface_summary` carrier consumed by interface-grain resolve.
+Related: [interface summaries and the declared↔use arity family](interface-summary-declared-use-arity.md) — the `std.interface_summary` carrier consumed by interface-grain resolve.
 
 ## 13. Resolution is unique-on-chain, not nearest (operator ruling, ratified 2026-07-21)
 
@@ -797,8 +795,7 @@ per-subtree behind the §8 policy. This section is the authority the alias-gramm
 §3/§6 walk amendment consume.
 
 **Residue burn-down.** The flip-ON hard-red residue and its dependency graph (Root-A → the four
-two-std forks `Set`/`Map`/`Byte`/`Char` → 0) are tracked in
-[namespace flip — the last 28 reds (Root-A / two-std de-fork)](namespace-flip-last-28-root-a-two-std-defork.md):
+two-std forks `Set`/`Map`/`Byte`/`Char` → 0):
 62 of the 90 clear in the doable-now lane (homonym renames + local consolidations, no Root-A
 dependency); the remaining 28 are the two-std forks, of which only `Char` rides the Root-A emit
 seam.

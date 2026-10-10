@@ -167,6 +167,13 @@ Obstacles whose only honest disposition is that somebody else must act:
 - propose: OPERATOR GATED. whoever administers repository access; provisioning is a separate item and is deliberately not specified here
 - land: OPERATOR GATED. the operator, who performs the merge; this is the single irreducible operator dependency remaining in the path and it is a policy choice rather than a gap
 
+## Reference: CLIs, local checks and regeneration
+
+- **Two CLIs.** `gunbc` is the seed's CLI (`std.compiler_entry` `RetainedHostCliKernel`, host Rust in `v1_compiler.cli_run`), unreachable from a self-emitted binary. The v2 door is `v2.cli.compile_cli` (`std.compiler_entry` `NativeCliDriver`): `.dag` decides parsing, refusals, output and exit, and its rendered main only performs the host reads and writes (`gunbc.source_root_read`).
+- **Local checks.** `cargo fmt --all --check` runs in the generated pre-commit hook (`gunbc.githooks_pre_commit_emit`). `cargo clippy --all-targets -- -D warnings` (`gunbc.repo_self_build` `repo_self_clippy_command`, the only command compiling the integration-test and example targets) and `cargo test --release -p v1-compiler --lib` (`repo_self_test_command`) are local only and block nothing.
+- **Hooks.** `git config core.hooksPath .githooks`; the generated hooks converge the rest from `gunbc.repo_local_git_config`, including a merge driver that refuses a both-sides change to a generated path and prints the regeneration recipe.
+- **Regenerating projections.** `tools.generated_artifact_gate` `main_wet` rewrites the committed generated artifacts from their authorities, `main` verifies them; `tools.docs_projection_gate` `regen` renders the on-demand ledger views.
+
 ## The other commands worth knowing
 
 Derived from `gunbc.repo_self_build`, which is the single point through which this repository builds and checks itself.

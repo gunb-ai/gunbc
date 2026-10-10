@@ -1,0 +1,284 @@
+module test.claim.mtcollins1_runner_offer_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.measure { byte_size, byte_size_count }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import product.host_identity { HostIdentity }
+import gunbc.ci_fleet {
+  mtcollins1_offer, mtcollins1_runner_host, mtcollins1_socket0_cpu,
+  mtcollins1_socket0_cpu_part_standing,
+}
+import extdeps.external_authority { cited_figure_read_obligation }
+import gunbc.fleet_intent { ComputeHost, CpuProcessor, compute_host_ram_bytes_total }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.machine_intake_host_capture_envelope { BoundHostCaptureEnvelope, HostCaptureBoundSection, KernelBootId }
+import gunbc.machine_intake_mtcollins1_socket1_investigation_observation { MtCollins1Socket1InvestigationBoot, mtcollins1_socket1_investigation_boots }
+import gunbc.host_memory_observation {
+  HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured,
+  CensusMeminfoUnread, CensusMeminfoSectionAbsent, CensusMeminfoSectionPending, CensusMeminfoSectionMalformed,
+  CensusMeminfoExitNonzero, CensusMeminfoUnparsed, host_usable_ram_from_capture, HostFixedOverhead,
+  HostFixedOverheadMeasured, HostFixedOverheadUnmeasured, host_fixed_overhead_from_capture,
+  gunbc_ci_host_usable_ram_for,
+}
+import gunbc.session_residency { SessionResidency, NoInteractiveSessions, HostsInteractiveSessions, host_session_residency }
+import gunbc.session_reservation_policy { HostSessionReservationOutcome, SessionReservationNotApplicable, host_session_reservation_outcome }
+import gunbc.runner_slot_allocation {
+  HostWidthFacts, host_width_facts, CpuWidthDerived, committed_width_of,
+  compute_host_cpu_admitted_width,
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
+}
+import gunbc.ci_runner_placement {
+  HostRunnerDeploymentStanding, HostRunnerDeploymentDerived, HostRunnerDeploymentRefused,
+  UsableRamUnavailable, host_deployment_standing_given, host_deployment_refusal_text,
+}
+import gunbc.fabric_control_plane_charge { fabric_control_plane_placement }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn census_envelope(meminfo_body: String) -> BoundHostCaptureEnvelope {
+  BoundHostCaptureEnvelope {
+    machine: "mtcollins1",
+    run: KernelBootId { boot_id: "designed-fixture-boot" },
+    sections: [HostCaptureBoundSection { name: "meminfo", body: meminfo_body }],
+  }
+}
+
+data meminfo_argv: String = "----ARGV meminfo: grep -E 'MemTotal|MemAvailable' /proc/meminfo\n"
+
+fn measured_bytes(a: ObservationAttempt<HostUsableRam, CensusMeminfoUnread>) -> Int {
+  match a {
+    ObservationRefused { cause: _ } => 0 - 1
+    ObservationEstablished { observed: r } =>
+      match r {
+        HostUsableRamMeasured { bytes: b, provenance: _ } => byte_size_count(b: b) as Int
+        HostUsableRamConservativeLowerBound { bytes: _, basis: _ } => 0 - 1
+        HostUsableRamUnmeasured => 0 - 1
+      }
+  }
+}
+
+fn measured_provenance_names(a: ObservationAttempt<HostUsableRam, CensusMeminfoUnread>, pattern: String) -> Bool {
+  match a {
+    ObservationRefused { cause: _ } => false
+    ObservationEstablished { observed: r } =>
+      match r {
+        HostUsableRamMeasured { bytes: _, provenance: p } => string_contains(s: p as String, pattern: pattern)
+        HostUsableRamConservativeLowerBound { bytes: _, basis: _ } => false
+        HostUsableRamUnmeasured => false
+      }
+  }
+}
+
+test fn census_meminfo_receipt_reads_as_measured_usable_ram() -> Bool {
+  let a = host_usable_ram_from_capture(envelope: census_envelope(meminfo_body: concat(meminfo_argv,
+    "MemTotal:       131000000 kB\nMemAvailable:   127000000 kB\n----EXIT meminfo: 0\n")))
+  measured_bytes(a: a) == 131000000 * 1024
+    && measured_provenance_names(a: a, pattern: "mtcollins1")
+    && measured_provenance_names(a: a, pattern: "designed-fixture-boot")
+}
+
+fn refusal_is(a: ObservationAttempt<HostUsableRam, CensusMeminfoUnread>, expected: String) -> Bool {
+  match a {
+    ObservationEstablished { observed: _ } => false
+    ObservationRefused { cause: c } =>
+      match c {
+        CensusMeminfoSectionAbsent => expected == "absent"
+        CensusMeminfoSectionPending => expected == "pending"
+        CensusMeminfoSectionMalformed { reason: _ } => expected == "malformed"
+        CensusMeminfoExitNonzero { exit_code: _ } => expected == "exit"
+        CensusMeminfoUnparsed { cause: _ } => expected == "unparsed"
+      }
+  }
+}
+
+test fn census_meminfo_RED_non_reads_refuse_by_cause() -> Bool {
+  refusal_is(a: host_usable_ram_from_capture(envelope: BoundHostCaptureEnvelope {
+      machine: "mtcollins1", run: KernelBootId { boot_id: "designed-fixture-boot" }, sections: [],
+    }), expected: "absent")
+    && refusal_is(a: host_usable_ram_from_capture(envelope: census_envelope(meminfo_body: concat(meminfo_argv,
+      "MemTotal:       131000000 kB\n"))), expected: "pending")
+    && refusal_is(a: host_usable_ram_from_capture(envelope: census_envelope(meminfo_body: concat(meminfo_argv,
+      "MemTotal:       131000000 kB\nMemAvailable:   127000000 kB\n----EXIT meminfo: 1\n"))), expected: "exit")
+    && refusal_is(a: host_usable_ram_from_capture(envelope: census_envelope(meminfo_body: concat(meminfo_argv,
+      "MemAvailable:   127000000 kB\n----EXIT meminfo: 0\n"))), expected: "unparsed")
+}
+
+test fn mtcollins1_RED_nominal_dram_total_reaches_neither_offer_nor_reader() -> Bool {
+  byte_size_count(b: compute_host_ram_bytes_total(host: mtcollins1_offer.supply.physical)) == 0
+    && refusal_is(a: host_usable_ram_from_capture(envelope: census_envelope(meminfo_body: concat(meminfo_argv,
+      "dram_total: 134217728 kB\n----EXIT meminfo: 0\n"))), expected: "unparsed")
+}
+
+fn one_socket_boot_reads_width(b: MtCollins1Socket1InvestigationBoot, width: Int) -> Bool {
+  match b.host {
+    Absent => true
+    Present { value: h } => h.sockets == 1 && (h.cpus as Int) == width
+  }
+}
+
+test fn mtcollins1_socket0_cpu_part_is_a_typed_bet_not_a_deduced_catalog_row() -> Bool {
+  match cited_figure_read_obligation(standing: mtcollins1_socket0_cpu_part_standing) {
+    Absent => false
+    Present { value: o } =>
+      string_contains(s: o as String, pattern: "census")
+        && string_contains(s: o as String, pattern: "model number")
+  }
+}
+
+test fn mtcollins1_offer_cpu_width_equals_the_measured_one_socket_reading() -> Bool {
+  let width = compute_host_cpu_admitted_width(host: mtcollins1_offer.supply.physical)
+  (mtcollins1_offer.supply.physical.identity as String) == (operator_host_mtcollins1 as String)
+    && mtcollins1_offer.supply.physical.processors.length() == 1
+    && width == 80
+    && all(mtcollins1_socket1_investigation_boots, b => one_socket_boot_reads_width(b: b, width: width))
+}
+
+test fn mtcollins1_RED_both_sockets_disagrees_with_the_measured_reading() -> Bool {
+  let both = ComputeHost {
+    identity: mtcollins1_runner_host.identity,
+    baseboard: mtcollins1_runner_host.baseboard,
+    bmc_intent: mtcollins1_runner_host.bmc_intent,
+    processors: [CpuProcessor { cpu: mtcollins1_socket0_cpu }, CpuProcessor { cpu: mtcollins1_socket0_cpu }],
+    memory: mtcollins1_runner_host.memory,
+    storage: mtcollins1_runner_host.storage,
+    network_interfaces: mtcollins1_runner_host.network_interfaces,
+  }
+  let width = compute_host_cpu_admitted_width(host: both)
+  width == 160
+    && all(mtcollins1_socket1_investigation_boots, b => match b.host {
+      Absent => true
+      Present { value: _ } => one_socket_boot_reads_width(b: b, width: width) == false
+    })
+}
+
+test fn mtcollins1_carries_no_sessions_and_owes_no_reservation() -> Bool {
+  let residency_ok = match host_session_residency(host: operator_host_mtcollins1) {
+    NoInteractiveSessions => true
+    HostsInteractiveSessions => false
+  }
+  residency_ok
+    && match host_session_reservation_outcome(host: operator_host_mtcollins1) {
+      SessionReservationNotApplicable { residency_evidence: _ } => true
+      _ => false
+    }
+}
+
+test fn mtcollins1_production_usable_ram_is_unmeasured_until_the_census_receipt() -> Bool {
+  match gunbc_ci_host_usable_ram_for(host: operator_host_mtcollins1) {
+    HostUsableRamUnmeasured => true
+    HostUsableRamMeasured { bytes: _, provenance: _ } => false
+    HostUsableRamConservativeLowerBound { bytes: _, basis: _ } => false
+  }
+}
+
+fn supplied_ram(meminfo_body: String) -> HostUsableRam {
+  match host_usable_ram_from_capture(envelope: census_envelope(meminfo_body: meminfo_body)) {
+    ObservationEstablished { observed: r } => r
+    ObservationRefused { cause: _ } => HostUsableRamUnmeasured
+  }
+}
+
+fn supplied_overhead(meminfo_body: String) -> HostFixedOverhead {
+  match host_fixed_overhead_from_capture(envelope: census_envelope(meminfo_body: meminfo_body)) {
+    ObservationEstablished { observed: o } => o
+    ObservationRefused { cause: _ } => HostFixedOverheadUnmeasured
+  }
+}
+
+fn mtcollins1_supplied_facts(ram: HostUsableRam, overhead: HostFixedOverhead) -> HostWidthFacts {
+  let real = host_width_facts(host: operator_host_mtcollins1)
+  HostWidthFacts {
+    host: real.host,
+    cpu: CpuWidthDerived { slots: compute_host_cpu_admitted_width(host: mtcollins1_offer.supply.physical) },
+    usable_ram: ram,
+    fixed_overhead: overhead,
+    session: real.session,
+    control_plane: real.control_plane,
+    served_deployment: real.served_deployment,
+    disk: real.disk,
+    carries_shakedown_slot: real.carries_shakedown_slot,
+  }
+}
+
+data designed_one_socket_meminfo: String = "----ARGV meminfo: grep -E 'MemTotal|MemAvailable' /proc/meminfo\nMemTotal:       131000000 kB\nMemAvailable:   127000000 kB\n----EXIT meminfo: 0\n"
+
+data designed_half_meminfo: String = "----ARGV meminfo: grep -E 'MemTotal|MemAvailable' /proc/meminfo\nMemTotal:        65500000 kB\nMemAvailable:    61500000 kB\n----EXIT meminfo: 0\n"
+
+fn derived_runner_count(facts: HostWidthFacts) -> Int {
+  match host_deployment_standing_given(
+    offer: mtcollins1_offer,
+    facts: facts,
+    control_plane_placement: fabric_control_plane_placement,
+  ) {
+    HostRunnerDeploymentDerived { deployment: d } => d.runner_count
+    HostRunnerDeploymentRefused { refusal: _ } => 0 - 1
+  }
+}
+
+test fn mtcollins1_placement_accepts_the_offer_over_supplied_one_socket_facts() -> Bool {
+  match host_deployment_standing_given(
+    offer: mtcollins1_offer,
+    facts: mtcollins1_supplied_facts(
+      ram: supplied_ram(meminfo_body: designed_one_socket_meminfo),
+      overhead: supplied_overhead(meminfo_body: designed_one_socket_meminfo),
+    ),
+    control_plane_placement: fabric_control_plane_placement,
+  ) {
+    HostRunnerDeploymentDerived { deployment: d } =>
+      (d.identity as String) == (operator_host_mtcollins1 as String) && d.runner_count > 0
+    HostRunnerDeploymentRefused { refusal: _ } => false
+  }
+}
+
+test fn mtcollins1_RED_placement_refuses_until_usable_ram_is_measured() -> Bool {
+  match host_deployment_standing_given(
+    offer: mtcollins1_offer,
+    facts: mtcollins1_supplied_facts(
+      ram: HostUsableRamUnmeasured,
+      overhead: supplied_overhead(meminfo_body: designed_one_socket_meminfo),
+    ),
+    control_plane_placement: fabric_control_plane_placement,
+  ) {
+    HostRunnerDeploymentDerived { deployment: _ } => false
+    HostRunnerDeploymentRefused { refusal: r } =>
+      match r.cause {
+        UsableRamUnavailable { cause: _ } => true
+        _ => false
+      }
+  }
+}
+
+test fn mtcollins1_derived_width_moves_with_the_census_meminfo_and_the_slot_row() -> Bool {
+  let full = derived_runner_count(facts: mtcollins1_supplied_facts(
+    ram: supplied_ram(meminfo_body: designed_one_socket_meminfo),
+    overhead: supplied_overhead(meminfo_body: designed_one_socket_meminfo),
+  ))
+  let half = derived_runner_count(facts: mtcollins1_supplied_facts(
+    ram: supplied_ram(meminfo_body: designed_half_meminfo),
+    overhead: supplied_overhead(meminfo_body: designed_half_meminfo),
+  ))
+  full > 0 && half > 0 && half < full
+}
+
+test fn census_meminfo_receipt_reads_as_measured_fixed_overhead() -> Bool {
+  match supplied_overhead(meminfo_body: designed_one_socket_meminfo) {
+    HostFixedOverheadMeasured { bytes: b, provenance: p } =>
+      (byte_size_count(b: b) as Int) == 4000000 * 1024 && string_contains(s: p as String, pattern: "quiescent census boot")
+    _ => false
+  }
+}
+
+fn mtcollins1_supplied_standing_text() -> String {
+  match host_deployment_standing_given(
+    offer: mtcollins1_offer,
+    facts: mtcollins1_supplied_facts(
+      ram: supplied_ram(meminfo_body: designed_one_socket_meminfo),
+      overhead: supplied_overhead(meminfo_body: designed_one_socket_meminfo),
+    ),
+    control_plane_placement: fabric_control_plane_placement,
+  ) {
+    HostRunnerDeploymentDerived { deployment: d } => concat("derived runner_count=", to_string(d.runner_count))
+    HostRunnerDeploymentRefused { refusal: r } => host_deployment_refusal_text(c: r.cause)
+  }
+}

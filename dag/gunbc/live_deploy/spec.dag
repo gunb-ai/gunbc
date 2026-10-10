@@ -49,6 +49,7 @@ import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   dashboard_instance_provider_state_root,
   dashboard_instance_tailnet_door_socket,
+  dashboard_instance_tailnet_door_directory,
 }
 import extdeps.http.server { HttpServerListenConfig }
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port, approval_broker_listen_host, approval_broker_confirm_front_door }
@@ -56,7 +57,7 @@ import gunbc.auth.approval_broker_cutover { approval_front_door_mounts_installed
 import product.network_topology { NetworkEndpoint }
 import gunbc.ownership { Ownership, Owned, Ensured }
 
-// Belt B membership (docs/plans/gunbc-served-dashboard-design.md section 5): the service is `gunbc
+// Belt B membership: the service is `gunbc
 // serve` (the seed binary), not an emitted node server.js, so the members flip — ServeBinary +
 // GunbcSourceTree + the dispatch worktree root in (paths from the ONE gunbc.host_layout authority the
 // belt also projects), ServerScript and the NodeJsPackage dependency out (the Ensured nodejs is
@@ -1334,7 +1335,18 @@ fn deployment_spec_for(
     ),
     names: names,
     instance_id: instance.instance_id,
-    directories: dashboard_instance_directory_demands(instance: instance),
+    directories: concat(dashboard_instance_directory_demands(instance: instance), deployment_tailnet_door_directories(instance: instance, names: names)),
+  }
+}
+
+// THE DOOR'S DIRECTORY IS A DEPLOYMENT DEMAND, NOT AN INSTANCE ONE: only a deployment whose serve
+// route targets a unix socket runs a door (deployment_tailnet_door_socket), and only the spec knows
+// the route. It joins the instance's own list here, so the one provider ensures and reads it back
+// before the door unit binds; a deployment routed to a port demands nothing.
+fn deployment_tailnet_door_directories(instance: HostDashboardInstance, names: DeploymentNames) -> List<OwnedDirectoryTarget> {
+  match deployment_tailnet_door_socket(names: names) {
+    Present { value: _ } => [dashboard_instance_tailnet_door_directory(instance: instance)]
+    Absent => []
   }
 }
 

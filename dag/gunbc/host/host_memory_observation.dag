@@ -1,14 +1,23 @@
 module gunbc.host_memory_observation
 
 import std.measure {
-  ByteSize, byte_size, measure_scale_fraction_floor,
+  ByteSize, byte_size, measure_scale_fraction_floor, kibibyte_to_byte_size, kibibyte_count,
 }
 import std.realization_width { byte_size_saturating_sub }
 import std.types { String, NonEmptyStr }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import std.optional { Present }
 import product.host_identity { HostIdentity }
 import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.machine_intake_host_capture_envelope {
+  BoundHostCaptureEnvelope, host_capture_section_reading, host_capture_run_identity_value,
+  SectionAbsent, SectionPending, SectionComplete, SectionMalformed,
+}
+import gunbc.machine_intake_host_resource_observation {
+  HostMemoryReading, ResourceUnread, observe_memory,
+}
 
 // WHAT A HOST HAS, READ FROM THE HOST -- SEPARATED FROM WHAT CI DOES WITH IT. Every declaration
 // here came from gunbc.ci_floor_measurement and the extraction is the whole
@@ -301,4 +310,96 @@ data gunbc_fleet_oomd_floor_basis: String = "oomd_actuation_floor is a DERIVED l
 
 fn oomd_actuation_floor(host: ByteSize) -> ByteSize {
   measure_scale_fraction_floor(m: host, num: 1, den: 16)
+}
+
+// ── the census route: a host capture's meminfo section becomes this host's measured usable RAM ──
+
+// THE READ IS A CAPTURED RECEIPT, NOT A NUMBER COPIED OUT OF ONE. A boot that runs the capture
+// envelope (gunbc.machine_intake_host_capture_envelope, whose stage list carries a meminfo section)
+// prints MemTotal and MemAvailable between that section's ARGV and EXIT lines. This reader is the
+// only route from those bytes to HostUsableRamMeasured, so a host enrolled from a census boot
+// (mtcollins1 first) gets its row by naming its receipt, with no figure hand-copied beside it, and
+// the provenance names the machine and run the receipt came from.
+//
+// WHAT IT REFUSES, EACH FOR ITS OWN REASON. A section that is absent, still pending or malformed
+// is not a read; a section that exited nonzero printed something other than the kernel's answer;
+// a complete, zero-exit section that does not parse as MemTotal/MemAvailable is the meminfo parse's
+// own refusal (gunbc.machine_intake_host_resource_observation observe_memory), carried unchanged.
+// A firmware-trained DIMM total is not an input this function accepts at all: it is nominal
+// capacity, which fleet_host_memory_nominal_vs_usable_note keeps out of HostUsableRam.
+//
+// ResourceUnread.ResourceSectionAbsent is named apart from HostCaptureSectionReading.SectionAbsent
+// because the resolver refuses duplicate variant names in one closure (measured on gunbc#13252).
+type CensusMeminfoUnread
+  = CensusMeminfoSectionAbsent
+  | CensusMeminfoSectionPending
+  | CensusMeminfoSectionMalformed { reason: String }
+  | CensusMeminfoExitNonzero { exit_code: String }
+  | CensusMeminfoUnparsed { cause: ResourceUnread }
+
+// ONE PARSE OF THE RECEIPT, TWO ROWS FROM IT. The usable-RAM row and the fixed-overhead row
+// below both project this one reading, so a census boot is a single enrolment trigger for both.
+fn census_meminfo_reading(envelope: BoundHostCaptureEnvelope) -> ObservationAttempt<HostMemoryReading, CensusMeminfoUnread> {
+  match host_capture_section_reading(envelope: envelope, name: "meminfo") {
+    SectionAbsent => ObservationRefused { cause: CensusMeminfoSectionAbsent }
+    SectionPending { output: _ } => ObservationRefused { cause: CensusMeminfoSectionPending }
+    SectionMalformed { reason: r } => ObservationRefused { cause: CensusMeminfoSectionMalformed { reason: r } }
+    SectionComplete { exit_code: code, output: out } =>
+      if code != "0" {
+        ObservationRefused { cause: CensusMeminfoExitNonzero { exit_code: code } }
+      } else {
+        match observe_memory(meminfo: Present { value: out }) {
+          ObservationRefused { cause: c } => ObservationRefused { cause: CensusMeminfoUnparsed { cause: c } }
+          ObservationEstablished { observed: m } => ObservationEstablished { observed: m }
+        }
+      }
+  }
+}
+
+fn census_receipt_provenance(envelope: BoundHostCaptureEnvelope, what: String) -> NonEmptyStr {
+  join([
+    envelope.machine as String, " ", what, ", read from the meminfo section of host capture run ",
+    host_capture_run_identity_value(run: envelope.run), " (gunbc.host_memory_observation census_meminfo_reading)",
+  ], "") as NonEmptyStr
+}
+
+fn host_usable_ram_from_capture(envelope: BoundHostCaptureEnvelope) -> ObservationAttempt<HostUsableRam, CensusMeminfoUnread> {
+  match census_meminfo_reading(envelope: envelope) {
+    ObservationRefused { cause: c } => ObservationRefused { cause: c }
+    ObservationEstablished { observed: m } =>
+      ObservationEstablished {
+        observed: HostUsableRamMeasured {
+          bytes: kibibyte_to_byte_size(k: m.total),
+          provenance: census_receipt_provenance(envelope: envelope, what: concat("/proc/meminfo MemTotal = ", to_string(kibibyte_count(k: m.total)), " kB")),
+        },
+      }
+  }
+}
+
+// THE OVERHEAD ROW FROM THE SAME RECEIPT, THROUGH THE SAME UPPER BOUND srv3's row uses.
+// host_overhead_upper_bound is MemTotal minus MemAvailable. gunbc_ci_host_memavailable_observation_note
+// says its weakness is the instant it was read: a busy host's MemAvailable excludes resident job
+// memory, which pushes the bound up, so its dissolution trigger is a quiescent read. A census boot
+// is that read. The capture runs on a freshly netbooted image with no runner or session resident,
+// so the bound is as tight as a single reading gets, and it stays an upper bound.
+fn host_fixed_overhead_from_capture(envelope: BoundHostCaptureEnvelope) -> ObservationAttempt<HostFixedOverhead, CensusMeminfoUnread> {
+  match census_meminfo_reading(envelope: envelope) {
+    ObservationRefused { cause: c } => ObservationRefused { cause: c }
+    ObservationEstablished { observed: m } =>
+      ObservationEstablished {
+        observed: HostFixedOverheadMeasured {
+          bytes: host_overhead_upper_bound(obs: HostMemAvailableObservation {
+            host: envelope.machine as HostIdentity,
+            run_id: host_capture_run_identity_value(run: envelope.run) as NonEmptyStr,
+            runner_unit: "none: census boot, no runner resident",
+            host_total: kibibyte_to_byte_size(k: m.total),
+            mem_available: kibibyte_to_byte_size(k: m.available),
+          }),
+          provenance: census_receipt_provenance(envelope: envelope, what: join([
+            "fixed overhead upper bound = MemTotal ", to_string(kibibyte_count(k: m.total)),
+            " kB - MemAvailable ", to_string(kibibyte_count(k: m.available)), " kB at a quiescent census boot",
+          ], "")),
+        },
+      }
+  }
 }
