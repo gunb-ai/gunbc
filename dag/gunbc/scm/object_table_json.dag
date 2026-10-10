@@ -225,7 +225,7 @@ import v2.std.node {
   Conj,
   Disj,
   Arrow,
-  Cardinality,
+  Occupancy,
   Instantiation,
   Behavior,
   Value,
@@ -490,7 +490,7 @@ fn connective_tag(c: Connective) -> String {
     Conj => "conj"
     Disj => "disj"
     Arrow => "arrow"
-    Cardinality => "cardinality"
+    Occupancy => "cardinality"
     Instantiation => "instantiation"
   }
 }
@@ -519,7 +519,7 @@ fn encode_connective(c: Connective) -> List<JsonKeyValue> {
     Conj => [json_kv(key: "connective", value: json_string(s: connective_tag(c: c)))]
     Disj => [json_kv(key: "connective", value: json_string(s: connective_tag(c: c)))]
     Arrow => [json_kv(key: "connective", value: json_string(s: connective_tag(c: c)))]
-    Cardinality => [json_kv(key: "connective", value: json_string(s: connective_tag(c: c)))]
+    Occupancy => [json_kv(key: "connective", value: json_string(s: connective_tag(c: c)))]
     Instantiation => [json_kv(key: "connective", value: json_string(s: connective_tag(c: c)))]
   }
 }
@@ -877,7 +877,7 @@ fn decode_connective(kind_value: JsonValue, tag: String) -> ConnectiveDecode {
   } else if tag == "conj" { ConnectiveDecoded { connective: Conj } }
   else if tag == "disj" { ConnectiveDecoded { connective: Disj } }
   else if tag == "arrow" { ConnectiveDecoded { connective: Arrow } }
-  else if tag == "cardinality" { ConnectiveDecoded { connective: Cardinality } }
+  else if tag == "cardinality" { ConnectiveDecoded { connective: Occupancy } }
   else if tag == "instantiation" { ConnectiveDecoded { connective: Instantiation } }
   else { ConnectiveDecodeFailed { cause: NodeEntryUnknownConnectiveTag { found: tag } } }
 }
