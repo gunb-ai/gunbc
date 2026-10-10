@@ -22,7 +22,7 @@ import v2.std.diagnostic {
 import v2.std.node {
   Arrow,
   Atom,
-  Cardinality,
+  Occupancy,
   ComputationNode,
   Conj,
   Disj,
@@ -74,7 +74,7 @@ fn projection_test_read(root: Node) -> Outcome<Symbol> {
     TypeNode { connective: Conj } => outcome_accepted(value: ^projection_test_symbol)
     TypeNode { connective: Disj } => projection_test_unmodeled_connective()
     TypeNode { connective: Arrow } => projection_test_unmodeled_connective()
-    TypeNode { connective: Cardinality } => projection_test_unmodeled_connective()
+    TypeNode { connective: Occupancy } => projection_test_unmodeled_connective()
     TypeNode { connective: Instantiation } => projection_test_unmodeled_connective()
     ComputationNode { behavior: _ } => outcome_accepted(value: ^projection_test_symbol)
   }

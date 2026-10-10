@@ -76,7 +76,7 @@ fn ingested_arrow_search_step(node: Node) -> IngestedArrowSearchStep {
     TypeNode { connective: Atom { identity: _ } } => DescendChildren
     TypeNode { connective: Conj } => DescendChildren
     TypeNode { connective: Disj } => DescendChildren
-    TypeNode { connective: Cardinality } => DescendChildren
+    TypeNode { connective: Occupancy } => DescendChildren
     TypeNode { connective: Instantiation } => DescendChildren
     ComputationNode { behavior: _ } => DescendChildren
   }

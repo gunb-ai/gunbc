@@ -12,7 +12,7 @@ import v2.std.diagnostic {
 }
 import v2.std.node {
   Atom,
-  Cardinality,
+  Occupancy,
   ComputationNode,
   Edge,
   Node,
@@ -46,7 +46,7 @@ data map_id_body: Node = Node {
 }
 
 data map_id_input: Node = Node {
-  kind: TypeNode { connective: Cardinality },
+  kind: TypeNode { connective: Occupancy },
   children: [
     Edge { label: Positional, target: map_id_body }
   ],

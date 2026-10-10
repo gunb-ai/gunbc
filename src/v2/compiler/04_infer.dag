@@ -170,7 +170,7 @@ import v2.std.node {
   Atom,
   Bind,
   Branch,
-  Cardinality,
+  Occupancy,
   ComputationNode,
   Conj,
   Disj,
@@ -503,7 +503,7 @@ fn algebra_ref_is_grounded(algebra: Node) -> Bool {
         Conj => true
         Disj => true
         Arrow => true
-        Cardinality => true
+        Occupancy => true
         Instantiation => true
       }
     ComputationNode { behavior: _ } => false
@@ -2580,7 +2580,7 @@ fn infer_match_bool_arm_row(
     TypeNode { connective: Atom { identity: _ } } => outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
     TypeNode { connective: Disj } => outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
     TypeNode { connective: Arrow } => outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
-    TypeNode { connective: Cardinality } => outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
+    TypeNode { connective: Occupancy } => outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
     TypeNode { connective: Instantiation } => outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
     ComputationNode { behavior: _ } => outcome_rejected(infer_match_shape_invalid_diagnostic(node: arm))
   }
@@ -3452,7 +3452,7 @@ fn infer_operator_arrow(operator: Node) -> Optional<Node> {
     TypeNode { connective: Atom { identity: _ } } => Absent
     TypeNode { connective: Conj } => Absent
     TypeNode { connective: Disj } => Absent
-    TypeNode { connective: Cardinality } => Absent
+    TypeNode { connective: Occupancy } => Absent
     TypeNode { connective: Instantiation } => Absent
     ComputationNode { behavior: _ } => Absent
   }
@@ -3483,7 +3483,7 @@ fn infer_formals_from_domain(domain: Node) -> Optional<List<InhabitanceFormal>> 
     TypeNode { connective: Atom { identity: _ } } => Absent
     TypeNode { connective: Disj } => Absent
     TypeNode { connective: Arrow } => Absent
-    TypeNode { connective: Cardinality } => Absent
+    TypeNode { connective: Occupancy } => Absent
     TypeNode { connective: Instantiation } => Absent
     ComputationNode { behavior: _ } => Absent
   }
@@ -5497,7 +5497,7 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
       } else {
         infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances)
       }
-    TypeNode { connective: Cardinality } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances)
+    TypeNode { connective: Occupancy } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances)
     TypeNode { connective: Instantiation } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances)
   }
 }
@@ -5580,14 +5580,14 @@ fn infer_arrow_empty_domain_edge(parent: Node, edge: Edge, children_remaining: I
           TypeNode { connective: Atom { identity: _ } } => false
           TypeNode { connective: Disj } => false
           TypeNode { connective: Arrow } => false
-          TypeNode { connective: Cardinality } => false
+          TypeNode { connective: Occupancy } => false
           TypeNode { connective: Instantiation } => false
           ComputationNode { behavior: _ } => false
         })
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Conj } => false
     TypeNode { connective: Disj } => false
-    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -5635,7 +5635,7 @@ fn infer_literal_payload_member_type(family: InferLiteralPayload, member: Node) 
           optional_present(value: integer_decimal_digits_type_node())
         TypeNode { connective: Disj } => optional_absent()
         TypeNode { connective: Arrow } => optional_absent()
-        TypeNode { connective: Cardinality } => optional_absent()
+        TypeNode { connective: Occupancy } => optional_absent()
         TypeNode { connective: Instantiation } => optional_absent()
         ComputationNode { behavior: _ } => optional_absent()
       }
@@ -5646,7 +5646,7 @@ fn infer_literal_payload_member_type(family: InferLiteralPayload, member: Node) 
         TypeNode { connective: Conj } => optional_absent()
         TypeNode { connective: Disj } => optional_absent()
         TypeNode { connective: Arrow } => optional_absent()
-        TypeNode { connective: Cardinality } => optional_absent()
+        TypeNode { connective: Occupancy } => optional_absent()
         TypeNode { connective: Instantiation } => optional_absent()
         ComputationNode { behavior: _ } => optional_absent()
       }
@@ -5716,7 +5716,7 @@ fn infer_gather_acc_awaits_product_row(node: Node, entries: List<InferredFactsEn
         Present { value: _ } => false
       }
     TypeNode { connective: Atom { identity: _ } } => false
-    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -7394,7 +7394,7 @@ fn infer_admit_atom_identity(node: Node) -> Optional<Symbol> {
     TypeNode { connective: Conj } => optional_absent()
     TypeNode { connective: Disj } => optional_absent()
     TypeNode { connective: Arrow } => optional_absent()
-    TypeNode { connective: Cardinality } => optional_absent()
+    TypeNode { connective: Occupancy } => optional_absent()
     TypeNode { connective: Instantiation } => optional_absent()
     ComputationNode { behavior: _ } => optional_absent()
   }
@@ -7455,7 +7455,7 @@ fn infer_admit_spine_entries(spine: Node) -> Outcome<List<Node>> {
         at: node_locus(node: spine),
         correction: Unavailable { reason: ExternalContractUnknown }
       })
-    TypeNode { connective: Cardinality } =>
+    TypeNode { connective: Occupancy } =>
       outcome_rejected(Diagnostic {
         reason: ^infer_reason_admit_callers_entries_unreadable,
         at: node_locus(node: spine),
@@ -7804,7 +7804,7 @@ fn infer_admission_child_context(self: Node, ctx: InferAdmissionCtx, edge: Edge)
         TypeNode { connective: Atom { identity: _ } } => ctx
         TypeNode { connective: Conj } => ctx
         TypeNode { connective: Disj } => ctx
-        TypeNode { connective: Cardinality } => ctx
+        TypeNode { connective: Occupancy } => ctx
         TypeNode { connective: Instantiation } => ctx
         ComputationNode { behavior: _ } => ctx
       }

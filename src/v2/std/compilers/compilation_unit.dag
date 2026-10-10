@@ -387,7 +387,7 @@ fn type_atom_identity(node: Node) -> Optional<Symbol> {
     TypeNode { connective: Conj } => Absent
     TypeNode { connective: Disj } => Absent
     TypeNode { connective: Arrow } => Absent
-    TypeNode { connective: Cardinality } => Absent
+    TypeNode { connective: Occupancy } => Absent
     TypeNode { connective: Instantiation } => Absent
     ComputationNode { behavior: _ } => Absent
   }

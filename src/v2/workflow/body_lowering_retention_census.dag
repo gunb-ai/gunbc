@@ -23,7 +23,7 @@ import v2.std.node {
   Behavior,
   Bind,
   Branch,
-  Cardinality,
+  Occupancy,
   ComputationNode,
   Conj,
   Connective,
@@ -116,7 +116,7 @@ fn connective_label(c: Connective) -> String {
     Conj => "Conj"
     Disj => "Disj"
     Arrow => "Arrow"
-    Cardinality => "Cardinality"
+    Occupancy => "Cardinality"
     Instantiation => "Instantiation"
   }
 }
@@ -377,7 +377,7 @@ fn atom_lexeme_optional(node: Node) -> Optional<String> {
         Conj => Absent
         Disj => Absent
         Arrow => Absent
-        Cardinality => Absent
+        Occupancy => Absent
         Instantiation => Absent
       }
     ComputationNode { behavior: _ } => Absent

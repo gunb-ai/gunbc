@@ -4,7 +4,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.cost { LinearCost, SizeVariable, cost_lens }
 import v2.std.node {
   Atom,
-  Cardinality,
+  Occupancy,
   ComputationNode,
   Disj,
   Edge,
@@ -39,7 +39,7 @@ data disj_max_cheap_body: Node = Node {
 }
 
 data disj_max_expensive_body: Node = Node {
-  kind: TypeNode { connective: Cardinality },
+  kind: TypeNode { connective: Occupancy },
   children: [
     Edge {
       label: Positional,

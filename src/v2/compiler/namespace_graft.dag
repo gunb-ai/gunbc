@@ -21,7 +21,7 @@ import v2.std.diagnostic {
 import v2.std.node {
   close_lowered_image,
   Atom,
-  Cardinality,
+  Occupancy,
   Conj,
   Edge,
   Authored,
@@ -130,7 +130,7 @@ fn namespace_graft_is_transparent_sequence_spine(node: Node) -> Bool {
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -288,7 +288,7 @@ fn namespace_graft_reconstruct_declaration_forest(units: List<Node>) -> List<Edg
     Edge {
       label: Authored { name: ^dag_surface_top_level_item },
       target: Node {
-        kind: TypeNode { connective: Cardinality },
+        kind: TypeNode { connective: Occupancy },
         children: fold(units, init: [], f: fn(acc, unit) {
           list_snoc_item(xs: acc, item: namespace_graft_reconstruct_unit_edge(node: unit))
         }),
@@ -689,7 +689,7 @@ fn namespace_graft_has_explicit_braced_container(root: Node, first_segment: Symb
                 TypeNode { connective: Atom { identity: _ } } => false
                 TypeNode { connective: Disj } => false
                 TypeNode { connective: Arrow } => false
-                TypeNode { connective: Cardinality } => false
+                TypeNode { connective: Occupancy } => false
                 TypeNode { connective: Instantiation } => false
                 ComputationNode { behavior: _ } => false
               }

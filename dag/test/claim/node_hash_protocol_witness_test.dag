@@ -19,7 +19,7 @@ import v2.std.node {
   Conj,
   Disj,
   Arrow,
-  Cardinality,
+  Occupancy,
   Instantiation,
   Value,
   Transform,
@@ -115,7 +115,7 @@ fn expected_childless_connective_digest(c: Connective) -> String {
     Conj => "c56b5515d62d08bf"
     Disj => "d18c6b0885dc88e2"
     Arrow => "cddb68d14dfd306e"
-    Cardinality => "dbe6cb930047e16f"
+    Occupancy => "dbe6cb930047e16f"
     Instantiation => "4d19a656f5ebd992"
     Atom { identity: _ } => "8a32b46ce830ef4c"
   }
@@ -145,7 +145,7 @@ test fn every_connective_matches_its_frozen_vector() -> Bool {
   connective_vector_holds(c: Conj)
     && connective_vector_holds(c: Disj)
     && connective_vector_holds(c: Arrow)
-    && connective_vector_holds(c: Cardinality)
+    && connective_vector_holds(c: Occupancy)
     && connective_vector_holds(c: Instantiation)
     && connective_vector_holds(c: Atom { identity: ^alpha })
 }
@@ -184,7 +184,7 @@ test fn labeled_edges_discipline_matches_its_vector() -> Bool {
 }
 
 test fn positional_edges_discipline_matches_its_vector() -> Bool {
-  digest_of(n: ty(c: Cardinality, children: [
+  digest_of(n: ty(c: Occupancy, children: [
     positional(target: atom_node(identity: ^alpha)),
     positional(target: atom_node(identity: ^beta)),
   ])) == "c579b53fa78cbd3f"
@@ -310,10 +310,10 @@ test fn named_edge_label_is_not_erased() -> Bool {
 // erased, positional order is PRESERVED, and a canonicalizer that sorted everything uniformly would
 // satisfy the quotient laws while destroying this. Cardinality takes PositionalEdges.
 test fn positional_order_is_not_erased() -> Bool {
-  digest_of(n: ty(c: Cardinality, children: [
+  digest_of(n: ty(c: Occupancy, children: [
     positional(target: atom_node(identity: ^a)),
     positional(target: atom_node(identity: ^b)),
-  ])) != digest_of(n: ty(c: Cardinality, children: [
+  ])) != digest_of(n: ty(c: Occupancy, children: [
     positional(target: atom_node(identity: ^b)),
     positional(target: atom_node(identity: ^a)),
   ]))

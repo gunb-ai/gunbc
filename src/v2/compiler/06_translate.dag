@@ -74,7 +74,7 @@ import v2.std.node {
   StructuralLabel,
   Arrow,
   Atom,
-  Cardinality,
+  Occupancy,
   ComputationNode,
   Conj,
   Disj,
@@ -474,7 +474,7 @@ fn conj_optional_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node?> 
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     TypeNode { connective: Arrow } =>
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
-    TypeNode { connective: Cardinality } =>
+    TypeNode { connective: Occupancy } =>
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
     TypeNode { connective: Instantiation } =>
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
@@ -1122,7 +1122,7 @@ fn translate_algebra_finalize(
             TypeExprTranslateBinder { type_expr: _ } =>
               outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
           }
-        Cardinality =>
+        Occupancy =>
           match acc {
             TypeExprTranslateDone { node: n } => outcome_accepted(n)
             TypeExprTranslatePositional { items: projected } =>
@@ -1353,7 +1353,7 @@ fn translate_algebra(
                 value: TypeExprTranslatePositional { items: Empty },
                 diagnostics: None
               }
-            Cardinality =>
+            Occupancy =>
               Accepted {
                 value: TypeExprTranslatePositional { items: Empty },
                 diagnostics: None
@@ -1563,7 +1563,7 @@ fn translate_type_expression_project_admitted(
                   }
                 )
               }
-            Cardinality =>
+            Occupancy =>
               if target_collection_type_node_is_set_carrier(node: node) {
                 project_set_collection_type_node(node: node, target: target, projection: projection)
               } else {
@@ -1900,7 +1900,7 @@ fn translate_coerced_type_shell_from_source(
     TypeNode { connective: Conj } => translate_coerced_shell_base(coerced: coerced, target: target)
     TypeNode { connective: Disj } => translate_coerced_shell_base(coerced: coerced, target: target)
     TypeNode { connective: Arrow } => translate_coerced_shell_base(coerced: coerced, target: target)
-    TypeNode { connective: Cardinality } => translate_coerced_shell_base(coerced: coerced, target: target)
+    TypeNode { connective: Occupancy } => translate_coerced_shell_base(coerced: coerced, target: target)
     ComputationNode { behavior: _ } => translate_coerced_shell_base(coerced: coerced, target: target)
   }
 }
@@ -1974,7 +1974,7 @@ fn translate_shell_attach_value_expression(shell: Node, value: Node) -> Node {
     TypeNode { connective: Atom { identity: _ } } => shell
     TypeNode { connective: Disj } => shell
     TypeNode { connective: Arrow } => shell
-    TypeNode { connective: Cardinality } => shell
+    TypeNode { connective: Occupancy } => shell
     TypeNode { connective: Instantiation } => shell
     ComputationNode { behavior: _ } => shell
   }

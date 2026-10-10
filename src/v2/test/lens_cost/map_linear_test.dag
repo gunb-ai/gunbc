@@ -4,7 +4,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.cost { LinearCost, SizeVariable, cost_lens }
 import v2.std.node {
   Atom,
-  Cardinality,
+  Occupancy,
   ComputationNode,
   Edge,
   Node,
@@ -29,7 +29,7 @@ data map_linear_body: Node = Node {
 }
 
 data map_linear_input: Node = Node {
-  kind: TypeNode { connective: Cardinality },
+  kind: TypeNode { connective: Occupancy },
   children: [
     Edge { label: Positional, target: map_linear_body }
   ],

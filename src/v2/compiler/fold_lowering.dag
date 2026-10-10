@@ -71,7 +71,7 @@ import v2.std.node {
   arrow_body_target_lookup,
   Ambiguous,
   Arrow,
-  Cardinality,
+  Occupancy,
   Disj
 }
 import v2.std.anonymous_binder { fresh_fold_carrier }
@@ -1242,7 +1242,7 @@ fn fold_node_is_instantiation(n: Node) -> Bool {
     TypeNode { connective: Conj } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Occupancy } => false
     ComputationNode { behavior: _ } => false
   }
 }

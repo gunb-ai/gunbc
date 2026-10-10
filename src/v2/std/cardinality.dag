@@ -28,7 +28,7 @@ import v2.std.node {
   Behavior,
   Bind,
   Branch,
-  Cardinality,
+  Occupancy,
   ComputationNode,
   Conj,
   Connective,
@@ -234,7 +234,7 @@ fn connective_multiplicity(c: Connective) -> Multiplicity {
     Conj => Bounded
     Disj => Bounded
     Arrow => Bounded
-    Cardinality => Bounded
+    Occupancy => Bounded
     Instantiation => Bounded
   }
 }
@@ -345,7 +345,7 @@ fn measure_dimension_rows(registry: List<MeasureDescentFact>, measure: Node) -> 
           })
         Disj => measure_dimension_unknown_rows()
         Arrow => measure_dimension_unknown_rows()
-        Cardinality => measure_dimension_unknown_rows()
+        Occupancy => measure_dimension_unknown_rows()
         Instantiation => measure_dimension_unknown_rows()
       }
     ComputationNode { behavior: _ } => measure_dimension_unknown_rows()
