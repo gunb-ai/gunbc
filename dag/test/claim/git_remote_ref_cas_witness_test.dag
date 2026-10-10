@@ -28,7 +28,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data alpha_hex: String = "1111111111111111111111111111111111111111"
 data beta_hex: String = "2222222222222222222222222222222222222222"
-data desired_ref: String = "refs/fleet/desired"
+data desired_ref: String = "refs/test/cas-subject"
 
 fn alpha() -> GitObjectId? { git_sha1_object_id(hex: alpha_hex) }
 fn beta() -> GitObjectId? { git_sha1_object_id(hex: beta_hex) }

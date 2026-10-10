@@ -338,7 +338,7 @@ data v1_census_tree: String = "168f313cdd9562ff01334c3ac2d154f4c5db6d96"
 
 data producer_workflow_argv: DiscoveryProducer = discovery_producer(
   instrument: "argv and cargo invocations in the emitted workflow surface, traced back to the .dag step declaration that emits each one",
-  command: "grep -nE 'target/release/|cargo (build|test).*v1-compiler' .github/workflows/*.yml; then the emitting declaration in gunbc.witness_floor_workflow / gunbc.fleet_desired_admission_workflow / gunbc.fleet_converge_workflow",
+  command: "grep -nE 'target/release/|cargo (build|test).*v1-compiler' .github/workflows/*.yml; then the emitting declaration in gunbc.witness_floor_workflow / gunbc.fleet_converge_workflow",
   source_revision: v1_census_revision,
   source_tree_hex: v1_census_tree,
 )

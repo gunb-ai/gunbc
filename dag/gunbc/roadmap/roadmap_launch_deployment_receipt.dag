@@ -231,7 +231,7 @@ fn window_snapshot_differences(a: WindowSnapshot, b: WindowSnapshot) -> List<Str
     concat(
       concat(
         if a.main_hex != b.main_hex { ["main"] } else { [] },
-        if a.desired_hex != b.desired_hex { ["refs/fleet/desired"] } else { [] },
+        if a.desired_hex != b.desired_hex { ["origin/main"] } else { [] },
       ),
       concat(
         if a.deployed_revision_hex != b.deployed_revision_hex { ["deployed revision"] } else { [] },
@@ -263,7 +263,7 @@ fn desired_revision_blockers(s: RoadmapLaunchDeploymentSubject, f: DesiredRevisi
     DesiredRevisionObserved { main_hex: m, desired_hex: d } =>
       concat(
         if m != s.revision { blocker(member: "desired_revision", detail: join(["main is ", m, ", not R ", s.revision], "")) } else { [] },
-        if d != s.revision { blocker(member: "desired_revision", detail: join(["refs/fleet/desired is ", d, ", not R ", s.revision], "")) } else { [] },
+        if d != s.revision { blocker(member: "desired_revision", detail: join(["origin/main is ", d, ", not R ", s.revision], "")) } else { [] },
       )
   }
 }

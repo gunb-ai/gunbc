@@ -645,7 +645,7 @@ fn rlm_launch_deployment_receipt_bound(
       RemoteRefUnreadable { detail: d } => DesiredRevisionUnobserved { detail: join(["main: ", d], "") }
       RemoteRefHex { hex: m } =>
         match desired_hex {
-          RemoteRefUnreadable { detail: d } => DesiredRevisionUnobserved { detail: join(["refs/fleet/desired: ", d], "") }
+          RemoteRefUnreadable { detail: d } => DesiredRevisionUnobserved { detail: join(["origin/main: ", d], "") }
           RemoteRefHex { hex: d } => DesiredRevisionObserved { main_hex: m, desired_hex: d }
         }
     }),

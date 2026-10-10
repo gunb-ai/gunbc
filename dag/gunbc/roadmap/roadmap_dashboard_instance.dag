@@ -252,7 +252,7 @@ type HostDashboardInstance {
 // exist without answering it.
 //
 // The launch gate asks whether the tree an instance dispatches from is the ADMITTED revision, and
-// until now the answer came from one hardcoded pair: refs/fleet/desired, advertised by origin. That
+// until the fleet-desired withdrawal the answer came from refs/fleet/desired; it is now origin/main. That
 // is the right authority for a fleet host and the wrong question for a development checkout, which
 // is not a fleet member and whose HEAD is ahead of the admitted fleet revision by construction --
 // that being the entire point of a development checkout.
@@ -1122,9 +1122,9 @@ data srv2_dashboard_lab_root: FilePath = "/home/briansrls/.local/share/gunbc-das
 // own reason, which is why this row exists instead of a fourth parameter on one of them.
 //
 // srv2_lab_dashboard_instance below is fed from its own local origin.git bundle, and that bundle
-// advertises no refs/fleet/desired -- so every dispatch against it refuses with
+// advertises no origin/main -- so every dispatch against it refuses with
 // deployed_revision_unobserved. The refusal is CORRECT: the lab is isolated by construction and its
-// origin is not the fleet's. Pushing the fleet ref into that bundle by hand would be out-of-band
+// origin is not the fleet's. Pushing main into that bundle by hand would be out-of-band
 // actuation against provisioned state a modeled apply owns, and it would not help anyway, because
 // the lab's source is pinned to the ref it was seeded from and attempts would branch off that.
 //
