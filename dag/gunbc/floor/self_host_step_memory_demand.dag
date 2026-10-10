@@ -131,7 +131,13 @@ fn receipt_configuration_cell(cols: List<String>) -> String {
 }
 
 fn receipt_bytes_at(rows: List<List<String>>, kind: String, name: String) -> Optional<ByteSize> {
-  let found = filter(rows, r => receipt_column(cols: r, index: 0) == kind && receipt_column(cols: r, index: 1) == name && receipt_configuration_cell(cols: r) == self_host_step_memory_receipt_configuration as String)
+  receipt_bytes_at_in(rows: rows, kind: kind, name: name, configuration: self_host_step_memory_receipt_configuration as String)
+}
+
+// The same reading under a NAMED configuration cell: a trend row that claims a measured lowering
+// names the two configurations it compares, and this is how the readout re-derives both from the file.
+fn receipt_bytes_at_in(rows: List<List<String>>, kind: String, name: String, configuration: String) -> Optional<ByteSize> {
+  let found = filter(rows, r => receipt_column(cols: r, index: 0) == kind && receipt_column(cols: r, index: 1) == name && receipt_configuration_cell(cols: r) == configuration)
   if length(xs: found) != 1 { bytes_none() } else {
     match found.first() {
       Present { value: r } =>
@@ -148,6 +154,10 @@ fn receipt_structure_bytes(rows: List<List<String>>, s: StepMemoryStructure) -> 
 // The seed's resident set at one named seam of the same run.
 fn receipt_stage_rss(rows: List<List<String>>, stage: String) -> Optional<ByteSize> {
   receipt_bytes_at(rows: rows, kind: "stage", name: stage)
+}
+
+fn receipt_stage_rss_in(rows: List<List<String>>, stage: String, configuration: String) -> Optional<ByteSize> {
+  receipt_bytes_at_in(rows: rows, kind: "stage", name: stage, configuration: configuration)
 }
 
 fn step_structures_unreadable(rows: List<List<String>>) -> List<StepMemoryStructure> {
@@ -177,12 +187,22 @@ fn step_seed_moment_bytes(rows: List<List<String>>) -> Optional<ByteSize> {
 // v2.compiler.compile's own size; neither shrinks on its own. The demand falls only under a named
 // change, and each change removes a SET of buckets, so the trend is a staircase that is flat or rising
 // between changes, never a slope.
+// WHAT A ROW MAY SAY ABOUT THE STEP PEAK IS TYPED BY ITS EVIDENCE (DESIGN 4d; review 78422). A
+// measured lowering names the two receipt configurations the readout compares, so the claim is
+// re-derived from the committed file and refused when either side is missing or the after side is
+// not below the before; an expected lowering is a bet carrying its ground; a row that claims nothing
+// about the peak says so. A bare Bool could assert what its warrant disclaimed.
+type StepPeakEffect
+  = PeakLoweringMeasured { before_configuration: NonEmptyStr, after_configuration: NonEmptyStr }
+  | PeakLoweringExpected { ground: NonEmptyStr }
+  | PeakEffectUnclaimed
+
 type StepDemandTrend {
   change: StepDemandEnder
   removes_scale: StepDemandScale
   removes_from_seed_peak: Bool
   removes_from_cargo_phase: Bool
-  lowers_step_peak: Bool
+  step_peak: StepPeakEffect
   evidence: NonEmptyStr
 }
 
@@ -192,15 +212,15 @@ data self_host_step_demand_trend: List<StepDemandTrend> = [
     removes_scale: WholeTree,
     removes_from_seed_peak: true,
     removes_from_cargo_phase: true,
-    lowers_step_peak: true,
-    evidence: "release_whole_tree_after_census clears pool_acquire POOL immediately before compile_to_resolved_with_options; resolution then re-acquires only a closure-sized set, so the whole-tree pool is not live at the seed moment or during cargo. This audit head does not ship that call, so no classified structure carries this ender. The lever head applies it; its receipt configuration names the run that measured the before/after at compile_emission_over.pre_resolve and compile_emission_over.post_resolve",
+    step_peak: PeakLoweringExpected { ground: "pool_heads and pool_content_tokens_newline are whole-tree and live at the seed's moment; a release of the pool before compile_to_resolved_with_options removes them from the post_resolve resident set, and resolution re-acquires only a closure-sized set" },
+    evidence: "the pool is held through resolution on this base; the change that releases it ships with its own receipt under a second configuration cell, and the row becomes PeakLoweringMeasured there, naming both cells",
   },
   StepDemandTrend {
     change: ClosureScopedIngestion,
     removes_scale: WholeTree,
     removes_from_seed_peak: true,
     removes_from_cargo_phase: true,
-    lowers_step_peak: true,
+    step_peak: PeakLoweringExpected { ground: "every WholeTree structure in the receipt is built from the pooled modules, almost all of which are compiled for the census only" },
     evidence: "every WholeTree structure in the receipt is built from the pooled modules of which almost all are compiled for the census only",
   },
   StepDemandTrend {
@@ -208,7 +228,7 @@ data self_host_step_demand_trend: List<StepDemandTrend> = [
     removes_scale: EntryClosure,
     removes_from_seed_peak: true,
     removes_from_cargo_phase: false,
-    lowers_step_peak: true,
+    step_peak: PeakLoweringExpected { ground: "the native generation-two compiler would hold its own closure working set instead of the interpreter's; its footprint is unmeasured" },
     evidence: "the native generation-two compiler would hold its own closure working set instead of the interpreter's; its footprint has not been measured and this row claims none",
   },
   StepDemandTrend {
@@ -216,7 +236,7 @@ data self_host_step_demand_trend: List<StepDemandTrend> = [
     removes_scale: EmittedCrate,
     removes_from_seed_peak: false,
     removes_from_cargo_phase: true,
-    lowers_step_peak: false,
+    step_peak: PeakEffectUnclaimed,
     evidence: "rustc's footprint scales with the emitted crate; it is read by the cgroup sampler, which is the declared frontier and not a line in the receipt, so this row is a classification not a reading",
   },
 ]
@@ -262,11 +282,35 @@ fn self_host_step_memory_readout() -> ProcessExit {
   }
 }
 
+// A measured lowering is re-derived, never trusted: both configurations must carry a post_resolve
+// stage line and the after side must be strictly below the before side.
+fn measured_lowering_holds(rows: List<List<String>>, effect: StepPeakEffect) -> Bool {
+  match effect {
+    PeakLoweringMeasured { before_configuration: b, after_configuration: a } =>
+      match receipt_stage_rss_in(rows: rows, stage: "compile_emission_over.post_resolve", configuration: b as String) {
+        Absent => false
+        Present { value: before } =>
+          match receipt_stage_rss_in(rows: rows, stage: "compile_emission_over.post_resolve", configuration: a as String) {
+            Absent => false
+            Present { value: after } => !measure_le(a: before, b: after)
+          }
+      }
+    PeakLoweringExpected { ground: _ } => true
+    PeakEffectUnclaimed => true
+  }
+}
+
+fn unverifiable_measured_lowerings(rows: List<List<String>>) -> List<StepDemandTrend> {
+  filter(self_host_step_demand_trend, t => !measured_lowering_holds(rows: rows, effect: t.step_peak))
+}
+
 fn self_host_step_memory_readout_over(rows: List<List<String>>) -> ProcessExit {
   if length(xs: step_structures_unreadable(rows: rows)) > 0 {
     exit_failure(reason: "the receipt lacks exactly one well-formed line for a classified structure")
   } else if length(xs: filter(self_host_step_memory_structures, s => !structure_has_trend_row(s: s))) > 0 {
     exit_failure(reason: "a classified structure has no trend row for its ender and scale")
+  } else if length(xs: unverifiable_measured_lowerings(rows: rows)) > 0 {
+    exit_failure(reason: "a trend row claims a measured peak lowering that the receipt does not re-derive: post_resolve under both named configurations, after strictly below before")
   } else {
     match receipt_stage_rss(rows: rows, stage: "compile_emission_over.post_emit") {
       Absent => exit_failure(reason: "the receipt has no post-emission stage line")
