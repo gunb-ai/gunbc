@@ -32,7 +32,7 @@ test fn fci1_context_derives_the_runner_workload_envelope() -> Bool {
           Absent => false
         }
         && context.checkout_root == "/tmp/fci1 checkout"
-        && context.envelope_basis.module_path == "gunbc.runner_slot_allocation"
+        && context.envelope_basis.module_path == "gunbc.runner_slot_desired"
         && context.envelope_basis.decl_name == "gunbc_runner_slot_desired"
     _ => false
   }
