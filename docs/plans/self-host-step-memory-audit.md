@@ -4,10 +4,10 @@ Subject: the slot memory peak of `gunbc test //gunbc/instruments:self-host` and 
 `//gunbc/instruments:v2-native-cli`. This page carries NO measured figure (DESIGN §6): every number
 lives in the receipt the instrument wrote, and the model reads it.
 
-- Receipt: `tools/self_host_step_memory_receipt.tsv` (line kinds `bucket` and `stage`, both written by the seed in one run; documented in the model's header).
+- Receipt: `tools/self_host_step_memory_receipt.tsv` (line kinds `bucket` and `stage`, both written by the seed in one run; every line's last column is the configuration cell `GUNBC_MEMORY_COMPOSITION_CONFIGURATION`; the model selects on that column).
 - Model and reader: `gunbc.self_host_step_memory_demand` (`dag/gunbc/floor/self_host_step_memory_demand.dag`). Re-derive the readout from the repo root, under a cgroup budget:
   `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/floor/self_host_step_memory_demand.dag --function self_host_step_memory_readout`
-- Instrument, buckets: `GUNBC_MEMORY_COMPOSITION=1 GUNBC_MEMORY_COMPOSITION_RECEIPT=<file> gunbc test //gunbc/instruments:self-host` (`src/v1/stage0/src/cli_run/memory_composition.rs`) appends one `bucket` line per released structure; the hook releases only after emission and only when the env is set.
+- Instrument, buckets: `GUNBC_MEMORY_COMPOSITION=1 GUNBC_MEMORY_COMPOSITION_RECEIPT=<file> GUNBC_MEMORY_COMPOSITION_CONFIGURATION=<cell> gunbc test //gunbc/instruments:self-host` (`src/v1/stage0/src/cli_run/memory_composition.rs`) appends one `bucket` line per released structure; the hook releases only after emission and only when the env is set.
 - Instrument, stages: the same hook appends one `stage` line (resident set and VmHWM) at each seam inside the emission; the model's readout checks the buckets against the post-emission stage line of the same run.
 - DECLARED FRONTIER, not in the receipt: the cgroup-level phase attribution (a 1 s sampler over `systemd-run --user --scope -p MemoryMax=22G -p MemorySwapMax=0` cut at the step's log seams, covering cargo/rustc and the controls) and the two-closure regression that splits the reconcile transient. The seed cannot write either. Trigger: an instrument entry (an `instrument_targets` row or a seed-side sampler) that writes `phase` lines into the same receipt; until then the figures for cargo/rustc are not claimed by this page or the model.
 
@@ -20,7 +20,7 @@ lives in the receipt the instrument wrote, and the model reads it.
 - Which phase holds the step's high-water mark, and the rustc/product shares, are the sampler frontier above and are not asserted here.
 
 ## Provenance and standing (DESIGN §4d)
-The committed receipt is the unedited output of one instrumented run of `gunbc test //gunbc/instruments:self-host` on srv1 under the 22G/swap0 scope; the PR body names the run. Growth rate over time is NOT in the receipt: it is one week of tree history and is a bet.
+The committed receipt is the unedited output of one instrumented run of `gunbc test //gunbc/instruments:self-host`; its configuration column names the pool policy, the scope and the run. This audit head's cell is `gunbc.self_host_step_memory_demand` `self_host_step_memory_receipt_configuration` (container, no cgroup peak: srv1 was unreachable). Growth rate over time is NOT in the receipt: it is one week of tree history and is a bet.
 
 ## Levers and recommendation
 Levers and the slot/trip recommendation are the lane report's, not this page's, because the pool-release lever is a production-path change measured in its own PR with its own receipt (dissolution trigger: closure-scoped ingestion). This page does not restate it.

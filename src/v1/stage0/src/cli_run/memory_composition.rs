@@ -13,11 +13,12 @@
 //! attributed in DROP ORDER: an `Rc` shared by two caches frees at the last holder, so a later
 //! stage's figure includes anything an earlier one only released a reference to.
 //!
-//! Instrument: `GUNBC_MEMORY_COMPOSITION=1 GUNBC_MEMORY_COMPOSITION_RECEIPT=<file> gunbc test
-//! //gunbc/instruments:self-host`. The seed itself appends the receipt that
-//! `gunbc.self_host_step_memory_demand` reads: one `bucket` line per released structure and one
-//! `stage` line per in-emission resident-set readback, both from the same run. The module reads
-//! the file it is pointed at; it never carries a figure of its own.
+//! Instrument: `GUNBC_MEMORY_COMPOSITION=1 GUNBC_MEMORY_COMPOSITION_RECEIPT=<file>
+//! GUNBC_MEMORY_COMPOSITION_CONFIGURATION=<cell> gunbc test //gunbc/instruments:self-host`.
+//! The seed itself appends the receipt that `gunbc.self_host_step_memory_demand` reads: one
+//! `bucket` line per released structure and one `stage` line per in-emission resident-set
+//! readback, both from the same run, each carrying the configuration cell as its last column.
+//! The module reads the file it is pointed at; it never carries a figure of its own.
 
 use std::mem::take;
 
@@ -37,6 +38,20 @@ fn refuse(what: &str) -> ! {
     std::process::exit(2)
 }
 
+/// One TSV cell naming the instrument configuration (pool policy, scope, run). Required whenever
+/// a receipt path is set: a line without it cannot be selected by the reader.
+fn configuration_cell() -> String {
+    match std::env::var("GUNBC_MEMORY_COMPOSITION_CONFIGURATION") {
+        Ok(s) if !s.is_empty() && !s.contains('\t') && !s.contains('\n') => s,
+        Ok(_) => refuse(
+            "GUNBC_MEMORY_COMPOSITION_CONFIGURATION must be one non-empty TSV cell (no tab or newline)",
+        ),
+        Err(_) => refuse(
+            "GUNBC_MEMORY_COMPOSITION_CONFIGURATION unset; every receipt line must name the configuration",
+        ),
+    }
+}
+
 /// One resident-set reading with no side effect, for the seams inside the emission.
 pub(super) fn readback(stage: &str) {
     if !enabled() {
@@ -49,14 +64,16 @@ pub(super) fn readback(stage: &str) {
     record_line(&format!("stage\t{stage}\t{}\t{}", rss * 1024, peak * 1024));
 }
 
-/// The RECEIPT: one `bucket<TAB>name<TAB>bytes` line per released structure appended to the file
-/// named by `GUNBC_MEMORY_COMPOSITION_RECEIPT`, which `gunbc.self_host_step_memory_demand` reads.
-/// Bytes are what `malloc_trim` returned after the release, i.e. the structure's live size.
+/// The RECEIPT: one `bucket<TAB>name<TAB>bytes<TAB>configuration` line per released structure
+/// appended to the file named by `GUNBC_MEMORY_COMPOSITION_RECEIPT`, which
+/// `gunbc.self_host_step_memory_demand` reads. Bytes are what `malloc_trim` returned after the
+/// release, i.e. the structure's live size. The last column is the configuration cell.
 fn record_line(line: &str) {
     use std::io::Write;
     let Some(path) = std::env::var_os("GUNBC_MEMORY_COMPOSITION_RECEIPT") else {
         return;
     };
+    let cfg = configuration_cell();
     let mut f = match std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -65,7 +82,7 @@ fn record_line(line: &str) {
         Ok(f) => f,
         Err(e) => refuse(&format!("cannot open receipt {path:?}: {e}")),
     };
-    if let Err(e) = writeln!(f, "{line}") {
+    if let Err(e) = writeln!(f, "{line}\t{cfg}") {
         refuse(&format!("cannot write receipt {path:?}: {e}"));
     }
 }
