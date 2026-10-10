@@ -1,0 +1,70 @@
+module test.claim.machine_intake.bmc_stack_observation_forged_probe_witness_test
+
+import v2.std.algebra { filter }
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE MANAGED-HOST CUT 5 SEALS, ENROLLED AS EXECUTED REDS. The probe source below authors a FanObserveHost
+// outside its mint, and calls each admitted body of the fan read and the MegaRAC KVM probe -- and the
+// effects beneath them -- from outside their admitted callers, each with a carrier or raw values in hand.
+// Served-UI observation is not in this public tree (f956099fcbe moved AMI-bundle-derived content to
+// gunbc-private), so that seal is not re-authored here. The witness hands that source to the compiler
+// through the diagnostic-census harness and requires the refusal CLASS at each SUBJECT by name.
+data forged_fan_source: String = "module probe_bmc_stack_observation_forged_fan\n\nimport std.types { NonEmptyStr }\nimport std.process { ProcessExit }\nimport extdeps.bmc.access_profile { BmcAccessObservation }\nimport product.host_identity { HostIdentity }\nimport product.fan_policy_standing { FanPolicyAuthority }\nimport gunbc.machine_intake_fan_observe { FanObserveHost, FanObservePolicy, fan_observe_with }\n\nfn forged_fan_host(o: BmcAccessObservation, h: HostIdentity, a: FanPolicyAuthority) -> FanObserveHost {\n  FanObserveHost { host: h, observation: o, account: \"admin\" as NonEmptyStr, authority: a }\n}\n\nfn fan_read_from_outside(h: FanObserveHost, p: FanObservePolicy) -> ProcessExit {\n  fan_observe_with(host: h, password_file: \"/tmp/pw\" as NonEmptyStr, policy: p)\n}\n"
+data forged_kvm_source: String = "module probe_bmc_stack_observation_forged_kvm\n\nimport std.types { NonEmptyStr }\nimport std.process { ProcessExit }\nimport product.host_identity { HostIdentity }\nimport gunbc.megarac_managed_host { AdmittedMegaRacHost }\nimport gunbc.machine_intake_megarac_kvm_observer_observe { KvmObserverProbePaths, KvmProbeHeldRun, megarac_kvm_observer_observe, megarac_kvm_observer_observe_held, megarac_kvm_observer_release }\n\nfn kvm_probe_from_outside(h: AdmittedMegaRacHost) -> ProcessExit {\n  megarac_kvm_observer_observe(host: h, password_file: \"/tmp/pw\" as NonEmptyStr, run_id: \"1\" as NonEmptyStr, paths: KvmObserverProbePaths { dir_prefix: \"x-\" })\n}\n\nfn kvm_held_from_outside(h: AdmittedMegaRacHost) -> KvmProbeHeldRun {\n  megarac_kvm_observer_observe_held(host: h, password_file: \"/tmp/pw\" as NonEmptyStr, run_id: \"1\" as NonEmptyStr, paths: KvmObserverProbePaths { dir_prefix: \"x-\" })\n}\n\nfn kvm_release_from_outside(h: HostIdentity) -> ProcessExit {\n  megarac_kvm_observer_release(host: h, run_id: \"1\" as NonEmptyStr, paths: KvmObserverProbePaths { dir_prefix: \"x-\" })\n}\n"
+
+fn probe(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn blocking_count_for_class_and_subject(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+fn blocking_count_for_class(c: CompileDiagnosticCensus, wanted: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows |> filter(r => (r.diagnostic_class as String) == wanted && r.blocking) |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+data harness_control_source: String = "module probe_bmc_stack_observation_harness_control\nimport std.types { NonEmptyStr }\nimport gunbc.managed_host { managed_host_binding_for }\nimport gunbc.machine_intake_fan_observe { FanObserveAdmission, fan_observe_admission }\nfn admission(host: NonEmptyStr) -> FanObserveAdmission { fan_observe_admission(lookup: managed_host_binding_for(host: host)) }\n"
+
+// THE CONTROL IS CLASS-SCOPED: a clean source reaching the fan admission through its real entry yields
+// NO row of either class the reds count.
+test fn the_harness_runs_and_a_clean_source_emits_neither_wall_class() -> Bool {
+  let c = compile_dag_diagnostic_census(harness_control_source)
+  blocking_count_for_class(c: c, wanted: "SoleConstructorViolation") == 0
+    && blocking_count_for_class(c: c, wanted: "ConstructorCallAdmissionRefused") == 0
+}
+
+// A FAN-READ CARRIER CANNOT BE AUTHORED OUTSIDE ITS MINT, so no controller, account or policy authority
+// reaches the fan read except through a managed binding.
+test fn a_forged_fan_observe_host_is_refused_at_its_literal() -> Bool {
+  blocking_count_for_class_and_subject(c: probe(source: forged_fan_source), wanted: "SoleConstructorViolation", subject: "FanObserveHost") >= 1
+}
+
+// EACH ADMITTED BODY, AND EACH EFFECT BENEATH IT, REFUSES AN OUTSIDE CALLER -- even one holding a carrier.
+test fn the_fan_read_refuses_an_outside_caller() -> Bool {
+  blocking_count_for_class_and_subject(c: probe(source: forged_fan_source), wanted: "ConstructorCallAdmissionRefused", subject: "fan_observe_with") >= 1
+}
+
+// THE KVM PROBE, ITS HELD RUN AND ITS RELEASE refuse an outside caller.
+test fn the_kvm_probe_and_its_release_refuse_an_outside_caller() -> Bool {
+  let c = probe(source: forged_kvm_source)
+  blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "megarac_kvm_observer_observe") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "megarac_kvm_observer_observe_held") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "megarac_kvm_observer_release") >= 1
+}
