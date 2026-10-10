@@ -1,0 +1,16 @@
+module test.claim.roadmap_task_form_witness_test
+
+import std.types { Bool, String }
+import std.optional { Present, Absent }
+import gunbc.roadmap_task_form { roadmap_task_draft_from_form, roadmap_task_form_missing }
+import gunbc.roadmap.roadmap_readiness { node_readiness }
+
+fn full(name: String) -> String { if name == "functions" { "a_test, b_test" } else { concat("v-", name) } }
+
+// A complete form drafts a node; a form missing any one field names it and drafts nothing.
+test fn form_complete_drafts_and_missing_refuses() -> Bool {
+  let drafted = match roadmap_task_draft_from_form(get: full) { Present { value: _ } => true Absent => false }
+  let partial = (name => if name == "centering" { "" } else { full(name) })
+  let refused = match roadmap_task_draft_from_form(get: partial) { Present { value: _ } => false Absent => true }
+  drafted && refused && roadmap_task_form_missing(get: partial) == ["centering"]
+}
