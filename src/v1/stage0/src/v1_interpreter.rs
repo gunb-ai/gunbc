@@ -7267,7 +7267,7 @@ impl InterpContext {
     /// The bare slot is one map entry owned by the last-visited module (first, under precedence);
     /// every other module's references to that spelling execute the winner's body. Not authored
     /// shadowing -- a module losing its own declaration to a homonym. It produced
-    /// `docs/plans/import-namespace-program.md` carrying `v2-corpus-self-host`'s entire body,
+    /// the `import-namespace-program` plan document carrying `v2-corpus-self-host`'s entire body,
     /// both plan carriers declaring `section_1` .. `section_9` and `status_block`.
     ///
     /// THE TIER IS GATED ON `ambiguous_bare_function_names`: every name exactly one module
@@ -23616,7 +23616,7 @@ macro_rules! v1_builtin_arms {
             arm "free_call.record_source_chars_index_lookup" { "record_source_chars_index_lookup" } => Ok(Some(Value::Unit)),
 
             // Scaffold arm — dissolution trigger lives on `v1_rt::trace_mark`'s doc comment
-            // (realization_measurement_loop Phase 0, docs/plans/realization-measurement-loop.md):
+            // (realization_measurement_loop Phase 0):
             // delete this arm with the rest of the trace_mark deletion set named there.
             arm "free_call.trace_mark" { "trace_mark" } => {
                 if let [Value::Str(s)] = $positional.as_slice() {
