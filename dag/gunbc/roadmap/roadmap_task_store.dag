@@ -86,7 +86,7 @@ type RuntimeTaskCapacity = CapacityWithin | CapacityCompactionDue | CapacityFull
 
 fn roadmap_task_capacity(events: Nat) -> RuntimeTaskCapacity {
   let bound = event_log_read_budget()
-  if events >= bound { CapacityFull } else if events * 4 >= bound * 3 { CapacityCompactionDue } else { CapacityWithin }
+  if events >= bound { CapacityFull } else { if events * 4 >= bound * 3 { CapacityCompactionDue } else { CapacityWithin } }
 }
 
 fn roadmap_task_partition_id() -> PartitionId { roadmap_task_partition as NonEmptyStr as String as PartitionId }
@@ -178,10 +178,11 @@ fn task_superseded_decode(doc: JsonValue, key: NonEmptyStr) -> RuntimeTaskEvent?
 
 fn roadmap_task_event_kind_decode(doc: JsonValue, word: String) -> RuntimeTaskEvent? {
   match member_nonempty(doc: doc, key: "operation_key") { Absent => none Present { value: key } =>
-    if word == "created" { task_created_decode(doc: doc, key: key) }
-    else if word == "revised" { task_revised_decode(doc: doc, key: key) }
-    else if word == "superseded" { task_superseded_decode(doc: doc, key: key) }
-    else { none }
+    if word == "created" { task_created_decode(doc: doc, key: key) } else {
+      if word == "revised" { task_revised_decode(doc: doc, key: key) } else {
+        if word == "superseded" { task_superseded_decode(doc: doc, key: key) } else { none }
+      }
+    }
   }
 }
 
@@ -218,9 +219,9 @@ fn roadmap_task_fold_step(acc: RuntimeTaskFold, event: RuntimeTaskEvent) -> Runt
         Present { value: TaskRetired { task: _, successor: _ } } => task_fold_inconsistent(reason: "a revision names a superseded task")
         Present { value: TaskLive { task: current } } => match roadmap_task_definition_digest(task: current) {
           Absent => task_fold_inconsistent(reason: "the current definition has no digest")
-          Present { value: have } => if (have as String) != (d as String) { task_fold_inconsistent(reason: "a revision presents a stale definition digest") }
-            else if (r.node as String) != (current.node as String) { task_fold_inconsistent(reason: "a revision changes the task's node id") }
-            else { RuntimeTasksFolded { states: task_state_replace(states: states, id: id as String, next: TaskLive { task: r }) } }
+          Present { value: have } => if (have as String) != (d as String) { task_fold_inconsistent(reason: "a revision presents a stale definition digest") } else {
+            if (r.node as String) != (current.node as String) { task_fold_inconsistent(reason: "a revision changes the task's node id") } else { RuntimeTasksFolded { states: task_state_replace(states: states, id: id as String, next: TaskLive { task: r }) } }
+          }
         }
       }
       TaskSuperseded { operation_key: _, task: id, replacement: next } => match task_state_find(states: states, id: id as String) {
@@ -228,8 +229,7 @@ fn roadmap_task_fold_step(acc: RuntimeTaskFold, event: RuntimeTaskEvent) -> Runt
         Present { value: TaskRetired { task: _, successor: _ } } => task_fold_inconsistent(reason: "a task was superseded twice")
         Present { value: TaskLive { task: current } } => match next {
           Absent => RuntimeTasksFolded { states: task_state_replace(states: states, id: id as String, next: TaskRetired { task: current, successor: none }) }
-          Present { value: n } => if (n as String) == (id as String) { task_fold_inconsistent(reason: "a task cannot supersede itself") }
-            else { match task_state_find(states: states, id: n as String) {
+          Present { value: n } => if (n as String) == (id as String) { task_fold_inconsistent(reason: "a task cannot supersede itself") } else { match task_state_find(states: states, id: n as String) {
               Absent => task_fold_inconsistent(reason: "a supersession names a replacement that was never created")
               Present { value: _ } => RuntimeTasksFolded { states: task_state_replace(states: states, id: id as String, next: TaskRetired { task: current, successor: Present { value: n } }) }
             } }
@@ -274,7 +274,7 @@ fn roadmap_tasks_listed(roster: RuntimeTaskRoster) -> List<RoadmapNode>? {
 }
 
 fn flat_map_live(states: List<RuntimeTaskState>) -> List<RoadmapNode> {
-  fold(states, init: [] as List<RoadmapNode>, f: (acc, s) => match task_state_live(s: s) { Absent => acc Present { value: t } => concat(acc, [t]) })
+  fold(states, init: [], f: (acc, s) => match task_state_live(s: s) { Absent => acc Present { value: t } => concat(acc, [t]) })
 }
 
 // A snapshot is the folded state as a value: what compaction would carry in place of the events it
@@ -292,7 +292,7 @@ fn roadmap_task_snapshot_matches(snapshot: List<RuntimeTaskState>, after: List<R
 }
 
 fn roadmap_task_states_equal(a: List<RuntimeTaskState>, b: List<RuntimeTaskState>) -> Bool {
-  length(a) == length(b) && all(zip(a, b), p => task_state_text(s: p.0) == task_state_text(s: p.1))
+  join(map(a, s => task_state_text(s: s)), "|") == join(map(b, s => task_state_text(s: s)), "|")
 }
 
 fn task_state_text(s: RuntimeTaskState) -> String {
@@ -319,15 +319,14 @@ fn roadmap_task_commit(store: FabricStorageBinding, actor: NonEmptyStr, at: Epoc
         Present { value: prior } => if task_event_replay_equal(prior: prior, next: event, actor: actor) { match roadmap_task_event_subject(event: prior, states: states) {
             Present { value: t } => RuntimeTaskReplayed { task: t }
             Absent => RuntimeTaskRefused { reason: "replayed event's task is not in the roster" }
-          } }
-          else { RuntimeTaskRefused { reason: "operation key already names a different event" } }
-        Absent => match roadmap_task_capacity(events: length(events)) {
-          CapacityFull => RuntimeTaskChainFull { events: length(events) }
+          } } else { RuntimeTaskRefused { reason: "operation key already names a different event" } }
+        Absent => match roadmap_task_capacity(events: count(events)) {
+          CapacityFull => RuntimeTaskChainFull { events: count(events) }
           other => match roadmap_task_fold(events: concat(events, [event])) {
             RuntimeTasksInconsistent { reason: r } => RuntimeTaskStale { reason: r }
             RuntimeTasksFolded { states: after } => match roadmap_task_event_subject(event: event, states: after) {
               Absent => RuntimeTaskRefused { reason: "event's task is not in the folded roster" }
-              Present { value: subject } => roadmap_task_append(store: store, head: head, actor: actor, at: at, event: event, subject: subject, events: length(events) + 1)
+              Present { value: subject } => roadmap_task_append(store: store, head: head, actor: actor, at: at, event: event, subject: subject, events: count(events) + 1)
             }
           }
         }
