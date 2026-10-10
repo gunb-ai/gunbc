@@ -2532,7 +2532,537 @@ fn observe_binary_inputs() -> BinaryInputObservation {
 /// (`gunbc.target_invocation` `assess_binary_freshness`), then route. Kept beside `test_verb`
 /// rather than inside it so the routing tests stay a function of the operand alone.
 pub fn test_verb_checked(operand: &str) -> InvocationOutcome {
-    test_verb_after(operand, &assess_binary_freshness(&observe_binary_inputs()))
+    // THE SECOND ACT, BEFORE ANY PRODUCER: bind this process to a kernel memory limit when the
+    // invocation asked for one (`GUNBC_BIND_MEMORY_CGROUP_BYTES`, gunbc.memory_cgroup_binding --
+    // the same bind claim_executor and claim_batch take) at gunbc.emitted_subject_build_gate
+    // native_step_memory_trip, the slot's MemoryHigh less a declared headroom. The required
+    // `witnesses` job passes that input only where a job owns a bounded cgroup
+    // (gunbc.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership decides; today a fleet job
+    // is the deprivileged job user under a root unit and the governor's leaf lives at the cgroup
+    // root, and the climb is gunbc.guarantee_stall native_step_trip_awaits_fleet_job_cgroup_stall).
+    // A refused bind stops the line: the run asked to be bounded and is not.
+    let bind = crate::memory_governor::apply_memory_cgroup_bind();
+    eprintln!("{}", crate::memory_governor::cgroup_bind_note(&bind));
+    if let Some(diagnostic) = crate::memory_governor::cgroup_bind_refusal_diagnostic(&bind) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: diagnostic,
+        };
+    }
+    // THE THIRD ACT: what bounds this run, decided and READ before the producer. The required job
+    // passes `GUNBC_MEMORY_ENVELOPE_REQUIRED=slot` on every subject step
+    // (gunbc.emitted_subject_build_gate native_step_memory_envelope_env_name): a cgroup memory.max
+    // must already bind the step -- the fleet slot's -- and a run none binds is refused, because a
+    // required step that cannot say what bounded it is not the measurement the gate names
+    // (operator ruling 2026-10-09: a fixed hard maximum, swap refused, a peak-and-swap receipt,
+    // no larger-runner retry).
+    let envelope = match memory_envelope_requirement(&bind) {
+        Ok(envelope) => envelope,
+        Err(refusal) => {
+            eprintln!("{refusal}");
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: refusal,
+            };
+        }
+    };
+    let outcome = test_verb_after(operand, &assess_binary_freshness(&observe_binary_inputs()));
+    // THE PEAK-AND-SWAP RECEIPT, after the producer and whatever it spawned have run: read from
+    // the cgroup that bounds the step (every child process was charged to it), against the
+    // reading taken before the producer, so a cgroup that outlives the step -- the slot's --
+    // reports what THIS step added. A violated envelope -- an OOM kill, swap charged, or a swap
+    // counter that cannot be read -- is a refusal even over a producer that held, because "no
+    // thrashing, ever" is part of the verdict.
+    match memory_envelope_receipt(&envelope) {
+        None => outcome,
+        Some(Ok(receipt)) => {
+            eprintln!("{receipt}");
+            outcome
+        }
+        Some(Err(violation)) => {
+            eprintln!("{violation}");
+            InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!("{}\n{violation}", outcome.message),
+            }
+        }
+    }
+}
+
+/// Authority: `gunbc.emitted_subject_build_gate` `native_step_memory_envelope_env_name` and
+/// `native_step_memory_envelope_slot_value` (the latter the projection of `gunbc.memory_envelope`
+/// `EnvelopeSlotRequired`), pinned by `test.claim.compiler_gate_emit_build_lane_witness_test`
+/// `the_seed_envelope_requirement_inputs_are_the_dag_rows`.
+const MEMORY_ENVELOPE_REQUIRED_ENV: &str = "GUNBC_MEMORY_ENVELOPE_REQUIRED";
+const MEMORY_ENVELOPE_SLOT_VALUE: &str = "slot";
+
+/// Authority: `gunbc.memory_envelope` `MemoryEnvelopeRequirement`. Absent and unreadable are
+/// different answers, exactly as for the bind request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum MemoryEnvelopeRequirement {
+    NotRequested,
+    SlotRequired,
+    Unreadable { raw: String },
+}
+
+/// Authority: `gunbc.memory_envelope` `MemoryEnvelopeGrain` / `memory_envelope_grain_label`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MemoryEnvelopeGrain {
+    Leaf,
+    Existing,
+    Slot,
+}
+
+impl MemoryEnvelopeGrain {
+    fn label(self) -> &'static str {
+        match self {
+            MemoryEnvelopeGrain::Leaf => "leaf",
+            MemoryEnvelopeGrain::Existing => "existing",
+            MemoryEnvelopeGrain::Slot => "slot",
+        }
+    }
+}
+
+/// Authority: `gunbc.memory_envelope` `MemoryEnvelopeRefusalCause`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum MemoryEnvelopeRefusalCause {
+    GrainUnknown { raw: String },
+    Absent { grain: MemoryEnvelopeGrain },
+}
+
+/// Authority: `gunbc.memory_envelope` `MemoryEnvelopeDecision`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum MemoryEnvelopeDecision {
+    NotRequired,
+    Bounded { grain: MemoryEnvelopeGrain },
+    Refused { cause: MemoryEnvelopeRefusalCause },
+}
+
+/// Mirror of `gunbc.memory_envelope` `memory_envelope_requirement_from_text`.
+fn memory_envelope_requirement_from_text(raw: Option<&str>) -> MemoryEnvelopeRequirement {
+    match raw {
+        None => MemoryEnvelopeRequirement::NotRequested,
+        Some(v) if v == MEMORY_ENVELOPE_SLOT_VALUE => MemoryEnvelopeRequirement::SlotRequired,
+        Some(v) => MemoryEnvelopeRequirement::Unreadable { raw: v.to_string() },
+    }
+}
+
+/// THE PURE DECISION, mirroring `gunbc.memory_envelope` `memory_envelope_decision` arm for arm:
+/// every input is a parameter so the discriminating cases -- above all a slot requirement over a
+/// process no numeric memory.max binds, which must refuse -- are reachable from a test on any
+/// machine. `numeric_max_binds` is the governor's `binding_cap_cgroup_dir` walk, read once by the
+/// shell below; a body of `max` is no limit.
+fn memory_envelope_decision(
+    bind: &crate::memory_governor::CgroupBindDecision,
+    requirement: &MemoryEnvelopeRequirement,
+    numeric_max_binds: bool,
+) -> MemoryEnvelopeDecision {
+    use crate::memory_governor::CgroupBindDecision as Bind;
+    let bounded_or_absent = |grain: MemoryEnvelopeGrain| {
+        if numeric_max_binds {
+            MemoryEnvelopeDecision::Bounded { grain }
+        } else {
+            MemoryEnvelopeDecision::Refused {
+                cause: MemoryEnvelopeRefusalCause::Absent { grain },
+            }
+        }
+    };
+    match requirement {
+        MemoryEnvelopeRequirement::Unreadable { raw } => MemoryEnvelopeDecision::Refused {
+            cause: MemoryEnvelopeRefusalCause::GrainUnknown { raw: raw.clone() },
+        },
+        MemoryEnvelopeRequirement::NotRequested => match bind {
+            Bind::Applicable { .. } => bounded_or_absent(MemoryEnvelopeGrain::Leaf),
+            Bind::UnnecessaryLimitAlreadyBinds { .. } => {
+                bounded_or_absent(MemoryEnvelopeGrain::Existing)
+            }
+            Bind::NotRequested => MemoryEnvelopeDecision::NotRequired,
+            Bind::Refused { .. } => MemoryEnvelopeDecision::Refused {
+                cause: MemoryEnvelopeRefusalCause::Absent {
+                    grain: MemoryEnvelopeGrain::Leaf,
+                },
+            },
+        },
+        MemoryEnvelopeRequirement::SlotRequired => match bind {
+            Bind::Applicable { .. } => bounded_or_absent(MemoryEnvelopeGrain::Leaf),
+            Bind::UnnecessaryLimitAlreadyBinds { .. } => {
+                bounded_or_absent(MemoryEnvelopeGrain::Existing)
+            }
+            Bind::NotRequested => bounded_or_absent(MemoryEnvelopeGrain::Slot),
+            Bind::Refused { .. } => MemoryEnvelopeDecision::Refused {
+                cause: MemoryEnvelopeRefusalCause::Absent {
+                    grain: MemoryEnvelopeGrain::Leaf,
+                },
+            },
+        },
+    }
+}
+
+/// THE PURE VERDICT, mirroring `gunbc.memory_envelope` `memory_envelope_verdict`: violated on any
+/// OOM kill the step added, any swap resident at exit, an unreadable swap gauge, a swap peak that
+/// rose during the step, or a swap peak that could not be observed (`None`: no memory.swap.peak on
+/// this kernel) under a cgroup whose memory.swap.max is not zero -- unobservable is not "did not
+/// rise", and only a zero swap limit makes the missing counter moot.
+fn memory_envelope_violated(
+    oom_kills_delta: u64,
+    swap_current: Option<u64>,
+    swap_peak_rose: Option<bool>,
+    swap_max_zero: bool,
+) -> bool {
+    let swap_rose_or_unobservable = match swap_peak_rose {
+        Some(rose) => rose,
+        None => !swap_max_zero,
+    };
+    oom_kills_delta > 0 || swap_current.map(|v| v > 0).unwrap_or(true) || swap_rose_or_unobservable
+}
+
+/// What bounds this run's memory, decided before any producer, with the readings taken at the
+/// start so the receipt can report what this step added to a cgroup that outlives it.
+enum MemoryEnvelope {
+    NotRequired,
+    Bounded {
+        grain: MemoryEnvelopeGrain,
+        dir: std::path::PathBuf,
+        start: cli_run::floor_memory_supervisor::CgroupMemoryRead,
+        start_swap: cli_run::floor_memory_supervisor::CgroupSwapRead,
+    },
+}
+
+/// The effectful shell: read the requirement and the one host fact the decision needs, decide
+/// through the mirror, and take the start readings of the cgroup the decision named.
+fn memory_envelope_requirement(
+    bind: &crate::memory_governor::CgroupBindDecision,
+) -> Result<MemoryEnvelope, String> {
+    use crate::memory_governor::CgroupBindDecision as Bind;
+    let raw = std::env::var(MEMORY_ENVELOPE_REQUIRED_ENV).ok();
+    let requirement = memory_envelope_requirement_from_text(raw.as_deref());
+    // THE ONE HOST FACT: which cgroup carries the numeric memory.max that binds this process. The
+    // governor's walk is the authority (DESIGN section 3) and reads `max` as unset; the peak locator
+    // the first version used answers where counters may be read, never whether anything bounds them.
+    let binding_dir = crate::memory_governor::binding_cap_cgroup_dir();
+    let required_by = match (&requirement, bind) {
+        (MemoryEnvelopeRequirement::SlotRequired, Bind::NotRequested) => {
+            format!("{MEMORY_ENVELOPE_REQUIRED_ENV}={MEMORY_ENVELOPE_SLOT_VALUE}")
+        }
+        (MemoryEnvelopeRequirement::SlotRequired, _) => format!(
+            "{MEMORY_ENVELOPE_REQUIRED_ENV}={MEMORY_ENVELOPE_SLOT_VALUE} and the bind {}",
+            crate::memory_governor::BIND_MEMORY_CGROUP_ENV
+        ),
+        (_, _) => format!(
+            "the bind {} ({MEMORY_ENVELOPE_REQUIRED_ENV} unset)",
+            crate::memory_governor::BIND_MEMORY_CGROUP_ENV
+        ),
+    };
+    match memory_envelope_decision(bind, &requirement, binding_dir.is_some()) {
+        MemoryEnvelopeDecision::NotRequired => Ok(MemoryEnvelope::NotRequired),
+        MemoryEnvelopeDecision::Refused {
+            cause: MemoryEnvelopeRefusalCause::GrainUnknown { raw },
+        } => Err(format!(
+            "gunbc test: MEMORY ENVELOPE REFUSED cause=MemoryEnvelopeGrainUnknown — \
+             {MEMORY_ENVELOPE_REQUIRED_ENV}={raw:?} names no envelope grain this binary knows \
+             (it knows {MEMORY_ENVELOPE_SLOT_VALUE:?}); a run that asked to be bounded with a \
+             value the binary cannot read proceeds nowhere"
+        )),
+        MemoryEnvelopeDecision::Refused {
+            cause: MemoryEnvelopeRefusalCause::Absent { grain },
+        } => Err(format!(
+            "gunbc test: MEMORY ENVELOPE REFUSED cause=MemoryEnvelopeAbsent — {required_by} \
+             requires a cgroup memory.max to bind this process (grain {}), and no cgroup on its \
+             path to the root carries a numeric memory.max: a body of `max` is no limit \
+             (extdeps.linux.cgroup_v2_memory CgroupMemoryUnlimited), and an unconverged slot is \
+             refused rather than receipted as a bound",
+            grain.label()
+        )),
+        MemoryEnvelopeDecision::Bounded { grain } => {
+            let Some(dir) = binding_dir else {
+                return Err(
+                    "gunbc test: MEMORY ENVELOPE REFUSED cause=MemoryEnvelopeAbsent — the decision \
+                     bounded this run but the governor's walk found no binding cgroup; refusing \
+                     rather than reading an unnamed one"
+                        .to_string(),
+                );
+            };
+            let start =
+                cli_run::floor_memory_supervisor::read_cgroup_memory(&dir).map_err(|refusal| {
+                    format!(
+                        "gunbc test: MEMORY RECEIPT REFUSED cause=MemoryReceiptUnreadable — {}",
+                        refusal.render()
+                    )
+                })?;
+            let start_swap =
+                cli_run::floor_memory_supervisor::read_cgroup_swap(&dir).map_err(|refusal| {
+                    format!(
+                        "gunbc test: MEMORY RECEIPT REFUSED cause=MemoryReceiptUnreadable — {}",
+                        refusal.render()
+                    )
+                })?;
+            Ok(MemoryEnvelope::Bounded {
+                grain,
+                dir,
+                start,
+                start_swap,
+            })
+        }
+    }
+}
+
+/// `None` when nothing bounds the run by request (an operator-local run measures nothing);
+/// otherwise the receipt line, or the violation that refuses the run. The counters are the
+/// cgroup's own, read through the floor memory supervisor's readers so a missing key is never a
+/// zero; the event counters are reported as the DIFFERENCE from the start reading, because a slot
+/// cgroup outlives this step; and the peak is labelled by whether it ROSE during the step, because
+/// memory.peak is a lifetime maximum and the bind leaf is reused across runs.
+fn memory_envelope_receipt(envelope: &MemoryEnvelope) -> Option<Result<String, String>> {
+    let MemoryEnvelope::Bounded {
+        grain,
+        dir,
+        start,
+        start_swap,
+    } = envelope
+    else {
+        return None;
+    };
+    let unreadable = |refusal: cli_run::floor_memory_supervisor::QualificationRefusal| {
+        format!(
+            "gunbc test: MEMORY RECEIPT REFUSED cause=MemoryReceiptUnreadable — {}",
+            refusal.render()
+        )
+    };
+    let end = match cli_run::floor_memory_supervisor::read_cgroup_memory(dir) {
+        Ok(read) => read,
+        Err(refusal) => return Some(Err(unreadable(refusal))),
+    };
+    let end_swap = match cli_run::floor_memory_supervisor::read_cgroup_swap(dir) {
+        Ok(read) => read,
+        Err(refusal) => return Some(Err(unreadable(refusal))),
+    };
+    let oom_kills_delta = end.oom_kills.saturating_sub(start.oom_kills);
+    let max_events_delta = end.max_events.saturating_sub(start.max_events);
+    let high_events_delta = end.high_events.saturating_sub(start.high_events);
+    let (swap_peak_rose, swap_peak_text) = match (start_swap.swap_peak, end_swap.swap_peak) {
+        (Some(before), Some(after)) => (
+            Some(after > before),
+            after.saturating_sub(before).to_string(),
+        ),
+        _ => (
+            None,
+            "unobservable (no memory.swap.peak on this kernel)".to_string(),
+        ),
+    };
+    let swap_max_zero = end_swap.swap_max.trim() == "0";
+    let peak_scope = if end.peak > start.peak {
+        format!("rose from {} during this step", start.peak)
+    } else {
+        format!(
+            "prior history of the cgroup: memory.peak stood at {} before the producer and did not rise",
+            start.peak
+        )
+    };
+    let line = format!(
+        "gunbc test: MEMORY RECEIPT grain={} cgroup={} limit_max={} limit_high={} swap_max={} \
+         peak_bytes={} (peak: {peak_scope}) high_events_delta={high_events_delta} \
+         max_events_delta={max_events_delta} oom_kills_delta={oom_kills_delta} \
+         swap_current_bytes={} swap_peak_delta={swap_peak_text}",
+        grain.label(),
+        end.dir,
+        end.limit_max,
+        end.limit_high,
+        end_swap.swap_max,
+        end.peak,
+        end_swap.swap_current
+    );
+    if memory_envelope_violated(
+        oom_kills_delta,
+        Some(end_swap.swap_current),
+        swap_peak_rose,
+        swap_max_zero,
+    ) {
+        Some(Err(format!(
+            "gunbc test: MEMORY ENVELOPE VIOLATED cause=MemoryEnvelopeViolated — an OOM kill this \
+             step added, swap resident at exit, a swap peak that rose during the step, or a swap peak \
+             this kernel cannot show under a cgroup that permits swap, inside the bounding cgroup; the \
+             run is refused even if its producer held. {line}"
+        )))
+    } else {
+        Some(Ok(line))
+    }
+}
+
+#[cfg(test)]
+mod memory_envelope_tests {
+    use super::*;
+    use crate::memory_governor::{
+        CgroupBindDecision as Bind, CgroupBindRefusalCause, HostBudgetSource,
+    };
+
+    fn existing() -> Bind {
+        Bind::UnnecessaryLimitAlreadyBinds {
+            source: HostBudgetSource::CgroupMemoryMax {
+                cgroup_dir: "/sys/fs/cgroup/system.slice/actions-runner@srv4-15.service"
+                    .to_string(),
+            },
+        }
+    }
+
+    #[test]
+    fn requirement_reads_absent_slot_and_anything_else_as_three_answers() {
+        assert_eq!(
+            memory_envelope_requirement_from_text(None),
+            MemoryEnvelopeRequirement::NotRequested
+        );
+        assert_eq!(
+            memory_envelope_requirement_from_text(Some("slot")),
+            MemoryEnvelopeRequirement::SlotRequired
+        );
+        assert_eq!(
+            memory_envelope_requirement_from_text(Some("leaf")),
+            MemoryEnvelopeRequirement::Unreadable {
+                raw: "leaf".to_string()
+            }
+        );
+    }
+
+    #[test]
+    #[allow(non_snake_case)]
+    fn RED_a_slot_requirement_with_no_numeric_max_refuses_as_absent() {
+        let d = memory_envelope_decision(
+            &Bind::NotRequested,
+            &MemoryEnvelopeRequirement::SlotRequired,
+            false,
+        );
+        assert_eq!(
+            d,
+            MemoryEnvelopeDecision::Refused {
+                cause: MemoryEnvelopeRefusalCause::Absent {
+                    grain: MemoryEnvelopeGrain::Slot
+                }
+            }
+        );
+    }
+
+    #[test]
+    fn a_slot_requirement_under_a_numeric_max_is_bounded_at_the_slot() {
+        assert_eq!(
+            memory_envelope_decision(
+                &Bind::NotRequested,
+                &MemoryEnvelopeRequirement::SlotRequired,
+                true
+            ),
+            MemoryEnvelopeDecision::Bounded {
+                grain: MemoryEnvelopeGrain::Slot
+            }
+        );
+    }
+
+    #[test]
+    fn no_requirement_and_no_bind_is_not_required_whatever_the_host() {
+        for binds in [true, false] {
+            assert_eq!(
+                memory_envelope_decision(
+                    &Bind::NotRequested,
+                    &MemoryEnvelopeRequirement::NotRequested,
+                    binds
+                ),
+                MemoryEnvelopeDecision::NotRequired
+            );
+        }
+    }
+
+    #[test]
+    fn binds_are_bounded_at_their_own_grains() {
+        assert_eq!(
+            memory_envelope_decision(
+                &Bind::Applicable { bound: 1 },
+                &MemoryEnvelopeRequirement::NotRequested,
+                true
+            ),
+            MemoryEnvelopeDecision::Bounded {
+                grain: MemoryEnvelopeGrain::Leaf
+            }
+        );
+        assert_eq!(
+            memory_envelope_decision(&existing(), &MemoryEnvelopeRequirement::SlotRequired, true),
+            MemoryEnvelopeDecision::Bounded {
+                grain: MemoryEnvelopeGrain::Existing
+            }
+        );
+    }
+
+    #[test]
+    #[allow(non_snake_case)]
+    fn RED_a_refused_bind_and_an_unknown_value_refuse() {
+        let refused = Bind::Refused {
+            cause: CgroupBindRefusalCause::CgroupTreeNotWritable,
+        };
+        assert!(matches!(
+            memory_envelope_decision(&refused, &MemoryEnvelopeRequirement::SlotRequired, true),
+            MemoryEnvelopeDecision::Refused {
+                cause: MemoryEnvelopeRefusalCause::Absent {
+                    grain: MemoryEnvelopeGrain::Leaf
+                }
+            }
+        ));
+        assert!(matches!(
+            memory_envelope_decision(
+                &Bind::Applicable { bound: 1 },
+                &MemoryEnvelopeRequirement::Unreadable {
+                    raw: "leaf".to_string()
+                },
+                true
+            ),
+            MemoryEnvelopeDecision::Refused {
+                cause: MemoryEnvelopeRefusalCause::GrainUnknown { .. }
+            }
+        ));
+    }
+
+    #[test]
+    fn the_verdict_holds_only_on_a_clean_pair_of_readings() {
+        assert!(!memory_envelope_violated(0, Some(0), Some(false), false));
+        assert!(!memory_envelope_violated(0, Some(0), None, true));
+        assert!(memory_envelope_violated(1, Some(0), Some(false), false));
+        assert!(memory_envelope_violated(0, Some(1), Some(false), false));
+        assert!(memory_envelope_violated(0, None, Some(false), false));
+        assert!(memory_envelope_violated(0, Some(0), Some(true), false));
+    }
+
+    #[test]
+    #[allow(non_snake_case)]
+    fn RED_an_unobservable_swap_peak_refuses_unless_the_swap_limit_is_zero() {
+        assert!(memory_envelope_violated(0, Some(0), None, false));
+        assert!(!memory_envelope_violated(0, Some(0), None, true));
+    }
+
+    #[test]
+    #[allow(non_snake_case)]
+    fn RED_an_applied_or_existing_bind_over_no_numeric_max_refuses_at_its_grain() {
+        assert!(matches!(
+            memory_envelope_decision(
+                &Bind::Applicable { bound: 1 },
+                &MemoryEnvelopeRequirement::NotRequested,
+                false
+            ),
+            MemoryEnvelopeDecision::Refused {
+                cause: MemoryEnvelopeRefusalCause::Absent {
+                    grain: MemoryEnvelopeGrain::Leaf
+                }
+            }
+        ));
+        assert!(matches!(
+            memory_envelope_decision(&existing(), &MemoryEnvelopeRequirement::NotRequested, false),
+            MemoryEnvelopeDecision::Refused {
+                cause: MemoryEnvelopeRefusalCause::Absent {
+                    grain: MemoryEnvelopeGrain::Existing
+                }
+            }
+        ));
+        assert!(matches!(
+            memory_envelope_decision(&existing(), &MemoryEnvelopeRequirement::NotRequested, true),
+            MemoryEnvelopeDecision::Bounded {
+                grain: MemoryEnvelopeGrain::Existing
+            }
+        ));
+    }
 }
 
 fn test_verb_after(operand: &str, freshness: &BinaryFreshness) -> InvocationOutcome {

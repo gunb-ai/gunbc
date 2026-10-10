@@ -60,7 +60,7 @@ Done when: git config core.hooksPath reads back .githooks. THAT IS THE WHOLE CHE
 
 ### 5. run-witnesses
 
-Run the corpus lane the merge gate runs: the parse sweep and the witness floor. EXPECT TENS OF MINUTES, NOT SECONDS -- this and the emission lane are the two long steps on this page, and a reader who assumes a hang and kills it has thrown away the run rather than the wait.
+Run the corpus lane that WAS the merge gate's floor until the v1 withdrawal of 2026-10-09 (gunbc.rung_drop v1_required_lanes_withdrawn): the parse sweep and the witness floor. Nothing on the required path executes a witness now, so this run is the only place the enrolled population is folded, and a red here reaches main unless you act on it. EXPECT TENS OF MINUTES, NOT SECONDS -- this and the emission lane are the two long steps on this page, and a reader who assumes a hang and kills it has thrown away the run rather than the wait.
 
 `target/release/claim_executor --required-ci --source-root dag --source-root src/v2 --required-lane witnesses`
 

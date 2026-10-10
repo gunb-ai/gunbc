@@ -14,6 +14,7 @@ import gunbc.rung_drop_amendment.v2_test_family_reds_measured_outside_the_gate {
 import gunbc.rung_drop_amendment.value_depth_runtime_tests_named_in_the_population { value_depth_runtime_tests_named_in_the_population }
 import gunbc.rung_drop_amendment.variant_field_native_run_residuals { variant_field_native_run_residuals }
 import gunbc.rung_drop_amendment.instrument_sandbox_reference_left_with_its_witness { instrument_sandbox_reference_left_with_its_witness }
+import gunbc.rung_drop_amendment.v2_native_route_trigger_rebound_to_the_witnesses_job { v2_native_route_trigger_rebound_to_the_witnesses_job }
 
 data rung_drop_amendment_roster: List<RungDropAmendment> = [
   namespace_wave_admission_carrier_redesign,
@@ -24,6 +25,7 @@ data rung_drop_amendment_roster: List<RungDropAmendment> = [
   value_depth_runtime_tests_named_in_the_population,
   variant_field_native_run_residuals,
   instrument_sandbox_reference_left_with_its_witness,
+  v2_native_route_trigger_rebound_to_the_witnesses_job,
 ]
 
 // THE JOIN THE PROJECTION FOLDS, so a drop's amendments are selected in one place rather than at
