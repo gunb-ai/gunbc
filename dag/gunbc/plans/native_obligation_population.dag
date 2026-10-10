@@ -110,6 +110,7 @@ fn native_obligation_population_body() -> List<MarkdownBlock> {
     ol(items: [
       li(text: "Ruled 2026-10-09: the frontier is observed from a run, never reasoned from source."),
       li(text: "Ruled 2026-10-10 (operator, relayed by smart-gull-336): the denominator is the derived universe -- green identities, exactly one observed frontier and typed exclusions/refusals -- and the green set alone is never a production-admission denominator; the first frontier's subject is a stable qualified identity or a derived single-member target with a cardinality assertion, never \"the smallest member\"."),
+      li(text: "Runtime task, declared: typed refusal reasons for the population predicates (`native_member_is_eligible`, `native_member_is_a_subject_row`). They return Bool today, admitted for the first fold with an empty green set; the trigger is the first non-empty green set."),
       li(text: "Deferred: widening the universe from one identity to all of `v2.test.*`; trigger is M1 landed with a terminal that the driver can pass."),
     ]),
   ]
