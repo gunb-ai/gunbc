@@ -135,9 +135,12 @@ test fn w_collection_disjointness_keeps_conforming_arguments_admitted() -> Bool 
 
 data record_value_at_scalar_source: String = "module probe_inhabit_record_at_scalar\nimport std.types { Int, String }\ntype Box { value: String }\nfn make_box() -> Box { Box { value: \"forty\" } }\nfn takes_text(text: String) -> Int { 1 }\nfn probe() -> Int { takes_text(text: make_box()) }\n"
 
-test fn w_record_typed_value_at_scalar_argument_is_counted_until_identity_is_grounded() -> Bool {
-  violation_count(source: record_value_at_scalar_source, wanted: "DeclaredTypeInhabitanceUndecided") > 0
-    && violation_count(source: record_value_at_scalar_source, wanted: "DeclaredTypeNotInhabited") == 0
+// A record at a kernel scalar formal REFUSES: both heads are read from the identity-keyed type-head
+// census (v1.compiler.infer product_at_scalar_declared_type), so the judgment no longer declines as
+// UndecidableProducedIdentityErased. The undecided count is not asserted: the fixture's closure
+// carries unrelated list-element advisories from std.algebra.
+test fn w_record_typed_value_at_scalar_argument_is_refused() -> Bool {
+  violation_count(source: record_value_at_scalar_source, wanted: "DeclaredTypeNotInhabited") > 0
 }
 
 data coproduct_value_at_record_source: String = "module probe_inhabit_coproduct_at_record\nimport std.types { Int, String }\ntype Box { value: String }\ntype Choice = | ChoiceA { value: String } | ChoiceB\nfn make_choice() -> Choice { ChoiceA { value: \"forty\" } }\nfn takes_box(box: Box) -> Int { 1 }\nfn probe() -> Int { takes_box(box: make_choice()) }\n"
