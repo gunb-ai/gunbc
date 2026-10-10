@@ -633,7 +633,12 @@ fn iam_bootstrap_privilege_readback(token: Secret) -> String {
               GcpIamEstateRefused { reasons } => concat("observer cannot establish the declared estate: ", join(reasons, "; "))
               GcpIamEstatePartialNoop { refused } => concat("observer cannot establish the declared estate: ", join(estate_refused_texts(refused: refused), "; "))
               GcpIamEstateNoop => iam_bootstrap_observer_secret_readback(observer_token: observer_token, apply_token: apply_token)
-              GcpIamEstateApply { diff: _ } => iam_bootstrap_observer_secret_readback(observer_token: observer_token, apply_token: apply_token)
+              GcpIamEstateApply { diff: d } =>
+                if d.refused.length() > 0 {
+                  concat("observer cannot establish the declared estate: ", join(estate_refused_texts(refused: d.refused), "; "))
+                } else {
+                  iam_bootstrap_observer_secret_readback(observer_token: observer_token, apply_token: apply_token)
+                }
             }
           }
         }
