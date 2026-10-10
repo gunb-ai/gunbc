@@ -1,0 +1,50 @@
+module test.claim.plans.source_layout_rulings_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, NonEmptyStr }
+import gunbc.source_layout_rulings {
+  SourceLayoutRuling, SourceLayoutRulingId, SourceLayoutDecision,
+  LayoutR1, LayoutR2, LayoutGrain, SeedMirrors,
+  source_layout_rulings, source_layout_decisions,
+  source_layout_decider, source_layout_ruled_on,
+  source_layout_rulings_are_unique, source_layout_decisions_are_unique,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The ruling and decision identities are closed variants, so the one property left to check is across
+// rows: no identity is named by two rows. The reds are supplied values, so each claim is about this
+// one interface and re-executes nothing beneath it.
+
+fn supplied_ruling(id: SourceLayoutRulingId) -> SourceLayoutRuling {
+  SourceLayoutRuling {
+    id: id,
+    decider: source_layout_decider,
+    ruled_on: source_layout_ruled_on,
+    ruling: "supplied ruling" as NonEmptyStr,
+  }
+}
+
+test fn live_rulings_are_unique() -> Bool {
+  source_layout_rulings_are_unique(rows: source_layout_rulings)
+}
+
+test fn live_decisions_are_unique() -> Bool {
+  source_layout_decisions_are_unique(rows: source_layout_decisions)
+}
+
+test fn a_ruling_named_by_two_rows_is_refused() -> Bool {
+  !source_layout_rulings_are_unique(rows: [supplied_ruling(id: LayoutR1), supplied_ruling(id: LayoutR1)])
+    && source_layout_rulings_are_unique(rows: [supplied_ruling(id: LayoutR1), supplied_ruling(id: LayoutR2)])
+}
+
+test fn a_decision_named_by_two_rows_is_refused() -> Bool {
+  !source_layout_decisions_are_unique(rows: [
+    SourceLayoutDecision { subject: LayoutGrain, decision: "supplied" as NonEmptyStr },
+    SourceLayoutDecision { subject: LayoutGrain, decision: "supplied" as NonEmptyStr },
+  ])
+    && source_layout_decisions_are_unique(rows: [
+      SourceLayoutDecision { subject: LayoutGrain, decision: "supplied" as NonEmptyStr },
+      SourceLayoutDecision { subject: SeedMirrors, decision: "supplied" as NonEmptyStr },
+    ])
+}
