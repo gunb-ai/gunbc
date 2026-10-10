@@ -2,6 +2,7 @@ module gunbc.documentary_refs
 
 import std.types { String }
 import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.design_ruling { design_rulings }
 
 // THE SYSTEMS A GENERATED DOCUMENT NAMES, CARRIED AS TYPED REFERENCES RATHER THAN SPELLED IN PROSE.
 // gunbc.doc_graph_roots already does exactly this for HAND-AUTHORED documents: HandAuthoredDocBind
@@ -42,40 +43,13 @@ data v1_maintenance_standing_ref: DeclarationRef = decl_ref(module_path: "gunbc.
 // declaration that says what "inside the required gate" means.
 data required_gate_subjects_ref: DeclarationRef = decl_ref(module_path: "gunbc.emitted_subject_build_gate", decl_name: "emitted_subject_build_rows")
 
-// THE DATED RULINGS THE DESIGN DOCUMENT CITES. Each row is a gunbc.design_ruling declaration: the
-// document states the rule and renders this reference where it used to narrate who ruled and when.
-data ruling_job_roster_closed_to_growth_ref: DeclarationRef = decl_ref(module_path: "gunbc.design_ruling", decl_name: "job_roster_closed_to_growth")
-data ruling_conformance_needs_attention_ref: DeclarationRef = decl_ref(module_path: "gunbc.design_ruling", decl_name: "conformance_needs_attention")
-data ruling_consumption_interrogated_separately_ref: DeclarationRef = decl_ref(module_path: "gunbc.design_ruling", decl_name: "consumption_interrogated_separately")
-data ruling_epistemic_humility_is_symmetric_ref: DeclarationRef = decl_ref(module_path: "gunbc.design_ruling", decl_name: "epistemic_humility_is_symmetric")
-data ruling_chain_re_derivation_ref: DeclarationRef = decl_ref(module_path: "gunbc.design_ruling", decl_name: "chain_re_derivation")
-data ruling_instrument_is_a_row_not_a_flag_ref: DeclarationRef = decl_ref(module_path: "gunbc.design_ruling", decl_name: "instrument_is_a_row_not_a_flag")
-data ruling_authorization_pattern_is_a_selection_ref: DeclarationRef = decl_ref(module_path: "gunbc.design_ruling", decl_name: "authorization_pattern_is_a_selection")
-data ruling_coercion_is_the_implicit_safe_subset_ref: DeclarationRef = decl_ref(module_path: "gunbc.design_ruling", decl_name: "coercion_is_the_implicit_safe_subset")
-data ruling_text_crossings_go_through_the_unfold_ref: DeclarationRef = decl_ref(module_path: "gunbc.design_ruling", decl_name: "text_crossings_go_through_the_unfold")
-data ruling_v2_better_than_the_seed_ref: DeclarationRef = decl_ref(module_path: "gunbc.design_ruling", decl_name: "v2_better_than_the_seed")
-data ruling_v1_withdrawn_one_required_job_ref: DeclarationRef = decl_ref(module_path: "gunbc.design_ruling", decl_name: "v1_withdrawn_one_required_job")
-data ruling_memory_envelope_is_part_of_the_verdict_ref: DeclarationRef = decl_ref(module_path: "gunbc.design_ruling", decl_name: "memory_envelope_is_part_of_the_verdict")
-
 fn documentary_ref_symbol_text(reference: DeclarationRef) -> String {
   concat("`", reference.module_path as String, " ", reference.decl_name as String, "`")
 }
 
 fn generated_document_declaration_refs() -> List<DeclarationRef> {
-  [
-    v1_maintenance_standing_ref,
-    required_gate_subjects_ref,
-    ruling_job_roster_closed_to_growth_ref,
-    ruling_conformance_needs_attention_ref,
-    ruling_consumption_interrogated_separately_ref,
-    ruling_epistemic_humility_is_symmetric_ref,
-    ruling_chain_re_derivation_ref,
-    ruling_instrument_is_a_row_not_a_flag_ref,
-    ruling_authorization_pattern_is_a_selection_ref,
-    ruling_coercion_is_the_implicit_safe_subset_ref,
-    ruling_text_crossings_go_through_the_unfold_ref,
-    ruling_v2_better_than_the_seed_ref,
-    ruling_v1_withdrawn_one_required_job_ref,
-    ruling_memory_envelope_is_part_of_the_verdict_ref,
-  ]
+  concat(
+    [v1_maintenance_standing_ref, required_gate_subjects_ref],
+    map(design_rulings(), r => r.reference),
+  )
 }
