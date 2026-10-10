@@ -4662,15 +4662,7 @@ fn fleet_converge_gcp_iam_converge_job() -> Job {
 
 // THE DISPATCH INPUTS, AS THEIR OWN ROW: the workflow consumes them below, and a witness over
 // what the operator can name reads this list rather than building every job to reach it.
-<<<<<<< HEAD
 data fleet_converge_dispatch_input_rows: List<DispatchInput> = [
-=======
-// MODE DESCRIPTION IS SHORT ON PURPOSE. The previous value restated every mode's contract in one
-// GitHub input description (~10k characters on one YAML line). After #13334 GitHub's workflow
-// parser refused the file on every push (zero-job runs named `.github/workflows/fleet-converge.yml`).
-// Per-mode contracts stay on this module; the input description names the authority.
-data fleet_converge_dispatch_inputs: List<DispatchInput> = [
->>>>>>> c50ec06a93 (Make fleet-converge branch-agnostic and parseable.)
   DispatchInput { name: "workspace_image_run_id", description: Present { value: "Image build run to download for controller install; installed bytes must match the reviewed image pin" }, required: false, default: none, type: InputString },
 
   DispatchInput {
