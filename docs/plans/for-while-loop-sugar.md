@@ -155,7 +155,7 @@ The second cut proposed `repeat s = init up_to: N`. It is withdrawn from this br
 
 ### 6.3 Long-lived services are a lifecycle, and a separate design
 
-Keeping a socket open is not *one computation repeated many times*. It is a lifecycle: acquire the listener, hold it under a lease, accept until cancellation or closure, start one demand per connection, run handlers by their real dependencies, drain or cancel what is in flight, release, and publish a teardown receipt. That design should build on what exists: leases are `std.temporal_effect` `HeldLease`, and `gunbc.host.host_effect` `Drive` = `OneShot | ConvergeLoop` already separates re-driven work from one-shot work, though it is a host-effect drive mode and not a service lifecycle. Its natural first consumer is the dashboard accept loop that `docs/plans/gunbc-served-dashboard-design.md` runs as a sequential host Rust `std::net::TcpListener` under a declared scaffold.
+Keeping a socket open is not *one computation repeated many times*. It is a lifecycle: acquire the listener, hold it under a lease, accept until cancellation or closure, start one demand per connection, run handlers by their real dependencies, drain or cancel what is in flight, release, and publish a teardown receipt. That design should build on what exists: leases are `std.temporal_effect` `HeldLease`, and `gunbc.host.host_effect` `Drive` = `OneShot | ConvergeLoop` already separates re-driven work from one-shot work, though it is a host-effect drive mode and not a service lifecycle. Its natural first consumer is the served-dashboard accept loop, designed as a sequential host Rust `std::net::TcpListener` under a declared scaffold.
 
 ## 7. Parallelism, and why observations must not race
 

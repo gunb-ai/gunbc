@@ -63,7 +63,7 @@ import v2.extdeps.languages.dag {
 }
 
 // The SubstrateMandatoryTag mechanism (std.disposition.ConstructionMechanism), reached
-// region-by-region per dag/gunbc/plans/disposition_carrier.dag: a MandatoryTagRegion row declares
+// region-by-region: a MandatoryTagRegion row declares
 // that every module whose qualified name falls inside a namespace region MUST carry a top-level
 // data declaration with a required name, a required declared type, and a value whose discriminating
 // vocabulary atoms are drawn from an accepted subset. Registered at CompileLensRoot grain in

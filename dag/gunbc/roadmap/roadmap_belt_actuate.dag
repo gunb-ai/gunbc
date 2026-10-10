@@ -13575,7 +13575,7 @@ fn belt_publish_outcome_json_value(o: BeltPublishOutcome) -> JsonValue {
 // ── ONE ATTEMPT'S OBLIGATIONS, RUN BY ITS OWN UNIT ─────────────────────────────────────────────
 //
 // THE TICK NO LONGER CAPTURES, VERIFIES, REVIEWS, AUDITS OR PUBLISHES (dogfood intervention #6,
-// gunbc#13124; docs/plans/belt-event-driven-obligations.md). Each attempt's obligations run in that
+// gunbc#13124). Each attempt's obligations run in that
 // attempt's own unit (gunbc.roadmap.roadmap_belt_obligation belt_attempt_obligation_unit_name), on
 // that attempt's evidence, so a slow obligation of one attempt cannot hold another attempt's -- the
 // fusion that held every tick at its bound on srv2 for ten hours on 2026-10-03.
