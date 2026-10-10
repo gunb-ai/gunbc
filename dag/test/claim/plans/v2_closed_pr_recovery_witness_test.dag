@@ -1,0 +1,47 @@
+module test.claim.plans.v2_closed_pr_recovery_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.plans.v2_closed_pr_recovery {
+  ClosedPrRecoveryRow,
+  V2Compiler, ReviveOnMain,
+  closed_pr_recovery_rows,
+  every_row_has_subject_and_reason,
+  every_revival_names_a_first_step,
+  pr_numbers_are_unique,
+  group4_rows_are_dead,
+  revival_first_step_is_named,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn empty_first_step_row() -> ClosedPrRecoveryRow {
+  ClosedPrRecoveryRow {
+    pr_numbers: [1],
+    subject: "supplied empty first_step",
+    area: V2Compiler,
+    why_closed: "synthetic",
+    disposition: ReviveOnMain { first_step: "" },
+  }
+}
+
+test fn live_rows_have_subject_and_reason() -> Bool {
+  every_row_has_subject_and_reason(rows: closed_pr_recovery_rows)
+}
+
+test fn live_revivals_name_a_first_step() -> Bool {
+  every_revival_names_a_first_step(rows: closed_pr_recovery_rows)
+}
+
+test fn live_pr_numbers_are_unique() -> Bool {
+  pr_numbers_are_unique(rows: closed_pr_recovery_rows)
+}
+
+test fn live_group4_rows_are_dead() -> Bool {
+  group4_rows_are_dead(rows: closed_pr_recovery_rows)
+}
+
+test fn empty_first_step_on_revive_is_red() -> Bool {
+  let supplied = empty_first_step_row()
+  (revival_first_step_is_named(d: supplied.disposition) == false)
+    && (every_revival_names_a_first_step(rows: [supplied]) == false)
+}
