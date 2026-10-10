@@ -1,0 +1,257 @@
+module gunbc.plans.source_layout_authority
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
+import std.markdown { MarkdownBlock, MarkdownListItem, MarkdownTableRow, TableBlock, AlignNone }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row, quote, hr }
+import std.types { String, NonEmptyStr }
+import gunbc.source_layout_rulings {
+  SourceLayoutRuling, SourceLayoutDecision,
+  source_layout_rulings, source_layout_decisions,
+  source_layout_decider, source_layout_ruled_on,
+  source_layout_ruling_label, source_layout_decision_subject_label,
+}
+
+// THE PLAN FOR ONE STORAGE RULE (the name-to-path mapping), a name-only compiler, and the end of
+// whole-tree ingestion. Section 3 is not authored here: the rulings and the decisions recorded with
+// them are the typed rows of gunbc.source_layout_rulings, and this module only renders them, so the
+// page cannot disagree with the carrier a later reader cites by symbol. This page carries no
+// measurement; every population it reasons about is re-derived by the C0 generator or by the layout
+// check of section 4.4, not transcribed (DESIGN section 6).
+
+// ---- section 3, rendered from the carrier ---------------------------------------------------------
+
+fn ruling_item(r: SourceLayoutRuling) -> MarkdownListItem {
+  li(text: concat(concat(concat("**", source_layout_ruling_label(id: r.id) as String), ".** "), r.ruling as String))
+}
+
+fn decision_row(d: SourceLayoutDecision) -> MarkdownTableRow {
+  row(cells: [
+    cell(text: source_layout_decision_subject_label(subject: d.subject) as String),
+    cell(text: d.decision as String),
+  ])
+}
+
+fn rulings_heading_text() -> String {
+  concat(
+    concat(concat(concat("3. Rulings (", source_layout_decider as String), ", "), source_layout_ruled_on as String),
+    ")"
+  )
+}
+
+fn source_layout_rulings_section() -> List<MarkdownBlock> {
+  [
+    h2(text: rulings_heading_text()),
+    ul(items: source_layout_rulings |> map(r => ruling_item(r: r))),
+    p(text: "Decisions recorded with the rulings (no open decisions remain):"),
+    TableBlock {
+      header: row(cells: [cell(text: "Subject"), cell(text: "Decision")]),
+      alignments: [AlignNone, AlignNone],
+      rows: source_layout_decisions |> map(d => decision_row(d: d)),
+    },
+  ]
+}
+
+// ---- sections 1 and 2 -----------------------------------------------------------------------------
+
+fn source_layout_authority_opening() -> List<MarkdownBlock> {
+  [
+    p(text: concat(
+      concat("**Status:** plan for execution, decisions closed. The operator rulings of ", source_layout_ruled_on as String),
+      " are in §3, rendered from `gunbc.source_layout_rulings`. The plan lands as one PR (§5). Authority is `gunbc.plans.source_layout_authority`; this page is its generated projection."
+    )),
+    p(text: "**Registration:** a plan in `gunbc.plan_registry_batch_g`; its place in the compiler document graph is the `gunbc.plan_governance` row, rendered as the banner above, and this body restates none of it."),
+    p(text: "**Supersedes, as to the storage half:** `docs/plans/module-identity-storage-binding-design.md` and `docs/plans/ingest-manifest-source-ref-carrier-design.md`. Both were deleted in the 2026-08-28 plan cleanup (gunb-ai/gunbc#9635); their last versions are at commits `dbf227cb7f4a` and `628ebe126bec`. §2.5 says what still governs from them."),
+    p(text: "**About measurements:** this page transcribes none. Every population it reasons about (files off the rule's position, bare references v2 would refuse, the closures of the cut-over routes) is re-derived by the C0 generator or by the layout check of §4.4 (DESIGN §6: name the instrument, never transcribe its output)."),
+    hr(),
+    h2(text: "1. Summary"),
+    ul(items: [
+      li(text: "The v2 self-host step reads, tokenizes and indexes every `.dag` file in the repository in order to emit a closure that is only a part of it. Whole-tree structures are a measured share of the seed's resident memory on that step (§2.1)."),
+      li(text: "It has to, today, for three reasons: a module's file can only be found by reading every file's `module` line; bare references (names used without an import) are resolved by asking which module, anywhere, declares the name; and everything outside the closure is fed in on purpose so that a parse error anywhere fails the step."),
+      li(text: "v1 and v2 disagree about what a name means. v2 binds a name only if it is declared, imported by name, or fully qualified, and refuses everything else. v1 also binds names through transitive imports, unlisted names and a whole-repository fallback. v2's rule is the rule; v1 is not changed."),
+      li(text: "The fix is a layering that was designed on 2026-07-18 and then lost: the compiler works with module names only, and a storage layer — the only code that knows paths — maps names to files."),
+      li(text: "This plan makes that storage layer a top-down authority: a declared namespace layout plus one rule, module `a.b.c` ↔ `<root(a)>/b/c.dag`, with every file brought into line in one sweep. A file outside the layout is not compilable."),
+      li(text: "In the same PR: fix bare references in every cut-over route, switch v2's acquisition to loading by name on demand, and delete the three acquisition mechanisms that exist today. The seed keeps its whole-tree read until it retires."),
+    ]),
+    h2(text: "2. How we got here"),
+    p(text: "This plan came out of one planning conversation that started from the memory audit of the self-host step. Each subsection is one link of that chain."),
+    h3(text: "2.1 The memory question"),
+    p(text: "The memory composition audit of the self-host step (`GUNBC_MEMORY_COMPOSITION=1`, the seed's readout; receipt at `7792ce6f013` in the instrument's PR) separated the seed's resident set into whole-tree structures (the token pool, the resolve index and name census, the parsed heads of every module) and a closure-scale working set (closure ASTs, resolution and typecheck environments, emission buffers) that the instrument does not release and so does not measure. The step is judged against the fleet slot's memory envelope (`gunbc.runner_slot_desired`), and the whole-tree share grows with the repository. gunb-ai/gunbc#13674 (release the token pool before resolution) lowers the seed's resident set but leaves the whole-tree index in place."),
+    p(text: "The question was why the step that emits only the v2 compiler reads the whole repository at all."),
+    h3(text: "2.2 Why the seed reads everything"),
+    p(text: "The emission transaction (`v1_compiler.cli_run` `compile_emission_over`) builds one index over both source roots, loads the entry's closure (`load_sources_for_entry_with_pool`), and passes every module outside the closure in as census-only input (`compile_clean_pipeline_options_for_sources`) — deliberately: its own comment says this is what makes a parse break anywhere under the roots fail the step. It resolves and emits only the closure, which an import-and-dotted-reference walk derives."),
+    p(text: "Three facts make the whole-tree read load-bearing:"),
+    ol(items: [
+      li(text: "**Module names do not locate files.** A module's identity is its `module` line, not its path, and many files do not sit where their name would put them (the C0 generator and the layout check re-derive which). Finding one module therefore means reading every header."),
+      li(text: "**Bare references are reverse lookups.** A name used without an import (`Arrow`, `fold_list`) carries no module. The seed answers \"which module, anywhere, declares this name?\" from a census of everything: the loader's bare-reference channel for files with no import lines (`visit_bare_reference_providers`) and the resolver's whole-pool fallback (`v1.compiler.infer_env` `global_bare_lookup_candidates`)."),
+      li(text: "**The whole-tree parse is also a check.** Since 2026-10-09 it is the only thing on the required path that touches files outside the two emitted closures."),
+    ]),
+    p(text: "v2 has the same shape. Its CLI `emit` path parses and censuses every file, then derives the closure from references (`v2.compiler.self_host.closure_emission` `closure_ingest`). The v2 native test lane is the exception: it scans each file's `import` lines as text and parses only the import closure (`v2.compiler.compile` `native_lane_source_facts`, `native_lane_closure_ingest`, accepted by `native_lane_ingest_matches_closure`). That scan is a second, partial parser, and it is only correct on code that has no bare references."),
+    h3(text: "2.3 v1 and v2 bind names differently"),
+    TableBlock {
+      header: row(cells: [cell(text: "Reference"), cell(text: "v1 seed"), cell(text: "v2")]),
+      alignments: [AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "declared in the same module"), cell(text: "binds"), cell(text: "binds")]),
+        row(cells: [cell(text: "listed in `import M { x }`"), cell(text: "binds"), cell(text: "binds")]),
+        row(cells: [cell(text: "written fully qualified"), cell(text: "binds"), cell(text: "binds")]),
+        row(cells: [cell(text: "in M but not in the `{ }` list"), cell(text: "binds"), cell(text: "refuses")]),
+        row(cells: [cell(text: "exported by something M itself imports"), cell(text: "binds"), cell(text: "refuses")]),
+        row(cells: [cell(text: "not imported, declared once among the loaded modules"), cell(text: "binds"), cell(text: "refuses")]),
+        row(cells: [cell(text: "unimported variant in a `match` pattern"), cell(text: "binds"), cell(text: "refuses")]),
+        row(cells: [cell(text: "`Present` / `Absent` / `List` with no import"), cell(text: "binds (kernel)"), cell(text: "refuses")]),
+      ],
+    },
+    p(text: "v1: an import exposes the imported module's whole flattened export set, inherited names included (`v1.compiler.infer` `direct_import_export_precedence_note`); a name declared by exactly one loaded module binds from anywhere, and a name declared by several binds to the unique one on the referencing module's ancestor chain (`global_bare_lookup_candidates`); import lists are enforced only as a non-blocking advisory for types (`UnlistedImportUse`, severity `SeverityNonError`) and, for functions, only for the names `v1.compiler.infer_env` `bare_free_call_requires_listed_import` lists."),
+    p(text: "v2: an import becomes one binding row per listed name (`v2.extdeps.languages.dag` `import_binding_rows_from_decl_node`); a name not bound on the reference's own chain refuses, and nothing searches the repository (`v2.compiler.resolve` `lookup_symbol_index_atom_identity`: \"nothing follows an exhausted chain\"); an unimported constructor in a pattern refuses too."),
+    p(text: "Consequences:"),
+    ul(items: [
+      li(text: "Code the seed accepts and emits as v2 is not valid v2. A pattern-match estimate, with known false positives, found such references in the closures: mostly unimported `v2.std.node` variants in patterns, plus `Present`/`Absent`, `List`/`Map`, and builtins v2 does not provide implicitly (`filter`, `any`, `count`). C2's run of the real v2 resolver is the instrument that counts them. v2 cannot resolve its own source until they are fixed, which blocks generation two regardless of this plan."),
+      li(text: "The bare-reference debt roster (`v2.workflow.floor_unimported_bare_provider_debt_roster`) tracks a narrower class over the whole tree. Its gate ran in the floor lane, deleted on 2026-10-09, so nothing enforces it now."),
+    ]),
+    h3(text: "2.4 The design existed"),
+    p(text: "On 2026-07-18 the operator directed `docs/plans/module-identity-storage-binding-design.md` (gunb-ai/gunbc#6856). Its recorded intent:"),
+    quote(blocks: [
+      p(text: "we should not depend on literal files; we should depend on nodes/modules, where a module is a collection of nodes and may be represented by ≥0 files at parse time … more ideally, code references modules and never deals with the bidirectional mapping at all."),
+    ]),
+    p(text: "and a second directive the same day: decide what happens to the graph first, then make the files represent it faithfully — \"the direction of travel is a system that no longer transacts with files at all.\""),
+    p(text: "Its model: a module is a node (a containment subtree); a file is one storage realization of it; the path⇄module binding has one home, `v2.compiler.source_authority`; paths appear only at host boundaries, as a typed `SourceRef` (path, source root, content hash). Phase 1 landed on 2026-07-19 (gunb-ai/gunbc#6882 and follow-ups): `ModuleStorageBinding`, `ModuleStorageIndex`, `SourceRef`, and `module_storage_bindings_for_source_roots` with a host manifest. Both design documents were deleted on 2026-08-28 (gunb-ai/gunbc#9635) as stale off-topic plans. The code still cites them (`v2.compiler.source_authority` `module_storage_binding_authority_note`, `source_ref_authority_note`), and none of the three compile paths uses the binding authority."),
+    h3(text: "2.5 What carries forward, and what changes"),
+    p(text: "Carries forward: a module is a node and a file is a storage realization of it; one authority for the mapping, homed in `v2.compiler.source_authority`; `SourceRef` at host boundaries; delta-first as the direction of travel; and the namespace design's ruling that a module's position is never inferred from where a file happens to sit (`docs/plans/namespace-resolution-design.md` §10)."),
+    p(text: "Changes: the July design derived the mapping by parsing (bottom-up). This plan declares it (top-down): a layout and one rule, from which every file's location follows. The `module` line becomes a checked copy until the seed retires. The July design's markdown and Rust write-back phases are out of scope here."),
+  ]
+}
+
+// ---- sections 4 to 7 and the appendix -------------------------------------------------------------
+
+fn source_layout_authority_design_and_plan() -> List<MarkdownBlock> {
+  [
+    h2(text: "4. Target design"),
+    h3(text: "4.1 Layers"),
+    ul(items: [
+      li(text: "**Storage layer.** The only code that knows paths. Given a module name it returns the module's file, or a typed refusal; given a namespace it enumerates its modules. It owns the layout, the rule, the reads and their verification."),
+      li(text: "**Compiler.** Works with module names only. It starts from the entry module and requests every module its imports and qualified references name. The closure is whatever was requested."),
+      li(text: "**Whole-population jobs** (layout check, parse-all, run every claim): explicit enumerations of the layout, never a side effect of compiling one entry."),
+    ]),
+    h3(text: "4.2 The layout authority"),
+    ul(items: [
+      li(text: "**Generic, in `v2.compiler.source_authority`:** layout types, the rule, file-backed lookup (`module_file(name)`), namespace enumeration, the layout check. It is expressed over a logical `SourceRootRef` and a relative path, never a host path."),
+      li(text: "**Repository policy, in a new import-free module** (`gunbc.source_layout`): the namespace-root map and the namespace rows only: a row is just a declared namespace, one per namespace that directly contains modules, parents derived, and it carries no authored-or-generated kind. It is supplied at the entry boundary, not imported by the generic compiler."),
+      li(text: "**Runtime binding:** the native CLI binds each `SourceRootRef` to the host root it is given, through the filesystem handler it already binds. No new Rust harness."),
+      li(text: "**Generated files** stay in `gunbc.generated_artifact_registry`, which alone says what is generated; nothing in the layout restates it. The check joins the registry at file level, both ways: every registered `.dag` artifact exists at its rule position, and every file the registry names is treated as generated, so it takes no hand edits."),
+    ]),
+    p(text: "Lookup chain: module name → `SourceRootRef` + relative path → bound host root → exact read → `module` line agrees with the name → `SourceRef`."),
+    h3(text: "4.3 Lookup by name"),
+    p(text: "A qualified reference is split into module and member by probing prefixes, longest first. Each probe is tri-state: `ModuleFilePresent`, `ModuleFileAbsent`, `ModuleFileRefused` (unreadable, wrong kind, transport failure). Only `Absent` falls back to a shorter prefix; `Refused` refuses the reference. No prefix present is an unknown module."),
+    p(text: "Cross-tree direction is preserved at this layer: today's grounding (`v2.std.cross_tree.import_model`, `tree_fundamentality_order`; v2→dag admitted, dag→v2 denied) moves from the whole-tree ingest into the storage lookup, so loading by name cannot lose it."),
+    h3(text: "4.4 The layout check"),
+    p(text: "Run by the binary the `v2-native-cli` step builds, as a step on the required `witnesses` job. It has one mode: hold or refuse. Refusals are typed and located: `UndeclaredNamespace`, `NotAtRulePosition`, `ModuleLineMissing`, `DuplicateModule` (including case-fold duplicates), `RegistryArtifactMissing`. It reads headers, not bodies."),
+    h3(text: "4.5 Closure by demand"),
+    p(text: "Entry module → parse → requested names → `module_file` → parse → repeat. This is the \"parse-then-derive\" mechanism of `docs/plans/namespace-cut-replacement-plan.md`. A bare name is not requestable and refuses under R1; the diagnostic names the spelling, the local module and its visible imports, and nothing scans the repository. The ingest receipt asserts files read = requested closure exactly."),
+    h3(text: "4.6 The one dual representation that remains"),
+    p(text: "The `module` line, read by the seed. It stays until the seed retires, written by the skeleton generator and checked against the rule."),
+    h3(text: "4.7 Out of scope"),
+    p(text: "Changing v1's resolver; the July design's markdown and Rust write-back; non-`.dag` files beyond the registry; the seed's memory (R9; gunb-ai/gunbc#13674 is independent work); deleting the `module` line."),
+    h2(text: "5. Plan: one branch, one PR"),
+    p(text: "**The epochs below are implementation stages within one cutover branch and one PR. They do not land independently, and no state between them is an accepted repository state. The only mergeable head contains the final layout, repaired v2 bindings, demand acquisition on every v2 compile route, and deletion of every superseded acquisition route.** The move map is a construction input used on the branch and after merging main; main receives only the refusing checks."),
+    h3(text: "C0 — Authority and migration generator"),
+    ul(items: [
+      li(text: "Record R1–R11 and the decision table in a typed carrier (`gunbc.source_layout_rulings`; DESIGN §4c); add the `gunbc.plan_governance` row (governed by `v2-compiler-architecture`, role `CompilerStageAuthority`) and regenerate banners."),
+      li(text: "Amend DESIGN §3 through `gunbc.design_document`: the storage rule is §3's single authority for the name⇄path mapping. Acyclicity stays the import graph's only structural law; the rule fixes where a file is stored, not which way imports point."),
+      li(text: "Add the generic layout and exact-read types, and `gunbc.source_layout` declaring the **target** layout."),
+      li(text: "Build the deterministic move/rename generator (extending `tools.source_reference_repoint`, run from the pre-sweep tree). It refuses the whole sweep on any collision — two sources to one target, a target that exists and is not moving away, case-fold equal targets, or a new module name already declared — and on any occurrence it cannot classify. It distinguishes typed module references from real file paths; a `.dag`-looking string is not automatically a module reference."),
+      li(text: "Measure the R11 population: the closures of every compile route being cut over."),
+    ]),
+    h3(text: "C1 — Generated repository sweep"),
+    p(text: "One generated commit, re-runnable after merging main:"),
+    ul(items: [
+      li(text: "module renames: imports, qualified names, `DeclarationRef`s, labels (`//v2/test/...`), typed module identities, prose citations in `.dag`, Rust and `docs/`;"),
+      li(text: "file moves to the rule's positions;"),
+      li(text: "load-bearing paths repointed to module references through the layout; seed CLI arguments and constants (`NATIVE_COMPILE_ENTRY`, `REPORT_ENTRY`) rewritten;"),
+      li(text: "the seed mirrors renamed with their Rust paths;"),
+      li(text: "workflows, `.gitattributes` and every registered generated artifact regenerated (no CI step compares these since `gunbc.rung_drop` `v1_required_lanes_withdrawn`; the PR says so)."),
+    ]),
+    h3(text: "C2 — Binding repair"),
+    ul(items: [
+      li(text: "Run the real v2 resolver over the R11 population; add imports or qualification until zero unbound and zero ambiguous names remain."),
+      li(text: "Delete the inert debt roster `v2.workflow.floor_unimported_bare_provider_debt_roster`, its gate, and the seed's `unimported_bare_provider_gate`, once the required native steps enforce R1."),
+    ]),
+    h3(text: "C3 — Acquisition replaced at the root"),
+    ul(items: [
+      li(text: "Entry APIs take root bindings and an entry module, not a whole-tree `SourceRootIngest`. CLI `emit`, the native lane and `v2.compiler.program_assembly` callers all load by request."),
+      li(text: "Deleted: the parse-everything phase of `closure_ingest`; `native_lane_source_facts` and `native_lane_closure_modules`; compile-time use of `source_root_read`'s recursive walk; `module_storage_bindings_for_source_roots` and its host manifest emitter (consumers enumerated by name first); the failure-path reverse lookup. No selector, no fallback."),
+      li(text: "Inside the branch only: a differential of old reference-derived closure vs new demand-derived closure on both real entries, run before the old route is deleted."),
+    ]),
+    h3(text: "C4 — Final adjudication (the PR head must show)"),
+    ol(items: [
+      li(text: "Every governed `.dag` file is at its rule position; no exception roster exists."),
+      li(text: "Explicit population parse holds; a malformed module outside a compile closure fails it but changes neither that compile's verdict nor its read set."),
+      li(text: "Every R11 route resolves with zero unbound or ambiguous names."),
+      li(text: "Compile reads equal the requested closure exactly; no whole-tree index is built on any v2 path, including refusals (R9)."),
+      li(text: "Probe controls: both `a.b` and `a.b.c` present → longest wins; `a.b.c` absent → `a.b`; `a.b.c` unreadable → refuse; none → unknown module; case-fold collision refuses; `module` line disagreeing with the request refuses."),
+      li(text: "Cross-tree control: a dag→v2 import still refuses through the storage lookup."),
+      li(text: "Seed emission of both self-host closures is identical before and after the sweep, modulo the rename map (v1 binds bare names by ancestor chain, which renames move)."),
+      li(text: "The seed and all renamed mirrors build; both native entry closures emit and build."),
+      li(text: "The migration generator and every artifact generator are idempotent on the final head."),
+      li(text: "Deleted producers have no consumers; no compiler API takes the whole-repository ingest."),
+    ]),
+    h2(text: "6. Risks"),
+    ul(items: [
+      li(text: "**Conflicts.** The sweep touches the repository broadly; conflicts are resolved by re-running C1 after merging main, not by hand."),
+      li(text: "**Strings outside the generator's classification** refuse the sweep rather than going stale."),
+      li(text: "**Seed edits** (path constants, the seed mirrors) are admitted under `gunbc.v1_maintenance_standing` `v1_seed_standing`; nothing else in v1 changes."),
+      li(text: "**Outside consumers.** gunbc-private imports gunbc modules through its composed root and breaks on the renames; census it and land its repoint alongside. Census other external references (roadmap rows, saved links)."),
+      li(text: "**R11's size** may be most of the tree; that is the ruling, not a reason to narrow it."),
+    ]),
+    h2(text: "7. Relationship to existing plans and authorities"),
+    ul(items: [
+      li(text: "`docs/plans/namespace-resolution-design.md` — §10 (a module's position is declared, never inferred from storage; the `module` header is placement sugar that ends as a projection) is satisfied by declaring the rule; §13's unique-on-chain resolution is R1."),
+      li(text: "`docs/plans/namespace-cut-replacement-plan.md` — its \"parse-then-derive\" closure mechanism is §4.5; stage XL-3 overlaps C2."),
+      li(text: "`docs/plans/demand-engine-program.md` — §1's unruled next derivation (\"an authority cheaper than full ingestion … a source-root manifest … the module dependency closure of the requested targets\") and M3a's context-assembly note are C3."),
+      li(text: "`docs/plans/replacement-migration-doctrine.md` — the whole PR is one replacement migration; it deletes what it replaces."),
+      li(text: "gunb-ai/gunbc#13674 — independent of this plan (R9)."),
+      li(text: "`gunbc.generated_artifact_registry` — unchanged; consulted by the check."),
+    ]),
+    hr(),
+    h2(text: "Appendix — The move-and-rename procedure"),
+    p(text: "For each file with `module M` at path `P`, let `R = path(M)`:"),
+    ul(items: [
+      li(text: "**A — same folder as R:** rename the file to R. This includes the numbered stage files (`src/v2/compiler/00_compile.dag` → `src/v2/compiler/compile.dag`)."),
+      li(text: "**B — R's folder lies below P's:** move the file down to R."),
+      li(text: "**C — P's folder lies below R's:** the folder carries structure, so rename the module to include it (R6): `gunbc.x` at `dag/gunbc/host/x.dag` → `gunbc.host.x`. Exception: `x/x.dag`, where the folder only repeats the module's own name → move the file up to R."),
+      li(text: "**D — different branch:** decided by group. The largest groups and the proposed outcome:"),
+    ]),
+    TableBlock {
+      header: row(cells: [cell(text: "Group (module prefix @ folder)"), cell(text: "Proposed")]),
+      alignments: [AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "`v2.test.manual` @ `src/v2/test/claim/manual/`"), cell(text: "rename to `v2.test.claim.manual.*`")]),
+        row(cells: [cell(text: "`tools` @ `dag/gunbc/instruments/`"), cell(text: "rename to `gunbc.instruments.*` (R10)")]),
+        row(cells: [cell(text: "`v2.test.long` @ `src/v2/test/claim/long/`"), cell(text: "rename to `v2.test.claim.long.*`")]),
+        row(cells: [cell(text: "`v2.test.execution` @ `src/v2/test/claim/execution/`"), cell(text: "rename to `v2.test.claim.execution.*`")]),
+        row(cells: [cell(text: "`v2.test.emit` @ `src/v2/test/claim/emit/`"), cell(text: "rename to `v2.test.claim.emit.*`")]),
+        row(cells: [cell(text: "`product.printed_chassis` @ `dag/gunbc/product/printed_chassis/`"), cell(text: "move to `dag/product/printed_chassis/`")]),
+        row(cells: [cell(text: "`product` @ `dag/gunbc/product/`"), cell(text: "move to `dag/product/`")]),
+        row(cells: [cell(text: "`test.claim` @ `src/v2/test/claim/parse/`"), cell(text: "rename to `v2.test.claim.parse.*`")]),
+      ],
+    },
+    p(text: "Smaller groups follow the same reading; for example `gunbc.test.*` and `dag.test.*` modules under `dag/test/` are renamed to `test.*`, joining their `test.claim.*` siblings. The C0 generator computes the complete table; collisions refuse the whole sweep (C0). Anything not covered by A–C or by a confirmed group outcome stops the sweep for a decision; it is never guessed."),
+  ]
+}
+
+fn source_layout_authority_body() -> List<MarkdownBlock> {
+  concat(
+    concat(source_layout_authority_opening(), source_layout_rulings_section()),
+    source_layout_authority_design_and_plan()
+  )
+}
+
+data source_layout_authority_plan: Plan = Plan {
+  projection: PlanProjectsCommittedMarkdown,
+  slug: "source-layout-authority",
+  title: "Source layout authority: one storage rule, a name-only compiler, and the end of whole-tree ingestion",
+  body: source_layout_authority_body(),
+  retirement: PlanRetiresWhen {
+    condition: unbound_dissolution(description: "Retire this plan when the cutover it describes has landed on main (every governed `.dag` file at its rule position, repaired v2 bindings, demand acquisition on every v2 compile route, every superseded acquisition route deleted) and the storage rule and layout are carried by `gunbc.source_layout` and `v2.compiler.source_authority`, so that a module name maps to its file through one declared authority and this page is no longer the reference for how.")
+  },
+}

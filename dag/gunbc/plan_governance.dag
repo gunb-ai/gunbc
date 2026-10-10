@@ -56,6 +56,12 @@ data plan_governance_rows: List<PlanGovernance> = [
     role: CompilerStageSpecialization,
     stage: "completion, residual and closure -- environmental completion at a concrete placement",
   },
+  PlanGovernance {
+    plan_slug: "source-layout-authority",
+    governed_by_slug: "v2-compiler-architecture",
+    role: CompilerStageAuthority,
+    stage: "source acquisition: layout authority, storage rule and the name-only compile boundary",
+  },
 ]
 
 fn plan_governance_role_label(role: CompilerPlanRole) -> String {

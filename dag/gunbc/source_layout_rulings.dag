@@ -1,0 +1,218 @@
+module gunbc.source_layout_rulings
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+
+// THE OPERATOR RULINGS BEHIND THE SOURCE-LAYOUT CUTOVER, as a typed carrier (DESIGN section 4c:
+// a ruling belongs in a typed carrier, not in the prose of a plan). The plan
+// gunbc.plans.source_layout_authority renders its rulings section from these rows and restates none
+// of it, so the ruling and the page that cites it cannot disagree. A later ruling is a row edit
+// here, never an edit of the page.
+
+data source_layout_decider: NonEmptyStr = "operator" as NonEmptyStr
+
+data source_layout_ruled_on: NonEmptyStr = "2026-10-10" as NonEmptyStr
+
+// THE RULING'S IDENTITY IS A CLOSED VARIANT, NOT A SPELLING (the lesson of
+// gunbc.namespace_cut_landing_order RulingIdentity): a reference to a ruling nobody declared has no
+// constructor. The label is derived from the identity below, so the two cannot disagree.
+type SourceLayoutRulingId
+  = LayoutR1
+  | LayoutR2
+  | LayoutR3
+  | LayoutR4
+  | LayoutR5
+  | LayoutR6
+  | LayoutR7
+  | LayoutR8
+  | LayoutR9
+  | LayoutR10
+  | LayoutR11
+
+fn source_layout_ruling_label(id: SourceLayoutRulingId) -> NonEmptyStr {
+  match id {
+    LayoutR1 => "R1" as NonEmptyStr
+    LayoutR2 => "R2" as NonEmptyStr
+    LayoutR3 => "R3" as NonEmptyStr
+    LayoutR4 => "R4" as NonEmptyStr
+    LayoutR5 => "R5" as NonEmptyStr
+    LayoutR6 => "R6" as NonEmptyStr
+    LayoutR7 => "R7" as NonEmptyStr
+    LayoutR8 => "R8" as NonEmptyStr
+    LayoutR9 => "R9" as NonEmptyStr
+    LayoutR10 => "R10" as NonEmptyStr
+    LayoutR11 => "R11" as NonEmptyStr
+  }
+}
+
+type SourceLayoutRuling {
+  id: SourceLayoutRulingId,
+  decider: NonEmptyStr,
+  ruled_on: NonEmptyStr,
+  ruling: NonEmptyStr,
+}
+
+data source_layout_rulings: List<SourceLayoutRuling> = [
+  SourceLayoutRuling {
+    id: LayoutR1,
+    decider: source_layout_decider,
+    ruled_on: source_layout_ruled_on,
+    ruling: "v2's binding rule is the rule: a name is declared, imported by name, or fully qualified, or it refuses. Any file v2 resolves must satisfy it; there is no exemption list." as NonEmptyStr,
+  },
+  SourceLayoutRuling {
+    id: LayoutR2,
+    decider: source_layout_decider,
+    ruled_on: source_layout_ruled_on,
+    ruling: "v1's resolver is not changed to match. The hard error is v2's, executed on the seed-generation step by the binary the seed builds." as NonEmptyStr,
+  },
+  SourceLayoutRuling {
+    id: LayoutR3,
+    decider: source_layout_decider,
+    ruled_on: source_layout_ruled_on,
+    ruling: "One storage convention and no dual representations. A dual representation that cannot be removed yet is declared and bounded." as NonEmptyStr,
+  },
+  SourceLayoutRuling {
+    id: LayoutR4,
+    decider: source_layout_decider,
+    ruled_on: source_layout_ruled_on,
+    ruling: "The model does not assume one file per module. This storage realization does: every file-backed top-level module has exactly one `.dag` file; produced modules stay `ModuleStorageProvenance` `ProducedByBehavior` and get no source file; nested namespaces are contents of their owning file. Multi-file source modules are not realized by this cutover." as NonEmptyStr,
+  },
+  SourceLayoutRuling {
+    id: LayoutR5,
+    decider: source_layout_decider,
+    ruled_on: source_layout_ruled_on,
+    ruling: "Storage rule: module `a.b.c` lives at `<root(a)>/b/c.dag`, where `root(v2) = src/v2` and `root(a) = dag/a` for every other top-level namespace. Paths follow names, never the reverse." as NonEmptyStr,
+  },
+  SourceLayoutRuling {
+    id: LayoutR6,
+    decider: source_layout_decider,
+    ruled_on: source_layout_ruled_on,
+    ruling: "Modules stored where their name does not put them are fixed. Where a folder carries structure the name lacks, the folder goes into the name (`gunbc.x` in `dag/gunbc/host/` becomes `gunbc.host.x`)." as NonEmptyStr,
+  },
+  SourceLayoutRuling {
+    id: LayoutR7,
+    decider: source_layout_decider,
+    ruled_on: source_layout_ruled_on,
+    ruling: "The migration is one PR. The epochs of §5 are stages of one branch; none merges alone, and no intermediate state is an accepted repository state." as NonEmptyStr,
+  },
+  SourceLayoutRuling {
+    id: LayoutR8,
+    decider: source_layout_decider,
+    ruled_on: source_layout_ruled_on,
+    ruling: "Work anchors on the v2 native process. v1 changes are limited to what the cutover mechanically requires." as NonEmptyStr,
+  },
+  SourceLayoutRuling {
+    id: LayoutR9,
+    decider: source_layout_decider,
+    ruled_on: source_layout_ruled_on,
+    ruling: "The seed keeps its whole-tree read until it retires; no scratch-root bridge. In exchange, v2 is aggressive about what it consumes: a v2 compile reads, parses and retains only the modules it requests, builds no whole-tree index on any path (success or refusal), and its read set is checked against the requested closure exactly." as NonEmptyStr,
+  },
+  SourceLayoutRuling {
+    id: LayoutR10,
+    decider: source_layout_decider,
+    ruled_on: source_layout_ruled_on,
+    ruling: "`tools.*` is renamed to `gunbc.instruments.*`; any member that is not an instrument stops the sweep for a decision." as NonEmptyStr,
+  },
+  SourceLayoutRuling {
+    id: LayoutR11,
+    decider: source_layout_decider,
+    ruled_on: source_layout_ruled_on,
+    ruling: "The binding-repair population is every module reached by any compile route cut over to load by name, not only the two self-host closures. C0 measures it and the plan's executor states its size before C2." as NonEmptyStr,
+  },
+]
+
+// THE DECISIONS RECORDED WITH THE RULINGS. Same closed-identity discipline: a decision's subject is a
+// variant, and its label is derived from it.
+type SourceLayoutDecisionSubject
+  = LayoutGrain
+  | OptionalConstructorScope
+  | OtherBareBuiltins
+  | SeedMirrors
+  | ProductNamespaceFiles
+  | ParseAllPopulation
+  | FailurePathHint
+  | FixtureModules
+  | ModuleLineRemoval
+
+fn source_layout_decision_subject_label(subject: SourceLayoutDecisionSubject) -> NonEmptyStr {
+  match subject {
+    LayoutGrain => "Layout grain" as NonEmptyStr
+    OptionalConstructorScope => "`T?` constructors" as NonEmptyStr
+    OtherBareBuiltins => "Other bare builtins" as NonEmptyStr
+    SeedMirrors => "Seed mirrors" as NonEmptyStr
+    ProductNamespaceFiles => "`product.*`" as NonEmptyStr
+    ParseAllPopulation => "Parse-all" as NonEmptyStr
+    FailurePathHint => "Failure-path hint" as NonEmptyStr
+    FixtureModules => "Fixtures" as NonEmptyStr
+    ModuleLineRemoval => "`module` line removal" as NonEmptyStr
+  }
+}
+
+type SourceLayoutDecision {
+  subject: SourceLayoutDecisionSubject,
+  decision: NonEmptyStr,
+}
+
+data source_layout_decisions: List<SourceLayoutDecision> = [
+  SourceLayoutDecision {
+    subject: LayoutGrain,
+    decision: "Namespace rows only: one row per namespace that directly contains modules; parents derived. No per-module rows." as NonEmptyStr,
+  },
+  SourceLayoutDecision {
+    subject: OptionalConstructorScope,
+    decision: "No implicit scope; `Present`/`Absent` require `import std.optional`." as NonEmptyStr,
+  },
+  SourceLayoutDecision {
+    subject: OtherBareBuiltins,
+    decision: "Import their current declaring module. Not combined with the unfinished `filter`/`any` retirement." as NonEmptyStr,
+  },
+  SourceLayoutDecision {
+    subject: SeedMirrors,
+    decision: "Renamed with their modules; no old-name aliases." as NonEmptyStr,
+  },
+  SourceLayoutDecision {
+    subject: ProductNamespaceFiles,
+    decision: "Files move to `dag/product/`; names unchanged." as NonEmptyStr,
+  },
+  SourceLayoutDecision {
+    subject: ParseAllPopulation,
+    decision: "Kept, explicit, required (a step on `witnesses`, not a job), streaming: one module at a time, verdict only, no index." as NonEmptyStr,
+  },
+  SourceLayoutDecision {
+    subject: FailurePathHint,
+    decision: "The repository-wide \"declared in X\" lookup is deleted from compilation." as NonEmptyStr,
+  },
+  SourceLayoutDecision {
+    subject: FixtureModules,
+    decision: "No exemption kind. A fixture that is a module obeys the rule; malformed non-module bytes live outside governed roots." as NonEmptyStr,
+  },
+  SourceLayoutDecision {
+    subject: ModuleLineRemoval,
+    decision: "Happens with seed retirement; not a phase of this plan." as NonEmptyStr,
+  },
+]
+
+// The one cross-row property the types cannot carry: no identity is named by two rows. Identity is
+// compared through the derived label, so there is a single equality and it is the one a reader sees.
+fn ruling_label_text(r: SourceLayoutRuling) -> String {
+  source_layout_ruling_label(id: r.id) as String
+}
+
+fn decision_label_text(d: SourceLayoutDecision) -> String {
+  source_layout_decision_subject_label(subject: d.subject) as String
+}
+
+fn count_rulings_labelled(rows: List<SourceLayoutRuling>, label: String) -> Int {
+  fold(rows, init: 0, f: (n, r) => if ruling_label_text(r: r) == label { n + 1 } else { n })
+}
+
+fn count_decisions_labelled(rows: List<SourceLayoutDecision>, label: String) -> Int {
+  fold(rows, init: 0, f: (n, d) => if decision_label_text(d: d) == label { n + 1 } else { n })
+}
+
+fn source_layout_rulings_are_unique(rows: List<SourceLayoutRuling>) -> Bool {
+  all(rows, r => count_rulings_labelled(rows: rows, label: ruling_label_text(r: r)) == 1)
+}
+
+fn source_layout_decisions_are_unique(rows: List<SourceLayoutDecision>) -> Bool {
+  all(rows, d => count_decisions_labelled(rows: rows, label: decision_label_text(d: d)) == 1)
+}
