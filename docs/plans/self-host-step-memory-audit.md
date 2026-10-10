@@ -1,39 +1,25 @@
-# Self-host step memory audit (2026-10-10)
+# Self-host step memory audit
 
-Subject: the 17.2 GB slot peak of `gunbc test //gunbc/instruments:self-host` (run 38016653087).
-Model row (figures TRANSCRIBED from recorded srv1 runs, each row naming the instrument that re-derives it; the readout's green is a consistency check of those receipts, not evidence about the live seed):
-`gunbc.floor.self_host_step_memory_demand`. Re-derive the readout:
+Subject: the slot memory peak of `gunbc test //gunbc/instruments:self-host` and of
+`//gunbc/instruments:v2-native-cli`. This page carries NO measured figure (DESIGN §6): every number
+lives in the receipt the instrument wrote, and the model reads it.
 
-    gunbc run --source-root dag --source-root src/v2 \
-      --entry dag/gunbc/floor/self_host_step_memory_demand.dag \
-      --function self_host_step_memory_demand_readout     # consistency of the recorded receipts; has no consumer yet -- see below
+- Receipt: `tools/self_host_step_memory_receipt.tsv` (line kinds `bucket`, `inferred`, `sampler`, `phase`, documented in the model's header).
+- Model and reader: `gunbc.self_host_step_memory_demand` (`dag/gunbc/floor/self_host_step_memory_demand.dag`). Re-derive the readout from the repo root, under a cgroup budget:
+  `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/floor/self_host_step_memory_demand.dag --function self_host_step_memory_readout`
+- Instrument, buckets: `GUNBC_MEMORY_COMPOSITION=1 GUNBC_MEMORY_COMPOSITION_RECEIPT=<file> gunbc test //gunbc/instruments:self-host` (`src/v1/stage0/src/cli_run/memory_composition.rs`) appends one `bucket` line per released structure; the hook releases only after emission and only when the env is set.
+- Instrument, phases: a 1 s sampler over `systemd-run --user --scope -p MemoryMax=22G -p MemorySwapMax=0` reading the scope's `memory.current`/`memory.peak` and each pid's `VmRSS`, cut at the step's own log seams (`[pre-entry]`, `compile.*`, cargo invocations); one `phase` line per seam with the seed RSS, the rustc RSS sum and the cgroup maximum.
 
-## Instruments (measured)
-- Phase attribution: a 22G/swap0 `systemd-run --user --scope` on srv1, cgroup memory.current/peak plus process-tree RSS sampled at a fixed beat; seams from the step's stderr log lines.
-- Composition: env `GUNBC_MEMORY_COMPOSITION=1` (`cli_run/memory_composition.rs`) reads RSS, then releases structures in order with `malloc_trim` readback, separating live from freed-but-retained.
-- Counterfactual: `GUNBC_MEMORY_COMPOSITION_DROP_POOL_BEFORE_RESOLVE=1` drops the whole-tree pool before closure resolution.
+## What the receipt shows (read it there)
+- The step's high-water mark is held by the seed process in `compile.reconcile`, not by rustc or the product under test.
+- The tree-scale structures (token pool, parsed heads, resolve index, path/graph caches) are `WholeTree`; the reconcile transient splits into a closure-independent part and a closure-proportional part by regression, and both are `inferred` lines: bets, not facts.
+- Whether demand is strictly decreasing: no. Tree-scale structures grow with the module count and nothing shrinks by itself; each ender in `self_host_step_demand_trend` is a named change.
 
-## Findings
-1. Step-alone peak is 14.39 GB (self-host) and 14.23 GB (native-cli); the slot's 17.2 GB adds ~2.8 GB of co-resident runner/page-cache state.
-2. The high-water mark is held by the **seed process in compile.reconcile**, not rustc (rustc ~6.3 GB, product ~20 MB). The cargo phase runs ~13.5 GB only because the seed's pool is still resident there.
-3. Composition at the seed peak: whole-tree token pool 4.64 GB, pool heads 0.54 GB, name census / resolve index 1.82 GB (all measured, tree-scale: 8,196 pooled modules, 7,959 census-only); reconcile transient ~5.4 GB closure-independent and ~1.9 GB closure-proportional are **inferred** by regression (read obligation: tagged allocation attribution inside compile.reconcile).
-4. **Counterfactual, measured:** dropping the pool before resolution lowered the cgroup peak from 14,393,454,592 to 10,485,690,368 bytes (-3.9 GB) with the step green (rc 0). Resolution does not need the token pool after the census.
+## Provenance and standing (DESIGN §4d)
+The committed receipt was assembled from one srv1 run set (composition run, two cold runs) by the recipe above. `bucket` and `sampler`/`phase` lines are measured; `inferred` lines are a two-closure regression with a stated read obligation (tagged allocation attribution inside `compile.reconcile`). Growth rate over time is NOT in the receipt: it is one week of tree history and is a bet.
 
-## Trend: is it strictly decreasing?
-No. Tree-scale buckets grow with the module count and the closure bucket with `v2.compiler.compile`'s size; nothing shrinks by itself. Demand is a staircase that is flat or rising between named changes (see `self_host_step_demand_trend`).
+## Levers and recommendation
+Levers and the slot/trip recommendation are the lane report's, not this page's, because the pool-release lever is a production-path change measured in its own PR with its own receipt (dissolution trigger: closure-scoped ingestion). This page does not restate it.
 
-## Levers (displaced bytes per unit of change)
-1. Release the pool before resolution: **-3.9 GB measured**, a small, local change (the counterfactual is already a one-call readback). Do this first.
-2. Closure-scoped ingestion: up to ~12.4 GB of the 14.4 GB peak, large change; subsumes lever 1.
-3. Locate the 5.4 GB closure-independent reconcile transient (step-zero measurement, then derive).
-4. Native generation-two compiler: unmeasured; its own cold-run receipt (`gunbc.cutover_receipt`) is the instrument.
-
-## Recommendation
-- 22 GiB / 21 GiB High / 20 GiB trip hold today (peak 17.2 GB) but the observed growth (~120 modules/day, ~1.5 MB/module resident, one-week window, so a bet) exhausts the 20 GiB trip in ~24 days without lever 1. Land lever 1 first; it restores ~3.9 GB (~months of headroom) and the 22/21/20 envelope is then right for six months.
-- The v2-native slot class starts from its own cold-run receipt; the native-cli step-alone 14.23 GB (same shape as self-host) is the only measured floor, so begin at the same 22 GiB and re-size from the first native receipt.
-- `gunbc.compiler_gate_workflow` / `gunbc.emitted_subject_build_gate` are untouched here.
-
-Measured vs inferred: findings 1, 2, 4 and bucket sizes in 3 first four are measured; the 5.4/1.9 GB split and the growth rate are inferred.
-
-## Consumption (DESIGN 3c)
-The model has no call site in the closure today. Declared frontier: bold-crane-635's `gunbc.cutover_receipt` cold-run row (not on main yet) is the named consumer; trigger is that module landing and importing `self_host_step_phase_readings_for_step`. The seed hooks in `memory_composition.rs` are env-gated measurement and are consumed by running the instrument.
+## Consumption (DESIGN §3c): declared frontier
+No executing consumer exists on this base. The named consumers are slot sizing, via the cold-run receipt row of `gunbc.cutover_receipt` and the note of `gunbc.runner_slot_desired`, which take the readout as the carrier of the per-step memory figure. Trigger: those modules import `gunbc.self_host_step_memory_demand` on a base that carries them (`integration/v1-closeout` carries `gunbc.cutover_receipt` since #13664).

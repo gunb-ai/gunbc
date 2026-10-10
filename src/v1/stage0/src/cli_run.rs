@@ -7955,7 +7955,6 @@ pub fn compile_emission_over(request: &CompileRequest, residency: IndexResidency
     // not an equivalent-looking substitute (checked against that function's body, which is
     // exactly that composition).
     memory_composition::readback("compile_emission_over.pre_resolve");
-    memory_composition::drop_pool_before_resolve();
     let resolved = v1_compiler_compile::compile_to_resolved_with_options(
         Rc::new(closure.clone().into()),
         options,

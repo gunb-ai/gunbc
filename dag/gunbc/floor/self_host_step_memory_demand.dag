@@ -1,54 +1,48 @@
 module gunbc.self_host_step_memory_demand
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
-import std.measure { ByteSize, byte_size, byte_size_count }
+import std.algebra { trim }
+import std.optional { Optional, Present, Absent }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.checked_arithmetic { CheckedInt, CheckedIntReady, CheckedIntOverflow, checked_add_results }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
 
 data self_host_step_memory_demand_disposition: ConstructionMechanism = SingleAuthority
 
 // WHAT ONE `gunbc test //gunbc/instruments:self-host` (AND ITS SIBLING v2-native-cli) HOLDS, BY OWNER,
-// BY SCALE AND BY THE CHANGE THAT ENDS IT -- as typed rows rather than as a paragraph of a run log.
+// BY SCALE AND BY THE CHANGE THAT ENDS IT. This module carries the CLASSIFICATION of each structure
+// (owner, scale, ender: claims about the code, not measurements) and READS the bytes from the receipt
+// the instrument wrote. It declares no byte figure of its own.
 //
-// THE PEAK IS NOT RUSTC'S AND IT IS NOT THE EMITTED PRODUCT'S. The step's high-water mark is held by the
-// SEED PROCESS inside its own in-process emission, before cargo starts; when cargo runs, the seed is
-// still resident (it holds the whole-tree acquisition pool through the build) and rustc stacks on it
-// at a LOWER total. The product under test costs almost nothing. So the demand has three owners and
-// only one of them sets the number a slot is sized to.
+// THE RECEIPT is `tools/self_host_step_memory_receipt.tsv`, tab separated, one reading per line:
+//   bucket   <stage> <bytes>   written by the seed under GUNBC_MEMORY_COMPOSITION=1 with
+//                              GUNBC_MEMORY_COMPOSITION_RECEIPT=<path>: what malloc_trim returned
+//                              after releasing that structure
+//   inferred <name>  <bytes>   a two-closure regression: a BET, never a fact
+//   sampler  <name>  <bytes>   the 1 s beat sampler over the systemd-run scope
+//   phase    <step> <phase> <seed_rss> <rustc_rss_sum> <cgroup_current>   the sampler cut at log seams
+// The recipe producing the sampler and phase lines is in docs/plans/self-host-step-memory-audit.md.
 //
-// MEASURED VS INFERRED (DESIGN 4d). `MeasuredByStagedRelease` rows were read back as a resident-set
-// pair around a release of exactly that structure (`cli_run::memory_composition`, the
-// `[memory-composition] release=` lines): what malloc_trim returns after the release was freed, so the
-// figure is that structure's live size, not an allocator's retention. `InferredFromClosureRegression`
-// rows are a two-closure regression and are a BET: the reader who consumes one as a fact is the defect.
-//
-// HOW EVERY FIGURE RE-DERIVES: the instrument is the run itself -- `GUNBC_MEMORY_COMPOSITION=1 gunbc
-// test //gunbc/instruments:self-host` under `systemd-run --user --scope -p MemoryMax=22G -p
-// MemorySwapMax=0` with the 1 s beat sampler sampling the scope's memory.current/memory.peak and each
-// process's VmRSS, phases cut at the step's own log seams. Receipt ids below name the run directory
-// shape (self_host_cold_run, native_cli_cold_run, composition_run); the seed revision is d0f2067f8b1
-// on aarch64 srv1 with GUNBC_NATIVE_CACHE_ROOT unset (a COLD run).
+// MEASURED VS INFERRED (DESIGN 4d) is the receipt's line kind: `bucket` and `sampler` are measured,
+// `inferred` is a bet and the reader who consumes it as a fact is the defect.
 
 type StepDemandOwner
   = SeedProcess
   | CargoAndRustc
   | ProductUnderTest
 
-// THE FOUR GROWTH AXES A BUCKET CAN HAVE, and each names what its bytes scale WITH:
-//   WholeTree     -- the number of modules and bytes the seed acquires under the source roots,
-//                    independent of which closure is being emitted;
-//   EntryClosure  -- the emitted entry's own transitive closure (v2.compiler.compile's size);
-//   EmittedCrate  -- the size of the Rust crate that rustc compiles, a consequence of the closure;
-//   Fixed         -- the process baseline.
+// THE GROWTH AXES A STRUCTURE CAN HAVE, each naming what its bytes scale WITH:
+//   WholeTree    -- the modules the seed acquires under the source roots, independent of the entry;
+//   EntryClosure -- the emitted entry's transitive closure (v2.compiler.compile's size);
+//   EmittedCrate -- the Rust crate rustc compiles, a consequence of the closure;
+//   Fixed        -- the process baseline.
 type StepDemandScale
   = WholeTree
   | EntryClosure
   | EmittedCrate
   | Fixed
 
-// WHAT ENDS A BUCKET. Each arm is a change, not a knob: a bucket disappears when the structure that
-// holds it stops being built, never when its allocator is tuned.
+// WHAT ENDS A STRUCTURE: a change, not a knob.
 type StepDemandEnder
   = ClosureScopedIngestion
   | PoolReleasedAfterCensus
@@ -57,213 +51,92 @@ type StepDemandEnder
   | ShrinksOnlyWithEmittedCrate
   | NeverEnds
 
-type StepBucketStanding
-  = MeasuredByStagedRelease
-  | MeasuredBySamplerBeat
-  | InferredFromClosureRegression { read_obligation: NonEmptyStr }
-
-type StepMemoryBucket {
+type StepMemoryStructure {
+  receipt_kind: NonEmptyStr
+  receipt_name: NonEmptyStr
   structure: NonEmptyStr
   owner: StepDemandOwner
   scale: StepDemandScale
-  bytes: ByteSize
-  standing: StepBucketStanding
   live_at_seed_peak: Bool
   live_during_cargo: Bool
   ender: StepDemandEnder
-  instrument: NonEmptyStr
 }
 
-data self_host_composition_run_instrument: NonEmptyStr = "GUNBC_MEMORY_COMPOSITION=1 gunbc test //gunbc/instruments:self-host, [memory-composition] release= lines (cli_run::memory_composition)"
-data self_host_beat_instrument: NonEmptyStr = "1 s sampler over the systemd-run scope's memory.current/memory.peak and each pid's VmRSS, phases cut at the step's own log seams"
-
-// THE BUCKETS OF THE SELF-HOST STEP AT d0f2067f8b1 (8,196 pooled modules, 237 compiled, 7,959
-// census-only; emitted crate 243 files). Bytes are KiB x 1024 as printed.
-data self_host_step_memory_buckets: List<StepMemoryBucket> = [
-  StepMemoryBucket {
-    structure: "whole-tree token pool: V1LexArtifact + content + newline index of every pooled module (pool_acquire POOL; source text itself is 109,158,620 bytes)",
-    owner: SeedProcess,
-    scale: WholeTree,
-    bytes: byte_size(4644225024),
-    standing: MeasuredByStagedRelease,
-    live_at_seed_peak: true,
-    live_during_cargo: true,
-    ender: ClosureScopedIngestion,
-    instrument: "release=pool_content_tokens_newline trim_reclaimed_kb=4535376",
-  },
-  StepMemoryBucket {
-    structure: "whole-tree parsed heads (pool_acquire Acquired.heads, 8,196 of 8,196 parsed)",
-    owner: SeedProcess,
-    scale: WholeTree,
-    bytes: byte_size(536272896),
-    standing: MeasuredByStagedRelease,
-    live_at_seed_peak: true,
-    live_during_cargo: true,
-    ender: ClosureScopedIngestion,
-    instrument: "release=pool_heads trim_reclaimed_kb=523704",
-  },
-  StepMemoryBucket {
-    structure: "shared resolve index / name census (entry_resolve PROCESS_RESOLVE_INDEX), built from the pool in the pre-entry census phase",
-    owner: SeedProcess,
-    scale: WholeTree,
-    bytes: byte_size(1822863360),
-    standing: MeasuredByStagedRelease,
-    live_at_seed_peak: true,
-    live_during_cargo: true,
-    ender: ClosureScopedIngestion,
-    instrument: "release=resolve_index trim_reclaimed_kb=1780140",
-  },
-  StepMemoryBucket {
-    structure: "module path index and graph facts caches (cli_run MODULE_PATH_INDEX_CACHE, MODULE_GRAPH_FACTS_CACHE)",
-    owner: SeedProcess,
-    scale: WholeTree,
-    bytes: byte_size(27197440),
-    standing: MeasuredByStagedRelease,
-    live_at_seed_peak: true,
-    live_during_cargo: true,
-    ender: ClosureScopedIngestion,
-    instrument: "release=module_graph_facts_and_path_index trim_reclaimed_kb=26544 plus scope_and_reference_indexes 20",
-  },
-  StepMemoryBucket {
-    structure: "reconcile/emission working set that is the SAME for a 202-module and a 237-module closure (compile.reconcile, 3 minutes, +6.4 GB RSS; freed at the end of compile_emission_over)",
-    owner: SeedProcess,
-    scale: WholeTree,
-    bytes: byte_size(5390000000),
-    standing: InferredFromClosureRegression {
-      read_obligation: "tagged allocation attribution inside compile.reconcile: a two-point regression over the v2-native-cli and self-host closures cannot say WHICH structure holds the closure-independent part, and a 110-module `gunbc run` closure reached only 8.6 GB max RSS, so the pipeline-specific allocation is not yet located"
-    },
-    live_at_seed_peak: true,
-    live_during_cargo: false,
-    ender: ClosureScopedIngestion,
-    instrument: "trim_reclaimed_kb 7100936 (self-host, 243 files) vs 6836464 (native-cli, 208 files) after drop(run); intercept of the line through the two",
-  },
-  StepMemoryBucket {
-    structure: "closure-proportional part of the same working set (about 7.6 MB per emitted file)",
-    owner: SeedProcess,
-    scale: EntryClosure,
-    bytes: byte_size(1880000000),
-    standing: InferredFromClosureRegression {
-      read_obligation: "the same regression's slope times 243 emitted files; replaced by a measured figure when the allocation attribution above lands"
-    },
-    live_at_seed_peak: true,
-    live_during_cargo: false,
-    ender: NativeCompilerReplacesInterpreter,
-    instrument: "trim_reclaimed_kb difference over emitted-file difference (35 files)",
-  },
-  StepMemoryBucket {
-    structure: "rustc over the emitted crate: sum of RSS of all rustc processes at the high-water beat of the baseline build",
-    owner: CargoAndRustc,
-    scale: EmittedCrate,
-    bytes: byte_size(6300000000),
-    standing: MeasuredBySamplerBeat,
-    live_at_seed_peak: false,
-    live_during_cargo: true,
-    ender: ShrinksOnlyWithEmittedCrate,
-    instrument: "sampler beats between the emitted-crate-written and emitted-crate-built log seams, rustc rss summed per beat; 5.3 GB for the 208-file native-cli crate",
-  },
-  StepMemoryBucket {
-    structure: "the built emitted compiler running its controls (census over a clean root, poison specimen)",
-    owner: ProductUnderTest,
-    scale: Fixed,
-    bytes: byte_size(20000000),
-    standing: MeasuredBySamplerBeat,
-    live_at_seed_peak: false,
-    live_during_cargo: false,
-    ender: NeverEnds,
-    instrument: "sampler beats after the discriminating red is established; process sum minus the resident seed",
-  },
+data self_host_step_memory_structures: List<StepMemoryStructure> = [
+  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "pool_content_tokens_newline", structure: "whole-tree token pool: V1LexArtifact + content + newline index of every pooled module (pool_acquire POOL)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, live_during_cargo: true, ender: ClosureScopedIngestion },
+  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "pool_heads", structure: "whole-tree parsed heads (pool_acquire Acquired.heads)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, live_during_cargo: true, ender: ClosureScopedIngestion },
+  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "resolve_index", structure: "shared resolve index / name census (entry_resolve PROCESS_RESOLVE_INDEX)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, live_during_cargo: true, ender: ClosureScopedIngestion },
+  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "module_graph_facts_and_path_index", structure: "module path index and graph facts caches (cli_run)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, live_during_cargo: true, ender: ClosureScopedIngestion },
+  StepMemoryStructure { receipt_kind: "inferred", receipt_name: "reconcile_closure_independent", structure: "reconcile/emission working set the same for a smaller and a larger closure; read obligation: tagged allocation attribution inside compile.reconcile", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, live_during_cargo: false, ender: ClosureScopedIngestion },
+  StepMemoryStructure { receipt_kind: "inferred", receipt_name: "reconcile_closure_proportional", structure: "closure-proportional part of the same working set", owner: SeedProcess, scale: EntryClosure, live_at_seed_peak: true, live_during_cargo: false, ender: NativeCompilerReplacesInterpreter },
+  StepMemoryStructure { receipt_kind: "sampler", receipt_name: "rustc_rss_sum", structure: "rustc over the emitted crate: sum of RSS of all rustc processes at the cargo phase maximum", owner: CargoAndRustc, scale: EmittedCrate, live_at_seed_peak: false, live_during_cargo: true, ender: ShrinksOnlyWithEmittedCrate },
+  StepMemoryStructure { receipt_kind: "sampler", receipt_name: "product_controls", structure: "the built emitted compiler running its controls", owner: ProductUnderTest, scale: Fixed, live_at_seed_peak: false, live_during_cargo: false, ender: NeverEnds },
 ]
 
-// ── the per-phase readings, the instrument's own output ─────────────────────────────────────────
-//
-// THE SEAMS ARE THE STEP'S OWN LOG LINES (`started compile.frontend`, `compile.reconcile done`,
-// `started compile.emit`, `emission arena released`, `emitted crate built`, `discriminating red
-// established`), so a phase boundary is a line a reader can grep, not a time chosen afterwards.
-// cgroup_current_max includes page cache and so can exceed the process sum; process_rss_sum_max is
-// seed + rustc + the rest of the process tree at one beat.
-type StepPhaseReading {
-  step: NonEmptyStr
-  phase: NonEmptyStr
-  seed_rss_max: ByteSize
-  rustc_rss_sum_max: ByteSize
-  cgroup_current_max: ByteSize
-}
+// ── reading the receipt ─────────────────────────────────────────────────────────────────────────
 
-data self_host_step_phase_readings: List<StepPhaseReading> = [
-  StepPhaseReading { step: "self-host", phase: "pre_entry_pool_and_census", seed_rss_max: byte_size(7120000000), rustc_rss_sum_max: byte_size(0), cgroup_current_max: byte_size(7120000000) },
-  StepPhaseReading { step: "self-host", phase: "compile.frontend_normalize", seed_rss_max: byte_size(7890000000), rustc_rss_sum_max: byte_size(0), cgroup_current_max: byte_size(7890000000) },
-  StepPhaseReading { step: "self-host", phase: "compile.reconcile", seed_rss_max: byte_size(14360000000), rustc_rss_sum_max: byte_size(0), cgroup_current_max: byte_size(14370000000) },
-  StepPhaseReading { step: "self-host", phase: "compile.analyses", seed_rss_max: byte_size(14370000000), rustc_rss_sum_max: byte_size(0), cgroup_current_max: byte_size(14380000000) },
-  StepPhaseReading { step: "self-host", phase: "compile.emit", seed_rss_max: byte_size(14370000000), rustc_rss_sum_max: byte_size(0), cgroup_current_max: byte_size(14390000000) },
-  StepPhaseReading { step: "self-host", phase: "cargo_build_baseline", seed_rss_max: byte_size(7080000000), rustc_rss_sum_max: byte_size(6330000000), cgroup_current_max: byte_size(13760000000) },
-  StepPhaseReading { step: "self-host", phase: "discriminating_red_rebuild", seed_rss_max: byte_size(7130000000), rustc_rss_sum_max: byte_size(6320000000), cgroup_current_max: byte_size(14040000000) },
-  StepPhaseReading { step: "self-host", phase: "controls", seed_rss_max: byte_size(7130000000), rustc_rss_sum_max: byte_size(0), cgroup_current_max: byte_size(7840000000) },
-  StepPhaseReading { step: "v2-native-cli", phase: "pre_entry_pool_and_census", seed_rss_max: byte_size(7120000000), rustc_rss_sum_max: byte_size(0), cgroup_current_max: byte_size(7120000000) },
-  StepPhaseReading { step: "v2-native-cli", phase: "compile.frontend_normalize", seed_rss_max: byte_size(7820000000), rustc_rss_sum_max: byte_size(0), cgroup_current_max: byte_size(7820000000) },
-  StepPhaseReading { step: "v2-native-cli", phase: "compile.reconcile", seed_rss_max: byte_size(14190000000), rustc_rss_sum_max: byte_size(0), cgroup_current_max: byte_size(14200000000) },
-  StepPhaseReading { step: "v2-native-cli", phase: "compile.analyses", seed_rss_max: byte_size(14210000000), rustc_rss_sum_max: byte_size(0), cgroup_current_max: byte_size(14220000000) },
-  StepPhaseReading { step: "v2-native-cli", phase: "compile.emit", seed_rss_max: byte_size(14210000000), rustc_rss_sum_max: byte_size(0), cgroup_current_max: byte_size(14230000000) },
-  StepPhaseReading { step: "v2-native-cli", phase: "cargo_build_baseline", seed_rss_max: byte_size(7100000000), rustc_rss_sum_max: byte_size(5120000000), cgroup_current_max: byte_size(12550000000) },
-  StepPhaseReading { step: "v2-native-cli", phase: "discriminating_red_rebuild", seed_rss_max: byte_size(7130000000), rustc_rss_sum_max: byte_size(5310000000), cgroup_current_max: byte_size(12950000000) },
-  StepPhaseReading { step: "v2-native-cli", phase: "controls", seed_rss_max: byte_size(7130000000), rustc_rss_sum_max: byte_size(0), cgroup_current_max: byte_size(7780000000) },
-]
+data self_host_step_memory_receipt_path: NonEmptyStr = "tools/self_host_step_memory_receipt.tsv"
 
-// ── folds over the rows ─────────────────────────────────────────────────────────────────────────
-
-fn step_scale_is_whole_tree(s: StepDemandScale) -> Bool {
-  match s {
-    WholeTree => true
-    EntryClosure => false
-    EmittedCrate => false
-    Fixed => false
+fn receipt_column(cols: List<String>, index: Int) -> String {
+  match cols.skip(n: index).first() {
+    Present { value: c } => trim(s: c)
+    Absent => ""
   }
 }
 
-fn step_scale_is_entry_closure(s: StepDemandScale) -> Bool {
-  match s {
-    WholeTree => false
-    EntryClosure => true
-    EmittedCrate => false
-    Fixed => false
+fn receipt_digit_value(c: String) -> Int {
+  if c == "0" { 0 } else if c == "1" { 1 } else if c == "2" { 2 } else if c == "3" { 3 } else if c == "4" { 4 } else if c == "5" { 5 } else if c == "6" { 6 } else if c == "7" { 7 } else if c == "8" { 8 } else { 9 }
+}
+
+fn receipt_decimal_from(t: String, i: Int, acc: Int) -> Int {
+  if i >= string_length(s: t) { acc } else { receipt_decimal_from(t: t, i: i + 1, acc: acc * 10 + receipt_digit_value(c: char_at(s: t, pos: i))) }
+}
+
+fn receipt_is_decimal_from(t: String, i: Int) -> Bool {
+  if i >= string_length(s: t) { true } else { char_at(s: t, pos: i) >= "0" && char_at(s: t, pos: i) <= "9" && receipt_is_decimal_from(t: t, i: i + 1) }
+}
+
+fn receipt_is_decimal(t: String) -> Bool {
+  t != "" && receipt_is_decimal_from(t: t, i: 0)
+}
+
+fn receipt_rows(text: String) -> List<List<String>> {
+  map(filter(split(s: text, delimiter: "\n"), l => l != "" && char_at(s: l, pos: 0) != "#"), l => split(s: l, delimiter: "\t"))
+}
+
+// The bytes the receipt holds for one structure, or -1 when the receipt has no, an ill-formed, or a
+// duplicated line for it: the readout refuses on -1 and never reads it as zero.
+fn receipt_structure_bytes(rows: List<List<String>>, s: StepMemoryStructure) -> Int {
+  let found = filter(rows, r => receipt_column(cols: r, index: 0) == (s.receipt_kind as String) && receipt_column(cols: r, index: 1) == (s.receipt_name as String))
+  if length(xs: found) != 1 { -1 } else {
+    match found.first() {
+      Present { value: r } =>
+        if receipt_is_decimal(t: receipt_column(cols: r, index: 2)) { receipt_decimal_from(t: receipt_column(cols: r, index: 2), i: 0, acc: 0) } else { -1 }
+      Absent => -1
+    }
   }
 }
 
-fn step_buckets_total(buckets: List<StepMemoryBucket>) -> CheckedInt {
-  fold(buckets, init: CheckedIntReady { value: 0 }, f: (acc, b) => checked_add_results(a: acc, b: CheckedIntReady { value: byte_size_count(b: b.bytes) }))
+fn receipt_phase_cgroup(rows: List<List<String>>, step: String, phase: String) -> Int {
+  let found = filter(rows, r => receipt_column(cols: r, index: 0) == "phase" && receipt_column(cols: r, index: 1) == step && receipt_column(cols: r, index: 2) == phase)
+  match found.first() {
+    Present { value: r } =>
+      if receipt_is_decimal(t: receipt_column(cols: r, index: 5)) { receipt_decimal_from(t: receipt_column(cols: r, index: 5), i: 0, acc: 0) } else { -1 }
+    Absent => -1
+  }
 }
 
-// WHAT SCALES WITH THE CORPUS, summed, and what scales with the entry closure. The remainder of the
-// step's peak is cargo's and the product's, which are NOT live at the seed's high-water mark.
-fn step_whole_tree_bytes() -> CheckedInt {
-  step_buckets_total(buckets: self_host_step_memory_buckets |> filter(b => step_scale_is_whole_tree(s: b.scale)))
+fn step_structures_unreadable(rows: List<List<String>>) -> List<StepMemoryStructure> {
+  filter(self_host_step_memory_structures, s => receipt_structure_bytes(rows: rows, s: s) < 0)
 }
 
-fn step_entry_closure_bytes() -> CheckedInt {
-  step_buckets_total(buckets: self_host_step_memory_buckets |> filter(b => step_scale_is_entry_closure(s: b.scale)))
+// WHAT SCALES WITH THE CORPUS, and what is live at the seed's moment, summed from the receipt.
+fn step_whole_tree_bytes(rows: List<List<String>>) -> Int {
+  fold(filter(self_host_step_memory_structures, s => match s.scale { WholeTree => true  EntryClosure => false  EmittedCrate => false  Fixed => false }), init: 0, f: (acc, s) => acc + receipt_structure_bytes(rows: rows, s: s))
 }
 
-fn step_live_at_seed_peak(b: StepMemoryBucket) -> Bool {
-  b.live_at_seed_peak
-}
-
-fn step_seed_peak_bytes() -> CheckedInt {
-  step_buckets_total(buckets: self_host_step_memory_buckets |> filter(b => step_live_at_seed_peak(b: b)))
-}
-
-fn step_live_during_cargo(b: StepMemoryBucket) -> Bool {
-  b.live_during_cargo
-}
-
-fn step_cargo_phase_bytes() -> CheckedInt {
-  step_buckets_total(buckets: self_host_step_memory_buckets |> filter(b => step_live_during_cargo(b: b)))
-}
-
-// THE STEP'S PEAK IS THE LARGER OF TWO MOMENTS, NOT THEIR SUM: the seed's emission (everything
-// live_at_seed_peak) and the cargo build (everything live_during_cargo, which still holds the
-// seed's pool). Summing every bucket would charge rustc against a transient the seed had already
-// released.
-fn step_demand_is_moment_maximum(seed_moment: Int, cargo_moment: Int, peak: Int) -> Bool {
-  (peak == seed_moment && seed_moment >= cargo_moment) || (peak == cargo_moment && cargo_moment >= seed_moment)
+fn step_seed_moment_bytes(rows: List<List<String>>) -> Int {
+  fold(filter(self_host_step_memory_structures, s => s.live_at_seed_peak), init: 0, f: (acc, s) => acc + receipt_structure_bytes(rows: rows, s: s))
 }
 
 // ── THE TREND, AS A ROW ─────────────────────────────────────────────────────────────────────────
@@ -290,7 +163,7 @@ data self_host_step_demand_trend: List<StepDemandTrend> = [
     removes_from_seed_peak: false,
     removes_from_cargo_phase: true,
     lowers_step_peak: false,
-    evidence: "the staged release at the cargo seam took the seed from 6.9 GB to 36 MB (run composition_run) and the cargo phase process sum fell from 13.5 GB to 6.5 GB, while the seed's own reconcile stage -- which needs the pool -- still reached 14.4 GB",
+    evidence: "the staged release at the cargo seam (receipt: the seed's resident set after the release, then the phase lines for cargo) lowers the cargo phase but not the seed's own reconcile stage, which still needs the pool",
   },
   StepDemandTrend {
     change: PoolReleasedBeforeResolution,
@@ -298,7 +171,7 @@ data self_host_step_demand_trend: List<StepDemandTrend> = [
     removes_from_seed_peak: true,
     removes_from_cargo_phase: true,
     lowers_step_peak: true,
-    evidence: "counterfactual run (GUNBC_MEMORY_COMPOSITION_DROP_POOL_BEFORE_RESOLVE=1, one self-host step, 22G scope, rc 0): the cgroup peak fell from 14,393,454,592 to 10,485,690,368 bytes, 3.9 GB, with the step still green -- the closure resolution does not need the whole-tree token pool once the census is taken",
+    evidence: "the counterfactual is a production-path change and is measured in its own PR's receipt, not here; this row records only that the pool buckets are tree-scale and live at the seed moment",
   },
   StepDemandTrend {
     change: ClosureScopedIngestion,
@@ -306,7 +179,7 @@ data self_host_step_demand_trend: List<StepDemandTrend> = [
     removes_from_seed_peak: true,
     removes_from_cargo_phase: true,
     lowers_step_peak: true,
-    evidence: "every WholeTree bucket above is built from the 8,196 pooled modules of which 7,959 are compiled for the census only; the tree-scale buckets are 12.4 GB of the 14.4 GB peak (4 measured, 1 inferred)",
+    evidence: "every WholeTree structure in the receipt is built from the pooled modules of which almost all are compiled for the census only",
   },
   StepDemandTrend {
     change: NativeCompilerReplacesInterpreter,
@@ -314,7 +187,7 @@ data self_host_step_demand_trend: List<StepDemandTrend> = [
     removes_from_seed_peak: true,
     removes_from_cargo_phase: false,
     lowers_step_peak: true,
-    evidence: "the native generation-two compiler would hold its own closure working set instead of the interpreter's; its footprint has not been measured and this row does not claim one",
+    evidence: "the native generation-two compiler would hold its own closure working set instead of the interpreter's; its footprint has not been measured and this row claims none",
   },
   StepDemandTrend {
     change: ShrinksOnlyWithEmittedCrate,
@@ -322,45 +195,39 @@ data self_host_step_demand_trend: List<StepDemandTrend> = [
     removes_from_seed_peak: false,
     removes_from_cargo_phase: true,
     lowers_step_peak: false,
-    evidence: "rustc's sum was 6.3 GB for a 243-file crate and 5.3 GB for a 208-file crate: about 28 MB per emitted file under rustc, independent of the seed",
+    evidence: "rustc's sampler reading scales with the emitted crate's file count across the two steps in the receipt, independent of the seed",
   },
 ]
 
-// DECLARED FRONTIER (DESIGN 3c): the consumer is bold-crane-635's cold-run receipt row
-// (gunbc.cutover_receipt, not on main at this writing), which is to take the per-phase table above
-// as its per-step memory carrier. Trigger: that module landing and importing this projection; until
-// then this function and the readout have no call site in the closure.
-fn self_host_step_phase_readings_for_step(step: NonEmptyStr) -> List<StepPhaseReading> {
-  self_host_step_phase_readings |> filter(r => r.step == step)
-}
 
-// WHAT THIS CHECK IS AND IS NOT. Bucket rows and phase rows are both TRANSCRIBED from one recorded
-// run (staged release versus sampler beat were different instruments, but their figures are copied
-// here by hand), so this is a consistency check on the recorded receipts, not an oracle: editing
-// either table moves the result, and a green readout is not evidence about the live seed. The
-// evidence is the instruments named on each row, re-run.
-fn step_within_percent(sum: Int, reading: Int, percent: Int) -> Bool {
-  let slack = reading * percent / 100
-  sum <= reading + slack && sum + slack >= reading
-}
+// DECLARED FRONTIER (DESIGN 3c): this module has no executing consumer on the base this PR is cut
+// from. The consumer it is built for is slot sizing: the cold-run receipt row of gunbc.cutover_receipt
+// and the note of gunbc.runner_slot_desired, which take this readout as the carrier of the per-step
+// memory figure. Trigger: those modules import it, on a base that carries them.
 
-fn step_peak_reading_of(phase: NonEmptyStr, step: NonEmptyStr) -> Int {
-  fold(self_host_step_phase_readings_for_step(step: step) |> filter(r => r.phase == phase), init: 0, f: (acc, r) => byte_size_count(b: r.cgroup_current_max))
-}
-
-fn step_buckets_reconcile_with_beats() -> Bool {
-  match step_seed_peak_bytes() {
-    CheckedIntOverflow { cause: _ } => false
-    CheckedIntReady { value: seed } =>
-      match step_cargo_phase_bytes() {
-        CheckedIntOverflow { cause: _ } => false
-        CheckedIntReady { value: cargo } =>
-          step_within_percent(sum: seed, reading: step_peak_reading_of(phase: "compile.emit", step: "self-host"), percent: 2)
-          && step_within_percent(sum: cargo, reading: step_peak_reading_of(phase: "cargo_build_baseline", step: "self-host"), percent: 5)
-      }
+// THE READOUT. Reads the receipt the instrument wrote and refuses unless every classified structure
+// has exactly one well-formed line and the structures live at the seed's moment fit inside the
+// sampler's recorded cgroup reading for that phase. The oracle is the sampler's phase line, a
+// different instrument from the staged release that produced the bucket lines.
+fn self_host_step_memory_readout() -> ProcessExit {
+  let read = Filesystem.Read(path: self_host_step_memory_receipt_path as String)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error } => exit_failure(reason: concat("self-host step memory receipt unreadable: ", error))
+    FilesystemReadSucceeded { content } => self_host_step_memory_readout_over(rows: receipt_rows(text: content))
   }
 }
 
-fn self_host_step_memory_demand_readout() -> ProcessExit {
-  if step_buckets_reconcile_with_beats() { ExitSuccess } else { exit_failure(reason: "the self-host step bucket rows do not reconcile with the sampler beat readings") }
+fn self_host_step_memory_readout_over(rows: List<List<String>>) -> ProcessExit {
+  if length(xs: step_structures_unreadable(rows: rows)) > 0 {
+    exit_failure(reason: "the receipt lacks exactly one well-formed line for a classified structure")
+  } else {
+    let reading = receipt_phase_cgroup(rows: rows, step: "self-host", phase: "compile.reconcile")
+    if reading < 0 {
+      exit_failure(reason: "the receipt has no self-host compile.reconcile phase line")
+    } else if step_seed_moment_bytes(rows: rows) > reading + reading / 20 {
+      exit_failure(reason: "the structures live at the seed's moment exceed the sampler's cgroup reading for that phase")
+    } else {
+      ExitSuccess
+    }
+  }
 }

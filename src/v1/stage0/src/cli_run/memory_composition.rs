@@ -40,30 +40,36 @@ pub(super) fn readback(stage: &str) {
     );
 }
 
+/// The RECEIPT: one `bucket<TAB>name<TAB>bytes` line per released structure appended to the file
+/// named by `GUNBC_MEMORY_COMPOSITION_RECEIPT`, which `gunbc.self_host_step_memory_demand` reads.
+/// Bytes are what `malloc_trim` returned after the release, i.e. the structure's live size.
+fn record_bucket(name: &str, trimmed_kb: Option<u64>) {
+    use std::io::Write;
+    let (Some(path), Some(kb)) = (
+        std::env::var_os("GUNBC_MEMORY_COMPOSITION_RECEIPT"),
+        trimmed_kb,
+    ) else {
+        return;
+    };
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        let _ = writeln!(f, "bucket\t{name}\t{}", kb * 1024);
+    }
+}
+
 fn stage(name: &str, release: impl FnOnce()) {
     let before = rss_kb();
     release();
     let after_release = rss_kb();
     let trimmed = super::trim_retained_heap();
     let after_trim = rss_kb();
+    record_bucket(name, trimmed);
     eprintln!(
         "[memory-composition] release={name} rss_kb_before={before:?} rss_kb_after_release={after_release:?} \
          trim_reclaimed_kb={trimmed:?} rss_kb_after_trim={after_trim:?}"
-    );
-}
-
-/// COUNTERFACTUAL, behind its own variable: drop the whole-tree pool BEFORE the closure's
-/// resolution, so the run's peak says whether the pool is live at the seed's high-water mark or
-/// only resident beside it. A structure the resolution still demands is re-acquired through the
-/// pool's own miss path (correct, slower), so the verdict of the measured run is unchanged and the
-/// re-acquisition shows as the pool's own `[pre-entry]` rows.
-pub(super) fn drop_pool_before_resolve() {
-    if std::env::var_os("GUNBC_MEMORY_COMPOSITION_DROP_POOL_BEFORE_RESOLVE").is_none() {
-        return;
-    }
-    stage(
-        "pool_before_resolve",
-        super::pool_acquire::drop_pool_for_measurement,
     );
 }
 
