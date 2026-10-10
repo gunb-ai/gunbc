@@ -1,0 +1,112 @@
+module test.claim.belt_occurrence_record_absence_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import gunbc.roadmap_belt_actuate {
+  belt_occurrence_record_from_launch_observations,
+  AttemptOccurrenceRecordRead,
+  AttemptOccurrenceRecordDecoded,
+  AttemptOccurrenceRecordAbsent,
+  AttemptOccurrenceRecordRefused,
+}
+import gunbc.roadmap_dispatch_actuator { DispatchAttemptRef }
+import extdeps.filesystem.filesystem_io {
+  FilesystemEntryPresence,
+  FilesystemFileObservation,
+  filesystem_listing_observation,
+  filesystem_entry_presence,
+  filesystem_file_observation,
+  filesystem_read_outcome,
+}
+
+// AN ESTABLISHED ABSENCE IS NO RECORD; AN UNOBSERVED ONE STILL REFUSES. srv1 (2026-10-10) held ten
+// dispatch branches older than launch identities -- two with no attempt directory at all, eight
+// with a directory and no launch-identity.json -- and each refused the whole live-session census.
+// These controls drive the pure fold with supplied listings and reads at its boundary: the two
+// absent shapes answer Absent, and a parent listing that failed, a listed record that could not be
+// read, and a listed record that does not decode each still refuse. The real producer's route is
+// exercised by the belt tick on the deployed instance, whose spawn-pass receipt is the inhabitance
+// reading.
+
+data root: String = "/opt/gunbc/attempt-state"
+data dir: String = "/opt/gunbc/attempt-state/ts-wf-lamps-v0-ad3401a4a71e004e9"
+data launch: String = "/opt/gunbc/attempt-state/ts-wf-lamps-v0-ad3401a4a71e004e9/launch-identity.json"
+
+fn attempt() -> DispatchAttemptRef {
+  DispatchAttemptRef {
+    node_id: "ts-wf-lamps-v0" as NonEmptyStr,
+    branch: "dispatch/ts-wf-lamps-v0-ad3401a4a71e004e9" as NonEmptyStr,
+    attempt_key: "d3401a4a71e004e9",
+  }
+}
+
+fn directory_listed_as(success: Bool, entries: String) -> FilesystemEntryPresence {
+  filesystem_entry_presence(
+    listing: filesystem_listing_observation(directory: root, success: success, entries: entries, error: "Permission denied (os error 13)"),
+    name: "ts-wf-lamps-v0-ad3401a4a71e004e9",
+  )
+}
+
+fn launch_observed_as(entries: String, read_success: Bool, content: String) -> FilesystemFileObservation {
+  filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: dir, success: true, entries: entries, error: ""),
+    name: "launch-identity.json",
+    path: launch,
+    read: filesystem_read_outcome(content: content, success: read_success, error: "No such file or directory (os error 2)"),
+  )
+}
+
+fn is_absent(r: AttemptOccurrenceRecordRead) -> Bool {
+  match r {
+    AttemptOccurrenceRecordAbsent { absence: _ } => true
+    AttemptOccurrenceRecordDecoded { record: _ } => false
+    AttemptOccurrenceRecordRefused { reason: _ } => false
+  }
+}
+
+fn is_refused(r: AttemptOccurrenceRecordRead) -> Bool {
+  match r {
+    AttemptOccurrenceRecordRefused { reason: _ } => true
+    AttemptOccurrenceRecordAbsent { absence: _ } => false
+    AttemptOccurrenceRecordDecoded { record: _ } => false
+  }
+}
+
+test fn an_attempt_directory_the_root_listing_omits_is_no_record() -> Bool {
+  is_absent(r: belt_occurrence_record_from_launch_observations(
+    attempt: attempt(),
+    directory: directory_listed_as(success: true, entries: "ts-wf-lamps-v0-a8704c55c32b629f2\nsession-attempts"),
+    launch: launch_observed_as(entries: "", read_success: false, content: ""),
+  ))
+}
+
+test fn a_listed_directory_without_a_launch_record_is_no_record() -> Bool {
+  is_absent(r: belt_occurrence_record_from_launch_observations(
+    attempt: attempt(),
+    directory: directory_listed_as(success: true, entries: "ts-wf-lamps-v0-ad3401a4a71e004e9"),
+    launch: launch_observed_as(entries: "metering.json\ncommit-outcome-last.json\nintegration\nsubmissions", read_success: false, content: ""),
+  ))
+}
+
+test fn a_root_that_could_not_be_listed_still_refuses() -> Bool {
+  is_refused(r: belt_occurrence_record_from_launch_observations(
+    attempt: attempt(),
+    directory: directory_listed_as(success: false, entries: ""),
+    launch: launch_observed_as(entries: "", read_success: false, content: ""),
+  ))
+}
+
+test fn a_listed_record_that_could_not_be_read_still_refuses() -> Bool {
+  is_refused(r: belt_occurrence_record_from_launch_observations(
+    attempt: attempt(),
+    directory: directory_listed_as(success: true, entries: "ts-wf-lamps-v0-ad3401a4a71e004e9"),
+    launch: launch_observed_as(entries: "launch-identity.json", read_success: false, content: ""),
+  ))
+}
+
+test fn a_listed_record_that_does_not_decode_still_refuses() -> Bool {
+  is_refused(r: belt_occurrence_record_from_launch_observations(
+    attempt: attempt(),
+    directory: directory_listed_as(success: true, entries: "ts-wf-lamps-v0-ad3401a4a71e004e9"),
+    launch: launch_observed_as(entries: "launch-identity.json", read_success: true, content: "{not json"),
+  ))
+}
