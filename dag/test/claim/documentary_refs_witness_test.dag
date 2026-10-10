@@ -9,8 +9,6 @@ import v2.std.decl_ref_resolution { cited_declaration_ref_refusal_count }
 import gunbc.documentary_refs {
   documentary_ref_symbol_text,
   generated_document_declaration_refs,
-  v1_maintenance_standing_ref,
-  required_gate_subjects_ref,
 }
 import gunbc.design_document { expected_design_md }
 
@@ -29,6 +27,7 @@ fn fixture_modules() -> List<ModuleDeclarationFact> {
     ModuleDeclarationFact { module: "gunbc.roadmap_authority", path: "dag/gunbc/roadmap/roadmap_authority.dag" },
     ModuleDeclarationFact { module: "gunbc.v1_maintenance_standing", path: "dag/gunbc/v1/v1_maintenance_standing.dag" },
     ModuleDeclarationFact { module: "gunbc.emitted_subject_build_gate", path: "dag/gunbc/emitted_subject_build_gate.dag" },
+    ModuleDeclarationFact { module: "gunbc.design_ruling", path: "dag/gunbc/design_ruling.dag" },
   ]
 }
 
@@ -57,6 +56,66 @@ fn intact_facts() -> List<DeclFact> {
       qualified_name: "gunbc.emitted_subject_build_gate.emitted_subject_build_rows",
       name: "emitted_subject_build_rows",
       path: "dag/gunbc/emitted_subject_build_gate.dag",
+    ),
+    fixture_fact(
+      qualified_name: "gunbc.design_ruling.job_roster_closed_to_growth",
+      name: "job_roster_closed_to_growth",
+      path: "dag/gunbc/design_ruling.dag",
+    ),
+    fixture_fact(
+      qualified_name: "gunbc.design_ruling.conformance_needs_attention",
+      name: "conformance_needs_attention",
+      path: "dag/gunbc/design_ruling.dag",
+    ),
+    fixture_fact(
+      qualified_name: "gunbc.design_ruling.consumption_interrogated_separately",
+      name: "consumption_interrogated_separately",
+      path: "dag/gunbc/design_ruling.dag",
+    ),
+    fixture_fact(
+      qualified_name: "gunbc.design_ruling.epistemic_humility_is_symmetric",
+      name: "epistemic_humility_is_symmetric",
+      path: "dag/gunbc/design_ruling.dag",
+    ),
+    fixture_fact(
+      qualified_name: "gunbc.design_ruling.chain_re_derivation",
+      name: "chain_re_derivation",
+      path: "dag/gunbc/design_ruling.dag",
+    ),
+    fixture_fact(
+      qualified_name: "gunbc.design_ruling.instrument_is_a_row_not_a_flag",
+      name: "instrument_is_a_row_not_a_flag",
+      path: "dag/gunbc/design_ruling.dag",
+    ),
+    fixture_fact(
+      qualified_name: "gunbc.design_ruling.authorization_pattern_is_a_selection",
+      name: "authorization_pattern_is_a_selection",
+      path: "dag/gunbc/design_ruling.dag",
+    ),
+    fixture_fact(
+      qualified_name: "gunbc.design_ruling.coercion_is_the_implicit_safe_subset",
+      name: "coercion_is_the_implicit_safe_subset",
+      path: "dag/gunbc/design_ruling.dag",
+    ),
+    fixture_fact(
+      qualified_name: "gunbc.design_ruling.text_crossings_go_through_the_unfold",
+      name: "text_crossings_go_through_the_unfold",
+      path: "dag/gunbc/design_ruling.dag",
+    ),
+    fixture_fact(
+      qualified_name: "gunbc.design_ruling.v2_better_than_the_seed",
+      name: "v2_better_than_the_seed",
+      path: "dag/gunbc/design_ruling.dag",
+    ),
+    fixture_fact(
+      qualified_name: "gunbc.design_ruling.v1_withdrawn_one_required_job",
+      name: "v1_withdrawn_one_required_job",
+      path: "dag/gunbc/design_ruling.dag",
+    ),
+    fixture_fact(
+      qualified_name: "gunbc.design_ruling.memory_envelope_is_part_of_the_verdict",
+      name: "memory_envelope_is_part_of_the_verdict",
+      path: "dag/gunbc/design_ruling.dag",
     ),
   ]
 }
@@ -118,12 +177,11 @@ test fn documentary_refs_ambiguous_system_refuses() -> Bool {
 // typed reference sitting beside a paragraph that independently spells the same name is two
 // representations of one fact -- the rename would move the row and leave the sentence, and the
 // enrolled population would resolve while the document lied. This claim asserts the rendered symbol
-// text of each row appears in the generated document, so the row and the printed name cannot
-// diverge.
+// text of EVERY row appears in the generated document, so the row and the printed name cannot
+// diverge, and a row no paragraph renders is a red rather than an orphan.
 
 test fn documentary_refs_generated_document_renders_the_rows() -> Bool {
   let md = expected_design_md()
-  string_contains(s: md, pattern: documentary_ref_symbol_text(reference: v1_maintenance_standing_ref))
-    && string_contains(s: md, pattern: documentary_ref_symbol_text(reference: required_gate_subjects_ref))
+  all(generated_document_declaration_refs(), r => string_contains(s: md, pattern: documentary_ref_symbol_text(reference: r)))
 }
 
