@@ -1,0 +1,46 @@
+module extdeps.github.deployment_environments
+
+import std.types { String, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments"
+  }
+}
+
+// A GitHub Actions deployment environment's protection is a REPOSITORY SETTING, not a workflow
+// `if:` (the cited page: wait timer, required reviewers, deployment branches / tags). A
+// workflow_dispatch run executes the YAML of the DISPATCHED ref, so a branch can delete any
+// github.ref guard in that file. The environment name on the job is what GitHub consults for
+// those settings, and only those settings can refuse a branch.
+
+type EnvironmentDeploymentBranchPolicy
+  = AllBranchesAndTags
+  | ProtectedBranchesOnly
+  | SelectedRefs { refs: List<String> }
+
+type EnvironmentReviewerRequirement
+  = NoRequiredReviewers
+  | RequiredReviewers
+
+type GitHubEnvironmentProtectionSettings {
+  name: String
+  deployment_branch_policy: EnvironmentDeploymentBranchPolicy
+  reviewer_requirement: EnvironmentReviewerRequirement
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.deployment_environments",
+      decl_name: "GitHubEnvironmentProtectionSettings",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.github.deployment_environments.extdeps_external_authority_anchor,
+  further_citations: []
+}

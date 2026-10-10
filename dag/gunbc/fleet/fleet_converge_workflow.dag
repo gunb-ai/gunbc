@@ -189,6 +189,7 @@ import gunbc.ci_spec {
 }
 import gunbc.fleet_converge_receipt { fleet_converge_plan_run_id_env_name }
 import gunbc.actions_run_binding { rlm_expected_revision_env_name, fleet_converge_expected_host_env_name, fleet_converge_arrival_subject_env_name }
+import gunbc.auth.github_deployment_environment { srv1_production_environment_name }
 import gunbc.host_credential_custody_converge { host_custody_credential_options, host_credential_custody_env_name }
 import gunbc.spark.credential_workflow { spark_administrator_credential_roster_hosts }
 import gunbc.fleet_runner_connectivity { fleet_hosts }
@@ -1469,21 +1470,14 @@ data fleet_converge_spark_runtime_image_probe_step_if: String = fleet_converge_m
 data fleet_converge_spark_wireless_link_converge_step_if: String = fleet_converge_mode_step_if(mode: SparkWirelessLinkConverge)
 data fleet_converge_spark_grants_observe_step_if: String = fleet_converge_mode_step_if(mode: SparkGrantsObserve)
 
-// Production deploy / root-host mutation is not branch-dispatchable (operator 2026-10-10).
-// The job names GitHub environment srv1-production so a protected-environment gate can sit on
-// the same subject; the YAML also requires github.ref == refs/heads/main so omitting the
-// environment protection cannot reopen an arbitrary-branch path.
-data fleet_converge_dashboard_deploy_environment: NonEmptyStr = "srv1-production"
+// ROOT-HOST MUTATION ON srv1 is gated by GitHub environment srv1-production
+// (gunbc.auth.github_deployment_environment). The boundary is that environment's repository
+// protection (deployment branches = refs/heads/main, required reviewers) -- an operator-applied
+// setting with a readback row, not a job `if`. A workflow_dispatch runs the DISPATCHED ref's YAML,
+// so github.ref == refs/heads/main in this file is not a trust boundary: a branch can delete it.
+data fleet_converge_srv1_root_mutation_environment: NonEmptyStr = srv1_production_environment_name
 
-fn fleet_converge_reviewed_main_ref_guard() -> String {
-  "github.ref == 'refs/heads/main'"
-}
-
-data fleet_converge_dashboard_deploy_step_if: String = join([
-  fleet_converge_mode_step_if(mode: DashboardDeploy),
-  " && ",
-  fleet_converge_reviewed_main_ref_guard(),
-], "")
+data fleet_converge_dashboard_deploy_step_if: String = fleet_converge_mode_step_if(mode: DashboardDeploy)
 
 data fleet_converge_rlm_receipt_step_if: String = fleet_converge_mode_step_if(mode: RlmLaunchDeploymentReceipt)
 
@@ -3381,8 +3375,8 @@ fn fleet_converge_dashboard_deploy_step() -> Step {
 // REPLACES it with the newest arrival, which is what fleet_host_mutation_concurrency_group_expression's
 // annotation describes: an older pending deployment gives way to the newest arrival. NOTE the
 // weaker claim -- "newest arrival", not "newest main revision". The job if_condition now also
-// requires github.ref == refs/heads/main, so a branch dispatch never enters this job; the queue
-// still orders arrivals that passed that guard, not an ordering over every dispatched ref.
+// names environment srv1-production, whose GitHub protection (not this if-condition) is the
+// branch boundary. The queue still orders arrivals that entered the job.
 // cancel_in_progress
 // is false in both readings and that is the half that matters most -- a queued deploy must never
 // interrupt the one currently holding the host mutation window, which is the state that produces a
@@ -3392,7 +3386,7 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
     id: fleet_converge_mode_job_id(mode: DashboardDeploy) as String,
     name: none,
     runner: fleet_converge_host_pinned_runner_spec(),
-    environment: Present { value: fleet_converge_dashboard_deploy_environment as String },
+    environment: Present { value: fleet_converge_srv1_root_mutation_environment as String },
     steps: concat(
       fleet_converge_consumer_prelude_steps(),
       [
@@ -3508,7 +3502,7 @@ fn fleet_converge_microvm_controller_install_job() -> Job {
     id: fleet_converge_mode_job_id(mode: MicrovmControllerInstall) as String,
     name: none,
     runner: fleet_converge_host_pinned_runner_spec(),
-    environment: none,
+    environment: Present { value: fleet_converge_srv1_root_mutation_environment as String },
     steps: concat(
       fleet_converge_consumer_prelude_steps(),
       [
@@ -3542,7 +3536,7 @@ fn fleet_converge_approval_broker_dark_install_job() -> Job {
     id: fleet_converge_mode_job_id(mode: ApprovalBrokerDarkInstall) as String,
     name: none,
     runner: fleet_converge_host_pinned_runner_spec(),
-    environment: none,
+    environment: Present { value: fleet_converge_srv1_root_mutation_environment as String },
     steps: concat(
       fleet_converge_consumer_prelude_steps(),
       [
@@ -3758,22 +3752,10 @@ fn fleet_converge_dispatch_mode_is(mode: FleetConvergeWorkflowMode) -> Expressio
 
 data fleet_converge_event_sha: Expression = ContextAccess { context: Github, path: ["sha"] }
 
-data fleet_converge_checkout_ref: Expression = LogicalOr {
-  left: LogicalOr {
-    left: LogicalAnd {
-      left: LogicalOr {
-        left: LogicalOr { left: fleet_converge_dispatch_mode_is(mode: MtCollins1Boot), right: fleet_converge_dispatch_mode_is(mode: GcpIamConverge) },
-        right: LogicalOr {
-          left: fleet_converge_dispatch_mode_is(mode: NamecheapObserve),
-          right: LogicalOr { left: fleet_converge_dispatch_mode_is(mode: ArrivalConverge), right: fleet_converge_dispatch_mode_is(mode: PrinterWorkflow) },
-        },
-      },
-      right: fleet_converge_event_sha,
-    },
-    right: ContextAccess { context: Github, path: ["event", "inputs", "expected_revision"] },
-  },
-  right: fleet_converge_event_sha,
-}
+// A DISPATCH CHECKS OUT THE EVENT SHA. expected_revision is a cross-check (admit_optional_expected_revision),
+// not a second revision authority and not a checkout selector (operator 2026-10-10). Apply's R is the
+// admitted plan receipt, not this expression.
+data fleet_converge_checkout_ref: Expression = fleet_converge_event_sha
 
 data fleet_converge_checkout_ref_expr: String = interpolate(expression: fleet_converge_checkout_ref)
 
@@ -4756,7 +4738,7 @@ data fleet_converge_dispatch_inputs: List<DispatchInput> = [
   },
   DispatchInput {
     name: "expected_revision",
-    description: Present { value: "R — the exact main revision this transaction installs and proves; every run of the transaction must execute at it (RLM_EXPECTED_REVISION). Required for dashboard_deploy and rlm_launch_deployment_receipt — and for microvm_network_apply, whose installed bytes are rendered from it" },
+    description: Present { value: "Optional cross-check of the event sha (RLM_EXPECTED_REVISION). Omit to admit github.sha. Present must match the checkout. Malformed refuses. rlm_launch_deployment_receipt and microvm_network_apply still require a named revision in their own admission; dashboard_deploy does not." },
     required: false,
     default: none,
     type: InputString,

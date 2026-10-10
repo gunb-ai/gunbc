@@ -1,0 +1,23 @@
+module test.claim.auth.github_deployment_environment_witness
+
+import std.types { Bool, String }
+import gunbc.auth.github_deployment_environment {
+  srv1_production_required_protection_is_the_boundary,
+  srv1_production_protection_standing,
+  EnvironmentProtectionUnobserved,
+  EnvironmentProtectionHolds,
+  EnvironmentProtectionDiverges,
+}
+
+test fn srv1_production_required_protection_names_main_and_reviewers() -> Bool {
+  srv1_production_required_protection_is_the_boundary()
+}
+
+test fn srv1_production_protection_is_unobserved_until_read_back() -> Bool {
+  match srv1_production_protection_standing {
+    EnvironmentProtectionUnobserved { required: _, read_obligation: r } =>
+      string_contains(s: r, pattern: "environments/srv1-production")
+    EnvironmentProtectionHolds { required: _ } => false
+    EnvironmentProtectionDiverges { required: _, detail: _ } => false
+  }
+}

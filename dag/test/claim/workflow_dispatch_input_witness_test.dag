@@ -10,7 +10,7 @@ import v2.std.collection { Present, Absent }
 import gunbc.fleet_converge_workflow {
   fleet_converge_fabric_writer_identity_observe_receipt_if, fleet_converge_fabric_writer_identity_observe_step_if,
   FleetConvergeWorkflowMode, fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire,
-  fleet_converge_mode_step_if, fleet_converge_dashboard_deploy_step_if, fleet_converge_reviewed_main_ref_guard, fleet_converge_mode_scope, fleet_converge_host_reset_return_job, fleet_converge_host_reset_return_step_if, fleet_converge_reset_observer_dispatch_admission_step,
+  fleet_converge_mode_step_if, fleet_converge_dashboard_deploy_step_if, fleet_converge_dashboard_deploy_job, fleet_converge_approval_broker_dark_install_job, fleet_converge_microvm_controller_install_job, fleet_converge_srv1_root_mutation_environment, fleet_converge_mode_scope, fleet_converge_host_reset_return_job, fleet_converge_host_reset_return_step_if, fleet_converge_reset_observer_dispatch_admission_step,
   ApprovalBrokerDarkInstall, fleet_converge_approval_broker_dark_install_step_if,
   FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, DashboardDeploy, HostResetReturn,
   fleet_converge_workspace_commissioning_plan_step, fleet_converge_any_plan_step_if,
@@ -658,9 +658,13 @@ test fn a_step_condition_is_the_wire_value_of_the_mode_it_selects() -> Bool {
     && fleet_converge_mode_step_if(mode: FullHostPlan) != fleet_converge_mode_step_if(mode: DashboardDeploy)
 }
 
-test fn dashboard_deploy_job_requires_reviewed_main() -> Bool {
-  string_contains(s: fleet_converge_dashboard_deploy_step_if, pattern: "mode == 'dashboard_deploy'")
-    && string_contains(s: fleet_converge_dashboard_deploy_step_if, pattern: fleet_converge_reviewed_main_ref_guard())
+test fn srv1_root_mutation_jobs_name_the_protected_environment() -> Bool {
+  let env = fleet_converge_srv1_root_mutation_environment as String
+  fleet_converge_dashboard_deploy_step_if == "github.event.inputs.mode == 'dashboard_deploy'"
+    && !string_contains(s: fleet_converge_dashboard_deploy_step_if, pattern: "github.ref")
+    && (match fleet_converge_dashboard_deploy_job().environment { Present { value: v } => v == env  Absent => false })
+    && (match fleet_converge_approval_broker_dark_install_job().environment { Present { value: v } => v == env  Absent => false })
+    && (match fleet_converge_microvm_controller_install_job().environment { Present { value: v } => v == env  Absent => false })
 }
 
 // DASHBOARD DEPLOYMENT IS EXPLICITLY OUTSIDE THE SCOPE PROJECTION, and this witness exists so that
