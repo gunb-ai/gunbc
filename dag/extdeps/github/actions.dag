@@ -411,3 +411,7 @@ data max_matrix_combinations: Int = 256
 // repository's own live ruleset row (GET /repos/gunb-ai/gunbc/rulesets, integration_id 15368,
 // 2026-08-27) and consistent with the documented app id for GitHub Actions.
 data github_actions_app_integration_id: Int = 15368
+
+// https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onworkflow_dispatchinputs
+// GitHub increased the top-level workflow_dispatch input limit from 10 to 25 on 2025-12-04.
+data workflow_dispatch_max_inputs: Int = 25

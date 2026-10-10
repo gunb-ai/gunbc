@@ -1,7 +1,7 @@
 module gunbc.runner_microvm_lifecycle_realize
 
 import extdeps.systemd.journalctl
-import gunbc.runner_microvm_network_observe { observe_slot_network_readings }
+import gunbc.runner_microvm_network_sanitation_observe { observe_slot_network_readings }
 import extdeps.virtualization.firecracker { FirecrackerVmConfig, firecracker_vm_config_document }
 
 import std.types { String, NonEmptyStr, Bool, List, Int }

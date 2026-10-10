@@ -1293,6 +1293,8 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_fleet_converge_launch_environment_plan_target,
     gunbc_ci_fleet_converge_allocation_store_plan_target,
     gunbc_ci_fleet_converge_workspace_commissioning_plan_target,
+    gunbc_ci_workspace_image_build_target,
+    gunbc_ci_workspace_allocation_plan_target,
     gunbc_ci_fleet_converge_apply_target,
     gunbc_ci_org_actions_inspect_target,
     gunbc_ci_r2_mint_preflight_target,
@@ -3818,4 +3820,16 @@ fn gunbc_ci_printer_workflow_invoke() -> String {
     entry: gunbc_ci_printer_workflow_target.entry,
     function: gunbc_ci_printer_workflow_target.function,
     claim_run: false, receipt_rel: printer_workflow_receipt_path)
+}
+
+data gunbc_ci_workspace_allocation_plan_target: GunbcRunStepTarget = GunbcRunStepTarget { entry: "dag/gunbc/fleet/fleet_converge_plan_cli.dag", function: "fleet_converge_workspace_allocation_plan_wet" }
+
+fn gunbc_ci_workspace_allocation_plan_invoke() -> String {
+  gunbc_run_step_script(source_roots: witness_layer_roots, entry: gunbc_ci_workspace_allocation_plan_target.entry, function: gunbc_ci_workspace_allocation_plan_target.function, claim_run: false, receipt_rel: none)
+}
+
+data gunbc_ci_workspace_image_build_target: GunbcRunStepTarget = GunbcRunStepTarget { entry: "dag/gunbc/workspace_image_delivery.dag", function: "workspace_image_build_wet" }
+
+fn gunbc_ci_workspace_image_build_invoke() -> String {
+  join([gunbc_invoke_root_stamp_script(), "fakeroot -- ", gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_workspace_image_build_target.entry, function: gunbc_ci_workspace_image_build_target.function, claim_run: false), "\n"], "")
 }

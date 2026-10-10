@@ -57,10 +57,26 @@ data deployed_tree_excluded_prefixes: List<String> = [
   ".gunbc-build-receipts", ".gunbc-converge-receipts",
 ]
 
+// A COMPILER-DERIVED FILE INSIDE A SOURCE ROOT IS EXCLUDED AS A FILE, NOT A PREFIX. The
+// recurring-failure-mode roster is gitignored and written by every gunbc invocation as a read-path
+// side effect of listing .dag files (src/v1 cli_run derived_row_roster), so the deploying process
+// itself creates it before candidate admission scans the checkout, and the first RLM-2
+// dashboard_deploy refused itself on it (run 35189302828: ignored-deployed=dag/gunbc/
+// recurring_failure_mode/roster.dag). Unlike sg2_scratch_probe, excluding it changes nothing the
+// host compiles: the host's own first invocation derives the identical file from the sibling rows
+// the revision DOES name. Exact path, segment-exact, so a sibling row file is never excluded.
+// The rung-drop roster has the same compiler-owned derivation. The srv1 workspace deployment
+// probe on 2026-10-09 refused itself on that second roster; its sibling authored rows still ship.
+data deployed_tree_excluded_derived_files: List<String> = [
+  "dag/gunbc/recurring_failure_mode/roster.dag",
+  "dag/gunbc/rung_drop/roster.dag",
+]
+
 // Segment-wise, never a character run: `targetish/x` starts with `target` but is not under it, and treating
 // it as excluded would hide from admission a path that is not host state.
 fn path_is_deployed(path: String) -> Bool {
   !any(deployed_tree_excluded_prefixes, p => path == p || starts_with(s: path, prefix: concat(p, "/")))
+    && !any(deployed_tree_excluded_derived_files, f => path == f)
 }
 
 // WHICH REPOSITORY TRANSITION THIS DEPLOYMENT IS BOUND TO, AND WHY IT IS A WALL RATHER THAN A NOTE.
