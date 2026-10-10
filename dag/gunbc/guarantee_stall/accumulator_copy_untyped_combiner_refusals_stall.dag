@@ -41,6 +41,20 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // containing folds, and is not established. Reading a resolved tree would also need one lens arm: resolve
 // rewrites || and && to canonical-operation wire nodes (v2.compiler.resolve resolve_surface_operator_atom),
 // which lowered_transform_combiner_optional reads as Absent today.
+//
+// RESIDUE AFTER THE KERNEL-PRIMITIVE TIER (PR 2 of this lane). A free kernel call head no declaration claims now
+// binds at RESOLVE to its std.primitives contract row (v2.compiler.primitive_authority), so concat/reverse-class
+// refusals at resolve are gone; infer then REFUSES such a call with infer_reason_primitive_without_declared_signature_authority,
+// typed and located at the callee, never typing it as unknown. What remains is the grounding this stall waits
+// on: infer needs a .dag SIGNATURE authority for primitives. Today the typed signatures live only in the seed's
+// Rust builtin_function_registry (v1_compiler_infer_method), and std.primitives PrimitiveContract carries cost,
+// not types. Modeling that in .dag is a separate model change and must become the single authority; until
+// it lands no std.change body that calls reverse (or any non-roster primitive) reaches an inferred tree.
+// KERNEL TYPES ARE NOT COVERED by that tier, deliberately: it binds call heads to a contract row, and std.primitives
+// declares no type rows. std.algebra's Map (resolve_unbound_name_is_declared_elsewhere std.types.Map) stays refused
+// because the only declaring module, std.types, imports std.algebra, so importing it back is a cycle; its resolution
+// belongs to the type's own authority, not to the call-head tier. Measured after the tier: std.types stops at the
+// free name none and std.change at none, both declared in no authority.
 data accumulator_copy_untyped_combiner_refusals_stall: GuaranteeStall = GuaranteeStall {
   subject: "v2.lens.complexity_accumulator_copy.analyze refuses combiner_unregistered_carrier_reaches where a carrier reaches an operator or named callee whose copying depends on its operand type or callee declaration, which the pre-inference subject does not carry; observed over dag/std/change.dag, src/v2/extdeps/languages/lean.dag and src/v2/lens/complexity_accumulator_copy/analyze.dag, where the three offline roster ratchets are red",
   current: Mitigatable,

@@ -2,7 +2,7 @@ module test.claim.serving_routing_witness
 
 import std.types { Bool, String, NonEmptyStr }
 import std.nat { Nat }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB }
 import gunbc.serving.serving_enrollment {
   serving_enrolled_groups, serving_route, serving_route_ceiling, serving_route_endpoint_wire,
   serving_route_turn_ceiling_count, ServingRouteResolved, ServingRouteUnresolved,
@@ -42,12 +42,10 @@ import gunbc.spark.vllm_endpoint_process_launch { vllm_endpoint_process_launch, 
 import std.measure { token_count_value }
 import product.fabric.demand { ObservationReceiptRef }
 
-// ── 1. BOTH GROUPS ARE ENROLLED, AND EACH ROUTE CARRIES ITS OWN FRONT DOOR ────────────────────
+// ── 1. GROUP B IS THE ENROLLED ROUTE, AND IT CARRIES ITS OWN FRONT DOOR ───────────────────────
 //
-// THE DISCRIMINATING HALF IS THE ENDPOINT, not the count. A roster of two whose routes shared one
-// endpoint row would pass a membership count and would still be a defect: each route answers on its own
-// head. Both routes now serve on port 30000, so the endpoints differ by ADDRESS -- group A's pair head
-// and group B's rank-zero head of the arm converged on it -- and each is asserted to resolve.
+// THE DISCRIMINATING HALF IS THE ENDPOINT, not the count: the route must resolve to group B's
+// rank-zero head of the arm converged on it, on port 30000.
 //
 // GROUP B'S PORT IS THE CONVERGED ARM'S. This claim used to pin ":30001", the retired exl3 canary's
 // port, so the witness certified the very value a real dispatch refused on (2026-09-18: nothing
@@ -59,20 +57,16 @@ fn w_endpoint(group: FabricGroup) -> String {
   }
 }
 
-test fn both_groups_are_enrolled_and_each_route_has_its_own_front_door() -> Bool {
-  length(serving_enrolled_groups) == 2
-    && w_endpoint(group: FabricGroupA) != "unresolved"
-    && w_endpoint(group: FabricGroupB) != "unresolved"
-    && w_endpoint(group: FabricGroupA) != w_endpoint(group: FabricGroupB)
-    && ends_with(s: w_endpoint(group: FabricGroupA), suffix: ":30000")
-    && ends_with(s: w_endpoint(group: FabricGroupB), suffix: ":30000")
+test fn group_b_is_enrolled_and_its_route_has_its_own_front_door() -> Bool {
+  length(serving_enrolled_groups) == 1
+    && w_endpoint(group: FabricGroupB {}) != "unresolved"
+    && ends_with(s: w_endpoint(group: FabricGroupB {}), suffix: ":30000")
 }
 
-// ── 2. A ROUTE'S CEILING IS A DECLARED DECISION, AND THE TWO ROUTES DISAGREE ──────────────────
+// ── 2. A ROUTE'S CEILING IS A DECLARED DECISION ───────────────────────────────────────────────
 //
-// Asserting the counts alone would go green on a single shared row, so what matters is that the two
-// routes read DIFFERENT attributed rows -- group A's allocation decided 2026-09-11 and group B's
-// route offer decided 2026-10-02 -- which no single constant can produce.
+// Asserting the count alone would go green on any constant, so the claim also reads the attributed
+// row: group B's route offer decided 2026-10-02.
 fn w_ceiling_row(group: FabricGroup) -> ServingRouteTurnCeiling? {
   match serving_route_ceiling(group: group) {
     RouteCeilingStands { ceiling: c } => Present { value: c }
@@ -88,17 +82,8 @@ fn w_ceiling(group: FabricGroup) -> Nat {
 }
 
 test fn each_route_declares_its_own_turn_ceiling_and_none_of_them_is_a_measurement() -> Bool {
-  w_ceiling(group: FabricGroupA) == 4
-    && w_ceiling(group: FabricGroupB) == 8
-    && (match w_ceiling_row(group: FabricGroupA) {
-          Present { value: row } => match row {
-            CeilingByDeclaredPolicy { count: _, decider: d, decided_on: on, basis: _ } =>
-              (d as String) != "" && (on as String) == "2026-09-11"
-            CeilingFromRouteLaunch { count: _, basis: _ } => false
-          }
-          Absent => false
-        })
-    && (match w_ceiling_row(group: FabricGroupB) {
+  w_ceiling(group: FabricGroupB {}) == 8
+    && (match w_ceiling_row(group: FabricGroupB {}) {
           Present { value: row } => match row {
             CeilingByDeclaredPolicy { count: c, decider: d, decided_on: on, basis: _ } =>
               c == 8 && (d as String) != "" && (on as String) == "2026-10-02"
@@ -187,9 +172,9 @@ test fn the_admitted_id_is_the_advertised_one_and_not_the_units_canonical_id() -
 // route advertising nothing admitted -- must be unobserved, because an offer is bound only on an
 // observed readiness.
 fn w_ready(standing: HarnessBackendStanding) -> Bool {
-  let launch = vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "192.168.1.225:30000" as NonEmptyStr, process_start_field: "1757100000.5" as NonEmptyStr)
+  let launch = vllm_endpoint_process_launch(group: FabricGroupB {}, endpoint: "192.168.1.225:30000" as NonEmptyStr, process_start_field: "1757100000.5" as NonEmptyStr)
   let seen = LaunchObserved { launch: launch, receipt: "test.claim.serving-routing" as ObservationReceiptRef }
-  let availability = harness_route_availability(endpoint: ServingRouteEndpoint { group: FabricGroupA, address: "192.168.1.225" as NonEmptyStr, port: 30000 }, before: seen, standing: standing, after: seen, now: "1757200000")
+  let availability = harness_route_availability(endpoint: ServingRouteEndpoint { group: FabricGroupB {}, address: "192.168.1.225" as NonEmptyStr, port: 30000 }, before: seen, standing: standing, after: seen, now: "1757200000")
   let admitted = match standing {
     HarnessBackendServing { model: _, unit: _, readback: _ } => true
     HarnessBackendModelNotAdmitted { advertised: _ } => false
@@ -329,17 +314,16 @@ test fn an_occupant_the_seat_ledger_did_not_admit_blocks_both_classes() -> Bool 
 // and the quality ceiling is still one. A branch that widened the reader's protection would fail
 // here, which is the control the ruling asked for.
 test fn each_class_holds_its_own_pool_and_the_quality_seat_is_still_one() -> Bool {
-  (harness_seat_partition(group: FabricGroupA, class: InteractiveQualitySensitive, ceiling: 1) as String) == "group-group-a-quality-seat-v1"
-    && (harness_seat_partition(group: FabricGroupB, class: InteractiveQualitySensitive, ceiling: 1) as String) == "group-group-b-quality-seat-v1"
-    && (harness_seat_partition(group: FabricGroupA, class: BatchQualityTolerant, ceiling: 4) as String) == "group-group-a-tolerant-seat-c4-v1"
-    && (harness_seat_partition(group: FabricGroupA, class: InteractiveQualitySensitive, ceiling: 1) as String) != (harness_seat_partition(group: FabricGroupA, class: BatchQualityTolerant, ceiling: 4) as String)
+  (harness_seat_partition(group: FabricGroupB {}, class: InteractiveQualitySensitive, ceiling: 1) as String) == "group-group-b-quality-seat-v1"
+    && (harness_seat_partition(group: FabricGroupB {}, class: BatchQualityTolerant, ceiling: 4) as String) == "group-group-b-tolerant-seat-c4-v1"
+    && (harness_seat_partition(group: FabricGroupB {}, class: InteractiveQualitySensitive, ceiling: 1) as String) != (harness_seat_partition(group: FabricGroupB {}, class: BatchQualityTolerant, ceiling: 4) as String)
     && harness_interactive_quality_seats == 1
 }
 
 // ── A CEILING THAT MOVES NAMES A DIFFERENT POOL, WHICH IS THE POINT OF PUTTING IT IN THE NAME ──
 //
 // THE FAILURE THIS FORBIDS. The tolerant ceiling is derived from rows in OTHER modules -- the
-// declared allocations for group A and group B -- so the author who moves one
+// declared route allocation for group B -- so the author who moves one
 // is editing a file that never mentions this partition. If the name did not carry the ceiling,
 // acquire events written under the old one would be replayed against the new root and reinterpreted
 // rather than continued, which is the module's own invariant violated by an edit made somewhere that
@@ -356,11 +340,11 @@ test fn each_class_holds_its_own_pool_and_the_quality_seat_is_still_one() -> Boo
 // the quality pool's continuity, and one that versioned nothing would reinterpret the tolerant
 // pool's history.
 test fn the_tolerant_partition_is_keyed_by_its_ceiling_and_the_quality_partition_is_not() -> Bool {
-  (harness_seat_partition(group: FabricGroupB, class: BatchQualityTolerant, ceiling: 1) as String)
-      != (harness_seat_partition(group: FabricGroupB, class: BatchQualityTolerant, ceiling: 2) as String)
-    && (harness_seat_partition(group: FabricGroupB, class: InteractiveQualitySensitive, ceiling: 1) as String)
-      == (harness_seat_partition(group: FabricGroupB, class: InteractiveQualitySensitive, ceiling: 2) as String)
-    && (harness_seat_partition(group: FabricGroupB, class: BatchQualityTolerant, ceiling: 1) as String) == "group-group-b-tolerant-seat-c1-v1"
+  (harness_seat_partition(group: FabricGroupB {}, class: BatchQualityTolerant, ceiling: 1) as String)
+      != (harness_seat_partition(group: FabricGroupB {}, class: BatchQualityTolerant, ceiling: 2) as String)
+    && (harness_seat_partition(group: FabricGroupB {}, class: InteractiveQualitySensitive, ceiling: 1) as String)
+      == (harness_seat_partition(group: FabricGroupB {}, class: InteractiveQualitySensitive, ceiling: 2) as String)
+    && (harness_seat_partition(group: FabricGroupB {}, class: BatchQualityTolerant, ceiling: 1) as String) == "group-group-b-tolerant-seat-c1-v1"
 }
 
 // ── 7. A MODEL-INDIFFERENT DEMAND AND AN EXACT ONE ARE DIFFERENT DEMANDS ──────────────────────
@@ -389,25 +373,16 @@ test fn the_context_budget_never_exceeds_the_bound_units_own_declared_ceiling() 
       <= token_count_value(t: harness_unit_declared_context_ceiling(unit: Glm53FlashOnVllm))
 }
 
-// THE SERVICE-IDENTITY FACTS ARE THE GROUP'S OWN. Group A is observed through the pair-serving
-// container and unit; group B through the native arm's. A harness that still read pair-serving
-// names for group B would inspect a container that does not exist on srv9 and compare the GLM
-// engine's reported model path against the DeepSeek declaration -- both failures were measured on
-// the live end-to-end run of 2026-09-16. The declared model paths must also differ, since the two
-// groups serve different checkpoints.
-test fn each_groups_service_identity_comes_from_its_own_launch_authority() -> Bool {
-  let a = serving_group_launch(group: FabricGroupA)
-  let b = serving_group_launch(group: FabricGroupB)
-  (a.container_name as String) == "gunbc-spark-pair"
-    && (b.container_name as String) == "glm-native-tp4"
-    && (a.head_unit_name as String) == "gunbc-spark-pair-head.service"
+// THE SERVICE-IDENTITY FACTS ARE THE GROUP'S OWN. Group B is observed through the native arm's
+// container and unit. A harness that read pair-serving names for group B would inspect a container
+// that does not exist on srv9 -- measured on the live end-to-end run of 2026-09-16.
+test fn group_bs_service_identity_comes_from_its_own_launch_authority() -> Bool {
+  let b = serving_group_launch(group: FabricGroupB {})
+  (b.container_name as String) == "glm-native-tp4"
+    && (b.container_name as String) != "gunbc-spark-pair"
     && (b.head_unit_name as String) == "gunbc-glm-native-head.service"
-    && (match a.declared_model_path {
+    && (match b.declared_model_path {
          Absent => false
-         Present { value: pa } =>
-           match b.declared_model_path {
-             Absent => false
-             Present { value: pb } => pa != pb
-           }
+         Present { value: _ } => true
        })
 }

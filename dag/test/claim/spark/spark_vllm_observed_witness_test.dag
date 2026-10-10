@@ -2,12 +2,12 @@ module test.claim.spark.spark_vllm_observed_witness_test
 
 import std.types { Bool, List, NonEmptyStr, String }
 import product.host_identity { HostIdentity }
+import gunbc.fleet_host_identity { operator_host_srv10 }
 import extdeps.languages.json.emit { JsonValue, JsonNull }
 import extdeps.languages.json.parse {
   JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document,
 }
 import std.measure { TokenCount, token_count, token_count_value, BasisPoint, basis_point, basis_point_count, basis_point_unity_count }
-import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6 }
 import gunbc.spark.vllm_observed {
   VllmModelsRouteReadback,
   VllmVersionRouteReadback,
@@ -140,8 +140,8 @@ fn w_bundle(host: HostIdentity, response: VllmEvidenceRouteResponse) -> VllmHist
 test fn w_the_refusal_host_is_derived_from_the_historical_scope_it_belongs_to() -> Bool {
   w_bundle(host: w_fixture_host, response: w_not_served()).realization.front_door_host as String
     == w_fixture_host as String
-  && w_bundle(host: operator_host_srv5, response: w_not_served()).realization.front_door_host as String
-       == operator_host_srv5 as String
+  && w_bundle(host: operator_host_srv10, response: w_not_served()).realization.front_door_host as String
+       == operator_host_srv10 as String
 }
 
 // ── BOTH LIMITATIONS ARE STAMPED, AND THEY ARE NOT THE SAME LIMITATION ─────────────────────────

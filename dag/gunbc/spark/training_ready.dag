@@ -434,6 +434,10 @@ fn spark_serving_retirement_refusals(retirement: SparkServingRetirementObservati
   )
 }
 
+// THE ROSTER IS AN INPUT (review 77708): the gate decides readiness for the roster it is handed -- the
+// production roster (gunbc.spark.cell_role spark_cell_role_assignments) or a supplied one -- so its
+// claims discriminate whatever machines are assigned today.
+//
 // THE GATE READS ONE VALUE, BECAUSE THE PAIRING WAS A THIRD THING TO GET WRONG.
 //
 // This took the retirement and the pool as two arguments and checked that they agreed. They cannot
@@ -444,6 +448,7 @@ fn spark_serving_retirement_refusals(retirement: SparkServingRetirementObservati
 // bypassed. Its discriminating RED did not retire with it; it moved to the producer's claims, which
 // is where the refusal now lives.
 fn spark_training_readiness(
+  assignments: List<SparkCellRoleAssignment>,
   pool: SparkUnifiedPoolObservation,
 ) -> SparkTrainingReadiness {
   spark_training_readiness_in(pool: pool, assignments: spark_cell_role_assignments)

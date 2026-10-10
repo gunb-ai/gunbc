@@ -38,11 +38,16 @@ fn uname_release_command() -> ArgvCommand {
   argv_command(program: uname_program(), arguments: ["-r"])
 }
 
-// `-m` PRINTS THE MACHINE HARDWARE NAME (POSIX uname, OPTIONS -m). On Linux it is the kernel's
-// utsname machine field, `aarch64` on an arm64 kernel, so a readback of it says which instruction
-// set the running kernel executes rather than which one an image was built for.
+// `-m` PRINTS THE MACHINE HARDWARE NAME the kernel reports (its UTS machine field), the spelling a
+// running Linux guest gives for its own architecture. `-n` prints the node name, the kernel's
+// hostname -- an observation of what the machine answers to, which is a different fact from the
+// hostname the fleet allocated it.
 fn uname_machine_command() -> ArgvCommand {
   argv_command(program: uname_program(), arguments: ["-m"])
+}
+
+fn uname_nodename_command() -> ArgvCommand {
+  argv_command(program: uname_program(), arguments: ["-n"])
 }
 
 // THE LINUX MACHINE SPELLING, PROJECTED ONTO Architecture. On Linux `uname -m` prints the kernel's

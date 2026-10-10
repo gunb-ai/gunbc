@@ -1,0 +1,15 @@
+module gunbc.recurring_failure_mode.bind_helper_overlaps_the_controller_in_its_single_process_budget
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data bind_helper_overlaps_the_controller_in_its_single_process_budget: RecurringFailureMode = RecurringFailureMode {
+  identity: "bind_helper_overlaps_the_controller_in_its_single_process_budget" as NonEmptyStr,
+  receipts: [
+    "2026-10-09, PR #13607, pre-commissioning review: workspace_executor_submit_once started the controller and immediately invoked the bind interpreter in the same 24 GiB controller slice. The slice budget derives from one compiler preparation plus headroom; scheduling a second preparation does not establish that their aggregate fits. Bringup interpreters were using multiple GiB each. No live commissioning OOM is claimed: the defect was found before submission.",
+    "The controller already publishes its invocation through workspace_executor_claim_controller before commissioning effects. The executor's bind remains useful for independent readback and a controller that fails before claiming, but it need not overlap controller execution. Move it after the existing bounded wait has observed the exact invocation inactive, with MainPID zero and no pending job. The bind helper still independently checks manager identity, executor membership and exact mutation generation, so replacement after the wait refuses. The prior unbound-submission fence/drain recovery path remains intact.",
+    "Executed discriminator: the local bringup experiment target/srv1-bringup-evidence/executor-bind-order-controls.py runs the actual emitted Bash against bounded helper and manager doubles. The predecessor attempts bind while active and exits 73; the revised start and drain paths complete. Replaced invocation and surviving PID refuse before finish; a readable but incorrect finish result refuses. Wait, settlement and completion replay retain their behavior. These are manual native-transport controls, not hermetic floor evidence or a measurement of recovery-path memory.",
+    "Rung: the normal start path now orders the bind process after observed controller termination; live systemd state remains an external readback obligation. This does not establish aggregate resource qualification for every recovery helper or externally started controller. Ceiling and next trigger: a consumed resource admission model for concurrently resident controller/helper processes, discriminated on all normal and recovery routes. Source-level sequencing alone cannot prove a host-memory bound over external starts.",
+  ],
+  evidence: [],
+}

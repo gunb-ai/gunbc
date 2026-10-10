@@ -1,0 +1,210 @@
+module gunbc.branch_run_grant_broker_workflow
+
+import std.types { Bool, Int, List, String }
+import std.optional { Present, Absent }
+import v2.std.algebra { list_map }
+import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
+import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
+import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import extdeps.github.actions {
+  Workflow, Job, Step, RunStep, UsesStep,
+  WorkflowRunTriggered, WorkflowRunRequestedActivity,
+  WorkflowPermissions, PermRead, PermWrite,
+  HostedRunner, Ubuntu2404Arm
+}
+import gunbc.action_use_admission {
+  admit_workflow_checkout_refs, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused, workflow_checkout_refs_refusal_reason, checkout_action,
+}
+import gunbc.roadmap_execution_contract { CargoCapability, RustcCapability, RustfmtCapability, RustupCapability }
+import gunbc.workflow_capability_closure {
+  CapabilityAnnotatedStep, StepCapabilityRole, capability_neutral, provides_only, consumes_only,
+  workflow_job_capability_closure, capability_closure_is_closed
+}
+import gunbc.toolchain_home_standing {
+  admit_workflow_toolchain_homes, WorkflowToolchainHomesAdmitted, WorkflowToolchainHomeRefused, toolchain_home_refusal_reason
+}
+import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain_pin_rustup_default_step }
+import gunbc.witness_floor_workflow { witness_floor_toolchain_step, witness_floor_build_step }
+import gunbc.repo_self_build { repo_self_build_command }
+import gunbc.ci_spec { gunbc_ci_branch_run_grant_broker_invoke }
+import gunbc.auth.branch_dispatch_federation { branch_run_key_variable, run_scoped_modes }
+import gunbc.auth.branch_run_grant_broker { branch_run_title_variable }
+
+// THE WORKFLOW THAT ASKS FOR A RUN-SCOPED GRANT ON A BRANCH RUN'S BEHALF (gunbc.auth.branch_run_grant_broker).
+//
+// IT RUNS FROM THE DEFAULT BRANCH. GitHub takes a workflow_run workflow's definition from the default
+// branch only, so nothing a branch edits decides what this job does or whether it runs; it is
+// triggered when a fleet-converge run is REQUESTED, so the grant can be on its way before the
+// requesting run reaches the step that waits for it.
+//
+// IT HOLDS THE ONE CAPABILITY THE REQUESTING RUN MUST NOT: actions: write, to dispatch the grant run.
+// It never fetches the branch's tree -- its checkout takes no ref -- and it reads the run id, attempt
+// and title from GitHub's event, passed through the environment rather than spliced into a script.
+//
+// IT RUNS ON A GITHUB-HOSTED RUNNER for the reason gunbc.heal_publisher_workflow gives: the fleet's
+// self-hosted runners also run branch jobs and share a filesystem between slots, so a token minted on
+// one of them is reachable from code a branch wrote.
+
+data branch_run_grant_broker_workflow_name: String = "branch-run-grant-broker"
+
+data branch_run_grant_broker_job_id: String = "broker"
+
+data branch_run_grant_broker_timeout_minutes: Int = 40
+
+data branch_run_grant_broker_requesting_workflow: String = "fleet-converge"
+
+data branch_run_grant_broker_required_bins: List<String> = ["gunbc"]
+
+// ONLY A DISPATCHED fleet-converge RUN OF THIS REPOSITORY WHOSE TITLE NAMES A RUN-SCOPED MODE. The
+// title test is a cheap pre-filter so other dispatches spend no runner; the broker entry re-parses the
+// mode exactly, so a title that merely contains the word asks for nothing it maps to no account.
+fn branch_run_grant_broker_job_condition() -> String {
+  join([
+    "github.event.workflow_run.event == 'workflow_dispatch'",
+    " && github.event.workflow_run.head_repository.full_name == github.repository",
+    " && (",
+    join(map(run_scoped_modes(), m => join(["contains(github.event.workflow_run.display_title, ' ", m.mode as String, " ')"], "")), " || "),
+    ")",
+  ], "")
+}
+
+fn branch_run_grant_broker_checkout_step() -> Step {
+  UsesStep {
+    name: Present { value: "Checkout the default branch this broker runs from" },
+    id: none,
+    uses: checkout_action,
+    with: Present { value: [
+      kv(key: "fetch-depth", value: yaml_int(n: 1)),
+      kv(key: "persist-credentials", value: yaml_bool(b: false)),
+    ] },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+data branch_run_grant_broker_build_step_name: String = "Build the broker this job runs from the default branch"
+
+fn branch_run_grant_broker_step() -> Step {
+  RunStep {
+    name: Present { value: "Dispatch the branch_run_grant run at main for the requested run attempt" },
+    id: none,
+    run: gunbc_ci_branch_run_grant_broker_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
+      kv(key: branch_run_key_variable as String, value: yaml_string(s: "${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}")),
+      kv(key: branch_run_title_variable as String, value: yaml_string(s: "${{ github.event.workflow_run.display_title }}")),
+    ] },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: 5 }
+  }
+}
+
+type BrokerBoundStep {
+  step: Step
+  role: StepCapabilityRole
+  step_name: String
+}
+
+fn branch_run_grant_broker_bound_steps() -> List<BrokerBoundStep> {
+  [
+    BrokerBoundStep { step: branch_run_grant_broker_checkout_step(), role: capability_neutral, step_name: "Checkout the default branch this broker runs from" },
+    BrokerBoundStep { step: toolchain_home_isolation_step(), role: capability_neutral, step_name: "Isolate toolchain homes" },
+    BrokerBoundStep {
+      step: witness_floor_toolchain_step(),
+      role: provides_only(capabilities: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability]),
+      step_name: "Install Rust toolchain",
+    },
+    BrokerBoundStep {
+      step: toolchain_pin_rustup_default_step(),
+      role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
+      step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
+    },
+    BrokerBoundStep {
+      step: witness_floor_build_step(step_name: branch_run_grant_broker_build_step_name, build_script: repo_self_build_command(bins: branch_run_grant_broker_required_bins)),
+      role: consumes_only(capabilities: [CargoCapability]),
+      step_name: branch_run_grant_broker_build_step_name,
+    },
+    BrokerBoundStep { step: branch_run_grant_broker_step(), role: capability_neutral, step_name: "Dispatch the branch_run_grant run at main for the requested run attempt" },
+  ]
+}
+
+fn branch_run_grant_broker_capability_closure_holds() -> Bool {
+  capability_closure_is_closed(
+    v: workflow_job_capability_closure(
+      steps: list_map(xs: branch_run_grant_broker_bound_steps(), f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } }),
+    ),
+  )
+}
+
+// actions: WRITE is the dispatch, and it is the job's only write; contents: READ is this checkout.
+// No id-token: the broker federates to nothing.
+data branch_run_grant_broker_job_permissions: WorkflowPermissions = WorkflowPermissions {
+  contents: Present { value: PermRead },
+  pull_requests: none,
+  issues: none,
+  actions: Present { value: PermWrite },
+  id_token: none
+}
+
+fn branch_run_grant_broker_job() -> Job {
+  Job {
+    id: branch_run_grant_broker_job_id,
+    name: none,
+    runner: HostedRunner { label: Ubuntu2404Arm },
+    environment: none,
+    steps: list_map(xs: branch_run_grant_broker_bound_steps(), f: fn(b) { b.step }),
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: Present { value: branch_run_grant_broker_job_condition() },
+    timeout_minutes: Present { value: branch_run_grant_broker_timeout_minutes },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present { value: branch_run_grant_broker_job_permissions }
+  }
+}
+
+data branch_run_grant_broker_workflow: Workflow = Workflow {
+  name: branch_run_grant_broker_workflow_name,
+  run_name: none,
+  on: [
+    WorkflowRunTriggered {
+      workflows: [branch_run_grant_broker_requesting_workflow],
+      branches: ["**"],
+      activity: WorkflowRunRequestedActivity
+    }
+  ],
+  concurrency: none,
+  env: Present { value: [kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always"))] },
+  permissions: none,
+  jobs: [branch_run_grant_broker_job()]
+}
+
+type BranchRunGrantBrokerWorkflowGenerationOutcome
+  = BranchRunGrantBrokerWorkflowGenerated { content: String }
+  | BranchRunGrantBrokerWorkflowGenerationRefused { reason: String }
+
+fn expected_branch_run_grant_broker_workflow_yml() -> BranchRunGrantBrokerWorkflowGenerationOutcome {
+  match admit_workflow_checkout_refs(workflow: branch_run_grant_broker_workflow, declared: []) {
+    WorkflowCheckoutRefsRefused { refusals: crs } =>
+      BranchRunGrantBrokerWorkflowGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.branch_run_grant_broker_workflow", refusals: crs) }
+    WorkflowCheckoutRefsAdmitted => match admit_workflow_toolchain_homes(workflow: branch_run_grant_broker_workflow) {
+      WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
+        BranchRunGrantBrokerWorkflowGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
+      WorkflowToolchainHomesAdmitted =>
+        if !branch_run_grant_broker_capability_closure_holds() {
+          BranchRunGrantBrokerWorkflowGenerationRefused { reason: "REFUSED gunbc.branch_run_grant_broker_workflow: the job's capability closure does not hold. No workflow yaml was emitted." }
+        } else {
+          match emit_yaml(v: project_workflow_to_yaml(workflow: branch_run_grant_broker_workflow)) {
+            EmittedYaml { text: t } => BranchRunGrantBrokerWorkflowGenerated { content: t }
+            YamlEmitRefused { path: p, reason: r } => BranchRunGrantBrokerWorkflowGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.branch_run_grant_broker_workflow", path: p, reason: r) }
+          }
+        }
+    }
+  }
+}

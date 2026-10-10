@@ -1,7 +1,7 @@
 module test.claim.runner_attempt_launch_witness
 
 import gunbc.runner.runner_jit_perform { JitMintDispatchAuthorized, JitMintDispatchRefused, dispatch_jit_mint, receive_jit_mint }
-import gunbc.runner_jit_mint { MicroVmSlotBinding }
+import gunbc.runner.jit_registration_subject { microvm_registration_subject }
 import gunbc.runner_microvm_attempt { bind_owned_attempt }
 import gunbc.runner.runner_jit_admission { jit_admission_axis_standing, AttemptBindingAxis }
 import test.claim.github_app_registry { app_credential, observed_grant, runner_grant, gunbai_org_ref, restricted_group_1 }
@@ -68,7 +68,7 @@ import extdeps.github.actions_jit_runner {
   EncodedJitConfig, JitConfigMinted, jit_config_mint_outcome,
 }
 import extdeps.transports.rest { RestExchangeCommitAmbiguous }
-import gunbc.runner_jit_mint { MicroVmJitSlot }
+import gunbc.runner.jit_registration_subject { microvm_registration_subject_of }
 import gunbc.runner.runner_jit_perform {
   JitCredentialBoundToAttempt, JitCredentialMintNotCreated,
 }
@@ -158,7 +158,7 @@ fn planned_with(
   ground: AttemptGround,
 ) -> AttemptLaunchPlan {
   let mint = match dispatch_jit_mint(
-      binding: MicroVmSlotBinding { binding: bind_owned_attempt(attempt: minted_for, owned: true) },
+      subject: microvm_registration_subject(binding: bind_owned_attempt(attempt: minted_for, owned: true)),
       authority: app_credential,
       control_plane: observed_grant(perms: runner_grant),
       organization: gunbai_org_ref,
@@ -306,7 +306,7 @@ test fn a_credential_bound_to_another_attempt_stages_no_device() -> Bool {
               let plan = planned_with(pair: pair, account: pair.account, attempt: a, minted_for: b, encoded: doubled(s: "A", k: 10), ground: GroundClear)
               no_device_no_vmm(plan: plan)
                 && match refusal_of(plan: plan) {
-                  Cons { head: JitCredentialBoundToDifferentAttempt { bound_to: other }, tail: _ } => other == MicroVmJitSlot { attempt: b }
+                  Cons { head: JitCredentialBoundToDifferentAttempt { bound_to: other }, tail: _ } => other == microvm_registration_subject_of(attempt: b)
                   _ => false
                 }
             }

@@ -8,6 +8,7 @@ import gunbc.stage0_executable_assembly_generated {
 }
 import gunbc.stage0_crate_partition_generated {
   GeneratedEmitCoreCrate,
+  GeneratedFacadeCrate,
   GeneratedFoundationCrate,
   GeneratedLayeredCoreCrate,
   GeneratedPartitionCrateRow,
@@ -40,6 +41,7 @@ import gunbc.stage0_crate_partition_generated {
 fn stage0_partition_row_is_module_bearing_package(row: GeneratedPartitionCrateRow) -> Bool {
   match row.kind {
     GeneratedEmitCoreCrate => false
+    GeneratedFacadeCrate => false
     GeneratedFoundationCrate => true
     GeneratedLayeredCoreCrate => true
   }
@@ -54,7 +56,7 @@ fn stage0_partition_package_dependency_names(row: GeneratedPartitionCrateRow) ->
 }
 
 // The same edges over ANY row set of this shape: the committed stage0 rows above, or rows a
-// derivation produced (v2.workflow.emitted_crate_workspace). The emit shell's edges are a property
+// derivation produced (gunbc.emitted_crate_workspace). The emit shell's edges are a property
 // of the set it sits in, so the set is a parameter rather than read from the committed one.
 fn partition_module_bearing_package_names_over(rows: List<GeneratedPartitionCrateRow>) -> List<String> {
   rows
@@ -67,6 +69,7 @@ fn partition_package_dependency_names_over(row: GeneratedPartitionCrateRow, rows
     GeneratedFoundationCrate => []
     GeneratedLayeredCoreCrate => row.reexport_packages
     GeneratedEmitCoreCrate => partition_module_bearing_package_names_over(rows: rows)
+    GeneratedFacadeCrate => partition_module_bearing_package_names_over(rows: rows)
   }
 }
 

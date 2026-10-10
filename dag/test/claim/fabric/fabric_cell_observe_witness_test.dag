@@ -3,7 +3,7 @@ module test.claim.fabric_cell_observe_witness
 import std.types { Bool, String, List, Int, NonEmptyStr, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import product.host_identity { HostIdentity }
 import gunbc.fabric_cell_converge {
   FabricCellResourceAddress,
@@ -63,6 +63,7 @@ import gunbc.fabric_cell_observe {
   DiscoveryRefused,
   FabricCellDiscoveredSubject,
   DiscoveredExpectedCell,
+  DiscoveredCellSliceAncestor,
   DiscoveredUnexpectedCommittedSlot,
   DiscoveredForeignArtifact,
   DiscoveredHostWidthUnresolved,
@@ -695,6 +696,7 @@ test fn witness_observer_other_hosts_committed_name_is_not_this_hosts_expected_c
 fn discovered_is_expected(s: FabricCellDiscoveredSubject) -> Bool {
   match s {
     DiscoveredExpectedCell { slot: _ } => true
+    DiscoveredCellSliceAncestor { observed_name: _, host: _ } => false
     DiscoveredUnexpectedCommittedSlot { slot: _ } => false
     DiscoveredCrossHostNamedArtifact { observed_name: _, named_slot: _, observed_on: _ } => false
     DiscoveredForeignArtifact { observed_name: _, location: _ } => false
@@ -705,6 +707,7 @@ fn discovered_is_expected(s: FabricCellDiscoveredSubject) -> Bool {
 fn discovered_is_cross_host(s: FabricCellDiscoveredSubject) -> Bool {
   match s {
     DiscoveredCrossHostNamedArtifact { observed_name: _, named_slot: _, observed_on: _ } => true
+    DiscoveredCellSliceAncestor { observed_name: _, host: _ } => false
     DiscoveredExpectedCell { slot: _ } => false
     DiscoveredUnexpectedCommittedSlot { slot: _ } => false
     DiscoveredForeignArtifact { observed_name: _, location: _ } => false
@@ -840,7 +843,7 @@ fn population_is_refused(p: FabricCellObservationDecision) -> Bool {
 // gunbc.runner_slot_allocation fabric_execution_slot_identities. They were srv3-07 until #11625
 // made srv3-07 the second fabric member, which turned the "stray" into an expected slot.
 test fn witness_observer_unconsumed_probe_entries_refuse_rather_than_vanishing() -> Bool {
-  let stray = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 8 }
+  let stray = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 99 }
   let refusals = fabric_cell_unconsumed_probe_refusals(probe: FabricCellHostProbe {
     host: operator_host_srv3,
     namespaces: concat(
@@ -870,7 +873,7 @@ test fn witness_observer_matching_probe_leaves_nothing_unconsumed() -> Bool {
 // the projection carries it, and fabric_cell_projection_refusals is the only way to get the
 // discovery half, so a caller cannot take one and skip the other.
 test fn witness_observer_unconsumed_probe_refuses_the_population() -> Bool {
-  let stray = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 8 }
+  let stray = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 99 }
   population_is_refused(p: admit_fabric_cell_probe(probe: FabricCellHostProbe {
     host: operator_host_srv3,
     namespaces: converged_probe().namespaces,
@@ -1032,8 +1035,8 @@ fn refusal_identities(host: HostIdentity, entries: List<String>) -> List<String>
 // the plan body. Two probes describing the same host in a different sequence must not produce two
 // plan identities.
 test fn witness_observer_unconsumed_refusals_are_order_independent() -> Bool {
-  let a = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 8 }
-  let b = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 9 }
+  let a = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 99 }
+  let b = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 100 }
   let forward = stray_probe_identities(first: a, second: b)
   let reverse = stray_probe_identities(first: b, second: a)
   list_length(items: forward) == 2 && identity_lists_equal(a: forward, b: reverse)
@@ -1042,7 +1045,7 @@ test fn witness_observer_unconsumed_refusals_are_order_independent() -> Bool {
 // AND DUPLICATES OF ONE SUBJECT ARE ONE REFUSAL, which is the same population question asked the
 // other way: an order that is stable but double-counts is no better than one that reorders.
 test fn witness_observer_duplicate_unconsumed_probes_are_one_refusal() -> Bool {
-  let a = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 8 }
+  let a = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 99 }
   list_length(items: stray_probe_identities(first: a, second: a)) == 1
 }
 
@@ -1123,5 +1126,99 @@ test fn witness_observer_refused_slice_enumeration_refuses_discovery() -> Bool {
   ])) {
     DiscoveryRefused { host: _, cause: _ } => true
     DiscoveryEnumerated { host: _, subjects: _ } => false
+  }
+}
+
+// The real srv1 census contains both units after provisioning slot 13. Keep the parent in
+// discovery without inventing another cell, and pass the same probe through production admission.
+fn srv1_cell_probe(slice_entries: List<String>, root_entries: List<String>) -> FabricCellHostProbe {
+  let slot = RunnerSlotIdentity { host: operator_host_srv1, slot_index: 13 }
+  FabricCellHostProbe {
+    host: operator_host_srv1,
+    namespaces: [
+      enumerated(ns: FabricCellsRootNamespace, entries: root_entries),
+      enumerated(ns: FabricCellChildNamespace { slot: slot }, entries: ["attempts"]),
+      enumerated(ns: FabricCellSliceNamespace, entries: slice_entries),
+    ],
+    addresses: map(fabric_cell_resource_addresses(), address => FabricCellAddressProbeEntry {
+      slot: slot,
+      address: address,
+      probe: AddressStateRead { state_digest: fabric_cell_desired_state_digest(slot: slot, address: address) },
+    }),
+  }
+}
+
+test fn witness_observer_live_srv1_slice_ancestor_is_retained_and_admitted() -> Bool {
+  let probe = srv1_cell_probe(
+    slice_entries: ["fabric-cell-srv1-13.slice", "fabric-cell-srv1.slice"],
+    root_entries: ["srv1-13"],
+  )
+  match fabric_cell_discovered_subjects(probe: probe) {
+    DiscoveryRefused { host: _, cause: _ } => false
+    DiscoveryEnumerated { host: _, subjects: ss } =>
+      join(map(ss, s => fabric_cell_discovered_subject_wire(s: s)), "\n")
+        == "cell-slice-ancestor:srv1:fabric-cell-srv1.slice\nexpected:srv1-13"
+        && !population_is_refused(p: admit_fabric_cell_probe(probe: probe))
+  }
+}
+
+test fn witness_observer_slice_ancestor_does_not_hide_unknown_siblings() -> Bool {
+  population_is_refused(p: admit_fabric_cell_probe(probe: srv1_cell_probe(
+    slice_entries: ["fabric-cell-srv1-13.slice", "fabric-cell-srv1.slice", "fabric-cell-zp444.slice"],
+    root_entries: ["srv1-13"],
+  )))
+}
+
+test fn witness_observer_another_hosts_slice_ancestor_remains_foreign() -> Bool {
+  let projection = fabric_cell_observe(probe: srv1_cell_probe(
+    slice_entries: ["fabric-cell-srv1-13.slice", "fabric-cell-srv3.slice"],
+    root_entries: ["srv1-13"],
+  ))
+  match projection.discovery {
+    DiscoveryRefused { host: _, cause: _ } => false
+    DiscoveryEnumerated { host: _, subjects: ss } =>
+      fold(ss, init: false, f: (seen, s) => seen || fabric_cell_discovered_subject_wire(s: s)
+        == "foreign:fabric-slices:fabric-cell-srv3.slice")
+        && list_length(items: fabric_cell_projection_refusals(projection: projection)) == 1
+  }
+}
+
+test fn witness_observer_slice_ancestor_spelling_in_filesystem_still_refuses() -> Bool {
+  population_is_refused(p: admit_fabric_cell_probe(probe: srv1_cell_probe(
+    slice_entries: ["fabric-cell-srv1-13.slice", "fabric-cell-srv1.slice"],
+    root_entries: ["srv1-13", "fabric-cell-srv1.slice"],
+  )))
+}
+
+test fn witness_observer_slice_ancestor_cannot_satisfy_the_cell_boundary() -> Bool {
+  let slot = RunnerSlotIdentity { host: operator_host_srv1, slot_index: 13 }
+  observation_is_absent(o: fabric_cell_observe_address(
+    probe: FabricCellHostProbe {
+      host: operator_host_srv1,
+      namespaces: [enumerated(ns: FabricCellSliceNamespace, entries: ["fabric-cell-srv1.slice"])],
+      addresses: [],
+    },
+    slot: slot,
+    address: FabricCellResourceBoundaryAddress,
+  ))
+}
+
+test fn witness_observer_slice_ancestors_are_order_independent_and_deduplicated() -> Bool {
+  let a = fabric_cell_discovered_subjects(probe: srv1_cell_probe(
+    slice_entries: ["fabric-cell-srv1-13.slice", "fabric-cell-srv1.slice"], root_entries: ["srv1-13"],
+  ))
+  let b = fabric_cell_discovered_subjects(probe: srv1_cell_probe(
+    slice_entries: ["fabric-cell-srv1.slice", "fabric-cell-srv1-13.slice", "fabric-cell-srv1.slice"], root_entries: ["srv1-13"],
+  ))
+  match a {
+    DiscoveryRefused { host: _, cause: _ } => false
+    DiscoveryEnumerated { host: _, subjects: left } => match b {
+      DiscoveryRefused { host: _, cause: _ } => false
+      DiscoveryEnumerated { host: _, subjects: right } =>
+        list_length(items: left) == 2 && identity_lists_equal(
+          a: map(left, s => fabric_cell_discovered_subject_wire(s: s)),
+          b: map(right, s => fabric_cell_discovered_subject_wire(s: s)),
+        )
+    }
   }
 }

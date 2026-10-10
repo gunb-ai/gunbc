@@ -448,6 +448,8 @@ type UnitFileState
 // actually executes. The trigger that closes it again is argv element evaluation in the
 // materializer, which `std.operation_argv` already carries as declared residue.
 //
+// MaskRuntime follows systemctl(1), v255: --runtime places a mask under /run and
+// without --now the active incarnation continues. It does not stop a workload.
 service systemd.Systemctl {
   operation Enable {
     requires Network
@@ -577,6 +579,21 @@ service systemd.Systemctl {
     mock_response {
       0 => { success: true, stdout: "", stderr: "" } "hermetic systemd.Systemctl.MaskNow"
     }
+  }
+
+  operation MaskRuntime {
+    input { unit: NonEmptyStr }
+    output { success: Bool from "exit_success", stdout: String from "stdout", stderr: String from "stderr" }
+    transport shell { argv: ["systemctl", "mask", "--runtime", "{unit}"] }
+    exit { 0 => Unit nonzero => String "runtime mask refused" }
+    mock_response { 1 => { success: false, stdout: "", stderr: "no mask supplied" } "no fabricated inhibition" }
+  }
+
+  operation Reboot {
+    output { success: Bool from "exit_success", stderr: String from "stderr" }
+    transport shell { argv: ["systemctl", "reboot"] }
+    exit { 0 => Unit nonzero => String "normal reboot request refused" }
+    mock_response { 1 => { success: false, stderr: "no reboot supplied" } "no fabricated activation" }
   }
 
   operation SetProperty {

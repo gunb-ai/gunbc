@@ -4672,8 +4672,8 @@ fn assembled_seed_modules(
             GeneratedFoundationCrate | GeneratedLayeredCoreCrate => {
                 host_shell_modules.extend(row.modules.iter().cloned());
             }
-            // Emit-core is a consumer/re-export, not a module-bearing assembly owner.
-            GeneratedEmitCoreCrate => {}
+            // Emit-core and facade crates are consumers/re-exports, not module-bearing assembly owners.
+            GeneratedEmitCoreCrate | GeneratedFacadeCrate => {}
         }
     }
     host_shell_modules

@@ -12,8 +12,9 @@ pub use crate::std_machine_constraints::PointerWidth;
 pub use crate::std_machine_constraints::{Compose, MachineWidth};
 pub use crate::std_measure::{bit_width, bit_width_count, bits_per_byte};
 use crate::std_nat::DecimalDigit::{D0, D1, D2, D3, D4, D5, D6, D7, D8, D9};
-pub use crate::std_nat::{decimal_digit_glyph, decimal_digit_value};
-pub use crate::std_nat::{DecimalDigit, Nat};
+use crate::std_nat::DecimalDigitSuccessor::{DecimalDigitCarry, DecimalDigitNext};
+pub use crate::std_nat::{decimal_digit_glyph, decimal_digit_successor, decimal_digit_value};
+pub use crate::std_nat::{DecimalDigit, DecimalDigitSuccessor, Nat};
 pub use crate::std_optional::Optional;
 pub use crate::std_types::gt_zero;
 pub use crate::std_types::List;
@@ -197,78 +198,35 @@ pub fn uint8_channel_inclusive_max_value_derived() -> Option<Int> {
     }
 }
 
-pub fn decimal_digit_of_units(mut __tco_loop_value: Int) -> DecimalDigit {
-    loop {
-        #[allow(unused_mut)]
-        let mut value = __tco_loop_value;
+pub fn decimal_digit_of_units(value: Int) -> DecimalDigit {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (value.clone() >= 10) {
-            {
-                let __tco_0 = v1_rt::int_sub(value, 10);
-                __tco_loop_value = __tco_0;
-                continue;
-            }
+            decimal_digit_of_units(v1_rt::int_sub(value.clone(), 10))
         } else {
             if (value.clone() < v1_rt::int_neg(9)) {
-                {
-                    let __tco_0 = v1_rt::int_add(value, 10);
-                    __tco_loop_value = __tco_0;
-                    continue;
-                }
+                decimal_digit_of_units(v1_rt::int_add(value.clone(), 10))
             } else {
                 if (value.clone() < 0) {
-                    break decimal_digit_of_reduced_units(v1_rt::int_sub(0, value.clone()));
+                    decimal_digit_of_units(v1_rt::int_sub(0, value.clone()))
                 } else {
-                    break decimal_digit_of_reduced_units(value.clone());
-                }
-            }
-        }
-    }
-}
-
-pub fn decimal_digit_of_reduced_units(value: Int) -> DecimalDigit {
-    if (crate::std_nat::decimal_digit_value(DecimalDigit::D0) == value.clone()) {
-        DecimalDigit::D0
-    } else {
-        if (crate::std_nat::decimal_digit_value(DecimalDigit::D1) == value.clone()) {
-            DecimalDigit::D1
-        } else {
-            if (crate::std_nat::decimal_digit_value(DecimalDigit::D2) == value.clone()) {
-                DecimalDigit::D2
-            } else {
-                if (crate::std_nat::decimal_digit_value(DecimalDigit::D3) == value.clone()) {
-                    DecimalDigit::D3
-                } else {
-                    if (crate::std_nat::decimal_digit_value(DecimalDigit::D4) == value.clone()) {
-                        DecimalDigit::D4
+                    if (value.clone() == 0) {
+                        DecimalDigit::D0
                     } else {
-                        if (crate::std_nat::decimal_digit_value(DecimalDigit::D5) == value.clone())
-                        {
-                            DecimalDigit::D5
-                        } else {
-                            if (crate::std_nat::decimal_digit_value(DecimalDigit::D6)
-                                == value.clone())
-                            {
-                                DecimalDigit::D6
-                            } else {
-                                if (crate::std_nat::decimal_digit_value(DecimalDigit::D7)
-                                    == value.clone())
-                                {
-                                    DecimalDigit::D7
-                                } else {
-                                    if (crate::std_nat::decimal_digit_value(DecimalDigit::D8)
-                                        == value.clone())
-                                    {
-                                        DecimalDigit::D8
-                                    } else {
-                                        DecimalDigit::D9
-                                    }
-                                }
-                            }
-                        }
+                        decimal_digit_advance(decimal_digit_of_units(v1_rt::int_sub(
+                            value.clone(),
+                            1,
+                        )))
                     }
                 }
             }
         }
+    })
+}
+
+pub fn decimal_digit_advance(d: DecimalDigit) -> DecimalDigit {
+    match (*crate::std_nat::decimal_digit_successor(d.clone())).clone() {
+        DecimalDigitSuccessor::DecimalDigitNext { digit: next, .. } => next.clone(),
+        DecimalDigitSuccessor::DecimalDigitCarry => DecimalDigit::D0,
     }
 }
 

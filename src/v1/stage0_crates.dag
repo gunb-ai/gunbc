@@ -3,9 +3,10 @@ module v1.compiler.stage0_crates
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import v1.std.core { TextFile }
-import v1.compiler.emit_rust { emit_non_empty_wrappers, emit_cargo_dep, emit_cargo_features_section, generated_rust_lint_relaxations }
+import v1.compiler.emit_rust { emit_non_empty_wrappers, emit_cargo_dep, emit_cargo_dep_no_default_features, emit_cargo_features_section, generated_rust_lint_relaxations }
 import v1.compiler.runtime_rust { rust_runtime_cargo_features }
 import extdeps.cargo { CargoDependency, CargoFeature, RegistryDep, LocalPathDep }
+import gunbc.rust_emitted_crate { EmittedCrateDependencyDemand }
 import extdeps.cargo_version { render_cargo_package_header_prefix }
 import gunbc.rust_crate_package_ident {
   PackageIdentBinding,
@@ -22,6 +23,7 @@ import gunbc.stage0_partition_package_graph {
 import gunbc.stage0_emitted_edge_admission { partition_module_owner_packages_over }
 import gunbc.stage0_crate_partition_generated {
   GeneratedEmitCoreCrate,
+  GeneratedFacadeCrate,
   GeneratedFoundationCrate,
   GeneratedLayeredCoreCrate,
   GeneratedPartitionCrateKind,
@@ -33,6 +35,7 @@ type Stage0CrateKind
   = FoundationCrate
   | LayeredCoreCrate
   | EmitCoreCrate
+  | FacadeCrate
 
 type Stage0CrateSpec {
   package_name: String
@@ -126,8 +129,15 @@ fn stage0_emit_core_header_doc() -> String {
   ] |> join(separator: "\n")
 }
 
+// A path dependency is written relative to the DEPENDENT crate's directory. Partition crates sit
+// side by side under src/v1/, so one reaches another as a sibling; a package at the workspace root
+// (crate_dir ".", the top package of an emitted workspace) reaches each by its own crate_dir.
 fn stage0_crate_dir_to_sibling_dep_path(crate_dir: String) -> String {
   replace(crate_dir, "src/v1/", "../")
+}
+
+fn partition_crate_dep_path(from_crate_dir: String, to_crate_dir: String) -> String {
+  if from_crate_dir == "." { to_crate_dir } else { stage0_crate_dir_to_sibling_dep_path(crate_dir: to_crate_dir) }
 }
 
 type Stage0ModuleOwnerRefusalCause
@@ -253,19 +263,56 @@ fn stage0_crate_boundary_emit_refusal_message(
   }
 }
 
+// THE REGISTRY DEPENDENCIES AN EMITTED CLOSURE DEMANDS (gunbc.rust_emitted_crate
+// EmittedCrateDependencyDemand), as the rows every crate of its workspace lists. Moved here with the
+// single-package manifest's deletion: the demand is the emission's fact, and turning it into Cargo
+// dependency rows is this renderer's.
+fn emitted_crate_registry_dep(name: String, version: String, features: List<String>) -> CargoDependency {
+  CargoDependency { name: name, source: RegistryDep { version: version, default_features: true, features: features } }
+}
+
+fn emitted_crate_dependencies(demand: EmittedCrateDependencyDemand) -> List<CargoDependency> {
+  let base_deps = [
+    emitted_crate_registry_dep(name: "im", version: "15.1", features: ["serde"]),
+    emitted_crate_registry_dep(name: "unicode-ident", version: "1", features: []),
+    emitted_crate_registry_dep(name: "unicode-properties", version: "0.1", features: ["emoji"]),
+    emitted_crate_registry_dep(name: "serde", version: "1", features: ["derive", "rc"]),
+    emitted_crate_registry_dep(name: "serde_json", version: "1", features: []),
+    emitted_crate_registry_dep(name: "libc", version: "0.2", features: []),
+    emitted_crate_registry_dep(name: "stacker", version: "0.1", features: []),
+    emitted_crate_registry_dep(name: "lazy_static", version: "1", features: []),
+    emitted_crate_registry_dep(name: "ureq", version: "2", features: ["json"])
+  ]
+  let cli_deps = if demand.renders_clap_cli {
+    [emitted_crate_registry_dep(name: "clap", version: "4", features: ["derive"])]
+  } else { [] }
+  let async_deps = if demand.renders_async_services {
+    [
+      emitted_crate_registry_dep(name: "tokio", version: "1", features: ["full"]),
+      CargoDependency {
+        name: "reqwest",
+        source: RegistryDep { version: "0.12", default_features: false, features: ["json", "rustls-tls", "http2", "charset"] }
+      },
+      emitted_crate_registry_dep(name: "async-trait", version: "0.1", features: [])
+    ]
+  } else { [] }
+  concat(base_deps, concat(cli_deps, async_deps))
+}
+
 fn stage0_foundation_runtime_dependencies() -> List<CargoDependency> {
   [
-    CargoDependency { name: "stacker", source: RegistryDep { version: "0.1", features: [] } },
-    CargoDependency { name: "im", source: RegistryDep { version: "15.1", features: ["serde"] } },
-    CargoDependency { name: "libc", source: RegistryDep { version: "0.2", features: [] } },
-    CargoDependency { name: "serde", source: RegistryDep { version: "1", features: ["derive", "rc"] } },
-    CargoDependency { name: "serde_json", source: RegistryDep { version: "1", features: [] } },
-    CargoDependency { name: "unicode-ident", source: RegistryDep { version: "1", features: [] } },
-    CargoDependency { name: "unicode-properties", source: RegistryDep { version: "0.1", features: ["emoji"] } }
+    CargoDependency { name: "stacker", source: RegistryDep { version: "0.1", default_features: true, features: [] } },
+    CargoDependency { name: "im", source: RegistryDep { version: "15.1", default_features: true, features: ["serde"] } },
+    CargoDependency { name: "libc", source: RegistryDep { version: "0.2", default_features: true, features: [] } },
+    CargoDependency { name: "serde", source: RegistryDep { version: "1", default_features: true, features: ["derive", "rc"] } },
+    CargoDependency { name: "serde_json", source: RegistryDep { version: "1", default_features: true, features: [] } },
+    CargoDependency { name: "unicode-ident", source: RegistryDep { version: "1", default_features: true, features: [] } },
+    CargoDependency { name: "unicode-properties", source: RegistryDep { version: "0.1", default_features: true, features: ["emoji"] } }
   ]
 }
 
 fn stage0_reexport_path_dependencies_outcome(
+  from_crate_dir: String,
   reexport_packages: List<String>,
   rows: List<GeneratedPartitionCrateRow>
 ) -> Stage0ReexportPathDepsOutcome {
@@ -282,7 +329,7 @@ fn stage0_reexport_path_dependencies_outcome(
                   CargoDependency {
                     name: pkg,
                     source: LocalPathDep {
-                      path: stage0_crate_dir_to_sibling_dep_path(crate_dir: crate_dir)
+                      path: partition_crate_dep_path(from_crate_dir: from_crate_dir, to_crate_dir: crate_dir)
                     }
                   }
                 ])
@@ -299,6 +346,7 @@ fn stage0_partition_row_kind(row: GeneratedPartitionCrateRow) -> Stage0CrateKind
     GeneratedFoundationCrate => FoundationCrate
     GeneratedLayeredCoreCrate => LayeredCoreCrate
     GeneratedEmitCoreCrate => EmitCoreCrate
+    GeneratedFacadeCrate => FacadeCrate
   }
 }
 
@@ -307,6 +355,7 @@ fn stage0_partition_row_header_doc(row: GeneratedPartitionCrateRow) -> String {
     GeneratedFoundationCrate => stage0_foundation_header_doc()
     GeneratedLayeredCoreCrate => stage0_layered_core_header_doc()
     GeneratedEmitCoreCrate => stage0_emit_core_header_doc()
+    GeneratedFacadeCrate => partition_facade_header_doc()
   }
 }
 
@@ -318,15 +367,17 @@ fn stage0_partition_row_header_doc(row: GeneratedPartitionCrateRow) -> String {
 // is what having one graph means.
 fn stage0_partition_row_dependencies_outcome(
   row: GeneratedPartitionCrateRow,
-  rows: List<GeneratedPartitionCrateRow>
+  rows: List<GeneratedPartitionCrateRow>,
+  registry_dependencies: List<CargoDependency>
 ) -> Stage0PartitionRowDepsOutcome {
   match stage0_reexport_path_dependencies_outcome(
+    from_crate_dir: row.crate_dir,
     reexport_packages: partition_package_dependency_names_over(row: row, rows: rows),
     rows: rows
   ) {
     Stage0ReexportPathDepsOk { deps: path_deps } =>
       Stage0PartitionRowDepsOk {
-        deps: stage0_foundation_runtime_dependencies() |> concat(path_deps)
+        deps: registry_dependencies |> concat(path_deps)
       }
     Stage0ReexportPathDepsRefused { cause: cause } =>
       Stage0PartitionRowDepsRefused { cause: cause }
@@ -345,6 +396,7 @@ fn stage0_features_for_crate_kind(kind: GeneratedPartitionCrateKind) -> List<Car
     GeneratedFoundationCrate => rust_runtime_cargo_features()
     GeneratedLayeredCoreCrate => []
     GeneratedEmitCoreCrate => []
+    GeneratedFacadeCrate => []
   }
 }
 
@@ -355,9 +407,10 @@ fn stage0_partition_row_features(row: GeneratedPartitionCrateRow) -> List<CargoF
 fn stage0_partition_row_to_spec_outcome(
   row: GeneratedPartitionCrateRow,
   package_idents: List<PackageIdentBinding>,
-  rows: List<GeneratedPartitionCrateRow>
+  rows: List<GeneratedPartitionCrateRow>,
+  registry_dependencies: List<CargoDependency>
 ) -> Stage0PartitionRowSpecOutcome {
-  match stage0_partition_row_dependencies_outcome(row: row, rows: rows) {
+  match stage0_partition_row_dependencies_outcome(row: row, rows: rows, registry_dependencies: registry_dependencies) {
     Stage0PartitionRowDepsRefused { cause: cause } =>
       Stage0PartitionRowSpecRefused { cause: cause }
     Stage0PartitionRowDepsOk { deps: deps } =>
@@ -381,8 +434,12 @@ fn stage0_partition_row_to_spec_outcome(
 
 fn render_stage0_crate_dep(dep: CargoDependency) -> String {
   match dep.source {
-    RegistryDep { version: version, features: features } =>
-      emit_cargo_dep(name: dep.name, version: version, features: features)
+    RegistryDep { version: version, default_features: default_features, features: features } =>
+      if default_features {
+        emit_cargo_dep(name: dep.name, version: version, features: features)
+      } else {
+        emit_cargo_dep_no_default_features(name: dep.name, version: version, features: features)
+      }
     LocalPathDep { path: path } =>
       concat(dep.name, " = { path = \"", path, "\" }\n")
   }
@@ -528,6 +585,65 @@ fn render_stage0_emit_core_lib_outcome(spec: Stage0CrateSpec) -> Stage0CrateLibE
   }
 }
 
+// THE FACADE OF A PARTITION: one `pub mod m { pub use <owner>::m::*; }` per module it names, so a
+// reader that paths through the package by module -- an emitted main's `<crate_name>::m::` --
+// reaches each module where its owning crate put it. It hosts no module and copies no semantics;
+// unlike the stage0 emit shell it names no stage0 package and includes no seed file, so any
+// partition's row set can carry one (gunbc.emitted_crate_workspace emitted_workspace_top_row).
+fn partition_facade_header_doc() -> String {
+  [
+    "//! Generated by the emitted crate workspace (gunbc.emitted_crate_workspace) -- do not edit.",
+    "//!",
+    "//! Facade crate: re-exports every module of the partition from the crate that owns it."
+  ] |> join(separator: "\n")
+}
+
+fn render_partition_facade_lib_outcome(spec: Stage0CrateSpec) -> Stage0CrateLibEmitOutcome {
+  match stage0_emit_shell_module_reexports_outcome(modules: spec.modules, package_idents: spec.package_idents, rows: spec.partition_rows) {
+    Stage0EmitShellReexportsRefused { cause: cause } =>
+      Stage0CrateLibEmitRefused { cause: cause }
+    Stage0EmitShellReexportsIdentUnbound { package_name: package_name } =>
+      Stage0CrateLibEmitIdentUnbound { package_name: package_name }
+    Stage0EmitShellReexportsOk { lines: lines } =>
+      match partition_facade_wrapper_reexports_outcome(spec: spec) {
+        Stage0ReexportLinesIdentUnbound { package_name: package_name } =>
+          Stage0CrateLibEmitIdentUnbound { package_name: package_name }
+        Stage0ReexportLinesOk { lines: wrapper_lines } =>
+          Stage0CrateLibEmitOk {
+            file: TextFile {
+              path: concat(spec.crate_dir, "/src/lib.rs"),
+              content: concat(
+                spec.header_doc, "\n\n",
+                stage0_crate_allow_block(), "\n\n",
+                concat(wrapper_lines, lines) |> join(separator: "\n\n"), "\n"
+              )
+            }
+          }
+      }
+  }
+}
+
+// THE WRAPPERS ARE THE RUNTIME CRATE'S, RE-EXPORTED, NEVER REDEFINED. Emitted code and harness
+// drivers address `<crate>::NonEmptyVec`, and a second definition in the facade would be a different
+// Rust type from the one the module crates construct. So the facade re-exports them from each row
+// that carries them (emit_non_empty_wrappers), by that row's package ident.
+fn partition_facade_wrapper_reexports_outcome(spec: Stage0CrateSpec) -> Stage0ReexportLinesOutcome {
+  spec.partition_rows
+    |> filter(row => row.carries_non_empty_wrappers)
+    |> fold(init: Stage0ReexportLinesOk { lines: [] }, f: fn(acc, row) {
+      match acc {
+        Stage0ReexportLinesIdentUnbound { package_name: missing } =>
+          Stage0ReexportLinesIdentUnbound { package_name: missing }
+        Stage0ReexportLinesOk { lines: lines } =>
+          match package_ident_bound(bindings: spec.package_idents, package_name: row.package_name) {
+            Absent => Stage0ReexportLinesIdentUnbound { package_name: row.package_name }
+            Present { value: ident } =>
+              Stage0ReexportLinesOk { lines: lines |> concat([concat("pub use ", ident, "::\{NonEmptyBTreeSet, NonEmptyVec};")]) }
+          }
+      }
+    })
+}
+
 fn stage0_partition_lookups_valid() -> Bool {
   match stage0_crate_boundary_emit_outcome() {
     Stage0CrateBoundaryEmitOk { files: _ } => true
@@ -546,6 +662,7 @@ fn emit_stage0_crate_lib_outcome(spec: Stage0CrateSpec) -> Stage0CrateLibEmitOut
       }
     LayeredCoreCrate => render_stage0_layered_core_lib_outcome(spec: spec)
     EmitCoreCrate => render_stage0_emit_core_lib_outcome(spec)
+    FacadeCrate => render_partition_facade_lib_outcome(spec: spec)
   }
 }
 
@@ -567,23 +684,23 @@ fn emit_stage0_crate_lib_outcome(spec: Stage0CrateSpec) -> Stage0CrateLibEmitOut
 // names are hyphen-only and cannot collide, so this admission changes no rendered byte. It is landed
 // because the derived partition will supply names nobody reviewed one at a time.
 fn stage0_crate_plan_outcome() -> Stage0CratePlanOutcome {
-  partition_crate_plan_outcome_over(rows: generated_partition_crate_rows)
+  partition_crate_plan_outcome_over(rows: generated_partition_crate_rows, registry_dependencies: stage0_foundation_runtime_dependencies())
 }
 
 // ONE RENDERER FOR EVERY PARTITION ROW SET. The committed stage0 rows are one set; a derivation
-// that partitions an emitted closure (v2.workflow.emitted_crate_workspace) produces another of the
+// that partitions an emitted closure (gunbc.emitted_crate_workspace) produces another of the
 // same shape, and it is rendered here rather than by a second manifest and lib.rs writer beside
 // this one. Every lookup below reads the set it was handed, never the committed one.
-fn partition_crate_plan_outcome_over(rows: List<GeneratedPartitionCrateRow>) -> Stage0CratePlanOutcome {
+fn partition_crate_plan_outcome_over(rows: List<GeneratedPartitionCrateRow>, registry_dependencies: List<CargoDependency>) -> Stage0CratePlanOutcome {
   match rust_crate_package_idents(
     package_names: rows |> map(row => row.package_name)
   ) {
     PackageIdentSetRefused { cause: cause } => Stage0CratePlanIdentRefused { cause: cause }
-    PackageIdentSetOk { bindings: bindings } => stage0_crate_plan_from_admitted_rows(package_idents: bindings, rows: rows)
+    PackageIdentSetOk { bindings: bindings } => stage0_crate_plan_from_admitted_rows(package_idents: bindings, rows: rows, registry_dependencies: registry_dependencies)
   }
 }
 
-fn stage0_crate_plan_from_admitted_rows(package_idents: List<PackageIdentBinding>, rows: List<GeneratedPartitionCrateRow>) -> Stage0CratePlanOutcome {
+fn stage0_crate_plan_from_admitted_rows(package_idents: List<PackageIdentBinding>, rows: List<GeneratedPartitionCrateRow>, registry_dependencies: List<CargoDependency>) -> Stage0CratePlanOutcome {
   rows
     |> fold(init: Stage0CratePlanOk { plan: Stage0CratePlan { crates: [] } }, f: fn(acc, row) {
       match acc {
@@ -592,7 +709,7 @@ fn stage0_crate_plan_from_admitted_rows(package_idents: List<PackageIdentBinding
         Stage0CratePlanIdentRefused { cause: cause } =>
           Stage0CratePlanIdentRefused { cause: cause }
         Stage0CratePlanOk { plan: plan } =>
-          match stage0_partition_row_to_spec_outcome(row: row, package_idents: package_idents, rows: rows) {
+          match stage0_partition_row_to_spec_outcome(row: row, package_idents: package_idents, rows: rows, registry_dependencies: registry_dependencies) {
             Stage0PartitionRowSpecRefused { cause: cause } =>
               Stage0CratePlanRefused { cause: cause }
             Stage0PartitionRowSpecOk { spec: spec } =>
@@ -637,11 +754,14 @@ fn emit_stage0_crate_boundary_files_outcome(
 }
 
 fn stage0_crate_boundary_emit_outcome() -> Stage0CrateBoundaryEmitOutcome {
-  partition_crate_boundary_emit_outcome_over(rows: generated_partition_crate_rows)
+  partition_crate_boundary_emit_outcome_over(rows: generated_partition_crate_rows, registry_dependencies: stage0_foundation_runtime_dependencies())
 }
 
-fn partition_crate_boundary_emit_outcome_over(rows: List<GeneratedPartitionCrateRow>) -> Stage0CrateBoundaryEmitOutcome {
-  match partition_crate_plan_outcome_over(rows: rows) {
+// The registry dependencies every crate of the set links: the committed stage0 set passes
+// stage0_foundation_runtime_dependencies; an emitted closure passes what its emission demanded
+// (emitted_crate_dependencies, above).
+fn partition_crate_boundary_emit_outcome_over(rows: List<GeneratedPartitionCrateRow>, registry_dependencies: List<CargoDependency>) -> Stage0CrateBoundaryEmitOutcome {
+  match partition_crate_plan_outcome_over(rows: rows, registry_dependencies: registry_dependencies) {
     Stage0CratePlanRefused { cause: cause } =>
       Stage0CrateBoundaryEmitRefused {
         cause: stage0_map_package_dir_refusal_to_boundary(cause: cause)

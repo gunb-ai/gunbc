@@ -15,6 +15,7 @@
 .githooks/generated-artifact-merge merge=generated-artifact
 .githooks/pre-commit merge=generated-artifact
 .githooks/pre-push merge=generated-artifact
+.github/workflows/branch-run-grant-broker.yml merge=generated-artifact
 .github/workflows/fleet-converge.yml merge=generated-artifact
 .github/workflows/fleet-desired.yml merge=generated-artifact
 .github/workflows/heal.yml merge=generated-artifact
@@ -51,7 +52,6 @@ docs/plans/host-effect-orchestration.md merge=generated-artifact
 docs/plans/inert-layer-lens.md merge=generated-artifact
 docs/plans/input-envelope-roadmap.md merge=generated-artifact
 docs/plans/model-realization-fork.md merge=generated-artifact
-docs/plans/native-obligation-population.md merge=generated-artifact
 docs/plans/realization-measurement-loop.md merge=generated-artifact
 docs/plans/representation-minimization.md merge=generated-artifact
 docs/plans/v2-compiler-architecture.md merge=generated-artifact

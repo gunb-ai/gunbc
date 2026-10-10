@@ -9,7 +9,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // optional fields gunbc#10966 added -- head_branch, actor, triggering_actor -- are omitted here
 // exactly as `path` already is, because this witness asks only about status and conclusion wire
 // labels and an invented login would be a fabricated observation rather than an absent one.
-data sample_run: WorkflowRun = WorkflowRun {
+data sample_run: WorkflowRun = WorkflowRun { display_title: none,
   id: 12345678
   name: "CI"
   head_sha: "abc123def456abc123def456abc123def456abc123"

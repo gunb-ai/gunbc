@@ -33,7 +33,7 @@ import gunbc.auth.github_apps { DeclaredGitHubApp, GitHubAppControlPlaneState }
 import gunbc.auth.github_credential {
   GitHubCredentialAuthority, CredentialCapability, credential_authorizes, unsatisfied_capabilities,
 }
-import gunbc.runner_jit_mint { HostUnitJitSlot, MicroVmJitSlot }
+import gunbc.runner.jit_registration_subject { host_unit_slot_subject }
 import gunbc.runner.runner_jit_perform { AuthorizedJitMintDispatch, JitMintDispatchAuthorized, JitCredentialDelivery, JitCredentialBoundToAttempt, authority_installation }
 import gunbc.runner.runner_jit_deregistration { JitRegistration, jit_registration_of }
 import gunbc.managed_host_unit_hold { UnitHoldProof }
@@ -175,6 +175,7 @@ fn step_runs_after_a_failure(step: Step) -> Bool {
 
 type QualificationDispatchSubject sole_constructor {
   registration: JitRegistration
+  slot: HostUnitSlot
   host: HostIdentity
   attempt: NonEmptyStr
   runner_id: Int
@@ -324,6 +325,7 @@ fn qualification_floor_admission(workflow: Workflow, floor_job_id: NonEmptyStr) 
 // not where the result goes, so every admitted witness entry is a `test fn` returning Bool.
 fn qualification_dispatch_subject_over(
   dispatch: AuthorizedJitMintDispatch,
+  slot: HostUnitSlot,
   delivery: JitCredentialDelivery,
   workflow: Workflow,
   floor_job_id: NonEmptyStr,
@@ -344,10 +346,10 @@ fn qualification_dispatch_subject_over(
       if bound.dispatch != dispatch {
         QualificationSubjectRefused { refusal: SubjectDeliveryForAnotherDispatch }
       } else {
-        match registration.slot {
-          MicroVmJitSlot { attempt: _ } => QualificationSubjectRefused { refusal: SubjectSlotNotHostUnit }
-          HostUnitJitSlot { slot: h } =>
-            if (pin.name.attempt as String) != (h.attempt as String) {
+        let h = slot
+        if !(host_unit_slot_subject(slot: h) == registration.subject) {
+          QualificationSubjectRefused { refusal: SubjectSlotNotHostUnit }
+        } else if (pin.name.attempt as String) != (h.attempt as String) {
               QualificationSubjectRefused { refusal: SubjectPinForAnotherAttempt { pin_attempt: pin.name.attempt, slot_attempt: h.attempt } }
             } else if dispatch.request.runner_group_id.value != pin.group.group.value {
               QualificationSubjectRefused { refusal: SubjectMintedIntoAnotherGroup { minted_group: dispatch.request.runner_group_id.value, pinned_group: pin.group.group.value } }
@@ -361,6 +363,7 @@ fn qualification_dispatch_subject_over(
                     QualificationSubjectAdmitted {
                       subject: QualificationDispatchSubject {
                         registration: registration,
+                        slot: h,
                         host: h.host.host.host,
                         attempt: h.attempt,
                         runner_id: runner_id,
@@ -371,7 +374,6 @@ fn qualification_dispatch_subject_over(
                 }
             }
             }
-        }
       }
     }
     other => QualificationSubjectRefused { refusal: SubjectCredentialNotDelivered { delivery: other } }
@@ -392,6 +394,7 @@ fn qualification_dispatch_subject_over(
 // owes, refused rather than faked.
 fn qualification_dispatch_subject(
   dispatch: AuthorizedJitMintDispatch,
+  slot: HostUnitSlot,
   delivery: JitCredentialDelivery,
   floor_job_id: NonEmptyStr,
   pin: QualificationRefPin,
@@ -401,6 +404,7 @@ fn qualification_dispatch_subject(
   } else {
     qualification_dispatch_subject_over(
       dispatch: dispatch,
+      slot: slot,
       delivery: delivery,
       workflow: fleet_converge_workflow,
       floor_job_id: floor_job_id,
@@ -1111,11 +1115,8 @@ fn read_claim_cost_artifact(token: ControllerInstallationToken, owner: NonEmptyS
 // artifact and returns a standing per instrument source. Its consumer is the route's collect stage
 // (gunbc.runner_throughput_qualification_route CollectInstruments, standing mtcollins1_collect_leg),
 // which does not invoke it yet: that edge is the row below.
-// The microVM arm is refused by the dispatch subject already (SubjectSlotNotHostUnit), so no collected
-// run carries one; the arm exists because the slot sum does, and it reads nothing.
 type QualificationCollectOutcome
   = QualificationCollected { stage: QualificationCollectStage }
-  | QualificationCollectSlotNotAHostUnit
   | QualificationCollectUnderAnotherInstallation { token_app: DeclaredGitHubApp, token_installation: GitHubAppInstallationId }
 
 // THE READ PLAN, PURE: WHICH READS THE COLLECTOR MAY MAKE, DECIDED BEFORE ANY OF THEM. A token that
@@ -1180,14 +1181,10 @@ fn collect_qualification_instruments_under(collected: CollectedQualificationRun,
   let run_id = collected.dispatched.receipt.workflow_run_id
   let owner = gunbc_repository.owner as NonEmptyStr
   let repo = gunbc_repository.name as NonEmptyStr
-  match collected.dispatched.subject.registration.slot {
-    MicroVmJitSlot { attempt: _ } => QualificationCollectSlotNotAHostUnit
-    HostUnitJitSlot { slot: slot } => {
-      let log = attempt_job_log_of(read: read_job_log_with(token: token, owner: owner, repo: repo, job_id: job_id))
-      let claim_cost = read_claim_cost_artifact(token: token, owner: owner, repo: repo, run_id: run_id)
-      QualificationCollected { stage: QualificationCollectStage { job_log: job_log_standing(collected: collected, slot: slot, log: log), claim_cost: claim_cost } }
-    }
-  }
+  let slot = collected.dispatched.subject.slot
+  let log = attempt_job_log_of(read: read_job_log_with(token: token, owner: owner, repo: repo, job_id: job_id))
+  let claim_cost = read_claim_cost_artifact(token: token, owner: owner, repo: repo, run_id: run_id)
+  QualificationCollected { stage: QualificationCollectStage { job_log: job_log_standing(collected: collected, slot: slot, log: log), claim_cost: claim_cost } }
 }
 
 // ── THE INSTRUMENTS THIS RUN'S LOG DOES NOT CARRY, EACH WITH THE CAPABILITY THAT WOULD READ IT ──

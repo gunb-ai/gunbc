@@ -5,7 +5,7 @@ import std.optional { Present }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifProvider, wif_provider_resource, wif_pool_resource }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_number, github_wif_issuer_uri, federated_service_account_member }
 import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_attribute_condition, claim_pins_admit, fleet_converge_workflow_claim_pins }
-import gunbc.auth.heal_publisher_provision { DedicatedFederation }
+import gunbc.auth.heal_publisher_provision { DedicatedFederation, StandingPoolImpersonation }
 import gunbc.gcp_estate_observation { fleet_cloud_convergence_sa_email }
 
 // ── fleet-cloud-convergence IS REACHABLE FROM THE FLEET-CONVERGE WORKFLOW AT MAIN, DISPATCHED, AND NOTHING ELSE ──
@@ -66,7 +66,7 @@ fn fleet_convergence_federation() -> DedicatedFederation {
     provider_id: fleet_convergence_wif_provider_id,
     attribute_mapping: fleet_convergence_attribute_mapping,
     attribute_condition: fleet_convergence_attribute_condition(),
-    principal_set: fleet_convergence_principal_set(),
+    impersonation: StandingPoolImpersonation { principal_set: fleet_convergence_principal_set() },
     service_account: fleet_cloud_convergence_sa_email,
     service_account_id: "fleet-cloud-convergence",
     service_account_display_name: "Fleet cloud convergence (WIF-only, no keys)",

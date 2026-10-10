@@ -1,0 +1,116 @@
+module gunbc.host_control_route
+
+import std.types { List, NonEmptyStr }
+import std.optional { Present, Absent }
+import extdeps.cloud.hetzner_cloud_api { HetznerServerResponse }
+import product.host_identity { HostIdentity }
+import product.fabric.provider_route { ProviderRoute }
+import gunbc.managed_host {
+  ManagedHostBinding, ManagedHostBindingStanding, ManagedHostBound, ManagedHostAccessUnobserved,
+  ManagedHostNotSecured, ManagedHostEndpointMismatch, ManagedHostFound, ManagedHostNotManaged,
+  managed_host_binding_for,
+}
+import gunbc.provider_acquisition { ProviderResourceAcquisition }
+import gunbc.fleet_host_backing {
+  OwnedMachine, BmcVirtualMediaInstall, ApplianceFirstBoot, ProviderGuest,
+  ProviderResourceAwaited, ProviderResourceAcquired,
+}
+import gunbc.fleet_enrollment { HostEnrollmentIntent }
+import gunbc.hetzner_cloud_server_reading {
+  AcquiredServerRead, AcquiredServerObserved, AcquiredServerIdUnparsed, AcquiredServerAnsweredForAnother, AcquiredServerReadRefused, acquired_server_read_line,
+}
+
+// HOW THE FLEET KEEPS CONTROL OF A HOST WHEN ITS OPERATING SYSTEM DOES NOT ANSWER. SSH is in-band:
+// it works only while the OS is healthy. Control is the out-of-band route that can power-cycle,
+// reinstall or reset the host anyway, driven from a controller and never by software resident on the
+// target or its controller (operator rulings 2026-09-05 and 2026-10-08). An owned Altra board is
+// controlled through its BMC; a rented guest has no BMC, and its provider's API is the same route.
+//
+// gunbc.managed_host stays what it is -- a host driven through a secured baseboard controller, whose
+// row carries BMC and Altra facts (SMpro site, firmware capability) every consumer of it needs.
+// Widening it to a guest would give that name a second meaning, so the generic fact lives here and
+// the BMC route carries a managed-host binding unchanged.
+type HostControlRoute
+  = BmcControlRoute { binding: ManagedHostBinding }
+  | ProviderApiControlRoute { route: ProviderRoute, acquisition: ProviderResourceAcquisition, observed: HetznerServerResponse }
+
+// A HOST THE FLEET CAN RECOVER WITHOUT ITS OS. sole_constructor: the producers below mint it only on
+// the arm that proved the route -- a bound managed host, or a provider resource whose account's
+// token was just used to read that exact resource -- so no consumer can claim control of a host it
+// has no working route to. An acquisition record alone says the resource was bought, not that the
+// credential still reaches it.
+type ControlledHost sole_constructor {
+  host: HostIdentity
+  route: HostControlRoute
+}
+
+type HostControlRefusal
+  = BmcRouteNotBound { standing: ManagedHostBindingStanding }
+  | BmcHostNotManaged { host: HostIdentity }
+  | NoOutOfBandRoute { host: HostIdentity }
+  | ProviderResourceNotAcquired { host: HostIdentity, read_obligation: NonEmptyStr }
+  | ProviderControlUnobserved { host: HostIdentity, resource_id: NonEmptyStr, cause: String }
+
+type HostControlStanding
+  = HostControlled { controlled: ControlledHost }
+  | HostControlRefused { refusal: HostControlRefusal }
+
+// THE BMC ROUTE, from a managed host's binding standing as gunbc.managed_host decided it. A refusal
+// carries that standing unchanged rather than a re-coined cause.
+fn bmc_controlled_host(standing: ManagedHostBindingStanding) -> HostControlStanding {
+  match standing {
+    ManagedHostBound { binding: b } =>
+      HostControlled { controlled: ControlledHost { host: b.host.host, route: BmcControlRoute { binding: b } } }
+    ManagedHostAccessUnobserved { endpoint: _ } => HostControlRefused { refusal: BmcRouteNotBound { standing: standing } }
+    ManagedHostNotSecured { cause: _ } => HostControlRefused { refusal: BmcRouteNotBound { standing: standing } }
+    ManagedHostEndpointMismatch { observed: _, secured: _ } => HostControlRefused { refusal: BmcRouteNotBound { standing: standing } }
+  }
+}
+
+// AN ENROLLED HOST'S ROUTE, decided by its backing. A board installed over BMC virtual media is
+// controlled only once gunbc.managed_host binds it; an appliance that provisions itself through first
+// boot has no out-of-band route at all, and says so; a provider guest is controlled through the
+// account its acquisition is held under, and only on a provider read that answered about exactly
+// that resource -- an unrecorded acquisition, no read, or a refused one each refuse with its cause.
+fn enrolled_host_control(intent: HostEnrollmentIntent, provider_reads: List<AcquiredServerRead>) -> HostControlStanding {
+  match intent.backing {
+    OwnedMachine { provisioning: p } => match p {
+      BmcVirtualMediaInstall => match managed_host_binding_for(host: intent.host as NonEmptyStr) {
+        ManagedHostNotManaged { host: _ } => HostControlRefused { refusal: BmcHostNotManaged { host: intent.host } }
+        ManagedHostFound { standing: s } => bmc_controlled_host(standing: s)
+      }
+      ApplianceFirstBoot => HostControlRefused { refusal: NoOutOfBandRoute { host: intent.host } }
+    }
+    ProviderGuest { route: r, entitlement: _, resource: res } => match res {
+      ProviderResourceAwaited { read_obligation: o } =>
+        HostControlRefused { refusal: ProviderResourceNotAcquired { host: intent.host, read_obligation: o } }
+      ProviderResourceAcquired { acquisition: a } => provider_controlled_host(host: intent.host, route: r, acquisition: a, provider_reads: provider_reads)
+    }
+  }
+}
+
+fn read_is_about(read: AcquiredServerRead, resource_id: NonEmptyStr) -> Bool {
+  (read_resource_id(read: read) as String) == (resource_id as String)
+}
+
+fn read_resource_id(read: AcquiredServerRead) -> NonEmptyStr {
+  match read {
+    AcquiredServerObserved { acquisition: a, server: _ } => a.resource_id
+    AcquiredServerIdUnparsed { acquisition: a } => a.resource_id
+    AcquiredServerAnsweredForAnother { acquisition: a, observed: _ } => a.resource_id
+    AcquiredServerReadRefused { acquisition: a, refusal: _ } => a.resource_id
+  }
+}
+
+fn provider_controlled_host(host: HostIdentity, route: ProviderRoute, acquisition: ProviderResourceAcquisition, provider_reads: List<AcquiredServerRead>) -> HostControlStanding {
+  match filter(provider_reads, rd => read_is_about(read: rd, resource_id: acquisition.resource_id)).first() {
+    Absent => HostControlRefused { refusal: ProviderControlUnobserved { host: host, resource_id: acquisition.resource_id, cause: "no provider read of this resource was taken" } }
+    Present { value: rd } => match rd {
+      AcquiredServerObserved { acquisition: _, server: s } =>
+        HostControlled { controlled: ControlledHost { host: host, route: ProviderApiControlRoute { route: route, acquisition: acquisition, observed: s } } }
+      AcquiredServerIdUnparsed { acquisition: _ } => HostControlRefused { refusal: ProviderControlUnobserved { host: host, resource_id: acquisition.resource_id, cause: acquired_server_read_line(read: rd) } }
+      AcquiredServerAnsweredForAnother { acquisition: _, observed: _ } => HostControlRefused { refusal: ProviderControlUnobserved { host: host, resource_id: acquisition.resource_id, cause: acquired_server_read_line(read: rd) } }
+      AcquiredServerReadRefused { acquisition: _, refusal: _ } => HostControlRefused { refusal: ProviderControlUnobserved { host: host, resource_id: acquisition.resource_id, cause: acquired_server_read_line(read: rd) } }
+    }
+  }
+}

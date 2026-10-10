@@ -6,11 +6,11 @@ import std.optional { Present, Absent }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet_host_identity {
   operator_host_mtcollins1, operator_host_mtjade1,
-  operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8,
+  operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
 }
-import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB, fabric_group_hosts }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, fabric_group_hosts }
 import gunbc.auth.standing_operator_grant {
-  group_a_dev_standing_grant, mtjade1_live_standing_grant,
+  StandingOperatorGrant, mtjade1_live_standing_grant,
   standing_grant_covers, standing_grant_scope_matches, standing_grant_hosts,
   StandingGrantFabricGroup, StandingGrantHost,
   StandingD0ReleaseToFleet, StandingArmLaunch, StandingHostEffectRecover,
@@ -36,8 +36,26 @@ import gunbc.auth.privileged_effect_census {
 import std.decl_ref { decl_ref }
 import std.human_intervention { DeviceOnce, EveryProvision }
 
-fn group_a_hosts() -> List<HostIdentity> {
-  [operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8]
+fn group_b_hosts() -> List<HostIdentity> {
+  [operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12]
+}
+
+// A FABRIC-GROUP GRANT, SUPPLIED. The production Group A grant was deleted with the group (2026-10-07), and
+// no other fabric-group grant exists; the scope arm is exercised over this fixture so the group branch of
+// standing_grant_covers keeps its discriminating red beside the host branch the mtjade1 grant exercises.
+fn w_fabric_group_grant() -> StandingOperatorGrant {
+  StandingOperatorGrant {
+    identity: "w-fabric-group-grant" as NonEmptyStr,
+    principal: "operator" as NonEmptyStr,
+    ruled_at: "2026-10-07T00:00:00Z",
+    ruling: StandingDestructiveAuthorization {
+      ruling_text: "fixture" as NonEmptyStr,
+      effect_subject: "fixture fabric-group effects" as NonEmptyStr,
+      interlock: InterlockPending { obligation: "fixture" as NonEmptyStr },
+    },
+    scope: StandingGrantFabricGroup { group: FabricGroupB {}, hosts: group_b_hosts() },
+    effects: [StandingD0ReleaseToFleet, StandingArmLaunch, StandingHostEffectRecover],
+  }
 }
 
 fn selected_federated(s: AuthorizationPatternSelection) -> Bool {
@@ -106,21 +124,22 @@ fn mtjade1_megarac_qualification_effect(discharge: WitnessDischarge) -> Privileg
 
 data mtjade1_discharge: WitnessDischarge = StandingRulingUnderInterlock { ruling: mtjade1_live_standing_grant.ruling }
 
-test fn w_group_a_coverage_is_unchanged() -> Bool {
-  standing_grant_scope_matches(g: group_a_dev_standing_grant, scope: StandingGrantFabricGroup { group: FabricGroupA, hosts: group_a_hosts() })
-    && standing_grant_covers(g: group_a_dev_standing_grant, scope: StandingGrantFabricGroup { group: FabricGroupA, hosts: group_a_hosts() }, effect: StandingD0ReleaseToFleet)
-    && standing_grant_covers(g: group_a_dev_standing_grant, scope: StandingGrantFabricGroup { group: FabricGroupA, hosts: group_a_hosts() }, effect: StandingArmLaunch)
-    && standing_grant_covers(g: group_a_dev_standing_grant, scope: StandingGrantFabricGroup { group: FabricGroupA, hosts: [operator_host_srv7] }, effect: StandingHostEffectRecover)
-    && !standing_grant_covers(g: group_a_dev_standing_grant, scope: StandingGrantFabricGroup { group: FabricGroupA, hosts: [] as List<HostIdentity> }, effect: StandingArmLaunch)
-    && !standing_grant_covers(g: group_a_dev_standing_grant, scope: StandingGrantFabricGroup { group: FabricGroupB, hosts: fabric_group_hosts(g: FabricGroupB) }, effect: StandingD0ReleaseToFleet)
-    && !standing_grant_covers(g: group_a_dev_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingD0ReleaseToFleet)
-    && !standing_grant_scope_matches(g: group_a_dev_standing_grant, scope: StandingGrantHost { host: operator_host_srv5 })
+test fn w_a_fabric_group_grant_covers_exactly_its_hosts_and_effects() -> Bool {
+  let g = w_fabric_group_grant()
+  standing_grant_scope_matches(g: g, scope: StandingGrantFabricGroup { group: FabricGroupB {}, hosts: group_b_hosts() })
+    && standing_grant_covers(g: g, scope: StandingGrantFabricGroup { group: FabricGroupB {}, hosts: group_b_hosts() }, effect: StandingD0ReleaseToFleet)
+    && standing_grant_covers(g: g, scope: StandingGrantFabricGroup { group: FabricGroupB {}, hosts: group_b_hosts() }, effect: StandingArmLaunch)
+    && standing_grant_covers(g: g, scope: StandingGrantFabricGroup { group: FabricGroupB {}, hosts: [operator_host_srv11] }, effect: StandingHostEffectRecover)
+    && !standing_grant_covers(g: g, scope: StandingGrantFabricGroup { group: FabricGroupB {}, hosts: [] as List<HostIdentity> }, effect: StandingArmLaunch)
+    && !standing_grant_covers(g: g, scope: StandingGrantFabricGroup { group: FabricGroupB {}, hosts: [operator_host_mtjade1] }, effect: StandingArmLaunch)
+    && !standing_grant_covers(g: g, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingD0ReleaseToFleet)
+    && !standing_grant_scope_matches(g: g, scope: StandingGrantHost { host: operator_host_srv9 })
 }
 
 test fn w_mtcollins1_is_not_covered() -> Bool {
   !standing_grant_scope_matches(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtcollins1 })
     && !standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtcollins1 }, effect: StandingD0ReleaseToFleet)
-    && !standing_grant_scope_matches(g: group_a_dev_standing_grant, scope: StandingGrantHost { host: operator_host_mtcollins1 })
+    && !standing_grant_scope_matches(g: w_fabric_group_grant(), scope: StandingGrantHost { host: operator_host_mtcollins1 })
 }
 
 test fn w_an_effect_outside_the_mtjade1_arms_is_not_covered() -> Bool {
@@ -212,7 +231,7 @@ fn mtjade1_interlocked_ruling() -> StandingDestructiveAuthorization {
   StandingDestructiveAuthorization {
     ruling_text: mtjade1_live_standing_grant.ruling.ruling_text,
     effect_subject: mtjade1_live_standing_grant.ruling.effect_subject,
-    interlock: InterlockedBy { hold: decl_ref(module_path: "gunbc.spark.pair_serving_d0", decl_name: "d0_claim_grant") },
+    interlock: InterlockedBy { hold: decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "UnitHoldProof") },
   }
 }
 

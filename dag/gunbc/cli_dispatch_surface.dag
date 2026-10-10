@@ -633,7 +633,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           long: "target",
           value: CliTextValue { text_default: Present { value: "" } },
           arity: CliRequired,
-          doc: ["Spark target host (srv5 | srv6); required for scope:spark-serving, refused elsewhere"],
+          doc: ["Spark target host; required for scope:spark-serving, refused elsewhere"],
           emission: CarriedByGeneratedDispatch
         },
         CliOptionRow {

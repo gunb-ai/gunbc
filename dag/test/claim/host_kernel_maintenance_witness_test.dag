@@ -1,0 +1,81 @@
+module test.claim.host_kernel_maintenance_witness_test
+
+import std.types { Bool, String, NonEmptyStr, CommitSha }
+import extdeps.linux.kernel { LinuxKernelRelease }
+import extdeps.linux.tun_fdinfo { tun_attached_queue_requirement }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
+import gunbc.host_kernel_dependency { HostKernelDependencyPlan, UbuntuTunKernelProvider, InstallKernelAndActivate, ActivateInstalledKernel }
+import gunbc.host_kernel_dependency_wire { host_kernel_dependency_text }
+import gunbc.host_kernel_dependency_apply {
+  kernel_maintenance_plan_continues, kernel_maintenance_plan_read, kernel_maintenance_runner_units,
+  kernel_maintenance_unit_readback_admits, KernelDrain, KernelInstall, KernelActivate,
+}
+import gunbc.runner_slot_retirement { CgroupAbsent, CgroupObservedEmpty, CgroupObservedPopulated, CgroupUnobserved }
+
+fn maintenance_fixture() -> HostKernelDependencyPlan {
+  HostKernelDependencyPlan { host: operator_host_srv1,
+    source_revision: "0123456789abcdef0123456789abcdef01234567" as CommitSha,
+    requirement: tun_attached_queue_requirement(name: "gunbc-tap13"),
+    running_release: "6.8.0-138-generic" as LinuxKernelRelease, boot_id: "old-boot",
+    provider: UbuntuTunKernelProvider { package: "linux-generic-hwe-24.04", version: "7.0.0-38.38~24.04.4",
+      architecture: "arm64", kernel_release: "7.0.0-38-generic" as LinuxKernelRelease },
+    remedy: InstallKernelAndActivate, package_simulation: "reviewed exact package transaction" }
+}
+
+fn maintenance_with_state(plan: HostKernelDependencyPlan, boot: String, installed: Bool, simulation: String) -> HostKernelDependencyPlan {
+  HostKernelDependencyPlan { host: plan.host, source_revision: plan.source_revision,
+    requirement: plan.requirement, running_release: plan.running_release, boot_id: boot as NonEmptyStr,
+    provider: plan.provider, remedy: if installed { ActivateInstalledKernel } else { InstallKernelAndActivate },
+    package_simulation: simulation }
+}
+
+test fn installed_readback_can_continue_the_reviewed_plan_without_reinstalling() -> Bool {
+  let plan = maintenance_fixture()
+  let after = maintenance_with_state(plan: plan, boot: "old-boot", installed: true, simulation: "")
+  kernel_maintenance_plan_continues(reviewed: plan, current: after, action: KernelInstall)
+    && kernel_maintenance_plan_continues(reviewed: plan, current: after, action: KernelActivate)
+    && !kernel_maintenance_plan_continues(reviewed: plan, current: after, action: KernelDrain)
+}
+
+test fn a_different_boot_or_changed_package_transaction_refuses() -> Bool {
+  let plan = maintenance_fixture()
+  !kernel_maintenance_plan_continues(reviewed: plan,
+    current: maintenance_with_state(plan: plan, boot: "another-boot", installed: true, simulation: ""), action: KernelActivate)
+    && !kernel_maintenance_plan_continues(reviewed: plan,
+      current: maintenance_with_state(plan: plan, boot: "old-boot", installed: false, simulation: "different package transaction"), action: KernelInstall)
+}
+
+test fn maintenance_reads_the_real_canonical_dependency_and_refuses_unknown_fields() -> Bool {
+  let text = host_kernel_dependency_text(plan: maintenance_fixture())
+  (match kernel_maintenance_plan_read(text: text) { Present { value: plan } => plan == maintenance_fixture() Absent => false })
+    && (match kernel_maintenance_plan_read(text: concat(text, "\n")) { Present { value: _ } => false Absent => true })
+    && (match kernel_maintenance_plan_read(text: "{}") { Present { value: _ } => false Absent => true })
+}
+
+test fn runner_census_includes_loaded_historical_slots_not_only_desired_width() -> Bool {
+  match kernel_maintenance_runner_units(host: operator_host_srv1,
+    text: "actions-runner@srv1-01.service loaded active running Runner\nactions-runner@srv1-21.service masked inactive dead Runner\n") {
+    Present { value: units } => units == ["actions-runner@srv1-01.service", "actions-runner@srv1-21.service"]
+    Absent => false
+  }
+}
+
+test fn runner_census_refuses_foreign_empty_duplicate_and_malformed_populations() -> Bool {
+  all(["", "actions-runner@srv2-01.service loaded active running Runner\n",
+    "actions.runner.foreign.service loaded active running Runner\n",
+    "actions-runner@srv1-01.service loaded active running Runner\nactions-runner@srv1-01.service loaded active running Runner\n",
+    "unreadable\n"], text => match kernel_maintenance_runner_units(host: operator_host_srv1, text: text) {
+      Present { value: _ } => false Absent => true
+    })
+}
+
+test fn drain_requires_inhibition_stopped_service_no_job_and_empty_subtree() -> Bool {
+  all([CgroupAbsent, CgroupObservedEmpty], occupancy => kernel_maintenance_unit_readback_admits(
+    state: "inactive", mask: "masked-runtime", job: "", require_mask: true, occupancy: occupancy))
+    && all([CgroupObservedPopulated, CgroupUnobserved { cause: "permission denied" }], occupancy =>
+      !kernel_maintenance_unit_readback_admits(state: "inactive", mask: "masked-runtime", job: "", require_mask: true, occupancy: occupancy))
+    && all(["active", "activating", "deactivating", "reloading", "unknown", ""], state =>
+      !kernel_maintenance_unit_readback_admits(state: state, mask: "masked-runtime", job: "", require_mask: true, occupancy: CgroupAbsent))
+    && !kernel_maintenance_unit_readback_admits(state: "inactive", mask: "enabled", job: "", require_mask: true, occupancy: CgroupAbsent)
+    && !kernel_maintenance_unit_readback_admits(state: "inactive", mask: "masked", job: "123", require_mask: true, occupancy: CgroupAbsent)
+}

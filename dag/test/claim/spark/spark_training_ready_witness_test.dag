@@ -2,8 +2,8 @@ module test.claim.spark.spark_training_ready_witness_test
 
 import std.types { String, Bool, List, NonEmptyStr, Int }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6 }
-import gunbc.spark.cell_role { SparkCellRoleAssignment, SparkServingCell, SparkTrainingCell }
+import gunbc.fleet_host_identity { operator_host_srv10 }
+import gunbc.spark.cell_role { SparkCellRole, SparkCellRoleAssignment, SparkTrainingCell, SparkServingCell }
 import gunbc.spark.training_ready {
   SparkServingProbeCapture,
   ProbeNeverRan,
@@ -81,8 +81,8 @@ fn w_retired(host: HostIdentity) -> SparkServingRetirementObservation {
   )
 }
 
-fn w_retired_srv6() -> SparkServingRetirementObservation {
-  w_retired(host: operator_host_srv6)
+fn w_retired_srv10() -> SparkServingRetirementObservation {
+  w_retired(host: operator_host_srv10)
 }
 
 // ONE AXIS SILENT, THE OTHER TWO POSITIVELY ABSENT. The axis under test is handed a capture that
@@ -95,7 +95,7 @@ fn w_silent_capture() -> SparkServingProbeCapture {
 
 fn w_retired_endpoint_silent() -> SparkServingRetirementObservation {
   spark_serving_retirement_observation_from_probes(
-    host: operator_host_srv6,
+    host: operator_host_srv10,
     endpoint_capture: w_silent_capture(),
     process_capture: w_process_absent_capture(),
     unit_capture: w_unit_absent_capture(),
@@ -104,7 +104,7 @@ fn w_retired_endpoint_silent() -> SparkServingRetirementObservation {
 
 fn w_retired_process_silent() -> SparkServingRetirementObservation {
   spark_serving_retirement_observation_from_probes(
-    host: operator_host_srv6,
+    host: operator_host_srv10,
     endpoint_capture: w_endpoint_absent_capture(),
     process_capture: w_silent_capture(),
     unit_capture: w_unit_absent_capture(),
@@ -113,7 +113,7 @@ fn w_retired_process_silent() -> SparkServingRetirementObservation {
 
 fn w_retired_unit_silent() -> SparkServingRetirementObservation {
   spark_serving_retirement_observation_from_probes(
-    host: operator_host_srv6,
+    host: operator_host_srv10,
     endpoint_capture: w_endpoint_absent_capture(),
     process_capture: w_process_absent_capture(),
     unit_capture: w_silent_capture(),
@@ -135,38 +135,44 @@ fn w_pool_or_refused(
   }
 }
 
-// THE ROSTER IS SUPPLIED, NOT READ FROM PRODUCTION. The 2026-09-02 operator decision (#10009) made
-// srv6 a serving cell, so against the production roster the positive control below had no subject
-// and every refusal claim over srv6 passed on role alone rather than on the axis it names. srv6
-// trains and srv5 serves in this authored roster; the production wrapper is exercised by
-// w_the_production_roster_holds_no_training_cell.
-data w_roster: List<SparkCellRoleAssignment> = [
-  SparkCellRoleAssignment { host: operator_host_srv5, role: SparkServingCell },
-  SparkCellRoleAssignment { host: operator_host_srv6, role: SparkTrainingCell },
-]
+// THE ROLE ROSTER IS SUPPLIED (review 77708; DESIGN section 3, a witness discriminates at one interface): the
+// claims are about the readiness logic, so they hand it a roster rather than reading the production one,
+// whose only rows (srv5, srv6) went with Group A. srv10 is the fixture host in whichever role a claim names.
+fn w_roster(role: SparkCellRole) -> List<SparkCellRoleAssignment> {
+  [SparkCellRoleAssignment { host: operator_host_srv10, role: role }]
+}
 
-fn w_readiness(
+fn w_readiness_as(
+  role: SparkCellRole,
   retirement: SparkServingRetirementObservation,
   meminfo_stdout: String,
 ) -> Bool {
   match w_pool_or_refused(meminfo_stdout: meminfo_stdout, after: retirement) {
     Absent => false
     Present { value: pool } =>
-      match spark_training_readiness_in(pool: pool, assignments: w_roster) {
+      match spark_training_readiness_in(pool: pool, assignments: w_roster(role: role)) {
         SparkTrainingReady { proof: _ } => true
         SparkTrainingNotReady { cause: _ } => false
       }
   }
 }
 
-test fn w_a_fully_retired_training_cell_is_ready() -> Bool {
-  w_readiness(retirement: w_retired_srv6(), meminfo_stdout: "97656250")
+fn w_readiness(
+  retirement: SparkServingRetirementObservation,
+  meminfo_stdout: String,
+) -> Bool {
+  w_readiness_as(role: SparkTrainingCell, retirement: retirement, meminfo_stdout: meminfo_stdout)
 }
 
-// THE PRODUCTION WRAPPER READS THE PRODUCTION ROSTER, where srv6 serves since #10009: the same
-// observation the positive control admits is refused there, on role.
+test fn w_a_fully_retired_training_cell_is_ready() -> Bool {
+  w_readiness(retirement: w_retired_srv10(), meminfo_stdout: "97656250")
+}
+
+
+// THE PRODUCTION WRAPPER READS THE PRODUCTION ROSTER, which holds no assignment since Group A was
+// sold: the same observation the positive control admits is refused there, on role.
 test fn w_the_production_roster_holds_no_training_cell() -> Bool {
-  match w_pool_or_refused(meminfo_stdout: "97656250", after: w_retired_srv6()) {
+  match w_pool_or_refused(meminfo_stdout: "97656250", after: w_retired_srv10()) {
     Absent => false
     Present { value: pool } =>
       match spark_training_readiness(pool: pool) {
@@ -176,16 +182,10 @@ test fn w_the_production_roster_holds_no_training_cell() -> Bool {
   }
 }
 
-// THE POSITIVE CONTROL'S MIRROR: THE SERVING CELL IS NEVER READY.
-//
-// srv5's retirement observation is deliberately WELL-FORMED and fully absent here. If role were not
-// consulted, this input would be indistinguishable from srv6's and would pass. It refuses on role
-// alone, which is what "srv5 is statically reserved" has to mean to be worth anything.
+// THE SAME WELL-FORMED, FULLY ABSENT RETIREMENT ON A SERVING CELL REFUSES ON ROLE ALONE: if role were not
+// consulted this input would be indistinguishable from the training cell's and would pass.
 test fn w_a_serving_cell_refuses_even_with_a_perfect_retirement_observation() -> Bool {
-  !w_readiness(
-    retirement: w_retired(host: operator_host_srv5),
-    meminfo_stdout: "97656250",
-  )
+  !w_readiness_as(role: SparkServingCell, retirement: w_retired_srv10(), meminfo_stdout: "97656250")
 }
 
 // AN UNREACHED PROBE IS NOT ABSENCE, AND THIS IS THE CLAIM THAT COSTS THE MOST TO GET WRONG.
@@ -199,7 +199,7 @@ test fn w_an_unobserved_subject_refuses_on_every_axis() -> Bool {
 test fn w_a_still_serving_endpoint_refuses() -> Bool {
   !w_readiness(
     retirement: spark_serving_retirement_observation_from_probes(
-      host: operator_host_srv6,
+      host: operator_host_srv10,
       endpoint_capture: ProbeAnswered { stdout: "LISTEN 0 4096 127.0.0.1:11434 0.0.0.0:*" },
       process_capture: w_process_absent_capture(),
       unit_capture: w_unit_absent_capture(),
@@ -234,7 +234,7 @@ test fn w_a_pool_over_an_unestablished_retirement_is_refused() -> Bool {
 test fn w_a_capture_whose_body_is_not_a_count_is_refused() -> Bool {
   match spark_unified_pool_observation_from_capture(
     capture: ProbeAnswered { stdout: "MemAvailable:   97656250 kB" },
-    after: w_retired_srv6(),
+    after: w_retired_srv10(),
   ) {
     SparkUnifiedPoolUnread { cause: c } => length(c as String) > 0
     SparkUnifiedPoolRead { observation: _ } => false
@@ -242,7 +242,7 @@ test fn w_a_capture_whose_body_is_not_a_count_is_refused() -> Bool {
 }
 
 test fn w_a_non_positive_pool_refuses_rather_than_offering_nothing() -> Bool {
-  !w_readiness(retirement: w_retired_srv6(), meminfo_stdout: "0")
+  !w_readiness(retirement: w_retired_srv10(), meminfo_stdout: "0")
 }
 
 // A CAPTURE THAT DID NOT ANSWER CANNOT CARRY A COUNT AT ALL, which is now true by construction
@@ -250,7 +250,7 @@ test fn w_a_non_positive_pool_refuses_rather_than_offering_nothing() -> Bool {
 test fn w_a_pool_number_without_a_read_is_refused() -> Bool {
   match spark_unified_pool_observation_from_capture(
     capture: ProbeNeverRan { cause: "ssh timed out" as NonEmptyStr },
-    after: w_retired_srv6(),
+    after: w_retired_srv10(),
   ) {
     SparkUnifiedPoolUnread { cause: _ } => true
     SparkUnifiedPoolRead { observation: _ } => false
