@@ -721,6 +721,91 @@ type ValidationExecution {
   exit_code: Int
   stdout: String
   stderr: String
+  computation: SharedComputationCitation?
+}
+
+// THE SHARED COMPUTATION AN EXECUTION RAN AS, when it ran through the materialization provider
+// (gunbc.compute.work_provider_local). It joins the verified head to the compute subject: the exact
+// TREE the head names, the derived request key the work was filed under, the outcome's own identity,
+// and whether this execution attached to a committed record or produced it. Present exactly when the
+// validation ran as compute work; an execution that ran as a host command carries none, and a
+// receipt that claims one must decode it whole.
+type ComputationOrigin = ComputationAttached | ComputationComputed
+
+type SharedComputationCitation {
+  request_key: NonEmptyStr
+  outcome_identity: String
+  subject_tree: NonEmptyStr
+  origin: ComputationOrigin
+}
+
+fn computation_origin_wire(o: ComputationOrigin) -> String {
+  match o {
+    ComputationAttached => "attached"
+    ComputationComputed => "computed"
+  }
+}
+
+fn computation_origin_decode(word: String) -> ComputationOrigin? {
+  if word == "attached" { Present { value: ComputationAttached } }
+  else if word == "computed" { Present { value: ComputationComputed } }
+  else { none }
+}
+
+fn shared_computation_citation_json(c: SharedComputationCitation) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "request_key", value: json_string(s: c.request_key as String)),
+    json_kv(key: "outcome_identity", value: json_string(s: c.outcome_identity)),
+    json_kv(key: "subject_tree", value: json_string(s: c.subject_tree as String)),
+    json_kv(key: "origin", value: json_string(s: computation_origin_wire(o: c.origin))),
+  ])
+}
+
+fn shared_computation_citation_decode(doc: JsonValue) -> SharedComputationCitation? {
+  match verification_receipt_string_member(doc: doc, key: "request_key") {
+    VerificationReceiptMemberUnreadable { reason: _ } => none
+    VerificationReceiptMemberRead { value: key } =>
+      match verification_receipt_string_member(doc: doc, key: "outcome_identity") {
+        VerificationReceiptMemberUnreadable { reason: _ } => none
+        VerificationReceiptMemberRead { value: outcome } =>
+          match verification_receipt_string_member(doc: doc, key: "subject_tree") {
+            VerificationReceiptMemberUnreadable { reason: _ } => none
+            VerificationReceiptMemberRead { value: tree } =>
+              match verification_receipt_string_member(doc: doc, key: "origin") {
+                VerificationReceiptMemberUnreadable { reason: _ } => none
+                VerificationReceiptMemberRead { value: origin_word } =>
+                  match computation_origin_decode(word: origin_word) {
+                    Absent => none
+                    Present { value: origin } =>
+                      if key == "" || tree == "" {
+                        none
+                      } else {
+                        Present { value: SharedComputationCitation { request_key: key as NonEmptyStr, outcome_identity: outcome, subject_tree: tree as NonEmptyStr, origin: origin } }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// AN ABSENT MEMBER IS NO CITATION; A PRESENT ONE MUST DECODE OR THE EXECUTION IS UNREADABLE.
+type ComputationMemberDecode
+  = ComputationMemberAbsent
+  | ComputationMemberDecoded { citation: SharedComputationCitation }
+  | ComputationMemberUnreadable
+
+fn verification_computation_member_decode(doc: JsonValue) -> ComputationMemberDecode {
+  match json_object_unique_member(v: doc, key: "computation") {
+    JsonMemberAbsent => ComputationMemberAbsent
+    JsonMemberFound { value: v } =>
+      match shared_computation_citation_decode(doc: v) {
+        Present { value: c } => ComputationMemberDecoded { citation: c }
+        Absent => ComputationMemberUnreadable
+      }
+    JsonMemberDuplicated => ComputationMemberUnreadable
+    JsonMemberNotAnObject => ComputationMemberUnreadable
+  }
 }
 
 // THE RECEIPT KEEPS THE QUESTION, THE PINNED ORACLE, EVERY EXECUTION, AND THE EXISTING TYPED
@@ -1069,7 +1154,7 @@ fn verification_modeled_command_json(
 fn verification_validation_execution_json(
   execution: ValidationExecution,
 ) -> JsonValue {
-  json_object(members: [
+  json_object(members: concat([
     json_kv(
       key: "validation",
       value: validation_operation_identity_json(
@@ -1083,7 +1168,10 @@ fn verification_validation_execution_json(
     json_kv(key: "exit_code", value: json_int(n: execution.exit_code)),
     json_kv(key: "stdout", value: json_string(s: execution.stdout)),
     json_kv(key: "stderr", value: json_string(s: execution.stderr)),
-  ])
+  ], match execution.computation {
+    Present { value: c } => [json_kv(key: "computation", value: shared_computation_citation_json(c: c))]
+    Absent => []
+  }))
 }
 
 fn verification_verdict_json(verdict: ValidationVerdict) -> JsonValue {
@@ -1293,14 +1381,12 @@ fn verification_validation_execution_decode(
                           match verification_receipt_string_member(doc: doc, key: "stderr") {
                             VerificationReceiptMemberUnreadable { reason: _ } => none
                             VerificationReceiptMemberRead { value: stderr } =>
-                              Present {
-                                value: ValidationExecution {
-                                  validation: validation,
-                                  command: command,
-                                  exit_code: exit_code,
-                                  stdout: stdout,
-                                  stderr: stderr,
-                                },
+                              match verification_computation_member_decode(doc: doc) {
+                                ComputationMemberUnreadable => none
+                                ComputationMemberAbsent =>
+                                  Present { value: ValidationExecution { validation: validation, command: command, exit_code: exit_code, stdout: stdout, stderr: stderr, computation: none } }
+                                ComputationMemberDecoded { citation } =>
+                                  Present { value: ValidationExecution { validation: validation, command: command, exit_code: exit_code, stdout: stdout, stderr: stderr, computation: Present { value: citation } } }
                               }
                           }
                       }
@@ -1341,6 +1427,7 @@ fn verification_executions_decode(doc: JsonValue) -> List<ValidationExecution>? 
                       exit_code: 0,
                       stdout: "",
                       stderr: "",
+                      computation: none,
                     }
                 },
               ),
@@ -1522,6 +1609,7 @@ fn verification_receipt_decode_document(doc: JsonValue) -> VerificationReceiptDe
                                                       exit_code: 0,
                                                       stdout: "",
                                                       stderr: "",
+                                                      computation: none,
                                                     }
                                                 },
                                               ),
