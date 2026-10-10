@@ -1,0 +1,143 @@
+module test.claim.memory_envelope_witness_test
+
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.measure { byte_size }
+import gunbc.host_budget_source { BudgetSourceCgroupMemoryMax }
+import gunbc.memory_cgroup_binding {
+  CgroupBindDecision,
+  BindNotRequested,
+  BindUnnecessaryLimitAlreadyBinds,
+  BindApplicable,
+  BindRefused,
+  CgroupTreeNotWritable,
+}
+import gunbc.memory_envelope {
+  MemoryEnvelopeRequirement, EnvelopeNotRequested, EnvelopeSlotRequired, EnvelopeRequirementUnreadable,
+  memory_envelope_slot_requirement_value, memory_envelope_requirement_from_text,
+  MemoryEnvelopeGrain, EnvelopeLeaf, EnvelopeExisting, EnvelopeSlot, memory_envelope_grain_label,
+  MemoryEnvelopeRefusalCause, EnvelopeGrainUnknown, EnvelopeAbsent,
+  MemoryEnvelopeDecision, EnvelopeNotRequired, EnvelopeBounded, EnvelopeRefused,
+  memory_envelope_decision,
+  memory_envelope_verdict, memory_envelope_verdict_violates,
+}
+
+// EVERY INPUT IS SUPPLIED, so every arm is reachable here -- including the one the inline first
+// version could not reach from any claim: a slot requirement over a process no numeric memory.max
+// binds, which must REFUSE and not be receipted as bounded (DESIGN section 5: the absorbing arm).
+
+fn decided_bounded_at(d: MemoryEnvelopeDecision, grain: MemoryEnvelopeGrain) -> Bool {
+  match d {
+    EnvelopeBounded { grain: g } => memory_envelope_grain_label(g: g) == memory_envelope_grain_label(g: grain)
+    EnvelopeNotRequired => false
+    EnvelopeRefused { cause: _ } => false
+  }
+}
+
+fn decided_absent_at(d: MemoryEnvelopeDecision, grain: MemoryEnvelopeGrain) -> Bool {
+  match d {
+    EnvelopeRefused { cause: c } =>
+      match c {
+        EnvelopeAbsent { grain: g } => memory_envelope_grain_label(g: g) == memory_envelope_grain_label(g: grain)
+        EnvelopeGrainUnknown { raw: _ } => false
+      }
+    EnvelopeNotRequired => false
+    EnvelopeBounded { grain: _ } => false
+  }
+}
+
+fn decided_grain_unknown(d: MemoryEnvelopeDecision, raw: String) -> Bool {
+  match d {
+    EnvelopeRefused { cause: c } =>
+      match c {
+        EnvelopeGrainUnknown { raw: r } => r == raw
+        EnvelopeAbsent { grain: _ } => false
+      }
+    EnvelopeNotRequired => false
+    EnvelopeBounded { grain: _ } => false
+  }
+}
+
+fn decided_not_required(d: MemoryEnvelopeDecision) -> Bool {
+  match d {
+    EnvelopeNotRequired => true
+    EnvelopeBounded { grain: _ } => false
+    EnvelopeRefused { cause: _ } => false
+  }
+}
+
+fn an_existing_bind() -> CgroupBindDecision {
+  BindUnnecessaryLimitAlreadyBinds { source: BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup/system.slice/actions-runner@srv4-15.service" as NonEmptyStr } }
+}
+
+test fn the_requirement_reads_absent_slot_and_anything_else_as_three_answers() -> Bool {
+  match memory_envelope_requirement_from_text(raw: Absent) { EnvelopeNotRequested => true  EnvelopeSlotRequired => false  EnvelopeRequirementUnreadable { raw: _ } => false }
+    && match memory_envelope_requirement_from_text(raw: Present { value: memory_envelope_slot_requirement_value() }) { EnvelopeSlotRequired => true  EnvelopeNotRequested => false  EnvelopeRequirementUnreadable { raw: _ } => false }
+    && match memory_envelope_requirement_from_text(raw: Present { value: "leaf" }) { EnvelopeRequirementUnreadable { raw: r } => r == "leaf"  EnvelopeNotRequested => false  EnvelopeSlotRequired => false }
+}
+
+// THE SLOT REQUIREMENT BOUNDS A RUN ONLY WHERE A NUMERIC memory.max BINDS IT.
+test fn a_slot_requirement_under_a_numeric_max_is_bounded_at_the_slot() -> Bool {
+  decided_bounded_at(d: memory_envelope_decision(bind: BindNotRequested, requirement: EnvelopeSlotRequired, numeric_max_binds: true), grain: EnvelopeSlot)
+}
+
+// THE RED THE FIRST VERSION COULD NOT GO: no numeric memory.max anywhere above the process (every
+// level `max`, or an unconverged slot) must REFUSE as absent, never run as bounded.
+test fn RED_a_slot_requirement_with_no_numeric_max_refuses_as_absent() -> Bool {
+  let d = memory_envelope_decision(bind: BindNotRequested, requirement: EnvelopeSlotRequired, numeric_max_binds: false)
+  decided_absent_at(d: d, grain: EnvelopeSlot) && decided_bounded_at(d: d, grain: EnvelopeSlot) == false
+}
+
+test fn no_requirement_and_no_bind_is_not_required() -> Bool {
+  decided_not_required(d: memory_envelope_decision(bind: BindNotRequested, requirement: EnvelopeNotRequested, numeric_max_binds: true))
+    && decided_not_required(d: memory_envelope_decision(bind: BindNotRequested, requirement: EnvelopeNotRequested, numeric_max_binds: false))
+}
+
+test fn an_applied_bind_is_bounded_at_the_leaf_with_or_without_the_requirement() -> Bool {
+  decided_bounded_at(d: memory_envelope_decision(bind: BindApplicable { bound: byte_size(count: 21474836480) }, requirement: EnvelopeSlotRequired, numeric_max_binds: true), grain: EnvelopeLeaf)
+    && decided_bounded_at(d: memory_envelope_decision(bind: BindApplicable { bound: byte_size(count: 21474836480) }, requirement: EnvelopeNotRequested, numeric_max_binds: true), grain: EnvelopeLeaf)
+}
+
+test fn an_existing_limit_is_bounded_at_the_existing_grain() -> Bool {
+  decided_bounded_at(d: memory_envelope_decision(bind: an_existing_bind(), requirement: EnvelopeSlotRequired, numeric_max_binds: true), grain: EnvelopeExisting)
+}
+
+// A BIND THAT WAS ASKED AND REFUSED REACHES NO ENVELOPE: the decision refuses too, it never invents
+// a slot bound for a run whose own bound was refused.
+test fn RED_a_refused_bind_reaches_no_envelope() -> Bool {
+  decided_absent_at(d: memory_envelope_decision(bind: BindRefused { cause: CgroupTreeNotWritable }, requirement: EnvelopeSlotRequired, numeric_max_binds: true), grain: EnvelopeLeaf)
+    && decided_absent_at(d: memory_envelope_decision(bind: BindRefused { cause: CgroupTreeNotWritable }, requirement: EnvelopeNotRequested, numeric_max_binds: true), grain: EnvelopeLeaf)
+}
+
+test fn RED_an_unknown_requirement_value_refuses_before_anything_else() -> Bool {
+  decided_grain_unknown(d: memory_envelope_decision(bind: BindApplicable { bound: byte_size(count: 1) }, requirement: EnvelopeRequirementUnreadable { raw: "leaf" }, numeric_max_binds: true), raw: "leaf")
+}
+
+// THE VERDICT: held only when nothing was killed, no swap is resident, the swap gauge was readable,
+// and the swap peak did not rise -- or could not be observed under a zero swap limit.
+test fn the_verdict_holds_only_on_a_clean_pair_of_readings() -> Bool {
+  memory_envelope_verdict_violates(v: memory_envelope_verdict(oom_kills_delta: 0, swap_current: Present { value: 0 }, swap_peak_rose: Present { value: false }, swap_max_zero: false)) == false
+    && memory_envelope_verdict_violates(v: memory_envelope_verdict(oom_kills_delta: 0, swap_current: Present { value: 0 }, swap_peak_rose: Absent, swap_max_zero: true)) == false
+}
+
+test fn RED_each_violation_refuses_on_its_own() -> Bool {
+  memory_envelope_verdict_violates(v: memory_envelope_verdict(oom_kills_delta: 1, swap_current: Present { value: 0 }, swap_peak_rose: Present { value: false }, swap_max_zero: false))
+    && memory_envelope_verdict_violates(v: memory_envelope_verdict(oom_kills_delta: 0, swap_current: Present { value: 1 }, swap_peak_rose: Present { value: false }, swap_max_zero: false))
+    && memory_envelope_verdict_violates(v: memory_envelope_verdict(oom_kills_delta: 0, swap_current: Absent, swap_peak_rose: Present { value: false }, swap_max_zero: false))
+    && memory_envelope_verdict_violates(v: memory_envelope_verdict(oom_kills_delta: 0, swap_current: Present { value: 0 }, swap_peak_rose: Present { value: true }, swap_max_zero: false))
+}
+
+// AN UNOBSERVABLE SWAP PEAK IS NOT "DID NOT RISE": under a slot that still permits swap it refuses;
+// only a zero swap limit makes the missing counter moot.
+test fn RED_an_unobservable_swap_peak_refuses_unless_the_swap_limit_is_zero() -> Bool {
+  memory_envelope_verdict_violates(v: memory_envelope_verdict(oom_kills_delta: 0, swap_current: Present { value: 0 }, swap_peak_rose: Absent, swap_max_zero: false))
+    && memory_envelope_verdict_violates(v: memory_envelope_verdict(oom_kills_delta: 0, swap_current: Present { value: 0 }, swap_peak_rose: Absent, swap_max_zero: true)) == false
+}
+
+// THE SHARED HELPER IS DISCRIMINATED AT EVERY GRAIN, not only the slot's: a bind the governor took
+// over a walk that finds no numeric maximum is a contradiction and refuses as absent at that grain.
+test fn RED_an_applied_or_existing_bind_over_no_numeric_max_refuses_at_its_grain() -> Bool {
+  decided_absent_at(d: memory_envelope_decision(bind: BindApplicable { bound: byte_size(count: 1) }, requirement: EnvelopeNotRequested, numeric_max_binds: false), grain: EnvelopeLeaf)
+    && decided_absent_at(d: memory_envelope_decision(bind: an_existing_bind(), requirement: EnvelopeNotRequested, numeric_max_binds: false), grain: EnvelopeExisting)
+    && decided_bounded_at(d: memory_envelope_decision(bind: an_existing_bind(), requirement: EnvelopeNotRequested, numeric_max_binds: true), grain: EnvelopeExisting)
+}

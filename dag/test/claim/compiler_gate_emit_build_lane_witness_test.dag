@@ -1,9 +1,7 @@
 module test.claim.compiler_gate_emit_build_lane_witness_test
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, List, String }
 import std.optional { Present, Absent }
-import gunbc.rung_drop { Standing, Retired, Superseded }
-import gunbc.rung_drop.native_step_trip_awaits_fleet_job_cgroup { native_step_trip_awaits_fleet_job_cgroup }
 import extdeps.github.actions { Step, RunStep, UsesStep, WorkflowPermissions }
 import extdeps.languages.yaml.types { YamlString }
 import gunbc.compiler_gate_workflow {
@@ -27,10 +25,14 @@ import gunbc.emitted_subject_build_gate {
   native_product_reuse_env_name, native_product_reuse_fresh_value,
   native_step_memory_bind_env_name, native_step_memory_trip_text, native_step_memory_trip,
   native_step_memory_envelope_env_name, native_step_memory_envelope_slot_value,
-  NativeStepMemoryInput, native_step_memory_inputs
+  NativeStepMemoryInput, native_step_memory_inputs,
+  emit_build_memory_envelope_lines
 }
 import std.measure { byte_size_count }
-import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.runner_slot_desired {
+  gunbc_runner_slot_desired,
+  JobOwnsNoBoundedCgroup, JobOwnsBoundedCgroup, gunbc_runner_slot_job_cgroup_ownership
+}
 import extdeps.exec.command { shell_command_render }
 import v2.std.algebra { length, filter }
 import extdeps.filesystem.filesystem_io
@@ -175,60 +177,73 @@ fn inputs_carry(inputs: List<NativeStepMemoryInput>, name: String, value: String
   all(inputs, i => i.env_name != name || i.env_value != value) == false
 }
 
-// THE BIND INPUT FOLLOWS THE DROP, BY SUPPLIED STANDING: Standing withholds it, Retired carries it
-// at the derived trip, Superseded withholds it; the slot requirement is on every arm. RED if an arm
-// hands the fleet a bind it cannot honour, or keeps withholding one it can.
-test fn the_bind_input_follows_the_drop_standing() -> Bool {
-  let standing = native_step_memory_inputs(standing: Standing)
-  let retired = native_step_memory_inputs(standing: Retired { trigger_fired: "a fleet job owns a bounded cgroup" as NonEmptyStr })
-  let superseded = native_step_memory_inputs(standing: Superseded { ruling: "r" as NonEmptyStr, decision_record: "d" as NonEmptyStr, loss_holder: "l" as NonEmptyStr })
-  length(standing) == 1
-    && inputs_carry(inputs: standing, name: native_step_memory_envelope_env_name, value: native_step_memory_envelope_slot_value)
-    && length(retired) == 2
-    && inputs_carry(inputs: retired, name: native_step_memory_envelope_env_name, value: native_step_memory_envelope_slot_value)
-    && inputs_carry(inputs: retired, name: native_step_memory_bind_env_name, value: native_step_memory_trip_text())
-    && length(superseded) == 1
-    && inputs_carry(inputs: superseded, name: native_step_memory_envelope_env_name, value: native_step_memory_envelope_slot_value)
+// THE BIND INPUT FOLLOWS THE FLEET FACT, BY SUPPLIED VALUE: a job that owns no bounded cgroup is
+// handed the slot requirement alone; a job that does is handed the requirement and the bind at the
+// derived trip. RED if an arm hands the fleet a bind it cannot honour, or keeps withholding one it
+// can.
+test fn the_bind_input_follows_the_fleet_fact() -> Bool {
+  let without = native_step_memory_inputs(ownership: JobOwnsNoBoundedCgroup { why: "a job runs deprivileged under a root unit" })
+  let with = native_step_memory_inputs(ownership: JobOwnsBoundedCgroup { staged_by: "the root JIT wrapper, before setpriv" })
+  length(without) == 1
+    && inputs_carry(inputs: without, name: native_step_memory_envelope_env_name, value: native_step_memory_envelope_slot_value)
+    && length(with) == 2
+    && inputs_carry(inputs: with, name: native_step_memory_envelope_env_name, value: native_step_memory_envelope_slot_value)
+    && inputs_carry(inputs: with, name: native_step_memory_bind_env_name, value: native_step_memory_trip_text())
 }
 
-// AND THE LIVE WORKFLOW CARRIES WHAT THE LIVE DROP DECIDES (the inhabitance half): while the row
-// stands no subject step carries the bind; the day it retires, every one does, at the trip.
-test fn the_live_steps_carry_the_bind_iff_the_drop_retired() -> Bool {
-  let carries = all(emitted_subject_build_rows(), row =>
-    step_env_has(step: compiler_gate_emit_build_step(row: row), key: native_step_memory_bind_env_name, value: native_step_memory_trip_text()))
-  let withholds = all(emitted_subject_build_rows(), row =>
-    step_env_has(step: compiler_gate_emit_build_step(row: row), key: native_step_memory_bind_env_name, value: native_step_memory_trip_text()) == false)
-  match native_step_trip_awaits_fleet_job_cgroup.standing {
-    Standing => withholds
-    Retired { trigger_fired: _ } => carries
-    Superseded { ruling: _, decision_record: _, loss_holder: _ } => withholds
+fn step_env_has_key(step: Step, key: String) -> Bool {
+  match step {
+    RunStep { name: _, id: _, run: _, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match e {
+        Present { value: kvs } => all(kvs, k => k.key != key) == false
+        Absent => false
+      }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
   }
 }
 
-// AND THE TRIP SITS INSIDE THE SLOT THAT HOLDS THE STEP, BY DERIVATION: it is the slot's MemoryHigh
-// less the gate's declared headroom, so it is strictly under the throttle line, which is strictly
-// under the hard maximum, and it is not zero -- the saturating subtraction would otherwise bind the
-// step at nothing. RED when the headroom is zero, or reaches the throttle line, or the slot's high
-// is not under its max.
-test fn the_trip_sits_inside_the_slot_envelope() -> Bool {
-  let slot = gunbc_runner_slot_desired()
-  let trip = byte_size_count(b: native_step_memory_trip())
-  let high = byte_size_count(b: slot.memory_high)
-  let max = byte_size_count(b: slot.memory_max)
-  trip > 0 && trip < high && high < max
+// AND THE LIVE WORKFLOW CARRIES WHAT THE LIVE FACT DECIDES (the inhabitance half): while a job owns
+// no bounded cgroup no subject step carries the bind KEY at all -- a bind under any other value
+// would refuse on the fleet just the same; the day the fact flips, every step carries it at the
+// trip.
+test fn the_live_steps_carry_the_bind_iff_a_job_owns_a_bounded_cgroup() -> Bool {
+  let carries = all(emitted_subject_build_rows(), row =>
+    step_env_has(step: compiler_gate_emit_build_step(row: row), key: native_step_memory_bind_env_name, value: native_step_memory_trip_text()))
+  let withholds = all(emitted_subject_build_rows(), row =>
+    step_env_has_key(step: compiler_gate_emit_build_step(row: row), key: native_step_memory_bind_env_name) == false)
+  match gunbc_runner_slot_job_cgroup_ownership {
+    JobOwnsNoBoundedCgroup { why: _ } => withholds
+    JobOwnsBoundedCgroup { staged_by: _ } => carries
+  }
 }
 
-// AND THE FAILURE NOTICE EXPLAINS THE ENVELOPE: which grain bounded the step and the input that
-// required it, the trip and the drop that withholds it, the exit code the kernel leaves, and that
-// nothing retries bigger. A reader of an exit-137 step would otherwise read it as a crash.
+// AND THE FAILURE NOTICE EXPLAINS THE ENVELOPE, BY SUPPLIED FACT AND LIVE: which grain bounded the
+// step and the input that required it, the trip and why it is or is not asked for, the exit code
+// the kernel leaves, and that nothing retries bigger. A reader of an exit-137 step would otherwise
+// read it as a crash.
+fn envelope_lines_say(lines: List<String>, pattern: String) -> Bool {
+  string_contains(s: join(lines, "\n"), pattern: pattern)
+}
+
 test fn the_notice_names_the_envelope_and_refuses_a_bigger_retry() -> Bool {
-  let text = join(compiler_gate_emit_build_notice_lines(), "\n")
-  string_contains(s: text, pattern: join([native_step_memory_envelope_env_name, "=", native_step_memory_envelope_slot_value], ""))
-    && string_contains(s: text, pattern: native_step_memory_trip_text())
-    && string_contains(s: text, pattern: "native_step_trip_awaits_fleet_job_cgroup")
-    && string_contains(s: text, pattern: "exit of 137")
-    && string_contains(s: text, pattern: "no larger runner and no retry")
-    && string_contains(s: text, pattern: "MEMORY RECEIPT")
+  let live = compiler_gate_emit_build_notice_lines()
+  let without = emit_build_memory_envelope_lines(ownership: JobOwnsNoBoundedCgroup { why: "a job runs deprivileged under a root unit" })
+  let with = emit_build_memory_envelope_lines(ownership: JobOwnsBoundedCgroup { staged_by: "the root JIT wrapper, before setpriv" })
+  envelope_lines_say(lines: live, pattern: join([native_step_memory_envelope_env_name, "=", native_step_memory_envelope_slot_value], ""))
+    && envelope_lines_say(lines: live, pattern: native_step_memory_trip_text())
+    && envelope_lines_say(lines: live, pattern: "exit of 137")
+    && envelope_lines_say(lines: live, pattern: "no larger runner and no retry")
+    && envelope_lines_say(lines: live, pattern: "MEMORY RECEIPT")
+    && envelope_lines_say(lines: without, pattern: "is not asked for: a job runs deprivileged under a root unit")
+    && envelope_lines_say(lines: without, pattern: "native_step_trip_awaits_fleet_job_cgroup_stall")
+    && envelope_lines_say(lines: without, pattern: "asked the kernel for its own bound at") == false
+    && envelope_lines_say(lines: with, pattern: "asked the kernel for its own bound at")
+    && envelope_lines_say(lines: with, pattern: "the root JIT wrapper, before setpriv")
+    && envelope_lines_say(lines: with, pattern: "is not asked for") == false
+    && match gunbc_runner_slot_job_cgroup_ownership {
+      JobOwnsNoBoundedCgroup { why: _ } => envelope_lines_say(lines: live, pattern: "is not asked for") && envelope_lines_say(lines: live, pattern: "asked the kernel for its own bound at") == false
+      JobOwnsBoundedCgroup { staged_by: _ } => envelope_lines_say(lines: live, pattern: "asked the kernel for its own bound at") && envelope_lines_say(lines: live, pattern: "is not asked for") == false
+    }
 }
 
 // THE JOB BINDS NO NATIVE PRODUCT STORE: no step names the store root variable, no step is a store

@@ -154,7 +154,7 @@ jobs:
           printf '%s\n' 'emit-build is a REQUIRED lane: a red here BLOCKS your merge, through the required context `witnesses`.'
           printf '%s\n' 'No standing break is declared, so a red here is a REAL FINDING -- most likely yours.'
           printf '%s\n' 'This step ran inside the fleet slot'\''s memory envelope (gunbc.runner_slot_desired: MemoryMax 23622320128 bytes, no swap once converged), which gunbc test required (GUNBC_MEMORY_ENVELOPE_REQUIRED=slot) and receipted at exit.'
-          printf '%s\n' 'The per-step trip at 21474836480 bytes is the declared drop native_step_trip_awaits_fleet_job_cgroup: a fleet job cannot create a bounded cgroup leaf today, so the bind input is withheld until that drop retires by its trigger.'
+          printf '%s\n' 'The per-step trip at 21474836480 bytes is not asked for: a fleet job runs as the setpriv'\''d job user under a root unit (gunbc.runner_host_deploy unit_user and job_user) and memory_governor apply_memory_cgroup_bind creates its leaf at the cgroup root, so no process of a job can create or join a bounded cgroup; the first required run that asked refused in four seconds (run 38002497388, MemoryCgroupBindRefused) (gunbc.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership; the climb is gunbc.guarantee_stall native_step_trip_awaits_fleet_job_cgroup_stall).'
           printf '%s\n' 'An exit of 137 here is the kernel tripping the envelope'\''s memory.max: the compiler outgrew it. There is no larger runner and no retry; the line stops until the growth is understood (DESIGN section 6b).'
           printf '%s\n' 'A MEMORY RECEIPT line precedes every successful subject step; a run that charged swap or was OOM-killed is refused even when its instrument held.'
         if: failure()

@@ -116,7 +116,7 @@ import gunbc.emitted_subject_build_gate {
   native_step_memory_inputs,
   emit_build_memory_envelope_lines
 }
-import gunbc.rung_drop.native_step_trip_awaits_fleet_job_cgroup { native_step_trip_awaits_fleet_job_cgroup }
+import gunbc.runner_slot_desired { gunbc_runner_slot_job_cgroup_ownership }
 // THE EPOCH TRAVELS IN THESE BYTES. gunbc.required_ci_epoch_observation parses
 // GUNBC_REQUIRED_CI_CONTRACT_EPOCH structurally out of .github/workflows/witnesses.yml AT THE
 // TRIGGERING COMMIT -- the bytes GitHub executed -- so the judging side does not author what it
@@ -288,11 +288,12 @@ data compiler_gate_emit_build_timeout_minutes: Int = 90
 // native product store and refuses one if bound: the job's claim is that THIS run emitted and
 // built the product, and a restored hit would make that claim false while the step stayed green.
 // AND THE MEMORY ENVELOPE INPUTS (gunbc.emitted_subject_build_gate native_step_memory_inputs,
-// decided by the standing of gunbc.rung_drop.native_step_trip_awaits_fleet_job_cgroup): every step
-// REQUIRES the fleet slot's envelope -- gunbc test refuses a run no cgroup memory.max binds, prints
-// the peak-and-swap receipt at exit and refuses a run that was OOM-killed or charged swap -- and
-// asks for the per-step bind at the trip only once that drop retires. The slot's own MemoryMax and
-// MemorySwapMax=0 (gunbc.runner_slot_desired) are the fixed hard maximum.
+// decided by the fleet fact gunbc.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership): every
+// step REQUIRES the fleet slot's envelope -- gunbc test refuses a run that no cgroup with a numeric
+// memory.max binds, prints the peak-and-swap receipt at exit and refuses a run that was OOM-killed
+// or charged swap -- and asks for the per-step bind at the trip only where a job owns a bounded
+// cgroup. The slot's own MemoryMax and MemorySwapMax=0 (gunbc.runner_slot_desired) are the fixed
+// hard maximum.
 fn compiler_gate_emit_build_step(row: EmittedSubjectBuildRow) -> Step {
   RunStep {
     name: Present { value: emitted_subject_build_step_name(row: row) },
@@ -314,7 +315,7 @@ fn compiler_gate_emit_build_step(row: EmittedSubjectBuildRow) -> Step {
         kv(key: native_product_reuse_env_name, value: yaml_string(s: native_product_reuse_fresh_value))
         ],
         right: list_map(
-          xs: native_step_memory_inputs(standing: native_step_trip_awaits_fleet_job_cgroup.standing),
+          xs: native_step_memory_inputs(ownership: gunbc_runner_slot_job_cgroup_ownership),
           f: fn(env_input) { kv(key: env_input.env_name, value: yaml_string(s: env_input.env_value)) }
         )
       )
@@ -347,7 +348,7 @@ fn compiler_gate_emit_build_step(row: EmittedSubjectBuildRow) -> Step {
 fn compiler_gate_emit_build_notice_lines() -> List<String> {
   list_append(
     left: emit_build_standing_notice_for(standing: emit_build_standing, lane_blocks: true),
-    right: emit_build_memory_envelope_lines()
+    right: emit_build_memory_envelope_lines(ownership: gunbc_runner_slot_job_cgroup_ownership)
   )
 }
 
