@@ -20,7 +20,7 @@ import extdeps.cloud.gcp.secret_manager
 import extdeps.cloud.gcp.iam_admin
 import extdeps.cloud.gcp.secret_ref { gcp_secret_resource_by_number }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_id, fleet_secrets_project_number, federated_service_account_member, github_wif_issuer_uri }
-import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_accessor_grant, secret_access_desired_cells, GrantMemberResolution, GrantMemberResolved, GrantMemberUnresolved, grant_member_resolution }
+import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_access_desired_cells, GrantMemberResolution, GrantMemberResolved, GrantMemberUnresolved, grant_member_resolution }
 import gunbc.auth.heal_publisher_provision {
   DedicatedFederation, FederationClassification, FederationClassified, FederationUnclassified,
   heal_publisher_dedicated_federation, private_heal_publisher_dedicated_federation, impersonation_cells, observe_and_classify,
@@ -34,8 +34,7 @@ import gunbc.auth.mtjade1_arrival_federation_provision { mtjade1_arrival_dedicat
 import gunbc.auth.managed_host_boot_federation { pinned_version_accessor_grant_for, provisioned_boot_federations }
 import gunbc.auth.approval_request_submission { approval_submission_mac_key_secret_ref }
 import gunbc.cloudflare.r2_mint_secret_access { r2_mint_custody_grants }
-import gunbc.secret_provision { openrouter_free_tier_key_secret_ref }
-import gunbc.oracle_oci.api { oci_api_signing_key_secret_ref }
+import gunbc.auth.fleet_secret_accessor_roster { openrouter_free_tier_key_accessor_row, oracle_oci_api_signing_key_accessor_row, fleet_accessor_grant }
 import gunbc.auth.consent_preimage { consent_field, consent_list_field }
 import std.list { distinct_by_key, duplicated_by_key, list_member }
 import gunbc.auth.gcp_iam_converge_federation {
@@ -310,15 +309,13 @@ data gcp_iam_converge_grant_sets: List<GrantSet> = [
   GrantSet { label: "fleet accessor cells applied by hand", grants: hand_applied_accessor_grants() },
 ]
 
-// THE TWO ACCESSOR CELLS THE OPERATOR APPLIED BY HAND (gcloud secrets add-iam-policy-binding, role
-// roles/secretmanager.secretAccessor, the fleet convergence member, NO condition): declared so the
-// next converge reads them back as Noop rather than drifting. secret_accessor_grant yields exactly
-// that unconditioned cell. The secrets are referenced from their declaring modules, not respelled.
+// THE TWO ACCESSOR CELLS THE OPERATOR APPLIED BY HAND, DERIVED FROM THE ROSTER: the cell is declared once,
+// by gunbc.auth.fleet_secret_accessor_roster (fleet_accessor_grant over its rows), and this set only
+// SELECTS which rows the converge owns, so the cell has no second declarer. The roster's own approval
+// route had no executable caller (it needed run_attempt() and no workflow step ran it); this converge
+// is the route that does.
 fn hand_applied_accessor_grants() -> List<SecretAccessGrant> {
-  [
-    secret_accessor_grant(target: openrouter_free_tier_key_secret_ref),
-    secret_accessor_grant(target: oci_api_signing_key_secret_ref),
-  ]
+  map([openrouter_free_tier_key_accessor_row, oracle_oci_api_signing_key_accessor_row], row => fleet_accessor_grant(row: row))
 }
 
 // ONE SECRET CARRIES SEVERAL CELLS (viewer, versionAdder, accessor), so a grant set is planned and
