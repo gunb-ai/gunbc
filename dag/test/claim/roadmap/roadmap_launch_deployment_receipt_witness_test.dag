@@ -297,8 +297,7 @@ fn rlm_provenance() -> RunProvenanceFact {
 
 fn rlm_snapshot() -> WindowSnapshot {
   WindowSnapshot {
-    main_hex: rlm_fixture_r,
-    desired_hex: rlm_fixture_r,
+    origin_main_hex: rlm_fixture_r,
     deployed_revision_hex: rlm_fixture_r,
     deployed_tree_hex: rlm_fixture_tree,
     running_release_hex: rlm_fixture_r,
@@ -311,7 +310,7 @@ fn rlm_complete_facts() -> RoadmapLaunchDeploymentFacts {
   let plan = rlm_plan(run: rlm_run(run_id: "1001", revision: rlm_fixture_r), host: "srv1")
   let tick = rlm_tick(instance_id: "srv1-live", revision: rlm_fixture_r, mode: ManualReady, observed_at: rlm_fixture_tick_observed_at)
   RoadmapLaunchDeploymentFacts {
-    desired_revision: DesiredRevisionObserved { main_hex: rlm_fixture_r, desired_hex: rlm_fixture_r },
+    desired_revision: DesiredRevisionObserved { revision_hex: rlm_fixture_r },
     plan_receipt: PlanReceiptRead { receipt: plan },
     apply_receipt: ApplyReceiptRead { receipt: rlm_apply(run: rlm_run(run_id: "1002", revision: rlm_fixture_r), plan_identity: fleet_converge_plan_receipt_identity_hex(r: plan)) },
     dashboard_receipt: DashboardReceiptRead { receipt: rlm_dashboard(run: rlm_run(run_id: "1003", revision: rlm_fixture_r), expected: rlm_fixture_r) },
@@ -503,7 +502,7 @@ test fn witness_wrong_principal_is_incomplete_at_principal() -> Bool {
 // production state changing during the observation window
 test fn witness_window_change_is_incomplete_at_observation_window() -> Bool {
   let moved = WindowSnapshot {
-    main_hex: rlm_fixture_other_r, desired_hex: rlm_fixture_r, deployed_revision_hex: rlm_fixture_r, deployed_tree_hex: rlm_fixture_tree,
+    origin_main_hex: rlm_fixture_other_r, deployed_revision_hex: rlm_fixture_r, deployed_tree_hex: rlm_fixture_tree,
     running_release_hex: rlm_fixture_r, transition: "permitted", active_instance: "srv1-live",
   }
   incomplete_at(facts: with_window(f: rlm_complete_facts(), w: observation_window_fact(opened: rlm_snapshot(), closed: moved)), member: "observation_window")
@@ -532,9 +531,9 @@ test fn witness_workflow_json_without_a_tick_is_incomplete_at_workflow_endpoint(
   incomplete_at(facts: with_workflow(f: rlm_complete_facts(), w: WorkflowServedFact { observe_refused: false, tick: BeltTickReceiptAbsent }), member: "workflow_endpoint")
 }
 
-// deploy R-1: release equality refuses (the main/desired read and the running release both name it)
-test fn witness_desired_ref_behind_r_is_incomplete_at_desired_revision() -> Bool {
-  incomplete_at(facts: with_desired(f: rlm_complete_facts(), d: DesiredRevisionObserved { main_hex: rlm_fixture_r, desired_hex: rlm_fixture_other_r }), member: "desired_revision")
+// deploy R-1: origin/main must name the launched revision
+test fn witness_origin_main_behind_r_is_incomplete_at_desired_revision() -> Bool {
+  incomplete_at(facts: with_desired(f: rlm_complete_facts(), d: DesiredRevisionObserved { revision_hex: rlm_fixture_other_r }), member: "desired_revision")
 }
 
 // ---------------------------------------------------------------- TOTALITY
@@ -731,7 +730,7 @@ test fn witness_routed_surface_mixed_is_incomplete_at_release_binding() -> Bool 
 // between open and close -- a route flip during capture is a window change, not a stable window.
 test fn witness_route_change_during_window_is_incomplete_at_observation_window() -> Bool {
   let closed = WindowSnapshot {
-    main_hex: rlm_fixture_r, desired_hex: rlm_fixture_r, deployed_revision_hex: rlm_fixture_r,
+    origin_main_hex: rlm_fixture_r, deployed_revision_hex: rlm_fixture_r,
     deployed_tree_hex: rlm_fixture_tree, running_release_hex: "0000000000000000000000000000000000000001",
     transition: "permitted", active_instance: "srv1-live",
   }

@@ -98,7 +98,7 @@ type RoadmapLaunchDeploymentSubject {
 
 // ---------------------------------------------------------------- facts
 type DesiredRevisionFact
-  = DesiredRevisionObserved { main_hex: String, desired_hex: String }
+  = DesiredRevisionObserved { revision_hex: String }
   | DesiredRevisionUnobserved { detail: String }
 
 type PlanReceiptFact
@@ -145,8 +145,7 @@ type HostFact
   | HostUnobserved { detail: String }
 
 type WindowSnapshot {
-  main_hex: String
-  desired_hex: String
+  origin_main_hex: String
   deployed_revision_hex: String
   deployed_tree_hex: String
   running_release_hex: String
@@ -230,19 +229,16 @@ fn window_snapshot_differences(a: WindowSnapshot, b: WindowSnapshot) -> List<Str
   concat(
     concat(
       concat(
-        if a.main_hex != b.main_hex { ["main"] } else { [] },
-        if a.desired_hex != b.desired_hex { ["origin/main"] } else { [] },
+        if a.origin_main_hex != b.origin_main_hex { ["origin/main"] } else { [] },
+        if a.deployed_revision_hex != b.deployed_revision_hex { ["deployed revision"] } else { [] },
       ),
       concat(
-        if a.deployed_revision_hex != b.deployed_revision_hex { ["deployed revision"] } else { [] },
         if a.deployed_tree_hex != b.deployed_tree_hex { ["deployed tree"] } else { [] },
+        if a.running_release_hex != b.running_release_hex { ["running release"] } else { [] },
       ),
     ),
     concat(
-      concat(
-        if a.running_release_hex != b.running_release_hex { ["running release"] } else { [] },
-        if a.transition != b.transition { ["transition standing"] } else { [] },
-      ),
+      if a.transition != b.transition { ["transition standing"] } else { [] },
       if a.active_instance != b.active_instance { ["active instance"] } else { [] },
     ),
   )
@@ -260,11 +256,8 @@ fn observation_window_fact(opened: WindowSnapshot, closed: WindowSnapshot) -> Ob
 fn desired_revision_blockers(s: RoadmapLaunchDeploymentSubject, f: DesiredRevisionFact) -> List<RoadmapLaunchDeploymentBlocker> {
   match f {
     DesiredRevisionUnobserved { detail: d } => blocker(member: "desired_revision", detail: d)
-    DesiredRevisionObserved { main_hex: m, desired_hex: d } =>
-      concat(
-        if m != s.revision { blocker(member: "desired_revision", detail: join(["main is ", m, ", not R ", s.revision], "")) } else { [] },
-        if d != s.revision { blocker(member: "desired_revision", detail: join(["origin/main is ", d, ", not R ", s.revision], "")) } else { [] },
-      )
+    DesiredRevisionObserved { revision_hex: h } =>
+      if h != s.revision { blocker(member: "desired_revision", detail: join(["origin/main is ", h, ", not R ", s.revision], "")) } else { [] }
   }
 }
 
@@ -770,7 +763,7 @@ fn subject_identity_text(s: RoadmapLaunchDeploymentSubject) -> String {
 }
 
 fn window_snapshot_text(w: WindowSnapshot) -> String {
-  join(["main=", w.main_hex, " desired=", w.desired_hex, " deployed=", w.deployed_revision_hex, " tree=", w.deployed_tree_hex, " running=", w.running_release_hex, " transition=", w.transition, " instance=", w.active_instance], "")
+  join(["origin/main=", w.origin_main_hex, " deployed=", w.deployed_revision_hex, " tree=", w.deployed_tree_hex, " running=", w.running_release_hex, " transition=", w.transition, " instance=", w.active_instance], "")
 }
 
 fn tick_receipt_identity_of_read(r: BeltTickReceiptRead) -> String {
@@ -784,7 +777,7 @@ fn tick_receipt_identity_of_read(r: BeltTickReceiptRead) -> String {
 fn facts_lines(f: RoadmapLaunchDeploymentFacts) -> List<String> {
   [
     join(["desired_revision: ", match f.desired_revision {
-      DesiredRevisionObserved { main_hex: m, desired_hex: d } => join(["main=", m, " desired=", d], "")
+      DesiredRevisionObserved { revision_hex: h } => join(["origin/main=", h], "")
       DesiredRevisionUnobserved { detail: d } => join(["unobserved: ", d], "")
     }], ""),
     join(["plan_receipt: ", match f.plan_receipt {
@@ -866,8 +859,7 @@ fn fact_arm(arm: String, members: List<JsonKeyValue>) -> JsonValue {
 
 fn window_snapshot_json(w: WindowSnapshot) -> JsonValue {
   json_object(members: [
-    json_kv(key: "main_hex", value: json_string(s: w.main_hex)),
-    json_kv(key: "desired_hex", value: json_string(s: w.desired_hex)),
+    json_kv(key: "origin_main_hex", value: json_string(s: w.origin_main_hex)),
     json_kv(key: "deployed_revision_hex", value: json_string(s: w.deployed_revision_hex)),
     json_kv(key: "deployed_tree_hex", value: json_string(s: w.deployed_tree_hex)),
     json_kv(key: "running_release_hex", value: json_string(s: w.running_release_hex)),
@@ -888,7 +880,7 @@ fn predecessor_run_json(p: PredecessorRunProvenance) -> JsonValue {
 fn facts_json(f: RoadmapLaunchDeploymentFacts) -> JsonValue {
   json_object(members: [
     json_kv(key: "desired_revision", value: match f.desired_revision {
-      DesiredRevisionObserved { main_hex: m, desired_hex: d } => fact_arm(arm: "observed", members: [json_kv(key: "main_hex", value: json_string(s: m)), json_kv(key: "desired_hex", value: json_string(s: d))])
+      DesiredRevisionObserved { revision_hex: h } => fact_arm(arm: "observed", members: [json_kv(key: "revision_hex", value: json_string(s: h))])
       DesiredRevisionUnobserved { detail: d } => fact_arm(arm: "unobserved", members: [json_kv(key: "detail", value: json_string(s: d))])
     }),
     json_kv(key: "plan_receipt", value: match f.plan_receipt {
