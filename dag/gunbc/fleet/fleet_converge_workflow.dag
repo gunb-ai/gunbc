@@ -4658,9 +4658,6 @@ fn fleet_converge_gcp_iam_converge_job() -> Job {
 
 // THE DISPATCH INPUTS, AS THEIR OWN ROW: the workflow consumes them below, and a witness over
 // what the operator can name reads this list rather than building every job to reach it.
-<<<<<<< HEAD
-data fleet_converge_dispatch_input_rows: List<DispatchInput> = [
-=======
 // GITHUB'S LIMIT IS workflow_dispatch_max_inputs (25). A hand-edited fleet-converge.yml that
 // drifted above this list (30 names, including undeclared runtime_image / checkpoint / arm /
 // staircase_step / incumbent / d0_consent / printer_*) made GitHub refuse the file on push
@@ -4669,8 +4666,7 @@ data fleet_converge_dispatch_input_rows: List<DispatchInput> = [
 // which refuses emission when count exceeds the limit. The mode description being long was a
 // misattribution: a 25-input file with the long description dispatched. Per-mode contracts stay
 // on this module; keep the input description short anyway.
-data fleet_converge_dispatch_inputs: List<DispatchInput> = [
->>>>>>> a5e2e0c3b7 (Regenerate fleet-converge.yml (21 inputs) and pin dashboard-deploy to main.)
+data fleet_converge_dispatch_input_rows: List<DispatchInput> = [
   DispatchInput { name: "workspace_image_run_id", description: Present { value: "Image build run to download for controller install; installed bytes must match the reviewed image pin" }, required: false, default: none, type: InputString },
 
   DispatchInput {
