@@ -41276,9 +41276,10 @@ pub struct LongHomeStorageAgreementRow {
 /// A generic path-segment predicate: true when `path` contains a `long` directory component
 /// anywhere in its ancestry. This is deliberately NOT a hardcoded substring match against one
 /// literal directory — the corpus carries multiple real, only loosely-correlated `long`-shaped
-/// homes (`dag/test/claim/long/`, `src/v2/test/long/`, `src/v2/test/claim/long/`, mirroring the
-/// three `long_home_prefixes()` module-name prefixes above), and a single hardcoded string would
-/// silently miss the others.
+/// homes (`dag/test/claim/long/`, `src/v2/test/claim/long/`, `src/v2/test/claim/execution/long/`,
+/// `src/v2/test/manual/long/` and the per-area `long/` directories, mirroring the
+/// `long_home_prefixes()` module-name prefixes), and a single hardcoded string would silently
+/// miss the others.
 fn is_long_home_path(path: &str) -> bool {
     path.split('/').any(|segment| segment == "long")
 }
@@ -42684,13 +42685,14 @@ mod required_floor_disposition_and_storage_agreement_law {
         );
     }
 
-    /// The live specimen named at the ruling that grounded these arms: a `git mv` landed the
+    /// The live specimen named at the ruling that grounded these arms: a `git mv` had landed the
     /// file under `dag/test/claim/long/` without updating its own module declaration, so the
-    /// directory says one thing and the authored name says another. This is the exact
-    /// discrepancy `LongHomeStorageAgreement` exists to surface, on the actual file rather than
-    /// a stand-in for it.
+    /// directory said one thing and the authored name another. The storage rule
+    /// (`gunbc.source_layout`) derives the name from the directory, so the same file now
+    /// declares a long-home name and the two agree: the discrepancy
+    /// `LongHomeStorageAgreement` was built to surface cannot be written for a governed module.
     #[test]
-    fn qualified_declaration_reference_specimen_is_long_path_but_executing_module() {
+    fn qualified_declaration_reference_specimen_agrees_under_the_storage_rule() {
         let path = "dag/test/claim/long/qualified_declaration_reference_emit_cross_module_witness_test.dag";
         let module =
             "test.claim.long.qualified_declaration_reference_emit_cross_module_witness_test";
@@ -42705,13 +42707,13 @@ mod required_floor_disposition_and_storage_agreement_law {
             "the file lives under a long/-shaped directory"
         );
         assert!(
-            !matched_prefix,
-            "the module declaration does not carry a long-home prefix"
+            matched_prefix,
+            "the module declaration carries the long-home prefix its directory gives it"
         );
         assert_eq!(
             long_home_storage_agreement(path_is_long, matched_prefix),
-            LongHomeStorageAgreement::LongPathButExecutingModule,
-            "path-long/module-short must classify as the specimen's known disagreement"
+            LongHomeStorageAgreement::LongPathAndLongModule,
+            "path-long/module-long must classify as agreement"
         );
     }
 
@@ -42719,12 +42721,15 @@ mod required_floor_disposition_and_storage_agreement_law {
     /// authority the host already reads for admission. Restated here rather than imported
     /// because the loop's own matched-prefix decision is driven by the `.dag`-evaluated roster
     /// at runtime; this fixture exists only to ground the specimen test above against the same
-    /// three literal prefixes without requiring a live interpreter frame in a unit test.
+    /// literal prefixes without requiring a live interpreter frame in a unit test.
     fn long_home_prefixes_for_test() -> Vec<String> {
         vec![
             "test.claim.long.".to_string(),
             "v2.test.claim.long.".to_string(),
-            "v2.test.claim.long.".to_string(),
+            "v2.test.claim.execution.long.".to_string(),
+            "v2.test.claim.body_lowering.long.".to_string(),
+            "v2.test.claim.identity_captured_navigation.long.".to_string(),
+            "v2.test.manual.long.".to_string(),
         ]
     }
 

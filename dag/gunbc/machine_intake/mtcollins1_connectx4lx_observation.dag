@@ -19,7 +19,7 @@ import product.cable_order_admission {
 // Host mid first-boot; this lane does not touch the host and does not cable it. Observations live
 // here, never as Unobserved properties on the extdeps card. Consumer:
 // gunbc.machine_intake.mtcollins1_expansion_candidates.expansion_candidates (InstalledUnobserved)
-// and test.claim.mtcollins1_connectx4lx_observation_witness_test.
+// and test.claim.machine_intake.mtcollins1_connectx4lx_observation_witness_test.
 // Discharge is the first EDAC-pass boot (mtcollins1_boot, gunbc#11484): PCIe enumeration of the
 // seated CEM slot plus mlx5_core bind. Until those artifacts exist, the arm is Unobserved.
 type Connectx4LxHostObservation

@@ -581,7 +581,7 @@ fn receipt_peak_beat(r: FloorHeldSetReceipt) -> FloorMemoryStatBeat? {
 //
 // ITS CONSUMER IS A DECLARED FRONTIER, NOT AN EXECUTING ROUTE, AND SAYING SO IS THE POINT
 // (DESIGN 3c, review 69834). Today receipt_peak_seam and receipt_peak_reading_standing are
-// reached only by test.claim.floor_demand_witness_test. An earlier revision of this note named
+// reached only by test.claim.floor.floor_demand_witness_test. An earlier revision of this note named
 // the consumer as "a consumer asking what to reduce", which is a READER and not a route, and
 // carried no trigger -- so it claimed consumption it did not have. The frontier below states the
 // consumer and the change that lands it instead. The seam FIELD is a different matter and is

@@ -6,7 +6,7 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // A NEW LINK THAT HAS NEVER EXECUTED, RECORDED AS A STALL -- NOT A DROP: no rung stood here and none is claimed to have
 // fallen. gunbc#13513 carries the authored data-vs-fn kind from normalize to the mandatory_tag gate
 // (NormalizedTree.member_declarations -> member_kind_channel_of_tree -> ResolvedTree.member_kinds). The legs
-// normalize -> member_kind_channel_of_tree -> gate execute in test.long.mandatory_tag_gate_witness. The leg from
+// normalize -> member_kind_channel_of_tree -> gate execute in v2.test.claim.long.mandatory_tag_gate_witness_test. The leg from
 // v2.compiler.name_resolve resolve_in_context (subject_member_kind_channel) through ResolvedTree.member_kinds to
 // v2.compiler.compile validate_then_compile's mandatory_tag_root_lens_with_provenance binding is compiled and
 // typechecked and executed by no claim: a door-grain control through compile_source_root_ingest_with_admission was

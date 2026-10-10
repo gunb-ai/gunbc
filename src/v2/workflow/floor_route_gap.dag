@@ -613,13 +613,13 @@ fn floor_route_gap_expectation_chunk_01() -> List<FloorRouteGapExpectation> {
 
 fn floor_route_gap_expectation_chunk_02() -> List<FloorRouteGapExpectation> {
   Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.host_cli_dependency_wet_witness_test.observe_echo_wet_posix_command_v_check_does_not_crash", operation: "Check", ground: NoMockResponse {} },
+    head: FloorRouteGapExpectation { identity: "test.claim.host.host_cli_dependency_wet_witness_test.observe_echo_wet_posix_command_v_check_does_not_crash", operation: "Check", ground: NoMockResponse {} },
     tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.host_cli_dependency_wet_witness_test.observe_npm_wet_posix_command_v_check_does_not_crash", operation: "Check", ground: NoMockResponse {} },
+    head: FloorRouteGapExpectation { identity: "test.claim.host.host_cli_dependency_wet_witness_test.observe_npm_wet_posix_command_v_check_does_not_crash", operation: "Check", ground: NoMockResponse {} },
     tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.host_cli_dependency_wet_witness_test.observe_sshpass_wet_posix_command_v_check_does_not_crash", operation: "Check", ground: NoMockResponse {} },
+    head: FloorRouteGapExpectation { identity: "test.claim.host.host_cli_dependency_wet_witness_test.observe_sshpass_wet_posix_command_v_check_does_not_crash", operation: "Check", ground: NoMockResponse {} },
     tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.host_cli_dependency_wet_witness_test.password_session_enrollment_walks_wet_without_crashing", operation: "Check", ground: NoMockResponse {} },
+    head: FloorRouteGapExpectation { identity: "test.claim.host.host_cli_dependency_wet_witness_test.password_session_enrollment_walks_wet_without_crashing", operation: "Check", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.interpreter_dispatch_bijection_real_roster_witness_test.interpreter_dispatch_bijection_real_roster_red_holds", operation: "Check", ground: NoMockResponse {} },
     tail: Cons {
@@ -2188,11 +2188,11 @@ fn floor_route_gap_expectation_chunk_35() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.workspace_request_consumer_witness_test.enrolled_roster_discovers_a_customer_request_the_operator_pass_misses", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.roadmap_task_store_wet_witness_test.task_store_create_replay_and_conflicting_key", operation: "Dir", ground: NoMockResponse {} },
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_task_store_wet_witness_test.task_store_create_replay_and_conflicting_key", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.roadmap_task_store_wet_witness_test.task_store_revise_stale_and_supersede", operation: "Dir", ground: NoMockResponse {} },
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_task_store_wet_witness_test.task_store_revise_stale_and_supersede", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.workspace_allocation_write_seam_wet_witness_test.seam_admitted_create_and_release_land_in_the_store", operation: "Dir", ground: NoMockResponse {} },
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.workspace_allocation_write_seam_wet_witness_test.seam_admitted_create_and_release_land_in_the_store", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.live_deploy.tailnet_door_cutover_journal_wet_witness_test.the_cutover_journal_survives_its_writer_and_fences_a_stale_write", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {

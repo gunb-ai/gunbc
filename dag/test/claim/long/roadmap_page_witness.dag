@@ -2307,7 +2307,7 @@ test fn witness_issue_rail_is_one_field_list_with_no_empty_rows() -> Bool {
 // that id. Deleting the anchored rows, or spelling either side differently, leaves the link
 // pointing at nothing and turns this red.
 test fn witness_failure_link_targets_a_row_the_work_tab_renders() -> Bool {
-  let attempt = test.claim.roadmap_workflow_progress_witness_test.legacy_attempt_progress()
+  let attempt = test.claim.roadmap.roadmap_workflow_progress_witness_test.legacy_attempt_progress()
   let rail = fx_rail_meter_html(holder: Present { value: fixture_fabric_principal() }, attempts: [ attempt ])
   let fragment = string_at(parts: split(s: string_at(parts: split(s: rail, delimiter: "class=\"el-build-meter\" href=\""), index: 1), delimiter: "\""), index: 0)
   let anchor = string_at(parts: split(s: fragment, delimiter: "#"), index: 1)

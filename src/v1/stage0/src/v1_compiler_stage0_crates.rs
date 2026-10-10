@@ -15,9 +15,9 @@ use self::Stage0PartitionRowDepsOutcome::*;
 use self::Stage0PartitionRowSpecOutcome::*;
 use self::Stage0ReexportLinesOutcome::*;
 use self::Stage0ReexportPathDepsOutcome::*;
-use crate::extdeps_cargo::CargoDepSource::{LocalPathDep, RegistryDep};
-pub use crate::extdeps_cargo::{CargoDepSource, CargoDependency, CargoFeature};
-pub use crate::extdeps_cargo_version::render_cargo_package_header_prefix;
+use crate::extdeps_rust_cargo::CargoDepSource::{LocalPathDep, RegistryDep};
+pub use crate::extdeps_rust_cargo::{CargoDepSource, CargoDependency, CargoFeature};
+pub use crate::extdeps_rust_version::render_cargo_package_header_prefix;
 use crate::gunbc_rust_crate_package_ident::PackageIdentRefusalCause::*;
 use crate::gunbc_rust_crate_package_ident::PackageIdentSetOutcome::{
     PackageIdentSetOk, PackageIdentSetRefused,
@@ -29,16 +29,16 @@ pub use crate::gunbc_rust_crate_package_ident::{
     PackageIdentBinding, PackageIdentRefusalCause, PackageIdentSetOutcome,
 };
 pub use crate::gunbc_rust_emitted_crate::EmittedCrateDependencyDemand;
-pub use crate::gunbc_stage0_crate_partition_generated::generated_partition_crate_rows;
-use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateKind::{
+pub use crate::gunbc_stage0_stage0_crate_partition_generated::generated_partition_crate_rows;
+use crate::gunbc_stage0_stage0_crate_partition_generated::GeneratedPartitionCrateKind::{
     GeneratedEmitCoreCrate, GeneratedFacadeCrate, GeneratedFoundationCrate,
     GeneratedLayeredCoreCrate,
 };
-pub use crate::gunbc_stage0_crate_partition_generated::{
+pub use crate::gunbc_stage0_stage0_crate_partition_generated::{
     GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
 };
-pub use crate::gunbc_stage0_emitted_edge_admission::partition_module_owner_packages_over;
-pub use crate::gunbc_stage0_partition_package_graph::partition_package_dependency_names_over;
+pub use crate::gunbc_stage0_stage0_emitted_edge_admission::partition_module_owner_packages_over;
+pub use crate::gunbc_stage0_stage0_partition_package_graph::partition_package_dependency_names_over;
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
@@ -321,7 +321,7 @@ pub fn stage0_lookup_module_owner_package_name(
 ) -> Rc<Stage0ModuleOwnerLookup> {
     {
         let package_name =
-            crate::gunbc_stage0_emitted_edge_admission::partition_module_owner_packages_over(
+            crate::gunbc_stage0_stage0_emitted_edge_admission::partition_module_owner_packages_over(
                 module_basename.clone(),
                 rows.clone(),
             )
@@ -660,7 +660,7 @@ pub fn stage0_partition_row_dependencies_outcome(
 ) -> Rc<Stage0PartitionRowDepsOutcome> {
     match (*stage0_reexport_path_dependencies_outcome(
         row.crate_dir.clone(),
-        crate::gunbc_stage0_partition_package_graph::partition_package_dependency_names_over(
+        crate::gunbc_stage0_stage0_partition_package_graph::partition_package_dependency_names_over(
             row.clone(),
             rows.clone(),
         ),
@@ -789,7 +789,7 @@ pub fn emit_stage0_crate_manifest(spec: Rc<Stage0CrateSpec>) -> Rc<TextFile> {
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
-                        crate::extdeps_cargo_version::render_cargo_package_header_prefix(
+                        crate::extdeps_rust_version::render_cargo_package_header_prefix(
                             spec.package_name.clone(),
                         ),
                         "\nedition = \"2021\"".to_string(),

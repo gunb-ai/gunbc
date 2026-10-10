@@ -180,7 +180,7 @@ fn seam_unavailable_with(header: String, readback: TailnetServeReadback, decided
 // header's login, and the create passes admission -- it is answered by the unplaced store this
 // claim hands it ("allocation store could not be read", no availability member), which only a
 // write that got past the write law reaches. The landed write is
-// test.claim.workspace_allocation_write_seam_wet_witness_test.
+// test.claim.roadmap.workspace_allocation_write_seam_wet_witness_test.
 test fn seam_fresh_matching_route_mints_the_tailnet_path_and_passes_admission() -> Bool {
   let path = seam_path(header: seam_tailnet_login, ingress: seam_proxy_ingress(), readback: seam_matching_readback(observed_at: seam_observed_at), decided_at: seam_decided_at)
   let minted = match path {

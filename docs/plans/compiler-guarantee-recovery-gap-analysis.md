@@ -2746,7 +2746,7 @@ enforces end to end.
    comparison and not the other, and `type Hash = Fnv1a64Structural` is the alias behind 92 of the
    115 relations the census was built on, so the repair turned its own headline population into a
    NEW red); variant projection (18 diagnostics, below); and EMISSION (regen surface drift in
-   `extdeps_cargo_version.rs`, `extdeps_version_semver.rs`, `std_integer.rs`). A transparency
+   `extdeps_rust_version.rs`, `extdeps_version_semver.rs`, `std_integer.rs`). A transparency
    relation belongs at the COMPARISON, where leniency is meaningful — emission and variant
    projection are not judgment surfaces and there is no coherent sense in which they should be
    lenient. gunbc#8873 places it there and closes this defect: measured on one identical fixture,

@@ -4,7 +4,7 @@ import std.types { String }
 import gunbc.bmc.bmc_onboarding { BmcOnboardingPhase, BmcLifecycleState, bmc_factory_state }
 import gunbc.machine_intake.receipt { IntakeLedgerValidation }
 
-// THE AUTHORED RED FOR test.claim.bmc_onboarding_quarantine_witness_test. This module is
+// THE AUTHORED RED FOR test.claim.bmc.bmc_onboarding_quarantine_witness_test. This module is
 // exactly what the quarantine forbids: a carrier that joins the legacy BmcOnboardingPhase
 // to an intake carrier, a carrier that holds the legacy lifecycle state, and a declaration
 // whose body is a call into the legacy lifecycle. It is NOT under dag/gunbc/machine_intake

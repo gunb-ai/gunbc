@@ -6,9 +6,9 @@ use self::EmittedWorkspaceBuildOutcome::*;
 use self::EmittedWorkspaceOutcome::*;
 use self::EmittedWorkspaceRedOutcome::*;
 use self::EmittedWorkspaceRefusal::*;
-pub use crate::extdeps_cargo::cargo_target_source_path;
-pub use crate::extdeps_cargo::CargoTarget;
-use crate::extdeps_cargo::CargoTarget::Bin;
+pub use crate::extdeps_rust_cargo::cargo_target_source_path;
+pub use crate::extdeps_rust_cargo::CargoTarget;
+use crate::extdeps_rust_cargo::CargoTarget::Bin;
 use crate::gunbc_crate_partition::DerivedDepPackages::{
     DerivedDepPackagesOk, DerivedDepPackagesUnitHasNoRow,
 };
@@ -46,10 +46,10 @@ use crate::gunbc_rust_emitted_edge::EmittedEdgeTarget::{
 };
 pub use crate::gunbc_rust_emitted_edge::{rust_module_emit_filename, rust_runtime_prelude_module};
 pub use crate::gunbc_rust_emitted_edge::{EmittedEdge, EmittedEdgeProvenance, EmittedEdgeTarget};
-use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateKind::{
+use crate::gunbc_stage0_stage0_crate_partition_generated::GeneratedPartitionCrateKind::{
     GeneratedFacadeCrate, GeneratedFoundationCrate, GeneratedLayeredCoreCrate,
 };
-pub use crate::gunbc_stage0_crate_partition_generated::{
+pub use crate::gunbc_stage0_stage0_crate_partition_generated::{
     GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
 };
 pub use crate::std_optional::optional_present;
@@ -606,7 +606,7 @@ pub fn emitted_workspace_build_from_emission(
                     rows: v1_rt::concat(layout.rows.clone(), Rc::new(vec![top.clone()])),
                     top_package: crate_name.clone(),
                     bin_name: bin_name.clone(),
-                    bin_source_path: crate::extdeps_cargo::cargo_target_source_path(
+                    bin_source_path: crate::extdeps_rust_cargo::cargo_target_source_path(
                         Rc::new(CargoTarget::Bin {
                             name: bin_name.clone(),
                         }),

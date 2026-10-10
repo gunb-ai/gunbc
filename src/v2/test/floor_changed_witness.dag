@@ -886,12 +886,12 @@ test fn unchanged_long_module_witness_takes_no_verdict_only_policy() -> Bool {
   ) == "ordinary"
 }
 
-// ALL THREE AUTHORED LONG PREFIXES SELECT THE ARM, because the long home is not one namespace:
-// the roster carries test.claim.long., v2.test.claim.long. and v2.test.claim.long., and a one-prefix
-// reading excluded 42 rows of an expected ~310 when it was last tried. An arm keyed on one of
-// the three would be narrower than the class it claims.
+// EVERY LONG PREFIX SELECTS THE ARM, because the long home is not one namespace: the roster carries
+// one prefix per directory named `long`, and a one-prefix reading excluded rows of the expected
+// population when it was last tried. An arm keyed on one of them would be narrower than the class
+// it claims.
 test fn every_long_prefix_selects_the_verdict_only_policy() -> Bool {
-  !any(["test.claim.long.x", "v2.test.long.x", "v2.test.claim.long.x"], m =>
+  !any(["test.claim.long.x", "v2.test.claim.long.x", "v2.test.claim.execution.long.x", "v2.test.claim.body_lowering.long.x", "v2.test.claim.identity_captured_navigation.long.x", "v2.test.manual.long.x"], m =>
     cost_policy_kind(
       policy: changed_witness_cost_policy(
         selected_as_changed_witness: true,

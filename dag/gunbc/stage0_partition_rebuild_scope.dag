@@ -92,11 +92,11 @@ type PartitionRebuildDecision
 // THE TWO POSITIVELY MODELED WHOLE-BUILD CLASSES, each named by the mirror whose bytes decide
 // every package's build rather than any package's contents.
 //
-// (1) The partition generation authority. gunbc_stage0_crate_partition_generated.rs carries the
+// (1) The partition generation authority. gunbc_stage0_stage0_crate_partition_generated.rs carries the
 //     ownership rows themselves and v1_compiler_stage0_crates.rs renders every manifest and lib
 //     from them, so a change to either can move which package any module compiles in. No reverse
 //     package closure can see that: the closure is computed FROM those rows.
-// (2) The shared compiler build input. gunbc_stage0_crate_layout_generated.rs decides the
+// (2) The shared compiler build input. gunbc_stage0_stage0_crate_layout_generated.rs decides the
 //     monolith's declaration surface and v1_compiler_workspace_members.rs decides the workspace
 //     membership region, so a change to either re-plans the build for every package at once.
 //
@@ -104,12 +104,12 @@ type PartitionRebuildDecision
 // these rosters: its blast radius IS its reverse package closure, which the partition arm
 // computes exactly, and listing it here would be the absorbing fallback wearing a roster's name.
 data rebuild_scope_partition_generation_mirrors: List<String> = [
-  "gunbc_stage0_crate_partition_generated.rs",
+  "gunbc_stage0_stage0_crate_partition_generated.rs",
   "v1_compiler_stage0_crates.rs"
 ]
 
 data rebuild_scope_shared_build_input_mirrors: List<String> = [
-  "gunbc_stage0_crate_layout_generated.rs",
+  "gunbc_stage0_stage0_crate_layout_generated.rs",
   "v1_compiler_workspace_members.rs"
 ]
 

@@ -282,7 +282,7 @@ pub fn compile_partition_crates(packages: &[String]) -> PartitionCompileOutcome 
 
 /// The package names the partition authority declares, read from the rendered rows.
 pub fn partition_package_names() -> Vec<String> {
-    crate::gunbc_stage0_crate_partition_generated::generated_partition_crate_rows()
+    crate::gunbc_stage0_stage0_crate_partition_generated::generated_partition_crate_rows()
         .iter()
         .map(|row| row.package_name.clone())
         .collect()
