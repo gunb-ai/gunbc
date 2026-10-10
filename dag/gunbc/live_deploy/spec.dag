@@ -56,7 +56,7 @@ import gunbc.auth.approval_broker_cutover { approval_front_door_mounts_installed
 import product.network_topology { NetworkEndpoint }
 import gunbc.ownership { Ownership, Owned, Ensured }
 
-// Belt B membership (docs/plans/gunbc-served-dashboard-design.md section 5): the service is `gunbc
+// Belt B membership: the service is `gunbc
 // serve` (the seed binary), not an emitted node server.js, so the members flip — ServeBinary +
 // GunbcSourceTree + the dispatch worktree root in (paths from the ONE gunbc.host_layout authority the
 // belt also projects), ServerScript and the NodeJsPackage dependency out (the Ensured nodejs is

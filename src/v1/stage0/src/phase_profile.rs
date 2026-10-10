@@ -14,10 +14,10 @@
 //!
 //! **Dissolution trigger (DESIGN §6):** delete `src/v1/stage0/src/phase_profile.rs`, the
 //! `set_phase` hooks in `cli_run.rs` / `claim_executor.rs`, and `GUNBC_FLOOR_PHASE_PROFILE`
-//! when realization_measurement_loop **Phase 0** (`docs/plans/realization-measurement-loop.md`)
+//! when realization_measurement_loop **Phase 0**
 //! lands a `.dag` `PerformanceReceipt` phase-local tick carrier consumed by execution by a floor
-//! witness (the event that also supersedes `GUNBC_FLOOR_GANTT` per
-//! `ci-floor-fractal-gantt (plan doc deleted 2026-08-28)` § dissolution). Receipt = that witness
+//! witness (the event that also supersedes `GUNBC_FLOOR_GANTT`).
+//! Receipt = that witness
 //! green with this module deleted and zero `[phase-profile]` stderr with profiling enabled on
 //! the model path.
 
