@@ -936,7 +936,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           "a_host_judged_member_is_ineligible" as NonEmptyStr,
           "the_population_is_disjoint_from_the_emitted_subject_rows" as NonEmptyStr,
           "the_denominator_is_the_derived_universe_not_the_green_set" as NonEmptyStr,
-          "the_real_population_row_passes_the_eligibility_and_disjointness_folds_the_real_route" as NonEmptyStr,
+          "the_real_subject_rows_derive_the_supplied_labels_and_each_refuses_as_a_member_the_real_route" as NonEmptyStr,
         ],
       )),
       parent: in_project(project: "native-route-to-live", contribution: "This is the shape the native route takes on the required path: the drop v2_native_route_off_the_merge_path retires only when this population is judged on a landing, and D10 admission reads its green set as the subject denominator."),

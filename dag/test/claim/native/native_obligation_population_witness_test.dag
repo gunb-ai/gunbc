@@ -1,6 +1,6 @@
 module test.claim.native.native_obligation_population_witness_test
 
-import std.types { Bool, String, List }
+import std.types { Bool, String, List, list_length }
 import v2.std.algebra { any }
 import gunbc.emitted_subject_build_gate { emitted_subject_build_rows, emitted_subject_build_label_text }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -34,11 +34,19 @@ test fn the_denominator_is_the_derived_universe_not_the_green_set() -> Bool {
     && !native_denominator_is_the_universe(universe: ["a", "b"], green: ["a"], frontier: ["b"], exclusions: ["z"])
 }
 
-// INHABITANCE: the real route. The same predicates run over the real native_population_green_set row and
-// the real emitted_subject_build_rows labels; the row is empty today, so this holds vacuously until the
-// first member lands, and is the last execution of the real path once the controls above supply values.
-test fn the_real_population_row_passes_the_eligibility_and_disjointness_folds_the_real_route() -> Bool {
+// INHABITANCE: the real route, and it can go red today. The real emitted_subject_build_rows derive exactly
+// the two labels the disjointness control above supplies (the two compiler products, operator ruling
+// 2026-10-09: emitted_subject_build_rows stays the two products), and each of them refuses as a population
+// member through the real predicate -- so deleting the label fold, changing the subject roster, or breaking
+// native_member_is_a_subject_row reds this claim. The last two conjuncts run the same predicates over the real
+// native_population_green_set; that row is empty until the first native adjudication lands (the plan's declared
+// trigger), so they are the real path's last execution for the green set and carry no weight of their own yet.
+test fn the_real_subject_rows_derive_the_supplied_labels_and_each_refuses_as_a_member_the_real_route() -> Bool {
   let labels = emitted_subject_build_rows() |> map(r => emitted_subject_build_label_text(row: r))
-  !any(native_population_green_set, m => !native_member_is_eligible(member: m))
+  list_length(labels) == 2
+    && any(labels, l => l == "//gunbc/instruments:self-host")
+    && any(labels, l => l == "//gunbc/instruments:v2-native-cli")
+    && !any(labels, l => !native_member_is_a_subject_row(member: l, subject_labels: labels))
+    && !any(native_population_green_set, m => !native_member_is_eligible(member: m))
     && !any(native_population_green_set, m => native_member_is_a_subject_row(member: m, subject_labels: labels))
 }
