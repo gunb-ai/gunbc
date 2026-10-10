@@ -61,7 +61,12 @@ A claim's subject has a layer too. A witness establishes what ONE interface retu
 
 When two structures answer one semantic question and one is to disappear, the change is a **replacement migration**: editing X leaf-upward keeps its root alive while every intermediate state becomes load-bearing, and a surviving X is an **attractor** whose vocabulary keeps shaping decisions premised on an assumption scheduled to die.
 
-So the default is **delete-first**: uproot the root early, then fix forward minimally, solving each surfaced problem from first principles rather than restoring its old binding. In a fail-closed substrate **the deletion is the census — but only over the population a run compiles**. Outside the required gate (`gunbc.emitted_subject_build_gate emitted_subject_build_rows`, the closures of the entries those rows emit, so nearly every root is outside it) a dependent can stop resolving while the required job reports SUCCESS, so **for a root outside the gate, enumerate the consumers by name before you delete**. What cannot break loudly is covered by a declared, bounded §4b rung drop, never by silence. Two carve-outs: a gap-intolerant boundary keeps the staged form (Y in shadow, then one transition that switches the root and deletes X), and where no Y can hold the boundary, X stays **frozen** — no new investment, no new rows on its growth surfaces.
+So the default is **delete-first**: uproot the root early, then fix forward minimally, solving each surfaced problem from first principles rather than restoring its old binding. In a fail-closed substrate **the deletion is the census — but only over the population a run compiles**. Outside the required gate (`gunbc.emitted_subject_build_gate emitted_subject_build_rows`, the closures of the entries those rows emit, so nearly every root is outside it) a dependent can stop resolving while the required job reports SUCCESS, so **for a root outside the gate, enumerate the consumers by name before you delete**. What cannot break loudly is covered by a declared, bounded §4b rung drop, never by silence.
+
+Two carve-outs:
+
+- **A gap-intolerant boundary keeps the staged form:** Y in shadow, then one transition that switches the root and deletes X.
+- **Where no Y can hold the boundary, X stays frozen:** no new investment, no new rows on its growth surfaces.
 
 **Atomic describes the authority transition, not the effort:** X's authority ends in one motion, Y never falls back to, resolves through or derives from X (X may serve as an offline differential oracle), and the minimum Y preserves every required refusal.
 
@@ -85,21 +90,168 @@ A Chrome change must not require editing Safari’s module. Adding Opera must no
 
 ## 3b. Conformance (§2–§3 applied to a change)
 
-**Conformance is §2–§3 applied to a change in motion** (ruling `gunbc.design_ruling conformance_needs_attention`). A change touches concept domains — it caches, holds something exclusively, places work, restates an upstream fact — and for each the corpus already has a home module. The question is: **does this change inhabit the existing model of each domain it touches, and where it does not, does it say why?** The answer is three-valued: **conforms**; **diverges with a stated reason** (admitted, often correct); **diverges with no reason** — the only red, because an unstated divergence forks the authority (§3) and its author was the one person who could cheaply say whether it was intended. A two-valued reading loses the middle and either blocks every deliberate departure or admits every accidental one.
+**Conformance is §2–§3 applied to a change in motion** (ruling `gunbc.design_ruling conformance_needs_attention`). A change touches concept domains — it caches, holds something exclusively, places work, restates an upstream fact — and for each the corpus already has a home module. The question is: **does this change inhabit the existing model of each domain it touches, and where it does not, does it say why?** The answer is three-valued:
 
-The roster is a modeled fact: `gunbc.design_argument` `conformance_domains` carries one row per domain (key, label, question, home authorities as declaration references, tells, narrative), and `gunbc.roadmap.roadmap_review_criteria` derives one reviewer per row. The domains today:
+- **Conforms.**
+- **Diverges with a stated reason** — admitted, and often correct.
+- **Diverges with no reason** — the only red, because an unstated divergence forks the authority (§3) and its author was the one person who could cheaply say whether it was intended.
 
-- **external facts** — each independently versioned upstream has its own module (section 3, external upstream decomposition). Home authorities: `extdeps.external_authority::ExternalModelScope`.
-- **materialization / realization** — materialization presents and stores an admitted identity and result contract; realization orders, places and transports work. This row owns whether a handler, provider or placement faithfully realizes that contract (completeness, readback, retention, transport, refusal, binding) without substituting, truncating or bypassing the admitted key; cache purity is one discriminator, not the whole domain. The key RELATION itself belongs to the keys row. Home authorities: `std.realization::Materialization`, `std.materialization_provider::ArtifactRequest`, `std.artifact_store::ArtifactStore`, `std.cache_interface::StorageSurface`.
-- **leasing / locking / grants / privileged access** — leases with a declared deadline, compare-and-set expectations, scoped authorizations, effect grants, resource handles, and which AUTHORIZATION PATTERN performs a privileged effect -- a section 3d selection (gunbc.auth.authorization_pattern_selection) whose census, gunbc.auth.privileged_effect_census, classifies every current site by executing it. A slot whose generation line is an audit trail keeps it whole; a slot whose only fact is its head names the distinct windowed operations, a separate contract rather than a mode (gunbc.durable_cas_file_store). Home authorities: `std.temporal_effect::HeldLease`, `std.durable_compare_and_set::CasExpectation`, `gunbc.durable_cas_file_store::file_compare_and_set_windowed`, `std.durable_exclusive_hold::DurableHoldState`, `std.scoped_authorization::ScopedAuthorization`, `std.effect_grant::Grant`, `std.resources::ResourceHandle`, `gunbc.auth.authorization_pattern_selection::select_authorization_pattern`, `gunbc.auth.github_gcp_federation::github_wif_provider`, `gunbc.auth.gcp_secret_access::SecretAccessGrant`, `gunbc.auth.access_request::AccessRequest`, `gunbc.auth.approval_capability::ApprovalCapability`, `gunbc.auth.approval_broker::redeem_capability`, `gunbc.auth.access_token_source::select_access_token_source`, `gunbc.auth.privileged_effect_census::privileged_effect_census`.
-- **fabric / compute** — allocation, placement and negotiation of resources: product.capacity and product.fabric are the shared authority, consumed by compute cells and by inference serving. Serving is inside this domain, but the sharing is partial: both reach the same priced selection fold, and each keeps its own occupancy producer and linearization, because a compute cell is stateless between grants and settles money while a serving seat holds a loaded replica and is quality-conditioned ([serving capacity home ruling](docs/plans/serving-capacity-home-ruling.md)). Home authorities: `product.fabric.selection::select_supply`, `product.capacity.lease::LeaseGrant`, `product.capacity.pool_events::SeatRequest`, `product.fabric.work::ExecutionRequirements`, `gunbc.fabric_event_log::fabric_seat_acquire`, `gunbc.compute.work_request::WorkOperation`, `gunbc.compute.work_provider_local::ComputeLayout`, `gunbc.fabric_control_plane::CellReservation`, `gunbc.fabric_executor_class::CapacityClassAdmission`, `gunbc.harness.harness_seat::harness_bind_seat`, `gunbc.serving.turn_admission::serving_group_admission`.
-- **decision / selection** — a choice must remain attributable to its subject, candidate field, constraints, evidence and policy, and conformance exposes accidental forks of that authority; the hard selection laws stay with the section 3d reviewer, and goal assessment (std.goal_assessment) is a boundary of this row, not a member. Home authorities: `std.decision::DecisionSubject`, `std.decision::RealizationSelectionResult`, `std.decision::SelectionReceipt`, `std.decision::select_realization`, `std.pareto::SelectionAxis`, `std.pareto::ParetoEntry`, `std.pareto::DominanceVerdict`.
-- **keys / hashing** — the key RELATION -- what relation, in what scope, from what complete canonical preimage, with what equality and collision disposition -- and whether its declared inputs are complete, over the relations that have a consumed home: structural node identity, materialization request and artifact keys, occurrence identity within one source graph, and the declared-equality admissibility of a key type (instantiation-blind at this rung). Demand identity and the dependency read set are a declared frontier, entering when M1 of docs/plans/demand-engine-program.md lands their carriers; the relation model is docs/plans/keying-relation-design.md. Home authorities: `std.content_hash::HashFamily`, `std.materialization_provider::request_key`, `v2.std.node::content_hash`, `std.occurrence_identity::OccurrenceIdAllocator`, `extdeps.realization.cache_purity::CachePurityVerdict`, `std.computation_identity::ComputationIdentity`, `std.algebra::algebra_profile_equality_extensional`.
-- **process observability / reporting** — reports traceable to the facts and occurrences they describe: the owning domain establishes the fact, the observation model represents its occurrence, a renderer encodes it, and a bound effect delivers it -- producing bytes is not delivery. Scoped to process reporting; a repository population measured at a revision stays with gunbc.repository_census_observation. Home authorities: `std.observation::ObservationEvent`, `std.observation::RecordedObservation`, `std.observation::ObservationPresentation`, `gunbc.observation_ci_render::ci_event_line`, `gunbc.observation_ci_render::ci_render_line`.
+A two-valued reading loses the middle and either blocks every deliberate departure or admits every accidental one.
 
-The leasing row's authorization-pattern clause is (ruling `gunbc.design_ruling authorization_pattern_is_a_selection`). A domain is added by adding a row with its home. A domain whose home does not yet exist is a modeling obligation (§6), not a row; a home that does not resolve is a §3 citation defect; a home that resolves but owns only part of the row's claimed scope is a scope mismatch on the row. Single authority (§3) keeps naming and citation, minimize-redundancy (§2) keeps copied work, and conformance owns *inhabitance*. `gunbc.roadmap.roadmap_review_criteria` `review_criterion_identities_are_unique` proves only distinct keys, not semantic exclusivity, so two criteria may report one defect from two perspectives.
+A domain is added by adding a row with its home; the leasing row's authorization-pattern clause was added that way (ruling `gunbc.design_ruling authorization_pattern_is_a_selection`). A domain whose home does not yet exist is a modeling obligation (§6), not a row; a home that does not resolve is a §3 citation defect; a home that owns only part of the row's claimed scope is a scope mismatch on the row. Single authority (§3) keeps naming and citation, minimize-redundancy (§2) keeps copied work, and conformance owns *inhabitance*. Criterion keys are distinct (`gunbc.roadmap.roadmap_review_criteria` `review_criterion_identities_are_unique`) but not semantically exclusive, so two criteria may report one defect from two perspectives.
 
 **On the ladder (§4b)** a reviewer over a finished diff is *mitigation*. The climb: which domains a change touches is derivable before any worker runs — from the modules its plan imports and the vocabulary it introduces that a home already owns — so plan admission can name the homes in the brief and spawn only the reviewers the change reaches, leaving the roster as the safety net.
+
+The roster is modeled in `gunbc.design_argument` `conformance_domains`, and `gunbc.roadmap.roadmap_review_criteria` derives one reviewer from each row; the reviewer's question and tells live in its brief. Each domain below states:
+
+- **Owns** — the part of a change reviewed under this domain.
+- **Boundary** — a nearby responsibility owned elsewhere.
+- **Existing authorities** — declarations that already carry the model. A conforming change reuses or extends them rather than introducing a parallel representation.
+
+### External facts
+
+**Owns.** Facts governed by an independently versioned upstream: a specification, product, implementation, vendor, protocol, unit or tool. Each such upstream has its own extdeps module (section 3, external upstream decomposition).
+
+**Boundary.** Product policy, observations this repository makes, dispatch among upstreams and coverage state belong to the consuming layer, never to extdeps.
+
+**Existing authorities**
+
+- **Upstream ownership** — what an external model may own
+  - `extdeps.external_authority::ExternalModelScope`
+
+### Materialization / realization
+
+**Owns.** Faithfully storing and executing an admitted identity and result contract: completeness, readback, retention, transport, refusal and binding, with no substituting, truncating or bypassing the admitted key. Cache purity is one discriminator, not the whole domain.
+
+**Boundary.** The key relation itself belongs to keys / hashing; this domain begins once the identity and contract are admitted.
+
+**Existing authorities**
+
+- **Materialization contract** — what is requested and what result is promised
+  - `std.realization::Materialization`
+  - `std.materialization_provider::ArtifactRequest`
+- **Storage contract** — how admitted results are stored and read back
+  - `std.artifact_store::ArtifactStore`
+  - `std.cache_interface::StorageSurface`
+
+### Leasing, locking, grants and privileged access
+
+**Owns.** Exclusive or bounded use of a resource, and the authorization a privileged effect requires.
+
+**Boundaries.**
+
+- A slot whose generation line is an audit trail keeps it whole; a slot whose only fact is its head uses the distinct windowed operations, a separate contract rather than a mode.
+- Which authorization pattern performs a privileged effect is a section 3d selection, not a call-site choice; its census classifies every current site by executing the selection.
+
+**Existing authorities**
+
+- **Lease and exclusion** — time-bounded possession and atomic updates of shared state
+  - `std.temporal_effect::HeldLease`
+  - `std.durable_compare_and_set::CasExpectation`
+  - `gunbc.durable_cas_file_store::file_compare_and_set_windowed`
+  - `std.durable_exclusive_hold::DurableHoldState`
+- **Grant and resource scope** — what may be used, by whom, under what authority
+  - `std.scoped_authorization::ScopedAuthorization`
+  - `std.effect_grant::Grant`
+  - `std.resources::ResourceHandle`
+- **Authorization-pattern selection** — chooses the admissible mechanism for an effect
+  - `gunbc.auth.authorization_pattern_selection::select_authorization_pattern`
+  - `gunbc.auth.access_token_source::select_access_token_source`
+- **Recurring automated access** — workload identity and scoped secret access
+  - `gunbc.auth.github_gcp_federation::github_wif_provider`
+  - `gunbc.auth.gcp_secret_access::SecretAccessGrant`
+- **One-off approved access** — requests, capabilities and redemption
+  - `gunbc.auth.access_request::AccessRequest`
+  - `gunbc.auth.approval_capability::ApprovalCapability`
+  - `gunbc.auth.approval_broker::redeem_capability`
+- **Coverage evidence** — classifies the privileged-effect sites that exist today
+  - `gunbc.auth.privileged_effect_census::privileged_effect_census`
+
+### Fabric / compute
+
+**Owns.** Selection, allocation, placement and admission of compute resources. product.capacity and product.fabric are the shared authority, consumed by compute cells and by inference serving.
+
+**Boundary.** Compute cells and serving share the priced selection fold but not one occupancy model: a compute cell is stateless between grants and settles money, while a serving seat holds a loaded, quality-conditioned replica ([serving capacity home ruling](docs/plans/serving-capacity-home-ruling.md)).
+
+**Existing authorities**
+
+- **Shared demand and supply selection** — what work needs and which supply serves it
+  - `product.fabric.selection::select_supply`
+  - `product.fabric.work::ExecutionRequirements`
+  - `gunbc.compute.work_request::WorkOperation`
+- **Compute cells** — layout, reservation and admission
+  - `gunbc.compute.work_provider_local::ComputeLayout`
+  - `gunbc.fabric_control_plane::CellReservation`
+  - `gunbc.fabric_executor_class::CapacityClassAdmission`
+- **Seats and serving** — seat demand, grants and occupancy
+  - `product.capacity.lease::LeaseGrant`
+  - `product.capacity.pool_events::SeatRequest`
+  - `gunbc.fabric_event_log::fabric_seat_acquire`
+  - `gunbc.harness.harness_seat::harness_bind_seat`
+  - `gunbc.serving.turn_admission::serving_group_admission`
+
+### Decision / selection
+
+**Owns.** A choice that stays attributable to its subject, candidate field, constraints, evidence and policy; this domain exposes accidental forks of that authority.
+
+**Boundaries.**
+
+- The hard selection laws stay with the section 3d reviewer.
+- Goal assessment (std.goal_assessment) checks an already chosen state; it is a boundary of this domain, not a member.
+
+**Existing authorities**
+
+- **Decision subject, result and receipt** — what is decided and the record of the choice
+  - `std.decision::DecisionSubject`
+  - `std.decision::RealizationSelectionResult`
+  - `std.decision::SelectionReceipt`
+  - `std.decision::select_realization`
+- **Pareto evidence** — axes, readings and dominance; a frontier, never a winner
+  - `std.pareto::SelectionAxis`
+  - `std.pareto::ParetoEntry`
+  - `std.pareto::DominanceVerdict`
+
+### Keys / hashing
+
+**Owns.** The key relation: what is identified, in what scope, from what complete canonical preimage, under what equality and collision rules, and whether its declared inputs are complete.
+
+**Boundaries.**
+
+- Faithfully realizing an admitted identity belongs to materialization / realization.
+- Demand identity and the dependency read set are a declared frontier, entering when M1 of [demand-engine-program.md](docs/plans/demand-engine-program.md) lands their carriers. The relation model is [keying-relation-design.md](docs/plans/keying-relation-design.md).
+
+**Existing authorities**
+
+- **Hash family and structural identity** — how a node's identity is computed
+  - `std.content_hash::HashFamily`
+  - `v2.std.node::content_hash`
+- **Request, computation and occurrence identity** — the keys materialization and source graphs use
+  - `std.materialization_provider::request_key`
+  - `std.computation_identity::ComputationIdentity`
+  - `std.occurrence_identity::OccurrenceIdAllocator`
+- **Equality and cache admissibility** — whether a key type's equality may be relied on (instantiation-blind at this rung)
+  - `std.algebra::algebra_profile_equality_extensional`
+  - `extdeps.realization.cache_purity::CachePurityVerdict`
+
+### Process observability / reporting
+
+**Owns.** Process reports traceable to the facts and occurrences they describe: the owning domain establishes the fact, the observation model represents its occurrence, a renderer encodes it, and a bound effect delivers it.
+
+**Boundaries.**
+
+- Producing bytes is not delivery.
+- A repository population measured at a revision stays with gunbc.repository_census_observation.
+
+**Existing authorities**
+
+- **Observation and recording** — the occurrence and its record
+  - `std.observation::ObservationEvent`
+  - `std.observation::RecordedObservation`
+- **Presentation** — how an observation is shown
+  - `std.observation::ObservationPresentation`
+- **CI encoding** — the rendered CI line
+  - `gunbc.observation_ci_render::ci_event_line`
+  - `gunbc.observation_ci_render::ci_render_line`
 
 ## 3c. Consumption (who consumes a change, and how)
 
@@ -115,7 +267,12 @@ For each added declaration, **name the consumer** (fold, entry point, realizatio
 
 **Pareto assessment is not realization selection.** `std.pareto` computes dominance and the frontier: axis identities rather than positions, per-axis orientation, interval readings, `Incomparable` distinct from `DominanceUndecided`, and refusal on missing or duplicated funded-axis readings. A front of two is not a winner. Realization selection is the policy-bound operation that produces one desired realization; it **consumes** `std.pareto` and must not redeclare its vocabulary — a second decision algebra is the §3 fork.
 
-The result is scoped, never `Optimal`: `SelectedWithin` binds a `SelectionReceipt` (subject, candidate-field identity and standing, constraint authority, funded axes, evidence snapshot, Pareto survivors, policy authority, selected identity). A change to any of those is a **different decision**, so a stale choice is detectable. Unresolved evidence is `SelectionNeedsEvidence`; two survivors without a policy is `SelectionNeedsPolicy`; a candidate violating a hard constraint is excluded *before* Pareto, never ranked. Completeness of the subject — required (objective-term × decision-variable) cells as an identity join, term drops only with order preservation — is the same home's obligation: absence is not irrelevance, and `SelectedWithin` may not mint over an incomplete closure.
+The result is scoped, never `Optimal`: `SelectedWithin` binds a `SelectionReceipt` (subject, candidate-field identity and standing, constraint authority, funded axes, evidence snapshot, Pareto survivors, policy authority, selected identity). A change to any of those is a **different decision**, so a stale choice is detectable. The other outcomes:
+
+- Unresolved evidence is `SelectionNeedsEvidence`.
+- Two survivors without a policy is `SelectionNeedsPolicy`.
+- A candidate violating a hard constraint is excluded *before* Pareto, never ranked.
+- An incomplete subject — required (objective-term × decision-variable) cells are an identity join, and terms drop only with order preservation — refuses: absence is not irrelevance, and `SelectedWithin` may not mint over an incomplete closure.
 
 Ranking work on a funded multi-axis field **is** this law applied to authorship, so §6 does not restate it. `std.decision` is consumed (`gunbc.spark.serving_deployment_selection` `select_serving_deployment`, `product.fleet_operating_point` `fleet_operating_point_selection`), so §3b's decision row names it; that row checks inhabitance only, and the hard laws above stay with this section's reviewer. The effectful cycle after selection — admission, actuation with uncertain completion, independent observation — has no consumed home yet (first consumer: the fleet admission spine); a receipt cannot substitute for readback, and an actuation return cannot mint convergence.
 
@@ -188,19 +345,24 @@ Stronger than catching a wrong state is making it **unwritable — correctness b
 
 Construction works only where membership is **decidable**, so every class is a *wall now* (decidable and grounded), a *wall after grounding* (decidable, awaiting its authority), or a *ratchet forever* (undecidable — optimality, by Rice). The word **never is the trap**: it lets a ratchet masquerade as a wall.
 
+### Done means executed
+
 The deepest trap is **specification-without-execution**: a typecheck and a `.contains()` grep are not consumers. Done means a real consumer **green by execution** plus a discriminating input that goes red when the behavior is wrong. Fluent, type-checking, grep-passing output is exactly what looks finished without running.
 
 A test's oracle needs an independent referent. **A merge-blocking test may compare a live repository population to a numeric literal only when the literal is grounded in a controlled fixture, an external or versioned authority, an explicit policy budget, or a monotone debt contract over a closed, independently discovered universe checked at identity grain.** A count copied from the current tree is a change detector: if automating its update collapses the test to `measure() == measure()`, it checked nothing. Completeness is an identity join, not a count equality.
 
-**The absorbing fallback — degradation is disguised fail-open.** Substituting the superset when the precise answer is unavailable (rerun everything, scan all keys) conflates ⊤-as-answer with ⊤-as-ignorance: it erases the only signal that the precise mechanism has a deficit, and its cost scales with the corpus rather than the change. **A failure arm must refuse, never widen**; every degradation is typed, located and countable. Not this pattern: an over-approximation computed *as* the answer, or a loud, budget-bounded interim fallback landing with its dissolution trigger.
+### Stop visibly; never conceal the deficit
 
-Moving deferred cost onto another principal — customers, employees, neighbors, future maintainers — is **externalization**. The honest arms are to absorb and reserve for the risk, or to expose the transfer as a separately named and priced contract; keeping the old name, price or contract while someone else bears the burden is **externalized degradation**.
+**When the precise answer or the final construction is unavailable, stop visibly. Do not hide the deficit by widening, bypassing, or installing a second path.** The concealment erases the only signal that the precise mechanism has a deficit. It takes four forms:
 
-**No escape hatches**: a toggle that proceeds as if a refusal had not fired reopens the arm. The discipline is the **factory model** — a deficit stops the line and is analyzed before restart; the only second mode is an audit replay that ledgers deficits and reports rather than greens. **A diff landing a silent widen, fabricated default, uncounted degradation or escape hatch is a hard reject.**
+- **Runtime uncertainty → typed refusal.** Substituting the superset (rerun everything, scan all keys) is the *absorbing fallback*: it conflates ⊤-as-answer with ⊤-as-ignorance and its cost scales with the corpus rather than the change. A failure arm refuses, never widens, and every degradation is typed, located and countable. Not this pattern: an over-approximation computed *as* the answer, or a loud, budget-bounded interim fallback landing with its dissolution trigger.
+- **A refusal that fires → the line stops.** A toggle that proceeds as if a refusal had not fired is an *escape hatch*. The discipline is the **factory model**: a deficit stops the line and is analyzed before restart; the only second mode is an audit replay that ledgers deficits and reports rather than greens.
+- **An authoring obstacle → root cause.** Routing around a parse error you do not understand, or a check that will not green, is the *workaround*. The concealed deficit is usually in the language layer (§6), so **noticing you are implementing a workaround IS the line-stop signal.**
+- **A temporary deviation → operator approval outside the diff.** A dissolution condition describes how admitted debt ends; it does not authorize creating it. A scaffold's benefit is zero where the modeled path exists. → [scaffold admission doctrine](docs/plans/scaffold-admission-doctrine.md).
 
-The same arm at authoring time is **the workaround**: routing around a parse error you do not understand or a check that will not green. The concealed deficit is usually in the language layer, which §6 says to root-cause first, so **noticing you are implementing a workaround IS the line-stop signal.**
+**A diff landing a silent widen, fabricated default, uncounted degradation or escape hatch is a hard reject.**
 
-**A dissolution condition describes how admitted debt ends; it does not authorize creating it.** A scaffold is an operator-approved exception, approved outside the diff, and its benefit is zero where the modeled path exists. → [scaffold admission doctrine](docs/plans/scaffold-admission-doctrine.md).
+Distinct from these, because it crosses a principal boundary: moving deferred cost onto someone else — customers, employees, neighbors, future maintainers — is **externalization**. The honest arms are to absorb and reserve for the risk, or to expose the transfer as a separately named and priced contract; keeping the old name, price or contract while someone else bears the burden is **externalized degradation**.
 
 ## 6. How to work (given §1–§5 — these coexist)
 
@@ -215,21 +377,26 @@ The same arm at authoring time is **the workaround**: routing around a parse err
 
 ## 6b. Chain re-derivation (how a defect is worked)
 
-§2, §3 and §5 applied to debugging, and how §6's root-cause rule is discharged (ruling `gunbc.design_ruling chain_re_derivation`). A defect is observed at one link `c` of a dependency slice `a → b → c → d`. The habitual repair guards or patches `c` where it misbehaves; when the fault is upstream, that patch encodes an undeclared fact about `a` or `b` — validation standing where construction was available (§5), a second positional authority (§3), redundant with the derivation it shadows (§2) — and the defect recurs at the next consumer of the same fact.
+§2, §3 and §5 applied to debugging, and how §6's root-cause rule is discharged (ruling `gunbc.design_ruling chain_re_derivation`). A defect is observed at one link `c` of a dependency slice `a → b → c → d`. Patching `c` where it misbehaves, when the fault is upstream, encodes an undeclared fact about `a` or `b` — validation where construction was available (§5), a second authority (§3), redundant with the derivation it shadows (§2) — and the defect recurs at the next consumer of the same fact.
 
-**Chain re-derivation** re-derives the slice from `a`: what each link means, what it may assume, and what its owning contract and every relevant consumer (`d` included) establish that it owes. **The walk stops at the earliest boundary where the derivation cannot be justified** — a contract violated, missing, under-specified, duplicated, or insufficient for its consumer. If that boundary is `c`, the local fix *is* the root-cause repair. Sound upstream links are not rewritten and downstream links are re-realized, not patched. The repair declares the missing assumption on its owning carrier, consolidates duplicate answers, and deletes work no admitted consumer demands — but work required by the interface, another consumer or a safety obligation is not redundant because one consumer ignores it.
+The method:
 
-**What this rejects is black-box quantitative optimization standing in for derivation, not measurement.** Measurement locates the failing route, prioritizes the slice and confirms the old computation is gone; its sharpest use is adversarial — a sound reading states beforehand which multiplicity collapses, which route disappears and which outputs stay equal, and a contradiction from a reconciled instrument falsifies the claim (a failed reconciliation falsifies the instrument; neither is chosen to protect the story). But a number underdetermines the chain, so it never selects the repair. Targeting one axis (make resolve 10% faster) yields a cache, batch, pool or knob at the measured link that moves cost rather than removing it; such a mechanism is right only when derived from the demand graph, a complete identity and an admitted provider (`std.materialization_ladder`). Among lawful strategies the derivation established, quantitative policy may choose.
+1. Identify the producer-to-consumer slice the defect sits in.
+2. For each link, state what it means, what it may assume, and what its owning contract and every relevant consumer (`d` included) establish that it owes.
+3. **Stop at the earliest boundary where the derivation cannot be justified** — a contract violated, missing, under-specified, duplicated, or insufficient for its consumer.
+4. Repair there: declare the missing assumption on its owning carrier, consolidate duplicate answers, and delete work no admitted consumer demands. Work required by the interface, another consumer or a safety obligation is not redundant because one consumer ignores it.
+5. Re-realize the downstream links rather than patching them; leave sound upstream links alone.
+6. Use measurement to falsify or confirm the derivation, never to choose the repair.
 
-Ownership makes the open box obligatory: an external upstream stays a black box with an honestly modeled contract, while an owned component whose contract is missing, violated, duplicated or insufficient must be opened.
+If the earliest unjustified boundary is `c`, the local fix *is* the root-cause repair. *e.g.* resolve once rebuilt corpus-wide state per module, and the repair was upstream: one shared `ResolutionContext` per native ingest in `v2.compiler.compile`. By contrast, when the emitter's own tail-call lowering was the earliest unjustified boundary, the local repair was the right one.
 
-**No level is presumed correct, including the structure the slice sits in** — a structure is a bet its authors made, and only re-derivation shows whether it stayed stable (§4d turned inward). **Touching code is taking responsibility for it** (no merge authority implied, no review waived). **There are no special layers**: the seed, the emitter or a load-bearing stage raises the evidence bar for landing, not an exemption from the read. **A qualitative error is a defect on its reasoning alone**; its repair still owes the evidence its layer requires.
+**Measurement is the adversary, not the selector.** It locates the failing route, prioritizes the slice and confirms the old computation is gone; a sound reading states beforehand which multiplicity collapses, which route disappears and which outputs stay equal, and a contradiction from a reconciled instrument falsifies the claim (a failed reconciliation falsifies the instrument). But a number underdetermines the chain. Targeting one axis (make resolve 10% faster) yields a cache, batch, pool or knob at the measured link that moves cost rather than removing it; such a mechanism is right only when derived from the demand graph, a complete identity and an admitted provider (`std.materialization_ladder`).
 
-The tells: a symptom-link fix with no statement of why that link is the earliest unjustified boundary; a guard for a state earlier links could have made unwritable; a second fix to one link in a short time; a percentage on one axis as justification; a new cache, pool or knob at the measured link with no identity or provider derivation; knowing *that* `c` is wrong without being able to say what `a` and `b` established — the line-stop. The class is `gunbc.recurring_failure_mode` `symptom_link_patched_without_the_earliest_unjustified_boundary`; its discriminator runs both ways, so a local fix at a link violating its own grounded contract is green.
+- **Owned components get opened.** An external upstream stays a black box with an honestly modeled contract; an owned component whose contract is missing, violated, duplicated or insufficient must be opened.
+- **No level is presumed correct**, including the structure the slice sits in (§4d turned inward). Touching code is taking responsibility for it.
+- **There are no special layers.** The seed, the emitter or a load-bearing stage raises the evidence bar for landing, not an exemption from the read.
 
-Specimens: *#11401* — resolve rebuilt corpus-wide state per module; the repair is one shared `ResolutionContext` per native ingest in `v2.compiler.compile`. *#11422* — every ordered `Choice` is owed one prepared plan, so per-token dispatch was the wrong link, not a slow one. *#11444* — the emitter's own tail-call lowering (`is_tco_identity_passthrough`) was the earliest unjustified boundary, so there the repair really was local.
-
-The slice is re-derived at the grain of meaning — minutes, not a rewrite.
+The tells: a symptom-link fix with no statement of why that link is the earliest unjustified boundary; a guard for a state earlier links could have made unwritable; a second fix to one link in a short time; a percentage on one axis as justification; knowing *that* `c` is wrong without being able to say what `a` and `b` established — the line-stop. The class is `gunbc.recurring_failure_mode` `symptom_link_patched_without_the_earliest_unjustified_boundary`.
 
 ## 7. Self-hosting (the principles applied to the compiler itself)
 
@@ -245,14 +412,10 @@ One file per class under `dag/gunbc/recurring_failure_mode/` (`gunbc.recurring_f
 
 ## Building & checks
 
-This section assumes a built `gunbc`. From a bare clone, start at [docs/onboarding.md](docs/onboarding.md) (`gunbc.contributor_onboarding_path`): the walked path to a first landed change, and a reading order for this document.
+The CI contract. From a bare clone, start at [docs/onboarding.md](docs/onboarding.md) (`gunbc.contributor_onboarding_path`): the walked path to a first landed change, the CLIs, local checks, hooks and regeneration, and a reading order for this document.
 
 - **CI is one required job.** `gunbc.compiler_gate_workflow` emits `.github/workflows/witnesses.yml`; the required context is the job `witnesses`, run on the fleet for every pull request and merge_group (ruling `gunbc.design_ruling v1_withdrawn_one_required_job`). It builds the seed, then runs one `gunbc test <label>` step per row of `gunbc.emitted_subject_build_gate` `emitted_subject_build_rows` (today `//gunbc/instruments:self-host` and `//gunbc/instruments:v2-native-cli`): the seed emits a v2 closure, cargo builds it fresh, and the built binary runs against its controls. A fork pull request has no `witnesses` check — unobserved, not excused.
 - **The memory envelope is part of the verdict** (ruling `gunbc.design_ruling memory_envelope_is_part_of_the_verdict`). Each subject step refuses a run no cgroup `memory.max` bounds, prints a memory receipt at exit, and refuses on any OOM kill or any swap whatever the producer answered (`gunbc.memory_envelope`; slot shape `gunbc.runner_slot_desired`).
 - **What a green `witnesses` does not say.** Nothing on the required path evaluates a witness, refuses a module outside the two emitted closures, runs clippy or the v1 unit tests, or compares a generated artifact — this document included — with its authority. That loss is one declared drop, `gunbc.rung_drop` `v1_required_lanes_withdrawn`, whose population is re-derived by `gunbc test //gunbc/instruments:required-lane-resolution-census` and whose trigger is the native compiler judging that population. A new verdict joins the gate as a row judged by a binary built from the seed's emission, never as a lane handing the corpus to the v1 interpreter.
 - **The job roster is closed to growth** (ruling `gunbc.design_ruling job_roster_closed_to_growth`): adding a job needs operator sign-off; the reasoning an author owes is stated at `witness_floor_lane_jobs`.
 - **Measurements are `gunbc test <label>`** (ruling `gunbc.design_ruling instrument_is_a_row_not_a_flag`). A label is a row in `gunbc.instrument_targets` bound through `gunbc.target_binding` `TargetProducer`, never a flag on `claim_executor`. Exit 0 means the observation held, 1 that it did not, 2 that there was no observation (an unknown label refuses with 2).
-- **Two CLIs.** `gunbc` is the seed's CLI (`std.compiler_entry` `RetainedHostCliKernel`, host Rust in `v1_compiler.cli_run`), unreachable from a self-emitted binary. The v2 door is `v2.cli.compile_cli` (`std.compiler_entry` `NativeCliDriver`): `.dag` decides parsing, refusals, output and exit, and its rendered main only performs the host reads and writes (`gunbc.source_root_read`).
-- **Local checks.** `cargo fmt --all --check` runs in the generated pre-commit hook (`gunbc.githooks_pre_commit_emit`). `cargo clippy --all-targets -- -D warnings` (`gunbc.repo_self_build` `repo_self_clippy_command`, the only command compiling the integration-test and example targets) and `cargo test --release -p v1-compiler --lib` (`repo_self_test_command`) are local only and block nothing.
-- **One-time per clone:** `git config core.hooksPath .githooks`; the generated hooks converge the rest from `gunbc.repo_local_git_config`, including a merge driver that refuses a both-sides change to a generated path and prints the regeneration recipe.
-- **Regenerating projections.** `tools.generated_artifact_gate` `main_wet` rewrites the committed generated artifacts from their authorities, `main` verifies them; `tools.docs_projection_gate` `regen` renders the on-demand ledger views.

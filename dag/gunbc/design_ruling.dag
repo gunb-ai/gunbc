@@ -74,7 +74,7 @@ data chain_re_derivation: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "chain_re_derivation"),
   decided: "2026-09-15",
   section: "6b",
-  provenance: "Operator ruling, stated separately because the opposite is the default habit. Specimens #11401, #11422, #11444.",
+  provenance: "Operator ruling, stated separately because the opposite is the default habit. Specimens: #11401 (resolve rebuilt corpus-wide state per module; repaired upstream with one shared ResolutionContext per native ingest in v2.compiler.compile), #11422 (every ordered Choice is owed one prepared plan, so per-token dispatch was the wrong link, not a slow one), #11444 (the emitter tail-call lowering is_tco_identity_passthrough was itself the earliest unjustified boundary, so the local repair was right).",
 }
 
 data v2_better_than_the_seed: DesignRuling = DesignRuling {
