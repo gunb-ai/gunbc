@@ -2,16 +2,17 @@ module gunbc.roadmap_task_store
 
 import std.types { String, NonEmptyStr, Bool, List, EpochSecs }
 import std.nat { Nat }
+import std.optional { Present, Absent }
 import std.decl_ref { decl_ref }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import gunbc.fabric_storage_client { FabricStorageBinding }
 import gunbc.fabric_event_log { PartitionRead, PartitionReadOk, PartitionReadRefused, EventAppend, EventAppended, EventAppendStale, EventAppendRefused, event_log_read_partition_with, event_log_append_with, event_log_read_budget }
 import product.capacity.event_chain { PartitionId, ChainEvent, ChainWalked, ChainIncomplete, ChainBudgetExhausted, HeadExpectation, HeadAt, HeadAbsent, EventDecode, EventDecoded, EventUndecodable }
 import product.capacity.event_json { chain_event_wire_text, chain_event_decode, member_nonempty }
-import extdeps.languages.json.emit { JsonValue, json_kv, json_string }
-import extdeps.languages.json.parse { json_object_unique_member, JsonMemberFound }
+import extdeps.languages.json.emit { JsonValue, JsonString, json_kv, json_string }
+import extdeps.languages.json.parse { json_object_unique_member, JsonMemberFound, JsonMemberAbsent }
 import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity }
-import gunbc.roadmap_task_record { roadmap_task_json, roadmap_task_from_json }
+import gunbc.roadmap_task_record { roadmap_task_json, roadmap_task_from_json, roadmap_task_encode }
 
 // THE RUNTIME TASK STORE. A task created at runtime is one immutable object in the fabric DB's
 // authenticated state namespace, linked to the task created before it: the roster IS the chain
@@ -23,9 +24,9 @@ import gunbc.roadmap_task_record { roadmap_task_json, roadmap_task_from_json }
 // n prefixes, quadratic in total. (2) A chain partition in the fabric_event_log shape: one object per
 // task linked to its parent, one head advanced by compare-and-set on the expected head -- O(1) per
 // create, the store keeps each task once, and a read is one closure. The chain is chosen, and it
-// subsumes the per-task slot the brief also names: a record is IMMUTABLE once created (status and
-// acceptance live on the event carrier, one authority), so a second per-task slot would be a second
-// copy of a fact that never changes. This diverges from the brief on purpose.
+// subsumes the per-task slot the brief also names: a task's definition changes only by a revision
+// EVENT on this chain (status and acceptance live on the event carrier, one authority), so a per-task
+// slot would be a second copy of a fact the chain already orders. This diverges from the brief on purpose.
 //
 // The binding is the caller's: production passes fabric_state_storage_binding(), the authenticated
 // state namespace, exactly as gunbc.workspace_allocation_store does; a witness passes a local file
@@ -36,10 +37,57 @@ import gunbc.roadmap_task_record { roadmap_task_json, roadmap_task_from_json }
 data roadmap_task_partition: String = "roadmap-tasks"
 data roadmap_task_event_schema: String = "gunbc.roadmap-task-event/v1"
 
-type RuntimeTaskEvent { operation_key: NonEmptyStr, task: RoadmapNode }
+// THE THREE EVENTS OF A TASK'S LIFE ON THE CHAIN. The actor of the chain event IS the authorship
+// authority (the authenticated principal the route admitted); RoadmapNode.owner stays the work
+// owner and the record carries no author of its own. A revision names the definition it replaces by
+// DIGEST, so a writer who read an older definition cannot overwrite a newer one: the digest is
+// checked against the folded head state, and the append itself is a compare-and-set on the chain
+// head, so two revisions racing from one reading cannot both land. A supersession retires a task
+// from the plan, optionally naming the task that replaces it.
+type RuntimeTaskEvent
+  = TaskCreated { operation_key: NonEmptyStr, task: RoadmapNode }
+  | TaskDefinitionRevised { operation_key: NonEmptyStr, task: NonEmptyStr, expected_definition_digest: NonEmptyStr, replacement: RoadmapNode }
+  | TaskSuperseded { operation_key: NonEmptyStr, task: NonEmptyStr, replacement: NonEmptyStr? }
 
-type RuntimeTaskRoster = RuntimeTaskRosterRead { head: HeadExpectation, events: List<RuntimeTaskEvent> } | RuntimeTaskRosterUnreadable { reason: String }
-type RuntimeTaskCreate = RuntimeTaskCreated { task: RoadmapNode } | RuntimeTaskReplayed { task: RoadmapNode } | RuntimeTaskConflict | RuntimeTaskRefused { reason: String }
+// A task as the chain leaves it: live with its CURRENT definition, or retired.
+type RuntimeTaskState
+  = TaskLive { task: RoadmapNode }
+  | TaskRetired { task: RoadmapNode, successor: NonEmptyStr? }
+
+type RuntimeTaskFold
+  = RuntimeTasksFolded { states: List<RuntimeTaskState> }
+  | RuntimeTasksInconsistent { reason: String }
+
+type RuntimeTaskRoster
+  = RuntimeTaskRosterRead { head: HeadExpectation, events: List<RuntimeTaskEvent>, states: List<RuntimeTaskState> }
+  | RuntimeTaskRosterUnreadable { reason: String }
+
+type RuntimeTaskWrite
+  = RuntimeTaskCommitted { task: RoadmapNode, events: Nat }
+  | RuntimeTaskReplayed { task: RoadmapNode }
+  | RuntimeTaskConflict
+  | RuntimeTaskStale { reason: String }
+  | RuntimeTaskChainFull { events: Nat }
+  | RuntimeTaskRefused { reason: String }
+
+// BOUNDED RECONSTRUCTION. The chain is O(1) to append and O(n) to project: every read walks the
+// closure from the head, and every plan (one per belt tick, one per served request) folds it. The
+// bound is the fabric log's own read budget, owned by gunbc.fabric_event_log event_log_read_budget
+// and consumed here rather than restated, so a bound that moves moves once. AT THE BOUND a create
+// is refused with the typed RuntimeTaskChainFull -- never truncated, never dropped -- because a chain
+// past the budget would read as ChainBudgetExhausted and make the whole plan unreadable. The
+// COMPACTION TRIGGER is three quarters of the bound: from there the capacity is CapacityCompactionDue
+// and the create route says so on every committed response. COMPACTION ITSELF is a snapshot, a
+// derived value (roadmap_task_snapshot) that rebuilds from the chain and is checked against the chain
+// by roadmap_task_snapshot_matches; the head that starts from a snapshot is the named later change
+// (docs/plans/fabric-storage.md assigns the same remedy to the head-probe bound), and its trigger
+// is exactly CapacityCompactionDue.
+type RuntimeTaskCapacity = CapacityWithin | CapacityCompactionDue | CapacityFull
+
+fn roadmap_task_capacity(events: Nat) -> RuntimeTaskCapacity {
+  let bound = event_log_read_budget()
+  if events >= bound { CapacityFull } else if events * 4 >= bound * 3 { CapacityCompactionDue } else { CapacityWithin }
+}
 
 fn roadmap_task_partition_id() -> PartitionId { roadmap_task_partition as NonEmptyStr as String as PartitionId }
 
@@ -53,23 +101,64 @@ fn roadmap_task_minted(operation_key: NonEmptyStr, draft: RoadmapNode) -> Roadma
   RoadmapNode { identity: id as RoadmapNodeIdentity, node: id as RoadmapNodeId, line: draft.line, carriers: draft.carriers, dispatch: draft.dispatch, execution: draft.execution, owner: draft.owner, signoff: draft.signoff, parent: draft.parent, centering: draft.centering }
 }
 
-fn roadmap_task_event_text(event: ChainEvent<RuntimeTaskEvent>) -> String {
-  match roadmap_task_json(node: event.payload.task) {
-    Absent => ""
-    Present { value: task } => chain_event_wire_text(schema: roadmap_task_event_schema, e: event, kind: "created", members: [
-      json_kv(key: "operation_key", value: json_string(s: event.payload.operation_key as String)),
-      json_kv(key: "task", value: task),
-    ])
+// The digest a revision must present: the content hash of the definition's own wire text.
+fn roadmap_task_definition_digest(task: RoadmapNode) -> NonEmptyStr? {
+  match roadmap_task_encode(node: task) {
+    Absent => none
+    Present { value: text } => if text == "" { none } else { Present { value: serialize_content_hash(hash: content_hash_of_value(value: text as NonEmptyStr)) } }
   }
 }
 
-fn roadmap_task_event_kind_decode(doc: JsonValue, word: String) -> RuntimeTaskEvent? {
-  if word != "created" { none } else {
-    match member_nonempty(doc: doc, key: "operation_key") { Absent => none Present { value: key } =>
-      match json_object_unique_member(v: doc, key: "task") {
-        JsonMemberFound { value: t } => match roadmap_task_from_json(value: t) {
+fn roadmap_task_event_key(event: RuntimeTaskEvent) -> NonEmptyStr {
+  match event {
+    TaskCreated { operation_key: k, task: _ } => k
+    TaskDefinitionRevised { operation_key: k, task: _, expected_definition_digest: _, replacement: _ } => k
+    TaskSuperseded { operation_key: k, task: _, replacement: _ } => k
+  }
+}
+
+fn roadmap_task_event_text(event: ChainEvent<RuntimeTaskEvent>) -> String {
+  match event.payload {
+    TaskCreated { operation_key: k, task: t } => match roadmap_task_json(node: t) {
+      Absent => ""
+      Present { value: task } => chain_event_wire_text(schema: roadmap_task_event_schema, e: event, kind: "created", members: [
+        json_kv(key: "operation_key", value: json_string(s: k as String)),
+        json_kv(key: "task", value: task),
+      ])
+    }
+    TaskDefinitionRevised { operation_key: k, task: id, expected_definition_digest: d, replacement: r } => match roadmap_task_json(node: r) {
+      Absent => ""
+      Present { value: replacement } => chain_event_wire_text(schema: roadmap_task_event_schema, e: event, kind: "revised", members: [
+        json_kv(key: "operation_key", value: json_string(s: k as String)),
+        json_kv(key: "task", value: json_string(s: id as String)),
+        json_kv(key: "expected_definition_digest", value: json_string(s: d as String)),
+        json_kv(key: "replacement", value: replacement),
+      ])
+    }
+    TaskSuperseded { operation_key: k, task: id, replacement: r } => chain_event_wire_text(schema: roadmap_task_event_schema, e: event, kind: "superseded", members: match r {
+      Absent => [json_kv(key: "operation_key", value: json_string(s: k as String)), json_kv(key: "task", value: json_string(s: id as String))]
+      Present { value: next } => [json_kv(key: "operation_key", value: json_string(s: k as String)), json_kv(key: "task", value: json_string(s: id as String)), json_kv(key: "replacement", value: json_string(s: next as String))]
+    })
+  }
+}
+
+fn task_created_decode(doc: JsonValue, key: NonEmptyStr) -> RuntimeTaskEvent? {
+  match json_object_unique_member(v: doc, key: "task") {
+    JsonMemberFound { value: t } => match roadmap_task_from_json(value: t) {
+      Absent => none
+      Present { value: task } => if (task.identity as String) == (roadmap_task_identity_of(operation_key: key) as String) { Present { value: TaskCreated { operation_key: key, task: task } } } else { none }
+    }
+    other => none
+  }
+}
+
+fn task_revised_decode(doc: JsonValue, key: NonEmptyStr) -> RuntimeTaskEvent? {
+  match member_nonempty(doc: doc, key: "task") { Absent => none Present { value: id } =>
+    match member_nonempty(doc: doc, key: "expected_definition_digest") { Absent => none Present { value: digest } =>
+      match json_object_unique_member(v: doc, key: "replacement") {
+        JsonMemberFound { value: r } => match roadmap_task_from_json(value: r) {
           Absent => none
-          Present { value: task } => if (task.identity as String) == (roadmap_task_identity_of(operation_key: key) as String) { Present { value: RuntimeTaskEvent { operation_key: key, task: task } } } else { none }
+          Present { value: replacement } => if (replacement.identity as String) == (id as String) { Present { value: TaskDefinitionRevised { operation_key: key, task: id, expected_definition_digest: digest, replacement: replacement } } } else { none }
         }
         other => none
       }
@@ -77,51 +166,213 @@ fn roadmap_task_event_kind_decode(doc: JsonValue, word: String) -> RuntimeTaskEv
   }
 }
 
+fn task_superseded_decode(doc: JsonValue, key: NonEmptyStr) -> RuntimeTaskEvent? {
+  match member_nonempty(doc: doc, key: "task") { Absent => none Present { value: id } =>
+    match json_object_unique_member(v: doc, key: "replacement") {
+      JsonMemberAbsent => Present { value: TaskSuperseded { operation_key: key, task: id, replacement: none } }
+      JsonMemberFound { value: JsonString { value: next } } => if next == "" { none } else { Present { value: TaskSuperseded { operation_key: key, task: id, replacement: Present { value: next as NonEmptyStr } } } }
+      other => none
+    }
+  }
+}
+
+fn roadmap_task_event_kind_decode(doc: JsonValue, word: String) -> RuntimeTaskEvent? {
+  match member_nonempty(doc: doc, key: "operation_key") { Absent => none Present { value: key } =>
+    if word == "created" { task_created_decode(doc: doc, key: key) }
+    else if word == "revised" { task_revised_decode(doc: doc, key: key) }
+    else if word == "superseded" { task_superseded_decode(doc: doc, key: key) }
+    else { none }
+  }
+}
+
 fn roadmap_task_event_decode(text: String) -> EventDecode<RuntimeTaskEvent> {
   chain_event_decode(text: text, schema: roadmap_task_event_schema, kind_decode: fn(doc, word) { roadmap_task_event_kind_decode(doc: doc, word: word) })
+}
+
+fn task_state_task(s: RuntimeTaskState) -> RoadmapNode {
+  match s { TaskLive { task: t } => t TaskRetired { task: t, successor: _ } => t }
+}
+
+fn task_state_find(states: List<RuntimeTaskState>, id: String) -> RuntimeTaskState? {
+  filter(states, s => (task_state_task(s: s).identity as String) == id).first()
+}
+
+fn task_state_replace(states: List<RuntimeTaskState>, id: String, next: RuntimeTaskState) -> List<RuntimeTaskState> {
+  map(states, s => if (task_state_task(s: s).identity as String) == id { next } else { s })
+}
+
+fn task_fold_inconsistent(reason: String) -> RuntimeTaskFold { RuntimeTasksInconsistent { reason: reason } }
+
+// ONE STEP OF THE FOLD. Every inconsistency is a typed refusal that makes the roster unreadable --
+// a chain that contradicts itself is never repaired by skipping an event.
+fn roadmap_task_fold_step(acc: RuntimeTaskFold, event: RuntimeTaskEvent) -> RuntimeTaskFold {
+  match acc {
+    RuntimeTasksInconsistent { reason: r } => acc
+    RuntimeTasksFolded { states: states } => match event {
+      TaskCreated { operation_key: _, task: t } => match task_state_find(states: states, id: t.identity as String) {
+        Present { value: _ } => task_fold_inconsistent(reason: "a task identity was created twice")
+        Absent => RuntimeTasksFolded { states: concat(states, [TaskLive { task: t }]) }
+      }
+      TaskDefinitionRevised { operation_key: _, task: id, expected_definition_digest: d, replacement: r } => match task_state_find(states: states, id: id as String) {
+        Absent => task_fold_inconsistent(reason: "a revision names a task that was never created")
+        Present { value: TaskRetired { task: _, successor: _ } } => task_fold_inconsistent(reason: "a revision names a superseded task")
+        Present { value: TaskLive { task: current } } => match roadmap_task_definition_digest(task: current) {
+          Absent => task_fold_inconsistent(reason: "the current definition has no digest")
+          Present { value: have } => if (have as String) != (d as String) { task_fold_inconsistent(reason: "a revision presents a stale definition digest") }
+            else if (r.node as String) != (current.node as String) { task_fold_inconsistent(reason: "a revision changes the task's node id") }
+            else { RuntimeTasksFolded { states: task_state_replace(states: states, id: id as String, next: TaskLive { task: r }) } }
+        }
+      }
+      TaskSuperseded { operation_key: _, task: id, replacement: next } => match task_state_find(states: states, id: id as String) {
+        Absent => task_fold_inconsistent(reason: "a supersession names a task that was never created")
+        Present { value: TaskRetired { task: _, successor: _ } } => task_fold_inconsistent(reason: "a task was superseded twice")
+        Present { value: TaskLive { task: current } } => match next {
+          Absent => RuntimeTasksFolded { states: task_state_replace(states: states, id: id as String, next: TaskRetired { task: current, successor: none }) }
+          Present { value: n } => if (n as String) == (id as String) { task_fold_inconsistent(reason: "a task cannot supersede itself") }
+            else { match task_state_find(states: states, id: n as String) {
+              Absent => task_fold_inconsistent(reason: "a supersession names a replacement that was never created")
+              Present { value: _ } => RuntimeTasksFolded { states: task_state_replace(states: states, id: id as String, next: TaskRetired { task: current, successor: Present { value: n } }) }
+            } }
+        }
+      }
+    }
+  }
+}
+
+fn roadmap_task_fold(events: List<RuntimeTaskEvent>) -> RuntimeTaskFold {
+  fold(events, init: RuntimeTasksFolded { states: [] }, f: (acc, e) => roadmap_task_fold_step(acc: acc, event: e))
 }
 
 fn roadmap_task_roster(store: FabricStorageBinding) -> RuntimeTaskRoster {
   match event_log_read_partition_with(store: store, partition: roadmap_task_partition_id(), budget: event_log_read_budget(), decode: fn(t) { roadmap_task_event_decode(text: t) }) {
     PartitionReadRefused { cause: _ } => RuntimeTaskRosterUnreadable { reason: "task roster could not be read" }
     PartitionReadOk { head: head, walk: walk } => match walk {
-      ChainWalked { oldest_first: envs } => RuntimeTaskRosterRead { head: head, events: map(envs, e => e.event.payload) }
+      ChainWalked { oldest_first: envs } => {
+        let events = map(envs, e => e.event.payload)
+        match roadmap_task_fold(events: events) {
+          RuntimeTasksInconsistent { reason: r } => RuntimeTaskRosterUnreadable { reason: r }
+          RuntimeTasksFolded { states: states } => RuntimeTaskRosterRead { head: head, events: events, states: states }
+        }
+      }
       ChainIncomplete { missing: _, newest_first_so_far: _ } => RuntimeTaskRosterUnreadable { reason: "task roster chain has a missing link" }
       ChainBudgetExhausted { at: _ } => RuntimeTaskRosterUnreadable { reason: "task roster exceeds the read budget" }
     }
   }
 }
 
-// The tasks, oldest first: the VALUE the plan union folds in (piece 4).
-fn roadmap_tasks_listed(store: FabricStorageBinding) -> List<RoadmapNode>? {
-  match roadmap_task_roster(store: store) {
+fn task_state_live(s: RuntimeTaskState) -> RoadmapNode? {
+  match s { TaskLive { task: t } => Present { value: t } TaskRetired { task: _, successor: _ } => none }
+}
+
+// The live tasks with their CURRENT definitions, in creation order: the VALUE the plan union folds
+// in. A failed read is the typed unreadable arm, never an empty list.
+fn roadmap_tasks_listed(roster: RuntimeTaskRoster) -> List<RoadmapNode>? {
+  match roster {
     RuntimeTaskRosterUnreadable { reason: _ } => none
-    RuntimeTaskRosterRead { head: _, events: events } => Present { value: map(events, e => e.task) }
+    RuntimeTaskRosterRead { head: _, events: _, states: states } => Present { value: flat_map_live(states: states) }
   }
 }
 
-fn roadmap_task_create(store: FabricStorageBinding, actor: NonEmptyStr, at: EpochSecs, operation_key: NonEmptyStr, draft: RoadmapNode) -> RuntimeTaskCreate {
-  let task = roadmap_task_minted(operation_key: operation_key, draft: draft)
-  match roadmap_task_json(node: task) {
-    Absent => RuntimeTaskRefused { reason: "task has no wire form" }
-    Present { value: _ } => match roadmap_task_roster(store: store) {
-      RuntimeTaskRosterUnreadable { reason: reason } => RuntimeTaskRefused { reason: reason }
-      RuntimeTaskRosterRead { head: head, events: events } => match filter(events, e => (e.operation_key as String) == (operation_key as String)).first() {
-        Present { value: prior } => if roadmap_task_event_text(event: ChainEvent { partition: roadmap_task_partition_id(), parent: none, recorded_at: 0, actor: actor, payload: prior }) == roadmap_task_event_text(event: ChainEvent { partition: roadmap_task_partition_id(), parent: none, recorded_at: 0, actor: actor, payload: RuntimeTaskEvent { operation_key: operation_key, task: task } }) {
-          RuntimeTaskReplayed { task: prior.task }
-        } else { RuntimeTaskRefused { reason: "operation key already names a different task" } }
-        Absent => roadmap_task_append(store: store, head: head, actor: actor, at: at, event: RuntimeTaskEvent { operation_key: operation_key, task: task })
-      }
+fn flat_map_live(states: List<RuntimeTaskState>) -> List<RoadmapNode> {
+  fold(states, init: [] as List<RoadmapNode>, f: (acc, s) => match task_state_live(s: s) { Absent => acc Present { value: t } => concat(acc, [t]) })
+}
+
+// A snapshot is the folded state as a value: what compaction would carry in place of the events it
+// replaces. It is DERIVED -- the chain stays the authority -- and roadmap_task_snapshot_matches is
+// the proof obligation: a snapshot taken at some prefix, extended by the events after it, equals the
+// fold of the whole chain.
+fn roadmap_task_snapshot_matches(snapshot: List<RuntimeTaskState>, after: List<RuntimeTaskEvent>, whole: List<RuntimeTaskEvent>) -> Bool {
+  match roadmap_task_fold(events: whole) {
+    RuntimeTasksInconsistent { reason: _ } => false
+    RuntimeTasksFolded { states: expected } => match fold(after, init: RuntimeTasksFolded { states: snapshot }, f: (acc, e) => roadmap_task_fold_step(acc: acc, event: e)) {
+      RuntimeTasksInconsistent { reason: _ } => false
+      RuntimeTasksFolded { states: rebuilt } => roadmap_task_states_equal(a: expected, b: rebuilt)
     }
   }
 }
 
-fn roadmap_task_append(store: FabricStorageBinding, head: HeadExpectation, actor: NonEmptyStr, at: EpochSecs, event: RuntimeTaskEvent) -> RuntimeTaskCreate
-  admit_callers: [decl_ref(module_path: "gunbc.roadmap_task_store", decl_name: "roadmap_task_create")]
+fn roadmap_task_states_equal(a: List<RuntimeTaskState>, b: List<RuntimeTaskState>) -> Bool {
+  length(a) == length(b) && all(zip(a, b), p => task_state_text(s: p.0) == task_state_text(s: p.1))
+}
+
+fn task_state_text(s: RuntimeTaskState) -> String {
+  match s {
+    TaskLive { task: t } => join(["live:", match roadmap_task_encode(node: t) { Absent => "" Present { value: x } => x }], "")
+    TaskRetired { task: t, successor: n } => join(["retired:", match roadmap_task_encode(node: t) { Absent => "" Present { value: x } => x }, ":", match n { Absent => "" Present { value: x } => x as String }], "")
+  }
+}
+
+fn task_event_replay_equal(prior: RuntimeTaskEvent, next: RuntimeTaskEvent, actor: NonEmptyStr) -> Bool {
+  roadmap_task_event_text(event: ChainEvent { partition: roadmap_task_partition_id(), parent: none, recorded_at: 0, actor: actor, payload: prior })
+    == roadmap_task_event_text(event: ChainEvent { partition: roadmap_task_partition_id(), parent: none, recorded_at: 0, actor: actor, payload: next })
+}
+
+// THE ONE WRITE PATH. A create, a revision and a supersession share it: read the roster, answer a
+// replay if the operation key was already committed with the same event, refuse a reused key with
+// a different event, refuse at the capacity bound, check the event against the folded head state,
+// and append with a compare-and-set on the head just read.
+fn roadmap_task_commit(store: FabricStorageBinding, actor: NonEmptyStr, at: EpochSecs, event: RuntimeTaskEvent) -> RuntimeTaskWrite {
+  match roadmap_task_roster(store: store) {
+    RuntimeTaskRosterUnreadable { reason: reason } => RuntimeTaskRefused { reason: reason }
+    RuntimeTaskRosterRead { head: head, events: events, states: states } =>
+      match filter(events, e => (roadmap_task_event_key(event: e) as String) == (roadmap_task_event_key(event: event) as String)).first() {
+        Present { value: prior } => if task_event_replay_equal(prior: prior, next: event, actor: actor) { match roadmap_task_event_subject(event: prior, states: states) {
+            Present { value: t } => RuntimeTaskReplayed { task: t }
+            Absent => RuntimeTaskRefused { reason: "replayed event's task is not in the roster" }
+          } }
+          else { RuntimeTaskRefused { reason: "operation key already names a different event" } }
+        Absent => match roadmap_task_capacity(events: length(events)) {
+          CapacityFull => RuntimeTaskChainFull { events: length(events) }
+          other => match roadmap_task_fold(events: concat(events, [event])) {
+            RuntimeTasksInconsistent { reason: r } => RuntimeTaskStale { reason: r }
+            RuntimeTasksFolded { states: after } => match roadmap_task_event_subject(event: event, states: after) {
+              Absent => RuntimeTaskRefused { reason: "event's task is not in the folded roster" }
+              Present { value: subject } => roadmap_task_append(store: store, head: head, actor: actor, at: at, event: event, subject: subject, events: length(events) + 1)
+            }
+          }
+        }
+      }
+  }
+}
+
+// The task an event is about, as the folded states leave it: the subject of the answer.
+fn roadmap_task_event_subject(event: RuntimeTaskEvent, states: List<RuntimeTaskState>) -> RoadmapNode? {
+  let id = match event {
+    TaskCreated { operation_key: _, task: t } => t.identity as String
+    TaskDefinitionRevised { operation_key: _, task: i, expected_definition_digest: _, replacement: _ } => i as String
+    TaskSuperseded { operation_key: _, task: i, replacement: _ } => i as String
+  }
+  match task_state_find(states: states, id: id) {
+    Present { value: st } => Present { value: task_state_task(s: st) }
+    Absent => none
+  }
+}
+
+fn roadmap_task_create(store: FabricStorageBinding, actor: NonEmptyStr, at: EpochSecs, operation_key: NonEmptyStr, draft: RoadmapNode) -> RuntimeTaskWrite {
+  let task = roadmap_task_minted(operation_key: operation_key, draft: draft)
+  match roadmap_task_json(node: task) {
+    Absent => RuntimeTaskRefused { reason: "task has no wire form" }
+    Present { value: _ } => roadmap_task_commit(store: store, actor: actor, at: at, event: TaskCreated { operation_key: operation_key, task: task })
+  }
+}
+
+fn roadmap_task_revise(store: FabricStorageBinding, actor: NonEmptyStr, at: EpochSecs, operation_key: NonEmptyStr, task: NonEmptyStr, expected_definition_digest: NonEmptyStr, replacement: RoadmapNode) -> RuntimeTaskWrite {
+  match roadmap_task_json(node: replacement) {
+    Absent => RuntimeTaskRefused { reason: "replacement has no wire form" }
+    Present { value: _ } => roadmap_task_commit(store: store, actor: actor, at: at, event: TaskDefinitionRevised { operation_key: operation_key, task: task, expected_definition_digest: expected_definition_digest, replacement: replacement })
+  }
+}
+
+fn roadmap_task_supersede(store: FabricStorageBinding, actor: NonEmptyStr, at: EpochSecs, operation_key: NonEmptyStr, task: NonEmptyStr, replacement: NonEmptyStr?) -> RuntimeTaskWrite {
+  roadmap_task_commit(store: store, actor: actor, at: at, event: TaskSuperseded { operation_key: operation_key, task: task, replacement: replacement })
+}
+
+fn roadmap_task_append(store: FabricStorageBinding, head: HeadExpectation, actor: NonEmptyStr, at: EpochSecs, event: RuntimeTaskEvent, subject: RoadmapNode, events: Nat) -> RuntimeTaskWrite
+  admit_callers: [decl_ref(module_path: "gunbc.roadmap_task_store", decl_name: "roadmap_task_commit")]
 {
   let parent = match head { HeadAt { id: i } => Present { value: i } HeadAbsent => none }
   match event_log_append_with(store: store, partition: roadmap_task_partition_id(), event: ChainEvent { partition: roadmap_task_partition_id(), parent: parent, recorded_at: at, actor: actor, payload: event }, expected: head, encode: fn(e) { roadmap_task_event_text(event: e) }) {
-    EventAppended { id: _ } => RuntimeTaskCreated { task: event.task }
+    EventAppended { id: _ } => RuntimeTaskCommitted { task: subject, events: events }
     EventAppendStale { expected: _, observed: _ } => RuntimeTaskConflict
     EventAppendRefused { cause: _ } => RuntimeTaskRefused { reason: "task publication refused" }
   }
