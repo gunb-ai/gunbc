@@ -1,9 +1,11 @@
 module extdeps.google.workspace
 
 import std.types { NonEmptyStr, String, Bool, List }
+import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
 import extdeps.uri { Uri, Https }
+import extdeps.color.srgb { Srgb8 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -43,6 +45,7 @@ type WorkspaceAdminControl
   | OAuthClientAppAccess
   | ExternalDirectorySharing
   | ProfilePhotoEditing
+  | OrganizationLogo
 
 type WorkspaceAdminSubject
   = AuthPlatformClient { project: NonEmptyStr, client: NonEmptyStr }
@@ -50,6 +53,7 @@ type WorkspaceAdminSubject
   | WorkspaceClientAccess { customer: NonEmptyStr, client: NonEmptyStr, org_unit: NonEmptyStr }
   | WorkspaceDirectorySharing { customer: NonEmptyStr }
   | WorkspacePhotoEditing { customer: NonEmptyStr, org_unit: NonEmptyStr }
+  | WorkspaceOrganizationLogo { customer: NonEmptyStr }
 
 type WorkspaceAppAccess = AppTrusted | AppLimited | AppBlocked | AppSpecificGoogleData { scopes: List<NonEmptyStr> }
 type WorkspaceDirectorySharingPolicy = RequesterBasicProfileOnly | OrganizationDirectoryData
@@ -61,6 +65,8 @@ type WorkspaceAdminValue
   | ClientAccess { access: WorkspaceAppAccess }
   | DirectorySharing { policy: WorkspaceDirectorySharingPolicy }
   | PhotoEditing { allowed: Bool }
+  | CustomLogo { artwork_sha256: NonEmptyStr }
+  | DefaultLogo
 
 type WorkspaceAdminReadSurface
   = ConsoleReadbackRequired { documentation: NonEmptyStr }
@@ -74,6 +80,49 @@ data workspace_policy_readonly_scope: NonEmptyStr = "https://www.googleapis.com/
 data workspace_policy_list_endpoint: NonEmptyStr = "https://cloudidentity.googleapis.com/v1/policies"
 data workspace_policy_reduction_documentation: NonEmptyStr = "https://docs.cloud.google.com/identity/docs/concepts/policy-api-concepts"
 
+// THE ORGANIZATION LOGO SLOT (Admin console > Account > Account settings > Personalization).
+//
+// SIZE AND FORMATS are Google's documented fact, read 2026-10-10 from workspace_logo_documentation
+// (page dated 2026-10-07): the logo "is displayed at exactly 320 x 132 pixels", must be JPEG, PNG or
+// GIF, and GIFs are not animated. The page states no byte limit (an older revision said 30 KB), so
+// none is modelled, and the formats are not modelled until an emitter chooses among them (the one
+// consumer today hands over PNG). There is no Admin SDK or Policy API surface for the logo; it is
+// console-only.
+//
+// THE BACKDROP is NOT documented. The page says nothing about what Google paints behind the image
+// or around an image of another aspect. What was observed (2026-10-10, gunb.ai Workspace, Chrome on
+// desktop) is an opaque white box -- every sampled pixel #ffffff -- both in the Admin console
+// preview, which letterboxed a square upload inside it, and behind the logo in the Gmail web header
+// on a custom photo theme. That is a reading of two surfaces on one day, so it is typed as a bet
+// (TranscribedUncited) whose read obligation names what would ground it, never as Google's fact: a
+// consumer that paints its field with it is betting the box stays white, and the bet is visible.
+type WorkspaceLogoBackdrop sole_constructor { color: Srgb8, standing: CitedFigureStanding }
+
+type WorkspaceLogoSlot sole_constructor {
+  width_px: Nat
+  height_px: Nat
+  backdrop: WorkspaceLogoBackdrop
+}
+
+data workspace_logo_documentation: NonEmptyStr = "https://support.google.com/a/answer/96474"
+
+data workspace_logo_slot: WorkspaceLogoSlot = WorkspaceLogoSlot {
+  width_px: 320,
+  height_px: 132,
+  backdrop: WorkspaceLogoBackdrop {
+    color: Srgb8 { r: 255, g: 255, b: 255 },
+    standing: TranscribedUncited { read_obligation: "Google documents no backdrop for the logo slot; white was sampled from the Admin console preview and the Gmail web header on 2026-10-10. Ground it with a Google statement, or re-observe it on each surface the logo appears on (including Gmail dark theme) before relying on it." },
+  },
+}
+
+fn workspace_logo_slot_width_px(slot: WorkspaceLogoSlot) -> Nat { slot.width_px }
+
+fn workspace_logo_slot_height_px(slot: WorkspaceLogoSlot) -> Nat { slot.height_px }
+
+fn workspace_logo_slot_backdrop_color(slot: WorkspaceLogoSlot) -> Srgb8 { slot.backdrop.color }
+
+fn workspace_logo_slot_backdrop_standing(slot: WorkspaceLogoSlot) -> CitedFigureStanding { slot.backdrop.standing }
+
 fn workspace_admin_control(subject: WorkspaceAdminSubject) -> WorkspaceAdminControl {
   match subject {
     AuthPlatformClient { project: _, client: _ } => OAuthClientRegistration
@@ -81,6 +130,7 @@ fn workspace_admin_control(subject: WorkspaceAdminSubject) -> WorkspaceAdminCont
     WorkspaceClientAccess { customer: _, client: _, org_unit: _ } => OAuthClientAppAccess
     WorkspaceDirectorySharing { customer: _ } => ExternalDirectorySharing
     WorkspacePhotoEditing { customer: _, org_unit: _ } => ProfilePhotoEditing
+    WorkspaceOrganizationLogo { customer: _ } => OrganizationLogo
   }
 }
 
@@ -92,6 +142,8 @@ fn workspace_admin_value_control(value: WorkspaceAdminValue) -> WorkspaceAdminCo
     ClientAccess { access: _ } => OAuthClientAppAccess
     DirectorySharing { policy: _ } => ExternalDirectorySharing
     PhotoEditing { allowed: _ } => ProfilePhotoEditing
+    CustomLogo { artwork_sha256: _ } => OrganizationLogo
+    DefaultLogo => OrganizationLogo
   }
 }
 
@@ -102,10 +154,11 @@ fn workspace_admin_console_documentation(control: WorkspaceAdminControl) -> NonE
     OAuthClientAppAccess => "https://support.google.com/a/answer/7281227"
     ExternalDirectorySharing => "https://knowledge.workspace.google.com/admin/users/let-third-party-apps-access-directory-data"
     ProfilePhotoEditing => "https://knowledge.workspace.google.com/admin/users/allow-directory-users-to-change-their-profile-and-photo"
+    OrganizationLogo => workspace_logo_documentation
   }
 }
 
-// No documented supported read for rows 1, 2, 3 or 5 in the reviewed interface inventories.
+// No documented supported read for rows 1, 2, 3, 5 or 6 in the reviewed interface inventories.
 // This is a dated interface qualification, not a claim that Google can never expose one.
 fn workspace_admin_read_surface(control: WorkspaceAdminControl) -> WorkspaceAdminReadSurface {
   match control {
@@ -114,6 +167,7 @@ fn workspace_admin_read_surface(control: WorkspaceAdminControl) -> WorkspaceAdmi
     OAuthApplicationAudience => ConsoleReadbackRequired { documentation: workspace_admin_console_documentation(control: control) }
     OAuthClientAppAccess => ConsoleReadbackRequired { documentation: workspace_admin_console_documentation(control: control) }
     ProfilePhotoEditing => ConsoleReadbackRequired { documentation: workspace_admin_console_documentation(control: control) }
+    OrganizationLogo => ConsoleReadbackRequired { documentation: workspace_admin_console_documentation(control: control) }
   }
 }
 

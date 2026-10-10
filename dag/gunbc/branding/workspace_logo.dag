@@ -1,0 +1,272 @@
+module gunbc.branding.workspace_logo
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.markup { Fragment, Element, FragmentText, attr }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.decimal { fixed_point_wire }
+import extdeps.crypto.sha2 { sha256_hex }
+import extdeps.color.srgb { Srgb8, srgb8_hex }
+import extdeps.external_authority { CitedFigureStanding }
+import extdeps.languages.html { serialize_html_source }
+import extdeps.fonts.google_fonts { GoogleFontsFamilySource, dm_sans_source }
+import extdeps.google.workspace {
+  WorkspaceLogoSlot, workspace_logo_slot, workspace_logo_slot_width_px, workspace_logo_slot_height_px,
+  workspace_logo_slot_backdrop_color, workspace_logo_slot_backdrop_standing,
+}
+import extdeps.gunb_ai.frontend {
+  MarkFeature, MarkRoundedRect, MarkCircle, StoicGiantMark, gunb_stoic_giant_mark,
+  mark_frame_length_tenths, mark_frame_span, mark_ink,
+}
+import gunbc.auth.google_workspace_admin_convergence { WorkspaceAdminObligation, workspace_branding_admin_obligation }
+
+// THE GOOGLE WORKSPACE LOGO: the gunb.ai lockup -- Stoic Giant seal, then the wordmark -- in ink
+// on the slot's own backdrop, emitted at exactly the slot's size. Google scales any upload into its
+// fixed box and paints what the image leaves uncovered with that backdrop, so an image of the slot's
+// size whose field IS the backdrop leaves no seam between the artwork and the box it sits in.
+//
+// Nothing here is drawn by eye. The canvas and the field's paint are extdeps.google.workspace
+// workspace_logo_slot (its backdrop is an observed bet, and the emitted artwork carries that
+// standing so the bet travels with it); the seal is extdeps.gunb_ai.frontend gunb_stoic_giant_mark
+// at an exact scale, inverted for a light ground -- body in the seal's ink, features in the field;
+// the glyph outlines below are derived from the cited DM Sans source. A brand change is an edit to
+// one of those authorities, after which this module re-emits.
+//
+// THE FACE DIVERGES FROM THE SITE'S, ON PURPOSE. gunb-ai/frontend sets its masthead wordmark in
+// JetBrains Mono; the operator chose DM Sans SemiBold for this logo (2026-10-10). Until the site
+// follows, the two wordmarks differ, and this paragraph is where that is stated.
+//
+// `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/branding/workspace_logo.dag
+// --function workspace_logo_svg_source` emits the SVG; workspace_logo.svg beside this module is that
+// output, committed so the artwork can be opened without a build. The upload is a 320 x 132 PNG
+// raster of it, made in the Admin console (no API exists), and is tracked by
+// workspace_logo_admin_obligation.
+//
+// ═══ THE CANVAS, IN TENTHS OF A SLOT PIXEL ═══
+//
+// Tenths, because the seal's frame is carried in tenths and a whole-pixel canvas would force the
+// seal's scale onto a multiple of 120 px. The SVG's viewBox is in these units and its width and
+// height are the slot's pixels, so the renderer does the one division and no coordinate is rounded.
+data logo_tenths_per_px: Nat = 10
+
+fn logo_canvas_width() -> Nat { workspace_logo_slot_width_px(slot: workspace_logo_slot) * logo_tenths_per_px }
+
+fn logo_canvas_height() -> Nat { workspace_logo_slot_height_px(slot: workspace_logo_slot) * logo_tenths_per_px }
+
+// The seal's frame is drawn in a 100 px box (the body spans the box's full width and 80 px of its
+// height), centred vertically and set on the left margin; the wordmark is set on the right margin
+// (operator layout, 2026-10-10). The space between them is what the two leave, derived rather than
+// authored, and it may not close below the minimum gap: a wordmark that grows into the seal refuses.
+data logo_mark_box: Nat = 1000
+
+data logo_edge_margin: Nat = 160
+
+data logo_mark_min_gap: Nat = 240
+
+// ═══ THE SEAL, PLACED ═══
+//
+// Every frame coordinate is multiplied by box/span and must land on a whole tenth. With a 1000-tenth
+// box over the 1200-tenth frame every coordinate the seal declares does (they are all multiples of
+// 6), but that is a property of today's geometry, not of the method: a re-derived seal with a
+// coordinate that does not divide would put one feature a fraction off its neighbours. So placement
+// is exact or the emission refuses.
+type LogoPlacement
+  = LogoPlaced { tenths: Nat }
+  | LogoPlacementInexact { frame_tenths: Nat, remainder: Nat }
+
+fn logo_place(frame_tenths: Nat) -> LogoPlacement {
+  let scaled = frame_tenths * logo_mark_box
+  let r = scaled - ((scaled / mark_frame_span) * mark_frame_span)
+  if r == 0 { LogoPlaced { tenths: scaled / mark_frame_span } } else { LogoPlacementInexact { frame_tenths: frame_tenths, remainder: r } }
+}
+
+fn logo_feature_frame_values(f: MarkFeature) -> List<Nat> {
+  match f {
+    MarkRoundedRect { x: x, y: y, width: w, height: h, corner_radius: cr } =>
+      [mark_frame_length_tenths(l: x), mark_frame_length_tenths(l: y), mark_frame_length_tenths(l: w), mark_frame_length_tenths(l: h), mark_frame_length_tenths(l: cr)]
+    MarkCircle { center_x: cx, center_y: cy, radius: r } =>
+      [mark_frame_length_tenths(l: cx), mark_frame_length_tenths(l: cy), mark_frame_length_tenths(l: r)]
+  }
+}
+
+fn logo_mark_inexact_placements(mark: StoicGiantMark) -> List<LogoPlacement> {
+  let values = fold(concat([mark.body], mark.features), init: [], f: (acc, f) => concat(acc, logo_feature_frame_values(f: f)))
+  filter(map(values, v => logo_place(frame_tenths: v)), p => match p { LogoPlaced { tenths: _ } => false LogoPlacementInexact { frame_tenths: _, remainder: _ } => true })
+}
+
+// Called only once logo_mark_inexact_placements is empty (workspace_logo_artwork checks first), so
+// the inexact arm is unreachable from the emission; it answers the frame value unscaled, which
+// would be visibly wrong rather than plausibly wrong.
+fn logo_scaled(frame_tenths: Nat) -> Nat {
+  match logo_place(frame_tenths: frame_tenths) { LogoPlaced { tenths } => tenths LogoPlacementInexact { frame_tenths: v, remainder: _ } => v }
+}
+
+fn logo_n(v: Nat) -> String { to_string(v) }
+
+fn logo_mark_origin_y() -> Nat { (logo_canvas_height() - logo_mark_box) / 2 }
+
+fn logo_feature_element(f: MarkFeature) -> Fragment {
+  match f {
+    MarkRoundedRect { x: x, y: y, width: w, height: h, corner_radius: cr } => Element { tag: "rect", attributes: [
+      attr(name: "x", value: logo_n(v: logo_edge_margin + logo_scaled(frame_tenths: mark_frame_length_tenths(l: x)))),
+      attr(name: "y", value: logo_n(v: logo_mark_origin_y() + logo_scaled(frame_tenths: mark_frame_length_tenths(l: y)))),
+      attr(name: "width", value: logo_n(v: logo_scaled(frame_tenths: mark_frame_length_tenths(l: w)))),
+      attr(name: "height", value: logo_n(v: logo_scaled(frame_tenths: mark_frame_length_tenths(l: h)))),
+      attr(name: "rx", value: logo_n(v: logo_scaled(frame_tenths: mark_frame_length_tenths(l: cr)))),
+    ], children: [] }
+    MarkCircle { center_x: cx, center_y: cy, radius: r } => Element { tag: "circle", attributes: [
+      attr(name: "cx", value: logo_n(v: logo_edge_margin + logo_scaled(frame_tenths: mark_frame_length_tenths(l: cx)))),
+      attr(name: "cy", value: logo_n(v: logo_mark_origin_y() + logo_scaled(frame_tenths: mark_frame_length_tenths(l: cy)))),
+      attr(name: "r", value: logo_n(v: logo_scaled(frame_tenths: mark_frame_length_tenths(l: r)))),
+    ], children: [] }
+  }
+}
+
+// ═══ THE WORDMARK ═══
+//
+// The slot is a raster, so the wordmark cannot name a font and hope the rasterizer has it: the
+// glyphs are outlines. Each row is one character of the wordmark set in DM Sans, in font units
+// (1000 per em, y up), at its shaped pen position with the face's kerning applied, and with its ink
+// extent on the same axis.
+// DERIVATION (re-run to re-derive; the rows are pure functions of the pinned source):
+//   source  extdeps.fonts.google_fonts dm_sans_source (sha256 8cd08d97e89c24d0aa92edd2f0f4c8ee6195eee9b7c9f154865a58b02f0c1c0d)
+//   fonttools 4.66.1: fonttools varLib.instancer DMSans[opsz,wght].ttf wght=600 opsz=14 --static
+//     (SemiBold; optical size 14 because Google shows the 320 px slot at about 132 px, where the
+//     wordmark renders near 15 px)
+//   uharfbuzz: shape "gunb.ai" with kern on and liga off; origin_x is the running x_advance plus
+//     x_offset; per glyph fontTools.pens.svgPathPen.SVGPathPen at 0.1 font unit, and
+//     fontTools.pens.boundsPen.BoundsPen for ink_min_x / ink_max_x on the line's axis, rounded.
+type WordmarkGlyph {
+  character: String
+  origin_x: Nat
+  ink_min_x: Nat
+  ink_max_x: Nat
+  outline: String
+}
+
+data wordmark_text: NonEmptyStr = "gunb.ai"
+
+data wordmark_glyph_font: GoogleFontsFamilySource = dm_sans_source
+
+// The outlines are a derivative of the font, so the artwork names where they came from and under
+// what licence; an SVG <desc> carries that without painting anything.
+fn wordmark_attribution(font: GoogleFontsFamilySource) -> String {
+  join(["Wordmark outlines derived from ", font.family, " (github.com/google/fonts@", font.commit, " ", font.source_path,
+    "), SIL Open Font License 1.1, see ", font.licence_path, "."], "")
+}
+
+data wordmark_units_per_em: Nat = 1000
+
+// The instance's OS/2 x-height.
+data wordmark_x_height: Nat = 526
+
+data wordmark_glyphs: List<WordmarkGlyph> = [
+  WordmarkGlyph { character: "g", origin_x: 0, ink_min_x: 42, ink_max_x: 546, outline: "M279 -232Q208 -232 154.5 -214.5Q101 -197 71.5 -161.5Q42 -126 42 -73Q42 -42 57.5 -12.5Q73 17 104.5 42.5Q136 68 185 87L238 29Q190 12 171 -12Q152 -36 152 -61Q152 -87 168.5 -104.5Q185 -122 213.5 -131Q242 -140 278 -140Q313 -140 339 -130.5Q365 -121 379.5 -104Q394 -87 394 -63Q394 -33 373 -14.5Q352 4 290 8Q237 12 197 19.5Q157 27 128.5 37Q100 47 80 59.5Q60 72 47 85V108L152 218L241 189L123 74L154 132Q164 125 174.5 119Q185 113 201.5 108.5Q218 104 245 100Q272 96 315 92Q382 87 424 68Q466 49 486 17Q506 -15 506 -60Q506 -104 481.5 -143Q457 -182 407 -207Q357 -232 279 -232ZM279 151Q216 151 170.5 175.5Q125 200 101 241.5Q77 283 77 333Q77 384 101 425Q125 466 170.5 491Q216 516 279 516Q342 516 387 491Q432 466 456 425Q480 384 480 333Q480 283 456 241.5Q432 200 387 175.5Q342 151 279 151ZM279 244Q322 244 348 267Q374 290 374 333Q374 376 348 398.5Q322 421 279 421Q236 421 209 398.5Q182 376 182 333Q182 290 209 267Q236 244 279 244ZM362 416 339 504H546V429Z" },
+  WordmarkGlyph { character: "u", origin_x: 585, ink_min_x: 645, ink_max_x: 1122, outline: "M254 -12Q193 -12 149.5 12.5Q106 37 83 86.5Q60 136 60 209V504H180V221Q180 156 207.5 122.5Q235 89 291 89Q327 89 355.5 106Q384 123 400.5 155.5Q417 188 417 235V504H537V0H431L422 84Q399 40 355.5 14Q312 -12 254 -12Z" },
+  WordmarkGlyph { character: "n", origin_x: 1189, ink_min_x: 1256, ink_max_x: 1733, outline: "M67 0V504H173L182 420Q205 464 248 490Q291 516 350 516Q411 516 454 490.5Q497 465 520.5 416Q544 367 544 294V0H424V283Q424 346 396 380Q368 414 313 414Q277 414 248.5 397Q220 380 203.5 347.5Q187 315 187 269V0Z" },
+  WordmarkGlyph { character: "b", origin_x: 1793, ink_min_x: 1860, ink_max_x: 2390, outline: "M355 -12Q315 -12 283 -1.5Q251 9 227 27.5Q203 46 187 70L174 0H67V720H187V430Q211 467 252 491.5Q293 516 354 516Q425 516 479.5 481.5Q534 447 565.5 387.5Q597 328 597 251Q597 176 566 116Q535 56 480.5 22Q426 -12 355 -12ZM330 92Q372 92 405 112.5Q438 133 456.5 168.5Q475 204 475 252Q475 299 456.5 335Q438 371 405 391Q372 411 330 411Q287 411 254.5 391Q222 371 203.5 335Q185 299 185 252Q185 204 203.5 168.5Q222 133 254.5 112.5Q287 92 330 92Z" },
+  WordmarkGlyph { character: ".", origin_x: 2439, ink_min_x: 2482, ink_max_x: 2633, outline: "M119 -5Q85 -5 64 16Q43 37 43 66Q43 97 64 118Q85 139 119 139Q152 139 173 118Q194 97 194 66Q194 37 173 16Q152 -5 119 -5Z" },
+  WordmarkGlyph { character: "a", origin_x: 2675, ink_min_x: 2726, ink_max_x: 3188, outline: "M235 -12Q173 -12 132 9Q91 30 71 65Q51 100 51 141Q51 189 75.5 224Q100 259 148 278.5Q196 298 266 298H393Q393 338 382 364.5Q371 391 348 404Q325 417 289 417Q248 417 219 398.5Q190 380 183 342H65Q71 396 101 434.5Q131 473 180.5 494.5Q230 516 289 516Q360 516 410 491.5Q460 467 486.5 421.5Q513 376 513 312V0H411L399 81Q389 61 373.5 44Q358 27 338 14.5Q318 2 292.5 -5Q267 -12 235 -12ZM262 83Q291 83 313.5 93.5Q336 104 352.5 123.5Q369 143 378 167Q387 191 390 218V220H279Q244 220 221 211.5Q198 203 188 187Q178 171 178 150Q178 129 188 114Q198 99 217 91Q236 83 262 83Z" },
+  WordmarkGlyph { character: "i", origin_x: 3249, ink_min_x: 3305, ink_max_x: 3457, outline: "M72 0V504H192V0ZM132 584Q99 584 77.5 604.5Q56 625 56 655Q56 686 77.5 705.5Q99 725 132 725Q165 725 186.5 705.5Q208 686 208 655Q208 625 186.5 604.5Q165 584 132 584Z" }
+]
+
+// Font size in canvas tenths (44 px). The x-height then stands at about 29% of the seal's body
+// height, which keeps the name subordinate to the face and still legible at Google's display scale.
+data wordmark_size: Nat = 440
+
+fn wordmark_glyph_text() -> String { join(map(wordmark_glyphs, g => g.character), "") }
+
+fn wordmark_ink_min_units() -> Nat {
+  match first(wordmark_glyphs) { Present { value: g } => g.ink_min_x Absent => 0 }
+}
+
+fn wordmark_ink_max_units() -> Nat {
+  match last(wordmark_glyphs) { Present { value: g } => g.ink_max_x Absent => 0 }
+}
+
+fn wordmark_ink_width() -> Nat { ((wordmark_ink_max_units() - wordmark_ink_min_units()) * wordmark_size) / wordmark_units_per_em }
+
+fn logo_lockup_width() -> Nat { logo_mark_box + logo_mark_min_gap + wordmark_ink_width() }
+
+// The wordmark's ink ends on the right margin.
+fn wordmark_ink_left() -> Nat { logo_canvas_width() - logo_edge_margin - wordmark_ink_width() }
+
+fn wordmark_origin_x() -> Nat {
+  wordmark_ink_left() - (wordmark_ink_min_units() * wordmark_size) / wordmark_units_per_em
+}
+
+fn logo_mark_text_gap() -> Nat { wordmark_ink_left() - (logo_edge_margin + logo_mark_box) }
+
+// The x-height band is centred on the canvas, where the seal's body is centred too.
+fn wordmark_baseline_y() -> Nat { logo_canvas_height() / 2 + (wordmark_x_height * wordmark_size) / (2 * wordmark_units_per_em) }
+
+fn wordmark_scale_wire() -> String { fixed_point_wire(value: wordmark_size, decimals: 3) }
+
+fn wordmark_element() -> Fragment {
+  Element { tag: "g", attributes: [
+    attr(name: "fill", value: srgb8_hex(c: mark_ink)),
+    attr(name: "transform", value: join(["translate(", logo_n(v: wordmark_origin_x()), " ", logo_n(v: wordmark_baseline_y()), ") scale(", wordmark_scale_wire(), " -", wordmark_scale_wire(), ")"], "")),
+  ], children: map(wordmark_glyphs, g => Element { tag: "path", attributes: [
+    attr(name: "transform", value: join(["translate(", logo_n(v: g.origin_x), " 0)"], "")),
+    attr(name: "d", value: g.outline),
+  ], children: [] }) }
+}
+
+// ═══ THE ARTWORK ═══
+type WorkspaceLogoArtwork
+  = WorkspaceLogoEmitted { svg: String, sha256: NonEmptyStr, backdrop_standing: CitedFigureStanding }
+  | WorkspaceLogoRefused { reason: String }
+
+// The field and the seal's features take the backdrop's paint, so the eyes and mouth read as holes
+// through the face to the box behind it; the body and the wordmark take the seal's ink.
+fn logo_svg() -> String {
+  let field = srgb8_hex(c: workspace_logo_slot_backdrop_color(slot: workspace_logo_slot))
+  let svg = Element { tag: "svg", attributes: [
+    attr(name: "xmlns", value: "http://www.w3.org/2000/svg"),
+    attr(name: "width", value: logo_n(v: workspace_logo_slot_width_px(slot: workspace_logo_slot))),
+    attr(name: "height", value: logo_n(v: workspace_logo_slot_height_px(slot: workspace_logo_slot))),
+    attr(name: "viewBox", value: join(["0 0 ", logo_n(v: logo_canvas_width()), " ", logo_n(v: logo_canvas_height())], "")),
+    attr(name: "role", value: "img"),
+    attr(name: "aria-label", value: wordmark_text as String),
+  ], children: [
+    Element { tag: "desc", attributes: [], children: [FragmentText { content: wordmark_attribution(font: wordmark_glyph_font) }] },
+    Element { tag: "rect", attributes: [
+      attr(name: "width", value: logo_n(v: logo_canvas_width())),
+      attr(name: "height", value: logo_n(v: logo_canvas_height())),
+      attr(name: "fill", value: field),
+    ], children: [] },
+    Element { tag: "g", attributes: [attr(name: "fill", value: srgb8_hex(c: mark_ink))], children: [logo_feature_element(f: gunb_stoic_giant_mark.body)] },
+    Element { tag: "g", attributes: [attr(name: "fill", value: field)], children: map(gunb_stoic_giant_mark.features, f => logo_feature_element(f: f)) },
+    wordmark_element(),
+  ] }
+  serialize_html_source(node: svg)
+}
+
+fn workspace_logo_artwork() -> WorkspaceLogoArtwork {
+  if count(logo_mark_inexact_placements(mark: gunb_stoic_giant_mark)) > 0 {
+    WorkspaceLogoRefused { reason: "a seal coordinate does not scale to a whole canvas tenth" }
+  } else if wordmark_glyph_text() != (wordmark_text as String) {
+    WorkspaceLogoRefused { reason: "the glyph rows do not spell the wordmark text" }
+  } else if logo_lockup_width() + 2 * logo_edge_margin > logo_canvas_width() {
+    WorkspaceLogoRefused { reason: "the seal and the wordmark do not fit between the margins with the minimum gap" }
+  } else {
+    let svg = logo_svg()
+    WorkspaceLogoEmitted { svg: svg, sha256: sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: svg))) as NonEmptyStr,
+      backdrop_standing: workspace_logo_slot_backdrop_standing(slot: workspace_logo_slot) }
+  }
+}
+
+// The CLI entry: the SVG text on success, and on refusal the reason, which is not an SVG and so
+// cannot be rasterized and uploaded by mistake.
+fn workspace_logo_svg_source() -> String {
+  match workspace_logo_artwork() { WorkspaceLogoEmitted { svg, sha256: _, backdrop_standing: _ } => svg WorkspaceLogoRefused { reason } => concat("refused: ", reason) }
+}
+
+// The convergence goal for this artwork: absent when the artwork refuses, so a refused emission can
+// never stand behind a console upload.
+fn workspace_logo_admin_obligation(customer: NonEmptyStr, desired_revision: NonEmptyStr) -> WorkspaceAdminObligation? {
+  match workspace_logo_artwork() {
+    WorkspaceLogoEmitted { svg: _, sha256, backdrop_standing: _ } => Present { value: workspace_branding_admin_obligation(customer: customer, artwork_sha256: sha256, desired_revision: desired_revision) }
+    WorkspaceLogoRefused { reason: _ } => none
+  }
+}

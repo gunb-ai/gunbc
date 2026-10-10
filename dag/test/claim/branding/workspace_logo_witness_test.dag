@@ -1,0 +1,63 @@
+module test.claim.branding.workspace_logo_witness_test
+
+import std.types { Bool, String, NonEmptyStr }
+import std.nat { Nat }
+import extdeps.external_authority { TranscribedUncited, CitedToAuthority, ObservedByReceipt }
+import extdeps.google.workspace {
+  WorkspaceOrganizationLogo, CustomLogo, OrganizationLogo, ConsoleReadbackRequired,
+  workspace_admin_control, workspace_admin_read_surface,
+}
+import gunbc.auth.google_workspace_admin_convergence { WorkspaceAdminObligation }
+import gunbc.branding.workspace_logo {
+  WorkspaceLogoArtwork, WorkspaceLogoEmitted, WorkspaceLogoRefused, workspace_logo_artwork, workspace_logo_admin_obligation,
+  LogoPlaced, LogoPlacementInexact, logo_place,
+  logo_canvas_width, logo_edge_margin, logo_mark_min_gap, wordmark_ink_left, wordmark_ink_width, logo_mark_text_gap, wordmark_glyph_text, wordmark_text,
+}
+
+// THE REAL PATH, ONCE. One claim runs the emission end to end and inspects what an administrator
+// would upload: the canvas is the slot's exact size, the field is the slot's backdrop (so Google's
+// box and the artwork meet without a seam), the seal's body is in ink at the placed coordinates, the
+// features are cut back to the field, and the artwork carries the backdrop's standing as the bet it
+// is rather than as Google's fact.
+test fn w_the_artwork_is_the_slot_sized_lockup_on_the_backdrop() -> Bool {
+  match workspace_logo_artwork() {
+    WorkspaceLogoRefused { reason: _ } => false
+    WorkspaceLogoEmitted { svg, sha256, backdrop_standing } =>
+      starts_with(s: svg, prefix: "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"320\" height=\"132\" viewBox=\"0 0 3200 1320\"")
+        && contains(svg, "<rect width=\"3200\" height=\"1320\" fill=\"#ffffff\">")
+        && contains(svg, "<desc>Wordmark outlines derived from DM Sans (github.com/google/fonts@7085eb89a950e85db5b166b7a58d414544b4140c ofl/dmsans/DMSans[opsz,wght].ttf), SIL Open Font License 1.1, see ofl/dmsans/OFL.txt.</desc>")
+        && contains(svg, "<g fill=\"#0c0d0c\"><rect x=\"160\" y=\"260\" width=\"1000\" height=\"800\" rx=\"300\">")
+        && contains(svg, "<g fill=\"#ffffff\"><circle cx=\"410\" cy=\"540\" r=\"80\">")
+        && string_length(s: sha256 as String) == 64
+        && match backdrop_standing { TranscribedUncited { read_obligation: _ } => true CitedToAuthority { authority: _ } => false ObservedByReceipt { observed: _ } => false }
+  }
+}
+
+// The obligation names the artwork the emission produced, on the logo control, read back through
+// the console because no API reads it. Absent here would mean a refused artwork, which no upload
+// may stand behind.
+test fn w_the_obligation_binds_the_emitted_artwork_to_the_console_logo_control() -> Bool {
+  match workspace_logo_admin_obligation(customer: "customer-A", desired_revision: "r1") {
+    Absent => false
+    Present { value: goal } =>
+      goal.subject == WorkspaceOrganizationLogo { customer: "customer-A" }
+        && workspace_admin_control(subject: goal.subject) == OrganizationLogo
+        && match workspace_admin_read_surface(control: OrganizationLogo) { ConsoleReadbackRequired { documentation: _ } => true _ => false }
+        && match goal.desired { CustomLogo { artwork_sha256 } => string_length(s: artwork_sha256 as String) == 64 _ => false }
+  }
+}
+
+// THE DISCRIMINATING RED for placement. 1000/1200 sends a frame tenth of 6 to exactly 5, and a
+// frame tenth of 7 to 5.83: the second must refuse rather than round.
+test fn w_an_inexact_seal_coordinate_refuses_rather_than_rounding() -> Bool {
+  match logo_place(frame_tenths: 6) { LogoPlaced { tenths } => tenths == 5 LogoPlacementInexact { frame_tenths: _, remainder: _ } => false }
+    && match logo_place(frame_tenths: 7) { LogoPlaced { tenths: _ } => false LogoPlacementInexact { frame_tenths, remainder } => frame_tenths == 7 && remainder == 1000 }
+}
+
+// The seal sits on the left margin and the wordmark's ink ends exactly on the right margin, with at
+// least the minimum gap between them; and the glyph rows spell the name the artwork is labelled with.
+test fn w_the_seal_and_wordmark_hold_opposite_margins() -> Bool {
+  wordmark_ink_left() + wordmark_ink_width() + logo_edge_margin == logo_canvas_width()
+    && logo_mark_text_gap() >= logo_mark_min_gap
+    && wordmark_glyph_text() == (wordmark_text as String)
+}

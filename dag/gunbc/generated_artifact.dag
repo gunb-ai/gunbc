@@ -50,6 +50,7 @@ type GeneratedArtifact
   | ApproveIosProtocolSwiftArtifact
   | ApproveIosWireSwiftArtifact
   | ApproveIosProtocolVectorTestsSwiftArtifact
+  | WorkspaceLogoSvgArtifact
 
 // CompilerRunInput: the compiler reads the file as a declared input at arm time, before any source
 // resolves (gunbc.whole_corpus_compile_demand_projection).
@@ -60,6 +61,8 @@ type GeneratedArtifact
 // app's XCTest), so a stale commit fails the drift gate here rather than silently passing there.
 // XcodeProjectGenerator: XcodeGen reads the file on the operator's Mac and writes the Xcode project
 // and the target's Info.plist from it (gunbc.approve_ios_project); neither output is committed.
+// WorkspaceAdminConsole: a Google Workspace administrator rasterizes the file at the logo slot's size
+// and uploads it in the Admin console, which has no API for it (gunbc.branding.workspace_logo).
 // SwiftCompiler: swiftc, driven by xcodebuild on the operator's Mac, compiles the file into the app
 // or its test bundle (gunbc.approve_ios_swift_protocol and its siblings, printed by
 // the Swift grammar rows v2.extdeps.languages.swift.rows).
@@ -73,6 +76,7 @@ type RepoConsumer
   | CrossLanguageClientTest
   | XcodeProjectGenerator
   | SwiftCompiler
+  | WorkspaceAdminConsole
 
 type CommitPolicy
   = CommitRequired { consumer: RepoConsumer }
@@ -202,6 +206,7 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     ApproveIosProtocolSwiftArtifact => ArtifactLocation { directory: "apps/approve-ios/Approve", name: "Protocol.swift" }
     ApproveIosWireSwiftArtifact => ArtifactLocation { directory: "apps/approve-ios/Approve", name: "Wire.swift" }
     ApproveIosProtocolVectorTestsSwiftArtifact => ArtifactLocation { directory: "apps/approve-ios/ApproveTests", name: "ProtocolVectorTests.swift" }
+    WorkspaceLogoSvgArtifact => ArtifactLocation { directory: "dag/gunbc/branding", name: "workspace_logo.svg" }
     Stage0CrateLayoutGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_crate_layout_generated.dag" }
     Stage0CrateLayoutGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "bootstrap_stage0_crate_layout_generated.rs" }
     Stage0CratePartitionGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_crate_partition_generated.dag" }
@@ -289,6 +294,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     ApproveIosProtocolSwiftArtifact => CommitRequired { consumer: SwiftCompiler }
     ApproveIosWireSwiftArtifact => CommitRequired { consumer: SwiftCompiler }
     ApproveIosProtocolVectorTestsSwiftArtifact => CommitRequired { consumer: SwiftCompiler }
+    WorkspaceLogoSvgArtifact => CommitRequired { consumer: WorkspaceAdminConsole }
     Stage0CrateLayoutGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CrateLayoutGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CratePartitionGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
@@ -348,6 +354,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     ApproveIosProtocolSwiftArtifact => match b { ApproveIosProtocolSwiftArtifact => true  _ => false }
     ApproveIosWireSwiftArtifact => match b { ApproveIosWireSwiftArtifact => true  _ => false }
     ApproveIosProtocolVectorTestsSwiftArtifact => match b { ApproveIosProtocolVectorTestsSwiftArtifact => true  _ => false }
+    WorkspaceLogoSvgArtifact => match b { WorkspaceLogoSvgArtifact => true  _ => false }
     Stage0CrateLayoutGeneratedDagArtifact => match b { Stage0CrateLayoutGeneratedDagArtifact => true  _ => false }
     Stage0CrateLayoutGeneratedRsArtifact => match b { Stage0CrateLayoutGeneratedRsArtifact => true  _ => false }
     Stage0CratePartitionGeneratedDagArtifact => match b { Stage0CratePartitionGeneratedDagArtifact => true  _ => false }
@@ -424,6 +431,7 @@ fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
     ApproveIosProtocolSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_protocol", decl_name: "expected_approve_ios_protocol_swift")
     ApproveIosWireSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_wire", decl_name: "expected_approve_ios_wire_swift")
     ApproveIosProtocolVectorTestsSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_protocol_vector_tests", decl_name: "expected_approve_ios_protocol_vector_tests_swift")
+    WorkspaceLogoSvgArtifact => decl_ref(module_path: "gunbc.branding.workspace_logo", decl_name: "workspace_logo_artwork")
     Stage0CrateLayoutGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0_crate_layout_emit", decl_name: "expected_stage0_crate_layout_generated_dag")
     Stage0CrateLayoutGeneratedRsArtifact => decl_ref(module_path: "gunbc.stage0_crate_layout_emit", decl_name: "expected_stage0_crate_layout_generated_rs")
     Stage0CratePartitionGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0_crate_partition_emit", decl_name: "expected_stage0_crate_partition_generated_dag")

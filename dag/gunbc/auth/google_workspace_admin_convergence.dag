@@ -7,6 +7,7 @@ import extdeps.google.workspace {
   WorkspaceAdminSubject, WorkspaceAdminValue, WorkspaceAdminControl, WorkspaceAdminReadSurface,
   AuthPlatformClient, AuthPlatformAudience, WorkspaceClientAccess, WorkspaceDirectorySharing, WorkspacePhotoEditing,
   RegisteredWebClient, InternalAudience, ExternalAudience, ClientAccess, AppSpecificGoogleData, AppTrusted, AppLimited, AppBlocked, DirectorySharing, RequesterBasicProfileOnly, OrganizationDirectoryData, PhotoEditing,
+  WorkspaceOrganizationLogo, CustomLogo, DefaultLogo,
   workspace_admin_control, workspace_admin_value_control, workspace_admin_read_surface, ConsoleReadbackRequired, PolicyApiReadSupported,
 }
 import v2.std.algebra { any }
@@ -125,6 +126,8 @@ fn workspace_admin_values_equal(a: WorkspaceAdminValue, b: WorkspaceAdminValue) 
       ClientAccess { access: _ } => false
       DirectorySharing { policy: _ } => false
       PhotoEditing { allowed: _ } => false
+      CustomLogo { artwork_sha256: _ } => false
+      DefaultLogo => false
     }
     ClientAccess { access: AppSpecificGoogleData { scopes: left } } => match b {
       ClientAccess { access: AppSpecificGoogleData { scopes: right } } => all(left, x => any(right, y => x == y)) && all(right, x => any(left, y => x == y))
@@ -136,6 +139,8 @@ fn workspace_admin_values_equal(a: WorkspaceAdminValue, b: WorkspaceAdminValue) 
       ExternalAudience => false
       DirectorySharing { policy: _ } => false
       PhotoEditing { allowed: _ } => false
+      CustomLogo { artwork_sha256: _ } => false
+      DefaultLogo => false
     }
     ClientAccess { access: AppTrusted } => a == b
     ClientAccess { access: AppLimited } => a == b
@@ -144,5 +149,17 @@ fn workspace_admin_values_equal(a: WorkspaceAdminValue, b: WorkspaceAdminValue) 
     ExternalAudience => a == b
     DirectorySharing { policy: _ } => a == b
     PhotoEditing { allowed: _ } => a == b
+    CustomLogo { artwork_sha256: _ } => a == b
+    DefaultLogo => a == b
   }
+}
+
+// The organization logo is a whole-customer setting with no org-unit override, so its subject is
+// the customer alone. The desired value names the artwork by the SHA-256 of the SVG it was
+// rasterized from: Google stores a re-encoded raster nobody can read back as bytes, so the console
+// readback attests which artwork revision is showing, and the receipt's evidence carries that
+// attestation. The artwork's producer is gunbc.branding.workspace_logo.
+fn workspace_branding_admin_obligation(customer: NonEmptyStr, artwork_sha256: NonEmptyStr, desired_revision: NonEmptyStr) -> WorkspaceAdminObligation {
+  WorkspaceAdminObligation { subject: WorkspaceOrganizationLogo { customer: customer }, desired: CustomLogo { artwork_sha256: artwork_sha256 },
+    desired_revision: desired_revision, rationale: "Show the gunb.ai lockup, emitted at the slot's exact size so Google neither letterboxes nor rescales it." }
 }

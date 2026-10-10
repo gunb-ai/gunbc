@@ -6,6 +6,7 @@ import std.measure { Micrometer, micrometer, micrometer_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import extdeps.color.srgb { Srgb8 }
 
 // THE STOIC GIANT SEAL, MODELLED FROM THE AUTHORED SVG RATHER THAN REDRAWN.
 //
@@ -131,6 +132,11 @@ data gunb_stoic_giant_mark: StoicGiantMark = StoicGiantMark {
   body: mark_body,
   features: [mark_eye_left, mark_eye_right, mark_mouth],
 }
+
+// The SVG's ink: the features' fill, #0c0d0c. Its body fill (#f4efe6) is the seal's paper and is
+// not recorded until a consumer paints with it; a consumer on a light ground inverts the seal and
+// paints the body with this ink, which is the use that admits the row.
+data mark_ink: Srgb8 = Srgb8 { r: 12, g: 13, b: 12 }
 
 // ═══ SCALING TO PLASTIC ═══
 //

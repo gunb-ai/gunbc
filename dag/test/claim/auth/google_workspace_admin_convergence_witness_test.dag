@@ -8,12 +8,14 @@ import extdeps.google.workspace {
   WorkspacePhotoEditing, PhotoEditing, ExternalDirectorySharing, OAuthClientRegistration,
   workspace_admin_read_surface, workspace_admin_write_surface, PolicyApiReadSupported, ConsoleReadbackRequired,
   ManualConsoleAdministration, WorkspaceDirectorySharing, DirectorySharing, RequesterBasicProfileOnly,
+  WorkspaceOrganizationLogo, CustomLogo, DefaultLogo, OrganizationLogo,
 }
 import gunbc.auth.google_workspace_admin_convergence {
   workspace_admin_values_equal,
   WorkspaceIdentityBinding, workspace_identity_admin_obligations, BasicSignInOnly,
   WorkspaceAdminObligation, WorkspaceAdminReadback, AdminConsoleReadback, WorkspacePolicyApiReadback,
   EffectiveAtDeclaredScope, EffectiveWithUnresolvedOverrides, workspace_admin_assess, workspace_admin_inspect, WorkspaceAdminNotObserved,
+  workspace_branding_admin_obligation,
 }
 
 fn fixture_admin() -> PrincipalRef { PrincipalRef { authority: "google-oidc", namespace: "accounts", subject: "fixture-subject" } }
@@ -64,4 +66,20 @@ test fn policy_readback_requires_matching_setting_and_resolved_effective_coverag
 test fn scope_order_is_not_policy_drift_but_extra_privilege_is() -> Bool {
   workspace_admin_values_equal(a: ClientAccess { access: AppSpecificGoogleData { scopes: ["openid", "email", "profile"] } }, b: ClientAccess { access: AppSpecificGoogleData { scopes: ["profile", "openid", "email"] } })
     && !workspace_admin_values_equal(a: ClientAccess { access: AppSpecificGoogleData { scopes: ["openid", "email", "profile"] } }, b: ClientAccess { access: AppSpecificGoogleData { scopes: ["openid", "email", "profile", "drive"] } })
+}
+
+// A console readback of the logo is satisfied only by the artwork the goal names: the default logo,
+// or a different artwork, diverges, and the console is the only admitted reader for this control.
+fn fixture_logo_read(observed_sha: String, default_logo: Bool = false) -> WorkspaceAdminReadback {
+  WorkspaceAdminReadback { subject: WorkspaceOrganizationLogo { customer: "customer-A" },
+    observed: if default_logo { DefaultLogo } else { CustomLogo { artwork_sha256: observed_sha as NonEmptyStr } },
+    source: AdminConsoleReadback { administrator: fixture_admin(), evidence: "receipt://fixture-logo" }, observed_at_epoch: 100, valid_until_epoch: 200, coverage: EffectiveAtDeclaredScope }
+}
+
+test fn logo_readback_must_show_the_named_artwork() -> Bool {
+  let goal = workspace_branding_admin_obligation(customer: "customer-A", artwork_sha256: "artwork-1", desired_revision: "r1")
+  match workspace_admin_assess(goal: goal, receipt: fixture_logo_read(observed_sha: "artwork-1"), admitted_admins: [fixture_admin()], now_epoch: 150) { GoalSatisfied { evidence: _ } => true _ => false }
+    && match workspace_admin_assess(goal: goal, receipt: fixture_logo_read(observed_sha: "artwork-2"), admitted_admins: [fixture_admin()], now_epoch: 150) { GoalDiverged { deviations: _ } => true _ => false }
+    && match workspace_admin_assess(goal: goal, receipt: fixture_logo_read(observed_sha: "artwork-1", default_logo: true), admitted_admins: [fixture_admin()], now_epoch: 150) { GoalDiverged { deviations: _ } => true _ => false }
+    && match workspace_admin_write_surface(control: OrganizationLogo) { ManualConsoleAdministration { documentation } => documentation as String == "https://support.google.com/a/answer/96474" }
 }
