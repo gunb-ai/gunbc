@@ -18,7 +18,7 @@ data string_interpolation_read_as_literal_text_by_v2: RecurringFailureMode = Rec
 
     "RUNG FOUND AT (original class): below the floor -- silent. CEILING: structurally guaranteed. The interpolation split and the unicode-escape prefix are both lex-decidable. NEXT-RUNG TRIGGER for any remaining escape/hole fork: a documented numeric escape that still opens a hole, or a hole opener that v1 opens and v2 does not.",
 
-    "RECOGNITION RULE: a v2 string token stream disagrees with v1 scan_string_body on whether a brace starts interpolation, including a brace that v1 consumed as the `\u{` escape prefix.",
+    "RECOGNITION RULE: a v2 string token stream disagrees with v1 scan_string_body on whether a brace starts interpolation, including a brace that v1 consumed as the unicode-escape prefix.",
   ],
 
   evidence: [
