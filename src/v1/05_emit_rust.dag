@@ -6702,7 +6702,7 @@ fn is_emittable_parametric_type_alias_item(item: Node, item_text: String, source
 }
 
 fn import_variant_parent_for_name(n: String, import_module: String, registry: Map<String, ItemInfo>, type_summaries: TypeSummaryIndex, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, imported_enums: List<String>, import_module_enums: List<String>, variant_to_enum: Map<String, String>) -> String {
-  if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum) {
+  if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index, variant_to_enum: variant_to_enum) {
     ""
   } else if import_module_enums |> any(e => e == n) {
     ""
@@ -6891,7 +6891,7 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
     let top_level = non_marker_names |> filter(n =>
       if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum) {
         true
-      } else if is_known_variant(variant_to_enum: variant_to_enum, name: n) {
+      } else if is_known_variant(variant_to_enum: emit_info.variant_to_enum, name: n) {
         import_module_enums |> any(e => e == n)
       } else if imported_name_is_non_emittable_type(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
         false
@@ -6907,7 +6907,7 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
     let non_variant_top = top_level |> filter(n =>
       if import_variant_parent_for_name(n: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index, imported_enums: imported_enums, import_module_enums: import_module_enums, variant_to_enum: emit_info.variant_to_enum) != "" {
         false
-      } else if is_known_variant(variant_to_enum: variant_to_enum, name: n)
+      } else if is_known_variant(variant_to_enum: emit_info.variant_to_enum, name: n)
         && authored_import_binds_provider_declaration(name: n, import_module: import_module, module_env: module_env, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) == false {
         import_module_enums |> any(e => e == n)
       } else { true }
