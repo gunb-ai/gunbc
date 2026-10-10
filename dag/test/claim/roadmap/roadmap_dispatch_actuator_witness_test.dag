@@ -64,9 +64,6 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_supervisor_unit_command,
   dispatch_attempt_audit_events_path_for_instance,
   dispatch_attempt_supervisor_events_path_for_instance,
-  dispatch_attempt_events_path_for_instance,
-  dispatch_attempt_worker_log_path_for_instance,
-  dispatch_attempt_unit_name,
   attempt_state_prepare_argv_for_instance,
   dispatch_reviewer_attempt_identity,
   dispatch_attempt_publication_dir_for_instance,
@@ -113,9 +110,6 @@ import gunbc.roadmap_dispatch_actuator {
   HostExecArgv,
   SystemdUnitContainer,
   TmuxSessionContainer,
-  dispatch_session_container_for_provider,
-  DispatchSessionContainerReady,
-  DispatchSessionContainerUnavailable,
   DispatchSpawnReady,
   DispatchSpawnRefused,
   git_worktree_add_argv,
@@ -310,13 +304,13 @@ test fn witness_claude_argv_uses_dangerous_skip_permissions() -> Bool {
   let argv = claude_spawn_argv(
     effort: ReasoningHigh,
     model: ProviderAccountDefaultModel,
+    session_uuid: "uuid-1",
+    node_id: roadmap_dispatch_actuator_nid(s: "node-1"),
     brief: "brief body",
   )
   string_contains(s: join(argv, separator: "\0"), pattern: "--dangerously-skip-permissions")
-    && string_contains(s: join(argv, separator: "\0"), pattern: "-p")
-    && string_contains(s: join(argv, separator: "\0"), pattern: "stream-json")
-    && string_contains(s: join(argv, separator: "\0"), pattern: "--effort")
-    && !string_contains(s: join(argv, separator: "\0"), pattern: "--session-id")
+    && string_contains(s: join(argv, separator: "\0"), pattern: "skipDangerousModePermissionPrompt")
+    && string_contains(s: join(argv, separator: "\0"), pattern: "--session-id")
     && !string_contains(s: join(argv, separator: "\0"), pattern: "--resume")
 }
 
@@ -334,6 +328,8 @@ test fn witness_tmux_spawn_argv_threads_claude_argv() -> Bool {
   let claude = claude_spawn_argv(
     effort: ReasoningMedium,
     model: ProviderAccountDefaultModel,
+    session_uuid: "uuid-2",
+    node_id: roadmap_dispatch_actuator_nid(s: "node-2"),
     brief: "brief",
   )
   let cmd = tmux_spawn_argv(
@@ -929,6 +925,8 @@ test fn witness_claude_invoke_permission_args_are_gunbc_policy() -> Bool {
   let argv = claude_spawn_argv(
     effort: ReasoningHigh,
     model: ProviderAccountDefaultModel,
+    session_uuid: "uuid-policy",
+    node_id: roadmap_dispatch_actuator_nid(s: "node-policy"),
     brief: "brief",
   )
   string_contains(s: join(argv, separator: "\0"), pattern: "--dangerously-skip-permissions")
@@ -1076,6 +1074,8 @@ test fn witness_pinned_model_reaches_claude_argv() -> Bool {
   let argv = claude_spawn_argv(
     effort: ReasoningHigh,
     model: ProviderModelPinned { model: witness_pinned_dispatch_model },
+    session_uuid: "uuid-pin",
+    node_id: roadmap_dispatch_actuator_nid(s: "node-pin"),
     brief: "brief",
   )
   string_contains(
@@ -1088,6 +1088,8 @@ test fn witness_claude_account_default_passes_no_model_flag() -> Bool {
   let argv = claude_spawn_argv(
     effort: ReasoningHigh,
     model: ProviderAccountDefaultModel,
+    session_uuid: "uuid-default",
+    node_id: roadmap_dispatch_actuator_nid(s: "node-default"),
     brief: "brief",
   )
   !string_contains(s: join(argv, separator: "\0"), pattern: "--model")
@@ -1514,68 +1516,5 @@ test fn witness_supervisor_launch_writes_the_events_path_metering_reads() -> Boo
           "",
         ),
       )
-  }
-}
-
-test fn witness_headless_claude_uses_a_transient_unit_with_stream_json_on_the_events_path() -> Bool {
-  let instance = srv1_live_dashboard_instance()
-  let node_id = "claude-headless"
-  let attempt_key = "feedfacefeedface"
-  let events = dispatch_attempt_events_path_for_instance(
-    instance: instance,
-    node_id: roadmap_dispatch_actuator_nid(s: node_id),
-    attempt_key: attempt_key,
-  )
-  let log = dispatch_attempt_worker_log_path_for_instance(
-    instance: instance,
-    node_id: roadmap_dispatch_actuator_nid(s: node_id),
-    attempt_key: attempt_key,
-  )
-  match dispatch_session_container_for_provider(
-    provider: ClaudeCodeProvider,
-    instance: instance,
-    node_id: node_id,
-    attempt_key: attempt_key,
-    session_name: "unused",
-    events_path: events,
-    worker_log_path: log,
-    pane_working_directory: "/wt",
-    worktree_path: "/wt",
-    provider_inner: ["claude", "-p"],
-  ) {
-    DispatchSessionContainerUnavailable { step: _, detail: _ } => false
-    DispatchSessionContainerReady { container } =>
-      match container {
-        TmuxSessionContainer { spawn: _, default_shell: _, remain_on_exit: _, event_pipe: _, provider_start: _ } => false
-        SystemdUnitContainer { plan } =>
-          plan.unit == dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key)
-            && plan.working_directory == "/wt"
-            && plan.stdout_path == events
-            && plan.stderr_path == log
-      }
-  }
-}
-
-// review 78389. The spawn fold used to emit the tmux tee/pipe payload before choosing a container, so
-// a Claude (systemd stdout) refusal was named tmux-event-pipe-emit. Pipe emission now lives only on
-// the tmux container arm; this spawn is the real producer, and a pipe-step refusal here is the defect.
-test fn witness_headless_claude_spawn_does_not_refuse_as_tmux_event_pipe() -> Bool {
-  match dispatch_spawn_commands_for_resolved_instance(
-    instance: srv1_live_dashboard_instance(),
-    node: sized_derivable(id: "claude-headless-spawn", prs: [], title: "Headless Claude spawn"),
-    session_uuid: "00000000-0000-4000-8000-000000000005",
-    attempt_key: "feedfacefeedface",
-    provider: ClaudeCodeProvider,
-    effort: ReasoningMedium,
-    model: ProviderAccountDefaultModel,
-    origin: FreshFromBase,
-    resolution: fixture_ready_resolution(node_id: "claude-headless-spawn", project_ids: []),
-  ) {
-    DispatchSpawnRefused { step, detail: _ } => (step as String) != "tmux-event-pipe-emit"
-    DispatchSpawnReady { commands } =>
-      match commands.session_container {
-        SystemdUnitContainer { plan: _ } => true
-        TmuxSessionContainer { spawn: _, default_shell: _, remain_on_exit: _, event_pipe: _, provider_start: _ } => false
-      }
   }
 }

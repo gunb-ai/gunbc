@@ -9,9 +9,6 @@ import extdeps.llm.claude_code_stream_json {
   ClaudeCodeRateLimitEventLine,
   ClaudeCodeResultLine,
   ClaudeCodeOtherLine,
-  ClaudeCodeSystemLine,
-  ClaudeCodeAssistantLine,
-  ClaudeCodeUserLine,
   ClaudeCodeLineUnreadable,
   ClaudeCodeRateLimitInfo,
   ClaudeCodeRateLimitWindow,
@@ -107,12 +104,6 @@ fn claude_code_trip_reading(stdout: String) -> ClaudeCodeTripReading {
               ClaudeCodeResultLine { result } =>
                 ClaudeTripFold { index: acc.index + 1, reading: ClaudeCodeTripRead { result: Present { value: result }, rate_limit: l } }
               ClaudeCodeOtherLine { event_type: _ } =>
-                ClaudeTripFold { index: acc.index + 1, reading: acc.reading }
-              ClaudeCodeSystemLine =>
-                ClaudeTripFold { index: acc.index + 1, reading: acc.reading }
-              ClaudeCodeAssistantLine { has_tool_use: _ } =>
-                ClaudeTripFold { index: acc.index + 1, reading: acc.reading }
-              ClaudeCodeUserLine { has_tool_result: _ } =>
                 ClaudeTripFold { index: acc.index + 1, reading: acc.reading }
               ClaudeCodeLineUnreadable { gap } =>
                 ClaudeTripFold { index: acc.index + 1, reading: ClaudeCodeTripUnreadable { line_index: acc.index, gap: gap } }

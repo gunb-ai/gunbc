@@ -5,7 +5,6 @@ import extdeps.tools.env { env_path_resolved_program }
 import std.algebra { trim }
 
 import std.types { List, Int, Bool, NonEmptyStr, RenderedTerminalText, Unit }
-import extdeps.llm.claude_code_stream_json { claude_code_stream_json_print_args }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.json.grammar {
@@ -202,61 +201,6 @@ fn claude_model_args(selection: ProviderModelSelection) -> List<String> {
   }
 }
 
-// HEADLESS PRINT ARGV. Interactive `claude` (shape_claude_invoke_argv) is a session in a terminal:
-// it takes --session-id, --settings, --effort and a node name. Automation is a different surface of
-// the same binary: `claude -p --output-format stream-json --verbose` writes one JSON object per
-// stdout line (extdeps.llm.claude_code_stream_json). The Agent SDK's query() spawns that same
-// process; this row is that execution without a Node runtime. --verbose is required by the CLI for
-// stream-json under -p. Turn bound is a coproduct so "no --max-turns" cannot be confused with a
-// sentinel count. Permission flags and the start prompt stay caller-supplied: skip-permissions is
-// gunbc policy (dispatch_claude_permission_args), not an upstream default.
-
-type ClaudePrintTurnBound
-  = ClaudePrintUnboundedTurns
-  | ClaudePrintMaxTurns { turns: Int }
-
-data claude_cli_max_turns_flag: String = "--max-turns"
-
-data claude_cli_append_system_prompt_flag: String = "--append-system-prompt"
-
-data claude_cli_effort_flag: String = "--effort"
-
-fn claude_print_max_turns_args(bound: ClaudePrintTurnBound) -> List<String> {
-  match bound {
-    ClaudePrintUnboundedTurns => []
-    ClaudePrintMaxTurns { turns } => [claude_cli_max_turns_flag, to_string(turns)]
-  }
-}
-
-fn shape_claude_print_argv(
-  append_system_prompt: String,
-  start_prompt: String,
-  permission_args: List<String>,
-  model: ProviderModelSelection,
-  effort: ReasoningEffort,
-  turn_bound: ClaudePrintTurnBound,
-) -> List<String> {
-  concat(
-    [claude_cli_program],
-    concat(
-      claude_code_stream_json_print_args,
-      concat(
-        claude_print_max_turns_args(bound: turn_bound),
-        concat(
-          [claude_cli_effort_flag, reasoning_effort_label(effort: effort)],
-          concat(
-            [claude_cli_append_system_prompt_flag, append_system_prompt],
-            concat(
-              claude_model_args(selection: model),
-              concat(permission_args, [start_prompt]),
-            ),
-          ),
-        ),
-      ),
-    ),
-  )
-}
-
 fn codex_model_args(selection: ProviderModelSelection) -> List<String> {
   match selection {
     ProviderAccountDefaultModel => []
@@ -282,7 +226,7 @@ fn shape_claude_invoke_argv(
       claude_model_args(selection: model),
       [
         "--settings", settings_json,
-        claude_cli_effort_flag, reasoning_effort_label(effort: effort),
+        "--effort", reasoning_effort_label(effort: effort),
         "--session-id", session_id,
         "-n", node_id,
         "--append-system-prompt", append_system_prompt,

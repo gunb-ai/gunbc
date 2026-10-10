@@ -76,11 +76,6 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 data claude_code_stream_event_type_result: String = "result"
-data claude_code_stream_event_type_system: String = "system"
-data claude_code_stream_event_type_assistant: String = "assistant"
-data claude_code_stream_event_type_user: String = "user"
-data claude_code_content_block_type_tool_use: String = "tool_use"
-data claude_code_content_block_type_tool_result: String = "tool_result"
 data claude_code_rate_limit_status_rejected: String = "rejected"
 
 // The argv words that make the CLI write this wire. --verbose is required by the CLI for
@@ -117,9 +112,6 @@ type ClaudeCodeStreamLineGap
 type ClaudeCodeStreamLine
   = ClaudeCodeRateLimitEventLine { info: ClaudeCodeRateLimitInfo }
   | ClaudeCodeResultLine { result: ClaudeCodeTurnResult }
-  | ClaudeCodeSystemLine
-  | ClaudeCodeAssistantLine { has_tool_use: Bool }
-  | ClaudeCodeUserLine { has_tool_result: Bool }
   | ClaudeCodeOtherLine { event_type: String }
   | ClaudeCodeLineUnreadable { gap: ClaudeCodeStreamLineGap }
 
@@ -433,40 +425,6 @@ fn claude_result_line(doc: JsonValue) -> ClaudeCodeStreamLine {
   }
 }
 
-fn claude_content_blocks_have_type(content: JsonValue, block_type: String) -> Bool {
-  match content {
-    JsonArray { elements } =>
-      any(elements, e =>
-        match claude_string_member(v: e, key: "type") {
-          StringMemberRead { value: s } => s == block_type
-          StringMemberNull => false
-          StringMemberAbsent => false
-          StringMemberMalformed => false
-        }
-      )
-    JsonNull => false
-    JsonBool { value: _ } => false
-    JsonNumber { lexeme: _ } => false
-    JsonString { value: _ } => false
-    JsonObject { members: _ } => false
-  }
-}
-
-fn claude_message_content_has_type(doc: JsonValue, block_type: String) -> Bool {
-  match json_object_unique_member(v: doc, key: "message") {
-    JsonMemberFound { value: msg } =>
-      match json_object_unique_member(v: msg, key: "content") {
-        JsonMemberFound { value: content } => claude_content_blocks_have_type(content: content, block_type: block_type)
-        JsonMemberAbsent => false
-        JsonMemberDuplicated { count: _ } => false
-        JsonMemberNotAnObject => false
-      }
-    JsonMemberAbsent => false
-    JsonMemberDuplicated { count: _ } => false
-    JsonMemberNotAnObject => false
-  }
-}
-
 fn claude_code_stream_line(line: String) -> ClaudeCodeStreamLine {
   match parse_json_document(s: line) {
     JsonDocumentUnreadable { gap: _ } => ClaudeCodeLineUnreadable { gap: StreamLineNotJson }
@@ -484,23 +442,7 @@ fn claude_code_stream_line(line: String) -> ClaudeCodeStreamLine {
             if t == claude_code_stream_event_type_result {
               claude_result_line(doc: doc)
             } else {
-              if t == claude_code_stream_event_type_system {
-                ClaudeCodeSystemLine
-              } else {
-                if t == claude_code_stream_event_type_assistant {
-                  ClaudeCodeAssistantLine {
-                    has_tool_use: claude_message_content_has_type(doc: doc, block_type: claude_code_content_block_type_tool_use),
-                  }
-                } else {
-                  if t == claude_code_stream_event_type_user {
-                    ClaudeCodeUserLine {
-                      has_tool_result: claude_message_content_has_type(doc: doc, block_type: claude_code_content_block_type_tool_result),
-                    }
-                  } else {
-                    ClaudeCodeOtherLine { event_type: t }
-                  }
-                }
-              }
+              ClaudeCodeOtherLine { event_type: t }
             }
           }
         StringMemberNull => ClaudeCodeLineUnreadable { gap: StreamLineMemberMissing { member: "type" } }
