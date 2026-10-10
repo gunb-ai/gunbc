@@ -1,26 +1,10 @@
-# self-host step memory receipt. bucket lines: seed under GUNBC_MEMORY_COMPOSITION=1 (srv1, d0f2067f8b1, 22G scope, composition run);
-# inferred lines: two-closure regression over the self-host and v2-native-cli cold runs; sampler/phase lines: 1 s beat sampler cut at the step's log seams.
-bucket	pool_content_tokens_newline	4644225024
-bucket	pool_heads	536272896
-bucket	resolve_index	1822863360
-bucket	module_graph_facts_and_path_index	27197440
-inferred	reconcile_closure_independent	5390000000
-inferred	reconcile_closure_proportional	1880000000
-sampler	rustc_rss_sum	6300000000
-sampler	product_controls	20000000
-phase	self-host	pre_entry_pool_and_census	7120000000	0	7120000000
-phase	self-host	compile.frontend_normalize	7890000000	0	7890000000
-phase	self-host	compile.reconcile	14360000000	0	14370000000
-phase	self-host	compile.analyses	14370000000	0	14380000000
-phase	self-host	compile.emit	14370000000	0	14390000000
-phase	self-host	cargo_build_baseline	7080000000	6330000000	13760000000
-phase	self-host	discriminating_red_rebuild	7130000000	6320000000	14040000000
-phase	self-host	controls	7130000000	0	7840000000
-phase	v2-native-cli	pre_entry_pool_and_census	7120000000	0	7120000000
-phase	v2-native-cli	compile.frontend_normalize	7820000000	0	7820000000
-phase	v2-native-cli	compile.reconcile	14190000000	0	14200000000
-phase	v2-native-cli	compile.analyses	14210000000	0	14220000000
-phase	v2-native-cli	compile.emit	14210000000	0	14230000000
-phase	v2-native-cli	cargo_build_baseline	7100000000	5120000000	12550000000
-phase	v2-native-cli	discriminating_red_rebuild	7130000000	5310000000	12950000000
-phase	v2-native-cli	controls	7130000000	0	7780000000
+stage	compile_emission_over.pre_resolve	7120322560	7117250560
+stage	compile_emission_over.post_resolve	14367059968	14361034752
+stage	compile_emission_over.post_emit	14370271232	14363131904
+bucket	resolve_store	0
+bucket	resolve_index	1821364224
+bucket	scope_and_reference_indexes	12288
+bucket	module_graph_facts_and_path_index	27049984
+bucket	emit_check_and_census_memos	0
+bucket	pool_heads	537296896
+bucket	pool_content_tokens_newline	4644466688

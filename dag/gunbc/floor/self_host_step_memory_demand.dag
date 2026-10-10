@@ -1,6 +1,8 @@
 module gunbc.self_host_step_memory_demand
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size, measure_add, measure_le }
 import std.algebra { trim }
 import std.optional { Optional, Present, Absent }
 import std.disposition { ConstructionMechanism, SingleAuthority }
@@ -60,6 +62,9 @@ type StepMemoryStructure {
 }
 
 data self_host_step_memory_structures: List<StepMemoryStructure> = [
+  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "resolve_store", structure: "shared resolve store (entry_resolve PROCESS_RESOLVE_STORE)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, live_during_cargo: true, ender: ClosureScopedIngestion },
+  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "scope_and_reference_indexes", structure: "scope fragment, reference closure, scope order and reference edge caches (cli_run)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, live_during_cargo: true, ender: ClosureScopedIngestion },
+  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "emit_check_and_census_memos", structure: "emit-check and diagnostic census memos (cli_run)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, live_during_cargo: true, ender: ClosureScopedIngestion },
   StepMemoryStructure { receipt_kind: "bucket", receipt_name: "pool_content_tokens_newline", structure: "whole-tree token pool: V1LexArtifact + content + newline index of every pooled module (pool_acquire POOL)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, live_during_cargo: true, ender: ClosureScopedIngestion },
   StepMemoryStructure { receipt_kind: "bucket", receipt_name: "pool_heads", structure: "whole-tree parsed heads (pool_acquire Acquired.heads)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, live_during_cargo: true, ender: ClosureScopedIngestion },
   StepMemoryStructure { receipt_kind: "bucket", receipt_name: "resolve_index", structure: "shared resolve index / name census (entry_resolve PROCESS_RESOLVE_INDEX)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, live_during_cargo: true, ender: ClosureScopedIngestion },
@@ -77,11 +82,11 @@ fn receipt_column(cols: List<String>, index: Int) -> String {
   }
 }
 
-fn receipt_digit_value(c: String) -> Int {
+fn receipt_digit_value(c: String) -> Nat {
   if c == "0" { 0 } else if c == "1" { 1 } else if c == "2" { 2 } else if c == "3" { 3 } else if c == "4" { 4 } else if c == "5" { 5 } else if c == "6" { 6 } else if c == "7" { 7 } else if c == "8" { 8 } else { 9 }
 }
 
-fn receipt_decimal_from(t: String, i: Int, acc: Int) -> Int {
+fn receipt_decimal_from(t: String, i: Int, acc: Nat) -> Nat {
   if i >= string_length(s: t) { acc } else { receipt_decimal_from(t: t, i: i + 1, acc: acc * 10 + receipt_digit_value(c: char_at(s: t, pos: i))) }
 }
 
@@ -97,42 +102,57 @@ fn receipt_rows(text: String) -> List<List<String>> {
   map(filter(split(s: text, delimiter: "\n"), l => l != "" && char_at(s: l, pos: 0) != "#"), l => split(s: l, delimiter: "\t"))
 }
 
-// The bytes the receipt holds for one structure, or -1 when the receipt has no, an ill-formed, or a
-// duplicated line for it: the readout refuses on -1 and never reads it as zero.
-fn receipt_structure_bytes(rows: List<List<String>>, s: StepMemoryStructure) -> Int {
-  let found = filter(rows, r => receipt_column(cols: r, index: 0) == (s.receipt_kind as String) && receipt_column(cols: r, index: 1) == (s.receipt_name as String))
-  if length(xs: found) != 1 { -1 } else {
+// A reading the receipt may not hold: Absent is the refusal case (no, an ill-formed, or a duplicated
+// line), never a number. Every sum below goes through it and so stays Absent if any term is.
+fn bytes_none() -> Optional<ByteSize> {
+  Absent
+}
+
+fn bytes_some(b: ByteSize) -> Optional<ByteSize> {
+  Present { value: b }
+}
+
+fn receipt_bytes_at(rows: List<List<String>>, kind: String, name: String) -> Optional<ByteSize> {
+  let found = filter(rows, r => receipt_column(cols: r, index: 0) == kind && receipt_column(cols: r, index: 1) == name)
+  if length(xs: found) != 1 { bytes_none() } else {
     match found.first() {
       Present { value: r } =>
-        if receipt_is_decimal(t: receipt_column(cols: r, index: 2)) { receipt_decimal_from(t: receipt_column(cols: r, index: 2), i: 0, acc: 0) } else { -1 }
-      Absent => -1
+        if receipt_is_decimal(t: receipt_column(cols: r, index: 2)) { bytes_some(b: byte_size(count: receipt_decimal_from(t: receipt_column(cols: r, index: 2), i: 0, acc: 0))) } else { bytes_none() }
+      Absent => bytes_none()
     }
   }
 }
 
-// The seed's resident set at one named seam of the same run, or -1 when absent or ill-formed.
-fn receipt_stage_rss(rows: List<List<String>>, stage: String) -> Int {
-  let found = filter(rows, r => receipt_column(cols: r, index: 0) == "stage" && receipt_column(cols: r, index: 1) == stage)
-  if length(xs: found) != 1 { -1 } else {
-    match found.first() {
-      Present { value: r } =>
-        if receipt_is_decimal(t: receipt_column(cols: r, index: 2)) { receipt_decimal_from(t: receipt_column(cols: r, index: 2), i: 0, acc: 0) } else { -1 }
-      Absent => -1
-    }
-  }
+fn receipt_structure_bytes(rows: List<List<String>>, s: StepMemoryStructure) -> Optional<ByteSize> {
+  receipt_bytes_at(rows: rows, kind: s.receipt_kind as String, name: s.receipt_name as String)
+}
+
+// The seed's resident set at one named seam of the same run.
+fn receipt_stage_rss(rows: List<List<String>>, stage: String) -> Optional<ByteSize> {
+  receipt_bytes_at(rows: rows, kind: "stage", name: stage)
 }
 
 fn step_structures_unreadable(rows: List<List<String>>) -> List<StepMemoryStructure> {
-  filter(self_host_step_memory_structures, s => receipt_structure_bytes(rows: rows, s: s) < 0)
+  filter(self_host_step_memory_structures, s => match receipt_structure_bytes(rows: rows, s: s) { Present { value: _ } => false  Absent => true })
+}
+
+fn step_structure_sum(rows: List<List<String>>, chosen: List<StepMemoryStructure>) -> Optional<ByteSize> {
+  fold(chosen, init: bytes_some(b: byte_size(count: 0)), f: (acc, s) => match acc {
+    Absent => bytes_none()
+    Present { value: a } => match receipt_structure_bytes(rows: rows, s: s) {
+      Absent => bytes_none()
+      Present { value: b } => bytes_some(b: measure_add(a: a, b: b))
+    }
+  })
 }
 
 // WHAT SCALES WITH THE CORPUS, and what is live at the seed's moment, summed from the receipt.
-fn step_whole_tree_bytes(rows: List<List<String>>) -> Int {
-  fold(filter(self_host_step_memory_structures, s => match s.scale { WholeTree => true  EntryClosure => false  EmittedCrate => false  Fixed => false }), init: 0, f: (acc, s) => acc + receipt_structure_bytes(rows: rows, s: s))
+fn step_whole_tree_bytes(rows: List<List<String>>) -> Optional<ByteSize> {
+  step_structure_sum(rows: rows, chosen: filter(self_host_step_memory_structures, s => match s.scale { WholeTree => true  EntryClosure => false  EmittedCrate => false  Fixed => false }))
 }
 
-fn step_seed_moment_bytes(rows: List<List<String>>) -> Int {
-  fold(filter(self_host_step_memory_structures, s => s.live_at_seed_peak), init: 0, f: (acc, s) => acc + receipt_structure_bytes(rows: rows, s: s))
+fn step_seed_moment_bytes(rows: List<List<String>>) -> Optional<ByteSize> {
+  step_structure_sum(rows: rows, chosen: filter(self_host_step_memory_structures, s => s.live_at_seed_peak))
 }
 
 // ── THE TREND, AS A ROW ─────────────────────────────────────────────────────────────────────────
@@ -201,10 +221,21 @@ data self_host_step_demand_trend: List<StepDemandTrend> = [
 // and the note of gunbc.runner_slot_desired, which take this readout as the carrier of the per-step
 // memory figure. Trigger: those modules import it, on a base that carries them.
 
+// A trend row must exist for every classified structure's ender and scale (NeverEnds excepted): the
+// classification and the trend are one claim about what ends each structure, so a structure whose
+// ender no row speaks to is refused rather than left classified-but-unexplained.
+fn structure_has_trend_row(s: StepMemoryStructure) -> Bool {
+  match s.ender {
+    NeverEnds => true
+    _ => any(self_host_step_demand_trend, t => t.change == s.ender && t.removes_scale == s.scale)
+  }
+}
+
 // THE READOUT. Reads the receipt the instrument wrote and refuses unless every classified structure
-// has exactly one well-formed line and the structures live at the seed's moment fit inside the
-// seed's own resident-set reading at the post-emission seam of the same run. The oracle is a plain
-// resident-set read, a different reading from the trim that produced the bucket lines.
+// has exactly one well-formed line, every structure has a trend row, the structures live at the
+// seed's moment fit inside the seed's own resident set at the post-emission seam of the same run
+// (a plain resident-set read, a different reading from the trim that produced the buckets), and the
+// tree-scale subset is no larger than that sum.
 fn self_host_step_memory_readout() -> ProcessExit {
   let read = Filesystem.Read(path: self_host_step_memory_receipt_path as String)
   match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
@@ -216,14 +247,27 @@ fn self_host_step_memory_readout() -> ProcessExit {
 fn self_host_step_memory_readout_over(rows: List<List<String>>) -> ProcessExit {
   if length(xs: step_structures_unreadable(rows: rows)) > 0 {
     exit_failure(reason: "the receipt lacks exactly one well-formed line for a classified structure")
+  } else if length(xs: filter(self_host_step_memory_structures, s => !structure_has_trend_row(s: s))) > 0 {
+    exit_failure(reason: "a classified structure has no trend row for its ender and scale")
   } else {
-    let reading = receipt_stage_rss(rows: rows, stage: "compile_emission_over.post_emit")
-    if reading < 0 {
-      exit_failure(reason: "the receipt has no post-emission stage line")
-    } else if step_seed_moment_bytes(rows: rows) > reading + reading / 20 {
-      exit_failure(reason: "the structures live at the seed's moment exceed the seed's own resident set at that seam")
-    } else {
-      ExitSuccess
+    match receipt_stage_rss(rows: rows, stage: "compile_emission_over.post_emit") {
+      Absent => exit_failure(reason: "the receipt has no post-emission stage line")
+      Present { value: resident } =>
+        match step_seed_moment_bytes(rows: rows) {
+          Absent => exit_failure(reason: "the structures live at the seed's moment are not all readable")
+          Present { value: moment } =>
+            match step_whole_tree_bytes(rows: rows) {
+              Absent => exit_failure(reason: "the tree-scale structures are not all readable")
+              Present { value: tree } =>
+                if !measure_le(a: moment, b: measure_add(a: resident, b: byte_size(count: resident.count / 20))) {
+                  exit_failure(reason: "the structures live at the seed's moment exceed the seed's own resident set at that seam")
+                } else if !measure_le(a: tree, b: moment) {
+                  exit_failure(reason: "the tree-scale structures exceed the sum live at the seed's moment")
+                } else {
+                  ExitSuccess
+                }
+            }
+        }
     }
   }
 }
