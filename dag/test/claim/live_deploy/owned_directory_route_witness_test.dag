@@ -1,0 +1,214 @@
+module test.claim.live_deploy.owned_directory_route_witness_test
+
+import std.types { Bool, String, NonEmptyStr, FilePath, List }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands }
+import gunbc.live_deploy.emit { owned_directory_apply_steps }
+import gunbc.live_deploy.member_identity {
+  DirectoryRoot, converged_member_eq, converged_effect_plan, derive_member_plan, RootAt, DirectoryRootIdentity, RootConverged,
+  directory_root_standing_wire, ObservedMember, MemberObserved, MemberUnobservable, EffectsDerived, EffectsRefused, plan_mutation_count,
+}
+import gunbc.live_deploy.member_observe { deployment_member_roster, owned_directory_member_of_decision }
+import gunbc.fabric_storage_placement { fabric_storage_directory_demands }
+import gunbc.runner_host_grants { runner_host_privileged_operations }
+import gunbc.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound }
+import gunbc.fleet_host_identity { operator_host_srv1 }
+import gunbc.executor_privileged_operation { ReadDirectoryIdentity, ListDirectoryEntries }
+import extdeps.access.posix { file_mode_octal }
+import std.optional { Present, Absent }
+import gunbc.owned_directory {
+  OwnedDirectoryTarget, owned_directory_path, owned_directory_mode, owned_directory_owner, OwnedDirectoryModeResolved, OwnedDirectoryModeRefused,
+  owned_directory_observe, owned_directory_parent, owned_directory_basename, ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverExited,
+}
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv1_lab_dashboard_instance }
+import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance, roadmap_event_carrier_directory }
+import gunbc.auth.login_transaction_store { login_transaction_store_layout_for_instance, login_transaction_store_directory }
+import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_target, deploy_witness_spec_with_only_directory }
+
+// THE ROUTE, NOT ONLY THE ANSWER. For a consumer the production route used to leave without a creator,
+// each claim joins four facts on srv1_live: the path the consumer WRITES (its runtime layout) is its
+// declared demand's path; that demand is in the live_deploy srv1 transaction's directory list; the
+// transaction's emitter RENDERS the provider's install text for it (owned_directory_apply_steps over
+// a plan that makes no claim about it); and it is ENROLLED in the roster the post-apply readback
+// re-derives over. Enrolment is membership, not an execution of the readback; the protected-tree
+// claims below execute the observation projection and the plan derivation. RED CONTROL: deleting the
+// consumer's row from
+// gunbc.roadmap.dashboard_instance_directories dashboard_instance_directory_demands removes the path
+// from deployment_directory_demands, so the membership, the roster member and the emitted install all
+// go false through the live_deploy route; pointing the layout anywhere but the demand reds the first
+// equality. The keep plan emitting nothing is the inhabited negative: emission follows the decision.
+
+fn demands_contain(spec: DeploymentSpec, path: String) -> Bool {
+  any(deployment_directory_demands(spec: spec), t => (owned_directory_path(t: t) as String) == path)
+}
+
+fn roster_enrols_it_for_readback(spec: DeploymentSpec, path: String) -> Bool {
+  any(deployment_member_roster(spec: spec), m => converged_member_eq(a: m, b: DirectoryRoot { path: path as NonEmptyStr }))
+}
+
+fn emitter_renders_its_install_text(spec: DeploymentSpec, path: String) -> Bool {
+  string_contains(
+    s: pipeline_steps_text(steps: owned_directory_apply_steps(spec: deploy_witness_spec_with_only_directory(spec: spec, path: path), plan: converged_effect_plan(roster: [], target: deploy_witness_release_target(spec: spec)))),
+    pattern: path,
+  )
+}
+
+fn routed(spec: DeploymentSpec, written: String, demanded: String) -> Bool {
+  written == demanded
+    && demands_contain(spec: spec, path: demanded)
+    && roster_enrols_it_for_readback(spec: spec, path: demanded)
+    && emitter_renders_its_install_text(spec: spec, path: demanded)
+}
+
+test fn the_event_carrier_worktree_is_demanded_enrolled_and_rendered_by_the_srv1_transaction() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  routed(
+    spec: deployment_spec_srv1(),
+    written: roadmap_event_carrier_layout_for_instance(instance: live).worktree as String,
+    demanded: owned_directory_path(t: roadmap_event_carrier_directory(instance: live)) as String,
+  )
+}
+
+test fn the_login_transaction_store_is_demanded_enrolled_and_rendered_by_the_srv1_transaction() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  routed(
+    spec: deployment_spec_srv1(),
+    written: login_transaction_store_layout_for_instance(instance: live).root as String,
+    demanded: owned_directory_path(t: login_transaction_store_directory(instance: live)) as String,
+  )
+}
+
+// THE DEMAND IS THE INSTANCE'S: the lab's carrier worktree is not in production's transaction.
+test fn another_instances_demand_is_not_in_the_srv1_transaction() -> Bool {
+  !demands_contain(
+    spec: deployment_spec_srv1(),
+    path: owned_directory_path(t: roadmap_event_carrier_directory(instance: srv1_lab_dashboard_instance())) as String,
+  )
+}
+
+// A CONVERGED PLAN INSTALLS NO DIRECTORY: the emission is the decision's, not unconditional.
+test fn a_converged_plan_emits_no_directory_install() -> Bool {
+  let spec = deployment_spec_srv1()
+  pipeline_steps_text(steps: owned_directory_apply_steps(
+    spec: spec,
+    plan: converged_effect_plan(roster: deployment_member_roster(spec: spec), target: deploy_witness_release_target(spec: spec)),
+  )) == ""
+}
+
+// ── P1 CONTROL: A PROTECTED FABRIC TREE IS CONVERGED THROUGH THE DEPLOY PRINCIPAL'S PINNED READS ─────
+//
+// The fabric store's root admits only its owner, so its children are invisible to the job user's own
+// listing and stat. The deploy observes through two pinned read-only grants per bound directory
+// (gunbc.executor_privileged_operation ListDirectoryEntries, ReadDirectoryIdentity), which see the tree
+// as it is. These claims supply exactly those reads -- each parent listing naming its child, and the
+// line stat prints for each directory at its REAL derived owner, group and mode -- to the production
+// observation contract (gunbc.owned_directory owned_directory_observe), the production projection
+// (owned_directory_member_of_decision) and the production plan derivation, and require: every member
+// converged, a plan that keeps them all, and a second deployment that emits no install. RED: the same
+// child read the way the unprivileged job user reads it (its parent's listing refused) is unobservable.
+fn derived_stat_line(t: OwnedDirectoryTarget) -> String {
+  match owned_directory_mode(t: t) {
+    OwnedDirectoryModeRefused { reason: _ } => ""
+    OwnedDirectoryModeResolved { mode } =>
+      join(["directory|", owned_directory_owner(t: t).user as String, "|", owned_directory_owner(t: t).group as String, "|", file_mode_octal(mode: mode)], "")
+  }
+}
+
+fn fabric_tree() -> List<OwnedDirectoryTarget> {
+  fabric_storage_directory_demands(instance: srv1_live_dashboard_instance())
+}
+
+// The privileged reads of a host holding exactly the fabric tree at its derived identities: a listing
+// of a directory names the tree's children of it; a stat of a tree member prints its identity line.
+fn privileged_listing_of_the_tree(dir: FilePath) -> ObserverRead {
+  ObserverReadOut {
+    stdout: join(map(filter(xs: fabric_tree(), predicate: t => (owned_directory_parent(path: owned_directory_path(t: t)) as String) == (dir as String)), t => owned_directory_basename(path: owned_directory_path(t: t))), "\n"),
+  }
+}
+
+fn privileged_stat_of_the_tree(path: FilePath) -> ObserverRead {
+  match first(filter(xs: fabric_tree(), predicate: t => (owned_directory_path(t: t) as String) == (path as String))) {
+    Present { value: t } => ObserverReadOut { stdout: derived_stat_line(t: t) }
+    Absent => ObserverReadFailed { origin: ObserverExited { exit_code: 1, stderr: "not in the tree" } }
+  }
+}
+
+fn fabric_member_as_privileged_reads_see_it(t: OwnedDirectoryTarget) -> ObservedMember {
+  let path = owned_directory_path(t: t) as String as NonEmptyStr
+  owned_directory_member_of_decision(
+    member: DirectoryRoot { path: path },
+    path: path,
+    target: t,
+    observation: owned_directory_observe(path: owned_directory_path(t: t), list: d => privileged_listing_of_the_tree(dir: d), stat: p => privileged_stat_of_the_tree(path: p)),
+  )
+}
+
+test fn a_protected_fabric_tree_is_converged_and_a_second_deployment_installs_nothing() -> Bool {
+  let spec = deployment_spec_srv1()
+  let tree = fabric_tree()
+  let roster = map(tree, t => DirectoryRoot { path: owned_directory_path(t: t) as String as NonEmptyStr })
+  let protected_root = any(tree, t => match owned_directory_mode(t: t) {
+    OwnedDirectoryModeResolved { mode } => !mode.other.execute && !mode.group.read
+    OwnedDirectoryModeRefused { reason: _ } => false
+  })
+  let derivation = derive_member_plan(
+    roster: roster,
+    desired: m => match m { DirectoryRoot { path } => RootAt { root: DirectoryRootIdentity { path: path, standing: RootConverged } }  _ => RootAt { root: DirectoryRootIdentity { path: "/" as NonEmptyStr, standing: RootConverged } } },
+    observed: m => match first(filter(xs: tree, predicate: t => converged_member_eq(a: DirectoryRoot { path: owned_directory_path(t: t) as String as NonEmptyStr }, b: m))) {
+      Present { value: t } => fabric_member_as_privileged_reads_see_it(t: t)
+      Absent => MemberUnobservable { member: m, cause: "not a fabric demand" }
+    },
+    target: deploy_witness_release_target(spec: spec),
+  )
+  count(tree) > 0 && protected_root
+    && all(tree, t => match fabric_member_as_privileged_reads_see_it(t: t) {
+      MemberObserved { identity } => match identity { RootAt { root } => directory_root_standing_wire(s: root.standing) == "converged"  _ => false }
+      _ => false
+    })
+    && match derivation {
+      EffectsRefused { refusals: _ } => false
+      EffectsDerived { plan } =>
+        plan_mutation_count(plan: plan) == 0
+          && all(tree, t => pipeline_steps_text(steps: owned_directory_apply_steps(spec: deploy_witness_spec_with_only_directory(spec: spec, path: owned_directory_path(t: t) as String), plan: plan)) == "")
+    }
+}
+
+// RED: the child read as the unprivileged job user reads it -- the owner-only parent's listing refused
+// -- is unobservable, so planning refuses rather than installing over it.
+test fn an_unprivileged_read_of_a_protected_child_refuses_the_derivation() -> Bool {
+  match first(filter(xs: fabric_tree(), predicate: t => string_contains(s: owned_directory_path(t: t) as String, pattern: "/objects"))) {
+    Absent => false
+    Present { value: t } => {
+      let path = owned_directory_path(t: t) as String as NonEmptyStr
+      match owned_directory_member_of_decision(
+        member: DirectoryRoot { path: path },
+        path: path,
+        target: t,
+        observation: owned_directory_observe(
+          path: owned_directory_path(t: t),
+          list: d => ObserverReadFailed { origin: ObserverExited { exit_code: 2, stderr: "" } },
+          stat: p => ObserverReadFailed { origin: ObserverExited { exit_code: 1, stderr: "" } },
+        ),
+      ) {
+        MemberUnobservable { member: _, cause: _ } => true
+        _ => false
+      }
+    }
+  }
+}
+
+// THE PRINCIPAL HOLDS EXACTLY THE READS THE PLAN SPENDS: srv1's runner-host sudoers grants the job
+// user a pinned stat of every demanded directory and a pinned listing of each demanded directory's
+// parent -- read-only operations on named paths, no path-unrestricted grant.
+test fn the_deploy_principal_is_granted_the_pinned_reads_the_plan_observes_through() -> Bool {
+  match runner_host_deploy_for(host: operator_host_srv1) {
+    RunnerHostDeployFound { deploy } => {
+      let ops = runner_host_privileged_operations(deploy: deploy)
+      all(deployment_directory_demands(spec: deployment_spec_srv1()), t =>
+        any(ops, op => match op { ReadDirectoryIdentity { path } => (path as String) == (owned_directory_path(t: t) as String)  _ => false })
+          && any(ops, op => match op { ListDirectoryEntries { path } => (path as String) == (owned_directory_parent(path: owned_directory_path(t: t)) as String)  _ => false }))
+    }
+    _ => false
+  }
+}

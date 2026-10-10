@@ -1,5 +1,7 @@
 module gunbc.fleet_host_identity
 
+import std.types { List, NonEmptyStr, String }
+import v2.std.algebra { filter }
 import product.host_identity { HostIdentity }
 
 // THE FLEET'S HOST IDENTITIES, as a leaf. These rows were authored in gunbc.fleet_intent_network,
@@ -80,3 +82,39 @@ data operator_host_srv11: HostIdentity = "srv11"
 // lease table the day the fabric switch was cabled and landed on switch lane qsfp56-dd-2-3. srv12
 // is its identity slot, assigned by the same ascending-address rule.
 data operator_host_srv12: HostIdentity = "srv12"
+
+// ALTRA-BATCH-1 (operator, 2026-10-07). Four ASRock ALTRAD8UD hosts, not yet racked, named srv13-srv16
+// by the operator. Naming is not enrollment: no address, BMC endpoint, MAC or hardware row exists
+// for them until first contact observes one, and every procedure refuses a host it cannot name a
+// fact for.
+data operator_host_srv13: HostIdentity = "srv13"
+data operator_host_srv14: HostIdentity = "srv14"
+data operator_host_srv15: HostIdentity = "srv15"
+data operator_host_srv16: HostIdentity = "srv16"
+
+// THE NAMED ROSTER, ONE LIST BESIDE THE ROWS. A step subject or other label resolves to a host only
+// by joining this membership; a spelling that is not a row here is not a fleet host.
+data operator_hosts: List<HostIdentity> = [
+  operator_host_srv1,
+  operator_host_srv2,
+  operator_host_srv3,
+  operator_host_srv4,
+  operator_host_mtcollins1,
+  operator_host_mtjade1,
+  operator_host_srv5,
+  operator_host_srv6,
+  operator_host_srv7,
+  operator_host_srv8,
+  operator_host_srv9,
+  operator_host_srv10,
+  operator_host_srv11,
+  operator_host_srv12,
+  operator_host_srv13,
+  operator_host_srv14,
+  operator_host_srv15,
+  operator_host_srv16,
+]
+
+fn operator_host_named(label: NonEmptyStr) -> HostIdentity? {
+  operator_hosts |> filter(h => (h as String) == (label as String)) |> first()
+}

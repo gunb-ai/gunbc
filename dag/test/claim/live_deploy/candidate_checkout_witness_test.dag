@@ -338,12 +338,14 @@ test fn the_appended_dotted_prefixes_still_match_segments_not_character_runs() -
     && path_is_deployed(path: "target-codexish/x")
 }
 
-// THE COMPILER-DERIVED ROSTER IS NOT SHIPPED AND ITS SIBLING ROWS ARE: the exclusion is the exact
-// derived path, so the authored row files beside it stay in the deployed tree.
-test fn the_derived_failure_mode_roster_is_excluded_as_a_file_not_a_prefix() -> Bool {
-  !path_is_deployed(path: "dag/gunbc/recurring_failure_mode/roster.dag")
+// NO DERIVED ROSTER IS EXEMPT FROM ADMISSION. Source acquisition derives both ledger rosters in
+// memory and writes nothing, so a gunbc run cannot dirty the checkout it admits; a physical roster
+// file is a legacy artifact of an older binary, and admission refuses it like any other ignored or
+// untracked path rather than exempting it.
+test fn a_legacy_roster_file_is_not_exempt_from_candidate_admission() -> Bool {
+  path_is_deployed(path: "dag/gunbc/recurring_failure_mode/roster.dag")
+    && path_is_deployed(path: "dag/gunbc/rung_drop/roster.dag")
     && path_is_deployed(path: "dag/gunbc/recurring_failure_mode/empty_capture_read_as_clean_result.dag")
-    && path_is_deployed(path: "dag/gunbc/recurring_failure_mode/roster.dag.bak")
 }
 
 test fn the_derived_rung_drop_roster_is_excluded_as_a_file_not_a_prefix() -> Bool {

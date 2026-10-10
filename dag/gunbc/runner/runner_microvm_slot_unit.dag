@@ -336,6 +336,7 @@ fn microvm_slot_unit_execs_controller(file: SystemdUnitFile) -> Bool {
       })
     TimerUnitFile { unit: _, timer: _, install: _ } => false
     SliceUnitFile { unit: _, slice: _, install: _ } => false
+    PathUnitFile { unit: _, path: _, install: _ } => false
   }
 }
 

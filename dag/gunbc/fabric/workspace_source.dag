@@ -1,12 +1,13 @@
 module gunbc.fabric.workspace_source
 
-import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
+import std.types { String, NonEmptyStr, Int, Bool, List, Map, FilePath }
+import v2.std.collection { empty_map, map_insert, map_lookup, map_contains_key }
 import std.optional { Present, Absent }
 import std.algebra { Cons, Empty }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.measure { ByteSize, byte_size, measure_count, nanosecond, nanosecond_count, ObservationInstant, ProcessMonotonic, WallClock }
 import std.checkpointed_workspace { WorkspaceAgeOf, WorkspaceAgeUndefined, workspace_age_between }
-import std.content_hash { Sha256Digest }
+import std.content_hash { Sha256Digest, sha256_hex_digest }
 import std.fabric_blob {
   FabricBlobAddress, FabricBlobReading, fabric_blob_object_name, fabric_blob_reading_digest, fabric_blob_reading_size,
   FabricBlobRead, FabricBlobReadRefused, read_staged_fabric_blob, fabric_blob_fault_text,
@@ -16,7 +17,9 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import extdeps.shell.exec { ProcessRunOutcome, ProcessRan, ProcessNotSpawned }
 import extdeps.exec.command { CommandTransport, LocalExec }
-import extdeps.tools.tar { tar_create_from_list_command, tar_list_command }
+import extdeps.tools.tar { tar_create_from_two_lists_command, tar_list_command, tar_list_sizes_command, tar_extract_listed_command }
+import extdeps.tools.sha256sum
+import extdeps.crypto.seeded_filler { seeded_filler_write, SeededFillerWritten, SeededFillerRefused, seeded_filler_step_words }
 import gunbc.command_runner { run_shell_command_observe_outcome }
 import gunbc.auth.access_token_source { AccessTokenSource, AccessTokenSourceSelected, AccessTokenSourceUnavailable, select_access_token_source }
 import gunbc.cloudflare.r2_origin { FabricWorkspace }
@@ -33,8 +36,10 @@ import gunbc.host_effect { LocalShell }
 // directory. No session holds a key that reaches both, and none is minted for this: the route is two
 // dispatched jobs through the workspace bucket. This module is the first job. On srv1 it enumerates
 // the source roots as the runner's own principal, drops every path the credential exclusion names
-// and every build output, packs exactly what remains into one tar from that list, reads the tar's
-// membership back and refuses if any member is excluded, and puts the tar into the workspace bucket
+// and every build output, stands a same-size, same-path synthetic placeholder in for every
+// transcript file, packs the real members and the placeholders into one tar, reads the tar's
+// membership and sizes back and refuses if any credential is carried or any transcript member is not
+// its placeholder at its planned size, and puts the tar into the workspace bucket
 // under the SHA-256 of its bytes. The srv3 job is dispatched with that address and fetches it.
 //
 // A ROOT THE RUNNER CANNOT READ REFUSES, NAMING WHAT IS MISSING. The enumeration runs as the job
@@ -53,15 +58,75 @@ type WorkspaceSourceRoot {
 }
 
 // THE SRV1 HOST PATHS, pinned rather than guessed (warm-badger-442, 2026-10-05, read from a session's
-// mountinfo on node srv1). Agent state is per auth slot on the host -- /home/briansrls/.claude@<slot>,
-// mounted at /session-home/.claude inside session containers -- so the slot is part of the declared
-// input: @gmail3 is the slot whose state the 2026-10-02 figures measured. The Codex root is its home
-// directory; its auth file is excluded as a credential and its sessions and history as transcripts.
-data workspace_source_roots: List<WorkspaceSourceRoot> = [
+// mountinfo on node srv1). The clone and the Codex home are fixed; the Codex auth file is excluded as
+// a credential and its sessions and history as transcripts.
+data workspace_source_fixed_roots: List<WorkspaceSourceRoot> = [
   WorkspaceSourceRoot { label: "gunbc-clone", path: "/home/briansrls/gunbc", build_output: ["target/"] },
-  WorkspaceSourceRoot { label: "claude-agent-state-gmail3", path: "/home/briansrls/.claude@gmail3", build_output: [] },
   WorkspaceSourceRoot { label: "codex-state", path: "/home/briansrls/.codex", build_output: [] },
 ]
+
+// ── THE AGENT-STATE ROOT: A DECLARED INPUT, ADMITTED AGAINST WHAT EXISTS (warm-badger-442) ───────
+//
+// Claude agent state lives per auth slot, /home/briansrls/.claude@<slot> (mounted at
+// /session-home/.claude inside session containers), and the operator's credential swaps move WHICH
+// slot is active -- so the slot is not a constant of this module. It is the dispatch input
+// agent_state_slot (environment WORKSPACE_AGENT_STATE_SLOT), and it is admitted only when it names
+// one of the .claude@* directories observed in the home at pack time: a closed choice over what
+// exists. There is no default and no fallback to "the active one": an absent or unknown slot refuses,
+// naming the observed slots, and the admitted slot and its path are printed in the receipt.
+data workspace_agent_state_slot_env: NonEmptyStr = "WORKSPACE_AGENT_STATE_SLOT"
+
+data workspace_agent_state_home: NonEmptyStr = "/home/briansrls"
+
+data workspace_agent_state_prefix: NonEmptyStr = ".claude@"
+
+type WorkspaceAgentStateSlot
+  = AgentStateSlotAdmitted { slot: NonEmptyStr, root: WorkspaceSourceRoot }
+  | AgentStateSlotAbsent { observed: List<String> }
+  | AgentStateSlotUnknown { requested: String, observed: List<String> }
+
+// THE SLOTS A HOME LISTING HOLDS: each directory whose last segment is .claude@<slot>, <slot> nonempty.
+fn workspace_observed_agent_state_slots(dirs: List<String>) -> List<String> {
+  flat_map(dirs, d => {
+    let last = match reverse(split(d, separator: "/")) { Cons { head: h, tail: _ } => h  Empty => "" }
+    let prefix = workspace_agent_state_prefix as String
+    if starts_with(s: last, prefix: prefix) && length(last) > length(prefix) { [substring(s: last, start: length(prefix), end: length(last))] } else { [] }
+  })
+}
+
+fn workspace_agent_state_slot_admission(requested: String?, observed: List<String>) -> WorkspaceAgentStateSlot {
+  match requested {
+    Absent => AgentStateSlotAbsent { observed: observed }
+    Present { value: r } =>
+      if r == "" {
+        AgentStateSlotAbsent { observed: observed }
+      } else if any(observed, o => o == r) {
+        AgentStateSlotAdmitted {
+          slot: r as NonEmptyStr,
+          root: WorkspaceSourceRoot { label: concat("claude-agent-state-", r) as NonEmptyStr, path: join([workspace_agent_state_home as String, "/", workspace_agent_state_prefix as String, r], "") as NonEmptyStr, build_output: [] },
+        }
+      } else {
+        AgentStateSlotUnknown { requested: r, observed: observed }
+      }
+  }
+}
+
+fn workspace_agent_state_slot_words(admission: WorkspaceAgentStateSlot) -> String {
+  match admission {
+    AgentStateSlotAdmitted { slot: s, root: r } => join(["agent_state_slot=", s as String, " path=", r.path as String], "")
+    AgentStateSlotAbsent { observed: o } => join(["agent_state_slot=refused-absent observed=", join(o, ","), " (", workspace_agent_state_slot_env as String, " names no slot; there is no default)"], "")
+    AgentStateSlotUnknown { requested: r, observed: o } => join(["agent_state_slot=refused-unknown requested=", r, " observed=", join(o, ","), " (no ", workspace_agent_state_home as String, "/", workspace_agent_state_prefix as String, r, " exists)"], "")
+  }
+}
+
+fn workspace_agent_state_slot_observe() -> WorkspaceAgentStateSlot {
+  let requested = match shell.Env.Get(name: workspace_agent_state_slot_env).value {
+    Absent => none
+    Present { value: v } => Present { value: replace(v, "\n", "") }
+  }
+  let dirs = shell.Find.ListDirs(path: workspace_agent_state_home as FilePath)
+  workspace_agent_state_slot_admission(requested: requested, observed: workspace_observed_agent_state_slots(dirs: map(dirs.dirs, d => d as String)))
+}
 
 data workspace_source_pack_host: NonEmptyStr = "srv1"
 
@@ -229,7 +294,7 @@ type WorkspaceSourceMemberKind = SourceFile | SourceSymlink
 
 type WorkspaceSourceLine
   = WorkspaceSourceMember { member: NonEmptyStr, kind: WorkspaceSourceMemberKind }
-  | WorkspaceSourceExcluded { member: NonEmptyStr, by: WorkspaceExclusion, bytes: ByteSize }
+  | WorkspaceSourceExcluded { member: NonEmptyStr, kind: WorkspaceSourceMemberKind, by: WorkspaceExclusion, bytes: ByteSize }
   | WorkspaceSourceBuildOutput { member: NonEmptyStr }
   | WorkspaceSourceUnparsed { line: String }
 
@@ -256,19 +321,23 @@ fn workspace_source_line(root: WorkspaceSourceRoot, exclusions: List<WorkspaceEx
   }
 }
 
+fn workspace_source_member_kind(kind: String) -> WorkspaceSourceMemberKind? {
+  if kind == "f" { Present { value: SourceFile } } else if kind == "l" { Present { value: SourceSymlink } } else { none }
+}
+
 fn workspace_source_line_sized(root: WorkspaceSourceRoot, exclusions: List<WorkspaceExclusion>, kind: String, relative: String, size: ByteSize, line: String) -> WorkspaceSourceLine {
   let member = workspace_root_member(root: root, relative: relative) as NonEmptyStr
-  match workspace_path_exclusion(exclusions: exclusions, path: member as String) {
-    Present { value: x } => WorkspaceSourceExcluded { member: member, by: x, bytes: size }
-    Absent =>
-      if workspace_path_is_build_output(root: root, relative: relative) {
-        WorkspaceSourceBuildOutput { member: member }
-      } else if kind == "f" {
-        WorkspaceSourceMember { member: member, kind: SourceFile }
-      } else if kind == "l" {
-        WorkspaceSourceMember { member: member, kind: SourceSymlink }
-      } else {
-        WorkspaceSourceUnparsed { line: line }
+  match workspace_source_member_kind(kind: kind) {
+    Absent => WorkspaceSourceUnparsed { line: line }
+    Present { value: k } =>
+      match workspace_path_exclusion(exclusions: exclusions, path: member as String) {
+        Present { value: x } => WorkspaceSourceExcluded { member: member, kind: k, by: x, bytes: size }
+        Absent =>
+          if workspace_path_is_build_output(root: root, relative: relative) {
+            WorkspaceSourceBuildOutput { member: member }
+          } else {
+            WorkspaceSourceMember { member: member, kind: k }
+          }
       }
   }
 }
@@ -283,6 +352,7 @@ type WorkspaceSourceTally {
   excluded_credential_bytes: ByteSize
   excluded_transcripts: Int
   excluded_transcript_bytes: ByteSize
+  transcript_placeholders: List<WorkspaceTranscriptPlaceholder>
   build_output: Int
   unparsed: List<String>
 }
@@ -290,7 +360,7 @@ type WorkspaceSourceTally {
 // THE EXCLUDED SIZES OF ONE CLASS, partitioned by matching the class itself.
 fn workspace_excluded_sizes(lines: List<WorkspaceSourceLine>, class: WorkspaceExclusionClass) -> List<ByteSize> {
   flat_map(lines, l => match l {
-    WorkspaceSourceExcluded { member: _, by: x, bytes: b } =>
+    WorkspaceSourceExcluded { member: _, kind: _, by: x, bytes: b } =>
       match class {
         CredentialExclusion => match x.class { CredentialExclusion => [b]  TranscriptExclusion => [] }
         TranscriptExclusion => match x.class { CredentialExclusion => []  TranscriptExclusion => [b] }
@@ -301,6 +371,38 @@ fn workspace_excluded_sizes(lines: List<WorkspaceSourceLine>, class: WorkspaceEx
   })
 }
 
+// ── TRANSCRIPT PLACEHOLDERS: THE SIZE AND PATH CARRIED, THE CONTENT NOT (operator, 2026-10-05) ───
+//
+// Transcripts are the workspace's largest and highest-churn population, so dropping them would make
+// stage 0 describe a cheaper workspace than the operator's. Each excluded transcript FILE is carried
+// as a placeholder at the SAME member path with the SAME byte size, its bytes the seeded keystream
+// of extdeps.crypto.seeded_filler keyed by the member path: incompressible, so neither kopia nor the
+// chunk store's dedup sees less than the real content would cost, and reproducible, so two packs of
+// one unchanged tree carry identical placeholders. A placeholder is minted ONLY from a line the
+// TranscriptExclusion class excluded, and the match below has no arm that mints one from a
+// credential, so a credential's path and size never appear in the archive. A transcript SYMLINK
+// carries no content to stand in for and is excluded as before. What a placeholder cannot carry is
+// stated, not implied: the content's compressibility and its churn; the receipt says so.
+type WorkspaceTranscriptPlaceholder {
+  member: NonEmptyStr
+  size: ByteSize
+}
+
+fn workspace_transcript_placeholders(lines: List<WorkspaceSourceLine>) -> List<WorkspaceTranscriptPlaceholder> {
+  flat_map(lines, l => match l {
+    WorkspaceSourceExcluded { member: m, kind: k, by: x, bytes: b } =>
+      match x.class {
+        CredentialExclusion => []
+        TranscriptExclusion => match k { SourceFile => [WorkspaceTranscriptPlaceholder { member: m, size: b }]  SourceSymlink => [] }
+      }
+    WorkspaceSourceMember { member: _, kind: _ } => []
+    WorkspaceSourceBuildOutput { member: _ } => []
+    WorkspaceSourceUnparsed { line: _ } => []
+  })
+}
+
+data workspace_transcript_caveat: NonEmptyStr = "transcript content synthetic, sizes preserved, static tree; NOT a 10 s / 60 s verdict"
+
 fn workspace_bytes_total(sizes: List<ByteSize>) -> ByteSize {
   byte_size(count: fold(sizes, init: 0, f: (acc, b) => acc + measure_count(m: b)))
 }
@@ -310,16 +412,16 @@ fn workspace_source_tally(root: WorkspaceSourceRoot, exclusions: List<WorkspaceE
   WorkspaceSourceTally {
     members: flat_map(lines, l => match l {
       WorkspaceSourceMember { member: m, kind: _ } => [m]
-      WorkspaceSourceExcluded { member: _, by: _, bytes: _ } => []
+      WorkspaceSourceExcluded { member: _, kind: _, by: _, bytes: _ } => []
       WorkspaceSourceBuildOutput { member: _ } => []
       WorkspaceSourceUnparsed { line: _ } => []
     }),
-    files: length(filter(lines, l => match l { WorkspaceSourceMember { member: _, kind: SourceFile } => true  WorkspaceSourceMember { member: _, kind: SourceSymlink } => false  WorkspaceSourceExcluded { member: _, by: _, bytes: _ } => false  WorkspaceSourceBuildOutput { member: _ } => false  WorkspaceSourceUnparsed { line: _ } => false })),
-    symlinks: length(filter(lines, l => match l { WorkspaceSourceMember { member: _, kind: SourceSymlink } => true  WorkspaceSourceMember { member: _, kind: SourceFile } => false  WorkspaceSourceExcluded { member: _, by: _, bytes: _ } => false  WorkspaceSourceBuildOutput { member: _ } => false  WorkspaceSourceUnparsed { line: _ } => false })),
-    excluded: length(filter(lines, l => match l { WorkspaceSourceExcluded { member: _, by: _, bytes: _ } => true  WorkspaceSourceMember { member: _, kind: _ } => false  WorkspaceSourceBuildOutput { member: _ } => false  WorkspaceSourceUnparsed { line: _ } => false })),
+    files: length(filter(lines, l => match l { WorkspaceSourceMember { member: _, kind: SourceFile } => true  WorkspaceSourceMember { member: _, kind: SourceSymlink } => false  WorkspaceSourceExcluded { member: _, kind: _, by: _, bytes: _ } => false  WorkspaceSourceBuildOutput { member: _ } => false  WorkspaceSourceUnparsed { line: _ } => false })),
+    symlinks: length(filter(lines, l => match l { WorkspaceSourceMember { member: _, kind: SourceSymlink } => true  WorkspaceSourceMember { member: _, kind: SourceFile } => false  WorkspaceSourceExcluded { member: _, kind: _, by: _, bytes: _ } => false  WorkspaceSourceBuildOutput { member: _ } => false  WorkspaceSourceUnparsed { line: _ } => false })),
+    excluded: length(filter(lines, l => match l { WorkspaceSourceExcluded { member: _, kind: _, by: _, bytes: _ } => true  WorkspaceSourceMember { member: _, kind: _ } => false  WorkspaceSourceBuildOutput { member: _ } => false  WorkspaceSourceUnparsed { line: _ } => false })),
     excluded_credentials: length(workspace_excluded_sizes(lines: lines, class: CredentialExclusion)),
     excluded_credential_members: flat_map(lines, l => match l {
-      WorkspaceSourceExcluded { member: m, by: x, bytes: _ } => match x.class { CredentialExclusion => [m]  TranscriptExclusion => [] }
+      WorkspaceSourceExcluded { member: m, kind: _, by: x, bytes: _ } => match x.class { CredentialExclusion => [m]  TranscriptExclusion => [] }
       WorkspaceSourceMember { member: _, kind: _ } => []
       WorkspaceSourceBuildOutput { member: _ } => []
       WorkspaceSourceUnparsed { line: _ } => []
@@ -327,37 +429,154 @@ fn workspace_source_tally(root: WorkspaceSourceRoot, exclusions: List<WorkspaceE
     excluded_credential_bytes: workspace_bytes_total(sizes: workspace_excluded_sizes(lines: lines, class: CredentialExclusion)),
     excluded_transcripts: length(workspace_excluded_sizes(lines: lines, class: TranscriptExclusion)),
     excluded_transcript_bytes: workspace_bytes_total(sizes: workspace_excluded_sizes(lines: lines, class: TranscriptExclusion)),
-    build_output: length(filter(lines, l => match l { WorkspaceSourceBuildOutput { member: _ } => true  WorkspaceSourceMember { member: _, kind: _ } => false  WorkspaceSourceExcluded { member: _, by: _, bytes: _ } => false  WorkspaceSourceUnparsed { line: _ } => false })),
+    transcript_placeholders: workspace_transcript_placeholders(lines: lines),
+    build_output: length(filter(lines, l => match l { WorkspaceSourceBuildOutput { member: _ } => true  WorkspaceSourceMember { member: _, kind: _ } => false  WorkspaceSourceExcluded { member: _, kind: _, by: _, bytes: _ } => false  WorkspaceSourceUnparsed { line: _ } => false })),
     unparsed: flat_map(lines, l => match l {
       WorkspaceSourceUnparsed { line: t } => [t]
       WorkspaceSourceMember { member: _, kind: _ } => []
-      WorkspaceSourceExcluded { member: _, by: _, bytes: _ } => []
+      WorkspaceSourceExcluded { member: _, kind: _, by: _, bytes: _ } => []
       WorkspaceSourceBuildOutput { member: _ } => []
     }),
   }
 }
 
-// ── THE READBACK: AN ARCHIVE MEMBER THE EXCLUSION NAMES REFUSES THE UPLOAD ─────────────────────
+// ── THE READBACK: WHAT THE ARCHIVE ACTUALLY HOLDS, BEFORE ANY BYTE LEAVES THE HOST ─────────────
 //
-// The pack is built from the filtered list, so an excluded path should never be in it; this reads
-// what the archive ACTUALLY holds (tar -tf) and runs every member through the same matcher. It is the
-// check that the realization did what the list said -- a tar that recursed, or a list that was not
-// the one written -- and its red is the run's refusal, before any byte leaves the host.
+// The pack is built from the filtered lists, so a credential should never be in it and a transcript
+// should be there only as its placeholder. That is provenance by construction, and it is NOT enough
+// at a confidentiality boundary: a name and a size are exactly what a real transcript shares with
+// its placeholder. So this reads what the archive ACTUALLY holds and refuses otherwise. Names come
+// from `tar -tf` (archive_listing) and run through the same matcher: a credential-class name refuses
+// outright, and a transcript-class name refuses unless it is a staged placeholder. Every staged
+// placeholder must then be, IN THE ARCHIVE, a regular file (the verbose listing's own type letter,
+// size_listing) of its planned size whose bytes -- extracted back out of the archive and hashed,
+// archived_digests -- are the SHA-256 the filler produced when it was staged. A real transcript of
+// the same size differs in digest and refuses. Each failure is its own typed refusal.
+type WorkspaceStagedPlaceholder {
+  member: NonEmptyStr
+  size: ByteSize
+  expected_digest: Sha256Digest
+}
+
 type WorkspacePackReadback
   = WorkspacePackClean { members: Int }
   | WorkspacePackCarriesExcluded { member: NonEmptyStr, by: WorkspaceExclusion }
+  | WorkspacePackPlaceholderAbsent { member: NonEmptyStr }
+  | WorkspacePackPlaceholderNotRegular { member: NonEmptyStr, type_letter: String }
+  | WorkspacePackPlaceholderSizeDiffers { member: NonEmptyStr, planned: ByteSize, archived: ByteSize }
+  | WorkspacePackPlaceholderUnread { member: NonEmptyStr }
+  | WorkspacePackPlaceholderDigestDiffers { member: NonEmptyStr, expected: Sha256Digest, archived: String }
 
-fn workspace_pack_readback(exclusions: List<WorkspaceExclusion>, archive_listing: String) -> WorkspacePackReadback {
-  workspace_pack_readback_lines(exclusions: exclusions, lines: filter(split(archive_listing, separator: "\n"), l => l != ""), seen: 0)
+fn workspace_pack_readback(exclusions: List<WorkspaceExclusion>, placeholders: List<WorkspaceStagedPlaceholder>, archive_listing: String, size_listing: String, archived_digests: Map<String, String>) -> WorkspacePackReadback {
+  let planned = fold(placeholders, init: empty_map(), f: (m, p) => map_insert(m: m, key: p.member as String, value: p.size))
+  match workspace_pack_readback_lines(exclusions: exclusions, planned: planned, lines: filter(split(archive_listing, separator: "\n"), l => l != ""), seen: 0) {
+    WorkspacePackClean { members: n } => {
+      let archived = fold(flat_map(filter(split(size_listing, separator: "\n"), l => l != ""), l => workspace_archived_entry(line: l)), init: empty_map(), f: (m, a) => map_insert(m: m, key: a.member, value: a))
+      workspace_pack_placeholder_checks(placeholders: placeholders, archived: archived, digests: archived_digests, members: n)
+    }
+    WorkspacePackCarriesExcluded { member: m, by: x } => WorkspacePackCarriesExcluded { member: m, by: x }
+    WorkspacePackPlaceholderAbsent { member: m } => WorkspacePackPlaceholderAbsent { member: m }
+    WorkspacePackPlaceholderNotRegular { member: m, type_letter: t } => WorkspacePackPlaceholderNotRegular { member: m, type_letter: t }
+    WorkspacePackPlaceholderSizeDiffers { member: m, planned: p, archived: a } => WorkspacePackPlaceholderSizeDiffers { member: m, planned: p, archived: a }
+    WorkspacePackPlaceholderUnread { member: m } => WorkspacePackPlaceholderUnread { member: m }
+    WorkspacePackPlaceholderDigestDiffers { member: m, expected: e, archived: a } => WorkspacePackPlaceholderDigestDiffers { member: m, expected: e, archived: a }
+  }
 }
 
-fn workspace_pack_readback_lines(exclusions: List<WorkspaceExclusion>, lines: List<String>, seen: Int) -> WorkspacePackReadback {
+fn workspace_pack_readback_lines(exclusions: List<WorkspaceExclusion>, planned: Map<String, ByteSize>, lines: List<String>, seen: Int) -> WorkspacePackReadback {
   match lines {
     Empty => WorkspacePackClean { members: seen }
     Cons { head: l, tail: rest } =>
       match workspace_path_exclusion(exclusions: exclusions, path: l) {
-        Present { value: x } => WorkspacePackCarriesExcluded { member: l as NonEmptyStr, by: x }
-        Absent => workspace_pack_readback_lines(exclusions: exclusions, lines: rest, seen: seen + 1)
+        Absent => workspace_pack_readback_lines(exclusions: exclusions, planned: planned, lines: rest, seen: seen + 1)
+        Present { value: x } =>
+          match x.class {
+            CredentialExclusion => WorkspacePackCarriesExcluded { member: l as NonEmptyStr, by: x }
+            TranscriptExclusion =>
+              if map_contains_key(m: planned, key: l) {
+                workspace_pack_readback_lines(exclusions: exclusions, planned: planned, lines: rest, seen: seen + 1)
+              } else {
+                WorkspacePackCarriesExcluded { member: l as NonEmptyStr, by: x }
+              }
+          }
+      }
+  }
+}
+
+// ONE VERBOSE-LISTING LINE: its type letter (the first character of the mode word: '-' a regular
+// file, 'l' a symlink, 'h' a hard link, ...), its size, and its name. Five leading words (mode,
+// uid/gid, size, date, time), each possibly padded by several spaces; the name is the rest of the
+// line verbatim, so a name with spaces survives. A symlink's or hard link's name carries its target
+// after it (" -> t", " link to t"), so such a line never names a placeholder exactly and a planned
+// member archived as one reads as absent -- refused either way.
+type WorkspaceArchivedEntry {
+  member: String
+  type_letter: String
+  size: ByteSize
+}
+
+fn workspace_archived_entry(line: String) -> List<WorkspaceArchivedEntry> {
+  match workspace_verbose_fields(words: split(line, separator: " "), fields: [], wanted: 5) {
+    Absent => []
+    Present { value: parsed } =>
+      match parsed.fields {
+        Cons { head: mode, tail: Cons { head: _, tail: Cons { head: size_text, tail: _ } } } =>
+          match parse_int(s: size_text) {
+            Absent => []
+            Present { value: n } => if n < 0 || parsed.rest == "" { [] } else { [WorkspaceArchivedEntry { member: parsed.rest, type_letter: substring(s: mode, start: 0, end: 1), size: byte_size(count: n) }] }
+          }
+        Cons { head: _, tail: Cons { head: _, tail: Empty } } => []
+        Cons { head: _, tail: Empty } => []
+        Empty => []
+      }
+  }
+}
+
+type WorkspaceVerboseFields {
+  fields: List<String>
+  rest: String
+}
+
+fn workspace_verbose_fields(words: List<String>, fields: List<String>, wanted: Int) -> WorkspaceVerboseFields? {
+  if wanted == 0 {
+    Present { value: WorkspaceVerboseFields { fields: fields, rest: join(words, " ") } }
+  } else {
+    match words {
+      Empty => none
+      Cons { head: w, tail: rest } =>
+        if w == "" {
+          workspace_verbose_fields(words: rest, fields: fields, wanted: wanted)
+        } else {
+          workspace_verbose_fields(words: rest, fields: concat(fields, [w]), wanted: wanted - 1)
+        }
+    }
+  }
+}
+
+// Every side is keyed by member name, so the check is one lookup per placeholder rather than a scan
+// of the archive per placeholder.
+fn workspace_pack_placeholder_checks(placeholders: List<WorkspaceStagedPlaceholder>, archived: Map<String, WorkspaceArchivedEntry>, digests: Map<String, String>, members: Int) -> WorkspacePackReadback {
+  match placeholders {
+    Empty => WorkspacePackClean { members: members }
+    Cons { head: p, tail: rest } =>
+      match map_lookup(m: archived, key: p.member as String) {
+        Absent => WorkspacePackPlaceholderAbsent { member: p.member }
+        Present { value: a } =>
+          if a.type_letter != "-" {
+            WorkspacePackPlaceholderNotRegular { member: p.member, type_letter: a.type_letter }
+          } else if measure_count(m: a.size) != measure_count(m: p.size) {
+            WorkspacePackPlaceholderSizeDiffers { member: p.member, planned: p.size, archived: a.size }
+          } else {
+            match map_lookup(m: digests, key: p.member as String) {
+              Absent => WorkspacePackPlaceholderUnread { member: p.member }
+              Present { value: d } =>
+                if d != (p.expected_digest.hex as String) {
+                  WorkspacePackPlaceholderDigestDiffers { member: p.member, expected: p.expected_digest, archived: d }
+                } else {
+                  workspace_pack_placeholder_checks(placeholders: rest, archived: archived, digests: digests, members: members)
+                }
+            }
+          }
       }
   }
 }
@@ -442,7 +661,7 @@ fn workspace_source_tallies(enumerations: List<WorkspaceSourceEnumeration>) -> L
 fn workspace_tally_line(e: WorkspaceSourceEnumeration) -> String {
   match e {
     WorkspaceSourceEnumerated { root: r, tally: t } =>
-      join(["root ", r.label as String, " path=", r.path as String, " files=", to_string(t.files), " symlinks=", to_string(t.symlinks), " excluded=", to_string(t.excluded), " excluded_credentials=", to_string(t.excluded_credentials), " excluded_credential_bytes=", to_string(measure_count(m: t.excluded_credential_bytes)), " excluded_credential_paths=", join(map(t.excluded_credential_members, m => m as String), ","), " excluded_transcripts=", to_string(t.excluded_transcripts), " excluded_transcript_bytes=", to_string(measure_count(m: t.excluded_transcript_bytes)), " build_output=", to_string(t.build_output)], "")
+      join(["root ", r.label as String, " path=", r.path as String, " files=", to_string(t.files), " symlinks=", to_string(t.symlinks), " excluded=", to_string(t.excluded), " excluded_credentials=", to_string(t.excluded_credentials), " excluded_credential_bytes=", to_string(measure_count(m: t.excluded_credential_bytes)), " excluded_credential_paths=", join(map(t.excluded_credential_members, m => m as String), ","), " excluded_transcripts=", to_string(t.excluded_transcripts), " excluded_transcript_bytes=", to_string(measure_count(m: t.excluded_transcript_bytes)), " transcript_placeholders=", to_string(length(t.transcript_placeholders)), " build_output=", to_string(t.build_output)], "")
     WorkspaceSourceUnreadable { root: r, detail: _ } => join(["root ", r.label as String, " path=", r.path as String, " UNREADABLE"], "")
   }
 }
@@ -471,7 +690,7 @@ fn workspace_source_receipt_head(enumerations: List<WorkspaceSourceEnumeration>)
   join([
     "workspace_source_pack host=", workspace_source_pack_host as String, "\n",
     "credential_exclusions=", workspace_exclusion_spellings(exclusions: workspace_credential_exclusions), "\n",
-    "transcript_exclusions=", workspace_exclusion_spellings(exclusions: workspace_transcript_exclusions), "\n",
+    "transcript_exclusions=", workspace_exclusion_spellings(exclusions: workspace_transcript_exclusions), " (carried as same-size, same-path placeholders)\n",
     join(map(enumerations, e => workspace_tally_line(e: e)), "\n"), "\n",
   ], "")
 }
@@ -500,12 +719,20 @@ fn workspace_source_pack_wet() -> ProcessExit {
   if host != (workspace_source_pack_host as String) {
     exit_failure(reason: join(["workspace_source_pack: the source lives on ", workspace_source_pack_host as String, " but this job runs on '", host, "'; dispatch it with host=", workspace_source_pack_host as String], ""))
   } else {
-    let enumerations = workspace_source_enumerate_all(roots: workspace_source_roots)
-    let head = workspace_source_receipt_head(enumerations: enumerations)
-    match workspace_source_refusals(enumerations: enumerations) {
-      Cons { head: _, tail: _ } =>
-        workspace_source_finish(receipt: concat(head, "verdict=refused-source-unreadable\n"), outcome: exit_failure(reason: join(concat(["workspace_source_pack: a source root is unreadable by the runner; no permission is widened here:"], workspace_source_refusals(enumerations: enumerations)), "\n")))
-      Empty => workspace_source_pack_readable(head: head, tallies: workspace_source_tallies(enumerations: enumerations))
+    let slot = workspace_agent_state_slot_observe()
+    let slot_line = concat(workspace_agent_state_slot_words(admission: slot), "\n")
+    match slot {
+      AgentStateSlotAbsent { observed: _ } => workspace_source_finish(receipt: join(["workspace_source_pack host=", host, "\n", slot_line, "verdict=refused-agent-state-slot\n"], ""), outcome: exit_failure(reason: concat("workspace_source_pack: ", slot_line)))
+      AgentStateSlotUnknown { requested: _, observed: _ } => workspace_source_finish(receipt: join(["workspace_source_pack host=", host, "\n", slot_line, "verdict=refused-agent-state-slot\n"], ""), outcome: exit_failure(reason: concat("workspace_source_pack: ", slot_line)))
+      AgentStateSlotAdmitted { slot: _, root: agent } => {
+        let enumerations = workspace_source_enumerate_all(roots: concat(workspace_source_fixed_roots, [agent]))
+        let head = concat(workspace_source_receipt_head(enumerations: enumerations), slot_line)
+        match workspace_source_refusals(enumerations: enumerations) {
+          Cons { head: _, tail: _ } =>
+            workspace_source_finish(receipt: concat(head, "verdict=refused-source-unreadable\n"), outcome: exit_failure(reason: join(concat(["workspace_source_pack: a source root is unreadable by the runner; no permission is widened here:"], workspace_source_refusals(enumerations: enumerations)), "\n")))
+          Empty => workspace_source_pack_readable(head: head, tallies: workspace_source_tallies(enumerations: enumerations))
+        }
+      }
     }
   }
 }
@@ -515,41 +742,268 @@ fn workspace_source_pack_readable(head: String, tallies: List<WorkspaceSourceTal
   if staging.success == false {
     workspace_source_finish(receipt: concat(head, "verdict=refused-no-staging\n"), outcome: exit_failure(reason: "workspace_source_pack: no private staging directory could be minted"))
   } else {
-    let list_path = join([staging.path as String, "/members"], "")
-    let archive = join([staging.path as String, "/workspace-source.tar"], "")
-    let members = flat_map(tallies, t => t.members)
+    let placeholders = flat_map(tallies, t => t.transcript_placeholders)
+    let placeholder_root = join([staging.path as String, "/placeholders"], "")
+    let head2 = concat(head, workspace_placeholder_words(placeholders: placeholders))
+    match workspace_stage_placeholders(root: placeholder_root, placeholders: placeholders, staged: []) {
+      WorkspacePlaceholdersRefused { why: why } => {
+        let removed = shell.Remove.RecursiveForce(path: staging.path)
+        workspace_source_finish(receipt: join([head2, "verdict=refused-placeholder-unstaged staging_removed=", if removed.success { "yes" } else { "no" }, "\n"], ""), outcome: exit_failure(reason: concat("workspace_source_pack: a transcript placeholder could not be staged: ", why)))
+      }
+      WorkspacePlaceholdersStaged { placeholders: staged } => {
+        let pack_start = workspace_source_instant(label: "workspace-source-pack-start")
+        let built = workspace_pack_archive(staging: staging.path as String, members: flat_map(tallies, t => t.members), placeholders: staged, placeholder_root: placeholder_root)
+        let pack_span = workspace_source_span_words(start: pack_start, end_label: "workspace-source-pack-end")
+        match built {
+          WorkspacePackRefused { refusal: v, why: why } => workspace_source_refuse_archive(head: head2, staging: staging.path as String, refusal: v, why: why)
+          WorkspacePackBuilt { archive: archive, readback: r } =>
+            match workspace_pack_readback_refusal(readback: r) {
+              Present { value: refusal } => workspace_source_refuse_archive(head: head2, staging: staging.path as String, refusal: refusal.refusal, why: refusal.why)
+              Absent => workspace_source_publish(head: concat(head2, join(["archive_members=", to_string(workspace_pack_clean_members(readback: r)), " placeholders_digest_checked=", to_string(length(staged)), " pack=", pack_span, "\n"], "")), archive: archive, staging: staging.path as String)
+            }
+        }
+      }
+    }
+  }
+}
+
+fn workspace_placeholder_words(placeholders: List<WorkspaceTranscriptPlaceholder>) -> String {
+  join([
+    "transcript_placeholders files=", to_string(length(placeholders)),
+    " bytes=", to_string(measure_count(m: workspace_bytes_total(sizes: map(placeholders, p => p.size)))),
+    " filler=extdeps.crypto.seeded_filler seed=member-path\n",
+    workspace_transcript_caveat as String, "\n",
+  ], "")
+}
+
+type WorkspacePlaceholderStaging
+  = WorkspacePlaceholdersStaged { placeholders: List<WorkspaceStagedPlaceholder> }
+  | WorkspacePlaceholdersRefused { why: String }
+
+// EACH PLACEHOLDER AT <root>/<member>, its parent directories made first, and its SHA-256 taken from
+// the staged bytes: that digest is what the archive readback requires the archived member to hash
+// to. The first refusal stops the staging; nothing is packed from a partly staged tree.
+fn workspace_stage_placeholders(root: String, placeholders: List<WorkspaceTranscriptPlaceholder>, staged: List<WorkspaceStagedPlaceholder>) -> WorkspacePlaceholderStaging {
+  match placeholders {
+    Empty => WorkspacePlaceholdersStaged { placeholders: staged }
+    Cons { head: p, tail: rest } => {
+      let path = join([root, "/", p.member as String], "")
+      let parent = join(workspace_all_but_last(xs: split(path, separator: "/")), "/")
+      let made = shell.Mkdir.Parents(path: parent as FilePath)
+      if made.success == false {
+        WorkspacePlaceholdersRefused { why: concat("mkdir -p failed: ", parent) }
+      } else {
+        match seeded_filler_write(seed: p.member, size: p.size, path: path as NonEmptyStr) {
+          SeededFillerRefused { path: _, step: st, detail: d } => WorkspacePlaceholdersRefused { why: join([p.member as String, ": ", seeded_filler_step_words(step: st), ": ", d], "") }
+          SeededFillerWritten { path: _, size: _ } =>
+            match workspace_file_digest(path: path) {
+              Absent => WorkspacePlaceholdersRefused { why: concat("the staged placeholder could not be hashed: ", p.member as String) }
+              Present { value: d } => workspace_stage_placeholders(root: root, placeholders: rest, staged: concat(staged, [WorkspaceStagedPlaceholder { member: p.member, size: p.size, expected_digest: d }]))
+            }
+        }
+      }
+    }
+  }
+}
+
+fn workspace_file_digest(path: String) -> Sha256Digest? {
+  let d = sha256sum.Sha256.DigestFile(path: path as NonEmptyStr)
+  if d.success == false { none } else { sha256_hex_digest(hex: substring(s: d.line, start: 0, end: 64)) }
+}
+
+fn workspace_all_but_last(xs: List<String>) -> List<String> {
+  match xs {
+    Empty => []
+    Cons { head: _, tail: Empty } => []
+    Cons { head: x, tail: rest } => concat([x], workspace_all_but_last(xs: rest))
+  }
+}
+
+// ── THE ARCHIVE: BUILT FROM BOTH SOURCES, READ BACK, AND ITS PLACEHOLDERS EXTRACTED AND HASHED ──
+//
+// The real members are read relative to "/" and the placeholders relative to their staging root,
+// under the same member names, into one tar. The readback then lists the archive twice (names, then
+// types and sizes), extracts exactly the placeholder members into a fresh directory, and hashes each
+// extracted file. Every step's failure is a typed refusal; the readback's verdict is returned whole
+// so the caller words it.
+//
+// Two orderings carry the reasons. The placeholder root is made FIRST: the second -C must name a
+// directory even when no transcript was planned, so a workspace with no transcripts packs through
+// the same two-list route with an empty second list, and the staging directory the lists are written
+// into exists whatever was staged. And the LOCATED refusals come before extraction: names, types and
+// sizes are judged from the listings alone, with each placeholder's digest assumed, so a missing or
+// malformed member is refused by name rather than as a failed extract of the whole list.
+// WHY THE ARCHIVE STEP REFUSED, as a closed sum: the receipt's verdict word is rendered from it at the
+// edge by workspace_pack_refusal_words, so a refusal kind cannot be misspelled or invented at a
+// construction site. The readback arms carry the member they name.
+type WorkspacePackRefusal
+  = PackRefusedPlaceholderRootUnmade
+  | PackRefusedMemberListUnwritten
+  | PackRefusedTarFailed
+  | PackRefusedReadbackFailed
+  | PackRefusedPlaceholderExtractFailed
+  | PackRefusedMemberCountMismatch
+  | PackRefusedExcludedMember { member: NonEmptyStr, rule: String }
+  | PackRefusedPlaceholderAbsent { member: NonEmptyStr }
+  | PackRefusedPlaceholderNotRegular { member: NonEmptyStr, type_letter: String }
+  | PackRefusedPlaceholderSize { member: NonEmptyStr, planned: ByteSize, archived: ByteSize }
+  | PackRefusedPlaceholderUnread { member: NonEmptyStr }
+  | PackRefusedPlaceholderDigest { member: NonEmptyStr, expected: String, archived: String }
+
+fn workspace_pack_refusal_words(refusal: WorkspacePackRefusal) -> String {
+  match refusal {
+    PackRefusedPlaceholderRootUnmade => "refused-placeholder-root-unmade"
+    PackRefusedMemberListUnwritten => "refused-member-list-unwritten"
+    PackRefusedTarFailed => "refused-pack-failed"
+    PackRefusedReadbackFailed => "refused-readback-failed"
+    PackRefusedPlaceholderExtractFailed => "refused-placeholder-extract-failed"
+    PackRefusedMemberCountMismatch => "refused-member-count-mismatch"
+    PackRefusedExcludedMember { member: m, rule: x } => join(["refused-excluded-member member=", m as String, " rule=", x], "")
+    PackRefusedPlaceholderAbsent { member: m } => concat("refused-placeholder-absent member=", m as String)
+    PackRefusedPlaceholderNotRegular { member: m, type_letter: t } => join(["refused-placeholder-not-regular member=", m as String, " type=", t], "")
+    PackRefusedPlaceholderSize { member: m, planned: p, archived: a } => join(["refused-placeholder-size member=", m as String, " planned=", to_string(measure_count(m: p)), " archived=", to_string(measure_count(m: a))], "")
+    PackRefusedPlaceholderUnread { member: m } => concat("refused-placeholder-unread member=", m as String)
+    PackRefusedPlaceholderDigest { member: m, expected: e, archived: a } => join(["refused-placeholder-digest member=", m as String, " expected=", e, " archived=", a], "")
+  }
+}
+
+type WorkspacePackArchive
+  = WorkspacePackBuilt { archive: String, readback: WorkspacePackReadback }
+  | WorkspacePackRefused { refusal: WorkspacePackRefusal, why: String }
+
+fn workspace_pack_archive(staging: String, members: List<NonEmptyStr>, placeholders: List<WorkspaceStagedPlaceholder>, placeholder_root: String) -> WorkspacePackArchive {
+  let list_path = join([staging, "/members"], "")
+  let placeholder_list_path = join([staging, "/placeholder-members"], "")
+  let archive = join([staging, "/workspace-source.tar"], "")
+  let root_made = shell.Mkdir.Parents(path: placeholder_root as FilePath)
+  if root_made.success == false {
+    WorkspacePackRefused { refusal: PackRefusedPlaceholderRootUnmade, why: concat("the placeholder staging root could not be made: ", placeholder_root) }
+  } else {
     let listed = Filesystem.Write(path: list_path, content: concat(join(map(members, m => m as String), "\n"), "\n"))
-    if listed.success == false {
-      workspace_source_finish(receipt: concat(head, "verdict=refused-member-list-unwritten\n"), outcome: exit_failure(reason: concat("workspace_source_pack: the member list could not be written: ", listed.error)))
+    let placeholder_listed = Filesystem.Write(path: placeholder_list_path, content: join(map(placeholders, p => concat(p.member as String, "\n")), ""))
+    if listed.success == false || placeholder_listed.success == false {
+      WorkspacePackRefused { refusal: PackRefusedMemberListUnwritten, why: join(["a member list could not be written: ", listed.error, placeholder_listed.error], "") }
     } else {
-      let pack_start = workspace_source_instant(label: "workspace-source-pack-start")
-      let packed = workspace_run_ok(run: run_shell_command_observe_outcome(command: tar_create_from_list_command(archive: archive, from_directory: "/", member_list: list_path), transport: LocalExec))
-      let pack_span = workspace_source_span_words(start: pack_start, end_label: "workspace-source-pack-end")
-      match packed {
-        Present { value: why } => workspace_source_finish(receipt: concat(head, "verdict=refused-pack-failed\n"), outcome: exit_failure(reason: concat("workspace_source_pack: tar refused: ", why)))
+      match workspace_run_ok(run: run_shell_command_observe_outcome(command: tar_create_from_two_lists_command(archive: archive, first_directory: "/", first_list: list_path, second_directory: placeholder_root, second_list: placeholder_list_path), transport: LocalExec)) {
+        Present { value: why } => WorkspacePackRefused { refusal: PackRefusedTarFailed, why: concat("tar refused: ", why) }
         Absent =>
-          match run_shell_command_observe_outcome(command: tar_list_command(archive: archive), transport: LocalExec) {
-            ProcessNotSpawned { program: _, cause: c } => workspace_source_finish(receipt: concat(head, "verdict=refused-readback-unrun\n"), outcome: exit_failure(reason: concat("workspace_source_pack: the archive could not be listed back: ", c as String)))
-            ProcessRan { observation: o } =>
-              if o.exit_code != 0 {
-                workspace_source_finish(receipt: concat(head, "verdict=refused-readback-failed\n"), outcome: exit_failure(reason: concat("workspace_source_pack: tar -tf refused: ", o.stderr)))
-              } else {
-                match workspace_pack_readback(exclusions: workspace_exclusions(), archive_listing: o.stdout) {
-                  WorkspacePackCarriesExcluded { member: m, by: x } => {
-                    let removed = shell.Remove.RecursiveForce(path: staging.path)
-                    workspace_source_finish(receipt: join([head, "verdict=refused-excluded-member member=", m as String, " rule=", x.spelling as String, " archive_removed=", if removed.success { "yes" } else { "no" }, "\n"], ""), outcome: exit_failure(reason: join(["workspace_source_pack: the archive carries ", m as String, ", which the credential exclusion ", x.spelling as String, " names; nothing was uploaded"], "")))
+          match workspace_archive_listings(archive: archive) {
+            Absent => WorkspacePackRefused { refusal: PackRefusedReadbackFailed, why: "the archive could not be listed back" }
+            Present { value: listings } => {
+              let structural = workspace_pack_readback(exclusions: workspace_exclusions(), placeholders: placeholders, archive_listing: listings.names, size_listing: listings.sizes, archived_digests: fold(placeholders, init: empty_map(), f: (m, p) => map_insert(m: m, key: p.member as String, value: p.expected_digest.hex as String)))
+              match workspace_pack_readback_refusal(readback: structural) {
+                Present { value: _ } => WorkspacePackBuilt { archive: archive, readback: structural }
+                Absent =>
+              match workspace_archived_placeholder_digests(staging: staging, archive: archive, placeholder_list: placeholder_list_path, placeholders: placeholders) {
+                Absent => WorkspacePackRefused { refusal: PackRefusedPlaceholderExtractFailed, why: "the placeholder members could not be extracted back out of the archive" }
+                Present { value: digests } => {
+                  let r = workspace_pack_readback(exclusions: workspace_exclusions(), placeholders: placeholders, archive_listing: listings.names, size_listing: listings.sizes, archived_digests: digests)
+                  let expected = length(members) + length(placeholders)
+                  match r {
+                    WorkspacePackClean { members: n } =>
+                      if n != expected {
+                        WorkspacePackRefused { refusal: PackRefusedMemberCountMismatch, why: join(["the archive holds ", to_string(n), " members but the lists named ", to_string(expected)], "") }
+                      } else {
+                        WorkspacePackBuilt { archive: archive, readback: r }
+                      }
+                    WorkspacePackCarriesExcluded { member: _, by: _ } => WorkspacePackBuilt { archive: archive, readback: r }
+                    WorkspacePackPlaceholderAbsent { member: _ } => WorkspacePackBuilt { archive: archive, readback: r }
+                    WorkspacePackPlaceholderNotRegular { member: _, type_letter: _ } => WorkspacePackBuilt { archive: archive, readback: r }
+                    WorkspacePackPlaceholderSizeDiffers { member: _, planned: _, archived: _ } => WorkspacePackBuilt { archive: archive, readback: r }
+                    WorkspacePackPlaceholderUnread { member: _ } => WorkspacePackBuilt { archive: archive, readback: r }
+                    WorkspacePackPlaceholderDigestDiffers { member: _, expected: _, archived: _ } => WorkspacePackBuilt { archive: archive, readback: r }
                   }
-                  WorkspacePackClean { members: n } =>
-                    if n != length(members) {
-                      workspace_source_finish(receipt: concat(head, "verdict=refused-member-count-mismatch\n"), outcome: exit_failure(reason: join(["workspace_source_pack: the archive holds ", to_string(n), " members but the list named ", to_string(length(members))], "")))
-                    } else {
-                      workspace_source_publish(head: concat(head, join(["archive_members=", to_string(n), " pack=", pack_span, "\n"], "")), archive: archive, staging: staging.path as String)
-                    }
                 }
               }
+              }
+            }
           }
       }
     }
+  }
+}
+
+// THE ARCHIVED PLACEHOLDER BYTES, HASHED: extract exactly the placeholder members into
+// <staging>/readback and sha256sum each. A member that did not extract or could not be hashed is
+// simply absent from the map, which the readback refuses as unread. An empty plan extracts nothing.
+fn workspace_archived_placeholder_digests(staging: String, archive: String, placeholder_list: String, placeholders: List<WorkspaceStagedPlaceholder>) -> Map<String, String>? {
+  match placeholders {
+    Empty => Present { value: empty_map() }
+    Cons { head: _, tail: _ } => {
+      let into = join([staging, "/readback"], "")
+      let made = shell.Mkdir.Parents(path: into as FilePath)
+      if made.success == false {
+        none
+      } else {
+        match workspace_run_ok(run: run_shell_command_observe_outcome(command: tar_extract_listed_command(archive: archive, into_directory: into, member_list: placeholder_list), transport: LocalExec)) {
+          Present { value: _ } => none
+          Absent => Present { value: fold(placeholders, init: empty_map(), f: (m, p) => match workspace_file_digest(path: join([into, "/", p.member as String], "")) {
+            Present { value: d } => map_insert(m: m, key: p.member as String, value: d.hex as String)
+            Absent => m
+          }) }
+        }
+      }
+    }
+  }
+}
+
+type WorkspaceReadbackRefusal {
+  refusal: WorkspacePackRefusal
+  why: String
+}
+
+fn workspace_pack_clean_members(readback: WorkspacePackReadback) -> Int {
+  match readback {
+    WorkspacePackClean { members: n } => n
+    WorkspacePackCarriesExcluded { member: _, by: _ } => 0
+    WorkspacePackPlaceholderAbsent { member: _ } => 0
+    WorkspacePackPlaceholderNotRegular { member: _, type_letter: _ } => 0
+    WorkspacePackPlaceholderSizeDiffers { member: _, planned: _, archived: _ } => 0
+    WorkspacePackPlaceholderUnread { member: _ } => 0
+    WorkspacePackPlaceholderDigestDiffers { member: _, expected: _, archived: _ } => 0
+  }
+}
+
+fn workspace_pack_readback_refusal(readback: WorkspacePackReadback) -> WorkspaceReadbackRefusal? {
+  match readback {
+    WorkspacePackClean { members: _ } => none
+    WorkspacePackCarriesExcluded { member: m, by: x } =>
+      Present { value: WorkspaceReadbackRefusal { refusal: PackRefusedExcludedMember { member: m, rule: x.spelling as String }, why: join(["the archive carries ", m as String, ", which the workspace exclusion ", x.spelling as String, " names and no placeholder stands for"], "") } }
+    WorkspacePackPlaceholderAbsent { member: m } =>
+      Present { value: WorkspaceReadbackRefusal { refusal: PackRefusedPlaceholderAbsent { member: m }, why: concat("the archive holds no member for the transcript placeholder ", m as String) } }
+    WorkspacePackPlaceholderNotRegular { member: m, type_letter: t } =>
+      Present { value: WorkspaceReadbackRefusal { refusal: PackRefusedPlaceholderNotRegular { member: m, type_letter: t }, why: join(["the transcript placeholder ", m as String, " is archived as type '", t, "', not a regular file"], "") } }
+    WorkspacePackPlaceholderSizeDiffers { member: m, planned: p, archived: a } =>
+      Present { value: WorkspaceReadbackRefusal { refusal: PackRefusedPlaceholderSize { member: m, planned: p, archived: a }, why: join(["the transcript placeholder ", m as String, " is archived at ", to_string(measure_count(m: a)), " bytes, not its planned ", to_string(measure_count(m: p))], "") } }
+    WorkspacePackPlaceholderUnread { member: m } =>
+      Present { value: WorkspaceReadbackRefusal { refusal: PackRefusedPlaceholderUnread { member: m }, why: concat("the archived bytes of the transcript placeholder could not be extracted and hashed: ", m as String) } }
+    WorkspacePackPlaceholderDigestDiffers { member: m, expected: e, archived: a } =>
+      Present { value: WorkspaceReadbackRefusal { refusal: PackRefusedPlaceholderDigest { member: m, expected: e.hex as String, archived: a }, why: join(["the archived bytes of ", m as String, " are not its staged placeholder (sha256 ", a, ", expected ", e.hex as String, "); the archive may carry real transcript content"], "") } }
+  }
+}
+
+fn workspace_source_refuse_archive(head: String, staging: String, refusal: WorkspacePackRefusal, why: String) -> ProcessExit {
+  let removed = shell.Remove.RecursiveForce(path: staging as FilePath)
+  workspace_source_finish(receipt: join([head, "verdict=", workspace_pack_refusal_words(refusal: refusal), " archive_removed=", if removed.success { "yes" } else { "no" }, "\n"], ""), outcome: exit_failure(reason: join(["workspace_source_pack: ", why, "; nothing was uploaded"], "")))
+}
+
+type WorkspaceArchiveListings {
+  names: String
+  sizes: String
+}
+
+fn workspace_archive_listings(archive: String) -> WorkspaceArchiveListings? {
+  match run_shell_command_observe_outcome(command: tar_list_command(archive: archive), transport: LocalExec) {
+    ProcessNotSpawned { program: _, cause: _ } => none
+    ProcessRan { observation: names } =>
+      if names.exit_code != 0 {
+        none
+      } else {
+        match run_shell_command_observe_outcome(command: tar_list_sizes_command(archive: archive), transport: LocalExec) {
+          ProcessNotSpawned { program: _, cause: _ } => none
+          ProcessRan { observation: sizes } => if sizes.exit_code != 0 { none } else { Present { value: WorkspaceArchiveListings { names: names.stdout, sizes: sizes.stdout } } }
+        }
+      }
   }
 }
 

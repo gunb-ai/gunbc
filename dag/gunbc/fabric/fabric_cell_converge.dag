@@ -540,6 +540,11 @@ type FabricCellAddressEvidence
   | EvidenceObserved { member: FabricCellMember }
   | EvidenceConflict
 
+// TWO REFUSALS JOIN TO THE LEAST CAUSE (byte-lexicographic String order), not the first seen, so
+// the full value -- AddressUnreadable.cause included -- is a semilattice join and independent of the
+// order observations arrive in (test.claim.fabric_cell_evidence_algebra_witness
+// evidence_full_value_is_order_independent). Keeping the first cause made the class order-free
+// while the payload still moved with caller order.
 fn fabric_cell_address_evidence(
   observations: List<FabricCellAddressObservation>,
 ) -> FabricCellAddressEvidence {
@@ -547,7 +552,8 @@ fn fabric_cell_address_evidence(
     match o {
       AddressObservationRefused { slot: _, address: _, cause: c } =>
         match acc {
-          EvidenceRefused { cause: first } => EvidenceRefused { cause: first }
+          EvidenceRefused { cause: seen } =>
+            if c < seen { EvidenceRefused { cause: c } } else { EvidenceRefused { cause: seen } }
           NoEvidence => EvidenceRefused { cause: c }
           EvidenceAbsent => EvidenceRefused { cause: c }
           EvidenceObserved { member: _ } => EvidenceRefused { cause: c }

@@ -117,8 +117,8 @@ data vpw_two_lambdas_source: String = "module v2.test.vpw_two_lambdas\n\nimport 
 // once lowered to the literal's first token, dropping the literal and its `-> Bool`.
 data vpw_let_fn_literal_source: String = "module v2.test.vpw_let_fn_literal\n\nimport std.types { Bool }\n\nfn vpw_probe(x: Bool) -> Bool {\n  let g = fn(y) -> Bool { y }\n  x\n}\n"
 
-// A FIELD PROJECTION ON A CALL RESULT (warm-bear-132's 02_parse c02590, parse_memo_recurrence_census:
-// `acc + expr_parse_demand_fold(expr: p.expression).discarding_sites`), once as an operator operand
+// A FIELD PROJECTION ON A CALL RESULT (warm-bear-132's 02_parse c02590, in a parse census since
+// deleted with the parse memo: `acc + expr_parse_demand_fold(expr: p.expression).discarding_sites`), once as an operator operand
 // inside a fn literal -- the specimen -- and once as a two-step projection in fn-body value position.
 // Before the chain door lowered a call head, the first refused its module operator_operand_unread.
 data vpw_call_projection_source: String = "module v2.test.vpw_call_projection\n\nimport std.types { Bool }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_fold(f: fn(acc, q) { acc + vpw_demand(e: q.expression).sites }) }\n\nfn vpw_probe_chain(p: Bool) -> Bool { vpw_demand_two(e: p).outer.inner }\n"

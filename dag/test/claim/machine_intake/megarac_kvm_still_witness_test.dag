@@ -8,10 +8,6 @@ import std.optional { Present, Absent }
 import v2.std.algebra { any }
 import extdeps.crypto.hash { sha256_digest }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
-import extdeps.bmc.megarac {
-  megarac_screen_capture_standing_at_0_32, KvmClientCanvasJpeg, LastBsodJpeg, TriggeredFramebufferRecording, ServerSideOnDemandStill,
-  ScreenCaptureClientSideOnly, ScreenCaptureEventRetainedOnly, ScreenCaptureAbsent,
-}
 import gunbc.runner_browser_toolchain { BrowserToolchainUnresolved }
 import gunbc.machine_intake_megarac_kvm_still {
   KvmJournalEvent, KvmJournalStill, KvmJournalAcquisitionFailed, KvmJournalConnectionLost, KvmJournalUnparsed,
@@ -27,8 +23,8 @@ import gunbc.machine_intake_megarac_kvm_still {
   KvmJournalEstablished, KvmJournalConnectionRequested, KvmJournalConnectionRefused, KvmJournalConnectionOpen, KvmJournalConnectionError,
   KvmJournalRefused, KvmJournalFailed, KvmJournalStopRequested, KvmJournalSessionRelease, KvmJournalBrowserClose, KvmJournalStopped, KvmJournalTriggerScanFailed, KvmJournalNavigated, KvmJournalPageConsole, KvmJournalPageError,
   KvmLoginRefused, KvmNoKvmService, KvmNoFrame, KvmToolchainUnavailable, KvmCredentialUnreadable, KvmRefusedOther, KvmAcquisitionOther, kvm_observer_standing, kvm_boundary_events, kvm_still_gaps, kvm_retained_still,
-  megarac_kvm_observer_start, kvm_observer_trigger,
-  KvmJournalWord, kvm_journal_event_words, kvm_journal_cause_words, megarac_kvm_observer_script,
+  megarac_kvm_observer_start,
+  KvmJournalWord, kvm_journal_event_words,
 }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_retained_artifact_prefix, mtcollins1_kvm_observer_dir }
 import gunbc.fleet_host_identity { operator_host_mtcollins1 }
@@ -78,16 +74,6 @@ fn instant(iso: String) -> KvmInstant {
   KvmInstant { since_epoch: millisecond(count: 1), iso: iso }
 }
 
-// THE UPSTREAM FACT THE ROUTE STANDS ON: 0.32 serves no on-demand still; the viewer canvas is the one
-// route that yields a still at any moment.
-test fn firmware_0_32_serves_no_on_demand_still_and_the_viewer_is_client_side() -> Bool {
-  let absent = match megarac_screen_capture_standing_at_0_32(route: ServerSideOnDemandStill) { ScreenCaptureAbsent => true  _ => false }
-  let client = match megarac_screen_capture_standing_at_0_32(route: KvmClientCanvasJpeg) { ScreenCaptureClientSideOnly => true  _ => false }
-  let bsod = match megarac_screen_capture_standing_at_0_32(route: LastBsodJpeg) { ScreenCaptureEventRetainedOnly => true  _ => false }
-  let rec = match megarac_screen_capture_standing_at_0_32(route: TriggeredFramebufferRecording) { ScreenCaptureEventRetainedOnly => true  _ => false }
-  absent && client && bsod && rec
-}
-
 // ESTABLISHED ONLY FOR THE EXPECTED SUBJECT, and every still carries its capture instant and the
 // connection generation it was taken under.
 test fn established_is_bound_to_the_expected_host_and_attempt() -> Bool {
@@ -133,7 +119,8 @@ test fn acquisition_failures_keep_their_cause() -> Bool {
   changed && tainted
 }
 
-// THE HANDOFF IS ADMITTED ONLY OVER AN ESTABLISHED OBSERVER, through the selector the actuation
+// CONTROL OF THE DROP handoff_observer_is_sol_not_kvm_viewer: when a public client restores the
+// observer, this is the refusal that returns to the handoff. THE KVM ADMISSION IS ADMITTED ONLY OVER AN ESTABLISHED OBSERVER, through the selector
 // calls: not started, pending, a busy seat, a mismatch and a loss each refuse with their standing.
 test fn the_handoff_is_admitted_only_over_an_established_observer() -> Bool {
   let at = instant(iso: "t1")
@@ -226,19 +213,10 @@ fn admitted(operation: MegaRacOperation) -> AdmittedMegaRacHost? {
   }
 }
 
-test fn the_start_refuses_without_driving_when_a_precondition_is_missing() -> Bool {
-  match admitted(operation: MegaRacKvmCanvasStill) {
-    Absent => false
-    Present { value: h } => {
-      let nocred = megarac_kvm_observer_start(host: h, dir: "artifacts/mtcollins1-boot-kvm-1", password_file: "", toolchain: BrowserToolchainUnresolved { cause: "witness" }, attempt: "1")
-      let nodir = megarac_kvm_observer_start(host: h, dir: "", password_file: "/nonexistent", toolchain: BrowserToolchainUnresolved { cause: "witness" }, attempt: "1")
-      let notool = megarac_kvm_observer_start(host: h, dir: "artifacts/mtcollins1-boot-kvm-1", password_file: "/nonexistent", toolchain: BrowserToolchainUnresolved { cause: "host not in the floor pool" }, attempt: "1")
-      let b = match nocred { KvmObserverNotStarted { reason: r } => string_contains(s: r as String, pattern: "no BMC credential")  _ => false }
-      let d = match nodir { KvmObserverNotStarted { reason: r } => string_contains(s: r as String, pattern: "no observer directory")  _ => false }
-      let c = match notool { KvmObserverNotStarted { reason: r } => string_contains(s: r as String, pattern: "unresolved: host not in the floor pool")  _ => false }
-      b && d && c && !kvm_observer_trigger(start: nocred, order: 1, reason: "power-on-verified")
-    }
-  }
+// No public KVM client exists and the canvas has no standing at 0.32, so the host is refused for the
+// KVM canvas still at the admission, before any start can be asked of it.
+test fn the_kvm_canvas_still_is_refused_at_admission_so_no_viewer_start_is_reachable() -> Bool {
+  match admitted(operation: MegaRacKvmCanvasStill) { Absent => true  Present { value: _ } => false }
 }
 
 test fn a_carrier_admitted_for_virtual_media_does_not_start_the_viewer() -> Bool {
@@ -257,20 +235,14 @@ test fn the_observer_directory_is_retained_with_the_boot_artifacts() -> Bool {
   starts_with(s: mtcollins1_kvm_observer_dir(attempt: "36335369059"), prefix: mtcollins1_boot_retained_artifact_prefix)
 }
 
-// ONE VOCABULARY, READ BOTH WAYS. Every event word the module declares reaches the observer script as
-// an EV constant and parses back to its own journal variant, never to Unparsed; every cause word reaches
-// it as a CA constant. A word added to the script but not to the rows is not written (the script only
-// has EV/CA), and a row whose word the parser does not read turns this red. The control: a word the rows
-// do not declare stays Unparsed.
+// EVERY DECLARED EVENT WORD PARSES BACK to its own journal variant, never to Unparsed; a word the rows
+// do not declare stays Unparsed (the control).
 fn kvm_word_line(w: String) -> String { concat("1790000000000 2026-09-30T00:00:00.000Z ", concat(w, " detail=x")) }
 
 test fn the_journal_vocabulary_is_declared_once_and_read_back_by_the_parser() -> Bool {
-  let script = megarac_kvm_observer_script
-  let events_rendered = !any(kvm_journal_event_words, w => !(string_contains(s: script, pattern: concat(w.id, concat(":'", concat(w.word, "'"))))))
-  let causes_rendered = !any(kvm_journal_cause_words, w => !(string_contains(s: script, pattern: concat(w.id, concat(":'", concat(w.word, "'"))))))
   let parsed = !any(kvm_journal_event_words, w => !(match kvm_journal_event(line: kvm_word_line(w: w.word)) { KvmJournalUnparsed { line: _ } => false  _ => true }))
   let control = match kvm_journal_event(line: kvm_word_line(w: "undeclared-word")) { KvmJournalUnparsed { line: _ } => true  _ => false }
-  events_rendered && causes_rendered && parsed && control && string_contains(s: script, pattern: "const EV=\{") && !string_contains(s: script, pattern: "j('")
+  parsed && control
 }
 
 // ── THE JOURNAL, WRITTEN: kvm_journal_line is kvm_journal_event read the other way ─────────────────
@@ -327,8 +299,8 @@ test fn every_rendered_journal_line_parses_back_to_its_event() -> Bool {
   all(kvm_event_sample(), e => !refused(r: kvm_journal_line(event: e)) && kvm_journal_event(line: rendered(r: kvm_journal_line(event: e))) == e)
 }
 
-// FIDELITY TO THE OBSERVER: lines as the observer script writes them re-render byte for byte where the
-// script writes only keys the parser reads, and differ only by the unread keys where it writes more.
+// FIDELITY TO THE OBSERVER: lines as the committed observer journal records them re-render byte for byte where the
+// journal carries only keys the parser reads, and differ only by the unread keys where it writes more.
 test fn a_written_line_renders_as_the_observer_writes_it() -> Bool {
   let established = "1790577698700 2026-09-28T06:41:38.700Z established host=\"192.168.1.30\" session=12 attempt=4242 gen=1"
   let lost = "1790577710007 2026-09-28T06:41:50.007Z connection-lost gen=1"

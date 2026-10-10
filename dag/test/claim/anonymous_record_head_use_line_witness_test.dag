@@ -6,7 +6,7 @@ module test.claim.anonymous_record_head_use_line_witness_test
 // never does. The authored-source attestation gate (reference_derived_candidate_authored) refused
 // exactly that candidate, no use-line was synthesized, and rustc reported E0422/E0433 on the head
 // the emitter itself wrote (live specimens: extdeps.realization.compile_stage_memo /
-// parse_table_memo `retention: {...}` rendering `ProviderRetention { .. }` with no import). This
+// parse_table_memo, since deleted with the parse memo carrier, `retention: {...}` rendering `ProviderRetention { .. }` with no import). This
 // witness reproduces the mechanism through the real emit pipeline against the minimal provider
 // fixture test.fixture.anonhead_provider (the first landing imported the real std.cache_interface
 // and paid its whole import closure, 61.7s CPU against the 1552ms floor budget, BUDGET-REFUSED on

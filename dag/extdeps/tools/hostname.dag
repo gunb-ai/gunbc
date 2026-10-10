@@ -38,6 +38,17 @@ data extdeps_hostnamectl_external_authority_anchor: ExternalAuthority = External
   }
 }
 
+// TWO READ ROWS BECAUSE THEY ANSWER DIFFERENT QUESTIONS. Bare `hostname` prints whatever the host is
+// configured to call itself, which may be fully qualified; `hostname -s` prints the first label only.
+// The reach probe compares its read for EXACT equality against the enrolled fleet slot label (the
+// short name a host is known by on the LAN), so it needs the configured name the host itself reports
+// — not a re-derived first label — and the probe therefore owns this row, the bare spelling, while a
+// converge that matches by short label owns `hostname_short_read_argv`. Collapsing the two would
+// silently change which name a caller compared.
+fn hostname_read_argv() -> List<String> {
+  [hostname_program().invocation as String]
+}
+
 fn hostname_short_read_argv() -> List<String> {
   ["hostname", "-s"]
 }

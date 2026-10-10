@@ -225,9 +225,9 @@ test fn production_and_lab_receipt_paths_and_instance_ids_differ() -> Bool {
       != live_deploy_apply_receipt_artifact_path_for(instance_id: lab_id)
 }
 
-test fn srv2_target_states_empty_ensured_directories() -> Bool {
-  srv2_deploy_desired_deployment().target.ensured_directories == []
-    && count(srv1_production_desired_deployment().target.ensured_directories) > 0
+test fn srv2_target_states_empty_host_directories() -> Bool {
+  srv2_deploy_desired_deployment().target.host_directories == []
+    && count(srv1_production_desired_deployment().target.host_directories) > 0
 }
 
 test fn each_roster_row_carries_its_own_selected_identity() -> Bool {

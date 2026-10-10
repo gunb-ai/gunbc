@@ -53,11 +53,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // can be satisfied by a check that refuses every construct, and no acceptance by one that judges
 // nothing: the accepted module is also asserted DECIDED (no counted obligation at its constructs).
 //
-// WHAT IS NOT CLAIMED. A record declared in ANOTHER module has its field SET checked and its field
-// VALUES counted, not judged: v2.compiler.resolve ResolvedTree resolved_declarations holds the
-// subject module's declarations with resolved bodies, and no other module's. rcf_far_value pins that state as it is -- accepted, with
-// a counted UndecidableFormalUnresolved at the value -- so it flips when infer can read a resolved
-// declaration across modules (the row's trigger), and is then rewritten as a refusal.
+// CROSS-MODULE FIELD VALUES ARE JUDGED TOO. A record declared in another module has its field SET
+// checked (missing still refuses) and its field VALUES judged: `n: true` against `RcfFar.n: Int`
+// refuses as `record_field_value_does_not_inhabit`, the same reason as a same-module Int field.
+// The former pin (`UndecidableFormalUnresolved` on an Accepted construct) went red when that
+// trigger landed.
 data rcf_provider_source: String = "module v2.test.rcfp\n\ntype RcfFar {\n  n: Int\n  m: Int\n}\n"
 
 data rcf_bad_source: String = "module v2.test.rcf_bad\n\ntype ArB {\n  n: Int\n  m: Int\n}\n\ndata ar_bad: ArB = ArB { n: true, m: 3 }\n"
@@ -299,7 +299,7 @@ fn rcf_member_accepted_and_decided(resolved: Outcome<ResolvedTree>, member: Symb
       match rcf_member_arrow(root: tree.root, name: member) {
         Absent => false
         Present { value: arrow } =>
-          match infer(tree: ResolvedTree { root: arrow, symbol_index: tree.symbol_index, resolved_declarations: tree.resolved_declarations, lexical_bindings: tree.lexical_bindings, unavailable_providers: tree.unavailable_providers }) {
+          match infer(tree: ResolvedTree { root: arrow, symbol_index: tree.symbol_index, resolved_declarations: tree.resolved_declarations, lexical_bindings: tree.lexical_bindings, unavailable_providers: tree.unavailable_providers, member_kinds: tree.member_kinds }) {
             Rejected { diagnostics: _ } => false
             Accepted { value: _, diagnostics: ds } =>
               !diagnostics_has_reason(d: ds, reason: ^inhabitance_undecidable_formal_unresolved)
@@ -389,15 +389,10 @@ test fn rcf_a_cross_module_records_missing_field_refuses_holds() -> Bool {
   rcf_refuses_with(resolved: rcf_resolved_far_missing(), reason: ^record_construct_field_missing)
 }
 
-// Its field VALUES are counted, not judged: the specimen's mismatch against a record declared in
-// another module is accepted with a counted UndecidableFormalUnresolved. This claim goes red when
-// infer reads a resolved declaration across modules, and is then rewritten to assert the refusal.
-test fn rcf_a_cross_module_records_field_value_is_counted_not_judged_holds() -> Bool {
-  match rcf_verdict(resolved: rcf_resolved_far_value()) {
-    RcfInferAccepted { diagnostics: ds } => diagnostics_has_reason(d: ds, reason: ^inhabitance_undecidable_formal_unresolved)
-    RcfInferRefused { diagnostics: _ } => false
-    RcfResolveRefused => false
-  }
+// Its field VALUES are judged: `n: true` against a record declared in another module refuses at
+// the value, same class as the same-module Int specimen.
+test fn rcf_a_cross_module_records_field_value_of_the_wrong_type_refuses_holds() -> Bool {
+  rcf_refuses_with(resolved: rcf_resolved_far_value(), reason: ^record_field_value_does_not_inhabit)
 }
 
 // A PATTERN IS NOT A CONSTRUCTION. `ArB { n: x }` in a match arm names one of ArB's two fields, and

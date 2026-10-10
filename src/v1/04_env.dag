@@ -186,7 +186,7 @@ data global_bare_fallback_invariant: String = "Corpus-wide bare-name census, res
 // lookup_binding_by_name after global_bare; v1 patterns: lookup_variant_in_type routes dotted
 // variant names through symbol_index_lookup. build_symbol_index_census materializes declared-module
 // item paths plus module-unique Disj variant aliases (qualified path always; corpus-unique variants
-// also enter global_bare — mirrors v2 symbol_index_fill_unique_variant_aliases);
+// also enter global_bare — mirrors v2 symbol_index_fill_containment_node's alias arm);
 // lookup_qualified_module_projection runs only when the reference carries a dot (fail-closed on
 // miss — never widens to field-access semantics).
 
@@ -226,6 +226,8 @@ type SymbolIndex {
   services: Map<String, ServiceCensusEntry>
   transparent_alias_rep: Map<String, String>
   type_head_exposures: Map<String, TypeHeadExposure>
+  file_modules: Map<String, String>
+  module_named_imports: Map<String, Map<String, String>>
 }
 
 type Scope {
@@ -233,7 +235,7 @@ type Scope {
 }
 
 fn empty_symbol_index() -> SymbolIndex {
-  SymbolIndex { entries: empty_map(), global_bare: empty_map(), services: empty_map(), transparent_alias_rep: empty_map(), type_head_exposures: empty_map() }
+  SymbolIndex { entries: empty_map(), global_bare: empty_map(), services: empty_map(), transparent_alias_rep: empty_map(), type_head_exposures: empty_map(), file_modules: empty_map(), module_named_imports: empty_map() }
 }
 
 fn empty_type_env() -> TypeEnv {
@@ -257,6 +259,97 @@ fn empty_type_env() -> TypeEnv {
 
 fn symbol_index_lookup(index: SymbolIndex, qualified_name: String) -> Node? {
   map_get(index.entries, qualified_name)
+}
+
+// THE KERNEL NAMES NO IMPORT OVERRIDES: the resolver's scope layer for the kernel sits positionally
+// above imports (v1.compiler.infer direct_import_export_precedence_note: locals > kernel >
+// direct-selected > transitive). It lives here, beside the occurrence decision below, so the
+// resolver's overlay and the emitter's unstamped-occurrence route read one predicate.
+fn overlay_skips_kernel_name(name: String) -> Bool {
+  is_kernel_type(name: name)
+    || is_container_type(name: name)
+    || name == "Unit"
+    || name == "Optional"
+    || name == "Present"
+    || name == "Absent"
+}
+
+// WHAT A BARE NAME DENOTES AT ONE UNSTAMPED OCCURRENCE, in the order the typechecker binds a
+// declaration-field type: lookup_type_for reaches lookup_binding, which answers from the module's own
+// env.bindings -- its declarations and the names it imports BY NAME -- before lookup_binding_by_name
+// reaches the overlay where the kernel layer sits above imports (overlay_skips_kernel_name). So: a
+// declaration in the occurrence's own file, then the file's named import, then the kernel. That the
+// overlay's order (v1.compiler.infer direct_import_export_precedence_note) disagrees for an imported
+// kernel-named declaration that has no mint row is the residual class
+// (gunbc.recurring_failure_mode.an_imported_name_shadowed_by_a_kernel_name); this decision mirrors the
+// binding the typechecker actually uses. It is the emitter's COPY of that order for references that
+// arrive with no resolution fact -- type-environment declaration bodies whose members were never
+// stamped -- and a counted route, not a second authority: v1.compiler.infer_emit_info
+// resolve_type_decl_routed and v1.compiler.emit_rust is_host_optional_carrier_type read it, and it is
+// deleted when those bodies carry Node.declaration stamped in the DECLARING scope
+// (v1.compiler.infer_emit_info referencing_module_declarer_route_dissolves_on).
+type BareOccurrenceBinding
+  = BareOccurrenceDeclaredInItsFile { declaration: Node }
+  | BareOccurrenceImportedByName { module_path: String, declaration: Node }
+  | BareOccurrenceIsKernelName
+  | BareOccurrenceUndecided
+
+fn symbol_index_bare_declarations(index: SymbolIndex, name: String) -> List<Node> {
+  match map_get(index.global_bare, name) {
+    Present { value: GlobalBareUniqueBinding { module_path: _, binding: b } } => [b.resolved]
+    Present { value: GlobalBareAmbiguousBinding { candidates: cs } } => cs |> map(c => c.binding.resolved)
+    Absent => []
+  }
+}
+
+// A NAMED IMPORT is followed the way lookup_binding follows it: a module that itself imports the name
+// by name re-exports it (v2.std.collection imports std.optional { Optional }), so the chain is
+// walked to the module that DECLARES the name. A chain that ends in a module holding no such
+// declaration, or that does not end within the bound, is Undecided and refuses; it never falls
+// through to the kernel.
+fn bare_occurrence_import(index: SymbolIndex, name: String, reference: Node) -> BareOccurrenceBinding? {
+  match map_get(index.file_modules, reference.span.file) {
+    Absent => none
+    Present { value: referencing_module } =>
+      match symbol_index_named_import_source(index: index, module_path: referencing_module, name: name) {
+        Absent => none
+        Present { value: from_module } => Present { value: bare_occurrence_import_terminal(index: index, module_path: from_module, name: name, fuel: 16) }
+      }
+  }
+}
+
+fn symbol_index_named_import_source(index: SymbolIndex, module_path: String, name: String) -> String? {
+  match map_get(index.module_named_imports, module_path) {
+    Absent => none
+    Present { value: named } => map_get(named, name)
+  }
+}
+
+fn bare_occurrence_import_terminal(index: SymbolIndex, module_path: String, name: String, fuel: Int) -> BareOccurrenceBinding {
+  if fuel == 0 { BareOccurrenceUndecided }
+  else {
+    match symbol_index_named_import_source(index: index, module_path: module_path, name: name) {
+      Present { value: next } => bare_occurrence_import_terminal(index: index, module_path: next, name: name, fuel: fuel - 1)
+      Absent =>
+        match symbol_index_lookup(index: index, qualified_name: concat(module_path, ".", name)) {
+          Present { value: decl } => BareOccurrenceImportedByName { module_path: module_path, declaration: decl }
+          Absent => BareOccurrenceUndecided
+        }
+    }
+  }
+}
+
+fn bare_occurrence_binding(index: SymbolIndex, name: String, reference: Node) -> BareOccurrenceBinding {
+  let local = symbol_index_bare_declarations(index: index, name: name) |> filter(d => d.span.file == reference.span.file)
+  let local_count = local |> fold(init: 0, f: (n, _d) => n + 1)
+  if local_count == 1 { local |> fold(init: BareOccurrenceUndecided, f: (acc, d) => BareOccurrenceDeclaredInItsFile { declaration: d }) }
+  else if local_count > 1 { BareOccurrenceUndecided }
+  else {
+    match bare_occurrence_import(index: index, name: name, reference: reference) {
+      Present { value: imported } => imported
+      Absent => if overlay_skips_kernel_name(name: name) { BareOccurrenceIsKernelName } else { BareOccurrenceUndecided }
+    }
+  }
 }
 
 fn global_bare_candidates_contain(candidates: List<GlobalBareCandidate>, resolved: Node) -> Bool {
@@ -298,7 +391,9 @@ fn symbol_index_insert(index: SymbolIndex, qualified_name: String, resolved: Nod
     global_bare: index.global_bare,
     services: index.services,
     transparent_alias_rep: index.transparent_alias_rep,
-    type_head_exposures: index.type_head_exposures
+    type_head_exposures: index.type_head_exposures,
+    file_modules: index.file_modules,
+    module_named_imports: index.module_named_imports
   }
 }
 
@@ -308,7 +403,9 @@ fn symbol_index_insert_decl(index: SymbolIndex, module_path: String, binding: Ty
     global_bare: symbol_index_track_global_bare(global_bare: index.global_bare, module_path: module_path, binding: binding),
     services: index.services,
     transparent_alias_rep: index.transparent_alias_rep,
-    type_head_exposures: index.type_head_exposures
+    type_head_exposures: index.type_head_exposures,
+    file_modules: index.file_modules,
+    module_named_imports: index.module_named_imports
   }
 }
 
@@ -318,7 +415,9 @@ fn symbol_index_insert_service(index: SymbolIndex, name: String, module_path: St
     global_bare: index.global_bare,
     services: map_insert(index.services, name, ServiceCensusEntry { module_path: module_path, item: item }),
     transparent_alias_rep: index.transparent_alias_rep,
-    type_head_exposures: index.type_head_exposures
+    type_head_exposures: index.type_head_exposures,
+    file_modules: index.file_modules,
+    module_named_imports: index.module_named_imports
   }
 }
 

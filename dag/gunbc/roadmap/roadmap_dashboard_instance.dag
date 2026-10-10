@@ -7,6 +7,9 @@ import std.measure { ByteSize }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import extdeps.tmux { TmuxServerScope, DefaultTmuxServer, NamedTmuxServer }
 import gunbc.ensure { EnsureObserveOnly }
+import extdeps.posix.identity { PosixOwnerNames }
+import gunbc.managed_directory { DirectoryOwnerOnly, DirectoryOwnerAllEveryoneTraverse, srv1_dashboard_service_principal }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, owned_directory_path }
 import gunbc.deployment_risk {
   DeploymentId,
   DeploymentRiskClass,
@@ -224,6 +227,7 @@ type HostDashboardInstance {
   admitted_revision: DashboardAdmittedRevisionSource
   toolchain: DashboardToolchain
   dispatch_worker_memory_max: ByteSize
+  directory_owner: PosixOwnerNames
 }
 
 // THE TOOLCHAIN IS CARRIED, NOT ONLY CONSUMED, because provisioning needs it too and provisioning
@@ -311,20 +315,6 @@ data dashboard_environment_binding_executable: FilePath = env_absolute_program()
 fn dashboard_instance_child(root: FilePath, child: String) -> FilePath {
   join([root as String, "/", child], "") as FilePath
 }
-
-// THE ROADMAP EVENT WORKTREE: where gunbc.roadmap.roadmap_event_carrier checks out the event
-// branch, under the instance root. It is declared here, beside the instance's other roots, so the
-// provision plan ensures the same path the carrier writes: the carrier's `git worktree add` cannot
-// create it when the instance root is not writable by the service principal (srv1's /opt/gunbc is
-// root-owned), and every issue page then answered 503.
-fn dashboard_instance_roadmap_events_worktree_under(instance_root: FilePath) -> FilePath {
-  dashboard_instance_child(root: instance_root, child: "roadmap-events")
-}
-
-fn dashboard_instance_roadmap_events_worktree(instance: HostDashboardInstance) -> FilePath {
-  dashboard_instance_roadmap_events_worktree_under(instance_root: instance.instance_root)
-}
-
 // THE INSTANCE'S TAILNET DOOR: the unix socket its door unit serves on and tailscale serve proxies
 // to. It sits in the instance root, which the service principal owns; who may open it is not what
 // the door relies on -- the handler is handed the kernel-attested peer of every connection
@@ -485,6 +475,8 @@ fn dashboard_named_tmux_server(instance_id: NonEmptyStr) -> TmuxServerScope {
 type DashboardToolchain {
   directory_create: FilePath
   path_test: FilePath
+  path_stat: FilePath
+  path_list: FilePath
   git: FilePath
   tmux: FilePath
   pipe_shell: FilePath
@@ -541,6 +533,8 @@ data dispatch_worker_memory_ceiling: ByteSize = gunbc_runner_slot_desired().memo
 data srv1_linux_toolchain: DashboardToolchain = DashboardToolchain {
   directory_create: "/usr/bin/mkdir" as FilePath,
   path_test: "/usr/bin/test" as FilePath,
+  path_stat: "/usr/bin/stat" as FilePath,
+  path_list: "/usr/bin/ls" as FilePath,
   git: "/usr/bin/git" as FilePath,
   tmux: "/usr/bin/tmux" as FilePath,
   pipe_shell: "/usr/bin/sh" as FilePath,
@@ -566,6 +560,8 @@ data srv1_linux_toolchain: DashboardToolchain = DashboardToolchain {
 data macbook_local_toolchain: DashboardToolchain = DashboardToolchain {
   directory_create: "/bin/mkdir" as FilePath,
   path_test: "/bin/test" as FilePath,
+  path_stat: "/opt/homebrew/bin/gstat" as FilePath,
+  path_list: "/opt/homebrew/bin/gls" as FilePath,
   git: "/usr/bin/git" as FilePath,
   tmux: "/opt/homebrew/bin/tmux" as FilePath,
   pipe_shell: "/bin/sh" as FilePath,
@@ -874,6 +870,24 @@ fn macbook_local_dashboard_instance() -> HostDashboardInstance {
     admitted_revision: macbook_local_admitted_revision_source,
     toolchain: macbook_local_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    directory_owner: macbook_local_directory_owner,
+  }
+}
+
+// WHO OWNS THE INSTANCE'S DIRECTORIES, named per host because the group is a host fact: srv1's and
+// srv2's service principal sits in a primary group spelled like its login (the coincidence
+// gunbc.live_deploy.emit install_d_managed_command records), and macOS puts every login in `staff`.
+// The owned-directory provider installs and reads back exactly this pair, so a directory created
+// under another pair is refused, never re-owned.
+data macbook_local_directory_owner: PosixOwnerNames = PosixOwnerNames {
+  user: "briansrls" as NonEmptyStr,
+  group: "staff" as NonEmptyStr,
+}
+
+fn linux_service_directory_owner() -> PosixOwnerNames {
+  PosixOwnerNames {
+    user: srv1_dashboard_service_principal().name,
+    group: srv1_dashboard_service_principal().name,
   }
 }
 
@@ -957,6 +971,7 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
     admitted_revision: fleet_admitted_revision_source,
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    directory_owner: linux_service_directory_owner(),
   }
 }
 
@@ -1045,13 +1060,14 @@ fn isolated_dashboard_instance(
     provision_transport: provision_transport,
     source_seed: DashboardGitBundle {
       controller_repo: layout.controller_repo,
-      staged_bundle: dashboard_instance_child(root: root, child: "inbox/source.bundle"),
+      staged_bundle: dashboard_instance_child(root: dashboard_inbox_under(root: root), child: "source.bundle"),
       anchor_ref: source_anchor_ref,
       history_remote: "origin" as NonEmptyStr,
     },
     admitted_revision: fleet_admitted_revision_source,
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    directory_owner: linux_service_directory_owner(),
   }
 }
 
@@ -1063,7 +1079,7 @@ fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
     root: srv1_dashboard_lab_root,
     serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
     listen_port: 18081,
-    source_anchor_ref: "refs/heads/session/codex-provider-feedback-v0" as NonEmptyStr,
+    source_anchor_ref: "refs/remotes/origin/main" as NonEmptyStr,
     actuation: DashboardActuating,
     provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
   )
@@ -1189,6 +1205,7 @@ fn srv2_deploy_dashboard_instance() -> HostDashboardInstance {
     admitted_revision: srv2_deploy_admitted_revision_source,
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    directory_owner: linux_service_directory_owner(),
   }
 }
 
@@ -1375,75 +1392,124 @@ fn dashboard_instance_footprint_paths(instance: HostDashboardInstance) -> List<F
   ]
 }
 
+// ── THE DIRECTORIES THIS MODULE'S OWN CONSUMERS DEMAND ──────────────────────────────────────────
+//
+// Each is an owned-directory target (gunbc.owned_directory) built from the instance, and the path every
+// runtime reader uses is read OFF the target, so the directory that is ensured and the directory that
+// is written cannot name two paths. The other demands live with their consumers -- the auth stores,
+// the view-preference store, the event carrier, the compute provider, the fabric store -- and
+// gunbc.roadmap.dashboard_instance_directories dashboard_instance_directory_demands composes them.
+//
+// The worktree root keeps the shared 0755 it was installed at: dispatched workers run as the service
+// principal, and no reader of it has been established that would justify tightening a live directory.
+// The two dispatch roots' member names, named once: a live_deploy retract reads them to keep the
+// empty-directory refusal that guards the source tree (gunbc.live_deploy.emit emit_artifact_teardown).
+data dashboard_dispatch_worktree_member: NonEmptyStr = "dispatch-worktree-root" as NonEmptyStr
+
+data dashboard_attempt_state_member: NonEmptyStr = "attempt-state-root" as NonEmptyStr
+
+fn dashboard_instance_dispatch_worktree_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: dashboard_dispatch_worktree_member,
+    path: match instance.dispatch_state_scope {
+      DispatchStateInstanceOwned { worktree_child, attempt_state_child: _ } =>
+        dashboard_instance_child(root: instance.instance_root, child: worktree_child)
+      DispatchStateHostShared { worktree_root, attempt_state_root: _ } => worktree_root
+    },
+    owner: instance.directory_owner,
+    mode: DirectoryOwnerAllEveryoneTraverse,
+  }
+}
+
 fn dashboard_instance_dispatch_worktree_root(instance: HostDashboardInstance) -> FilePath {
-  match instance.dispatch_state_scope {
-    DispatchStateInstanceOwned { worktree_child, attempt_state_child: _ } =>
-      dashboard_instance_child(root: instance.instance_root, child: worktree_child)
-    DispatchStateHostShared { worktree_root, attempt_state_root: _ } => worktree_root
+  owned_directory_path(t: dashboard_instance_dispatch_worktree_directory(instance: instance))
+}
+
+// AN AUTH-STATE DIRECTORY UNDER THE INSTANCE ROOT, the shape every auth store's demand shares: owned by
+// the instance's principal and closed to everyone else (sessions, login transactions, the JWKS cache,
+// profiles and view preferences are read and written only by the serve process). Each store declares
+// its own demand with this shape (gunbc.auth.session_store, gunbc.auth.login_transaction_store, ...);
+// the segment is the store's fact, not this module's.
+fn dashboard_instance_private_directory(instance: HostDashboardInstance, member: NonEmptyStr, child: String) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: member,
+    path: dashboard_instance_child(root: instance.instance_root, child: child),
+    owner: instance.directory_owner,
+    mode: DirectoryOwnerOnly,
   }
 }
 
-// THE COMPUTE ROOT: where the exact work contract's provider keeps leases, checkouts, the shared
-// per-host target directory and the content store (gunbc.compute.work_provider_local). Named here so
-// the deployment (gunbc.live_deploy.spec ComputeRoot) and the provider read one authority; the first
-// srv1 converge after the provider landed had no such member, and under a root-owned /opt/gunbc a
-// worker's first request would have refused StoreUnavailable at `install -d`.
-fn dashboard_instance_compute_root(instance: HostDashboardInstance) -> FilePath {
-  dashboard_instance_child(root: instance.instance_root, child: "compute")
-}
-
-// THE FABRIC DB ROOT: where the fabric DB's files live on the instance that holds its placement
-// (gunbc.fabric_storage_placement, gunbc.fabric_storage_file_store). Named here for the same reason the compute
-// root is: the deployment (gunbc.live_deploy.spec FabricStorageStoreDirectory, an ensured host directory)
-// and the placement read one authority. It replaced the per-instance event-log mirror root: no
-// executor keeps a copy of the log any more, so only the placement's host holds a root at all.
-fn dashboard_instance_fabric_storage_root(instance: HostDashboardInstance) -> FilePath {
-  dashboard_instance_child(root: instance.instance_root, child: "fabric-storage")
-}
-
-// THE INSTANCE'S AUTH STORES, owned here beside every other root the instance provisions. Each
-// auth module derives its store directory from this function rather than joining its own segment,
-// so the provision plan below creates exactly the directories the stores write into -- before
-// this, the plan named none of them, the four existed only where someone had made them by hand,
-// and the profile store (added later) was never created, so every login's profile publication was
-// refused and every roster read came back unread.
-type DashboardAuthStore
-  = DashboardAuthSessions
-  | DashboardAuthLoginTransactions
-  | DashboardAuthJwksCache
-  | DashboardAuthProfiles
-  | DashboardIssueViewPreferences
-
-data dashboard_auth_stores: List<DashboardAuthStore> = [
-  DashboardAuthSessions,
-  DashboardAuthLoginTransactions,
-  DashboardAuthJwksCache,
-  DashboardAuthProfiles,
-  DashboardIssueViewPreferences,
-]
-
-fn dashboard_auth_store_segment(store: DashboardAuthStore) -> String {
-  match store {
-    DashboardAuthSessions => "auth-sessions"
-    DashboardAuthLoginTransactions => "auth-login-transactions"
-    DashboardAuthJwksCache => "auth-jwks"
-    DashboardAuthProfiles => "auth-profiles"
-    DashboardIssueViewPreferences => "issue-view-preferences"
+// A DIRECTORY UNDER THE INSTANCE ROOT AT THE SHARED 0755 the provision plan's mkdir produced, for a
+// consumer whose readers have not been established beyond the instance's principal.
+fn dashboard_instance_shared_directory(instance: HostDashboardInstance, member: NonEmptyStr, child: String) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: member,
+    path: dashboard_instance_child(root: instance.instance_root, child: child),
+    owner: instance.directory_owner,
+    mode: DirectoryOwnerAllEveryoneTraverse,
   }
 }
 
-fn dashboard_instance_auth_store_root(instance: HostDashboardInstance, store: DashboardAuthStore) -> FilePath {
-  dashboard_instance_child(root: instance.instance_root, child: dashboard_auth_store_segment(store: store))
+// The attempt-state root is 0700: the dependents gunbc.managed_directory attempt_state_directory_at
+// states are the service principal alone, and that derivation is what this mode equals.
+fn dashboard_instance_dispatch_attempt_state_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: dashboard_attempt_state_member,
+    path: match instance.dispatch_state_scope {
+      DispatchStateInstanceOwned { worktree_child: _, attempt_state_child } =>
+        dashboard_instance_child(root: instance.instance_root, child: attempt_state_child)
+      DispatchStateHostShared { worktree_root: _, attempt_state_root } => attempt_state_root
+    },
+    owner: instance.directory_owner,
+    mode: DirectoryOwnerOnly,
+  }
 }
 
 fn dashboard_instance_dispatch_attempt_state_root(instance: HostDashboardInstance) -> FilePath {
-  match instance.dispatch_state_scope {
-    DispatchStateInstanceOwned { worktree_child: _, attempt_state_child } =>
-      dashboard_instance_child(root: instance.instance_root, child: attempt_state_child)
-    DispatchStateHostShared { worktree_root: _, attempt_state_root } => attempt_state_root
+  owned_directory_path(t: dashboard_instance_dispatch_attempt_state_directory(instance: instance))
+}
+
+// THE PROVIDER STATE ROOT is a directory, never a credential: the provider login writes into it, and
+// nothing the deploy carries populates it. It lives outside the instance root (so it is never an owned
+// footprint path) and nothing tears it down.
+fn dashboard_instance_provider_state_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: "provider-state-root" as NonEmptyStr,
+    path: dashboard_instance_provider_state_root(instance: instance),
+    owner: instance.directory_owner,
+    mode: DirectoryOwnerAllEveryoneTraverse,
   }
 }
 
+// THE BUNDLE INBOX: where a bundle-seeded instance stages its source bundle. Demanded only by an
+// instance whose source seed IS a bundle, and the staged bundle path is built under the same function
+// (isolated_dashboard_instance), so the inbox ensured and the inbox written are one path.
+fn dashboard_inbox_under(root: FilePath) -> FilePath {
+  dashboard_instance_child(root: root, child: "inbox")
+}
+
+fn dashboard_instance_inbox_directories(instance: HostDashboardInstance) -> List<OwnedDirectoryTarget> {
+  match instance.source_seed {
+    DashboardExistingRepo { anchor_ref: _ } => []
+    DashboardGitBundle { controller_repo: _, staged_bundle: _, anchor_ref: _, history_remote: _ } => [
+      OwnedDirectoryDeclared {
+        member: "bundle-inbox" as NonEmptyStr,
+        path: dashboard_inbox_under(root: instance.instance_root),
+        owner: instance.directory_owner,
+        mode: DirectoryOwnerAllEveryoneTraverse,
+      },
+    ]
+  }
+}
+
+// THIS MODULE'S OWN DEMANDS, in the order the deleted provision plan created them.
+fn dashboard_instance_own_directory_demands(instance: HostDashboardInstance) -> List<OwnedDirectoryTarget> {
+  concat([
+    dashboard_instance_dispatch_worktree_directory(instance: instance),
+    dashboard_instance_dispatch_attempt_state_directory(instance: instance),
+    dashboard_instance_provider_state_directory(instance: instance),
+  ], dashboard_instance_inbox_directories(instance: instance))
+}
 fn dashboard_instance_dispatch_state_paths(instance: HostDashboardInstance) -> List<FilePath> {
   [
     dashboard_instance_dispatch_worktree_root(instance: instance),
@@ -1556,23 +1622,14 @@ fn dashboard_instances_dispatch_state_is_consistent(
 // stale or missing build should refuse with the path it looked for rather than quietly producing
 // one that differs from what the operator tested.
 
-// THE MODEL VERIFIED AUTH AGAINST A DIRECTORY IT NEVER CREATED. DashboardVerifyProviderRuntime and
-// DashboardVerifyProviderAuth both read the provider state root, and nothing in the plan brought it
-// into existence — so on a fresh host the only command that can populate it fails first:
-// `CODEX_HOME=... codex login` exits with 'that path does not exist' before any OAuth begins. The
-// operator hits a CLI error in their own terminal instead of a typed refusal telling them what to
-// do, which is the gap this variant closes (operator, 2026-07-30: 'i think this stuff needs to be
-// in the workflow').\n\nIT IS A SEPARATE VARIANT BECAUSE ITS OWNERSHIP AND TEARDOWN DIFFER, and
-// reusing DashboardEnsureDirectory would state neither. The state root lives OUTSIDE the instance
-// root, so it can never be an owned path — dashboard_instance_paths_are_owned requires containment,
-// and the roster it checks deliberately excludes this. And it must never be torn down: the
-// directory holds user-authored OAuth state, so removing it on retract would destroy credentials
-// the deploy is forbidden to carry in the first place.
-// dashboard_retract_preserves_recovery_anchor_and_provider_state already asserts that preservation;
-// the type now says it too.\n\nWhat this creates is a DIRECTORY, never a credential.
-// dashboard_instance_note's rule stands unchanged — provider credentials remain pre-existing
-// user-authored state, referenced and never copied into a deployment payload. An empty state root
-// is infrastructure; the secret inside it is not, and this op cannot produce one.
+// THE PLAN CREATES NO DIRECTORY. Every directory an instance's consumers write into -- the dispatch
+// roots, the provider state root DashboardVerifyProviderRuntime and DashboardVerifyProviderAuth read,
+// the auth stores, the bundle inbox, the event worktree -- is a demand its consumer declares, composed
+// by gunbc.roadmap.dashboard_instance_directories dashboard_instance_directory_demands and ensured by
+// the one owned-directory provider (gunbc.owned_directory owned_directory_ensure) BEFORE this plan
+// runs (gunbc.roadmap_dashboard_instance_apply dashboard_apply_directories_then_plan). The two
+// directory ops this type carried were a second creator beside live_deploy's, with a different
+// meaning: a mkdir as whoever ran it, with no owner, no mode and no readback of most of what it made.
 
 type DashboardInstanceProvisionOp
   = DashboardHydrateControllerHistory {
@@ -1587,8 +1644,6 @@ type DashboardInstanceProvisionOp
       controller_repo: FilePath,
       staged_bundle: FilePath,
     }
-  | DashboardEnsureDirectory { path: FilePath }
-  | DashboardEnsureProviderStateRoot { path: FilePath }
   | DashboardEnsureServeBinary {
       controller_repo: FilePath,
       built_binary: FilePath,
@@ -1618,26 +1673,15 @@ type DashboardInstanceProvisionOp
       state_root: FilePath,
     }
 
-// live_deploy CreateRoot's DispatchWorktreeRoot and AttemptStateRoot, and systemd-launches the
-// dashboard process, only for deployment_spec_srv1 (srv1_live). deployment_spec_for has no
-// production caller. srv1_lab, srv2_lab, srv2_deploy and macbook_local still consume the dispatch
-// paths through dispatch/belt, and this plan is the only creator those instances have for those
-// directories. Naming live_deploy as owner without keeping that creator is the serve-binary
-// deadlock. Service launch is the other half of the same gap, and restoring tmux would re-fork
-// srv1_live (systemd plus a session). This plan therefore keeps the mkdirs and does not poll
-// health after launch: it does not start the process. Production process start is live_deploy
-// ServiceProcess. For every other instance, start is an operator act until deployment_spec_for
-// is a real caller. That is a declared operator act, not a silent requirement this apply cannot
-// discharge.
+// live_deploy systemd-launches the dashboard process only for deployment_spec_srv1 (srv1_live);
+// deployment_spec_for has no production caller. This plan does not start the process and does not
+// poll health after launch: production process start is live_deploy ServiceProcess, and for every
+// other instance start is a declared operator act until deployment_spec_for is a real caller.
 //
-// PROVIDER-STATE CREATION (C7, operator ruling 2026-09-19): live_deploy owns it as an ensured
-// member, gunbc.live_deploy.spec deployment_provider_state_step. The member is read back as a
-// DirectoryRoot, and no spec can lack it: the member is derived from the spec rather than authored
-// into its step list, so the state a refusal would have caught has no constructor. For srv1_live
-// that member is now the creator on the production route. DashboardEnsureProviderStateRoot stays
-// in this plan because it is still the only creator for srv1_lab, srv2_lab, srv2_deploy and
-// macbook_local; the census on deployment_provider_state_step lists each instance. It may be
-// deleted for an instance only when a production caller applies that instance's deployment spec.
+// DIRECTORIES ARE NOT IN THIS PLAN FOR ANY INSTANCE. Both routes -- this apply for srv1_lab,
+// srv2_lab, srv2_deploy and macbook_local, and the live_deploy transaction for srv1_live -- ensure the
+// same demand list through the same provider, so no instance depends on this plan to create a
+// directory and no instance is left without a creator by its removal.
 fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<DashboardInstanceProvisionOp> {
   let controller_source_ops = match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => []
@@ -1657,17 +1701,7 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
       },
     ]
   }
-  let common = concat(concat([
-    DashboardEnsureDirectory { path: instance.instance_root },
-    DashboardEnsureDirectory { path: dashboard_instance_dispatch_worktree_root(instance: instance) },
-    DashboardEnsureDirectory { path: dashboard_instance_dispatch_attempt_state_root(instance: instance) },
-    DashboardEnsureDirectory { path: dashboard_instance_roadmap_events_worktree(instance: instance) },
-  ], map(dashboard_auth_stores, s => DashboardEnsureDirectory {
-    path: dashboard_instance_auth_store_root(instance: instance, store: s),
-  })), [
-    DashboardEnsureProviderStateRoot {
-      path: dashboard_instance_provider_state_root(instance: instance),
-    },
+  let common = [
     DashboardEnsureServeBinary {
       controller_repo: dashboard_instance_controller_workdir(instance: instance),
       built_binary: dashboard_instance_child(
@@ -1680,7 +1714,7 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
       path: dashboard_instance_ownership_marker_path(instance: instance),
       instance_id: instance.instance_id,
     },
-  ])
+  ]
   let source_ops = match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => []
     DashboardGitBundle {
@@ -1689,9 +1723,6 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
       anchor_ref,
       history_remote: _,
     } => [
-      DashboardEnsureDirectory {
-        path: dashboard_instance_child(root: instance.instance_root, child: "inbox"),
-      },
       DashboardStageGitBundle {
         controller_repo: controller_repo,
         staged_bundle: staged_bundle,
@@ -1766,18 +1797,6 @@ fn dashboard_instance_provision_op_row(
         kind: "stage-git-bundle" as NonEmptyStr,
         target: staged_bundle as String,
         detail: "copy proven temporary bundle to .next, then atomically rename",
-      }
-    DashboardEnsureDirectory { path } =>
-      DashboardInstanceProvisionPlanRow {
-        kind: "ensure-directory" as NonEmptyStr,
-        target: path as String,
-        detail: "mkdir parents; idempotent",
-      }
-    DashboardEnsureProviderStateRoot { path } =>
-      DashboardInstanceProvisionPlanRow {
-        kind: "ensure-provider-state-root" as NonEmptyStr,
-        target: path as String,
-        detail: "mkdir parents so the provider login has somewhere to write; never torn down, never populated by the deploy",
       }
     DashboardEnsureServeBinary { controller_repo: _, built_binary, path } =>
       DashboardInstanceProvisionPlanRow {
@@ -1869,8 +1888,8 @@ type DashboardInstanceObserved {
   source_revision_observed: Bool
   source_revision_current: Bool
   source_revision_detail: String
-  attempts_present: Bool
-  attempt_state_present: Bool
+  directories_converged: Bool
+  directory_refusals: List<String>
   provider_runtime_ready: Bool
   provider_runtime_detail: String
   provider_authenticated: Bool
@@ -1930,6 +1949,13 @@ fn dashboard_instance_reconcile(
     DashboardInstanceRefused {
       reason: "production isolation read-back failed" as NonEmptyStr,
     }
+  } else if count(observed.directory_refusals) > 0 {
+    DashboardInstanceRefused {
+      reason: join([
+        "owned directories refused: ",
+        join(observed.directory_refusals, " | "),
+      ], "") as NonEmptyStr,
+    }
   } else if (observed.origin_present || observed.source_present)
       && !observed.ownership_marker_present {
     DashboardInstanceRefused {
@@ -1951,8 +1977,7 @@ fn dashboard_instance_reconcile(
       && dashboard_source_seed_ready(instance: instance, observed: observed)
       && observed.origin_present
       && observed.source_present
-      && observed.attempts_present
-      && observed.attempt_state_present
+      && observed.directories_converged
       && observed.provider_runtime_ready
       && observed.provider_authenticated
       && observed.source_anchor_matches

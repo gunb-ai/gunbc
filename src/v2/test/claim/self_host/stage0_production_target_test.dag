@@ -13,6 +13,7 @@ import v2.compiler.self_host.stage0_production_target {
   stage0_production_target_model
 }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRef }
+import v2.std.cross_tree.import_model { V2Tree }
 import v2.compiler.source_authority_read {
   source_ref_for_observed_storage_path,
   source_root_ingest_from_source_refs
@@ -232,7 +233,7 @@ type Stage0BoundaryRead
 
 fn stage0_boundary_read_of(path: String) -> Stage0BoundaryRead {
   match source_root_ingest_from_source_refs(
-    refs: Cons { head: source_ref_for_observed_storage_path(path: path), tail: Empty }
+    refs: Cons { head: source_ref_for_observed_storage_path(path: path, source_root: V2Tree), tail: Empty }
   ) {
     Rejected { diagnostics: _ } => Stage0BoundaryReadRefused
     Accepted { value: ingest, diagnostics: _ } =>
