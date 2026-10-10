@@ -223,7 +223,7 @@ test fn settlement_releases_only_a_closed_window_or_an_ended_unit() -> Bool {
 // same fold, carries no process bounds.
 test fn the_worker_unit_is_capped_at_its_grant_by_the_compute_fold() -> Bool {
   let inst = srv2_deploy_dashboard_instance()
-  let props = property_words(props: dispatch_worker_unit_properties(instance: inst, working_directory: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1024), process_bounds: session_process_bounds))
+  let props = property_words(props: dispatch_worker_unit_properties(instance: inst, working_directory: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1024), process_bounds: session_process_bounds, exit_hook: "mkdir -- /i/attempt-exit-spool/inbox/n+k+x" as NonEmptyStr))
   let compute = property_words(props: compute_unit_properties(layout: compute_layout(instance: inst, identity_hex: "abc"), granted: kibibyte(count: 1024)))
   contains(props, "MemoryMax=1048576")
     && contains(props, "CPUQuota=800%")

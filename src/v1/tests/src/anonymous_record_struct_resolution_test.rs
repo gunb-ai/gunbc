@@ -3,7 +3,7 @@ use std::rc::Rc;
 use v1_compiler::v1_compiler_emit_rust::{
     anonymous_record_struct_candidates, find_struct_name_by_fields,
 };
-use v1_compiler::v1_compiler_infer_emit_info::{TypeRepr, TypeSummary};
+use v1_compiler::v1_compiler_infer_emit_info::{TypeRepr, TypeSummary, TypeSummaryIndex};
 
 fn summary(name: &str, fields: &[(&str, &str)]) -> Rc<TypeSummary> {
     let mut field_type_map = HashMap::new();
@@ -12,6 +12,7 @@ fn summary(name: &str, fields: &[(&str, &str)]) -> Rc<TypeSummary> {
     }
     Rc::new(TypeSummary {
         name: name.to_string(),
+        key: format!("fixture.{name}"),
         repr: Rc::new(TypeRepr::StructRepr),
         field_summaries: Rc::new(HashMap::new()),
         field_type_map: Rc::new(field_type_map),
@@ -22,12 +23,23 @@ fn summary(name: &str, fields: &[(&str, &str)]) -> Rc<TypeSummary> {
     })
 }
 
-fn summaries(rows: &[Rc<TypeSummary>]) -> Rc<HashMap<String, Rc<TypeSummary>>> {
-    let mut result = HashMap::new();
+// Summaries are keyed by declaring identity, with the leaf index beside them.
+fn summaries(rows: &[Rc<TypeSummary>]) -> Rc<TypeSummaryIndex> {
+    let mut by_key = HashMap::new();
+    let mut keys_by_leaf: HashMap<String, Rc<Vector<String>>> = HashMap::new();
     for row in rows {
-        result.insert(row.name.clone(), row.clone());
+        by_key.insert(row.key.clone(), row.clone());
+        let mut keys = keys_by_leaf
+            .get(&row.name)
+            .map(|k| (**k).clone())
+            .unwrap_or_default();
+        keys.push_back(row.key.clone());
+        keys_by_leaf.insert(row.name.clone(), Rc::new(keys));
     }
-    Rc::new(result)
+    Rc::new(TypeSummaryIndex {
+        by_key: Rc::new(by_key),
+        keys_by_leaf: Rc::new(keys_by_leaf),
+    })
 }
 
 #[test]

@@ -43,6 +43,10 @@ data sha256sum_cli_tool: CliTool = CliTool {
   installable_via: [SourceCoreutils],
 }
 
+// Observed on srv1, 2026-10-09: /usr/bin/sha256sum is root:root 0755. Exact sudoers
+// digest-read grants require this resolved path, shared by their executor.
+data sha256sum_binary_path: NonEmptyStr = "/usr/bin/sha256sum"
+
 // DigestFile DIGESTS a file rather than verifying it against one a caller already has. CheckFile
 // answers "does this file match this digest", which cannot be used to LEARN a digest: a caller that
 // wants to record which bytes it actually ran has nothing to compare against yet. coreutils prints

@@ -3,8 +3,8 @@ module extdeps.git.versioning
 import std.types { NonEmptyStr, brand }
 import std.integer { NonNegativeInt }
 import std.algebra { Ordering, Equal, Greater }
-import std.nat { nat_compare }
-import extdeps.version { VersionIdentity, VersionScheme, VersionConstraint }
+import extdeps.version { VersionIdentity, VersionComparison, VersionCompared, VersionComparisonRefused, VersionScheme, VersionConstraint, ComparisonSide, LeftOperand, RightOperand }
+import extdeps.version.semver { semver_core_parse, semver_compare_numeric_digits, semver_label_from_code_points, semver_numeric_field, SemVerNumericField }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -16,9 +16,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type GitReleaseVersion {
-  major: NonNegativeInt
-  minor: NonNegativeInt
-  patch: NonNegativeInt
+  major: SemVerNumericField
+  minor: SemVerNumericField
+  patch: SemVerNumericField
 }
 
 type GitVersionPlatformSuffix
@@ -30,11 +30,13 @@ type GitCliReportedVersion {
   suffix: GitVersionPlatformSuffix
 }
 
-data git_2_0_release: GitReleaseVersion = {
-  major: 2,
-  minor: 0,
-  patch: 0
-}
+// THE ANCHOR IS DERIVED THROUGH THE PARSER, never raw lists: the fields come from parsing
+// the literal release text, so the confined constructor's admission is the only producer.
+// The anchor IS the parse result — an Optional — so a refused label is a refusal carried to
+// every consumer, never a fabricated 0.0.0 standing in for a parse that did not happen
+// (review 77150: a failure arm must refuse, never widen). The round-trip witness pins the
+// admitted label to "2.0.0" by execution, so a forged or control-character field cannot pass.
+data git_2_0_release: GitReleaseVersion? = git_release_version_from_text(text: "2.0.0")
 
 data git_release_versioning_spec_url: NonEmptyStr = "https://git-scm.com/docs/BreakingChanges.html"
 
@@ -44,8 +46,8 @@ data min_git_version: GitVersionConstraint = ">= 2.0.0"
 
 fn git_release_version_label(v: GitReleaseVersion) -> String {
   concat(
-    to_string(v.major),
-    concat(".", concat(to_string(v.minor), concat(".", to_string(v.patch))))
+    semver_label_from_code_points(cps: v.major.digits),
+    concat(".", concat(semver_label_from_code_points(cps: v.minor.digits), concat(".", semver_label_from_code_points(cps: v.patch.digits))))
   )
 }
 
@@ -54,17 +56,49 @@ fn git_release_to_version_identity(v: GitReleaseVersion) -> VersionIdentity {
 }
 
 fn git_release_version_compare(a: GitReleaseVersion, b: GitReleaseVersion) -> Ordering {
-  match nat_compare(a: a.major, b: b.major) {
-    Equal => match nat_compare(a: a.minor, b: b.minor) {
-      Equal => nat_compare(a: a.patch, b: b.patch)
+  match semver_compare_numeric_digits(a: a.major, b: b.major) {
+    Equal => match semver_compare_numeric_digits(a: a.minor, b: b.minor) {
+      Equal => semver_compare_numeric_digits(a: a.patch, b: b.patch)
       other => other
     }
     other => other
   }
 }
 
-fn git_release_compare_identity(a: VersionIdentity, b: VersionIdentity) -> Ordering {
-  if a == b { Equal } else { Greater }
+// ---- identity compare -----------------------------------------------------------------------
+// The label is a VersionScheme's only handle, so the comparison parses the label back into the
+// typed form and routes through git_release_version_compare — the ONE implementation of the cited
+// numeric rule for this scheme. The LABEL GRAMMAR is not re-invented here: a git release version
+// is a bare MAJOR.MINOR.PATCH triple, which is exactly the SemVer 2.0.0 core, so the parse
+// consumes extdeps.version.semver's core parse (three dot-separated digit runs, no leading
+// zeroes) and refuses anything else. A label outside that grammar is a located refusal: the
+// carrier names the failing side, the label, and the cause.
+
+fn git_release_version_from_text(text: NonEmptyStr) -> GitReleaseVersion? {
+  match semver_core_parse(cps: chars(s: text as String)) {
+    Absent => none
+    Present { value: v } =>
+      Present { value: GitReleaseVersion { major: v.major, minor: v.minor, patch: v.patch } }
+  }
+}
+
+fn git_release_identity_parse(identity: VersionIdentity) -> GitReleaseVersion? {
+  match semver_core_parse(cps: chars(s: identity as String)) {
+    Absent => none
+    Present { value: v } =>
+      Present { value: GitReleaseVersion { major: v.major, minor: v.minor, patch: v.patch } }
+  }
+}
+
+fn git_release_compare_identity(a: VersionIdentity, b: VersionIdentity) -> VersionComparison {
+  match git_release_identity_parse(identity: a) {
+    Absent => VersionComparisonRefused { side: LeftOperand, identity: a as String, cause: "label is not a git release version: a bare MAJOR.MINOR.PATCH triple of digit runs without leading zeroes is required" }
+    Present { value: va } =>
+      match git_release_identity_parse(identity: b) {
+        Absent => VersionComparisonRefused { side: RightOperand, identity: b as String, cause: "label is not a git release version: a bare MAJOR.MINOR.PATCH triple of digit runs without leading zeroes is required" }
+        Present { value: vb } => VersionCompared { ordering: git_release_version_compare(a: va, b: vb) }
+      }
+  }
 }
 
 data git_release_version_scheme: VersionScheme = VersionScheme {

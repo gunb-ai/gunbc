@@ -1,9 +1,15 @@
 module gunbc.fleet_converge_plan_cli
 
+import gunbc.live_deploy.release_locus { approval_broker_release_dir, RevisionBoundAtEmission }
+import gunbc.runner_microvm_slot_unit { microvm_controller_root }
+
 import gunbc.fleet_converge_scope { WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly, FleetConvergeScope, FullHost, FabricExecutionCellsOnly, FabricAllocationStoreOnly, LiveDeploy, LaunchEnvironment }
 import gunbc.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
 
-import gunbc.workspace_commissioning_fleet { WorkspaceCommissioningFleetObserved, WorkspaceCommissioningFleetRefused }
+import gunbc.host_kernel_dependency { host_kernel_maintenance_capability }
+import gunbc.host_kernel_dependency_wire { host_kernel_dependency_in_plan_body }
+
+import gunbc.workspace_commissioning_fleet { WorkspaceCommissioningFleetObserved, WorkspaceCommissioningFleetDependencyObserved, WorkspaceCommissioningFleetRefused }
 import gunbc.workspace_commissioning_dispatch_transport { workspace_dispatch_captured_command, workspace_dispatch_observe }
 import gunbc.workspace_commissioning_executor_plan { workspace_executor_scope_wire, workspace_executor_plan_credential, workspace_executor_plan_bytes, WorkspaceExecutorPlanBytesVerified, WorkspaceExecutorPlanBytesRefused }
 import gunbc.workspace_commissioning_directive { workspace_commissioning_directive_from_text, WorkspaceCommissioningDirectiveReady, WorkspaceCommissioningDirectiveRefused }
@@ -15,13 +21,12 @@ import std.types { CommitSha }
 
 import gunbc.fabric_storage_binding { fabric_state_storage_binding }
 
-import gunbc.workspace_allocation_convergence { workspace_convergence_observe, WorkspaceConvergenceObserved, WorkspaceConvergenceUnobserved }
+import gunbc.workspace_allocation_convergence { WorkspaceConvergenceObserved, WorkspaceConvergenceUnobserved }
 import gunbc.workspace_allocation_launch_directive { workspace_launch_directive_from_text, WorkspaceLaunchDirectiveReady, WorkspaceLaunchDirectiveRefused }
-import gunbc.workspace_reconcile_once { workspace_reconcile_prepare }
-import gunbc.workspace_allocation_store { WorkspaceAllocation, workspace_allocation_json, workspace_record_preparation_wait, WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused }
-import gunbc.workspace_request_consumer { workspace_consumer_reconcile_enrolled, WorkspaceConsumerIdle, WorkspaceConsumerRefused, WorkspaceConsumerRetire, WorkspaceConsumerPrepare, WorkspaceConsumerRoute, WorkspaceConsumerSettled, WorkspaceConsumerRetry }
+import gunbc.workspace_allocation_dispatch_transport { workspace_allocation_dispatch_prepare, workspace_allocation_dispatch_readback }
+import gunbc.workspace_allocation_store { workspace_allocation_json }
 import gunbc.workspace_allocation_policy { workspace_installed_policy }
-import gunbc.workspace_allocation_admission { workspace_owner_enrollment, workspace_enrolled_owners, WorkspacePolicyAdmitted, WorkspacePolicyRefused }
+import gunbc.workspace_allocation_admission { workspace_owner_enrollment, WorkspacePolicyAdmitted, WorkspacePolicyRefused }
 import gunbc.principal_projection { PrincipalRef }
 
 import extdeps.languages.json.emit { serialize_json }
@@ -178,6 +183,7 @@ import gunbc.fleet_converge_plan {
   FabricAllocationStoreConverge,
   WorkspaceAllocationConverge,
   WorkspaceSlotCommissioningConverge,
+  WorkspaceCommissioningDependencyConverge,
   fleet_converge_scope_of_wire,
   fleet_converge_scope_matches,
   fleet_converge_plan_artifact_of_request,
@@ -208,10 +214,7 @@ import gunbc.clock_read { clock_now_probed_at }
 import gunbc.actions_run_binding {
   ActionsRunBinding, observe_actions_run_binding, ActionsRunBound, ActionsRunUnbound,
   actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent,
-  read_expected_revision,
-  ExpectedRevisionPresent,
-  ExpectedRevisionAbsent,
-  admit_run_revision,
+  admit_optional_expected_revision,
   RunRevisionAdmitted,
   RunRevisionRefused,
   fleet_converge_expected_host_env_name,
@@ -413,7 +416,7 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
       },
     }
     ScopeDecoded { scope: WorkspaceSlotCommissioningOnly } => FleetConvergeRequestUnobserved { reason: "commissioning observation requires the admitted revision" }
-    ScopeDecoded { scope: WorkspaceAllocationOnly } => observe_workspace_allocation_plan_request_wet(host: host)
+    ScopeDecoded { scope: WorkspaceAllocationOnly } => FleetConvergeRequestUnobserved { reason: "workspace allocation observation requires the admitted revision" }
     ScopeDecoded { scope: LiveDeploy } =>
       FleetConvergeRequestUnobserved {
         reason: "observe_fleet_converge_request_wet is host-and-scope-wire; LiveDeployConverge is minted from DesiredDeployment and LiveDeployMemberBasis, not a hostname",
@@ -817,14 +820,10 @@ fn fleet_converge_scoped_plan_wet(scope: FleetConvergeScope) -> ProcessExit
     ActionsRunUnbound { variable: v, detail: d } =>
       exit_failure(reason: join(["fleet_converge_plan: RunUnbound — ", v, " ", d, "; the plan mode mints a run-bound receipt and runs only inside the fleet-converge workflow"], ""))
     ActionsRunBound { binding: run } =>
-      match read_expected_revision() {
-        ExpectedRevisionAbsent =>
-          exit_failure(reason: "fleet_converge_plan: ExpectedRevisionAbsent — RLM_EXPECTED_REVISION is required so the plan run is bound to the operator-selected R, not merely to whatever ref was dispatched")
-        ExpectedRevisionPresent { revision: expected_r } =>
-          match admit_run_revision(binding: run, expected: expected_r) {
-            RunRevisionRefused { expected: e, observed: o } =>
-              exit_failure(reason: join(["fleet_converge_plan: RunRevisionRefused — expected ", e, " but this run checked out ", o], ""))
-            RunRevisionAdmitted { revision: _ } =>
+      match admit_optional_expected_revision(binding: run) {
+        RunRevisionRefused { expected: e, observed: o } =>
+          exit_failure(reason: join(["fleet_converge_plan: RunRevisionRefused — expected ", e, " but this run checked out ", o], ""))
+        RunRevisionAdmitted { revision: _ } =>
       match actions_variable_read(name: fleet_converge_expected_host_env_name) {
         ActionsVariableAbsent { variable: v, detail: d } =>
           exit_failure(reason: join(["fleet_converge_plan: ExpectedHostAbsent — ", v, " ", d], ""))
@@ -835,7 +834,6 @@ fn fleet_converge_scoped_plan_wet(scope: FleetConvergeScope) -> ProcessExit
             scope: scope,
           )
       }
-          }
       }
   }
 }
@@ -878,8 +876,13 @@ fn fleet_converge_plan_scoped_bound_wet(
   let observed = if (scope == WorkspaceSlotCommissioningOnly) {
     match workspace_dispatch_observe(host: subject_host, revision: run.run_revision as CommitSha) {
       WorkspaceCommissioningFleetObserved { basis } => FleetConvergeRequestObserved { request: WorkspaceSlotCommissioningConverge { basis: basis } }
-      WorkspaceCommissioningFleetRefused { reason: _ } => FleetConvergeRequestUnobserved { reason: "commissioning privileged observation refused" }
+      WorkspaceCommissioningFleetDependencyObserved { plan } => FleetConvergeRequestObserved { request: WorkspaceCommissioningDependencyConverge { plan: plan } }
+      WorkspaceCommissioningFleetRefused { reason } => FleetConvergeRequestUnobserved { reason: concat("commissioning privileged observation refused: ", reason) }
     }
+  } else if (scope == WorkspaceAllocationOnly) {
+    observe_workspace_allocation_plan_request_wet(host: subject_host,
+      release_dir: approval_broker_release_dir(root: microvm_controller_root,
+        revision: RevisionBoundAtEmission { revision: run.run_revision as CommitSha }) as NonEmptyStr)
   } else { observe_fleet_converge_request_wet(scope_wire: fleet_converge_scope_wire(scope: scope), host: subject_host) }
   match observed {
     FleetConvergeRequestUnobserved { reason: why } =>
@@ -1004,14 +1007,10 @@ fn fleet_converge_apply_wet() -> ProcessExit
     ActionsRunUnbound { variable: v, detail: d } =>
       exit_failure(reason: join(["fleet_converge_apply: RunUnbound — ", v, " ", d, "; the apply mode mints a run-bound receipt and runs only inside the fleet-converge workflow"], ""))
     ActionsRunBound { binding: run } =>
-      match read_expected_revision() {
-        ExpectedRevisionAbsent =>
-          exit_failure(reason: "fleet_converge_apply: ExpectedRevisionAbsent — RLM_EXPECTED_REVISION is required; without it apply can mutate srv1 at a revision the operator never selected")
-        ExpectedRevisionPresent { revision: expected_r } =>
-          match admit_run_revision(binding: run, expected: expected_r) {
-            RunRevisionRefused { expected: e, observed: o } =>
-              exit_failure(reason: join(["fleet_converge_apply: RunRevisionRefused — expected ", e, " but this run checked out ", o, "; refusing before the locked actuator"], ""))
-            RunRevisionAdmitted { revision: admitted_r } =>
+      match admit_optional_expected_revision(binding: run) {
+        RunRevisionRefused { expected: e, observed: o } =>
+          exit_failure(reason: join(["fleet_converge_apply: RunRevisionRefused — expected ", e, " but this run checked out ", o, "; refusing before the locked actuator"], ""))
+        RunRevisionAdmitted { revision: admitted_r } =>
       match actions_variable_read(name: fleet_converge_plan_run_id_env_name) {
         ActionsVariableAbsent { variable: v, detail: d } =>
           exit_failure(reason: join(["fleet_converge_apply: PlanRunIdAbsent — ", v, " ", d], ""))
@@ -1023,7 +1022,6 @@ fn fleet_converge_apply_wet() -> ProcessExit
               fleet_converge_apply_bound_wet(run: run, plan_run_id: plan_run_id, plan_receipt: plan_receipt, expected_revision_admitted: admitted_r)
           }
       }
-          }
       }
   }
 }
@@ -1129,7 +1127,7 @@ fn fleet_converge_apply_ordinary_bound_wet(
                 ApplyAllocationStorePrestateMismatch { namespace_path: n, store_path: p, observed: o } =>
                   exit_failure(reason: join(["fleet_converge_apply: AllocationStorePrestateMismatch namespace_path=", n as String, " store_path=", p as String, " observed=", o, "; rerun plan and review"], ""))
                 ApplyAwaitingCapability { capability: c } =>
-                  exit_failure(reason: join(["fleet_converge_apply: AwaitingCapability ", c, " — nonempty live-deploy plan; wet apply is C8"], ""))
+                  exit_failure(reason: join(["fleet_converge_apply: AwaitingCapability ", c, " — this plan requires an unavailable apply capability"], ""))
                 ApplyAdmitted =>
               if !fleet_converge_observed_baseline_matches(
                 observed_baseline_hex: trim(s: read_base.content),
@@ -1325,14 +1323,11 @@ data fleet_converge_operator_mode_plan: String = "plan"
 data fleet_converge_operator_mode_apply: String = "apply"
 data fleet_converge_operator_mode_deploy: String = "deploy"
 
-// THE DEPLOY CANDIDATE IS HEAD OF THE CHECKOUT BEING EXECUTED, so the branch that checkout is on
-// is workflow policy and it is asked explicitly. The workflow deploys from main; an operator who
-// wants a different branch on the dashboard says so with --candidate-branch, and the value is
-// compared to the observed branch rather than trusted. An empty requirement refuses rather than
-// admitting whatever HEAD happens to be, because "any branch" is the one policy that must never
-// be the default of a command that restarts the served dashboard.
+// THE DEPLOY CANDIDATE IS HEAD OF THE CHECKOUT BEING EXECUTED. Operator 2026-10-09: fleet-converge
+// must support an arbitrary branch. An empty --candidate-branch therefore admits the observed
+// branch. A named requirement still has to equal the checkout. An empty observed branch never admits.
 fn fleet_converge_deploy_branch_admits(observed: String, required: String) -> Bool {
-  trim(s: required) != "" && trim(s: observed) == trim(s: required)
+  trim(s: observed) != "" && (trim(s: required) == "" || trim(s: observed) == trim(s: required))
 }
 
 fn fleet_converge_operator_cli_entry(
@@ -1570,6 +1565,7 @@ fn observe_fleet_converge_request_from_plan_wet(scope_wire: String, host: NonEmp
       Present { value: credential } => match workspace_commissioning_directive_from_text(text: credential) {
         WorkspaceCommissioningDirectiveReady { provenance } => match workspace_dispatch_observe(host: host, revision: provenance.source_revision as CommitSha) {
           WorkspaceCommissioningFleetObserved { basis } => FleetConvergeRequestObserved { request: WorkspaceSlotCommissioningConverge { basis: basis } }
+          WorkspaceCommissioningFleetDependencyObserved { plan: _ } => FleetConvergeRequestUnobserved { reason: "commissioning dependency remains unresolved" }
           WorkspaceCommissioningFleetRefused { reason: _ } => FleetConvergeRequestUnobserved { reason: "commissioning no-op readback refused" }
         }
         WorkspaceCommissioningDirectiveRefused { reason: _ } => FleetConvergeRequestUnobserved { reason: "commissioning provenance unreadable" }
@@ -1586,10 +1582,7 @@ fn observe_fleet_converge_request_from_plan_wet(scope_wire: String, host: NonEmp
           WorkspaceLaunchDirectiveRefused { reason: detail } => FleetConvergeRequestUnobserved { reason: detail }
           WorkspaceLaunchDirectiveReady { directive: planned } => if !(match workspace_installed_policy() { WorkspacePolicyAdmitted { policy } => (match workspace_owner_enrollment(policy: policy, owner: planned.allocation.request.owner) { Present { value: _ } => true Absent => false }) WorkspacePolicyRefused { reason: _ } => false }) {
             FleetConvergeRequestUnobserved { reason: "workspace plan owner is not authorized by the installed allocation policy" }
-          } else { match workspace_convergence_observe(
-            store: fabric_state_storage_binding(),
-            owner: planned.allocation.request.owner, idempotency_key: planned.allocation.request.idempotency_key,
-          ) {
+          } else { match workspace_allocation_dispatch_readback(host: host, planned: planned) {
             WorkspaceConvergenceUnobserved { reason: detail } => FleetConvergeRequestUnobserved { reason: detail }
             WorkspaceConvergenceObserved { basis: current } => if current.owner_generation != planned.owner_generation
               || serialize_json(v: workspace_allocation_json(allocation: current.allocation)) != serialize_json(v: workspace_allocation_json(allocation: planned.allocation)) {
@@ -1603,64 +1596,11 @@ fn observe_fleet_converge_request_from_plan_wet(scope_wire: String, host: NonEmp
   }
 }
 
-// Discover the outstanding request from protected state rather than requiring an HTTP process
-// to remember or forward its identity. Retirement runs before installed-artifact or offer reads.
-fn observe_workspace_allocation_plan_request_wet(host: NonEmptyStr) -> FleetConvergeRequestObservation {
-  match clock_now_probed_at() {
-    Absent => FleetConvergeRequestUnobserved { reason: "workspace consumer clock is unavailable" }
-    Present { value: now } => match workspace_installed_policy() {
-    WorkspacePolicyRefused { reason: detail } => FleetConvergeRequestUnobserved { reason: detail }
-    WorkspacePolicyAdmitted { policy } => match workspace_consumer_reconcile_enrolled(store: fabric_state_storage_binding(),
-      owners: workspace_enrolled_owners(policy: policy), observed_at: now as String) {
-      WorkspaceConsumerIdle => FleetConvergeRequestUnobserved { reason: "no outstanding workspace request" }
-      WorkspaceConsumerRefused { reason: detail } => FleetConvergeRequestUnobserved { reason: detail }
-      WorkspaceConsumerRetry => FleetConvergeRequestUnobserved { reason: "workspace owner changed concurrently; reconcile again" }
-      WorkspaceConsumerRetire { allocation: _ } => FleetConvergeRequestUnobserved { reason: "workspace retirement remains outstanding" }
-      WorkspaceConsumerSettled { allocation: _ } => FleetConvergeRequestUnobserved { reason: "unplanned workspace retirement settled; no host apply required" }
-      WorkspaceConsumerPrepare { allocation: allocation } => match shell.Env.Get(name: "GUNBC_WORKSPACE_CONTROLLER_RELEASE" as NonEmptyStr).value {
-        Absent => workspace_publish_preparation_wait(allocation: allocation, reason: "workspace preparation requires the installed controller release identity")
-        Present { value: installed } => if trim(s: installed) == "" {
-          workspace_publish_preparation_wait(allocation: allocation, reason: "workspace installed controller release identity is empty")
-        } else { match workspace_reconcile_prepare(store: fabric_state_storage_binding(), allocation: allocation,
-          local_host: host as HostIdentity, release_dir: trim(s: installed) as NonEmptyStr) {
-          WorkspaceConvergenceUnobserved { reason: detail } => workspace_publish_preparation_wait(allocation: allocation, reason: detail)
-          WorkspaceConvergenceObserved { basis: planned } => if (planned.host as String) != (host as String) {
-            FleetConvergeRequestUnobserved { reason: concat("workspace plan selected host ", concat(planned.host as String, "; dispatch fleet-converge allocation plan there")) }
-          } else { observe_workspace_prepared_plan_request_wet(owner: allocation.request.owner, request_key: allocation.request.idempotency_key, host: host) }
-        } }
-      }
-      WorkspaceConsumerRoute { allocation: allocation } => observe_workspace_prepared_plan_request_wet(
-        owner: allocation.request.owner, request_key: allocation.request.idempotency_key, host: host)
-    }
-    }
-  }
-}
-
-// A preparation that could not select publishes its located reason for the owner's view and stops.
-fn workspace_publish_preparation_wait(allocation: WorkspaceAllocation, reason: String) -> FleetConvergeRequestObservation {
-  match workspace_record_preparation_wait(store: fabric_state_storage_binding(), request: allocation.request, reason: reason) {
-    WorkspaceStoreWritten { allocation: _ } => FleetConvergeRequestUnobserved { reason: reason }
-    WorkspaceStoreConflict => FleetConvergeRequestUnobserved { reason: "workspace changed while publishing preparation wait; reconcile again" }
-    WorkspaceStoreWriteRefused { reason: detail } => FleetConvergeRequestUnobserved { reason: detail }
-  }
-}
-
-// Local authorities are read only after the existing selected-host check. Apply still obtains
-// its identity and installed artifact from the hash-admitted plan, never from this environment.
-fn observe_workspace_prepared_plan_request_wet(owner: PrincipalRef, request_key: NonEmptyStr, host: NonEmptyStr) -> FleetConvergeRequestObservation {
-  match workspace_convergence_observe(store: fabric_state_storage_binding(),
-    owner: owner, idempotency_key: request_key) {
-    WorkspaceConvergenceUnobserved { reason: detail } => FleetConvergeRequestUnobserved { reason: detail }
-    WorkspaceConvergenceObserved { basis: selected } => if selected.host != host {
-      FleetConvergeRequestUnobserved { reason: "workspace plan request is executing on a different host" }
-    } else { match shell.Env.Get(name: "GUNBC_WORKSPACE_CONTROLLER_RELEASE" as NonEmptyStr).value {
-      Absent => FleetConvergeRequestUnobserved { reason: "workspace plan requires the installed controller release identity" }
-      Present { value: installed } => if trim(s: installed) == "" {
-        FleetConvergeRequestUnobserved { reason: "workspace installed controller release identity is empty" }
-      } else { FleetConvergeRequestObserved {
-        request: WorkspaceAllocationConverge { basis: selected, release_dir: trim(s: installed) as NonEmptyStr },
-      } }
-    } }
+// State access uses the exact root-owned installed helper. The runner never receives the MAC key.
+fn observe_workspace_allocation_plan_request_wet(host: NonEmptyStr, release_dir: NonEmptyStr) -> FleetConvergeRequestObservation {
+  match workspace_allocation_dispatch_prepare(host: host, release_dir: release_dir) {
+    WorkspaceConvergenceUnobserved { reason } => FleetConvergeRequestUnobserved { reason: reason }
+    WorkspaceConvergenceObserved { basis } => FleetConvergeRequestObserved { request: WorkspaceAllocationConverge { basis: basis, release_dir: release_dir } }
   }
 }
 
@@ -1675,7 +1615,9 @@ fn fleet_converge_apply_bound_wet(run: ActionsRunBinding, plan_run_id: String,
   plan_receipt: FleetConvergePlanReceipt, expected_revision_admitted: String) -> ProcessExit {
   let body = Filesystem.Read(path: fleet_converge_plan_body_path)
   let noop = body.success && count(filter(split(s: body.content, delimiter: "\n"), row => row == "commissioning-already-committed:true")) == 1
-  if plan_receipt.scope_wire != workspace_executor_scope_wire || noop {
+  if plan_receipt.scope_wire == workspace_executor_scope_wire && body.success && host_kernel_dependency_in_plan_body(body: body.content) {
+    exit_failure(reason: concat("fleet_converge_apply: AwaitingCapability — ", host_kernel_maintenance_capability))
+  } else if plan_receipt.scope_wire != workspace_executor_scope_wire || noop {
     fleet_converge_apply_ordinary_bound_wet(run: run, plan_run_id: plan_run_id,
       plan_receipt: plan_receipt, expected_revision_admitted: expected_revision_admitted)
   } else { fleet_converge_apply_commissioning_bound_wet(run: run, plan_run_id: plan_run_id,
@@ -1758,4 +1700,8 @@ fn fleet_converge_apply_commissioning_bound_wet(run: ActionsRunBinding, plan_run
 
 fn fleet_converge_workspace_commissioning_plan_wet() -> ProcessExit {
   fleet_converge_scoped_plan_wet(scope: WorkspaceSlotCommissioningOnly)
+}
+
+fn fleet_converge_workspace_allocation_plan_wet() -> ProcessExit {
+  fleet_converge_scoped_plan_wet(scope: WorkspaceAllocationOnly)
 }

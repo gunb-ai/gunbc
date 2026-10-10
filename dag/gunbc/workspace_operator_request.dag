@@ -1,8 +1,14 @@
 module gunbc.workspace_operator_request
 
-import std.types { String, NonEmptyStr, Timestamp }
+import std.types { String, NonEmptyStr, Timestamp, Int, Bool }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.emit { serialize_json }
+import gunbc.command_runner { run_shell_command_capture, LocalExec }
+import extdeps.tools.hostname { hostname_short_read_command }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.runner_slot_allocation { workspace_execution_slot_identities }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.fabric_storage_binding { fabric_state_storage_binding }
 import gunbc.fabric_storage_client { FabricStorageBinding }
@@ -12,7 +18,7 @@ import gunbc.workspace_allocation_admission { WorkspaceRequestAdmission, workspa
 import gunbc.workspace_allocation_policy { workspace_operator_principal, workspace_installed_policy }
 import gunbc.workspace_allocation_admission { workspace_owner_enrollment, WorkspacePolicyAdmitted, WorkspacePolicyRefused }
 import gunbc.workspace_artifact_policy { workspace_demo_image_identity }
-import gunbc.workspace_allocation_store { workspace_record_request_at, WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused }
+import gunbc.workspace_allocation_store { workspace_record_request_at, WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused, WorkspaceAllocation, workspace_allocation_json, workspace_read_owner, WorkspaceStoreReadOk, WorkspaceStoreUnreadable, workspace_request_release_at }
 
 // OPERATOR-ONLY FIRST REVISION. The owner is the single enrolled operator principal, not a
 // caller-supplied identity: this producer exists so a first request can be recorded while the
@@ -42,7 +48,7 @@ fn workspace_operator_request_record(store: FabricStorageBinding, observed_at: T
     WorkspaceRequestPolicyRefused { reason: detail } => exit_failure(reason: concat("WorkspaceOperatorRequestRefused: ", detail as String))
     WorkspaceRequestAdmissionRefused { decision: _ } => exit_failure(reason: "WorkspaceOperatorRequestRefused: operator admission refused")
     WorkspaceRequestAdmitted { request: admitted } => match workspace_record_request_at(store: store, request: admitted, observed_at: observed_at) {
-      WorkspaceStoreWritten { allocation: _ } => ExitSuccess
+      WorkspaceStoreWritten { allocation } => workspace_operator_receipt(allocation: allocation)
       WorkspaceStoreConflict => exit_failure(reason: "WorkspaceOperatorRequestConflict: owner ledger changed concurrently; resubmit the same key")
       WorkspaceStoreWriteRefused { reason: detail } => exit_failure(reason: concat("WorkspaceOperatorRequestRefused: ", detail))
     }
@@ -55,12 +61,77 @@ fn workspace_operator_request_env(name: NonEmptyStr) -> String {
 
 // Typed entry: key, profile and lease end are the only operator inputs.
 fn workspace_operator_request_wet() -> ProcessExit {
-  match clock_now_probed_at() {
+  if !workspace_operator_on_candidate_host() { exit_failure(reason: "WorkspaceOperatorRequestRefused: executor is not a workspace host") }
+  else { match clock_now_probed_at() {
     Absent => exit_failure(reason: "WorkspaceOperatorRequestRefused: request clock is unavailable")
     Present { value: now } => workspace_operator_request_record(store: fabric_state_storage_binding(),
       observed_at: now as Timestamp,
       key: workspace_operator_request_env(name: "GUNBC_WORKSPACE_REQUEST_KEY"),
       profile_wire: workspace_operator_request_env(name: "GUNBC_WORKSPACE_REQUEST_PROFILE"),
       expires_at: workspace_operator_request_env(name: "GUNBC_WORKSPACE_REQUEST_EXPIRES_AT") as Timestamp)
+  } }
+}
+
+// These entries only publish intent to the protected owner ledger. The existing reconciler owns
+// reservation, VM effects and cleanup; a successful intent write never claims a usable VM.
+data workspace_operator_receipt_path: String = "target/workspace-operation.json"
+
+fn workspace_operator_on_candidate_host() -> Bool {
+  match run_shell_command_capture(command: hostname_short_read_command(), transport: LocalExec) {
+    ProcessOutputPresent { text } => any(workspace_execution_slot_identities(), slot => (slot.host as String) == trim(s: text))
+    ProcessOutputAbsent => false
+    ProcessRefused { exit_code: _, stderr: _ } => false
+  }
+}
+
+fn workspace_operator_receipt(allocation: WorkspaceAllocation) -> ProcessExit {
+  let written = Filesystem.Write(path: workspace_operator_receipt_path,
+    content: concat(serialize_json(v: workspace_allocation_json(allocation: allocation)), "\n"))
+  if written.success { ExitSuccess } else { exit_failure(reason: written.error) }
+}
+
+fn workspace_operator_release_wet() -> ProcessExit {
+  let key = workspace_operator_request_env(name: "GUNBC_WORKSPACE_REQUEST_KEY")
+  let generation = workspace_operator_request_env(name: "GUNBC_WORKSPACE_RELEASE_GENERATION")
+  if !workspace_operator_on_candidate_host() { exit_failure(reason: "WorkspaceOperatorReleaseRefused: executor is not a workspace host") }
+  else if !workspace_operator_is_enrolled() { exit_failure(reason: "WorkspaceOperatorReleaseRefused: operator is not enrolled") }
+  else { match workspace_allocation_id_of(raw: key) {
+    Absent => exit_failure(reason: "WorkspaceOperatorReleaseRefused: invalid request key")
+    Present { value: id } => match parse_int(s: generation) {
+      Absent => exit_failure(reason: "WorkspaceOperatorReleaseRefused: canonical reservation generation required")
+      Present { value: expected } => if expected < 0 || to_string(expected) != generation {
+        exit_failure(reason: "WorkspaceOperatorReleaseRefused: canonical nonnegative generation required")
+      } else { match clock_now_probed_at() {
+        Absent => exit_failure(reason: "WorkspaceOperatorReleaseRefused: clock unavailable")
+        Present { value: now } => match workspace_request_release_at(store: fabric_state_storage_binding(),
+          owner: workspace_operator_principal(), idempotency_key: id, expected_generation: expected as Int,
+          observed_at: now as Timestamp) {
+          WorkspaceStoreWritten { allocation } => workspace_operator_receipt(allocation: allocation)
+          WorkspaceStoreConflict => exit_failure(reason: "WorkspaceOperatorReleaseConflict: retry the same request and generation")
+          WorkspaceStoreWriteRefused { reason } => exit_failure(reason: reason)
+        }
+      } }
+    }
+  } }
+}
+
+fn workspace_operator_observe_wet() -> ProcessExit {
+  let key = workspace_operator_request_env(name: "GUNBC_WORKSPACE_REQUEST_KEY")
+  match workspace_read_owner(store: fabric_state_storage_binding(), owner: workspace_operator_principal()) {
+    WorkspaceStoreUnreadable { reason } => exit_failure(reason: reason)
+    WorkspaceStoreReadOk { snapshot } => match filter(snapshot.allocations, a => (a.request.idempotency_key as String) == key).first() {
+      Absent => exit_failure(reason: "WorkspaceOperatorObserveRefused: request absent for operator")
+      Present { value: allocation } => workspace_operator_receipt(allocation: allocation)
+    }
+  }
+}
+
+fn workspace_operator_is_enrolled() -> Bool {
+  match workspace_installed_policy() {
+    WorkspacePolicyRefused { reason: _ } => false
+    WorkspacePolicyAdmitted { policy } => match workspace_owner_enrollment(policy: policy, owner: workspace_operator_principal()) {
+      Absent => false
+      Present { value: _ } => true
+    }
   }
 }

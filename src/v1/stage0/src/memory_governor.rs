@@ -1218,17 +1218,10 @@ pub fn host_budget_unreadable_reason() -> String {
     )
 }
 
-/// Resolve the host budget from OBSERVATIONS, so every arm — including the refusal — is
-/// reachable from a test on any machine. `read_host_budget_resolution` is this function
-/// applied to the real reads; nothing else composes the precedence.
-///
-/// The effective planning ceiling is the minimum of the operator request and every observed
-/// applicable cgroup line. An operator request alone is `DeclaredUnverified`: an integer in an
-/// environment variable constrains no allocation and is not evidence of executor provisioning.
-/// There is no meminfo arm: MemAvailable and MemTotal describe a MACHINE, and
-/// on a kernel that can express a private limit, substituting one for the limit this process
-/// failed to read is DESIGN §5's absorbing fallback (answering with a superset). Authority:
-/// `gunbc.host_budget_source` `host_budget_source_admissible_as_bound_on_kernel`.
+/// Typed view of `v1_rt::resolve_host_budget_join`. That function is the one composer
+/// (`gunbc.host_budget_source`); this maps its result onto `HostBudgetResolution` so
+/// existing governor consumers keep a typed source. Tests plant observations here
+/// and still exercise the runtime join.
 pub fn resolve_host_budget(
     env_override: Option<u64>,
     cgroup_high: Option<(String, u64)>,
@@ -1236,99 +1229,94 @@ pub fn resolve_host_budget(
     cgroup_v1_limit: Option<(String, CgroupV1MemoryLimitValue)>,
     darwin_physical: Option<u64>,
 ) -> HostBudgetResolution {
-    // A v1 memory hierarchy holds this process but its limit could not be read: that limit may
-    // be the tightest one, so no other observation may stand in for it (DESIGN §5).
-    let cgroup_v1_limit = match cgroup_v1_limit {
-        Some((dir, CgroupV1MemoryLimitValue::Unparseable(body))) => {
-            return HostBudgetResolution::Unreadable {
-                reason: format!(
-                    "cgroup v1 memory hierarchy at {dir} holds this process but its \
-                     hierarchical_memory_limit is unreadable ({body}); a bound that may be the \
-                     tightest cannot be replaced by another reading"
-                ),
-            };
-        }
-        Some((dir, CgroupV1MemoryLimitValue::Limited(bytes))) => Some((dir, bytes)),
-        Some((_, CgroupV1MemoryLimitValue::Unlimited)) | None => None,
-    };
-    // Every observed process-scoped line is a candidate; the tightest one is the planning
-    // ceiling. On a hybrid host the unified hierarchy carries no memory files, so the v2 and
-    // v1 readings do not normally coexist; when they do, the minimum is still the honest bound.
-    let observation = [
-        cgroup_high.map(|(cgroup_dir, b)| (HostBudgetSource::CgroupMemoryHigh { cgroup_dir }, b)),
-        cgroup_max.map(|(cgroup_dir, b)| (HostBudgetSource::CgroupMemoryMax { cgroup_dir }, b)),
-        cgroup_v1_limit.map(|(cgroup_dir, b)| {
-            (
-                HostBudgetSource::CgroupV1HierarchicalMemoryLimit { cgroup_dir },
-                b,
-            )
-        }),
-    ]
-    .into_iter()
-    .flatten()
-    .fold(None::<(HostBudgetSource, u64)>, |best, cand| match best {
-        Some(cur) if cur.1 <= cand.1 => Some(cur),
-        _ => Some(cand),
+    let v1 = cgroup_v1_limit.map(|(dir, v)| {
+        (
+            dir,
+            match v {
+                CgroupV1MemoryLimitValue::Limited(bytes) => {
+                    crate::v1_rt::HostBudgetCgroupV1::Limited(bytes)
+                }
+                CgroupV1MemoryLimitValue::Unlimited => crate::v1_rt::HostBudgetCgroupV1::Unlimited,
+                CgroupV1MemoryLimitValue::Unparseable(body) => {
+                    crate::v1_rt::HostBudgetCgroupV1::Unparseable(body)
+                }
+            },
+        )
     });
-    if let Some((source, observed_bytes)) = observation {
-        return HostBudgetResolution::Resolved {
-            effective_bytes: env_override
-                .map(|requested| requested.min(observed_bytes))
-                .unwrap_or(observed_bytes),
-            requested_bytes: env_override,
+    match crate::v1_rt::resolve_host_budget_join(
+        env_override,
+        cgroup_high,
+        cgroup_max,
+        v1,
+        darwin_physical,
+    ) {
+        crate::v1_rt::HostBudgetJoin::Resolved {
+            effective_bytes,
+            requested_bytes,
+            source,
+            observed_bytes,
+        } => HostBudgetResolution::Resolved {
+            effective_bytes,
+            requested_bytes,
             observation: HostBudgetObservation {
-                source,
+                source: match source {
+                    crate::v1_rt::HostBudgetJoinSource::CgroupMemoryHigh { cgroup_dir } => {
+                        HostBudgetSource::CgroupMemoryHigh { cgroup_dir }
+                    }
+                    crate::v1_rt::HostBudgetJoinSource::CgroupMemoryMax { cgroup_dir } => {
+                        HostBudgetSource::CgroupMemoryMax { cgroup_dir }
+                    }
+                    crate::v1_rt::HostBudgetJoinSource::CgroupV1HierarchicalMemoryLimit {
+                        cgroup_dir,
+                    } => HostBudgetSource::CgroupV1HierarchicalMemoryLimit { cgroup_dir },
+                    crate::v1_rt::HostBudgetJoinSource::DarwinPhysicalMemory => {
+                        HostBudgetSource::DarwinPhysicalMemory
+                    }
+                },
                 bytes: observed_bytes,
             },
-        };
-    }
-    // Darwin only. `darwin_physical_memory_bytes` is `None` on every other target, so this
-    // arm cannot be reached on a kernel that has cgroups — which is precisely the wall
-    // `host_budget_source_admissible_as_bound_on_kernel` states: a host-shared reading may
-    // serve as the budget only where no private-limit mechanism exists.
-    if let Some(bytes) = darwin_physical {
-        return HostBudgetResolution::Resolved {
-            effective_bytes: env_override
-                .map(|requested| requested.min(bytes))
-                .unwrap_or(bytes),
-            requested_bytes: env_override,
-            observation: HostBudgetObservation {
-                source: HostBudgetSource::DarwinPhysicalMemory,
-                bytes,
-            },
-        };
-    }
-    if let Some(requested_bytes) = env_override {
-        return HostBudgetResolution::DeclaredUnverified {
+        },
+        crate::v1_rt::HostBudgetJoin::DeclaredUnverified {
             requested_bytes,
-            reason: "no observed private memory.high or memory.max verifies the executor allowance; the declaration is a planning request, not an enforced process limit".to_string(),
-        };
-    }
-    HostBudgetResolution::Unreadable {
-        reason: host_budget_unreadable_reason(),
+            reason,
+        } => HostBudgetResolution::DeclaredUnverified {
+            requested_bytes,
+            reason,
+        },
+        crate::v1_rt::HostBudgetJoin::Unreadable { reason } => {
+            HostBudgetResolution::Unreadable { reason }
+        }
     }
 }
 
-/// The host memory planning ceiling, as a typed resolution. It does not cap RSS. Single authority shared
-/// by the MemoryGovernor (which SCHEDULES against it), the typed-module cache cap (which
-/// bounds an estimated ENTRY COUNT with it) and the P4 realize advisory (which PREDICTS against it) — no
-/// consumer may re-read a partial version of this precedence (§3 single authority).
+/// The host memory planning ceiling, as a typed resolution. Live observations and
+/// precedence are `v1_rt::resolve_host_budget_join`; this is the typed wrapper.
 pub fn read_host_budget_resolution() -> HostBudgetResolution {
     let env_override = std::env::var("GUNBC_MEMORY_BUDGET_BYTES")
         .ok()
         .and_then(|s| s.trim().parse::<u64>().ok());
-    let cgroup_high = binding_high_cgroup_dir().and_then(|dir| {
-        read_cgroup_u64(&dir, "memory.high").map(|v| (dir.display().to_string(), v))
-    });
-    let cgroup_max = binding_cap_cgroup_dir().and_then(|dir| {
-        read_cgroup_u64(&dir, "memory.max").map(|v| (dir.display().to_string(), v))
+    let cgroup_high = crate::v1_rt::host_budget_tightest_cgroup("memory.high");
+    let cgroup_max = crate::v1_rt::host_budget_tightest_cgroup("memory.max");
+    let cgroup_v1_limit = crate::v1_rt::host_budget_cgroup_v1().map(|(dir, v)| {
+        (
+            dir,
+            match v {
+                crate::v1_rt::HostBudgetCgroupV1::Limited(bytes) => {
+                    CgroupV1MemoryLimitValue::Limited(bytes)
+                }
+                crate::v1_rt::HostBudgetCgroupV1::Unlimited => CgroupV1MemoryLimitValue::Unlimited,
+                crate::v1_rt::HostBudgetCgroupV1::Unparseable(body) => {
+                    CgroupV1MemoryLimitValue::Unparseable(body)
+                }
+            },
+        )
     });
     resolve_host_budget(
         env_override,
         cgroup_high,
         cgroup_max,
-        read_cgroup_v1_hierarchical_limit(),
-        darwin_physical_memory_bytes(),
+        cgroup_v1_limit,
+        crate::v1_rt::host_budget_darwin_physical(),
     )
 }
 
@@ -1387,29 +1375,8 @@ pub fn tightest_cgroup_dir_for(limit_file: &str) -> Option<PathBuf> {
 /// `tightest_cgroup_dir_for` over supplied `/proc/self/cgroup` content and unified mount root,
 /// so a fixture hierarchy exercises the same walk.
 pub fn tightest_cgroup_dir_under(self_cg: &str, root: &Path, limit_file: &str) -> Option<PathBuf> {
-    let rel = self_cg
-        .lines()
-        .find_map(|l| l.strip_prefix("0::"))
-        .map(|p| p.trim().trim_start_matches('/').to_string())?;
-    let mut dir = root.join(&rel);
-    let mut best: Option<(u64, PathBuf)> = None;
-    loop {
-        if let Ok(s) = std::fs::read_to_string(dir.join(limit_file)) {
-            let s = s.trim();
-            if s != "max" {
-                if let Ok(v) = s.parse::<u64>() {
-                    let take = best.as_ref().map(|(cur, _)| v < *cur).unwrap_or(true);
-                    if take {
-                        best = Some((v, dir.clone()));
-                    }
-                }
-            }
-        }
-        if dir == root || !dir.pop() {
-            break;
-        }
-    }
-    best.map(|(_, d)| d)
+    crate::v1_rt::host_budget_tightest_cgroup_under(self_cg, root, limit_file)
+        .map(|(dir, _)| PathBuf::from(dir))
 }
 
 /// The process's own deepest (leaf) cgroup from `/proc/self/cgroup`.
@@ -1453,41 +1420,13 @@ pub fn memory_pressure_some_avg10(content: &str) -> Option<String> {
 /// mounted, the process has no line on it, or its path is outside the mounted subtree — each of
 /// which leaves the budget to the other sources or to `Unreadable`, never to a guess.
 pub fn cgroup_v1_memory_dir(self_cg: &str, mountinfo: &str) -> Option<PathBuf> {
-    let (mount_root, mount_point) = mountinfo.lines().find_map(|line| {
-        let fields: Vec<&str> = line.split(' ').collect();
-        let dash = fields.iter().position(|f| *f == "-")?;
-        let fstype = fields.get(dash + 1)?;
-        let super_opts = fields.get(dash + 3)?;
-        if *fstype == "cgroup" && super_opts.split(',').any(|o| o == "memory") {
-            Some((fields.get(3)?.to_string(), fields.get(4)?.to_string()))
-        } else {
-            None
-        }
-    })?;
-    let path = self_cg.lines().find_map(|l| {
-        let mut parts = l.splitn(3, ':');
-        let (_id, controllers, path) = (parts.next()?, parts.next()?, parts.next()?);
-        controllers
-            .split(',')
-            .any(|c| c == "memory")
-            .then(|| path.trim().to_string())
-    })?;
-    let rel = if mount_root == "/" {
-        path.as_str()
-    } else {
-        let rest = path.strip_prefix(mount_root.as_str())?;
-        if !(rest.is_empty() || rest.starts_with('/')) {
-            return None;
-        }
-        rest
-    };
-    Some(Path::new(&mount_point).join(rel.trim_start_matches('/')))
+    crate::v1_rt::host_budget_cgroup_v1_memory_dir(self_cg, mountinfo).map(PathBuf::from)
 }
 
 /// Mirror of `extdeps.linux.cgroup_v1_memory` `cgroup_v1_unlimited_bytes`: the kernel's
 /// PAGE_COUNTER_MAX (LONG_MAX / PAGE_SIZE) reported in bytes, so the sentinel follows the page size.
 pub fn cgroup_v1_unlimited_bytes(page_size: u64) -> u64 {
-    (i64::MAX as u64 / page_size) * page_size
+    crate::v1_rt::host_budget_cgroup_v1_unlimited_bytes(page_size)
 }
 
 /// Mirror of `extdeps.linux.cgroup_v1_memory` `CgroupV1MemoryLimitValue`: three states, because
@@ -1504,20 +1443,14 @@ pub fn cgroup_v1_hierarchical_limit_from_stat(
     memory_stat: &str,
     page_size: u64,
 ) -> CgroupV1MemoryLimitValue {
-    let hits: Vec<&str> = memory_stat
-        .lines()
-        .filter_map(|l| l.trim().strip_prefix("hierarchical_memory_limit "))
-        .collect();
-    let [body] = hits.as_slice() else {
-        return CgroupV1MemoryLimitValue::Unparseable(memory_stat.to_string());
-    };
-    match body.trim().parse::<i128>() {
-        Ok(n) if n < 0 => CgroupV1MemoryLimitValue::Unparseable(body.to_string()),
-        Ok(n) if n >= cgroup_v1_unlimited_bytes(page_size) as i128 => {
-            CgroupV1MemoryLimitValue::Unlimited
+    match crate::v1_rt::host_budget_cgroup_v1_from_stat(memory_stat, page_size) {
+        crate::v1_rt::HostBudgetCgroupV1::Limited(bytes) => {
+            CgroupV1MemoryLimitValue::Limited(bytes)
         }
-        Ok(n) => CgroupV1MemoryLimitValue::Limited(n as u64),
-        Err(_) => CgroupV1MemoryLimitValue::Unparseable(body.to_string()),
+        crate::v1_rt::HostBudgetCgroupV1::Unlimited => CgroupV1MemoryLimitValue::Unlimited,
+        crate::v1_rt::HostBudgetCgroupV1::Unparseable(body) => {
+            CgroupV1MemoryLimitValue::Unparseable(body)
+        }
     }
 }
 
@@ -1531,27 +1464,41 @@ pub fn cgroup_v1_hierarchical_limit_under(
     mountinfo: &str,
     page_size: u64,
 ) -> Option<(String, CgroupV1MemoryLimitValue)> {
-    let dir = cgroup_v1_memory_dir(self_cg, mountinfo)?;
-    let dir = fs_root.join(dir.strip_prefix("/").unwrap_or(&dir));
-    let value = match std::fs::read_to_string(dir.join("memory.stat")) {
-        Ok(stat) => cgroup_v1_hierarchical_limit_from_stat(&stat, page_size),
-        Err(e) => CgroupV1MemoryLimitValue::Unparseable(format!("memory.stat: {e}")),
-    };
-    Some((dir.display().to_string(), value))
+    crate::v1_rt::host_budget_cgroup_v1_under(fs_root, self_cg, mountinfo, page_size).map(
+        |(dir, v)| {
+            (
+                dir,
+                match v {
+                    crate::v1_rt::HostBudgetCgroupV1::Limited(bytes) => {
+                        CgroupV1MemoryLimitValue::Limited(bytes)
+                    }
+                    crate::v1_rt::HostBudgetCgroupV1::Unlimited => {
+                        CgroupV1MemoryLimitValue::Unlimited
+                    }
+                    crate::v1_rt::HostBudgetCgroupV1::Unparseable(body) => {
+                        CgroupV1MemoryLimitValue::Unparseable(body)
+                    }
+                },
+            )
+        },
+    )
 }
 
 pub fn read_cgroup_v1_hierarchical_limit() -> Option<(String, CgroupV1MemoryLimitValue)> {
-    let self_cg = std::fs::read_to_string("/proc/self/cgroup").ok()?;
-    let mountinfo = std::fs::read_to_string("/proc/self/mountinfo").ok()?;
-    // SAFETY: sysconf has no preconditions.
-    let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
-    if page_size <= 0 {
-        return Some((
-            "/proc/self/mountinfo".to_string(),
-            CgroupV1MemoryLimitValue::Unparseable("sysconf(_SC_PAGESIZE) unreadable".to_string()),
-        ));
-    }
-    cgroup_v1_hierarchical_limit_under(Path::new("/"), &self_cg, &mountinfo, page_size as u64)
+    crate::v1_rt::host_budget_cgroup_v1().map(|(dir, v)| {
+        (
+            dir,
+            match v {
+                crate::v1_rt::HostBudgetCgroupV1::Limited(bytes) => {
+                    CgroupV1MemoryLimitValue::Limited(bytes)
+                }
+                crate::v1_rt::HostBudgetCgroupV1::Unlimited => CgroupV1MemoryLimitValue::Unlimited,
+                crate::v1_rt::HostBudgetCgroupV1::Unparseable(body) => {
+                    CgroupV1MemoryLimitValue::Unparseable(body)
+                }
+            },
+        )
+    })
 }
 
 pub fn read_cgroup_u64(dir: &Path, file: &str) -> Option<u64> {
@@ -1575,32 +1522,8 @@ pub fn read_cgroup_raw(dir: &Path, file: &str) -> Option<String> {
 ///
 /// Exists because the governor previously had NO source on Darwin and fell back to the most
 /// permissive cap it could name; macOS's memory facts were never asked for.
-#[cfg(target_os = "macos")]
 pub fn darwin_physical_memory_bytes() -> Option<u64> {
-    let name = c"hw.memsize";
-    let mut value: u64 = 0;
-    let mut len: libc::size_t = std::mem::size_of::<u64>() as libc::size_t;
-    // SAFETY: `name` is a NUL-terminated literal, `value`/`len` are live locals sized to
-    // match, and `newp`/`newlen` are null/0 for a read-only query per sysctl(3).
-    let rc = unsafe {
-        libc::sysctlbyname(
-            name.as_ptr(),
-            (&mut value as *mut u64).cast::<libc::c_void>(),
-            &mut len,
-            std::ptr::null_mut(),
-            0,
-        )
-    };
-    if rc == 0 && value > 0 {
-        Some(value)
-    } else {
-        None
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-pub fn darwin_physical_memory_bytes() -> Option<u64> {
-    None
+    crate::v1_rt::host_budget_darwin_physical()
 }
 
 /// The bind request an executor may carry, read from `GUNBC_BIND_MEMORY_CGROUP_BYTES`.

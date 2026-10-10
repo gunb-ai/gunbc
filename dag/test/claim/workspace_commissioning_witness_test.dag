@@ -13,7 +13,7 @@ import product.host_identity { HostIdentity }
 import gunbc.runner_slot_allocation { gunbc_microvm_shakedown_slot_memory_max, gunbc_runner_slot_desired_for }
 import gunbc.runner_slot_desired { SlotCpuQuotaUnbounded }
 import gunbc.fleet_host_budget { HostAllocationConserves }
-import product.fabric.sanitation { required_sanitation_facts, SlotScopedNetwork, FactConfirmed }
+import product.fabric.sanitation { required_sanitation_facts, SlotScopedNetwork, SlotNetworkQuiescent, FactConfirmed, FactUnobservable }
 import gunbc.runner_microvm_cell_readiness { WriteCommissioned, apply_cell_readiness_write, WriteAccepted }
 
 fn commissioning_test_slot() -> RunnerSlotIdentity { RunnerSlotIdentity { host: "srv1" as HostIdentity, slot_index: 13 } }
@@ -82,5 +82,25 @@ test fn workspace_cpu_binding_does_not_cap_another_slot() -> Bool {
   match gunbc_runner_slot_desired_for(slot: RunnerSlotIdentity { host: "srv1" as HostIdentity, slot_index: 12 }).cpu_quota {
     SlotCpuQuotaUnbounded => true
     _ => false
+  }
+}
+
+test fn commissioning_refusal_names_the_unobservable_sanitation_fact() -> Bool {
+  let slot = commissioning_test_slot()
+  match workspace_commissioning_admit(slot: slot,
+    authority: WorkspaceCommissioningAuthorizedPlan { slot: slot, plan_hash: "fixture-plan" as NonEmptyStr },
+    budget: HostAllocationConserves, cpu_budget: hardware_thread_count(count: 4),
+    attempt_envelope: gunbc_microvm_shakedown_slot_memory_max,
+    prior_purpose: WorkspacePriorPurposeWithdrawn,
+    obligations: WorkspaceNoPriorObligations { settled_generation: 0 },
+    sanitation: map(required_sanitation_facts(scope: SlotScopedNetwork), fact =>
+      if fact == SlotNetworkQuiescent {
+        FactUnobservable { fact: fact, reason: "tap-unheld: TUN attached-queue count is unavailable" as NonEmptyStr }
+      } else { FactConfirmed { fact: fact } }),
+  ) {
+    WorkspaceCommissioningRefused { reason } =>
+      string_contains(s: reason, pattern: "slot-network-quiescent")
+        && string_contains(s: reason, pattern: "tap-unheld: TUN attached-queue count is unavailable")
+    other => false
   }
 }

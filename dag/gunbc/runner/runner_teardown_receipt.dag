@@ -28,7 +28,7 @@ type MicroVmEnvironmentInventory {
 }
 
 // A SLOT IS REALIZED AS A microVM ATTEMPT OR AS A TRANSIENT systemd UNIT ON A MANAGED HOST
-// (gunbc.runner_jit_mint JitSlot), and the teardown is one fold over both. The host-unit arm owns
+// (gunbc.runner.jit_registration_subject producers), and the teardown is one fold over both. The host-unit arm owns
 // no jail, jail mount, JIT drive, tap or firewall table -- the unit is the host's own process tree
 // in its own cgroup -- so its inventory names only what its launch allocates, rather than filling
 // five fields with paths that never existed. Which classes a teardown positive-controls is derived

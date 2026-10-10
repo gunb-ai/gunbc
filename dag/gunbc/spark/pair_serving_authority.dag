@@ -4,7 +4,7 @@ import std.types { Bool, NonEmptyStr, List }
 import std.content_hash { ContentHash }
 import std.temporal_effect { HeldLease, HeldLeaseObservedState, held_lease_observed_verdict }
 import std.upsert_decision { ObservationVerdict, Converged, Absent, Drifted, Conflict, Inaccessible, UnknownRefused }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, fabric_group_wire, fabric_group_hosts }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, fabric_group_wire, fabric_group_hosts }
 import product.host_identity { HostIdentity }
 import gunbc.spark.released_baseline { ReleasedBaselineSpec }
 
@@ -239,9 +239,10 @@ fn pair_serving_may_finish(a: PairServingGroupAuthority) -> Bool {
   }
 }
 
-// THE LIVE ROW. One authority per claimed group, and today Group A is actively serving the declared
-// pair realization -- so this row is PairServingActive and the transaction states are unreachable from
-// production until a replacement actually begins. That is the correct resting state and not a reason to
+// THE LIVE ROW. One authority per claimed group, and today no group is claimed: Group A, the only one this
+// roster ever held (PairServingActive over the declared pair realization), was decommissioned and sold
+// on 2026-10-07, so the roster is empty and every transaction state is unreachable from production
+// until a group is claimed again. That is the correct resting state and not a reason to
 // omit the other arms: they are what the apply seam and the capacity instrument consume to answer
 // correctly WHEN a transaction starts, and a coproduct missing them cannot express the state machine
 // the Cut D transaction declares total.
@@ -261,12 +262,9 @@ fn pair_serving_may_finish(a: PairServingGroupAuthority) -> Bool {
 // is now a projection of this population: a row for an unclaimed group cannot exist because this row IS
 // the claim, and a claimed group with no authority cannot exist for the same reason. The agreement
 // witness dissolved with the climb rather than being kept as reassurance.
-data spark_pair_serving_authorities: List<PairServingGroupAuthority> = [
-  PairServingActive {
-    group: FabricGroupA,
-    exact_realization: PairRealizationUnestablished { obligation: pair_realization_key_obligation },
-  },
-]
+// Group A was the only group this roster claimed, and it was decommissioned on 2026-10-07 (operator; the
+// units were sold), so no group is claimed by pair serving now. A claim for another group is a new row.
+data spark_pair_serving_authorities: List<PairServingGroupAuthority> = [] as List<PairServingGroupAuthority>
 
 // ABSENCE IS NOT PERMISSION. A claimed group with no authority row is a missing fact, and the honest
 // answer is no authority at all rather than a default Active -- defaulting would mean a group could be
@@ -275,21 +273,3 @@ fn pair_serving_authority_for(group: FabricGroup) -> PairServingGroupAuthority? 
   first(filter(spark_pair_serving_authorities, a =>
     (fabric_group_wire(g: pair_serving_authority_group(a: a)) as String) == (fabric_group_wire(g: group) as String)))
 }
-
-// THE OBLIGATION THIS ROW CARRIES IS THE IMAGE AXIS, AND D0 DOES NOT DISCHARGE IT. The producers
-// that were missing have landed: gunbc.spark.pair_incumbent_identity keys the DECLARED pair
-// realization from every rank's rendered unit bytes, observes the LIVE four-rank incarnation, and
-// folds the two into a PairRealizationAgreement; gunbc.spark.pair_serving_d0 takes that reading
-// inside its held claim. What no producer has is a declared IMAGE identity to compare the running
-// container's image id against -- the pair runtime image is built on the host and the corpus
-// declares its reference, not its id -- so PairRealizationEstablished is rank-and-unit agreement
-// with the image carried observed-and-uncompared, and it may NOT mint an exact incumbent key: a
-// rebuilt image under the same reference with unchanged unit bytes passes it. D0 therefore restores
-// a live declared incumbent to the Active state it held, unchanged. The only Keyed realization D0
-// writes is the authorized SUCCESSOR's, on the suspended authority. TRIGGER: a produced-image
-// receipt for the pair runtime image (the build materialization gunbc.spark.vllm_runtime_image_build
-// is the shape) is carried on the declared realization and compared in the agreement, so
-// Established means the image too. SUFFICIENT FOR: the incumbent's exact realization can be minted
-// from an Established agreement, and a successor transition is discriminated by realization rather
-// than by a serving subject V4 and V4.1 deliberately share.
-data pair_realization_key_obligation: NonEmptyStr = "the live V4 pair realization is keyed by gunbc.spark.pair_incumbent_identity declared_pair_realization and read by pair_realization_agreement inside D0's held claim, but that agreement carries the running image observed and uncompared (no produced-image digest exists to compare it against), so it may not mint an exact incumbent key; the Keyed arm for the incumbent waits on a produced-image receipt compared in the agreement, and D0 restores a live declared incumbent to its Active state unchanged. SUFFICIENT FOR: PairServingActive can name the incumbent exactly, so a successor transition is discriminated by realization rather than by a serving subject V4 and V4.1 deliberately share" as NonEmptyStr

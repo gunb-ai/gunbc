@@ -8,7 +8,7 @@ data service_import_emitted_beside_its_authored_binding: RecurringFailureMode = 
   identity: "service_import_emitted_beside_its_authored_binding" as NonEmptyStr,
 
   receipts: [
-    "**a service import is emitted beside the authored import that already binds it** (INVALID STATE: an emitted Rust module carries two `use` lines for one item -- `pub use crate::m::{S};` rendered from the authored `import m { S }`, and `pub use crate::m::S;` rendered as the per-module service import for a service its functions demand -- and rustc refuses the module with E0252, the name is defined multiple times.",
+    "**a service import is emitted beside the authored import that already binds it** (INVALID STATE: an emitted Rust module carries two `use` lines for one item -- `pub use crate::m::\{S\};` rendered from the authored `import m { S }`, and `pub use crate::m::S;` rendered as the per-module service import for a service its functions demand -- and rustc refuses the module with E0252, the name is defined multiple times.",
 
     "MECHANISM: `v1.compiler.emit_rust` assembled use lines from two producers that were never compared. The authored, carrier and reference-derived lines pass through `dedupe_rust_import_lines`; the per-module service imports were appended beside them afterwards. The dedupe already knew a braced line covers a singleton for the same item (`rust_pub_use_singleton_covered`); the service imports simply never reached it.",
 

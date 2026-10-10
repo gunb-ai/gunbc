@@ -5,7 +5,7 @@ import product.host_identity { HostIdentity }
 
 import std.measure { second }
 import std.types { Bool, String, NonEmptyStr, Int }
-import gunbc.fleet_host_identity { operator_host_srv9, operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
+import gunbc.fleet_host_identity { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
 import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.spark.pair_serving_apply {
   SparkPairHostApplyOutcome, SparkPairHostApplied, SparkPairHostApplyFailed, SparkPairHostUnreached,
@@ -324,12 +324,12 @@ test fn w_a_young_adoptable_fence_still_refuses_as_possibly_live() -> Bool {
 // transaction with the dead rank named, which the body rolls back by its own path with no apply leg.
 test fn w_an_adopted_transaction_with_a_dead_rank_names_it_for_rollback() -> Bool {
   match spark_native_adoption_of(decisions: [
-    LeftoversAdoptable { host: operator_host_srv6, holder: "T1", running: false },
-    LeftoversAdoptable { host: operator_host_srv5, holder: "T1", running: true },
-    LeftoversAdoptable { host: operator_host_srv8, holder: "T1", running: true },
-    LeftoversAdoptable { host: operator_host_srv7, holder: "T1", running: true },
+    LeftoversAdoptable { host: operator_host_srv10, holder: "T1", running: false },
+    LeftoversAdoptable { host: operator_host_srv9, holder: "T1", running: true },
+    LeftoversAdoptable { host: operator_host_srv12, holder: "T1", running: true },
+    LeftoversAdoptable { host: operator_host_srv11, holder: "T1", running: true },
   ]) {
-    AdoptTransaction { holder: t, dead: d } => t == "T1" && count(d) == 1 && all(d, h => (h as String) == "srv6")
+    AdoptTransaction { holder: t, dead: d } => t == "T1" && count(d) == 1 && all(d, h => (h as String) == "srv10")
     AdoptNothing => false
     RecoverRolledBack { holder: _ } => false
     AdoptRefused { cause: _ } => false
@@ -339,8 +339,8 @@ test fn w_an_adopted_transaction_with_a_dead_rank_names_it_for_rollback() -> Boo
 // THE LIVE ARM: every rank running -> adopted with no dead rank, so readback and verdict run, no apply.
 test fn w_an_adopted_transaction_with_every_rank_running_resumes_at_readback() -> Bool {
   match spark_native_adoption_of(decisions: [
-    LeftoversAdoptable { host: operator_host_srv6, holder: "T1", running: true },
-    LeftoversAdoptable { host: operator_host_srv5, holder: "T1", running: true },
+    LeftoversAdoptable { host: operator_host_srv10, holder: "T1", running: true },
+    LeftoversAdoptable { host: operator_host_srv9, holder: "T1", running: true },
   ]) {
     AdoptTransaction { holder: _, dead: d } => count(d) == 0
     AdoptNothing => false
@@ -352,14 +352,14 @@ test fn w_an_adopted_transaction_with_every_rank_running_resumes_at_readback() -
 // WHOLE OR NOT AT ALL: one host without the transaction, or two holders, refuses.
 test fn w_a_partial_or_split_adoption_refuses() -> Bool {
   let partial = spark_native_adoption_of(decisions: [
-    LeftoversAdoptable { host: operator_host_srv6, holder: "T1", running: true },
-    LeftoversNone { host: operator_host_srv5 },
+    LeftoversAdoptable { host: operator_host_srv10, holder: "T1", running: true },
+    LeftoversNone { host: operator_host_srv9 },
   ])
   let two_holders = spark_native_adoption_of(decisions: [
-    LeftoversAdoptable { host: operator_host_srv6, holder: "T1", running: true },
-    LeftoversAdoptable { host: operator_host_srv5, holder: "T2", running: true },
+    LeftoversAdoptable { host: operator_host_srv10, holder: "T1", running: true },
+    LeftoversAdoptable { host: operator_host_srv9, holder: "T2", running: true },
   ])
-  let nothing_held = spark_native_adoption_of(decisions: [LeftoversNone { host: operator_host_srv6 }])
+  let nothing_held = spark_native_adoption_of(decisions: [LeftoversNone { host: operator_host_srv10 }])
   (match partial { AdoptRefused { cause: c } => string_contains(s: c, pattern: "PARTIAL")  AdoptNothing => false  AdoptTransaction { holder: _, dead: _ } => false  RecoverRolledBack { holder: _ } => false })
     && (match two_holders { AdoptRefused { cause: c } => string_contains(s: c, pattern: "SPLIT")  AdoptNothing => false  AdoptTransaction { holder: _, dead: _ } => false  RecoverRolledBack { holder: _ } => false })
     && (match nothing_held { AdoptNothing => true  AdoptRefused { cause: _ } => false  AdoptTransaction { holder: _, dead: _ } => false  RecoverRolledBack { holder: _ } => false })
@@ -392,12 +392,12 @@ test fn w_a_marker_over_a_dead_or_unplanned_rank_still_refuses() -> Bool {
 
 test fn w_a_recovery_is_read_whole_or_refused() -> Bool {
   let whole = spark_native_adoption_of(decisions: [
-    LeftoversRecoverable { host: operator_host_srv6, holder: "T1" },
-    LeftoversRecoverable { host: operator_host_srv5, holder: "T1" },
+    LeftoversRecoverable { host: operator_host_srv10, holder: "T1" },
+    LeftoversRecoverable { host: operator_host_srv9, holder: "T1" },
   ])
   let partial = spark_native_adoption_of(decisions: [
-    LeftoversRecoverable { host: operator_host_srv6, holder: "T1" },
-    LeftoversNone { host: operator_host_srv5 },
+    LeftoversRecoverable { host: operator_host_srv10, holder: "T1" },
+    LeftoversNone { host: operator_host_srv9 },
   ])
   (match whole { RecoverRolledBack { holder: t } => t == "T1"  AdoptNothing => false  AdoptRefused { cause: _ } => false  AdoptTransaction { holder: _, dead: _ } => false })
     && (match partial { AdoptRefused { cause: c } => string_contains(s: c, pattern: "RECOVERY-PARTIAL")  AdoptNothing => false  RecoverRolledBack { holder: _ } => false  AdoptTransaction { holder: _, dead: _ } => false })
@@ -470,7 +470,7 @@ test fn w_the_readback_refuses_an_incarnation_other_than_the_awaited_one() -> Bo
   count(awaited) == 1
     && (match awaited_binding_refusal(host: operator_host_srv9, verified_id: "aaaa1111", awaited: awaited) { Absent => true  Present { value: _ } => false })
     && (match awaited_binding_refusal(host: operator_host_srv9, verified_id: "bbbb2222", awaited: awaited) { Absent => false  Present { value: why } => string_contains(s: why, pattern: "replaced between the wait and the readback") })
-    && (match awaited_binding_refusal(host: "srv5" as HostIdentity, verified_id: "aaaa1111", awaited: awaited) { Absent => false  Present { value: _ } => true })
+    && (match awaited_binding_refusal(host: "srv10" as HostIdentity, verified_id: "aaaa1111", awaited: awaited) { Absent => false  Present { value: _ } => true })
 }
 
 // THE SERVED WORDS ARE QUOTED (fleet-converge run 37304585650): the line rendered unquoted as

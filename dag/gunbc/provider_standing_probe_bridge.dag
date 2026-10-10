@@ -43,6 +43,7 @@ import gunbc.provider_standing {
 }
 import gunbc.codex_app_server_press {
   CodexAccountStandingReceipt,
+  CodexAccountStandingEvidence,
   AmbientCodexCredentialContext,
   CodexRateLimitBucketVerdict,
   CodexBucketCapacityAvailable,
@@ -366,17 +367,38 @@ data codex_press_standing_bundle_tool_environment_unobserved_reason: NonEmptyStr
 fn provider_standing_bundle_from_codex_press_receipt(
   receipt: CodexAccountStandingReceipt,
 ) -> ProviderStandingBundle {
-  ProviderStandingBundle {
+  provider_standing_bundle_from_codex_account_evidence(
+    evidence: receipt.standing.evidence,
+    credential: receipt.subject.credential,
     installation: provider_standing_bundle_unobserved_installation(
       reason: codex_press_standing_bundle_installation_unobserved_reason,
     ),
-    authentication: provider_authentication_from_codex_press_receipt(receipt: receipt),
-    entitlement: provider_entitlement_from_codex_press_receipt(receipt: receipt),
-    limits: provider_limit_observations_from_codex_press_receipt(receipt: receipt),
-    turn: TurnNotStarted,
     tool_environment: provider_standing_bundle_unobserved_tool_environment(
       reason: codex_press_standing_bundle_tool_environment_unobserved_reason,
     ),
+  )
+}
+
+// THE ACCOUNT TRIP'S EVIDENCE AS A STANDING, for a caller that ran the trip itself and so knows the
+// two axes the receipt bridge cannot: whether the executable ran (installation) and whether the
+// spawn's environment was admitted (tool environment). The receipt bridge above is this with both
+// unobserved; the authentication, entitlement and limit projections are the same functions.
+fn provider_standing_bundle_from_codex_account_evidence(
+  evidence: CodexAccountStandingEvidence,
+  credential: AmbientCodexCredentialContext,
+  installation: ProviderInstallationStanding,
+  tool_environment: ProviderToolEnvironmentStanding,
+) -> ProviderStandingBundle {
+  ProviderStandingBundle {
+    installation: installation,
+    authentication: provider_authentication_from_codex_credential_liveness(liveness: evidence.credential_liveness),
+    entitlement: provider_entitlement_from_codex_realm(realm: evidence.account_realm),
+    limits: provider_limit_observations_from_codex_buckets(
+      credential: codex_press_credential_identity(credential: credential),
+      buckets: evidence.rate_limit_buckets,
+    ),
+    turn: TurnNotStarted,
+    tool_environment: tool_environment,
   }
 }
 

@@ -31,7 +31,7 @@ import v2.std.node {
   TypeNode,
   match_arm_pattern_edge,
   arrow_signature_order_label,
-  arrow_named_edge_is_contract,
+  arrow_named_edge_is_metadata,
   node_subtree_nodes,
   node_synthetic,
   type_binder_conj_conforms,
@@ -234,7 +234,7 @@ fn declaration_binder_edge(parent: Node, edge: Edge) -> Bool {
 // (infer_facts_key_conflict). v2.compiler.infer's gather skips the same cells by the same accessor.
 fn node_inferred_subtree_nodes(root: Node) -> List<Node> {
   fold(root.children, init: [root], f: fn(acc, e) {
-    if (e.label == arrow_signature_order_label) || arrow_named_edge_is_contract(e: e) || declaration_binder_edge(parent: root, edge: e) || match_arm_pattern_edge(parent: root, edge: e) || (resolved_reference_body_kind(target: root) != NotMarkedReference) {
+    if (e.label == arrow_signature_order_label) || arrow_named_edge_is_metadata(e: e) || declaration_binder_edge(parent: root, edge: e) || match_arm_pattern_edge(parent: root, edge: e) || (resolved_reference_body_kind(target: root) != NotMarkedReference) {
       acc
     } else {
       concat(acc, node_inferred_subtree_nodes(root: e.target))

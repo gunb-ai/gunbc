@@ -17,11 +17,6 @@ import v2.std.node { Symbol }
 // eval_wall_ms). One preparation serving every claim is the same work with the
 // entry removed from the key.
 
-type PreparedSubjectSpec {
-  source_roots: List<String>
-  exclusions: List<String>
-}
-
 // The exclusion set is PART OF THE SUBJECT, so it is declared beside the roots and
 // never borrowed from a roster that answers a different question. The probe exclusion
 // roster is pattern rows UNION a derived strict-resolve failure closure, and its
@@ -88,50 +83,6 @@ type WitnessIdentity {
 }
 fn witness_identity_qualified_name(identity: WitnessIdentity) -> String {
   concat(concat(identity.module_path, "."), identity.function)
-}
-
-// WHICH EXECUTION KEY A BATCH GETS IS FLOOR POLICY, so it is a row here rather than a
-// condition in the seed. The note above claims changing floor policy is a row edit and not
-// a Rust edit; landing the routing rule only in cli_run would have made that sentence false
-// in the same change that wrote it.
-//
-// ONE INPUT DECIDES, and it used to be two. An earlier revision of this rule also read
-// roster provenance -- walked from scan_dirs versus named by the batch -- because a batch
-// naming ten entries would have paid a whole-tree preparation to serve them, which is the
-// entry-major cost-shape defect pointing the other way. That ground was real and it is now
-// dissolved rather than merely unused: ExecutionMode is not an input to resolution, so the
-// seed memoizes the resolved graph by its source digest and a second consumer over the same
-// tree pays a file walk and builds its own context. The distinction bought nothing once the
-// cost it named was gone, so FloorRosterProvenance and the
-// WholeTreePreparationNotAmortized ground are DELETED here rather than left standing beside
-// the climb that obsoleted them.
-type FloorSelectionPosture
-  = NoSelectionMachinery
-  | SelectionRequiresPerEntryFrontier
-
-// The surviving entry-major arm names its own dissolution in its constructor: a
-// selection-bearing lane evaluates a per-entry frontier, and an entry-private context is
-// what supplies one. It retires when node_frontier_selection leaves Runnable, at which point
-// this coproduct collapses to a single inhabitant and deletes with it.
-type FloorExecutionKey
-  = OnePreparedSubjectKey { subject: PreparedSubjectSpec }
-  | EntryMajorUntilFrontierRetires
-
-fn floor_execution_key(
-  posture: FloorSelectionPosture,
-  subject: PreparedSubjectSpec
-) -> FloorExecutionKey {
-  match posture {
-    SelectionRequiresPerEntryFrontier => EntryMajorUntilFrontierRetires
-    NoSelectionMachinery => OnePreparedSubjectKey { subject: subject }
-  }
-}
-
-fn floor_execution_key_is_one_prepared_subject(key: FloorExecutionKey) -> Bool {
-  match key {
-    OnePreparedSubjectKey { subject: _ } => true
-    EntryMajorUntilFrontierRetires => false
-  }
 }
 
 // A DECLARED RUNG REGRESSION, measured on this change rather than discovered after it.

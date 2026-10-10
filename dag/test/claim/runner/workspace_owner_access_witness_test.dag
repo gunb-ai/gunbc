@@ -1,15 +1,16 @@
 module test.claim.runner.workspace_owner_access_witness_test
 
+import gunbc.workspace_ssh_access { WorkspaceSshThroughGateway, WorkspaceSshFromHost }
+
 import std.types { Bool, NonEmptyStr, List }
 import std.optional { Absent, Present }
 import extdeps.ssh { SshPublicKey, Ed25519, Rsa, ssh_public_key_line }
-import gunbc.fleet_ssh_access { operator_ssh_principal }
 import gunbc.principal_projection { PrincipalRef }
 import gunbc.workspace_allocation_admission {
   WorkspaceAuthorizationPolicy, WorkspaceEnrollmentRoster, WorkspaceOwnerEnrollment, WorkspacePublicKeyCatalogRow,
   WorkspacePolicyAdmitted, WorkspacePolicyRefused, workspace_policy_admit,
 }
-import gunbc.workspace_allocation_policy { workspace_installed_policy, workspace_operator_principal, workspace_operator_public_key_ref }
+import gunbc.workspace_allocation_policy { workspace_installed_policy, workspace_operator_principal, workspace_operator_public_key_ref, workspace_operator_guest_key }
 import gunbc.workspace_microvm { workspace_owner_public_key, WorkspacePublicKeyAdmitted, WorkspacePublicKeyNotAdmitted }
 
 fn alice() -> PrincipalRef { PrincipalRef { authority: "google-oidc", namespace: "accounts", subject: "alice-test" } }
@@ -33,8 +34,8 @@ fn admits(roster: List<WorkspaceOwnerEnrollment>, catalog: List<WorkspacePublicK
 
 fn two_owner_policy() -> WorkspaceAuthorizationPolicy? {
   match workspace_policy_admit(roster: WorkspaceEnrollmentRoster { enrollments: [
-    WorkspaceOwnerEnrollment { principal: alice(), public_key_ref: "alice-key" },
-    WorkspaceOwnerEnrollment { principal: bob(), public_key_ref: "bob-key" },
+    WorkspaceOwnerEnrollment { principal: alice(), public_key_ref: "alice-key", ssh_access: WorkspaceSshThroughGateway },
+    WorkspaceOwnerEnrollment { principal: bob(), public_key_ref: "bob-key", ssh_access: WorkspaceSshThroughGateway },
   ] }, catalog: [alice_row(), bob_row()]) {
     WorkspacePolicyAdmitted { policy } => Present { value: policy }
     WorkspacePolicyRefused { reason: _ } => none
@@ -44,7 +45,7 @@ fn two_owner_policy() -> WorkspaceAuthorizationPolicy? {
 // One enrolled owner with the shared witness reference, admitted through the production join.
 // Consumers of this helper match Absent as a failed claim, never as a permissive default.
 fn witness_single_owner_policy(owner: PrincipalRef) -> WorkspaceAuthorizationPolicy? {
-  match workspace_policy_admit(roster: WorkspaceEnrollmentRoster { enrollments: [WorkspaceOwnerEnrollment { principal: owner, public_key_ref: "witness-key" }] },
+  match workspace_policy_admit(roster: WorkspaceEnrollmentRoster { enrollments: [WorkspaceOwnerEnrollment { principal: owner, public_key_ref: "witness-key", ssh_access: WorkspaceSshThroughGateway }] },
     catalog: [key_row(reference: "witness-key", material: alice_material, comment: "witness")]) {
     WorkspacePolicyAdmitted { policy } => Present { value: policy }
     WorkspacePolicyRefused { reason: _ } => none
@@ -61,32 +62,32 @@ fn witness_empty_policy() -> WorkspaceAuthorizationPolicy? {
 // REDs at the policy join: no list order may decide which enrollment or key line wins.
 test fn an_ambiguous_enrollment_roster_is_refused_at_admission() -> Bool {
   let shared_ref = !admits(roster: [
-    WorkspaceOwnerEnrollment { principal: alice(), public_key_ref: "alice-key" },
-    WorkspaceOwnerEnrollment { principal: bob(), public_key_ref: "alice-key" },
+    WorkspaceOwnerEnrollment { principal: alice(), public_key_ref: "alice-key", ssh_access: WorkspaceSshThroughGateway },
+    WorkspaceOwnerEnrollment { principal: bob(), public_key_ref: "alice-key", ssh_access: WorkspaceSshThroughGateway },
   ], catalog: [alice_row()])
   let two_refs = !admits(roster: [
-    WorkspaceOwnerEnrollment { principal: alice(), public_key_ref: "alice-key" },
-    WorkspaceOwnerEnrollment { principal: alice(), public_key_ref: "bob-key" },
+    WorkspaceOwnerEnrollment { principal: alice(), public_key_ref: "alice-key", ssh_access: WorkspaceSshThroughGateway },
+    WorkspaceOwnerEnrollment { principal: alice(), public_key_ref: "bob-key", ssh_access: WorkspaceSshThroughGateway },
   ], catalog: [alice_row(), bob_row()])
   let duplicate_rows = !admits(roster: [
-    WorkspaceOwnerEnrollment { principal: alice(), public_key_ref: "alice-key" },
-    WorkspaceOwnerEnrollment { principal: alice(), public_key_ref: "alice-key" },
+    WorkspaceOwnerEnrollment { principal: alice(), public_key_ref: "alice-key", ssh_access: WorkspaceSshThroughGateway },
+    WorkspaceOwnerEnrollment { principal: alice(), public_key_ref: "alice-key", ssh_access: WorkspaceSshThroughGateway },
   ], catalog: [alice_row()])
-  let dangling_ref = !admits(roster: [WorkspaceOwnerEnrollment { principal: alice(), public_key_ref: "alice-key" }], catalog: [bob_row()])
-  let unused_line = !admits(roster: [WorkspaceOwnerEnrollment { principal: alice(), public_key_ref: "alice-key" }], catalog: [alice_row(), bob_row()])
-  let two_lines = !admits(roster: [WorkspaceOwnerEnrollment { principal: alice(), public_key_ref: "alice-key" }],
+  let dangling_ref = !admits(roster: [WorkspaceOwnerEnrollment { principal: alice(), public_key_ref: "alice-key", ssh_access: WorkspaceSshThroughGateway }], catalog: [bob_row()])
+  let unused_line = !admits(roster: [WorkspaceOwnerEnrollment { principal: alice(), public_key_ref: "alice-key", ssh_access: WorkspaceSshThroughGateway }], catalog: [alice_row(), bob_row()])
+  let two_lines = !admits(roster: [WorkspaceOwnerEnrollment { principal: alice(), public_key_ref: "alice-key", ssh_access: WorkspaceSshThroughGateway }],
     catalog: [alice_row(), key_row(reference: "alice-key", material: bob_material, comment: "other")])
   let shared_bytes = !admits(roster: [
-    WorkspaceOwnerEnrollment { principal: alice(), public_key_ref: "alice-key" },
-    WorkspaceOwnerEnrollment { principal: bob(), public_key_ref: "bob-key" },
+    WorkspaceOwnerEnrollment { principal: alice(), public_key_ref: "alice-key", ssh_access: WorkspaceSshThroughGateway },
+    WorkspaceOwnerEnrollment { principal: bob(), public_key_ref: "bob-key", ssh_access: WorkspaceSshThroughGateway },
   ], catalog: [alice_row(), key_row(reference: "bob-key", material: alice_material, comment: "alice")])
   shared_ref && two_refs && duplicate_rows && dangling_ref && unused_line && two_lines && shared_bytes
 }
 
 fn alice_and_bob_with(bob_key: WorkspacePublicKeyCatalogRow) -> Bool {
   admits(roster: [
-    WorkspaceOwnerEnrollment { principal: alice(), public_key_ref: "alice-key" },
-    WorkspaceOwnerEnrollment { principal: bob(), public_key_ref: "bob-key" },
+    WorkspaceOwnerEnrollment { principal: alice(), public_key_ref: "alice-key", ssh_access: WorkspaceSshThroughGateway },
+    WorkspaceOwnerEnrollment { principal: bob(), public_key_ref: "bob-key", ssh_access: WorkspaceSshThroughGateway },
   ], catalog: [alice_row(), bob_key])
 }
 
@@ -150,15 +151,27 @@ test fn a_stale_or_foreign_key_reference_cannot_reach_another_owners_guest() -> 
 }
 
 // Inhabitance of the installed route: the shipped roster and catalog admit, and the controller's
-// resolver gives the operator exactly the fleet operator key line written into authorized_keys.
+// resolver gives the operator exactly the dedicated guest key line written into authorized_keys.
 test fn installed_policy_resolves_the_operator_enrollment() -> Bool {
   match workspace_installed_policy() {
     WorkspacePolicyRefused { reason: _ } => false
     WorkspacePolicyAdmitted { policy } => match workspace_owner_public_key(policy: policy,
       owner: workspace_operator_principal(), reference: workspace_operator_public_key_ref) {
       WorkspacePublicKeyAdmitted { key: k } => (k.reference as String) == (workspace_operator_public_key_ref as String)
-        && (k.line as String) == (ssh_public_key_line(k: operator_ssh_principal.public_key) as String)
+        && (k.line as String) == (ssh_public_key_line(k: workspace_operator_guest_key) as String)
       WorkspacePublicKeyNotAdmitted { reason: _ } => false
     }
   }
+}
+
+fn admits_host_identity_file(path: NonEmptyStr) -> Bool {
+  admits(roster: [WorkspaceOwnerEnrollment { principal: alice(), public_key_ref: "alice-key",
+    ssh_access: WorkspaceSshFromHost { identity_file: path } }], catalog: [alice_row()])
+}
+
+test fn host_identity_file_requires_an_absolute_single_line_path() -> Bool {
+  admits_host_identity_file(path: "/fixture/vm-key")
+    && !admits_host_identity_file(path: "relative/vm-key")
+    && !admits_host_identity_file(path: "/fixture/vm-key\nsecond-line")
+    && !admits_host_identity_file(path: "/fixture/vm-key\rsecond-line")
 }

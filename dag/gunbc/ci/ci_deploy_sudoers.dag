@@ -1,7 +1,8 @@
 module gunbc.ci_deploy_sudoers
 
 import std.types { String, NonEmptyStr, List, Bool }
-import v2.std.algebra { fold_list, any }
+import v2.std.algebra { fold_list, any, list_flat_map }
+import std.list { distinct_by_key }
 import extdeps.sudo.elevation { sudo_elevate_argv }
 import v2.extdeps.languages.bash_build {
   bash_build_command_from_lits,
@@ -30,6 +31,7 @@ import extdeps.sudo.nopasswd_execute_probe_check_op {
 import gunbc.ci_deploy_access {
   DeployAccess,
   PrivilegedCommand,
+  deploy_accesses_on_host,
   gunbc_deploy_sudoers_dropin,
   deploy_access_sudoers_line,
   posix_sudo_grant_to_privileged,
@@ -100,13 +102,25 @@ fn deploy_sudoers_line_for_grant(access: DeployAccess, g: PosixSudoGrant) -> Str
   )
 }
 
-// One line per grant, header first. The heredoc row (v2.workflow.bash_emit bash_emit_heredoc)
+// THE DROP-IN IS HOST-SHARED, SO ITS BODY IS THE UNION OVER EVERY ACCESS THAT DEPLOYS TO THE HOST
+// (gunbc.ci_deploy_access deploy_accesses_on_host), not the running access's own grants. Rendering
+// from the running access alone made an operator-local apply rewrite the file to the operator's one
+// line and delete the CI runner's grants. One line per (principal, grant), first occurrence kept
+// in roster order, header first. The heredoc row (v2.workflow.bash_emit bash_emit_heredoc)
 // terminates the body itself, so the lines are joined without a trailing newline.
-fn deploy_sudoers_dropin_body(access: DeployAccess) -> String {
-  join(
-    concat([deploy_sudoers_dropin_header()], map(access.principal.sudo_grants, g => deploy_sudoers_line_for_grant(access: access, g: g))),
-    "\n"
+fn deploy_sudoers_dropin_lines_for(accesses: List<DeployAccess>) -> List<String> {
+  distinct_by_key(
+    xs: list_flat_map(xs: accesses, f: a => map(a.principal.sudo_grants, g => deploy_sudoers_line_for_grant(access: a, g: g))),
+    key: l => l,
   )
+}
+
+fn deploy_sudoers_dropin_body_for(accesses: List<DeployAccess>) -> String {
+  join(concat([deploy_sudoers_dropin_header()], deploy_sudoers_dropin_lines_for(accesses: accesses)), "\n")
+}
+
+fn deploy_sudoers_dropin_body(access: DeployAccess) -> String {
+  deploy_sudoers_dropin_body_for(accesses: deploy_accesses_on_host(host: access.host))
 }
 
 // THE ELEVATION PREFIX IS READ FROM extdeps.sudo.elevation sudo_elevate_argv, not typed here, so the

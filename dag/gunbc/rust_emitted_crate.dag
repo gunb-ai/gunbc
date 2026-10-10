@@ -1,0 +1,36 @@
+module gunbc.rust_emitted_crate
+
+import std.types { Bool, String }
+
+// WHAT AN EMITTED RUST CLOSURE ASKS OF ITS CARGO WORKSPACE, AS A FACT THE EMISSION RETURNS. The
+// emitter decides the crate name its main.rs paths through and the external crates its rendered
+// code links; the crate partition (gunbc.emitted_crate_workspace) decides the layout those
+// facts are realized in. Before this module the emitter rendered both into one Cargo.toml, so the
+// single-package layout was baked into the emission; now the emission states what it needs and
+// owns no manifest.
+//
+// This module lives under dag/ because the v1 emitter produces it and the host workspace writer
+// reads it: one producer, several readers, no second list. It carries the facts only; the Cargo
+// dependency rows the demand implies are rendered beside the manifests that list them
+// (v1.compiler.stage0_crates emitted_crate_dependencies), so this module stays in the lowest
+// partition crate with the emitted-edge facts it travels with.
+
+// WHAT THE EMITTED CRATE DEPENDS ON IS DERIVED FROM WHAT WAS EMITTED, NOT DECLARED BESIDE IT. A
+// fixed dependency list is a second authority for the crate's dependencies, free to disagree with
+// the sources the same run just wrote, so the demand is a field the emission fills.
+//
+// THE RESIDUE IS NAMED RATHER THAN CLAIMED CLOSED. `ureq` sits in the base list on the same
+// footing `clap` used to: it is referenced only when a corpus reaches the HTTP extdep, and nothing
+// in the emitter's inputs says whether it did. NEXT-RUNG TRIGGER: an emission-level demand fact per
+// external crate -- the renderer that emits a `ureq` call recording that it did -- at which point
+// this carrier gains one field per dependency and the base list holds only what every emitted
+// crate genuinely links.
+type EmittedCrateDependencyDemand {
+  renders_clap_cli: Bool
+  renders_async_services: Bool
+}
+
+type EmittedRustCrate {
+  crate_name: String
+  demand: EmittedCrateDependencyDemand
+}

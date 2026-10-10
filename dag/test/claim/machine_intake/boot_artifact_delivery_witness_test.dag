@@ -1,5 +1,9 @@
 module test.claim.boot_artifact_delivery_witness_test
 
+import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
+import extdeps.board_authority { BoardFruObservation, BoardUnbound }
+import test.fixture.board_fru_observation { collins_fru_read, asrock_fru_read }
+import gunbc.board_authority_binding { board_authority_bindings }
 import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -46,7 +50,6 @@ import extdeps.bmc.redfish_virtual_media {
   UnderManager,
   redfish_virtual_media_insert_action_path,
 }
-import extdeps.boards.types { AmpereMtCollins, AsrockRackAltrad8ud1l2t, BaseboardModel }
 import extdeps.bmc.access_profile {
   AccessProfileCatalogRowRefused,
   AccessProfileKnown,
@@ -96,6 +99,7 @@ import gunbc.machine_intake_access {
   AccessContextObservationForOtherAttempt,
   AccessContextProbeEvidenceMismatch,
   AccessContextProfileLookupNotRun,
+  AccessContextBoardNotFactsBound,
   AccessContextProfileUncatalogued,
   AccessContextPromotedProfileUnverified,
   AccessContextUnobserved,
@@ -309,7 +313,7 @@ data redfish_route: BmcAccessRoute = RedfishRoute {
 
 fn profile_keyed(rel: BmcFirmwareReleaseIdentity, routes: List<BmcAccessRoute>, surfaces: List<BmcAccessSurface>, row: BmcFirmwareReleaseCapabilityRow) -> BmcAccessProfile {
   BmcAccessProfile {
-    key: BmcAccessProfileKey { baseboard: AmpereMtCollins, chassis: AllChassisVariants, firmware: rel },
+    key: BmcAccessProfileKey { board: mt_collins_board_authority, chassis: AllChassisVariants, firmware: rel },
     routes: routes,
     bootstrap_credential: none,
     candidate_surfaces: surfaces,
@@ -319,7 +323,7 @@ fn profile_keyed(rel: BmcFirmwareReleaseIdentity, routes: List<BmcAccessRoute>, 
 
 fn profile_of(routes: List<BmcAccessRoute>, surfaces: List<BmcAccessSurface>, row: BmcFirmwareReleaseCapabilityRow) -> BmcAccessProfile {
   BmcAccessProfile {
-    key: BmcAccessProfileKey { baseboard: AmpereMtCollins, chassis: AllChassisVariants, firmware: megarac_release },
+    key: BmcAccessProfileKey { board: mt_collins_board_authority, chassis: AllChassisVariants, firmware: megarac_release },
     routes: routes,
     bootstrap_credential: none,
     candidate_surfaces: surfaces,
@@ -371,11 +375,11 @@ data no_override_profile: BmcAccessProfile = profile_of(routes: [redfish_route],
 // ---------------------------------------------------------------------------
 data discovery_digest: ContentHash = content_hash_of_value(value: "bmc-discovery-response-fixture")
 
-fn identity_of(baseboard: BaseboardModel, firmware: BmcFirmwareReleaseIdentity) -> BmcObservedIdentity {
-  BmcObservedIdentity { baseboard: baseboard, chassis_part_number: none, firmware: firmware }
+fn identity_of(board: BoardFruObservation, firmware: BmcFirmwareReleaseIdentity) -> BmcObservedIdentity {
+  BmcObservedIdentity { board: board, chassis_part_number: none, firmware: firmware }
 }
 
-data mt_collins_identity: BmcObservedIdentity = identity_of(baseboard: AmpereMtCollins, firmware: megarac_release)
+data mt_collins_identity: BmcObservedIdentity = identity_of(board: collins_fru_read, firmware: megarac_release)
 
 data probe_https: RedfishVirtualMediaProbeReceipt = RedfishVirtualMediaProbeReceipt {
   locator: RedfishVirtualMediaLocator { parent: UnderManager { manager_id: "1" }, media_id: "CD1" },
@@ -722,8 +726,8 @@ test fn capability_row_for_another_release_refuses_the_catalog() -> Bool {
     Absent => true
     Present { value: _ } => false
   }
-  let raw_identity = identity_of(baseboard: AmpereMtCollins, firmware: mt_collins_raw_release)
-  let lookup_refused = match bmc_access_profile_for(identity: raw_identity, catalog: catalog_of(profile: raw_keyed)) {
+  let raw_identity = identity_of(board: collins_fru_read, firmware: mt_collins_raw_release)
+  let lookup_refused = match bmc_access_profile_for(identity: raw_identity, catalog: catalog_of(profile: raw_keyed), bindings: board_authority_bindings) {
     AccessProfileCatalogRowRefused { standing: s } =>
       match s {
         CatalogRowCapabilityFirmwareMismatch { key: _, row: _ } => true
@@ -744,7 +748,7 @@ test fn capability_row_for_another_release_refuses_the_catalog() -> Bool {
 // observation receipt: the context binds and the MegaRAC delivery is planned.
 // A fixture proving inhabitability, not a seeded fleet observation.
 test fn raw_release_0_32_binds_a_profile_and_plans_megarac_delivery() -> Bool {
-  let raw_identity = identity_of(baseboard: AmpereMtCollins, firmware: mt_collins_raw_release)
+  let raw_identity = identity_of(board: collins_fru_read, firmware: mt_collins_raw_release)
   let receipt = receipt_of(subject: intake_subject, standing: BmcAccessObserved { observation: observation_of(identity: raw_identity, surfaces: [SurfaceBootControl, SurfaceOemRestRemoteMedia], probe: none) }, manifest: full_manifest)
   let bound = match bind(profile: mt_collins_raw_profile, receipt: receipt) {
     AccessContextBound { context: c } => c.capability_row.firmware.raw_version == "0.32" && c.identity.firmware.raw_version == "0.32"
@@ -963,10 +967,10 @@ test fn redfish_virtual_media_absent_from_live_observation_is_not_selected() -> 
 // RULING §2 CONTROL — same release, a DIFFERENT board: the lookup is
 // uncatalogued for that identity, so no context binds.
 test fn same_release_on_another_board_does_not_pair_with_the_profile() -> Bool {
-  let asrock_identity = identity_of(baseboard: AsrockRackAltrad8ud1l2t, firmware: megarac_release)
+  let asrock_identity = identity_of(board: asrock_fru_read, firmware: megarac_release)
   let receipt = receipt_of(subject: intake_subject, standing: BmcAccessObserved { observation: observation_of(identity: asrock_identity, surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia], probe: Present { value: probe_https }) }, manifest: full_manifest)
   match bind(profile: vm_profile, receipt: receipt) {
-    AccessContextProfileUncatalogued { observed_identity: i } => i.baseboard == AsrockRackAltrad8ud1l2t
+    AccessContextBoardNotFactsBound { observed_identity: _, board: b } => match b { BoardUnbound { fru: _ } => true  _ => false }
     _ => false
   }
 }
@@ -974,7 +978,7 @@ test fn same_release_on_another_board_does_not_pair_with_the_profile() -> Bool {
 // An observation of a DIFFERENT release than the profile is uncatalogued
 // against it: the key binds the raw release string, not a nearest version.
 test fn live_observation_at_another_release_does_not_bind_the_profile() -> Bool {
-  let receipt = receipt_of(subject: intake_subject, standing: BmcAccessObserved { observation: observation_of(identity: identity_of(baseboard: AmpereMtCollins, firmware: megarac_release_other), surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia], probe: Present { value: probe_https }) }, manifest: full_manifest)
+  let receipt = receipt_of(subject: intake_subject, standing: BmcAccessObserved { observation: observation_of(identity: identity_of(board: collins_fru_read, firmware: megarac_release_other), surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia], probe: Present { value: probe_https }) }, manifest: full_manifest)
   match bind(profile: vm_profile, receipt: receipt) {
     AccessContextProfileUncatalogued { observed_identity: i } => i.firmware.raw_version == "1.2.4"
     _ => false
@@ -985,16 +989,17 @@ test fn live_observation_at_another_release_does_not_bind_the_profile() -> Bool 
 // does not bind an identity that reported no chassis part number.
 test fn exact_chassis_profile_does_not_bind_an_unreported_chassis() -> Bool {
   let exact = BmcAccessProfile {
-    key: BmcAccessProfileKey { baseboard: AmpereMtCollins, chassis: ExactChassisPartNumber { part_number: "CH-2U-MTC" }, firmware: megarac_release },
+    key: BmcAccessProfileKey { board: mt_collins_board_authority, chassis: ExactChassisPartNumber { part_number: "CH-2U-MTC" }, firmware: megarac_release },
     routes: vm_profile.routes,
     bootstrap_credential: none,
     candidate_surfaces: vm_profile.candidate_surfaces,
     capability_row: vm_and_oem_row,
   }
-  let unreported = bmc_access_profile_for(identity: mt_collins_identity, catalog: catalog_of(profile: exact))
+  let unreported = bmc_access_profile_for(identity: mt_collins_identity, catalog: catalog_of(profile: exact), bindings: board_authority_bindings)
   let reported = bmc_access_profile_for(
-    identity: BmcObservedIdentity { baseboard: AmpereMtCollins, chassis_part_number: Present { value: "CH-2U-MTC" }, firmware: megarac_release },
+    identity: BmcObservedIdentity { board: collins_fru_read, chassis_part_number: Present { value: "CH-2U-MTC" }, firmware: megarac_release },
     catalog: catalog_of(profile: exact),
+    bindings: board_authority_bindings,
   )
   let unreported_refuses = match unreported {
     AccessProfileUncatalogued { observed_identity: _ } => true

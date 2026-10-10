@@ -7,13 +7,16 @@ import extdeps.github.actions_runner {
   actions_runner_release_2_337_0, actions_runner_base_dir, actions_runner_listener_relative_path,
   actions_runner_listener_run_verb,
 }
-import gunbc.managed_host { ManagedHostBinding, ManagedHostBindingStanding, ManagedHostBound }
+import gunbc.host_control_route { ControlledHost, HostControlStanding, HostControlled, HostControlRefused, HostControlRefusal }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.systemd.systemd_run {
   SystemdRunCommandReady, SystemdRunCommandRefused, SystemdRunOptionWordsRefusedCause,
+  systemd_run_transient_wait_unit_command,
 }
 import gunbc.runner_throughput_qualification_route { ephemeral_slot_unit, ephemeral_slot_command, ephemeral_slot_labels }
+import extdeps.github.actions { self_hosted_provenance_label }
+import gunbc.runner.provider_guest_incarnation { ProviderGuestIncarnation }
 
 // THE SECOND BINDING OF ONE JIT MINT: A TRANSIENT systemd UNIT ON A LIVE MANAGED HOST.
 //
@@ -22,10 +25,10 @@ import gunbc.runner_throughput_qualification_route { ephemeral_slot_unit, epheme
 // realization) -- this module only decides whether a host-unit slot EXISTS, and the mint decides
 // everything else over the sum both bindings inhabit.
 //
-// The host is admitted only through the ManagedHost seam (gunbc.managed_host): a host whose binding
-// standing is anything but ManagedHostBound has no slot, and the refusal carries that standing
-// unchanged rather than a re-coined cause. No mtcollins1_* module is named here; mtcollins1 reaches
-// this fold as the gunbc.managed_host managed_hosts row and nothing else.
+// The host is admitted only as a ControlledHost (gunbc.host_control_route): a host the fleet cannot
+// recover without its OS -- through its BMC or its provider's API -- has no slot, and the refusal
+// carries the route's own refusal unchanged rather than a re-coined cause. No mtcollins1_* module is
+// named here; mtcollins1 reaches this fold through its gunbc.managed_host row and nothing else.
 //
 // The unit, its systemd-run command (the full typed ArgvCommand -- program head included, so a
 // launch seam reading this field gets exactly the invocation the route stages, not a headless
@@ -40,7 +43,7 @@ import gunbc.runner_throughput_qualification_route { ephemeral_slot_unit, epheme
 // (gunbc.credential_argv_exposure), and putting the encoded config there would re-open that class.
 // Placing the credential into the unit's environment is the launch's act, not the registration's.
 type HostUnitSlot sole_constructor {
-  host: ManagedHostBinding
+  host: ControlledHost
   attempt: NonEmptyStr
   workflow: NonEmptyStr
   unit: NonEmptyStr
@@ -50,7 +53,7 @@ type HostUnitSlot sole_constructor {
 }
 
 type HostUnitSlotRefusal
-  = HostUnitSlotHostNotBound { standing: ManagedHostBindingStanding }
+  = HostUnitSlotHostNotControlled { refusal: HostControlRefusal }
   | HostUnitSlotRunnerBinaryUnpublished { binary_release: ActionsRunnerRelease }
   | HostUnitSlotSystemdRunRefused { cause: SystemdRunOptionWordsRefusedCause }
 
@@ -67,15 +70,15 @@ fn host_unit_slot_listener_argv() -> List<String> {
 }
 
 // THE WORKFLOW IS THE CALLER'S: the slot exists to run one workflow, and the mint refuses a runner
-// group restricted to any other (gunbc.runner_jit_mint jit_slot_workflow). It is spelled the way
+// group restricted to any other (gunbc.runner_jit_mint plan_jit_mint, over gunbc.runner.jit_registration_subject workflow). It is spelled the way
 // GitHub identifies a selected workflow, `<owner>/<repo>/<path>@<ref>`.
-fn host_unit_slot_for(host: ManagedHostBindingStanding, attempt: NonEmptyStr, workflow: NonEmptyStr) -> HostUnitSlotStanding {
+fn host_unit_slot_for(host: HostControlStanding, attempt: NonEmptyStr, workflow: NonEmptyStr) -> HostUnitSlotStanding {
   match host {
-    ManagedHostBound { binding: b } =>
+    HostControlled { controlled: b } =>
       match actions_runner_binary_artifact_for_arch(binary_release: host_unit_slot_runner_release, arch: Aarch64) {
         Absent => HostUnitSlotRefused { refusal: HostUnitSlotRunnerBinaryUnpublished { binary_release: host_unit_slot_runner_release } }
         Present { value: artifact } => {
-          let unit = ephemeral_slot_unit(host: b.host.host, attempt: attempt)
+          let unit = ephemeral_slot_unit(host: b.host, attempt: attempt)
           match ephemeral_slot_command(unit: unit, desired: gunbc_runner_slot_desired(), command_argv: host_unit_slot_listener_argv()) {
             SystemdRunCommandRefused { cause: why } =>
               HostUnitSlotRefused { refusal: HostUnitSlotSystemdRunRefused { cause: why } }
@@ -86,7 +89,7 @@ fn host_unit_slot_for(host: ManagedHostBindingStanding, attempt: NonEmptyStr, wo
                   attempt: attempt,
                   workflow: workflow,
                   unit: unit,
-                  labels: ephemeral_slot_labels(host: b.host.host, attempt: attempt),
+                  labels: ephemeral_slot_labels(host: b.host, attempt: attempt),
                   argv: command,
                   runner: artifact,
                 },
@@ -94,6 +97,50 @@ fn host_unit_slot_for(host: ManagedHostBindingStanding, attempt: NonEmptyStr, wo
           }
         }
       }
-    other => HostUnitSlotRefused { refusal: HostUnitSlotHostNotBound { standing: other } }
+    HostControlRefused { refusal: r } => HostUnitSlotRefused { refusal: HostUnitSlotHostNotControlled { refusal: r } }
+  }
+}
+
+// ── the provider guest's slot ───────────────────────────────────────────────────────────────────
+
+// THE LANE A PROVIDER GUEST SERVES, as the one label a workflow names to reach it. A slot on a guest
+// rebuilt per job answers to exactly three labels: the provenance label every self-hosted runner
+// carries, this lane label, and its own registration name. It does NOT answer to the fleet's slot
+// class labels (gunbc.runner_slot_desired, which today include gunbc-heavy) or to the host label,
+// because those are what production lanes target, and a guest registered under them would take a
+// required job onto a host whose egress is uncontained
+// (gunbc.rung_drop.provider_guest_ci_egress_unfiltered). A lane reaches these guests only by naming
+// this label in its runs-on.
+data provider_guest_ci_lane_label: String = "gunbc-provider-guest-ci"
+
+fn provider_guest_slot_unit(incarnation: ProviderGuestIncarnation) -> NonEmptyStr {
+  join(["gunbc-provider-ci-", incarnation.controlled.host as String, "-", incarnation.rebuild.attempt as String, ".service"], "") as NonEmptyStr
+}
+
+// THE SLOT ON ONE INCARNATION, for the attempt that incarnation was rebuilt for. It takes the
+// incarnation rather than a controlled host, so a guest that was not rebuilt for this attempt has no
+// slot to register. The unit carries no resource properties: the whole guest is the attempt's, and
+// the fleet's slot bounds (gunbc.runner_slot_desired) are sized for shared Altra hosts, not for it.
+fn provider_guest_slot_for(incarnation: ProviderGuestIncarnation, workflow: NonEmptyStr) -> HostUnitSlotStanding {
+  match actions_runner_binary_artifact_for_arch(binary_release: host_unit_slot_runner_release, arch: Aarch64) {
+    Absent => HostUnitSlotRefused { refusal: HostUnitSlotRunnerBinaryUnpublished { binary_release: host_unit_slot_runner_release } }
+    Present { value: artifact } => {
+      let unit = provider_guest_slot_unit(incarnation: incarnation)
+      match systemd_run_transient_wait_unit_command(unit: unit, properties: [], command_argv: host_unit_slot_listener_argv()) {
+        SystemdRunCommandRefused { cause: why } => HostUnitSlotRefused { refusal: HostUnitSlotSystemdRunRefused { cause: why } }
+        SystemdRunCommandReady { command: command } =>
+          HostUnitSlotBound {
+            slot: HostUnitSlot {
+              host: incarnation.controlled,
+              attempt: incarnation.rebuild.attempt,
+              workflow: workflow,
+              unit: unit,
+              labels: [self_hosted_provenance_label, provider_guest_ci_lane_label, unit as String],
+              argv: command,
+              runner: artifact,
+            },
+          }
+      }
+    }
   }
 }

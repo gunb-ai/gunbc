@@ -107,6 +107,30 @@ fn repo_self_test_command() -> String {
   )
 }
 
+// A NAMED SUBSET OF ONE PACKAGE'S UNIT TESTS, for a control in a package the whole-package run above
+// does not cover: the blocking rust-unit-tests lane runs repo_self_test_command, which is
+// v1-compiler only.
+// The filters are libtest's substring filters after `--`; an empty list would run the whole
+// package, which is repo_self_test_command's request and not this one.
+fn repo_self_targeted_test_command(package: String, filters: List<String>) -> String {
+  join(concat(["cargo test", repo_self_build_profile_flag, "-p", package, "--lib", "--"], filters), " ")
+}
+
+// The crate the emitted runtime v1_rt.rs is compiled in (the stage0 partition's foundation crate).
+data repo_self_runtime_package: String = "v1-stage0-runtime"
+
+// THE EMITTED RUNTIME'S SLICE COST CONTROLS, ENROLLED. v1_rt list_slice_tests carries a RED that runs
+// the copying skip / take templates the emit table used to render and a GREEN that runs
+// list_skip / list_take, on non-ASCII code points, so the pair discriminates the quadratic rather
+// than merely exercising the slice. Only this crate is named: the interpreter's slice and drop
+// controls (v1_interpreter slice_cost_tests, value_depth_walker_tests) are in v1-compiler's own
+// unit tests, which the blocking rust-unit-tests lane already runs whole (repo_self_test_command),
+// and running them again here would be the same work twice. v1-stage0-runtime is outside that
+// lane's package, so without this step its controls would only compile.
+fn repo_self_slice_cost_control_command() -> String {
+  repo_self_targeted_test_command(package: repo_self_runtime_package, filters: ["list_slice_tests"])
+}
+
 // THE LINT PASS OVER EVERY TARGET, as the one invocation DESIGN's "Building & checks" names.
 // `--all-targets` is the whole point: the test and example targets outside `--lib` and `--bins`
 // are compiled by no build command above and executed by no test command, so before this row

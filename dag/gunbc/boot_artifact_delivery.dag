@@ -58,6 +58,7 @@ import extdeps.bmc.access_profile {
 }
 import gunbc.machine_intake_access {
   AccessContextBound,
+  AccessContextBoardNotFactsBound,
   AccessContextCatalogRefused,
   AccessContextControlRouteEvidenceMismatch,
   AccessContextObservationEvidenceMismatch,
@@ -91,6 +92,7 @@ import gunbc.boot_artifact {
   OperatingSystemInstaller,
   intake_artifact_for,
 }
+import gunbc.board_authority_binding { board_authority_bindings }
 import gunbc.machine_intake_subject { MachineIntakeSubject }
 import gunbc.machine_intake_receipt { EvidenceRef, same_intake_subject }
 import gunbc.install_transport_qualification {
@@ -523,7 +525,7 @@ fn bind_boot_delivery_target(target: BootDeliveryTarget, access: BoundBmcAccessC
 // context's capability row must NAME the capability, and the profile and the
 // observation the context was bound from must both admit the surface.
 fn surface_candidate_standing(ctx: BoundBmcAccessContext, surface: BmcAccessSurface) -> BootDeliveryCandidateStanding {
-  match bmc_surface_eligibility(profile: ctx.profile, observation: ctx.observation, surface: surface) {
+  match bmc_surface_eligibility(profile: ctx.profile, observation: ctx.observation, surface: surface, bindings: board_authority_bindings) {
     SurfaceEligible => CandidateEligible
     SurfaceAbsentFromProfile => CandidateIneligible { cause: CandidateSurfaceAbsentFromProfile { surface: surface } }
     SurfaceAbsentFromLiveObservation => CandidateIneligible { cause: CandidateLiveSurfaceAbsent { surface: surface } }
@@ -614,7 +616,7 @@ fn nbd_proxy_websocket_candidate(ctx: BoundBmcAccessContext, request: BootDelive
 // MegaRAC's proprietary remote media: the OEM capability, the OEM surface, AND
 // the route fact its start-media contract calls required. A profile whose
 // MegaRAC route leaves image_redirection Unset cannot plan this arm — that is
-// the executed refusal (opaque codes 13410/13460) modeled as a standing.
+// the executed refusal modeled as a standing.
 fn megarac_rest_remote_media_candidate(ctx: BoundBmcAccessContext, request: BootDeliveryRequest) -> BootDeliveryCandidateStanding {
   if release_row_has_capability(row: ctx.capability_row, cap: CapabilityOemRemoteMedia) == false {
     CandidateIneligible { cause: CandidateCapabilityAbsent }
@@ -1054,6 +1056,7 @@ fn solve_boot_artifact_delivery(
     AccessContextObservationEvidenceMismatch { endpoint: _, manifest: _, raw_response: _ } => BootDeliveryRefused { cause: DeliveryAccessUnbound { standing: ev.access } }
     AccessContextProbeEvidenceMismatch { endpoint: _, manifest: _, raw_response: _ } => BootDeliveryRefused { cause: DeliveryAccessUnbound { standing: ev.access } }
     AccessContextControlRouteEvidenceMismatch { endpoint: _, manifest: _, raw_response: _ } => BootDeliveryRefused { cause: DeliveryAccessUnbound { standing: ev.access } }
+    AccessContextBoardNotFactsBound { observed_identity: _, board: _ } => BootDeliveryRefused { cause: DeliveryAccessUnbound { standing: ev.access } }
     AccessContextProfileUncatalogued { observed_identity: _ } => BootDeliveryRefused { cause: DeliveryAccessUnbound { standing: ev.access } }
     AccessContextProfileAmbiguous { observed_identity: _, count: _ } => BootDeliveryRefused { cause: DeliveryAccessUnbound { standing: ev.access } }
     AccessContextCatalogRefused { standing: _ } => BootDeliveryRefused { cause: DeliveryAccessUnbound { standing: ev.access } }

@@ -29,7 +29,7 @@ type GitignoreFile {
 fn filter_categories(categories: List<GitignoreCategory>, build_system: String) -> List<GitignoreCategory> {
   let by_build = filter(categories, c => match c.when_build_system {
     Absent => true
-    Present { value: _ } => c.when_build_system == build_system
+    Present { value: b } => b == build_system
   })
   filter(by_build, c => c.items |> count > 0)
 }

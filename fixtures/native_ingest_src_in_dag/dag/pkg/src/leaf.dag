@@ -1,0 +1,3 @@
+module fixture.native_ingest.src_in_dag
+
+data native_ingest_src_in_dag_value: Int = 1

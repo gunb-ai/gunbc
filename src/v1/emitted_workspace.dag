@@ -1,0 +1,245 @@
+module v1.compiler.emitted_workspace
+
+import std.types { Bool, Int, List, String }
+import std.optional { Absent, Optional, Present }
+import v1.std.core { TextFile }
+import extdeps.cargo { CargoDependency }
+import gunbc.rust_emitted_edge { EmittedEdge }
+import gunbc.rust_emitted_crate { EmittedRustCrate }
+import gunbc.stage0_crate_partition_generated { GeneratedPartitionCrateRow }
+import v1.compiler.emit_rust {
+  emit_emitted_population_manifest,
+  emitted_population_manifest_path,
+  rust_emitted_module_basename,
+  rust_source_ext,
+  rust_source_root,
+  string_without_suffix
+}
+import v1.compiler.stage0_crates {
+  Stage0CrateBoundaryEmitOk,
+  Stage0CrateBoundaryEmitRefused,
+  emitted_crate_dependencies,
+  partition_crate_boundary_emit_outcome_over,
+  stage0_crate_boundary_emit_refusal_message
+}
+import gunbc.emitted_crate_workspace {
+  EmittedWorkspaceBuild,
+  EmittedWorkspaceRedDrop,
+  EmittedWorkspaceRedPlanned,
+  EmittedWorkspaceRedRefused,
+  emitted_workspace_red_over,
+  EmittedWorkspaceBuildPlanned,
+  EmittedWorkspaceBuildRefused,
+  EmittedWorkspaceRefusal,
+  emitted_workspace_build,
+  emitted_workspace_refusal_message,
+  emitted_workspace_root_crate_dir
+}
+
+// AN EMISSION, REALIZED AS THE COMPLETE FILE POPULATION OF ITS CARGO WORKSPACE. The emitter returns
+// its files, its edges and the crate it names; gunbc.emitted_crate_workspace
+// emitted_workspace_build decides the layout from those alone; v1.compiler.stage0_crates renders the
+// manifests and crate roots. This function composes the three and places every emitted file, so
+// the writer, the population manifest and any identity over the workspace read ONE list -- the
+// files that will exist, at the paths they will exist at -- and none keeps its own idea of the
+// layout.
+//
+// The plan is compiled here rather than interpreted by the host: it is pure over the emission, so
+// laying out a program reads no source tree, which is what lets `gunbc compile` run from any
+// directory.
+//
+// EVERY EMITTED FILE IS PLACED OR REFUSED, NEVER DROPPED. The module files go where the partition
+// crates include them from; the entry goes where Cargo finds the binary the caller names; the
+// generated tests go to the top package's `tests/`, which sits at the workspace root. Two files of
+// the single-package assembly are SUPERSEDED by name -- its crate root, replaced by the facade
+// crate's, and its population manifest, re-rendered over the realized paths -- and anything else
+// refuses, so a new kind of emitted artifact cannot vanish from a build that reports success.
+
+// Where the partition crates' lib.rs files include module bodies from: every crate dir is
+// `src/v1/<package>` (gunbc.emitted_crate_workspace emitted_workspace_crate_dir), and its
+// includes reach `../../stage0/src/<module>.rs` (v1.compiler.stage0_crates stage0_crate_mod_include).
+data emitted_workspace_module_dir: String = "src/v1/stage0/src"
+
+type EmittedWorkspaceRealizationRefusal
+  = EmittedWorkspaceCrateNotUnique { count: Int }
+  | EmittedWorkspaceEntryAbsent
+  | EmittedWorkspaceFileUnplaced { path: String }
+  | EmittedWorkspacePlanRefused { cause: EmittedWorkspaceRefusal }
+  | EmittedWorkspaceRenderRefused { message: String }
+
+// `files` is every file of the workspace, by path relative to its root, the population manifest
+// included.
+type EmittedWorkspaceRealized {
+  files: List<TextFile>
+  build: EmittedWorkspaceBuild
+  module_dir: String
+  registry_dependencies: List<CargoDependency>
+}
+
+type EmittedWorkspaceRealization
+  = EmittedWorkspaceRealizedOk { workspace: EmittedWorkspaceRealized }
+  | EmittedWorkspaceRealizationRefused { cause: EmittedWorkspaceRealizationRefusal }
+
+type EmittedFilePlacement
+  = PlacedModule { basename: String, file: TextFile }
+  | PlacedEntry { content: String }
+  | PlacedTest { file: TextFile }
+  | PlacedSuperseded
+  | PlacedNowhere { path: String }
+
+fn emitted_workspace_entry_path() -> String {
+  concat(rust_source_root(), "main", rust_source_ext())
+}
+
+fn emitted_workspace_crate_root_path() -> String {
+  concat(rust_source_root(), "lib", rust_source_ext())
+}
+
+fn emitted_file_placement(file: TextFile) -> EmittedFilePlacement {
+  let path = file.path
+  if path == emitted_workspace_entry_path() {
+    PlacedEntry { content: file.content }
+  } else if path == emitted_workspace_crate_root_path() || path == emitted_population_manifest_path() {
+    PlacedSuperseded
+  } else if starts_with(s: path, prefix: "tests/") && (string_without_suffix(value: path, suffix: rust_source_ext()) != none) {
+    PlacedTest { file: file }
+  } else if starts_with(s: path, prefix: rust_source_root()) && (string_without_suffix(value: path, suffix: rust_source_ext()) != none)
+    && !string_contains(s: rust_emitted_module_basename(path: path), pattern: "/") {
+    let basename = rust_emitted_module_basename(path: path)
+    PlacedModule {
+      basename: basename,
+      file: TextFile { path: concat(emitted_workspace_module_dir, "/", basename, rust_source_ext()), content: file.content }
+    }
+  } else {
+    PlacedNowhere { path: path }
+  }
+}
+
+fn emitted_workspace_relative_path(path: String) -> String {
+  if starts_with(s: path, prefix: "./") { replace(path, "./", "") } else { path }
+}
+
+// The workspace section names every crate beneath the root. The top package sits AT the root, so it
+// is the workspace's root package and the section is appended to its manifest.
+fn emitted_workspace_section(rows: List<GeneratedPartitionCrateRow>) -> String {
+  let members = rows
+    |> filter(r => r.crate_dir != emitted_workspace_root_crate_dir)
+    |> map(r => concat("    \"", r.crate_dir, "\","))
+    |> join(separator: "\n")
+  concat("\n[workspace]\nresolver = \"2\"\nmembers = [\n", members, "\n]\n")
+}
+
+fn emitted_workspace_with_section(files: List<TextFile>, rows: List<GeneratedPartitionCrateRow>) -> List<TextFile> {
+  files |> map(f =>
+    if f.path == "Cargo.toml" { TextFile { path: f.path, content: concat(f.content, emitted_workspace_section(rows: rows)) } }
+    else { f }
+  )
+}
+
+fn emitted_workspace_realization(
+  files: List<TextFile>,
+  edges: List<EmittedEdge>,
+  rust_crates: List<EmittedRustCrate>,
+  bin_name: String
+) -> EmittedWorkspaceRealization {
+  match rust_crates |> first {
+    Absent => EmittedWorkspaceRealizationRefused { cause: EmittedWorkspaceCrateNotUnique { count: 0 } }
+    Present { value: rust_crate } =>
+      if (rust_crates |> count) != 1 {
+        EmittedWorkspaceRealizationRefused { cause: EmittedWorkspaceCrateNotUnique { count: rust_crates |> count } }
+      } else {
+        emitted_workspace_realization_of(files: files, edges: edges, rust_crate: rust_crate, bin_name: bin_name)
+      }
+  }
+}
+
+fn emitted_workspace_realization_of(
+  files: List<TextFile>,
+  edges: List<EmittedEdge>,
+  rust_crate: EmittedRustCrate,
+  bin_name: String
+) -> EmittedWorkspaceRealization {
+  let placements = files |> map(f => emitted_file_placement(file: f))
+  let unplaced = placements |> flat_map(p => match p { PlacedNowhere { path: path } => [path]  _ => [] })
+  let entries = placements |> flat_map(p => match p { PlacedEntry { content: c } => [c]  _ => [] })
+  let modules = placements |> flat_map(p => match p { PlacedModule { basename: _, file: f } => [f]  _ => [] })
+  let basenames = placements |> flat_map(p => match p { PlacedModule { basename: b, file: _ } => [b]  _ => [] })
+  let tests = placements |> flat_map(p => match p { PlacedTest { file: f } => [f]  _ => [] })
+  match unplaced |> first {
+    Present { value: path } => EmittedWorkspaceRealizationRefused { cause: EmittedWorkspaceFileUnplaced { path: path } }
+    Absent =>
+      match entries |> first {
+        Absent => EmittedWorkspaceRealizationRefused { cause: EmittedWorkspaceEntryAbsent }
+        Present { value: entry } =>
+          match emitted_workspace_build(emitted_basenames: basenames, edges: edges, crate_name: rust_crate.crate_name, bin_name: bin_name) {
+            EmittedWorkspaceBuildRefused { cause: c } => EmittedWorkspaceRealizationRefused { cause: EmittedWorkspacePlanRefused { cause: c } }
+            EmittedWorkspaceBuildPlanned { build: build } => {
+              let registry_dependencies = emitted_crate_dependencies(demand: rust_crate.demand)
+              match partition_crate_boundary_emit_outcome_over(rows: build.rows, registry_dependencies: registry_dependencies) {
+                Stage0CrateBoundaryEmitRefused { cause: cause } =>
+                  EmittedWorkspaceRealizationRefused { cause: EmittedWorkspaceRenderRefused { message: stage0_crate_boundary_emit_refusal_message(cause: cause) } }
+                Stage0CrateBoundaryEmitOk { files: rendered } => {
+                  let crate_files = emitted_workspace_with_section(
+                    files: rendered |> map(f => TextFile { path: emitted_workspace_relative_path(path: f.path), content: f.content }),
+                    rows: build.rows
+                  )
+                  let realized = concat(
+                    crate_files,
+                    modules,
+                    [TextFile { path: build.bin_source_path, content: entry }],
+                    tests
+                  )
+                  EmittedWorkspaceRealizedOk {
+                    workspace: EmittedWorkspaceRealized {
+                      files: concat(realized, [emit_emitted_population_manifest(paths: realized |> map(f => f.path))]),
+                      build: build,
+                      module_dir: emitted_workspace_module_dir,
+                      registry_dependencies: registry_dependencies
+                    }
+                  }
+                }
+              }
+            }
+          }
+      }
+  }
+}
+
+fn emitted_workspace_realization_refusal_message(cause: EmittedWorkspaceRealizationRefusal) -> String {
+  match cause {
+    EmittedWorkspaceCrateNotUnique { count: n } => concat("EmittedCrateNotUnique: the emission names ", to_string(value: n), " Rust crates, not one")
+    EmittedWorkspaceEntryAbsent => "EntryFileAbsent: the emission wrote no src/main.rs for the binary"
+    EmittedWorkspaceFileUnplaced { path: path } => concat("EmittedFileUnplaced: the workspace has no place for emitted file ", path)
+    EmittedWorkspacePlanRefused { cause: c } => concat("PlanRefused: ", emitted_workspace_refusal_message(cause: c))
+    EmittedWorkspaceRenderRefused { message: m } => concat("RenderRefused: ", m)
+  }
+}
+
+// THE INSTRUMENT'S RED OVER THE PRODUCTION LAYOUT: the realized workspace with one irredundant
+// crate dependency dropped (gunbc.emitted_crate_workspace emitted_workspace_red_over). Only the
+// crate manifests and roots change, so the RED is those files re-rendered over the red rows plus the
+// unchanged top package; the writer lays them over the green tree.
+type EmittedWorkspaceRedRealization
+  = EmittedWorkspaceRedRealized { red: EmittedWorkspaceRedDrop, files: List<TextFile> }
+  | EmittedWorkspaceRedRealizationRefused { message: String }
+
+fn emitted_workspace_red_realization(workspace: EmittedWorkspaceRealized) -> EmittedWorkspaceRedRealization {
+  match emitted_workspace_red_over(plan: workspace.build.layout) {
+    EmittedWorkspaceRedRefused { cause: c } => EmittedWorkspaceRedRealizationRefused { message: emitted_workspace_refusal_message(cause: c) }
+    EmittedWorkspaceRedPlanned { red: red, red_rows: red_rows } => {
+      let rows = concat(red_rows, workspace.build.rows |> filter(r => r.crate_dir == emitted_workspace_root_crate_dir))
+      match partition_crate_boundary_emit_outcome_over(rows: rows, registry_dependencies: workspace.registry_dependencies) {
+        Stage0CrateBoundaryEmitRefused { cause: cause } =>
+          EmittedWorkspaceRedRealizationRefused { message: stage0_crate_boundary_emit_refusal_message(cause: cause) }
+        Stage0CrateBoundaryEmitOk { files: rendered } =>
+          EmittedWorkspaceRedRealized {
+            red: red,
+            files: emitted_workspace_with_section(
+              files: rendered |> map(f => TextFile { path: emitted_workspace_relative_path(path: f.path), content: f.content }),
+              rows: rows
+            )
+          }
+      }
+    }
+  }
+}

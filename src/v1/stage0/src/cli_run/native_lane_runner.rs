@@ -52,6 +52,17 @@ use std::process::Command;
 const FAULT_EXPERIMENT_ENV: &str = "GUNBC_NATIVE_FAULT_EXPERIMENT";
 const FAULT_EXPERIMENT_SKIP_VALUE: &str = "skip_pull_request";
 
+/// THE PRODUCT-REUSE INPUT, joined to `gunbc.emitted_subject_build_gate`
+/// `native_product_reuse_env_name` / `native_product_reuse_fresh_value` by the same witness.
+/// `fresh` (operator ruling 2026-10-09: the required job "requires fresh emission/build of both
+/// retained products and refuses a restored final-product hit; ordinary Cargo reuse may remain")
+/// means the native product store is NOT consulted for serving: the closure is emitted and built
+/// here, and a run that binds a store root while asking for `fresh` is REFUSED rather than served
+/// -- two inputs that contradict each other are a defect in the invocation, never a quiet miss.
+/// Absent or any other value keeps the store's own behaviour (consulted only when a root is bound).
+const PRODUCT_REUSE_ENV: &str = "GUNBC_NATIVE_PRODUCT_REUSE";
+const PRODUCT_REUSE_FRESH_VALUE: &str = "fresh";
+
 /// The compiler entry whose closure becomes the lane's emitted-native compiler. Its
 /// `compiler_pipeline_entry` is `SourceRootEvalDriver`, so the emitted crate's `main.rs` is the
 /// whole-source-root Eval driver this lane exists to route through — and, since the admission
@@ -80,8 +91,9 @@ const MALFORMED_SPECIMEN_COMMITTED: &str = "fixtures/native_lane_malformed/poiso
 /// workspace-relative like every path this harness hands the binary (its working directory is
 /// the workspace root). The receipt records the observed refusal path; the admission authority
 /// requires it non-empty, and this harness requires it to name the materialized specimen.
-const MALFORMED_CONTROL_ROOT: &str = "target/v2-native-lane/malformed-control-root";
-const MALFORMED_MATERIALIZED_PATH: &str = "target/v2-native-lane/malformed-control-root/poison.dag";
+const MALFORMED_CONTROL_ROOT: &str = "target/v2-native-lane/malformed-control-root/dag";
+const MALFORMED_MATERIALIZED_PATH: &str =
+    "target/v2-native-lane/malformed-control-root/dag/poison.dag";
 
 /// THE TWO DOORS' CONTROL INPUTS, AS THE THREE FACTS THEIR ARGV IS BUILT FROM.
 ///
@@ -101,7 +113,12 @@ const MALFORMED_MATERIALIZED_PATH: &str = "target/v2-native-lane/malformed-contr
 /// the text not Rust (gunbc.recurring_failure_mode closure_emit_renders_an_arrow_without_its_body).
 /// So an exit 0 now has to carry the declaration's NAME and its VALUE in text a Rust compiler
 /// ACCEPTS; anything less is that class returning, not an emission.
-const WELL_FORMED_CONTROL_ROOT: &str = "fixtures/native_cli_door";
+const WELL_FORMED_CONTROL_ROOT: &str = "fixtures/native_cli_door/dag";
+const NATIVE_INGEST_COPIED_SINGLE_ROOT: &str = "fixtures/native_ingest_copied_single_root";
+const NATIVE_INGEST_SRC_IN_DAG_ROOT: &str = "fixtures/native_ingest_src_in_dag/dag";
+const NATIVE_INGEST_TWO_ROOTS_DAG: &str = "fixtures/native_ingest_two_roots/dag";
+const NATIVE_INGEST_TWO_ROOTS_V2: &str = "fixtures/native_ingest_two_roots/src/v2";
+const NATIVE_INGEST_DUPLICATE_MODULE_ROOT: &str = "fixtures/native_ingest_duplicate_module/dag";
 const CLI_DOOR_ENTRY_MODULE: &str = "fixture.native_cli_door.door_probe";
 const CLI_DOOR_EMITTED_WITNESS: &str = "native_cli_door_probe_value";
 const CLI_DOOR_EMITTED_VALUE: &str = "606060";
@@ -282,28 +299,23 @@ fn sha256_file(path: &Path) -> Result<String, String> {
     Ok(format!("{:x}", sha2::Sha256::digest(&bytes)))
 }
 
-/// The emitted closure's identity: one digest over the crate's emitted sources, path and
-/// content in sorted order, so the receipt names WHAT was compiled, not merely that something
-/// was.
-fn emitted_closure_identity(crate_dir: &Path) -> Result<String, String> {
+/// The emitted closure's identity: one digest over EVERY file the realized workspace holds --
+/// module sources, the binary's entry, each crate's manifest and root -- path relative to the
+/// workspace root and content, in sorted path order. The population is the realization's own
+/// (`EmittedWorkspace::files`), so the identity names what was compiled and does not depend on
+/// where the workspace was written.
+fn emitted_closure_identity(emitted: &super::EmittedWorkspace) -> Result<String, String> {
     use sha2::Digest;
-    let src_dir = crate_dir.join("src");
-    let mut files: Vec<PathBuf> = std::fs::read_dir(&src_dir)
-        .map_err(|e| format!("could not list {}: {e}", src_dir.display()))?
-        .filter_map(|entry| entry.ok().map(|e| e.path()))
-        .filter(|path| path.extension().map(|ext| ext == "rs").unwrap_or(false))
-        .collect();
-    files.sort();
+    let mut paths: Vec<&String> = emitted.files.iter().collect();
+    paths.sort();
     let mut hasher = sha2::Sha256::new();
-    for path in &files {
+    for relative in paths {
+        let path = emitted.root.join(relative);
         let bytes =
-            std::fs::read(path).map_err(|e| format!("could not read {}: {e}", path.display()))?;
-        hasher.update(
-            path.file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default()
-                .as_bytes(),
-        );
+            std::fs::read(&path).map_err(|e| format!("could not read {}: {e}", path.display()))?;
+        hasher.update(relative.as_bytes());
+        hasher.update([0u8]);
+        hasher.update((bytes.len() as u64).to_le_bytes());
         hasher.update(&bytes);
     }
     Ok(format!("{:x}", hasher.finalize()))
@@ -359,7 +371,32 @@ fn prepare_emitted_compiler_for_entry(
     // anything is emitted. A verified hit stands in for reconcile + emit + build + the red that
     // admitted the entry; the caller's door and refusal controls then run against the reused
     // executable exactly as they would against a fresh one.
-    let store = super::native_product_cache::store_root();
+    //
+    // UNLESS THE CALLER ASKED FOR A FRESH PRODUCT (`PRODUCT_REUSE_ENV`): then no store is consulted
+    // and nothing is committed, and a bound store root is a contradiction the run refuses.
+    let fresh_required =
+        std::env::var(PRODUCT_REUSE_ENV).ok().as_deref() == Some(PRODUCT_REUSE_FRESH_VALUE);
+    let store = if fresh_required {
+        if let Some(root) = super::native_product_cache::store_root() {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=NativeProductReuseRefused — {PRODUCT_REUSE_ENV}={PRODUCT_REUSE_FRESH_VALUE} \
+                 requires this run to emit and build {entry} itself, yet GUNBC_NATIVE_CACHE_ROOT binds a native \
+                 product store at {}; a restored final product may not stand in for the build this run owes, so \
+                 unbind the store or withdraw the input",
+                root.display()
+            ));
+        }
+        eprintln!(
+            "v2-native-route: FRESH PRODUCT REQUIRED — {PRODUCT_REUSE_ENV}={PRODUCT_REUSE_FRESH_VALUE}: the native \
+             product store is not consulted and nothing is committed; {entry} is emitted and built by this run"
+        );
+        None
+    } else {
+        super::native_product_cache::store_root()
+    };
+    // Under `fresh` NO key is derived: `derive_key` re-ingests the corpus index and reloads the
+    // closure only to hash it, which the emission below does again -- the same work twice (DESIGN
+    // section 2) for a receipt that can be written from what this run already computes.
     let product_key = match &store {
         Some(_) => Some(
             super::native_product_cache::derive_key(source_roots, entry, &workspace)
@@ -509,10 +546,11 @@ fn prepare_emitted_compiler_for_entry(
             ))
         }
     }
-    let (crate_dir, written) =
-        super::emitted_closure_compile_host::write_probe_crate(&run, &probe_root, entry)
-            .map_err(|cause| format!("V2-NATIVE REFUSAL cause=EmittedCrateNotWritten — {cause}"))?;
-    let closure_identity = emitted_closure_identity(&crate_dir)?;
+    let emitted = super::emitted_closure_compile_host::write_probe_crate(&run, &probe_root, entry)
+        .map_err(|cause| format!("V2-NATIVE REFUSAL cause=EmittedCrateNotWritten — {cause}"))?;
+    let crate_dir = emitted.root.clone();
+    let written = emitted.files.len();
+    let closure_identity = emitted_closure_identity(&emitted)?;
     // THE BUILD'S PEAK MUST NOT STACK ON THE EMISSION'S RETAINED ARENA. The emission's resolved
     // graph died inside `compile_entry_emission` and the emitted file texts die with `run` here,
     // but glibc retains the freed arena — and the cargo build below needs gigabytes beside this
@@ -624,6 +662,28 @@ fn prepare_emitted_compiler_for_entry(
     let seed_identity = sha256_file(&std::env::current_exe().map_err(|e| {
         format!("V2-NATIVE REFUSAL cause=SeedIdentityUnreadable — current_exe: {e}")
     })?)?;
+    // THE FRESH-PRODUCT RECEIPT (operator ruling 2026-10-09): one line per product stating that THIS
+    // run realized it, with the identities a reader needs to tie the executable to its inputs: the
+    // source tree the run judged (GITHUB_SHA where a workflow set it; the receipt says so when it
+    // did not), the emitted closure, the seed executable, the toolchain and build configuration
+    // (the same two helpers the product key hashes), and the built executable. Printed only under
+    // `fresh`, because only then is `realization=fresh` a fact this run owns. Nothing here is
+    // computed for the receipt alone.
+    if fresh_required {
+        let source_tree = std::env::var("GITHUB_SHA")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| "unset(GITHUB_SHA absent: an operator-local run)".to_string());
+        let toolchain = super::emitted_closure_compile_host::probe_toolchain_identity_for_key()?;
+        let build_configuration =
+            super::emitted_closure_compile_host::probe_build_configuration_for_key();
+        eprintln!(
+            "v2-native-route: FRESH PRODUCT RECEIPT entry={entry} realization=fresh \
+             source_tree={source_tree} closure_identity={closure_identity} \
+             seed_sha256={seed_identity} toolchain={toolchain} \
+             build_configuration={build_configuration} executable_sha256={binary_identity}"
+        );
+    }
     eprintln!(
         "v2-native-route: emitted compiler at {} (sha256 {binary_identity})",
         binary_path.display()
@@ -670,7 +730,7 @@ fn prepare_emitted_compiler_for_entry(
     } else {
         eprintln!("v2-native-route: establishing the discriminating red on {entry_module}");
         let mutation = super::emitted_closure_compile_host::establish_discriminating_red(
-            &crate_dir,
+            &emitted,
             &probe_root.target_dir(),
             &entry_module,
         );
@@ -884,10 +944,9 @@ fn materialize_malformed_specimen(workspace: &Path) -> Result<String, String> {
 /// census run's only consumed output.
 struct NativeFileRefusalObserved {
     path: String,
-    /// The FIRST diagnostic of the file's chain -- often an advisory that rode along (the
-    /// grammar-construction residue `parse_grammar_choice_overlap_residue` heads every file,
-    /// clean ones included). Carried so the summary can show it AS the head, beside the cause,
-    /// rather than leaving a reader to mistake it for one.
+    /// The FIRST diagnostic of the file's chain -- possibly a non-fatal advisory that
+    /// `rejected_with_pending` prepended. Carried so the summary can show it AS the head, beside
+    /// the cause, rather than leaving a reader to mistake it for one.
     head_reason: String,
     fatal_reason: String,
     /// Where the FATAL link points, rendered from the row's `chain`
@@ -2065,8 +2124,7 @@ struct CliRefusalRendering {
 ///
 /// `v2.cli.compile_cli` renders `REFUSED: the closure did not emit; diagnostic chain: <links> |
 /// FATAL AT <locus>`, and `diagnostics_fatal` folds the chain to its LAST link -- that module's
-/// annotation states why: the head answers `parse_grammar_choice_overlap_residue` for every entry
-/// tried, a grammar-global ADVISORY that is never the fatal.
+/// annotation states why: a head can be a non-fatal advisory, and the fatal is the last link.
 ///
 /// EVERY LINK IS NOW LOCATED, AND THIS DECODER DID NOT KNOW THAT. gunbc#11965/#11985 moved the chain
 /// to `lens_verdict_diagnostics_located_chain_text`, so a link is
@@ -2568,9 +2626,127 @@ fn walk_cli_door(
         }
     }
     eprintln!("v2-native-cli: filesystem controls refused absent root and unreadable source with typed, located causes");
+    walk_native_ingest_layout_controls(binary, workspace)?;
     let refusal_status = i64::from(refused.status.unwrap_or_default());
     eprintln!("v2-native-cli: door refused as cli_no_entry — exit {refusal_status}");
     Ok((door_exit_status, emitted_bytes, refusal_status))
+}
+
+/// THE LAYOUT REDS THE PARENT ASKED THE NATIVE DOOR TO EXECUTE. Claims over `v2_cli_run` supply
+/// ingest at that fold; these walks are the inhabitance that the discovering --source-root, not
+/// the file spelling, tags the tree — deleting any of the four fixture roots makes this control
+/// fail.
+///
+/// SEED DELTA (ctrl hand-Rust receipt): extend `walk_cli_door`; no new production route and no
+/// deleted scaffold. Accounted on `gunbc.source_root_eval_driver_seed_growth`
+/// `source_root_eval_driver_seed_growth_justification` (lane `v1-hand-queue-drain`). Net seed is
+/// this inhabitance walk over existing `run_cli_door`.
+fn walk_native_ingest_layout_controls(binary: &Path, workspace: &Path) -> Result<(), String> {
+    let copied = workspace.join(NATIVE_INGEST_COPIED_SINGLE_ROOT);
+    let src_in_dag = workspace.join(NATIVE_INGEST_SRC_IN_DAG_ROOT);
+    let two_dag = workspace.join(NATIVE_INGEST_TWO_ROOTS_DAG);
+    let two_v2 = workspace.join(NATIVE_INGEST_TWO_ROOTS_V2);
+    let dup = workspace.join(NATIVE_INGEST_DUPLICATE_MODULE_ROOT);
+    for (label, path) in [
+        ("copied-single-root", copied.as_path()),
+        ("src-in-dag", src_in_dag.as_path()),
+        ("two-roots-dag", two_dag.as_path()),
+        ("two-roots-v2", two_v2.as_path()),
+        ("duplicate-module", dup.as_path()),
+    ] {
+        if !path.is_dir() {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=NativeIngestLayoutRootAbsent — {label} {} is not a directory",
+                path.display()
+            ));
+        }
+    }
+
+    let copied_obs = run_cli_door(
+        binary,
+        &[
+            "emit".into(),
+            "--entry".into(),
+            "fixture.native_ingest.copied_dag".into(),
+            "--source-root".into(),
+            copied.display().to_string(),
+        ],
+    )?;
+    if copied_obs.status != Some(CLI_DOOR_USAGE_REFUSAL_EXIT)
+        || !copied_obs.stdout.is_empty()
+        || !copied_obs
+            .stderr
+            .contains("source root is not a dag or src/v2 tree")
+        || !copied_obs.stderr.contains(&copied.display().to_string())
+    {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeIngestCopiedRootNotUnrecognized — status={:?} stderr={}",
+            copied_obs.status,
+            copied_obs.stderr.trim()
+        ));
+    }
+
+    let src_obs = run_cli_door(
+        binary,
+        &[
+            "emit".into(),
+            "--entry".into(),
+            "fixture.native_ingest.src_in_dag".into(),
+            "--source-root".into(),
+            src_in_dag.display().to_string(),
+        ],
+    )?;
+    if src_obs.status != Some(0) || src_obs.stdout.is_empty() {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeIngestSrcInDagPathMisclassified — status={:?} stderr={}",
+            src_obs.status,
+            src_obs.stderr.trim()
+        ));
+    }
+
+    let two_obs = run_cli_door(
+        binary,
+        &[
+            "emit".into(),
+            "--entry".into(),
+            "fixture.native_ingest.dag_entry".into(),
+            "--source-root".into(),
+            two_dag.display().to_string(),
+            "--source-root".into(),
+            two_v2.display().to_string(),
+        ],
+    )?;
+    if two_obs.status != Some(0) || two_obs.stdout.is_empty() {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeIngestTwoRootsDidNotEmit — status={:?} stderr={}",
+            two_obs.status,
+            two_obs.stderr.trim()
+        ));
+    }
+
+    let dup_obs = run_cli_door(
+        binary,
+        &[
+            "emit".into(),
+            "--entry".into(),
+            "fixture.native_ingest.collision".into(),
+            "--source-root".into(),
+            dup.display().to_string(),
+        ],
+    )?;
+    if dup_obs.status != Some(CLI_DOOR_REFUSAL_EXIT)
+        || !dup_obs.stderr.contains("closure_census_duplicate_module")
+        || !dup_obs.stderr.contains("collision_a.dag")
+        || !dup_obs.stderr.contains("collision_b.dag")
+    {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeIngestDuplicateDidNotNameBothFiles — status={:?} stderr={}",
+            dup_obs.status,
+            dup_obs.stderr.trim()
+        ));
+    }
+    eprintln!("v2-native-cli: native-ingest layout controls held (unrecognized copied root, /src/ under dag, two roots, both-files duplicate)");
+    Ok(())
 }
 
 /// THE GENERATION-ONE EXECUTABLE OUTLIVES THE RUN, because generation two is that executable
@@ -2723,6 +2899,8 @@ pub struct NativeServeProgramRun {
     pub seed_identity: String,
     pub warning_count: i64,
     pub announcement: String,
+    pub peer_announcement: String,
+    pub peer_port: i64,
     pub responses: Vec<String>,
     pub refused_status: Option<i32>,
     pub refused_stderr: String,
@@ -2815,9 +2993,8 @@ pub fn run_native_serve_program(
     release_revision: &str,
     refused_revision: &str,
     request_deadline_ms: &str,
-    requests: &[String],
+    requests_for_peer_port: &dyn Fn(i64) -> Result<Vec<String>, String>,
 ) -> Result<NativeServeProgramRun, String> {
-    use std::io::{BufRead, Read};
     let prepared = prepare_emitted_compiler_for_entry(source_roots, entry)?;
     eprintln!(
         "native-serve: {entry} built (closure {}) -- starting {}",
@@ -2826,7 +3003,132 @@ pub fn run_native_serve_program(
     );
     let (refused_status, refused_stderr) =
         native_serve_refused_launch(&prepared.binary_path, refused_revision, request_deadline_ms)?;
-    let mut child = Command::new(&prepared.binary_path)
+    // The PEER is a second instance of the same entry: the local server the entry's bound REST
+    // handler is pointed at, so the answered arm is produced by a real exchange. Its port is the
+    // one fact only it can publish, so the reader module is asked for the requests only after it.
+    let mut peer = native_serve_start(
+        &prepared.binary_path,
+        entry,
+        release_revision,
+        request_deadline_ms,
+    )?;
+    let peer_port = match peer
+        .address
+        .as_deref()
+        .and_then(|address| address.rsplit(':').next())
+        .and_then(|port| port.parse::<i64>().ok())
+    {
+        Some(port) => port,
+        None => {
+            let peer_stderr = peer.stop();
+            return Err(format!(
+                "NATIVE-SERVE REFUSAL cause=PeerUnannounced entry={entry} announcement={:?} — the peer instance printed no bound address, so no request can name its port{}",
+                peer.announcement,
+                if peer_stderr.is_empty() { String::new() } else { format!(" (stderr: {})", peer_stderr.trim_end()) }
+            ));
+        }
+    };
+    let requests = match requests_for_peer_port(peer_port) {
+        Ok(requests) => requests,
+        Err(cause) => {
+            peer.stop();
+            return Err(cause);
+        }
+    };
+    let mut subject = match native_serve_start(
+        &prepared.binary_path,
+        entry,
+        release_revision,
+        request_deadline_ms,
+    ) {
+        Ok(subject) => subject,
+        Err(cause) => {
+            peer.stop();
+            return Err(cause);
+        }
+    };
+    let responses = match &subject.address {
+        Some(address) => requests
+            .iter()
+            .map(|request| native_serve_exchange(address, request))
+            .collect(),
+        None => Vec::new(),
+    };
+    // The last case drives the subject past its stuck-worker ceiling, after which it exits by
+    // itself; wait for that (bounded) and carry the status to the reader unjudged. Only a process
+    // still running at the deadline is killed, and it reports no status. The peer serves no budget
+    // case and is stopped.
+    let (served_exit_status, stderr) = subject.await_exit();
+    let peer_stderr = peer.stop();
+    Ok(NativeServeProgramRun {
+        closure_identity: prepared.closure_identity,
+        binary_identity: prepared.binary_identity,
+        seed_identity: prepared.seed_identity,
+        warning_count: prepared.build.warning_count,
+        announcement: subject.announcement,
+        peer_announcement: peer.announcement,
+        peer_port,
+        responses,
+        refused_status,
+        refused_stderr,
+        served_exit_status,
+        stderr: format!("{stderr}{peer_stderr}"),
+    })
+}
+
+/// One started instance of a served entry: its announcement, the address read off it, and the
+/// process to stop. The host reads the address because the service binds port 0.
+struct NativeServeInstance {
+    child: std::process::Child,
+    reader: Option<std::thread::JoinHandle<String>>,
+    announcement: String,
+    address: Option<String>,
+}
+
+impl NativeServeInstance {
+    /// Wait up to the run deadline for the instance to exit by itself, killing it only past that;
+    /// the status is None when it had to be killed.
+    fn await_exit(&mut self) -> (Option<i32>, String) {
+        let started = std::time::Instant::now();
+        let status = loop {
+            match self.child.try_wait() {
+                Ok(Some(status)) => break status.code(),
+                Ok(None) if started.elapsed() < NATIVE_SERVE_DEADLINE => {
+                    std::thread::sleep(std::time::Duration::from_millis(20))
+                }
+                _ => {
+                    let _ = self.child.kill();
+                    let _ = self.child.wait();
+                    break None;
+                }
+            }
+        };
+        let stderr = self
+            .reader
+            .take()
+            .and_then(|reader| reader.join().ok())
+            .unwrap_or_default();
+        (status, stderr)
+    }
+
+    fn stop(&mut self) -> String {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        self.reader
+            .take()
+            .and_then(|reader| reader.join().ok())
+            .unwrap_or_default()
+    }
+}
+
+fn native_serve_start(
+    binary: &Path,
+    entry: &str,
+    release_revision: &str,
+    request_deadline_ms: &str,
+) -> Result<NativeServeInstance, String> {
+    use std::io::{BufRead, Read};
+    let mut child = Command::new(binary)
         .args(native_serve_launch_args(
             release_revision,
             request_deadline_ms,
@@ -2837,10 +3139,14 @@ pub fn run_native_serve_program(
         .map_err(|cause| {
             format!("NATIVE-SERVE REFUSAL cause=SpawnFailed entry={entry} — {cause}")
         })?;
-    let pipe = child
-        .stderr
-        .take()
-        .ok_or("NATIVE-SERVE REFUSAL cause=NoStderrPipe")?;
+    let pipe = match child.stderr.take() {
+        Some(pipe) => pipe,
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err("NATIVE-SERVE REFUSAL cause=NoStderrPipe".to_string());
+        }
+    };
     let (lines, announced) = std::sync::mpsc::channel::<String>();
     let reader = std::thread::spawn(move || {
         let mut pipe = std::io::BufReader::new(pipe);
@@ -2858,42 +3164,11 @@ pub fn run_native_serve_program(
         .strip_prefix("native-serve listening on ")
         .and_then(|rest| rest.split(' ').next())
         .map(str::to_string);
-    let responses = match &address {
-        Some(address) => requests
-            .iter()
-            .map(|request| native_serve_exchange(address, request))
-            .collect(),
-        None => Vec::new(),
-    };
-    // The last case drives the service past its stuck-worker ceiling, after which it exits by
-    // itself; wait for that (bounded) and carry the status to the reader unjudged. Only a process
-    // still running at the deadline is killed, and it reports no status.
-    let started = std::time::Instant::now();
-    let served_exit_status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status.code(),
-            Ok(None) if started.elapsed() < NATIVE_SERVE_DEADLINE => {
-                std::thread::sleep(std::time::Duration::from_millis(20))
-            }
-            _ => {
-                let _ = child.kill();
-                let _ = child.wait();
-                break None;
-            }
-        }
-    };
-    let stderr = reader.join().unwrap_or_default();
-    Ok(NativeServeProgramRun {
-        closure_identity: prepared.closure_identity,
-        binary_identity: prepared.binary_identity,
-        seed_identity: prepared.seed_identity,
-        warning_count: prepared.build.warning_count,
+    Ok(NativeServeInstance {
+        child,
+        reader: Some(reader),
         announcement,
-        responses,
-        refused_status,
-        refused_stderr,
-        served_exit_status,
-        stderr,
+        address,
     })
 }
 
@@ -2983,19 +3258,60 @@ pub fn run_v2_native_frontier(
 /// carries the terminal marker's counts and decides nothing about them.
 pub struct NativeCensusRun {
     pub cause_groups: u64,
+    pub roots: u64,
     pub file_refusals: u64,
     pub residual_rows: u64,
     pub modules: u64,
     pub advised_files: u64,
+    pub inferred: u64,
+    pub infer_refused: u64,
+    pub type_census: TypeCensusVerdictWord,
 }
 
-/// `gunbc test //gunbc/instruments:v2-native-census`: the emitted compiler's `census-resolve` verb
-/// over the given roots. The child's stdout -- one `file_refusal`, `accepted_file_advisories`, `census_residual` and
-/// `cause_group` line per row, then the terminal -- is relayed whole, because those rows ARE the
+/// THE TYPE CENSUS'S VERDICT AS THE TERMINAL CARRIES IT: one of the three words the rendered main
+/// writes from `std.compiler_entry` `NativeClaimTerminal`, and nothing else. Any other value refuses
+/// rather than being copied into the receipt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypeCensusVerdictWord {
+    Held,
+    NotHeld,
+    NoObservation,
+}
+
+impl TypeCensusVerdictWord {
+    fn decode(word: &str) -> Option<Self> {
+        match word {
+            "held" => Some(Self::Held),
+            "not_held" => Some(Self::NotHeld),
+            "no_observation" => Some(Self::NoObservation),
+            _ => None,
+        }
+    }
+
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Held => "held",
+            Self::NotHeld => "not_held",
+            Self::NoObservation => "no_observation",
+        }
+    }
+}
+
+/// `gunbc test //gunbc/instruments:v2-native-census`: the emitted compiler's `census-infer` verb
+/// over the given roots (census part 2: front-end, resolve and infer refusals in one carrier, one
+/// walk shared with the type-declaration census). The child's stdout -- one `file_refusal`,
+/// `accepted_file_advisories`, `census_residual`, `cause_group` and `census_root` line per row, the
+/// type census's own lines, then the terminal -- is relayed whole, because those rows ARE the
 /// census; only the terminal is decoded, and every field it must carry is required, none defaulted.
+/// The child's exit status is the TYPE census's verdict, a different fact, so it is carried in the
+/// terminal's `type_census` field and never read as this census's standing.
 pub fn run_v2_native_census(source_roots: &[String]) -> Result<NativeCensusRun, String> {
+    eprintln!(
+        "{}",
+        host_memory_budget_receipt_line(&crate::memory_governor::read_host_budget_resolution())
+    );
     let preparation = prepare_emitted_compiler(source_roots)?;
-    let mut args = vec!["census-resolve".to_string()];
+    let mut args = vec!["census-infer".to_string()];
     args.extend(source_roots.iter().cloned());
     let mut command = Command::new(&preparation.binary_path);
     command.args(&args);
@@ -3009,6 +3325,41 @@ pub fn run_v2_native_census(source_roots: &[String]) -> Result<NativeCensusRun, 
         format!("V2-NATIVE-CENSUS REFUSAL cause=NativeRunStdoutNotUtf8 — {cause}")
     })?;
     decode_native_census_output(&stdout, output.status.code())
+}
+
+/// WHERE THE RUN'S MEMORY BUDGET CAME FROM, IN THE RECEIPT. A whole-tree census is admitted against a
+/// declared demand (`gunbc.instrument_dispatch_workflow` `instrument_dispatch_memory_demands`), and
+/// the budget this process actually runs under is a separate fact. A receipt that does not say
+/// which source answered cannot tell an observed cgroup bound from an operator's unverified
+/// declaration, or from no bound at all. The line renders the one typed resolution
+/// (`memory_governor::read_host_budget_resolution`) and adds no precedence of its own.
+fn host_memory_budget_receipt_line(
+    resolution: &crate::memory_governor::HostBudgetResolution,
+) -> String {
+    use crate::memory_governor::HostBudgetResolution;
+    match resolution {
+        HostBudgetResolution::Resolved {
+            effective_bytes,
+            requested_bytes,
+            observation,
+        } => format!(
+            "[v2-native-census] host_memory_budget source=observed observed_by=\"{}\" \
+             bounds_this_process={} effective_bytes={effective_bytes} declared_bytes={}",
+            observation.source.label(),
+            observation.source.bounds_this_process(),
+            requested_bytes.map_or("none".to_string(), |b| b.to_string())
+        ),
+        HostBudgetResolution::DeclaredUnverified {
+            requested_bytes,
+            reason,
+        } => format!(
+            "[v2-native-census] host_memory_budget source=declared_unverified \
+             declared_bytes={requested_bytes} reason=\"{reason}\""
+        ),
+        HostBudgetResolution::Unreadable { reason } => {
+            format!("[v2-native-census] host_memory_budget source=unreadable reason=\"{reason}\"")
+        }
+    }
 }
 
 /// THE CHILD'S STREAMS, RELAYED AS IT WRITES THEM AND STILL COLLECTED WHOLE. `Command::output()`
@@ -3053,7 +3404,7 @@ fn run_relaying_as_it_runs(mut command: Command) -> std::io::Result<std::process
     })
 }
 
-/// The census-resolve stdout, decoded. Only the terminal's counts are carried out, but the
+/// The census-infer stdout, decoded. Only the terminal's counts are carried out, but the
 /// advisory population is checked against its rows: `advised_files` is required, and a count the
 /// printed `accepted_file_advisories` rows do not match refuses, so a receipt saved from this
 /// stdout cannot claim an advisory population it does not carry.
@@ -3072,7 +3423,7 @@ fn decode_native_census_output(stdout: &str, exit: Option<i32>) -> Result<Native
             )
         })?;
     if terminal.get("_terminal").and_then(|t| t.as_str()) != Some("complete")
-        || terminal.get("mode").and_then(|m| m.as_str()) != Some("census-resolve")
+        || terminal.get("mode").and_then(|m| m.as_str()) != Some("census-infer")
     {
         return Err(format!(
             "V2-NATIVE-CENSUS REFUSAL cause=TerminalNotComplete — {terminal}"
@@ -3097,12 +3448,29 @@ fn decode_native_census_output(stdout: &str, exit: Option<i32>) -> Result<Native
     }
     advised_files_agree(advised_files, &advisory_rows)
         .map_err(|c| format!("V2-NATIVE-CENSUS REFUSAL cause=AdvisoryRowsDisagree — {c}"))?;
+    let type_census = terminal
+        .get("type_census")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            format!("V2-NATIVE-CENSUS REFUSAL cause=TerminalFieldMissing — no type_census: {terminal}")
+        })
+        .and_then(|word| {
+            TypeCensusVerdictWord::decode(word).ok_or_else(|| {
+                format!(
+                    "V2-NATIVE-CENSUS REFUSAL cause=TypeCensusWordUnknown — {word:?} is not held, not_held or no_observation: {terminal}"
+                )
+            })
+        })?;
     Ok(NativeCensusRun {
         cause_groups: need_u64("cause_groups")?,
+        roots: need_u64("roots")?,
         file_refusals: need_u64("file_refusals")?,
         residual_rows: need_u64("residual_rows")?,
         modules: need_u64("modules")?,
         advised_files,
+        inferred: need_u64("inferred")?,
+        infer_refused: need_u64("infer_refused")?,
+        type_census,
     })
 }
 
@@ -3341,6 +3709,66 @@ fn run_required_v2_native_inner(
 mod tests {
     use super::*;
 
+    /// THE IDENTITY IS THE WORKSPACE'S FILES, NOT ITS MODULE DIRECTORY. Relocating identical files
+    /// keeps it; changing only the binary's entry, or only a crate root outside the module
+    /// directory, changes it. The last two are what an identity over the module directory alone
+    /// could not see.
+    #[test]
+    fn the_closure_identity_covers_the_entry_and_crate_roots_and_ignores_location() {
+        let base = std::env::temp_dir().join(format!("nlr-identity-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let files = [
+            ("Cargo.toml", "[package]\nname = \"fx\"\n"),
+            ("src/lib.rs", "pub mod a { pub use fx_a::a::*; }\n"),
+            ("src/main.rs", "fn main() {}\n"),
+            ("src/v1/stage0/src/a.rs", "pub fn a() {}\n"),
+        ];
+        let workspace =
+            |name: &str, overrides: &[(&str, &str)]| -> super::super::EmittedWorkspace {
+                let root = base.join(name);
+                for (path, content) in files.iter() {
+                    let content = overrides
+                        .iter()
+                        .find(|(p, _)| p == path)
+                        .map(|(_, c)| *c)
+                        .unwrap_or(content);
+                    let full = root.join(path);
+                    std::fs::create_dir_all(full.parent().expect("parent")).expect("mkdir");
+                    std::fs::write(&full, content).expect("write");
+                }
+                super::super::EmittedWorkspace {
+                    root: root.clone(),
+                    module_dir: root.join("src/v1/stage0/src"),
+                    modules: vec!["a".to_string()],
+                    crate_count: 2,
+                    files: files.iter().map(|(p, _)| p.to_string()).collect(),
+                }
+            };
+        let here = emitted_closure_identity(&workspace("here", &[])).expect("identity");
+        let there = emitted_closure_identity(&workspace("there", &[])).expect("identity");
+        let entry = emitted_closure_identity(&workspace(
+            "entry",
+            &[("src/main.rs", "fn main() { 1; }\n")],
+        ))
+        .expect("identity");
+        let facade =
+            emitted_closure_identity(&workspace("facade", &[("src/lib.rs", "pub mod b {}\n")]))
+                .expect("identity");
+        let _ = std::fs::remove_dir_all(&base);
+        assert_eq!(
+            here, there,
+            "relocating identical files changed the identity"
+        );
+        assert_ne!(
+            here, entry,
+            "changing only the entry left the identity unchanged"
+        );
+        assert_ne!(
+            here, facade,
+            "changing only the facade left the identity unchanged"
+        );
+    }
+
     /// A HEAD SHARED BY EVERY FILE IS NOT THE CAUSE. The old summary was `file_refusals=2` and
     /// named neither file; this control reds on any rendering that drops a path, leads with the
     /// head, or tallies heads instead of fatal causes.
@@ -3353,15 +3781,10 @@ mod tests {
             fatal_at: at.to_string(),
         };
         let summary = native_file_refusal_summary(&[
-            row(
-                "a.dag",
-                "parse_grammar_choice_overlap_residue",
-                "parse_g0_tokens_remain",
-                "12:5",
-            ),
+            row("a.dag", "advisory_head_x", "parse_g0_tokens_remain", "12:5"),
             row(
                 "b.dag",
-                "parse_grammar_choice_overlap_residue",
+                "advisory_head_x",
                 "body_lowering_reason_x",
                 "<unresolved-node>",
             ),
@@ -3384,13 +3807,13 @@ mod tests {
             summary.contains("fatal_cause 1x body_lowering_reason_x"),
             "{summary}"
         );
-        assert!(!summary.contains("fatal_cause 2x parse_grammar_choice_overlap_residue"));
+        assert!(!summary.contains("fatal_cause 2x advisory_head_x"));
         // EVERY SUPPLIED FILE, EXACTLY ONCE, AS ITS WHOLE LINE. Asserting a and c alone let a
         // rendering that dropped b pass (review on #13005); the expected line is derived per row,
         // so the head appears only where it differs from the cause.
         let expected = [
-            "  refused a.dag at=12:5 fatal=parse_g0_tokens_remain head(advisory)=parse_grammar_choice_overlap_residue",
-            "  refused b.dag at=<unresolved-node> fatal=body_lowering_reason_x head(advisory)=parse_grammar_choice_overlap_residue",
+            "  refused a.dag at=12:5 fatal=parse_g0_tokens_remain head(advisory)=advisory_head_x",
+            "  refused b.dag at=<unresolved-node> fatal=body_lowering_reason_x head(advisory)=advisory_head_x",
             "  refused c.dag at=<whole-file> fatal=parse_g0_tokens_remain",
         ];
         assert_eq!(
@@ -3703,15 +4126,12 @@ mod tests {
     fn a_file_refusal_row_decodes_its_fatal_line_and_byte_column() {
         let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":1,\"advised_files\":0,\"admitted\":false,\"summary\":\"s\",\"frontier\":\"held\"}";
         let located = format!(
-            "{{\"file_refusal\":{{\"path\":\"a.dag\",\"module\":{{\"_variant\":\"Absent\"}},\"chain\":{{\"head\":{{\"reason\":\"parse_grammar_choice_overlap_residue\",\"at\":{{\"_variant\":\"FileRefusalAtInvariant\",\"invariant\":\"grammar_choice_overlap\"}}}},\"tail\":[{{\"reason\":\"parse_g0_tokens_remain\",\"at\":{{\"_variant\":\"FileRefusalAtLine\",\"line\":12,\"byte_column\":{{\"value\":5}}}}}}]}}}}}}\n{marker}\n"
+            "{{\"file_refusal\":{{\"path\":\"a.dag\",\"module\":{{\"_variant\":\"Absent\"}},\"chain\":{{\"head\":{{\"reason\":\"advisory_head_x\",\"at\":{{\"_variant\":\"FileRefusalAtInvariant\",\"invariant\":\"grammar_choice_overlap\"}}}},\"tail\":[{{\"reason\":\"parse_g0_tokens_remain\",\"at\":{{\"_variant\":\"FileRefusalAtLine\",\"line\":12,\"byte_column\":{{\"value\":5}}}}}}]}}}}}}\n{marker}\n"
         );
         let parsed = parse_native_run_output(&located).expect("a located row parses");
         assert_eq!(parsed.file_refusals[0].fatal_at, "12:5");
         // Both reasons are DERIVED from the chain: the head link's and the last link's.
-        assert_eq!(
-            parsed.file_refusals[0].head_reason,
-            "parse_grammar_choice_overlap_residue"
-        );
+        assert_eq!(parsed.file_refusals[0].head_reason, "advisory_head_x");
         assert_eq!(
             parsed.file_refusals[0].fatal_reason,
             "parse_g0_tokens_remain"
@@ -3773,27 +4193,51 @@ mod tests {
     }
 
     #[test]
-    fn census_resolve_advisory_rows_reach_the_receipt() {
-        let terminal = "{\"_terminal\":\"complete\",\"mode\":\"census-resolve\",\"modules\":3,\
-                        \"file_refusals\":0,\"advised_files\":1,\"residual_rows\":0,\"cause_groups\":0}\n";
+    fn census_infer_advisory_rows_reach_the_receipt() {
+        let terminal = "{\"_terminal\":\"complete\",\"mode\":\"census-infer\",\"modules\":3,\
+                        \"file_refusals\":0,\"advised_files\":1,\"residual_rows\":0,\"cause_groups\":0,\
+                        \"roots\":0,\"inferred\":3,\"infer_refused\":0,\"type_census\":\"held\"}\n";
         let with_row = format!(
             "{{\"accepted_file_advisories\":{{\"path\":\"a.dag\",\"head\":\"r\",\"tail\":[]}}}}\n{terminal}"
         );
         let run = decode_native_census_output(&with_row, Some(0)).expect("rows match the count");
         assert_eq!(run.advised_files, 1);
-        // DISCRIMINATING: the same terminal without its row -- the receipt census-resolve wrote
+        // DISCRIMINATING: the same terminal without its row -- the receipt the census verb wrote
         // before it printed advisories -- refuses rather than carrying a count with no population.
         let cause = decode_native_census_output(terminal, Some(0))
             .err()
             .expect("must refuse");
         assert!(cause.contains("AdvisoryRowsDisagree"), "got: {cause}");
         // And a terminal with no advised_files at all (the old verb's marker) refuses too.
-        let old = "{\"_terminal\":\"complete\",\"mode\":\"census-resolve\",\"modules\":3,\
+        let old = "{\"_terminal\":\"complete\",\"mode\":\"census-infer\",\"modules\":3,\
                    \"file_refusals\":0,\"residual_rows\":0,\"cause_groups\":0}\n";
         let cause = decode_native_census_output(old, Some(0))
             .err()
             .expect("must refuse");
         assert!(cause.contains("no advised_files"), "got: {cause}");
+        // DISCRIMINATING: a census-resolve terminal is part 1's grain, not this census, and refuses.
+        let resolve_grain = terminal.replace("census-infer", "census-resolve");
+        let with_row = format!(
+            "{{\"accepted_file_advisories\":{{\"path\":\"a.dag\",\"head\":\"r\",\"tail\":[]}}}}\n{resolve_grain}"
+        );
+        let cause = decode_native_census_output(&with_row, Some(0))
+            .err()
+            .expect("must refuse");
+        assert!(cause.contains("TerminalNotComplete"), "got: {cause}");
+        // DISCRIMINATING: a type_census word outside the three the main writes refuses.
+        let odd = with_row
+            .replace("census-resolve", "census-infer")
+            .replace("\"held\"", "\"hold\"");
+        let cause = decode_native_census_output(&odd, Some(0))
+            .err()
+            .expect("must refuse");
+        assert!(cause.contains("TypeCensusWordUnknown"), "got: {cause}");
+        let run = decode_native_census_output(
+            &with_row.replace("census-resolve", "census-infer"),
+            Some(0),
+        )
+        .expect("a known word decodes");
+        assert_eq!(run.type_census, TypeCensusVerdictWord::Held);
         // A malformed row refuses here exactly as it does under `census`: one decoder.
         let malformed =
             format!("{{\"accepted_file_advisories\":{{\"path\":\"a.dag\"}}}}\n{terminal}");
@@ -3801,6 +4245,46 @@ mod tests {
             .err()
             .expect("must refuse");
         assert!(cause.contains("AdvisoryRowMalformed"), "got: {cause}");
+    }
+
+    /// THE THREE BUDGET SOURCES RENDER AS THREE DIFFERENT RECEIPT WORDS: a declared ceiling is never
+    /// printed as an observed one, and an unreadable budget never as a number.
+    #[test]
+    fn host_memory_budget_receipt_line_names_its_source() {
+        use crate::memory_governor::{
+            HostBudgetObservation, HostBudgetResolution, HostBudgetSource,
+        };
+        let observed = host_memory_budget_receipt_line(&HostBudgetResolution::Resolved {
+            effective_bytes: 7,
+            requested_bytes: None,
+            observation: HostBudgetObservation {
+                source: HostBudgetSource::CgroupMemoryMax {
+                    cgroup_dir: "/x".to_string(),
+                },
+                bytes: 7,
+            },
+        });
+        assert!(observed.contains("source=observed"), "got: {observed}");
+        assert!(
+            observed.contains("cgroup memory.max (/x)"),
+            "got: {observed}"
+        );
+        let declared = host_memory_budget_receipt_line(&HostBudgetResolution::DeclaredUnverified {
+            requested_bytes: 9,
+            reason: "no cgroup".to_string(),
+        });
+        assert!(
+            declared.contains("source=declared_unverified declared_bytes=9"),
+            "got: {declared}"
+        );
+        let unreadable = host_memory_budget_receipt_line(&HostBudgetResolution::Unreadable {
+            reason: "none".to_string(),
+        });
+        assert!(
+            unreadable.contains("source=unreadable"),
+            "got: {unreadable}"
+        );
+        assert!(!unreadable.contains("bytes="), "got: {unreadable}");
     }
 
     /// THE MARKER'S COUNT AND THE ROWS MUST AGREE. A run that reports more advised files than it
@@ -4099,6 +4583,7 @@ mod cli_emit_probe_tests {
         let main = crate::v1_compiler_emit_rust::emit_native_cli_driver_main_rs(
             "crate_x".to_string(),
             "pipeline_x".to_string(),
+            std::rc::Rc::new(im::Vector::new()),
         );
         let source = main.content.as_str();
         let write = "print!(\"{text}\");";
@@ -4323,9 +4808,11 @@ mod run_relaying_as_it_runs_tests {
     // same counts as the same bytes decoded directly.
     #[test]
     fn a_relayed_census_stdout_decodes_to_the_same_verdict() {
-        let out = "{\"accepted_file_advisories\":{\"path\":\"a.dag\",\"head\":\"r\",\"tail\":[]}}\n\
-                   {\"_terminal\":\"complete\",\"mode\":\"census-resolve\",\"modules\":3,\
-                   \"file_refusals\":0,\"advised_files\":1,\"residual_rows\":0,\"cause_groups\":0}\n";
+        let out =
+            "{\"accepted_file_advisories\":{\"path\":\"a.dag\",\"head\":\"r\",\"tail\":[]}}\n\
+                   {\"_terminal\":\"complete\",\"mode\":\"census-infer\",\"modules\":3,\
+                   \"file_refusals\":0,\"advised_files\":1,\"residual_rows\":0,\"cause_groups\":0,\
+                   \"roots\":0,\"inferred\":3,\"infer_refused\":0,\"type_census\":\"held\"}\n";
         let mut c = Command::new("printf");
         c.arg("%s").arg(out);
         let relayed = run_relaying_as_it_runs(c).expect("spawn");

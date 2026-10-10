@@ -7,7 +7,7 @@ import std.algebra { trim }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
 import std.measure { TokenCount, token_count, concurrent_request_hundredths, AllocatorBlockCount, allocator_block_count }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, fabric_group_wire }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
 import product.host_identity { HostIdentity }
 import gunbc.spark.pair_serving_authority {

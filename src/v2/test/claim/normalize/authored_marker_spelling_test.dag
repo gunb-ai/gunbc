@@ -3,7 +3,8 @@ module v2.test.claim.normalize.authored_marker_spelling
 import std.types { List }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
-import v2.compiler.tokenize { tokenize }
+import v2.compiler.program_assembly { dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
 import std.algebra { Cons, Empty }
 import v2.extdeps.languages.dag { dag_canonical_symbols, dag_language_model }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
@@ -88,7 +89,7 @@ fn ams_names_member(nodes: List<Node>, name: Symbol) -> Bool {
 
 fn ams_verdict(src: String, authored: Symbol) -> MarkerSpellingVerdict {
   let lm = dag_language_model()
-  match tokenize(text: src, file: ^authored_marker_spelling_file, rules: lm.lex) {
+  match tokenize_prepared(text: src, file: ^authored_marker_spelling_file, prepared: dag_prepared_lex()) {
     Rejected { diagnostics: _ } => MarkerSpellingVerdict { outcome: ^ams_tokenize_refused, carries_authored_atom: false }
     Accepted { value: ts, diagnostics: _ } =>
       match parse_module(tokens: ts, grammar: lm.grammar) {

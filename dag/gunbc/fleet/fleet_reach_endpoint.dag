@@ -10,6 +10,8 @@ import gunbc.spark.dgx_procurement {
   dgx_spark_router_bindings,
 }
 import extdeps.network.ipv4 { render_ipv4_address }
+import gunbc.fleet_enrollment { fleet_enrollments }
+import gunbc.fleet_host_identity { operator_host_183527, operator_host_3dde7f }
 
 // Probe-endpoint resolution (bold-eagle-107's projection, offered via witty-raven
 // msg_1c4e0bce; homed HERE — downstream of both gunbc.spark.dgx_procurement and the
@@ -45,7 +47,46 @@ fn spark_endpoint_for_binding(binding: DgxSparkRouterBinding) -> String? {
 // consumes the projection, and the identity it dispatches on comes from
 // gunbc.spark.dgx_procurement router_binding_identity, which is total over the coproduct, rather
 // than from an arm that only the assigned variant reaches.
+// A PROVIDER GUEST IS REACHED AT ITS PUBLIC ADDRESS, BOUND EXPLICITLY. Its identity is opaque and its
+// allocated name has no resolver behind it, so neither may stand in for an address -- the probe would
+// otherwise hand ssh a string nothing resolves. The addresses are the provider's assignment, relayed
+// by the operator (2026-10-07, servers recreated 2026-10-08) and carried with that provenance; the
+// provider API read that binds the resource id (gunbc.provider_guest_adoption) is what grounds them
+// further.
+type ProviderGuestEndpoint {
+  host: HostIdentity
+  ipv4: NonEmptyStr
+  provenance: NonEmptyStr
+}
+
+data provider_guest_endpoints: List<ProviderGuestEndpoint> = [
+  ProviderGuestEndpoint {
+    host: operator_host_183527,
+    ipv4: "178.104.134.135",
+    provenance: "operator relay of the recreated Hetzner Cloud server 'ubuntu-32gb-nbg1-1', logged in as root from srv2, 2026-10-08",
+  },
+  ProviderGuestEndpoint {
+    host: operator_host_3dde7f,
+    ipv4: "62.238.115.145",
+    provenance: "operator relay of the recreated Hetzner Cloud server 'ubuntu-32gb-hel1-1', logged in as root from srv2, 2026-10-08",
+  },
+]
+
+fn provider_guest_endpoint_for(host: String) -> String? {
+  match filter(provider_guest_endpoints, e => (e.host as String) == host).first() {
+    Present { value: e } => Present { value: e.ipv4 as String }
+    Absent => none
+  }
+}
+
 fn fleet_probe_endpoint_for(host: String) -> String {
+  match provider_guest_endpoint_for(host: host) {
+    Present { value: ip } => ip
+    Absent => fleet_owned_probe_endpoint_for(host: host)
+  }
+}
+
+fn fleet_owned_probe_endpoint_for(host: String) -> String {
   fold(dgx_spark_router_bindings, init: host, f: fn(acc, b) {
     if (router_binding_identity(binding: b) as String) == host {
       match spark_endpoint_for_binding(binding: b) {
@@ -76,7 +117,10 @@ fn fleet_probe_endpoint_for(host: String) -> String {
 // one, which is what proves the harness refuses the shape rather than catching the cycle. So the
 // missing multi-module compile fixture is this class's next-rung trigger, not a ceiling: when one
 // exists, the acyclic/cyclic pair above becomes an ordinary enrolled regression control.
-data fleet_reach_probe_targets: List<String> = ["srv1", "srv2", "srv3", "srv4", "srv5", "srv6"]
+//
+// THE ROSTER IS THE ENROLLED FLEET (gunbc.fleet_enrollment), every participation: a host is probed
+// because it is enrolled, so enrolling one adds it here with no edit to this module.
+data fleet_reach_probe_targets: List<String> = map(fleet_enrollments, e => e.host as String)
 
 // Ruling msg_43a8fd77 item 2: the REMOTE PRINCIPAL is an explicit typed fact per host,
 // never the implicit ssh default (local-username inheritance is an absorbing default —
@@ -108,18 +152,12 @@ type FleetProbePrincipal
 // (bootstrap actor unreachable) — a standing DISTINCT from refused and from reachable.
 
 fn fleet_probe_remote_user_for(host: String) -> FleetProbePrincipal {
-  if host == "srv5" || host == "srv6" {
-    ProbeUserPending {
-      note: "bold-eagle-107 (msg_7428d9fc): the account NAME briansrls is well-supported (operator-supplied login for both Sparks; operator confirmed the name collision with the human account is coincidence) but WHICH principal the fleet-key probe authenticated as is unverified recollection — no retained artifact records it, so this stays Pending until a receipt exists (re-measurement needs operator clearance, through the convergence path, per the interactive-Spark stop-order). The KEY axis is typed separately (fleet_ssh_access fleet_automation_ssh_key_fingerprint); both Sparks' authorized_keys carry exactly fleet-automation@gunbc today (bootstrap node-orch key installed then REMOVED from both).",
-    }
+  if host == "srv1" || host == "srv2" {
+    ProbeUserKnown { user: "gunbc-fleet" }
   } else {
-    if host == "srv1" || host == "srv2" {
-      ProbeUserKnown { user: "gunbc-fleet" }
-    } else {
-      PrincipalAllocationPending {
-        allocated: "gunbc-fleet",
-        note: "account allocated but not yet created on this host (msg_8cf3d762: bootstrap actor unreachable); probe targets the allocated name so the refusal is typed at auth, never a fabricated reachable",
-      }
+    PrincipalAllocationPending {
+      allocated: "gunbc-fleet",
+      note: "account allocated but not yet created on this host (msg_8cf3d762: bootstrap actor unreachable); probe targets the allocated name so the refusal is typed at auth, never a fabricated reachable",
     }
   }
 }

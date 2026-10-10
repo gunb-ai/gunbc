@@ -77,7 +77,20 @@ data github_event_name_schedule: String = "schedule"
 
 data github_event_name_workflow_run: String = "workflow_run"
 
-data workflow_run_activity_completed: String = "completed"
+// THE workflow_run ACTIVITY TYPES GitHub documents (docs.github.com/actions/reference/events-that-
+// trigger-workflows#workflow_run): a run being requested, in progress, or completed.
+type WorkflowRunActivity
+  = WorkflowRunRequestedActivity
+  | WorkflowRunInProgressActivity
+  | WorkflowRunCompletedActivity
+
+fn workflow_run_activity_name(activity: WorkflowRunActivity) -> String {
+  match activity {
+    WorkflowRunRequestedActivity => "requested"
+    WorkflowRunInProgressActivity => "in_progress"
+    WorkflowRunCompletedActivity => "completed"
+  }
+}
 
 type Workflow {
   name: String
@@ -106,7 +119,7 @@ type WorkflowTrigger
   | Schedule { cron: CronSchedule }
   | WorkflowDispatch { inputs: List<DispatchInput> }
   | WorkflowCall { inputs: List<DispatchInput> }
-  | WorkflowRunCompleted { workflows: List<String>, branches: List<String> }
+  | WorkflowRunTriggered { workflows: List<String>, branches: List<String>, activity: WorkflowRunActivity }
   | MergeGroup
 
 // THE CONSTRUCTOR TEST LIVES BESIDE THE COPRODUCT, because "does this trigger list admit a
@@ -128,7 +141,7 @@ fn workflow_trigger_is_merge_group(trigger: WorkflowTrigger) -> Bool {
     Schedule { cron: _ } => false
     WorkflowDispatch { inputs: _ } => false
     WorkflowCall { inputs: _ } => false
-    WorkflowRunCompleted { workflows: _, branches: _ } => false
+    WorkflowRunTriggered { workflows: _, branches: _, activity: _ } => false
   }
 }
 
@@ -411,3 +424,7 @@ data max_matrix_combinations: Int = 256
 // repository's own live ruleset row (GET /repos/gunb-ai/gunbc/rulesets, integration_id 15368,
 // 2026-08-27) and consistent with the documented app id for GitHub Actions.
 data github_actions_app_integration_id: Int = 15368
+
+// https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onworkflow_dispatchinputs
+// GitHub increased the top-level workflow_dispatch input limit from 10 to 25 on 2025-12-04.
+data workflow_dispatch_max_inputs: Int = 25

@@ -3,7 +3,8 @@
 
 pub use crate::gunbc_stage0_crate_partition_generated::generated_partition_crate_rows;
 use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateKind::{
-    GeneratedEmitCoreCrate, GeneratedFoundationCrate, GeneratedLayeredCoreCrate,
+    GeneratedEmitCoreCrate, GeneratedFacadeCrate, GeneratedFoundationCrate,
+    GeneratedLayeredCoreCrate,
 };
 pub use crate::gunbc_stage0_crate_partition_generated::{
     GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
@@ -23,6 +24,7 @@ use std::rc::Rc;
 pub fn stage0_partition_row_is_module_bearing_package(row: Rc<GeneratedPartitionCrateRow>) -> bool {
     match row.kind.clone() {
         GeneratedPartitionCrateKind::GeneratedEmitCoreCrate => false,
+        GeneratedPartitionCrateKind::GeneratedFacadeCrate => false,
         GeneratedPartitionCrateKind::GeneratedFoundationCrate => true,
         GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate => true,
     }
@@ -69,6 +71,9 @@ pub fn partition_package_dependency_names_over(
         GeneratedPartitionCrateKind::GeneratedFoundationCrate => Rc::new(vec![]),
         GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate => row.reexport_packages.clone(),
         GeneratedPartitionCrateKind::GeneratedEmitCoreCrate => {
+            partition_module_bearing_package_names_over(rows.clone())
+        }
+        GeneratedPartitionCrateKind::GeneratedFacadeCrate => {
             partition_module_bearing_package_names_over(rows.clone())
         }
     }

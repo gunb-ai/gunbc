@@ -1,5 +1,6 @@
 module test.claim.spark.spark_declared_unit_digest_seal_probe_test
 
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,
   CensusObserved,
@@ -73,7 +74,7 @@ fn probe_source(expr: String) -> String {
   join([
     "module probe_declared_unit_digest_seal\n",
     "import gunbc.spark.pair_serving_realization { DeclaredUnitDigestStanding, DeclaredUnitDigested, DeclaredUnitDigestEvidence, spark_pair_declared_head_digest }\n",
-    "import gunbc.spark.fabric_switch_observed { FabricGroupA }\n",
+    "import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB }\n",
     "import std.content_hash { ContentHash }\n",
     "fn probe(h: ContentHash) -> DeclaredUnitDigestStanding {\n  ",
     expr,
@@ -82,7 +83,7 @@ fn probe_source(expr: String) -> String {
 }
 
 data forge_expr: String = "DeclaredUnitDigested { evidence: DeclaredUnitDigestEvidence { digest: h } }"
-data sanctioned_expr: String = "spark_pair_declared_head_digest(group: FabricGroupA)"
+data sanctioned_expr: String = "spark_pair_declared_head_digest(group: FabricGroupB {})"
 
 fn seal_violations(expr: String) -> Int {
   keyed_count(

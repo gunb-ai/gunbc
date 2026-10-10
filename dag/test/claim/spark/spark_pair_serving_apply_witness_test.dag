@@ -1,29 +1,35 @@
 module test.claim.spark.spark_pair_serving_apply_witness
 
-import std.types { Bool, List, NonEmptyStr, String, EpochSecs }
+import std.types { Bool, List, NonEmptyStr, String }
 import product.host_identity { host_identity_eq }
-import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
-import gunbc.spark.pair_serving_realization { spark_pair_realizations }
+import gunbc.spark.pair_serving_realization { SparkPairRealization, spark_pair_realization }
+import gunbc.spark.pair_serving_desired { spark_pair_serving_unit }
+import gunbc.spark.fabric_switch_observed { FabricGroupB, FabricGroup }
+import gunbc.fleet_host_identity { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
 import gunbc.spark.pair_serving_apply {
   SparkPairApplyPlan, SparkPairApplyPlanned, SparkPairApplyRefused, SparkPairHostApplyPlan,
-  spark_pair_apply_plan_current, spark_pair_apply_plans_current, spark_pair_apply_plan_refusals, spark_pair_apply_plans,
+  spark_pair_apply_plan_current, spark_pair_apply_plan_refusals,
 }
-import gunbc.spark.pair_serving_authority { spark_pair_serving_authorities, pair_serving_authority_group }
+import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, PairServingActive, PairRealizationUnestablished }
 import gunbc.spark.pair_serving_authority_log { CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, AuthorityTransitionRecord }
 import product.capacity.event_chain { HeadAbsent }
 
-// THE CURRENT AUTHORITY IS SUPPLIED: the resting row of every claimed group at generation 0, which
-// is exactly what the log folds to when no transition has been recorded. The log READ is
-// exercised by the supplied-host claim at the end of this file.
+// THE CURRENT AUTHORITY AND THE REALIZATION ARE SUPPLIED. No group is claimed by pair serving since
+// Group A's decommission, so the production roster is empty; these claims build the realization for
+// FabricGroupB directly and supply an active resting authority for it at generation 0, which is what
+// the log folds to when no transition has been recorded.
+data w_authority: PairServingGroupAuthority = PairServingActive { group: FabricGroupB {}, exact_realization: PairRealizationUnestablished { obligation: "witness: no content-addressed key for the supplied realization" as NonEmptyStr } }
+
 fn w_current() -> List<CurrentAuthority> {
-  map(spark_pair_serving_authorities, a => CurrentAuthorityRead { authority: a, head: HeadAbsent, generation: 0, grant: none, entry_state: none, previous: none, admitted_by: none, transitions: [] as List<AuthorityTransitionRecord> })
+  [CurrentAuthorityRead { authority: w_authority, head: HeadAbsent, generation: 0, grant: none, entry_state: none, previous: none, admitted_by: none, transitions: [] as List<AuthorityTransitionRecord> }]
+}
+
+fn w_realization() -> SparkPairRealization {
+  spark_pair_realization(unit: spark_pair_serving_unit(group: FabricGroupB {}))
 }
 
 fn w_plan() -> SparkPairApplyPlan {
-  match first(spark_pair_realizations()) {
-    Absent => SparkPairApplyRefused { cause: "no realization" }
-    Present { value: r } => spark_pair_apply_plan_current(r: r, current: w_current())
-  }
+  spark_pair_apply_plan_current(r: w_realization(), current: w_current())
 }
 
 fn w_planned(f: fn(List<SparkPairHostApplyPlan>, SparkPairHostApplyPlan) -> Bool) -> Bool {
@@ -33,13 +39,13 @@ fn w_planned(f: fn(List<SparkPairHostApplyPlan>, SparkPairHostApplyPlan) -> Bool
   }
 }
 
-// THE WORKERS ARE APPLIED ON srv5, srv8 AND srv7 AND THE HEAD ON srv6, each script beginning with
+// THE WORKERS ARE APPLIED ON srv10, srv11 AND srv12 AND THE HEAD ON srv9, each script beginning with
 // set -e and ending by enabling and reading back the rendered unit, and each retiring exactly its own
 // hand-authored predecessor and the old container.
 test fn the_plan_applies_workers_then_head_with_each_retiring_its_own_predecessor() -> Bool {
   w_planned(f: fn(ws, h) {
-    length(ws) == 3 && host_identity_eq(a: h.host, b: operator_host_srv6)
-      && any(ws, w => host_identity_eq(a: w.host, b: operator_host_srv5)) && any(ws, w => host_identity_eq(a: w.host, b: operator_host_srv7)) && any(ws, w => host_identity_eq(a: w.host, b: operator_host_srv8))
+    length(ws) == 3 && host_identity_eq(a: h.host, b: operator_host_srv9)
+      && any(ws, w => host_identity_eq(a: w.host, b: operator_host_srv10)) && any(ws, w => host_identity_eq(a: w.host, b: operator_host_srv11)) && any(ws, w => host_identity_eq(a: w.host, b: operator_host_srv12))
       && all(ws, w => starts_with(s: w.script, prefix: "set -e\n")) && starts_with(s: h.script, prefix: "set -e\n")
       && all(ws, w => string_contains(s: w.script, pattern: "systemctl disable --now spark-ray-worker.service") && !string_contains(s: w.script, pattern: "spark-vllm.service"))
       && string_contains(s: h.script, pattern: "systemctl disable --now spark-vllm.service")
@@ -66,47 +72,13 @@ test fn the_script_is_made_of_the_rendered_argv_and_carries_the_cache_over() -> 
   })
 }
 
-// EVERY CLAIMED GROUP PLANS AND NONE REFUSES: one plan per authority row, so one apply carries
-// the whole claimed roster. The roster is the authority population -- Group A alone since the
-// membership became a projection of gunbc.spark.pair_serving_authority (#11501) -- and this claim
-// reads its expected count from that population rather than from a literal, so an earlier
-// spelling that named a second group headed by srv9 with srv12 was measuring a roster that no
-// longer exists. The head-and-workers shape of the one plan is the claim above.
-test fn every_claimed_group_plans_and_none_refuses() -> Bool {
-  let plans = spark_pair_apply_plans_current(current: w_current())
-  length(plans) == length(spark_pair_serving_authorities) && length(plans) >= 1
-    && length(spark_pair_apply_plan_refusals(plans: plans)) == 0
-}
-
-// RED -- AN UNREADABLE AUTHORITY IS NEVER PLANNED FROM THE RESTING ROW. The supplied roster says the
-// log could not be read for the claimed group; the plan for that group is a refusal carrying the
-// read's cause, and nothing renders. Folding the unread arm back onto the source row would plan
-// the incumbent here and turn this red.
+// RED -- AN UNREADABLE AUTHORITY IS NEVER PLANNED FROM THE RESTING ROW. The supplied current says the
+// log could not be read for the group; the plan is a refusal carrying the read's cause, and nothing
+// renders. Folding the unread arm back onto the source row would plan the incumbent here and turn
+// this red.
 test fn an_unread_authority_refuses_the_plan_with_the_reads_cause() -> Bool {
-  let unread = map(spark_pair_serving_authorities, a => CurrentAuthorityUnread { group: pair_serving_authority_group(a: a), step: "fetch" as String, reason: "witness: the partition could not be fetched" as String })
-  let plans = spark_pair_apply_plans_current(current: unread)
-  let refusals = spark_pair_apply_plan_refusals(plans: plans)
-  length(plans) == length(spark_pair_serving_authorities) && length(plans) >= 1
-    && length(refusals) == length(plans)
+  let unread = [CurrentAuthorityUnread { group: FabricGroupB {}, step: "fetch" as String, reason: "witness: the partition could not be fetched" as String }]
+  let refusals = spark_pair_apply_plan_refusals(plans: [spark_pair_apply_plan_current(r: w_realization(), current: unread)])
+  length(refusals) == 1
     && all(refusals, r => string_contains(s: r, pattern: "the serving authority could not be read") && string_contains(s: r, pattern: "witness: the partition could not be fetched"))
-}
-
-// THE OFF-FLEET PREMISE IS SUPPLIED, NOT READ FROM THE RUNNER. spark_pair_apply_plans resolves the
-// executor's event log layout and reads every claimed group's authority from the log before
-// planning anything. The executor and instant are supplied, so the verdict does not depend on which
-// runner executes it (gunbc.recurring_failure_mode wet_witness_premise_read_from_the_runner_it_happens_to_land_on).
-// The store resolution and the refusal that NAMES THE READ run for real, and nothing is planned
-// from the resting row. Deleting the log read, or letting an unreadable log fall back to the row,
-// turns these refusals into plans and this claim red.
-data witness_host_declaring_no_dashboard_instance: String = "gunbc-witness-host-without-dashboard-instance"
-data witness_instant: EpochSecs = 1000
-
-test fn the_apply_seam_reads_the_authority_before_planning_and_refuses_off_fleet() -> Bool {
-  let plans = spark_pair_apply_plans(executor: witness_host_declaring_no_dashboard_instance, at: witness_instant)
-  let refusals = spark_pair_apply_plan_refusals(plans: plans)
-  length(plans) > 0
-    && length(plans) == length(spark_pair_serving_authorities)
-    && length(refusals) == length(plans)
-    && all(refusals, r => string_contains(s: r, pattern: "the serving authority could not be read")
-      && string_contains(s: r, pattern: witness_host_declaring_no_dashboard_instance))
 }

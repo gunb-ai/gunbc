@@ -50,6 +50,7 @@ import gunbc.live_deploy.member_identity {
   MemberObserved,
   MemberAbsentOnHost,
   MemberUnobservable,
+  MemberRefusedOnHost,
   MemberDecision,
   AlreadyConverged,
   Create,
@@ -169,6 +170,7 @@ fn live_deploy_observe_supplied(
         MemberUnobservable { member: _, cause: c } => ObservationRefused { cause: c }
         MemberObserved { identity: _ } => ObservationEstablished { observed: o }
         MemberAbsentOnHost { member: _ } => ObservationEstablished { observed: o }
+        MemberRefusedOnHost { member: _, cause: _ } => ObservationEstablished { observed: o }
       }
   }
 }
@@ -235,6 +237,7 @@ fn first_unreadable(observed: List<ObservedMember>) -> LiveDeployAdmissionRefusa
             Present { value: LiveDeployUnreadableMember { member: m, cause: c } }
           MemberObserved { identity: _ } => none
           MemberAbsentOnHost { member: _ } => none
+          MemberRefusedOnHost { member: _, cause: _ } => none
         }
     })
 }

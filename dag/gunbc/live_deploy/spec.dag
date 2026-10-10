@@ -12,7 +12,7 @@ import extdeps.apt {
   package_tailscale,
   package_tmux,
 }
-import extdeps.version.semver { SemVerVersion }
+import extdeps.version.semver { SemVerVersion, semver_version_parse }
 import extdeps.tailscale.serve {
   tailscale_scoped_removal_capability,
   tailscale_serve_unix_target,
@@ -38,17 +38,15 @@ import gunbc.host_layout {
   srv1_gunbc_repo_root,
   srv1_gunbc_approval_broker_root,
   srv1_gunbc_serve_binary,
-  srv1_dispatch_worktree_root,
-  srv1_dispatch_attempt_state_root,
   srv1_devboot_artifact_store_root,
 }
-import gunbc.fabric_storage_placement { fabric_storage_store_directories, fabric_storage_placed_on, fabric_storage_https_port, fabric_storage_door_socket }
-import gunbc.managed_directory { ManagedDirectoryAdmission, managed_directory_admission_path }
+import gunbc.fabric_storage_placement { fabric_storage_placed_on, fabric_storage_https_port, fabric_storage_door_socket }
+import gunbc.managed_directory { DirectoryOwnerAllEveryoneTraverse }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared }
+import extdeps.posix.identity { PosixOwnerNames }
+import gunbc.roadmap.dashboard_instance_directories { dashboard_instance_directory_demands }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
-  dashboard_instance_dispatch_worktree_root,
-  dashboard_instance_dispatch_attempt_state_root,
-  dashboard_instance_compute_root,
   dashboard_instance_provider_state_root,
   dashboard_instance_tailnet_door_socket,
 }
@@ -60,7 +58,7 @@ import gunbc.ownership { Ownership, Owned, Ensured }
 
 // Belt B membership (docs/plans/gunbc-served-dashboard-design.md section 5): the service is `gunbc
 // serve` (the seed binary), not an emitted node server.js, so the members flip — ServeBinary +
-// GunbcSourceTree + DispatchWorktreeRoot in (paths from the ONE gunbc.host_layout authority the
+// GunbcSourceTree + the dispatch worktree root in (paths from the ONE gunbc.host_layout authority the
 // belt also projects), ServerScript and the NodeJsPackage dependency out (the Ensured nodejs is
 // never torn down — R5; the stale /opt/gunbc/server.js file is left inert on disk and reaped when
 // belt A's interim retires). Deploy principal is ghrunner (DeployRunnerPrincipal.job_user;
@@ -81,26 +79,24 @@ data gunbc_service_user: NonEmptyStr = "briansrls"
 // User= line's. The user manager itself must be running, which is loginctl linger for this account.
 data gunbc_service_uid: Int = 1000
 
-// AttemptStateRoot is an owned member for the same reason DispatchWorktreeRoot is: the belt WRITES
-// there, under the service user, on every dispatch. It was missing until 2026-07-30, and the gap
-// was not visible as a gap — #7368 made a published attempt state a hard precondition of dispatch
-// while the path lived only in gunbc.roadmap_dashboard_instance's srv1 row, so this roster had
-// nothing to add it to. The result on the live host was EACCES from `install -d` against a
-// root-owned /opt/gunbc, AFTER the worktree had been created: an orphan branch per click and a
-// progress row reading `legacy attempt`. Ownership is Owned, not Ensured, because the deploy
-// creates it; teardown mirrors DispatchWorktreeRoot's empty-directory refusal rather than a
-// recursive remove, since a non-empty attempt-state root means published attempt evidence for
-// sessions that may still be live (the annotation on gunbc.live_deploy.emit emit_artifact_teardown
-// carries the same argument for the same reason).
+// NO DIRECTORY IS AN OWNED ARTIFACT OR AN ENSURED DEPENDENCY ANY MORE. The dispatch worktree root,
+// the attempt-state root, the compute root, the provider-state root, the fabric store's areas and the
+// srv1 host roots were each a kind here, created by an install -d the emitter spelled per kind and
+// read back by owner alone -- one of two creators for the dashboard's directories, the other being
+// the dashboard provision plan's mkdir. Both are deleted: a directory is an owned-directory target
+// (gunbc.owned_directory) its consumer demands, the spec carries the instance's demands
+// (DeploymentSpec.directories, from gunbc.roadmap.dashboard_instance_directories) and the host's
+// (DeploymentHostTarget.host_directories), and the one provider decides, installs and reads back
+// every one of them (gunbc.live_deploy.emit owned_directory_apply_steps,
+// gunbc.live_deploy.member_observe observe_owned_directory). No directory is torn down by a retract:
+// the roots that were Owned were removed by an empty-directory rmdir, and that teardown is not carried
+// forward -- a retract leaves directories exactly as it found them.
 
 type OwnedArtifactKind =
     ServeBinary
   | GunbcSourceTree
-  | DispatchWorktreeRoot
-  | AttemptStateRoot
-  | ComputeRoot
   | SystemdUnit
-  | BeltTimerUnit
+  | BeltEventPathUnit
   | FleetConvergeTimerUnit
   | TailscaleServeMapping
   | DeployedTreeRemoteUnit
@@ -110,43 +106,18 @@ type OwnedArtifactKind =
   | ApprovalBrokerFrontDoor
   | TailnetDoorServeUnit
 
+// AN ENSURED HOST RESOURCE: converged on every apply, never torn down, TeardownRefuses{
+// TeardownOutsideOwnership}. Only packages remain; the directory arms became owned-directory targets.
 type EnsuredDependencyKind =
     TailscalePackage
   | TmuxPackage
-  | DevbootArtifactStoreDirectory
-  | CodexRuntimeReleaseDirectory
-  | FabricStorageStoreDirectory
-  | ProviderStateRootDirectory
 
-// ONE CONCEPT -- AN ENSURED HOST RESOURCE -- WITH N KINDS, not a second ensured mechanism beside
-// the first. What Ensured means was already exactly right for the build service's artifact store:
-// converged on every apply, never torn down, TeardownRefuses{TeardownOutsideOwnership}. What was
-// wrong was that a dependency could only BE a package, so a directory had nowhere to live and got
-// put in the owned roster instead -- where Owned means torn down by retract, and produced artifacts
-// are the one thing a deploy must never delete.\n\nTHE HAZARD THAT RULED THIS, recorded because it
-// was caught rather than reasoned: appending a host-level root to every per-instance spec made a
-// lab twin's retract remove the production artifact store. Two existing claims went red on it. The
-// claims were right and the placement was wrong, so the category moved and the claims were not
-// touched.\n\nThe package arm keeps its exact prior behaviour -- same ensure step, same emitted
-// bytes -- because this widening is about admitting a second KIND of ensured resource, not about
-// changing what ensuring a package means. The directory arm carries its own owner rather than
-// reading a deployment spec, so an ensured host resource stays a fact about the HOST and needs no
-// instance to be stated.
-
-// A MANAGED host directory is the arm whose owner, group and mode are DERIVED from its declared
-// dependents (gunbc.managed_directory) rather than asserted as one owner at the shared 0755. It
-// carries the ADMISSION, not the directory, so a directory with a writer the owner and group do not
-// cover reaches the emitter as a refusal and can never be lowered to an install at all.
 type EnsuredSubject
   = EnsuredPackage { package: NonEmptyStr }
-  | EnsuredHostDirectory { path: NonEmptyStr, owner: NonEmptyStr }
-  | EnsuredManagedHostDirectory { admission: ManagedDirectoryAdmission }
 
 fn ensured_subject_identity(subject: EnsuredSubject) -> NonEmptyStr {
   match subject {
     EnsuredPackage { package } => package
-    EnsuredHostDirectory { path, owner } => path
-    EnsuredManagedHostDirectory { admission } => managed_directory_admission_path(a: admission) as String as NonEmptyStr
   }
 }
 
@@ -203,11 +174,8 @@ fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDispo
     ServeBinary => TeardownActs
     DeployedTreeRemoteUnit => TeardownActs
     GunbcSourceTree => TeardownActs
-    DispatchWorktreeRoot => TeardownActs
-    AttemptStateRoot => TeardownActs
-    ComputeRoot => TeardownActs
     SystemdUnit => TeardownActs
-    BeltTimerUnit => TeardownActs
+    BeltEventPathUnit => TeardownActs
     FleetConvergeTimerUnit => TeardownActs
     TailscaleServeMapping => TeardownActs
     PublicationHelperTimerUnit => TeardownActs
@@ -249,7 +217,7 @@ type DeploymentHostTarget {
   tailnet_domain: NonEmptyStr?
   os_package_manager: OsPackageManager
   tailscale_client: TailscaleServeCapability
-  ensured_directories: List<DeploymentDependencyStep>
+  host_directories: List<OwnedDirectoryTarget>
 }
 
 // serve_function WAS DROPPED HERE AND THE EMITTER FELL BACK TO A LITERAL. HostDashboardInstance
@@ -640,7 +608,7 @@ fn deployment_belt_unit_stem(names: DeploymentNames) -> String {
 // THE FABRIC DB ENDPOINT'S UNIT, derived like the belt's: one per deployment identity, and emitted
 // only by the deployment whose instance holds the fabric DB placement (fabric_storage_placed_on). It is
 // deployment state -- a retract removes the unit and the tailscale mapping -- while the store's files
-// are an ensured host directory no retract touches (FabricStorageStoreDirectory).
+// are owned-directory demands no retract touches (gunbc.fabric_storage_placement fabric_storage_directory_demands).
 fn deployment_fabric_storage_unit_name(names: DeploymentNames) -> NonEmptyStr {
   join([deployment_belt_unit_stem(names: names), "-fabric-storage.service"], "") as NonEmptyStr
 }
@@ -690,8 +658,26 @@ fn deployment_belt_service_unit_name(names: DeploymentNames) -> NonEmptyStr {
   join([deployment_belt_unit_stem(names: names), "-belt.service"], "") as NonEmptyStr
 }
 
-fn deployment_belt_timer_unit_name(names: DeploymentNames) -> NonEmptyStr {
-  join([deployment_belt_unit_stem(names: names), "-belt.timer"], "") as NonEmptyStr
+// THE BELT'S EVENT UNITS (dogfood intervention #4: event-driven, not timer-driven). There is no belt
+// timer. A worker, reviewer or auditor ending writes an exit record into the instance's exit inbox
+// (gunbc.roadmap.roadmap_attempt_exit_spool), and the exit path unit starts the drain service, which
+// hands each recorded exit to its attempt's obligation unit. A publication answer arriving starts the
+// discovery service, which queues the attempts whose publication is still owed. The belt service
+// stays: it is the launch obligation, started by a drained worker exit or by an operator.
+fn deployment_belt_exit_path_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-belt-exit.path"], "") as NonEmptyStr
+}
+
+fn deployment_belt_exit_drain_service_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-belt-exit.service"], "") as NonEmptyStr
+}
+
+fn deployment_belt_answer_path_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-belt-discovery.path"], "") as NonEmptyStr
+}
+
+fn deployment_belt_discovery_service_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-belt-discovery.service"], "") as NonEmptyStr
 }
 
 // THE PUBLICATION PRINCIPAL'S ALLOCATED NAME ON srv1, stated once and carried as a DeploymentNames
@@ -814,8 +800,30 @@ fn deployment_belt_service_unit_path(names: DeploymentNames) -> NonEmptyStr {
   join(["/etc/systemd/system/", deployment_belt_service_unit_name(names: names) as String], "") as NonEmptyStr
 }
 
-fn deployment_belt_timer_unit_path(names: DeploymentNames) -> NonEmptyStr {
-  join(["/etc/systemd/system/", deployment_belt_timer_unit_name(names: names) as String], "") as NonEmptyStr
+fn deployment_belt_exit_path_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_belt_exit_path_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+// THE BOOT TARGET FOLLOWS THE MANAGER THE UNIT IS INSTALLED INTO. Every belt unit this deployment emits is
+// written under /etc/systemd/system, so it belongs to the SYSTEM manager, whose boot target is
+// multi-user.target; a user manager would install under a user unit directory and boot at default.target
+// (and only if the principal lingers). The dispatched attempt and worker units are transient units in the
+// principal's USER manager, but they are started by these system units and are never installed. One
+// derivation, so a unit-directory change cannot leave a boot target naming a manager that never runs it.
+fn deployment_belt_unit_install_target(names: DeploymentNames) -> NonEmptyStr {
+  if starts_with(s: deployment_belt_exit_drain_service_unit_path(names: names) as String, prefix: "/etc/systemd/system/") { "multi-user.target" as NonEmptyStr } else { "default.target" as NonEmptyStr }
+}
+
+fn deployment_belt_exit_drain_service_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_belt_exit_drain_service_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_belt_answer_path_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_belt_answer_path_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_belt_discovery_service_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_belt_discovery_service_unit_name(names: names) as String], "") as NonEmptyStr
 }
 
 // CONVERGE-0 loop member (operator directive 2026-08-09: 'timer in deployment membership').
@@ -982,6 +990,7 @@ type DeploymentSpec {
   approval_broker: DeploymentServiceConfig
   names: DeploymentNames
   instance_id: NonEmptyStr
+  directories: List<OwnedDirectoryTarget>
 }
 
 // TWO CONSUMERS, ONE SCOPE-FREE ROUTE LABEL (KEYING-0 follow-on, node://adhoc-907f1da5-c20):
@@ -1038,8 +1047,15 @@ type DeploymentSpec {
 // and this member is unconditional again — the mirror holds because the twin genuinely has a
 // correct timer, not because the asymmetry was argued away.
 //
-// One member, two files, exactly as GunbcSourceTree owns gunbc-tree-sync.service plus its env file:
-// the member's identity is the .timer path and its teardown removes the .service beside it. The
+// THE TIMER IS GONE (dogfood intervention #4, gunbc#13124: event-driven, not timer-driven; the timer
+// is not a product requirement and does not become a desired-state row). The member is now the belt's
+// EVENT units: the exit path unit and the drain service it starts, the publication-answer path unit
+// and the discovery service it starts, and the belt service itself, which no timer starts -- a drained
+// worker exit or an operator does. Everything the paragraphs above say about lifecycle and per-instance
+// roots holds unchanged for these units.
+//
+// One member, five files, as GunbcSourceTree owns gunbc-tree-sync.service plus its env file: the
+// member's identity is the exit .path unit and its teardown removes the four files beside it. The
 // names DERIVE from unit_name rather than being carried as DeploymentNames fields the way tree-
 // sync's are, and the difference is that tree-sync had migration debt to express — production runs
 // under names the derivation would not mint, so both constructors must state them. No belt unit
@@ -1057,15 +1073,12 @@ fn deployment_owned_steps(
       kind: DeployedTreeRemoteUnit,
       path: deployment_tree_remote_unit_path(names: names),
     },
-    DeploymentArtifactStep { kind: DispatchWorktreeRoot, path: dashboard_instance_dispatch_worktree_root(instance: instance) as String as NonEmptyStr },
-    DeploymentArtifactStep { kind: AttemptStateRoot, path: dashboard_instance_dispatch_attempt_state_root(instance: instance) as String as NonEmptyStr },
-    DeploymentArtifactStep { kind: ComputeRoot, path: dashboard_instance_compute_root(instance: instance) as String as NonEmptyStr },
     DeploymentArtifactStep { kind: SystemdUnit, path: deployment_systemd_unit_path(names: names) },
     DeploymentArtifactStep {
       kind: PublicationHelperTimerUnit,
       path: deployment_publication_timer_unit_path(names: names),
     },
-    DeploymentArtifactStep { kind: BeltTimerUnit, path: deployment_belt_timer_unit_path(names: names) },
+    DeploymentArtifactStep { kind: BeltEventPathUnit, path: deployment_belt_exit_path_unit_path(names: names) },
   ], concat(deployment_tailnet_door_steps(names: names), concat([
     DeploymentArtifactStep {
       kind: TailscaleServeMapping,
@@ -1127,25 +1140,6 @@ fn deployment_fabric_storage_steps(instance: HostDashboardInstance, names: Deplo
   }
 }
 
-// THE BUILD SERVICE'S ROOTS ARE MEMBERSHIP, PROJECTED, AND SEPARATE FROM THE PER-INSTANCE STEPS --
-// three claims, and the third is the one that took a correction. Membership: these are directories
-// the service WRITES, which is the same property that makes DispatchWorktreeRoot and
-// AttemptStateRoot owned members, and attempt_state_root_member_note records what it cost to learn
-// that a written path outside the roster is a path nothing creates. Projected: the paths come from
-// the gunbc.host_layout rows, never spelled here, so the belt and the deploy cannot drift to two
-// spellings of one directory.\n\nSEPARATE, because the first cut put them in deployment_owned_steps
-// beside the dashboard's own members and that was wrong in a way the srv1-only scope hides. Those
-// steps are built PER INSTANCE, and every instance would then have received srv1's literal paths
-// under its own name -- srv2's preview slot creating /var/lib/gunbc directories for a service that
-// does not run there. gunbc_host_layout_note names that exact defect for the exact reason it is
-// dangerous: no value is visibly wrong, so nothing surfaces, and the first host whose layout
-// genuinely diverged would silently inherit srv1's body.\n\nSo the projection is its own function,
-// called for the host that actually runs the build service, rather than folded into a per-instance
-// list that would answer for hosts nobody asked about. Dissolve-on: devboot deployed to a second
-// host. At that point the roots become fields of a host layout resolved through a total
-// host-identity lookup -- the next-rung trigger dispatch_state_scope_carries_its_roots_note already
-// names -- and this srv1-shaped function retires into that derivation.
-
 fn deployment_ensured_packages() -> List<DeploymentDependencyStep> {
   [
     DeploymentDependencyStep {
@@ -1159,128 +1153,55 @@ fn deployment_ensured_packages() -> List<DeploymentDependencyStep> {
   ]
 }
 
-// THE FABRIC DB STORE IS ENSURED, NEVER OWNED: it is durable history every partition's chain
-// lives in, so no retract may remove it -- the property this category makes structural. It
-// replaced the per-instance event-log mirror root, which was owned and torn down with rm -rf;
-// that was harmless for a cache of a remote repository and would destroy the log itself here.
-//
-// THE ROOT ALONE IS NOT A STORE. The file store writes objects under `objects/` and heads under
-// `heads/` (gunbc.fabric_storage_file_store fabric_storage_file_root), and a create-new under an
-// absent area refuses not_found -- fleet-converge run 35818578751's host-effect claim did exactly
-// that. The areas are derived from the store's own root function, so the ensured paths and the
-// written paths cannot disagree, and this deployment is the store's one production creator.
-//
-// AND AN AREA THE WRITER CANNOT WRITE IS NOT A STORE EITHER. The three directories are managed:
-// their owner, group and mode come from the writers gunbc.fabric_storage_placement
-// fabric_storage_store_directories declares (the service principal and the CI job principal), not
-// from gunbc_service_user at the shared 0755 -- which is what refused fleet-converge run
-// 36139624393's claim permission_denied. install -d re-applies owner, group and mode to a directory
-// that already exists, so the next apply repairs the areas #12126 created.
-fn deployment_ensured_srv1_host_directories() -> List<DeploymentDependencyStep> {
-  concat([
-    DeploymentDependencyStep {
-      kind: DevbootArtifactStoreDirectory,
-      subject: EnsuredHostDirectory {
-        path: srv1_devboot_artifact_store_root as String as NonEmptyStr,
-        owner: gunbc_service_user,
-      },
+// THE BUILD SERVICE'S ROOTS ARE THE HOST'S DEMAND, NOT ANY INSTANCE'S. The devboot artifact store and
+// the codex runtime release root are written by host-level services, so a per-instance list would hand
+// srv2's preview slot srv1's literal paths (gunbc_host_layout_note names that defect). They are
+// owned-directory targets on the host target, created and read back by the same provider as the
+// instance's demands, at the shared 0755 they were installed at, and no retract removes them.
+// Dissolve-on: devboot deployed to a second host, at which point the roots become fields of a host
+// layout resolved through a total host-identity lookup.
+fn deployment_srv1_host_directories() -> List<OwnedDirectoryTarget> {
+  let owner = PosixOwnerNames { user: gunbc_service_user, group: gunbc_service_user }
+  [
+    OwnedDirectoryDeclared {
+      member: "devboot-artifact-store" as NonEmptyStr,
+      path: srv1_devboot_artifact_store_root,
+      owner: owner,
+      mode: DirectoryOwnerAllEveryoneTraverse,
     },
-  ], concat(map(fabric_storage_store_directories(), a => DeploymentDependencyStep {
-      kind: FabricStorageStoreDirectory,
-      subject: EnsuredManagedHostDirectory { admission: a },
-    }), [
-    DeploymentDependencyStep {
-      kind: CodexRuntimeReleaseDirectory,
-      subject: EnsuredHostDirectory {
-        path: srv1_codex_runtime_release_root as String as NonEmptyStr,
-        owner: gunbc_service_user,
-      },
+    OwnedDirectoryDeclared {
+      member: "codex-runtime-release" as NonEmptyStr,
+      path: srv1_codex_runtime_release_root,
+      owner: owner,
+      mode: DirectoryOwnerAllEveryoneTraverse,
     },
-  ]))
+  ]
 }
 
 fn deployment_ensured_steps(target: DeploymentHostTarget) -> List<DeploymentDependencyStep> {
-  concat(deployment_ensured_packages(), target.ensured_directories)
+  deployment_ensured_packages()
 }
 
-// THE PROVIDER-STATE ROOT IS AN ENSURED MEMBER OF THE INSTANCE, NOT OF THE HOST (CONVERGENCE-ONE
-// C7, operator ruling 2026-09-19: live_deploy owns provider-state creation). The dashboard
-// launcher's provision plan was its only creator, so deleting that launcher without this member
-// would lose the creation silently: a fresh host would get a provider login with nowhere to write.
-//
-// It is Ensured rather than Owned for the reason the provision op already gave: the directory is
-// never torn down and never populated by the deploy. Credentials inside it are user-authored secret
-// state, so a retract that removed it would destroy a login the deploy did not create.
-//
-// IT IS DERIVED FROM THE SPEC, NOT AUTHORED INTO ITS STEP LIST, AND THAT IS THE WHOLE SAFETY
-// ARGUMENT. The first cut of this change appended the member to deployment_steps_apply_order and
-// then had the emitter REFUSE a spec whose steps omitted it -- a five-armed standing type, a poison
-// string and two witnesses, all validating a constraint the model could carry instead. DESIGN 5 is
-// explicit that construction beats validation, and review 68784 was right that the check restated
-// what the model already knew. So the path became a field of DeploymentServiceConfig, beside the
-// other instance-projected paths it already carries (serve_binary, instance_root, repo_root), the
-// owner is read from that same config's service principal, and every consumer -- the emitted ensure
-// and the read-back member -- derives from this one function. A spec cannot omit the member, carry
-// it twice, name a package instead of a directory, or give it an owner other than the principal
-// that writes the login: none of those four states has a constructor any more, so the arms that
-// once refused them are deleted rather than left as permanently-green decoration (DESIGN 4b: ask
-// whether the RED is authorable before writing the check).
-//
-// The directory is installed with the ensured-directory arm's mode (install_d_shared_mode), the
-// same mode the provision op's mkdir produced. Credential files inside carry their own modes. A
-// tighter mode is a ManagedDirectory derivation, and adopting one would change what
-// EnsuredHostDirectory means for every kind.
-//
-// DISPOSITION CENSUS, stated here because deleting a creator with a blank row is the serve-binary
-// deadlock. After this change, the provider-state root of each instance is created by:
-//   srv1_live      -- this member, on the production route (deployment_spec_srv1 ->
-//                     live_deploy_apply_script_for), read back as a DirectoryRoot. The provision
-//                     plan's DashboardEnsureProviderStateRoot is now redundant for this instance
-//                     and goes with the launcher deletion, not before.
-//   srv1_lab       -- the provision plan (gunbc.roadmap_dashboard_instance
-//   srv2_lab          dashboard_instance_provision_plan DashboardEnsureProviderStateRoot) stays
-//   srv2_deploy       the ONLY creator. Their specs carry this member, but no production caller
-//   macbook_local     applies those specs, so the member creates nothing for them yet. The
-//                     provision op may be deleted for an instance only when a production caller
-//                     applies its spec.
-// The approval broker's own service config is a SECOND unit on an instance, not a sixth instance:
-// its provider-state root is that instance's root, from the same projection, so the broker's apply
-// converges the same directory the dashboard's does. That is why the field is not optional for it --
-// an idempotent ensure of the same path is what Ensured means, and a broker-specific path would be
-// a second root for one host's login state.
-fn deployment_provider_state_step(spec: DeploymentSpec) -> DeploymentDependencyStep {
-  DeploymentDependencyStep {
-    kind: ProviderStateRootDirectory,
-    subject: EnsuredHostDirectory {
-      path: spec.service.provider_state_root,
-      owner: spec.service.service_user,
-    },
-  }
+// EVERY DIRECTORY THIS DEPLOYMENT CREATES AND READS BACK: the instance's demands, then the host's. The
+// emitted install and the read-back roster both iterate this, so a directory created and a directory
+// read back cannot be two lists.
+fn deployment_directory_demands(spec: DeploymentSpec) -> List<OwnedDirectoryTarget> {
+  concat(spec.directories, spec.target.host_directories)
 }
-
-// The path the ensure creates and the path the readback reads, from one function so they cannot
-// disagree.
-fn deployment_provider_state_path(spec: DeploymentSpec) -> NonEmptyStr {
-  ensured_subject_identity(subject: deployment_provider_state_step(spec: spec).subject)
-}
-
 // Apply order is dependency-honest: the binary lands before the tree, because the tree is published
 // by a service-user oneshot that RUNS the admitted binary (gunbc.live_deploy.repository_convergence_placement
 // convergence_unit_doc) -- the order used to read tree-then-binary on the grounds that the binary serves
 // the tree, which is true of the running process but not of the installation, and the identity emitter
 // had to override it downstream until this authority said it (review on PR #10696); both before the
-// two belt-spawn roots (the worktree root and the attempt-state root, which a
-// dispatch writes in that order — worktree first, then the published attempt evidence), all before
-// the unit (ExecStart references binary + tree), then the belt timer (its ExecStart references that
-// same binary and tree, and every tick it fires writes the two roots above — so it is ordered after
-// them for the same dependency reason the unit is), and the tailscale mapping last (routes to a
-// live service). FleetConvergeTimerUnit is RETIRED from deployment membership (operator directive
-// 2026-08-13, sleek-heron-218): unattended cadence is replaced by the emitted fleet-converge.yml
-// on-demand plan/apply workflow; timer teardown for hosts that still carry legacy units is owned by
+// unit (ExecStart references binary + tree), then the belt timer (its ExecStart references that same
+// binary and tree), and the tailscale mapping last (routes to a live service). The directories every
+// one of these writes into are not steps: the apply ensures all of them before the first step
+// (gunbc.live_deploy.emit owned_directory_apply_steps), so no member runs before the roots it writes.
+// FleetConvergeTimerUnit is RETIRED from deployment membership (operator directive 2026-08-13,
+// sleek-heron-218): unattended cadence is replaced by the emitted fleet-converge.yml on-demand
+// plan/apply workflow; timer teardown for hosts that still carry legacy units is owned by
 // gunbc.fleet_converge_plan timer-retirement reconcile, not this spec's apply pole. Retract is the
-// reverse, with DispatchWorktreeRoot AND AttemptStateRoot torn down by empty-directory removal —
-// LOUD failure when worktrees or published attempts exist, so a retract cannot silently destroy
-// live agent sessions or the evidence of what they did (a construction-level refusal, not a check).
+// reverse of the owned steps and touches no directory.
 fn deployment_steps_apply_order(
   instance: HostDashboardInstance,
   target: DeploymentHostTarget,
@@ -1344,20 +1265,20 @@ fn deployment_srv1_target() -> DeploymentHostTarget {
     tailnet_domain: fleet_intent_network.tailnet_domain,
     os_package_manager: ubuntu_noble_os_package_manager(),
     tailscale_client: srv1_observed_tailscale_client(),
-    ensured_directories: deployment_ensured_srv1_host_directories(),
+    host_directories: deployment_srv1_host_directories(),
   }
 }
 
-data srv1_tailscale_client_observed_version: SemVerVersion = SemVerVersion {
-  major: 1,
-  minor: 98,
-  patch: 3,
-  pre_release: [],
-  build: [],
-}
+// THE OBSERVED VERSION IS THE PARSE RESULT, never a hand-built record: SemVerVersion fields
+// are confined code-point runs, so the label arrives through the parser and an unadmitted
+// label is carried as a refusal, not a fabricated version (review 77150).
+data srv1_tailscale_client_observed_version: SemVerVersion? = semver_version_parse(cps: chars(s: "1.98.3" as String))
 
 fn srv1_observed_tailscale_client() -> TailscaleServeCapability {
-  tailscale_scoped_removal_capability(observed: srv1_tailscale_client_observed_version)
+  match srv1_tailscale_client_observed_version {
+    Absent => ScopedRemovalUnobserved { reason: "the observed client version label failed to parse — a defect in the observed-version row, not an observation gap" }
+    Present { value: observed } => tailscale_scoped_removal_capability(observed: observed)
+  }
 }
 
 fn deployment_service_config(
@@ -1413,6 +1334,7 @@ fn deployment_spec_for(
     ),
     names: names,
     instance_id: instance.instance_id,
+    directories: dashboard_instance_directory_demands(instance: instance),
   }
 }
 

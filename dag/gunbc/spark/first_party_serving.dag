@@ -35,7 +35,7 @@ import gunbc.spark.vllm_serving_launch {
 }
 import v2.std.algebra { list_tail, TailFound, TailAbsent }
 import gunbc.fleet_physical_inventory { operator_site }
-import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
+import gunbc.fleet_host_identity { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
 
 // ── WHY A SERVING ROUTE EXISTS AT ALL NOW, AND WHAT KIND OF FACT IT RESTS ON ──────────────────
 //
@@ -91,7 +91,6 @@ type SparkFleetSiteAllocation {
 data spark_fleet_site_allocation: SparkFleetSiteAllocation = SparkFleetSiteAllocation {
   site: operator_site,
   units: [
-    operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8,
     operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
   ],
   allocation: OperatorAllocation {

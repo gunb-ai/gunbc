@@ -39,15 +39,15 @@ fn own_tool_footprints() -> List<WorkspaceFootprint> {
       ]
     },
     WorkspaceFootprint {
-      provenance: RepoTool { display: "Derived failure-mode roster", owner_module: "gunbc.recurring_failure_mode" },
+      provenance: RepoTool { display: "Retired failure-mode roster file", owner_module: "gunbc.recurring_failure_mode" },
       artifacts: [
-        WorkspaceArtifact { pattern: "/dag/gunbc/recurring_failure_mode/roster.dag", meaning: "membership list derived from sibling row files before compile; not a second authored authority", reason: RegenerableFromSource }
+        WorkspaceArtifact { pattern: "/dag/gunbc/recurring_failure_mode/roster.dag", meaning: "legacy file an older gunbc wrote on every source walk; the roster module is now derived in memory and never written", reason: SupersededAuthority { canonical: "the in-memory roster module contributed by source acquisition (v1_compiler.cli_run.derived_row_roster acquire_dir_files); a file at this path is a legacy artifact of an older gunbc and is refused by the loader" } }
       ]
     },
     WorkspaceFootprint {
-      provenance: RepoTool { display: "Derived rung-drop roster", owner_module: "gunbc.rung_drop" },
+      provenance: RepoTool { display: "Retired rung-drop roster file", owner_module: "gunbc.rung_drop" },
       artifacts: [
-        WorkspaceArtifact { pattern: "/dag/gunbc/rung_drop/roster.dag", meaning: "membership list derived from sibling RungDrop row files before compile; not a second authored authority", reason: RegenerableFromSource }
+        WorkspaceArtifact { pattern: "/dag/gunbc/rung_drop/roster.dag", meaning: "legacy file an older gunbc wrote on every source walk; the roster module is now derived in memory and never written", reason: SupersededAuthority { canonical: "the in-memory roster module contributed by source acquisition (v1_compiler.cli_run.derived_row_roster acquire_dir_files); a file at this path is a legacy artifact of an older gunbc and is refused by the loader" } }
       ]
     },
     WorkspaceFootprint {

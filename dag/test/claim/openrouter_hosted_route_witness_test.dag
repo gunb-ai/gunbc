@@ -1,0 +1,703 @@
+module test.claim.openrouter_hosted_route_witness_test
+
+import std.types { Bool, String, Int, List, NonEmptyStr }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import extdeps.languages.json.emit { serialize_json, json_object }
+import extdeps.openrouter.openrouter {
+  openrouter_decode_error_body, OpenRouterErrorDecoded, OpenRouterErrorUndecodable,
+  OpenRouterPaymentRequired, OpenRouterRateLimited, OpenRouterOtherError,
+  KeySpendLimit, InFlightBudgetLimit, CreditsLimit, WeightExceedsBudget,
+  openrouter_decode_key_read, OpenRouterKeyDecoded, OpenRouterKeyUndecodable,
+  KeySpendCappedAtZero, KeySpendUncapped, KeySpendCappedAbove,
+  openrouter_credits_from_daily_limit, CreditsTierObserved, CreditsTierUnrecognized,
+  CreditsPurchasedAtLeastTen, CreditsPurchasedBelowTen, openrouter_free_models_per_day, openrouter_free_models_per_minute,
+  EffortHigh, EffortMedium,
+  openrouter_decode_rate_limited, OpenRouterRateLimitRefusal, RetryAfterSeconds, RetryAfterUnparsed, RetryAfterAbsent, RetryAfterUnread,
+  openrouter_rate_limit_wire, openrouter_rate_limit_hints, HeaderDumpRead, HeaderDumpUnread,
+}
+import gunbc.harness.harness_reasoning_wire {
+  NemotronUltraFreeOnOpenRouter, ReasoningOff, ReasoningStandard, ReasoningMaximum,
+  harness_openrouter_reasoning_kwargs, harness_reasoning_kwargs_for, ReasoningKwargsAdmitted, ReasoningLevelUnsupported,
+  harness_unit_model_id, harness_unit_placement, LeasedFromHostedQuota, PlacedOnFleetSeat,
+}
+import gunbc.harness.harness_hosted_route {
+  hosted_round_decision, RoundBothLeased, RoundRefusedFull, RoundRefusedUnleasable,
+  harness_hosted_route_for, harness_hosted_level_choice, HostedLevelSelected, HostedLevelUnselected,
+  hosted_key_refusal, hosted_day_remaining, hosted_access_from_key, harness_hosted_round_charge, HostedRoundCharged, HostedRoundQuotaFull, HostedRoundUnleasable,
+}
+import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolSettled, PoolReleased, PoolUpstreamObserved, pool_apply_payload, pool_fold, PoolFolded, PoolFoldRefused }
+import product.capacity.event_chain { ChainEnvelope, ChainEvent, EventId }
+import gunbc.fabric_quota {
+  quota_term_to_window_end, quota_window_start, fabric_quota_lease_for, fabric_quota_settle_at, QuotaTermToWindowEnd,
+  QuotaSettled, QuotaSettleRefused,
+}
+import gunbc.harness.harness_seat { harness_seat_pool_root, hosted_inflight_carried, hosted_inflight_release_hint, hosted_inflight_partition }
+import gunbc.harness.harness_hosted_route { HarnessHostedQuota }
+import product.capacity.event_chain { ChainWalked }
+import std.nat { nat_range_inclusive }
+import product.capacity.quota { quota_root_pool }
+import product.capacity.pool {
+  Pool, pool_acquire, pool_settle, observe_upstream_remaining, PoolOutcome, PoolAdvanced, PoolRefused,
+  LeaseCrossesLapse, LeaseAlreadyLapsed, LedgerRefusal, pool_reading_at, PoolRead, PoolReadingRefused,
+}
+import std.measure { Measure, Count, One, second_count }
+import extdeps.api_rate_limit { UpstreamRateLimit }
+import gunbc.fabric_quota { QuotaLease, QuotaLeased, QuotaFull, QuotaLeaseRefused }
+import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
+import product.capacity.event_chain { PartitionId }
+import gunbc.fabric_storage_client { FabricStorageServed }
+import gunbc.harness.harness_turn { TurnHostedQuotaFull, TurnHostedRateLimited, harness_outcome_label, harness_outcome_detail }
+import gunbc.harness.harness_cli { harness_turn_exit, harness_default_max_token_count, harness_request_deadline }
+import std.process { ExitSuccess, ExitFailure }
+import std.measure { token_count }
+
+// ── THE QUOTA REFUSAL: a full pool stops the request before it is sent ──────────────────────
+//
+// Supplied lease answers at the decision's own interface (DESIGN section 3, a witness discriminates at one
+// interface): the leases are gunbc.fabric_quota's subject and are witnessed there.
+
+fn w_leased(reference: String) -> QuotaLease {
+  QuotaLeased {
+    grant: LeaseGrant {
+      reference: reference as NonEmptyStr,
+      fence: LeaseFence { grant: join(["g-", reference], "") as GrantIdentity, generation: 1 },
+      granted_at: 100,
+      maximum_duration_seconds: 60,
+      expires_at: 160,
+    },
+    partition: join(["quota-openrouter-", reference], "") as PartitionId,
+    store: FabricStorageServed { endpoint: "witness" as NonEmptyStr },
+    limit: openrouter_free_models_per_minute,
+  }
+}
+
+// RED: the day pool is full after the minute pool leased. The round refuses as FULL, and the minute
+// lease is named as owed back -- a refusal that kept it would hold a slot for a request never sent.
+test fn hosted_round_refuses_full_when_the_day_pool_is_full_and_returns_the_minute_lease() -> Bool {
+  match hosted_round_decision(minute: w_leased(reference: "m"), day: Present { value: QuotaFull { wire: "openrouter-free-models-day: 1000/1000" } }) {
+    RoundRefusedFull { wire: w, minute_to_return: Present { value: QuotaLeased { grant: g, partition: _, store: _, limit: _ } } } =>
+      w.contains("free-models-day") && (g.reference as String) == "m"
+    RoundRefusedFull { wire: _, minute_to_return: _ } => false
+    RoundBothLeased { minute: _, day: _ } => false
+    RoundRefusedUnleasable { detail: _, minute_to_return: _ } => false
+  }
+}
+
+// RED: the minute pool is full, so the day pool is never asked and nothing is owed back.
+test fn hosted_round_refuses_full_when_the_minute_pool_is_full_and_asks_nothing_else() -> Bool {
+  match hosted_round_decision(minute: QuotaFull { wire: "openrouter-free-models-minute: 20/20" }, day: none) {
+    RoundRefusedFull { wire: w, minute_to_return: Absent } => w.contains("free-models-minute")
+    RoundRefusedFull { wire: _, minute_to_return: Present { value: _ } } => false
+    RoundBothLeased { minute: _, day: _ } => false
+    RoundRefusedUnleasable { detail: _, minute_to_return: _ } => false
+  }
+}
+
+// CONTROL: both pools leased is the only arm that posts.
+test fn hosted_round_posts_only_when_both_pools_leased() -> Bool {
+  match hosted_round_decision(minute: w_leased(reference: "m"), day: Present { value: w_leased(reference: "d") }) {
+    RoundBothLeased { minute: _, day: _ } => true
+    RoundRefusedFull { wire: _, minute_to_return: _ } => false
+    RoundRefusedUnleasable { detail: _, minute_to_return: _ } => false
+  }
+}
+
+// A FULL ROUND IS A REFUSAL EXIT, NOT A COMPLETED TURN.
+test fn a_hosted_quota_full_turn_exits_as_a_refusal() -> Bool {
+  let o = TurnHostedQuotaFull { wire: "openrouter-free-models-minute: 20/20", steps_taken: 2 }
+  harness_outcome_label(outcome: o) == "hosted-quota-full"
+    && (match harness_turn_exit(outcome: o) { ExitSuccess => false  ExitFailure { code, reason: _ } => code == 1 })
+}
+
+// ── THE 402 DECODE: limit_source is a closed set and names which budget refused ─────────────
+
+test fn a_402_from_the_key_limit_decodes_to_the_key_spend_limit() -> Bool {
+  match openrouter_decode_error_body(body: "{\"error\":{\"code\":402,\"message\":\"Key limit exceeded\",\"metadata\":{\"limit_source\":\"openrouter_key_limit\",\"remedy_hint\":\"raise the key limit\"}}}") {
+    OpenRouterErrorDecoded { error: OpenRouterPaymentRequired { limit_source: KeySpendLimit, reason: Absent, message: m, remedy_hint: Present { value: _ } } } => m == "Key limit exceeded"
+    OpenRouterErrorDecoded { error: _ } => false
+    OpenRouterErrorUndecodable { cause: _ } => false
+  }
+}
+
+test fn a_402_from_the_in_flight_budget_carries_its_reason() -> Bool {
+  match openrouter_decode_error_body(body: "{\"error\":{\"code\":402,\"message\":\"busy\",\"metadata\":{\"limit_source\":\"openrouter_in_flight_budget\",\"reason\":\"weight_exceeds_budget\"}}}") {
+    OpenRouterErrorDecoded { error: OpenRouterPaymentRequired { limit_source: InFlightBudgetLimit, reason: Present { value: WeightExceedsBudget }, message: _, remedy_hint: Absent } } => true
+    OpenRouterErrorDecoded { error: _ } => false
+    OpenRouterErrorUndecodable { cause: _ } => false
+  }
+}
+
+// RED: an unpublished limit_source refuses rather than decoding as the nearest of three.
+test fn a_402_with_an_unpublished_limit_source_refuses_to_decode() -> Bool {
+  match openrouter_decode_error_body(body: "{\"error\":{\"code\":402,\"message\":\"x\",\"metadata\":{\"limit_source\":\"openrouter_mystery_budget\"}}}") {
+    OpenRouterErrorUndecodable { cause: c } => c.contains("openrouter_mystery_budget")
+    OpenRouterErrorDecoded { error: _ } => false
+  }
+}
+
+// RED: a 402 naming no budget is not decodable as a payment refusal.
+test fn a_402_without_a_limit_source_refuses_to_decode() -> Bool {
+  match openrouter_decode_error_body(body: "{\"error\":{\"code\":402,\"message\":\"x\"}}") {
+    OpenRouterErrorUndecodable { cause: c } => c.contains("limit_source")
+    OpenRouterErrorDecoded { error: _ } => false
+  }
+}
+
+test fn a_429_names_whose_limit_it_was() -> Bool {
+  match openrouter_decode_error_body(body: "{\"error\":{\"code\":429,\"message\":\"slow down\",\"metadata\":{\"error_type\":\"rate_limit_exceeded\",\"provider_code\":\"nvidia\"}}}") {
+    OpenRouterErrorDecoded { error: OpenRouterRateLimited { message: _, provider_code: Present { value: p } } } => p == "nvidia"
+    OpenRouterErrorDecoded { error: _ } => false
+    OpenRouterErrorUndecodable { cause: _ } => false
+  }
+}
+
+// ── THE REASONING LEVEL: mapped to a listed effort or refused ───────────────────────────────
+
+// RED: a listing whose supported efforts lack medium refuses the standard level instead of sending it.
+test fn a_level_mapping_to_an_unlisted_effort_is_refused() -> Bool {
+  match harness_openrouter_reasoning_kwargs(unit: NemotronUltraFreeOnOpenRouter, level: ReasoningStandard, supported: [EffortHigh], mandatory: false) {
+    ReasoningLevelUnsupported { unit: _, level: _, cause: c } => (c as String).contains("medium")
+    ReasoningKwargsAdmitted { kwargs: _ } => false
+  }
+}
+
+// RED: a listing that makes reasoning mandatory refuses the off level.
+test fn reasoning_off_is_refused_where_the_listing_makes_reasoning_mandatory() -> Bool {
+  match harness_openrouter_reasoning_kwargs(unit: NemotronUltraFreeOnOpenRouter, level: ReasoningOff, supported: [EffortHigh, EffortMedium], mandatory: true) {
+    ReasoningLevelUnsupported { unit: _, level: _, cause: _ } => true
+    ReasoningKwargsAdmitted { kwargs: _ } => false
+  }
+}
+
+// CONTROL: the same mapping against the real listing's row sends OpenRouter's reasoning object, never the
+// model's chat-template keys.
+test fn the_standard_level_sends_effort_medium_on_the_real_listing() -> Bool {
+  match harness_reasoning_kwargs_for(unit: NemotronUltraFreeOnOpenRouter, level: ReasoningStandard) {
+    ReasoningKwargsAdmitted { kwargs: k } => {
+      let wire = serialize_json(v: json_object(k))
+      wire.contains("\"effort\": \"medium\"") && !wire.contains("chat_template_kwargs")
+    }
+    ReasoningLevelUnsupported { unit: _, level: _, cause: _ } => false
+  }
+}
+
+// ── THE KEY READ: a key that can spend money is refused ─────────────────────────────────────
+
+test fn a_key_capped_at_zero_on_the_thousand_tier_decodes_both_facts() -> Bool {
+  match openrouter_decode_key_read(body: "{\"data\":{\"limit\":0,\"limit_remaining\":0,\"usage\":0,\"is_free_tier\":false,\"free_model_daily_requests\":{\"used\":3,\"limit\":1000,\"remaining\":997}}}") {
+    OpenRouterKeyDecoded { key: k } =>
+      (match k.spend_limit { KeySpendCappedAtZero => true  KeySpendUncapped => false  KeySpendCappedAbove { lexeme: _ } => false })
+        && (match openrouter_credits_from_daily_limit(daily_limit: k.free_daily_limit) {
+          CreditsTierObserved { credits: CreditsPurchasedAtLeastTen } => true
+          CreditsTierObserved { credits: CreditsPurchasedBelowTen } => false
+          CreditsTierUnrecognized { daily_limit: _ } => false
+        })
+    OpenRouterKeyUndecodable { cause: _ } => false
+  }
+}
+
+// RED: an uncapped key is refused by name.
+test fn an_uncapped_key_is_refused_as_able_to_spend() -> Bool {
+  match openrouter_decode_key_read(body: "{\"data\":{\"limit\":null,\"is_free_tier\":false,\"free_model_daily_requests\":{\"used\":0,\"limit\":1000,\"remaining\":1000}}}") {
+    OpenRouterKeyDecoded { key: k } => hosted_key_refusal(key: k).contains("no credit limit")
+    OpenRouterKeyUndecodable { cause: _ } => false
+  }
+}
+
+// THE TIER SETS THE DAY POOL'S CEILING, and an unpublished ceiling is not a tier.
+test fn the_daily_tier_selects_the_day_pool_ceiling_and_an_unpublished_one_refuses() -> Bool {
+  openrouter_free_models_per_day(credits: CreditsPurchasedAtLeastTen).requests == 1000
+    && openrouter_free_models_per_day(credits: CreditsPurchasedBelowTen).requests == 50
+    && (match openrouter_credits_from_daily_limit(daily_limit: 200) { CreditsTierUnrecognized { daily_limit: n } => n == 200  CreditsTierObserved { credits: _ } => false })
+}
+
+// ── INHABITANCE ON THE REAL PATH ─────────────────────────────────────────────────────────────
+//
+// The real unit's real route, joined from the real listing rows, reaches the real decisions: it is placed
+// by a hosted quota lease rather than a seat; its route is HTTPS and names the listing's model id; the
+// selection over the real field chooses the maximum level for the harness's real max_tokens; and that level
+// renders effort high. Deleting the hosted arm from any of harness_unit_placement, harness_hosted_route_for,
+// the selection or the reasoning seam turns this red.
+test fn the_hosted_nemotron_route_is_quota_leased_https_and_selects_effort_high() -> Bool {
+  match harness_hosted_route_for(unit: NemotronUltraFreeOnOpenRouter) {
+    Absent => false
+    Present { value: route } =>
+      (match harness_unit_placement(unit: NemotronUltraFreeOnOpenRouter) { LeasedFromHostedQuota => true  PlacedOnFleetSeat => false })
+        && (route.url as String).starts_with("https://")
+        && (harness_unit_model_id(unit: NemotronUltraFreeOnOpenRouter) as String) == "nvidia/nemotron-3-ultra-550b-a55b:free"
+        && (match harness_hosted_level_choice(route: route, max_tokens: harness_default_max_token_count) {
+          HostedLevelSelected { level: ReasoningMaximum } =>
+            (match harness_reasoning_kwargs_for(unit: NemotronUltraFreeOnOpenRouter, level: ReasoningMaximum) {
+              ReasoningKwargsAdmitted { kwargs: k } => serialize_json(v: json_object(k)).contains("\"effort\": \"high\"")
+              ReasoningLevelUnsupported { unit: _, level: _, cause: _ } => false
+            })
+          HostedLevelSelected { level: _ } => false
+          HostedLevelUnselected { cause: _ } => false
+        })
+  }
+}
+
+// RED: a max_tokens above the listing's completion ceiling leaves no admissible level, and the selection
+// refuses rather than choosing one.
+test fn a_request_above_the_completion_ceiling_selects_no_level() -> Bool {
+  match harness_hosted_route_for(unit: NemotronUltraFreeOnOpenRouter) {
+    Absent => false
+    Present { value: route } =>
+      match harness_hosted_level_choice(route: route, max_tokens: token_count(count: 70000)) {
+        HostedLevelUnselected { cause: _ } => true
+        HostedLevelSelected { level: _ } => false
+      }
+  }
+}
+
+// ── THE CHARGE FITS ITS WINDOW AT EVERY INSTANT, THROUGH THE REAL POOL ADMISSION ──────────────
+//
+// The pools are the production pools (product.capacity.quota quota_root_pool over the real OpenRouter
+// rows the hosted route carries), the term is the production derivation (gunbc.fabric_quota
+// quota_term_to_window_end), and admission is product.capacity.pool pool_acquire -- the function a
+// partition append adjudicates with. Only the clock is supplied: an instant one second into a UTC day
+// that is also one second into its minute, and instants one second before the minute and the day end.
+data w_day_start: Int = 1780531200
+
+fn w_charge_admitted(limit: UpstreamRateLimit, at: Int) -> Bool {
+  match quota_term_to_window_end(limit: limit, at: at) {
+    Absent => false
+    Present { value: term } =>
+      match pool_acquire(pool: quota_root_pool(limit: limit), reference: "charge" as NonEmptyStr, amount: Measure { count: 1 }, at: at, term_seconds: second_count(s: term)) {
+        PoolAdvanced { pool: _ } => true
+        PoolRefused { refusal: _ } => false
+      }
+  }
+}
+
+test fn a_hosted_charge_fits_both_real_pools_early_and_late_in_their_windows() -> Bool {
+  match harness_hosted_route_for(unit: NemotronUltraFreeOnOpenRouter) {
+    Absent => false
+    Present { value: route } => {
+      let day = openrouter_free_models_per_day(credits: CreditsPurchasedAtLeastTen)
+      w_charge_admitted(limit: route.per_minute, at: w_day_start + 1)
+        && w_charge_admitted(limit: route.per_minute, at: w_day_start + 59)
+        && w_charge_admitted(limit: day, at: w_day_start + 1)
+        && w_charge_admitted(limit: day, at: w_day_start + 86399)
+    }
+  }
+}
+
+// RED, THE DEFECT THIS REPLACED: a lease held for the response deadline cannot fit the minute window at
+// any instant, so the pool refuses it as crossing the lapse.
+test fn a_lease_for_the_response_deadline_crosses_the_minute_lapse() -> Bool {
+  match harness_hosted_route_for(unit: NemotronUltraFreeOnOpenRouter) {
+    Absent => false
+    Present { value: route } =>
+      match pool_acquire(pool: quota_root_pool(limit: route.per_minute), reference: "held" as NonEmptyStr, amount: Measure { count: 1 }, at: w_day_start + 1, term_seconds: second_count(s: harness_request_deadline)) {
+        PoolRefused { refusal: LeaseCrossesLapse { reference: _, expires_at: _, window_end: _ } } => true
+        PoolRefused { refusal: _ } => false
+        PoolAdvanced { pool: _ } => false
+      }
+  }
+}
+
+// ── THE DAY POOL STARTS FROM WHAT THE UPSTREAM SAYS REMAINS ────────────────────────────────────
+//
+// The remaining count is read by the production reader off a decoded key read, recorded through the
+// fold's own observe_upstream_remaining, and then asked for leases through pool_acquire.
+fn w_key_remaining(used: Int, remaining: Int) -> Nat? {
+  match openrouter_decode_key_read(body: join(["{\"data\":{\"limit\":0,\"is_free_tier\":false,\"free_model_daily_requests\":{\"used\":", to_string(used), ",\"limit\":1000,\"remaining\":", to_string(remaining), "}}}"], "")) {
+    OpenRouterKeyDecoded { key: k } =>
+      hosted_day_remaining(key: k)
+    OpenRouterKeyUndecodable { cause: _ } => none
+  }
+}
+
+fn w_observed(pool: Pool<Count, One>, remaining: Nat, at: Int) -> Pool<Count, One>? {
+  let day = openrouter_free_models_per_day(credits: CreditsPurchasedAtLeastTen)
+  match quota_term_to_window_end(limit: day, at: at) {
+    Absent => none
+    Present { value: term } =>
+      match observe_upstream_remaining(pool: pool, remaining: Measure { count: remaining }, at: at, term_seconds: second_count(s: term), reading: join(["witness@", to_string(at)], "") as NonEmptyStr) {
+        PoolAdvanced { pool: p } => Present { value: p }
+        PoolRefused { refusal: _ } => none
+      }
+  }
+}
+
+fn w_day_headroom(pool: Pool<Count, One>, at: Int) -> Int {
+  match pool_reading_at(pool: pool, at: at) {
+    PoolRead { committed: _, ceiling: _, headroom: h, over_committed: _ } => h.count as Int
+    PoolReadingRefused { at: _, anchor: _ } => -1
+  }
+}
+
+// RED: the upstream reports every free request spent (used = limit, remaining = 0) and the local ledger
+// is fresh -- the day pool admits nothing, so no request is ever sent.
+test fn an_exhausted_upstream_day_leaves_a_fresh_day_pool_no_headroom() -> Bool {
+  let day = openrouter_free_models_per_day(credits: CreditsPurchasedAtLeastTen)
+  match w_key_remaining(used: 1000, remaining: 0) {
+    Absent => false
+    Present { value: r } =>
+      match w_observed(pool: quota_root_pool(limit: day), remaining: r, at: w_day_start + 100) {
+        Absent => false
+        Present { value: p } => w_day_headroom(pool: p, at: w_day_start + 101) == 0
+      }
+  }
+}
+
+// A PARTIAL REMAINDER IS RESPECTED EXACTLY, and a later reading claiming more never gives any back.
+test fn a_partial_upstream_remainder_is_the_headroom_and_later_readings_never_replenish() -> Bool {
+  let day = openrouter_free_models_per_day(credits: CreditsPurchasedAtLeastTen)
+  match w_key_remaining(used: 997, remaining: 3) {
+    Absent => false
+    Present { value: r } =>
+      match w_observed(pool: quota_root_pool(limit: day), remaining: r, at: w_day_start + 100) {
+        Absent => false
+        Present { value: p } =>
+          w_day_headroom(pool: p, at: w_day_start + 101) == 3
+            && (match w_observed(pool: p, remaining: 1000, at: w_day_start + 102) {
+              Absent => false
+              Present { value: p2 } => w_day_headroom(pool: p2, at: w_day_start + 103) == 3
+            })
+      }
+  }
+}
+
+// ── A TRANSITION IS CHECKED AGAINST THE FOLDED POOL BEFORE IT IS WRITTEN ─────────────────────────
+//
+// gunbc.fabric_event_log fabric_pool_transition appends only what product.capacity.pool_events
+// pool_apply_payload advances on the folded pool -- the same function replay applies. These supply the
+// folded pool and ask that function, which is the decision the carrier makes before any write.
+fn w_env(id: String, at: Int, payload: PoolEvent) -> ChainEnvelope<PoolEvent> {
+  ChainEnvelope {
+    id: id as EventId,
+    event: ChainEvent { partition: "quota-openrouter-free-models-minute" as PartitionId, parent: none, recorded_at: at, actor: "witness" as NonEmptyStr, payload: payload },
+  }
+}
+
+// RED: the minute lease is taken one second before rollover (its term runs to the window end) and the
+// settlement arrives after it. The transition is refused -- so the checked carrier writes nothing and
+// reports no settlement -- and the CONTROL shows why that matters: the same settlement appended blind
+// makes the whole partition unfoldable.
+test fn a_settlement_after_rollover_is_refused_before_it_could_poison_the_partition() -> Bool {
+  let minute = openrouter_free_models_per_minute
+  let at = w_day_start + 59
+  match quota_term_to_window_end(limit: minute, at: at) {
+    Absent => false
+    Present { value: term } => {
+      let acquired = w_env(id: "e1", at: at, payload: PoolAcquired { reference: "charge" as NonEmptyStr, amount: 1, term_seconds: second_count(s: term) })
+      match pool_fold(root: quota_root_pool(limit: minute), oldest_first: [acquired]) {
+        PoolFoldRefused { at_event: _, wire: _ } => false
+        PoolFolded { pool: p, generation: _ } =>
+          (match pool_apply_payload(pool: p, payload: PoolSettled { reference: "charge" as NonEmptyStr, actual: 1 }, at: w_day_start + 60, identity: "pending:e1" as NonEmptyStr) {
+            PoolRefused { refusal: LeaseAlreadyLapsed { reference: _, lapsed_at: _, at: _ } } => true
+            PoolRefused { refusal: _ } => false
+            PoolAdvanced { pool: _ } => false
+          })
+            && (match pool_apply_payload(pool: p, payload: PoolSettled { reference: "charge" as NonEmptyStr, actual: 1 }, at: at, identity: "pending:e1" as NonEmptyStr) {
+              PoolAdvanced { pool: _ } => true
+              PoolRefused { refusal: _ } => false
+            })
+            && (match pool_fold(root: quota_root_pool(limit: minute), oldest_first: [acquired, w_env(id: "e2", at: w_day_start + 60, payload: PoolSettled { reference: "charge" as NonEmptyStr, actual: 1 })]) {
+              PoolFoldRefused { at_event: e, wire: _ } => (e as String) == "e2"
+              PoolFolded { pool: _, generation: _ } => false
+            })
+      }
+    }
+  }
+}
+
+// TWO DECREASING UPSTREAM READINGS IN ONE SECOND STAY REPLAYABLE: each hold is named by its own event,
+// so the second is not a duplicate of the first, and the pool ends at the lower reading.
+test fn two_decreasing_upstream_readings_in_one_second_fold_to_the_lower() -> Bool {
+  let day = openrouter_free_models_per_day(credits: CreditsPurchasedAtLeastTen)
+  let at = w_day_start + 100
+  match quota_term_to_window_end(limit: day, at: at) {
+    Absent => false
+    Present { value: term } =>
+      match pool_fold(root: quota_root_pool(limit: day), oldest_first: [
+        w_env(id: "o1", at: at, payload: PoolUpstreamObserved { remaining: 3, term_seconds: second_count(s: term) }),
+        w_env(id: "o2", at: at, payload: PoolUpstreamObserved { remaining: 1, term_seconds: second_count(s: term) }),
+      ]) {
+        PoolFoldRefused { at_event: _, wire: _ } => false
+        PoolFolded { pool: p, generation: g } => g == 2 && w_day_headroom(pool: p, at: at) == 1
+      }
+  }
+}
+
+// ── A SEND IN FLIGHT ACROSS THE ROLLOVER IS CHARGED IN THE WINDOW IT MAY ARRIVE IN ───────────────
+//
+// The in-flight partition is the production seat-pool shape (gunbc.harness.harness_seat
+// harness_seat_pool_root) under the production partition name; the carried count is the production
+// hosted_inflight_carried; the charge is the real minute pool's pool_acquire at the amount the round asks
+// for (its own send plus the carried ones). Only the clock and the events are supplied.
+fn w_quota() -> HarnessHostedQuota {
+  HarnessHostedQuota { short_hostname: "witness", actor: "hosted-witness" as NonEmptyStr, per_minute: openrouter_free_models_per_minute, per_day: openrouter_free_models_per_day(credits: CreditsPurchasedAtLeastTen) }
+}
+
+fn w_inflight(events: List<ChainEnvelope<PoolEvent>>) -> Pool<Count, One>? {
+  match pool_fold(root: harness_seat_pool_root(partition: hosted_inflight_partition(quota: w_quota()), ceiling: 20), oldest_first: events) {
+    PoolFolded { pool: p, generation: _ } => Present { value: p }
+    PoolFoldRefused { at_event: _, wire: _ } => none
+  }
+}
+
+// The minute after the rollover, with `n` sends already charged and settled in it.
+fn w_minute_with(n: Nat, at: Int) -> Pool<Count, One>? {
+  fold(nat_range_inclusive(lo: 1, hi: n), init: Present { value: quota_root_pool(limit: openrouter_free_models_per_minute) }, f: (acc, i) =>
+    match acc {
+      Absent => none
+      Present { value: p } => {
+        let r = join(["charged-", to_string(i)], "") as NonEmptyStr
+        match pool_acquire(pool: p, reference: r, amount: Measure { count: 1 }, at: at, term_seconds: 1) {
+          PoolRefused { refusal: _ } => none
+          PoolAdvanced { pool: q } =>
+            match pool_settle(pool: q, reference: r, actual: Measure { count: 1 }, at: at) {
+              PoolRefused { refusal: _ } => none
+              PoolAdvanced { pool: settled } => Present { value: settled }
+            }
+        }
+      }
+    })
+}
+
+fn w_round_admitted(minute: Pool<Count, One>, carried: Nat, at: Int) -> Bool {
+  match quota_term_to_window_end(limit: openrouter_free_models_per_minute, at: at) {
+    Absent => false
+    Present { value: term } =>
+      match pool_acquire(pool: minute, reference: "this-round" as NonEmptyStr, amount: Measure { count: carried + 1 }, at: at, term_seconds: second_count(s: term)) {
+        PoolAdvanced { pool: _ } => true
+        PoolRefused { refusal: _ } => false
+      }
+  }
+}
+
+// RED: a send admitted at T+58 pauses across the rollover and is still in flight at T+61. With 19 sends
+// already charged in the new minute, the next round must cover 2 -- its own and the carried one -- so it
+// refuses: no request goes out in a window whose quota the paused send may already have spent. The same
+// round with nothing carried is admitted, so the refusal is the carried send's.
+test fn a_send_paused_across_the_rollover_is_charged_in_the_next_window() -> Bool {
+  match w_inflight(events: [w_env(id: "s1", at: w_day_start + 58, payload: PoolAcquired { reference: "paused" as NonEmptyStr, amount: 1, term_seconds: 2348 })]) {
+    Absent => false
+    Present { value: inflight } =>
+      match quota_window_start(limit: openrouter_free_models_per_minute, at: w_day_start + 61) {
+        Absent => false
+        Present { value: start } =>
+          match w_minute_with(n: 19, at: w_day_start + 60) {
+            Absent => false
+            Present { value: minute } => {
+              let carried = hosted_inflight_carried(pool: inflight, window_start: start)
+              carried == 1
+                && !w_round_admitted(minute: minute, carried: carried, at: w_day_start + 61)
+                && w_round_admitted(minute: minute, carried: 0, at: w_day_start + 61)
+            }
+          }
+      }
+  }
+}
+
+// CONTROL: a send made inside its window whose answer arrives much later carries nothing into later
+// windows once its transport returns and its seat is released -- and the send is counted in its own window
+// only once, by its own charge, not by the in-flight count.
+test fn a_send_released_after_a_late_response_carries_nothing_forward() -> Bool {
+  match w_inflight(events: [
+    w_env(id: "s1", at: w_day_start + 10, payload: PoolAcquired { reference: "slow-answer" as NonEmptyStr, amount: 1, term_seconds: 2348 }),
+    w_env(id: "s2", at: w_day_start + 300, payload: PoolReleased { reference: "slow-answer" as NonEmptyStr, reason: "the transport returned" as NonEmptyStr }),
+  ]) {
+    Absent => false
+    Present { value: inflight } =>
+      hosted_inflight_carried(pool: inflight, window_start: w_day_start + 300) == 0
+        && hosted_inflight_carried(pool: inflight, window_start: w_day_start) == 0
+  }
+}
+
+// A SEAT HELD BY A HOLDER THAT DIED IS NAMED WITH ITS RELEASE, so a starved route says what to free.
+test fn a_held_inflight_seat_is_named_with_its_release_in_the_refusal_hint() -> Bool {
+  let events = [w_env(id: "s1", at: w_day_start + 58, payload: PoolAcquired { reference: "worker-7@1780531258#round3" as NonEmptyStr, amount: 1, term_seconds: 2348 })]
+  match w_inflight(events: events) {
+    Absent => false
+    Present { value: inflight } => {
+      let hint = hosted_inflight_release_hint(quota: w_quota(), pool: inflight, generation: 1, walk: ChainWalked { oldest_first: events })
+      hint.contains("worker-7@1780531258#round3") && hint.contains("grant=s1") && hint.contains("harness_release_cli")
+        && hint.contains(hosted_inflight_partition(quota: w_quota()) as String)
+    }
+  }
+}
+
+// ── A 429 FROM THE UPSTREAM IS THE TYPED BACKSTOP, AND IT IS NEVER RETRIED ───────────────────────────
+//
+// The decode is the production decode over the shapes the limits page documents: the error body, and the
+// header dump curl writes (the status line starts a block; only the last block is the answer).
+data w_429_body: String = "{\"error\":{\"code\":429,\"message\":\"Rate limit exceeded: free-models-per-min\",\"metadata\":{\"error_type\":\"rate_limit_exceeded\"}}}"
+
+data w_429_headers: String = "HTTP/2 429\r\ncontent-type: application/json\r\nretry-after: 30\r\nx-ratelimit-limit: 20\r\nx-ratelimit-remaining: 0\r\nx-ratelimit-reset: 1791265800000\r\n\r\n"
+
+test fn a_429_decodes_to_the_typed_refusal_with_the_upstreams_retry_hints() -> Bool {
+  match openrouter_decode_rate_limited(body: w_429_body, header_dump: HeaderDumpRead { text: w_429_headers }) {
+    Absent => false
+    Present { value: r } =>
+      (match r.hints.retry_after { RetryAfterSeconds { seconds: n } => second_count(s: n) == 30  RetryAfterUnparsed { text: _ } => false  RetryAfterAbsent => false  RetryAfterUnread { cause: _ } => false })
+        && (match r.hints.reset { Present { value: v } => v == "1791265800000"  Absent => false })
+        && (match r.hints.remaining { Present { value: v } => v == "0"  Absent => false })
+        && (match r.provider_code { Absent => true  Present { value: _ } => false })
+        && openrouter_rate_limit_wire(r: r).contains("Retry-After 30 s")
+        && openrouter_rate_limit_wire(r: r).contains("unit not documented")
+        && openrouter_rate_limit_wire(r: r).contains("NOT retried")
+  }
+}
+
+// A RETRY-AFTER THAT IS NOT DELTA-SECONDS IS CARRIED AS TEXT, never read as a number it is not; and a
+// refusal with no hint headers is still a typed refusal, saying so. The LAST block of a dump is the answer.
+test fn a_retry_after_that_is_not_seconds_and_a_missing_hint_are_stated_not_guessed() -> Bool {
+  (match openrouter_decode_rate_limited(body: w_429_body, header_dump: HeaderDumpRead { text: "HTTP/2 429\r\nretry-after: Wed, 21 Oct 2026 07:28:00 GMT\r\n\r\n" }) {
+    Present { value: r } => (match r.hints.retry_after { RetryAfterUnparsed { text: t } => t.contains("21 Oct 2026")  RetryAfterSeconds { seconds: _ } => false  RetryAfterAbsent => false  RetryAfterUnread { cause: _ } => false })
+    Absent => false
+  })
+    && (match openrouter_decode_rate_limited(body: w_429_body, header_dump: HeaderDumpRead { text: "HTTP/1.1 429 Too Many Requests\r\nRetry-After: 12\r\nX-RateLimit-Reset: 5\r\n\r\n" }) {
+      Present { value: r } => (match r.hints.retry_after { RetryAfterSeconds { seconds: n } => second_count(s: n) == 12  RetryAfterUnparsed { text: _ } => false  RetryAfterAbsent => false  RetryAfterUnread { cause: _ } => false })
+        && (match r.hints.reset { Present { value: v } => v == "5"  Absent => false })
+      Absent => false
+    })
+    && (match openrouter_decode_rate_limited(body: w_429_body, header_dump: HeaderDumpRead { text: "" }) {
+      Present { value: r } => (match r.hints.retry_after { RetryAfterAbsent => true  RetryAfterSeconds { seconds: _ } => false  RetryAfterUnparsed { text: _ } => false  RetryAfterUnread { cause: _ } => false }) && openrouter_rate_limit_wire(r: r).contains("no Retry-After")
+      Absent => false
+    })
+    && (match openrouter_decode_rate_limited(body: w_429_body, header_dump: HeaderDumpRead { text: "HTTP/1.1 100 Continue\r\nretry-after: 99\r\n\r\nHTTP/2 429\r\nretry-after: 7\r\n\r\n" }) {
+      Present { value: r } => (match r.hints.retry_after { RetryAfterSeconds { seconds: n } => second_count(s: n) == 7  RetryAfterUnparsed { text: _ } => false  RetryAfterAbsent => false  RetryAfterUnread { cause: _ } => false })
+      Absent => false
+    })
+}
+
+// RED: a header dump that could not be read is NOT "no Retry-After". The upstream may have sent a hint that
+// this process failed to read, so the refusal says the hint is unknown and why, and carries no reset or counters.
+test fn an_unread_header_dump_is_stated_unknown_not_reported_as_no_retry_after() -> Bool {
+  match openrouter_decode_rate_limited(body: w_429_body, header_dump: HeaderDumpUnread { cause: "the dump file is absent" }) {
+    Absent => false
+    Present { value: r } =>
+      (match r.hints.retry_after { RetryAfterUnread { cause: c } => c.contains("dump file is absent")  RetryAfterAbsent => false  RetryAfterSeconds { seconds: _ } => false  RetryAfterUnparsed { text: _ } => false })
+        && (match r.hints.reset { Absent => true  Present { value: _ } => false })
+        && openrouter_rate_limit_wire(r: r).contains("Retry-After unknown")
+        && !openrouter_rate_limit_wire(r: r).contains("no Retry-After")
+        && openrouter_rate_limit_wire(r: r).contains("NOT retried")
+  }
+}
+
+// RED: delay-seconds is 1*DIGIT, and the integer parser would accept a sign, so a signed, fractional or
+// unit-suffixed value is carried as text and never read as a number of seconds.
+fn w_retry_after_of(value: String) -> OpenRouterRetryAfter? {
+  match openrouter_decode_rate_limited(body: w_429_body, header_dump: HeaderDumpRead { text: join(["HTTP/2 429\r\nretry-after: ", value, "\r\n\r\n"], "") }) {
+    Present { value: r } => Present { value: r.hints.retry_after }
+    Absent => none
+  }
+}
+
+fn w_is_unparsed(r: OpenRouterRetryAfter?) -> Bool {
+  match r {
+    Present { value: RetryAfterUnparsed { text: _ } } => true
+    Present { value: RetryAfterSeconds { seconds: _ } } => false
+    Present { value: RetryAfterAbsent } => false
+    Present { value: RetryAfterUnread { cause: _ } } => false
+    Absent => false
+  }
+}
+
+test fn a_signed_fractional_or_suffixed_retry_after_is_not_read_as_seconds() -> Bool {
+  w_is_unparsed(r: w_retry_after_of(value: "+30"))
+    && w_is_unparsed(r: w_retry_after_of(value: "-0"))
+    && w_is_unparsed(r: w_retry_after_of(value: "-30"))
+    && w_is_unparsed(r: w_retry_after_of(value: "3.5"))
+    && w_is_unparsed(r: w_retry_after_of(value: "30s"))
+    && (match w_retry_after_of(value: "30") { Present { value: RetryAfterSeconds { seconds: n } } => second_count(s: n) == 30  Present { value: _ } => false  Absent => false })
+}
+
+// RED: a 402, or any body that is not a 429, is NOT a rate-limit refusal -- it keeps its own typed error
+// (the 402 limit_source decode above), so a paid-model refusal is never read as a wait-and-retry.
+test fn only_a_429_is_a_rate_limit_refusal() -> Bool {
+  (match openrouter_decode_rate_limited(body: "{\"error\":{\"code\":402,\"message\":\"x\",\"metadata\":{\"limit_source\":\"openrouter_key_limit\"}}}", header_dump: HeaderDumpRead { text: w_429_headers }) {
+    Absent => true
+    Present { value: _ } => false
+  })
+    && (match openrouter_decode_rate_limited(body: "not json", header_dump: HeaderDumpRead { text: w_429_headers }) { Absent => true  Present { value: _ } => false })
+}
+
+// THE TURN ENDS ON IT. It is a terminal outcome of the turn -- there is no retry arm in the loop to take --
+// and a refusal exit that says it was not retried and carries the hint into the operator's line.
+test fn a_hosted_rate_limit_ends_the_turn_as_a_refusal_naming_the_hint_and_no_retry() -> Bool {
+  match openrouter_decode_rate_limited(body: w_429_body, header_dump: HeaderDumpRead { text: w_429_headers }) {
+    Absent => false
+    Present { value: r } => {
+      let o = TurnHostedRateLimited { refusal: r, steps_taken: 3 }
+      harness_outcome_label(outcome: o) == "hosted-rate-limited"
+        && harness_outcome_detail(outcome: o).contains("Retry-After 30 s")
+        && harness_outcome_detail(outcome: o).contains("rather than retrying")
+        && (match harness_turn_exit(outcome: o) { ExitSuccess => false  ExitFailure { code, reason: _ } => code == 1 })
+    }
+  }
+}
+
+// ── THE SPENDABLE-KEY WALL, AT THE FUNCTION THAT ENFORCES IT ─────────────────────────────────────
+//
+// hosted_access_from_key is what refuses to build a binding; a witness over the rendering helper beside it
+// would stay green if the wall were removed. These decode real key reads and ask the wall itself.
+fn w_bind_from_key(limit_json: String, daily_limit: Int) -> Bool? {
+  match openrouter_decode_key_read(body: join(["{\"data\":{\"limit\":", limit_json, ",\"is_free_tier\":false,\"free_model_daily_requests\":{\"used\":0,\"limit\":", to_string(daily_limit), ",\"remaining\":", to_string(daily_limit), "}}}"], "")) {
+    OpenRouterKeyUndecodable { cause: _ } => none
+    OpenRouterKeyDecoded { key: k } =>
+      match harness_hosted_route_for(unit: NemotronUltraFreeOnOpenRouter) {
+        Absent => none
+        Present { value: route } =>
+          match hosted_access_from_key(route: route, key: k, level: ReasoningMaximum, header_dir: "/tmp/witness" as NonEmptyStr, header_file: "/tmp/witness/authorization" as NonEmptyStr, short_hostname: "witness", actor: "witness" as NonEmptyStr) {
+            Absent => Present { value: false }
+            Present { value: _ } => Present { value: true }
+          }
+      }
+  }
+}
+
+// RED: a key with no credit limit, and one with a positive limit, can spend money on a priced model, so no
+// binding is built; the zero-credit key on a published tier is the only one that is. A tier that is neither
+// published value refuses even on the safe key.
+test fn only_a_zero_credit_key_on_a_published_tier_builds_a_binding() -> Bool {
+  (match w_bind_from_key(limit_json: "null", daily_limit: 1000) { Present { value: b } => !b  Absent => false })
+    && (match w_bind_from_key(limit_json: "5", daily_limit: 1000) { Present { value: b } => !b  Absent => false })
+    && (match w_bind_from_key(limit_json: "0", daily_limit: 200) { Present { value: b } => !b  Absent => false })
+    && (match w_bind_from_key(limit_json: "0", daily_limit: 1000) { Present { value: b } => b  Absent => false })
+    && (match w_bind_from_key(limit_json: "0.0", daily_limit: 50) { Present { value: b } => b  Absent => false })
+}
+
+// ── THE REAL LEASE PRODUCER IS EXECUTED, THROUGH THE PRODUCTION CHARGE ───────────────────────────
+//
+// The constructed leases above are for the decision's own boundary. This runs the PRODUCTION charge
+// (harness_hosted_round_charge -> gunbc.fabric_quota fabric_quota_lease_for) for a host the fleet declares no
+// dashboard instance for: the real producer answers with its typed refusal, the charge turns it into
+// HostedRoundUnleasable naming the host, and nothing is leased, charged or sent. Deleting the producer, or
+// the charge's call to it, turns this red.
+//
+// WHAT THIS DOES NOT EXECUTE, STATED: the producer's success arm -- a seat acquired and settled on a real
+// event-log store -- needs a store, and the floor refuses a new real-execution witness
+// (v2.workflow.floor_changed_witness), so no claim here can stand one up. Its pieces are witnessed at their
+// own interfaces above: the term derivation and admission through the production pool_acquire, and the
+// checked settlement through the replay's own pool_apply_payload. The joined route runs in the post-merge
+// live exercise.
+fn w_unplaced_quota() -> HarnessHostedQuota {
+  HarnessHostedQuota { short_hostname: "no-such-host-witness", actor: "hosted-witness" as NonEmptyStr, per_minute: openrouter_free_models_per_minute, per_day: openrouter_free_models_per_day(credits: CreditsPurchasedAtLeastTen) }
+}
+
+test fn the_production_charge_refuses_through_the_real_lease_producer_for_an_undeclared_host() -> Bool {
+  (match harness_hosted_round_charge(quota: w_unplaced_quota(), carried_minute: 0, carried_day: 0, release_hint: "") {
+    HostedRoundUnleasable { detail: d } => d.contains("no dashboard instance is declared for host no-such-host-witness")
+    HostedRoundCharged => false
+    HostedRoundQuotaFull { wire: _ } => false
+  })
+    && (match fabric_quota_lease_for(short_hostname: "no-such-host-witness", limit: openrouter_free_models_per_minute, amount: 1, actor: "hosted-witness" as NonEmptyStr, term: QuotaTermToWindowEnd) {
+      QuotaLeaseRefused { detail: d } => d.contains("no dashboard instance is declared")
+      QuotaLeased { grant: _, partition: _, store: _, limit: _ } => false
+      QuotaFull { wire: _ } => false
+    })
+}
+
+// A SETTLEMENT OF A LEASE THAT NEVER EXISTED IS A TYPED REFUSAL, not a recorded charge.
+test fn settling_a_refused_lease_records_nothing() -> Bool {
+  match fabric_quota_settle_at(lease: QuotaLeaseRefused { detail: "no dashboard instance is declared for host x" }, actual: 1, now: w_day_start + 59) {
+    QuotaSettleRefused { detail: d } => d.contains("nothing to settle")
+    QuotaSettled { partition: _, actual: _ } => false
+  }
+}

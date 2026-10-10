@@ -15,6 +15,7 @@ import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
 import std.algebra { Cons, Empty }
 import std.resources { Network }
+import std.serialization { Text }
 import extdeps.transports.rest { RestResult }
 
 // WorkflowJobRun.labels are read by gunbc.public_workload_census (observed_job_labels) to
@@ -90,6 +91,7 @@ type WorkflowRunPullRequest {
 type WorkflowRun {
   id: Int
   name: String?
+  display_title: String?
   path: String?
   head_sha: CommitSha
   head_branch: String?
@@ -194,6 +196,12 @@ fn workflow_job_attempt_filter_wire(f: WorkflowJobAttemptFilter) -> String {
 // rendered name. The parenthetical of combination VALUES in axis order is the rendering this
 // tree observed on those names; it is not a REST field. Standing is TranscribedUncited until
 // GitHub's Jobs docs state that encoding.
+// runner_id AND runner_name ARE WHICH RUNNER TOOK THE JOB, a third fact beside the declared runs-on
+// and the observed labels: two runners can carry identical labels. runner_id is the exact identity
+// GitHub returned when the JIT registration was minted (gunbc.runner.runner_qualification_dispatch
+// job_ran_on joins on it); runner_name is corroboration, since one name can resolve to several ids.
+// Upstream publishes both as nullable -- null until a runner takes the job -- and every record in
+// this tree written before the fields existed carries none rather than a guessed value.
 type WorkflowJobRun {
   id: Int
   run_id: Int
@@ -202,6 +210,8 @@ type WorkflowJobRun {
   status: WorkflowRunStatus
   conclusion: WorkflowRunConclusion?
   labels: List<String>
+  runner_id: Int?
+  runner_name: String?
   created_at: Timestamp?
   started_at: Timestamp?
   completed_at: Timestamp?
@@ -287,16 +297,32 @@ data structural_coverage_gap_workflow_run_codec_hand_rolled: List<String> = [
 // operation is not a module item, so per-operation rationale is not expressible; it belongs here
 // or nowhere.
 //
+// DOWNLOADJOBLOGSFORWORKFLOWRUN IS UPSTREAM'S "Download job logs for a workflow run"
+// (actions/download-job-logs-for-workflow-run, docs.github.com/en/rest/actions/workflow-jobs, read
+// 2026-10-04): `GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs` answers `302 Found` with a
+// `Location` naming a storage URL that expires after about a minute, and the body there is the job's
+// log as plain text, one line per row behind an RFC 3339 timestamp. The redirect is followed by the
+// bound REST realization (the seed's ureq handler), so the response block names the text at the end
+// of it. A body the handler cannot read -- not UTF-8, or past its read cap -- is RestBodyUndecodable
+// with its status, never a truncated log reported as the whole one.
+//
 // THE FILTER IS A CALLER'S CHOICE AND WAS A LITERAL. "latest" returns only the most recent attempt
 // of each job, which is the right answer for "what is the current state" and the wrong one for any
 // census of consumed capacity: a re-run mutates a job's record in place, so the attempts "latest"
 // drops are execution that really happened and really occupied a runner. A caller measuring
 // occupancy needs "all"; a caller reading current state needs "latest"; neither is a property of
 // this operation, so the choice moves to the input with "latest" as the compatible default.
+// THE BEARER IS THE CALLER'S auth_token WHEN ONE IS GIVEN. Every operation already took auth_token,
+// and the service read only GITHUB_TOKEN, so a caller holding an installation token
+// (gunbc.github_effect_perform read_run_with / read_attempt_jobs_with) was silently read under the
+// ambient Actions credential. Declaring auth_input beside auth_source makes a non-empty auth_token the
+// bearer; a caller passing "" (gunbc.pr_base_freshness, gunbc.fleet_desired_admission,
+// gunbc.roadmap_launch_deployment_cli) falls through to GITHUB_TOKEN exactly as before.
 service github.WorkflowRuns {
   config {
     endpoint: default_api_base
     auth: Bearer
+    auth_input: auth_token
     auth_source: EnvVar { name: "GITHUB_TOKEN" }
   }
 
@@ -415,6 +441,33 @@ service github.WorkflowRuns {
       500 => GitHubErrorShape
     }
   }
+  operation DownloadJobLogsForWorkflowRun {
+    requires Network
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      job_id: String
+    }
+    output {
+      log: String
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/actions/jobs/\{job_id\}/logs",
+      response_format: Text
+    }
+    response {
+      200 => String
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      410 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
   operation ListJobs {
     requires Network
     input {
