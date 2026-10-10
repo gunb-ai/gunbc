@@ -59,18 +59,17 @@ type StepMemoryStructure {
   owner: StepDemandOwner
   scale: StepDemandScale
   live_at_seed_peak: Bool
-  live_during_cargo: Bool
   ender: StepDemandEnder
 }
 
 data self_host_step_memory_structures: List<StepMemoryStructure> = [
-  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "resolve_store", structure: "shared resolve store (entry_resolve PROCESS_RESOLVE_STORE)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, live_during_cargo: true, ender: ClosureScopedIngestion },
-  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "scope_and_reference_indexes", structure: "scope fragment, reference closure, scope order and reference edge caches (cli_run)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, live_during_cargo: true, ender: ClosureScopedIngestion },
-  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "emit_check_and_census_memos", structure: "emit-check and diagnostic census memos (cli_run)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, live_during_cargo: true, ender: ClosureScopedIngestion },
-  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "pool_content_tokens_newline", structure: "whole-tree token pool: V1LexArtifact + content + newline index of every pooled module (pool_acquire POOL)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, live_during_cargo: true, ender: ClosureScopedIngestion },
-  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "pool_heads", structure: "whole-tree parsed heads (pool_acquire Acquired.heads)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, live_during_cargo: true, ender: ClosureScopedIngestion },
-  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "resolve_index", structure: "shared resolve index / name census (entry_resolve PROCESS_RESOLVE_INDEX)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, live_during_cargo: true, ender: ClosureScopedIngestion },
-  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "module_graph_facts_and_path_index", structure: "module path index and graph facts caches (cli_run)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, live_during_cargo: true, ender: ClosureScopedIngestion },
+  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "resolve_store", structure: "shared resolve store (entry_resolve PROCESS_RESOLVE_STORE)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, ender: ClosureScopedIngestion },
+  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "scope_and_reference_indexes", structure: "scope fragment, reference closure, scope order and reference edge caches (cli_run)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, ender: ClosureScopedIngestion },
+  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "emit_check_and_census_memos", structure: "emit-check and diagnostic census memos (cli_run)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, ender: ClosureScopedIngestion },
+  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "pool_content_tokens_newline", structure: "whole-tree token pool: V1LexArtifact + content + newline index of every pooled module (pool_acquire POOL)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, ender: ClosureScopedIngestion },
+  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "pool_heads", structure: "whole-tree parsed heads (pool_acquire Acquired.heads)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, ender: ClosureScopedIngestion },
+  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "resolve_index", structure: "shared resolve index / name census (entry_resolve PROCESS_RESOLVE_INDEX)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, ender: ClosureScopedIngestion },
+  StepMemoryStructure { receipt_kind: "bucket", receipt_name: "module_graph_facts_and_path_index", structure: "module path index and graph facts caches (cli_run)", owner: SeedProcess, scale: WholeTree, live_at_seed_peak: true, ender: ClosureScopedIngestion },
 ]
 
 // ── reading the receipt ─────────────────────────────────────────────────────────────────────────
@@ -119,15 +118,13 @@ fn bytes_some(b: ByteSize) -> Optional<ByteSize> {
   Present { value: b }
 }
 
+// ONLY THE WRITER'S OWN SHAPE IS A RECEIPT LINE (review 78432): every line the seed writes has five
+// columns (stage: kind, seam, rss, peak, cell; bucket: kind, name, released, trimmed, cell). A line
+// of any other width -- the four-column bucket lines of the writer before review 78427, which
+// recorded only what malloc_trim returned -- carries no configuration cell here, so it never matches
+// a reading and the readout refuses the stale receipt instead of consuming it.
 fn receipt_configuration_cell(cols: List<String>) -> String {
-  let n = length(xs: cols)
-  if n == 4 {
-    receipt_column(cols: cols, index: 3)
-  } else if n == 5 {
-    receipt_column(cols: cols, index: 4)
-  } else {
-    ""
-  }
+  if length(xs: cols) == 5 { receipt_column(cols: cols, index: 4) } else { "" }
 }
 
 fn receipt_bytes_at(rows: List<List<String>>, kind: String, name: String) -> Optional<ByteSize> {
@@ -200,8 +197,6 @@ type StepPeakEffect
 type StepDemandTrend {
   change: StepDemandEnder
   removes_scale: StepDemandScale
-  removes_from_seed_peak: Bool
-  removes_from_cargo_phase: Bool
   step_peak: StepPeakEffect
   evidence: NonEmptyStr
 }
@@ -210,32 +205,24 @@ data self_host_step_demand_trend: List<StepDemandTrend> = [
   StepDemandTrend {
     change: PoolReleasedBeforeResolution,
     removes_scale: WholeTree,
-    removes_from_seed_peak: true,
-    removes_from_cargo_phase: true,
     step_peak: PeakLoweringExpected { ground: "pool_heads and pool_content_tokens_newline are whole-tree and live at the seed's moment; a release of the pool before compile_to_resolved_with_options removes them from the post_resolve resident set, and resolution re-acquires only a closure-sized set" },
     evidence: "the pool is held through resolution on this base; the change that releases it ships with its own receipt under a second configuration cell, and the row becomes PeakLoweringMeasured there, naming both cells",
   },
   StepDemandTrend {
     change: ClosureScopedIngestion,
     removes_scale: WholeTree,
-    removes_from_seed_peak: true,
-    removes_from_cargo_phase: true,
     step_peak: PeakLoweringExpected { ground: "every WholeTree structure in the receipt is built from the pooled modules, almost all of which are compiled for the census only" },
     evidence: "every WholeTree structure in the receipt is built from the pooled modules of which almost all are compiled for the census only",
   },
   StepDemandTrend {
     change: NativeCompilerReplacesInterpreter,
     removes_scale: EntryClosure,
-    removes_from_seed_peak: true,
-    removes_from_cargo_phase: false,
     step_peak: PeakLoweringExpected { ground: "the native generation-two compiler would hold its own closure working set instead of the interpreter's; its footprint is unmeasured" },
     evidence: "the native generation-two compiler would hold its own closure working set instead of the interpreter's; its footprint has not been measured and this row claims none",
   },
   StepDemandTrend {
     change: ShrinksOnlyWithEmittedCrate,
     removes_scale: EmittedCrate,
-    removes_from_seed_peak: false,
-    removes_from_cargo_phase: true,
     step_peak: PeakEffectUnclaimed,
     evidence: "rustc's footprint scales with the emitted crate; it is read by the cgroup sampler, which is the declared frontier and not a line in the receipt, so this row is a classification not a reading",
   },

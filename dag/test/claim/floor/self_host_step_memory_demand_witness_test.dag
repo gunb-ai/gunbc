@@ -92,3 +92,10 @@ test fn a_measured_lowering_is_re_derived_from_both_cells() -> Bool {
     && measured_lowering_holds(rows: after_only, effect: PeakLoweringExpected { ground: "a bet" as NonEmptyStr })
     && measured_lowering_holds(rows: after_only, effect: PeakEffectUnclaimed)
 }
+
+// A receipt written by the writer before review 78427 has four-column bucket lines; the reader must
+// refuse it rather than read a trimmed-only figure as a resident drop.
+test fn a_four_column_bucket_line_from_the_old_writer_refuses() -> Bool {
+  let rows = map(complete_rows(), r => if receipt_column(cols: r, index: 0) == "bucket" && receipt_column(cols: r, index: 1) == "resolve_store" { ["bucket", "resolve_store", "1048576", cfg()] } else { r })
+  !is_success(exit: self_host_step_memory_readout_over(rows: rows))
+}
