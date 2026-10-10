@@ -13,7 +13,7 @@ import gunbc.auth.github_apps { DeclaredGitHubApp, GitHubAppControlPlaneState }
 import gunbc.auth.github_credential {
   GitHubCredentialAuthority, CredentialCapability, credential_authorizes, unsatisfied_capabilities,
 }
-import gunbc.runner_jit_mint { JitSlot }
+import gunbc.runner.jit_registration_subject { JitRegistrationSubject }
 import gunbc.runner.runner_jit_perform {
   JitMintDispatch, JitMintDispatchAuthorized, JitMintDispatchRefused, authority_installation,
 }
@@ -44,13 +44,13 @@ type JitSlotExit
 // THE SUBJECT IS MINTED FROM THE AUTHORIZED DISPATCH AND NOWHERE ELSE. jit_registration_of is its
 // only constructor, so the runner this fold may delete is one an authorized mint named -- a caller
 // cannot point the delete at an arbitrary runner name. The name is fixed by the dispatch BEFORE
-// GitHub answers (gunbc.runner_jit_mint jit_slot_runner_name), so a mint whose answer was lost --
+// GitHub answers (gunbc.runner.jit_registration_subject JitRegistrationSubject name), so a mint whose answer was lost --
 // the one case where a runner may exist under an id nobody received -- still yields a subject. The
 // App and installation are the dispatch's, so the token that deletes must be the one that minted.
 type JitRegistration sole_constructor {
   organization: GitHubOrganizationRef
   name: JitRunnerName
-  slot: JitSlot
+  subject: JitRegistrationSubject
   app: DeclaredGitHubApp
   installation: GitHubAppInstallationId
 }
@@ -59,7 +59,7 @@ fn jit_registration_of(dispatch: JitMintDispatch) -> JitRegistration? {
   match dispatch {
     JitMintDispatchRefused { refusal: _ } => none
     JitMintDispatchAuthorized { dispatch: d } =>
-      Present { value: JitRegistration { organization: d.organization, name: d.request.name, slot: d.slot, app: d.app, installation: d.installation } }
+      Present { value: JitRegistration { organization: d.organization, name: d.request.name, subject: d.subject, app: d.app, installation: d.installation } }
   }
 }
 

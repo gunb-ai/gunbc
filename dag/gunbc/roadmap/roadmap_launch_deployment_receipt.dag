@@ -41,8 +41,9 @@ import extdeps.git.object_store { git_object_id_wire_hex }
 import gunbc.deploy_transition { ActuationStanding, ActuationPermitted, ActuationInhibited, ActuationStandingUnreadable }
 import gunbc.live_deploy.unit_standing {
   LaunchUnitStanding,
-  DashboardServiceConverged, DashboardServiceRefused, BeltTimerConverged, BeltTimerRefused, BeltOneshotConverged, BeltOneshotRefused,
-  dashboard_service_standing_text, belt_timer_standing_text, belt_oneshot_standing_text,
+  DashboardServiceConverged, DashboardServiceRefused, BeltOneshotConverged, BeltOneshotRefused,
+  BeltEventPathStanding, BeltEventPathConverged, BeltEventPathRefused,
+  dashboard_service_standing_text, belt_event_path_standing_text, belt_oneshot_standing_text,
 }
 import gunbc.roadmap_belt_actuate {
   BeltTickReceipt, BeltTickReceiptRead, BeltTickReceiptPresent, BeltTickReceiptAbsent, BeltTickReceiptUnreadable,
@@ -52,7 +53,7 @@ import gunbc.roadmap_belt_actuate {
 }
 import gunbc.roadmap_belt { SpawnMode, ManualReady, spawn_mode_label }
 import gunbc.roadmap_launch_deployment_observe {
-  TickFreshness, TickFresh, TickStale, TickBeforeDeploy, TickInstantUnparseable, TickCadenceUnnormalizable, tick_freshness_text,
+  EventBacklogFact, EventBacklogClear, StaleBacklog, EventBacklogUnobserved, event_backlog_text, event_backlog_stage_label,
 }
 
 // THE ONE JOIN THE ROADMAP LAUNCH MVP'S RLM-2 GATE PRODUCES. Every independent read RUNS -- desired
@@ -116,8 +117,11 @@ type ReadinessFact
   = ReadinessServed { revision: String, surface: String }
   | ReadinessRefused { detail: String }
 
+// THE LAST LAUNCH PASS, with no freshness bound: the launch runs on events, not on a clock, so the age
+// of its receipt is not evidence of liveness (that is the event backlog row). What the receipt still
+// establishes is which instance, revision and mode the belt last launched under.
 type TickFact
-  = TickObserved { receipt: BeltTickReceipt, freshness: TickFreshness }
+  = TickObserved { receipt: BeltTickReceipt }
   | TickUnobserved { detail: String }
 
 type DispatchPreflightFact
@@ -165,6 +169,7 @@ type RoadmapLaunchDeploymentFacts {
   transition: ActuationStanding
   unit_standing: LaunchUnitStanding
   tick_standing: TickFact
+  event_backlog: EventBacklogFact
   footprint: BeltFootprintAdmission
   provider_preflight: BeltProviderPreflight
   dispatch_preflight: DispatchPreflightFact
@@ -456,22 +461,25 @@ fn unit_standing_blockers(f: LaunchUnitStanding) -> List<RoadmapLaunchDeployment
     DashboardServiceConverged { unit: _ } => []
     DashboardServiceRefused { unit: _, property: _, expected: _, observed: _ } => blocker(member: "unit_standing", detail: dashboard_service_standing_text(s: f.dashboard))
   }
-  let timer = match f.timer {
-    BeltTimerConverged { unit: _ } => []
-    BeltTimerRefused { unit: _, property: _, expected: _, observed: _ } => blocker(member: "unit_standing", detail: belt_timer_standing_text(s: f.timer))
+  let exit_path = match f.exit_path {
+    BeltEventPathConverged { unit: _ } => []
+    BeltEventPathRefused { unit: _, property: _, expected: _, observed: _ } => blocker(member: "unit_standing", detail: belt_event_path_standing_text(s: f.exit_path))
+  }
+  let answer_path = match f.answer_path {
+    BeltEventPathConverged { unit: _ } => []
+    BeltEventPathRefused { unit: _, property: _, expected: _, observed: _ } => blocker(member: "unit_standing", detail: belt_event_path_standing_text(s: f.answer_path))
   }
   let oneshot = match f.oneshot {
     BeltOneshotConverged { unit: _, active_state: _ } => []
     BeltOneshotRefused { unit: _, property: _, expected: _, observed: _ } => blocker(member: "unit_standing", detail: belt_oneshot_standing_text(s: f.oneshot))
   }
-  concat(concat(dashboard, timer), oneshot)
+  concat(concat(concat(dashboard, exit_path), answer_path), oneshot)
 }
 
 fn tick_blockers(s: RoadmapLaunchDeploymentSubject, f: TickFact) -> List<RoadmapLaunchDeploymentBlocker> {
   match f {
     TickUnobserved { detail: d } => blocker(member: "tick_standing", detail: d)
-    TickObserved { receipt: r, freshness: fr } =>
-      concat(
+    TickObserved { receipt: r } =>
         match r.execution {
           TickExecutionWithheld { refusal: why } => blocker(member: "tick_standing", detail: join(["tick execution withheld: ", why], ""))
           TickExecuted { instance_id: i, deployed_revision: rev, spawn_mode: m } =>
@@ -486,15 +494,15 @@ fn tick_blockers(s: RoadmapLaunchDeploymentSubject, f: TickFact) -> List<Roadmap
                 AutomaticReady => blocker(member: "tick_standing", detail: join(["tick ran under ", spawn_mode_label(m: m), ", not manual_ready"], ""))
               },
             )
-        },
-        match fr {
-          TickFresh { age_seconds: _ } => []
-          TickStale { age_seconds: _, bound_seconds: _ } => blocker(member: "tick_standing", detail: tick_freshness_text(f: fr))
-          TickBeforeDeploy { observed_at: _, deploy_completed_at: _ } => blocker(member: "tick_standing", detail: tick_freshness_text(f: fr))
-          TickInstantUnparseable { which: _, text: _ } => blocker(member: "tick_standing", detail: tick_freshness_text(f: fr))
-          TickCadenceUnnormalizable { text: _ } => blocker(member: "tick_standing", detail: tick_freshness_text(f: fr))
-        },
-      )
+        }
+  }
+}
+
+fn event_backlog_blockers(f: EventBacklogFact) -> List<RoadmapLaunchDeploymentBlocker> {
+  match f {
+    EventBacklogClear { inbox: _, queued: _ } => []
+    StaleBacklog { stage: _, entry: _, age: _, bound: _ } => blocker(member: "event_backlog", detail: event_backlog_text(f: f))
+    EventBacklogUnobserved { detail: _ } => blocker(member: "event_backlog", detail: event_backlog_text(f: f))
   }
 }
 
@@ -536,7 +544,7 @@ fn workflow_endpoint_blockers(tick: TickFact, f: WorkflowEndpointFact) -> List<R
           BeltTickReceiptPresent { receipt: served_receipt } =>
             match tick {
               TickUnobserved { detail: _ } => []
-              TickObserved { receipt: on_disk, freshness: _ } =>
+              TickObserved { receipt: on_disk } =>
                 if belt_tick_receipt_identity_hex(receipt: served_receipt) != belt_tick_receipt_identity_hex(receipt: on_disk) {
                   blocker(member: "workflow_endpoint", detail: "/workflow.json embeds a tick receipt other than the one on the instance")
                 } else { [] }
@@ -682,7 +690,7 @@ fn roadmap_launch_deployment_blockers(s: RoadmapLaunchDeploymentSubject, f: Road
     ),
     concat(
       concat(
-        concat(unit_standing_blockers(f: f.unit_standing), tick_blockers(s: s, f: f.tick_standing)),
+        concat(unit_standing_blockers(f: f.unit_standing), concat(tick_blockers(s: s, f: f.tick_standing), event_backlog_blockers(f: f.event_backlog))),
         concat(footprint_blockers(f: f.footprint), provider_blockers(f: f.provider_preflight)),
       ),
       concat(
@@ -804,9 +812,10 @@ fn facts_lines(f: RoadmapLaunchDeploymentFacts) -> List<String> {
     }], ""),
     join(["unit_standing: ", launch_unit_standing_text(s: f.unit_standing)], ""),
     join(["tick_standing: ", match f.tick_standing {
-      TickObserved { receipt: r, freshness: fr } => join(["identity=", belt_tick_receipt_identity_hex(receipt: r), " observed_at=", r.observed_at, " ", tick_freshness_text(f: fr)], "")
+      TickObserved { receipt: r } => join(["identity=", belt_tick_receipt_identity_hex(receipt: r), " observed_at=", r.observed_at], "")
       TickUnobserved { detail: d } => join(["unobserved: ", d], "")
     }], ""),
+    join(["event_backlog: ", event_backlog_text(f: f.event_backlog)], ""),
     join(["footprint: ", match f.footprint {
       FootprintAdmitted => "admitted"
       FootprintRefused { step: st, detail: d } => join(["refused at ", st, ": ", d], "")
@@ -920,17 +929,15 @@ fn facts_json(f: RoadmapLaunchDeploymentFacts) -> JsonValue {
         DashboardServiceConverged { unit: u } => fact_arm(arm: "converged", members: [json_kv(key: "unit", value: json_string(s: u))])
         DashboardServiceRefused { unit: u, property: pr, expected: e, observed: o } => fact_arm(arm: "refused", members: [json_kv(key: "unit", value: json_string(s: u)), json_kv(key: "property", value: json_string(s: pr)), json_kv(key: "expected", value: json_string(s: e)), json_kv(key: "observed", value: json_string(s: o))])
       }),
-      json_kv(key: "timer", value: match f.unit_standing.timer {
-        BeltTimerConverged { unit: u } => fact_arm(arm: "converged", members: [json_kv(key: "unit", value: json_string(s: u))])
-        BeltTimerRefused { unit: u, property: pr, expected: e, observed: o } => fact_arm(arm: "refused", members: [json_kv(key: "unit", value: json_string(s: u)), json_kv(key: "property", value: json_string(s: pr)), json_kv(key: "expected", value: json_string(s: e)), json_kv(key: "observed", value: json_string(s: o))])
-      }),
+      json_kv(key: "exit_path", value: belt_event_path_standing_json(s: f.unit_standing.exit_path)),
+      json_kv(key: "answer_path", value: belt_event_path_standing_json(s: f.unit_standing.answer_path)),
       json_kv(key: "oneshot", value: match f.unit_standing.oneshot {
         BeltOneshotConverged { unit: u, active_state: a } => fact_arm(arm: "converged", members: [json_kv(key: "unit", value: json_string(s: u)), json_kv(key: "active_state", value: json_string(s: a))])
         BeltOneshotRefused { unit: u, property: pr, expected: e, observed: o } => fact_arm(arm: "refused", members: [json_kv(key: "unit", value: json_string(s: u)), json_kv(key: "property", value: json_string(s: pr)), json_kv(key: "expected", value: json_string(s: e)), json_kv(key: "observed", value: json_string(s: o))])
       }),
     ])),
     json_kv(key: "tick_standing", value: match f.tick_standing {
-      TickObserved { receipt: r, freshness: fr } =>
+      TickObserved { receipt: r } =>
         fact_arm(arm: "observed", members: [
           json_kv(key: "receipt_identity", value: json_string(s: belt_tick_receipt_identity_hex(receipt: r))),
           json_kv(key: "observed_at", value: json_string(s: r.observed_at)),
@@ -938,15 +945,13 @@ fn facts_json(f: RoadmapLaunchDeploymentFacts) -> JsonValue {
             TickExecuted { instance_id: i, deployed_revision: rev, spawn_mode: m } => fact_arm(arm: "executed", members: [json_kv(key: "instance_id", value: json_string(s: i)), json_kv(key: "deployed_revision", value: json_string(s: rev)), json_kv(key: "spawn_mode", value: json_string(s: spawn_mode_label(m: m)))])
             TickExecutionWithheld { refusal: why } => fact_arm(arm: "withheld", members: [json_kv(key: "refusal", value: json_string(s: why))])
           }),
-          json_kv(key: "freshness", value: match fr {
-            TickFresh { age_seconds: ag } => fact_arm(arm: "fresh", members: [json_kv(key: "age_seconds", value: json_string(s: to_string(second_count(ag))))])
-            TickStale { age_seconds: ag, bound_seconds: bd } => fact_arm(arm: "stale", members: [json_kv(key: "age_seconds", value: json_string(s: to_string(second_count(ag)))), json_kv(key: "bound_seconds", value: json_string(s: to_string(second_count(bd))))])
-            TickBeforeDeploy { observed_at: ob, deploy_completed_at: dc } => fact_arm(arm: "before_deploy", members: [json_kv(key: "observed_at", value: json_string(s: ob)), json_kv(key: "deploy_completed_at", value: json_string(s: dc))])
-            TickInstantUnparseable { which: wh, text: tx } => fact_arm(arm: "instant_unparseable", members: [json_kv(key: "which", value: json_string(s: wh)), json_kv(key: "text", value: json_string(s: tx))])
-            TickCadenceUnnormalizable { text: tx } => fact_arm(arm: "cadence_unnormalizable", members: [json_kv(key: "text", value: json_string(s: tx))])
-          }),
         ])
       TickUnobserved { detail: d } => fact_arm(arm: "unobserved", members: [json_kv(key: "detail", value: json_string(s: d))])
+    }),
+    json_kv(key: "event_backlog", value: match f.event_backlog {
+      EventBacklogClear { inbox: i, queued: q } => fact_arm(arm: "clear", members: [json_kv(key: "inbox", value: json_string(s: to_string(value: i))), json_kv(key: "queued", value: json_string(s: to_string(value: q)))])
+      StaleBacklog { stage: st, entry: en, age: ag, bound: bd } => fact_arm(arm: "stale", members: [json_kv(key: "stage", value: json_string(s: event_backlog_stage_label(stage: st))), json_kv(key: "entry", value: json_string(s: en)), json_kv(key: "age_seconds", value: json_string(s: to_string(value: second_count(s: ag)))), json_kv(key: "bound_seconds", value: json_string(s: to_string(value: second_count(s: bd))))])
+      EventBacklogUnobserved { detail: d } => fact_arm(arm: "unobserved", members: [json_kv(key: "detail", value: json_string(s: d))])
     }),
     json_kv(key: "footprint", value: match f.footprint {
       FootprintAdmitted => fact_arm(arm: "admitted", members: [])
@@ -1044,5 +1049,12 @@ fn verdict_receipt_identity(v: RoadmapLaunchDeploymentVerdict) -> String {
   match v {
     DeploymentComplete { subject: _, facts: _, proof: p } => p.receipt_identity
     DeploymentIncomplete { subject: s, facts: f, first_blocker: _, further_blockers: _ } => roadmap_launch_deployment_receipt_identity_hex(subject: s, facts: f)
+  }
+}
+
+fn belt_event_path_standing_json(s: BeltEventPathStanding) -> JsonValue {
+  match s {
+    BeltEventPathConverged { unit: u } => fact_arm(arm: "converged", members: [json_kv(key: "unit", value: json_string(s: u))])
+    BeltEventPathRefused { unit: u, property: pr, expected: e, observed: o } => fact_arm(arm: "refused", members: [json_kv(key: "unit", value: json_string(s: u)), json_kv(key: "property", value: json_string(s: pr)), json_kv(key: "expected", value: json_string(s: e)), json_kv(key: "observed", value: json_string(s: o))])
   }
 }

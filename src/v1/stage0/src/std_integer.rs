@@ -11,7 +11,10 @@ pub use crate::std_induction::int_pow_bounded;
 pub use crate::std_machine_constraints::PointerWidth;
 pub use crate::std_machine_constraints::{Compose, MachineWidth};
 pub use crate::std_measure::{bit_width, bit_width_count, bits_per_byte};
-pub use crate::std_nat::Nat;
+use crate::std_nat::DecimalDigit::{D0, D1, D2, D3, D4, D5, D6, D7, D8, D9};
+use crate::std_nat::DecimalDigitSuccessor::{DecimalDigitCarry, DecimalDigitNext};
+pub use crate::std_nat::{decimal_digit_glyph, decimal_digit_successor, decimal_digit_value};
+pub use crate::std_nat::{DecimalDigit, DecimalDigitSuccessor, Nat};
 pub use crate::std_optional::Optional;
 pub use crate::std_types::gt_zero;
 pub use crate::std_types::List;
@@ -129,13 +132,7 @@ pub fn first_uint8_out_of_range(mut __tco_loop_remaining: Rc<Vec<i64>>) -> Optio
                     break Some(o.clone());
                 }
                 UInt8Result::UInt8Ready { value: _, .. } => {
-                    let __tco_0 = Rc::new(
-                        remaining
-                            .iter()
-                            .cloned()
-                            .skip(1 as usize)
-                            .collect::<Vec<_>>(),
-                    );
+                    let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
                     __tco_loop_remaining = __tco_0;
                     continue;
                 }
@@ -199,6 +196,61 @@ pub fn uint8_channel_inclusive_max_value_derived() -> Option<Int> {
         Some(two_pow) => Some(v1_rt::int_sub(two_pow.clone(), 1)),
         std::option::Option::None => std::option::Option::None,
     }
+}
+
+pub fn decimal_digit_of_units(value: Int) -> DecimalDigit {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if (value.clone() >= 10) {
+            decimal_digit_of_units(v1_rt::int_sub(value.clone(), 10))
+        } else {
+            if (value.clone() < v1_rt::int_neg(9)) {
+                decimal_digit_of_units(v1_rt::int_add(value.clone(), 10))
+            } else {
+                if (value.clone() < 0) {
+                    decimal_digit_of_units(v1_rt::int_sub(0, value.clone()))
+                } else {
+                    if (value.clone() == 0) {
+                        DecimalDigit::D0
+                    } else {
+                        decimal_digit_advance(decimal_digit_of_units(v1_rt::int_sub(
+                            value.clone(),
+                            1,
+                        )))
+                    }
+                }
+            }
+        }
+    })
+}
+
+pub fn decimal_digit_advance(d: DecimalDigit) -> DecimalDigit {
+    match (*crate::std_nat::decimal_digit_successor(d.clone())).clone() {
+        DecimalDigitSuccessor::DecimalDigitNext { digit: next, .. } => next.clone(),
+        DecimalDigitSuccessor::DecimalDigitCarry => DecimalDigit::D0,
+    }
+}
+
+pub fn int_to_decimal_string(value: Int) -> String {
+    if (value.clone() < 0) {
+        v1_rt::concat("-".to_string(), int_digits_to_decimal_string(value.clone()))
+    } else {
+        int_digits_to_decimal_string(value.clone())
+    }
+}
+
+pub fn int_digits_to_decimal_string(value: Int) -> String {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let rest = v1_rt::int_div(value.clone(), 10);
+        let digit = crate::std_nat::decimal_digit_glyph(decimal_digit_of_units(v1_rt::int_sub(
+            value.clone(),
+            v1_rt::int_mul(rest.clone(), 10),
+        )));
+        if (rest.clone() == 0) {
+            digit.clone()
+        } else {
+            v1_rt::concat(int_digits_to_decimal_string(rest.clone()), digit.clone())
+        }
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

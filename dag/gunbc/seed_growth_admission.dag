@@ -60,6 +60,7 @@ import gunbc.qualified_pipe_callee_seed_growth { qualified_pipe_callee_seed_grow
 import gunbc.shared_fill_attribution_seed_growth { shared_fill_attribution_seed_growth_justification }
 import gunbc.pool_reading_attribution_seed_growth { pool_reading_attribution_seed_growth_justification }
 import gunbc.source_root_eval_driver_seed_growth { source_root_eval_driver_seed_growth_justification }
+import gunbc.memory_envelope_receipt_seed_growth { memory_envelope_receipt_seed_growth_justification }
 import gunbc.gen_one_executable_keep_seed_growth { gen_one_executable_keep_seed_growth_justification }
 import gunbc.emitted_build_failure_retention_seed_growth { emitted_build_failure_retention_seed_growth_justification }
 import gunbc.native_claim_program_seed_growth { native_claim_program_seed_growth_justification }
@@ -96,6 +97,8 @@ import gunbc.floor_checker_input_seed_growth { floor_checker_input_seed_growth_j
 import gunbc.data_eval_counters_seed_growth { data_eval_counters_seed_growth_justification }
 import gunbc.param_binder_seed_growth { param_binder_seed_growth_justification }
 import gunbc.process_lifecycle_seed_growth { process_lifecycle_seed_growth_justification }
+import gunbc.run_arg_typed_bind_seed_growth { run_arg_typed_bind_seed_growth_justification }
+import gunbc.rust_shell_stderr_capture_seed_growth { rust_shell_stderr_capture_seed_growth_justification }
 import gunbc.rust_item_host_observation {
   ItemDeclarationRefProjection,
   LiveHandRustObservation,
@@ -309,6 +312,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     shared_fill_attribution_seed_growth_justification,
     pool_reading_attribution_seed_growth_justification,
     source_root_eval_driver_seed_growth_justification,
+    memory_envelope_receipt_seed_growth_justification,
     gen_one_executable_keep_seed_growth_justification,
     emitted_build_failure_retention_seed_growth_justification,
     native_claim_program_seed_growth_justification,
@@ -383,7 +387,9 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     value_depth_seed_growth_justification,
     value_drop_binding_adaptation_seed_growth_justification,
     process_lifecycle_seed_growth_justification,
-    native_product_cache_seed_growth_justification
+    native_product_cache_seed_growth_justification,
+    run_arg_typed_bind_seed_growth_justification,
+    rust_shell_stderr_capture_seed_growth_justification
   ]
 }
 

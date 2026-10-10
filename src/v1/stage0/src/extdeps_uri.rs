@@ -118,18 +118,15 @@ pub fn uri_from_wire(url: String) -> Option<Rc<Uri>> {
             ParsedHrefScheme::UnknownHref => std::option::Option::None,
             ParsedHrefScheme::HrefScheme { scheme: scheme, .. } => {
                 let prefix = uri_scheme_wire(scheme.clone());
-                let locator = Rc::new(
-                    Rc::new(
+                let locator = Rc::new(v1_rt::list_skip(
+                    &Rc::new(
                         s.clone()
                             .split(&prefix.clone())
                             .map(|s| s.to_string())
                             .collect::<Vec<_>>(),
-                    )
-                    .iter()
-                    .cloned()
-                    .skip(1 as usize)
-                    .collect::<Vec<_>>(),
-                )
+                    ),
+                    1,
+                ))
                 .join(&prefix.clone());
                 if (v1_rt::starts_with(s.clone(), prefix.clone())
                     && !(locator.clone() == "".to_string()))

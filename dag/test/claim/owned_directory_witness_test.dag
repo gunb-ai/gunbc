@@ -1,0 +1,133 @@
+module test.claim.owned_directory_witness_test
+
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import extdeps.posix.identity { PosixOwnerNames }
+import gunbc.managed_directory { DirectoryOwnerOnly }
+import gunbc.ensure { EnsureMayApply, EnsureObserveOnly, EnsureObservation, EnsureObserved, EnsureAbsent, EnsureInaccessible }
+import std.upsert_decision { Noop, Apply, Refuse }
+import gunbc.owned_directory {
+  OwnedDirectoryTarget, OwnedDirectoryDeclared, OwnedDirectoryReading,
+  owned_directory_decide, owned_directory_reading_of_stat_line, owned_directory_observe,
+  ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverFailure, ObserverNotSpawned, ObserverExited, ObserverTransportRefused,
+  owned_directory_ensure, OwnedDirectoryEnsured, OwnedDirectoryEnsureRefused,
+}
+
+// THE PROVIDER'S DECISION TABLE, over supplied observations (DESIGN 3: one interface, supplied values).
+// The real path -- a stat line read off a host and parsed -- is inhabited by the parse claims below and
+// by the live_deploy route claims in test.claim.live_deploy.owned_directory_route_witness_test.
+
+fn target() -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: "auth-sessions" as NonEmptyStr,
+    path: "/srv/instance/auth-sessions" as FilePath,
+    owner: PosixOwnerNames { user: "svc" as NonEmptyStr, group: "svc" as NonEmptyStr },
+    mode: DirectoryOwnerOnly,
+  }
+}
+
+fn observed(line: String) -> EnsureObservation<OwnedDirectoryReading> {
+  owned_directory_observe(path: "/srv/instance/auth-sessions" as FilePath, list: p => ObserverReadOut { stdout: "auth-sessions\n" }, stat: p => ObserverReadOut { stdout: line })
+}
+
+fn decision_label(o: EnsureObservation<OwnedDirectoryReading>, may_apply: Bool) -> String {
+  match owned_directory_decide(policy: if may_apply { EnsureMayApply } else { EnsureObserveOnly }, target: target(), observation: o) {
+    Noop => "noop"
+    Apply { plan: _ } => "apply"
+    Refuse { reason } => join(["refuse:", reason as String], "")
+  }
+}
+
+// The stat line parses into owner, group and mode; a malformed line is no reading at all.
+test fn the_stat_identity_line_parses_and_a_malformed_line_does_not() -> Bool {
+  let parsed = match owned_directory_reading_of_stat_line(line: "directory|svc|svc|700\n") {
+    Present { value: r } => r.is_directory && (r.owner.user as String) == "svc"
+    Absent => false
+  }
+  let malformed = match owned_directory_reading_of_stat_line(line: "directory|svc|700") {
+    Present { value: _ } => false
+    Absent => true
+  }
+  parsed && malformed
+}
+
+// CONVERGED -> NOOP: a second apply over a converged directory does nothing.
+test fn a_converged_directory_is_noop() -> Bool {
+  decision_label(o: observed(line: "directory|svc|svc|700"), may_apply: true) == "noop"
+}
+
+// FOREIGN OWNER -> REFUSE, NEVER ADOPTED, under May-apply. The red control is the same directory under
+// the demanded owner, which is Noop.
+test fn a_foreign_owner_refuses_and_is_never_adopted() -> Bool {
+  starts_with(s: decision_label(o: observed(line: "directory|root|root|700"), may_apply: true), prefix: "refuse:")
+    && string_contains(s: decision_label(o: observed(line: "directory|root|root|700"), may_apply: true), pattern: "never adopted")
+}
+
+// A NON-DIRECTORY IS NEVER REPLACED.
+test fn a_non_directory_refuses() -> Bool {
+  starts_with(s: decision_label(o: observed(line: "regular file|svc|svc|700"), may_apply: true), prefix: "refuse:")
+}
+
+// ── THE OBSERVATION CONTRACT: ABSENCE IS ESTABLISHED BY A READ, NEVER INFERRED FROM A FAILURE ────
+//
+// Routes are stubbed at the contract (DESIGN 3: supplied values at one interface): `list` and `stat`
+// return what a read of one directory returned, or the typed origin of why nothing was read.
+fn listing(stdout: String) -> ObserverRead { ObserverReadOut { stdout: stdout } }
+
+fn observe_with(list: fn(FilePath) -> ObserverRead, stat: fn(FilePath) -> ObserverRead) -> EnsureObservation<OwnedDirectoryReading> {
+  owned_directory_observe(path: "/srv/instance/auth-sessions" as FilePath, list: list, stat: stat)
+}
+
+data missing_observer: ObserverFailure = ObserverNotSpawned { cause: "No such file or directory" }
+
+// GREEN POSITIVE: the parent's listing was read and does not name the directory -> absent -> May-apply
+// installs. And a parent that is itself not listed in ITS parent makes the child absent too.
+test fn a_parent_listing_that_omits_the_directory_establishes_absence() -> Bool {
+  decision_label(o: observe_with(list: p => listing(stdout: "other\nauth-jwks\n"), stat: p => listing(stdout: "")), may_apply: true) == "apply"
+    && decision_label(o: observe_with(
+      list: p => if (p as String) == "/srv/instance" { ObserverReadFailed { origin: ObserverExited { exit_code: 2, stderr: "" } } } else { listing(stdout: "bin\n") },
+      stat: p => listing(stdout: ""),
+    ), may_apply: true) == "apply"
+}
+
+// LISTED, THEN STAT: a listed directory at the demanded identity is converged.
+test fn a_listed_directory_reads_its_identity_from_stat() -> Bool {
+  decision_label(o: observe_with(list: p => listing(stdout: "auth-sessions\n"), stat: p => listing(stdout: "directory|svc|svc|700")), may_apply: true) == "noop"
+}
+
+// A MISSING OBSERVER EXECUTABLE IS NOT AN ABSENT DIRECTORY, whatever text it carries: the listing was
+// never read, so presence is unestablished -> refuse. ZERO INSTALL CALLS: the provider is driven with a
+// `run` that would report failure; had it been called, the receipt would carry "Apply was paired with
+// NotApplied". Its GREEN POSITIVE is the same provider over an established absence, where run IS called.
+test fn a_missing_observer_executable_is_inaccessible_and_installs_nothing() -> Bool {
+  let unread = p => ObserverReadFailed { origin: missing_observer }
+  let exited = p => ObserverReadFailed { origin: ObserverExited { exit_code: 127, stderr: "env: '/usr/bin/ls': No such file or directory" } }
+  starts_with(s: decision_label(o: observe_with(list: unread, stat: unread), may_apply: true), prefix: "refuse:")
+    && starts_with(s: decision_label(o: observe_with(list: exited, stat: exited), may_apply: true), prefix: "refuse:")
+    && match owned_directory_ensure(policy: EnsureMayApply, target: target(), observe: p => observe_with(list: unread, stat: unread), run: plan => false) {
+      OwnedDirectoryEnsured { target: _, converged: _ } => false
+      OwnedDirectoryEnsureRefused { target: _, reason } => !string_contains(s: reason, pattern: "Apply was paired with NotApplied")
+    }
+    && match owned_directory_ensure(policy: EnsureMayApply, target: target(), observe: p => observe_with(list: q => listing(stdout: ""), stat: q => listing(stdout: "")), run: plan => false) {
+      OwnedDirectoryEnsured { target: _, converged: _ } => false
+      OwnedDirectoryEnsureRefused { target: _, reason } => string_contains(s: reason, pattern: "Apply was paired with NotApplied")
+    }
+}
+
+// A TRANSPORT FAILURE CARRYING THE SAME TEXT IS INACCESSIBLE, and so is a refused grant (an observer
+// that ran and exited nonzero): the origin is typed, and no failed read establishes anything.
+test fn a_transport_or_grant_failure_is_inaccessible() -> Bool {
+  starts_with(s: decision_label(o: observe_with(list: p => ObserverReadFailed { origin: ObserverTransportRefused { cause: "ssh: /srv/x: No such file or directory" } }, stat: p => listing(stdout: "")), may_apply: true), prefix: "refuse:")
+    && starts_with(s: decision_label(o: observe_with(list: p => ObserverReadFailed { origin: ObserverExited { exit_code: 1, stderr: "sudo: a password is required" } }, stat: p => listing(stdout: "")), may_apply: true), prefix: "refuse:")
+    && starts_with(s: decision_label(o: observe_with(list: p => listing(stdout: "auth-sessions\n"), stat: p => ObserverReadFailed { origin: ObserverExited { exit_code: 1, stderr: "Permission denied" } }), may_apply: true), prefix: "refuse:")
+}
+// OBSERVE-ONLY AND ABSENT -> REFUSE; May-apply on the same observation applies.
+test fn observe_only_absent_refuses() -> Bool {
+  let absent = EnsureAbsent { reason: "absent" }
+  starts_with(s: decision_label(o: absent, may_apply: false), prefix: "refuse:")
+    && decision_label(o: absent, may_apply: true) == "apply"
+}
+
+// A MODE DRIFT ON THE DEMANDED OWNER'S DIRECTORY IS REPAIRED, not refused.
+test fn a_mode_drift_on_the_owners_directory_applies() -> Bool {
+  decision_label(o: observed(line: "directory|svc|svc|755"), may_apply: true) == "apply"
+}

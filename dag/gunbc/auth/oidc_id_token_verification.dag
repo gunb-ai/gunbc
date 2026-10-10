@@ -61,7 +61,8 @@ import extdeps.filesystem.filesystem_io {
 import extdeps.gunbc
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.principal_projection { google_oidc_issuer }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_auth_store_root, DashboardAuthJwksCache }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_private_directory }
+import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
 
 // ── The Google endpoints and cache policy ──────────────────────────────────────────────────────
 // THE GOOGLE REALIZATION FACTS as data rows: the JWKS endpoint this module fetches and the
@@ -801,10 +802,16 @@ type JwksCacheLayout {
   file: String
 }
 
+// THE DIRECTORY THE JWKS CACHE DEMANDS; the layout's directory is read off it (gunbc.owned_directory).
+fn jwks_cache_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
+  dashboard_instance_private_directory(instance: instance, member: "auth-jwks" as NonEmptyStr, child: "auth-jwks")
+}
+
 fn jwks_cache_layout_for_instance(instance: HostDashboardInstance) -> JwksCacheLayout {
+  let dir = owned_directory_path(t: jwks_cache_directory(instance: instance))
   JwksCacheLayout {
-    dir: dashboard_instance_auth_store_root(instance: instance, store: DashboardAuthJwksCache),
-    file: join([(dashboard_instance_auth_store_root(instance: instance, store: DashboardAuthJwksCache) as String), "/", jwks_cache_file_name], ""),
+    dir: dir,
+    file: join([dir as String, "/", jwks_cache_file_name], ""),
   }
 }
 

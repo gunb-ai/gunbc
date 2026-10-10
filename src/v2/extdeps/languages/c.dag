@@ -1,5 +1,15 @@
 module v2.extdeps.languages.c
 
+import gunbc.crate_partition {
+  ByValueTypeCycle,
+  CompilationUnitId,
+  ModuleId,
+  PartitionInputRejected,
+  PartitionR4Refused,
+  PartitionR4Valid,
+  PartitionR4ValidityVerdict
+}
+
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.arrow_signature { anonymous_signature_arrow }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
@@ -119,11 +129,8 @@ import v2.std.host_transport {
   WorkspaceFile
 }
 import v2.std.compilers.compilation_unit {
-  ByValueTypeCycle,
   CompilationUnit,
-  CompilationUnitId,
   ModuleDag,
-  ModuleId,
   ModuleTypeDefinitionRow,
   MembersResolve,
   MembersResolveOk,
@@ -131,10 +138,6 @@ import v2.std.compilers.compilation_unit {
   PartitionFoldOk,
   PartitionFoldOutcome,
   PartitionFoldRefused,
-  PartitionInputRejected,
-  PartitionR4Refused,
-  PartitionR4Valid,
-  PartitionR4ValidityVerdict,
   ResolvedModuleInterface,
   module_unit_id,
   partition_fold_outcome,

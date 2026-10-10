@@ -69,6 +69,13 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // Re-adding any one falsifier cadence would restore one door; it would not restore
 // the refusal, which needs a required run to enter the discovery path. Both halves
 // are in the restoration trigger for that reason.
+// SHRINK LOG. 2026-10-05 — src/v2/test/claim/long/cwc_resolution_probe_test.dag [whole],
+// 9 identities, RETIRED because a consumer now executes them, not exempted: gunbc#13333 enrolled
+// cwc_malformed_nary_coproduct_normalize_rejects in v2.workflow.floor_expected_red, and the floor
+// refused the pair as ExpectedRedFreezeIntersection. A claim cannot be both never-executed and
+// known-red. The row deletes, so the required floor runs the file. The same change deleted
+// cwc_malformed_nary_coproduct_fail_open_control (the negation of its sibling) and repaired the
+// resolve door that cwc_cwc_module_resolve_accepts reads.
 // SHRINK LOG. 2026-10-06 — accumulator_copy lean/bash/swift/glob freeze identities deleted, not
 // renamed: their test-fn bodies were a weaker contract than zero_suspects_within_ratchet (typed
 // Filesystem.Read existence). The priced-out file_gate walks live as ordinary fns consumed by
@@ -898,16 +905,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/long/cwc_resolution_probe_test.dag",
-    functions: [
-      "cwc_norm_two_variant_accepts", "cwc_norm_three_variant_accepts",
-      "cwc_non_coproduct_rhs_passes_through", "cwc_malformed_nary_coproduct_normalize_rejects",
-      "cwc_malformed_nary_coproduct_fail_open_control", "cwc_norm_review_event_accepts",
-      "cwc_cwc_module_resolve_accepts", "cwc_review_normalized_has_disj",
-      "cwc_review_disj_has_four_arms"
-    ]
-  },
-  FrozenPathDeferral {
     entry: "src/v2/test/claim/long/dag_caret_symbol_lex_test.dag",
     functions: [
       "caret_lex_accepts_symbol_literal_holds", "caret_parse_accepts_symbol_literal_holds",
@@ -1044,23 +1041,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "native_routing_green_control_bound_entry_reaches_subject"
     ]
   },
-  FrozenPathDeferral {
-    entry: "src/v2/test/claim/long/parse_table_memo_amortization_test.dag",
-    functions: [
-      "memo_amort_parse_one_file_holds", "memo_amort_parse_two_files_twice_holds",
-      "parse_table_grammar_memo_multi_file_ingest_parses",
-      "parse_table_memo_hit_path_content_hash_stable_holds",
-      "empty_ingest_assembles_to_empty_roots_without_prepare"
-    ]
-  },
-  FrozenPathDeferral {
-    entry: "src/v2/test/claim/long/parse_table_memo_counter_witness_test.dag",
-    functions: [
-      "parse_memo_counter_lookup_calls_recorded_holds",
-      "parse_memo_counter_counters_consistent_holds", "parse_memo_counter_misses_recorded_holds"
-    ]
-  },
-  FrozenPathDeferral { entry: "src/v2/test/claim/long/parse_table_memo_governed_witness_test.dag", functions: ["parse_table_memo_warm_equals_cold_content_hash"] },
   FrozenPathDeferral {
     entry: "src/v2/test/claim/long/parser_completeness_frontier_test.dag",
     functions: [

@@ -8,7 +8,7 @@ data carrier_by_spelling: RecurringFailureMode = RecurringFailureMode {
   identity: "carrier_by_spelling" as NonEmptyStr,
 
   receipts: [
-    "**carrier by spelling** (INVALID STATE: a module imports the structural text carrier `v2.std.text` `String` and then authors a BARE `String` as if that import bound it; KERNEL NAMES ARE NEVER OVERRIDDEN BY IMPORTS (`v1.compiler.infer` `overlay_skips_kernel_name`, kernel overlay unconditional since #9813), so the bare spelling binds the KERNEL host carrier beside the unused import.",
+    "**carrier by spelling** (INVALID STATE: a module imports the structural text carrier `v2.std.text` `String` and then authors a BARE `String` as if that import bound it; KERNEL NAMES ARE NEVER OVERRIDDEN BY IMPORTS (`v1.compiler.infer_env` `overlay_skips_kernel_name`, kernel overlay unconditional since #9813), so the bare spelling binds the KERNEL host carrier beside the unused import.",
 
     "A host-carrier value can therefore flow into a fold whose declared positions are the STRUCTURAL carrier, and the front end ACCEPTS the program.",
 
@@ -46,7 +46,7 @@ data carrier_by_spelling: RecurringFailureMode = RecurringFailureMode {
   ],
 
   evidence: [
-    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "overlay_skips_kernel_name", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer_env", decl_name: "overlay_skips_kernel_name", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.rust_source_type_bindings", decl_name: "checkpoint_row_migration_rows", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.self_host_structural_text_witness_test", decl_name: "w_bare_string_with_text_import_stays_host_deterministically", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.self_host_compile_phase_frontier", decl_name: "receipt_2_66765317_raw_error_diagnostic_identities", field: WholeDeclaration },

@@ -9,6 +9,7 @@ import extdeps.http.server { RequestSecurityContext }
 import gunbc.principal_projection { PrincipalRef, principal_ref_eq, principal_ref_label }
 import std.list { distinct_by_key }
 import extdeps.ssh { SshPublicKey, Ed25519, ssh_ed25519_key_identity }
+import gunbc.workspace_ssh_access { WorkspaceSshAccess, WorkspaceSshFromHost, WorkspaceSshThroughGateway }
 import gunbc.roadmap_allocation_location { allocation_page_path }
 import gunbc.auth.request_authentication { RequestAccessPath,
   RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid, AuthAbsent, DeploymentAccessPolicy,
@@ -21,7 +22,7 @@ import gunbc.auth.request_authentication { RequestAccessPath,
 // it. The roster and catalog are administrator-authored and unadmitted; only workspace_policy_admit
 // mints the policy every consumer reads, so a request names no key, path or OpenSSH option and a
 // shared, duplicated or dangling enrollment cannot reach any consumer.
-type WorkspaceOwnerEnrollment { principal: PrincipalRef, public_key_ref: NonEmptyStr }
+type WorkspaceOwnerEnrollment { principal: PrincipalRef, public_key_ref: NonEmptyStr, ssh_access: WorkspaceSshAccess }
 type WorkspaceEnrollmentRoster { enrollments: List<WorkspaceOwnerEnrollment> }
 type WorkspacePublicKeyCatalogRow { reference: NonEmptyStr, key: SshPublicKey }
 type WorkspaceAuthorizationPolicy sole_constructor { enrollments: List<WorkspaceOwnerEnrollment>, catalog: List<WorkspacePublicKeyCatalogRow> }
@@ -54,6 +55,12 @@ fn workspace_policy_admit(roster: WorkspaceEnrollmentRoster, catalog: List<Works
     WorkspacePolicyRefused { reason: "a workspace catalog key comment contains a record separator" }
   } else if count(distinct_by_key(catalog, r => r.key.material as String)) != count(catalog) {
     WorkspacePolicyRefused { reason: "two workspace key references carry the same key material" }
+  } else if any(roster.enrollments, e => match e.ssh_access {
+    WorkspaceSshThroughGateway => false
+    WorkspaceSshFromHost { identity_file } => !starts_with(s: identity_file as String, prefix: "/")
+      || string_contains(s: identity_file as String, pattern: "\n") || string_contains(s: identity_file as String, pattern: "\r")
+  }) {
+    WorkspacePolicyRefused { reason: "host-local SSH requires an absolute single-line identity-file path" }
   } else {
     WorkspacePolicyAdmitted { policy: WorkspaceAuthorizationPolicy { enrollments: roster.enrollments, catalog: catalog } }
   }

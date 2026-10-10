@@ -13,11 +13,20 @@ import gunbc.repository {
   gunbc_repository, gunbc_repository_numeric_identity, RepositoryNumericIdentity,
   gunbc_private_repository, gunbc_private_repository_numeric_identity
 }
-import gunbc.generated_artifact { artifact_path, HealPublisherWorkflowYamlArtifact }
+
 import extdeps.github.app { permission_axis_wire_name, permission_access_wire_name }
 import extdeps.github.effect { contents_write }
 import extdeps.cloud.gcp.secret_ref { secret_ref_version_resource }
 import extdeps.languages.json.emit { json_object, json_array, json_kv, json_string, serialize_json }
+// THE WORKFLOW THIS POOL ADMITS NO LONGER EXISTS (operator ruling 2026-10-09: the heal publisher
+// was deleted with the v1 lanes, because nothing seals a repair candidate for it to publish). The
+// pool's attribute condition still names the file's path, so the path is carried here as the
+// retired literal the condition was pinned to rather than derived from a registry row that is
+// gone. The estate is DEAD, not deleted: no job can present this claim, the pool and its
+// secret-accessor binding stand until retired by hand, and that is an external-estate obligation
+// recorded beside gunbc.rung_drop v1_required_lanes_withdrawn.
+data heal_publisher_workflow_path_retired: String = ".github/workflows/heal-publish.yml"
+
 
 // THE PUBLISHER'S OWN FEDERATION, AND WHY IT IS NOT THE REPOSITORY'S.
 //
@@ -109,7 +118,7 @@ fn public_heal_publisher_federation() -> HealPublisherFederation {
   HealPublisherFederation {
     repository: gunbc_repository,
     numeric_identity: gunbc_repository_numeric_identity,
-    workflow_path: artifact_path(a: HealPublisherWorkflowYamlArtifact),
+    workflow_path: heal_publisher_workflow_path_retired,
     pool_id: heal_publisher_wif_pool_id,
     pool_display_name: heal_publisher_wif_pool_display_name,
     provider_id: heal_publisher_wif_provider_id,
@@ -124,7 +133,7 @@ fn public_heal_publisher_federation() -> HealPublisherFederation {
 // THE PRIVATE PUBLISHER'S FILE IS AT THE SAME PATH AS THIS ONE'S, and gunbc-private's emitter
 // imports this row as its output path, so the condition and the file it names have one authority.
 fn heal_publisher_private_workflow_path() -> String {
-  artifact_path(a: HealPublisherWorkflowYamlArtifact)
+  heal_publisher_workflow_path_retired
 }
 
 // Every id is under its upstream ceiling: pool id 4-32, provider id 4-32, account id 6-30, pool

@@ -4,12 +4,7 @@ import std.types { List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 import v2.std.algebra { any, length }
-import v2.workflow.rust_crate_partition {
-  Stage0PartitionCrateRow,
-  Stage0FoundationCrate,
-  Stage0LayeredCoreCrate,
-  CompilationUnitId,
-}
+import gunbc.crate_partition { Stage0PartitionCrateRow, Stage0FoundationCrate, Stage0LayeredCoreCrate, CompilationUnitId }
 import gunbc.stage0_executable_assembly_emit {
   LinkedPartitionCratesRendered,
   LinkedPartitionCratesRefused,

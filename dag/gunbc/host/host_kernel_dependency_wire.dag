@@ -1,0 +1,81 @@
+module gunbc.host_kernel_dependency_wire
+
+import std.types { String, NonEmptyStr, CommitSha, Bool }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, serialize_json }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string, FieldRead, FieldAbsent, FieldMalformed }
+import extdeps.linux.kernel { LinuxKernelRelease }
+import extdeps.linux.tun_fdinfo { TunAttachedQueueRequirement }
+import product.host_identity { HostIdentity }
+import gunbc.host_kernel_dependency { HostKernelDependencyPlan, InstallKernelAndActivate, ActivateInstalledKernel, tun_kernel_provider_for_host, kernel_provider_selection }
+
+data host_kernel_dependency_row_prefix: String = "commissioning-kernel-dependency:"
+
+fn host_kernel_dependency_text(plan: HostKernelDependencyPlan) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "host-kernel-dependency/v1")),
+    json_kv(key: "host", value: json_string(s: plan.host as String)),
+    json_kv(key: "source_revision", value: json_string(s: plan.source_revision as String)),
+    json_kv(key: "operation", value: json_string(s: "linux.tun.ETHTOOL_GCHANNELS")),
+    json_kv(key: "interface", value: json_string(s: plan.requirement.interface as String)),
+    json_kv(key: "running_release", value: json_string(s: plan.running_release as String)),
+    json_kv(key: "boot_id", value: json_string(s: plan.boot_id as String)),
+    json_kv(key: "package", value: json_string(s: kernel_provider_selection(provider: plan.provider) as String)),
+    json_kv(key: "architecture", value: json_string(s: plan.provider.architecture as String)),
+    json_kv(key: "target_release", value: json_string(s: plan.provider.kernel_release as String)),
+    json_kv(key: "remedy", value: json_string(s: match plan.remedy { InstallKernelAndActivate => "install-and-activate" ActivateInstalledKernel => "activate-installed" })),
+    json_kv(key: "package_simulation", value: json_string(s: plan.package_simulation)),
+  ]))
+}
+
+fn host_kernel_dependency_row(plan: HostKernelDependencyPlan) -> String {
+  concat(host_kernel_dependency_row_prefix, host_kernel_dependency_text(plan: plan))
+}
+
+fn kernel_dependency_field(doc: JsonValue, name: String) -> String? {
+  match json_field_string(obj: doc, key: name) {
+    FieldRead { value } => Present { value: value }
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+  }
+}
+
+// Only the privileged observer's captured response uses this decoder. Reconstruct the policy
+// selection from the host, then require canonical equality: fields cannot select another package,
+// requirement, host or source revision. A plan is still intention, never an authorization token.
+fn host_kernel_dependency_from_text(text: String, host: HostIdentity, revision: CommitSha,
+  requirement: TunAttachedQueueRequirement) -> HostKernelDependencyPlan? {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: _ } => none
+    JsonDocumentParsed { value: doc } => match tun_kernel_provider_for_host(host: host) {
+      Absent => none
+      Present { value: provider } => match kernel_dependency_field(doc: doc, name: "running_release") {
+        Absent => none
+        Present { value: running } => match kernel_dependency_field(doc: doc, name: "boot_id") {
+          Absent => none
+          Present { value: boot } => match kernel_dependency_field(doc: doc, name: "remedy") {
+            Absent => none
+            Present { value: remedy } => match kernel_dependency_field(doc: doc, name: "package_simulation") {
+              Absent => none
+              Present { value: simulation } => if running == "" || boot == "" || running == (provider.kernel_release as String)
+                || (remedy != "install-and-activate" && remedy != "activate-installed")
+                || (remedy == "install-and-activate" && simulation == "")
+                || (remedy == "activate-installed" && simulation != "") { none }
+              else {
+                let plan = HostKernelDependencyPlan { host: host, source_revision: revision,
+                  requirement: requirement, running_release: running as LinuxKernelRelease, boot_id: boot as NonEmptyStr,
+                  provider: provider, remedy: if remedy == "install-and-activate" { InstallKernelAndActivate } else { ActivateInstalledKernel },
+                  package_simulation: simulation }
+                if host_kernel_dependency_text(plan: plan) == text { Present { value: plan } } else { none }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// This marker can only stop apply; it never admits an action or decodes a readiness permit.
+fn host_kernel_dependency_in_plan_body(body: String) -> Bool {
+  any(split(s: body, delimiter: "\n"), row => starts_with(s: row, prefix: host_kernel_dependency_row_prefix))
+}

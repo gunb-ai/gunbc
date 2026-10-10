@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.adjacent_interpolation_holes_fused_into_one_operator_hole
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data adjacent_interpolation_holes_fused_into_one_operator_hole: RecurringFailureMode = RecurringFailureMode {
+  identity: "adjacent_interpolation_holes_fused_into_one_operator_hole" as NonEmptyStr,
+
+  receipts: [
+    "**two interpolation holes separated only by an operator character are parsed by v1 as ONE hole holding a binary operation over both** (INVALID STATE: a template `\"\{s}-\{e}\"` or `\"\{st}/\{sp}\"` whose typed tree carries one Interpolation part, an ExprBinOp `s - e` / `st / sp`, where the source has two holes and a text part between them. The v1 lexer counts it correctly -- two holes, the `-` or `/` riding in the template-middle (ShStrMid) token -- and the parser is where the template is lost: the fused node's operator span IS that template-middle token, its source text `}-\{`, so the binary-operator loop inside the first hole (v1.compiler.parse parse_interp_parts calls parse_expr) accepted a template-middle token whose text is an operator as the operator, and consumed the second hole as its right operand.)",
+
+    "HARM: silent wrong output, no diagnostic anywhere (DESIGN section 5). v1 types the fused node, accepts it, and emits the arithmetic: extdeps.cron.schedule_model render_cron_field rendered `Ranged { start: 1, end: 5 }` as the DIFFERENCE of the two bounds where cron syntax needs the text 1-5, and a `Step` with a nonzero start as the QUOTIENT of start by step where it needs st/sp. Any rendered cron schedule with a range or an offset step was wrong. Deployment check at the time of filing: the corpus constructs exactly one CronSchedule (gunbc.tools.review cron_schedule, Step with start 0, which takes the one-hole `*/\{sp}` arm and renders correctly), no WorkflowTrigger Schedule is constructed, and no committed .github workflow carries a cron line -- so no live schedule was observed firing at the wrong time.",
+
+    "MEASURED BY: gunbc test //gunbc/instruments:interpolation-hole-census (v1.tests.claim.interpolation_hole_census), which recovers each fusion's operands as holes and marks them v1_fused_adjacent_holes; at main before gunbc#13436 it marked four holes in render_cron_field and no others, and its fixture control v1_fusion_recovered_as_two_holes holds on `\"\{path}/\{missing}\"`. The cron sites are rewritten as concat around the literal separator in gunbc#13436, and test.claim.cron_schedule_render_witness_test asserts a range renders as S-E and an offset step as ST/SP, on inputs where the arithmetic reading disagrees with the text.",
+
+    "RUNG FOUND AT: below the floor -- silent. CEILING: structurally guaranteed. Whether a token is a template part is decided by the lexer, so a hole's expression can refuse to continue across a template-middle token. NEXT-RUNG TRIGGER: v2's string-template production (XL-2 PR2b) parses each hole as an ordinary expression bounded by the template's own tokens, SUFFICIENT FOR `\"\{a}-\{b}\"` to lower to two holes and a text part, which the census fixture's fusion control discriminates. v1 is frozen and is not repaired here; its fusion stays measured until v1 is deleted.",
+
+    "RECOGNITION RULE: a template whose two holes are separated by nothing but a binary-operator character, in source v1 compiles (measured for `-` and `/`; other operator characters are the same shape and unmeasured); in the census, a row whose v1_parse column reads v1_fused_adjacent_holes."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "extdeps.cron.schedule_model", decl_name: "render_cron_field", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.cron_schedule_render_witness_test", decl_name: "a_cron_range_renders_as_start_dash_end", field: WholeDeclaration }
+  ]
+}

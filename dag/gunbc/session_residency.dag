@@ -5,6 +5,7 @@ import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.host_identity { HostIdentity }
 import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet_enrollment { InteractiveSessionParticipation, hosts_enrolled_for }
 import gunbc.fleet_shell_transport_observation {
   fleet_shell_transport_observation,
   ShellTransportSucceeded,
@@ -169,7 +170,7 @@ fn host_absence_is_operator_declared(host: HostIdentity) -> Bool {
 fn operator_declared_absent_host_count() -> Int {
   count(
     filter(
-      [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4],
+      hosts_enrolled_for(wanted: InteractiveSessionParticipation),
       h => host_absence_is_operator_declared(host: h)
     )
   )

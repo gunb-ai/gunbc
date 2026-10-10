@@ -52,19 +52,10 @@ type FabricServingAssignment sole_constructor {
 // yet, so every Group B launch refuses by name until one is recorded inside the tag; that refusal is
 // the correct state, and the one that stops a silent downgrade.
 data glm_group_b_serving_assignment: FabricServingAssignment = FabricServingAssignment {
-  group: FabricGroupB,
+  group: FabricGroupB {},
   checkpoint: Glm53NativeFp8,
   runtime: GunbcGlm53DerivedKvplanV2Gb10,
   topology: FourSparkTp4,
-}
-
-// A LAUNCH'S ASSIGNMENT THAT IS NOT A GROUP'S CONVERGED ONE (deforking cut 8a). The row above is what
-// clients are routed to; gunbc.spark.group_arm_launch takes the same tuple as the input of ANY arm it
-// plans -- V4.1 on Group A, whose runtime is the held image read at run time, and the GLM staircase's
-// bounded experiments -- and none of those is what enrollment reads. The tuple keeps its one home here,
-// and this mint is the only way to make one beside the row; it adds no client-facing assignment.
-fn fabric_serving_assignment_for_launch(group: FabricGroup, checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology) -> FabricServingAssignment {
-  FabricServingAssignment { group: group, checkpoint: checkpoint, runtime: runtime, topology: topology }
 }
 
 type FabricServingHead

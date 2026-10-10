@@ -135,13 +135,22 @@ fn pool_event_decode(text: String) -> EventDecode<PoolEvent> {
 }
 
 fn pool_apply_event<Q, S>(pool: Pool<Q, S>, env: ChainEnvelope<PoolEvent>) -> PoolOutcome<Q, S> {
-  let at = env.event.recorded_at
-  match env.event.payload {
+  pool_apply_payload(pool: pool, payload: env.event.payload, at: env.event.recorded_at, identity: env.id as String as NonEmptyStr)
+}
+
+// THE ONE TRANSITION FUNCTION, shared by replay and by validation before an append
+// (gunbc.fabric_event_log fabric_pool_transition). An event that would be refused here on replay is
+// refused there before it is written, because both ask this function: a carrier that appended without
+// asking it could commit a transition no later fold can apply, which makes the whole partition
+// unfoldable. The identity names the event -- its id at replay, the head it was decided against
+// before append -- and is what a transition that mints its own hold (an upstream reading) is keyed by.
+fn pool_apply_payload<Q, S>(pool: Pool<Q, S>, payload: PoolEvent, at: EpochSecs, identity: NonEmptyStr) -> PoolOutcome<Q, S> {
+  match payload {
     PoolAcquired { reference: r, amount: a, term_seconds: t } => pool_replay_acquire(pool: pool, reference: r, amount: Measure { count: a }, at: at, term_seconds: t)
     PoolSettled { reference: r, actual: a } => pool_settle(pool: pool, reference: r, actual: Measure { count: a }, at: at)
     PoolReleased { reference: r, reason: why } => pool_release(pool: pool, reference: r, reason: why, at: at)
     PoolLapsed => PoolAdvanced { pool: lapse_pass(pool: pool, at: at).pool }
-    PoolUpstreamObserved { remaining: n, term_seconds: t } => observe_upstream_remaining(pool: pool, remaining: Measure { count: n }, at: at, term_seconds: t)
+    PoolUpstreamObserved { remaining: n, term_seconds: t } => observe_upstream_remaining(pool: pool, remaining: Measure { count: n }, at: at, term_seconds: t, reading: identity)
     PoolResetObserved { reset_at: r } => PoolAdvanced { pool: pool_reanchor(pool: pool, reset_at: r) }
   }
 }

@@ -8,21 +8,24 @@ import extdeps.cloud.gcp.iam { IamCondition, role_secretmanager_secret_accessor 
 import extdeps.cloud.gcp.secret_ref { SecretRef, gcp_version_resource_by_number }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_number, github_wif_issuer_uri, federated_service_account_member }
 import gunbc.auth.gcp_secret_access { SecretAccessGrant }
-import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_attribute_condition, claim_pins_admit, fleet_converge_job_claim_pins }
+import gunbc.auth.oidc_claim_pins { OidcClaimPin, OidcPresentedClaim, claim_pins_attribute_condition, claim_pins_admit, fleet_converge_job_claim_pins }
 import gunbc.fleet_ssh_access { fleet_automation_ssh_privkey_secret }
 import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.machine_intake_bmc_secure { BmcSecured, BmcSecureRefused }
 import gunbc.managed_host {
   ManagedHost, ManagedHostBindingStanding, ManagedHostBound, ManagedHostAccessUnobserved, ManagedHostNotSecured,
-  ManagedHostEndpointMismatch, managed_host_binding, managed_hosts,
+  ManagedHostEndpointMismatch, OrdinaryMember, MemberUnderDeclaredDrop, ManagedHostMembership, managed_host_binding,
+  managed_host_memberships, managed_membership_for,
 }
+import gunbc.machine_intake_subject { MachineIntakeSubject }
+import std.decl_ref { DeclarationRef }
 
 // ── THE BOOT'S FEDERATION IS POLICY FOR THE PAIR (MANAGED HOST, BOOT), NOT HOST IDENTITY ───────
 // (docs/plans/managed-host-untangle.md, cut 4c; operator ruling (b), 2026-10-03.) A boot of a
 // managed host is a recurring automated effect, so gunbc.auth.privileged_effect_census derives
 // FederatedScopedGrant for it: the run's own workload identity, holding one cell per secret it reads,
 // with no human per run, scoped to ONE job -- this repository, the fleet-converge workflow file at
-// main, a workflow_dispatch on refs/heads/main, and the job's GitHub environment -- never repo-wide.
+// reviewed main, a workflow_dispatch on main, and the job's GitHub environment -- never repo-wide.
 // None of the ids below is a field of gunbc.managed_host ManagedHost: a second operation on the same
 // host federates through its own pool, and the same host under another policy is a different pair.
 //
@@ -36,10 +39,11 @@ import gunbc.managed_host {
 //
 // THE JOB IS PINNED BY THE ENVIRONMENT CLAIM. OIDC tokens carry no job id; the one job-grain claim
 // GitHub asserts is `environment`, present only for a job that declares one. The honest residue: any
-// job in fleet-converge.yml AT MAIN that declared the same environment would also be admitted, which
-// is the same reviewed-main trust the workflow file itself carries. THE RUNNER IS NOT PINNED: the
-// boot runs on the hold store host's self-hosted runner, so `runner_environment == 'github-hosted'`
-// would refuse it; workflow_ref at main plus workflow_dispatch already keeps pull-request code off it.
+// job in that branch's fleet-converge.yml that declared the same environment would also be admitted.
+// Operator 2026-10-10: this privileged boot identity is equality-pinned at main; a session-branch
+// dispatch cannot impersonate it. THE RUNNER IS NOT PINNED: the boot runs on the hold store host's
+// self-hosted runner, so `runner_environment == 'github-hosted'` would refuse it. Pull-request code
+// stays off it because event_name is workflow_dispatch and workflow_ref is the reviewed main file.
 
 // THE LIVE NAMES OF ONE PAIR'S FEDERATION, which ruling (b) keeps byte-identical: they exist in GCP
 // and GitHub today, and a renamed id is a different pool, account, environment or cell to
@@ -99,7 +103,46 @@ type BootFederationUnprovisionedCause
 
 type ManagedHostBootFederationStanding
   = BootFederationProvisioned { federation: ManagedHostBootFederation }
+  | BootFederationProvisionedUnderDeclaredDrop {
+      federation: ManagedHostBootFederation
+      drop: DeclarationRef
+      standing_subject: MachineIntakeSubject
+      current_subject: MachineIntakeSubject
+    }
   | BootFederationUnprovisioned { host: HostIdentity, cause: BootFederationUnprovisionedCause }
+
+fn provisioned_federation_of(s: ManagedHostBootFederationStanding) -> ManagedHostBootFederation? {
+  match s {
+    BootFederationProvisioned { federation: f } => Present { value: f }
+    BootFederationProvisionedUnderDeclaredDrop { federation: f, drop: _, standing_subject: _, current_subject: _ } =>
+      Present { value: f }
+    BootFederationUnprovisioned { host: _, cause: _ } => none
+  }
+}
+
+fn boot_federation_standing_of(m: ManagedHostMembership) -> ManagedHostBootFederationStanding {
+  match m {
+    OrdinaryMember { host: h } => admit_boot_federation(host: h)
+    MemberUnderDeclaredDrop { drop: d, standing_subject: standing, current_subject: current, host: h } =>
+      match admit_boot_federation(host: h) {
+        BootFederationUnprovisioned { host: u, cause: c } => BootFederationUnprovisioned { host: u, cause: c }
+        BootFederationProvisioned { federation: f } =>
+          BootFederationProvisionedUnderDeclaredDrop {
+            federation: f,
+            drop: d,
+            standing_subject: standing,
+            current_subject: current,
+          }
+        BootFederationProvisionedUnderDeclaredDrop { federation: f, drop: _, standing_subject: _, current_subject: _ } =>
+          BootFederationProvisionedUnderDeclaredDrop {
+            federation: f,
+            drop: d,
+            standing_subject: standing,
+            current_subject: current,
+          }
+      }
+  }
+}
 
 // THE PAIR'S ADMISSION INCLUDES ITS POLICY, and its cells are the ROW's values. The BMC credential
 // cell is the version the row's secure standing published (gunbc.machine_intake_bmc_secure
@@ -141,22 +184,23 @@ fn admit_boot_federation(host: ManagedHost) -> ManagedHostBootFederationStanding
 // THE STANDING FOR ONE HOST NAME: a host that is not a managed host is unprovisioned by that cause,
 // never booted with defaults.
 fn boot_federation_for(host: HostIdentity) -> ManagedHostBootFederationStanding {
-  fold(
-    managed_hosts(),
-    init: BootFederationUnprovisioned { host: host, cause: BootFederationHostNotManaged },
-    f: (acc, h) => if host_identity_eq(a: h.host, b: host) { admit_boot_federation(host: h) } else { acc },
-  )
+  match managed_membership_for(host: host) {
+    Absent => BootFederationUnprovisioned { host: host, cause: BootFederationHostNotManaged }
+    Present { value: m } => boot_federation_standing_of(m: m)
+  }
 }
 
 // EVERY PROVISIONED PAIR, in managed-host order: the population gunbc.auth.gcp_iam_converge converges
 // as targets. An unprovisioned host is a non-member, not a loss -- it has no pool to converge.
 fn provisioned_boot_federations() -> List<ManagedHostBootFederation> {
   fold(
-    managed_hosts(),
+    managed_host_memberships(),
     init: [],
-    f: (acc, h) => match admit_boot_federation(host: h) {
-      BootFederationProvisioned { federation: f } => concat(acc, [f])
-      BootFederationUnprovisioned { host: _, cause: _ } => acc
+    f: (acc, m) => {
+      match provisioned_federation_of(s: boot_federation_standing_of(m: m)) {
+        Present { value: f } => concat(acc, [f])
+        Absent => acc
+      }
     },
   )
 }
@@ -172,7 +216,7 @@ fn boot_federation_attribute_condition(f: ManagedHostBootFederation) -> String {
   claim_pins_attribute_condition(pins: f.claim_pins)
 }
 
-fn boot_federation_claims_admitted(f: ManagedHostBootFederation, claims: List<OidcClaimPin>) -> Bool {
+fn boot_federation_claims_admitted(f: ManagedHostBootFederation, claims: List<OidcPresentedClaim>) -> Bool {
   claim_pins_admit(pins: f.claim_pins, claims: claims)
 }
 

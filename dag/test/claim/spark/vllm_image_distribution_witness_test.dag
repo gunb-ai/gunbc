@@ -14,7 +14,6 @@ import gunbc.spark.vllm_runtime_image_build {
   VllmImageDistributed, VllmImageDistributionRefused, VllmImageHostDelivered, VllmImageHostDeliveryRefused,
   vllm_image_distribution_succeeded,
 }
-import gunbc.spark.v41_runtime_image_converge { v41_arm_a_produced_image, v41_production_produced_image, v41_produced_image_subject }
 
 // ── THE DISTRIBUTION'S DECISIONS, OVER SUPPLIED DAEMON ANSWERS ────────────────────────────────
 //
@@ -115,24 +114,3 @@ test fn distribution_succeeds_only_over_a_nonempty_all_delivered_set() -> Bool {
     && !vllm_image_distribution_succeeded(dist: VllmImageDistributionRefused { step: "distribute-save" as NonEmptyStr, cause: "x" })
 }
 
-// THE ARM A RECEIPT ROW RE-DERIVES THE TAG ITS PRODUCTION PRINTED. fleet-converge run 36207135528
-// printed tag=gunbc-vllm-dsv41-gb10:d73e307009a5d716 for this source tree; the row carries only the
-// tree, and the tag comes out of the candidate's recipe through the build's own key fold. A row
-// whose tree, or a recipe that has moved since, no longer derives that tag goes red here.
-test fn the_arm_a_receipt_derives_its_printed_tag_and_carries_its_digest() -> Bool {
-  let s = v41_produced_image_subject(p: v41_arm_a_produced_image)
-  (s.tag as String) == "gunbc-vllm-dsv41-gb10:d73e307009a5d716"
-    && render_oci_content_digest_wire(d: s.config) == join(["sha256:", subject_hex], "")
-    && (v41_arm_a_produced_image.held_on as String) == "srv8"
-}
-
-// THE PRODUCTION RECEIPT ROW RE-DERIVES ITS PRINTED TAG. fleet-converge run 36327364664 printed
-// tag=gunbc-vllm-dsv41-gb10:3cedb66f0ec0869e for its source tree (the design-B cutover's patch set); the
-// row carries only that tree, and the tag comes out of the build's own key fold. This is the image the
-// distribution mode moves.
-test fn the_production_receipt_derives_its_printed_tag_and_carries_its_digest() -> Bool {
-  let s = v41_produced_image_subject(p: v41_production_produced_image)
-  (s.tag as String) == "gunbc-vllm-dsv41-gb10:3cedb66f0ec0869e"
-    && render_oci_content_digest_wire(d: s.config) == "sha256:5de3c35577e5c8f3026c143d3d5b2d66cc527119281369f4651d969f581829d3"
-    && (v41_production_produced_image.held_on as String) == "srv8"
-}

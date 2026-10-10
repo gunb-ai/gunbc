@@ -1,0 +1,54 @@
+module test.claim.provider_guest_incarnation_witness
+
+import std.types { Bool, List, String }
+import product.fabric.isolation { IsolationGuarantee, AttemptScopedSecrets, DefaultDenyEgress }
+import gunbc.fleet_host_identity { operator_host_183527, operator_host_3dde7f, operator_host_srv1 }
+import gunbc.runner.runner_isolation_admission { SandboxOffer, DedicatedKernelSandboxProvider, GeneralCiWorkload }
+import gunbc.runner.provider_guest_incarnation {
+  IncarnationAdmitted, IncarnationAdmissionRefused, admit_offer_on_host, excuse_covers,
+  provider_guest_isolation_excuses, provider_guest_egress_excuse,
+}
+import gunbc.runner.provider_guest_launch { provider_guest_launch_evidenced, provider_guest_launch_withheld }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// NO INCARNATION IS ESTABLISHED IN THIS TREE: its rebuild receipt has no producer until the reset loop
+// lands, and test.claim.provider_rebuild_receipt_forged_probe_witness is the executed red that one
+// cannot be written instead. What can be exercised is what an incarnation WOULD offer once one
+// exists, read from the launch's own guarantee lists, against the production admission.
+
+fn same_set(a: List<IsolationGuarantee>, b: List<IsolationGuarantee>) -> Bool {
+  count(a) == count(b) && (a |> all(x => (filter(b, y => y == x) |> count) == 1))
+}
+
+fn launch_offer() -> SandboxOffer {
+  SandboxOffer {
+    provider_class: DedicatedKernelSandboxProvider,
+    evidenced: provider_guest_launch_evidenced,
+    withheld: provider_guest_launch_withheld,
+    standing: "the launch offer's guarantee lists",
+  }
+}
+
+// GENERAL CI STAYS REFUSED ON A PROVIDER GUEST UNTIL THE RESET LOOP EARNS AttemptScopedSecrets. Even
+// with egress excused by its drop, a placed registration leaves AttemptScopedSecrets missing; without
+// the excuse egress is missing too, so the excuse moves exactly one guarantee and nothing else.
+test fn general_ci_is_refused_for_attempt_secrets_even_under_the_egress_excuse() -> Bool {
+  match admit_offer_on_host(host: operator_host_183527, offer: launch_offer(), work: GeneralCiWorkload, excuses: provider_guest_isolation_excuses) {
+    IncarnationAdmissionRefused { missing: m } => same_set(a: m, b: [AttemptScopedSecrets])
+    IncarnationAdmitted { excused: _ } => false
+  }
+    && match admit_offer_on_host(host: operator_host_183527, offer: launch_offer(), work: GeneralCiWorkload, excuses: []) {
+      IncarnationAdmissionRefused { missing: m } => same_set(a: m, b: [AttemptScopedSecrets, DefaultDenyEgress])
+      IncarnationAdmitted { excused: _ } => false
+    }
+}
+
+// THE EXCUSE IS SCOPED TO ITS GUARANTEE AND ITS HOSTS: not to an owned host, not to another guarantee.
+test fn the_egress_excuse_covers_only_egress_on_the_two_guests() -> Bool {
+  excuse_covers(excuse: provider_guest_egress_excuse, host: operator_host_183527, g: DefaultDenyEgress)
+    && excuse_covers(excuse: provider_guest_egress_excuse, host: operator_host_3dde7f, g: DefaultDenyEgress)
+    && !excuse_covers(excuse: provider_guest_egress_excuse, host: operator_host_srv1, g: DefaultDenyEgress)
+    && !excuse_covers(excuse: provider_guest_egress_excuse, host: operator_host_183527, g: AttemptScopedSecrets)
+}

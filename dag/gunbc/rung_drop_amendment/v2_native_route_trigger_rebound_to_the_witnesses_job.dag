@@ -1,0 +1,22 @@
+module gunbc.rung_drop_amendment.v2_native_route_trigger_rebound_to_the_witnesses_job
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop_amendment { RungDropAmendment }
+
+// THE TRIGGER NAMED A LANE AND A ROSTER THAT NO LONGER EXIST. gunbc.rung_drop
+// v2_native_route_off_the_merge_path's restoration trigger is stated over "the `emit-build` LANE
+// (gunbc.compiler_gate_workflow compiler_gate_emit_build_job_id) AS A REQUIRED LANE -- its
+// compiler_gate_lane_rows row LaneBlocks". The operator ruling of 2026-10-09 collapsed that lane and
+// the aggregate that read it into ONE required job named `witnesses` (gunbc.compiler_gate_workflow
+// compiler_gate_required_job_id), so there is no lane row and no aggregate to name. The capability
+// the trigger names is unchanged; only the carrier moved, and this row says where.
+
+data v2_native_route_trigger_rebound_to_the_witnesses_job: RungDropAmendment = RungDropAmendment {
+  drop_identity: "v2_native_route_off_the_merge_path" as NonEmptyStr,
+
+  amended: "2026-10-09",
+
+  later_event: "the v1 withdrawal (gunbc.rung_drop v1_required_lanes_withdrawn) deleted the floor, generated, rust-unit-tests and seed lanes, and the same operator ruling collapsed `emit-build` and the `witnesses` aggregate into ONE required job named `witnesses` (gunbc.compiler_gate_workflow compiler_gate_required_job_id) that emits and builds both retained products fresh on every run. compiler_gate_emit_build_job_id, compiler_gate_lane_rows and the LaneBlocks standing the trigger cites were deleted with the aggregate" as NonEmptyStr,
+
+  bearing: "read the trigger's 'the `emit-build` LANE ... AS A REQUIRED LANE -- its compiler_gate_lane_rows row LaneBlocks and the job on the fleet runner' as 'the required `witnesses` job of gunbc.compiler_gate_workflow, on the fleet runner'. Everything else the trigger requires is unchanged: the first green merge_group run of that job which ALSO executes //gunbc/instruments:v2-native-frontier over the derived v2.test.* universe and publishes its proposal with tested_tree = the merge_group sha; a green run of the job with only the two emit-and-build subjects is still NOT sufficient. The operator's same-day rule that the native obligation is a SEPARATE population executed by one built SourceRootEvalDriver, with a monotone green set and exactly one observed frontier, is the shape that run takes; it does not retire this row either until it is observed on a landing" as NonEmptyStr,
+}

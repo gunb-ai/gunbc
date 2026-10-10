@@ -1,0 +1,205 @@
+module test.claim.workspace_transcript_rate
+
+import std.types { String, NonEmptyStr, Int, Bool, List }
+import std.measure { InstantBefore, InstantSame, byte_size, measure_count, nanosecond, nanosecond_count, ObservationInstant, ProcessMonotonic, WallClock, CpuClock, InstantAfter, InstantIncomparable }
+import std.optional { Present, Absent }
+import std.algebra { Cons, Empty }
+import extdeps.shell.exec { ProcessRunOutcome, ProcessRan, ProcessNotSpawned, ProcessObservation }
+import extdeps.tools.findutils { find_regular_files_sha256_command, find_command_runs_another_program }
+import gunbc.fabric.workspace_source { WorkspaceSourceRoot, workspace_source_fixed_roots, workspace_agent_state_slot_admission }
+import gunbc.fabric.workspace_transcript_rate {
+  TranscriptFileStat, TranscriptFileMtime, TranscriptRateClockUndefined, workspace_transcript_rate_root_command, workspace_transcript_rate_root_reading,
+  TranscriptRootRead, TranscriptRootRefused, workspace_transcript_rate_interval, workspace_transcript_rate_mtime,
+  TranscriptRateSampled, TranscriptRateSampleRefused, TranscriptRateSample, workspace_transcript_rate_window_of,
+  TranscriptRateObserved, TranscriptRateRefused, TranscriptRateRootSelection, TranscriptRateObservation, workspace_transcript_rate_receipt,
+  workspace_transcript_rate_select_roots, workspace_transcript_rate_roots, TranscriptRateRootsSelected, TranscriptRateRootUndeclared, TranscriptRateSlotRefused, workspace_transcript_rate_fixed_root_labels,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE TRANSCRIPT APPEND-RATE INSTRUMENT AT ITS PURE BOUNDARIES, inputs supplied. Each claim has a
+// discriminating red beside its positive control: the walk is a reader of metadata and the
+// content-reading sha256 walk is not; a shrinking file is a truncation and never a negative append;
+// an unreadable root refuses the sample and the window. The real walk over a real tree -- growth,
+// creation, truncation and a missing root through find itself -- is the inhabitance claim in
+// test.claim.workspace_transcript_rate_real_execution.
+
+data root: WorkspaceSourceRoot = WorkspaceSourceRoot { label: "claude-agent-state-test", path: "/r/.claude", build_output: [] }
+
+fn stat(member: String, size: Int, mtime: Int) -> TranscriptFileStat {
+  TranscriptFileStat { member: member as NonEmptyStr, size: byte_size(count: size), mtime: TranscriptFileMtime { since_epoch: nanosecond(count: mtime) } }
+}
+
+// One clock for every sample of a window, as the wet sampler uses; a second process name or a CPU
+// basis is a different clock.
+fn at(ns: Int) -> ObservationInstant {
+  ObservationInstant { domain: ProcessMonotonic { process: "workspace-transcript-rate" }, basis: WallClock, since_origin: nanosecond(count: ns) }
+}
+
+fn ran(code: Int, stdout: String, stderr: String) -> ProcessRunOutcome {
+  ProcessRan { observation: ProcessObservation { exit_code: code, stdout: stdout, stderr: stderr } }
+}
+
+test fn the_walk_runs_no_other_program_while_the_sha256_walk_does() -> Bool {
+  let walk = workspace_transcript_rate_root_command(root: root)
+  (walk.program.invocation as String) == "find"
+    && find_command_runs_another_program(command: walk) == false
+    && find_command_runs_another_program(command: find_regular_files_sha256_command(root: "/r/.claude"))
+}
+
+test fn a_shrinking_file_is_a_truncation_and_not_a_negative_append() -> Bool {
+  let row = workspace_transcript_rate_interval(
+    before: [stat(member: "r/.claude/projects/p/a.jsonl", size: 100, mtime: 1), stat(member: "r/.claude/projects/p/b.jsonl", size: 50, mtime: 1)],
+    after: [stat(member: "r/.claude/projects/p/a.jsonl", size: 40, mtime: 2), stat(member: "r/.claude/projects/p/b.jsonl", size: 60, mtime: 2)],
+    span: nanosecond(count: 10000000000),
+  )
+  measure_count(m: row.bytes_appended) == 10
+    && row.files_grown == 1
+    && row.active_writers == 2
+    && (match row.truncations {
+      Cons { head: t, tail: Empty } => (t.member as String) == "r/.claude/projects/p/a.jsonl" && measure_count(m: t.from) == 100 && measure_count(m: t.to) == 40
+      Cons { head: _, tail: Cons { head: _, tail: _ } } => false
+      Empty => false
+    })
+}
+
+test fn growth_creation_removal_and_a_same_size_rewrite_are_counted_apart() -> Bool {
+  let row = workspace_transcript_rate_interval(
+    before: [stat(member: "a", size: 10, mtime: 1), stat(member: "b", size: 10, mtime: 1), stat(member: "c", size: 10, mtime: 1), stat(member: "d", size: 10, mtime: 1)],
+    after: [stat(member: "a", size: 15, mtime: 2), stat(member: "b", size: 10, mtime: 2), stat(member: "c", size: 10, mtime: 1), stat(member: "e", size: 7, mtime: 2)],
+    span: nanosecond(count: 100),
+  )
+  measure_count(m: row.bytes_appended) == 12
+    && row.files_grown == 1 && row.files_created == 1 && row.files_removed == 1 && row.files_rewritten_same_size == 1
+    && row.active_writers == 3 && nanosecond_count(n: row.span) == 100
+}
+
+test fn the_walk_keeps_only_the_packs_transcript_class_and_reads_mtime_to_the_nanosecond() -> Bool {
+  match workspace_transcript_rate_root_reading(root: root, run: ran(code: 0, stdout: "64\t1728123456.1234567890\tprojects/p/s.jsonl\n9\t1728123456.5\tsettings.json\n5\t1.0\t.credentials.json\n3\t2.25\thistory.jsonl\n", stderr: "")) {
+    TranscriptRootRefused { root: _, detail: _ } => false
+    TranscriptRootRead { files: fs } =>
+      length(fs) == 2
+        && any(fs, f => (f.member as String) == "r/.claude/projects/p/s.jsonl" && measure_count(m: f.size) == 64 && nanosecond_count(n: f.mtime.since_epoch) == 1728123456123456789)
+        && any(fs, f => (f.member as String) == "r/.claude/history.jsonl" && nanosecond_count(n: f.mtime.since_epoch) == 2250000000)
+  }
+}
+
+test fn an_unparsed_mtime_or_line_refuses_rather_than_dropping_the_file() -> Bool {
+  (match workspace_transcript_rate_mtime(text: "1.2.3") { Absent => true  Present { value: _ } => false })
+    && (match workspace_transcript_rate_root_reading(root: root, run: ran(code: 0, stdout: "64 projects/p/s.jsonl\n", stderr: "")) {
+      TranscriptRootRefused { root: _, detail: _ } => true
+      TranscriptRootRead { files: _ } => false
+    })
+}
+
+fn never(k: Int) -> TranscriptRateSample {
+  TranscriptRateSampleRefused { refusals: ["not sampled"] }
+}
+
+test fn an_unreadable_root_refuses_the_sample_and_the_window() -> Bool {
+  let reading = workspace_transcript_rate_root_reading(root: root, run: ran(code: 1, stdout: "", stderr: "find: '/r/.claude': Permission denied"))
+  let not_spawned = workspace_transcript_rate_root_reading(root: root, run: ProcessNotSpawned { program: "find", cause: "no such program" })
+  (match reading { TranscriptRootRefused { root: _, detail: _ } => true  TranscriptRootRead { files: _ } => false })
+    && (match not_spawned { TranscriptRootRefused { root: _, detail: _ } => true  TranscriptRootRead { files: _ } => false })
+    && (match workspace_transcript_rate_window_of(baseline: TranscriptRateSampleRefused { refusals: ["claude: denied"] }, remaining: 3, next: never, pause: k => true, rows: []) {
+      TranscriptRateRefused { reason: _, rows: rows } => length(rows) == 0
+      TranscriptRateObserved { rate: _ } => false
+      TranscriptRateClockUndefined { from: _, to: _, order: _, rows: _ } => false
+    })
+}
+
+fn second_sample(k: Int) -> TranscriptRateSample {
+  if k == 2 {
+    TranscriptRateSampled { at: at(ns: 10000000000), files: [stat(member: "a", size: 1010, mtime: 2)] }
+  } else {
+    TranscriptRateSampled { at: at(ns: 20000000000), files: [stat(member: "a", size: 1030, mtime: 3)] }
+  }
+}
+
+test fn a_completed_window_receipts_every_interval_and_the_summary_with_its_caveat() -> Bool {
+  match workspace_transcript_rate_window_of(baseline: TranscriptRateSampled { at: at(ns: 0), files: [stat(member: "a", size: 1000, mtime: 1)] }, remaining: 2, next: second_sample, pause: k => true, rows: []) {
+    TranscriptRateRefused { reason: _, rows: _ } => false
+    TranscriptRateClockUndefined { from: _, to: _, order: _, rows: _ } => false
+    TranscriptRateObserved { rate: r } => {
+      let receipt = workspace_transcript_rate_receipt(head: "", observation: TranscriptRateObserved { rate: r })
+      length(r.rows) == 2
+        && contains(receipt, "interval 1 span_ms=10000 bytes_appended=10 ")
+        && contains(receipt, "interval 2 span_ms=10000 bytes_appended=20 ")
+        && contains(receipt, " mean_bits_per_s=12 mean_bytes_per_s=1 ")
+        && contains(receipt, " p95_bits_per_s=16 p95_bytes_per_s=2 ")
+        && contains(receipt, "verdict=observed")
+        && contains(r.caveat as String, "ONE SAMPLE OF WORKLOAD")
+    }
+  }
+}
+
+test fn a_failed_pause_refuses_the_window() -> Bool {
+  match workspace_transcript_rate_window_of(baseline: TranscriptRateSampled { at: at(ns: 0), files: [] }, remaining: 2, next: second_sample, pause: k => false, rows: []) {
+    TranscriptRateRefused { reason: _, rows: _ } => true
+    TranscriptRateObserved { rate: _ } => false
+    TranscriptRateClockUndefined { from: _, to: _, order: _, rows: _ } => false
+  }
+}
+
+// The Claude root comes from the pack's slot admission, supplied here with an observed slot set; the
+// Codex root is the pack's fixed row. An unknown slot refuses the selection.
+fn roots_for(requested: String) -> TranscriptRateRootSelection {
+  workspace_transcript_rate_roots(
+    slot: workspace_agent_state_slot_admission(requested: Present { value: requested }, observed: ["gmail2", "gmail3"]),
+    fixed: workspace_transcript_rate_select_roots(labels: workspace_transcript_rate_fixed_root_labels, declared: workspace_source_fixed_roots),
+  )
+}
+
+test fn the_observed_roots_are_the_admitted_slot_and_the_codex_row_and_an_unknown_slot_refuses() -> Bool {
+  (match roots_for(requested: "gmail2") {
+    TranscriptRateRootsSelected { roots: rs } => length(rs) == 2 && any(rs, r => (r.path as String) == "/home/briansrls/.claude@gmail2") && any(rs, r => (r.path as String) == "/home/briansrls/.codex")
+    TranscriptRateRootUndeclared { label: _ } => false
+    TranscriptRateSlotRefused { slot: _ } => false
+  })
+    && (match roots_for(requested: "gmail9") {
+      TranscriptRateSlotRefused { slot: _ } => true
+      TranscriptRateRootsSelected { roots: _ } => false
+      TranscriptRateRootUndeclared { label: _ } => false
+    })
+    && (match workspace_transcript_rate_select_roots(labels: ["no-such-root"], declared: workspace_source_fixed_roots) {
+      TranscriptRateRootUndeclared { label: l } => (l as String) == "no-such-root"
+      TranscriptRateRootsSelected { roots: _ } => false
+      TranscriptRateSlotRefused { slot: _ } => false
+    })
+}
+
+fn sample_at(instant: ObservationInstant) -> fn(Int) -> TranscriptRateSample {
+  k => TranscriptRateSampled { at: instant, files: [] }
+}
+
+fn window_after(instant: ObservationInstant) -> TranscriptRateObservation {
+  workspace_transcript_rate_window_of(baseline: TranscriptRateSampled { at: at(ns: 10), files: [] }, remaining: 1, next: sample_at(instant: instant), pause: k => true, rows: [])
+}
+
+// THE SPAN IS DERIVED BY ORDERING TWO INSTANTS OF ONE CLOCK. The positive control is the ordered pair
+// on the same domain and basis; the reds are a later instant that does not follow (InstantAfter) and
+// an instant on another process's clock or another basis (InstantIncomparable) -- each its own typed
+// refusal carrying the order, never a zero span read as a quiet interval.
+test fn ordered_same_clock_instants_derive_a_span_and_reversed_or_foreign_instants_refuse_by_their_order() -> Bool {
+  (match window_after(instant: at(ns: 25)) {
+    TranscriptRateObserved { rate: r } => (match r.rows { Cons { head: row, tail: Empty } => nanosecond_count(n: row.span) == 15  Cons { head: _, tail: Cons { head: _, tail: _ } } => false  Empty => false })
+    TranscriptRateRefused { reason: _, rows: _ } => false
+    TranscriptRateClockUndefined { from: _, to: _, order: _, rows: _ } => false
+  })
+    && (match window_after(instant: at(ns: 5)) {
+      TranscriptRateClockUndefined { from: _, to: _, order: o, rows: rows } => length(rows) == 0 && (match o { InstantAfter => true  InstantIncomparable { left: _, right: _ } => false  InstantBefore => false  InstantSame => false })
+      TranscriptRateObserved { rate: _ } => false
+      TranscriptRateRefused { reason: _, rows: _ } => false
+    })
+    && (match window_after(instant: ObservationInstant { domain: ProcessMonotonic { process: "another-process" }, basis: WallClock, since_origin: nanosecond(count: 25) }) {
+      TranscriptRateClockUndefined { from: _, to: _, order: o, rows: _ } => (match o { InstantIncomparable { left: _, right: _ } => true  InstantAfter => false  InstantBefore => false  InstantSame => false })
+      TranscriptRateObserved { rate: _ } => false
+      TranscriptRateRefused { reason: _, rows: _ } => false
+    })
+    && (match window_after(instant: ObservationInstant { domain: ProcessMonotonic { process: "workspace-transcript-rate" }, basis: CpuClock, since_origin: nanosecond(count: 25) }) {
+      TranscriptRateClockUndefined { from: _, to: _, order: o, rows: _ } => (match o { InstantIncomparable { left: _, right: _ } => true  InstantAfter => false  InstantBefore => false  InstantSame => false })
+      TranscriptRateObserved { rate: _ } => false
+      TranscriptRateRefused { reason: _, rows: _ } => false
+    })
+}

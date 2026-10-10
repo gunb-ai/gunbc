@@ -113,8 +113,9 @@ test fn emit_handles_for_loop() -> Bool {
   src_has(emit_rust_path, "emit_typed_for_each")
 }
 
-test fn emit_generates_cargo_toml() -> Bool {
-  src_has(emit_rust_path, "emit_cargo_toml")
+test fn emit_returns_its_rust_crate_facts() -> Bool {
+  src_has(emit_rust_path, "rust_crates: [rust_crate]")
+    && src_lacks(emit_rust_path, "fn emit_cargo_toml(")
 }
 
 test fn emit_has_tco_support() -> Bool {

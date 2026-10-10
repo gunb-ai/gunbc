@@ -4,12 +4,20 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn map_get_method_routes_through_dual_dispatch_chokepoint() -> Bool {
   let m = empty_map() |> map_insert("a", 10)
-  (m |> get("a")) == 10
+  let o = m |> get("a")
+  match o {
+    Present { value: v } => v == 10
+    Absent => false
+  }
 }
 
 test fn map_index_routes_through_dual_dispatch_chokepoint() -> Bool {
   let m = empty_map() |> map_insert("b", 42)
-  m["b"] == 42
+  let o = m["b"]
+  match o {
+    Present { value: v } => v == 42
+    Absent => false
+  }
 }
 
 test fn lookup_builtin_routes_through_dual_dispatch_chokepoint() -> Bool {

@@ -7,7 +7,7 @@ import std.content_hash { Sha256Digest }
 import std.optional { Present, Absent }
 import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding, GcpIamBindingCell }
 import gunbc.auth.approval_decision_store { request_revision_of }
-import gunbc.auth.heal_publisher_provision { DedicatedFederation, FederationClassification, FederationClassified, FederationUnclassified, heal_publisher_dedicated_federation, impersonation_cell }
+import gunbc.auth.heal_publisher_provision { DedicatedFederation, FederationClassification, FederationClassified, FederationUnclassified, heal_publisher_dedicated_federation, impersonation_cells, heal_publisher_impersonation_cell }
 import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_access_desired_cells }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.cloud.gcp.gcp { GcpProjectId }
@@ -39,7 +39,7 @@ import gunbc.auth.privileged_effect_census {
 import gunbc.auth.authorization_pattern_selection { PatternSelected, OperatorApprovedCapability }
 import gunbc.fleet_converge_workflow {
   fleet_converge_gcp_iam_request_step, fleet_converge_gcp_iam_actuate_auth_step, fleet_converge_gcp_iam_apply_step,
-  fleet_converge_gcp_iam_approved_if,
+  fleet_converge_gcp_iam_approved_if, fleet_converge_gcp_iam_converge_approved_if,
 }
 import gunbc.auth.gcp_iam_converge_run { iam_converge_token_env, gcp_iam_converge_admission }
 import gunbc.auth.approval_request_client { ApprovalPollStanding, PollApproved }
@@ -125,7 +125,7 @@ test fn a_converged_federation_plans_noop() -> Bool {
   match plan_dedicated_federation(
     f: heal,
     classification: nothing_to_create,
-    account_policy: PolicyObserved { policy: policy_of(cells: [impersonation_cell(f: heal)], etag: "a1") },
+    account_policy: PolicyObserved { policy: policy_of(cells: impersonation_cells(f: heal), etag: "a1") },
     secret_policies: heal_converged_secret_readings(),
   ) {
     GcpIamNoop { target: _ } => true
@@ -139,7 +139,7 @@ test fn an_absent_secret_refuses_the_plan() -> Bool {
   match plan_dedicated_federation(
     f: heal,
     classification: nothing_to_create,
-    account_policy: PolicyObserved { policy: policy_of(cells: [impersonation_cell(f: heal)], etag: "a1") },
+    account_policy: PolicyObserved { policy: policy_of(cells: impersonation_cells(f: heal), etag: "a1") },
     secret_policies: heal_secret_readings(reading: PolicyResourceAbsent),
   ) {
     GcpIamRefused { target: _, reasons: rs } => rs.length() > 0
@@ -188,7 +188,7 @@ fn one_effect_estate(etag: String) -> GcpIamEstateDiff {
 fn heal_account_diff(etag: String) -> GcpIamDiff {
   GcpIamDiff {
     target: "heal publisher provision",
-    effects: [AddPolicyCells { subject: ServiceAccountPolicy { email: heal.service_account }, observed_etag: etag, cells: [impersonation_cell(f: heal)] }],
+    effects: [AddPolicyCells { subject: ServiceAccountPolicy { email: heal.service_account }, observed_etag: etag, cells: impersonation_cells(f: heal) }],
   }
 }
 
@@ -241,8 +241,8 @@ fn step_env_keys(st: Step) -> List<String> {
 // auth step gated only on the mode, which would federate as iam-converge before anyone tapped.
 test fn iam_converge_is_impersonated_only_after_a_recorded_approval() -> Bool {
   step_if(st: fleet_converge_gcp_iam_actuate_auth_step()) == fleet_converge_gcp_iam_approved_if
-    && step_if(st: fleet_converge_gcp_iam_apply_step()) == fleet_converge_gcp_iam_approved_if
-    && string_contains(s: fleet_converge_gcp_iam_approved_if, pattern: "steps.gcp_iam_request.outputs.approved == 'true'")
+    && step_if(st: fleet_converge_gcp_iam_apply_step()) == fleet_converge_gcp_iam_converge_approved_if
+    && string_contains(s: fleet_converge_gcp_iam_converge_approved_if, pattern: "steps.gcp_iam_request.outputs.approved == 'true'")
     && !any(step_env_keys(st: fleet_converge_gcp_iam_request_step()), k => k == (iam_converge_token_env as String))
     && any(step_env_keys(st: fleet_converge_gcp_iam_apply_step()), k => k == (iam_converge_token_env as String))
 }
@@ -318,7 +318,7 @@ test fn the_deny_list_covers_payload_reads_and_token_minting_and_no_role_grants_
 
 data other_cell: GcpIamBindingCell = GcpIamBindingCell { role: "roles/secretmanager.secretAccessor", member: "serviceAccount:someone-else@gunbai-secrets.iam.gserviceaccount.com", condition: none }
 
-fn approved_cell() -> GcpIamBindingCell { impersonation_cell(f: heal) }
+fn approved_cell() -> GcpIamBindingCell { heal_publisher_impersonation_cell() }
 
 fn write_of(w: ApprovedPolicyWrite) -> GcpPolicy? {
   match w { WriteApprovedCells { policy: p } => Present { value: p }  ApprovedCellsRefused { reason: _ } => none }
@@ -423,13 +423,13 @@ fn in_project(g: SecretAccessGrant, project: String) -> SecretAccessGrant {
 test fn a_grant_outside_the_fleet_project_refuses_the_plan() -> Bool {
   let moved = DedicatedFederation {
     label: heal.label, pool_id: heal.pool_id, pool_display_name: heal.pool_display_name, provider_id: heal.provider_id,
-    attribute_mapping: heal.attribute_mapping, attribute_condition: heal.attribute_condition, principal_set: heal.principal_set,
+    attribute_mapping: heal.attribute_mapping, attribute_condition: heal.attribute_condition, impersonation: heal.impersonation,
     service_account: heal.service_account, service_account_id: heal.service_account_id, service_account_display_name: heal.service_account_display_name,
     service_account_member: heal.service_account_member,
     secret_grants: map(heal.secret_grants, g => in_project(g: g, project: "another-project")),
   }
   let readings = map(moved.secret_grants, g => GrantPolicyReading { grant: g, reading: PolicyObserved { policy: empty_policy(etag: "s0") } })
-  match plan_dedicated_federation(f: moved, classification: nothing_to_create, account_policy: PolicyObserved { policy: policy_of(cells: [impersonation_cell(f: heal)], etag: "a1") }, secret_policies: readings) {
+  match plan_dedicated_federation(f: moved, classification: nothing_to_create, account_policy: PolicyObserved { policy: policy_of(cells: impersonation_cells(f: heal), etag: "a1") }, secret_policies: readings) {
     GcpIamRefused { target: _, reasons: rs } => any(rs, r => string_contains(s: r, pattern: "outside the fleet project"))
     _ => false
   }

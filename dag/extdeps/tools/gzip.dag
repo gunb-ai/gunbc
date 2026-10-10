@@ -58,3 +58,19 @@ service gzip.Gzip {
     }
   }
 }
+
+// COMPRESS ONE FILE BESIDE ITSELF: `--keep --best --force`, which writes <path>.gz at level 9, keeps
+// the input, and replaces a stale <path>.gz (gzip manual, "Invoking gzip"). The compressed size is a
+// stat of <path>.gz; it is how a caller asks whether bytes are compressible without carrying them.
+service gzip.Compress {
+  operation BesideKeepBest {
+    requires none
+    input { path: NonEmptyStr }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["gzip", "--keep", "--best", "--force", "--", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "gzip could not compress the path"
+    }
+  }
+}

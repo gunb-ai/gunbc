@@ -550,7 +550,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           arity: CliRepeated,
           doc: [
             "Named argument for the entry function, repeatable: `--arg name=value`.",
-            "Values enter as String; a missing `=` refuses rather than guessing."
+            "Bound against the parameter's resolved type identity: kernel String, Int, and Bool, and std.types NonEmptyStr (String where string_non_empty). Other types refuse."
           ],
           emission: CarriedByGeneratedDispatch
         }
@@ -633,15 +633,15 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           long: "target",
           value: CliTextValue { text_default: Present { value: "" } },
           arity: CliRequired,
-          doc: ["Spark target host (srv5 | srv6); required for scope:spark-serving, refused elsewhere"],
+          doc: ["Spark target host; required for scope:spark-serving, refused elsewhere"],
           emission: CarriedByGeneratedDispatch
         },
         CliOptionRow {
           field: "candidate_branch",
           long: "candidate-branch",
-          value: CliTextValue { text_default: Present { value: "main" } },
+          value: CliTextValue { text_default: Present { value: "" } },
           arity: CliRequired,
-          doc: ["Branch the checkout must be on for --mode deploy; the candidate is HEAD of this checkout"],
+          doc: ["If set, the checkout must be on this branch for --mode deploy; empty admits HEAD's branch"],
           emission: CarriedByGeneratedDispatch
         }
       ],

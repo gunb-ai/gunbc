@@ -1,5 +1,22 @@
 module v2.std.compilers.compilation_unit
 
+import gunbc.crate_partition {
+  CompilationUnitId,
+  HandExplicit,
+  InterfaceClosureUnreachedFixpoint,
+  ModuleAssignmentLookupRejected,
+  ModuleDagEdge,
+  ModuleDagExportsLookupRejected,
+  ModuleDagTypeDefinitionsLookupRejected,
+  ModuleId,
+  PartitionFoldRefusalCause,
+  PartitionProvenance,
+  PartitionR4Refused,
+  PartitionR4ValidityVerdict,
+  PolicyDerived,
+  SccSplit,
+  list_unique_sorted_ids
+}
 
 import std.algebra { Empty }
 import std.types { NonEmptyStr, List, Bool, String, Int, brand }
@@ -9,7 +26,7 @@ import std.disposition { SingleAuthority }
 import v2.lens.common.construction_justification { ConstructionJustification, WallNow }
 import v2.std.algebra { any, fold_list, length }
 import v2.std.collection {
-  map_get
+  map_get_checked
 }
 import std.optional {
   Absent,
@@ -29,18 +46,6 @@ import v2.std.node {
   content_hash,
   node_subtree_nodes,
   node_synthetic,
-}
-
-type ModuleId = NonEmptyStr where brand("ModuleId")
-type CompilationUnitId = NonEmptyStr where brand("CompilationUnitId")
-
-type PartitionProvenance
-  = HandExplicit
-  | PolicyDerived { policy: DeclarationRef }
-
-type ModuleDagEdge {
-  from: ModuleId
-  to: ModuleId
 }
 
 type ModuleTypeDefinitionRow {
@@ -65,23 +70,6 @@ type CompilationUnit {
 type PartitionInterfaceClosureResult
   = PartitionInterfaceClosed { nodes: List<Node> }
   | PartitionInterfaceTruncated
-
-type PartitionFoldRefusalCause
-  = InterfaceClosureUnreachedFixpoint { unit_id: CompilationUnitId }
-  | ModuleDagExportsLookupRejected { module: ModuleId }
-  | ModuleDagTypeDefinitionsLookupRejected { module: ModuleId }
-  | ModuleAssignmentLookupRejected { module: ModuleId }
-
-type PartitionR4ValidityCause
-  = SccSplit { detail: String }
-  | UnitGraphCycle { detail: String }
-  | LinkageCycle { detail: String }
-  | ByValueTypeCycle { detail: String }
-  | PartitionInputRejected { cause: PartitionFoldRefusalCause }
-
-type PartitionR4ValidityVerdict
-  = PartitionR4Valid
-  | PartitionR4Refused { cause: PartitionR4ValidityCause }
 
 type PartitionFoldOutcome
   = PartitionFoldOk { units: List<CompilationUnit> }
@@ -183,14 +171,6 @@ data partition_r4_witness_refused_scc_split: PartitionR4ValidityVerdict = Partit
   cause: SccSplit { detail: "witness-only carrier; realization-owned predicate" }
 }
 
-fn partition_provenance_hand_explicit() -> PartitionProvenance {
-  HandExplicit
-}
-
-fn partition_provenance_policy_derived(policy: DeclarationRef) -> PartitionProvenance {
-  PolicyDerived { policy: policy }
-}
-
 fn partition_provenance_eq(left: PartitionProvenance, right: PartitionProvenance) -> Bool {
   match left {
     HandExplicit => match right {
@@ -210,7 +190,7 @@ fn module_unit_id_outcome(
   assignment: Map<ModuleId, CompilationUnitId>,
   module: ModuleId
 ) -> Outcome<Optional<CompilationUnitId>> {
-  match map_get(assignment, module) {
+  match map_get_checked(assignment, module) {
     Accepted { value: opt, diagnostics: _ } => outcome_accepted(value: opt)
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
@@ -220,7 +200,7 @@ fn module_unit_id(
   assignment: Map<ModuleId, CompilationUnitId>,
   module: ModuleId
 ) -> Optional<CompilationUnitId> {
-  match map_get(assignment, module) {
+  match map_get_checked(assignment, module) {
     Accepted { value: opt, diagnostics: _ } => opt
     Rejected { diagnostics: _ } => Absent
   }
@@ -289,30 +269,6 @@ fn list_snoc_unique_node(items: List<Node>, item: Node) -> List<Node> {
   }
 }
 
-// SORT BEFORE DEDUP, not after. `assignment |> map_values` is this function's production input
-// at all three partition folds below, and a Map has no encounter-order contract. The old fold
-// scanned the growing accumulator with `any` and only sorted its result afterward: the result was
-// canonical, but the amount of evaluator work depended on the HAMT iteration order because a
-// duplicate stopped the scan wherever its earlier copy happened to sit. Required-floor's
-// same-tree corpus A/B measured that defect directly: identical source moved this family's
-// per-claim evaluator-step counts in both directions.
-//
-// Sorting first makes equal ids adjacent. Membership is then decidable against the last kept
-// identity alone, so the work no longer depends on the unmodeled Map order and the growing
-// accumulator is not rescanned for every item. This is the same sort-then-neighbour substrate
-// pattern used by gunbc.self_host_compile_phase_frontier.deduplicate_identities; it lives here
-// because CompilationUnitId, and the partition semantics being preserved, are owned here.
-fn list_unique_sorted_ids(items: List<CompilationUnitId>) -> List<CompilationUnitId> {
-  fold(
-    items |> sort_by(id => id),
-    init: [],
-    f: (unique, item) => match unique |> last {
-      Present { value: prior } => if prior == item { unique } else { unique |> list_push(item) }
-      Absent => [item]
-    }
-  )
-}
-
 // A DETERMINISM ORDER WITH NO SEMANTIC MEANING. Its only consumer, list_unique_sorted_nodes, sorts so
 // that equal content hashes are adjacent; which of two distinct hashes comes first carries no fact.
 // So the key is the digest's hex text, the orderable representation Fnv1a64Structural already
@@ -341,7 +297,7 @@ fn module_export_declarations_outcome(
   module_dag: ModuleDag,
   module: ModuleId
 ) -> Outcome<List<Node>> {
-  match map_get(module_dag.exports, module) {
+  match map_get_checked(module_dag.exports, module) {
     Accepted { value: opt, diagnostics: _ } =>
       outcome_accepted(value: match opt {
         Present { value: nodes } => nodes
@@ -355,7 +311,7 @@ fn module_type_definition_rows_outcome(
   module_dag: ModuleDag,
   module: ModuleId
 ) -> Outcome<List<ModuleTypeDefinitionRow>> {
-  match map_get(module_dag.type_definitions, module) {
+  match map_get_checked(module_dag.type_definitions, module) {
     Accepted { value: opt, diagnostics: _ } =>
       outcome_accepted(value: match opt {
         Present { value: rows } => rows
@@ -373,7 +329,7 @@ fn module_type_definition_rows_outcome(
 // then discarded both values, so the closure below it re-established a fact its predecessor already
 // had (DESIGN section 6b). With the rows carried, no map lookup runs inside the closure at all:
 // the swallowing arm has no site to exist at rather than being refused at one, and the repeated
-// map_get is gone with it.
+// map_get_checked is gone with it.
 fn resolve_module_interface(
   module_dag: ModuleDag,
   module: ModuleId

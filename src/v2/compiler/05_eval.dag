@@ -147,6 +147,7 @@ import v2.std.node {
   well_formed,
 }
 import v2.std.node_query {
+  arrow_constant_member_codomain,
   FieldProjection,
   field_projection_edge_base_optional,
   field_projection_optional,
@@ -527,37 +528,13 @@ type TestClaimEvalSubject<T> {
   input: TestClaimTypedInput<T>
 }
 
-type TestClaimCacheKey<T> {
-  eval_subject: TestClaimEvalSubject<T>
-}
-
-fn test_claim_cache_key_claim_hash<T>(key: TestClaimCacheKey<T>) -> Hash {
-  test_claim_claim_hash_digest(c: key.eval_subject.claim)
-}
-
-fn test_claim_cache_key_interpretation_hash_node(key: TestClaimCacheKey<Node>) -> Hash {
-  test_claim_cache_interpretation_hash_node(subject: key.eval_subject)
-}
-
-type TestClaimCacheReceipt<T> {
-  key: TestClaimCacheKey<T>
-}
-
 type TestClaimRun<S, A> {
-  cache: TestClaimCacheReceipt<S>
+  claim: TestClaim
   verdict: Verdict<TestClaimEvalSubject<S>, A>
 }
 
-fn test_claim_cache_key_claim<T>(key: TestClaimCacheKey<T>) -> TestClaim {
-  key.eval_subject.claim
-}
-
-fn test_claim_cache_receipt_claim<T>(receipt: TestClaimCacheReceipt<T>) -> TestClaim {
-  test_claim_cache_key_claim(key: receipt.key)
-}
-
 fn test_claim_run_claim<S, A>(run: TestClaimRun<S, A>) -> TestClaim {
-  test_claim_cache_receipt_claim(receipt: run.cache)
+  run.claim
 }
 
 fn test_claim_run_verdict<S, A>(run: TestClaimRun<S, A>) -> Verdict<TestClaimEvalSubject<S>, A> {
@@ -1006,18 +983,6 @@ fn test_claim_cache_interpretation_hash_node(subject: TestClaimEvalSubject<Node>
       b: test_claim_evaluator_digest_node(input: subject.input)
     )
   )
-}
-
-fn test_claim_cache_receipt_node(subject: TestClaimEvalSubject<Node>) -> TestClaimCacheReceipt<Node> {
-  TestClaimCacheReceipt {
-    key: TestClaimCacheKey {
-      eval_subject: subject
-    }
-  }
-}
-
-fn test_claim_cache_receipt(subject: TestClaimEvalSubject<Node>) -> TestClaimCacheReceipt<Node> {
-  test_claim_cache_receipt_node(subject: subject)
 }
 
 fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
@@ -2509,6 +2474,63 @@ fn eval_interpret_node(
   )
 }
 
+// THE CONSTANT'S BODY RUNS THROUGH THE SAME BODY-FORM DISPATCH A NULLARY CALL USES (eval_transform_node's
+// callee arm): v2.std.node arrow_body_admits_eval_entry decides whether the form may enter, a direct atom
+// (a literal) is allocated by eval_type_node_atom without a facts lookup, and every other admitted form
+// is walked by eval_runtime_node. A form that may not enter refuses with eval_callee_body_refusal_reason,
+// the reason the call route gives for the same form, so the two routes cannot disagree about a body.
+fn eval_constant_member_value(
+  body: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> Outcome<RuntimeValue> {
+  let form = classify_arrow_body_form(target: body)
+  if !arrow_body_admits_eval_entry(form: form) {
+    outcome_rejected(d: eval_diagnostic(reason: eval_callee_body_refusal_reason(form: form), node: body))
+  } else {
+    match form {
+      DirectAtomBody => eval_type_node_atom(node: body, interpretation: interpretation, environment: environment)
+      RecordConstructBody => eval_runtime_node(node: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+      DeclarationReferenceBody => eval_runtime_node(node: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+      ParameterReferenceBody => eval_runtime_node(node: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+      LexicalReferenceBody => eval_runtime_node(node: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+      FunctionValueBody => eval_runtime_node(node: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+      ComputationBody { behavior: _ } => eval_runtime_node(node: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+      UnsupportedArrowBody => eval_runtime_node(node: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+    }
+  }
+}
+
+// A REFERENCE TO A `data` CONSTANT EVALUATES TO THE CONSTANT'S VALUE: the body of the nullary Arrow body
+// lowering realizes it as, evaluated as the nullary application the seed performs at every reference
+// (v1.compiler.emit_rust emits a data item as a nullary fn and calls it). The declaration is the
+// denotation infer recorded beside the reference, and it is a constant exactly when its Arrow carries
+// v2.std.node ConstantMemberEdge -- the same reader (v2.std.node_query arrow_constant_member_codomain)
+// infer typed the reference by, so a reference infer typed at T is the one eval applies, and every other
+// value-position declaration reference keeps the binding-miss refusal in eval_type_node_atom. The empty
+// domain binds nothing, so the body runs in the environment of the reference.
+fn eval_constant_member_body(node: Node, facts: InferredFacts) -> Optional<Node> {
+  match declaration_reference_path_optional(node: node) {
+    Absent => Absent
+    Present { value: _ } =>
+      match facts.denotation {
+        Absent => Absent
+        Present { value: declaration } =>
+          match arrow_constant_member_codomain(arrow: declaration) {
+            Absent => Absent
+            Present { value: _ } =>
+              match find_arrow_body_child(root: declaration) {
+                Accepted { value: body, diagnostics: _ } => Present { value: body }
+                Rejected { diagnostics: _ } => Absent
+              }
+          }
+      }
+  }
+}
+
 // A FIELD PROJECTION SELECTS A FIELD FROM THE RECEIVER'S VALUE, and refuses on anything else. Without
 // this arm a projection reached the default TypeNode route and was handed to allocate_literal, which
 // would fabricate a literal out of a two-edge Conj -- a value for an expression that selects, not one
@@ -2858,6 +2880,53 @@ fn eval_fold_child_edge_step(
 }
 
 fn eval_fold_tree(
+  n: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> EvalFoldState {
+  match eval_constant_reference_body(tree: tree, node: n) {
+    Present { value: body } =>
+      eval_fold_constant_reference_state(node: n, body: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+    Absent => eval_fold_tree_walk(n: n, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+  }
+}
+
+// A REFERENCE TO A `data` CONSTANT IS A LEAF OF THE WALK, AS A PARAMETER REFERENCE IS (eval_runtime_node's
+// first arm). Its only child is its declaring path spine, which is identity data built at
+// OccurrenceSynthetic with no facts entry of its own, so descending into it refused with
+// infer_facts_lookup_miss on the spine before the reference was ever valued. The leaf's value is the
+// constant's, through eval_constant_member_value; its structural check is the reference's own facts.
+fn eval_fold_constant_reference_state(
+  node: Node,
+  body: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> EvalFoldState {
+  EvalFoldState {
+    node: node,
+    progress: Interpreted,
+    structural: eval_structural_node_for_eval(tree: tree, node: node),
+    child_values: Accepted { value: empty_runtime_values(), diagnostics: None },
+    value: eval_constant_member_value(body: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+  }
+}
+
+// The constant body a node names when it is a declaration reference whose facts record a marked
+// declaration, Absent for every other node (so every other node keeps the ordinary walk).
+fn eval_constant_reference_body(tree: InferredTree, node: Node) -> Optional<Node> {
+  match tree.facts.lookup(node) {
+    Absent => Absent
+    Present { value: facts } => eval_constant_member_body(node: node, facts: facts)
+  }
+}
+
+fn eval_fold_tree_walk(
   n: Node,
   tree: InferredTree,
   interpretation: InterpretationAlgebra,
@@ -3494,7 +3563,7 @@ fn run_test_claim_runtime_evaluated(
     inputs: inputs_root_only(root: subject.input.evaluator_input)
   )
   TestClaimRun {
-    cache: test_claim_cache_receipt_node(subject: subject),
+    claim: subject.claim,
     verdict: aggregate_verdicts(
       rs: [
         run_test_claim_runtime_assert(
@@ -3517,7 +3586,7 @@ fn run_test_claim(
   match subject.claim {
     RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
       TestClaimRun {
-        cache: test_claim_cache_receipt_node(subject: subject),
+        claim: subject.claim,
         verdict: run_test_claim_round_trip_verdict_runtime(
           actual: eval_round_trip_claim_input_for_verdict(
             input: subject.input.evaluator_input
@@ -3528,7 +3597,7 @@ fn run_test_claim(
 
     StructuralEqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } =>
       TestClaimRun {
-        cache: test_claim_cache_receipt_node(subject: subject),
+        claim: subject.claim,
         verdict: run_test_claim_structural_equals_verdict(
           actual: eval_round_trip_claim_input_for_verdict(
             input: subject.input.evaluator_input

@@ -1,5 +1,6 @@
 module gunbc.machine_intake_mtcollins1_32dimm_bringup_observation
 
+import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
 import gunbc.mtcollins_memory_change { mtcollins_training_capture_path, mtcollins_training_capture_sha256 }
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.measure { ByteSize, byte_size }
@@ -8,7 +9,6 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
 import std.scoped_authorization { AttemptIdentity }
 import std.temporal_effect { LeaseEpoch, LeaseRunningExpected, LeaseRunningStale, held_lease }
-import extdeps.boards.types { AmpereMtCollins }
 import extdeps.bmc.ipmi_sel {
   FirmwareProgress,
   InitiatedByPowerUp,
@@ -395,7 +395,7 @@ data mtcollins1_sdr_capture: SdrCapture = SdrCapture {
 // (CPU0_MEM_Pwr / CPU1_MEM_Pwr in Watts, mtcollins1_sdr_capture); managed AC no (the AC cycle was performed
 // by hand, 10-ac-meta.txt); host callback intended, not demonstrated.
 data mtcollins1_pre_os_capabilities: PreOsObservationCapabilities = PreOsObservationCapabilities {
-  baseboard: AmpereMtCollins,
+  baseboard: mt_collins_board_authority,
   controller_firmware: mtcollins1_firmware,
   console: SolPresentEmitting {
     established_by: DeclarationRef { module_path: "gunbc.machine_intake_mtcollins1_32dimm_bringup_observation", decl_name: "mtcollins1_dram_training_capture", field: WholeDeclaration },
