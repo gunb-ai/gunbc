@@ -154,6 +154,6 @@ fn render_wire(dimension: RoomDimensionKnowledge) -> String {
     RenderHypothesis { value: v, purpose: _ } =>
       "<line class={style} data-mm={nat_to_decimal_string(value: millimeter_count(m: v))}/>"
     RenderUnknown { obligation: o } =>
-      "<obligation class={style} data-survey={o as String}/>"
+      concat("<obligation class=", concat(style, concat(" data-survey=", concat(o as String, "/>"))))
   }
 }
