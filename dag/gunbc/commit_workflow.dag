@@ -1452,41 +1452,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/compiler_materialization_witness_test.dag",
-      check_fns: [
-        "compiler_materialization_ladder_holds",
-        "parse_table_memo_provider_preserves_catalog_retention",
-        "compile_stage_memo_provider_preserves_catalog_retention",
-        "parse_table_carrier_inhabits_realization",
-        "compile_stage_carrier_inhabits_realization",
-        "parse_table_empty_uses_catalog_identity",
-        "single_site_demands_are_accepted_single_recompute",
-        "parse_table_memo_plural_reds_without_provider"
-      ],
-      kind: CorpusWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/long/parse_table_memo_governed_witness_test.dag",
-      check_fns: [
-        "witness_materialization_gate_recompute_denies_store",
-        "witness_recompute_fixture_carries_recompute_verdict",
-        "witness_door_insert_refused_for_recompute_table",
-        "witness_door_lookup_refused_for_recompute_table",
-        "parse_table_memo_bypass_store_reds",
-        "witness_memoize_carrier_allows_store",
-        "witness_content_key_subject_stable"
-      ],
-      kind: CorpusWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
       entry: "dag/test/claim/ci_materialization_witness_test.dag",
       check_fns: [
         "ci_ladder_holds_on_live_workflow",
@@ -2980,7 +2945,7 @@ fn realization_artifact_for_surface(surface: CommitWorkflowSurface) -> Generated
 // enforcement-coverage precedent in gunbc.ci_layer_roots). The files live under
 // src/v2/test/claim/long/ with the local recipe; dissolve-on: the long-lane scheduled trigger
 // (falsifier follow-on) enrolls them and this note retires. Contrast: the parse_table_memo_governed
-// enrollment above was REPOINTED to its long/ home, not deleted — its four enrolled check_fns each
+// enrollment (since deleted with the parse memo carrier, operator ruling R2 2026-10-08) was REPOINTED to its long/ home, not deleted — its four enrolled check_fns each
 // measured 0ms (audit 2026-07-12); only unenrolled siblings in that file (warm_equals_cold) are
 // over budget, and an explicit row runs exactly its named check_fns. Delete when the enrolled fns
 // themselves are slow; repoint when only the file moved. Wave 1 Gate 1 body-producer keystones

@@ -2,7 +2,8 @@ module test.claim.live_deploy.deploy_release_fixture
 
 import std.types { CommitSha, String, NonEmptyStr }
 import extdeps.crypto.hash { Digest, sha256_digest }
-import gunbc.live_deploy.spec { DeploymentSpec }
+import gunbc.live_deploy.spec { DeploymentSpec, DeploymentHostTarget }
+import gunbc.owned_directory { owned_directory_path }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan, ReleaseTarget, full_install_plan }
 import gunbc.live_deploy.member_observe { deployment_member_roster }
 
@@ -50,3 +51,26 @@ data deploy_witness_other_release_revision: CommitSha = "89abcdef0123456789abcde
 // held.
 
 data deploy_witness_third_release_revision: CommitSha = "fedcba9876543210fedcba9876543210fedcba98"
+
+// THE SPEC NARROWED TO ONE DEMANDED DIRECTORY, so a claim can run the transaction's real directory
+// emitter (gunbc.live_deploy.emit owned_directory_apply_steps) over the one demand it is about rather
+// than paying every demand's install: the demand is the production spec's own, filtered by path.
+fn deploy_witness_spec_with_only_directory(spec: DeploymentSpec, path: String) -> DeploymentSpec {
+  DeploymentSpec {
+    target: DeploymentHostTarget {
+      host: spec.target.host,
+      ssh_host: spec.target.ssh_host,
+      tailscale_endpoint: spec.target.tailscale_endpoint,
+      tailnet_domain: spec.target.tailnet_domain,
+      os_package_manager: spec.target.os_package_manager,
+      tailscale_client: spec.target.tailscale_client,
+      host_directories: filter(xs: spec.target.host_directories, predicate: t => (owned_directory_path(t: t) as String) == path),
+    },
+    steps: spec.steps,
+    service: spec.service,
+    approval_broker: spec.approval_broker,
+    names: spec.names,
+    instance_id: spec.instance_id,
+    directories: filter(xs: spec.directories, predicate: t => (owned_directory_path(t: t) as String) == path),
+  }
+}

@@ -35,8 +35,8 @@ import extdeps.systemd { SystemdUnitActiveState, Active, Inactive, Activating, D
 // executable fixture in member_identity_witness_test is exactly that control.
 // A MEMBER CARRIES ITS OWN KEY WHERE IT HAS ONE. The release members are singular -- there is one
 // executable, one published tree, one serve unit -- so they are nullary. A directory root is not:
-// the deployment owns several, they differ only by path, and minting DispatchWorktreeRoot /
-// AttemptStateRoot / ComputeRoot as nullary variants would be several names
+// the deployment owns several, they differ only by path, and minting a nullary variant per root
+// (one per dispatch, compute or store directory) would be several names
 // for one concept (DESIGN section 2, one concept at every breadth). The path is the key, so it
 // lives on the variant and converged_member_label renders it -- which is also what keeps
 // converged_member_eq correct for a payload-carrying member, since that equality is defined
@@ -94,15 +94,21 @@ type ServiceProcessIdentity
   = ProcessRunningRelease { revision: CommitSha }
   | ProcessNotRunning { active: SystemdUnitActiveState }
 
-// A ROOT'S IDENTITY IS ITS OWNING PRINCIPAL, not its presence. Presence is already carried by
-// ObservedMember (an established absence is MemberAbsentOnHost and derives a Create), so an identity
-// that repeated it would be the same fact in two carriers. What presence CANNOT say is whether the
-// directory that is there belongs to the principal that must write it -- a root owned by root:root
-// is present, and the service user still cannot use it, which is the failure a fresh host and a
-// hand-repaired host both produce. So the identity is the owner, and a wrong owner is a Replace.
+// A ROOT'S IDENTITY IS THE OWNED-DIRECTORY PROVIDER'S STANDING FOR IT, not a second judgement of owner
+// and mode made here. Presence is already carried by ObservedMember (an established absence is
+// MemberAbsentOnHost and derives a Create), and gunbc.owned_directory owned_directory_decide is the one
+// authority on what a present directory's owner, group and mode mean: converged, a mode the provider
+// will re-apply on a directory the demanded principal already owns, or a refusal. The refusal is not an
+// identity at all -- a directory under another principal is never re-owned -- so it arrives as
+// MemberRefusedOnHost and refuses the whole derivation. The owner used to be this identity, and a wrong
+// owner derived a Replace that re-owned the directory: adoption from an observation, now deleted.
+type DirectoryRootStanding
+  = RootConverged
+  | RootModeRepairable { observed_mode: NonEmptyStr }
+
 type DirectoryRootIdentity {
   path: NonEmptyStr
-  owner: NonEmptyStr
+  standing: DirectoryRootStanding
 }
 
 type MemberIdentity
@@ -132,12 +138,14 @@ type ObservedMember
   = MemberObserved { identity: MemberIdentity }
   | MemberAbsentOnHost { member: ConvergedMember }
   | MemberUnobservable { member: ConvergedMember, cause: String }
+  | MemberRefusedOnHost { member: ConvergedMember, cause: String }
 
 fn observed_member_member(o: ObservedMember) -> ConvergedMember {
   match o {
     MemberObserved { identity } => member_identity_member(i: identity)
     MemberAbsentOnHost { member } => member
     MemberUnobservable { member, cause: _ } => member
+    MemberRefusedOnHost { member, cause: _ } => member
   }
 }
 
@@ -186,8 +194,15 @@ fn service_process_identity_wire(p: ServiceProcessIdentity) -> String {
   }
 }
 
+fn directory_root_standing_wire(s: DirectoryRootStanding) -> String {
+  match s {
+    RootConverged => "converged"
+    RootModeRepairable { observed_mode } => join(["mode-repairable=", observed_mode as String], "")
+  }
+}
+
 fn directory_root_identity_wire(r: DirectoryRootIdentity) -> String {
-  join([r.path as String, ":owner=", r.owner as String], "")
+  join([r.path as String, ":", directory_root_standing_wire(s: r.standing)], "")
 }
 
 // TOTAL: every MemberIdentity arm contributes every field that distinguishes it. A forgotten
@@ -209,6 +224,8 @@ fn observed_member_wire(o: ObservedMember) -> String {
     MemberAbsentOnHost { member: m } => join(["member-absent:", converged_member_label(m: m)], "")
     MemberUnobservable { member: m, cause: c } =>
       join(["member-unobservable:", converged_member_label(m: m), ":", c], "")
+    MemberRefusedOnHost { member: m, cause: c } =>
+      join(["member-refused:", converged_member_label(m: m), ":", c], "")
   }
 }
 
@@ -224,6 +241,7 @@ type MemberRefusalCause
   = DesiredIdentityIsForAnotherMember { desired: ConvergedMember }
   | ObservationIsOfAnotherMember { observed: ConvergedMember }
   | HostUnobservable { cause: String }
+  | HostStateRefused { cause: String }
   | DecisionFiledUnderAnotherMember { found: ConvergedMember }
   | DesiredExecutableUnreadable { cause: String }
   | DesiredExecutableAbsent
@@ -233,6 +251,7 @@ fn member_refusal_text(c: MemberRefusalCause) -> String {
     DesiredIdentityIsForAnotherMember { desired } => join(["desired identity is for ", converged_member_label(m: desired)], "")
     ObservationIsOfAnotherMember { observed } => join(["observation is of ", converged_member_label(m: observed)], "")
     HostUnobservable { cause } => join(["could not observe the host: ", cause], "")
+    HostStateRefused { cause } => join(["the host holds a state this deploy refuses to change: ", cause], "")
     DecisionFiledUnderAnotherMember { found } => join(["decision slot holds a decision about ", converged_member_label(m: found)], "")
     DesiredExecutableUnreadable { cause } => join(["the release executable could not be read in the deploying checkout: ", cause], "")
     DesiredExecutableAbsent => "the release executable target/release/gunbc is absent from the deploying checkout; build before deploying"
@@ -325,7 +344,7 @@ fn member_identity_eq(a: MemberIdentity, b: MemberIdentity) -> Bool {
       RootAt { root: _ } => false
     }
     RootAt { root: ra } => match b {
-      RootAt { root: rb } => (ra.path as String) == (rb.path as String) && (ra.owner as String) == (rb.owner as String)
+      RootAt { root: rb } => (ra.path as String) == (rb.path as String) && directory_root_standing_wire(s: ra.standing) == directory_root_standing_wire(s: rb.standing)
       TreeIdentity { tree: _ } => false
       ExecutableIdentity { digest: _ } => false
       UnitFileAt { file: _ } => false
@@ -351,6 +370,7 @@ fn decide_member(member: ConvergedMember, desired: MemberIdentity, observed: Obs
   } else {
     match observed {
       MemberUnobservable { member: _, cause } => MemberRefused { member: member, cause: HostUnobservable { cause: cause } }
+      MemberRefusedOnHost { member: _, cause } => MemberRefused { member: member, cause: HostStateRefused { cause: cause } }
       MemberAbsentOnHost { member: _ } => Create { member: member, to: desired }
       MemberObserved { identity } =>
         if member_identity_eq(a: identity, b: desired) { AlreadyConverged { member: member } }
@@ -475,7 +495,7 @@ type MemberMutation
   | DaemonReload
   | RestartService
   | CreateRoot
-  | ReownRoot
+  | RepairRootMode
 
 fn member_mutation_label(e: MemberMutation) -> String {
   match e {
@@ -486,7 +506,7 @@ fn member_mutation_label(e: MemberMutation) -> String {
     DaemonReload => "daemon-reload"
     RestartService => "restart-service"
     CreateRoot => "create-root"
-    ReownRoot => "reown-root"
+    RepairRootMode => "repair-root-mode"
   }
 }
 
@@ -524,7 +544,7 @@ type EffectDerivation
 //   unit file changed    -> WriteUnit
 //   manager stale OR the unit file changed -> DaemonReload
 //   any release member changed, or the process itself is stale or down -> RestartService
-//   a root is absent     -> CreateRoot;  a root is owned by the wrong principal -> ReownRoot
+//   a root is absent     -> CreateRoot;  a root the demanded principal owns at another mode -> RepairRootMode (a root under another principal refuses, never re-owned)
 //   nothing changed      -> KeepMember
 //
 // A ROOT DOES NOT RESTART THE SERVE PROCESS, and that is a claim rather than an omission. Roots are
@@ -555,7 +575,7 @@ fn member_mutation_for(d: MemberDecision, decisions: List<MemberDecision>) -> Me
     ServiceProcess => if release_changed || decision_changes(d: d) { RestartService } else { KeepMember }
     DirectoryRoot { path: _ } => match d {
       Create { member: _, to: _ } => CreateRoot
-      Replace { member: _, from: _, to: _ } => ReownRoot
+      Replace { member: _, from: _, to: _ } => RepairRootMode
       AlreadyConverged { member: _ } => KeepMember
       MemberRefused { member: _, cause: _ } => KeepMember
     }
@@ -648,7 +668,7 @@ fn mutation_is_keep(e: MemberMutation) -> Bool {
     DaemonReload => false
     RestartService => false
     CreateRoot => false
-    ReownRoot => false
+    RepairRootMode => false
   }
 }
 
@@ -684,7 +704,7 @@ fn member_row_label(r: MemberEffectRow, target: ReleaseTarget) -> List<String> {
     DaemonReload => ["daemon-reload"]
     RestartService => [join(["restart ", target.unit as String], "")]
     CreateRoot => [join(["create-root ", converged_member_label(m: r.member)], "")]
-    ReownRoot => [join(["reown-root ", converged_member_label(m: r.member)], "")]
+    RepairRootMode => [join(["repair-root-mode ", converged_member_label(m: r.member)], "")]
   }
 }
 

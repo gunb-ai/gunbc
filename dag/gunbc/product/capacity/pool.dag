@@ -384,7 +384,13 @@ fn lapse_pass<Q, S>(pool: Pool<Q, S>, at: EpochSecs) -> LapsePass<Q, S> {
 // reference that names the reading, for the rest of the window, so the fold shows it and a later
 // reading can supersede it. A reading that says more remains changes nothing: the ledger's
 // outstanding leases are the thing the upstream cannot see.
-fn observe_upstream_remaining<Q, S>(pool: Pool<Q, S>, remaining: Measure<Q, S, Nat>, at: EpochSecs, term_seconds: Nat) -> PoolOutcome<Q, S> {
+//
+// THE READING IS NAMED BY ITS OWN IDENTITY, NOT BY ITS SECOND. The hold's reference was
+// "upstream-observation@<instant>", so two decreasing readings in one second minted the same
+// reference and the second was a duplicate the fold refused -- making the whole partition
+// unfoldable on replay. The caller now supplies the reading's identity: at replay that is the
+// event's own id (product.capacity.pool_events pool_apply_event), which is unique by construction.
+fn observe_upstream_remaining<Q, S>(pool: Pool<Q, S>, remaining: Measure<Q, S, Nat>, at: EpochSecs, term_seconds: Nat, reading: NonEmptyStr) -> PoolOutcome<Q, S> {
   match pool_reading_at(pool: pool, at: at) {
     PoolReadingRefused { at: t, anchor: a } => PoolRefused { refusal: PoolInstantBeforeAnchor { anchor: a, at: t } }
     PoolRead { committed: _, ceiling: _, headroom: h, over_committed: _ } =>
@@ -393,7 +399,7 @@ fn observe_upstream_remaining<Q, S>(pool: Pool<Q, S>, remaining: Measure<Q, S, N
       } else {
         pool_acquire(
           pool: pool,
-          reference: join(["upstream-observation@", to_string(at)], "") as NonEmptyStr,
+          reference: join(["upstream-observation@", reading as String], "") as NonEmptyStr,
           amount: Measure { count: h.count - remaining.count },
           at: at,
           term_seconds: term_seconds,

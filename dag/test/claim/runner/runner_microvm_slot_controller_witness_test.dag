@@ -1,5 +1,11 @@
 module test.claim.runner.runner_microvm_slot_controller_witness_test
 
+import gunbc.runner.runner_jit_perform { JitMintDispatchAuthorized, JitMintDispatchRefused, dispatch_jit_mint, receive_jit_mint }
+import gunbc.runner_jit_mint { MicroVmSlotBinding }
+import gunbc.runner_microvm_attempt { bind_owned_attempt }
+import gunbc.runner.runner_jit_admission { jit_admission_axis_standing, AttemptBindingAxis }
+import test.claim.github_app_registry { app_credential, observed_grant, runner_grant, gunbai_org_ref, restricted_group_1 }
+import extdeps.github.actions_jit_runner { jit_config_mint_outcome }
 import v2.std.algebra { any }
 import std.algebra { list_append }
 import std.types { String, NonEmptyStr, Bool, Int, List }
@@ -297,8 +303,22 @@ fn delivered_mint() -> Bool {
     Absent => false
     Present { value: a } =>
       match jit_config_mint_outcome(status: 201, encoded: "ZmFrZS1qaXQtY29uZmlnLXRoYXQtaXMtbG9uZy1lbm91Z2gtdG8tcGFzcy10aGUtZmxvb3ItY2hlY2stZm9yLXRoZS13aXRuZXNz", runner_id: 4242, error_body: "") {
-        JitConfigMinted { config: c, runner_id: id } =>
-          minted_registration(mint: JitMintReceived { delivery: JitCredentialBoundToAttempt { slot: MicroVmJitSlot { attempt: a }, credential: c, runner_id: id } }) == Present { value: 4242 }
+        JitConfigMinted { config: _, runner_id: _ } =>
+          match dispatch_jit_mint(
+      binding: MicroVmSlotBinding { binding: bind_owned_attempt(attempt: a, owned: true) },
+      authority: app_credential,
+      control_plane: observed_grant(perms: runner_grant),
+      organization: gunbai_org_ref,
+      runner_group: restricted_group_1(),
+      attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
+    ) {
+            JitMintDispatchAuthorized { dispatch: d } =>
+              minted_registration(mint: JitMintReceived { delivery: receive_jit_mint(
+                dispatch: JitMintDispatchAuthorized { dispatch: d },
+                outcome: jit_config_mint_outcome(status: 201, encoded: "ZmFrZS1qaXQtY29uZmlnLXRoYXQtaXMtbG9uZy1lbm91Z2gtdG8tcGFzcy10aGUtZmxvb3ItY2hlY2stZm9yLXRoZS13aXRuZXNz", runner_id: 4242, error_body: ""),
+              ) }) == Present { value: 4242 }
+            JitMintDispatchRefused { refusal: _ } => false
+          }
         _ => false
       }
   }

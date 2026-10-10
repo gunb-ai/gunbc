@@ -10,7 +10,7 @@ import v2.lens.module_graph {
   dependency_resolution_facts_live,
   module_declaration_facts_live
 }
-import v2.std.collection { empty_map, map_get, map_insert }
+import v2.std.collection { empty_map, map_get_checked, map_insert }
 import v2.std.diagnostic { Accepted, Rejected }
 import std.optional { Absent, Optional, Present }
 import v2.std.compilers.compilation_unit { ModuleDag, ModuleDagEdge, ModuleId }
@@ -58,7 +58,7 @@ fn emitted_closure_module_by_path(
   closure: Map<String, Bool>
 ) -> Map<String, String> {
   declarations |> fold(init: empty_map(), f: fn(acc, decl) {
-    match map_get(closure, decl.path) {
+    match map_get_checked(closure, decl.path) {
       Accepted { value: Present { value: _ }, diagnostics: _ } => map_insert(acc, decl.path, decl.module)
       Accepted { value: Absent, diagnostics: _ } => acc
       Rejected { diagnostics: _ } => acc
@@ -67,7 +67,7 @@ fn emitted_closure_module_by_path(
 }
 
 fn emitted_closure_module_at(by_path: Map<String, String>, path: String) -> Optional<String> {
-  match map_get(by_path, path) {
+  match map_get_checked(by_path, path) {
     Accepted { value: found, diagnostics: _ } => found
     Rejected { diagnostics: _ } => Absent
   }
@@ -115,7 +115,7 @@ fn closure_edge_step(
           if !edge.target_declared {
             unresolved
           } else {
-            match map_get(module_set, edge.target_module) {
+            match map_get_checked(module_set, edge.target_module) {
               Accepted { value: Present { value: _ }, diagnostics: _ } =>
                 if importer == edge.target_module {
                   acc

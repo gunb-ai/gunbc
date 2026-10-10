@@ -21,11 +21,11 @@ import extdeps.docker.container_stats {
 }
 import extdeps.docker.endpoint { endpoint_string_type_frontier_rows }
 import extdeps.github.merge_state { merge_state_graphql_transport_frontier_rows }
+import gunbc.runner.runner_qualification_dispatch { qualification_instrument_extraction_frontier_rows }
 import extdeps.github.workflow_runs {
   conclusion_authority_consolidation_frontier_rows,
 }
 import extdeps.github.app { modeled_webhook_event_vocabulary_frontier_rows }
-import extdeps.github.workflows { create_dispatch_unconsumed_frontier_rows }
 import gunbc.public_workload_census {
   public_workload_census_replay_consumer_frontier_rows,
   public_workload_census_run_attempt_consumer_frontier_rows,
@@ -110,7 +110,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     endpoint_string_type_frontier_rows,
     merge_state_graphql_transport_frontier_rows,
     conclusion_authority_consolidation_frontier_rows,
-    create_dispatch_unconsumed_frontier_rows,
+    qualification_instrument_extraction_frontier_rows,
     modeled_webhook_event_vocabulary_frontier_rows,
     census_app_installation_route_frontier_rows,
     census_app_installation_population_frontier_rows,

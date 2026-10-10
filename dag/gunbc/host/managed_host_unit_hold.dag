@@ -45,7 +45,7 @@ import gunbc.durable_exclusive_hold_file_store {
 import gunbc.actions_run_binding { actions_variable_trimmed }
 import std.decl_ref { decl_ref }
 import product.host_identity { HostIdentity, host_identity_eq }
-import gunbc.managed_host { ManagedHost, ResetNoUnitHold, ResetUnitHoldRequired, managed_hosts }
+import gunbc.managed_host { ManagedHost, ResetNoUnitHold, ResetUnitHoldRequired, OrdinaryMember, MemberUnderDeclaredDrop, managed_host_memberships, managed_membership_for }
 import gunbc.host_maintenance_hold_reason { maintenance_hold_reason_env }
 import extdeps.tools.hostname
 import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
@@ -129,7 +129,15 @@ fn unit_hold_admission_in(hosts: List<ManagedHost>, host: NonEmptyStr) -> UnitHo
 }
 
 fn unit_hold_admission_for(host: NonEmptyStr) -> UnitHoldHostAdmission {
-  unit_hold_admission_in(hosts: managed_hosts(), host: host)
+  match managed_membership_for(host: host as HostIdentity) {
+    Absent => UnitHoldHostNotManaged { host: host }
+    Present { value: m } =>
+      match m {
+        OrdinaryMember { host: h } => unit_hold_admission_in(hosts: [h], host: host)
+        MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } =>
+          unit_hold_admission_in(hosts: [h], host: host)
+      }
+  }
 }
 
 // Absent means the host was admitted; the text is what a refused caller prints.
@@ -163,7 +171,16 @@ fn unit_hold_store_hosts_of(hosts: List<ManagedHost>) -> List<NonEmptyStr> {
 }
 
 fn unit_hold_store_hosts() -> List<NonEmptyStr> {
-  unit_hold_store_hosts_of(hosts: managed_hosts())
+  unit_hold_store_hosts_of(
+    hosts: fold(
+      managed_host_memberships(),
+      init: [],
+      f: (acc, m) => match m {
+        OrdinaryMember { host: h } => concat(acc, [h])
+        MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } => concat(acc, [h])
+      },
+    ),
+  )
 }
 
 // ── THE STORE IS A LOCAL DIRECTORY, SO THE PROCESS MUST BE ON THE STORE HOST ───────────────────
@@ -766,6 +783,18 @@ type MaintenanceHoldAdmission
   | MaintenanceHoldHostRefused { admission: UnitHoldHostAdmission }
   | MaintenanceHoldNoReasonVariable { host: HostIdentity }
 
+fn admit_maintenance_hold_for(host: NonEmptyStr) -> MaintenanceHoldAdmission {
+  match managed_membership_for(host: host as HostIdentity) {
+    Absent => MaintenanceHoldHostRefused { admission: UnitHoldHostNotManaged { host: host } }
+    Present { value: m } =>
+      match m {
+        OrdinaryMember { host: h } => admit_maintenance_hold_in(hosts: [h], host: host)
+        MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } =>
+          admit_maintenance_hold_in(hosts: [h], host: host)
+      }
+  }
+}
+
 fn admit_maintenance_hold_in(hosts: List<ManagedHost>, host: NonEmptyStr) -> MaintenanceHoldAdmission {
   match unit_hold_admission_in(hosts: hosts, host: host) {
     UnitHoldHostNotManaged { host: h } => MaintenanceHoldHostRefused { admission: UnitHoldHostNotManaged { host: h } }
@@ -797,7 +826,7 @@ fn maintenance_hold_take(host: String) -> ProcessExit {
   if trim(s: host) == "" {
     return exit_failure(reason: "maintenance hold: no host named; pass --arg host=<managed host>")
   }
-  match admit_maintenance_hold_in(hosts: managed_hosts(), host: trim(s: host) as NonEmptyStr) {
+  match admit_maintenance_hold_for(host: trim(s: host) as NonEmptyStr) {
     MaintenanceHoldAdmitted { hold: h } => maintenance_hold_take_admitted(hold: h)
     MaintenanceHoldHostRefused { admission: a } => exit_failure(reason: maintenance_hold_admission_refusal(admission: MaintenanceHoldHostRefused { admission: a }))
     MaintenanceHoldNoReasonVariable { host: x } => exit_failure(reason: maintenance_hold_admission_refusal(admission: MaintenanceHoldNoReasonVariable { host: x }))
@@ -847,7 +876,7 @@ fn maintenance_hold_release(host: String) -> ProcessExit {
   if trim(s: host) == "" {
     return exit_failure(reason: "maintenance hold: no host named; pass --arg host=<managed host>")
   }
-  match admit_maintenance_hold_in(hosts: managed_hosts(), host: trim(s: host) as NonEmptyStr) {
+  match admit_maintenance_hold_for(host: trim(s: host) as NonEmptyStr) {
     MaintenanceHoldAdmitted { hold: h } => maintenance_hold_release_admitted(hold: h)
     MaintenanceHoldHostRefused { admission: a } => exit_failure(reason: maintenance_hold_admission_refusal(admission: MaintenanceHoldHostRefused { admission: a }))
     MaintenanceHoldNoReasonVariable { host: x } => exit_failure(reason: maintenance_hold_admission_refusal(admission: MaintenanceHoldNoReasonVariable { host: x }))

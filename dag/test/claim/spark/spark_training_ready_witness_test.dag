@@ -3,6 +3,7 @@ module test.claim.spark.spark_training_ready_witness_test
 import std.types { String, Bool, List, NonEmptyStr, Int }
 import product.host_identity { HostIdentity }
 import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6 }
+import gunbc.spark.cell_role { SparkCellRoleAssignment, SparkServingCell, SparkTrainingCell }
 import gunbc.spark.training_ready {
   SparkServingProbeCapture,
   ProbeNeverRan,
@@ -18,6 +19,7 @@ import gunbc.spark.training_ready {
   SparkTrainingReady,
   SparkTrainingNotReady,
   spark_training_readiness,
+  spark_training_readiness_in,
   spark_serving_absence_from_probe,
   spark_serving_absence_refusal,
   SparkServingAbsenceEvidence,
@@ -133,6 +135,16 @@ fn w_pool_or_refused(
   }
 }
 
+// THE ROSTER IS SUPPLIED, NOT READ FROM PRODUCTION. The 2026-09-02 operator decision (#10009) made
+// srv6 a serving cell, so against the production roster the positive control below had no subject
+// and every refusal claim over srv6 passed on role alone rather than on the axis it names. srv6
+// trains and srv5 serves in this authored roster; the production wrapper is exercised by
+// w_the_production_roster_holds_no_training_cell.
+data w_roster: List<SparkCellRoleAssignment> = [
+  SparkCellRoleAssignment { host: operator_host_srv5, role: SparkServingCell },
+  SparkCellRoleAssignment { host: operator_host_srv6, role: SparkTrainingCell },
+]
+
 fn w_readiness(
   retirement: SparkServingRetirementObservation,
   meminfo_stdout: String,
@@ -140,7 +152,7 @@ fn w_readiness(
   match w_pool_or_refused(meminfo_stdout: meminfo_stdout, after: retirement) {
     Absent => false
     Present { value: pool } =>
-      match spark_training_readiness(pool: pool) {
+      match spark_training_readiness_in(pool: pool, assignments: w_roster) {
         SparkTrainingReady { proof: _ } => true
         SparkTrainingNotReady { cause: _ } => false
       }
@@ -149,6 +161,19 @@ fn w_readiness(
 
 test fn w_a_fully_retired_training_cell_is_ready() -> Bool {
   w_readiness(retirement: w_retired_srv6(), meminfo_stdout: "97656250")
+}
+
+// THE PRODUCTION WRAPPER READS THE PRODUCTION ROSTER, where srv6 serves since #10009: the same
+// observation the positive control admits is refused there, on role.
+test fn w_the_production_roster_holds_no_training_cell() -> Bool {
+  match w_pool_or_refused(meminfo_stdout: "97656250", after: w_retired_srv6()) {
+    Absent => false
+    Present { value: pool } =>
+      match spark_training_readiness(pool: pool) {
+        SparkTrainingReady { proof: _ } => false
+        SparkTrainingNotReady { cause: _ } => true
+      }
+  }
 }
 
 // THE POSITIVE CONTROL'S MIRROR: THE SERVING CELL IS NEVER READY.

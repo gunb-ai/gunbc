@@ -55,8 +55,15 @@ import extdeps.systemd {
   systemd_unit_property_wire, SystemdUnitProperty, LoadState, SubState, ExecMainStatus,
   MemoryMax, WorkingDirectoryProperty, StandardOutputProperty, StandardErrorProperty,
   ProtectSystemProperty, ProtectHomeProperty, PrivateTmpProperty, ReadWritePathsProperty,
-  RemainAfterExitProperty,
+  RemainAfterExitProperty, ExecStopPostProperty,
 }
+import gunbc.roadmap.roadmap_attempt_exit_spool {
+  AttemptExitHook, AttemptExitHookRendered, AttemptExitHookRefused, attempt_exit_hook,
+  AttemptUnitRole, AttemptWorkerRole, AttemptReviewerRole, AttemptAuditorRole,
+  AttemptExitRecordObservation, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable,
+  AttemptProcessExitedWith, AttemptProcessSignaled, attempt_exit_record_observe,
+}
+import extdeps.posix.signal { linux_standard_signal_number }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.systemd.systemd_run {
   SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
@@ -130,6 +137,7 @@ import extdeps.posix.sh_invocation { posix_sh_export_from_file_unreadable_exit, 
 import gunbc.dispatch_selection {
   ClaudeCredentialRef, ClaudeOAuthTokenSecretRef, ClaudeApiKeySecretRef, ClaudeStateRootRef,
   claude_dispatch_credential, inventory_with_observed_standing, claude_offer_for_instance,
+  inventory_with_codex_state_root, OfferCodex, OfferClaude, OfferCursor,
   ExecutionProfile,
   ProfileAutomatic,
   ProviderSelectionRequest,
@@ -212,6 +220,9 @@ import gunbc.roadmap_provider_events {
   codex_provider_event_projection_args,
 }
 import gunbc.repo_identity { gunbc_merge_target_ref }
+import gunbc.codex_harness_credential { codex_worker_turn_custody_host, codex_worker_turn_codex_home, codex_harness_turn_argv }
+import gunbc.worker_turn_standing { codex_observed_standing_for_instance, cursor_observed_standing_from_snapshot }
+import gunbc.cursor_harness_credential { cursor_worker_turn_api_key_host_path, cursor_worker_turn_custody_host, cursor_worker_turn_argv, CursorWorkerTurnArgvReady, CursorWorkerTurnRefused }
 import gunbc.roadmap_dispatch_destination {
   node_dispatch_destination,
   DispatchDestinationResolved,
@@ -671,6 +682,130 @@ fn dispatch_actuator_claude_selection_observed(
   }
 }
 
+// THE CODEX AND CURSOR DRAWS OBSERVE BEFORE THEY SELECT, as the Claude draw does: the declared row's
+// standing admits no draw, so each request runs its custody-bound observation
+// (gunbc.worker_turn_standing), substitutes it into the declared row and selects over that. A rejected
+// credential, an exhausted codex bucket, a busy codex lock or a credential held on another host
+// therefore refuses typed before any spawn.
+fn codex_offer_provider_instance(inventory: ProviderInventory) -> ProviderInstance? {
+  fold(inventory.offers, init: none, f: (acc, offer) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match offer {
+          OfferCodex { offer: o } => Present { value: o.instance }
+          OfferClaude { offer: _ } => acc
+          OfferCursor { offer: _ } => acc
+        }
+    }
+  )
+}
+
+// THE CODEX DRAW binds the custody CODEX_HOME directory itself, not a copy: a copied auth.json would
+// fork the refresh token, and the issuer refuses a reused one. So the shared one-snapshot rule
+// (dispatch_credential_snapshot_path_for_instance) is met by the directory and its flock instead --
+// admission observes it under the lock, the turn runs in it under the lock, and nothing else ever
+// writes it but codex under that lock. A turn that runs between admission and this attempt's spawn
+// may move the bucket the admission read; the spawn still binds the same credential, and a bucket
+// exhausted in that window fails the turn as the CLI reports it.
+fn codex_observed_inventory(instance: HostDashboardInstance) -> ProviderInventory {
+  let inventory = provider_inventory_for_instance(instance: instance)
+  inventory_with_codex_state_root(
+    inventory: inventory_with_observed_standing(
+      inventory: inventory,
+      kind: CodexCliProvider,
+      standing: match codex_offer_provider_instance(inventory: inventory) {
+        Absent => ProviderStandingUnobserved { reason: "this instance's inventory declares no codex offer" as NonEmptyStr }
+        Present { value: provider_instance } => codex_observed_standing_for_instance(instance: instance, provider: provider_instance)
+      },
+    ),
+    account_state_root: codex_worker_turn_codex_home as FilePath,
+  )
+}
+
+fn worker_turn_selection_of(inventory: ProviderInventory, kind: ProviderKind, sizing_expectation: SizingProfileExpectation) -> DispatchActuatorSelection {
+  match resolve_dispatch_selection(
+    inventory: inventory,
+    request: provider_selection_request_for_kind(kind: kind),
+    sizing_expectation: sizing_expectation,
+  ) {
+    DispatchSelectionResolved { receipt } =>
+      DispatchActuatorSelectionOk {
+        provider: provider_kind_to_dispatch_cli(kind: receipt.provider_kind),
+        effort: receipt.applied_effort,
+        model: resolved_model_selection(resolved: receipt.resolved_selection),
+        process_fingerprint: resolved_process_fingerprint(resolved: receipt.resolved_selection),
+      }
+    DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason } =>
+      DispatchActuatorSelectionRefused { reason: reason }
+  }
+}
+
+// THE CURSOR DRAW takes the attempt's credential snapshot first (shared rule above): the status probe
+// reads that snapshot and keeps it, and the spawn loads the same snapshot and removes it before exec. A
+// refused draw discards the snapshot it took, as the Claude draw does; after selection the belt owns
+// the discard (gunbc.roadmap_belt_actuate belt_snapshot_owned_outcome).
+fn cursor_selection_observed(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  sizing_expectation: SizingProfileExpectation,
+) -> DispatchActuatorSelection {
+  if (instance.host_identity as String) != (cursor_worker_turn_custody_host as String) {
+    DispatchActuatorSelectionRefused {
+      reason: provider_off_custody_host_reason(provider_label: "cursor", custody_host: cursor_worker_turn_custody_host, instance_host: instance.host_identity),
+    }
+  } else {
+    let snapshot_path = dispatch_credential_snapshot_path_for_instance(
+      instance: instance, node_id: node_id, attempt_key: attempt_key, provider: CursorDispatchProvider,
+    )
+    match dispatch_credential_snapshot_take(source: cursor_worker_turn_api_key_host_path, snapshot: snapshot_path) {
+      CredentialSnapshotRefused { reason } => DispatchActuatorSelectionRefused { reason: reason }
+      CredentialSnapshotTaken { path: snapshot } => {
+        let selection = worker_turn_selection_of(
+          inventory: inventory_with_observed_standing(
+            inventory: provider_inventory_for_instance(instance: instance),
+            kind: CursorCliProvider,
+            standing: cursor_observed_standing_from_snapshot(snapshot: snapshot),
+          ),
+          kind: CursorCliProvider,
+          sizing_expectation: sizing_expectation,
+        )
+        match selection {
+          DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint: _ } => selection
+          DispatchActuatorSelectionRefused { reason } =>
+            if dispatch_credential_snapshot_discard(snapshot: snapshot) {
+              selection
+            } else {
+              DispatchActuatorSelectionRefused {
+                reason: join([reason as String, "; and the credential snapshot ", snapshot as String, " could not be removed"], "") as NonEmptyStr,
+              }
+            }
+        }
+      }
+    }
+  }
+}
+
+fn dispatch_actuator_worker_turn_selection_observed(
+  instance: HostDashboardInstance,
+  provider: DispatchCliProvider,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  sizing_expectation: SizingProfileExpectation,
+) -> DispatchActuatorSelection {
+  match provider {
+    CodexDispatchProvider =>
+      worker_turn_selection_of(inventory: codex_observed_inventory(instance: instance), kind: CodexCliProvider, sizing_expectation: sizing_expectation)
+    CursorDispatchProvider =>
+      cursor_selection_observed(instance: instance, node_id: node_id, attempt_key: attempt_key, sizing_expectation: sizing_expectation)
+    ClaudeCodeProvider =>
+      DispatchActuatorSelectionRefused { reason: "the claude draw is observed by dispatch_actuator_claude_selection_observed" as NonEmptyStr }
+    GunbcHarnessProvider =>
+      DispatchActuatorSelectionRefused { reason: "worker-turn selection was asked for the gunbc harness, which has no vendor credential" as NonEmptyStr }
+  }
+}
+
 fn dispatch_actuator_selection_for_request(
   instance: HostDashboardInstance,
   request: DispatchExecutorRequest,
@@ -686,8 +821,14 @@ fn dispatch_actuator_selection_for_request(
           dispatch_actuator_claude_selection_observed(
             instance: instance, node_id: node_id, attempt_key: attempt_key, sizing_expectation: sizing_expectation,
           )
-        CodexDispatchProvider => dispatch_actuator_selection_for_provider_on(instance: instance, provider: provider, sizing_expectation: sizing_expectation)
-        CursorDispatchProvider => dispatch_actuator_selection_for_provider_on(instance: instance, provider: provider, sizing_expectation: sizing_expectation)
+        CodexDispatchProvider =>
+          dispatch_actuator_worker_turn_selection_observed(
+            instance: instance, provider: provider, node_id: node_id, attempt_key: attempt_key, sizing_expectation: sizing_expectation,
+          )
+        CursorDispatchProvider =>
+          dispatch_actuator_worker_turn_selection_observed(
+            instance: instance, provider: provider, node_id: node_id, attempt_key: attempt_key, sizing_expectation: sizing_expectation,
+          )
         GunbcHarnessProvider => dispatch_actuator_selection(sizing_expectation: sizing_expectation)
       }
   }
@@ -1515,13 +1656,24 @@ fn dispatch_review_unit_name(node_id: String, attempt_key: String, criterion_key
 // root (the first reviewer, 2026-09-05, exited 101 on exactly that with the worktree as its cwd), and
 // the worktree reaches the harness as the argument that sets its tools' directory, tool and subject
 // named separately (gunbc_harness_spawn_argv).
+//
+// THE EXIT RECORD REPLACES RemainAfterExit FOR THE REVIEWER AND AUDITOR (bold-bee-114 ruling,
+// 2026-10-06), for the worker's reason (dispatch_worker_unit_properties): a reviewer finishing is the
+// event the attempt's next obligation waits on, and a unit that stays `active (exited)` never stops,
+// so its stop hook could not fire at that moment. With an exit hook the unit stops with its process
+// and its record carries the exit; the belt reads a collected reviewer from that record
+// (gunbc.roadmap_belt_actuate belt_review_process). The SUPERVISOR shares this shape and passes no
+// hook: its convene gate still reads the retained unit, and moving it onto the record is not part of
+// this change -- so Absent keeps RemainAfterExit exactly as before, and that is the only reason the
+// parameter is optional.
 fn dispatch_review_unit_properties(
   instance: HostDashboardInstance,
   working_directory: String,
   log_path: String,
   review_dir: String,
+  exit_hook: NonEmptyStr?,
 ) -> List<SystemdRunProperty> {
-  [
+  concat([
     SystemdRunProperty { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
     SystemdRunProperty { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr },
     SystemdRunProperty { property: StandardOutputProperty, value: join(["append:", log_path], "") as NonEmptyStr },
@@ -1530,8 +1682,10 @@ fn dispatch_review_unit_properties(
     SystemdRunProperty { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
     SystemdRunProperty { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
     SystemdRunProperty { property: ReadWritePathsProperty, value: review_dir as NonEmptyStr },
-    SystemdRunProperty { property: RemainAfterExitProperty, value: "yes" as NonEmptyStr },
-  ]
+  ], match exit_hook {
+    Present { value: hook } => [SystemdRunProperty { property: ExecStopPostProperty, value: hook }]
+    Absent => [SystemdRunProperty { property: RemainAfterExitProperty, value: "yes" as NonEmptyStr }]
+  })
 }
 
 data gunbc_harness_reviewer_function: String = "harness_reviewer_cli"
@@ -1589,6 +1743,7 @@ fn dispatch_review_unit_command(
   brief: String,
   head_sha: String,
   criterion_key: String,
+  exit_hook: NonEmptyStr,
 ) -> SystemdRunCommandReading {
   systemd_run_user_transient_command(
     unit: dispatch_review_unit_name(node_id: node_id as String, attempt_key: attempt_key, criterion_key: criterion_key),
@@ -1597,6 +1752,7 @@ fn dispatch_review_unit_command(
       working_directory: instance.repo_root as String,
       log_path: dispatch_attempt_review_log_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
       review_dir: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+      exit_hook: Present { value: exit_hook },
     ),
     setenv_bindings: [],
     command_argv: gunbc_harness_review_argv(
@@ -1648,6 +1804,7 @@ fn dispatch_audit_unit_command(
   worktree_path: String,
   brief: String,
   head_sha: String,
+  exit_hook: NonEmptyStr,
 ) -> SystemdRunCommandReading {
   let dir = dispatch_attempt_audit_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
   systemd_run_user_transient_command(
@@ -1657,6 +1814,7 @@ fn dispatch_audit_unit_command(
       working_directory: instance.repo_root as String,
       log_path: join([dir, "/auditor-stdout.log"], ""),
       review_dir: dir,
+      exit_hook: Present { value: exit_hook },
     ),
     setenv_bindings: [],
     command_argv: [
@@ -1720,6 +1878,7 @@ fn dispatch_supervisor_unit_command(
       working_directory: instance.repo_root as String,
       log_path: join([dir, "/supervisor-stdout.log"], ""),
       review_dir: dir,
+      exit_hook: none,
     ),
     setenv_bindings: [],
     command_argv: [
@@ -2233,11 +2392,22 @@ data gunbc_harness_needs_instance_reason: NonEmptyStr = "the gunbc harness worke
 type DispatchProviderInnerArgv
   = DispatchProviderInnerArgvReady { argv: List<String> }
   | CodexProviderExecutableAbsent { reason: NonEmptyStr }
-  | CursorProviderSpawnUnwired { reason: NonEmptyStr }
+  | CursorProviderOffCustodyHost { reason: NonEmptyStr }
+  | CursorProviderCredentialUnbound { reason: NonEmptyStr }
+  | CodexProviderOffCustodyHost { reason: NonEmptyStr }
   | GunbcHarnessSpawnNeedsInstance { reason: NonEmptyStr }
   | ClaudeProviderCredentialUnbound { reason: NonEmptyStr }
 
-data cursor_provider_spawn_unwired_reason: NonEmptyStr = "cursor dispatch inner argv is not wired on this actuator path" as NonEmptyStr
+// THE WORKER-TURN CREDENTIALS LIVE ON ONE HOST EACH (gunbc.cursor_harness_credential,
+// gunbc.codex_harness_credential), so a Cursor or Codex spawn on any other instance host refuses here
+// rather than running against an ambient login. The instance-less Cursor form cannot check the host
+// at all and refuses. On the custody host, codex runs with CODEX_HOME set to the custody directory,
+// never the instance's ambient login, and the run holds its flock for its whole life.
+data provider_custody_host_unknown_reason: NonEmptyStr = "no dashboard instance: the worker-turn credential's custody host cannot be checked" as NonEmptyStr
+
+fn provider_off_custody_host_reason(provider_label: String, custody_host: HostIdentity, instance_host: NonEmptyStr) -> NonEmptyStr {
+  join([provider_label, " worker-turn credential is held only on ", custody_host as String, "; this instance runs on ", instance_host as String], "") as NonEmptyStr
+}
 
 // THE HARNESS SPAWN. The worker is this repository's own binary running a .dag entry, so there is
 // no runtime to install, no provider home to seed and no version to reconcile against a committed
@@ -2347,7 +2517,7 @@ fn dispatch_provider_inner_argv(
         ),
       }
     CursorDispatchProvider =>
-      CursorProviderSpawnUnwired { reason: cursor_provider_spawn_unwired_reason }
+      CursorProviderOffCustodyHost { reason: provider_custody_host_unknown_reason }
     GunbcHarnessProvider =>
       GunbcHarnessSpawnNeedsInstance { reason: gunbc_harness_needs_instance_reason }
   }
@@ -2419,30 +2589,53 @@ fn dispatch_provider_inner_argv_for_instance(
         ),
       )
     CodexDispatchProvider =>
-      match dashboard_instance_provider_executable(instance: instance) {
-        Absent =>
-          CodexProviderExecutableAbsent {
-            reason: dashboard_instance_provider_executable_refusal_detail(instance: instance) as NonEmptyStr,
-          }
-        Present { value: codex_program } =>
-          DispatchProviderInnerArgvReady {
-            argv: shape_codex_exec_argv_for_programs(
-              env_program: dispatch_capability_program(
-                environment: instance.execution_environment,
-                cap: EnvironmentBindingCapability,
+      if (instance.host_identity as String) != (codex_worker_turn_custody_host as String) {
+        CodexProviderOffCustodyHost {
+          reason: provider_off_custody_host_reason(provider_label: "codex", custody_host: codex_worker_turn_custody_host, instance_host: instance.host_identity),
+        }
+      } else {
+        match dashboard_instance_provider_executable(instance: instance) {
+          Absent =>
+            CodexProviderExecutableAbsent {
+              reason: dashboard_instance_provider_executable_refusal_detail(instance: instance) as NonEmptyStr,
+            }
+          Present { value: codex_program } =>
+            DispatchProviderInnerArgvReady {
+              argv: codex_harness_turn_argv(
+                command: shape_codex_exec_argv_for_programs(
+                  env_program: dispatch_capability_program(
+                    environment: instance.execution_environment,
+                    cap: EnvironmentBindingCapability,
+                  ),
+                  program: codex_program as String,
+                  codex_home: codex_worker_turn_codex_home as String,
+                  cwd: worktree_path,
+                  prompt: join([brief, "\n\n", dispatch_codex_start_prompt], ""),
+                  reasoning_effort: effort,
+                  model: model,
+                  spec: dispatch_codex_exec_spec,
+                ),
               ),
-              program: codex_program as String,
-              codex_home: dashboard_instance_provider_state_root(instance: instance) as String,
-              cwd: worktree_path,
-              prompt: join([brief, "\n\n", dispatch_codex_start_prompt], ""),
-              reasoning_effort: effort,
-              model: model,
-              spec: dispatch_codex_exec_spec,
-            ),
-          }
+            }
+        }
       }
     CursorDispatchProvider =>
-      CursorProviderSpawnUnwired { reason: cursor_provider_spawn_unwired_reason }
+      if (instance.host_identity as String) != (cursor_worker_turn_custody_host as String) {
+        CursorProviderOffCustodyHost {
+          reason: provider_off_custody_host_reason(provider_label: "cursor", custody_host: cursor_worker_turn_custody_host, instance_host: instance.host_identity),
+        }
+      } else {
+        match cursor_worker_turn_argv(
+          key_path: dispatch_credential_snapshot_path_for_instance(
+            instance: instance, node_id: node_id, attempt_key: attempt_key, provider: CursorDispatchProvider,
+          ),
+          worktree_path: worktree_path,
+          prompt: brief as NonEmptyStr,
+        ) {
+          CursorWorkerTurnArgvReady { argv } => DispatchProviderInnerArgvReady { argv: argv }
+          CursorWorkerTurnRefused { reason } => CursorProviderCredentialUnbound { reason: reason }
+        }
+      }
     GunbcHarnessProvider =>
       DispatchProviderInnerArgvReady {
         argv: gunbc_harness_spawn_argv(
@@ -2646,13 +2839,16 @@ fn dispatch_attempt_unit_name(node_id: String, attempt_key: String) -> NonEmptyS
 // memory the cgroup enforces are one figure; it used to be the instance ceiling read directly. WorkingDirectory is the controller checkout for the reason
 // dispatch_pane_working_directory states. StandardOutput and StandardError append to the attempt's
 // own events path, so capture is a unit property rather than a quoted shell payload piped through
-// a terminal multiplexer.
+// a terminal multiplexer. ExecStopPost is the attempt's exit record (gunbc.roadmap.roadmap_attempt_exit_spool
+// attempt_exit_hook): one create-only mkdir whose name carries the manager's stop-time facts, written
+// at the moment the worker's process ends -- the event the capture obligation is invoked on.
 fn dispatch_worker_unit_properties(
   instance: HostDashboardInstance,
   working_directory: String,
   worker_log_path: String,
   granted: Kibibyte,
   process_bounds: UnitProcessBounds,
+  exit_hook: NonEmptyStr,
 ) -> List<SystemdRunProperty> {
   dispatch_worker_unit_stream_properties(
     instance: instance,
@@ -2681,19 +2877,26 @@ fn dispatch_worker_unit_stream_properties(
       SystemdRunProperty { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
       SystemdRunProperty { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
       SystemdRunProperty { property: ReadWritePathsProperty, value: dispatch_worker_writable_paths(instance: instance) as NonEmptyStr },
-      SystemdRunProperty { property: RemainAfterExitProperty, value: "yes" as NonEmptyStr },
+      SystemdRunProperty { property: ExecStopPostProperty, value: exit_hook },
     ],
   )
 }
 
-// THE UNIT OUTLIVES ITS PROCESS ON PURPOSE. A transient unit whose main process exits 0 is collected
-// by the manager and reads LoadState=not-found a moment later; one that exits nonzero is retained as
-// failed. The process observer below read not-found as "never ran", so a SUCCESSFUL worker was the one
-// case the belt could not commit or verify -- measured 2026-09-05 on the first worker to finish with
-// turn.completed (attempt ce21f99eb2e82ec1: worktree dirty, commit "provider not completed"), while
-// the eight failed attempts before it were all committed. RemainAfterExit keeps the unit loaded as
-// active (exited) with its ExecMainStatus readable until it is stopped, so the exit is an observable
-// fact for as long as the attempt needs it, on both exit paths alike.
+// THE UNIT NO LONGER OUTLIVES ITS PROCESS; THE EXIT RECORD DOES (reversal of the 2026-09-05 choice,
+// bold-bee-114 ruling 2026-10-06 on dogfood intervention #4). A transient unit whose main process
+// exits 0 is collected by the manager and reads LoadState=not-found a moment later. On 2026-09-05 the
+// observer read not-found as "never ran", so a SUCCESSFUL worker was the one case the belt could not
+// commit or verify (attempt ce21f99eb2e82ec1), and RemainAfterExit=yes was added to keep the unit
+// loaded as `active (exited)` with its ExecMainStatus readable.
+//
+// That kept the exit observable only as manager MEMORY -- lost on a reboot, a manager restart or a
+// reap -- and, because a RemainAfterExit unit never stops when its process ends, it made a stop hook
+// impossible: ExecStopPost would run at teardown, not at exit, so nothing could be invoked BY the
+// exit. The exit record replaces it. The hook writes it at exit, on disk, under the instance root,
+// carrying the same facts ExecMainStatus did plus the manager's result and whether the process
+// exited or was signaled. The observer reads the unit while it is loaded and the record once it is
+// not (attempt_worker_unit_observation), and a unit that is gone with NO record is reported as
+// exactly that -- never as a worker that did not run.
 
 // THE WORKER MAY WRITE ONLY UNDER THE INSTANCE ROOT: its worktree, its attempt state, the spool. The
 // second belt-dispatched attempt (2026-09-04) edited the deploy tree instead of its worktree, having
@@ -2721,6 +2924,7 @@ type DispatchWorkerUnitPlan {
   stdout_path: String
   stderr_path: String
   inner_argv: List<String>
+  exit_hook: NonEmptyStr
 }
 
 fn dispatch_worker_unit_properties_for_plan(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, granted: Kibibyte, process_bounds: UnitProcessBounds) -> List<SystemdRunProperty> {
@@ -2731,6 +2935,7 @@ fn dispatch_worker_unit_properties_for_plan(instance: HostDashboardInstance, pla
     stderr_path: plan.stderr_path,
     granted: granted,
     process_bounds: process_bounds,
+    exit_hook: plan.exit_hook,
   )
 }
 
@@ -2778,17 +2983,23 @@ fn dispatch_systemd_unit_container_plan(
         ], ""),
       }
     Present { value: program } =>
-      DispatchSessionContainerReady {
-        container: SystemdUnitContainer {
-          plan: DispatchWorkerUnitPlan {
-            systemd_run_program: program,
-            unit: dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key),
-            working_directory: pane_working_directory,
-            stdout_path: stdout_path,
-            stderr_path: stderr_path,
-            inner_argv: provider_inner,
-          },
-        },
+      match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptWorkerRole) {
+        AttemptExitHookRefused { reason } =>
+          DispatchSessionContainerUnavailable { step: "worker-exit-hook" as NonEmptyStr, detail: reason as String }
+        AttemptExitHookRendered { exec_line } =>
+          DispatchSessionContainerReady {
+            container: SystemdUnitContainer {
+              plan: DispatchWorkerUnitPlan {
+                systemd_run_program: program,
+                unit: dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key),
+                working_directory: pane_working_directory,
+                stdout_path: stdout_path,
+                stderr_path: stderr_path,
+                inner_argv: provider_inner,
+                exit_hook: exec_line,
+              },
+            },
+          }
       }
   }
 }
@@ -3308,9 +3519,19 @@ fn dispatch_spawn_commands_for_resolved_instance(
     brief: brief,
     alignment_chain_fingerprint: alignment_chain_fingerprint(chain: chain),
   ) {
-    CursorProviderSpawnUnwired { reason } =>
+    CursorProviderOffCustodyHost { reason } =>
       DispatchSpawnRefused {
-        step: "cursor-provider-spawn" as NonEmptyStr,
+        step: "cursor-credential-custody-host" as NonEmptyStr,
+        detail: reason as String,
+      }
+    CodexProviderOffCustodyHost { reason } =>
+      DispatchSpawnRefused {
+        step: "codex-credential-custody-host" as NonEmptyStr,
+        detail: reason as String,
+      }
+    CursorProviderCredentialUnbound { reason } =>
+      DispatchSpawnRefused {
+        step: "cursor-credential-binding" as NonEmptyStr,
         detail: reason as String,
       }
     CodexProviderExecutableAbsent { reason } =>
@@ -4060,6 +4281,58 @@ fn attempt_unit_observation(unit: NonEmptyStr) -> AttemptUnitObservation {
 
 fn attempt_unit_substate_has_exited(substate: String) -> Bool {
   substate == "exited" || substate == "failed" || substate == "dead"
+}
+
+// THE WORKER UNIT'S OBSERVATION: the manager while the unit is loaded, the exit record once it is
+// not. The worker unit no longer carries RemainAfterExit (dispatch_worker_unit_properties), so a
+// worker that exited 0 is collected and the manager answers not-found; its stop hook wrote the exit
+// record first (ExecStopPost runs before the unit leaves the manager), so a collected worker is read
+// from that record, carrying the same status ExecMainStatus carried.
+//
+// A COLLECTED UNIT WITH NO RECORD IS NOT A WORKER THAT NEVER RAN (bold-bee-114, 2026-10-06, condition
+// 1). Dispatch's own start receipt separates the two: the G5 placement record is written immediately
+// before every worker unit is started (gunbc.roadmap_belt_actuate belt_session_container_create), so
+// an attempt with a placement record and no exit record had a unit that ended without its hook
+// writing -- a failed hook, which is reported as indeterminate and located, never as absence
+// (condition 2). Only an attempt with NO placement record answers absent: it never had a unit,
+// which is the vendor (tmux) population and the attempt whose spawn never reached the unit start.
+type AttemptUnitStartStanding
+  = AttemptUnitStartRecorded
+  | AttemptUnitNeverStarted
+  | AttemptUnitStartUnread { reason: String }
+
+// A SIGNALED WORKER IS READ AS systemd's ExecMainStatus READ IT: the signal number. That is the
+// reading every consumer of WorkerProcessExited saw before this change, preserved exactly so no
+// consumer's decision moves; the record keeps the distinction (AttemptProcessSignaled) and a
+// signaled arm on WorkerProcessEvidence is the named follow-up (docs/plans/belt-event-driven-obligations.md,
+// Follow-ups; trigger: the next change to a WorkerProcessExited consumer's decision).
+fn attempt_unit_from_exit_record(unit: NonEmptyStr, record: AttemptExitRecordObservation, start: AttemptUnitStartStanding) -> AttemptUnitObservation {
+  match record {
+    AttemptExitRecordUnreadable { reason } =>
+      AttemptUnitUnreadable { reason: join(["unit ", unit as String, " is not loaded and its exit record could not be read: ", reason], "") }
+    AttemptExitRecordFound { record: r } =>
+      match r.end {
+        AttemptProcessExitedWith { status } => AttemptUnitFinished { exit_status: to_string(value: status) }
+        AttemptProcessSignaled { signal } => AttemptUnitFinished { exit_status: to_string(value: linux_standard_signal_number(signal: signal)) }
+      }
+    AttemptExitRecordNone =>
+      match start {
+        AttemptUnitNeverStarted => AttemptUnitAbsent
+        AttemptUnitStartRecorded =>
+          AttemptUnitUnreadable { reason: join(["unit ", unit as String, " was started under a placement grant and is no longer loaded, and it left no exit record: its ExecStopPost hook did not write (see the user journal for this unit)"], "") }
+        AttemptUnitStartUnread { reason } =>
+          AttemptUnitUnreadable { reason: join(["unit ", unit as String, " is not loaded and left no exit record, and whether it was started could not be read: ", reason], "") }
+      }
+  }
+}
+
+fn attempt_worker_unit_observation_of(unit: NonEmptyStr, loaded: AttemptUnitObservation, record: AttemptExitRecordObservation, start: AttemptUnitStartStanding) -> AttemptUnitObservation {
+  match loaded {
+    AttemptUnitAbsent => attempt_unit_from_exit_record(unit: unit, record: record, start: start)
+    AttemptUnitActive => AttemptUnitActive
+    AttemptUnitFinished { exit_status } => AttemptUnitFinished { exit_status: exit_status }
+    AttemptUnitUnreadable { reason } => AttemptUnitUnreadable { reason: reason }
+  }
 }
 
 fn worker_process_from_attempt_unit(

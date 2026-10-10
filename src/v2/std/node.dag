@@ -1,5 +1,6 @@
 module v2.std.node
 
+import v2.std.compilers.lowered_shape { LoweredShape }
 import std.types { List }
 import std.algebra { Cons, Empty, list_snoc_item }
 import std.optional { Present }
@@ -157,6 +158,19 @@ type StructuralEdgeLabel
 // in the scope enclosing the match, so no pattern binder reaches the rest
 // (v2.compiler.resolve resolve_match_arm_admitted, its one consumer). It adds no behavior kind;
 // a marked Bind anywhere else is a malformed tree.
+//
+// ConstantMemberEdge: A NULLARY ARROW THAT IS A `data` CONSTANT. A named edge (targeting an empty
+// Conj, as MatchArmScopeExitEdge is) on the Arrow body lowering builds for `data x: T = e`
+// (v2.compiler.body_lowering_fold body_lower_data_decl_to_member, its one producer). The Arrow is the
+// same member a nullary `fn x() -> T` lowers to; the marker is the one fact that differs: a reference
+// to a marked Arrow USES ITS VALUE, so it is typed at the Arrow's declared codomain T
+// (v2.compiler.infer infer_declaration_reference_facts_indexed) and evaluates to the value of the
+// nullary application (v2.compiler.eval), while a reference to an unmarked Arrow denotes the function.
+// It adds no behavior kind. WHAT HOLDS IT, stated at its rung: its one producer marks only the Arrow
+// of a `data` declaration (nullary by construction), and the reader answers Absent for the marker on a
+// non-Arrow (v2.test.claim.compiler.data_reference_value drv_a_marked_non_arrow_is_not_a_constant). No
+// wall refuses the marker on a NON-nullary Arrow: that holds only by the single producer, so a second
+// producer must add that wall rather than rely on this note.
 type CoreEdgeLabel
   = ArrowBodyEdge
   | ArrowSignatureOrderEdge
@@ -182,10 +196,34 @@ type CoreEdgeLabel
   | BinderTypeEdge
   | BinderDefaultEdge
   | ArrowResourceRequirementsEdge
+  | AdmitCallersEdge
   | LexicalReferenceEdge
   | MapLiteralEntryEdge
   | MapLiteralEntriesEdge
+  | BodyTermLoweredEdge { seal: BodyTermLoweredSeal }
   | MatchArmScopeExitEdge
+  | ConstantMemberEdge
+
+// THE LOWERED TERM'S SEAL (MQ-5). Body lowering wraps each producer's result in a node whose one edge
+// carries this marker, and readers take a node under it as lowered output, whole
+// (v2.compiler.body_lowering_fold body_term_of). The marker carries a sole_constructor record, so the
+// only way to write the label is through body_term_lowered_seal, and that mint admits one caller: the
+// body-lowering mint. A lookalike built anywhere else does not compile -- the record has no other
+// constructor and the mint refuses the call. The record is not on the codec's closed marker list
+// (core_edge_labels), so no wire form decodes to it either. On the native route admit_callers is
+// discarded (gunbc.rung_drop admit_callers_discarded_on_the_native_route), so there the record's
+// sole construction site is the whole wall.
+type BodyTermLoweredSeal sole_constructor {
+  shape: LoweredShape,
+}
+
+fn body_term_lowered_seal(shape: LoweredShape) -> BodyTermLoweredSeal
+  admit_callers: [
+    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_term_seal")
+  ]
+{
+  BodyTermLoweredSeal { shape: shape }
+}
 
 fn core_edge_label(marker: CoreEdgeLabel) -> EdgeLabel {
   StructuralLabel { label: CoreMarker { marker: marker } }
@@ -246,10 +284,12 @@ fn core_edge_labels() -> List<CoreEdgeLabel> {
     BinderTypeEdge,
     BinderDefaultEdge,
     ArrowResourceRequirementsEdge,
+    AdmitCallersEdge,
     LexicalReferenceEdge,
     MapLiteralEntryEdge,
     MapLiteralEntriesEdge,
     MatchArmScopeExitEdge,
+    ConstantMemberEdge,
   ]
 }
 
@@ -281,10 +321,13 @@ fn core_edge_label_canonical_symbol(marker: CoreEdgeLabel) -> Symbol {
     BinderTypeEdge => ^core_binder_type_edge
     BinderDefaultEdge => ^core_binder_default_edge
     ArrowResourceRequirementsEdge => ^core_arrow_resource_requirements_edge
+    AdmitCallersEdge => ^core_admit_callers_edge
     LexicalReferenceEdge => ^core_lexical_reference_edge
     MapLiteralEntryEdge => ^core_map_literal_entry_edge
     MapLiteralEntriesEdge => ^core_map_literal_entries_edge
+    BodyTermLoweredEdge { seal: _ } => ^core_body_term_lowered_edge
     MatchArmScopeExitEdge => ^core_match_arm_scope_exit_edge
+    ConstantMemberEdge => ^core_constant_member_edge
   }
 }
 type Edge {
@@ -307,6 +350,16 @@ fn node_with_occurrence_id(
   occurrence_id: NodeOccurrenceIdentity
 ) -> Node {
   Node { kind: kind, children: children, occurrence_id: occurrence_id }
+}
+
+// Whether the node is an Arrow type node -- the one connective question every reader of a lowered callable or
+// nullary-member shape asks. Single accessor: readers import this rather than re-matching the coproduct.
+fn node_is_arrow(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Arrow } => true
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
+  }
 }
 
 fn node_rebuild(n: Node, children: List<Edge>) -> Node {
@@ -828,16 +881,43 @@ data arrow_signature_order_label: EdgeLabel = StructuralLabel { label: CoreMarke
 // (v2.std.symbol_index symbol_index_declares_resource_at) or that repeats one. Like the other two it is
 // metadata to every value reader: v2.compiler.infer and v2.std.type_binder node_inferred_subtree_nodes
 // skip every arrow_named_edge_is_contract edge.
+
+// THE DECLARED PERMITTED-CALLERS EDGE, restored with its consumer for the former drop
+// gunbc.rung_drop.admit_callers_discarded_on_the_native_route. A fn Arrow built from a signature that declared an
+// admit_callers clause carries the clause's STRUCTURED ROSTER under the core marker AdmitCallersEdge
+// (v2.compiler body_lowering_fold body_lower_fn_admit_clause_edges: the carrier consumes the authored
+// spine at lowering and re-hangs each entry as a positional record conj), and the consumer reads the
+// declared permitted callers off it (v2.compiler.infer infer_caller_admission_diags). It is NOT a
+// contract edge: a contract edge's target is a claim the Arrow makes in a ruled vocabulary
+// (std.effects EffectClaim, std.execution_mode ExecutionMode), while this edge's target is the
+// roster the consumer judges. Like a contract edge it is optional, appears at most once, and is
+// never a binder.
+//
+// THE FOURTH, ConstantMemberEdge: what a `data` Arrow promises about its USE -- a reference to it is the
+// value of its nullary application, not the function. Its target is an empty Conj and carries no
+// vocabulary, so v2.std.arrow_contract has nothing to check on it; like the other three it is metadata to
+// every value reader, and it is read only by v2.std.node_query arrow_constant_member_codomain.
 fn arrow_named_edge_is_contract(e: Edge) -> Bool {
   edge_is_core(e: e, marker: ArrowEffectClaimsEdge)
     || edge_is_core(e: e, marker: ArrowExecutionModeClaimEdge)
     || edge_is_core(e: e, marker: ArrowResourceRequirementsEdge)
+    || edge_is_core(e: e, marker: ConstantMemberEdge)
 }
 
+// THE ONE METADATA FACT FOR ARROW NAMED EDGES: this edge's target is metadata to every value
+// reader -- never a value the Arrow is built from, never a binder. The single predicate every value
+// reader that walks an Arrow consumes (v2.compiler.infer's gather fold and product evidence,
+// v2.compiler.translate's grounding gate, v2.std.type_binder node_inferred_subtree_nodes) and every
+// count of an Arrow's binders reads (arrow_named_edge_is_non_binder here and v2.std.type_binder
+// arrow_named_labels_conform), so no reader keeps its own list of metadata labels. DESIGN section 3:
+// each fact lives in exactly one place.
+fn arrow_named_edge_is_metadata(e: Edge) -> Bool {
+  arrow_named_edge_is_contract(e: e) || edge_is_core(e: e, marker: AdmitCallersEdge)
+}
 
-// The Arrow named edges that are not binders: its body, its declared order and its contract edges.
-// The one predicate every count of an Arrow's binders reads (here and v2.std.type_binder
-// arrow_named_labels_conform), so they agree on what a binder is.
+// The Arrow named edges that are not binders: its body, its declared order, and the metadata edges.
+// The one predicate every count of an Arrow's binders
+// reads (here and v2.std.type_binder arrow_named_labels_conform), so they agree on what a binder is.
 fn arrow_named_edge_is_non_binder(e: Edge) -> Bool {
   match e.label {
     Positional => false
@@ -845,7 +925,7 @@ fn arrow_named_edge_is_non_binder(e: Edge) -> Bool {
     StructuralLabel { label: _ } =>
       edge_is_core(e: e, marker: ArrowBodyEdge)
         || edge_is_core(e: e, marker: ArrowSignatureOrderEdge)
-        || arrow_named_edge_is_contract(e: e)
+        || arrow_named_edge_is_metadata(e: e)
   }
 }
 
@@ -876,6 +956,7 @@ fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
   && (core_occurrences(marker: ArrowEffectClaimsEdge, children: children) <= 1)
   && (core_occurrences(marker: ArrowExecutionModeClaimEdge, children: children) <= 1)
   && (core_occurrences(marker: ArrowResourceRequirementsEdge, children: children) <= 1)
+  && (core_occurrences(marker: AdmitCallersEdge, children: children) <= 1)
   && fold(children, init: true, f: fn(acc, e) {
     match e.label {
       Positional => acc
@@ -1416,12 +1497,18 @@ fn classify_arrow_body_form(target: Node) -> ArrowBodyForm {
 // not hold still refuses with the same reason, now raised at the USE by eval_type_node_atom's own arm, where
 // it means what it says. What disappears is a refusal based solely on the body's FORM; what remains is the
 // refusal based on a missing binding, which is the only one that was ever a fact about the program.
+//
+// DeclarationReferenceBody IS ADMITTED ON THE SAME REASONING. A fn whose body is a reference to a `data`
+// constant (`fn f() -> Int { k }`) refused here by FORM before eval reached the reference, so the one
+// route that evaluates a constant (v2.compiler.eval eval_constant_member_body, keyed on v2.std.node
+// ConstantMemberEdge) could never run. A declaration reference that is not a constant still refuses at
+// the USE, with ^eval_rejected_runtime_binding_lookup_miss raised by eval_type_node_atom's own arm.
 fn arrow_body_admits_eval_entry(form: ArrowBodyForm) -> Bool {
   match form {
     UnsupportedArrowBody => false
     DirectAtomBody => true
     RecordConstructBody => false
-    DeclarationReferenceBody => false
+    DeclarationReferenceBody => true
     ParameterReferenceBody => true
     LexicalReferenceBody => true
     FunctionValueBody => false

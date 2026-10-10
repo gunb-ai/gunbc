@@ -4,9 +4,9 @@ import std.decl_ref { decl_ref }
 import std.types { Bool, EpochMs, Int, List, Milliseconds, NonEmptyStr, String }
 import std.content_hash { content_hash_of_value }
 import std.measure { Second, second, second_count }
-import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq }
 import extdeps.bmc.megarac
-import gunbc.machine_intake_megarac_ui_features { MegaRacRmediaStatus, RmediaStatusNamed, RmediaStatusOutsideTable, RmediaStatusTableUnread, megarac_rmedia_status_of_wire }
+import extdeps.bmc.megarac { megarac_firmware_0_32 }
 import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_name_digest_prefix }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
@@ -129,7 +129,6 @@ type MegaRacAttachOutcome
   | MegaRacMediaStateUnestablished { image_name: NonEmptyStr, route: MegaRacAttachRoute, look: ReadinessLook, looks: Int, cd_before_any_write: CdErrorReading, cd_at_ready: CdErrorReading, general_at_ready: MegaRacRawRead }
   | MegaRacMediaStateUnestablishedBeforeWrite { cd_before_any_write: CdErrorReading, reason: NonEmptyStr }
   | MegaRacReadinessRefused { image_name: NonEmptyStr, route: MegaRacAttachRoute, look: ReadinessLook, looks: Int, cd_before_any_write: CdErrorReading, cd_at_refusal: CdErrorReading }
-  | MegaRacPresentationStopped { image_name: NonEmptyStr, route: MegaRacAttachRoute, look: ReadinessLook, looks: Int, cd_before_any_write: CdErrorReading, stop: MegaRacRmediaStatus, class: MegaRacStopReasonClass, general_at_refusal: MegaRacRawRead }
   | MegaRacReadinessClockUnreadable { image_name: NonEmptyStr, route: MegaRacAttachRoute, detail: String }
   | MegaRacReadinessClockIncoherent { image_name: NonEmptyStr, route: MegaRacAttachRoute, opened_at: EpochMs, previous: EpochMs?, look: ReadinessLook, looks: Int }
   | MegaRacConfigurationsUnreadable { detail: String }
@@ -291,73 +290,36 @@ type MediaGeneralShareRead
   = MediaGeneralShareObserved { observed: MegaRacObservedShare }
   | MediaGeneralShareUnreadable { detail: String }
 
-// THE CD ERROR CODE IS THE VENDOR'S LAST-STOP REASON, AND THE VENDOR'S OWN UI SAYS WHEN IT MEANS
-// ANYTHING (operator-approved 2026-10-01, superseding the knowledge refusal of gunbc#12425 option A and
-// the held "census END marker decides delivery" design of msg_abc42f62 for every code the table names).
-// settings/media/general carries cd_error_code beside mount_cd. The SP-X UI bundle this firmware serves
-// (source.min.js sha256 5029fae2..., extdeps.bmc.megarac megarac_rmedia_status_0_32) reads it in exactly
-// one place, the single-image rmedia view, and only as `0==mount_cd && 1<=code<=17`, rendering
-// "Stopped" + the code's name; while the medium is started or starting it never consults the code, and
-// in the stopped state it leaves Start enabled whatever the code is. So the code is a LATCHED reason
-// for the last stop, not a live fault: boot run 36721915217 read 16 before any write, after its own
-// stop and at readiness, while the configurations row read Started with session_index 0.
-// Hence three readings, each a different fact:
-//   CdErrorNone          -- 0;
-//   CdErrorStopReason    -- a code the build's table names, with the class below;
-//   CdErrorUncatalogued  -- a code outside the table, a build with no table, or a named code this
-//                           policy has not classified.
-// Where the vendor does not consult the code -- the image Started or connecting -- every read code is
-// recorded and none withholds. Where it does -- nothing presented -- a named reason is refused or
-// attached past BY NAME, and an uncatalogued code stays a knowledge refusal. An UNREAD code is never a
-// reading, and withholds everywhere.
+// THE CD ERROR CODE IS AN OBSERVED NUMBER, AND NO MEANING IS ESTABLISHED FOR ANY VALUE.
+// settings/media/general carries cd_error_code beside mount_cd. Boot run 36721915217 (an executed
+// receipt) read 16 before any write, after its own stop and at readiness, while the configurations row
+// read Started with session_index 0. That is a COEXISTENCE: the value was already present before the
+// attempt stopped anything, so it does not show what produced it. No public document or executed
+// receipt gives any value a cause, so the model keeps the raw observation and names none. Two readings:
+//   CdErrorNone    -- 0;
+//   CdErrorNonzero -- any other value, with the firmware it was read from.
+// An UNREAD code is never a reading, and withholds everywhere.
 type MegaRacCdErrorCode
   = CdErrorNone
-  | CdErrorStopReason { status: MegaRacRmediaStatus, class: MegaRacStopReasonClass }
-  | CdErrorUncatalogued { wire: Int }
+  | CdErrorNonzero { wire: Int, firmware: BmcFirmwareReleaseIdentity }
 
-// WHETHER A STOP REASON SAYS THE CONTROLLER FAILED TO PRESENT, FROM THE VENDOR'S NAME FOR IT. The table
-// is the vendor's (derived, never typed here); the class is this repository's reading of each name, and
-// is keyed by code so that a table row this function does not name stays unclassified and refuses.
-//   NO FAULT -- the stop was asked for, or is the end of a presentation rather than a failure of one:
-//     1  Connection Accepted      the redirection's own acceptance status; it names no failure.
-//     7  Media Detach Stage       the medium was being detached, which is what a stop request does.
-//     15 Mount Cancelled By User  an operator stopped it.
-//     16 Device Ejected           the HOST ejected the virtual device (an OS or installer eject), or the
-//                                 stop of a presentation ejected it; the controller presented, and the
-//                                 consumer let go. Boot run 36721915217's stop of the stale image left
-//                                 exactly this code.
-//   PRESENTATION FAILURE -- the controller could not present, or lost, the medium:
-//     2  Connection Denied, 3 Login Failed, 4 MAX Session Reached, 5 Permission Denied: the share or the
-//        redirection refused this presentation;
-//     6  Unknown Error: the vendor's own catch-all for a failure it could not name;
-//     8  All device instances are occupied: no virtual device was free to present on;
-//     9  Unable to Connect, 14 Connection Lost: the share was unreachable, or stopped answering;
-//     10 Invalid Image, 11 Mount Error, 12 Unable to Open: the image could not be mounted or read;
-//     13 Media License Expired: the controller refuses remote media altogether;
-//     17 Session Terminated: the session ended under the medium with no stop requested.
-type MegaRacStopReasonClass
-  = StopReasonNoFault
-  | StopReasonPresentationFailure
+// POLICY, NOT A DECODED CAUSE. A nonzero code with nothing presented admits the attach only when it is
+// 16 read from firmware 0.32: boot run 36721915217 read exactly that before it attached, and the
+// attached presentation reached Started and the run proceeded. Admitting it claims that the run
+// proceeded under this reading, not what the code means. Every other nonzero code, and 16 on another
+// build, has no such run behind it, so the fresh-presentation experiment must be admitted first.
+data cd_error_attach_policy_wire: Int = 16
 
-fn megarac_stop_reason_class(status: MegaRacRmediaStatus) -> MegaRacStopReasonClass? {
-  let c = status.code
-  if c == 1 || c == 7 || c == 15 || c == 16 { Present { value: StopReasonNoFault } }
-  else if (c >= 2 && c <= 6) || (c >= 8 && c <= 14) || c == 17 { Present { value: StopReasonPresentationFailure } }
-  else { none }
+fn cd_error_attach_policy_admits(code: MegaRacCdErrorCode) -> Bool {
+  match code {
+    CdErrorNone => true
+    CdErrorNonzero { wire: w, firmware: f } => w == cd_error_attach_policy_wire && bmc_firmware_release_identity_eq(a: f, b: megarac_firmware_0_32)
+  }
 }
 
 fn megarac_cd_error_code_of_wire(firmware: BmcFirmwareReleaseIdentity, wire: Int) -> MegaRacCdErrorCode {
-  if wire == 0 { CdErrorNone } else {
-    match megarac_rmedia_status_of_wire(firmware: firmware, wire: wire) {
-      RmediaStatusNamed { status: st } =>
-        match megarac_stop_reason_class(status: st) {
-          Present { value: k } => CdErrorStopReason { status: st, class: k }
-          Absent => CdErrorUncatalogued { wire: wire }
-        }
-      RmediaStatusOutsideTable { firmware: _, wire: _ } => CdErrorUncatalogued { wire: wire }
-      RmediaStatusTableUnread { firmware: _, wire: _ } => CdErrorUncatalogued { wire: wire }
-    }
-  }
+  if wire == 0 { CdErrorNone }
+  else { CdErrorNonzero { wire: wire, firmware: firmware } }
 }
 
 type CdErrorReading
@@ -526,9 +488,7 @@ fn images_array_elements(doc: JsonValue) -> List<JsonValue>? {
 
 // THE START-MEDIA BODY, rendered here rather than by the caller so image_redirection cannot be
 // omitted by a caller who does not know it is required. extdeps.bmc.megarac records that omitting
-// it makes the firmware refuse with opaque codes 13410/13460, recovered from the firmware's own UI
-// bundle rather than from documentation — exactly the kind of fact that is lost when a body is
-// assembled at a call site.
+// it makes the firmware refuse, a fact that is lost when a body is assembled at a call site.
 fn start_media_body(image_name: NonEmptyStr, image_index: String) -> NonEmptyStr {
   join([
     "{\"image_name\":\"", image_name as String,
@@ -655,6 +615,20 @@ fn megarac_close_and_reobserve(
   return megarac_session_release_by_reobservation(before: before, after: after, csrf: csrf)
 }
 
+// THE SESSION REPLY'S DECODER, a pure function of the body so a claim supplies the body at this
+// interface: the one member read is CSRFToken, and a body that is not a JSON document or lacks it
+// reads as absent, which the caller refuses as MegaRacSessionTokenUnreadable.
+fn megarac_session_csrf(session_body: String) -> String? {
+  let session_doc = match parse_json_document(s: session_body) {
+    JsonDocumentParsed { value: v } => some_json_value(v)
+    JsonDocumentUnreadable { gap: _ } => none
+  }
+  return match session_doc {
+    Absent => none
+    Present { value: doc } => json_string_member(doc: doc, key: "CSRFToken")
+  }
+}
+
 fn megarac_attach_remote_image(
   bmc_host: NonEmptyStr,
   username: NonEmptyStr,
@@ -685,16 +659,7 @@ fn megarac_attach_remote_image(
     }
   }
 
-  let session_doc = match parse_json_document(s: session.body) {
-    JsonDocumentParsed { value: v } => some_json_value(v)
-    JsonDocumentUnreadable { gap: _ } => none
-  }
-  let csrf = match session_doc {
-    Absent => none
-    Present { value: doc } => json_string_member(doc: doc, key: "CSRFToken")
-  }
-
-  return match csrf {
+  return match megarac_session_csrf(session_body: session.body) {
     Absent =>
       megarac_release_unreadable_session(
         bmc_host: bmc_host,
@@ -1606,12 +1571,15 @@ fn megarac_convergence_step(
     ConvergeNothingPresented =>
       match cd_before {
         CdErrorRead { code: CdErrorNone } => ConvergeStepAttachFromListing
-        CdErrorRead { code: CdErrorStopReason { status: _, class: _ } } => ConvergeStepAttachFromListing
         CdErrorUnread { detail: _ } => ConvergeStepRefuse { outcome: unestablished_before_write(cd_before: cd_before, reason: "cd_error_code could not be read, so this attempt cannot establish the media state it would attach into") }
-        CdErrorRead { code: CdErrorUncatalogued { wire: _ } } =>
-          match detach {
-            MegaRacDetachAdmitted => ConvergeStepAttachFromListing
-            MegaRacDetachNotAdmitted { reason: why } => ConvergeStepRefuse { outcome: unestablished_before_write(cd_before: cd_before, reason: concat("nothing is presented, cd_error_code is nonzero, and the fresh-presentation experiment was not admitted: ", why as String)) }
+        CdErrorRead { code: c } =>
+          match cd_error_attach_policy_admits(code: c) {
+            true => ConvergeStepAttachFromListing
+            false =>
+              match detach {
+                MegaRacDetachAdmitted => ConvergeStepAttachFromListing
+                MegaRacDetachNotAdmitted { reason: why } => ConvergeStepRefuse { outcome: unestablished_before_write(cd_before: cd_before, reason: concat("nothing is presented, cd_error_code is nonzero, and the fresh-presentation experiment was not admitted: ", why as String)) }
+              }
           }
       }
   }
@@ -1927,36 +1895,7 @@ fn megarac_readiness_outcome(
 }
 
 // THE CODE IS READ AT THE END OF THE WAIT WHATEVER THE WAIT ANSWERED, so a refusal carries the code
-// that stood beside the unhealthy presentation, and a ready presentation carries it as historical.
-// A STOPPED PRESENTATION WITH A NAMED REASON: the look found nothing presented (the row was stopped,
-// or cleared) and the code reads a reason the build's table names. That is the one state in which the
-// vendor's UI reads the code at all, and it reads it as "Stopped - <name>", so the refusal carries the
-// name and its class instead of a timeout. Any other look, or any other code, is not this state.
-type StopReasonReading {
-  status: MegaRacRmediaStatus
-  class: MegaRacStopReasonClass
-}
-
-fn stopped_with_reason(look: ReadinessLook, cd: CdErrorReading) -> StopReasonReading? {
-  match look.reading {
-    ReadinessNotPresented { configurations: _ } =>
-      match cd {
-        CdErrorRead { code: CdErrorStopReason { status: st, class: k } } => Present { value: StopReasonReading { status: st, class: k } }
-        CdErrorRead { code: CdErrorNone } => none
-        CdErrorRead { code: CdErrorUncatalogued { wire: _ } } => none
-        CdErrorUnread { detail: _ } => none
-      }
-    ReadinessStarted { row: _ } => none
-    ReadinessConnecting { row: _ } => none
-    ReadinessStartedUnbound { row: _ } => none
-    ReadinessUnanswered { detail: _ } => none
-    ReadinessUncatalogued { image_name: _, wire: _, configurations: _ } => none
-    ReadinessMalformed { detail: _ } => none
-    ReadinessDuplicate { configurations: _ } => none
-    ReadinessWrongPresentation { image_name: _, configurations: _ } => none
-  }
-}
-
+// that stood beside the unhealthy presentation, and a ready presentation carries it beside the Started row, as an observation.
 // PURE: the wait's answer as the attach outcome. Only a Started look reaches MegaRacPresentationReady,
 // and the evidence is read from that look's row, so the record a boot is gated on is the row that
 // satisfied the policy.
@@ -1973,15 +1912,9 @@ fn readiness_wait_outcome(
     ReadinessWaitClockUnreadable { detail: d } => MegaRacReadinessClockUnreadable { image_name: image_name, route: route, detail: d }
     ReadinessWaitClockIncoherent { opened_at: o, previous: p, look: l, looks: n } => MegaRacReadinessClockIncoherent { image_name: image_name, route: route, opened_at: o, previous: p, look: l, looks: n }
     ReadinessWaitClosed { last: l, deadline: d, looks: n } =>
-      match stopped_with_reason(look: l, cd: cd_at_end) {
-        Present { value: st } => MegaRacPresentationStopped { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, stop: st.status, class: st.class, general_at_refusal: general_at_end }
-        Absent => MegaRacReadinessTimedOut { image_name: image_name, route: route, last: l, deadline: d, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
-      }
+      MegaRacReadinessTimedOut { image_name: image_name, route: route, last: l, deadline: d, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
     ReadinessWaitRefused { look: l, looks: n } =>
-      match stopped_with_reason(look: l, cd: cd_at_end) {
-        Present { value: st } => MegaRacPresentationStopped { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, stop: st.status, class: st.class, general_at_refusal: general_at_end }
-        Absent => MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
-      }
+      MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
     ReadinessWaitReady { look: l, looks: n } => {
       let not_ready = MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
       let state_unestablished = MegaRacMediaStateUnestablished { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_ready: cd_at_end, general_at_ready: general_at_end }
@@ -2052,11 +1985,10 @@ fn megarac_observe_with_token(
 }
 
 // THREE ANSWERS, BECAUSE THEY ARE DIFFERENT FACTS (side-chat review 5331738657). Affirmed: the look
-// was taken and the medium is not being served (a withdrawn or non-Started row, a share mismatch; a
-// stopped row beside a cd_error_code the build's table names says which stop it was). Unobserved: the
+// was taken and the medium is not being served (a withdrawn or non-Started row, a share mismatch). Unobserved: the
 // look itself failed (session, transport, an unread member, an unread cd_error_code), which says
-// nothing about the medium. A read cd_error_code beside a Started row is the last stop's latched
-// reason, which the vendor's UI does not consult while started, so it does not withhold.
+// nothing about the medium. A read cd_error_code beside a Started row is recorded as an observation and
+// does not withhold, because a Started row with a bound session is what the readiness policy asks for.
 // And the look's own session must be released: a ready medium observed through a session the
 // controller still holds is a cleanup obligation unmet, exactly as at the initial gate. Only
 // PresentationStillReady admits a handoff; each other answer withholds and says which it was.
@@ -2090,10 +2022,7 @@ fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillSe
             ReadinessConnecting { row: _ } => no_longer_ready
             ReadinessStartedUnbound { row: _ } => no_longer_ready
             ReadinessNotPresented { configurations: _ } =>
-              match cd {
-                CdErrorRead { code: CdErrorStopReason { status: st, class: k } } => PresentationNoLongerReady { reason: concat("the configurations row no longer presents the image: ", stop_reason_text(status: st, class: k)) as NonEmptyStr }
-                _ => no_longer_ready
-              }
+              no_longer_ready
             ReadinessDuplicate { configurations: _ } => no_longer_ready
             ReadinessWrongPresentation { image_name: _, configurations: _ } => no_longer_ready
           }
@@ -2104,7 +2033,6 @@ fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillSe
     MegaRacMediaStateUnestablished { image_name: _, route: _, look: _, looks: _, cd_before_any_write: _, cd_at_ready: _, general_at_ready: _ } => presentation_unobserved_before_presentation()
     MegaRacMediaStateUnestablishedBeforeWrite { cd_before_any_write: _, reason: _ } => presentation_unobserved_before_presentation()
     MegaRacReadinessRefused { image_name: _, route: _, look: _, looks: _, cd_before_any_write: _, cd_at_refusal: _ } => presentation_unobserved_before_presentation()
-    MegaRacPresentationStopped { image_name: _, route: _, look: _, looks: _, cd_before_any_write: _, stop: _, class: _, general_at_refusal: _ } => presentation_unobserved_before_presentation()
     MegaRacReadinessClockUnreadable { image_name: _, route: _, detail: _ } => presentation_unobserved_before_presentation()
     MegaRacReadinessClockIncoherent { image_name: _, route: _, opened_at: _, previous: _, look: _, looks: _ } => presentation_unobserved_before_presentation()
     MegaRacConfigurationsUnreadable { detail: _ } => presentation_unobserved_before_presentation()
@@ -2131,12 +2059,4 @@ fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillSe
 
 fn presentation_unobserved_before_presentation() -> PresentationStillServed {
   PresentationUnobserved { reason: "the presentation could not be observed (the session was refused or its token unreadable)" }
-}
-
-// THE VENDOR'S OWN RENDERING, "Stopped - <name>", with the code and this repository's class beside it.
-fn stop_reason_text(status: MegaRacRmediaStatus, class: MegaRacStopReasonClass) -> String {
-  join(["Stopped - ", status.name as String, " (cd_error_code ", to_string(status.code), "; ", match class {
-    StopReasonNoFault => "no fault: the stop was asked for, or the consumer let the medium go"
-    StopReasonPresentationFailure => "a presentation failure: the controller could not present, or lost, the medium"
-  }, ")"], "")
 }

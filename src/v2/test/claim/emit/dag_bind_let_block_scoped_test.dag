@@ -58,13 +58,12 @@ fn dbl_parse(concrete: List<ConcreteSyntaxToken>) -> Optional<Node> {
     Accepted { value: prepared, diagnostics: _ } =>
       match prepared {
         PreparedVoidGrammar => Absent
-        PreparedModeled { modeled: modeled, materialization: m } =>
+        PreparedModeled { modeled: modeled } =>
           match parse_production_prepared(
             tokens: dbl_lexed(concrete: concrete),
             validated: modeled.validated,
             analysis: modeled.analysis,
-            production_name: ^dag_production_expr,
-            materialization: m
+            production_name: ^dag_production_expr
           ) {
             Rejected { diagnostics: _ } => Absent
             Accepted { value: artifact, diagnostics: _ } => dbl_tree(node: artifact.tree)

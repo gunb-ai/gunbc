@@ -1,0 +1,703 @@
+module gunbc.oracle_oci.instance_ensure
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.resources { Network }
+import std.measure { Gigabyte, gigabyte, gigabyte_count, Second, second, second_count, measure_sub, measure_le, MeasureDifference, MeasureSubtrahendExceedsMinuend }
+import std.algebra { trim }
+import extdeps.clock { Clock }
+import v2.std.algebra { any }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_bool, json_int, serialize_json }
+import extdeps.cloud.oracle_oci_request_signing { OciPostJson }
+import extdeps.cloud.oracle_oci { VmStandardA1Flex, VmStandardE21Micro, OnDemandCapacity, oci_shape_wire_name }
+import extdeps.ssh { ssh_public_key_line }
+import std.optional { Absent, Present }
+import extdeps.filesystem.filesystem_io {
+  Filesystem, filesystem_exact_read,
+  FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
+}
+import extdeps.uri { uri_percent_encode_component, UriPercentComponentEncoded, UriPercentComponentRefused }
+import product.supplier.oracle_oci {
+  OciPlannedInstance, OciInstanceSize, A1FlexSize, E2MicroSize,
+  InHomeRegion, InMicroEligibleDomain,
+  OciAllowanceFit, FitsAlwaysFree, ExceedsAlwaysFree, OciAllowanceBreach,
+  oci_always_free_fit, oci_always_free_fit_beside, oci_instance_shape,
+}
+import gunbc.oracle_oci.tenancy_usage {
+  oci_tenancy_usage, TenancyUsageObserved, TenancyUsageRefused,
+  OciNamesRead, OciNamesListed, OciNamesRefused, oci_names_of, oci_availability_domains,
+  OciWhole, OciWholeValue, OciWholeRefused, oci_shape_config_whole,
+}
+import gunbc.fleet_ssh_access { fleet_automation_ssh_key, operator_macbook_ssh_key }
+import gunbc.oracle_oci.api {
+  OciExchange, OciAnswered, OciExchangeRefused,
+  OciListRead, OciListed, OciListInaccessible, OciListRefused,
+  OciRowsAdmitted, OciRowRefused, oci_admit_rows, oci_admitted_text,
+  oci_list, oci_signed_exchange, oci_iaas_host, oci_identity_host, oci_tenancy_ocid,
+}
+
+// THE OPERATOR'S ALWAYS FREE INSTANCES, LAUNCHED INTO THE gunbc-always-free COMPARTMENT AND SUBNET.
+//
+// The plan is the operator's choice of 2026-10-05: two AMD micros and one A1 instance with 2 OCPUs
+// and 12 GB. Before anything is launched, its members still to launch are fitted beside the whole
+// tenancy's observed usage (oci_free_instances), and a plan that does not fit launches nothing. Each boot volume is 50 GB, the smallest
+// size the launch API accepts, so the three take 150 of the shared 200 GB.
+//
+// Nothing about placement is guessed. The micro's availability domain is the one whose shape list
+// (ListShapes) offers VM.Standard.E2.1.Micro, and the image is the newest Oracle Linux 9 image Oracle
+// lists for that shape. An A1 launch that Oracle refuses for lack of host capacity, which its Always
+// Free page says to answer by trying a different availability domain, is retried in the next domain.
+// When every domain has refused for capacity, that is the outcome, and it is reported as such.
+//
+// The instances authorize two keys: the fleet automation key, so the fleet can reach them, and the
+// operator's macbook key, so the operator can. Both come from gunbc.fleet_ssh_access, not re-spelled.
+
+data oci_free_boot_volume: Gigabyte = gigabyte(count: 50)
+
+fn oci_free_plan_instance(name: NonEmptyStr, size: OciInstanceSize) -> OciPlannedInstance {
+  OciPlannedInstance {
+    name: name,
+    size: size,
+    boot_volume: oci_free_boot_volume,
+    capacity: OnDemandCapacity,
+    region: InHomeRegion,
+    micro_domain: InMicroEligibleDomain,
+  }
+}
+
+// The micro_domain field is InMicroEligibleDomain by construction: this converge launches a micro only
+// into the domain ListShapes names as offering the micro shape, and refuses when no domain does.
+data oci_free_plan: List<OciPlannedInstance> = [
+  oci_free_plan_instance(name: "gunbc-free-micro-1", size: E2MicroSize),
+  oci_free_plan_instance(name: "gunbc-free-micro-2", size: E2MicroSize),
+  oci_free_plan_instance(name: "gunbc-free-a1", size: A1FlexSize { ocpus: 2, memory: gigabyte(count: 12) }),
+]
+
+fn oci_free_authorized_keys() -> String {
+  join([ssh_public_key_line(k: fleet_automation_ssh_key), ssh_public_key_line(k: operator_macbook_ssh_key)], "\n")
+}
+
+// ── QUERY ENCODING ────────────────────────────────────────────────────────────────────────────
+//
+// The signing page requires query values URL-encoded per RFC 3986, and the signed target and the sent
+// target to be one string. Availability domain names carry a colon, and the image query carries a
+// space. The encoding is extdeps.uri uri_percent_encode_component, which encodes UTF-8 and refuses
+// with a typed cause. Its refusal stops the read that needed the value.
+type OciQueryValue
+  = OciQueryEncoded { wire: String }
+  | OciQueryRefused { line: String }
+
+fn oci_query_value(value: String) -> OciQueryValue {
+  if value == "" {
+    OciQueryRefused { line: "an empty query value" }
+  } else {
+    match uri_percent_encode_component(value: value as NonEmptyStr) {
+      UriPercentComponentEncoded(wire) => OciQueryEncoded { wire: wire as String }
+      UriPercentComponentRefused { cause } => OciQueryRefused { line: join(["query value ", value, " does not percent-encode: ", to_string(cause)], "") }
+    }
+  }
+}
+
+// ── INSTANCE STATE ────────────────────────────────────────────────────────────────────────────
+
+// The lifecycle states Oracle's SDK Instance model declares.
+type OciInstanceState
+  = InstanceMoving
+  | InstanceProvisioning
+  | InstanceRunning
+  | InstanceStarting
+  | InstanceStopping
+  | InstanceStopped
+  | InstanceCreatingImage
+  | InstanceTerminating
+  | InstanceTerminated
+  | InstanceStateUnknown { raw: String }
+
+fn oci_instance_state(raw: String) -> OciInstanceState {
+  if raw == "MOVING" { InstanceMoving }
+  else if raw == "PROVISIONING" { InstanceProvisioning }
+  else if raw == "RUNNING" { InstanceRunning }
+  else if raw == "STARTING" { InstanceStarting }
+  else if raw == "STOPPING" { InstanceStopping }
+  else if raw == "STOPPED" { InstanceStopped }
+  else if raw == "CREATING_IMAGE" { InstanceCreatingImage }
+  else if raw == "TERMINATING" { InstanceTerminating }
+  else if raw == "TERMINATED" { InstanceTerminated }
+  else { InstanceStateUnknown { raw: raw } }
+}
+
+fn oci_instance_live(s: OciInstanceState) -> Bool {
+  match s {
+    InstanceTerminated => false
+    InstanceMoving => true
+    InstanceProvisioning => true
+    InstanceRunning => true
+    InstanceStarting => true
+    InstanceStopping => true
+    InstanceStopped => true
+    InstanceCreatingImage => true
+    InstanceTerminating => true
+    InstanceStateUnknown { raw } => true
+  }
+}
+
+// An A1.Flex instance's size is part of its identity for this converge, read exactly from its
+// shapeConfig. A micro has no shapeConfig to match, so its reads are kept but never consulted.
+type OciObservedInstance {
+  id: String
+  display_name: String
+  state: OciInstanceState
+  shape: String
+  ocpus: OciWhole
+  memory_gb: OciWhole
+}
+
+data oci_instance_required_fields: List<String> = ["id", "displayName", "lifecycleState", "shape"]
+
+// Only for a row ADMITTED on oci_instance_required_fields.
+fn oci_observed_instance_of(v: JsonValue) -> OciObservedInstance {
+  OciObservedInstance {
+    id: oci_admitted_text(row: v, key: "id"),
+    display_name: oci_admitted_text(row: v, key: "displayName"),
+    state: oci_instance_state(raw: oci_admitted_text(row: v, key: "lifecycleState")),
+    shape: oci_admitted_text(row: v, key: "shape"),
+    ocpus: oci_shape_config_whole(row: v, key: "ocpus"),
+    memory_gb: oci_shape_config_whole(row: v, key: "memoryInGBs"),
+  }
+}
+
+// PURE: whether an observed instance has the planned size. A micro's size is fixed by its shape. An
+// A1's OCPUs and memory must be read and must equal the plan's; an unreadable size is a refusal, never
+// a match (side-chat review on gunbc#13351).
+fn oci_size_disagreement(planned: OciPlannedInstance, o: OciObservedInstance) -> String {
+  match planned.size {
+    E2MicroSize => ""
+    A1FlexSize { ocpus, memory } =>
+      match o.ocpus {
+        OciWholeRefused { cause } => concat("its OCPUs are unreadable: ", cause)
+        OciWholeValue { value: got_ocpus } =>
+          match o.memory_gb {
+            OciWholeRefused { cause } => concat("its memory is unreadable: ", cause)
+            OciWholeValue { value: got_memory } =>
+              if got_ocpus == ocpus && got_memory == gigabyte_count(g: memory) {
+                ""
+              } else {
+                join(["it has ", to_string(got_ocpus), " OCPUs and ", to_string(got_memory), " GB where the plan has ", to_string(ocpus), " and ", to_string(gigabyte_count(g: memory))], "")
+              }
+          }
+      }
+  }
+}
+
+// PURE: what the instance list decides for one planned instance.
+type OciInstanceDecision
+  = InstanceHeld { line: String }
+  | InstanceLaunch
+  | InstanceStop { line: String }
+
+fn oci_instance_decision(planned: OciPlannedInstance, observed: List<OciObservedInstance>) -> OciInstanceDecision {
+  let name = planned.name as String
+  let shape = oci_shape_wire_name(shape: oci_instance_shape(size: planned.size)) as String
+  let live = filter(observed, o => o.display_name == name && oci_instance_live(s: o.state))
+  if live.length() == 0 {
+    InstanceLaunch
+  } else if live.length() > 1 {
+    InstanceStop { line: join(["oci instance ", name, ": more than one live instance has this name"], "") }
+  } else {
+    match live.first() {
+      Absent => InstanceStop { line: join(["oci instance ", name, ": a nonempty list had no first element"], "") }
+      Present { value: o } =>
+        if o.shape != shape {
+          InstanceStop { line: join(["oci instance ", name, " ", o.id, " is shape ", o.shape, ", not ", shape, "; this converge does not reshape an instance"], "") }
+        } else if oci_size_disagreement(planned: planned, o: o) != "" {
+          InstanceStop { line: join(["oci instance ", name, " ", o.id, " is not the planned size (", oci_size_disagreement(planned: planned, o: o), "); this converge does not resize an instance"], "") }
+        } else {
+          match o.state {
+            InstanceRunning => InstanceHeld { line: join(["oci instance ", name, " ", o.id, " RUNNING, converged"], "") }
+            InstanceProvisioning => InstanceStop { line: join(["oci instance ", name, " ", o.id, " is PROVISIONING; run again"], "") }
+            InstanceStarting => InstanceStop { line: join(["oci instance ", name, " ", o.id, " is STARTING; run again"], "") }
+            InstanceMoving => InstanceStop { line: join(["oci instance ", name, " ", o.id, " is MOVING; run again"], "") }
+            InstanceCreatingImage => InstanceStop { line: join(["oci instance ", name, " ", o.id, " is CREATING_IMAGE; run again"], "") }
+            InstanceStopping => InstanceStop { line: join(["oci instance ", name, " ", o.id, " is STOPPING; an operator stopped it, and this converge does not start it"], "") }
+            InstanceStopped => InstanceStop { line: join(["oci instance ", name, " ", o.id, " is STOPPED; an operator stopped it, and this converge does not start it"], "") }
+            InstanceTerminating => InstanceStop { line: join(["oci instance ", name, " ", o.id, " is TERMINATING; wait, then run again to relaunch it"], "") }
+            InstanceTerminated => InstanceStop { line: join(["oci instance ", name, ": a terminated instance passed the live filter"], "") }
+            InstanceStateUnknown { raw } => InstanceStop { line: join(["oci instance ", name, " ", o.id, " reports lifecycle state ", raw, ", which is not in Oracle's published set"], "") }
+          }
+        }
+    }
+  }
+}
+
+// ── PLACEMENT FACTS, READ ─────────────────────────────────────────────────────────────────────
+
+
+
+// THREE ANSWERS, NOT TWO (review 76366). A refused ListShapes read is not "this domain lacks the
+// shape": collapsing it would report a confident fact about Oracle's catalog when the real cause was a
+// failed read, and lose that cause.
+type OciDomainOffer
+  = DomainOffers
+  | DomainLacks
+  | DomainReadRefused { line: String }
+
+fn oci_domain_offers(compartment: NonEmptyStr, domain: String, shape: String) -> OciDomainOffer uses net: Network {
+  match oci_query_value(value: domain) {
+    OciQueryRefused { line } => DomainReadRefused { line: join(["ListShapes for ", domain, " not sent: ", line], "") }
+    OciQueryEncoded { wire } => oci_domain_offers_read(domain: domain, shape: shape, read: oci_list(operation: "ListShapes", host: oci_iaas_host, path_and_query: join(["/20160918/shapes?compartmentId=", compartment as String, "&availabilityDomain=", wire], "") as NonEmptyStr))
+  }
+}
+
+fn oci_domain_offers_read(domain: String, shape: String, read: OciListRead) -> OciDomainOffer {
+  match oci_names_of(
+    read: read,
+    operation: "ListShapes",
+    key: "shape",
+  ) {
+    OciNamesListed { names } => if any(names, n => n == shape) { DomainOffers } else { DomainLacks }
+    OciNamesRefused { line } => DomainReadRefused { line: join(["ListShapes for ", domain, " refused: ", line], "") }
+  }
+}
+
+// The newest Oracle Linux 9 image for a shape. Oracle sorts by TIMECREATED descending on request, so
+// the first item is the newest.
+type OciImageRead
+  = OciImageFound { id: NonEmptyStr }
+  | OciImageRefused { line: String }
+
+fn oci_newest_image(compartment: NonEmptyStr, shape: String) -> OciImageRead uses net: Network {
+  match oci_query_value(value: "Oracle Linux") {
+    OciQueryRefused { line } => OciImageRefused { line: concat("ListImages not sent: ", line) }
+    OciQueryEncoded { wire: os } =>
+      match oci_query_value(value: shape) {
+        OciQueryRefused { line } => OciImageRefused { line: concat("ListImages not sent: ", line) }
+        OciQueryEncoded { wire: shape_wire } => oci_newest_image_at(compartment: compartment, shape: shape, path: join(["/20160918/images?compartmentId=", compartment as String, "&operatingSystem=", os, "&operatingSystemVersion=9&shape=", shape_wire, "&sortBy=TIMECREATED&sortOrder=DESC"], ""))
+      }
+  }
+}
+
+fn oci_newest_image_at(compartment: NonEmptyStr, shape: String, path: String) -> OciImageRead uses net: Network {
+  match oci_names_of(read: oci_list(operation: "ListImages", host: oci_iaas_host, path_and_query: path as NonEmptyStr), operation: "ListImages", key: "id") {
+    OciNamesRefused { line } => OciImageRefused { line: line }
+    OciNamesListed { names } => match names.first() {
+      Absent => OciImageRefused { line: join(["ListImages lists no Oracle Linux 9 image for ", shape], "") }
+      Present { value: id } => if id == "" { OciImageRefused { line: "ListImages listed an image with no id" } } else { OciImageFound { id: id as NonEmptyStr } }
+    }
+  }
+}
+
+// ── LAUNCH ────────────────────────────────────────────────────────────────────────────────────
+
+fn oci_launch_body(planned: OciPlannedInstance, compartment: NonEmptyStr, subnet: NonEmptyStr, domain: String, image: NonEmptyStr) -> String {
+  let shape = oci_shape_wire_name(shape: oci_instance_shape(size: planned.size)) as String
+  let common = [
+    json_kv(key: "availabilityDomain", value: json_string(s: domain)),
+    json_kv(key: "compartmentId", value: json_string(s: compartment as String)),
+    json_kv(key: "displayName", value: json_string(s: planned.name as String)),
+    json_kv(key: "shape", value: json_string(s: shape)),
+    json_kv(key: "sourceDetails", value: json_object(members: [
+      json_kv(key: "sourceType", value: json_string(s: "image")),
+      json_kv(key: "imageId", value: json_string(s: image as String)),
+      json_kv(key: "bootVolumeSizeInGBs", value: json_int(n: gigabyte_count(g: planned.boot_volume))),
+    ])),
+    json_kv(key: "createVnicDetails", value: json_object(members: [
+      json_kv(key: "subnetId", value: json_string(s: subnet as String)),
+      json_kv(key: "assignPublicIp", value: json_bool(b: true)),
+    ])),
+    json_kv(key: "metadata", value: json_object(members: [
+      json_kv(key: "ssh_authorized_keys", value: json_string(s: oci_free_authorized_keys())),
+    ])),
+  ]
+  match planned.size {
+    E2MicroSize => serialize_json(v: json_object(members: common))
+    A1FlexSize { ocpus, memory } => serialize_json(v: json_object(members: concat(common, [
+      json_kv(key: "shapeConfig", value: json_object(members: [
+        json_kv(key: "ocpus", value: json_int(n: ocpus)),
+        json_kv(key: "memoryInGBs", value: json_int(n: gigabyte_count(g: memory))),
+      ])),
+    ])))
+  }
+}
+
+// Oracle's Always Free page names the error: "out of host capacity". It is read from the error body's
+// text, which is Oracle's message, because no distinct status or code separates it from other 500s.
+fn oci_out_of_host_capacity(status: Int, body: String) -> Bool {
+  status == 500 && (string_contains(s: body, pattern: "Out of host capacity") || string_contains(s: body, pattern: "out of host capacity"))
+}
+
+// ── ONE LOGICAL LAUNCH, HELD ACROSS RUNS (side-chat review on gunbc#13351) ─────────────────────
+//
+// A launch whose reply was lost must not be followed by a different launch for the same member. The
+// retry token is derived from the request's path and body, so it protects only a re-send of the SAME
+// body. So the exact request is recorded before it is sent, with the time it was first sent, and while
+// that record stands the converge re-sends exactly it instead of choosing again.
+//
+// THE RECORD'S LIFECYCLE IS NARROW ON PURPOSE, because retiring it is the dangerous transition:
+//   - It is CREATED only with WriteCreateNew, an exclusive create, so one run owns each generation.
+//   - It is RETIRED in exactly two cases. (a) The member is observed in the instance list, so the
+//     launch is resolved. (b) The run that created it gets a definitive non-creation on that FIRST
+//     send (a 4xx other than 409 and 429, or out of host capacity). No other run can create a record
+//     while this one exists, so that delete cannot remove a newer generation.
+//   - A RE-SEND never retires it, whatever it answers. A 401 or 403 on a re-send says nothing about
+//     what the original send did, so the record stays, and the converge asks for reconciliation.
+//   - A record older than oci_launch_replay_window is not re-sent, because Oracle's retry tokens expire
+//     after 24 hours and may be invalidated earlier. Past that window the converge refuses and asks for
+//     reconciliation, rather than re-sending on a deduplication that may no longer hold.
+// RECONCILIATION is an operator step, done with no run active: look for the instance in the console,
+// then delete the record.
+//
+// All of this runs under the instance lock (oci_free_instances), so no other run can send, re-send or
+// retire while one does.
+//
+// The record lives in /etc/gunbc/oracle-oci, the root-only directory the custody converge creates for
+// the API key (gunbc.host_credential_custody_converge OracleOciApiSigningKey). It is stable across
+// checkouts, and every run that can sign can also read it.
+//
+// There is one candidate domain per launch. A1 launches refuse (below), and a micro goes to the domain
+// ListShapes names, so the converge never moves a pending launch to another domain.
+
+data oci_launch_record_dir: String = "/etc/gunbc/oracle-oci"
+
+data oci_launch_replay_window: Second = second(count: 82800)
+
+fn oci_launch_attempt_path(planned: OciPlannedInstance) -> String {
+  join([oci_launch_record_dir, "/launch-attempt-", planned.name as String, ".json"], "")
+}
+
+// INSTANTS ARE std.measure Second COUNTED FROM THE UNIX EPOCH, the unit Clock.UnixSecs prints, so the
+// record's first-send time, the clock reading and the replay window are one carrier and are compared
+// with std.measure's own subtraction and order (review 78218), never as bare integers.
+//
+// The record is the first-send instant, one newline, then the exact body.
+fn oci_launch_record_text(sent_at: Second, body: String) -> String {
+  join([to_string(second_count(s: sent_at)), body], "\n")
+}
+
+type OciLaunchRecord
+  = OciLaunchRecorded { sent_at: Second, body: String }
+  | OciLaunchRecordMalformed { cause: String }
+
+fn oci_parse_launch_record(content: String) -> OciLaunchRecord {
+  let lines = split(s: content, delimiter: "\n")
+  match lines.first() {
+    Absent => OciLaunchRecordMalformed { cause: "the record is empty" }
+    Present { value: head } =>
+      match parse_int(s: head) {
+        Absent => OciLaunchRecordMalformed { cause: "the record's first line is not epoch seconds" }
+        Present { value: sent_at } =>
+          if sent_at < 0 { OciLaunchRecordMalformed { cause: "the record's first-send time is negative" } }
+          else if lines.length() < 2 { OciLaunchRecordMalformed { cause: "the record carries no body" } }
+          else { OciLaunchRecorded { sent_at: second(count: sent_at), body: join(lines.skip(n: 1), "\n") } }
+      }
+  }
+}
+
+// PURE: whether a recorded attempt is still inside the window in which a re-send is a retry of it. A
+// clock that reads earlier than the record is not inside the window: the elapsed time is unknown.
+fn oci_replay_window_open(sent_at: Second, now: Second) -> Bool {
+  match measure_sub(a: now, b: sent_at) {
+    MeasureSubtrahendExceedsMinuend => false
+    MeasureDifference { value: elapsed } => !measure_le(a: oci_launch_replay_window, b: elapsed)
+  }
+}
+
+fn oci_definitive_non_creation(status: Int, body: String) -> Bool {
+  (status >= 400 && status < 500 && status != 409 && status != 429) || oci_out_of_host_capacity(status: status, body: body)
+}
+
+// PURE: whether an answer retires the record. Only a first send can, and only definitively.
+fn oci_answer_retires_record(first_send: Bool, status: Int, body: String) -> Bool {
+  first_send && oci_definitive_non_creation(status: status, body: body)
+}
+
+fn oci_clear_attempt(planned: OciPlannedInstance) -> String {
+  let removed = Filesystem.Delete(path: oci_launch_attempt_path(planned: planned))
+  if removed.success || removed.error_kind == "not_found" { "" } else { join([" (the launch record ", oci_launch_attempt_path(planned: planned), " could not be removed: ", removed.error, ")"], "") }
+}
+
+fn oci_reconcile_line(planned: OciPlannedInstance, why: String) -> String {
+  join(["oci instance ", planned.name as String, " NOT LAUNCHED: ", why, ". RECONCILE: check the OCI console for an instance named ", planned.name as String, " in the compartment; if none exists, delete ", oci_launch_attempt_path(planned: planned), " and run again"], "")
+}
+
+fn oci_now() -> Second? {
+  match parse_int(s: trim(s: Clock.UnixSecs().unix_secs)) {
+    Present { value } => if value < 0 { none } else { Present { value: second(count: value) } }
+    Absent => none
+  }
+}
+
+// Send the recorded body. first_send says whether this run created the record.
+fn oci_send_attempt(planned: OciPlannedInstance, body: String, first_send: Bool) -> OciInstanceOutcome uses net: Network {
+  let name = planned.name as String
+  let how = if first_send { "launch" } else { "re-send of the recorded launch" }
+  match oci_signed_exchange(shape: OciPostJson { text: body }, host: oci_iaas_host, path_and_query: "/20160918/instances") {
+    OciExchangeRefused { cause } => OciInstanceOutcome { line: join(["oci instance ", name, " ", how, " got no answer (", cause as String, "); the launch record stays, and the next run re-sends the same request"], ""), held: false }
+    OciAnswered { status, body: answer, next_page } =>
+      if status == 200 {
+        OciInstanceOutcome { line: join(["oci instance ", name, " ", how, " accepted; run again to read it back RUNNING"], ""), held: false }
+      } else if oci_answer_retires_record(first_send: first_send, status: status, body: answer) {
+        OciInstanceOutcome { line: join(["oci instance ", name, " ", how, " refused (", to_string(status), "), nothing created: ", answer, oci_clear_attempt(planned: planned)], ""), held: false }
+      } else if first_send {
+        OciInstanceOutcome { line: join(["oci instance ", name, " ", how, " answered ", to_string(status), "; the launch record stays, and the next run re-sends the same request: ", answer], ""), held: false }
+      } else {
+        OciInstanceOutcome { line: oci_reconcile_line(planned: planned, why: join(["the ", how, " answered ", to_string(status), ", which says nothing about what the original send did: ", answer], "")), held: false }
+      }
+  }
+}
+
+fn oci_replay_attempt(planned: OciPlannedInstance, content: String) -> OciInstanceOutcome uses net: Network {
+  match oci_parse_launch_record(content: content) {
+    OciLaunchRecordMalformed { cause } => OciInstanceOutcome { line: oci_reconcile_line(planned: planned, why: concat("the launch record is malformed: ", cause)), held: false }
+    OciLaunchRecorded { sent_at, body } =>
+      match oci_now() {
+        Absent => OciInstanceOutcome { line: join(["oci instance ", planned.name as String, " NOT LAUNCHED: the host clock did not print epoch seconds, so the record's replay window cannot be judged"], ""), held: false }
+        Present { value: now } =>
+          if oci_replay_window_open(sent_at: sent_at, now: now) {
+            oci_send_attempt(planned: planned, body: body, first_send: false)
+          } else {
+            OciInstanceOutcome { line: oci_reconcile_line(planned: planned, why: "the recorded launch is outside the retry-token window, so re-sending it is no longer a retry"), held: false }
+          }
+      }
+  }
+}
+
+// A launch that has no record yet: choose the domain and image, record the exact request exclusively,
+// then send it.
+fn oci_start_attempt(planned: OciPlannedInstance, compartment: NonEmptyStr, subnet: NonEmptyStr, domains: List<String>) -> OciInstanceOutcome uses net: Network {
+  let name = planned.name as String
+  let shape = oci_shape_wire_name(shape: oci_instance_shape(size: planned.size)) as String
+  match oci_micro_domain(compartment: compartment, domains: domains, shape: shape) {
+    CandidateDomainsRefused { line } => OciInstanceOutcome { line: join(["oci instance ", name, " NOT LAUNCHED: ", line], ""), held: false }
+    CandidateDomains { domains: candidates } =>
+      match candidates.first() {
+        Absent => OciInstanceOutcome { line: join(["oci instance ", name, " NOT LAUNCHED: every availability domain answered, and none lists shape ", shape], ""), held: false }
+        Present { value: domain } =>
+          match oci_newest_image(compartment: compartment, shape: shape) {
+            OciImageRefused { line } => OciInstanceOutcome { line: join(["oci instance ", name, " NOT LAUNCHED: ", line], ""), held: false }
+            OciImageFound { id } =>
+              match oci_now() {
+                Absent => OciInstanceOutcome { line: join(["oci instance ", name, " NOT LAUNCHED: the host clock did not print epoch seconds, so the launch cannot be recorded"], ""), held: false }
+                Present { value: now } => {
+                  let body = oci_launch_body(planned: planned, compartment: compartment, subnet: subnet, domain: domain, image: id)
+                  let recorded = Filesystem.WriteCreateNew(path: oci_launch_attempt_path(planned: planned), content: oci_launch_record_text(sent_at: now, body: body))
+                  if recorded.success {
+                    oci_send_attempt(planned: planned, body: body, first_send: true)
+                  } else if recorded.error_kind == "already_exists" {
+                    OciInstanceOutcome { line: join(["oci instance ", name, " NOT LAUNCHED: another run created the launch record ", oci_launch_attempt_path(planned: planned), " first and owns this launch"], ""), held: false }
+                  } else {
+                    OciInstanceOutcome { line: join(["oci instance ", name, " NOT LAUNCHED: the launch record could not be created, so nothing was sent: ", recorded.error], ""), held: false }
+                  }
+                }
+              }
+          }
+      }
+  }
+}
+
+// The domains that offer the micro shape. Every domain's read must answer, and one refused read refuses
+// the whole selection with its cause, because a domain whose answer was lost may be the one that offers
+// the shape.
+type OciCandidateDomains
+  = CandidateDomains { domains: List<String> }
+  | CandidateDomainsRefused { line: String }
+
+fn oci_micro_domain(compartment: NonEmptyStr, domains: List<String>, shape: String) -> OciCandidateDomains uses net: Network {
+  oci_select_offering(answers: map(domains, d => oci_domain_answer(domain: d, offer: oci_domain_offers(compartment: compartment, domain: d, shape: shape))))
+}
+
+type OciDomainAnswer {
+  domain: String
+  offer: OciDomainOffer
+}
+
+fn oci_domain_answer(domain: String, offer: OciDomainOffer) -> OciDomainAnswer {
+  OciDomainAnswer { domain: domain, offer: offer }
+}
+
+fn oci_domain_refusal(a: OciDomainAnswer) -> String {
+  match a.offer {
+    DomainReadRefused { line } => line
+    DomainOffers => ""
+    DomainLacks => ""
+  }
+}
+
+fn oci_domain_offering(a: OciDomainAnswer) -> Bool {
+  match a.offer {
+    DomainOffers => true
+    DomainLacks => false
+    DomainReadRefused { line } => false
+  }
+}
+
+// PURE: the selection over every domain's answer.
+fn oci_select_offering(answers: List<OciDomainAnswer>) -> OciCandidateDomains {
+  let refusals = filter(map(answers, a => oci_domain_refusal(a: a)), l => l != "")
+  if refusals.length() > 0 {
+    CandidateDomainsRefused { line: join(refusals, "; ") }
+  } else {
+    CandidateDomains { domains: map(filter(answers, a => oci_domain_offering(a: a)), a => a.domain) }
+  }
+}
+
+type OciInstanceOutcome {
+  line: String
+  held: Bool
+}
+
+// A1 LAUNCHES REFUSE UNTIL BILLING ELIGIBILITY IS ADMITTED (side-chat review on gunbc#13351). A1's free
+// credit is a monthly meter (1,500 OCPU-hours and 9,000 GB-hours, extdeps.cloud.oracle_oci), and a
+// current inventory does not say how much of this month's credit is spent. On a Pay As You Go tenancy
+// that used it earlier in the month, launching would consume billed usage, and refusing to quote a
+// price does not remove that consequence. Micros are bounded by a count, not a meter, so they launch.
+data oci_a1_launch_eligibility_obligation: NonEmptyStr = "An A1.Flex launch could consume billed usage: A1's Always Free credit is metered monthly, and the converge observes the current inventory, not this month's consumption. RESOLVED BY an observation of the tenancy's A1 month-to-date OCPU-hours and GB-hours (or a verified constraint that the tenancy cannot be billed), admitted before an A1 launch, and a launch path that checks it."
+
+// A HELD INSTANCE IS ON THE SELECTED SUBNET (side-chat review on gunbc#13351). A namesake attached to
+// another network is not the planned instance. Its VNIC attachments are read, every ATTACHED one must
+// be on the subnet, and there must be at least one.
+fn oci_instance_on_subnet(compartment: NonEmptyStr, instance: String, subnet: NonEmptyStr) -> String uses net: Network {
+  match oci_list(operation: "ListVnicAttachments", host: oci_iaas_host, path_and_query: join(["/20160918/vnicAttachments?compartmentId=", compartment as String, "&instanceId=", instance], "") as NonEmptyStr) {
+    OciListRefused { cause } => concat("its VNIC attachments could not be read: ", cause as String)
+    OciListInaccessible { status, body } => join(["its VNIC attachments were refused by OCI (", to_string(status), "): ", body], "")
+    OciListed { items } => match oci_admit_rows(operation: "ListVnicAttachments", rows: items, keys: ["id", "lifecycleState", "subnetId"]) {
+      OciRowRefused { cause } => cause as String
+      OciRowsAdmitted { rows } => oci_attachments_disagreement(rows: rows, subnet: subnet)
+    }
+  }
+}
+
+// PURE: the subnet agreement over admitted attachment rows.
+fn oci_attachments_disagreement(rows: List<JsonValue>, subnet: NonEmptyStr) -> String {
+  let attached = filter(rows, r => oci_admitted_text(row: r, key: "lifecycleState") == "ATTACHED")
+  let elsewhere = filter(attached, r => oci_admitted_text(row: r, key: "subnetId") != (subnet as String))
+  if attached.length() == 0 {
+    "it has no ATTACHED VNIC"
+  } else if elsewhere.length() > 0 {
+    join(["it has ", to_string(elsewhere.length()), " attached VNIC(s) on a subnet other than ", subnet as String], "")
+  } else {
+    ""
+  }
+}
+
+fn oci_ensure_instance(planned: OciPlannedInstance, compartment: NonEmptyStr, subnet: NonEmptyStr, observed: List<OciObservedInstance>, domains: List<String>) -> OciInstanceOutcome uses net: Network {
+  let name = planned.name as String
+  match oci_instance_decision(planned: planned, observed: observed) {
+    InstanceHeld { line } => {
+      let cleared = oci_clear_attempt(planned: planned)
+      match oci_live_namesake(planned: planned, observed: observed) {
+        Absent => OciInstanceOutcome { line: concat("a held instance had no live namesake", cleared), held: false }
+        Present { value: o } => {
+          let disagreement = oci_instance_on_subnet(compartment: compartment, instance: o.id, subnet: subnet)
+          if disagreement == "" {
+            OciInstanceOutcome { line: concat(line, cleared), held: true }
+          } else {
+            OciInstanceOutcome { line: join(["oci instance ", name, " ", o.id, " is not on the selected subnet (", disagreement, "); this converge does not move an instance", cleared], ""), held: false }
+          }
+        }
+      }
+    }
+    InstanceStop { line } => OciInstanceOutcome { line: concat(line, oci_clear_attempt(planned: planned)), held: false }
+    InstanceLaunch =>
+      match planned.size {
+        A1FlexSize { ocpus, memory } => OciInstanceOutcome { line: join(["oci instance ", name, " NOT LAUNCHED: ", oci_a1_launch_eligibility_obligation as String], ""), held: false }
+        E2MicroSize => {
+          let record = Filesystem.Read(path: oci_launch_attempt_path(planned: planned))
+          match filesystem_exact_read(path: oci_launch_attempt_path(planned: planned), content: record.content, success: record.success, error: record.error, error_kind: record.error_kind) {
+            FilesystemExactPathRead { path, content } => oci_replay_attempt(planned: planned, content: content)
+            FilesystemExactPathAbsent { path } => oci_start_attempt(planned: planned, compartment: compartment, subnet: subnet, domains: domains)
+            FilesystemExactPathUnreadable { path, kind, error } => OciInstanceOutcome { line: join(["oci instance ", name, " NOT LAUNCHED: the launch record ", path, " exists and cannot be read: ", error], ""), held: false }
+            FilesystemExactPathKindUnrecognized { path, observed, error } => OciInstanceOutcome { line: join(["oci instance ", name, " NOT LAUNCHED: the launch record ", path, " read failed with an unrecognized kind ", observed, ": ", error], ""), held: false }
+          }
+        }
+      }
+  }
+}
+
+fn oci_live_namesake(planned: OciPlannedInstance, observed: List<OciObservedInstance>) -> OciObservedInstance? {
+  match filter(observed, o => o.display_name == (planned.name as String) && oci_instance_live(s: o.state)).first() {
+    Present { value } => Present { value: value }
+    Absent => none
+  }
+}
+
+fn oci_breach_text(b: OciAllowanceBreach) -> String {
+  to_string(b)
+}
+
+// THE INSTANCE STEP. The instance list of this compartment is read first, to learn which plan
+// members already exist. Then the whole tenancy's usage is observed (gunbc.oracle_oci.tenancy_usage),
+// and the members still to launch are fitted beside it. That makes the fit a claim about the tenancy,
+// not just the plan (review 76384). A plan that would not fit, or a usage observation that refused,
+// launches nothing. Members that already exist are counted in the observed usage, not twice.
+fn oci_launch_pending(planned: OciPlannedInstance, observed: List<OciObservedInstance>) -> Bool {
+  match oci_instance_decision(planned: planned, observed: observed) {
+    InstanceLaunch => true
+    InstanceHeld { line } => false
+    InstanceStop { line } => false
+  }
+}
+
+fn oci_not_launched(line: String) -> List<OciInstanceOutcome> {
+  [OciInstanceOutcome { line: concat("oci instances NOT LAUNCHED: ", line), held: false }]
+}
+
+// ONE RUN AT A TIME OWNS THE INSTANCE STEP (side-chat review on gunbc#13351). The launch record makes a
+// lost reply recoverable; it does not by itself stop two runs from acting on one attempt. A creator
+// could retire a record another run is re-sending, and a run holding an old observation could delete
+// a newer generation. So the whole step, from the instance observations that decide held-or-launch
+// through record publication, send, re-send and retirement, runs under one lock, taken with
+// WriteCreateNew in the record directory and released at the end. A run that finds the lock held
+// refuses as busy. A lock left by a run that died is not broken automatically: it is reported with its
+// path, and an operator who has checked that no run is active removes it. Reconciling a launch record
+// is likewise done with no run active.
+data oci_instance_lock_path: String = "/etc/gunbc/oracle-oci/instance-converge.lock"
+
+fn oci_free_instances(compartment: NonEmptyStr, subnet: NonEmptyStr) -> List<OciInstanceOutcome> uses net: Network {
+  match oci_now() {
+    Absent => oci_not_launched(line: "the host clock did not print epoch seconds, so the instance lock cannot be taken")
+    Present { value: now } => {
+      let lock = Filesystem.WriteCreateNew(path: oci_instance_lock_path, content: to_string(second_count(s: now)))
+      if !lock.success {
+        if lock.error_kind == "already_exists" {
+          oci_not_launched(line: join(["another run holds the instance lock ", oci_instance_lock_path, ". If no run is active (one that died leaves its lock behind), remove that file and run again"], ""))
+        } else {
+          oci_not_launched(line: join(["the instance lock ", oci_instance_lock_path, " could not be taken: ", lock.error], ""))
+        }
+      } else {
+        let outcomes = oci_free_instances_locked(compartment: compartment, subnet: subnet)
+        let released = Filesystem.Delete(path: oci_instance_lock_path)
+        if released.success {
+          outcomes
+        } else {
+          concat(outcomes, [OciInstanceOutcome { line: join(["the instance lock ", oci_instance_lock_path, " could not be released: ", released.error, "; remove it before the next run"], ""), held: false }])
+        }
+      }
+    }
+  }
+}
+
+fn oci_free_instances_locked(compartment: NonEmptyStr, subnet: NonEmptyStr) -> List<OciInstanceOutcome> uses net: Network {
+  match oci_list(operation: "ListInstances", host: oci_iaas_host, path_and_query: join(["/20160918/instances?compartmentId=", compartment as String], "") as NonEmptyStr) {
+    OciListRefused { cause } => oci_not_launched(line: concat("ListInstances refused: ", cause as String))
+    OciListInaccessible { status, body } => oci_not_launched(line: join(["ListInstances refused by OCI (", to_string(status), "): ", body], ""))
+    OciListed { items } =>
+      match oci_admit_rows(operation: "ListInstances", rows: items, keys: oci_instance_required_fields) {
+        OciRowRefused { cause } => oci_not_launched(line: cause as String)
+        OciRowsAdmitted { rows } => {
+          let observed = map(rows, i => oci_observed_instance_of(v: i))
+          match oci_tenancy_usage() {
+            TenancyUsageRefused { line } => oci_not_launched(line: line)
+            TenancyUsageObserved { usage, compartments } =>
+              match oci_always_free_fit_beside(plan: filter(oci_free_plan, p => oci_launch_pending(planned: p, observed: observed)), other: usage) {
+                ExceedsAlwaysFree { breaches } => oci_not_launched(line: join(["the members still to launch do not fit the Always Free allowance beside what the tenancy already uses (", to_string(compartments), " compartments read): ", join(map(breaches, b => oci_breach_text(b: b)), "; ")], ""))
+                FitsAlwaysFree =>
+                  match oci_availability_domains() {
+                    OciNamesRefused { line } => oci_not_launched(line: line)
+                    OciNamesListed { names: domains } =>
+                      map(oci_free_plan, p => oci_ensure_instance(planned: p, compartment: compartment, subnet: subnet, observed: observed, domains: domains))
+                  }
+              }
+          }
+        }
+      }
+  }
+}

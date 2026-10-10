@@ -507,8 +507,18 @@ test fn the_instrument_target_and_its_binding_are_the_same_identity() -> Bool {
          LabelNonCanonical { cause: _ } => false
        })
     && (render_label(l: t.label) == differential_operand())
-    && ((instrument_targets() |> count) == 8)
-    && ((instrument_bindings() |> count) == 8)
+    && registry_and_bindings_are_one_population()
+}
+
+// THE REGISTRY AND ITS BINDINGS ARE ONE POPULATION, JOINED AT IDENTITY GRAIN. Completeness is an
+// identity join and never a count (DESIGN section 5): a literal count of the live registry is a
+// measurement copied from the tree it measures, and it went false the first time a row was added.
+// Both directions are asserted, so a target with no binding AND a binding for no registered
+// target each fail -- a count equality passes a registry that swapped one row for another.
+fn registry_and_bindings_are_one_population() -> Bool {
+  let bound = instrument_bindings() |> map(b => b.target)
+  fold(instrument_targets(), init: true, f: fn(acc, t) { acc && label_in(labels: bound, wanted: t) })
+    && fold(bound, init: true, f: fn(acc, l) { acc && label_in(labels: instrument_targets(), wanted: l) })
 }
 
 // THE ABSENCE PROOF, MEASURED OVER THE DERIVED POPULATION RATHER THAN ASSERTED IN PROSE.
@@ -524,15 +534,16 @@ test fn the_instrument_target_and_its_binding_are_the_same_identity() -> Bool {
 //
 // THE PLANNED SITE'S MODULE PATH MUST SIT INSIDE THE STATIC GATE. Since the 2026-08-29 bankruptcy
 // ruling, `v2.workflow.required_floor` `required_gate_prefixes` is a static roster and a site
-// outside it dispositions `DeclinedOutsideRequiredGate` -- which is what happened to the original
-// `test.claim.some_witness` fixture path: the presence conjunct above went silently red while the
-// module itself sat off-gate and unexecuted. `v2.test.` is a rostered prefix, so the fixture's
-// planned site plans again; a future roster shrink that drops the prefix reds this test loudly,
-// which is the control working rather than a new fragility.
+// outside it dispositions `DeclinedOutsideRequiredGate`, so the presence conjunct below goes
+// silently red while the fixture itself sits off-gate. This fixture has been bitten twice: the
+// original `test.claim.some_witness` path, and then `v2.test.some_witness`, whose `v2.test.` prefix
+// the revert of gunbc#12582 (gunbc#12852) removed from the roster. The path now rides the
+// `test.claim.infer_` family row, which has been in the roster throughout; a future roster change
+// that drops it reds the planned-site conjunct, which is the control working.
 fn census_fixture_sites() -> List<DiscoveredSite> {
   [
     DiscoveredSite {
-      module_path: "v2.test.some_witness",
+      module_path: "test.claim.infer_some_witness",
       function: "a_planned_site",
       reads_live_tree: SubstrateInputsOnly {}
     },
@@ -546,7 +557,7 @@ fn census_fixture_sites() -> List<DiscoveredSite> {
 
 fn planned_site_label() -> Label {
   Label {
-    package: PackagePath { segments: ["v2", "test", "some_witness"] }
+    package: PackagePath { segments: ["test", "claim", "infer_some_witness"] }
     target: TargetName { name: "a_planned_site" }
   }
 }

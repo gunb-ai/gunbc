@@ -10,8 +10,8 @@ import extdeps.languages.go.module {
   emit_host_bootstrap_toolchain,
   emit_host_min_go_language_version,
   go_major_suffix_str,
+  go_module_version_scheme,
   go_mvs_properties,
-  go_semver_compare,
   go_semver_label,
   go_semver_to_version_identity,
 }
@@ -98,47 +98,41 @@ test fn w_go_semver_to_version_identity() -> Bool {
   }) == "v1.2.3"
 }
 
-test fn w_go_semver_compare_major_less() -> Bool {
-  match go_semver_compare(
-    a: GoSemVer { major: 1, minor: 0, patch: 0, prerelease: none, build: none },
-    b: GoSemVer { major: 2, minor: 0, patch: 0, prerelease: none, build: none }
-  ) {
-    Less => true
-    Equal => false
-    Greater => false
+test fn w_go_module_version_scheme_major_less() -> Bool {
+  match go_module_version_scheme.compare(a: "v1.0.0", b: "v2.0.0") {
+    VersionCompared { ordering: o } => o == std.algebra.Less
+    VersionComparisonRefused { side: _, identity: _, cause: _ } => false
   }
 }
 
-test fn w_go_semver_compare_patch_greater() -> Bool {
-  match go_semver_compare(
-    a: GoSemVer { major: 1, minor: 0, patch: 5, prerelease: none, build: none },
-    b: GoSemVer { major: 1, minor: 0, patch: 2, prerelease: none, build: none }
-  ) {
-    Less => false
-    Equal => false
-    Greater => true
+test fn w_go_module_version_scheme_patch_greater() -> Bool {
+  match go_module_version_scheme.compare(a: "v1.0.5", b: "v1.0.2") {
+    VersionCompared { ordering: o } => o == std.algebra.Greater
+    VersionComparisonRefused { side: _, identity: _, cause: _ } => false
   }
 }
 
-test fn w_go_semver_compare_equal() -> Bool {
-  match go_semver_compare(
-    a: GoSemVer { major: 1, minor: 2, patch: 3, prerelease: none, build: none },
-    b: GoSemVer { major: 1, minor: 2, patch: 3, prerelease: none, build: none }
-  ) {
-    Less => false
-    Equal => true
-    Greater => false
+test fn w_go_module_version_scheme_equal() -> Bool {
+  match go_module_version_scheme.compare(a: "v1.2.3", b: "v1.2.3") {
+    VersionCompared { ordering: o } => o == std.algebra.Equal
+    VersionComparisonRefused { side: _, identity: _, cause: _ } => false
   }
 }
 
-test fn w_go_semver_compare_no_pre_beats_pre() -> Bool {
-  match go_semver_compare(
-    a: GoSemVer { major: 1, minor: 0, patch: 0, prerelease: none, build: none },
-    b: GoSemVer { major: 1, minor: 0, patch: 0, prerelease: Present { value: "alpha.1" }, build: none }
-  ) {
-    Less => false
-    Equal => false
-    Greater => true
+test fn w_go_module_version_scheme_no_pre_beats_pre() -> Bool {
+  match go_module_version_scheme.compare(a: "v1.0.0", b: "v1.0.0-rc.1") {
+    VersionCompared { ordering: o } => o == std.algebra.Greater
+    VersionComparisonRefused { side: _, identity: _, cause: _ } => false
+  }
+}
+
+// §11: pre-release identifiers with the same leading fields rank by their identifier sets —
+// alpha ranks BELOW beta. The deleted go-local comparator ranked ANY two pre-release versions
+// Equal; this witness failed for that documented reason before the rework.
+test fn w_go_module_version_scheme_orders_pre_release_identifiers() -> Bool {
+  match go_module_version_scheme.compare(a: "v1.0.0-alpha", b: "v1.0.0-beta") {
+    VersionCompared { ordering: o } => o == std.algebra.Less
+    VersionComparisonRefused { side: _, identity: _, cause: _ } => false
   }
 }
 
@@ -150,3 +144,40 @@ test fn w_emit_host_bootstrap_toolchain() -> Bool {
   emit_host_bootstrap_toolchain == "go1.22.5"
 }
 
+
+// The scheme strips the go "v" prefix and routes through the SemVer grammar and semver_compare —
+// the ONE implementation of the cited rule — so unequal labels get the real numeric order.
+test fn w_go_module_version_scheme_orders_patch_numerically() -> Bool {
+  match go_module_version_scheme.compare(a: "v1.2.4", b: "v1.2.3") {
+    VersionCompared { ordering: o } => o == std.algebra.Greater
+    VersionComparisonRefused { side: _, identity: _, cause: _ } => false
+  }
+}
+
+// A label outside the go module grammar (no "v" prefix, or a non-SemVer remainder) is a located
+// refusal: the carrier names the failing side, the label, and the cause — never a fabricated
+// order.
+test fn w_go_module_version_scheme_refuses_unparsable_label() -> Bool {
+  match go_module_version_scheme.compare(a: "not-a-go-version", b: "v1.2.3") {
+    VersionComparisonRefused { side: side, identity: i, cause: _ } => side == LeftOperand && i == "not-a-go-version"
+    VersionCompared { ordering: _ } => false
+  }
+}
+
+// The go prefix rule is the scheme's own acceptance rule: a label WITHOUT the leading "v" is
+// outside the grammar even when the remainder is a valid SemVer version.
+test fn w_go_module_version_scheme_refuses_label_without_v_prefix() -> Bool {
+  match go_module_version_scheme.compare(a: "1.0.0", b: "v1.0.0") {
+    VersionComparisonRefused { side: side, identity: i, cause: _ } => side == LeftOperand && i == "1.0.0"
+    VersionCompared { ordering: _ } => false
+  }
+}
+
+// The go grammar is "v" + SemVer 2.0.0, so SemVer's §9 refusal carries over: a leading-zero
+// all-digit pre-release identifier refuses instead of ranking.
+test fn w_go_module_version_scheme_refuses_leading_zero_pre_release() -> Bool {
+  match go_module_version_scheme.compare(a: "v1.0.0-01", b: "v1.0.0-1") {
+    VersionComparisonRefused { side: side, identity: i, cause: _ } => side == LeftOperand && i == "v1.0.0-01"
+    VersionCompared { ordering: _ } => false
+  }
+}

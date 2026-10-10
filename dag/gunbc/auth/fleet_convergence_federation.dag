@@ -62,7 +62,7 @@ fn fleet_convergence_federation() -> DedicatedFederation {
   DedicatedFederation {
     label: "fleet cloud convergence (fleet-converge dispatch at main only)",
     pool_id: fleet_convergence_wif_pool_id,
-    pool_display_name: "Fleet convergence (dispatch at main)",
+    pool_display_name: "Fleet convergence (main)",
     provider_id: fleet_convergence_wif_provider_id,
     attribute_mapping: fleet_convergence_attribute_mapping,
     attribute_condition: fleet_convergence_attribute_condition(),

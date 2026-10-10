@@ -248,7 +248,7 @@ pub fn parse_target_pattern(text: &str) -> Result<TargetPattern, TargetPatternRe
 /// `gunbc.target_binding` `V2NativeCensusReading`: which census verb and reader a native-census row takes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum V2NativeCensusReading {
-    ResolveRefusal,
+    RefusalCensus,
     TypeDeclarationUse,
 }
 
@@ -358,7 +358,7 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("v2-native-census"),
             TargetProducer::V2NativeCensus {
-                reading: V2NativeCensusReading::ResolveRefusal,
+                reading: V2NativeCensusReading::RefusalCensus,
             },
         ),
         (
@@ -847,7 +847,7 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::V2NativeCli => run_v2_native_cli(&v2_native_cli_source_roots()),
         TargetProducer::V2NativeFrontier => run_v2_native_frontier(&self_host_source_roots()),
         TargetProducer::V2NativeCensus {
-            reading: V2NativeCensusReading::ResolveRefusal,
+            reading: V2NativeCensusReading::RefusalCensus,
         } => run_v2_native_census(&self_host_source_roots()),
         TargetProducer::V2NativeCensus {
             reading: V2NativeCensusReading::TypeDeclarationUse,
@@ -1230,12 +1230,18 @@ fn run_v2_native_census(source_roots: &[String]) -> InvocationOutcome {
             termination: Termination::ObservationHeld,
             message: format!(
                 "v2-native-census: modules={} file_refusals={} advised_files={} residual_rows={} \
-                 cause_groups={}; the rows grouped by fatal reason are the cause_group lines above",
+                 inferred={} infer_refused={} cause_groups={} roots={} type_census={}; the rows \
+                 grouped by fatal reason are the cause_group lines above, ranked by closure fan-out \
+                 in the census_root lines",
                 run.modules,
                 run.file_refusals,
                 run.advised_files,
                 run.residual_rows,
-                run.cause_groups
+                run.inferred,
+                run.infer_refused,
+                run.cause_groups,
+                run.roots,
+                run.type_census.word()
             ),
         },
         Err(cause) => InvocationOutcome {
@@ -1646,23 +1652,39 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
             _ => None,
         }
     };
-    let plan = (|| -> Result<(Vec<String>, String, String, String), String> {
-        let requests = match &read("native_serve_probe_requests")? {
+    // The requests depend on the peer's bound port, which only exists once the peer is up, so they
+    // are read from the reader module with that port as its argument -- still every byte there.
+    let requests_for_peer_port = |peer_port: i64| -> Result<Vec<String>, String> {
+        let value = crate::v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "native_serve_probe_requests",
+            &[(
+                Some("peer_port".to_string()),
+                crate::v1_interpreter::Value::Int(peer_port),
+            )],
+            true,
+        )
+        .map_err(|cause| {
+            format!("{label_name}: {READER} native_serve_probe_requests failed: {cause}")
+        })?;
+        match &value {
             crate::v1_interpreter::Value::List(items) => items
                 .iter()
                 .map(|item| text(item).ok_or("a request is not a String".to_string()))
-                .collect::<Result<Vec<String>, String>>()?,
-            _ => return Err("native_serve_probe_requests is not a List".to_string()),
-        };
+                .collect::<Result<Vec<String>, String>>(),
+            _ => Err("native_serve_probe_requests is not a List".to_string()),
+        }
+    };
+    let plan = (|| -> Result<(String, String, String), String> {
         let release = text(&read("native_serve_probe_release_revision")?)
             .ok_or("the release revision is not a String")?;
         let refused = text(&read("native_serve_probe_refused_revision")?)
             .ok_or("the refused revision is not a String")?;
         let deadline = text(&read("native_serve_probe_request_deadline_ms")?)
             .ok_or("the request deadline is not a String")?;
-        Ok((requests, release, refused, deadline))
+        Ok((release, refused, deadline))
     })();
-    let (requests, release, refused, deadline) = match plan {
+    let (release, refused, deadline) = match plan {
         Ok(plan) => plan,
         Err(cause) => {
             return InvocationOutcome {
@@ -1677,7 +1699,7 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
         &release,
         &refused,
         &deadline,
-        &requests,
+        &requests_for_peer_port,
     ) {
         Ok(run) => run,
         Err(cause) => {
@@ -1692,6 +1714,14 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
         (
             Some("announcement".to_string()),
             crate::v1_interpreter::Value::Str(run.announcement.clone().into()),
+        ),
+        (
+            Some("peer_announcement".to_string()),
+            crate::v1_interpreter::Value::Str(run.peer_announcement.clone().into()),
+        ),
+        (
+            Some("peer_port".to_string()),
+            crate::v1_interpreter::Value::Int(run.peer_port),
         ),
         (
             Some("responses".to_string()),
@@ -3651,7 +3681,7 @@ fn run_interpolation_hole_census(source_roots: &[String]) -> InvocationOutcome {
     for line in standing.lines() {
         println!("interpolation-hole-census: {line}");
     }
-    let mut paths: Vec<std::path::PathBuf> = Vec::new();
+    let mut paths = Vec::new();
     for root in source_roots {
         if let Err(detail) =
             cli_run::collect_dag_files_result(std::path::Path::new(root), &mut paths)
@@ -3660,9 +3690,9 @@ fn run_interpolation_hole_census(source_roots: &[String]) -> InvocationOutcome {
         }
     }
     let mut corpus: Vec<Rc<SourceFile>> = Vec::new();
-    for path in &paths {
-        let path = path.to_string_lossy().to_string();
-        match std::fs::read_to_string(&path) {
+    for source in &paths {
+        let path = source.path().to_string_lossy().to_string();
+        match source.read() {
             Ok(content) => corpus.push(Rc::new(SourceFile { path, content })),
             Err(err) => return unreached(format!("corpus file {path}: {err}")),
         }

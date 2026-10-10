@@ -20,12 +20,13 @@ import gunbc.roadmap_model {
   PrsMerged,
   WorkItemDispatch, NotDispatchable, Dispatchable,
   SectionElement, Group, SectionGroup,
+  NodeParent, AdmittedRoot, RoadmapNodeIdentity,
 }
-import gunbc.roadmap_status { DerivableLine, Unsigned }
+import gunbc.roadmap_status { DerivableLine, Unsigned, TicketLine, TicketFields }
+import gunbc.roadmap.roadmap_lineage { lineage_walk, lineage_is_rooted }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_spawner { next_spawnable, dispatch_brief_template, node_title }
-import gunbc.roadmap_authority { declared_roadmap_nodes }
 import std.upsert_decision {
   Absent,
   Apply,
@@ -79,11 +80,14 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_provider_inner_argv,
   DispatchProviderInnerArgv,
   DispatchProviderInnerArgvReady,
-  CursorProviderSpawnUnwired,
+  CursorProviderOffCustodyHost,
+  CursorProviderCredentialUnbound,
+  CodexProviderOffCustodyHost,
   CodexProviderExecutableAbsent,
   GunbcHarnessSpawnNeedsInstance,
   ClaudeProviderCredentialUnbound,
   ClaudeCodeProvider,
+  dispatch_credential_snapshot_path_for_instance,
   CodexDispatchProvider,
   dispatch_tmux_session_name,
   dispatch_tmux_session_prefix,
@@ -181,6 +185,7 @@ import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   srv1_lab_dashboard_instance,
   srv1_live_dashboard_instance,
+  srv2_lab_dashboard_instance,
   dashboard_instance_provider_executable,
 }
 import gunbc.roadmap.roadmap_attempt_continuation {
@@ -188,6 +193,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   continuation_alignment_l0_pointer, continuation_alignment_ask,
 }
 import gunbc.roadmap.roadmap_alignment {
+  alignment_chain,
   AlignmentResolution, AlignmentReady, AlignmentUnresolved,
   AlignmentChained, AlignmentChainLink, AlignmentRowUndeclared,
   AlignmentWalkUnrooted, AlignmentNestingCyclic,
@@ -460,9 +466,9 @@ fn codex_tmux_arm_shape_holds(spawn: HostExecArgv, provider_start: HostExecArgv,
 test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
   let node = sized_derivable(id: "codex-selected", prs: [1], title: "Codex selected")
   match dispatch_spawn_commands_for_inventory(
-    instance: srv1_live_dashboard_instance(),
+    instance: srv2_lab_dashboard_instance(),
     inventory: fixture_inventory_codex_only_available(
-      instance: srv1_live_dashboard_instance(),
+      instance: srv2_lab_dashboard_instance(),
     ),
     node: node,
     session_uuid: "uuid-unused-by-codex",
@@ -481,7 +487,7 @@ test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
       codex_tmux_command_shape_holds(
         cmds: cmds,
         codex_executable: match dashboard_instance_provider_executable(
-          instance: srv1_live_dashboard_instance(),
+          instance: srv2_lab_dashboard_instance(),
         ) {
           Present { value: executable } => executable as String
           Absent => ""
@@ -499,10 +505,6 @@ fn lab_instance_command_shape_holds(commands: DispatchSpawnCommands, lab: HostDa
 }
 
 fn lab_instance_tmux_shape_holds(commands: DispatchSpawnCommands, lab: HostDashboardInstance, spawn: HostExecArgv, event_pipe: HostExecArgv, provider_start: HostExecArgv) -> Bool {
-  match dashboard_instance_provider_executable(instance: lab) {
-    Absent => false
-    Present { value: codex_path } => {
-  let codex_executable = codex_path as String
   let git_wire = join(commands.worktree_add.args, separator: "\0")
   let state_wire = join(commands.attempt_state_prepare.args, separator: "\0")
   let pointer_wire = join(commands.attempt_current_pointer.args, separator: "\0")
@@ -538,37 +540,52 @@ fn lab_instance_tmux_shape_holds(commands: DispatchSpawnCommands, lab: HostDashb
     )
     && string_contains(
       s: provider_wire,
-      pattern: concat("\0CODEX_HOME=/home/briansrls/.codex@gunbc-roadmap\0", codex_executable),
+      pattern: dispatch_credential_snapshot_path_for_instance(
+        instance: lab,
+        node_id: "ts-dispatch-provider-events" as NonEmptyStr as RoadmapNodeId,
+        attempt_key: "feedfacefeedface",
+        provider: ClaudeCodeProvider,
+      ) as String,
     )
-    }
-  }
 }
 
-test fn witness_lab_instance_moves_repo_tmux_and_codex_state_together() -> Bool {
+// THE LAB INSTANCE MOVES ITS REPO, TMUX SERVER AND ATTEMPT STATE TOGETHER, shown with the Claude
+// spawn (its credential is held on srv1). It no longer moves a codex state root with it: codex worker
+// turns run on the one credential held on its custody host (gunbc.codex_harness_credential, operator
+// ruling 2026-10-05), so the same lab refuses a codex spawn at the custody-host step -- the control
+// that a codex turn cannot fall back to the lab's ambient codex login.
+test fn witness_lab_instance_moves_repo_tmux_and_attempt_state_together() -> Bool {
   let lab = srv1_lab_dashboard_instance()
-  match dispatch_spawn_commands_for_inventory(
+  let node = sized_derivable(id: "ts-dispatch-provider-events", prs: [], title: "Provider execution facts")
+  let claude_moves = match dispatch_spawn_commands_for_resolved_instance(
     instance: lab,
-    inventory: fixture_inventory_codex_only_available(instance: lab),
-    node: sized_derivable(
-      id: "ts-dispatch-provider-events",
-      prs: [],
-      title: "Provider execution facts",
-    ),
+    node: node,
     session_uuid: "00000000-0000-4000-8000-000000000001",
     attempt_key: "feedfacefeedface",
-    request: SelectCodex {
-      profile: ProfileAutomatic,
-      account: codex_roadmap_account_selection(),
-      model: dispatch_codex_default_model,
-      effort: ReasoningMedium,
-      operator_asserted_native_limit_bucket: Absent,
-    },
+    provider: ClaudeCodeProvider,
+    effort: ReasoningMedium,
+    model: ProviderAccountDefaultModel,
+    origin: FreshFromBase,
     resolution: fixture_ready_resolution(node_id: "ts-dispatch-provider-events", project_ids: []),
   ) {
     DispatchSpawnRefused { step: _, detail: _ } => false
-    DispatchSpawnReady { commands } =>
-      lab_instance_command_shape_holds(commands: commands, lab: lab)
+    DispatchSpawnReady { commands } => lab_instance_command_shape_holds(commands: commands, lab: lab)
   }
+  let codex_refused = match dispatch_spawn_commands_for_resolved_instance(
+    instance: lab,
+    node: node,
+    session_uuid: "00000000-0000-4000-8000-000000000001",
+    attempt_key: "feedfacefeedface",
+    provider: CodexDispatchProvider,
+    effort: ReasoningMedium,
+    model: dispatch_codex_default_model,
+    origin: FreshFromBase,
+    resolution: fixture_ready_resolution(node_id: "ts-dispatch-provider-events", project_ids: []),
+  ) {
+    DispatchSpawnRefused { step, detail: _ } => step as String == "codex-credential-custody-host"
+    DispatchSpawnReady { commands: _ } => false
+  }
+  claude_moves && codex_refused
 }
 
 test fn witness_tmux_attempt_panes_parse_alive_and_exit() -> Bool {
@@ -1108,7 +1125,9 @@ test fn witness_codex_account_default_passes_no_model_flag() -> Bool {
 fn witness_inner_argv_wire(inner: DispatchProviderInnerArgv) -> String {
   match inner {
     DispatchProviderInnerArgvReady { argv } => join(argv, separator: "\0")
-    CursorProviderSpawnUnwired { reason: r } => r as String
+    CursorProviderOffCustodyHost { reason: r } => r as String
+    CursorProviderCredentialUnbound { reason: r } => r as String
+    CodexProviderOffCustodyHost { reason: r } => r as String
     CodexProviderExecutableAbsent { reason: r } => r as String
     GunbcHarnessSpawnNeedsInstance { reason: r } => r as String
     ClaudeProviderCredentialUnbound { reason: r } => r as String
@@ -1187,6 +1206,7 @@ test fn witness_review_unit_argv_mints_per_criterion_attempt_identity() -> Bool 
     brief: "brief",
     head_sha: "abc123",
     criterion_key: "conformance-external-facts",
+    exit_hook: "+mkdir -- /i/attempt-exit-spool/inbox/x" as NonEmptyStr,
   ) {
     SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: command } => {
@@ -1215,9 +1235,9 @@ test fn witness_continuation_origin_branches_the_worktree_from_the_prior_attempt
     node: sized_derivable(id: "ts-continuation-origin", prs: [], title: "Continuation origin wiring"),
     session_uuid: "00000000-0000-4000-8000-000000000002",
     attempt_key: "feedfacefeedface",
-    provider: CodexDispatchProvider,
+    provider: ClaudeCodeProvider,
     effort: ReasoningMedium,
-    model: dispatch_codex_default_model,
+    model: ProviderAccountDefaultModel,
     origin: ContinueFromAttempt {
       parent_attempt_key: "deadbeefdeadbeef",
       branch: "roadmap/ts-continuation-origin/deadbeefdeadbeef",
@@ -1235,37 +1255,89 @@ test fn witness_continuation_origin_branches_the_worktree_from_the_prior_attempt
   }
 }
 
-// THE AUTHORITY ROW, READ BY THE TEST ITSELF. The drift controls below require the preamble to
-// carry the arc's title AS THE AUTHORITY DECLARES IT, so the expectation is projected here rather
-// than transcribed: editing the authority row moves this expectation with it, and a hand-copied
-// preamble goes red.
-fn authority_node_opt(id: String) -> RoadmapNode? {
-  (declared_roadmap_nodes() |> filter(n => (n.node as String) == id)).first()
+// THE SUPPLIED UNROOTED SPECIMEN (§3: a witness discriminates at one interface). The claims below
+// judge the refusal an unrooted chain produces, so the unrooted node is built HERE -- a row with no
+// parent -- rather than borrowed from the live roadmap authority, whose parents change for
+// unrelated reasons (#13052 gave the former live specimen one and turned both claims red).
+fn unrooted_specimen_id() -> String { "fixture-unrooted-specimen" }
+
+fn specimen_row(parent: NodeParent?) -> RoadmapNode {
+  RoadmapNode {
+    identity: "rnfx_R2PE6DBK7RVVR2NHNQN0" as RoadmapNodeIdentity,
+    node: roadmap_dispatch_actuator_nid(s: unrooted_specimen_id()),
+    line: TicketLine {
+      done: false,
+      ticket: TicketFields {
+        headline: "Specimen headline",
+        brief: "Specimen brief",
+        displaced_cost: "none",
+        current_state: "fixture",
+        first_slice: "fixture",
+        red_control: "fixture",
+        out_of_scope: "fixture",
+        handback: "fixture",
+        updates: [],
+        authored_on: "",
+        last_verified_on: "",
+      },
+    },
+    carriers: [],
+    dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
+    execution: ExecutionContractUnspecified,
+    owner: "",
+    signoff: Unsigned,
+    parent: parent,
+    centering: none,
+  }
+}
+
+fn unrooted_specimen() -> RoadmapNode { specimen_row(parent: none) }
+
+fn rooted_twin_specimen() -> RoadmapNode { specimen_row(parent: Present { value: AdmittedRoot }) }
+
+fn unrooted_specimen_resolution() -> AlignmentResolution {
+  alignment_resolve_chain(
+    chain: alignment_chain(node_id: unrooted_specimen_id(), nodes: [unrooted_specimen()]),
+    turns_elapsed: 1,
+    state: alignment_base_cadence_state(),
+  )
+}
+
+// THE DISCRIMINATOR AND THE INHABITANCE CHECK: the real lineage rule and the real chain derivation
+// refuse the parentless row and accept the same row once it declares AdmittedRoot, so the refusal
+// below is the rule's, not a fixture artifact. Not tied to any live node id.
+test fn the_real_lineage_rule_refuses_an_unrooted_row_and_roots_its_twin() -> Bool {
+  !lineage_is_rooted(w: lineage_walk(node_id: unrooted_specimen_id(), nodes: [unrooted_specimen()]))
+    && lineage_is_rooted(w: lineage_walk(node_id: unrooted_specimen_id(), nodes: [rooted_twin_specimen()]))
+    && (match alignment_resolve_chain(
+      chain: alignment_chain(node_id: unrooted_specimen_id(), nodes: [rooted_twin_specimen()]),
+      turns_elapsed: 1,
+      state: alignment_base_cadence_state(),
+    ) {
+      AlignmentReady { chain: _, due_levels: _, rendered_prompt: _ } => true
+      AlignmentUnresolved { cause: _ } => false
+    })
 }
 
 // THE ONE-AUTHORITY PREAMBLE (review finding 2026-09-26): the preamble IS the resolution's
 // rendered_prompt — gunbc.roadmap.roadmap_alignment owns the alignment answer and this lane only
-// concatenates. For the REAL node 2-scm-git-upstream-model -- an accepted history row that declares
-// no parent -- the derived chain refuses UNROOTED, so the honest preamble is the refusal marker
+// concatenates. For a SUPPLIED row that declares
+// no parent the derived chain refuses UNROOTED, so the honest preamble is the refusal marker
 // naming where the walk halted (review 5354823380), never a confident projection rendered while
 // execution proceeded.
 test fn the_preamble_names_the_derived_refusal_for_an_unrooted_node() -> Bool {
-  let resolution = alignment_resolve(
-    node_id: "2-scm-git-upstream-model",
-    turns_elapsed: 2,
-    state: alignment_base_cadence_state(),
-  )
+  let resolution = unrooted_specimen_resolution()
   let preamble = dispatch_continuation_alignment_preamble(resolution: resolution)
   match resolution {
     AlignmentUnresolved { cause } =>
       preamble.contains("Alignment UNRESOLVED")
         && (match cause {
           AlignmentWalkUnrooted { at, walked } =>
-            at == "2-scm-git-upstream-model" && count(walked) == 0
+            at == unrooted_specimen_id() && count(walked) == 0
           AlignmentRowUndeclared { node_id: _ } => false
           AlignmentNestingCyclic { node_id: _ } => false
         })
-        && string_contains(s: preamble, pattern: "2-scm-git-upstream-model")
+        && string_contains(s: preamble, pattern: unrooted_specimen_id())
     AlignmentReady { chain: _, due_levels: _, rendered_prompt: _ } => false
   }
 }
@@ -1330,38 +1402,30 @@ test fn the_alignment_preamble_is_continuation_only_and_follows_the_verdict() ->
     })
 }
 
-// NO SPAWN ON AN UNRESOLVED CHAIN — THE REAL PRODUCER, THE REAL AUTHORITY (the review finding's
-// discriminating control). The production node 2-scm-git-upstream-model's chain refuses UNROOTED
-// on the live authority (an accepted history row that declares no parent, review 5354823380); the
-// same resolution the belt derives at spawn time is handed to the real
-// spawn fold, and the fold's answer is DispatchSpawnRefused at the alignment gate — the Refused
-// arm carries no DispatchSpawnCommands, so zero spawn commands exist: no worktree add, no state
-// prepare, no session container. Execution cannot proceed on a chain the authority cannot read.
-//
-// The subject moved on 2026-09-30, when the former subject (extended-admission-cardinality) got its
-// parent: an accepted history row with no parent stays unrooted by construction of the lineage
-// rule, so it keeps this control discriminating without a row kept unrooted for the purpose.
+// NO SPAWN ON AN UNRESOLVED CHAIN — THE REAL PRODUCER, A SUPPLIED UNROOTED ROW (the review
+// finding's discriminating control). The supplied parentless row's chain refuses UNROOTED through
+// the real derivation (review 5354823380); the same resolution the belt derives at spawn time is
+// handed to the real spawn fold, and the fold's answer is DispatchSpawnRefused at the alignment
+// gate — the Refused arm carries no DispatchSpawnCommands, so zero spawn commands exist: no
+// worktree add, no state prepare, no session container. The rooted twin (see the lineage claim)
+// resolves Ready, so removing the unrooted refusal turns this control red.
 test fn an_unresolved_alignment_refuses_the_real_spawn_fold_with_zero_commands() -> Bool {
-  match authority_node_opt(id: "2-scm-git-upstream-model") {
-    Absent => false
-    Present { value: node } =>
-      match dispatch_spawn_commands_for_resolved_instance(
-        instance: srv1_lab_dashboard_instance(),
-        node: node,
-        session_uuid: "00000000-0000-4000-8000-000000000004",
-        attempt_key: "feedfacefeedface",
-        provider: CodexDispatchProvider,
-        effort: ReasoningMedium,
-        model: dispatch_codex_default_model,
-        origin: FreshFromBase,
-        resolution: alignment_resolve(node_id: "2-scm-git-upstream-model", turns_elapsed: 1, state: alignment_base_cadence_state()),
-      ) {
-        DispatchSpawnRefused { step, detail } =>
-          step as String == "alignment"
-            && string_contains(s: detail, pattern: "2-scm-git-upstream-model")
-            && string_contains(s: detail, pattern: "admitted root")
-        DispatchSpawnReady { commands: _ } => false
-      }
+  match dispatch_spawn_commands_for_resolved_instance(
+    instance: srv1_lab_dashboard_instance(),
+    node: unrooted_specimen(),
+    session_uuid: "00000000-0000-4000-8000-000000000004",
+    attempt_key: "feedfacefeedface",
+    provider: CodexDispatchProvider,
+    effort: ReasoningMedium,
+    model: dispatch_codex_default_model,
+    origin: FreshFromBase,
+    resolution: unrooted_specimen_resolution(),
+  ) {
+    DispatchSpawnRefused { step, detail } =>
+      step as String == "alignment"
+        && string_contains(s: detail, pattern: unrooted_specimen_id())
+        && string_contains(s: detail, pattern: "admitted root")
+    DispatchSpawnReady { commands: _ } => false
   }
 }
 
@@ -1417,6 +1481,7 @@ test fn witness_auditor_launch_writes_the_events_path_metering_reads() -> Bool {
     worktree_path: "/tmp/fci-witness-worktree",
     brief: "witness brief",
     head_sha: "fci1witnesssha",
+    exit_hook: "+mkdir -- /i/attempt-exit-spool/inbox/x" as NonEmptyStr,
   ) {
     SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: command } =>

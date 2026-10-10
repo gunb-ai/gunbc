@@ -3,7 +3,7 @@ module gunbc.fleet_release_bins_key
 import std.types { String, List, Bool, Int, list_length }
 import std.measure { Second, second, second_count, seconds_per_day }
 import v2.std.node { Node }
-import v2.std.diagnostic { Outcome, Accepted, Rejected, outcome_accepted }
+import v2.std.diagnostic { Outcome, Accepted, Rejected, NonEmptyDiagnostics, outcome_accepted, diagnostics_reason_lexemes }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import extdeps.shell.exec { TransportScript, transport_script_seal }
 import std.optional { Present, Absent }
@@ -337,9 +337,11 @@ type ReleaseBinsRefusal
   | BuildDiagnosticsMissing { file: String }
   | SidecarMissing { file: String }
   | ConsumerProductKindMismatch { kind: String }
+  | ScriptEmissionRefused { script: String, reasons: String }
 
 fn release_bins_refusal_name(refusal: ReleaseBinsRefusal) -> String {
   match refusal {
+    ScriptEmissionRefused { script: _, reasons: _ } => "ScriptEmissionRefused"
     AddressFamilyNotAdmitted => "AddressFamilyNotAdmitted"
     SourceTreeDirty => "SourceTreeDirty"
     AxisValueUnread { variable: _ } => "AxisValueUnread"
@@ -373,6 +375,7 @@ fn release_bins_refusal_name(refusal: ReleaseBinsRefusal) -> String {
 
 fn release_bins_refusal_message(refusal: ReleaseBinsRefusal) -> String {
   match refusal {
+    ScriptEmissionRefused { script: sc, reasons: rs } => join(["REFUSED ", sc, ": v2.workflow.bash_emit refused its statements (", rs, ")"], "")
     AddressFamilyNotAdmitted => "std.materialization_provider no longer admits sha256 at CrossRunScope; the release-bins address has no admitted family"
     AxisValueUnread { variable: v } => join(["the key input ", v, " read back empty, so the key would not name the build; refusing to key"], "")
     SourceTreeDirty => "tracked files differ from HEAD, so HEAD^\{tree} does not name the build input; refusing to key"
@@ -1415,10 +1418,23 @@ fn release_bins_joined(parts: List<Outcome<String>>) -> Outcome<String> {
   })
 }
 
+// A REFUSED RUNNER IS A REFUSING STEP, NEVER AN EMPTY ONE. Its text is the ScriptEmissionRefused
+// refusal built from nodes and emitted through bash_emit like every other statement. The last arm is
+// reached only if the emitter refuses that fixed refusal statement too: its text is a marker that is
+// not shell, so the step cannot run and the committed-workflow drift gate goes red.
+data script_emission_refusal_unemittable_marker: String = "__GUNBC_SCRIPT_EMISSION_REFUSAL_UNEMITTABLE__"
+
+fn script_emission_refused_text(script: String, diagnostics: NonEmptyDiagnostics) -> String {
+  match release_bins_emitted(statements: [refuse(r: ScriptEmissionRefused { script: script, reasons: diagnostics_reason_lexemes(diagnostics: diagnostics) })]) {
+    Accepted { value: v, diagnostics: _ } => v
+    Rejected { diagnostics: _ } => script_emission_refusal_unemittable_marker
+  }
+}
+
 fn release_bins_script_text(outcome: Outcome<String>) -> String {
   match outcome {
     Accepted { value: v, diagnostics: _ } => v
-    Rejected { diagnostics: _ } => ""
+    Rejected { diagnostics: ds } => script_emission_refused_text(script: "gunbc.fleet_release_bins_key release_bins_script_text", diagnostics: ds)
   }
 }
 

@@ -3,7 +3,7 @@ module gunbc.machine_intake_bmc_secure
 import std.types { Bool, EpochMs, Int, List, Map, NonEmptyStr, String, list_length }
 import v2.std.algebra { filter }
 import std.decl_ref { decl_ref }
-import std.content_hash { ContentHash, content_hash_of_value }
+import std.content_hash { ContentHash, content_hash_of_value, content_hash_equal }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.algebra { FreeSemigroup }
 import std.goal_assessment {
@@ -1286,6 +1286,7 @@ fn observed_bmc_account_state(
 ) -> BmcAccountStateObservation
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "dry_read_bmc_account_state"),
+    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "observation_with_controller_clock"),
   ]
 {
   BmcAccountStateObservation {
@@ -1328,6 +1329,35 @@ fn observed_published_account_at_join(account: ObservedPublishedAccount) -> Publ
   }
 }
 
+fn observation_with_controller_clock(base: BmcAccountStateObservation, controller_clock: ControllerClockReading?) -> BmcAccountStateObservation
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "bmc_account_state_observation_same"),
+    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "apply_with_diverged_controller_clock"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_a_different_present_controller_clock_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_a_present_controller_clock_over_absent_is_refused"),
+  ]
+{
+  observed_bmc_account_state(
+    subject: base.subject,
+    endpoint: base.endpoint,
+    firmware: base.firmware,
+    managed: base.managed,
+    managed_user: base.managed_user,
+    attempt: base.attempt,
+    read_floor: base.read_floor,
+    managed_probe: base.managed_probe,
+    channel_census: base.channel_census,
+    census_evidence: base.census_evidence,
+    census_observed_at: base.census_observed_at,
+    published_probes: base.published_probes,
+    published_user: base.published_user,
+    published_account: base.published_account,
+    break_glass: base.break_glass,
+    break_glass_probe: base.break_glass_probe,
+    controller_clock: controller_clock,
+  )
+}
+
 fn managed_reference_same(a: ManagedCredentialReference, b: ManagedCredentialReference) -> Bool {
   a.account == b.account
     && a.role == b.role
@@ -1335,6 +1365,34 @@ fn managed_reference_same(a: ManagedCredentialReference, b: ManagedCredentialRef
     && a.secret.secret == b.secret.secret
     && a.secret.version == b.secret.version
     && a.credential_epoch == b.credential_epoch
+}
+
+// THE OBSERVATION IS THE PAYLOAD, NOT A START TIME. Record `==` is the language's structural
+// relation on the closed type, except controller_clock: ControllerClockReading? inherits
+// optional_equality_answers_by_representation, so that field is matched explicitly and the rest
+// compared by `==` after zeroing it. That match and observation_with_controller_clock are still
+// authored field lists: a new ControllerClockReading field or a new Optional on the observation
+// is not derived from the type declaration (no .dag value-layer reader of declared fields). The
+// class is gunbc.guarantee_stall.authored_record_field_list_standing_for_type_population_stall
+// authored_record_field_list_standing_for_type_population_stall -- a stall below ceiling, not a
+// section 4b(3) drop.
+fn controller_clock_reading_same(left: ControllerClockReading?, right: ControllerClockReading?) -> Bool {
+  match left {
+    Absent => match right { Absent => true  Present { value: _ } => false }
+    Present { value: a } => match right {
+      Absent => false
+      Present { value: b } =>
+        (a.reported_millis as Int) == (b.reported_millis as Int)
+          && a.evidence.label == b.evidence.label
+          && content_hash_equal(left: a.evidence.digest, right: b.evidence.digest)
+    }
+  }
+}
+
+fn bmc_account_state_observation_same(a: BmcAccountStateObservation, b: BmcAccountStateObservation) -> Bool {
+  controller_clock_reading_same(left: a.controller_clock, right: b.controller_clock)
+    && (observation_with_controller_clock(base: a, controller_clock: none)
+      == observation_with_controller_clock(base: b, controller_clock: none))
 }
 
 // WHAT THE PHASE REQUIRES OF THE CONTROLLER: this managed generation accepted, the published
@@ -2065,6 +2123,34 @@ type BmcAccountApplication sole_constructor {
   applied_at: ObserverClockInstant
 }
 
+fn apply_with_diverged_controller_clock(application: BmcAccountApplication, controller_clock: ControllerClockReading?) -> BmcAccountApplication
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_a_different_present_controller_clock_is_refused"),
+  ]
+{
+  let p = application.plan
+  BmcAccountApplication {
+    plan: BmcAccountActionPlan {
+      subject: p.subject,
+      endpoint: p.endpoint,
+      firmware: p.firmware,
+      goal: p.goal,
+      diverged: observation_with_controller_clock(base: p.diverged, controller_clock: controller_clock),
+      due: p.due,
+      managed_write: p.managed_write,
+      published_write: p.published_write,
+      channel_writes: p.channel_writes,
+      planned_at: p.planned_at,
+    },
+    managed_write_completed: application.managed_write_completed,
+    published_write_completed: application.published_write_completed,
+    channel_writes_completed: application.channel_writes_completed,
+    request_receipt: application.request_receipt,
+    response_receipt: application.response_receipt,
+    applied_at: application.applied_at,
+  }
+}
+
 type BmcSecurePhaseDecision
   = BmcSecurePhaseNoop { observation: BmcAccountStateObservation }
   | BmcSecurePhaseApplied { plan: BmcAccountActionPlan, application: BmcAccountApplication, post_read: BmcAccountStateObservation }
@@ -2189,6 +2275,8 @@ fn dry_bmc_account_instant(millis: EpochMs) -> ObserverClockInstant
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "dry_read_bmc_account_state"),
     decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "dry_apply_bmc_account_plan"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "mtjade1_fetched_generation"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "mtjade1_dry_applied_bmc"),
   ]
 {
   observer_clock_modeled(millis: millis, realization: bmc_secure_dry_realization_name)
@@ -2260,6 +2348,11 @@ fn dry_read_bmc_account_state(
 ) -> BmcAccountStateObservation
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "read_in"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_mtjade1_converges_through_bmc_secure_noop_on_the_real_prefix"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_mtjade1_bmc_secure_apply_inputs_missing_refuses_on_the_real_path"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "mtjade1_dry_applied_bmc"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_for_a_later_break_glass_generation_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_another_channel_state_is_refused"),
   ]
 {
   let at = dry_bmc_account_instant(millis: read_at_millis)
@@ -2323,6 +2416,7 @@ fn dry_apply_bmc_account_plan(
     decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "applied_with"),
     decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "the_post_read_is_independent_of_the_reading_that_diverged"),
     decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "a_planned_channel_close_is_applied_read_back_and_converges"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "mtjade1_dry_applied_bmc"),
   ]
 {
   let managed_step = match dry_fetch_resolves(fetch: managed_fetch, write: plan.managed_write) {

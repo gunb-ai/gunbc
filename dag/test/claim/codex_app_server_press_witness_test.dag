@@ -709,6 +709,7 @@ fn codex_account_trip_transport_surface_text() -> String {
   let invocation = codex_press_account_trip_invocation(
     executable: "/usr/local/bin/codex" as FilePath,
     codex_home: "/home/witness/.codex" as FilePath,
+    lock: none,
   )
   let argument_words: List<String> = list_flat_map(
     xs: cli_surface_arguments(surface: process_argv_expansion_surface(expansion: invocation)),
@@ -743,6 +744,7 @@ test fn codex_account_trip_typed_invocation_preserves_trip_semantics() -> Bool {
   let invocation = codex_press_account_trip_invocation(
     executable: "/usr/local/bin/codex" as FilePath,
     codex_home: "/home/witness/.codex" as FilePath,
+    lock: none,
   )
   let words: List<String> = list_flat_map(
     xs: cli_surface_arguments(surface: process_argv_expansion_surface(expansion: invocation)),
