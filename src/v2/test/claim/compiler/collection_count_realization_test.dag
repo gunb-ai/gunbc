@@ -1,6 +1,6 @@
 module v2.test.claim.compiler.collection_count_realization
 
-import v2.compiler.fold_lowering { collection_roster_primitive_call_row_optional, collection_roster_signature_arrow }
+import v2.compiler.fold_lowering { collection_roster_carrier_type, collection_roster_primitive_call_row_optional, collection_roster_signature_arrow }
 import v2.compiler.infer { InferFormalMatched, InferFormalShapeMismatch, infer_formals_from_domain, infer_match_generic_formal }
 import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_infer_tree, fmi_reason }
 import std.types { Bool, List }
@@ -86,30 +86,23 @@ fn ccc_int_type() -> Node {
   }
 }
 
-fn ccc_is_instantiation(t: Node) -> Bool {
-  match t.kind {
-    TypeNode { connective: Instantiation } => true
-    TypeNode { connective: _ } => false
-    _ => false
-  }
-}
-
-// SUPPLIED: one formal, the free monoid.
-test fn ccc_signature_is_one_free_monoid_formal() -> Bool {
+// SUPPLIED: one formal, the bounded carrier M.
+test fn ccc_signature_is_one_carrier_formal() -> Bool {
   match ccc_formals() {
-    Cons { head: f, tail: Empty } => ccc_is_instantiation(t: f)
+    Cons { head: f, tail: Empty } => f == collection_roster_carrier_type()
     _ => false
   }
 }
 
-// SUPPLIED, RED: an Int at the row's formal is a shape mismatch to the production matcher (the size of a non-collection).
-test fn ccc_size_of_a_non_collection_is_a_shape_mismatch() -> Bool {
+// SUPPLIED: an Int at the row's carrier formal binds M (admission is the free-monoid structure bound, not a
+// shape mismatch). Discriminating Int refusal lives in v2.test.claim.compiler.free_monoid_structure_bound.
+test fn ccc_int_binds_the_carrier_formal() -> Bool {
   match list_at_optional(xs: ccc_formals(), index: 0) {
     Absent => false
     Present { value: formal } =>
-      match infer_match_generic_formal(formal: formal, produced: ccc_int_type(), type_params: [^collection_roster_element], instances: Empty, declarations: empty_symbol_index()) {
-        InferFormalShapeMismatch => true
-        InferFormalMatched { instances: _ } => false
+      match infer_match_generic_formal(formal: formal, produced: ccc_int_type(), type_params: [^collection_roster_carrier], instances: Empty, declarations: empty_symbol_index()) {
+        InferFormalShapeMismatch => false
+        InferFormalMatched { instances: _ } => true
       }
   }
 }

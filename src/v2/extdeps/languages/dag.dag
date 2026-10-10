@@ -3,7 +3,7 @@ import std.coercion { unicode_scalar_unfold }
 import std.types { List }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
 import v2.std.model_core { AlgebraInhabitanceDecl, bool_model_core }
-import v2.std.algebra_structure_signature { boolean_algebra_node, ordered_ring_node }
+import v2.std.algebra_structure_signature { boolean_algebra_node, free_monoid_structure_node, ordered_ring_node }
 import v2.std.language_model { LanguageModel }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured, TargetEmitHostRuntimeRow }
@@ -94,9 +94,14 @@ import v2.std.compilers.lexing {
   LexRuleSet,
   LexRules,
   LineCommentTextChar,
+  LexMode,
   LiteralPattern,
   ModeledLexRules,
+  ModeTransitionTokenRule,
+  NotFollowedByPattern,
   OneOrMorePattern,
+  PopLexMode,
+  PushLexMode,
   RepeatPattern,
   SequencePattern,
   StringTextChar,
@@ -130,6 +135,7 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  Instantiation,
   is_empty_conj_root,
   node_lowered_from,
   symbol_intern_lexeme,
@@ -578,12 +584,34 @@ fn dag_string_escape_sequence_pattern() -> LexPattern {
 // only quote, backslash, and interpolation-start end the body walk. This arm
 // is that admission on the grammar row — StringTextChar still excludes LF so
 // other language models that reuse the class do not grow a second meaning.
+fn dag_string_hole_start_pattern() -> LexPattern {
+  ChoicePattern {
+    left: CharClassPattern { class: IdentStartChar },
+    right: ChoicePattern {
+      left: CharPattern { char: 40 },
+      right: ChoicePattern { left: CharPattern { char: 33 }, right: CharPattern { char: 45 } }
+    }
+  }
+}
+
+fn dag_string_hole_opener_pattern() -> LexPattern {
+  SequencePattern {
+    left: CharPattern { char: 123 },
+    right: NotFollowedByPattern { element: NotFollowedByPattern { element: dag_string_hole_start_pattern() } }
+  }
+}
+
 fn dag_string_body_element_pattern() -> LexPattern {
   ChoicePattern {
     left: dag_string_escape_sequence_pattern(),
-    right: ChoicePattern {
-      left: CharPattern { char: 10 },
-      right: CharClassPattern { class: StringTextChar }
+    right: SequencePattern {
+      left: NotFollowedByPattern {
+        element: ChoicePattern { left: CharPattern { char: 92 }, right: dag_string_hole_opener_pattern() }
+      },
+      right: ChoicePattern {
+        left: CharPattern { char: 10 },
+        right: CharClassPattern { class: StringTextChar }
+      }
     }
   }
 }
@@ -597,6 +625,76 @@ fn dag_string_literal_lex_rule() -> LexRule {
       close: CharPattern { char: 34 }
     }
   }
+}
+
+fn dag_string_template_head_lex_rule() -> LexRule {
+  ModeTransitionTokenRule {
+    token_class: ^dag_token_string_template_head,
+    pattern: SequencePattern {
+      left: CharPattern { char: 34 },
+      right: SequencePattern {
+        left: RepeatPattern { element: dag_string_body_element_pattern() },
+        right: dag_string_hole_opener_pattern()
+      }
+    },
+    transition: PushLexMode { mode: ^dag_lex_mode_template_hole }
+  }
+}
+
+fn dag_string_template_middle_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: ^dag_token_string_template_middle,
+    pattern: SequencePattern {
+      left: CharPattern { char: 125 },
+      right: SequencePattern {
+        left: RepeatPattern { element: dag_string_body_element_pattern() },
+        right: dag_string_hole_opener_pattern()
+      }
+    }
+  }
+}
+
+fn dag_string_template_tail_lex_rule() -> LexRule {
+  ModeTransitionTokenRule {
+    token_class: ^dag_token_string_template_tail,
+    pattern: SequencePattern {
+      left: CharPattern { char: 125 },
+      right: SequencePattern {
+        left: RepeatPattern { element: dag_string_body_element_pattern() },
+        right: CharPattern { char: 34 }
+      }
+    },
+    transition: PopLexMode
+  }
+}
+
+fn dag_template_lbrace_push_lex_rule() -> LexRule {
+  ModeTransitionTokenRule {
+    token_class: ^dag_token_lbrace,
+    pattern: LiteralPattern { text: unicode_scalar_unfold(s: "{") },
+    transition: PushLexMode { mode: ^dag_lex_mode_template_brace }
+  }
+}
+
+fn dag_template_hole_mode_lex_rules() -> List<LexRule> {
+  list_append(left: dag_lex_rules_except_braces(), right: [
+    dag_template_lbrace_push_lex_rule(),
+    dag_string_template_middle_lex_rule(),
+    dag_string_template_tail_lex_rule(),
+    dag_string_template_head_lex_rule()
+  ])
+}
+
+fn dag_template_brace_mode_lex_rules() -> List<LexRule> {
+  list_append(left: dag_lex_rules_except_braces(), right: [
+    dag_template_lbrace_push_lex_rule(),
+    ModeTransitionTokenRule {
+      token_class: ^dag_token_rbrace,
+      pattern: LiteralPattern { text: unicode_scalar_unfold(s: "}") },
+      transition: PopLexMode
+    },
+    dag_string_template_head_lex_rule()
+  ])
 }
 
 fn dag_whitespace_trivia_rule() -> LexRule {
@@ -615,10 +713,8 @@ fn dag_line_comment_annotation_rule() -> LexRule {
   }
 }
 
-fn dag_lex_rules() -> LexRuleSet {
-
-  LexRuleSet {
-    rules: [
+fn dag_lex_rules_except_braces() -> List<LexRule> {
+  [
       dag_whitespace_trivia_rule(),
       dag_string_literal_lex_rule(),
       dag_line_comment_annotation_rule(),
@@ -666,8 +762,6 @@ fn dag_lex_rules() -> LexRuleSet {
       dag_literal_lex_rule(token_class: ^dag_token_comma, text: ","),
       dag_literal_lex_rule(token_class: ^dag_token_dot, text: "."),
       dag_literal_lex_rule(token_class: ^dag_token_pipe, text: "|"),
-      dag_literal_lex_rule(token_class: ^dag_token_lbrace, text: "{"),
-      dag_literal_lex_rule(token_class: ^dag_token_rbrace, text: "}"),
       dag_literal_lex_rule(token_class: ^dag_token_lparen, text: "("),
       dag_literal_lex_rule(token_class: ^dag_token_rparen, text: ")"),
       dag_literal_lex_rule(token_class: ^dag_token_lbracket, text: "["),
@@ -676,8 +770,20 @@ fn dag_lex_rules() -> LexRuleSet {
       dag_literal_lex_rule(token_class: ^dag_token_gt, text: ">"),
       dag_literal_lex_rule(token_class: ^dag_token_question, text: "?"),
       dag_literal_lex_rule(token_class: ^dag_token_match_scrutinee_nop, text: "")
-    ],
-    modes: []
+  ]
+}
+
+fn dag_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: list_append(left: dag_lex_rules_except_braces(), right: [
+      dag_literal_lex_rule(token_class: ^dag_token_lbrace, text: "{"),
+      dag_literal_lex_rule(token_class: ^dag_token_rbrace, text: "}"),
+      dag_string_template_head_lex_rule()
+    ]),
+    modes: [
+      LexMode { mode: ^dag_lex_mode_template_hole, rules: dag_template_hole_mode_lex_rules() },
+      LexMode { mode: ^dag_lex_mode_template_brace, rules: dag_template_brace_mode_lex_rules() }
+    ]
   }
 }
 
@@ -1798,6 +1904,22 @@ fn dag_contextual_value_name_keywords() -> List<Symbol> {
   [^dag_token_kw_module, ^dag_token_kw_data]
 }
 
+fn dag_grammar_string_template_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: ^dag_token_string_template_head),
+    right: dag_grammar_sequence(
+      left: dag_grammar_nonterminal(production: ^dag_production_expr),
+      right: dag_grammar_sequence(
+        left: dag_grammar_repeat(element: dag_grammar_sequence(
+          left: dag_grammar_terminal(token_class: ^dag_token_string_template_middle),
+          right: dag_grammar_nonterminal(production: ^dag_production_expr)
+        )),
+        right: dag_grammar_terminal(token_class: ^dag_token_string_template_tail)
+      )
+    )
+  )
+}
+
 fn dag_grammar_primary_expr_core() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
@@ -1811,6 +1933,8 @@ fn dag_grammar_primary_expr_core() -> GrammarExpr {
         right: dag_grammar_choice(
           left: dag_grammar_terminal(token_class: ^dag_token_string_literal),
           right: dag_grammar_choice(
+            left: dag_grammar_nonterminal(production: ^dag_production_string_template),
+            right: dag_grammar_choice(
             left: dag_grammar_terminal(token_class: ^dag_token_kw_true),
             right: dag_grammar_choice(
               left: dag_grammar_terminal(token_class: ^dag_token_kw_false),
@@ -3712,6 +3836,11 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_if_expr_expr(),
     emitted: ^dag_surface_if_expr
   )
+  let string_template = dag_grammar_production(
+    name: ^dag_production_string_template,
+    expression: dag_grammar_string_template_expr(),
+    emitted: ^dag_string_template
+  )
   let loop_expr = dag_grammar_production(
     name: ^dag_production_loop_expr,
     expression: dag_grammar_loop_expr_expr(),
@@ -3796,6 +3925,7 @@ fn dag_grammar_root() -> GrammarRoot {
       stmt,
       let_expr,
       expr,
+      string_template,
       loop_expr,
       binary_expr,
       unary_expr,
@@ -4577,8 +4707,41 @@ fn dag_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
   }
 }
 
+fn dag_free_monoid_row_element() -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: ^dag_free_monoid_row_element } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn dag_free_monoid_free_monoid_inhabitance() -> AlgebraInhabitanceDecl {
+  let inhabitant = Node {
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge { label: Positional, target: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "std.algebra.FreeMonoid"), occurrence_id: OccurrenceSynthetic) },
+      Edge { label: Positional, target: dag_free_monoid_row_element() }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+  AlgebraInhabitanceDecl {
+    algebra: free_monoid_structure_node(inhabitant: inhabitant, generator: dag_free_monoid_row_element()),
+    inhabitant: inhabitant,
+    witness: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "std.algebra.list_append"), occurrence_id: OccurrenceSynthetic)
+  }
+}
+
+fn dag_host_text_free_monoid_inhabitance() -> AlgebraInhabitanceDecl {
+  let inhabitant = host_text_type_node()
+  AlgebraInhabitanceDecl {
+    algebra: free_monoid_structure_node(inhabitant: inhabitant, generator: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "std.types.Char"), occurrence_id: OccurrenceSynthetic)),
+    inhabitant: inhabitant,
+    witness: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "v2.std.node.host_text_concatenation"), occurrence_id: OccurrenceSynthetic)
+  }
+}
+
+fn dag_algebra_inhabitance_row_type_params() -> List<Symbol> {
+  [^dag_free_monoid_row_element]
+}
+
 fn dag_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
-  [dag_int_algebra_inhabitance(), dag_bool_algebra_inhabitance()]
+  [dag_int_algebra_inhabitance(), dag_bool_algebra_inhabitance(), dag_free_monoid_free_monoid_inhabitance(), dag_host_text_free_monoid_inhabitance()]
 }
 
 fn dag_kernel_value_type_binding(row: KernelValueType) -> Optional<Symbol> {
