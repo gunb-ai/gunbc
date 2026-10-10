@@ -5192,42 +5192,53 @@ fn belt_occurrence_record_from_launch_content(attempt: DispatchAttemptRef, conte
   }
 }
 
-// Pure over the two observations: the attempt directory's presence under the attempt-state root,
-// and the launch record inside it. The directory is consulted first because a missing directory
-// makes the record's own listing fail, which is indeterminate rather than absent.
-fn belt_occurrence_record_from_launch_observations(
-  attempt: DispatchAttemptRef,
-  directory: FilesystemEntryPresence,
-  launch: FilesystemFileObservation,
-) -> AttemptOccurrenceRecordRead {
+// ONE OBSERVATION PER DECISION, IN SEQUENCE. The attempt directory's presence under the attempt-state
+// root is observed first, and the launch record inside it only when that listing names the
+// directory: a missing directory makes the record's own listing fail, which is indeterminate rather
+// than absent, and observing both up front would join two instants -- a directory that appeared
+// between the calls would pair "absent" with a readable record (review 78482). Sequenced, the absent
+// arm consults nothing else, and a directory that vanished after being listed reaches the record
+// observation as a failed listing, which refuses.
+type AttemptDirectoryStanding
+  = AttemptDirectoryListed
+  | AttemptDirectoryDecided { read: AttemptOccurrenceRecordRead }
+
+fn belt_occurrence_attempt_directory_standing(attempt: DispatchAttemptRef, directory: FilesystemEntryPresence) -> AttemptDirectoryStanding {
   match directory {
     FilesystemEntryAbsent(absence) =>
+      AttemptDirectoryDecided { read: AttemptOccurrenceRecordAbsent { absence: filesystem_established_absence_detail(absence: absence) } }
+    FilesystemEntryPresenceIndeterminate { cause } => AttemptDirectoryDecided { read: belt_occurrence_record_unobserved(attempt: attempt, cause: cause) }
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause } => AttemptDirectoryDecided { read: belt_occurrence_record_unobserved(attempt: attempt, cause: cause) }
+    FilesystemEntryListed { directory: _, name: _ } => AttemptDirectoryListed
+  }
+}
+
+fn belt_occurrence_record_from_launch_observation(attempt: DispatchAttemptRef, launch: FilesystemFileObservation) -> AttemptOccurrenceRecordRead {
+  match launch {
+    FilesystemFileAbsent(absence) =>
       AttemptOccurrenceRecordAbsent { absence: filesystem_established_absence_detail(absence: absence) }
-    FilesystemEntryPresenceIndeterminate { cause } => belt_occurrence_record_unobserved(attempt: attempt, cause: cause)
-    FilesystemEntrySubjectRefused { directory: _, name: _, cause } => belt_occurrence_record_unobserved(attempt: attempt, cause: cause)
-    FilesystemEntryListed { directory: _, name: _ } =>
-      match launch {
-        FilesystemFileAbsent(absence) =>
-          AttemptOccurrenceRecordAbsent { absence: filesystem_established_absence_detail(absence: absence) }
-        FilesystemFileRead { path: _, content } => belt_occurrence_record_from_launch_content(attempt: attempt, content: content)
-        FilesystemFileIndeterminate { cause } => belt_occurrence_record_unobserved(attempt: attempt, cause: cause)
-        FilesystemFileObservationsDisagree { path: _, cause } => belt_occurrence_record_unobserved(attempt: attempt, cause: cause)
-        FilesystemFileSubjectRefused { directory: _, name: _, cause } => belt_occurrence_record_unobserved(attempt: attempt, cause: cause)
-      }
+    FilesystemFileRead { path: _, content } => belt_occurrence_record_from_launch_content(attempt: attempt, content: content)
+    FilesystemFileIndeterminate { cause } => belt_occurrence_record_unobserved(attempt: attempt, cause: cause)
+    FilesystemFileObservationsDisagree { path: _, cause } => belt_occurrence_record_unobserved(attempt: attempt, cause: cause)
+    FilesystemFileSubjectRefused { directory: _, name: _, cause } => belt_occurrence_record_unobserved(attempt: attempt, cause: cause)
   }
 }
 
 fn belt_occurrence_record_for_attempt(instance: HostDashboardInstance, attempt: DispatchAttemptRef) -> AttemptOccurrenceRecordRead {
   let node_id = attempt.node_id as gunbc.roadmap_model.RoadmapNodeId
-  belt_occurrence_record_from_launch_observations(
-    attempt: attempt,
-    directory: filesystem_entry_presence_of_path(
-      path: dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt.attempt_key),
-    ),
-    launch: filesystem_file_observation_of_path(
-      path: dispatch_attempt_launch_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt.attempt_key),
-    ),
+  let directory = filesystem_entry_presence_of_path(
+    path: dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt.attempt_key),
   )
+  match belt_occurrence_attempt_directory_standing(attempt: attempt, directory: directory) {
+    AttemptDirectoryDecided { read } => read
+    AttemptDirectoryListed =>
+      belt_occurrence_record_from_launch_observation(
+        attempt: attempt,
+        launch: filesystem_file_observation_of_path(
+          path: dispatch_attempt_launch_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt.attempt_key),
+        ),
+      )
+  }
 }
 
 // One unobservable attempt refuses the whole census rather than shrinking it silently: a census with

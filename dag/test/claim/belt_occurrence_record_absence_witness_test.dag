@@ -2,16 +2,30 @@ module test.claim.belt_occurrence_record_absence_witness
 
 import std.types { Bool, String, NonEmptyStr }
 import gunbc.roadmap_belt_actuate {
-  belt_occurrence_record_from_launch_observations,
+  belt_occurrence_attempt_directory_standing,
+  belt_occurrence_record_from_launch_observation,
+  AttemptDirectoryStanding,
+  AttemptDirectoryListed,
+  AttemptDirectoryDecided,
   AttemptOccurrenceRecordRead,
   AttemptOccurrenceRecordDecoded,
   AttemptOccurrenceRecordAbsent,
   AttemptOccurrenceRecordRefused,
 }
 import gunbc.roadmap_dispatch_actuator { DispatchAttemptRef }
+import gunbc.filesystem_file_observe { filesystem_entry_presence_of_path, filesystem_file_observation_of_path }
 import extdeps.filesystem.filesystem_io {
   FilesystemEntryPresence,
+  FilesystemEntryAbsent,
+  FilesystemEntryListed,
+  FilesystemEntryPresenceIndeterminate,
+  FilesystemEntrySubjectRefused,
   FilesystemFileObservation,
+  FilesystemFileAbsent,
+  FilesystemFileRead,
+  FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree,
+  FilesystemFileSubjectRefused,
   filesystem_listing_observation,
   filesystem_entry_presence,
   filesystem_file_observation,
@@ -21,11 +35,13 @@ import extdeps.filesystem.filesystem_io {
 // AN ESTABLISHED ABSENCE IS NO RECORD; AN UNOBSERVED ONE STILL REFUSES. srv1 (2026-10-10) held ten
 // dispatch branches older than launch identities -- two with no attempt directory at all, eight
 // with a directory and no launch-identity.json -- and each refused the whole live-session census.
-// These controls drive the pure fold with supplied listings and reads at its boundary: the two
-// absent shapes answer Absent, and a parent listing that failed, a listed record that could not be
-// read, and a listed record that does not decode each still refuse. The real producer's route is
-// exercised by the belt tick on the deployed instance, whose spawn-pass receipt is the inhabitance
-// reading.
+//
+// The census observes in sequence: the attempt directory's presence first, the launch record only
+// when the directory is listed (review 78482: observing both up front joined two instants). The
+// pure controls drive each step with supplied boundary values; the two wet claims at the end are
+// the inhabitance readings that the real producers emit those shapes for a missing directory --
+// Absent from the parent listing, and Indeterminate (never Absent) from the record's own listing,
+// which is why the sequenced fold never consults the record when the directory is absent.
 
 data root: String = "/opt/gunbc/attempt-state"
 data dir: String = "/opt/gunbc/attempt-state/ts-wf-lamps-v0-ad3401a4a71e004e9"
@@ -46,9 +62,9 @@ fn directory_listed_as(success: Bool, entries: String) -> FilesystemEntryPresenc
   )
 }
 
-fn launch_observed_as(entries: String, read_success: Bool, content: String) -> FilesystemFileObservation {
+fn launch_observed_as(list_success: Bool, entries: String, read_success: Bool, content: String) -> FilesystemFileObservation {
   filesystem_file_observation(
-    listing: filesystem_listing_observation(directory: dir, success: true, entries: entries, error: ""),
+    listing: filesystem_listing_observation(directory: dir, success: list_success, entries: entries, error: "No such file or directory (os error 2)"),
     name: "launch-identity.json",
     path: launch,
     read: filesystem_read_outcome(content: content, success: read_success, error: "No such file or directory (os error 2)"),
@@ -71,42 +87,94 @@ fn is_refused(r: AttemptOccurrenceRecordRead) -> Bool {
   }
 }
 
-test fn an_attempt_directory_the_root_listing_omits_is_no_record() -> Bool {
-  is_absent(r: belt_occurrence_record_from_launch_observations(
-    attempt: attempt(),
-    directory: directory_listed_as(success: true, entries: "ts-wf-lamps-v0-a8704c55c32b629f2\nsession-attempts"),
-    launch: launch_observed_as(entries: "", read_success: false, content: ""),
-  ))
+fn decided_absent(s: AttemptDirectoryStanding) -> Bool {
+  match s {
+    AttemptDirectoryDecided { read } => is_absent(r: read)
+    AttemptDirectoryListed => false
+  }
 }
 
-test fn a_listed_directory_without_a_launch_record_is_no_record() -> Bool {
-  is_absent(r: belt_occurrence_record_from_launch_observations(
+fn decided_refused(s: AttemptDirectoryStanding) -> Bool {
+  match s {
+    AttemptDirectoryDecided { read } => is_refused(r: read)
+    AttemptDirectoryListed => false
+  }
+}
+
+test fn an_attempt_directory_the_root_listing_omits_is_no_record() -> Bool {
+  decided_absent(s: belt_occurrence_attempt_directory_standing(
     attempt: attempt(),
-    directory: directory_listed_as(success: true, entries: "ts-wf-lamps-v0-ad3401a4a71e004e9"),
-    launch: launch_observed_as(entries: "metering.json\ncommit-outcome-last.json\nintegration\nsubmissions", read_success: false, content: ""),
+    directory: directory_listed_as(success: true, entries: "ts-wf-lamps-v0-a8704c55c32b629f2\nsession-attempts"),
   ))
 }
 
 test fn a_root_that_could_not_be_listed_still_refuses() -> Bool {
-  is_refused(r: belt_occurrence_record_from_launch_observations(
+  decided_refused(s: belt_occurrence_attempt_directory_standing(
     attempt: attempt(),
     directory: directory_listed_as(success: false, entries: ""),
-    launch: launch_observed_as(entries: "", read_success: false, content: ""),
+  ))
+}
+
+test fn a_listed_directory_defers_to_its_record() -> Bool {
+  match belt_occurrence_attempt_directory_standing(
+    attempt: attempt(),
+    directory: directory_listed_as(success: true, entries: "ts-wf-lamps-v0-ad3401a4a71e004e9"),
+  ) {
+    AttemptDirectoryListed => true
+    AttemptDirectoryDecided { read: _ } => false
+  }
+}
+
+test fn a_listed_directory_without_a_launch_record_is_no_record() -> Bool {
+  is_absent(r: belt_occurrence_record_from_launch_observation(
+    attempt: attempt(),
+    launch: launch_observed_as(list_success: true, entries: "metering.json\ncommit-outcome-last.json\nintegration\nsubmissions", read_success: false, content: ""),
+  ))
+}
+
+// THE INSTANT BETWEEN THE TWO OBSERVATIONS: a directory the root listing named and that was gone by
+// the time its own listing ran. Its record observation is a failed listing -- Indeterminate -- and
+// it refuses rather than reading as absent.
+test fn a_directory_that_vanished_after_being_listed_refuses() -> Bool {
+  is_refused(r: belt_occurrence_record_from_launch_observation(
+    attempt: attempt(),
+    launch: launch_observed_as(list_success: false, entries: "", read_success: false, content: ""),
   ))
 }
 
 test fn a_listed_record_that_could_not_be_read_still_refuses() -> Bool {
-  is_refused(r: belt_occurrence_record_from_launch_observations(
+  is_refused(r: belt_occurrence_record_from_launch_observation(
     attempt: attempt(),
-    directory: directory_listed_as(success: true, entries: "ts-wf-lamps-v0-ad3401a4a71e004e9"),
-    launch: launch_observed_as(entries: "launch-identity.json", read_success: false, content: ""),
+    launch: launch_observed_as(list_success: true, entries: "launch-identity.json", read_success: false, content: ""),
   ))
 }
 
 test fn a_listed_record_that_does_not_decode_still_refuses() -> Bool {
-  is_refused(r: belt_occurrence_record_from_launch_observations(
+  is_refused(r: belt_occurrence_record_from_launch_observation(
     attempt: attempt(),
-    directory: directory_listed_as(success: true, entries: "ts-wf-lamps-v0-ad3401a4a71e004e9"),
-    launch: launch_observed_as(entries: "launch-identity.json", read_success: true, content: "\{not json"),
+    launch: launch_observed_as(list_success: true, entries: "launch-identity.json", read_success: true, content: "\{not json"),
   ))
+}
+
+// INHABITANCE: the real wet producers, over a directory that exists on every host ("/") and an
+// entry under it that does not.
+data missing_attempt_directory: String = "/gunbc-belt-occurrence-witness-no-such-attempt-directory"
+
+test fn the_real_presence_producer_establishes_a_missing_directory_absent() -> Bool {
+  match filesystem_entry_presence_of_path(path: missing_attempt_directory) {
+    FilesystemEntryAbsent(_) => true
+    FilesystemEntryListed { directory: _, name: _ } => false
+    FilesystemEntryPresenceIndeterminate { cause: _ } => false
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: _ } => false
+  }
+}
+
+test fn the_real_record_producer_reads_a_missing_directory_as_indeterminate_not_absent() -> Bool {
+  match filesystem_file_observation_of_path(path: join([missing_attempt_directory, "/launch-identity.json"], "")) {
+    FilesystemFileIndeterminate { cause: _ } => true
+    FilesystemFileAbsent(_) => false
+    FilesystemFileRead { path: _, content: _ } => false
+    FilesystemFileObservationsDisagree { path: _, cause: _ } => false
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => false
+  }
 }
