@@ -605,9 +605,7 @@ fn dag_string_body_element_pattern() -> LexPattern {
   ChoicePattern {
     left: dag_string_escape_sequence_pattern(),
     right: SequencePattern {
-      left: NotFollowedByPattern {
-        element: ChoicePattern { left: CharPattern { char: 92 }, right: dag_string_hole_opener_pattern() }
-      },
+      left: NotFollowedByPattern { element: dag_string_hole_opener_pattern() },
       right: ChoicePattern {
         left: CharPattern { char: 10 },
         right: CharClassPattern { class: StringTextChar }
