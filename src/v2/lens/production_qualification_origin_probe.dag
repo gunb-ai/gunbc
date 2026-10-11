@@ -477,6 +477,7 @@ fn probe_mint_callee_atom_node() -> Node {
 
 fn unknown_origin_red_control_planted_decl() -> FnArrowDecl {
   FnArrowDecl {
+    test_marked: false,
     qualified_name: "synthetic.production_qualification_origin_probe.unknown_origin_red_control",
     name: "unknown_origin_red_control_planted_decl",
     output: Node {
@@ -502,6 +503,7 @@ fn probe_mint_provenanced_callee_atom_node() -> Node {
 
 fn parameter_borne_fixture_mint_planted_decl() -> FnArrowDecl {
   FnArrowDecl {
+    test_marked: false,
     qualified_name: "synthetic.production_qualification_origin_probe.parameter_borne_fixture_mint_red_control",
     name: "parameter_borne_fixture_mint_red_control_planted_decl",
     output: Node {
@@ -541,6 +543,7 @@ fn probe_target_model_callee_atom_node() -> Node {
 
 fn structural_red_control_planted_decl() -> FnArrowDecl {
   FnArrowDecl {
+    test_marked: false,
     qualified_name: structural_red_control_planted_qualified_name,
     name: "structural_red_control_planted_decl",
     output: Node {
@@ -560,6 +563,7 @@ fn structural_red_control_planted_decl() -> FnArrowDecl {
 // atom_identities_in_node sees the mint at depth one but misses this fixture marker at depth two.
 fn nested_fixture_marker_planted_decl() -> FnArrowDecl {
   FnArrowDecl {
+    test_marked: false,
     qualified_name: "synthetic.production_qualification_origin_probe.nested_fixture_marker",
     name: "nested_fixture_marker_planted_decl",
     output: Node {
@@ -587,6 +591,7 @@ data target_without_fixture_tree_red_control_qualified_name: String = "synthetic
 
 fn target_without_fixture_tree_red_control_planted_decl() -> FnArrowDecl {
   FnArrowDecl {
+    test_marked: false,
     qualified_name: target_without_fixture_tree_red_control_qualified_name,
     name: "target_without_fixture_tree_red_control_planted_decl",
     output: Node {

@@ -28,7 +28,8 @@ use crate::v1_interpreter::{
 };
 use crate::v1_std_core::{
     authored_name_at, expr_var_name_at, field_node_type_expr, inferred_to_node, param_node_name_at,
-    param_node_type_expr, source_text_at, Connective, ExprData, NewlineIndex, Node, VarBindingKind,
+    param_node_type_expr, source_text_at, Connective, DeclarationMarker, ExprData, NewlineIndex,
+    Node, VarBindingKind,
 };
 
 type SourceIndices = Rc<HashMap<String, Rc<NewlineIndex>>>;
@@ -1448,6 +1449,10 @@ fn fn_arrow_decl_record(
             (ctx.sym("name"), str_value(name.to_string())),
             (ctx.sym("output"), output),
             (ctx.sym("params"), crate::v1_interpreter::list_value(params)),
+            (
+                ctx.sym("test_marked"),
+                Value::Bool(item.declaration_marker == DeclarationMarker::TestMarked),
+            ),
         ])),
     })
 }

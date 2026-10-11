@@ -43,6 +43,7 @@ type FnArrowDecl {
   name: String
   output: Node
   params: List<FnArrowParam>
+  test_marked: Bool
 }
 
 data fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger: Disposition = Scaffold {

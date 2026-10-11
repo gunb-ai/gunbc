@@ -102,6 +102,7 @@ fn call_channel_call(callee: String) -> Node {
 
 fn call_channel_entry(output: Node) -> FnArrowDecl {
   FnArrowDecl {
+    test_marked: false,
     qualified_name: "fix.call_channel.entry.seed",
     name: "seed",
     output: output,
@@ -111,6 +112,7 @@ fn call_channel_entry(output: Node) -> FnArrowDecl {
 
 fn call_channel_helper() -> FnArrowDecl {
   FnArrowDecl {
+    test_marked: false,
     qualified_name: "fix.call_channel.helper.helper_fn",
     name: "helper_fn",
     output: call_channel_call(callee: "Read"),

@@ -321,6 +321,7 @@ data selection_control_facts: List<ModuleImportFact> = [
 
 fn selection_entry_seed_decl() -> FnArrowDecl {
   FnArrowDecl {
+    test_marked: false,
     qualified_name: "synthetic.live_read_selection.entry.seed",
     name: "seed",
     output: selection_body_node(callee: "carrier_fn"),
@@ -330,6 +331,7 @@ fn selection_entry_seed_decl() -> FnArrowDecl {
 
 fn selection_carrier_home_decl(callee: String) -> FnArrowDecl {
   FnArrowDecl {
+    test_marked: false,
     qualified_name: "v2.compiler.self_host.carrier_fn",
     name: "carrier_fn",
     output: selection_body_node(callee: callee),
@@ -401,6 +403,7 @@ test fn g2_non_call_atom_collision_does_not_reach_carrier_helper() -> Bool {
     p: selection_projection_over(
       decls: [
         FnArrowDecl {
+          test_marked: false,
           qualified_name: "synthetic.live_read_selection.entry.seed",
           name: "seed",
           output: selection_non_call_atom_body(text: "carrier_fn"),

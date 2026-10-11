@@ -274,6 +274,7 @@ fn body_invoking_primitive(primitive: String) -> Node {
 
 fn calling_decl(qualified_name: String, name: String, callee: String) -> FnArrowDecl {
   FnArrowDecl {
+    test_marked: false,
     qualified_name: qualified_name,
     name: name,
     output: body_referencing(callee: callee),
@@ -283,6 +284,7 @@ fn calling_decl(qualified_name: String, name: String, callee: String) -> FnArrow
 
 fn primitive_decl(qualified_name: String, name: String, primitive: String) -> FnArrowDecl {
   FnArrowDecl {
+    test_marked: false,
     qualified_name: qualified_name,
     name: name,
     output: body_invoking_primitive(primitive: primitive),
@@ -300,7 +302,7 @@ data no_terminal_callees: List<String> = []
 // The call walk reads a skeleton through the declaration it belongs to, so a supplied skeleton is
 // wrapped in one; the name and parameters play no part in these two claims.
 fn output_only_decl(output: Node) -> FnArrowDecl {
-  FnArrowDecl { qualified_name: "fix.shape_gap.decl", name: "decl", output: output, params: [] }
+  FnArrowDecl { test_marked: false, qualified_name: "fix.shape_gap.decl", name: "decl", output: output, params: [] }
 }
 
 test fn bare_atom_is_not_a_call_edge() -> Bool {
@@ -398,6 +400,7 @@ fn nested_body_referencing(callee: String) -> Node {
 
 fn nested_calling_decl(qualified_name: String, name: String, callee: String) -> FnArrowDecl {
   FnArrowDecl {
+    test_marked: false,
     qualified_name: qualified_name,
     name: name,
     output: nested_body_referencing(callee: callee),
@@ -444,6 +447,7 @@ test fn nested_entry_does_not_reach_a_leak_outside_the_call_graph() -> Bool {
 // no longer participate in deciding whether an edge exists.
 fn decl_with_param_reference(qualified_name: String, name: String, param: String) -> FnArrowDecl {
   FnArrowDecl {
+    test_marked: false,
     qualified_name: qualified_name,
     name: name,
     output: Node {

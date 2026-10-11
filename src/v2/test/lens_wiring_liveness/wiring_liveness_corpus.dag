@@ -104,6 +104,7 @@ fn probe_atom(s: Symbol) -> Node {
 
 fn dead_wire_decl() -> FnArrowDecl {
   FnArrowDecl {
+    test_marked: false,
     qualified_name: "synthetic.wiring_corpus.dead_wire",
     name: "wiring_corpus_synthetic_dead_wire",
     output: Node {
