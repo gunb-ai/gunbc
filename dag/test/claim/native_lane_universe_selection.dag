@@ -1,0 +1,280 @@
+module test.claim.native_lane_universe_selection
+
+import std.types { List }
+import extdeps.bazel.target_pattern { TargetPatternParsed, TargetPatternRefused, parse_target_pattern }
+import gunbc.witness.v2_native_route { native_route_identity_qualified }
+import v2.compiler.compile { native_lane_universe_selected }
+import v2.compiler.module_acquisition { AcquiredModule }
+import v2.compiler.source_authority { ModuleFileRef }
+import v2.std.algebra { any, contains, fold_list, length }
+import std.algebra { list_snoc_item }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol, symbol_lexeme }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE UNIVERSE THE LANE DERIVES FROM THE MODULES IT ACQUIRED, AND HOW A PATTERN NARROWS IT. The subject
+// is native_lane_universe_selected, driven end to end over supplied acquired modules rather than over
+// the predicates it is built from: a test that stopped at a predicate would prove the case is
+// RECOGNIZED and nothing about whether recognition REACHES the verdict (the defect this suite already
+// repaired once, when a terminal-marker test turned out to be intercepted by an unrelated earlier
+// refusal and had stopped exercising its own subject). So every control here asserts on the Outcome the
+// derivation returns.
+//
+// WHAT IS NOT HERE, AND WHERE IT LIVES. Which names are requested at all, and the universe of the
+// default pattern, are claimed beside the lane (v2.test.v2_native_route). That an import line which
+// names no module refuses rather than narrowing the closure is the acquirer's, because the acquirer is
+// the only reader of import lines now (v2.test.claim.module_acquisition). What the lane gives up by
+// requesting only what the pattern admits is stated once, at the control below that pairs the two.
+//
+// THE FIXTURES DIFFER IN THE ONE PROPERTY EACH CONTROL NAMES. `v2.testing.` shares the character prefix
+// of the `v2.test.` namespace and is not under it -- the case the selection separator exists to
+// separate -- so the outside module differs from the inside one in its declared namespace and in
+// nothing else.
+
+fn a_probe(name: String, path: String, markers: List<String>, content: String) -> AcquiredModule {
+  AcquiredModule {
+    name: name,
+    file: ModuleFileRef { tree: V2Tree {}, relative_path: path },
+    host_directory: "src/v2",
+    content: content,
+    requests: [],
+    test_markers: markers
+  }
+}
+
+// TWO DECLARATIONS IN THE SELECTED MODULE, deliberately: a consumer that filtered MODULES and then took
+// every declaration would pass a one-declaration fixture, and carrying two lets a control tell
+// module-grain filtering from identity-grain filtering.
+fn inside_probe() -> AcquiredModule {
+  a_probe(
+    name: "v2.test.selection_probe",
+    path: "test/selection_probe.dag",
+    markers: ["probe_one", "probe_two"],
+    content: "module v2.test.selection_probe\n\ntest fn probe_one() -> Bool { true }\n\ntest fn probe_two() -> Bool { true }\n"
+  )
+}
+
+fn outside_probe() -> AcquiredModule {
+  a_probe(
+    name: "v2.testing.selection_probe",
+    path: "testing/selection_probe.dag",
+    markers: ["probe_one"],
+    content: "module v2.testing.selection_probe\n\ntest fn probe_one() -> Bool { true }\n"
+  )
+}
+
+// A DECLARATION NO LABEL CAN NAME: `all` is a pattern word, so `//pkg:all` never denotes it. Once outside
+// the universe (must not refuse the lane) and once inside (must refuse it, typed).
+fn unlabelable_outside() -> AcquiredModule {
+  a_probe(
+    name: "v2.testing.unlabelable_probe",
+    path: "testing/unlabelable_probe.dag",
+    markers: ["all"],
+    content: "module v2.testing.unlabelable_probe\n\ntest fn all() -> Bool { true }\n"
+  )
+}
+
+fn unlabelable_inside() -> AcquiredModule {
+  a_probe(
+    name: "v2.test.unlabelable_probe",
+    path: "test/unlabelable_probe.dag",
+    markers: ["all"],
+    content: "module v2.test.unlabelable_probe\n\ntest fn all() -> Bool { true }\n"
+  )
+}
+
+fn combined() -> List<AcquiredModule> {
+  [inside_probe(), outside_probe()]
+}
+
+// The population is the namespace's module names, which is what the single-target misspelling check
+// reads; these fixtures list the one test module they hold.
+fn population() -> List<String> {
+  ["v2.test.selection_probe"]
+}
+
+fn selected_names(modules: List<AcquiredModule>, text: String) -> List<String> {
+  match parse_target_pattern(text: text) {
+    TargetPatternRefused { cause: _ } => []
+    TargetPatternParsed { pattern: pattern } =>
+      match native_lane_universe_selected(modules: modules, population: population(), pattern: pattern) {
+        Rejected { diagnostics: _ } => []
+        Accepted { value: universe, diagnostics: _ } =>
+          fold_list(
+            xs: universe.identities,
+            empty: [],
+            cons: fn(acc, identity) {
+              list_snoc_item(xs: acc, item: native_route_identity_qualified(identity: identity))
+            }
+          )
+      }
+  }
+}
+
+fn selected_admits(modules: List<AcquiredModule>, text: String, qualified: String) -> Bool {
+  contains(xs: selected_names(modules: modules, text: text), item: qualified, eq: fn(a, b) { a == b })
+}
+
+// ACCEPTANCE, asserted apart from any population: an excluded module and a broken one both yield no
+// identity, so a population control alone cannot tell them apart. Every "selects nothing" control below
+// pairs this with its emptiness, which is what attributes the absence to selection and to nothing else.
+fn selected_accepted(modules: List<AcquiredModule>, text: String) -> Bool {
+  match parse_target_pattern(text: text) {
+    TargetPatternRefused { cause: _ } => false
+    TargetPatternParsed { pattern: pattern } =>
+      match native_lane_universe_selected(modules: modules, population: population(), pattern: pattern) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+      }
+  }
+}
+
+fn selected_refusal_reason_is(modules: List<AcquiredModule>, text: String, reason: Symbol) -> Bool {
+  match parse_target_pattern(text: text) {
+    TargetPatternRefused { cause: _ } => false
+    TargetPatternParsed { pattern: pattern } =>
+      match native_lane_universe_selected(modules: modules, population: population(), pattern: pattern) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => d.head.reason == reason
+      }
+  }
+}
+
+// ── the default pattern: namespace, not character prefix ───────────────────────────────────────────
+
+// Both declarations of the selected module reach the universe -- the control a module-grain filter would
+// also pass, kept so the identity-grain one can be told apart from it.
+test fn every_declaration_of_a_selected_module_reaches_the_universe() -> Bool {
+  selected_admits(modules: [inside_probe()], text: "//...", qualified: "v2.test.selection_probe.probe_one")
+  && selected_admits(modules: [inside_probe()], text: "//...", qualified: "v2.test.selection_probe.probe_two")
+}
+
+// The pair that pins selection in both directions over ONE acquisition carrying both modules: a
+// selection admitting everything reds the second conjunct, one admitting nothing reds the first.
+test fn the_combined_acquisition_selects_by_namespace_not_by_character_prefix() -> Bool {
+  selected_admits(modules: combined(), text: "//...", qualified: "v2.test.selection_probe.probe_one")
+  && !selected_admits(modules: combined(), text: "//...", qualified: "v2.testing.selection_probe.probe_one")
+}
+
+test fn the_out_of_selection_module_is_accepted_not_refused() -> Bool {
+  selected_accepted(modules: [outside_probe()], text: "//...")
+  && (length(xs: selected_names(modules: [outside_probe()], text: "//...")) == 0)
+}
+
+// ── an operator's pattern, through the same producer ───────────────────────────────────────────────
+
+// A SINGLE TARGET SELECTS ONE DECLARATION of a module that holds two: the identity grain, driven end to
+// end. An admit-everything selection reds the second conjunct, admit-nothing the first.
+test fn a_single_target_pattern_selects_one_declaration_of_the_universe() -> Bool {
+  let text = "//v2/test/selection_probe:probe_one"
+  selected_admits(modules: combined(), text: text, qualified: "v2.test.selection_probe.probe_one")
+  && !selected_admits(modules: combined(), text: text, qualified: "v2.test.selection_probe.probe_two")
+  && (length(xs: selected_names(modules: combined(), text: text)) == 1)
+}
+
+// A PATTERN CANNOT WIDEN THE UNIVERSE. `//v2/testing/...` names a module that was acquired but lies
+// outside the floor's `v2.test.` population: the answer is an ACCEPTED EMPTY universe, never that module.
+test fn a_pattern_outside_the_universe_selects_nothing() -> Bool {
+  selected_accepted(modules: combined(), text: "//v2/testing/...")
+  && (length(xs: selected_names(modules: combined(), text: "//v2/testing/...")) == 0)
+}
+
+// EXCLUDED IS NOT REFUSED. A pattern that selects nothing in a sound acquisition is an ACCEPTED empty
+// universe.
+test fn a_pattern_selecting_nothing_is_accepted_empty_not_refused() -> Bool {
+  selected_accepted(modules: combined(), text: "//elsewhere/...")
+  && (length(xs: selected_names(modules: combined(), text: "//elsewhere/...")) == 0)
+}
+
+// THE FILE-AS-TARGET SPELLING REFUSES AND NAMES THE RIGHT ONE (manager ruling 2026-09-21). Under the
+// lane's correspondence `//v2/test:selection_probe` asks for a DECLARATION named `selection_probe` in
+// module `v2.test`; none exists, but module `v2.test.selection_probe` is listed in the population, so
+// the route refuses rather than answering with an empty universe, and the detail carries the module
+// spelling. A route that returned universe 0 here reds the first conjunct.
+test fn a_single_target_naming_a_module_refuses_with_the_module_spelling() -> Bool {
+  match parse_target_pattern(text: "//v2/test:selection_probe") {
+    TargetPatternRefused { cause: _ } => false
+    TargetPatternParsed { pattern: pattern } =>
+      match native_lane_universe_selected(modules: combined(), population: population(), pattern: pattern) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } =>
+          d.head.reason == ^native_lane_pattern_names_a_module
+            && any(xs: d.tail, predicate: fn(x) {
+                 string_contains(s: symbol_lexeme(sym: x.reason), pattern: "//v2/test/selection_probe:all")
+               })
+      }
+  }
+}
+
+// The positive side: the spelling the refusal suggests selects the module's declarations.
+test fn the_suggested_module_spelling_selects_the_module() -> Bool {
+  selected_admits(modules: combined(), text: "//v2/test/selection_probe:all", qualified: "v2.test.selection_probe.probe_one")
+  && selected_admits(modules: combined(), text: "//v2/test/selection_probe:all", qualified: "v2.test.selection_probe.probe_two")
+}
+
+// ── the label refusal is scoped to the universe (review 69555) ─────────────────────────────────────
+
+// Outside the universe an unlabelable declaration is not the lane's population and the derivation is
+// accepted with the in-universe member intact; inside it, the same declaration refuses the derivation
+// with its typed cause.
+test fn an_unlabelable_declaration_outside_the_universe_does_not_refuse() -> Bool {
+  selected_admits(
+    modules: [inside_probe(), unlabelable_outside()],
+    text: "//...",
+    qualified: "v2.test.selection_probe.probe_one"
+  )
+}
+
+test fn an_unlabelable_declaration_inside_the_universe_refuses_typed() -> Bool {
+  selected_refusal_reason_is(
+    modules: [inside_probe(), unlabelable_inside()],
+    text: "//...",
+    reason: ^native_lane_identity_label_refused
+  )
+}
+
+// ── discovery covers the acquired universe members, and refuses for them ───────────────────────────
+
+fn disposition_broken() -> AcquiredModule {
+  a_probe(
+    name: "v2.test.disposition_probe",
+    path: "test/disposition_probe.dag",
+    markers: ["probe_one"],
+    content: "module v2.test.disposition_probe\n\ndata live_tree_disposition: LiveTreeDisposition = NoSuchVariant\n"
+  )
+}
+
+// A DISPOSITION ROW THE WALK CANNOT READ STOPS THE LINE FOR AN ACQUIRED MEMBER, and a narrower pattern
+// does not make a broken acquisition sound: the finalize judges every acquired member before the
+// pattern keeps any of them.
+test fn a_universe_member_with_an_unreadable_disposition_refuses_even_under_a_narrow_pattern() -> Bool {
+  selected_refusal_reason_is(
+    modules: [inside_probe(), disposition_broken()],
+    text: "//v2/test/selection_probe:probe_one",
+    reason: ^native_lane_universe_derivation_refused
+  )
+}
+
+// THE CONTROL THAT PAIRS THE NARROWING. A module outside the universe is not walked, so the same
+// unreadable row in a `v2.testing.` module raises nothing in this lane: the required floor owns
+// repository hygiene over that population, and this lane's subject is the completeness of the tests it
+// was asked for. Identical content and identical row, one namespace segment away from the control above.
+test fn the_same_unreadable_disposition_outside_the_universe_raises_nothing_here() -> Bool {
+  selected_admits(
+    modules: [
+      inside_probe(),
+      a_probe(
+        name: "v2.testing.disposition_probe",
+        path: "testing/disposition_probe.dag",
+        markers: ["probe_one"],
+        content: "module v2.testing.disposition_probe\n\ndata live_tree_disposition: LiveTreeDisposition = NoSuchVariant\n"
+      )
+    ],
+    text: "//...",
+    qualified: "v2.test.selection_probe.probe_one"
+  )
+}
