@@ -704,8 +704,14 @@ data harness_worker_step_budget: Int = harness_round_budget_steps
 // THE SEAT THIS PROCESS BOUND, NAMED FOR THE PER-ATTEMPT METERING (gunbc.roadmap_attempt_metering).
 // A turn whose seat cannot be named does not run: the seat is released and the process exits with
 // the write's cause, because metering an unnamed seat would leave its held time unattributable.
+// AN OPERATOR-ROUTE BINDING HOLDS NO FLEET SEAT BY CONSTRUCTION (gunbc.harness.harness_operator_route;
+// operator ruling 2026-10-11), so there is no seat to name and none to leave unattributed: it is its own
+// arm, not an unwritten pointer. DECLARED GAP: its held time is not attributed to the route -- the
+// metering reader (gunbc.roadmap_attempt_metering) reads it as pointer-absent, the same reading as a
+// pointer never written. A seat-bearing binding whose pointer is absent still refuses.
 type HarnessSeatPointerWrite
   = HarnessSeatPointerWritten
+  | HarnessSeatPointerNotApplicable { route: String }
   | HarnessSeatPointerUnwritten { detail: String }
 
 fn harness_seat_pointer_persist(events_path: String, binding: HarnessSeatBinding) -> HarnessSeatPointerWrite {
@@ -714,7 +720,22 @@ fn harness_seat_pointer_persist(events_path: String, binding: HarnessSeatBinding
       let written = Filesystem.Write(path: harness_seat_pointer_path(events_path: events_path), content: harness_seat_pointer_json(pointer: p))
       if written.success { HarnessSeatPointerWritten } else { HarnessSeatPointerUnwritten { detail: written.error } }
     }
-    Absent => HarnessSeatPointerUnwritten { detail: "the binding holds no seat to name" }
+    Absent => match binding {
+      HarnessOperatorBound { url: u, model: _, unit: _, header_dir: _, header_file: _ } => HarnessSeatPointerNotApplicable { route: u as String }
+      HarnessSeatBound { url: _, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: _, unit: _, class: _, seat: _ } => HarnessSeatPointerUnwritten { detail: "the binding holds no seat to name" }
+      HarnessSeatRefused { detail: _ } => HarnessSeatPointerUnwritten { detail: "the binding holds no seat to name" }
+      HarnessSeatPending { detail: _ } => HarnessSeatPointerUnwritten { detail: "the binding holds no seat to name" }
+      HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } => HarnessSeatPointerUnwritten { detail: "the binding holds no seat to name" }
+    }
+  }
+}
+
+// WHETHER THE TURN STOPS ON THE POINTER: only an unwritten pointer for a binding that holds a seat refuses.
+fn harness_seat_pointer_refusal(write: HarnessSeatPointerWrite) -> String? {
+  match write {
+    HarnessSeatPointerWritten => none
+    HarnessSeatPointerNotApplicable { route: _ } => none
+    HarnessSeatPointerUnwritten { detail: d } => Present { value: d }
   }
 }
 
@@ -750,9 +771,9 @@ fn harness_worker_cli(
     BindingRefused { detail } => harness_backend_refusal_exit(detail: detail)
     BindingPending { detail } => harness_placement_pending_exit(detail: detail)
     BindingReady { backend } => {
-      match harness_seat_pointer_persist(events_path: events_path, binding: binding) {
-        HarnessSeatPointerUnwritten { detail: pointer_detail } => harness_seat_pointer_refused_exit(binding: binding, detail: pointer_detail)
-        HarnessSeatPointerWritten => {
+      match harness_seat_pointer_refusal(write: harness_seat_pointer_persist(events_path: events_path, binding: binding)) {
+        Present { value: pointer_detail } => harness_seat_pointer_refused_exit(binding: binding, detail: pointer_detail)
+        Absent => {
           let outcome = harness_run_turn(
             config: harness_worker_config(
               worktree: worktree as FilePath,
@@ -846,9 +867,9 @@ fn harness_reviewer_cli(
     BindingRefused { detail } => harness_backend_refusal_exit(detail: detail)
     BindingPending { detail } => harness_placement_pending_exit(detail: detail)
     BindingReady { backend } => {
-      match harness_seat_pointer_persist(events_path: events_path, binding: binding) {
-        HarnessSeatPointerUnwritten { detail: pointer_detail } => harness_seat_pointer_refused_exit(binding: binding, detail: pointer_detail)
-        HarnessSeatPointerWritten => {
+      match harness_seat_pointer_refusal(write: harness_seat_pointer_persist(events_path: events_path, binding: binding)) {
+        Present { value: pointer_detail } => harness_seat_pointer_refused_exit(binding: binding, detail: pointer_detail)
+        Absent => {
           let outcome = harness_run_turn(
             config: harness_reviewer_config(
               worktree: worktree as FilePath,
@@ -929,9 +950,9 @@ fn harness_auditor_cli(
     BindingRefused { detail } => harness_backend_refusal_exit(detail: detail)
     BindingPending { detail } => harness_placement_pending_exit(detail: detail)
     BindingReady { backend } => {
-      match harness_seat_pointer_persist(events_path: events_path, binding: binding) {
-        HarnessSeatPointerUnwritten { detail: pointer_detail } => harness_seat_pointer_refused_exit(binding: binding, detail: pointer_detail)
-        HarnessSeatPointerWritten => {
+      match harness_seat_pointer_refusal(write: harness_seat_pointer_persist(events_path: events_path, binding: binding)) {
+        Present { value: pointer_detail } => harness_seat_pointer_refused_exit(binding: binding, detail: pointer_detail)
+        Absent => {
           let outcome = harness_run_turn(
             config: harness_auditor_config(
               worktree: worktree as FilePath,
@@ -1019,9 +1040,9 @@ fn harness_supervisor_cli(
     BindingRefused { detail } => harness_backend_refusal_exit(detail: detail)
     BindingPending { detail } => harness_placement_pending_exit(detail: detail)
     BindingReady { backend } => {
-      match harness_seat_pointer_persist(events_path: events_path, binding: binding) {
-        HarnessSeatPointerUnwritten { detail: pointer_detail } => harness_seat_pointer_refused_exit(binding: binding, detail: pointer_detail)
-        HarnessSeatPointerWritten => {
+      match harness_seat_pointer_refusal(write: harness_seat_pointer_persist(events_path: events_path, binding: binding)) {
+        Present { value: pointer_detail } => harness_seat_pointer_refused_exit(binding: binding, detail: pointer_detail)
+        Absent => {
           let outcome = harness_run_turn(
             config: harness_supervisor_config(
               worktree: worktree as FilePath,
