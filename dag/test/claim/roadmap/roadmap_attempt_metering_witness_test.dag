@@ -10,7 +10,7 @@ import gunbc.harness.harness_seat_pointer {
   HarnessSeatPointer, HarnessSeatPointerDecoded, HarnessSeatPointerUndecodable, harness_seat_pointer_decode, harness_seat_pointer_json,
 }
 import gunbc.roadmap_attempt_metering {
-  MeteredRole, MeteredWorker, MeteredReviewer, MeteredAuditor,
+  MeteredRole, MeteredWorker, MeteredReviewer, MeteredAuditor, MeteredStretchSupervisor,
   RoleTokens, TokensObserved, TokensStreamAbsent, TokensRefused,
   SeatHeld, SeatReleased, SeatStillHeld, SeatRefused, SeatPointerAbsent,
   MeteredRoleUsage, AttemptMeteringRecord, ComputeNotAttributable, compute_not_attributable_reason,
@@ -367,6 +367,20 @@ test fn two_concurrent_admissions_both_survive() -> Bool {
   list_length(items: ls) == 3
     && any(ls, r => metering_launch_entry_name(role: r) == metering_launch_entry_name(role: reviewer_role()))
     && any(ls, r => metering_launch_entry_name(role: r) == metering_launch_entry_name(role: auditor))
+}
+
+// A RETIRED ROLE'S RECORD STAYS READABLE: a roster entry written before slice S1 for a stretch
+// supervisor launch -- the bytes the srv1 lab holds, node and attempt renamed -- reads back as that
+// launch, so an attempt carrying one is metered rather than failing every metering pass.
+test fn a_stretch_supervisor_launch_written_before_s1_still_reads() -> Bool {
+  let old = RosterEntryText {
+    name: "metering-launch.supervisor.6.json",
+    content: "\{\"schema\": \"gunbc-attempt-metering-roster/v2\", \"node_id\": \"node-x\", \"attempt_key\": \"7\", \"launch\": \{\"kind\": \"supervisor\", \"turn\": 6}}",
+  }
+  let ls = open_launches(entries: [old])
+  list_length(items: ls) == 2
+    && any(ls, r => match r { MeteredStretchSupervisor { turn: t } => t == 6  _ => false })
+    && metering_launch_entry_name(role: MeteredStretchSupervisor { turn: 6 }) == "metering-launch.supervisor.6.json"
 }
 
 // AN ENTRY CANNOT BE RENAMED INTO ANOTHER LAUNCH'S PLACE, nor name another attempt.

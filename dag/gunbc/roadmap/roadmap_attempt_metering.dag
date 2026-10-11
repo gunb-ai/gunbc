@@ -58,7 +58,8 @@ import gunbc.roadmap_dispatch_actuator {
 // a jailer-launch-to-VMM-reap interval, beside a capacity-held interval, read from four instants on
 // one monotonic clock. An attempt on the belt is not one VM: it is N harness launches (the worker,
 // whose stream also carries its in-session alignment checks and supervisor, a reviewer per criterion
-// and head, an auditor per head), each holding its own serving seat on the fabric ledger and each reporting model tokens, which
+// and head, an auditor per head, and on older attempts a stretch supervisor per escalation turn),
+// each holding its own serving seat on the fabric ledger and each reporting model tokens, which
 // RunnerUsageReceipt has no field for. So this record DIVERGES (DESIGN §3b) and keeps only what
 // transfers: an interval is a difference of two observed instants that refuses when reversed, and a
 // missing meter is a typed refusal, never a zero. No price, credit or rounding enters here.
@@ -70,16 +71,24 @@ import gunbc.roadmap_dispatch_actuator {
 // not a row that is missing.
 
 // ── launches ──────────────────────────────────────────────────────────────────────────────────
+// A RETIRED ROLE STAYS READABLE. Until gunbc.plans.harness_session_lifecycle slice S1 the belt
+// convened a stretch supervisor per escalation turn, as its own launch on its own seat; those launches
+// spent tokens and seat time, and rosters on disk name them. Nothing mints this arm any more -- the
+// supervisor now decides inside the worker's paused session and is metered in the worker's stream --
+// but a record of a launch that happened is evidence, so it decodes and meters exactly as it was
+// written rather than refusing and failing every metering pass over the attempts that carry one.
 type MeteredRole
   = MeteredWorker
   | MeteredReviewer { criterion_key: NonEmptyStr, head: NonEmptyStr }
   | MeteredAuditor { head: NonEmptyStr }
+  | MeteredStretchSupervisor { turn: Int }
 
 fn metered_role_wire(role: MeteredRole) -> String {
   match role {
     MeteredWorker => "worker"
     MeteredReviewer { criterion_key: c, head: h } => join(["reviewer:", c as String, "@", h as String], "")
     MeteredAuditor { head: h } => join(["auditor@", h as String], "")
+    MeteredStretchSupervisor { turn: t } => join(["supervisor:t", to_string(t)], "")
   }
 }
 
@@ -98,6 +107,10 @@ fn metered_role_json(role: MeteredRole) -> JsonValue {
     MeteredAuditor { head: h } => json_object(members: [
       json_kv(key: "kind", value: json_string(s: "auditor")),
       json_kv(key: "head", value: json_string(s: h as String)),
+    ])
+    MeteredStretchSupervisor { turn: t } => json_object(members: [
+      json_kv(key: "kind", value: json_string(s: "supervisor")),
+      json_kv(key: "turn", value: json_int(n: t)),
     ])
   }
 }
@@ -122,6 +135,11 @@ fn metered_role_decode(v: JsonValue) -> RowDecode<MeteredRole> {
           MemberTextGap { cause: c } => RowUndecodable { cause: join(["an auditor role ", c], "") }
           MemberText { value: h } => RowDecoded { row: MeteredAuditor { head: h as NonEmptyStr } }
         }
+      } else if kind == "supervisor" {
+        match metering_member_int(doc: v, key: "turn") {
+          MemberIntGap { cause: c } => RowUndecodable { cause: c }
+          MemberInt { value: t } => RowDecoded { row: MeteredStretchSupervisor { turn: t } }
+        }
       } else {
         RowUndecodable { cause: join(["unknown role kind ", kind], "") }
       }
@@ -137,6 +155,8 @@ fn metered_role_events_path(instance: HostDashboardInstance, node_id: RoadmapNod
       dispatch_attempt_review_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: c as String, head_sha: h as String)
     MeteredAuditor { head: h } =>
       dispatch_attempt_audit_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: h as String)
+    MeteredStretchSupervisor { turn: t } =>
+      join([dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/supervisor/t", to_string(value: t), ".provider-events.jsonl"], "")
   }
 }
 
@@ -145,6 +165,7 @@ fn metered_role_seat_owner(node_id: String, attempt_key: String, role: MeteredRo
     MeteredWorker => dispatch_worker_attempt_identity(node_id: node_id, attempt_key: attempt_key)
     MeteredReviewer { criterion_key: c, head: h } => dispatch_reviewer_attempt_identity(node_id: node_id, attempt_key: attempt_key, criterion_key: c as String, head_sha: h as String)
     MeteredAuditor { head: h } => dispatch_auditor_attempt_identity(node_id: node_id, attempt_key: attempt_key, head_sha: h as String)
+    MeteredStretchSupervisor { turn: t } => join(["supervisor:", node_id, "-", attempt_key, "-t", to_string(value: t)], "")
   }
 }
 
@@ -934,6 +955,7 @@ fn metered_role_key(role: MeteredRole) -> String {
     MeteredWorker => "worker"
     MeteredReviewer { criterion_key: c, head: h } => join(["reviewer.", metering_length_prefixed(parts: [c as String, h as String])], "")
     MeteredAuditor { head: h } => join(["auditor.", metering_length_prefixed(parts: [h as String])], "")
+    MeteredStretchSupervisor { turn: t } => join(["supervisor.", to_string(t)], "")
   }
 }
 
