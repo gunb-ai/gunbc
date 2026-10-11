@@ -4,6 +4,7 @@ import gunbc.roadmap_session_placement { SessionPlacementAbsent }
 import gunbc.roadmap_nesting { roadmap_memberships }
 import extdeps.filesystem.filesystem_io { filesystem_read_outcome, filesystem_file_observation, filesystem_listing_observation, FilesystemReadRefused, FilesystemFileObservation }
 import gunbc.roadmap_belt_actuate { belt_spawn_outcome_with_release }
+import gunbc.roadmap_belt_actuate { BeltContinuationCarry, CarryNotContinuation, CarryNothingUncommitted, CarryApplied, CarryRefused, belt_continuation_carry, belt_continuation_carry_refusal }
 
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
@@ -3373,4 +3374,28 @@ test fn a_refused_metering_write_fails_the_metering_pass() -> Bool {
       BeltPassRecorded => true
       _ => false
     })
+}
+
+// A CONTINUATION'S CARRY GATES ITS SPAWN ONLY BY REFUSING. The three non-refusing arms proceed, and a
+// refusal carries its detail into the spawn's failure; a fresh dispatch has no predecessor and
+// carries nothing without touching git. RED against a carry whose refusal proceeded anyway, which
+// would start a continuation without the prior turn's work. The carry itself is established on the
+// srv1 lab by a continuation that starts with its predecessor's diff (2026-10-11).
+test fn only_a_refused_carry_stops_the_spawn() -> Bool {
+  (match belt_continuation_carry_refusal(c: CarryRefused { detail: "the predecessor's worktree is absent" }) {
+    Present { value: d } => d == "the predecessor's worktree is absent"
+    Absent => false
+  })
+    && (match belt_continuation_carry_refusal(c: CarryApplied { stash: "abc" }) { Present { value: _ } => false  Absent => true })
+    && (match belt_continuation_carry_refusal(c: CarryNothingUncommitted) { Present { value: _ } => false  Absent => true })
+    && (match belt_continuation_carry_refusal(c: CarryNotContinuation) { Present { value: _ } => false  Absent => true })
+}
+
+test fn a_fresh_dispatch_carries_nothing() -> Bool {
+  match belt_continuation_carry(instance: srv2_preview_dashboard_instance(), node_id: "shell-dag-cron-entry-line-builder" as RoadmapNodeId, origin: FreshFromBase, attempt_key: "a1") {
+    CarryNotContinuation => true
+    CarryNothingUncommitted => false
+    CarryApplied { stash: _ } => false
+    CarryRefused { detail: _ } => false
+  }
 }
