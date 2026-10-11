@@ -251,7 +251,7 @@ type GrammarExpr
 // `level = sequence(next_level, repeat(sequence(op, next_level)))`, once per precedence -- states
 // the same language, but every operand then walks every level and the parse stamps an empty
 // continuation at each, so the tree carries one node per LEVEL per operand that no reader wants and
-// the lowering had to strip again (docs/plans/precedence-climbing-tree-contract.md). Here an operand
+// the lowering had to strip again. Here an operand
 // with no operator after it is captured as itself, and each operator consumed is ONE application
 // node with three projections (grammar_infix_left / _operator / _right).
 //

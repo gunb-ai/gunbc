@@ -8,7 +8,7 @@ import gunbc.open_node_partial_evidence { OpenNodePartialEvidenceReceipt }
 // ONE HOME FOR A MUTABLE PROGRAM STATUS, SO NO DOCUMENT HAS TO HOLD IT TWICE (operator ruling on
 // gunbc#7710, 2026-08-02). That PR wrote the same changing observation -- native-at-small-scale
 // evidence landed, with its pull request, merge commit, evaluated head and pass count --
-// independently into gunbc.roadmap_authority five_minute_ci_gate_program_note AND into
+// independently into a program note in gunbc.roadmap_authority (since deleted) AND into
 // gunbc.design_document, and therefore into generated DESIGN.md. Two hand-maintained copies of one
 // advancing status is the DESIGN section 3 dual representation: someone updates one, the other
 // silently goes stale, and both read as authoritative. The operator's split is the model here --

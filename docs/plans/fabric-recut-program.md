@@ -1,6 +1,6 @@
 # Fabric recut: the carriers survive, the layer underneath is replaced
 
-Successor to [fabric authority census](fabric-concept-reconciliation.md), which found the forks
+Successor to the fabric authority census (since deleted), which found the forks
 one at a time. This is the program that retires them together; the census's own remedy ("repair
 each fork in place") was refused on review: nine forks in one layer is not a list of defects, it is
 the wrong layer.

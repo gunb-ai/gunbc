@@ -1,0 +1,150 @@
+module gunbc.design_ruling
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.markdown { MarkdownDocument, MarkdownBlock, HeadingBlock, TextInline, H1 }
+import gunbc.plans.md_helpers { h2, p, hr }
+import extdeps.languages.markdown { serialize_markdown_source }
+
+// THE DATED OPERATOR RULINGS DESIGN.md STATES, HELD AS ROWS RATHER THAN NARRATED INLINE.
+//
+// gunbc.design_document carries reasoning; a ruling is a HISTORY fact -- when, in which section, and
+// on whose words -- and it grows by one row per decision while the sections are fixed by section 1.
+// The RULE has exactly one home, the document: a row carries no copy of it, so the two cannot drift.
+// A row's `reference` is its own declaration as a DeclarationRef; the document cites a ruling by
+// passing the row (an import, so a renamed or deleted row fails to resolve), and
+// gunbc.documentary_refs takes its ruling references from design_rulings(), so that one roster is
+// the population the citation resolver, the render witness and the view below all read.
+//
+// One row per ruling, each its own declaration, so a citation names one ruling and two lanes adding
+// two rulings touch two declarations. The on-demand view is
+// `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/design_ruling.dag --function expected_design_rulings_md`;
+// it is not committed, for the same contention reason as the failure-mode ledger.
+
+type DesignRuling {
+  reference: DeclarationRef
+  decided: String
+  section: String
+  provenance: String
+}
+
+data conformance_needs_attention: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "conformance_needs_attention"),
+  decided: "2026-09-06",
+  section: "3b",
+  provenance: "Operator: \"it needs more attention than it has received because it is incredibly important\". The same day the operator named the climb the printing-press direction: derive the touched domains at plan admission, before any worker runs.",
+}
+
+data consumption_interrogated_separately: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "consumption_interrogated_separately"),
+  decided: "2026-09-06",
+  section: "3c",
+  provenance: "Operator: adding dangling modeling is interrogated separately, and the consumption must be understood well.",
+}
+
+data authorization_pattern_is_a_selection: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "authorization_pattern_is_a_selection"),
+  decided: "2026-09-19",
+  section: "3b",
+  provenance: "Added to the conformance domain row on that date; the census gunbc.auth.privileged_effect_census classifies every site by executing the selection.",
+}
+
+data coercion_is_the_implicit_safe_subset: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "coercion_is_the_implicit_safe_subset"),
+  decided: "2026-09-26",
+  section: "4",
+  provenance: "Operator ruling.",
+}
+
+data text_crossings_go_through_the_unfold: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "text_crossings_go_through_the_unfold"),
+  decided: "2026-09-27",
+  section: "4",
+  provenance: "Operator ruling revising XL-0T to option B; Ruling 3 (String is FreeMonoid<Char>) stands. Its first execution falsified the withdrawn leaf-name identity wall.",
+}
+
+data epistemic_humility_is_symmetric: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "epistemic_humility_is_symmetric"),
+  decided: "2026-09-10",
+  section: "4d",
+  provenance: "Operator ruling; receipts gunbc-private #54 (over-assertion) and gunbc#10954 (over-prohibition).",
+}
+
+data chain_re_derivation: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "chain_re_derivation"),
+  decided: "2026-09-15",
+  section: "6b",
+  provenance: "Operator ruling, stated separately because the opposite is the default habit. Specimens: #11401 (resolve rebuilt corpus-wide state per module; repaired upstream with one shared ResolutionContext per native ingest in v2.compiler.compile), #11422 (every ordered Choice is owed one prepared plan, so per-token dispatch was the wrong link, not a slow one), #11444 (the emitter tail-call lowering is_tco_identity_passthrough was itself the earliest unjustified boundary, so the local repair was right).",
+}
+
+data v2_better_than_the_seed: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "v2_better_than_the_seed"),
+  decided: "2026-10-02",
+  section: "7",
+  provenance: "Operator ruling; neither a byte-identical fixed point nor behavioural equivalence to the seed is the goal.",
+}
+
+data instrument_is_a_row_not_a_flag: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "instrument_is_a_row_not_a_flag"),
+  decided: "2026-09-16",
+  section: "Building & checks",
+  provenance: "Operator ruling; `--self-host` was withdrawn in the change that added //gunbc/instruments:self-host.",
+}
+
+data job_roster_closed_to_growth: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "job_roster_closed_to_growth"),
+  decided: "2026-09-04",
+  section: "Building & checks",
+  provenance: "Operator ruling cutting three of seven jobs. On 2026-09-15 the same reasoning cut the push-on-main trigger: the merge queue's required run already proves the landing sha.",
+}
+
+data v1_withdrawn_one_required_job: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "v1_withdrawn_one_required_job"),
+  decided: "2026-10-09",
+  section: "Building & checks",
+  provenance: "Operator ruling (the v1 withdrawal, gunbc#13658 and gunbc#13641). The lanes floor, generated, rust-unit-tests and seed were deleted; the loss is gunbc.rung_drop v1_required_lanes_withdrawn.",
+}
+
+data memory_envelope_is_part_of_the_verdict: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "memory_envelope_is_part_of_the_verdict"),
+  decided: "2026-10-09",
+  section: "Building & checks",
+  provenance: "Operator ruling issued with the v1 withdrawal.",
+}
+
+fn design_rulings() -> List<DesignRuling> {
+  [
+    job_roster_closed_to_growth,
+    conformance_needs_attention,
+    consumption_interrogated_separately,
+    epistemic_humility_is_symmetric,
+    chain_re_derivation,
+    instrument_is_a_row_not_a_flag,
+    authorization_pattern_is_a_selection,
+    coercion_is_the_implicit_safe_subset,
+    text_crossings_go_through_the_unfold,
+    v2_better_than_the_seed,
+    v1_withdrawn_one_required_job,
+    memory_envelope_is_part_of_the_verdict,
+  ]
+}
+
+fn ruling_blocks(r: DesignRuling) -> List<MarkdownBlock> {
+  [
+    h2(text: concat(r.reference.decl_name as String, " — ", r.decided, " — §", r.section)),
+    p(text: r.provenance),
+  ]
+}
+
+fn expected_design_rulings_md() -> String {
+  serialize_markdown_source(doc: MarkdownDocument {
+    blocks: concat(
+      [
+        HeadingBlock { level: H1, inlines: [TextInline { text: "gunbc — design rulings" }] },
+        p(text: "Generated on demand from `gunbc.design_ruling`. `DESIGN.md` states each rule and cites its row; a row carries only the date, the section and the provenance, never a second copy of the rule."),
+        hr(),
+      ],
+      flat_map(design_rulings(), r => ruling_blocks(r: r)),
+    ),
+  })
+}

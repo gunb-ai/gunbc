@@ -3,7 +3,10 @@ module extdeps.ietf.http_semantics
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import std.types { Int }
+import std.types { Int, String, Bool, HttpStatus }
+import std.nat { Nat, nat_range_inclusive }
+import std.measure { Second, second, second_count }
+import std.checked_arithmetic { checked_int_to_nat }
 
 // RFC 9110 (HTTP Semantics, June 2022; obsoletes RFC 7231) section 9 METHODS, plus PATCH from
 // RFC 5789 -- the one home of the request-method set. It was declared twice before this module: std.types HttpMethod with
@@ -29,7 +32,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps.ietf.http_semantics.extdeps_external_authority_anchor,
-  further_citations: [rfc5789_patch_authority, rfc9110_status_codes_authority]
+  further_citations: [rfc5789_patch_authority, rfc9110_status_codes_authority, rfc9110_retry_after_authority]
 }
 
 // PATCH is not an RFC 9110 method: it is defined by RFC 5789, which is why it is cited separately.
@@ -82,6 +85,65 @@ fn http_status_class_digit(class: HttpStatusClass) -> Int {
     Redirection => 3
     ClientError => 4
     ServerError => 5
+  }
+}
+
+fn http_status_class_of(status: HttpStatus) -> HttpStatusClass {
+  if status < 200 {
+    Informational
+  } else if status < 300 {
+    Successful
+  } else if status < 400 {
+    Redirection
+  } else if status < 500 {
+    ClientError
+  } else {
+    ServerError
+  }
+}
+
+// RFC 9110 section 10.2.3 Retry-After: delay-seconds is 1*DIGIT, or an HTTP-date. A value that is
+// not all ASCII digits is carried as text and never interpreted as a duration (the date form's
+// grammar is not decoded here). The integer parser accepts a leading sign, so the lexical shape is
+// checked first.
+data rfc9110_retry_after_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.rfc-editor.org/rfc/rfc9110#section-10.2.3",
+  }
+}
+
+type HttpRetryAfter
+  = RetryAfterSeconds { seconds: Second }
+  | RetryAfterUnparsed { text: String }
+  | RetryAfterAbsent
+  | RetryAfterUnread { cause: String }
+
+fn http_is_ascii_digits(text: String) -> Bool {
+  length(text) > 0 && length(fold(nat_range_inclusive(lo: 0, hi: 9), init: text, f: (acc, i) => replace(acc, to_string(i), ""))) == 0
+}
+
+fn http_retry_after_from_text(text: String) -> HttpRetryAfter {
+  if !http_is_ascii_digits(text: text) {
+    RetryAfterUnparsed { text: text }
+  } else {
+    match parse_int(s: text) {
+      Absent => RetryAfterUnparsed { text: text }
+      Present { value: n } =>
+        match checked_int_to_nat(n: n) {
+          Absent => RetryAfterUnparsed { text: text }
+          Present { value: sec } => RetryAfterSeconds { seconds: second(count: sec) }
+        }
+    }
+  }
+}
+
+fn http_retry_after_wire(r: HttpRetryAfter) -> String {
+  match r {
+    RetryAfterSeconds { seconds: n } => join(["Retry-After ", to_string(second_count(s: n)), " s"], "")
+    RetryAfterUnparsed { text: t } => join(["Retry-After '", t, "' (not delta-seconds; not interpreted)"], "")
+    RetryAfterAbsent => "no Retry-After"
+    RetryAfterUnread { cause: c } => join(["Retry-After unknown: the response headers could not be read (", c, ")"], "")
   }
 }
 

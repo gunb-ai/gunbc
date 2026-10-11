@@ -13,8 +13,7 @@ import gunbc.roadmap_provider_events {
 }
 
 // THE BELT'S WORK AS OBLIGATIONS, NOT PHASES (dogfood interventions #6 and #4, gunbc#13124; the
-// "belt demoted" owner ruling of 2026-09-22 in docs/plans/harness-work-lifecycle.md; the design at
-// docs/plans/belt-event-driven-obligations.md).
+// "belt demoted" owner ruling of 2026-09-22 in docs/plans/harness-work-lifecycle.md).
 //
 // The tick used to run capture, verify, review, audit, publish and metering over EVERY attempt, in
 // that order, inside one process, followed by the result return, the served observation and the

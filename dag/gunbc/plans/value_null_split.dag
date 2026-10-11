@@ -7,7 +7,7 @@ import gunbc.plans.md_helpers { h2, p, li, ol, cell, row, task, tasks, Unchecked
 
 fn value_null_split_body() -> List<MarkdownBlock> {
   [
-    p(text: "**Status:** lane opened (keen-ferret-250) · **Parent:** model↔realization fork §3.2 · **DESIGN.md open thread** · Linked from [model-realization-fork.md](model-realization-fork.md) and [fail-closed-lockdown.md](fail-closed-lockdown.md) §4 tier-1."),
+    p(text: "**Status:** lane opened (keen-ferret-250) · **Parent:** model↔realization fork §3.2 · **DESIGN.md open thread**"),
     p(text: "**Verified against the live tree 2026-07-26.** Census counts are receipts; re-check before acting."),
     h2(text: "0. Problem — one native carrier, four meanings"),
     p(text: "`Value::Null` overloads four distinct semantics today: (1) the `None`/`none` literal and `LitNull`, (2) `Optional::Absent` (bridged in `match_pattern` at `v1_interpreter.rs:2830`), (3) `Witness::Violates` on map miss (bridged at `:2808` with a fabricated diagnostic), (4) untyped lookup miss (`raw_map_lookup`, `list_get_at_or_null`, `get` on map/list). A blanket `CrossRepresentationEquality` guard cannot close the Optional/Witness straddle — `present == None → false` is *legitimate* at ~218 corpus sites — so the fix is **splitting**, not grounding onto one sentinel."),
@@ -50,7 +50,7 @@ fn value_null_split_body() -> List<MarkdownBlock> {
       task(state: Unchecked, text: "**Phase B:** stop *producing* `Null` where the return type is `Optional<T>` — route `map_get`/`get`+Optional context through `map_lookup_as_optional` (keep raw `get` returning bare value + `Null` miss for `map_lookup_dual_dispatch` until typed overload lands)."),
       task(state: Unchecked, text: "**Phase C:** delete `match_pattern` `Null` bridges (`:2808–2834`) once no producer emits `Null` for Optional/Witness arms."),
       task(state: Unchecked, text: "**Phase D:** type-directed `None` literal → `optional_absent()` where inhabiting `Optional<_>`; migrate `== None` sites (~218) to `match Absent` or `optional_is_absent` helper."),
-      task(state: Unchecked, text: "**Phase E:** cross-representation equality — ground `Optional` so `Absent` variant reconciles with narrowed `Null` *only* at the lookup-miss boundary; remove `Optional`×`native_value_null` from testgen roster; bundle `CrossRepresentationEquality` guard removal with this phase (fenced in model-realization-fork §3.1)."),
+      task(state: Unchecked, text: "**Phase E:** cross-representation equality — ground `Optional` so `Absent` variant reconciles with narrowed `Null` *only* at the lookup-miss boundary; remove `Optional`×`native_value_null` from testgen roster; bundle `CrossRepresentationEquality` guard removal with this phase."),
     ]),
     h2(text: "5. Review bar"),
     p(text: "No absorbing fallback: a miss must not widen to `Null` when the type is `Optional` or `Witness`. No new per-site `if matches!(v, Value::Null)` bridges without a counted dissolution trigger. Every phase ships with a discriminating witness that goes RED when the carrier regresses."),

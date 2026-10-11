@@ -1,0 +1,271 @@
+module gunbc.machine_intake_megarac_kvm_observer_observe
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decl_ref { decl_ref }
+import std.measure { Second }
+import std.process { ExitSuccess, ExitFailure, ProcessExit, exit_failure }
+import std.optional { Present, Absent }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import product.host_identity { HostIdentity }
+import gunbc.runner_browser_toolchain { runner_browser_toolchain_here_wet }
+import gunbc.owned_process { OwnedRelease, OwnedReleased, OwnedAlreadyGone, OwnedReleaseNotOwned, OwnedNotRecorded, OwnedForeign, owned_process_release, owned_release_text }
+import gunbc.megarac_managed_host { AdmittedMegaRacHost, admitted_megarac_host_identity }
+import gunbc.managed_host_unit_hold {
+  UnitHeld, UnitHoldRefused, kvm_observer_acquire_unit_hold, unit_hold_release,
+  kvm_observer_release_unit_hold, probe_hold_release_outcome_text, probe_hold_release_step_exit,
+}
+import gunbc.machine_intake_megarac_kvm_still {
+  KvmObserverRecord, KvmObserverStart, KvmObserverStarted, KvmObserverNotStarted,
+  KvmHandoffAdmitted, KvmHandoffRefused, kvm_handoff_admission,
+  KvmStillHashed, KvmTeardownRecorded, KvmTeardownNotNeeded, KvmTerminalStillAnswered,
+  KvmSessionRelease, KvmSessionReleased, KvmSessionNoSession, KvmBrowserClose, KvmBrowserClosed, KvmBrowserNotLaunched, kvm_session_release_of, kvm_browser_close_of,
+  KvmJournalRead, KvmJournalText, KvmJournalAbsent, KvmJournalUnread, kvm_journal_read_at, kvm_journal_events_of, kvm_last_result,
+  megarac_kvm_observer_start, megarac_kvm_observer_finish, megarac_kvm_still_allowance,
+  kvm_observer_record_text,
+}
+
+// THE REAL KVM OBSERVER AGAINST AN ADMITTED MEGARAC CONTROLLER, WITH NO BOOT (operator-approved brief,
+// 2026-09-30; re-rooted onto the admitted carrier by managed-host cut 5). The observer
+// (gunbc.machine_intake_megarac_kvm_still) is the boot's; this probe drives the SAME functions the boot
+// drives -- megarac_kvm_observer_start, the handoff admission that waits for establishment, and
+// megarac_kvm_observer_finish, which asks one terminal still, requests the stop, releases the web
+// session and the browser and hashes the still -- and nothing else.
+//
+// MEGARAC-SCOPED BY REFUSAL: the probe takes gunbc.megarac_managed_host AdmittedMegaRacHost, which a host
+// of another family or an unobserved one never mints, and megarac_kvm_observer_start refuses a carrier
+// admitted for any operation but the KVM canvas still. The controller, its account and the host whose
+// unit hold the probe takes all come off that carrier; the artifact directory is the caller's.
+//
+// NOTHING IS WRITTEN TO THE CONTROLLER'S MEDIA, POWER, BOOT DEVICE OR SEL. The web session it opens is
+// its own and is DELETEd on every reachable exit; the only other effect is the KVM viewer seat, which
+// is why the probe holds the unit (gunbc.managed_host_unit_hold kvm_observer_acquire_unit_hold): the
+// boot takes that seat under the same hold and refuses its handoff when the seat is busy, so an unheld
+// probe could make a concurrent boot refuse.
+//
+// THE ARTIFACTS are the observer's own directory -- journal, journal.pre-teardown, observer.log and
+// every still-N.jpg -- under the caller's directory prefix, plus the probe's receipt, which is
+// kvm_observer_record_text of the record, written on every path that started the observer.
+
+// WHERE A PROBE'S ARTIFACTS LAND: an observer directory is the caller's prefix followed by the attempt,
+// and a probe's attempt carries megarac_kvm_observer_probe_prefix, so its directories, and the receipt
+// beside them, are one glob apart from every boot's under the same prefix.
+type KvmObserverProbePaths {
+  dir_prefix: String
+}
+
+data megarac_kvm_observer_probe_prefix: String = "probe"
+
+fn megarac_kvm_observer_probe_attempt(run_id: NonEmptyStr) -> String {
+  join([megarac_kvm_observer_probe_prefix, "-", run_id as String], "")
+}
+
+fn megarac_kvm_observer_dir(paths: KvmObserverProbePaths, attempt: String) -> String {
+  concat(paths.dir_prefix, attempt)
+}
+
+fn megarac_kvm_observer_probe_receipt_path(paths: KvmObserverProbePaths) -> String {
+  concat(megarac_kvm_observer_dir(paths: paths, attempt: megarac_kvm_observer_probe_prefix), "-receipt.txt")
+}
+
+// Everything the probe keeps: every probe's observer directory and its receipt.
+fn megarac_kvm_observer_probe_artifact_glob(paths: KvmObserverProbePaths) -> String {
+  concat(megarac_kvm_observer_dir(paths: paths, attempt: megarac_kvm_observer_probe_prefix), "-*")
+}
+
+// WHAT THE PROBE'S OWN BOUNDED WAITS COST AT MOST is the observer's own allowance
+// (megarac_kvm_still_allowance: the establishment wait, the terminal-still wait, the stop wait and
+// the owned release), counted once.
+fn megarac_kvm_observer_probe_bound() -> Second {
+  megarac_kvm_still_allowance()
+}
+
+// THE VERDICT IS A CONJUNCTION OF OBSERVED FACTS, EACH READ FROM THE RECORD: established for this
+// host and attempt (the handoff admission's own test), the one terminal still answered and hashed, and
+// the teardown seen through -- stopped line written, session released, browser closed, process gone.
+type KvmProbeVerdict
+  = KvmProbeHeld
+  | KvmProbeFell { reason: NonEmptyStr }
+
+// THE TEARDOWN IS JUDGED BY ITS WORDS, NOT BY SUBSTRINGS: the session release must read exactly
+// `released` and the browser close exactly `closed` (kvm_session_release_of / kvm_browser_close_of, the
+// journal's own RS rows), the stopped line must have been seen, and the owned process released or
+// already gone. A "release-failed detail=..." whose detail mentions "released" is a failed release.
+// Absent means seen through; Present names the first fact that was not.
+fn kvm_probe_teardown_gap(rec: KvmObserverRecord) -> NonEmptyStr? {
+  match rec.teardown {
+    KvmTeardownRecorded { terminal: _, snapshot: _, requested_at: _, stopped_seen: st, session_release: sr, browser_close: bc, process: p } =>
+      if !st { Present { value: "the observer's stopped line was not seen" as NonEmptyStr } }
+      else if !(match kvm_session_release_of(result: sr) { KvmSessionReleased => true  _ => false }) { Present { value: concat("the web session was not released: ", sr) as NonEmptyStr } }
+      else if !(match kvm_browser_close_of(result: bc) { KvmBrowserClosed => true  _ => false }) { Present { value: concat("the browser was not closed: ", bc) as NonEmptyStr } }
+      else if !(match p { OwnedReleased { pid: _ } => true  OwnedAlreadyGone { pid: _ } => true  _ => false }) { Present { value: "the observer process was not seen released" as NonEmptyStr } }
+      else { none }
+    KvmTeardownNotNeeded { reason: r } => Present { value: concat("no teardown was recorded: ", r as String) as NonEmptyStr }
+  }
+}
+
+fn kvm_probe_still_answered(rec: KvmObserverRecord) -> Bool {
+  match rec.teardown {
+    KvmTeardownRecorded { terminal: t, snapshot: _, requested_at: _, stopped_seen: _, session_release: _, browser_close: _, process: _ } =>
+      match t { KvmTerminalStillAnswered { line: _ } => true  _ => false }
+    _ => false
+  }
+}
+
+fn kvm_probe_hashed_stills(rec: KvmObserverRecord) -> Int {
+  count(filter(rec.stills, s => match s { KvmStillHashed { at: _, seq: _, reason: _, path: _, digest: _ } => true  _ => false }))
+}
+
+fn kvm_probe_verdict(admission: String, established: Bool, rec: KvmObserverRecord) -> KvmProbeVerdict {
+  if !established { KvmProbeFell { reason: concat("the observer was not established: ", admission) as NonEmptyStr } }
+  else if !kvm_probe_still_answered(rec: rec) { KvmProbeFell { reason: "the terminal still was not answered" } }
+  else if kvm_probe_hashed_stills(rec: rec) < 1 { KvmProbeFell { reason: "no still was retained with its digest" } }
+  else {
+    match kvm_probe_teardown_gap(rec: rec) {
+      Present { value: g } => KvmProbeFell { reason: g }
+      Absent => KvmProbeHeld
+    }
+  }
+}
+
+// THE RECEIPT NAMES THE ADMITTED CONTROLLER, never a unit constant, then the verdict and the record.
+fn kvm_probe_receipt_text(subject: NonEmptyStr, verdict: KvmProbeVerdict, rec: KvmObserverRecord) -> String {
+  let verdict_line = match verdict { KvmProbeHeld => "verdict=held"  KvmProbeFell { reason: r } => concat("verdict=FELL: ", r as String) }
+  join([concat("subject=", subject as String), verdict_line, kvm_observer_record_text(rec: rec)], "\n")
+}
+
+fn kvm_probe_conclude(subject: NonEmptyStr, paths: KvmObserverProbePaths, rec: KvmObserverRecord, verdict: KvmProbeVerdict) -> ProcessExit {
+  let kept = Filesystem.Write(path: megarac_kvm_observer_probe_receipt_path(paths: paths), content: concat(kvm_probe_receipt_text(subject: subject, verdict: verdict, rec: rec), "\n"))
+  let outcome = match verdict {
+    KvmProbeHeld => ExitSuccess
+    KvmProbeFell { reason: r } => exit_failure(reason: concat("megarac kvm observer: ", r as String))
+  }
+  if kept.success { outcome } else {
+    match outcome {
+      ExitSuccess => exit_failure(reason: concat("megarac kvm observer: the probe held and its receipt could not be written: ", kept.error))
+      other => other
+    }
+  }
+}
+
+// WHAT THE HELD PROBE LEAVES: its exit, and the record its seat decision is read from.
+type KvmProbeHeldRun {
+  outcome: ProcessExit
+  record: KvmObserverRecord
+}
+
+fn megarac_kvm_observer_observe_held(host: AdmittedMegaRacHost, password_file: NonEmptyStr, run_id: NonEmptyStr, paths: KvmObserverProbePaths) -> KvmProbeHeldRun
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_megarac_kvm_observer_observe", decl_name: "megarac_kvm_observer_observe"),
+  ]
+{
+  let attempt = megarac_kvm_observer_probe_attempt(run_id: run_id)
+  let start = megarac_kvm_observer_start(
+    host: host,
+    dir: megarac_kvm_observer_dir(paths: paths, attempt: attempt),
+    password_file: password_file as String,
+    toolchain: runner_browser_toolchain_here_wet(),
+    attempt: attempt,
+  )
+  let admission = kvm_handoff_admission(start: start)
+  let established = match admission { KvmHandoffAdmitted { session: _ } => true  KvmHandoffRefused { cause: _ } => false }
+  let admission_text = match admission { KvmHandoffAdmitted { session: s } => concat("established, web session ", s)  KvmHandoffRefused { cause: c } => c }
+  let rec = megarac_kvm_observer_finish(start: start, attempt: attempt, terminal_order: 1)
+  let subject = host.binding.observation.endpoint.host
+  KvmProbeHeldRun { outcome: kvm_probe_conclude(subject: subject, paths: paths, rec: rec, verdict: kvm_probe_verdict(admission: admission_text, established: established, rec: rec)), record: rec }
+}
+
+// THE PROBE OVER AN ADMITTED HOST: the unit hold is taken on the host the carrier names, the observer
+// is driven, and the hold is freed only over a seat observed let go. Sealed to the one entry that binds a
+// managed host's row to it; it returns a ProcessExit, never a carrier.
+fn megarac_kvm_observer_observe(host: AdmittedMegaRacHost, password_file: NonEmptyStr, run_id: NonEmptyStr, paths: KvmObserverProbePaths) -> ProcessExit
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_kvm_observer_observe", decl_name: "mtcollins1_kvm_observer_observe_wet"),
+  ]
+{
+  match kvm_observer_acquire_unit_hold(host: admitted_megarac_host_identity(host: host), run_id: run_id) {
+    UnitHoldRefused { reason: r } => exit_failure(reason: concat("megarac kvm observer: ", r as String))
+    UnitHeld { proof: proof } => {
+      let run = megarac_kvm_observer_observe_held(host: host, password_file: password_file, run_id: run_id, paths: paths)
+      match kvm_probe_seat_hold_gap(rec: run.record) {
+        Absent => unit_hold_release(proof: proof, outcome: run.outcome)
+        Present { value: gap } => exit_failure(reason: kvm_probe_hold_kept_text(gap: gap, outcome: run.outcome))
+      }
+    }
+  }
+}
+
+// THE UNIT HOLD IS FREED ONLY OVER A SEAT OBSERVED LET GO (side-chat review, blocker 4a). The hold is
+// what keeps a boot from starting while the probe may still own the BMC's one KVM viewer seat, so it is
+// released only when every part of that ownership is observed ended, by its typed word:
+//   - the web session reads `released`, or `no-session` (no login was ever accepted, so none exists);
+//   - the browser reads `closed`, or `no-browser` (none was launched);
+//   - the observer process is observed exited (released, already gone, or its pid now names another
+//     process), or was never recorded because the observer never launched.
+// `login-unobserved` (a login may have been accepted), any failed, http- or unrecognised word, an
+// unresolved process or an unreadable journal KEEPS the hold and says why; the BMC's own session
+// timeout frees the seat, and the hold is then cleared by the operator or, once it lands, by
+// observed-dead recovery. Absent is "let go"; Present names the first part not observed ended.
+fn kvm_probe_seat_parts_gap(session: KvmSessionRelease, browser: KvmBrowserClose, process: OwnedRelease, launched: Bool) -> NonEmptyStr? {
+  let session_ended = match session { KvmSessionReleased => true  KvmSessionNoSession => true  KvmSessionReleaseHttp { status: _ } => false  KvmSessionReleaseFailed { detail: _ } => false  KvmSessionLoginUnobserved => false  KvmSessionReleaseUnrecognized { raw: _ } => false }
+  let browser_ended = match browser { KvmBrowserClosed => true  KvmBrowserNotLaunched => true  KvmBrowserCloseFailed { detail: _ } => false  KvmBrowserCloseUnrecognized { raw: _ } => false }
+  let process_ended = match process {
+    OwnedReleased { pid: _ } => true
+    OwnedAlreadyGone { pid: _ } => true
+    OwnedReleaseFailed { pid: _, detail: _ } => false
+    OwnedReleaseUnresolved { pid: _, standing: _ } => false
+    OwnedReleaseNotOwned { standing: s } => match s { OwnedForeign { pid: _, observed_start: _ } => true  OwnedNotRecorded { detail: _ } => !launched  OwnedRunning { pid: _, start_time: _ } => false  OwnedGone { pid: _ } => false  OwnedUnreadable { pid: _, detail: _ } => false  OwnedUnparseable { pid: _, detail: _ } => false }
+  }
+  if !session_ended { Present { value: "the web session was not observed released" as NonEmptyStr } }
+  else if !browser_ended { Present { value: "the browser was not observed closed" as NonEmptyStr } }
+  else if !process_ended { Present { value: concat("the observer process was not observed exited: ", owned_release_text(r: process)) as NonEmptyStr } }
+  else { none }
+}
+
+fn kvm_probe_seat_hold_gap(rec: KvmObserverRecord) -> NonEmptyStr? {
+  match rec.teardown {
+    KvmTeardownNotNeeded { reason: _ } => none
+    KvmTeardownRecorded { terminal: _, snapshot: _, requested_at: _, stopped_seen: _, session_release: sr, browser_close: bc, process: p } =>
+      kvm_probe_seat_parts_gap(session: kvm_session_release_of(result: sr), browser: kvm_browser_close_of(result: bc), process: p, launched: true)
+  }
+}
+
+fn kvm_probe_hold_kept_text(gap: NonEmptyStr, outcome: ProcessExit) -> String {
+  join(["megarac kvm observer: unit hold KEPT, because ", gap as String, "; the probe's own outcome was: ", match outcome { ExitSuccess => "success"  ExitFailure { code: _, reason: r } => r }], "")
+}
+
+// THE SAME RULE FROM THE ARTIFACTS ALONE, for the always() step: the journal's last session-release and
+// browser-close words and the owned release it just performed. A journal that cannot be read keeps the
+// hold; no journal and no pid record means the observer never launched.
+fn kvm_probe_seat_gap_from_journal(journal: KvmJournalRead, process: OwnedRelease) -> NonEmptyStr? {
+  match journal {
+    KvmJournalUnread { cause: c } => Present { value: concat("the observer journal could not be read: ", c) as NonEmptyStr }
+    KvmJournalAbsent => kvm_probe_seat_parts_gap(session: KvmSessionNoSession, browser: KvmBrowserNotLaunched, process: process, launched: false)
+    KvmJournalText { text: _ } => {
+      let events = kvm_journal_events_of(read: journal)
+      kvm_probe_seat_parts_gap(session: kvm_session_release_of(result: kvm_last_result(events: events, session: true)), browser: kvm_browser_close_of(result: kvm_last_result(events: events, session: false)), process: process, launched: true)
+    }
+  }
+}
+
+// THE always() RELEASE (a separate step after the probe's, run whatever the probe step did: success,
+// failure, cancel or its own timeout). First the observer process this run started, by its recorded
+// (pid, start time) -- so the viewer seat and the web session it holds are let go -- then the unit hold
+// on `host`, only if THIS run holds it (gunbc.managed_host_unit_hold kvm_observer_release_unit_hold). A
+// probe that finished cleanly left nothing, and both halves report that as a no-op. It fails loudly only
+// when something this run owns stays held. It contacts no controller, so it takes the host's identity
+// rather than an admitted carrier: a release must still run when the host no longer admits the probe.
+fn megarac_kvm_observer_release(host: HostIdentity, run_id: NonEmptyStr, paths: KvmObserverProbePaths) -> ProcessExit
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_kvm_observer_observe", decl_name: "mtcollins1_kvm_observer_release_wet"),
+  ]
+{
+  let dir = megarac_kvm_observer_dir(paths: paths, attempt: megarac_kvm_observer_probe_attempt(run_id: run_id))
+  let process = owned_process_release(pid_path: concat(dir, "/observer.pid"))
+  match kvm_probe_seat_gap_from_journal(journal: kvm_journal_read_at(dir: dir), process: process) {
+    Present { value: gap } => return exit_failure(reason: join(["megarac kvm observer release: process ", owned_release_text(r: process), "; unit hold KEPT, because ", gap as String], ""))
+    Absent => {}
+  }
+  let hold = kvm_observer_release_unit_hold(host: host, run_id: run_id)
+  let line = join(["megarac kvm observer release: process ", owned_release_text(r: process), "; unit hold ", probe_hold_release_outcome_text(o: hold)], "")
+  probe_hold_release_step_exit(o: hold, context_line: line)
+}

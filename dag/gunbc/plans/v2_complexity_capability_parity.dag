@@ -13,7 +13,7 @@ fn v2_complexity_capability_parity_body() -> List<MarkdownBlock> {
     ] },
 
     h2(text: "1. Scope seam with the sibling note (DESIGN §3 — do not fork)"),
-    p(text: "This note and [`discrete-cost-derivation.md`](discrete-cost-derivation.md) are two halves of one program and must not restate each other. The split is by *question*:"),
+    p(text: "This note and the since-deleted `discrete-cost-derivation` note were authored as two halves of one program that must not restate each other. The split is by *question*:"),
     TableBlock {
       header: row(cells: [
         cell(text: "Question"),
@@ -27,7 +27,7 @@ fn v2_complexity_capability_parity_body() -> List<MarkdownBlock> {
         ]),
         row(cells: [
           cell(text: "What does a derivation *mean and get used for*? (subject binding, valuation at a declared input, honesty states, cost justification, witness admission)"),
-          cell(text: "[`discrete-cost-derivation.md`](discrete-cost-derivation.md)"),
+          cell(text: "`discrete-cost-derivation` (since deleted)"),
         ]),
       ],
     },

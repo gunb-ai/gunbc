@@ -1,0 +1,128 @@
+module test.claim.hosted_failure_witness_test
+
+import std.types { Bool, String }
+import std.process { ExitSuccess, ExitFailure }
+import std.measure { second_count }
+import extdeps.http.header_dump { HeaderDumpRead, HeaderDumpUnread, http_header_dump_status, http_header_dump_retry_after }
+import extdeps.ietf.http_semantics { RetryAfterSeconds, RetryAfterUnparsed, RetryAfterAbsent, RetryAfterUnread }
+import gunbc.harness.hosted_failure {
+  hosted_classify_round, hosted_http_failure_label, hosted_http_failure_wire,
+  HostedRateLimited, HostedServerError, HostedClientError, HostedInStreamError, HostedSeveredStream,
+}
+import gunbc.harness.harness_turn { TurnHostedFailure, harness_outcome_label, harness_outcome_detail }
+import gunbc.harness.harness_cli { harness_turn_exit }
+
+data w_429_headers: String = "HTTP/2 429\r\nretry-after: 30\r\n\r\n"
+
+data w_503_headers: String = "HTTP/1.1 503 Service Unavailable\r\n\r\n"
+
+data w_400_headers: String = "HTTP/2 400\r\n\r\n"
+
+data w_200_headers: String = "HTTP/2 200\r\ncontent-type: application/json\r\n\r\n"
+
+data w_sse_error: String = "data: {\"error\":{\"message\":\"provider overloaded\"}}\n\n"
+
+data w_sse_severed: String = "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n"
+
+data w_sse_done: String = "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\ndata: [DONE]\n"
+
+test fn a_429_with_retry_after_is_rate_limited_and_not_retried() -> Bool {
+  match hosted_classify_round(body: "{\"error\":\"rate\"}", dump: HeaderDumpRead { text: w_429_headers }) {
+    Present { value: HostedRateLimited { status: s, retry_after: r, body_note: _ } } =>
+      s == 429
+        && (match r { RetryAfterSeconds { seconds: n } => second_count(s: n) == 30  RetryAfterUnparsed { text: _ } => false  RetryAfterAbsent => false  RetryAfterUnread { cause: _ } => false })
+        && hosted_http_failure_label(f: HostedRateLimited { status: s, retry_after: r, body_note: "" }).contains("rate-limited")
+        && hosted_http_failure_wire(f: HostedRateLimited { status: s, retry_after: r, body_note: "note" }).contains("NOT retried")
+    Present { value: _ } => false
+    Absent => false
+  }
+}
+
+test fn a_http_date_retry_after_is_carried_unparsed() -> Bool {
+  match hosted_classify_round(body: "x", dump: HeaderDumpRead { text: "HTTP/2 429\r\nretry-after: Wed, 21 Oct 2026 07:28:00 GMT\r\n\r\n" }) {
+    Present { value: HostedRateLimited { status: _, retry_after: r, body_note: _ } } =>
+      match r { RetryAfterUnparsed { text: t } => t.contains("21 Oct 2026")  RetryAfterSeconds { seconds: _ } => false  RetryAfterAbsent => false  RetryAfterUnread { cause: _ } => false }
+    Present { value: _ } => false
+    Absent => false
+  }
+}
+
+test fn a_5xx_is_a_server_error_and_not_retried() -> Bool {
+  match hosted_classify_round(body: "down", dump: HeaderDumpRead { text: w_503_headers }) {
+    Present { value: HostedServerError { status: s, body_note: n } } =>
+      s == 503 && n == "down" && hosted_http_failure_wire(f: HostedServerError { status: s, body_note: n }).contains("NOT retried")
+    Present { value: _ } => false
+    Absent => false
+  }
+}
+
+test fn a_4xx_other_than_429_is_a_client_error() -> Bool {
+  match hosted_classify_round(body: "bad", dump: HeaderDumpRead { text: w_400_headers }) {
+    Present { value: HostedClientError { status: s, body_note: _ } } => s == 400
+    Present { value: _ } => false
+    Absent => false
+  }
+}
+
+test fn a_2xx_json_body_is_not_a_hosted_failure() -> Bool {
+  match hosted_classify_round(body: "{\"ok\":true}", dump: HeaderDumpRead { text: w_200_headers }) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn an_in_stream_error_chunk_is_classified_without_retry() -> Bool {
+  match hosted_classify_round(body: w_sse_error, dump: HeaderDumpRead { text: w_200_headers }) {
+    Present { value: HostedInStreamError { payload: p } } =>
+      p.contains("provider overloaded") && hosted_http_failure_wire(f: HostedInStreamError { payload: p }).contains("NOT retried")
+    Present { value: _ } => false
+    Absent => false
+  }
+}
+
+test fn a_severed_stream_is_classified_without_retry() -> Bool {
+  match hosted_classify_round(body: w_sse_severed, dump: HeaderDumpRead { text: w_200_headers }) {
+    Present { value: HostedSeveredStream { detail: d } } => d.contains("[DONE]")
+    Present { value: _ } => false
+    Absent => false
+  }
+}
+
+test fn a_completed_stream_is_not_a_failure() -> Bool {
+  match hosted_classify_round(body: w_sse_done, dump: HeaderDumpRead { text: w_200_headers }) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn an_unread_dump_without_a_stream_does_not_invent_a_status() -> Bool {
+  match hosted_classify_round(body: "{\"error\":\"x\"}", dump: HeaderDumpUnread { cause: "absent" }) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn last_header_block_is_the_answer() -> Bool {
+  match http_header_dump_status(dump: HeaderDumpRead { text: "HTTP/1.1 100 Continue\r\nretry-after: 99\r\n\r\nHTTP/2 429\r\nretry-after: 7\r\n\r\n" }) {
+    Present { value: s } =>
+      s == 429 && (match http_header_dump_retry_after(dump: HeaderDumpRead { text: "HTTP/1.1 100 Continue\r\nretry-after: 99\r\n\r\nHTTP/2 429\r\nretry-after: 7\r\n\r\n" }) {
+        RetryAfterSeconds { seconds: n } => second_count(s: n) == 7
+        RetryAfterUnparsed { text: _ } => false
+        RetryAfterAbsent => false
+        RetryAfterUnread { cause: _ } => false
+      })
+    Absent => false
+  }
+}
+
+test fn a_hosted_failure_ends_the_turn_as_a_refusal_naming_no_retry() -> Bool {
+  match hosted_classify_round(body: "x", dump: HeaderDumpRead { text: w_503_headers }) {
+    Absent => false
+    Present { value: f } => {
+      let o = TurnHostedFailure { failure: f, steps_taken: 2 }
+      harness_outcome_label(outcome: o) == "hosted-server-error"
+        && harness_outcome_detail(outcome: o).contains("rather than retrying")
+        && (match harness_turn_exit(outcome: o) { ExitSuccess => false  ExitFailure { code, reason: _ } => code == 1 })
+    }
+  }
+}

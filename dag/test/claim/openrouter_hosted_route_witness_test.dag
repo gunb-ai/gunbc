@@ -13,9 +13,11 @@ import extdeps.openrouter.openrouter {
   openrouter_credits_from_daily_limit, CreditsTierObserved, CreditsTierUnrecognized,
   CreditsPurchasedAtLeastTen, CreditsPurchasedBelowTen, openrouter_free_models_per_day, openrouter_free_models_per_minute,
   EffortHigh, EffortMedium,
-  openrouter_decode_rate_limited, OpenRouterRateLimitRefusal, RetryAfterSeconds, RetryAfterUnparsed, RetryAfterAbsent, RetryAfterUnread,
-  openrouter_rate_limit_wire, openrouter_rate_limit_hints, HeaderDumpRead, HeaderDumpUnread,
+  openrouter_decode_rate_limited, OpenRouterRateLimitRefusal,
+  openrouter_rate_limit_wire, openrouter_rate_limit_hints,
 }
+import extdeps.ietf.http_semantics { RetryAfterSeconds, RetryAfterUnparsed, RetryAfterAbsent, RetryAfterUnread, HttpRetryAfter }
+import extdeps.http.header_dump { HeaderDumpRead, HeaderDumpUnread }
 import gunbc.harness.harness_reasoning_wire {
   NemotronUltraFreeOnOpenRouter, ReasoningOff, ReasoningStandard, ReasoningMaximum,
   harness_openrouter_reasoning_kwargs, harness_reasoning_kwargs_for, ReasoningKwargsAdmitted, ReasoningLevelUnsupported,
@@ -47,7 +49,8 @@ import gunbc.fabric_quota { QuotaLease, QuotaLeased, QuotaFull, QuotaLeaseRefuse
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
 import product.capacity.event_chain { PartitionId }
 import gunbc.fabric_storage_client { FabricStorageServed }
-import gunbc.harness.harness_turn { TurnHostedQuotaFull, TurnHostedRateLimited, harness_outcome_label, harness_outcome_detail }
+import gunbc.harness.harness_turn { TurnHostedQuotaFull, TurnHostedFailure, harness_outcome_label, harness_outcome_detail }
+import gunbc.harness.hosted_failure { HostedRateLimited }
 import gunbc.harness.harness_cli { harness_turn_exit, harness_default_max_token_count, harness_request_deadline }
 import std.process { ExitSuccess, ExitFailure }
 import std.measure { token_count }
@@ -582,14 +585,14 @@ test fn an_unread_header_dump_is_stated_unknown_not_reported_as_no_retry_after()
 
 // RED: delay-seconds is 1*DIGIT, and the integer parser would accept a sign, so a signed, fractional or
 // unit-suffixed value is carried as text and never read as a number of seconds.
-fn w_retry_after_of(value: String) -> OpenRouterRetryAfter? {
+fn w_retry_after_of(value: String) -> HttpRetryAfter? {
   match openrouter_decode_rate_limited(body: w_429_body, header_dump: HeaderDumpRead { text: join(["HTTP/2 429\r\nretry-after: ", value, "\r\n\r\n"], "") }) {
     Present { value: r } => Present { value: r.hints.retry_after }
     Absent => none
   }
 }
 
-fn w_is_unparsed(r: OpenRouterRetryAfter?) -> Bool {
+fn w_is_unparsed(r: HttpRetryAfter?) -> Bool {
   match r {
     Present { value: RetryAfterUnparsed { text: _ } } => true
     Present { value: RetryAfterSeconds { seconds: _ } } => false
@@ -624,7 +627,10 @@ test fn a_hosted_rate_limit_ends_the_turn_as_a_refusal_naming_the_hint_and_no_re
   match openrouter_decode_rate_limited(body: w_429_body, header_dump: HeaderDumpRead { text: w_429_headers }) {
     Absent => false
     Present { value: r } => {
-      let o = TurnHostedRateLimited { refusal: r, steps_taken: 3 }
+      let o = TurnHostedFailure {
+        failure: HostedRateLimited { status: 429, retry_after: r.hints.retry_after, body_note: openrouter_rate_limit_wire(r: r) },
+        steps_taken: 3,
+      }
       harness_outcome_label(outcome: o) == "hosted-rate-limited"
         && harness_outcome_detail(outcome: o).contains("Retry-After 30 s")
         && harness_outcome_detail(outcome: o).contains("rather than retrying")

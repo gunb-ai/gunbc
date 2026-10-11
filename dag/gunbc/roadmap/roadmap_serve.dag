@@ -211,7 +211,7 @@ import gunbc.roadmap_dashboard_instance {
 }
 import extdeps.ietf.http_semantics { HttpMethod, GET, POST }
 
-// The gunbc-served dashboard instantiation (docs/plans/gunbc-served-dashboard-design.md; belt B,
+// The gunbc-served dashboard instantiation (belt B,
 // parent-approved 2026-07-20). H = RoadmapServeHandler: every row is a DynamicRoute whose handler
 // calls the SAME authority the static-site artifacts call (roadmap_page, roadmap_static_site) — the
 // artifact table and this serve table are two projections of one authority set, never two copies of

@@ -1,7 +1,7 @@
 module std.algebra
 import std.optional { Absent, Present }
 
-import std.error_primitives { DivError, Result }
+import std.error_primitives { DivError, Result, pure_dag_seam_unreachable_string }
 
 type Magma<T> {
   op: fn(T, T) -> T
@@ -243,7 +243,7 @@ type FinitelySupportedFunction<K, V> {
 
 // THE MAP-LITERAL INTRODUCTION: the declaration a map literal `{ "k": v, .. }` elaborates to, as
 // `FreeMonoid` is the one a list literal elaborates to (v2.std.map_introduction carries its head
-// path and constructor; docs/plans/map-literal-introduction-design.md). It is NOT a second
+// path and constructor). It is NOT a second
 // constructor of the carrier: it is the carrier's own insert (the `map_insert` row of
 // `finitely_supported_function_templates`) folded over its own empty (the `empty_map` row), in
 // authored order. It lives HERE, below `std.types`, because `std.types`' own map literals elaborate
@@ -906,6 +906,10 @@ fn kernel_carrier_admits_numeral(name: String) -> Bool {
         spelling.text == name && carrier_spelling_row_present(m: spelling.method_surface))))
 }
 
+// Whether distinct keys of a finite map are decidably distinct: consumed by the map-literal
+// duplicate-key check. The admission is
+// instantiation-blind at this rung -- an opaque brand or a type parameter admits unjudged -- and its
+// next-rung trigger is instantiation-grain admission (v1 infer equality_admission_wall_note).
 fn algebra_profile_equality_extensional(profile: AlgebraProfile) -> Bool {
   match algebra_profile_support(profile: profile) {
     FiniteSupport => true
@@ -1182,8 +1186,10 @@ fn all_algebra_template_names() -> List<String> {
 // already in the compilation pool (#6985 Class B pool coincidence closed on trim by #8062).
 
 // The seam diverges before producing anything; `s` is read in the condition so the declared
-// input reaches the result (wiring-liveness), mirroring the bytes.dag float-seam pattern --
-// both arms are the same unreached literal, there to give the expression its type.
+// input reaches the result (wiring-liveness). Both arms are std.error_primitives
+// pure_dag_seam_unreachable_string, the named seam refusal, so whichever arm the condition selects
+// diverges by name rather than as an unnamed division by zero; the body is never reached because
+// resolution routes trim to free_call.trim.
 fn trim(s: String) -> String {
-  if s == s { from_code_point(1 / 0) } else { from_code_point(1 / 0) }
+  if s == s { pure_dag_seam_unreachable_string() } else { pure_dag_seam_unreachable_string() }
 }

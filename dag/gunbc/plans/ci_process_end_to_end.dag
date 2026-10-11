@@ -72,7 +72,7 @@ fn ci_process_end_to_end_body() -> List<MarkdownBlock> {
     p(text: "So: execution and emission **work**; scheduling and caching **work in one slice each and are inert/forked otherwise**; secrets are unmodeled. CI is the workload that makes finishing each of these *pay*."),
     hr(),
     h2(text: "5. Why it runs poorly — one root, several faces"),
-    p(text: "**Root: the model is on fabric, but the decisions that govern utilization — which host a run lands on, runners-per-host, per-runner caps — are NOT derived from it. They're demand-blind hand/host knobs.** The symptom is a fleet with **no operating point** — two 128-core hosts either oversubscribed/crashing or at ~1%, never the middle ([compute-envelope-model.md](compute-envelope-model.md) §1). Headline: a 128-core box runs CI at **width ~4 [confirm]** while the other host idles."),
+    p(text: "**Root: the model is on fabric, but the decisions that govern utilization — which host a run lands on, runners-per-host, per-runner caps — are NOT derived from it. They're demand-blind hand/host knobs.** The symptom is a fleet with **no operating point** — two 128-core hosts either oversubscribed/crashing or at ~1%, never the middle. Headline: a 128-core box runs CI at **width ~4 [confirm]** while the other host idles."),
     TableBlock {
       header: row(cells: [cell(text: "Face"), cell(text: "Mechanism"), cell(text: "Link")]),
       alignments: [AlignNone, AlignNone, AlignNone],
@@ -115,7 +115,7 @@ fn ci_process_end_to_end_body() -> List<MarkdownBlock> {
     h2(text: "7. Why batch 2 is slow — the coherent, whole-pipeline reading"),
     p(text: "Not \"the rust gate is inherently 43 min.\" It's the same mechanism §1 keeps hitting: **on a 128-core box, every heavy phase runs at single-digit parallelism or recomputes cold — because nothing derives the safe parallelism from the host.** Seen across the whole pipeline:"),
     ul(items: [
-      li(text: "**The rust tentpole compiles at parallelism ~1.** `CARGO_BUILD_JOBS=1` is force-set whenever sccache is active — a **panic-clamp** to dodge the `sccache × codegen-units` pids-cap EAGAIN crash ([compute-envelope-model.md](compute-envelope-model.md) §1). To avoid the *crash* extreme the box is pinned to the *idle* extreme: it compiles the test crate single-threaded on 128 cores. That clamp **is** the crash-or-idle swing, landed on the rust gate."),
+      li(text: "**The rust tentpole compiles at parallelism ~1.** `CARGO_BUILD_JOBS=1` is force-set whenever sccache is active — a **panic-clamp** to dodge the `sccache × codegen-units` pids-cap EAGAIN crash. To avoid the *crash* extreme the box is pinned to the *idle* extreme: it compiles the test crate single-threaded on 128 cores. That clamp **is** the crash-or-idle swing, landed on the rust gate."),
       li(text: "**It is also a single un-sharded node.** The width-8 scheduler shards the `.dag` corpus (1750s CPU → 6m wall) but treats `cargo test -p v1-compiler-tests` as **one opaque node** — no nextest partition, no per-test-group shard — so its cost is *serial wall*, not divided. The scheduler's parallelism never reaches inside it."),
       li(text: "**The `.dag` corpus is fast only because it's sharded — it still pays cold.** 1750s CPU for 660 witnesses is itself high: resolve runs **cold every run** (dormant resolve cache) and eval is **un-memoized**. Width 8 hides it as 6m wall; it is not cheap."),
       li(text: "**Batch 3 is serial** — two width-1 sub-shells of heavy `gunbc run`s for ~4.5m."),
@@ -132,12 +132,12 @@ fn ci_process_end_to_end_body() -> List<MarkdownBlock> {
     h2(text: "8. What to do now — leverage-ranked, none a tweak"),
     p(text: "Ordering principle: **finishes/enables that make utilization fall out of the model come before any new scheduler.** Sharding/tiering knobs are excluded — they lower a number once and don't compound (§6)."),
     ol(items: [
-      li(text: "**G2/G3 — derive runner *deployment* (count + caps) from `operator_fleet` + `ResourceEnvelope`, generate + drift-gate it** (the `ci.yml` pattern, for the host). Makes *\"N runners × peak < host RAM\"* a computed fact, gives the envelope its first real consumer, and converts \"I SSH in and run shell\" into \"regenerate + a gate reds on drift.\" The cheapest substrate-migration win; not a scheduler. → [compute-envelope-model.md](compute-envelope-model.md)"),
-      li(text: "**Enable the resolve cache in CI** — cuts cold resolve *and* lowers per-shard peak → width rises → the host fills. Cheap, orthogonal, purity proven. → [realization-measurement-loop.md](realization-measurement-loop.md)"),
+      li(text: "**G2/G3 — derive runner *deployment* (count + caps) from `operator_fleet` + `ResourceEnvelope`, generate + drift-gate it** (the `ci.yml` pattern, for the host). Makes *\"N runners × peak < host RAM\"* a computed fact, gives the envelope its first real consumer, and converts \"I SSH in and run shell\" into \"regenerate + a gate reds on drift.\" The cheapest substrate-migration win; not a scheduler."),
+      li(text: "**Enable the resolve cache in CI** — cuts cold resolve *and* lowers per-shard peak → width rises → the host fills. Cheap, orthogonal, purity proven."),
       li(text: "**G1 — emit a cross-host `matrix` from the fleet model** (shard across srv1+srv2). The placement predicate's real consumer. **The one step needing a decision** — build CI placement now vs fence the dead predicate."),
       li(text: "**G5 — edge-(b) rust affected-set.** → [ci-selection-vs-scheduling.md](ci-selection-vs-scheduling.md)"),
       li(text: "**G4 — collapse the `workflow_dispatch` dup** (key model + stop redundant dispatch). → [ci-merge-freshness.md](ci-merge-freshness.md)"),
-      li(text: "**Reclassify contention OOMs before green-on-main can gate** — a cross-run clustering consumer that promotes a clustered `exit-137` back to `Infra` (two OOM-kill handlers as one fact + a clustering discriminator, fail-closed). Prerequisite (a) of the merge-freshness LIVE flip; model-only design today. → [ci-oom-reclassification.md](ci-oom-reclassification.md)"),
+      li(text: "**Reclassify contention OOMs before green-on-main can gate** — a cross-run clustering consumer that promotes a clustered `exit-137` back to `Infra` (two OOM-kill handlers as one fact + a clustering discriminator, fail-closed). Prerequisite (a) of the merge-freshness LIVE flip; model-only design today."),
     ]),
     p(text: "Steps 1–2 use idle capacity and cut time with no new scheduler. Step 3 removes the contention; the matrix shards the rest. The 50 min is a *symptom of placement*."),
     hr(),

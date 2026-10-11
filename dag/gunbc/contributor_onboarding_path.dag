@@ -750,6 +750,40 @@ fn onboarding_bus_factor_blocks() -> List<MarkdownBlock> {
   ]
 }
 
+// OPERATOR FACTS DESIGN.md USED TO CARRY. They change with tooling rather than with the design, so
+// they live with the walked path that exercises them; DESIGN.md's Building & checks keeps only the
+// CI contract and links here.
+type OnboardingReference {
+  topic: NonEmptyStr
+  fact: NonEmptyStr
+}
+
+data onboarding_reference: List<OnboardingReference> = [
+  OnboardingReference {
+    topic: "Two CLIs" as NonEmptyStr,
+    fact: "`gunbc` is the seed's CLI (`std.compiler_entry` `RetainedHostCliKernel`, host Rust in `v1_compiler.cli_run`), unreachable from a self-emitted binary. The v2 door is `v2.cli.compile_cli` (`std.compiler_entry` `NativeCliDriver`): `.dag` decides parsing, refusals, output and exit, and its rendered main only performs the host reads and writes (`gunbc.source_root_read`)." as NonEmptyStr,
+  },
+  OnboardingReference {
+    topic: "Local checks" as NonEmptyStr,
+    fact: "`cargo fmt --all --check` runs in the generated pre-commit hook (`gunbc.githooks_pre_commit_emit`). `cargo clippy --all-targets -- -D warnings` (`gunbc.repo_self_build` `repo_self_clippy_command`, the only command compiling the integration-test and example targets) and `cargo test --release -p v1-compiler --lib` (`repo_self_test_command`) are local only and block nothing." as NonEmptyStr,
+  },
+  OnboardingReference {
+    topic: "Hooks" as NonEmptyStr,
+    fact: "`git config core.hooksPath .githooks`; the generated hooks converge the rest from `gunbc.repo_local_git_config`, including a merge driver that refuses a both-sides change to a generated path and prints the regeneration recipe." as NonEmptyStr,
+  },
+  OnboardingReference {
+    topic: "Regenerating projections" as NonEmptyStr,
+    fact: "`tools.generated_artifact_gate` `main_wet` rewrites the committed generated artifacts from their authorities, `main` verifies them; `tools.docs_projection_gate` `regen` renders the on-demand ledger views." as NonEmptyStr,
+  },
+]
+
+fn onboarding_reference_blocks() -> List<MarkdownBlock> {
+  [
+    h2(text: "Reference: CLIs, local checks and regeneration"),
+    ul(items: map(onboarding_reference, r => li(text: join(["**", (r.topic as String), ".** ", (r.fact as String)], "")))),
+  ]
+}
+
 fn onboarding_reading_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "Reading DESIGN.md in an order"),
@@ -778,6 +812,7 @@ fn onboarding_document() -> MarkdownDocument {
         onboarding_step_blocks(),
         onboarding_obstacle_blocks(),
         onboarding_bus_factor_blocks(),
+        onboarding_reference_blocks(),
         onboarding_checks_blocks(),
         onboarding_reading_blocks(),
       ],
