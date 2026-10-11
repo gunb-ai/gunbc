@@ -8771,8 +8771,9 @@ fn infer_caller_admission_diags(tree: ResolvedTree, entries: List<InferredFactsE
 // sole_constructor type whose constructing MODULE is not the declaring module.
 // Forms: record literal, `as` cast, variant construction of a sealed coproduct, and
 // parameter-default expressions (BinderDefaultEdge is walked with the rest of the tree).
-// Unreadable modifier provenance or ownership refuses (fail-closed). A channel that was
-// never captured (hand-built ResolvedTree) seals nothing.
+// Unreadable modifier provenance or ownership refuses (fail-closed). The channel is always
+// Captured: a declaring module outside `covered` is unreadable, not open. A hand-built tree
+// must name the modules it claims; `covered` Empty claims none.
 fn infer_sole_constructor_diags(tree: ResolvedTree) -> Diagnostics {
   fold_node_topdown(
     n: tree.root,
