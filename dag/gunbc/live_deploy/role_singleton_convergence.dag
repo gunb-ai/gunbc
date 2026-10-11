@@ -293,6 +293,12 @@ fn role_singleton_observation_of(readings: List<HostRoleSingletonReading>, rows:
     let here = distinct_ids(ids: sightings |> filter(s => (sighting_host(s: s) as String) == (h as String)) |> flat_map(s => match sighting_deployment(s: s) { Present { value: d } => [d]  Absent => [] }))
     if count(here) > 1 { [RoleSingletonTwoOnOneHost { host: h, deployments: here }] } else { [] }
   })
+  // THE HOST-LEVEL BROKER (gunbc_approval_broker_unit_path) is SightedBroker: it carries no
+  // DeploymentId. Attribution is derived, never guessed. The broker joins the ObservedRealization of
+  // the unique store deployment on the same host. Two store deployments on one host refuse as
+  // RoleSingletonTwoOnOneHost before realizations form. A broker with no store refuses as
+  // RoleSingletonBrokerWithoutStore. A co-hosted non-holder therefore sees the holder's broker
+  // attributed to the holder, never to itself.
   let brokers = broker_hosts(readings: readings)
   let broker_alone = brokers |> flat_map(h => if any(store_hosts, s => (s as String) == (h as String)) { [] } else { [RoleSingletonBrokerWithoutStore { host: h }] })
   let first_refusal = concat(concat(concat(concat(unobservable, mismatched), two_hosts), concat(misplaced, two_on_one)), concat(if count(ids) > 1 { [RoleSingletonHoldersAmbiguous { observed: ids }] } else { [] }, broker_alone)) |> first
@@ -1079,11 +1085,23 @@ fn first_unobservable_refusal(readings: List<HostRoleSingletonReading>) -> RoleS
   }
 }
 
+fn spec_deployment_on_roster(spec: DeploymentSpec, rows: List<DesiredDeployment>) -> DeploymentId? {
+  match rows |> filter(r => instance_id_text(id: r.instance.instance_id) == instance_id_text(id: spec.instance_id)) |> first {
+    Present { value: r } => Present { value: r.instance.deployment }
+    Absent => none
+  }
+}
+
+// A2: the global gate covers singleton PLACEMENT changes only (Install, Move, Remove).
+// HoldsNoRoleSingleton emits no broker/fabric step and must never retract another deployment's
+// units. A placement change exists only when an observed realization belongs to THIS spec's
+// deployment — leftover units of its own (review 78627), not a co-hosted holder's. An unrostered
+// spec cannot attribute a realization and is treated as a placement change (fail-closed).
 fn local_placement_change(spec: DeploymentSpec, realizations: List<ObservedRealization>, desired: ProdRoleRealization) -> Bool {
   match spec.role_singletons {
-    HoldsNoRoleSingleton => match realizations |> first {
-      Absent => false
-      Present { value: _ } => true
+    HoldsNoRoleSingleton => match spec_deployment_on_roster(spec: spec, rows: desired_deployment_roster()) {
+      Absent => true
+      Present { value: d } => any(realizations, r => r.deployment == d)
     }
     HoldsProdRoleSingletons { holder } => match desired {
       ProdRoleRealizationRefused { cause: _ } => true
