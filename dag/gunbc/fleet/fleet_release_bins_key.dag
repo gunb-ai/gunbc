@@ -1,7 +1,6 @@
 module gunbc.fleet_release_bins_key
 
 import std.types { String, List, Bool, Int, list_length }
-import std.measure { Second, second, second_count, seconds_per_day }
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected, NonEmptyDiagnostics, outcome_accepted, diagnostics_reason_lexemes }
 import v2.workflow.bash_emit { bash_emit_stmts }
@@ -201,9 +200,9 @@ fn fleet_release_bins_product() -> ReleaseBinsProduct {
 // THE COMPILER PAIR: the two binaries the required floor builds anyway (gunbc.ci_release_bins
 // ci_floor_invoked_bins, which gunbc.witness_floor_workflow witness_floor_required_bins is), with the
 // floor's own build line -- the same roster row and the same build function the floor's build step
-// consumes, so the key names the build the floor ran. It is the product the merge queue used to
-// produce as a candidate that the withdrawn fleet-desired admission published and hw boot consumed
-// -- none of which needs the other fourteen binaries. That admission consumer is gone.
+// consumes, so the key names the build the floor ran. Fleet-converge hw boot builds this pair
+// in-job (`compiler_pair_release_product`); the Actions-artifact hand-off that fleet-desired
+// admission used to download is deleted with that consumer.
 // claim_executor's own spelling of the sidecar beside it: <stem>_checker_inputs
 // (v1_compiler cli_run checker_dependency restored_checker_inputs_path).
 data compiler_pair_checker_inputs_sidecar: String = "claim_executor_checker_inputs"
@@ -1230,7 +1229,7 @@ fn release_bins_consumer_statements(product: ReleaseBinsProduct) -> List<Node> {
 // A CONSUMER ASKS FOR "THE CANONICAL PRODUCT OF THIS TREE", NOT "WHAT I WOULD BUILD HERE". The request
 // key above names one build exactly -- toolchain, linker, libc and the keyed build environment are all
 // preimage lines -- so a consumer on another runner, in another workflow, computes a different key
-// for the same tree and would never hit. What hw boot and fleet-desired need is the product the
+// for the same tree and would never hit. What hw boot needs is the product the
 // canonical producer made for the tree they hold, verified before it runs. So the fabric cache
 // ADDRESSES a product by (kind, source closure) only: derivable by any job from its own checkout
 // before gunbc exists (std.materialization_provider's invariant: derived, never passed in). The full
@@ -1262,27 +1261,6 @@ fn release_bins_canonical_address_statements(product: ReleaseBinsProduct) -> Lis
 // THE PACK IS ONE OBJECT: its three entry files wrapped in one uncompressed tar, so a reader never
 // sees a manifest without its archive (std.fabric_blob: one address, one whole publication).
 data release_bins_pack_object_name: String = "pack.tar"
-
-// THE CANDIDATE HAND-OFF SPELLING: the merge-queue floor uploaded the compiler pair's pack object
-// under this artifact name, and the withdrawn fleet-desired admission downloaded it by the same
-// row. One spelling for both ends; the download end is gone.
-data compiler_pair_candidate_artifact_name: String = "compiler-pair-candidate"
-
-// THE CANDIDATE'S RETENTION IS A DURATION (std.measure Second), not a day count: the withdrawn
-// admission ran on the landing it followed, so one day covered it. GitHub's upload-artifact takes whole days, so the
-// emitter converts at that boundary (compiler_pair_candidate_retention_whole_days); the duration is
-// authored as whole days and test.claim.long.fleet_release_bins_key_witness holds that it stays one.
-fn compiler_pair_candidate_retention() -> Second {
-  second(count: 1 * seconds_per_day())
-}
-
-fn compiler_pair_candidate_retention_whole_days() -> Int {
-  (second_count(s: compiler_pair_candidate_retention()) / seconds_per_day()) as Int
-}
-
-fn compiler_pair_candidate_retention_is_whole_days() -> Bool {
-  second_count(s: compiler_pair_candidate_retention()) % seconds_per_day() == 0
-}
 
 fn release_bins_pack_object_path_expression() -> String {
   join(["${{ runner.temp }}/", release_bins_pack_object_name], "")
