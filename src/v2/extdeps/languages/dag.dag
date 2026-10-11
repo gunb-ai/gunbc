@@ -5396,8 +5396,8 @@ fn dag_string_literal_encoded(value: String) -> String {
 }
 
 type DagStringTextFrame {
-  open: Int
-  close: Int
+  open: Char
+  close: Char
 }
 
 fn dag_string_text_frame_optional(token_class: Symbol) -> Optional<DagStringTextFrame> {
@@ -5422,10 +5422,10 @@ fn dag_string_template_part_class(token_class: Symbol) -> Bool {
 
 fn dag_string_text_encoded(frame: DagStringTextFrame, value: String) -> String {
   concat(
-    from_code_point(cp: frame.open),
+    char_text(c: frame.open),
     concat(
       fold(unicode_scalar_unfold(s: value), init: "", f: fn(acc, c) { concat(acc, dag_string_encode_scalar(c: c)) }),
-      from_code_point(cp: frame.close)
+      char_text(c: frame.close)
     )
   )
 }
