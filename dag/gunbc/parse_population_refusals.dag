@@ -15,94 +15,6 @@ type RefusalClass {
   keys: List<String>
 }
 
-// Operations declaring `requires <TypeList>` together with transport, exit or mock_response members: v2's grammar stops at the first
-// member after the requires list (gunbc.rung_drop population_parse_service_requires_transport_members).
-fn requires_transport_members_keys() -> List<String> {
-  [
-    "dag:extdeps/bmc/http.dag",
-    "dag:extdeps/bmc/ipmi.dag",
-    "dag:extdeps/bmc/megarac.dag",
-    "dag:extdeps/bmc/openbmc_password_ssh_transport.dag",
-    "dag:extdeps/browser.dag",
-    "dag:extdeps/cloud/gcp/gcp.dag",
-    "dag:extdeps/cloud/gcp/iam.dag",
-    "dag:extdeps/cloud/gcp/iam_admin.dag",
-    "dag:extdeps/cloud/gcp/iam_deny.dag",
-    "dag:extdeps/cloud/gcp/secret_manager.dag",
-    "dag:extdeps/cloud/gcp/serviceusage.dag",
-    "dag:extdeps/cloud/gcp/sts.dag",
-    "dag:extdeps/cloud/hetzner_cloud_api.dag",
-    "dag:extdeps/cloudflare/account_api_tokens.dag",
-    "dag:extdeps/cloudflare/r2_buckets.dag",
-    "dag:extdeps/cloudflare/r2_lifecycle.dag",
-    "dag:extdeps/ebay/browse.dag",
-    "dag:extdeps/ebay/inventory.dag",
-    "dag:extdeps/ebay/oauth.dag",
-    "dag:extdeps/git.dag",
-    "dag:extdeps/github/actions_artifacts.dag",
-    "dag:extdeps/github/actions_jit_runner.dag",
-    "dag:extdeps/github/actions_runs.dag",
-    "dag:extdeps/github/actions_self_hosted_runners.dag",
-    "dag:extdeps/github/app.dag",
-    "dag:extdeps/github/checks.dag",
-    "dag:extdeps/github/ci_runner.dag",
-    "dag:extdeps/github/code_search.dag",
-    "dag:extdeps/github/commits.dag",
-    "dag:extdeps/github/gists.dag",
-    "dag:extdeps/github/git_database.dag",
-    "dag:extdeps/github/issues.dag",
-    "dag:extdeps/github/org_actions.dag",
-    "dag:extdeps/github/organizations.dag",
-    "dag:extdeps/github/pulls.dag",
-    "dag:extdeps/github/repository_contents.dag",
-    "dag:extdeps/github/rulesets.dag",
-    "dag:extdeps/github/users.dag",
-    "dag:extdeps/github/workflow_runs.dag",
-    "dag:extdeps/github/workflows.dag",
-    "dag:extdeps/google/drive.dag",
-    "dag:extdeps/google/sheets.dag",
-    "dag:extdeps/google/userinfo.dag",
-    "dag:extdeps/http/client.dag",
-    "dag:extdeps/iputils/arping.dag",
-    "dag:extdeps/llm/anthropic_rest.dag",
-    "dag:extdeps/llm/cli.dag",
-    "dag:extdeps/llm/openai_rest.dag",
-    "dag:extdeps/package_managers/apt.dag",
-    "dag:extdeps/sec/edgar_rest.dag",
-    "dag:extdeps/shell.dag",
-    "dag:extdeps/ssh/password_session.dag",
-    "dag:extdeps/ssh/session.dag",
-    "dag:extdeps/systemd/systemctl.dag",
-    "dag:extdeps/tailscale/acl_api.dag",
-    "dag:extdeps/tcgplayer/catalog.dag",
-    "dag:extdeps/tcgplayer/pricing.dag",
-    "dag:extdeps/tcgplayer/store.dag",
-    "dag:extdeps/tcgplayer/tcgplayer.dag",
-    "dag:extdeps/test/http_pilot.dag",
-    "dag:extdeps/tools/curl.dag",
-    "dag:extdeps/tools/hostname.dag",
-    "dag:extdeps/tools/npm.dag",
-    "dag:gunbc/auth/approval_ntfy_publish.dag",
-    "dag:gunbc/instruments/native_serve_fixture.dag"
-  ]
-}
-
-// Lambda parameters spelled `module` or `alias` (gunbc.rung_drop population_parse_keyword_lambda_binder).
-fn keyword_lambda_binder_keys() -> List<String> {
-  [
-    "v2:std/compilers/compilation_unit.dag"
-  ]
-}
-
-// The same construct inside a `test fn`, where the verb reports the marker cause (gunbc.rung_drop population_parse_keyword_lambda_binder).
-fn keyword_lambda_binder_in_test_keys() -> List<String> {
-  [
-    "dag:test/claim/algebra_carrier_roster_witness.dag",
-    "v2:test/claim/regen_convergence_transaction_witness.dag",
-    "v2:test/claim/stage0_partition_rebuild_scope_witness.dag"
-  ]
-}
-
 // Match-arm guards (gunbc.rung_drop population_parse_match_arm_guard).
 fn match_arm_guard_keys() -> List<String> {
   [
@@ -175,13 +87,6 @@ fn for_loop_keys() -> List<String> {
   ]
 }
 
-// A dotted name in an import list (gunbc.rung_drop population_parse_dotted_import_name).
-fn dotted_import_name_keys() -> List<String> {
-  [
-    "dag:gunbc/superseded_run_starvation_census.dag"
-  ]
-}
-
 // Module paths with a keyword segment, and their importers (gunbc.rung_drop population_parse_keyword_path_segment).
 fn keyword_path_segment_keys() -> List<String> {
   [
@@ -198,32 +103,8 @@ fn keyword_path_segment_keys() -> List<String> {
   ]
 }
 
-// Binders spelled `then` (gunbc.rung_drop population_parse_keyword_value_name).
-fn keyword_value_name_keys() -> List<String> {
-  [
-    "dag:gunbc/roadmap/roadmap_belt_tick_cli.dag",
-    "dag:gunbc/site/client_bindings.dag",
-    "dag:std/checkpointed_workspace.dag"
-  ]
-}
-
 fn parse_population_declared_refusal_classes() -> List<RefusalClass> {
   [
-    RefusalClass {
-      drop: "population_parse_service_requires_transport_members",
-      cause: "parse_g0_tokens_remain",
-      keys: requires_transport_members_keys()
-    },
-    RefusalClass {
-      drop: "population_parse_keyword_lambda_binder",
-      cause: "parse_g0_tokens_remain",
-      keys: keyword_lambda_binder_keys()
-    },
-    RefusalClass {
-      drop: "population_parse_keyword_lambda_binder",
-      cause: "parse_declaration_marker_not_test",
-      keys: keyword_lambda_binder_in_test_keys()
-    },
     RefusalClass {
       drop: "population_parse_match_arm_guard",
       cause: "parse_g0_tokens_remain",
@@ -270,19 +151,9 @@ fn parse_population_declared_refusal_classes() -> List<RefusalClass> {
       keys: for_loop_keys()
     },
     RefusalClass {
-      drop: "population_parse_dotted_import_name",
-      cause: "parse_g0_tokens_remain",
-      keys: dotted_import_name_keys()
-    },
-    RefusalClass {
       drop: "population_parse_keyword_path_segment",
       cause: "parse_keyword_as_path_segment",
       keys: keyword_path_segment_keys()
-    },
-    RefusalClass {
-      drop: "population_parse_keyword_value_name",
-      cause: "parse_keyword_as_value_name",
-      keys: keyword_value_name_keys()
     }
   ]
 }
