@@ -4412,8 +4412,8 @@ fn rust_type_expression_projection() -> TargetTypeExpressionProjection {
       param_type_separator: ^rust_token_colon,
       param_list_separator: ^rust_token_comma
     },
-    cardinality_form: TargetGenericApply {
-      surface: ^rust_surface_type_cardinality,
+    occupancy_form: TargetGenericApply {
+      surface: ^rust_surface_type_occupancy,
       open: ^rust_token_lt,
       separator: ^rust_token_comma,
       field_label_separator: optional_absent(),

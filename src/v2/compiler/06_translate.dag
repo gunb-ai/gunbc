@@ -115,7 +115,7 @@ import v2.std.compilers.target_model {
   TargetTypeExprVariantSlot,
   TargetTypeExprAtom,
   TargetTypeExprInstantiation,
-  TargetTypeExprCardinality,
+  TargetTypeExprOccupancy,
   TargetTypeExprRecord,
   TargetTypeExprSum,
   TargetTypeExprArrow,
@@ -135,7 +135,7 @@ import v2.std.compilers.target_model {
   target_type_expr_arrow_emitted,
   target_type_expr_atom_emitted,
   target_type_expr_declaration_reference_emitted,
-  target_type_expr_cardinality_emitted,
+  target_type_expr_occupancy_emitted,
   target_type_expr_emitted_wire_decode,
   target_type_expr_instantiation_emitted,
   target_type_expr_record_emitted,
@@ -1130,8 +1130,8 @@ fn translate_algebra_finalize(
                 o: list_head_and_tail(xs: projected, node: anchor),
                 f: fn(split) {
                   outcome_accepted(
-                    target_type_expr_cardinality_emitted(
-                      form: projection.cardinality_form,
+                    target_type_expr_occupancy_emitted(
+                      form: projection.occupancy_form,
                       head: split.head,
                       args: split.tail
                     )
@@ -1682,7 +1682,7 @@ fn translate_apply_use_site_ownership_to_projected_boundary(
             projection: projection,
             use_site: use_site
           )
-        TargetTypeExprCardinality => outcome_accepted(projected)
+        TargetTypeExprOccupancy => outcome_accepted(projected)
         TargetTypeExprRecord => outcome_accepted(projected)
         TargetTypeExprSum => outcome_accepted(projected)
         TargetTypeExprArrow => outcome_accepted(projected)

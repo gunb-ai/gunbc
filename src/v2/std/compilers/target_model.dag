@@ -4311,12 +4311,12 @@ fn decode_type_expression_projection_bundle(
                                       bind_outcome(
                                         o: projection_bundle_child(
                                           bundle: bundle,
-                                          name: ^target_type_expr_field_cardinality
+                                          name: ^target_type_expr_field_occupancy
                                         ),
-                                        f: fn(card_bundle) {
+                                        f: fn(occupancy_bundle) {
                                           bind_outcome(
-                                            o: decode_generic_apply_shape_bundle(bundle: card_bundle),
-                                            f: fn(cardinality_form) {
+                                            o: decode_generic_apply_shape_bundle(bundle: occupancy_bundle),
+                                            f: fn(occupancy_form) {
                                               bind_outcome(
                                                 o: projection_bundle_child(
                                                   bundle: bundle,
@@ -4337,7 +4337,7 @@ fn decode_type_expression_projection_bundle(
                                                           conj_form: conj_form,
                                                           disj_form: disj_form,
                                                           arrow_form: arrow_form,
-                                                          cardinality_form: cardinality_form,
+                                                          occupancy_form: occupancy_form,
                                                           instantiation_form: instantiation_form,
                                                           declaration_reference_form: declaration_reference_form
                                                         }
@@ -10409,7 +10409,7 @@ fn target_function_signature_realization_lookup_in_catalog_node_otherwise(source
 type TargetTypeExprKind
   = TargetTypeExprAtom
   | TargetTypeExprInstantiation
-  | TargetTypeExprCardinality
+  | TargetTypeExprOccupancy
   | TargetTypeExprRecord
   | TargetTypeExprSum
   | TargetTypeExprArrow
@@ -10496,7 +10496,7 @@ type TargetTypeExpressionProjection {
   conj_form: TargetGenericApply
   disj_form: TargetSumTypeShape
   arrow_form: TargetFunctionTypeShape
-  cardinality_form: TargetGenericApply
+  occupancy_form: TargetGenericApply
   instantiation_form: TargetGenericApply
   declaration_reference_form: DeclarationReferenceForm
 }
@@ -10717,8 +10717,8 @@ fn target_type_expr_kind_from_atom(id: Symbol) -> Optional<TargetTypeExprKind> {
     if id == discriminant(v: TargetTypeExprInstantiation) {
       optional_present(value: TargetTypeExprInstantiation)
     } else {
-      if id == discriminant(v: TargetTypeExprCardinality) {
-        optional_present(value: TargetTypeExprCardinality)
+      if id == discriminant(v: TargetTypeExprOccupancy) {
+        optional_present(value: TargetTypeExprOccupancy)
       } else {
         if id == discriminant(v: TargetTypeExprRecord) {
           optional_present(value: TargetTypeExprRecord)
@@ -10914,13 +10914,13 @@ fn target_type_expr_instantiation_emitted(
   )
 }
 
-fn target_type_expr_cardinality_emitted(
+fn target_type_expr_occupancy_emitted(
   form: TargetGenericApply,
   head: Node,
   args: List<Node>
 ) -> Node {
   target_type_expr_wrapped_emitted(
-    kind: TargetTypeExprCardinality,
+    kind: TargetTypeExprOccupancy,
     surface: form.surface,
     children: list_append(
       left: Cons { head: head, tail: Empty },
@@ -11079,7 +11079,7 @@ fn target_type_expr_expected_surface_for_kind(
   match kind {
     TargetTypeExprAtom => projection.atom_form.surface
     TargetTypeExprInstantiation => projection.instantiation_form.surface
-    TargetTypeExprCardinality => projection.cardinality_form.surface
+    TargetTypeExprOccupancy => projection.occupancy_form.surface
     TargetTypeExprRecord => projection.conj_form.surface
     TargetTypeExprSum => projection.disj_form.surface
     TargetTypeExprArrow => projection.arrow_form.surface
@@ -11104,7 +11104,7 @@ fn target_type_expr_emitted_validate_positional_arity(
       } else {
         outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
       }
-    TargetTypeExprCardinality =>
+    TargetTypeExprOccupancy =>
       if length(xs: positional) >= 1 {
         Accepted { value: true, diagnostics: None }
       } else {
@@ -11254,7 +11254,7 @@ fn target_type_expr_emitted_validate_wire_shape(
         kind: kind,
         projection: projection
       )
-    TargetTypeExprCardinality =>
+    TargetTypeExprOccupancy =>
       target_type_expr_emitted_validate_positional_wire(
         node: node,
         kind: kind,
@@ -14146,7 +14146,7 @@ fn target_reference_layer_probe_from_emitted_type(
             Absent => ReferenceLayerProbeInvalid
           }
         TargetTypeExprAtom => ReferenceLayerProbeNotWrapped
-        TargetTypeExprCardinality => ReferenceLayerProbeNotWrapped
+        TargetTypeExprOccupancy => ReferenceLayerProbeNotWrapped
         TargetTypeExprRecord => ReferenceLayerProbeNotWrapped
         TargetTypeExprSum => ReferenceLayerProbeNotWrapped
         TargetTypeExprArrow => ReferenceLayerProbeNotWrapped
@@ -14352,9 +14352,9 @@ fn type_expr_projection_connective_rows(projection: TargetTypeExpressionProjecti
         )
       ),
       target_model_named_edge(
-        name: ^target_type_expr_field_cardinality,
+        name: ^target_type_expr_field_occupancy,
         target: type_expr_projection_row_shape_envelope(
-          envelope: target_type_expr_generic_apply_shape_node(form: projection.cardinality_form),
+          envelope: target_type_expr_generic_apply_shape_node(form: projection.occupancy_form),
           connective: Occupancy
         )
       ),
@@ -14418,7 +14418,7 @@ fn type_expr_projection_shape_for_connective(
     Occupancy =>
       outcome_accepted(
         type_expr_projection_row_shape_envelope(
-          envelope: target_type_expr_generic_apply_shape_node(form: projection.cardinality_form),
+          envelope: target_type_expr_generic_apply_shape_node(form: projection.occupancy_form),
           connective: Occupancy
         )
       )
@@ -14503,7 +14503,7 @@ fn type_expr_projection_row_field_for_connective(connective: Connective) -> Symb
     Conj => ^target_type_expr_field_conj
     Disj => ^target_type_expr_field_disj
     Arrow => ^target_type_expr_field_arrow
-    Occupancy => ^target_type_expr_field_cardinality
+    Occupancy => ^target_type_expr_field_occupancy
     Instantiation => ^target_type_expr_field_instantiation
   }
 }

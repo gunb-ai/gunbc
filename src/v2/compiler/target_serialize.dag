@@ -91,7 +91,7 @@ import v2.std.compilers.target_model {
   TargetTypeExpressionProjection,
   TargetTypeExprAtom,
   TargetTypeExprArrow,
-  TargetTypeExprCardinality,
+  TargetTypeExprOccupancy,
   TargetTypeExprInstantiation,
   TargetTypeExprRecord,
   TargetTypeExprSum,
@@ -1916,12 +1916,12 @@ fn serialize_type_expr_emitted_wire_bounded(
         form: projection.instantiation_form,
         node: wire.node
       )
-    TargetTypeExprCardinality =>
+    TargetTypeExprOccupancy =>
       serialize_type_expr_generic_apply_bounded(
         remaining: remaining - 1,
         target: target,
         projection: projection,
-        form: projection.cardinality_form,
+        form: projection.occupancy_form,
         node: wire.node
       )
     TargetTypeExprRecord =>
@@ -2187,7 +2187,7 @@ fn serialize_type_expr_boundary_bounded(
               emitted: emitted
             )
           TargetTypeExprInstantiation => serialize_type_expr_emitted_wire_bounded(remaining: remaining, target: target, projection: projection, wire: wire)
-          TargetTypeExprCardinality => serialize_type_expr_emitted_wire_bounded(remaining: remaining, target: target, projection: projection, wire: wire)
+          TargetTypeExprOccupancy => serialize_type_expr_emitted_wire_bounded(remaining: remaining, target: target, projection: projection, wire: wire)
           TargetTypeExprRecord => serialize_type_expr_emitted_wire_bounded(remaining: remaining, target: target, projection: projection, wire: wire)
           TargetTypeExprSum => serialize_type_expr_emitted_wire_bounded(remaining: remaining, target: target, projection: projection, wire: wire)
           TargetTypeExprArrow => serialize_type_expr_emitted_wire_bounded(remaining: remaining, target: target, projection: projection, wire: wire)
