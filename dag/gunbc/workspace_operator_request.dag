@@ -104,7 +104,7 @@ fn workspace_operator_release_wet() -> ProcessExit {
       } else { match clock_now_probed_at() {
         Absent => exit_failure(reason: "WorkspaceOperatorReleaseRefused: clock unavailable")
         Present { value: now } => match workspace_request_release_at(store: fabric_state_storage_binding(),
-          owner: workspace_operator_principal(), idempotency_key: id, expected_generation: expected as Int,
+          owner: workspace_operator_principal(), idempotency_key: id.value, expected_generation: expected as Int,
           observed_at: now as Timestamp) {
           WorkspaceStoreWritten { allocation } => workspace_operator_receipt(allocation: allocation)
           WorkspaceStoreConflict => exit_failure(reason: "WorkspaceOperatorReleaseConflict: retry the same request and generation")

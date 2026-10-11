@@ -1190,6 +1190,150 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
 
     roadmap_node(
+      identity: "rn_ZD63T58V6YJR8Y3TJJ090QAZVF",
+      id: "parse-node-source-extent",
+      owner: "parse",
+      carriers: carrier(path: "src/v2/compiler/02_parse.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "Both parsers record every node's full source extent when they build it",
+        boundary: "PRODUCER CONTRACT: every successfully published source occurrence has its complete source interval retained from the parse that establishes it -- including suffixes consumed after its identity was minted (v1 maybe_optional reuses a type's identity after consuming `?`) and excluding separators outside it (parse_import consumes trailing newlines its extent must not cover) -- and the parser publishes those intervals in its final source artifact, following the accepted branch through speculative parsing. The interval is recorded at SYNTAX COMPLETION, not at identity minting: minting and completion diverge (optional-type suffix, interpolation fragments minted together after the string ends, a property and its value minted together over different regions, binary expressions whose diagnostic span is the operator). The population is every source occurrence: terminals, production wrappers, infix applications, sequence/repeat composites that are not synthetic, nested productions and the root; an empty match records no interval and synthetic scaffolding records none. SOURCE SCOPES THAT SEMANTIC SIMPLIFICATION ERASES ARE RETAINED with their ordered containment (v1 parse_paren_expr returns the inner expression; parse_block returns a sole statement), in the parser's source side table, without adding semantic nodes. v2: SpanIndex extents beside DerivedBy lineage. v1: the same side-table shape published with the parse result, not a Node field. Diagnostic focus, source extent and causal lineage stay three facts (DESIGN 3). The existing v1 import-extent reader (the consumed-window rescan) reads the recorded interval instead.",
+        displaced_cost: "Consumers that need containment (annotation attachment, import editing) cannot tell whether a position is inside a node or after its closing delimiter, so each reconstructs a range from descendants or tokens -- an approximate second answer to a fact the parser had and discarded (DESIGN 2, 6b).",
+        first_slice: "v2: production wrappers record their interval at completion (block reaches its closing brace); then infix, repeat and root paths; then v1 through the same contract.",
+        red_control: "Discriminating cases on BOTH parsers: a position between a block's last statement and its closing brace is inside the block and one after the brace is outside (an interval ending at the last child is RED); `((x))` retains both paren scopes around one occurrence; a singleton block retains its scope; `Int?` covers the `?`; an import's interval stops before its trailing newlines; an empty production and an abandoned speculative branch record nothing.",
+        out_of_scope: "Comment attachment itself (parse-comment-gap-attachment). Changing what span means in v1.",
+        handback: "BOTH PARSERS COMPLETE under the one contract, with every red control above green on each and the import rescan deleted. A passing v2 block check alone does not close this node."
+      ), on: "2026-10-11", note: "Authored 2026-10-11 from the in-body comment design: the producer boundary is the parser's published result (DESIGN 6b), so the repair is here, not in the annotation binder.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-compiler-live", contribution: "The live compiler's parse result must carry the source facts its consumers need instead of leaving each to re-derive them."),
+    ),
+
+    roadmap_node(
+      identity: "rn_JXW6HYEDDAHGZ77HCGTYSF3FX3",
+      id: "parse-comment-gap-attachment",
+      owner: "parse",
+      carriers: carrier(path: "dag/std/source_annotation.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "A comment attaches to the gap between its neighbouring nodes, anywhere in a file",
+        boundary: "std.source_annotation replaces the single-subject anchor with AnnotationScope = FileScope | SourceScope and AnnotationGap { scope, before?, after? }. The scope is the innermost retained source scope containing the comment (the file when none does); before/after are its ORDERED DIRECT SOURCE-SYNTAX CHILDREN, with parser scaffolding (v2 production markers, sequence/repeat spines, projection edges) projected transparently. For a call `foo(a, b)` with a comment on its own line between the arguments, the scope is the argument-list scope with before = a and after = b, never a descendant of an argument. File scope covers leading and trailing trivia: the lexer's final source position is retained in its artifact rather than dropped, so a banner above the module header and a comment after the last item both land. One rule replaces the positional cases: BodyGrainNotModeled, TrailingNotModeled, UnattachedAtScopeEnd, module_header_gap_subject and v1 module_item_extent_ends are deleted. v1 v1.compiler.annotation_bind and the v2 authored parse both feed the one attach_annotations. Anchors reference existing occurrences and mint none (DESIGN 4c). Which node a comment documents is derived from the gap, never stored.",
+        displaced_cost: "A comment inside a function body is a hard compile error today, and each further position (trailing, before a closing brace, file top) is its own special case or refusal.",
+        first_slice: "The shared fold over a supplied roster: in-body, before-closing-brace, trailing and file-top comments each land their expected gap.",
+        red_control: "A comment inside f's body never attaches to the next declaration g; the argument-list case lands before = a, after = b. Adding, removing or moving a comment leaves semantic hash, occurrence ids and emitted bytes unchanged. Round trip: a negative control where allocation ordinals stay equal but the target syntax changes must DISAGREE.",
+        out_of_scope: "Computing extents (parse-node-source-extent). Doc-comment semantics beyond the derived documents-view.",
+        handback: "In-body comments compile in the corpus and the three refusal arms are deleted. The round trip, over a named route (the v1 render/reparse path, not a full formatter), agrees on a STRUCTURAL cross-parse key for scope and both neighbours -- never occurrence ordinals, which are equal across parses by position only (std.source_annotation KeyedAnnotationRow) -- and preserves normalized text, source order and multiplicity, including duplicate comments in one gap."
+      ), on: "2026-10-11", note: "Authored 2026-10-11. Depends on parse-node-source-extent: attachment reads the parser's extents rather than reconstructing them.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-compiler-live", contribution: "Authors can annotate any position in a .dag file without a compile error, under one attachment rule."),
+    ),
+
+    roadmap_node(
+      identity: "rn_DCHDCNK5Z6GZP693VSZA6MC84T",
+      id: "parse-prepared-grammar-analysis-carried",
+      owner: "parse",
+      carriers: carrier(path: "src/v2/compiler/02_parse.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "The parser receives the grammar analysis validation already computed",
+        boundary: "grammar_validate_and_analyze returns PreparedModeledGrammar { validated, analysis }; grammar_validate_for_parse keeps only validated and parse_production recomputes the analysis (compute_grammar_first_analysis wraps compute_grammar_first_analysis_given, which validation already called). Callers move onto the prepared result, the parse interface stops constructing analysis at all, and grammar_validate_for_parse plus the recompute are deleted. The migration carries TokenStream.layout through: the list-only prepared entry supplies absent layout where the stream route carries it.",
+        displaced_cost: "Every parse through the validated door pays the FIRST analysis again, and a prepared grammar cannot be reused across files -- authored duplication DESIGN 2 says to carry or share, not cache.",
+        first_slice: "parse_production takes the prepared grammar and one caller migrates.",
+        red_control: "Prepare one grammar and parse at least two modules with that same prepared value: ONE full analysis across the whole operation, counted at the underlying _given work (a count of the wrapper alone already reads one on the defective path), or established structurally because no parse entry can construct analysis.",
+        out_of_scope: "Speculative-parse rollback, which correctly discards failed attempts.",
+        handback: "No caller of grammar_validate_for_parse remains, no parse entry constructs analysis, layout reaches every migrated caller, and the two-module control is green."
+      ), on: "2026-10-11", note: "Authored 2026-10-11 from a review of the v2 parse interfaces: the discard is a DESIGN 2 conformance defect, not an optional optimisation.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "debt-payoff", contribution: "Removes authored duplicate work from every validated parse."),
+    ),
+
+    roadmap_node(
+      identity: "rn_BS0YK7QAA67P73F6YYGZRTGXJ3",
+      id: "v1-parse-allocator-carried",
+      owner: "parse",
+      carriers: carrier(path: "src/v1/02_parse.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "v1 parse carries its occurrence allocator instead of re-walking built subtrees",
+        boundary: "v1 02_parse reconstructs allocator state by walking already-built subtrees (occurrence_allocator_after_node and siblings), including a traversal of the growing left operand in the binary-expression loop. Carry the allocator through accepted results and delete the recovery scans wherever that invariant holds.",
+        displaced_cost: "Each re-walk repeats work proportional to the subtree, and the expression loop's is quadratic in operand chain length -- a proven cost shape DESIGN 6 says is fixed regardless of today's n.",
+        first_slice: "The binary-expression loop carries the allocator from its operand result.",
+        red_control: "Allocated ids are identical before and after on a fixture with a long operator chain, and an instrument shows no subtree re-walk on that path.",
+        out_of_scope: "Changing which ids are minted or their order.",
+        handback: "The allocator-recovery walks deleted on every path where the carried value exists, with id-equality on the fixture corpus."
+      ), on: "2026-10-11", note: "Authored 2026-10-11 from the parser recomputation audit. A source-level finding, not a measured speedup.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "debt-payoff", contribution: "Removes a quadratic re-walk from the seed parser."),
+    ),
+
+    roadmap_node(
+      identity: "rn_HQF67ZYAVPCEVTYNYWMCC6N5KM",
+      id: "v2-grammar-preparation-first-summaries",
+      owner: "parse",
+      carriers: carrier(path: "src/v2/compiler/02_parse.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "v2 grammar preparation keeps each child's FIRST summary instead of rebuilding it",
+        boundary: "Prepared child construction drops child FIRST summaries and later reconstructs them, repeating FIRST-union and guard-summary work within preparation. Retain the child summaries in the prepared expression and consume them. Separate from parse-prepared-grammar-analysis-carried, which fixes the validation-to-parse handoff, not repetition inside preparation.",
+        displaced_cost: "Every grammar preparation repeats summary work per child.",
+        first_slice: "One choice node consumes its children's retained summaries.",
+        red_control: "Prepared output is identical before and after on the .dag grammar, and an instrument shows each child summary built once.",
+        out_of_scope: "The validation-to-parse handoff.",
+        handback: "No reconstruction of a child summary remains in preparation."
+      ), on: "2026-10-11", note: "Authored 2026-10-11 from the parser recomputation audit. A source-level finding, not a measured speedup.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "debt-payoff", contribution: "Removes repeated FIRST computation from grammar preparation."),
+    ),
+
+    roadmap_node(
+      identity: "rn_D48CRKRR0HAT5PNPTVY491JD05",
+      id: "v2-predicate-recognition-without-materialization",
+      owner: "parse",
+      carriers: carrier(path: "src/v2/compiler/02_parse.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "v2 predicates recognize without materializing nodes they then discard",
+        boundary: "A predicate path can materialize a terminal (minting and recording it), discard it, and the accepted infix path then materializes it again. Recognition during predicates avoids unnecessary materialization while preserving refusal and layout behavior. Necessary speculative rollback of a failed attempt is correct and stays.",
+        displaced_cost: "Work spent minting and recording nodes whose only purpose was a yes/no answer.",
+        first_slice: "The infix continuation guard recognizes without minting.",
+        red_control: "Parse trees, refusals and layout decisions identical on the corpus, and the predicate path mints no occurrence.",
+        out_of_scope: "Speculative rollback of failed alternatives.",
+        handback: "No predicate path materializes a node it discards."
+      ), on: "2026-10-11", note: "Authored 2026-10-11 from the parser recomputation audit. A source-level finding, not a measured speedup.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "debt-payoff", contribution: "Removes discarded materialization from predicate recognition."),
+    ),
+
+    roadmap_node(
+      identity: "rn_A8SREB643YJ2KHT9424TXFE388",
+      id: "v1-source-chars-converted-once",
+      owner: "parse",
+      carriers: carrier(path: "src/v1/01_tokenize.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "v1 converts a source to characters once for tokenizing and newline indexing",
+        boundary: "v1 tokenization and newline-index construction each convert the same source text to characters. Building the newline index is useful work; converting the source again is the repeated part. Convert once and hand the result to both.",
+        displaced_cost: "Every ingested file pays the conversion twice.",
+        first_slice: "The newline index consumes the tokenizer's converted characters.",
+        red_control: "Tokens and newline indices identical before and after on the corpus, with one conversion per file.",
+        out_of_scope: "Changing token or index semantics.",
+        handback: "One conversion per source file on the ingest path."
+      ), on: "2026-10-11", note: "Authored 2026-10-11 from the parser recomputation audit. A source-level finding, not a measured speedup.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "debt-payoff", contribution: "Removes a repeated per-file conversion from ingest."),
+    ),
+
+    roadmap_node(
+      identity: "rn_FA2BX92WF9PGE7FWZBG60E0XP8",
+      id: "v2-parse-final-token-retained",
+      owner: "parse",
+      carriers: carrier(path: "src/v2/compiler/02_parse.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "v2 parse keeps the final token its order check already holds for the end-of-input diagnostic",
+        boundary: "Token-order validation holds the final token and discards it; the end-of-input diagnostic later recovers it. Carry it in the consumption state instead. A small cold-path item, deferred behind parse-node-source-extent, whose consumption state it may share.",
+        displaced_cost: "A cold-path re-derivation of a value already held.",
+        first_slice: "The EOF diagnostic reads the retained final token.",
+        red_control: "EOF diagnostics identical before and after; the recovery walk is gone.",
+        out_of_scope: "Other diagnostics.",
+        handback: "The recovery walk deleted."
+      ), on: "2026-10-11", note: "Authored 2026-10-11 from the parser recomputation audit. A source-level finding, not a measured speedup.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "debt-payoff", contribution: "Removes a re-derivation of the final token."),
+    ),
+
+    roadmap_node(
       identity: "rn_RSPTW7T9VRES9F7FHCP08QFGX5",
       id: "ci-required-run-cost",
       owner: "ci-cost",
@@ -2393,6 +2537,183 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           handback: "The plan's own deletion condition: M7 exit holds and every milestone's deletions are census-verified."
         )),
       parent: in_project(project: "v2-compiler-live", contribution: "The live compiler's driver is a demand over its universe, so a run pays only for what changed. The engine is how v2 stays affordable as the required route."),
+    ),
+    roadmap_node(
+      identity: "rn_CFZ5DNH7FEND59ZAXKRZS55XAR",
+      id: "convergence-coverage",
+      owner: "debt",
+      carriers: carrier(path: "docs/plans/convergence-coverage-program.md"),
+      line: ticket(t: level_fields(
+          headline: "Cover every production convergence path until the ensure chain reaches the execution boundary",
+          boundary: "Own scope: the compiler-enforced ensure chain D14 intended (qualified operands, restricted construction, completion from root bindings) applied to production observe/decide/apply/readback/mint paths. An operation cannot be admitted without its complete prerequisite chain, and cannot consume success until that chain has established the required facts. Continues gunbc.plans.ensure_closure_design and gunbc.plans.v2_compiler_architecture; it does not redesign them. Member of debt-payoff (operator 2026-10-11): known gaps and RFMs retired against their triggers. Dual membership is refused. Daily-workspace (factory) value is named on the contribution, not a second parent.",
+          approach: "Census production paths first (cc-path-census). Then one leaf per deepest cause: ordinary compiler floor (A), generic structural carriers (B), environmental facts as required operands (C), observation distinctions that decide repair (D), lifecycle ownership including failure and retirement (E), selection-to-use of scope and policy (F), evidence that reaches its consumers at subject identity (G), guaranteed cleanup of held resources once the owner is proven ended.",
+          red_control: "A production path in the census whose consumer still type-checks after its prerequisite-producing ensure is deleted keeps this open. A leaf that restates D14 or mints a second ensure syntax is refused in review.",
+          displaced_cost: "Useful convergence procedures exist, but forgetting a prerequisite still compiles and runs. Harm is paid later as silent wrong actuation, unrepairable members, and green CI over an unestablished serving or sudoers closure.",
+          handback: "Every census path either consumes a qualified operand minted on the D14 effectful route or carries a named DESIGN section 3b exclusion, and each member leaf's handback is met."
+        )),
+      parent: in_project(project: "debt-payoff", contribution: "Debt payoff: known gaps and recurring failure modes retired against their rostered triggers -- covering the ensure chain to the execution boundary, including guaranteed cleanup of held resources, is that retirement rather than a parallel lane. Daily-workspace (factory) value: a lab or live dashboard that cannot release seats, units, attempts or lease files after the owner ended keeps charging the host that lands work. Compiler floor: a live compiler that accepts an operation without its complete prerequisite chain makes incomplete convergence cheaper to ship (DESIGN section 4b ordinary floor first)."),
+    ),
+    roadmap_node(
+      identity: "rn_K6TBWN5T4J6FV5B2X0HN3VHCW4",
+      id: "cc-path-census",
+      owner: "self-host",
+      carriers: carrier(path: "docs/plans/convergence-coverage-program.md"),
+      line: ticket(t: fields(
+        headline: "Census every production convergence path against the missing execution-boundary guarantee",
+        boundary: "Enumerate production observe / decide / apply / readback / mint paths. Classify each: does removing a prerequisite-producing ensure deprive the consumer of a required operand? One roster row per path (route, subject, supplied vs established, covering leaf or named exclusion). The roster is the denominator later leaves consume.",
+        displaced_cost: "Without a derived population, each leaf invents its own list of paths and the uncovered remainder is invisible.",
+        first_slice: "One roster carrier over the production ensure and effectful-converge folds already named in D14 section 10 and the operator review (srv3_ensure_apt, ensure_host_tool, converge_typed_remote_file, RunArgv family), each classified supplied vs established. Cause-F instance/target slice is sourced from valiant-gull-69 (entry wrappers pinning srv1_live_dashboard_instance over *_for_instance cores: belt 16, serve 10, dispatch_actuator 5 plus two srv1-layout data pins, dashboard_instance_apply 2, launch_deployment_cli 1, dispatch_preflight 1, dispatch_selection 1 fixed in gunbc#13720); do not re-derive that census.",
+        red_control: "A production path that uses gunbc.ensure or std.realization_reconcile and is absent from the roster keeps this red. A row that restates D14's target list instead of naming a corpus route is not a census row.",
+        out_of_scope: "No repair, no new ensure syntax, no HostBlueprint work. D14 landing steps stay in ensure-closure-design.",
+        handback: "The roster, the identity-join that later leaves read, and a planted omitted path that reds the census."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "convergence-coverage", contribution: "Coverage is an identity join over paths, not a count of findings. The census is the program's denominator."),
+      centering: plan(text: "Target: a roster carrier consumed by later cc-* leaves, authority docs/plans/convergence-coverage-program.md. (1) Do not redesign D14 or v2-compiler-architecture. (2) First slice: classify the production folds D14 section 10 and the operator review already name -- srv3_ensure_apt, ensure_host_tool, converge_typed_remote_file, RunArgv / RunArgvStdin / RunArgvOutcome -- as supplied-report vs established-operand. (3) Ingest valiant-gull-69's cause-F wrapper census as sourced inventory; do not re-count srv1_live_dashboard_instance pins. (4) Plant one omitted path that reds the census. (5) Acceptance: a claim process over that roster once bound; until then ExecutionContractUnspecified is honest."),
+    ),
+    roadmap_node(
+      identity: "rn_XW56ZS6QC1081AFR252PR2RBPS",
+      id: "cc-compiler-floor",
+      owner: "compiler-guarantee",
+      carriers: carrier(path: "dag/gunbc/recurring_failure_mode/product_value_at_a_scalar_formal_is_accepted.dag"),
+      line: ticket(t: fields(
+        headline: "An ordinary type obligation cannot stay unresolved while execution proceeds",
+        boundary: "The ordinary compiler floor (DESIGN section 4b) on the path that let a list of SystemdRunProperty inhabit a list-of-String formal (F19/F36). Confirmed shape: dispatch_worker_unit_properties_for_plan to session_placement_record_write. Not established: list element types aren't checked -- direct_call_generic_type_argument_inhabitance_diags exists. Weakness: a record at a scalar formal can yield InhabitanceUndecidable, and DeclaredTypeInhabitanceUndecided is GateAdvisoryTypecheck, so it does not block. Class: gunbc.recurring_failure_mode product_value_at_a_scalar_formal_is_accepted. The SystemdRunProperty-in-list path needs a discriminating execution. The seed finding must not be silently transferred to v2; the native route needs its own executed negative control.",
+        displaced_cost: "Zero blocking errors is read as every declared type obligation being established. Wrong programs then run.",
+        first_slice: "A native-route negative control that the SystemdRunProperty-in-list (or an equivalent record-at-scalar-formal) case refuses, plus the existing class's RED staying enrolled.",
+        red_control: "A planted record at a scalar formal that the native route accepts keeps this red. A seed-only red cited as v2 coverage is rung inflation.",
+        out_of_scope: "Not the whole compiler-guarantee program, not a claim that list element types are unchecked, and not transferring seed diagnostics onto v2 by transcription.",
+        handback: "The native negative control green-by-execution, the class's RED still enrolled, and a stated rung that matches executed evidence."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "convergence-coverage", contribution: "The ensure chain is a type obligation. If the ordinary floor does not block, qualified operands cannot be required."),
+      centering: plan(text: "Target: gunbc.recurring_failure_mode product_value_at_a_scalar_formal_is_accepted, native-route negative control. (1) Do not claim list element types are unchecked; direct_call_generic_type_argument_inhabitance_diags exists. (2) Discriminate the advisory InhabitanceUndecidable / GateAdvisoryTypecheck arm. (3) Execute the SystemdRunProperty-in-list path or an equivalent record-at-scalar-formal fixture on the native route. (4) Do not transfer the seed finding to v2 by citation alone."),
+    ),
+    roadmap_node(
+      identity: "rn_59AP6NKF1MH8GB1VNDYRHEK9X0",
+      id: "cc-structural-carriers",
+      owner: "language-integrity",
+      carriers: carrier(path: "src/v2/extdeps/languages/bash_build.dag"),
+      line: ticket(t: fields(
+        headline: "A generic structural carrier cannot drop admitted children into plausible partial output",
+        boundary: "bash_build_subshell accepts any Node body. bash_fold_flatten_stmt_list reads positional children 0 and 1 only, so an or_else body keeps left and drops right with no refusal (v2.extdeps.languages.bash_build; v2.workflow.bash_command_fold_serialize). F37. The body carrier does not establish grammar membership; the serializer fabricates partial output (DESIGN section 5). bash_build_subshell_from_stmts is a caller fix and leaves other consumers (conditional bodies) able to drop behavior. Durable repair: establish shape at construction, preserve every admitted child, refuse malformed input. No new Bash representation.",
+        displaced_cost: "A forgotten branch is emitted as a shorter script that still runs.",
+        first_slice: "The shared flatten/read of statement lists refuses an or_else (or other extra-child) body instead of dropping the right child, with a planted RED and a well-formed two-child positive control.",
+        red_control: "An or_else node as a subshell or conditional body that serializes without refusal, dropping a child, keeps this red.",
+        out_of_scope: "No second Bash IR, no per-caller wrappers beside the shared reader, and no change to D14's operand model.",
+        handback: "The shared reader refuses malformed input, preserves every admitted child, and both controls stay enrolled."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "convergence-coverage", contribution: "A convergence plan that is a Node the serializer silently truncates never reached the execution boundary as authored."),
+      centering: plan(text: "Target: v2.extdeps.languages.bash_build and v2.workflow.bash_command_fold_serialize shared statement-list reader. (1) Repair construction and reading, not a new Bash representation. (2) Caller-only bash_build_subshell_from_stmts is out of scope as the durable fix. (3) Plant or_else-as-body RED; keep a well-formed two-child control."),
+    ),
+    roadmap_node(
+      identity: "rn_Q73CZQQFQHZKC9VP6ZEW6AAW8W",
+      id: "cc-qualified-operands",
+      owner: "fleet",
+      carriers: carrier(path: "docs/plans/ensure-closure-design.md"),
+      line: ticket(t: fields(
+        headline: "An operation asks for the established capability, not an optional description of the environment",
+        boundary: "Environmental facts as required operands (F02, F07, F14, F16, F35, F43-F44). The reversal belongs once at the operation's owning boundary: the operation asks for the established capability, the selected provider induces further requirements, the compiler carries them outward, the root answers policy and placement. Specimen: srv3_ensure_apt takes subject and package separately; install uses package, readback checks subject (D14 section 10). Continue D14's qualified results and restricted mint. Do not mint a parallel operand vocabulary.",
+        displaced_cost: "A path, secret location or package spelling compiles while the principal, readers or package identity were never established. Unrelated mutation can happen before readback rejects it.",
+        first_slice: "Close the srv3_ensure_apt subject/package fork so install and readback are one authority, using D14's existing mint shape.",
+        red_control: "A call that supplies a package spelling different from the presence subject and still applies keeps this red. A new operand type that restates InstalledPackage / MaterializedProgram is a section 3 fork.",
+        out_of_scope: "Not D14 landing steps 1-7 as a whole, not grants or leases (those stay their authorities), not inventing HostBlueprint here.",
+        handback: "The specimen's single authority, the census paths this leaf owns marked established-operand, and the RED enrolled."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "convergence-coverage", contribution: "D14's replacement is qualified operands. This leaf applies that replacement at the owning boundaries the census names."),
+      centering: plan(text: "Target: gunbc.host.host_effect_realize srv3_ensure_apt, continuing D14 section 10. (1) One authority for install and readback. (2) Use existing qualified-result / mint shapes; do not mint a parallel vocabulary. (3) Grants and leases stay their own authorities. (4) Event-carrier and tailnet-door directory demands are precedents, not this leaf's rewrite."),
+    ),
+    roadmap_node(
+      identity: "rn_6EVP7PRFRA1V1WDS1WA1137XCX",
+      id: "cc-observation-distinctions",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/recurring_failure_mode/a_deploy_that_observes_its_own_service_cannot_repair_it.dag"),
+      line: ticket(t: fields(
+        headline: "Observation must distinguish holds, absence, repairable drift, conflict and unobservable",
+        boundary: "F11 and related F01, F46, F52. ProcessRunningRelease carrying a revision, or ProcessNotRunning carrying an active flag: an active service whose /healthz fails becomes MemberUnobservable, which decide_member refuses (gunbc.live_deploy.member_observe, member_identity). There is no representation of an observable, owned, active service with a broken health/release endpoint. Class: gunbc.recurring_failure_mode a_deploy_that_observes_its_own_service_cannot_repair_it. Needed distinctions: desired holds; demonstrably absent; owned repairable drift; ownership/identity conflict; unobservable. An arbitrary 403 is not absence. Domain assessment owns the decision; a generic satisfaction Boolean is insufficient (D14).",
+        displaced_cost: "Repair requires the damaged service to cooperate. Unobservable is collapsed with broken, so dependent actions are refused or, worse, guessed.",
+        first_slice: "Represent owned-and-active-with-broken-health as distinct from MemberUnobservable, without treating 403 as absent.",
+        red_control: "A planted owned active member whose health endpoint fails that is classified only as unobservable, with no repairable-drift arm, keeps this red. A 403 classified as absent keeps this red.",
+        out_of_scope: "Not inventing a generic satisfaction Boolean, not best-effort over an incomplete exclusive-capacity census, not the whole deploy rewrite.",
+        handback: "The distinction arms, the class's RED still enrolled, and decide_member consuming the new arm rather than collapsing it."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "convergence-coverage", contribution: "Ensure policy cannot choose Apply vs Refuse if observation has already erased the distinction the decision needs."),
+      centering: plan(text: "Target: gunbc.live_deploy.member_observe / member_identity and the existing failure-mode row. (1) Add the owned-active-broken-health distinction; do not collapse it into MemberUnobservable. (2) 403 is not absence. (3) Domain assessment owns the decision (D14); do not add a generic satisfaction Boolean. (4) Keep the class RED enrolled."),
+    ),
+    roadmap_node(
+      identity: "rn_WWHPSKXKDTFH62WJ1D6VD3HJ04",
+      id: "cc-lifecycle-ownership",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/live_deploy/emit.dag"),
+      line: ticket(t: fields(
+        headline: "Convergence owns failure, retirement and crash gaps, not only selected successful transitions",
+        boundary: "F12/F39, F13, F17, F20/F21, F24. identity_member_of_step leaves belt, publication, fabric-storage, approval-front-door and tailnet-door artifacts outside the identity-aware route; deployment_apply_plan reconciles them against observed: [] (unfinished per-member-kind migration). Dropping a unit from desired does not retire one an earlier deploy owned. Serving closure is checked only after switching. Attempt/container activation has incomplete recovery; dispatch and cleanup observe different populations. Mutation-to-projection causal dependencies were hidden by a clock. A foreign listener is found only by failed activation or revision mismatch. Moving the record write after creation swaps the crash gap. DESIGN section 3d: the effectful admission-actuation-observation cycle has no consumed home yet; the fleet admission spine is the named first consumer. This leaf covers production paths; it does not mint that home.",
+        displaced_cost: "Owned artifacts survive undeleted, invalid candidates become live before their closure is accepted, and a crash leaves one side of an activation without the other.",
+        first_slice: "Name activation identity for one unfinished member kind currently reconciled against observed: [], and refuse promotion until that candidate's serving entry and closure are accepted -- consulting F39's annotation refusal before switch, not after.",
+        red_control: "A member kind still reconciled against observed: [] after this slice's chosen kind is migrated, without a named remaining-kind row, keeps this red. Consulting serving-closure refusal only after switch keeps this red.",
+        out_of_scope: "Not minting the DESIGN section 3d cycle home, not adding an enqueue after every mutation without a durable causal relation, not finishing every member kind in one change.",
+        handback: "The first migrated member kind on the identity-aware route, promotion gated on accepted serving closure, and remaining kinds rostered by identity."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "convergence-coverage", contribution: "An ensure chain that only covers the happy transition leaves retirement, crash gaps and late refusal outside the compiler's reach."),
+      centering: plan(text: "Target: gunbc.live_deploy.emit identity_member_of_step / deployment_apply_plan unfinished per-member-kind migration. (1) One member kind off observed: []. (2) Serving closure before promotion (F39). (3) Do not mint the section 3d cycle home. (4) Do not 'fix' crash gaps by swapping record-write order."),
+    ),
+    roadmap_node(
+      identity: "rn_QXKD8Q0EHNVEQKS6Q7N0FF946R",
+      id: "cc-selection-to-use",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/rung_drop/fleet_converge_named_revision_and_branch.dag"),
+      line: ticket(t: fields(
+        headline: "Selection of environment, candidate, principal and store is consumed at the effect, not described beside it",
+        boundary: "F03/F04, F18, F22, F33, F45; admission F25, F26, F31, F47; instance/target F63. Which environment, candidate, principal, state store and source tree belong to this attempt is not answered by the host. F04 correction: the operator allowed branch development operations; the declared restoration is binding revision and branch to an admitted identity (gunbc.rung_drop fleet_converge_named_revision_and_branch). Restoring universal main-only does not satisfy it. Grants, leases and security context keep their own authorities (D14). The compiler makes those distinct prerequisites unavoidable in the same dependency graph. Instance/target inventory sourced from valiant-gull-69, not re-derived: wrappers pinning srv1_live_dashboard_instance over *_for_instance cores (belt 16 including belt_claude/codex_preflight, belt_attempts_observe, tick and spawn; serve 10; dispatch_actuator 5 plus dispatch_worktree_root and dispatch_codex_home; dashboard_instance_apply 2; launch_deployment_cli 1; dispatch_preflight 1; dispatch_selection 1, fixed in gunbc#13720). belt_dispatch_instance_named keeps the srv1-live/srv2-deploy name map.",
+        displaced_cost: "A credential, writable path or branch that was selected is not the one the effect uses, and production policy cannot constrain the selection without breaking the allowed dev route.",
+        first_slice: "Bind revision and branch to an admitted identity on one production converge path, consumed at the effect, without restoring main-only.",
+        red_control: "A converge that runs on an unbound branch while this slice's path claims identity-bound revision+branch keeps this red. A change that restores universal main-only as the F04 repair keeps this red.",
+        out_of_scope: "Not making ensure grant itself permission, not promising volatile capacity, not collapsing grants into environmental completion.",
+        handback: "The identity-bound selection consumed at the effect, the rung-drop's capability trigger named, and the dev route still authorable."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "convergence-coverage", contribution: "Prerequisites that exist only as descriptions next to an effect are not in the ensure chain."),
+      centering: plan(text: "Target: gunbc.rung_drop fleet_converge_named_revision_and_branch, plus the instance/target wrapper population valiant-gull-69 censused (do not re-derive). (1) Explicit target+candidate selection consumed at the effect. (2) Do not restore universal main-only. (3) Grants and leases stay distinct prerequisites in the same graph, not absorbed into ensure. (4) Wrappers that pin srv1_live_dashboard_instance while the core is already *_for_instance are this leaf's inventory, not a second census."),
+    ),
+    roadmap_node(
+      identity: "rn_6XYMKSJ1TTTE4XQ1RTZMFG19GM",
+      id: "cc-evidence-to-consumers",
+      owner: "ci-control",
+      carriers: carrier(path: "dag/gunbc/rung_drop.dag"),
+      line: ticket(t: fields(
+        headline: "A result qualifies the exact candidate and behavior the next step relies on",
+        boundary: "F05, F06, F09/F57, F15, F32, F34, F42, F51, F53, F59. The required job covers two emitted closures and does not evaluate witnesses or compare generated artifacts (gunbc.rung_drop v1_required_lanes_withdrawn), so green CI does not establish serving/deployment closure or the sudoers projection. Witness results that found a regression did not constrain the merge; evidence was for another revision; a projection lost its consuming gate; an unobserved claim supplied no execution evidence; a real type error sat outside the required population. DESIGN section 3c plus the pairing obligation: supplying inputs may never remove the last execution of the real path.",
+        displaced_cost: "Green required CI is read as the workspace being closed. It is not.",
+        first_slice: "Name, for one census path (sudoers projection or serving/deployment closure), the exact candidate and instrument whose result the next step must consume, and the typed gap while v1_required_lanes_withdrawn stands.",
+        red_control: "A next step that proceeds on green required CI without the named instrument's result for that candidate keeps this red. An inhabitance claim that deletes the last real-path execution stays green -- that is the pairing-obligation RED.",
+        out_of_scope: "Not reopening the job-roster-closed-to-growth ruling, not putting the whole witness floor back on the required job in this leaf, not measuring a count copied from the current tree.",
+        handback: "The named candidate-qualified evidence join for the first path, the pairing-obligation control, and remaining paths rostered against the census."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "convergence-coverage", contribution: "A chain that stops at an unused result has not reached the consumer that needed the established fact."),
+      centering: plan(text: "Target: one census path (sudoers projection or serving/deployment closure) and gunbc.rung_drop v1_required_lanes_withdrawn. (1) Qualify evidence by candidate identity. (2) Do not reopen the job roster. (3) Pairing obligation: the last real-path execution stays. (4) Remaining paths rostered, not counted from the tree."),
+    ),
+    roadmap_node(
+      identity: "rn_QFTG2N0RXM7R70HPJ8BDDHH045",
+      id: "cc-guaranteed-cleanup",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/recurring_failure_mode/a_held_compute_seat_has_no_in_corpus_discharge.dag"),
+      line: ticket(t: fields(
+        headline: "Every held resource converges to released once its owner is proven ended",
+        boundary: "Modeled as an ensure over std.upsert_decision, not a new decision algebra. Converged = held by a live owner (Noop). Drifted = owner proven ended, still held (Apply). Inaccessible or UnknownRefused = Refuse and keep the charge. Independent readback; a named driver. Instances (ledger 2026-10-11, https://claude.ai/artifact/7AMGHuyVXu1U7bFXDnbG1M): compute seat (F75; Apply = existing gunbc.compute.work_provider_local compute_recover_attempt; class gunbc.recurring_failure_mode a_held_compute_seat_has_no_in_corpus_discharge), failed checkpoint unit (F68), spent supervisor unit (F72), half-spawned attempt (F20/F21), lease file the recovery leaves behind. First slice: compute seats. Do not free on doubt (the class already forbids over-admission).",
+        displaced_cost: "A host that lands daily-workspace work keeps charging seats, units and lease files after the owner ended; at compute_pool_slots = 2, two orphans consume the appropriation.",
+        first_slice: "Drive compute seats through the existing compute_recover_attempt door as the Apply of this ensure, with independent readback that the seat is released only when the owner is proven ended.",
+        red_control: "A seat whose owner is proven ended that stays Held with no Apply keeps this red. An Apply that reports success while RecoverySettledButHeld (seat still charged) keeps this red. Freeing on Inaccessible or UnknownRefused keeps this red.",
+        out_of_scope: "Not a second recovery door beside compute_recover_attempt, not discharging on doubt, not finishing checkpoint/supervisor/half-spawn/lease-file instances in the first slice, not minting a new ensure syntax.",
+        handback: "The compute-seat ensure (observe/decide/apply/readback) with compute_recover_attempt as Apply, the class RED still enrolled, and remaining instances rostered by identity."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "convergence-coverage", contribution: "An ensure chain that never releases a held resource after the owner ended leaves the daily workspace charging the host forever."),
+      centering: plan(text: "Target: gunbc.recurring_failure_mode a_held_compute_seat_has_no_in_corpus_discharge and gunbc.compute.work_provider_local compute_recover_attempt. (1) Ensure over std.upsert_decision: Converged=Noop, Drifted=Apply the existing door, Inaccessible/UnknownRefused=Refuse keep the charge. (2) Independent readback. Named driver. (3) Do not mint a second door. (4) Do not free on doubt. (5) Remaining instances (F68, F72, F20/F21, leftover lease file) rostered, not repaired in this slice."),
     ),
     roadmap_node(
       identity: "rn_AXXFPYZ1SDMHS62PGYAWH6Z2V2",
@@ -4225,6 +4546,14 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "demand-m5", parent: "demand-m4"),
     edge(child: "demand-m6", parent: "demand-m5"),
     edge(child: "demand-m7", parent: "demand-m6"),
+    edge(child: "cc-compiler-floor", parent: "cc-path-census"),
+    edge(child: "cc-structural-carriers", parent: "cc-path-census"),
+    edge(child: "cc-qualified-operands", parent: "cc-path-census"),
+    edge(child: "cc-observation-distinctions", parent: "cc-path-census"),
+    edge(child: "cc-lifecycle-ownership", parent: "cc-path-census"),
+    edge(child: "cc-selection-to-use", parent: "cc-path-census"),
+    edge(child: "cc-evidence-to-consumers", parent: "cc-path-census"),
+    edge(child: "cc-guaranteed-cleanup", parent: "cc-path-census"),
     edge(child: "v1-checker-gaps", parent: "guarantee-baseline-prevalence"),
     edge(child: "serve-held-open-response", parent: "fabric-worker-event-log"),
   ], guarantee_ladder_edges())
@@ -5790,6 +6119,8 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
     edge(child: "accepted-floor-obligation-closure", parent: "floor-record-construction-wall"),
     edge(child: "extended-admission-cardinality", parent: "accepted-floor-obligation-closure"),
     edge(child: "extended-admission-cardinality", parent: "cardinality-vertical-slice"),
+    edge(child: "parse-comment-gap-attachment", parent: "parse-node-source-extent"),
+    edge(child: "v2-parse-final-token-retained", parent: "parse-node-source-extent"),
   ]
 }
 

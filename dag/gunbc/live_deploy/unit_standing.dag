@@ -422,6 +422,8 @@ fn path_unit_target_of(file: SystemdUnitFile) -> String? {
           DirectoryNotEmpty { path: _ } => none
           PathChanged { path: _ } => none
           MakeDirectory { enabled: _ } => none
+          TriggerLimitIntervalSec { duration: _ } => none
+          TriggerLimitBurst { count: _ } => none
         }
       })
     ServiceUnitFile { unit: _, service: _, install: _ } => none

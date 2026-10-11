@@ -121,7 +121,7 @@ type ManualAnchorKey
   = ManualTcConjEmpty
   | ManualTcDisjEmpty
   | ManualTcArrowTwoConj
-  | ManualTcCardinalityEmpty
+  | ManualTcOccupancyEmpty
   | ManualTcInstantiationEmpty
   | ManualTcArrowEmpty
   | ManualTcTransformEmpty

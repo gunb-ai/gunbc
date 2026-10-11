@@ -62,9 +62,16 @@ import std.source_annotation {
 import v2.std.provenance {
   DerivedBy,
   SpanIndex,
+  node_occurrence_id_optional,
   origin_event_from_source,
   span_index_empty,
-  span_index_record
+  span_index_extent,
+  RecordedSourceExtent,
+  SourceExtentKnown,
+  SourceExtentUnrepresentable,
+  span_index_record_extent_unrepresentable,
+  span_index_record,
+  span_index_record_extent
 }
 import v2.std.collection {
   Map,
@@ -85,7 +92,9 @@ import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
 import v2.extdeps.languages.dag {
   dag_float_literal_node_from_lexeme,
   dag_int_literal_node_from_lexeme,
-  dag_string_literal_node_from_lexeme
+  dag_string_literal_node_from_lexeme,
+  dag_string_template_part_class,
+  dag_string_template_part_node_from_lexeme
 }
 import v2.std.compilers.lexing {
   LineBreakAnswer,
@@ -840,7 +849,7 @@ fn parse_stamp_derived_conj(
     ),
     prov: ParseProvenanceState {
       alloc: minted.alloc,
-      index: index
+      index: parse_composite_extent(index: index, id: minted.id, children: [cap1, cap2])
     }
   }
 }
@@ -869,7 +878,7 @@ fn parse_stamp_infix_application(
     ),
     prov: ParseProvenanceState {
       alloc: minted.alloc,
-      index: index
+      index: parse_composite_extent(index: index, id: minted.id, children: [left, operator, right])
     }
   }
 }
@@ -889,7 +898,7 @@ fn parse_stamp_derived_repeat(
     ),
     prov: ParseProvenanceState {
       alloc: minted.alloc,
-      index: index
+      index: parse_composite_extent(index: index, id: minted.id, children: acc_nodes)
     }
   }
 }
@@ -936,8 +945,68 @@ fn parse_wrap_production_captured(
     ),
     prov: ParseProvenanceState {
       alloc: minted.alloc,
-      index: index
+      index: parse_composite_extent(index: index, id: minted.id, children: [captured])
     }
+  }
+}
+
+// A COMPOSED NODE PUBLISHES ITS EXTENT WHEN IT IS BUILT, from its direct children's extents, which
+// were themselves published when THEY were built: it starts where its first child with an extent
+// starts and ends where its last one ends. That is exact because every accepted parse result that
+// consumed input keeps a capture whose extent is recorded -- a terminal (FromSource) or a composite
+// recorded here -- so no consumed token sits only under a child without one. It reads direct children only, never descendants. A composite none of whose children has
+// an extent consumed nothing and records nothing, rather than a zero-width range at a guessed place.
+fn parse_composite_extent(index: SpanIndex, id: OccurrenceId, children: List<Node>) -> SpanIndex {
+  match fold_list(xs: children, empty: ParseExtentNoneYet, cons: fn(acc, child) { parse_extent_span_step(acc: acc, index: index, child: child) }) {
+    ParseExtentSpan { file: file, start: start, end: end } =>
+      span_index_record_extent(index: index, id: id, extent: Textual { file: file, extent: ByteRange { start: start, end: end } })
+    ParseExtentNoneYet => index
+    ParseExtentUnreadable => span_index_record_extent_unrepresentable(index: index, id: id)
+  }
+}
+
+
+// THE FOLD OVER A COMPOSITE'S CHILDREN, as a closed sum: nothing read yet, a same-file byte range,
+// or a child whose extent this cannot compose. A child in another file, a WholeFile locus or a
+// non-textual locus, or a child itself recorded unrepresentable, is UNREADABLE and absorbing: the
+// parent then records itself unrepresentable -- so ITS parent refuses too -- rather than a range
+// that silently omits that child (DESIGN 5: a failure arm refuses, never narrows). A child with no
+// extent at all consumed nothing and leaves the fold unchanged.
+type ParseExtentFold
+  = ParseExtentNoneYet
+  | ParseExtentSpan { file: Symbol, start: Int, end: Int }
+  | ParseExtentUnreadable
+
+fn parse_extent_span_step(acc: ParseExtentFold, index: SpanIndex, child: Node) -> ParseExtentFold {
+  match acc {
+    ParseExtentUnreadable => ParseExtentUnreadable
+    _ =>
+      match node_occurrence_id_optional(node: child) {
+        Absent => acc
+        Present { value: child_id } =>
+          match span_index_extent(index: index, id: child_id) {
+            Absent => acc
+            Present { value: recorded } =>
+              match recorded {
+                SourceExtentUnrepresentable => ParseExtentUnreadable
+                SourceExtentKnown { locus: locus } =>
+                  match locus {
+                    Textual { file: f, extent: ext } =>
+                      match ext {
+                        ByteRange { start: s, end: e } =>
+                          match acc {
+                            ParseExtentNoneYet => ParseExtentSpan { file: f, start: s, end: e }
+                            ParseExtentSpan { file: af, start: astart, end: _ } =>
+                              if af == f { ParseExtentSpan { file: af, start: astart, end: e } } else { ParseExtentUnreadable }
+                            ParseExtentUnreadable => ParseExtentUnreadable
+                          }
+                        WholeFile => ParseExtentUnreadable
+                      }
+                    _ => ParseExtentUnreadable
+                  }
+              }
+          }
+      }
   }
 }
 
@@ -3779,6 +3848,39 @@ fn parse_expr_string_literal_value(
   }
 }
 
+fn parse_expr_string_template_part_value(
+  tok: Token,
+  remaining: List<Token>,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  let minted = parse_mint_from_source(
+    prov: prov,
+    file: tok.file,
+    start: tok.start,
+    end: tok.end
+  )
+  match dag_string_template_part_node_from_lexeme(
+    token_class: tok.class,
+    lexeme: tok.lexeme,
+    occurrence_id: node_occurrence_identity_minted(id: minted.id)
+  ) {
+    Accepted { value: captured, diagnostics: _ } =>
+      ParseExprAccepted {
+        remaining: remaining,
+        captured: captured,
+        diagnostics: std.algebra.Empty,
+        prov: minted.prov,
+        table: table
+      }
+    Rejected { diagnostics: d } =>
+      ParseExprRejected {
+        diagnostics: parse_non_empty_diagnostics_to_list(ned: d),
+        table: table
+      }
+  }
+}
+
 // THE INT-LITERAL WRAP IN THIS FUNCTION IS LOAD-BEARING. minted.id is a raw OccurrenceId;
 // Node.occurrence_id is the NodeOccurrenceIdentity coproduct, so the mint has to be lifted into
 // OccurrenceMinted before it can inhabit a Node. #8833 removed that lift, reading it as a spurious
@@ -3830,6 +3932,8 @@ fn parse_expr_terminal(
                 }
               } else if token_class == ^dag_token_string_literal {
                 parse_expr_string_literal_value(tok: tok, remaining: remaining, table: table, prov: prov)
+              } else if dag_string_template_part_class(token_class: token_class) {
+                parse_expr_string_template_part_value(tok: tok, remaining: remaining, table: table, prov: prov)
               } else if token_class == ^dag_token_float_literal {
                 let minted = parse_mint_from_source(
                   prov: prov,

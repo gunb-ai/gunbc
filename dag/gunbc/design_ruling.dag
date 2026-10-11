@@ -112,6 +112,13 @@ data memory_envelope_is_part_of_the_verdict: DesignRuling = DesignRuling {
   provenance: "Operator ruling issued with the v1 withdrawal.",
 }
 
+data harness_default_requirement_places_on_operator_endpoint: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "harness_default_requirement_places_on_operator_endpoint"),
+  decided: "2026-10-11",
+  section: "3b",
+  provenance: "Operator, in their own words to the lab session: 'could you just make our harness pick this pod, and for our dispatch to pick the harness instead of the claude backend'. It overrules the rule in gunbc.harness.harness_seat harness_requirement_placement that AnyAdmittedModel lands only on a fleet seat; dispatch already defaults to the harness.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
     job_roster_closed_to_growth,
@@ -126,6 +133,7 @@ fn design_rulings() -> List<DesignRuling> {
     v2_better_than_the_seed,
     v1_withdrawn_one_required_job,
     memory_envelope_is_part_of_the_verdict,
+    harness_default_requirement_places_on_operator_endpoint,
   ]
 }
 

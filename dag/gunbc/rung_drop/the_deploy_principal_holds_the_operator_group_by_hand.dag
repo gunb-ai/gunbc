@@ -1,0 +1,41 @@
+module gunbc.rung_drop.the_deploy_principal_holds_the_operator_group_by_hand
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+
+// THE HAND STEP THIS RECORDS, AND WHY THE CONVERGE DOES NOT UNDO IT. Before gunbc-fabric-state-key,
+// the fabric state writer key was root:<operator> 0640, so the dashboard deploy's readback could open
+// it only as a member of the operator's group. The operator made the job user (ghrunner) one by hand:
+// `sudo usermod -aG <operator> ghrunner` and a runner restart. The custody converge now declares a
+// reader group for the key (host_credential_custody_converge custody_reader_set) and reads its members
+// back, so the key no longer NEEDS that membership. The converge does not remove it, deliberately:
+// the membership was never declared, so the converge has no authority row naming the operator group's
+// member set and no readback of it, and a `gpasswd -d` against an account's primary group, on the
+// strength of "nothing declared needs it", would be a mutation of state the model does not describe.
+//
+// WHAT IS LOST. At the grain of the PRINCIPAL: ghrunner can read every file the operator group can
+// (every 0640 root:<operator> custody file, e.g. the Claude Code OAuth harness token), not only the
+// fabric state key. The reader set the converge reads back is the set for ONE file; it does not
+// bound what the job user holds elsewhere.
+data the_deploy_principal_holds_the_operator_group_by_hand: RungDrop = RungDrop {
+  identity: "the_deploy_principal_holds_the_operator_group_by_hand" as NonEmptyStr,
+
+  subject: "Which files the CI job user (ghrunner) may read through the operator account's group -- assessed at the PRINCIPAL's group set, not at the fabric state key's reader group",
+
+  declared: "2026-10-10",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: [
+      "the CI job user ghrunner on srv1, VERIFIED by smart-gull-336 2026-10-10 as groups ghrunner,kvm BEFORE the hand step; the hand step `usermod -aG <operator> ghrunner` is operator-planned for the night of 2026-10-10 and is NOT observed by this row, so whether it ran is unstated here",
+      "every file group-readable by the operator group on that host: at least the 0640 root:<operator> custody rows ClaudeCodeOauthHarnessToken (srv1 only). The fabric state key stops being one once the converge lands, which is the point",
+      "NOT in the population: srv2, srv3, srv4 -- no hand step is recorded for them",
+    ],
+    restoration_trigger: "THE CAPABILITY: a readback of the host's group database shows the job user is NOT a member of the operator account's group, observed AFTER the fabric state key's reader group has been converged and the dashboard deploy's readback has been observed to open the key as the job user. Both halves are required: removing the membership first breaks the deploy that the hand step exists to unblock. WHAT DOES NOT RETIRE THIS ROW: the custody receipt's `readers=` line reading AS-DECLARED, which observes the reader group's members and says nothing about the operator group's; and a hand `gpasswd -d`, which removes the membership without a readback and leaves the next hand step unrecorded. The removal belongs in the converge as a declared, read-back operation once the operator group's member set is a modeled fact.",
+  },
+}

@@ -19,7 +19,9 @@ import gunbc.fabric_storage_file_store {
 }
 import gunbc.fabric_storage_wire { FabricDoorPrincipal, DoorProxied, DoorLocalPeer, DoorUnattested, fabric_storage_wire_head, fabric_storage_wire_put, fabric_storage_wire_advance, fabric_storage_wire_closure, fabric_storage_wire_identity }
 import gunbc.fabric_writer_roster { fabric_door_writer_admission_over, fabric_door_principal_of, fabric_served_writer_roster, fabric_door_local_roster, FabricDoorWriterAdmitted, FabricDoorWriterRefused }
-import gunbc.fabric_storage_placement { fabric_storage_placement, FabricStoragePlaced, FabricStorageUnplaced, fabric_storage_route_prefix, fabric_storage_placed_file_root, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused }
+import gunbc.fabric_storage_binding { fabric_storage_placement }
+import gunbc.roadmap_dashboard_instance { prod_role_realization_refusal_detail }
+import gunbc.fabric_storage_placement { FabricStoragePlaced, FabricStoragePlacementRefused, FabricStorageUnplaced, fabric_storage_route_prefix, fabric_storage_placed_file_root, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused }
 
 // THE FABRIC DB ENDPOINT: the store side of the served handler bound to std.fabric_storage. One
 // `gunbc serve` process on the placed host, compiled once, answers each request by running the
@@ -121,7 +123,8 @@ fn fabric_storage_serve_handle_over(root: FabricStorageFileRoot, rosters: Fabric
 fn fabric_storage_serve_handle(method: String, path: String, body: String, tailscale_identity: String, peer_user: String, release_revision: CommitSha) -> ServeWireResponse {
   match fabric_storage_placement() {
     FabricStorageUnplaced => text_response(status: 503, body: "fabric_storage/1 the fabric DB is unplaced\n")
-    FabricStoragePlaced { host: _, store_root: r, endpoint: _ } =>
+    FabricStoragePlacementRefused { cause } => text_response(status: 503, body: join(["fabric_storage/1 the fabric DB placement is refused: ", prod_role_realization_refusal_detail(cause: cause), "\n"], ""))
+    FabricStoragePlaced { host: _, store_root: r, endpoint: _, door_socket: _ } =>
       match fabric_storage_placed_file_root(store_root: r) {
         FabricStoragePlacedRootRefused { detail } => text_response(status: 503, body: join(["fabric_storage/1 the store's entry mode is refused: ", detail as String, "\n"], ""))
         FabricStoragePlacedRootReady { root } =>
