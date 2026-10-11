@@ -15,7 +15,7 @@ import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_request_submission {
   admit_parsed_submission, SubmissionVerified, SubmissionNotAdmitted, file_and_notify, submission_outcome_http_body, read_submission_keyring, read_publisher_token, escalation_status,
   parse_submission_envelope, SubmissionEnvelopeParsed, SubmissionEnvelopeUnreadable,
-  SubmissionFiledAndNotified, SubmissionFiledNotNotified, SubmissionFiledPublisherTokenUnavailable, SubmissionFiledLinksNotIssued,
+  SubmissionFiledAndNotified, SubmissionFiledNotNotified, SubmissionFiledPublisherTokenUnavailable, SubmissionFiledLinksNotIssued, SubmissionFiledBrokerAddressRefused,
   SubmissionAlreadyFiled, SubmissionStoreRefused, SubmissionRefused, SubmissionFiledCapabilityKeyUnavailable,
   SubmissionUnreadable, SubmissionKeyUnavailable, SubmissionNotEnrolled, SubmissionAuthorityRefused,
 }
@@ -51,6 +51,7 @@ import gunbc.auth.approval_broker_endpoint {
   approval_device_request_path_template,
   approval_device_enrollment_path_template,
   approval_broker_listen_host,
+  approval_broker_serving_base_url,
 }
 import gunbc.auth.approval_device_wire { approval_device_enrol_path, approval_device_redeem_path, approval_device_pending_path, approval_device_push_path }
 import gunbc.auth.approval_device_routes {
@@ -414,6 +415,7 @@ fn approval_submit_admitted_response(request: ServeHttpRequest<RequestAccessPath
             capability_keyring: read_approval_keyring(),
             publisher: read_publisher_token(),
             request: admitted,
+            broker: approval_broker_serving_base_url(),
           )
       }
   }
@@ -422,6 +424,7 @@ fn approval_submit_admitted_response(request: ServeHttpRequest<RequestAccessPath
     SubmissionFiledNotNotified { escalation_id: _, publish: _ } => 502
     SubmissionFiledPublisherTokenUnavailable { escalation_id: _, detail: _ } => 503
     SubmissionFiledLinksNotIssued { escalation_id: _, key_id: _ } => 503
+    SubmissionFiledBrokerAddressRefused { escalation_id: _, detail: _ } => 503
     SubmissionAlreadyFiled { escalation_id: _ } => 409
     SubmissionStoreRefused { detail: _ } => 503
     SubmissionRefused { refusal: v } => match v {

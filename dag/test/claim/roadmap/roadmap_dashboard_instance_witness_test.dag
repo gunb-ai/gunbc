@@ -30,6 +30,7 @@ import gunbc.host_layout {
 }
 import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap_dashboard_instance {
+  prod_role_realization,
   fleet_admitted_revision_source,
   HostDashboardInstance,
   DashboardObserveOnly,
@@ -635,7 +636,7 @@ test fn srv2_lab_has_a_provision_plan_bound_to_itself() -> Bool {
 // a demand for THIS instance's root, read off the store's own demand function. The profile store once
 // had no creator, so every login's profile publication was refused.
 fn demands_contain_path(instance: HostDashboardInstance, path: FilePath) -> Bool {
-  any(dashboard_instance_directory_demands(instance: instance), t => owned_directory_path(t: t) == path)
+  any(dashboard_instance_directory_demands(realization: prod_role_realization(), instance: instance), t => owned_directory_path(t: t) == path)
 }
 
 fn demands_cover_every_auth_store(instance: HostDashboardInstance) -> Bool {

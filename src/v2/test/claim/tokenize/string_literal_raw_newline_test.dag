@@ -1,16 +1,38 @@
 module v2.test.tokenize.string_literal_raw_newline
 
 import v2.std.text { String }
+import std.types { List }
 import v2.std.compilers.lexing { ModeledLexRules, TokenStream }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex_rules }
-import v2.std.diagnostic { ByteRange, DeclarationLocus, Textual, WholeFile }
+import v2.std.diagnostic { Accepted, ByteRange, DeclarationLocus, Outcome, Rejected, Textual, WholeFile }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn tokenize_probe_with_dag_lex_rules(src: String) -> Outcome<TokenStream> {
   tokenize(text: src, file: ^probe, rules: ModeledLexRules { root: dag_lex_rules() })
+}
+
+fn dag_string_token_classes(src: String) -> List<Symbol> {
+  match tokenize_probe_with_dag_lex_rules(src: src) {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: ts, diagnostics: _ } => fold(ts.all, init: [], f: fn(acc, t) { concat(acc, [t.class]) })
+  }
+}
+
+// DISCRIMINATING RED (review 78485): `\u{E9}` is a Unicode escape. E is IdentStartChar, so if the
+// body walk does not consume `\u{` as v1 scan_string_body does, `{E` is a hole opener and this
+// source is a template. It must stay one string literal.
+test fn unicode_escape_letter_hex_lexes_as_one_string_literal() -> Bool {
+  dag_string_token_classes(src: "\"\\u\{E9\}\"") == [^dag_token_string_literal]
+}
+
+// GREEN: a digit after the brace is not a hole start, so `\u{0002}` already survived; it must keep
+// surviving once the letter-hex arm is admitted.
+test fn unicode_escape_digit_hex_lexes_as_one_string_literal() -> Bool {
+  dag_string_token_classes(src: "\"\\u\{0002\}\"") == [^dag_token_string_literal]
 }
 
 test fn string_literal_with_raw_newline_lexes_holds() -> Bool {

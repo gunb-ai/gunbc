@@ -14,7 +14,7 @@ import gunbc.hostname_read {
 }
 import gunbc.fleet_converge_apply { converge_apply_for_host, fleet_compute_host_for_identity }
 import gunbc.host_layout { fleet_converge_receipt_dir, srv1_gunbc_repo_root }
-import gunbc.fleet_desired_observe {
+import gunbc.origin_main_revision_observe {
   FleetRevisionStanding,
   RevisionConverged,
   RevisionDrifted,

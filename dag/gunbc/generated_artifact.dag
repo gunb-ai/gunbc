@@ -12,7 +12,6 @@ import std.decl_ref { DeclarationRef, decl_ref }
 type GeneratedArtifact
   = WitnessFloorYamlArtifact
   | FleetConvergeYamlArtifact
-  | FleetDesiredAdmissionYamlArtifact
   | MicrovmShakedownYamlArtifact
   | InstrumentDispatchYamlArtifact
   | HealWorkflowYamlArtifact
@@ -173,7 +172,6 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
   match a {
     WitnessFloorYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "witnesses.yml" }
     FleetConvergeYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "fleet-converge.yml" }
-    FleetDesiredAdmissionYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "fleet-desired.yml" }
     MicrovmShakedownYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "microvm-shakedown.yml" }
     InstrumentDispatchYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "instrument-dispatch.yml" }
     HealWorkflowYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "heal.yml" }
@@ -265,7 +263,6 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     GeneratedArtifactMergeDriverArtifact => CommitRequired { consumer: GitProtocol }
     WitnessFloorYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     FleetConvergeYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
-    FleetDesiredAdmissionYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     MicrovmShakedownYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     InstrumentDispatchYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     HealWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
@@ -324,7 +321,6 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
   match a {
     WitnessFloorYamlArtifact => match b { WitnessFloorYamlArtifact => true  _ => false }
     FleetConvergeYamlArtifact => match b { FleetConvergeYamlArtifact => true  _ => false }
-    FleetDesiredAdmissionYamlArtifact => match b { FleetDesiredAdmissionYamlArtifact => true  _ => false }
     MicrovmShakedownYamlArtifact => match b { MicrovmShakedownYamlArtifact => true  _ => false }
     InstrumentDispatchYamlArtifact => match b { InstrumentDispatchYamlArtifact => true  _ => false }
     HealWorkflowYamlArtifact => match b { HealWorkflowYamlArtifact => true  _ => false }
@@ -400,7 +396,6 @@ fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
   match a {
     WitnessFloorYamlArtifact => decl_ref(module_path: "gunbc.compiler_gate_workflow", decl_name: "expected_compiler_gate_yml")
     FleetConvergeYamlArtifact => decl_ref(module_path: "gunbc.fleet_converge_workflow", decl_name: "expected_fleet_converge_yml")
-    FleetDesiredAdmissionYamlArtifact => decl_ref(module_path: "gunbc.fleet_desired_admission_workflow", decl_name: "expected_fleet_desired_yml")
     MicrovmShakedownYamlArtifact => decl_ref(module_path: "gunbc.runner_microvm_shakedown_workflow", decl_name: "expected_microvm_shakedown_yml")
     InstrumentDispatchYamlArtifact => decl_ref(module_path: "gunbc.instrument_dispatch_workflow", decl_name: "expected_instrument_dispatch_yml")
     HealWorkflowYamlArtifact => decl_ref(module_path: "gunbc.heal_workflow", decl_name: "expected_heal_workflow_yml")

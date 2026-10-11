@@ -3613,7 +3613,7 @@ fn gunbc_ci_authorized_key_enroll_invoke() -> String {
 // gunbc.roadmap_belt_actuate gates worker dispatch on revision standing, so a desired ref equal to
 // whatever last landed made that gate agree unconditionally, in silence.
 //
-// The replacement is gunbc.fleet_desired_admission, whose decision consults the modeled gate with a
+// The replacement was gunbc.fleet_desired_admission; that module is withdrawn and admission is landed origin/main. Its decision consulted the modeled gate with a
 // floor conclusion observed from the floor run's own workflow_run payload, and renders the
 // authorized push itself so the surrounding shell carries no ref, revision or prior. It is cut at
 // the root rather than kept beside the replacement: two answers to how the fleet's admitted

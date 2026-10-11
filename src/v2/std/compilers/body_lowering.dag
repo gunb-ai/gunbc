@@ -265,7 +265,7 @@ fn view_atom_identity_optional(n: Node) -> Optional<Symbol> {
     TypeNode { connective: Conj } => Absent
     TypeNode { connective: Disj } => Absent
     TypeNode { connective: Arrow } => Absent
-    TypeNode { connective: Cardinality } => Absent
+    TypeNode { connective: Occupancy } => Absent
     TypeNode { connective: Instantiation } => Absent
     ComputationNode { behavior: _ } => Absent
   }
@@ -309,7 +309,7 @@ fn application_head_optional(n: Node) -> Optional<ApplicationHead> {
     TypeNode { connective: Atom { identity: _ } } => application_head_optional_otherwise(n: n)
     TypeNode { connective: Conj } => application_head_optional_otherwise(n: n)
     TypeNode { connective: Disj } => application_head_optional_otherwise(n: n)
-    TypeNode { connective: Cardinality } => application_head_optional_otherwise(n: n)
+    TypeNode { connective: Occupancy } => application_head_optional_otherwise(n: n)
     TypeNode { connective: Instantiation } => application_head_optional_otherwise(n: n)
     ComputationNode { behavior: _ } => application_head_optional_otherwise(n: n)
   }
@@ -588,7 +588,7 @@ fn match_arm_view(arm: Node) -> Outcome<MatchArmView> {
     TypeNode { connective: Atom { identity: _ } } => view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
     TypeNode { connective: Disj } => view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
     TypeNode { connective: Arrow } => view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
-    TypeNode { connective: Cardinality } => view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
+    TypeNode { connective: Occupancy } => view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
     TypeNode { connective: Instantiation } => view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
     ComputationNode { behavior: _ } => view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
   }

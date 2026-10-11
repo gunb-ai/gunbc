@@ -19,11 +19,19 @@ import gunbc.fleet_intent_network {
 import gunbc.fleet_host_identity { operator_host_srv2 }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
+  ProdRoleRealization,
+  ProdRoleRealizedBy,
+  ProdRoleRealizationRefused,
+  ProdRoleHolderUnactuatable,
+  prod_role_realization,
+  prod_role_realization_in,
+  public_builtin_dashboard_instances,
   srv1_live_dashboard_instance,
   srv1_lab_dashboard_instance,
   srv2_deploy_dashboard_instance,
 }
 import v2.std.collection { Present, Absent }
+import gunbc.deployment_risk { ProdRoleSelection }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
   DeploymentHostTarget,
@@ -72,6 +80,7 @@ fn srv2_deploy_selected_identity() -> DeclarationRef {
 
 fn selected_deployment_spec(row: DesiredDeployment) -> DeploymentSpec {
   deployment_spec_for(
+    realization: prod_role_actuated_realization(),
     instance: row.instance,
     target: row.target,
     names: row.names,
@@ -126,6 +135,32 @@ fn srv2_deploy_desired_deployment() -> DesiredDeployment {
   }
 }
 
+// THE PROD ROLE AS SOMETHING THAT CAN BE ACTUATED. The holder resolves over the six dashboard
+// instances (gunbc.roadmap_dashboard_instance prod_role_realization), but only a row of THIS roster
+// has a target and a spec, so a holder outside it -- the MacBook, srv2-preview, srv2's lab -- names a
+// deployment nothing can install. Joined here, against the one roster, it refuses with
+// ProdRoleHolderUnactuatable instead of placing the role-following singletons nowhere. Every
+// role-following reader takes this joined realization; there is no second list of eligible holders.
+fn prod_role_actuated_realization_over(realization: ProdRoleRealization, rows: List<DesiredDeployment>) -> ProdRoleRealization {
+  match realization {
+    ProdRoleRealizedBy { holder } =>
+      if any(rows, r => r.instance.deployment == holder.instance.deployment) { realization }
+      else { ProdRoleRealizationRefused { cause: ProdRoleHolderUnactuatable { deployment: holder.instance.deployment } } }
+    ProdRoleRealizationRefused { cause: _ } => realization
+  }
+}
+
+fn prod_role_actuated_realization_in(selection: ProdRoleSelection) -> ProdRoleRealization {
+  prod_role_actuated_realization_over(
+    realization: prod_role_realization_in(selection: selection, instances: public_builtin_dashboard_instances()),
+    rows: desired_deployment_roster(),
+  )
+}
+
+fn prod_role_actuated_realization() -> ProdRoleRealization {
+  prod_role_actuated_realization_over(realization: prod_role_realization(), rows: desired_deployment_roster())
+}
+
 fn desired_deployment_roster() -> List<DesiredDeployment> {
   [
     srv1_production_desired_deployment(),
@@ -145,7 +180,7 @@ fn deployment_owned_identity(spec: DeploymentSpec, step: DeploymentArtifactStep)
 // HOST-QUALIFIED PATHS OF OWNED ARTIFACT STEPS ONLY — the retract-order membership
 // gunbc.live_deploy.spec deployment_owned_steps actually installs: serve binary, source tree,
 // tree-remote unit, dispatch worktree root, attempt-state root, compute root, fabric event-log
-// root, systemd unit, publication-helper timer, belt timer, tailscale route member path.
+// root, systemd unit, publication-helper path, belt event path, tailscale route member path.
 // Dispatch/attempt/compute/event-log roots are already in that list (C6 moving them into the
 // member roster does not extend this fold). It does NOT enumerate listen port, serve_function,
 // tree-sync unit/env filenames, slice unit, belt/publication service units, or the credential

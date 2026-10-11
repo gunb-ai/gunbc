@@ -143,8 +143,10 @@ fn systemd_run_option_words_refused_cause_detail(cause: SystemdRunOptionWordsRef
   }
 }
 
-// NAME=VALUE for one property: the single spelling every --property=/-p word and every record of a
-// unit's properties carries.
+// THE ASSIGNMENT A PROPERTY IS, `Name=value` (systemd.syntax(7)): spelled once, and read by both option
+// forms below and by any carrier that records the properties a unit was started with as text (the
+// session placement record). Recording the typed property where text was declared is what made every
+// harness spawn fail after the typed options landed (srv1 lab, 2026-10-11).
 fn systemd_run_property_assignment(property: SystemdRunProperty) -> String {
   concat(systemd_unit_property_wire(property: property.property), concat("=", property.value as String))
 }

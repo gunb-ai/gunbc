@@ -57,6 +57,7 @@ data deploy_witness_third_release_revision: CommitSha = "fedcba9876543210fedcba9
 // than paying every demand's install: the demand is the production spec's own, filtered by path.
 fn deploy_witness_spec_with_only_directory(spec: DeploymentSpec, path: String) -> DeploymentSpec {
   DeploymentSpec {
+    role_singletons: spec.role_singletons,
     target: DeploymentHostTarget {
       host: spec.target.host,
       ssh_host: spec.target.ssh_host,
