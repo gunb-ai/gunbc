@@ -322,10 +322,22 @@ fn acquisition_lookup(
       } else if text_set_has(set: state.absent, name: module_file_key(file: file)) {
         acquisition_lookup(env: env, state: state, request: request, candidates: rest)
       } else {
-        acquisition_probe_candidate(env: env, state: state, request: request, module: module, file: file, rest: rest)
+        match acquisition_probe_candidate(env: env, state: state, request: request, module: module, file: file, rest: rest) {
+          CandidateProbeContinue { state: probed, rest: remaining } =>
+            acquisition_lookup(env: env, state: probed, request: request, candidates: remaining)
+          CandidateProbeSettled { lookup: settled } => settled
+        }
       }
   }
 }
+
+// One candidate probe is either settled (a verdict) or an absence that sends the lookup on to the
+// remaining candidates. The continuation is a VALUE the lookup acts on: this function does not call
+// the lookup back, so the lookup is the only recursion and the emitter's tail-call lowering covers
+// it (mutual recursion between effectful functions is not lowered).
+type CandidateProbe
+  = CandidateProbeContinue { state: AcquisitionState, rest: List<String> }
+  | CandidateProbeSettled { lookup: CandidateLookup }
 
 fn acquisition_probe_candidate(
   env: AcquisitionEnv,
@@ -334,9 +346,9 @@ fn acquisition_probe_candidate(
   module: String,
   file: ModuleFileRef,
   rest: List<String>
-) -> CandidateLookup {
+) -> CandidateProbe {
   match acquisition_host_directory(bindings: env.bindings, tree: file.tree) {
-    Absent => CandidateLookup { state: state, verdict: CandidateTreeUnbound { tree: file.tree } }
+    Absent => CandidateProbeSettled { lookup: CandidateLookup { state: state, verdict: CandidateTreeUnbound { tree: file.tree } } }
     Present { value: directory } =>
       match reference_after_probe(
         reference: request.spelling,
@@ -345,13 +357,12 @@ fn acquisition_probe_candidate(
         probe: acquisition_probe(host_directory: directory, file: file)
       ) {
         ReferenceContinue { rest: remaining } =>
-          acquisition_lookup(
-            env: env,
+          CandidateProbeContinue {
             state: acquisition_with_absent(state: state, key: module_file_key(file: file)),
-            request: request,
-            candidates: remaining
-          )
-        ReferenceDecided { lookup: lookup } => acquisition_decided(state: state, directory: directory, lookup: lookup)
+            rest: remaining
+          }
+        ReferenceDecided { lookup: lookup } =>
+          CandidateProbeSettled { lookup: acquisition_decided(state: state, directory: directory, lookup: lookup) }
       }
   }
 }

@@ -61,10 +61,15 @@ fn source_root_walk(pending: List<SourceRootWalkTask>, paths: List<SourceRootWal
         }
         FilesystemDirectoryListingRefused { directory: _, error: cause } =>
           if source_root_candidate_is_file(root: task.root, error_kind: listed.error_kind) {
-            let next = if task.path.ends_with(suffix: suffix) {
-              Cons { head: SourceRootWalkedPath { path: task.path, origin: task.origin }, tail: paths }
-            } else { paths }
-            source_root_walk(pending: rest, paths: next, suffix: suffix)
+            if task.path.ends_with(suffix: suffix) {
+              source_root_walk(
+                pending: rest,
+                paths: Cons { head: SourceRootWalkedPath { path: task.path, origin: task.origin }, tail: paths },
+                suffix: suffix
+              )
+            } else {
+              source_root_walk(pending: rest, paths: paths, suffix: suffix)
+            }
           } else {
             SourceRootPathsRefused { path: task.path, kind: listed.error_kind, cause: cause }
           }
