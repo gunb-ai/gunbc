@@ -1,7 +1,7 @@
 # Harness work lifecycle: one durable session per attempt, supervision as a transparent cadence
 
-> **Status: design authority for a dispatched worker's session, draft for operator review.** It restores the document at the path the roadmap rows `harness-recursive-alignment` and `factory` and a dozen code annotations still cite; the previous version was deleted in fa44b981025 (2026-10-10, v1 closeout). It keeps that version's intent -- the alignment ladder (owner direction 2026-09-21) and durable obligations over replaceable processes (owner ruling 2026-09-21) -- and replaces its realization, which turned the alignment cadence into a process restart.
-> **Operator rulings, 2026-10-11.** (1) The round boundary is a supervision cadence and is transparent to the worker: most of the time the worker never knows it happened. (2) Terminology: a turn is one model reply; a round is the larger stretch of turns.
+> **Status: design authority for a dispatched worker's session; operator decisions of 2026-10-11 recorded in section 5.** It restores the document at the path the roadmap rows `harness-recursive-alignment` and `factory` and a dozen code annotations still cite; the previous version was deleted in fa44b981025 (2026-10-10, v1 closeout). It keeps that version's intent -- the alignment ladder (owner direction 2026-09-21) and durable obligations over replaceable processes (owner ruling 2026-09-21) -- and replaces its realization, which turned the alignment cadence into a process restart.
+> **Operator rulings, 2026-10-11.** (1) The round boundary is a supervision cadence and is transparent to the worker: most of the time the worker never knows it happened. (2) Terminology: a turn is one model reply; a round is the larger stretch of turns. (3) Everything is event-driven; the belt is being retired, so nothing here is assigned to it.
 > **Evidence.** The srv1 lab bring-up of 2026-10-10/11, findings ledger F61, F64, F65, F68, F71, F72, F73, F74 and F75, and the census of the current lifecycle taken the same day (section 4).
 
 ## 1. Terminology
@@ -24,13 +24,13 @@ The code is renamed with the restructure (slice S5), not before, so no intermedi
 ## 3. Requirements
 
 1. **Transparent rounds.** A round boundary does not end, restart or inform the worker. Its conversation, worktree and the processes it started continue. The per-turn countdown notice is deleted.
-2. **Supervision is an obligation, not a phase.** At each round boundary the harness persists a supervision observation (the round's turns, the diff, the receipts produced) and the belt's alignment obligation, due on that event, reads it out of band while the worker keeps running. Its verdict is the ladder's magnitude and maps to exactly one action: aligned, nothing, and the worker never knows; misaligned, a steer appended to the same conversation before the worker's next turn; extremely misaligned, the supervisor, with the session paused; catastrophically misaligned, stop. A check whose answer cannot change the next turn is not run.
+2. **Supervision is a synchronous, invisible pause.** At each round boundary the harness persists a supervision observation (the round's turns, the diff, the receipts produced), which is the event the alignment check is triggered by, and then waits for its verdict before sending the worker's next turn. Nothing is appended to the conversation while it waits, so the worker cannot tell the pause happened. The verdict is the ladder's magnitude and maps to exactly one action: aligned, the next turn is sent unchanged; misaligned, a steer is appended to the same conversation first; extremely misaligned, the supervisor is convened and the pause lasts until its verdict; catastrophically misaligned, stop. A check whose answer cannot change the next turn is not run.
 3. **Durable session, replaceable process.** The transcript is persisted every turn (the wire log already writes the full request); a process that ends unexpectedly -- an OOM, a host restart, a deploy -- is replaced by one that resumes the same conversation in the same worktree. A fresh conversation is never substituted for a lost one: an unreadable transcript stops the attempt with a typed cause.
 4. **The per-command bound stays.** `harness_default_duration_limit_seconds` returns control to the worker when a command hangs; a worker that wants to wait backgrounds the command and polls. Background processes live as long as the session.
-5. **A session ends only by** hand-in (the submission file), stop (supervision or operator), an exhausted budget (escalated; a renewed budget continues the same session), or an unrecoverable fault.
+5. **A session ends only by** hand-in (the submission file), stop (supervision or operator), or an unrecoverable fault. An exhausted budget is an alignment event, not an ending: the check renews the budget and the same session continues, or it stops the session.
 6. **Context growth is handled inside the session** by the existing compaction, which a longer session will exercise for the first time.
 7. **One unit per attempt for the session's life**, collected on any exit with the exit record as its evidence (F68), and no held resource outlives its owner (`gunbc.plans.convergence_coverage_program` cc-guaranteed-cleanup).
-8. **Verdicts are executable; claims are executed.** A supervisor's verdict is one of the actions above, never advice the route cannot carry (F65). A supervisor's statement that work passes is not verification; verification stays the belt's obligation (F71).
+8. **Verdicts are executable; claims are executed.** A supervisor's verdict is one of the actions above, never advice the route cannot carry (F65). A supervisor's statement that work passes is not verification; verification is its own obligation, triggered by hand-in (F71).
 
 ## 4. What changes (census, 2026-10-11)
 
@@ -47,30 +47,29 @@ The code is renamed with the restructure (slice S5), not before, so no intermedi
 - The turn loop: the 40-turn count becomes a cadence that emits a supervision observation and continues, not a terminal.
 - The wire log becomes the record a replacement process resumes from (the remaining work of the roadmap row `harness-conversation-log-forking`).
 - Alignment: wire `AlignmentCadenceState`, `alignment_next_interval` and `AlignmentVerdict` as the alignment obligation's state and verdict.
-- The supervisor is convened by the alignment obligation on an extremely-misaligned verdict, observes a paused live session, and has no stretch cap.
+- The supervisor is convened by the alignment check on an extremely-misaligned verdict, observes the paused session, and has no stretch cap.
 - Metering per session, not per stretch; the issue page shows supervision verdicts on the round strip.
 
 ### Kept
 
 - Per-command and per-request bounds; compaction; seat bind and release; the exit record and unit lifecycle; the capture, verify, review, audit and publish obligations; `FreshFromBase`.
 
-## 5. Open decisions
+## 5. Decisions (operator, 2026-10-11)
 
-1. **Does the worker pause while a round's alignment check runs?** Proposed: no. It continues, and a steer lands before its next turn after the verdict; only an extremely- or catastrophically-misaligned verdict pauses or stops it.
-2. **Where does a package-wide acceptance check run?** Proposed: in the belt's verify obligation after hand-in, which has no turn bound; the worker hands in when its node's own oracle holds. Today both the worker brief and verify name checks, and only verify runs where long work can finish.
-3. **Review- and audit-requested changes**: continue the same session with the review as a steer, or start a fresh attempt. Proposed: the same session.
-4. **Budget renewal**: who renews an exhausted session (the supervisor, the operator) and by how much.
+1. **The worker pauses, synchronously, while a round's alignment check runs**, and in most cases is unaware of the pause (requirement 2).
+2. **A package-wide acceptance check is triggered by hand-in.** The worker hands in when its node's own oracle holds; the wider check runs as the verification the hand-in event triggers, which has no turn bound. Every obligation is event-driven; none waits on a periodic pass.
+3. **Review- and audit-requested changes continue the same session**, with the review delivered as a steer.
+4. **Budget renewal is an alignment and supervision decision** (requirement 5).
 
 ## 6. Slices
 
 Each slice is proven on the srv1 lab by a live lineage, with no operator hand step.
 
 1. **S1 Resume.** A replacement process resumes the session from the wire log in the same worktree. Control: the worker is killed mid-session and continues with its conversation intact.
-2. **S2 Transparent boundary.** The harness no longer exits at a round boundary; it persists the supervision observation and continues; the countdown notice is deleted. Control: a background job started in one round is read back in the next, and an aligned transcript carries no boundary text.
-3. **S3 Alignment obligation.** The belt runs the check out of band on the observation; aligned does nothing; misaligned writes a steer the harness appends before the next turn. Control: a misaligned fixture produces a steer the worker receives; an aligned round produces none.
-4. **S4 Escalation and stop**, and deletion of the continuation lane, the stretch cap, the carry and the `-tN` units.
+2. **S2 Synchronous boundary.** The harness no longer exits at a round boundary: it persists the supervision observation, waits for the alignment verdict, and applies it (continue unchanged, append a steer, wait for the supervisor, or stop); the countdown notice is deleted. Control: a background job started in one round is read back in the next; an aligned transcript carries no boundary text; a misaligned fixture produces a steer the worker receives.
+3. **S3 Hand-in-triggered verification** of decision 2, as an event, replacing the worker-side package-wide acceptance.
+4. **S4 Escalation, renewal and stop**, and deletion of the continuation lane, the stretch cap, the carry and the `-tN` units.
 5. **S5 Terminology** across the harness, events, metering and the page.
-6. **S6** The acceptance placement of decision 2.
 
 ## 7. Controls
 
