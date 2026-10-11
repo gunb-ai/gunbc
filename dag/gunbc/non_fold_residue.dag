@@ -270,21 +270,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_content_hash_structural_refusal,
   },
   FrontierRow {
-    subject: PathSubject { path: "src/v2/compiler/self_host/frontier_probe_types.dag::frontier_blocker_class_matches" },
-    reason: nfr_reason_frontier_probe,
-    dissolution: nfr_dissolve_frontier_probe,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/compiler/self_host/frontier_probe_types.dag::frontier_probe_located_stage_for_emit_outcome" },
-    reason: nfr_reason_frontier_probe,
-    dissolution: nfr_dissolve_frontier_probe,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/compiler/self_host/frontier_probe_types.dag::frontier_upstream_semantic_refusal_located_reason" },
-    reason: nfr_reason_frontier_probe,
-    dissolution: nfr_dissolve_frontier_probe,
-  },
-  FrontierRow {
     subject: PathSubject { path: "src/v2/compiler/05_emit_orchestration.dag::orch_emit_let_step" },
     reason: nfr_reason_orch_emit,
     dissolution: nfr_dissolve_orch_emit,

@@ -387,7 +387,12 @@ fn frontier_probe_located_stage_for_emit_outcome(
   match blocker {
     UpstreamSemanticRefusal { diagnostic_class: _, diagnostic_name: _ } =>
       ProbeStageSemanticDerivation
-    _ => ProbeStageEmit
+    SelfEmitReady => ProbeStageEmit
+    NameResolutionGap => ProbeStageEmit
+    EmitSurfaceGap => ProbeStageEmit
+    RealizationGap => ProbeStageEmit
+    FixtureCemented => ProbeStageEmit
+    UnknownProbeCause { reason: _ } => ProbeStageEmit
   }
 }
 
@@ -629,33 +634,63 @@ fn frontier_blocker_class_matches(
     SelfEmitReady =>
       match target {
         SelfEmitReady => true
-        _ => false
+        NameResolutionGap => false
+        EmitSurfaceGap => false
+        RealizationGap => false
+        FixtureCemented => false
+        UpstreamSemanticRefusal { diagnostic_class: _, diagnostic_name: _ } => false
+        UnknownProbeCause { reason: _ } => false
       }
     NameResolutionGap =>
       match target {
+        SelfEmitReady => false
         NameResolutionGap => true
-        _ => false
+        EmitSurfaceGap => false
+        RealizationGap => false
+        FixtureCemented => false
+        UpstreamSemanticRefusal { diagnostic_class: _, diagnostic_name: _ } => false
+        UnknownProbeCause { reason: _ } => false
       }
     EmitSurfaceGap =>
       match target {
+        SelfEmitReady => false
+        NameResolutionGap => false
         EmitSurfaceGap => true
-        _ => false
+        RealizationGap => false
+        FixtureCemented => false
+        UpstreamSemanticRefusal { diagnostic_class: _, diagnostic_name: _ } => false
+        UnknownProbeCause { reason: _ } => false
       }
     RealizationGap =>
       match target {
+        SelfEmitReady => false
+        NameResolutionGap => false
+        EmitSurfaceGap => false
         RealizationGap => true
-        _ => false
+        FixtureCemented => false
+        UpstreamSemanticRefusal { diagnostic_class: _, diagnostic_name: _ } => false
+        UnknownProbeCause { reason: _ } => false
       }
     FixtureCemented =>
       match target {
+        SelfEmitReady => false
+        NameResolutionGap => false
+        EmitSurfaceGap => false
+        RealizationGap => false
         FixtureCemented => true
-        _ => false
+        UpstreamSemanticRefusal { diagnostic_class: _, diagnostic_name: _ } => false
+        UnknownProbeCause { reason: _ } => false
       }
     UpstreamSemanticRefusal { diagnostic_class: lc, diagnostic_name: ln } =>
       match target {
+        SelfEmitReady => false
+        NameResolutionGap => false
+        EmitSurfaceGap => false
+        RealizationGap => false
+        FixtureCemented => false
         UpstreamSemanticRefusal { diagnostic_class: rc, diagnostic_name: rn } =>
           (lc == rc) && (ln == rn)
-        _ => false
+        UnknownProbeCause { reason: _ } => false
       }
     UnknownProbeCause { reason: _ } => false
   }
@@ -670,6 +705,11 @@ fn frontier_upstream_semantic_refusal_located_reason(
 ) -> Symbol {
   match refusal {
     UpstreamSemanticRefusal { diagnostic_class: _, diagnostic_name: name } => name
-    _ => ^frontier_upstream_semantic_refusal_located_reason_mismatch_red_control
+    SelfEmitReady => ^frontier_upstream_semantic_refusal_located_reason_mismatch_red_control
+    NameResolutionGap => ^frontier_upstream_semantic_refusal_located_reason_mismatch_red_control
+    EmitSurfaceGap => ^frontier_upstream_semantic_refusal_located_reason_mismatch_red_control
+    RealizationGap => ^frontier_upstream_semantic_refusal_located_reason_mismatch_red_control
+    FixtureCemented => ^frontier_upstream_semantic_refusal_located_reason_mismatch_red_control
+    UnknownProbeCause { reason: _ } => ^frontier_upstream_semantic_refusal_located_reason_mismatch_red_control
   }
 }
