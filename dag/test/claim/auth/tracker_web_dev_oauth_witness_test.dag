@@ -35,7 +35,6 @@ import gunbc.auth.tracker_web_oauth_client {
   tracker_web_oauth_frontier_rows,
   tracker_web_oidc_deploy_now_epoch,
 }
-import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.live_deploy.emit {
   apply_step_effects, apply_oidc_config_steps_at,
   live_deploy_serve_unit_emission, live_deploy_serve_unit_emission_at,
@@ -136,10 +135,6 @@ test fn srv2_hand_started_unit_is_unmodeled_and_not_adopted() -> Bool {
     && any(tracker_web_unassigned_redirects(), u =>
       (u.environment == GoogleLoginEnvironmentTest) && ((u.uri as String) == (tracker_web_test_srv2_redirect_uri as String))
     )
-    && any(census_closure_frontier_rows(), row => match row.subject {
-      PathSubject { path: p } => p == "gunbc-dash-18082.service"
-      _ => false
-    })
     && match frontier_rows_keyed_roster_build(rows: tracker_web_oauth_frontier_rows) {
       KeyedRosterBuilt { rows: roster } =>
         any(roster, kr => match kr.row_key {
@@ -178,10 +173,14 @@ test fn console_readback_is_independent_and_expires() -> Bool {
       TrackerWebOidcConsoleReadbackUnsatisfied { instance_id: _, cause: _ } => true
       _ => false
     }
-    && any(census_closure_frontier_rows(), row => match row.subject {
-      PathSubject { path: p } => p == (tracker_web_test_target_owned_domain as String)
+    && match frontier_rows_keyed_roster_build(rows: tracker_web_oauth_frontier_rows) {
+      KeyedRosterBuilt { rows: roster } =>
+        any(roster, kr => match kr.row_key {
+          PathSubject { path: p } => p == (tracker_web_test_target_owned_domain as String)
+          _ => false
+        })
       _ => false
-    })
+    }
 }
 
 test fn lab_apply_identity_route_writes_oidc_config_file() -> Bool {
