@@ -47,6 +47,7 @@ import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared }
 import extdeps.posix.identity { PosixOwnerNames }
 import gunbc.roadmap.dashboard_instance_directories { dashboard_instance_directory_demands }
 import gunbc.roadmap_dashboard_instance {
+  srv1_dashboard_lab_id,
   HostDashboardInstance,
   dashboard_instance_provider_state_root,
   dashboard_instance_tailnet_door_socket,
@@ -887,14 +888,40 @@ data tailscale_default_https_port: Port = 443
 // prefix where namespacing by position is the end state. The mount then projects from the
 // instance's position rather than from its name, and this function stops spelling a separator.
 
+// AN INSTANCE THAT SERVES PAGES OWNS AN ORIGIN, NOT A PATH UNDER ANOTHER INSTANCE'S ORIGIN. The served
+// pages, the dispatch control and the OAuth callback all use root-absolute paths (gunbc.roadmap_serve
+// has no base path), so an instance mounted at /<id> on the shared 443 listener sent every link, the
+// stylesheet and the login callback to production's root (srv1 lab, 2026-10-11). An instance listed
+// here gets its own tailnet HTTPS listener with the root mount; an unlisted instance keeps the
+// path mount. The port is a declared row because it is also the exact-match OAuth redirect the
+// operator registered (https://srv1.tailecbe08.ts.net:8444/auth/google/callback): a derived port
+// would move it out from under the registration.
+type InstanceTailnetOrigin {
+  instance_id: NonEmptyStr
+  https_port: Port
+}
+
+data instance_tailnet_origins: List<InstanceTailnetOrigin> = [
+  InstanceTailnetOrigin { instance_id: srv1_dashboard_lab_id, https_port: 8444 },
+]
+
+fn derived_tailscale_serve_endpoint(instance: HostDashboardInstance) -> TailscaleServeEndpoint {
+  match instance_tailnet_origins |> filter(o => (o.instance_id as String) == (instance.instance_id as String)) |> first() {
+    Present { value: o } =>
+      TailscaleServeEndpoint { https_port: o.https_port, mount: ServeRootMount, backend: to_string(instance.listen_port) as NonEmptyStr }
+    Absent =>
+      TailscaleServeEndpoint {
+        https_port: tailscale_default_https_port,
+        mount: ServeSetPath { path: join(["/", instance.instance_id as String], "") as NonEmptyStr },
+        backend: to_string(instance.listen_port) as NonEmptyStr,
+      }
+  }
+}
+
 fn derived_deployment_names(instance: HostDashboardInstance) -> DeploymentNames {
   DeploymentNames {
     unit_name: join(["gunbc-", instance.instance_id as String, ".service"], "") as NonEmptyStr,
-    tailscale_serve_endpoint: TailscaleServeEndpoint {
-      https_port: tailscale_default_https_port,
-      mount: ServeSetPath { path: join(["/", instance.instance_id as String], "") as NonEmptyStr },
-      backend: to_string(instance.listen_port) as NonEmptyStr,
-    },
+    tailscale_serve_endpoint: derived_tailscale_serve_endpoint(instance: instance),
     tree_sync_unit_name: join(["gunbc-", instance.instance_id as String, "-tree-sync.service"], "") as NonEmptyStr,
     tree_sync_env_path: join(["/etc/gunbc-", instance.instance_id as String, "-tree-sync.env"], "") as NonEmptyStr,
     publication_principal: gunbc_publication_principal_name,
