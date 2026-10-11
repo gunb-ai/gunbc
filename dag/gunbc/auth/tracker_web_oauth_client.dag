@@ -208,14 +208,14 @@ fn tracker_web_test_registered_web_client_console_readback() -> WorkspaceAdminRe
   }
 }
 
-data tracker_web_dev_oauth_client_secret_ref: SecretRef = secret_ref_pin_version(
+data tracker_web_test_oauth_client_secret_ref: SecretRef = secret_ref_pin_version(
   ref: fleet_secret_ref(secret_id: "tracker-web-dev-oauth-client-secret"),
   version: "1",
 )
 
-data tracker_web_dev_oauth_client_secret_host_path: NonEmptyStr = "/etc/gunbc-oidc/tracker-web-dev-client-secret" as NonEmptyStr
+data tracker_web_test_oauth_client_secret_host_path: NonEmptyStr = "/etc/gunbc-oidc/tracker-web-dev-client-secret" as NonEmptyStr
 
-data tracker_web_dev_oidc_config_host_path: NonEmptyStr = "/etc/gunbc-oidc/tracker-web-dev.json" as NonEmptyStr
+data tracker_web_test_oidc_config_host_path: NonEmptyStr = "/etc/gunbc-oidc/tracker-web-dev.json" as NonEmptyStr
 
 type TrackerWebOidcServeConfig {
   config_path: NonEmptyStr
@@ -264,9 +264,9 @@ fn tracker_web_oidc_serve_placement(instance_id: NonEmptyStr) -> TrackerWebOidcS
             Present { value: uri } =>
               TrackerWebOidcServeReady {
                 config: TrackerWebOidcServeConfig {
-                  config_path: tracker_web_dev_oidc_config_host_path,
+                  config_path: tracker_web_test_oidc_config_host_path,
                   redirect_uri: uri,
-                  secret_file: tracker_web_dev_oauth_client_secret_host_path,
+                  secret_file: tracker_web_test_oauth_client_secret_host_path,
                   binding: b,
                 }
               }

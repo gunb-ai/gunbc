@@ -21,11 +21,11 @@ import gunbc.auth.tracker_web_oauth_client {
   TrackerWebOidcServeReady, TrackerWebOidcPlacementUnassigned, TrackerWebOidcPlacementUnbound,
   TrackerWebOidcServeConfigured, TrackerWebOidcConsoleReadbackUnsatisfied,
   tracker_web_oidc_config_document,
-  tracker_web_test_lab_redirect_uri, tracker_web_dev_oauth_client_secret_host_path,
-  tracker_web_dev_oidc_config_host_path,
+  tracker_web_test_lab_redirect_uri, tracker_web_test_oauth_client_secret_host_path,
+  tracker_web_test_oidc_config_host_path,
   tracker_web_oauth_standing_for_environment,
   tracker_web_instance_environment, tracker_web_test_target_owned_domain,
-  tracker_web_dev_oauth_client_secret_ref,
+  tracker_web_test_oauth_client_secret_ref,
   tracker_web_test_auth_platform_client_assessment,
   tracker_web_test_console_readback_observed_at_epoch,
   tracker_web_test_console_readback_valid_until_epoch,
@@ -54,7 +54,7 @@ test fn lab_rendered_oidc_config_names_lab_redirect_and_secret_path() -> Bool {
     TrackerWebOidcServeReady { config: cfg } =>
       let body = tracker_web_oidc_config_document(cfg: cfg)
       string_contains(s: body, pattern: tracker_web_test_lab_redirect_uri as String)
-        && string_contains(s: body, pattern: tracker_web_dev_oauth_client_secret_host_path as String)
+        && string_contains(s: body, pattern: tracker_web_test_oauth_client_secret_host_path as String)
         && string_contains(s: body, pattern: "client_secret_file")
         && !string_contains(s: body, pattern: "\"client_secret\":")
     _ => false
@@ -145,7 +145,7 @@ test fn console_readback_is_independent_and_expires() -> Bool {
   let b = tracker_web_test_oauth_client_binding()
   let observed = tracker_web_test_console_observed_redirect_uris
   (b.environment == GoogleLoginEnvironmentTest)
-    && (tracker_web_dev_oauth_client_secret_ref.version as String) == "1"
+    && (tracker_web_test_oauth_client_secret_ref.version as String) == "1"
     && all(observed, x => any(b.redirect_uris, y => x == y))
     && all(b.redirect_uris, x => any(observed, y => x == y))
     && match tracker_web_test_auth_platform_client_assessment(now_epoch: tracker_web_test_console_readback_observed_at_epoch) {
@@ -184,7 +184,7 @@ test fn lab_apply_identity_route_writes_oidc_config_file() -> Bool {
     Absent => false
     Present { value: step } =>
       let sh = pipeline_steps_text(steps: apply_step_effects(step: step, effects: effects, spec: spec, plan: plan))
-      string_contains(s: sh, pattern: tracker_web_dev_oidc_config_host_path as String)
+      string_contains(s: sh, pattern: tracker_web_test_oidc_config_host_path as String)
         && string_contains(s: sh, pattern: "0600")
         && string_contains(s: sh, pattern: "gunbc-oidc-config.json")
   }
@@ -198,7 +198,7 @@ test fn lab_apply_oidc_config_refuses_when_console_readback_expired() -> Bool {
     should_write: false,
   ))
   string_contains(s: sh, pattern: "__GUNBC_OIDC_READBACK_REFUSED__")
-    && !string_contains(s: sh, pattern: tracker_web_dev_oidc_config_host_path as String)
+    && !string_contains(s: sh, pattern: tracker_web_test_oidc_config_host_path as String)
 }
 
 test fn production_spec_has_no_oidc_config_artifact() -> Bool {
