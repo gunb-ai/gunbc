@@ -87,10 +87,6 @@ data nfr_reason_verification_producer_absent: String = "NOT terminal-state absor
 
 data nfr_dissolve_verification_producer_absent: DissolutionCondition = unbound_dissolution(description: "the Verify receipt producer lands: the WorkItemExecutionContract's ModeledValidationCommand runs in the attempt worktree against one immutable candidate revision and persists a receipt, at which point this function folds over that receipt instead of over provider state, its arms carry distinct WorkflowSegmentStates, and the row deletes. It does NOT dissolve on the derived-terminality projection that clears its four siblings — a terminality partition over ProviderExecutionState leaves every arm answering Pending.")
 
-data nfr_reason_dispatch_selection_routing: String = "provider-selection routing residue (match on ProviderSelectionRequest, ProviderOffer, or ResolvedProviderSelection with off-shape wildcard refusal or false arms) landed with Slice A dispatch_selection.dag; declared at landing so the ratchet re-arms"
-
-data nfr_dissolve_dispatch_selection_routing: DissolutionCondition = unbound_dissolution(description: "total matches over the closed selection request and offer coproducts land and the wildcard arms migrate to named variants — rows delete with that fold")
-
 data nfr_reason_provider_standing_limit_draw: String = "dispatch-scoped limit relevance folds (match on ProviderLimitDispatchDraw × ProviderLimitSubject and LimitRejected carve-outs with wildcard arms routing off-shape subjects) landed with provider_standing authority #7926; declared at landing so the ratchet re-arms"
 
 data nfr_dissolve_provider_standing_limit_draw: DissolutionCondition = unbound_dissolution(description: "cited model-to-native-token joins land per provider gap notes and limit_subject_covers_dispatch_draw becomes a total match — rows delete with that fold")
