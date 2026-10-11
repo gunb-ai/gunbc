@@ -51,7 +51,7 @@ fn client_stmt_free_names(stmt: TsStmt, bound: List<String>) -> List<String> {
     Const { name: _, value } => client_expr_free_names(expr: value, bound: bound)
     Let { name: _, value } => client_expr_free_names(expr: value, bound: bound)
     ExprStmt { expr } => client_expr_free_names(expr: expr, bound: bound)
-    If { cond, then, else_stmt } => concat(client_expr_free_names(expr: cond, bound: bound), concat(client_stmt_free_names(stmt: then, bound: bound), match else_stmt { Present { value } => client_stmt_free_names(stmt: value, bound: bound) Absent => [] }))
+    If { cond, then: then_stmt, else_stmt } => concat(client_expr_free_names(expr: cond, bound: bound), concat(client_stmt_free_names(stmt: then_stmt, bound: bound), match else_stmt { Present { value } => client_stmt_free_names(stmt: value, bound: bound) Absent => [] }))
     ForOf { var_name, iterable, body } => concat(client_expr_free_names(expr: iterable, bound: bound), client_stmt_free_names(stmt: body, bound: concat(bound, [var_name])))
     Return { expr } => match expr { Present { value } => client_expr_free_names(expr: value, bound: bound) Absent => [] }
     Block { stmts } => client_stmts_free_names(stmts: stmts, bound: bound)
