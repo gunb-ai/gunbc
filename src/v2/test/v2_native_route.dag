@@ -4,7 +4,7 @@ import std.types { List }
 
 import extdeps.bazel.label { LabelParsed, LabelRefused, render_label }
 import extdeps.bazel.target_pattern {
-  TargetPatternParsed, TargetPatternRefused, parse_target_pattern, target_pattern_matches
+  TargetPattern, TargetPatternParsed, TargetPatternRefused, parse_target_pattern, target_pattern_matches
 }
 import gunbc.witness.v2_native_route {
   native_route_admission_with, NativeRouteLivePairStanding, LivePairRequired, LivePairExpectedRed,
@@ -46,21 +46,15 @@ import v2.workflow.compile_door_cause_ownership {
 }
 import gunbc.repo.repo_self_warning_policy { repo_self_warning_denial_rustflags }
 import v2.compiler.compile {
-  NativeLaneSourceFacts,
-  NativeLaneUniverse,
-  NativeLaneUniverseModule,
-  native_lane_closure_modules,
-  native_lane_closure_round_budget,
-  native_lane_module_set,
-  native_lane_module_in_set,
-  native_lane_declared_module_name,
-  native_lane_unowned_row_path
+  NativeLaneAcquired,
+  NativeLaneAcquisition,
+  native_lane_acquired,
+  native_lane_candidate_entries,
+  native_lane_declared_module_name
 }
-import v2.workflow.floor_discovery_row { FloorDiscoveryRow }
-import v2.workflow.floor_discovery_source_authority {
-  FloorDiscoveryWalkState
-}
-import v2.std.live_tree { SubstrateInputsOnly }
+import v2.compiler.module_acquisition { AcquiredModule }
+import v2.compiler.source_authority { ModuleFileRef }
+import v2.std.cross_tree.import_model { V2Tree }
 import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther,
   native_test_refused_located, NativeTestRefused,
@@ -70,7 +64,7 @@ import v2.compiler.native_test_vocabulary {
   FileRefusalLink,
   FileRefusalAtWholeFile
 }
-import std.optional { Absent, Optional, Present, optional_present, optional_absent }
+import std.optional { Absent, Optional, Present, optional_absent }
 import v2.std.diagnostic {
   Accepted, Outcome, Rejected, invariant_port_locus, Diagnostic, NonEmptyDiagnostics, Unavailable, ExternalContractUnknown
 }
@@ -1391,11 +1385,10 @@ test fn the_admission_summary_names_every_violated_clause() -> Bool {
   })) == "refused: job_name_mismatch, tested_tree_unrecorded, preparation_seed_unrecorded, emitted_closure_unrecorded, route_identity_unrecorded, universe_underived, positive_population_empty, required_native_pass_regressed, false_control_not_observed, true_control_not_observed, malformed_control_accepted_by_route, old_route_control_never_installed, emitted_build_rustc_unrecorded, emitted_build_compiler_unbound, emitted_build_warnings_not_denied, emitted_build_not_clean"
 }
 
-// THE DERIVED UNIVERSE'S TWO PRE-JOIN FACTS, JUDGED HERE BECAUSE THE ROUTE NOW OWNS THEM. Both
-// used to be the seed's: the module a source declares (its Rust module index) and the refusal a
-// discovery row with no owning module gets (UniverseEntryOutsideSubject). They moved into
-// v2.compiler.compile with the derivation, so their discriminating reds move with them.
-
+// THE MODULE A SOURCE DECLARES, JUDGED HERE BECAUSE THE ROUTE NOW OWNS THE FACT. It used to be the seed's
+// (its Rust module index) and moved into v2.compiler.compile with the derivation, so its discriminating
+// reds move with it. A universe member needs no such reading: its name is the name it was requested by,
+// confirmed against its `module` line by the acquirer, so no enrolled row can lack an owning module.
 test fn the_declared_module_is_read_off_the_header_and_nothing_else() -> Bool {
   match native_lane_declared_module_name(
     content: "// a leading annotation\n\nmodule v2.test.subject\n\nimport std.types { Bool }\nmodule not.the.header\n"
@@ -1415,49 +1408,6 @@ test fn a_source_with_no_module_header_declares_no_module() -> Bool {
   match native_lane_declared_module_name(content: "// only prose\ntest fn t() -> Bool { true }\n") {
     Absent => true
     Present { value: _ } => false
-  }
-}
-
-// The headerless source that enrols a row is the one the derivation names; a headerless source
-// that enrols nothing is not a defect and must not be named.
-test fn a_discovery_row_whose_source_declares_no_module_refuses_the_derivation() -> Bool {
-  let enrolled = FloorDiscoveryWalkState {
-    rows: [FloorDiscoveryRow {
-      label: "t",
-      entry: "src/v2/test/headerless.dag",
-      function: "t",
-      reads_live_tree: SubstrateInputsOnly
-    }],
-    walk_failures: 0,
-    walk_failure_path: Absent,
-    wire_contract_misplaced_paths: [],
-    disposition_refusal: Absent
-  }
-  let empty = FloorDiscoveryWalkState {
-    rows: [],
-    walk_failures: 0,
-    walk_failure_path: Absent,
-    wire_contract_misplaced_paths: [],
-    disposition_refusal: Absent
-  }
-  match native_lane_unowned_row_path(facts: [
-    NativeLaneSourceFacts {
-      module: Absent,
-      path: ^src_v2_test_quiet_dag,
-      imports: [],
-      discovery: empty,
-      malformed_import: Absent
-    },
-    NativeLaneSourceFacts {
-      module: Absent,
-      path: ^headerless_source_path,
-      imports: [],
-      discovery: enrolled,
-      malformed_import: Absent
-    }
-  ]) {
-    Present { value: unowned } => unowned == ^headerless_source_path
-    Absent => false
   }
 }
 
@@ -1505,98 +1455,185 @@ test fn an_absent_old_route_naming_nothing_is_refused() -> Bool {
   )
 }
 
-// ── the closure's discriminating RED ───────────────────────────────────────────────────────
+// ── what the lane acquires, decided by names ─────────────────────────────────────────────────────
 //
-// A MODULE OUTSIDE THE CLOSURE CHANGES NOTHING, AND THAT IS THE ACCEPTANCE (operator ruling
+// A MODULE OUTSIDE THE REQUESTED CLOSURE CHANGES NOTHING, AND THAT IS THE ACCEPTANCE (operator ruling
 // 2026-09-11: prove closure-scoping by POPULATION, not by a faster clock, because a hidden
-// whole-corpus prepass survives a timer improvement). The rows below drive the route's own closure
-// computation with a fact set carrying a module NO universe module imports, and assert it is
-// neither in the closure nor in what the route would ingest. The same shape is what makes a
-// malformed outsider harmless: never in the ingest means never tokenized, so it cannot mint a
-// refusal row or move a verdict.
+// whole-corpus prepass survives a timer improvement). Two decisions are this lane's and are claimed
+// here over supplied values: WHICH NAMES ARE ENTRIES (a module the pattern cannot admit is never
+// requested, so it is never read, never tokenized and cannot mint a refusal row or move a verdict), and
+// WHAT IS DERIVED FROM THE MODULES THAT CAME BACK (the universe from the front end's own test markers,
+// and an ingest that is exactly the acquired modules). Whether the read set IS the requested closure is
+// the acquirer's verdict, claimed beside it (v2.test.claim.module_acquisition); the native layout and
+// compile verbs run the same acquirer over the real repository, which is the one execution of the
+// integration.
 
-// The closure probes all name a module, so the row carries Present; the headerless case is the
-// unowned witness above, which is the one that exercises Absent.
-fn closure_fact(module: String, path: Symbol, imports: List<String>) -> NativeLaneSourceFacts {
-  NativeLaneSourceFacts {
-    module: optional_present(value: module),
-    path: path,
-    imports: imports,
-    discovery: FloorDiscoveryWalkState {
-      rows: [],
-      walk_failures: 0,
-      walk_failure_path: Absent,
-      wire_contract_misplaced_paths: [],
-      disposition_refusal: Absent
-    },
-    malformed_import: Absent
+fn entries_text(entries: List<String>) -> String {
+  fold_list(xs: entries, empty: "", cons: fn(acc, name) { concat(acc, "|", name) })
+}
+
+fn entries_under(text: String, population: List<String>) -> String {
+  match parse_target_pattern(text: text) {
+    TargetPatternRefused { cause: _ } => "pattern-refused"
+    TargetPatternParsed { pattern: pattern } =>
+      entries_text(entries: native_lane_candidate_entries(pattern: pattern, population: population))
   }
 }
 
-fn closure_probe_universe() -> NativeLaneUniverse {
-  NativeLaneUniverse {
-    modules: [NativeLaneUniverseModule {
-      module: "v2.test.subject",
-      path: ^src_v2_test_subject_test_dag,
-      declarations: ["a_claim"]
-    }],
-    identities: [NativeRouteTestIdentity { module: "v2.test.subject", declaration: "a_claim" }],
-    module_sources: [NativeRouteModuleSource { module: "v2.test.subject", path: ^src_v2_test_subject_test_dag }]
+fn namespace_population() -> List<String> {
+  ["v2.test.alpha", "v2.test.beta.deep", "v2.test.gamma"]
+}
+
+test fn the_entries_are_the_control_and_the_modules_the_pattern_admits() -> Bool {
+  entries_under(text: "//v2/test/alpha:all", population: namespace_population())
+    == concat("|", native_route_live_control_module, "|v2.test.alpha")
+}
+
+test fn a_subtree_pattern_requests_its_subtree_and_not_the_modules_beside_it() -> Bool {
+  entries_under(text: "//v2/test/beta/...", population: namespace_population())
+    == concat("|", native_route_live_control_module, "|v2.test.beta.deep")
+}
+
+test fn a_single_target_requests_the_module_of_its_package_and_no_other() -> Bool {
+  entries_under(text: "//v2/test/gamma:a_claim", population: namespace_population())
+    == concat("|", native_route_live_control_module, "|v2.test.gamma")
+}
+
+test fn the_default_pattern_requests_every_module_of_the_population() -> Bool {
+  entries_text(
+    entries: native_lane_candidate_entries(pattern: native_route_default_pattern(), population: namespace_population())
+  ) == concat("|", native_route_live_control_module, "|v2.test.alpha|v2.test.beta.deep|v2.test.gamma")
+}
+
+fn an_acquired(name: String, path: String, markers: List<String>, content: String) -> AcquiredModule {
+  AcquiredModule {
+    name: name,
+    file: ModuleFileRef { tree: V2Tree {}, relative_path: path },
+    host_directory: "src/v2",
+    content: content,
+    requests: [],
+    test_markers: markers
   }
 }
 
-fn closure_probe_facts() -> List<NativeLaneSourceFacts> {
-  [
-    closure_fact(module: "v2.test.subject", path: ^src_v2_test_subject_test_dag, imports: ["v2.std.logic"]),
-    closure_fact(module: "v2.std.logic", path: ^src_v2_std_logic_dag, imports: []),
-    closure_fact(module: "v2.native_lane_fixture.control", path: ^src_v2_native_lane_fixture_control_dag, imports: []),
-    closure_fact(module: "v2.unrelated.outsider", path: ^src_v2_unrelated_outsider_dag, imports: ["v2.std.logic"])
-  ]
+// The subject carries a marked declaration and, in its text, a `test fn` the front end did NOT mark:
+// the universe is what the markers say, so the unmarked one is not a member.
+fn subject_acquired() -> AcquiredModule {
+  an_acquired(
+    name: "v2.test.subject",
+    path: "test/subject.dag",
+    markers: ["a_claim"],
+    content: "module v2.test.subject\n\ntest fn a_claim() -> Bool { true }\n\ntest fn only_in_text() -> Bool { true }\n"
+  )
 }
 
-fn native_lane_closure_budget_probe(budget: Int) -> Outcome<List<String>> {
-  native_lane_closure_modules(facts: closure_probe_facts(), universe: closure_probe_universe(), budget: budget)
+// Marked, but outside the `v2.test` namespace: a module the route acquires for its bytes (the control,
+// a dependency) enrols nothing.
+fn dependency_acquired() -> AcquiredModule {
+  an_acquired(name: "v2.std.logic", path: "std/logic.dag", markers: ["not_a_universe_claim"], content: "module v2.std.logic\n")
 }
 
-test fn the_closure_holds_what_the_universe_needs() -> Bool {
-  match native_lane_closure_budget_probe(budget: native_lane_closure_round_budget) {
+fn control_acquired() -> AcquiredModule {
+  an_acquired(
+    name: native_route_live_control_module,
+    path: "native_lane_fixture/control.dag",
+    markers: ["the_control_claim"],
+    content: "module v2.native_lane_fixture.control\n"
+  )
+}
+
+fn acquired_over(
+  modules: List<AcquiredModule>,
+  population: List<String>,
+  pattern: TargetPattern
+) -> Outcome<NativeLaneAcquired> {
+  native_lane_acquired(
+    acquisition: NativeLaneAcquisition { modules: modules, population: population },
+    pattern: pattern
+  )
+}
+
+fn acquired_default(modules: List<AcquiredModule>, population: List<String>) -> Outcome<NativeLaneAcquired> {
+  acquired_over(modules: modules, population: population, pattern: native_route_default_pattern())
+}
+
+fn identities_text(identities: List<NativeRouteTestIdentity>) -> String {
+  fold_list(
+    xs: identities,
+    empty: "",
+    cons: fn(acc, identity) { concat(acc, "|", native_route_identity_qualified(identity: identity)) }
+  )
+}
+
+test fn the_universe_is_the_marked_declarations_of_the_namespace_modules_acquired() -> Bool {
+  match acquired_default(
+    modules: [control_acquired(), subject_acquired(), dependency_acquired()],
+    population: ["v2.test.subject"]
+  ) {
     Rejected { diagnostics: _ } => false
-    Accepted { value: closure, diagnostics: _ } => {
-      let members = native_lane_module_set(modules: closure)
-      native_lane_module_in_set(set: members, name: "v2.test.subject")
-        && native_lane_module_in_set(set: members, name: "v2.std.logic")
-        && native_lane_module_in_set(set: members, name: native_route_live_control_module)
-    }
+    Accepted { value: acquired, diagnostics: _ } =>
+      identities_text(identities: acquired.universe.identities) == "|v2.test.subject.a_claim"
   }
 }
 
-test fn a_module_no_universe_member_imports_is_outside_the_closure() -> Bool {
-  match native_lane_closure_budget_probe(budget: native_lane_closure_round_budget) {
+test fn the_ingest_is_exactly_the_acquired_modules() -> Bool {
+  match acquired_default(
+    modules: [control_acquired(), subject_acquired(), dependency_acquired()],
+    population: ["v2.test.subject"]
+  ) {
     Rejected { diagnostics: _ } => false
-    Accepted { value: closure, diagnostics: _ } =>
-      !native_lane_module_in_set(set: native_lane_module_set(modules: closure), name: "v2.unrelated.outsider")
+    Accepted { value: acquired, diagnostics: _ } => length(xs: acquired.ingest) == 3
   }
 }
 
-// THE BUDGET'S DISCRIMINATING PAIR (review 63719). The probe's closure is two rounds deep: the
-// seeds expand to `v2.std.logic` in round one, and round two finds nothing new. A budget of one
-// round leaves `v2.std.logic` on the frontier, and the walk must REFUSE the derivation by its typed
-// reason rather than answer with the seeds it had seen — that truncated answer would still hold
-// `v2.test.subject`, so a walk that absorbed the exhaustion passes every membership row above and
-// fails only this one. A budget of exactly two rounds is the boundary: the frontier is empty when
-// the fuel runs out, and the closure is accepted.
-test fn an_exhausted_closure_budget_refuses_the_derivation() -> Bool {
-  match native_lane_closure_budget_probe(budget: 1) {
+// The population is counted from the names the namespace listing returned, not from what was read: a
+// namespace of three modules acquired as one is still a population of three.
+test fn the_population_is_the_names_listed_and_not_the_modules_read() -> Bool {
+  match acquired_default(
+    modules: [control_acquired(), subject_acquired()],
+    population: ["v2.test.subject", "v2.test.other", "v2.test.another"]
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: acquired, diagnostics: _ } => acquired.population == 3
+  }
+}
+
+fn refused_reason_is(outcome: Outcome<NativeLaneAcquired>, reason: Symbol) -> Bool {
+  match outcome {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d.head.reason == ^native_lane_closure_budget_exhausted
+    Rejected { diagnostics: d } => d.head.reason == reason
   }
 }
 
-test fn a_closure_finishing_on_its_last_round_is_accepted() -> Bool {
-  match native_lane_closure_budget_probe(budget: 2) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: closure, diagnostics: _ } =>
-      native_lane_module_in_set(set: native_lane_module_set(modules: closure), name: "v2.std.logic")
+// A MALFORMED DISPOSITION ROW IN AN ACQUIRED UNIVERSE MEMBER STOPS THE LINE: the facts cover the members
+// this run requested, and discovery's own finalize judges every one of them.
+test fn a_malformed_disposition_row_in_an_acquired_member_refuses_the_derivation() -> Bool {
+  refused_reason_is(
+    outcome: acquired_default(
+      modules: [
+        an_acquired(
+          name: "v2.test.subject",
+          path: "test/subject.dag",
+          markers: ["a_claim"],
+          content: "module v2.test.subject\n\ndata live_tree_disposition: LiveTreeDisposition = NoSuchVariant\n"
+        )
+      ],
+      population: ["v2.test.subject"]
+    ),
+    reason: ^native_lane_universe_derivation_refused
+  )
+}
+
+// A SINGLE TARGET THAT SPELLS A MODULE IS A MISSPELLING, recognised from the listed NAMES: the module
+// was not requested (its package is not the pattern's), so nothing was read to find it out.
+test fn a_single_target_that_spells_a_module_refuses_naming_the_module_spelling() -> Bool {
+  match parse_target_pattern(text: "//v2/test:subject") {
+    TargetPatternRefused { cause: _ } => false
+    TargetPatternParsed { pattern: pattern } =>
+      refused_reason_is(
+        outcome: acquired_over(modules: [control_acquired()], population: ["v2.test.subject"], pattern: pattern),
+        reason: ^native_lane_pattern_names_a_module
+      )
   }
 }
 
