@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.a_deploy_sets_an_env_for_a_config_file_the_identity_route_never_wrote
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+// Consumer: directory-derived recurring_failure_mode.roster, projected by
+// gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
+data a_deploy_sets_an_env_for_a_config_file_the_identity_route_never_wrote: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_deploy_sets_an_env_for_a_config_file_the_identity_route_never_wrote" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a deployment names a config file by environment (the serve process is told where to read) while the identity-aware apply route has no member that writes that file, so the env can be set and the file still absent. HARM: login and other readers refuse at runtime (or worse, an out-of-band file is trusted) although deploy reported success; the prerequisite was never an operand of the identity plan (DESIGN section 3c pairing; D14 qualified operands).",
+
+    "OCCURRENCE, 2026-10-11, srv1 workspace bring-up findings ledger F62 (ledger v3 numbering; later additions are F60+), review cause E, live on srv1, operator review of source pinned to main at acc218340ed6e24a9ad06c550a5494307d0320bb. Deploy set the OIDC env (GUNBC_OIDC_CONFIG_FILE / gunbc.auth.oidc_deployment_config oidc_deployment_config_read). identity_member_of_step (gunbc.live_deploy.emit) has no member for that config file; belt, publication, fabric-storage, approval-front-door and tailnet-door artifacts already sit outside the identity-aware route and reconcile against observed: []. The OIDC config is the same shape: an env names a file the identity route never wrote. Roadmap leaf cc-lifecycle-ownership.",
+
+    "DISTINGUISHING FACTS: this is not 'absent config is a located 503' -- oidc_deployment_config_read already refuses loudly when the file is missing. The class is that deploy can succeed while that refusal remains the only observation of the missing file. It is not a secret-in-the-tree defect: the file is correctly not a repository fact. RUNG FOUND AT: mitigatable (login 503). CEILING: structurally guaranteed -- a named env path that is not a converged member is decidable. NEXT TRIGGER: the identity plan either writes the named file as a member or refuses to set the env when no member covers it; a discriminating red is a green apply whose serve then reports the env set and the file absent.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.auth.oidc_deployment_config", decl_name: "oidc_deployment_config_read", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.live_deploy.emit", decl_name: "identity_member_of_step", field: WholeDeclaration },
+  ],
+}
