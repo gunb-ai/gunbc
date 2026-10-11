@@ -88,6 +88,25 @@ data belt_record_moved_obligation_kinds: List<BeltInstanceObligationKind> = [
   MeteringObligation, ResultReturnObligation, ServedObservationObligation, DogfoodStartRecordObligation, SnapshotCensusObligation,
 ]
 
+// WHAT AN OPERATOR ACTION MAKES STALE. The served page is last-known-good bytes; a mutation that
+// does not enqueue ServedObservationObligation leaves those bytes current in name only. Dispatch
+// and stop also change seats, so they owe LaunchObligation (settlement and teardown). One list per
+// action; the serve routes map it through belt_instance_obligation_enqueue — no second path.
+type BeltOperatorAction
+  = OperatorDispatch
+  | OperatorStop
+  | OperatorPublish
+  | OperatorIssueWrite
+
+fn belt_operator_follow_up_kinds(action: BeltOperatorAction) -> List<BeltInstanceObligationKind> {
+  match action {
+    OperatorDispatch => [ServedObservationObligation, LaunchObligation]
+    OperatorStop => [ServedObservationObligation, LaunchObligation]
+    OperatorPublish => [ServedObservationObligation]
+    OperatorIssueWrite => [ServedObservationObligation]
+  }
+}
+
 fn belt_instance_obligation_kind_key(kind: BeltInstanceObligationKind) -> String {
   match kind {
     LaunchObligation => "launch"
