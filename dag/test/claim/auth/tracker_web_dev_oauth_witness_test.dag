@@ -34,7 +34,6 @@ import gunbc.auth.tracker_web_oauth_client {
   tracker_web_unassigned_redirects,
   tracker_web_test_srv2_redirect_uri,
   tracker_web_oauth_frontier_rows,
-  tracker_web_oidc_deploy_now_epoch,
 }
 import gunbc.live_deploy.emit {
   apply_step_effects, apply_oidc_config_steps_at,
@@ -45,7 +44,7 @@ import gunbc.live_deploy.emit {
 import extdeps.units.iso8601_calendar { iso8601_utc_text }
 import gunbc.live_deploy.desired { srv1_lab_desired_deployment, srv1_production_desired_deployment, selected_deployment_spec }
 import gunbc.live_deploy.spec { ArtifactStep, Dependency, OidcConfigArtifact }
-import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, apply_empty_host_effects }
+import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, apply_empty_host_effects, claim_oidc_now }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan }
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
 import gunbc.workspace_allocation_policy { workspace_operator_principal }
@@ -85,6 +84,7 @@ test fn production_serve_unit_carries_no_oidc_env() -> Bool {
     && match live_deploy_serve_unit_emission(
       spec: selected_deployment_spec(row: srv1_production_desired_deployment()),
       revision: witness_revision(),
+      now_epoch: claim_oidc_now(),
     ) {
       LiveDeployServeUnitEmitted { file } =>
         !string_contains(s: serialize_systemd_unit_file(file: file), pattern: oidc_config_env_var as String)
@@ -100,6 +100,7 @@ test fn lab_serve_unit_carries_oidc_env() -> Bool {
     && match live_deploy_serve_unit_emission(
       spec: selected_deployment_spec(row: srv1_lab_desired_deployment()),
       revision: witness_revision(),
+      now_epoch: claim_oidc_now(),
     ) {
       LiveDeployServeUnitEmitted { file } =>
         string_contains(s: serialize_systemd_unit_file(file: file), pattern: oidc_config_env_var as String)
@@ -222,7 +223,7 @@ test fn lab_apply_identity_route_writes_oidc_config_file() -> Bool {
   }).first() {
     Absent => false
     Present { value: step } =>
-      let sh = pipeline_steps_text(steps: apply_step_effects(step: step, effects: effects, spec: spec, plan: plan, oidc_now: tracker_web_oidc_deploy_now_epoch()))
+      let sh = pipeline_steps_text(steps: apply_step_effects(step: step, effects: effects, spec: spec, plan: plan, oidc_now: claim_oidc_now()))
       string_contains(s: sh, pattern: tracker_web_test_oidc_config_host_path as String)
         && string_contains(s: sh, pattern: "0600")
         && string_contains(s: sh, pattern: "gunbc-oidc-config.json")

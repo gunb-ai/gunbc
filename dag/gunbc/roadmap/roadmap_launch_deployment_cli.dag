@@ -68,6 +68,7 @@ import gunbc.live_deploy.desired {
   prod_role_deployment_mismatch_detail,
   ProdRoleDeployment,
 }
+import gunbc.auth.tracker_web_oauth_client { tracker_web_oidc_deploy_now_epoch }
 import gunbc.live_deploy.emit {
   live_deploy_serve_unit_emission,
   LiveDeployServeUnitEmitted,
@@ -389,7 +390,7 @@ fn unit_standing_fact(spec: DeploymentSpec, revision: String) -> LaunchUnitStand
 {
   let revision_binding = RevisionBoundAtEmission { revision: revision as CommitSha }
   LaunchUnitStanding {
-    dashboard: match live_deploy_serve_unit_emission(spec: spec, revision: revision_binding) {
+    dashboard: match live_deploy_serve_unit_emission(spec: spec, revision: revision_binding, now_epoch: tracker_web_oidc_deploy_now_epoch()) {
       LiveDeployServeUnitEmitted { file } =>
         observe_dashboard_service_standing(unit: spec.names.unit_name, file: file)
       LiveDeployServeUnitOidcReadbackRefused { cause } =>

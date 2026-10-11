@@ -569,8 +569,10 @@ fn live_deploy_oidc_unit_env_at(spec: DeploymentSpec, now_epoch: Int) -> LiveDep
 // verification 2026-07-20), so a root-run belt would spawn unauthed dead sessions; port 8080 is
 // non-privileged so briansrls binds it. WorkingDirectory = the repo root — the source roots and
 // entry are relative to it, and the belt's spawn workdir projects the same gunbc.host_layout fact.
-fn live_deploy_serve_unit_emission(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> LiveDeployServeUnitEmission {
-  match tracker_web_oidc_deploy_now_epoch() {
+fn live_deploy_serve_unit_emission(
+  spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Int?,
+) -> LiveDeployServeUnitEmission {
+  match now_epoch {
     Absent => LiveDeployServeUnitOidcReadbackRefused { cause: "observer clock unreadable" as NonEmptyStr }
     Present { value: now } => live_deploy_serve_unit_emission_at(spec: spec, revision: revision, now_epoch: now)
   }
@@ -638,8 +640,10 @@ fn live_deploy_serve_unit_file_over_listener(
 // THE TAILNET DOOR'S UNIT: the same server as the unit above, launched on the door entry and bound
 // to the socket the deployment's serve route targets (gunbc.live_deploy.spec
 // deployment_tailnet_door_socket). Absent for a deployment whose route targets a port.
-fn live_deploy_tailnet_door_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile? {
-  match tracker_web_oidc_deploy_now_epoch() {
+fn live_deploy_tailnet_door_unit_file(
+  spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Int?,
+) -> SystemdUnitFile? {
+  match now_epoch {
     Absent => none
     Present { value: now } => live_deploy_tailnet_door_unit_file_at(spec: spec, revision: revision, now_epoch: now)
   }
@@ -736,8 +740,8 @@ fn fabric_storage_door_unknown_step(spec: DeploymentSpec) -> PipelineStep {
   deploy_raw(command: join([fabric_storage_door_unknown_instance_poison, spec.instance_id as String, "\n"], ""))
 }
 
-fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> Doc {
-  match live_deploy_serve_unit_emission(spec: spec, revision: revision) {
+fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Int?) -> Doc {
+  match live_deploy_serve_unit_emission(spec: spec, revision: revision, now_epoch: now_epoch) {
     LiveDeployServeUnitEmitted { file } =>
       doc_text(text: serialize_systemd_unit_file(file: file))
     LiveDeployServeUnitOidcReadbackRefused { cause } =>
@@ -3537,8 +3541,8 @@ fn apply_intent_from_effects(
   access: DeployAccess,
   plan: ReleaseEffectPlan,
   cap_authorization: CapConvergeDecision,
+  oidc_now: Int?,
 ) -> Pipeline {
-  let oidc_now = tracker_web_oidc_deploy_now_epoch()
   Pipeline {
     steps: concat(
       deploy_apply_frame_steps(spec: spec),
@@ -3735,6 +3739,7 @@ fn live_deploy_apply_script_for(
   spec: DeploymentSpec,
   plan: ReleaseEffectPlan,
   cap_authorization: CapConvergeDecision,
+  oidc_now: Int?,
 ) -> String {
   match ci_deploy_srv1_access_or_refusal() {
     DeployAccessJobPrincipalRefused { refusal: r } =>
@@ -3749,6 +3754,7 @@ fn live_deploy_apply_script_for(
               access: access,
               plan: plan,
               cap_authorization: cap_authorization,
+              oidc_now: oidc_now,
             ),
             refused: live_deploy_apply_emit_refused_poison
           )
@@ -3786,8 +3792,21 @@ fn live_deploy_retract_script_with_scoped_removal(spec: DeploymentSpec) -> Strin
   }
 }
 
-fn live_deploy_systemd_unit_for(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> String {
-  render(doc: emit_systemd_unit_doc(spec: spec, revision: revision), proto: live_deploy_protocol)
+fn live_deploy_apply_script_for_wet(
+  spec: DeploymentSpec,
+  plan: ReleaseEffectPlan,
+  cap_authorization: CapConvergeDecision,
+) -> String {
+  live_deploy_apply_script_for(
+    spec: spec,
+    plan: plan,
+    cap_authorization: cap_authorization,
+    oidc_now: tracker_web_oidc_deploy_now_epoch(),
+  )
+}
+
+fn live_deploy_systemd_unit_for(spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Int?) -> String {
+  render(doc: emit_systemd_unit_doc(spec: spec, revision: revision, now_epoch: now_epoch), proto: live_deploy_protocol)
 }
 
 fn deployment_ensure_dependency_intent(dep: DeploymentDependencyStep) -> Pipeline {

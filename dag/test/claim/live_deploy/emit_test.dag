@@ -7,7 +7,7 @@ import gunbc.live_deploy.member_identity {
 }
 import gunbc.live_deploy.member_observe { deployment_member_roster }
 import gunbc.owned_directory { owned_directory_path, owned_directory_demand_at }
-import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, apply_emitted_steps_text, apply_empty_host_effects }
+import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, apply_emitted_steps_text, apply_empty_host_effects, claim_oidc_now }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable_digest, deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan, deploy_witness_release_target, deploy_witness_spec_with_only_directory }
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.os.types { Apt }
@@ -112,7 +112,6 @@ import gunbc.live_deploy.effect_leaf {
   dpkg_status_effect,
 }
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port }
-import gunbc.auth.tracker_web_oauth_client { tracker_web_oidc_deploy_now_epoch }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, SystemdServiceDirective, ExecStart,
   systemd_unit_file_lines,
@@ -221,7 +220,7 @@ data witness_cap_authorization: CapConvergeDecision = cap_converge_decision(
   observation: SurplusSlotsObserved { retired: [], still_present: [] },
 )
 
-data witness_apply_script_text: String = live_deploy_apply_script_for(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()), cap_authorization: witness_cap_authorization)
+data witness_apply_script_text: String = live_deploy_apply_script_for(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()), cap_authorization: witness_cap_authorization, oidc_now: claim_oidc_now())
 
 data witness_retract_script_text: String = live_deploy_retract_script_for(spec: deployment_spec_srv1())
 
@@ -431,6 +430,7 @@ test fn witness_apply_pipeline_carries_the_preamble_after_its_frame() -> Bool {
         access: a,
         plan: deploy_witness_full_install_plan(spec: spec),
         cap_authorization: CapConvergeWithheld { cause: "the route claim is not about the cap step" },
+        oidc_now: claim_oidc_now(),
       )
       pipeline_steps_text(steps: p.steps.skip(n: deploy_apply_frame_steps(spec: spec).length()).take(n: pre.length())) == pipeline_steps_text(steps: pre)
     DeployAccessJobPrincipalRefused { refusal: _ } => false
@@ -758,6 +758,7 @@ test fn witness_execstart_carries_exactly_the_admitted_revision() -> Bool {
   let unit = live_deploy_systemd_unit_for(
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+    now_epoch: claim_oidc_now(),
   )
   let expected = join([
     "ExecStart=/opt/gunbc/bin/gunbc serve --source-root dag --source-root src/v2",
@@ -777,6 +778,7 @@ test fn witness_execstart_omitting_the_revision_is_not_the_emitted_line() -> Boo
   let unit = live_deploy_systemd_unit_for(
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+    now_epoch: claim_oidc_now(),
   )
   !string_contains(s: unit, pattern: "--port 8080\nRestart=")
     && !string_contains(s: unit, pattern: "--release-revision \n")
@@ -787,10 +789,12 @@ test fn witness_execstart_at_another_candidate_differs() -> Bool {
   let a = live_deploy_systemd_unit_for(
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+    now_epoch: claim_oidc_now(),
   )
   let b = live_deploy_systemd_unit_for(
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_other_release_revision },
+    now_epoch: claim_oidc_now(),
   )
   a != b
     && string_contains(s: b, pattern: deploy_witness_other_release_revision as String)
@@ -798,7 +802,7 @@ test fn witness_execstart_at_another_candidate_differs() -> Bool {
 }
 
 test fn witness_systemd_unit_emitted() -> Bool {
-  let unit = live_deploy_systemd_unit_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  let unit = live_deploy_systemd_unit_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }, now_epoch: claim_oidc_now())
   string_contains(s: unit, pattern: "ExecStart=/opt/gunbc/bin/gunbc serve --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_serve.dag --function roadmap_serve_handle --host 127.0.0.1 --port 8080")
     && string_contains(s: unit, pattern: "User=briansrls")
     && string_contains(s: unit, pattern: "Group=briansrls")
@@ -1300,7 +1304,7 @@ test fn the_preamble_ensures_the_publication_principal_as_a_nologin_system_accou
 fn member_fragment_text(member: ConvergedMember, plan: ReleaseEffectPlan) -> String {
   join(
     map(
-      emit_release_member_effects(member: member, plan: plan, spec: deployment_spec_srv1(), oidc_now: tracker_web_oidc_deploy_now_epoch()),
+      emit_release_member_effects(member: member, plan: plan, spec: deployment_spec_srv1(), oidc_now: claim_oidc_now()),
       st => match st {
         Do { run } => run.command
         Comment { text: _ } => ""

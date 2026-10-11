@@ -39,6 +39,7 @@ import gunbc.owned_directory {
 import gunbc.live_deploy.emit { live_deploy_systemd_unit_for }
 import gunbc.auth.tracker_web_oauth_client {
   tracker_web_oidc_serve_placement, tracker_web_oidc_config_document, TrackerWebOidcServeConfig,
+  tracker_web_oidc_deploy_now_epoch,
   TrackerWebOidcServeReady, TrackerWebOidcPlacementUnassigned, TrackerWebOidcPlacementUnbound,
   TrackerWebOidcPlacementMissingRealization,
 }
@@ -274,10 +275,10 @@ fn observe_unit_file(arm: ObservationArm, spec: DeploymentSpec) -> ObservedMembe
   }
 }
 
-fn desired_unit_file(spec: DeploymentSpec, candidate: CandidateRelease) -> MemberIdentity {
+fn desired_unit_file(spec: DeploymentSpec, candidate: CandidateRelease, now_epoch: Int?) -> MemberIdentity {
   UnitFileAt { file: UnitFileIdentity {
     unit: spec.service.unit_name,
-    document: content_hash_atom(value: live_deploy_systemd_unit_for(spec: spec, revision: RevisionBoundAtEmission { revision: candidate.revision }) as NonEmptyStr),
+    document: content_hash_atom(value: live_deploy_systemd_unit_for(spec: spec, revision: RevisionBoundAtEmission { revision: candidate.revision }, now_epoch: now_epoch) as NonEmptyStr),
   } }
 }
 
@@ -667,11 +668,12 @@ fn desired_member_identity(
   spec: DeploymentSpec,
   candidate: CandidateRelease,
   desired_bin: MemberIdentity,
+  now_epoch: Int?,
 ) -> MemberIdentity? {
   match member {
     Executable => Present { value: desired_bin }
     TreePublication => Present { value: desired_tree(candidate: candidate) }
-    UnitFile => Present { value: desired_unit_file(spec: spec, candidate: candidate) }
+    UnitFile => Present { value: desired_unit_file(spec: spec, candidate: candidate, now_epoch: now_epoch) }
     UnitManager => Present { value: desired_unit_manager() }
     ServiceProcess => Present { value: desired_service_process(candidate: candidate) }
     DirectoryRoot { path } => Present { value: RootAt { root: DirectoryRootIdentity { path: path, standing: RootConverged } } }
@@ -708,11 +710,12 @@ fn release_member_plan(
   transport: HostEffectTransport,
   desired_bin: MemberIdentity,
   target: ReleaseTarget,
+  now_epoch: Int?,
 ) -> EffectDerivation {
   let arm = observation_arm(transport: transport)
   derive_member_plan(
     roster: deployment_member_roster(spec: spec),
-    desired: m => desired_member_identity(member: m, spec: spec, candidate: candidate, desired_bin: desired_bin),
+    desired: m => desired_member_identity(member: m, spec: spec, candidate: candidate, desired_bin: desired_bin, now_epoch: now_epoch),
     observed: m => observed_member_on_host(member: m, spec: spec, candidate: candidate, transport: transport, arm: arm),
     target: target,
   )
@@ -725,6 +728,7 @@ fn desired_executable_is_another_member(desired_bin: MemberIdentity) -> EffectDe
 }
 
 fn deployment_effect_plan(spec: DeploymentSpec, candidate: CandidateRelease, transport: HostEffectTransport) -> EffectDerivation {
+  let now_epoch = tracker_web_oidc_deploy_now_epoch()
   match desired_executable() {
     MemberUnobservable { member: _, cause } =>
       EffectsRefused { refusals: [MemberRefused { member: Executable, cause: DesiredExecutableUnreadable { cause: cause } }] }
@@ -740,6 +744,7 @@ fn deployment_effect_plan(spec: DeploymentSpec, candidate: CandidateRelease, tra
           transport: transport,
           desired_bin: desired_bin,
           target: ReleaseTarget { revision: candidate.revision, executable: digest, unit: spec.service.unit_name },
+          now_epoch: now_epoch,
         )
       TreeIdentity { tree: _ } =>
         desired_executable_is_another_member(desired_bin: desired_bin)
