@@ -20,6 +20,11 @@ import v2.std.diagnostic {
 }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.node_query { find_named_child, variant_declaration_edge_optional }
+import v2.extdeps.languages.dag {
+  dag_lex_token_symbol,
+  parse_production_captured_child_optional,
+  parse_production_emitted_identity_optional
+}
 import v2.std.node {
   Atom,
   Conj,
@@ -209,6 +214,18 @@ fn sugar_first_atom_identity_optional(node: Node) -> Symbol? {
 // (v2.std.node_query variant_declaration_node) hands over its edge as is; a bare variant is the
 // nullary arm, whose payload is the empty Conj (a Conj with no children) -- its
 // name is the edge label, so the parse subtree that spelled it carries nothing the arm keeps.
+//
+// A NAMELESS ARM REFUSES HERE INSTEAD OF COINING A NAME. The arm's name is read from the
+// leftmost atom of the parse subtree that spelled it. A bare variant spells its constructor name
+// as an identifier, and so does every name the sugar fold is licensed to read: the first atom of
+// a name position is never a LEXICAL TOKEN. But an arm whose body is a field block ({ x: Int } as
+// an alternative) spells no constructor at all -- its leftmost atom is the { of the field block --
+// and the former fold read that token as the arm's name, so `type T = { x: Int } | B` built a Disj
+// whose first arm carried the brace as its constructor and normalize accepted it. The gate is the
+// token class itself: an identifier is accepted, a lexical token is a nameless arm and the fold
+// refuses, located, at the arm. Fielded variants never reach this path (body lowering hands them
+// over already declared), so a record's single field block is untouched and only an arm with no
+// authored constructor name inside a coproduct is refused.
 fn sugar_variant_to_disj_edge(variant_node: Node) -> Outcome<Edge> {
   let variant = sugar_unwrap_production_shell(node: variant_node)
   match variant_declaration_edge_optional(n: variant) {
@@ -216,12 +233,18 @@ fn sugar_variant_to_disj_edge(variant_node: Node) -> Outcome<Edge> {
     Absent =>
       match sugar_first_atom_identity_optional(node: variant) {
         Present { value: name } =>
-          Accepted {
-            value: Edge {
-              label: Authored { name: name },
-              target: sugar_type_node(connective: Conj, children: [], n: variant)
-            },
-            diagnostics: None
+          if dag_lex_token_symbol(sym: name) {
+            Rejected {
+              diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: variant_node))
+            }
+          } else {
+            Accepted {
+              value: Edge {
+                label: Authored { name: name },
+                target: sugar_type_node(connective: Conj, children: [], n: variant)
+              },
+              diagnostics: None
+            }
           }
         Absent =>
           Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: variant_node)) }
