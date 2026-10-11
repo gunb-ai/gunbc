@@ -41,7 +41,7 @@ import gunbc.spark.vllm_observed {
 import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, harness_serving_unit_wire }
 import extdeps.http.client
 import gunbc.harness.harness_operator_route {
-  harness_operator_route, HarnessOperatorRoute, OperatorModelsReading, OperatorHealthUnanswered, OperatorModelsRefused, OperatorModelsAnswered,
+  harness_operator_route, HarnessOperatorRoute, OperatorModelsReading, OperatorHealthUnanswered, OperatorHealthUnhealthy, OperatorModelsRefused, OperatorModelsAnswered,
   OperatorRouteStanding, OperatorRouteServing, OperatorRouteModelNotAdmitted, OperatorRouteUnreachable, OperatorRouteUnreadable,
   operator_route_standing, operator_open_header, OperatorHeaderOpened, OperatorHeaderRefused, operator_close_header,
   operator_models_url, operator_health_url, operator_endpoint_origin,
@@ -326,7 +326,8 @@ fn harness_observe_operator_reading(route: HarnessOperatorRoute) -> OperatorMode
         HarnessConnectFailed { url: u, curl_exit: _ } => OperatorHealthUnanswered { url: u }
         HarnessDeadline { url: u } => OperatorHealthUnanswered { url: u }
         HarnessTransportUnread { url: u, curl_exit: _ } => OperatorHealthUnanswered { url: u }
-        HarnessResponded { status: _ } =>
+        HarnessResponded { status: st } =>
+          if st != "200" { OperatorHealthUnhealthy { url: health as String, status: st } } else {
           match operator_models_url() {
             Absent => OperatorModelsRefused { url: "the operator endpoint URL could not be composed" }
             Present { value: models } =>
@@ -343,6 +344,7 @@ fn harness_observe_operator_reading(route: HarnessOperatorRoute) -> OperatorMode
                   if read.success { OperatorModelsAnswered { body: read.body } } else { OperatorModelsRefused { url: models as String } }
                 }
               }
+          }
           }
       }
   }

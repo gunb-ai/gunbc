@@ -6,7 +6,7 @@ import gunbc.harness.harness_operator_route {
   harness_operator_route, operator_models_url, operator_chat_completions_url, operator_health_url,
   operator_header_line_from_key_text, operator_route_standing, operator_class_admission,
   OperatorClassAdmitted, OperatorClassRefused,
-  OperatorModelsReading, OperatorHealthUnanswered, OperatorModelsRefused, OperatorModelsAnswered,
+  OperatorModelsReading, OperatorHealthUnanswered, OperatorHealthUnhealthy, OperatorModelsRefused, OperatorModelsAnswered,
   OperatorRouteServing, OperatorRouteModelNotAdmitted, OperatorRouteUnreachable, OperatorRouteUnreadable,
 }
 import gunbc.harness.harness_backend {
@@ -168,4 +168,22 @@ test fn the_qwen_unit_refuses_reasoning_off_because_no_per_request_switch_was_re
     ReasoningKwargsAdmitted { kwargs: _ } => true
     ReasoningLevelUnsupported { unit: _, level: _, cause: _ } => false
   })
+}
+
+test fn a_non_200_health_reading_is_unhealthy_server_not_a_rejected_key() -> Bool {
+  match operator_route_standing(route: harness_operator_route, reading: OperatorHealthUnhealthy { url: "http://127.0.0.1:18090/health", status: "503" }) {
+    OperatorRouteUnreadable { cause: c } => string_contains(s: c, pattern: "503") && !string_contains(s: c, pattern: "key may be rejected")
+    OperatorRouteServing { model: _ } => false
+    OperatorRouteModelNotAdmitted { advertised: _ } => false
+    OperatorRouteUnreachable { url: _ } => false
+  }
+}
+
+test fn a_models_document_with_no_data_array_is_unreadable_not_an_empty_list() -> Bool {
+  match operator_route_standing(route: harness_operator_route, reading: OperatorModelsAnswered { body: "{\"error\":{\"code\":\"invalid_api_key\"}}" }) {
+    OperatorRouteUnreadable { cause: _ } => true
+    OperatorRouteServing { model: _ } => false
+    OperatorRouteModelNotAdmitted { advertised: _ } => false
+    OperatorRouteUnreachable { url: _ } => false
+  }
 }
