@@ -33,7 +33,7 @@ pub fn pure_dag_seam_unreachable() -> i64 {
 }
 
 pub fn pure_dag_seam_unreachable_float() -> f64 {
-    if (pure_dag_seam_unreachable() == 0) {
+    if (v1_rt::pure_dag_seam_unreachable() == 0) {
         0.0
     } else {
         0.0
@@ -41,7 +41,7 @@ pub fn pure_dag_seam_unreachable_float() -> f64 {
 }
 
 pub fn pure_dag_seam_unreachable_string() -> String {
-    if (pure_dag_seam_unreachable() == 0) {
+    if (v1_rt::pure_dag_seam_unreachable() == 0) {
         "".to_string()
     } else {
         "".to_string()
