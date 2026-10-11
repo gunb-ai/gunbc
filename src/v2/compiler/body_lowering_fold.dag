@@ -67,10 +67,10 @@ import v2.extdeps.languages.dag {
   dag_node_is_int_literal_atom,
   dag_string_literal_node,
   dag_string_literal_value_symbol_optional,
-  string_template_parts_optional,
-  StringTemplatePart,
+  string_template_optional,
+  StringTemplate,
+  StringTemplateSegment,
   StringTemplateText,
-  StringTemplateHole,
   dag_symbol_literal_name_optional,
   dag_symbol_literal_node,
   parse_repeat_capture_items_with,
@@ -3799,31 +3799,30 @@ fn body_lower_fold_dispatch(node: Node, emitted: Symbol) -> Outcome<Node> {
 }
 
 fn body_lower_string_template(shell: Node) -> Outcome<Node> {
-  match string_template_parts_optional(node: shell) {
+  match string_template_optional(node: shell) {
     Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_string_template_unread, n: shell))
-    Present { value: parts } =>
-      bind_outcome(o: body_lower_string_template_chain(parts: parts, shell: shell), f: fn(chain) {
-        match chain {
-          Present { value: lowered } => outcome_accepted(value: lowered)
-          Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_string_template_unread, n: shell))
-        }
-      })
+    Present { value: template } =>
+      body_lower_string_template_segments(
+        acc: body_lower_string_template_text(text: template.head),
+        segments: template.segments
+      )
   }
 }
 
-fn body_lower_string_template_chain(parts: List<StringTemplatePart>, shell: Node) -> Outcome<Optional<Node>> {
-  fold(parts, init: outcome_accepted(value: optional_absent()), f: fn(acc, part) {
-    bind_outcome(o: acc, f: fn(chain) {
-      bind_outcome(o: body_lower_string_template_part(part: part, shell: shell), f: fn(operand) {
-        match chain {
-          Absent => outcome_accepted(value: optional_present(value: operand))
-          Present { value: left } =>
-            outcome_accepted(value: optional_present(value: body_lower_string_template_concat(
-              left: left,
-              operand: operand,
-              cause: body_lower_string_template_part_source(part: part)
-            )))
-        }
+fn body_lower_string_template_segments(
+  acc: Node,
+  segments: List<StringTemplateSegment>
+) -> Outcome<Node> {
+  fold(segments, init: outcome_accepted(value: acc), f: fn(o, seg) {
+    bind_outcome(o: o, f: fn(left) {
+      bind_outcome(o: body_lower_string_template_hole(expr: seg.hole), f: fn(hole) {
+        outcome_accepted(
+          value: body_lower_string_template_concat(
+            left: body_lower_string_template_concat(left: left, operand: hole, cause: seg.hole),
+            operand: body_lower_string_template_text(text: seg.text),
+            cause: seg.text.at
+          )
+        )
       })
     })
   })
@@ -3847,26 +3846,18 @@ fn body_lower_string_template_concat(left: Node, operand: Node, cause: Node) -> 
   )
 }
 
-fn body_lower_string_template_part_source(part: StringTemplatePart) -> Node {
-  match part {
-    StringTemplateText { value: _, at: at } => at
-    StringTemplateHole { expr: expr } => expr
-  }
+fn body_lower_string_template_text(text: StringTemplateText) -> Node {
+  dag_string_literal_node(value: text.value, occurrence_id: text.at.occurrence_id)
 }
 
-fn body_lower_string_template_part(part: StringTemplatePart, shell: Node) -> Outcome<Node> {
-  match part {
-    StringTemplateText { value: value, at: at } =>
-      outcome_accepted(value: dag_string_literal_node(value: value, occurrence_id: at.occurrence_id))
-    StringTemplateHole { expr: expr } =>
-      match body_lower_value_read(value: expr) {
-        Accepted { value: lowered, diagnostics: d } => Accepted { value: lowered, diagnostics: d }
-        Rejected { diagnostics: r } =>
-          if diagnostics_fatal_reason(d: r) == ^body_lowering_reason_value_unlowered {
-            outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_string_template_hole_unlowered, n: expr))
-          } else {
-            Rejected { diagnostics: r }
-          }
+fn body_lower_string_template_hole(expr: Node) -> Outcome<Node> {
+  match body_lower_value_read(value: expr) {
+    Accepted { value: lowered, diagnostics: d } => Accepted { value: lowered, diagnostics: d }
+    Rejected { diagnostics: r } =>
+      if diagnostics_fatal_reason(d: r) == ^body_lowering_reason_value_unlowered {
+        outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_string_template_hole_unlowered, n: expr))
+      } else {
+        Rejected { diagnostics: r }
       }
   }
 }

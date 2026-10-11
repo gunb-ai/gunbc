@@ -11,9 +11,8 @@ import v2.extdeps.languages.dag {
   dag_string_literal_value_optional,
   dag_string_template_part_node_from_lexeme,
   dag_string_template_part_value_optional,
-  string_template_parts_optional,
-  StringTemplateHole,
-  StringTemplatePart,
+  string_template_optional,
+  StringTemplateSegment,
   StringTemplateText
 }
 import std.occurrence_identity { OccurrenceSynthetic, NodeOccurrenceIdentity, OccurrenceId, OccurrencePending, node_occurrence_identity_minted }
@@ -192,21 +191,23 @@ fn st_shell() -> Node {
   )
 }
 
-fn st_part_kind(part: StringTemplatePart) -> String {
-  match part {
-    StringTemplateText { value: v, at: _ } => concat("text:", v)
-    StringTemplateHole { expr: _ } => "hole"
+fn st_head_is(t: StringTemplateText, value: String) -> Bool { t.value == value }
+
+fn st_one_segment(segments: List<StringTemplateSegment>, tail: String) -> Bool {
+  match segments {
+    Cons { head: s, tail: rest } =>
+      match rest {
+        Empty => s.text.value == tail
+        Cons { head: _, tail: _ } => false
+      }
+    Empty => false
   }
 }
 
-fn st_part_kinds(parts: List<StringTemplatePart>) -> List<String> {
-  fold(parts, init: [], f: fn(acc, p) { concat(acc, [st_part_kind(part: p)]) })
-}
-
-// THE READER: text, hole, text, in source order, with each text decoded.
+// THE READER: the grammar shape — head text, then (hole, text) — with each text decoded.
 test fn the_reader_yields_text_hole_text() -> Bool {
-  match string_template_parts_optional(node: st_shell()) {
-    Present { value: parts } => st_part_kinds(parts: parts) == ["text:x", "hole", "text:y"]
+  match string_template_optional(node: st_shell()) {
+    Present { value: t } => st_head_is(t: t.head, value: "x") && st_one_segment(segments: t.segments, tail: "y")
     Absent => false
   }
 }
@@ -214,7 +215,7 @@ test fn the_reader_yields_text_hole_text() -> Bool {
 // The reader answers Absent for anything that is not a template, so a consumer cannot mistake a plain
 // production for one.
 test fn the_reader_is_absent_off_a_template() -> Bool {
-  match string_template_parts_optional(node: st_hole()) {
+  match string_template_optional(node: st_hole()) {
     Present { value: _ } => false
     Absent => true
   }
@@ -298,7 +299,7 @@ fn st_holeless_shell() -> Node {
 }
 
 test fn a_template_whose_hole_was_lowered_away_is_unreadable_and_refuses() -> Bool {
-  (match string_template_parts_optional(node: st_holeless_shell()) {
+  (match string_template_optional(node: st_holeless_shell()) {
     Present { value: _ } => false
     Absent => true
   })
