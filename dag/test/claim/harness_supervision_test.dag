@@ -67,15 +67,21 @@ test fn only_an_unsupervised_turn_counts_down() -> Bool {
     && !join(bare |> map(m => serialize_json(v: m)), "").contains("rounds")
 }
 
-// A STEER IS THE ONLY TEXT A BOUNDARY ADDS: one user message carrying the direction verbatim, on
-// both wire shapes, after everything the worker already had.
+// A STEER IS THE ONLY TEXT A BOUNDARY ADDS: the direction verbatim, after everything the worker
+// already had -- a user message on the chat shape, and a text block inside the trailing tool-result
+// message on the messages shape, so that shape never sees two user turns in a row.
 test fn a_steer_appends_one_user_message_with_the_direction() -> Bool {
   let before = harness_tool_result_messages_json(shape: OpenAiChatCompletionsShape, results: [HarnessToolResult { tool_use_id: "call-1", text: "x", is_error: false }], steps_remaining: 0, countdown: false)
   let chat = harness_messages_with_steer(shape: OpenAiChatCompletionsShape, messages: before, steer: "add the regression test first")
-  let messages = harness_messages_with_steer(shape: AnthropicMessagesShape, messages: [], steer: "add the regression test first")
+  let tool_round = harness_tool_result_messages_json(shape: AnthropicMessagesShape, results: [HarnessToolResult { tool_use_id: "toolu_1", text: "x", is_error: false }], steps_remaining: 0, countdown: false)
+  let joined = harness_messages_with_steer(shape: AnthropicMessagesShape, messages: tool_round, steer: "add the regression test first")
   list_length(items: chat) == list_length(items: before) + 1
     && (match chat.last() { Present { value: m } => serialize_json(v: m).contains("\"role\": \"user\"") && serialize_json(v: m).contains("add the regression test first")  Absent => false })
-    && (match messages.last() { Present { value: m } => serialize_json(v: m).contains("add the regression test first")  Absent => false })
+    && list_length(items: joined) == list_length(items: tool_round)
+    && (match joined.last() {
+      Present { value: m } => serialize_json(v: m).contains("toolu_1") && serialize_json(v: m).contains("add the regression test first")
+      Absent => false
+    })
 }
 
 // A SUPERVISION STOP IS A TYPED END, NOT A CONTROL TRANSFER. Its label and detail name the verdict,
