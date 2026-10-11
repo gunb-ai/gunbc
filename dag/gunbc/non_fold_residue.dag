@@ -184,41 +184,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/native_app_attest.dag::same_assertion_arm" }, reason: nfr_reason_native_app_attest_arm_equal, dissolution: nfr_dissolve_native_app_attest_arm_equal },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/native_app_attest.dag::same_attestation_arm" }, reason: nfr_reason_native_app_attest_arm_equal, dissolution: nfr_dissolve_native_app_attest_arm_equal },
   FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::offer_matches_request_shape" },
-    reason: nfr_reason_dispatch_selection_routing,
-    dissolution: nfr_dissolve_dispatch_selection_routing,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::resolve_codex_offer_with_observed_fingerprint" },
-    reason: nfr_reason_dispatch_selection_routing,
-    dissolution: nfr_dissolve_dispatch_selection_routing,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::resolve_provider_offer" },
-    reason: nfr_reason_dispatch_selection_routing,
-    dissolution: nfr_dissolve_dispatch_selection_routing,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::selection_requests_match" },
-    reason: nfr_reason_dispatch_selection_routing,
-    dissolution: nfr_dissolve_dispatch_selection_routing,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::codex_limit_dispatch_draw_for_selection" },
-    reason: nfr_reason_dispatch_selection_routing,
-    dissolution: nfr_dissolve_dispatch_selection_routing,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::find_offer_for_request" },
-    reason: nfr_reason_dispatch_selection_routing,
-    dissolution: nfr_dissolve_dispatch_selection_routing,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::dispatch_selection_refusal_reason_for_miss" },
-    reason: nfr_reason_dispatch_selection_routing,
-    dissolution: nfr_dissolve_dispatch_selection_routing,
-  },
-  FrontierRow {
     subject: PathSubject { path: "dag/gunbc/provider_standing.dag::limit_subject_covers_dispatch_draw" },
     reason: nfr_reason_provider_standing_limit_draw,
     dissolution: nfr_dissolve_provider_standing_limit_draw,

@@ -344,7 +344,8 @@ fn codex_limit_dispatch_draw_for_selection(
           }
         Absent => LimitDispatchDrawAutomatic
       }
-    _ => LimitDispatchDrawAutomatic
+    ProfileAutomatic => LimitDispatchDrawAutomatic
+    ProfileDeep => LimitDispatchDrawAutomatic
   }
 }
 
@@ -1196,7 +1197,19 @@ fn resolve_codex_offer_with_observed_fingerprint(
       }
       effort_result
     }
-    _ =>
+    SelectClaude {
+      profile: _,
+      credential: _,
+      model: _,
+      effort: _,
+      workflow_mode: _,
+    } =>
+      DispatchSelectionRefused {
+        sizing_expectation: sizing_expectation,
+        requested_selection: request,
+        reason: "selection request shape does not match Codex offer" as NonEmptyStr,
+      }
+    SelectCursor { profile: _, credential: _, model: _, agent_mode: _ } =>
       DispatchSelectionRefused {
         sizing_expectation: sizing_expectation,
         requested_selection: request,
@@ -1466,7 +1479,31 @@ fn resolve_provider_offer(
               }
             }
           }
-        _ =>
+        SelectCodex {
+          profile: _,
+          account: _,
+          model: _,
+          effort: _,
+          operator_asserted_native_limit_bucket: _,
+        } =>
+          DispatchSelectionRefused {
+            sizing_expectation: sizing_expectation,
+            requested_selection: request,
+            reason: "selection request shape does not match Cursor offer" as NonEmptyStr,
+          }
+        SelectClaude {
+          profile: _,
+          credential: _,
+          model: _,
+          effort: _,
+          workflow_mode: _,
+        } =>
+          DispatchSelectionRefused {
+            sizing_expectation: sizing_expectation,
+            requested_selection: request,
+            reason: "selection request shape does not match Cursor offer" as NonEmptyStr,
+          }
+        SelectAutomatically { profile: _ } =>
           DispatchSelectionRefused {
             sizing_expectation: sizing_expectation,
             requested_selection: request,
@@ -1526,17 +1563,20 @@ fn offer_matches_request_shape(offer: ProviderOffer, request: ProviderSelectionR
     SelectCodex { profile: _, account: _, model: _, effort: _, operator_asserted_native_limit_bucket: _ } =>
       match offer {
         OfferCodex { offer: _ } => true
-        _ => false
+        OfferClaude { offer: _ } => false
+        OfferCursor { offer: _ } => false
       }
     SelectClaude { profile: _, credential: _, model: _, effort: _, workflow_mode: _ } =>
       match offer {
         OfferClaude { offer: _ } => true
-        _ => false
+        OfferCodex { offer: _ } => false
+        OfferCursor { offer: _ } => false
       }
     SelectCursor { profile: _, credential: _, model: _, agent_mode: _ } =>
       match offer {
         OfferCursor { offer: _ } => true
-        _ => false
+        OfferCodex { offer: _ } => false
+        OfferClaude { offer: _ } => false
       }
   }
 }
@@ -1615,6 +1655,21 @@ fn find_offer_for_automatic_selection(inventory: ProviderInventory) -> ProviderO
   }
 }
 
+// First offer that shape-matches AND is selection-eligible for a NON-automatic request. The
+// three explicit variants of find_offer_for_request all draw through this one fold so the
+// dispatch_selection routing is a total match over the request coproduct rather than a
+// wildcard over its three explicit shapes.
+fn find_offer_for_request_shape(
+  inventory: ProviderInventory,
+  request: ProviderSelectionRequest,
+) -> ProviderOffer? {
+  let matches = inventory.offers |> filter(offer =>
+    offer_matches_request_shape(offer: offer, request: request)
+      && offer_is_selection_eligible(offer: offer, request: request)
+  )
+  matches.first()
+}
+
 fn find_offer_for_request(
   inventory: ProviderInventory,
   request: ProviderSelectionRequest,
@@ -1622,13 +1677,24 @@ fn find_offer_for_request(
   match request {
     SelectAutomatically { profile: _ } =>
       find_offer_for_automatic_selection(inventory: inventory)
-    _ => {
-      let matches = inventory.offers |> filter(offer =>
-        offer_matches_request_shape(offer: offer, request: request)
-          && offer_is_selection_eligible(offer: offer, request: request)
-      )
-      matches.first()
-    }
+    SelectCodex {
+      profile: _,
+      account: _,
+      model: _,
+      effort: _,
+      operator_asserted_native_limit_bucket: _,
+    } =>
+      find_offer_for_request_shape(inventory: inventory, request: request)
+    SelectClaude {
+      profile: _,
+      credential: _,
+      model: _,
+      effort: _,
+      workflow_mode: _,
+    } =>
+      find_offer_for_request_shape(inventory: inventory, request: request)
+    SelectCursor { profile: _, credential: _, model: _, agent_mode: _ } =>
+      find_offer_for_request_shape(inventory: inventory, request: request)
   }
 }
 
@@ -1639,6 +1705,21 @@ fn inventory_has_shape_match(
   any(inventory.offers, offer =>
     offer_matches_request_shape(offer: offer, request: request)
   )
+}
+
+// Refusal reason for a NON-automatic request that found no matching offer: a shape match that
+// is not selection-eligible is standing-ineligible; a genuine shape mismatch is shape-mismatch.
+// The three explicit variants of dispatch_selection_refusal_reason_for_miss all draw through
+// this one fold so the routing is a total match over the request coproduct.
+fn dispatch_selection_non_automatic_refusal_reason(
+  inventory: ProviderInventory,
+  request: ProviderSelectionRequest,
+) -> NonEmptyStr {
+  if inventory_has_shape_match(inventory: inventory, request: request) {
+    dispatch_selection_standing_ineligible_reason
+  } else {
+    dispatch_selection_shape_mismatch_reason
+  }
 }
 
 fn dispatch_selection_refusal_reason_for_miss(
@@ -1654,12 +1735,33 @@ fn dispatch_selection_refusal_reason_for_miss(
           )
         Absent => dispatch_selection_standing_ineligible_reason
       }
-    _ =>
-      if inventory_has_shape_match(inventory: inventory, request: request) {
-        dispatch_selection_standing_ineligible_reason
-      } else {
-        dispatch_selection_shape_mismatch_reason
-      }
+    SelectCodex {
+      profile: _,
+      account: _,
+      model: _,
+      effort: _,
+      operator_asserted_native_limit_bucket: _,
+    } =>
+      dispatch_selection_non_automatic_refusal_reason(
+        inventory: inventory,
+        request: request,
+      )
+    SelectClaude {
+      profile: _,
+      credential: _,
+      model: _,
+      effort: _,
+      workflow_mode: _,
+    } =>
+      dispatch_selection_non_automatic_refusal_reason(
+        inventory: inventory,
+        request: request,
+      )
+    SelectCursor { profile: _, credential: _, model: _, agent_mode: _ } =>
+      dispatch_selection_non_automatic_refusal_reason(
+        inventory: inventory,
+        request: request,
+      )
   }
 }
 
@@ -1738,6 +1840,11 @@ fn resolved_model_selection(resolved: ResolvedProviderSelection) -> ProviderMode
   }
 }
 
+// The automatic profiles other than ProfileAutomatic resolve no arm of ResolvedProviderSelection
+// that selection_requests_match accepts, so they refuse the match. The specific
+// SelectAutomatically { profile: ProfileAutomatic } arm runs first (first-match-wins), so the
+// trailing general SelectAutomatically { profile: _ } arm only sees the profiles that are NOT
+// ProfileAutomatic.
 fn selection_requests_match(
   requested: ProviderSelectionRequest,
   resolved: ResolvedProviderSelection,
@@ -1748,15 +1855,19 @@ fn selection_requests_match(
       match resolved {
         ResolvedCodex { selection: s, instance: _, account_binding: _ } =>
           s.effort == codex_default_effort
-        _ => false
+        ResolvedClaude { selection: _, instance: _ } => false
+        ResolvedCursor { selection: _, instance: _ } => false
       }
     SelectCodex { profile: _, account, model, effort, operator_asserted_native_limit_bucket: _ } =>
       match resolved {
         ResolvedCodex { selection: s, instance: _, account_binding: _ } =>
           s.account == account && s.model == model && s.effort == effort
-        _ => false
+        ResolvedClaude { selection: _, instance: _ } => false
+        ResolvedCursor { selection: _, instance: _ } => false
       }
-    _ => false
+    SelectClaude { profile: _, credential: _, model: _, effort: _, workflow_mode: _ } => false
+    SelectCursor { profile: _, credential: _, model: _, agent_mode: _ } => false
+    SelectAutomatically { profile: _ } => false
   }
 }
 
