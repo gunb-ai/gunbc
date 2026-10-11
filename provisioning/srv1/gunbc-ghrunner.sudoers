@@ -141,6 +141,7 @@ ghrunner ALL=(root) NOPASSWD: /usr/bin/stat -c %F|%U|%G|%a -- /opt/gunbc/fabric-
 ghrunner ALL=(root) NOPASSWD: /usr/bin/stat -c %F|%U|%G|%a -- /opt/gunbc/fabric-storage/state/objects
 ghrunner ALL=(root) NOPASSWD: /usr/bin/stat -c %F|%U|%G|%a -- /opt/gunbc/fabric-storage/state/heads
 ghrunner ALL=(root) NOPASSWD: /usr/bin/stat -c %F|%U|%G|%a -- /opt/gunbc/fabric-storage-door
+ghrunner ALL=(root) NOPASSWD: /usr/bin/stat -c %F|%U|%G|%a -- /opt/gunbc/tailnet-door
 ghrunner ALL=(root) NOPASSWD: /usr/bin/stat -c %F|%U|%G|%a -- /var/lib/gunbc/artifacts.git
 ghrunner ALL=(root) NOPASSWD: /usr/bin/stat -c %F|%U|%G|%a -- /opt/gunbc/provider-runtime/codex
 ghrunner ALL=(root) NOPASSWD: /usr/bin/ls -1A -- /opt/gunbc

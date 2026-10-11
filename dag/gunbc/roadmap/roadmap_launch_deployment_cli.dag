@@ -1,12 +1,10 @@
 module gunbc.roadmap_launch_deployment_cli
 
 import std.types { String, Bool, NonEmptyStr, Int, List, FilePath, CommitSha }
-import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.measure { second, second_count }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.git
-import extdeps.git.object_store { git_object_id_from_untagged_hex, git_object_id_wire_hex }
+import extdeps.git.object_store { git_object_id_wire_hex }
 import extdeps.exec.command { LocalExec }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
@@ -42,6 +40,10 @@ import gunbc.live_deploy.apply_receipt {
 }
 import gunbc.origin_main_revision_observe {
   LocalTreeRevisionObserved, LocalTreeRevisionUnobserved,
+  observe_origin_main_revision,
+}
+import gunbc.fleet_main_revision {
+  RemoteRevisionPresent, RemoteRevisionAbsent, RemoteRevisionUndecodable, RemoteRevisionUnobserved,
 }
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused, fleet_locus_ssh_target }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
@@ -174,22 +176,12 @@ type RemoteRefRead
   = RemoteRefHex { hex: String }
   | RemoteRefUnreadable { detail: String }
 
-data main_ref_name: String = "refs/heads/main"
-
 fn read_remote_main_hex() -> RemoteRefRead {
-  let read = git.Core.LsRemoteRefInRepo(repo: rlm_receipt_vantage as FilePath, remote: "origin", ref_name: main_ref_name)
-  if read.exit_code != 0 {
-    RemoteRefUnreadable { detail: join(["git ls-remote origin ", main_ref_name, " exited ", to_string(read.exit_code), ": ", read.stderr], "") }
-  } else {
-    let line = trim(s: read.advertised)
-    if line == "" {
-      RemoteRefUnreadable { detail: join(["origin advertises no ", main_ref_name], "") }
-    } else {
-      match (match split(s: line, delimiter: "\t").first() { Absent => none  Present { value: wire_field } => git_object_id_from_untagged_hex(hex: wire_field) }) {
-        Present { value: oid } => RemoteRefHex { hex: git_object_id_wire_hex(oid: oid) as String }
-        Absent => RemoteRefUnreadable { detail: join(["origin advertises an undecodable ", main_ref_name, ": ", line], "") }
-      }
-    }
+  match observe_origin_main_revision(repo: rlm_receipt_vantage as FilePath) {
+    RemoteRevisionPresent { revision: r } => RemoteRefHex { hex: git_object_id_wire_hex(oid: r) as String }
+    RemoteRevisionAbsent => RemoteRefUnreadable { detail: "origin advertises no refs/heads/main" }
+    RemoteRevisionUndecodable { advertised: a } => RemoteRefUnreadable { detail: join(["refs/heads/main undecodable: ", a], "") }
+    RemoteRevisionUnobserved { cause: c } => RemoteRefUnreadable { detail: c }
   }
 }
 
