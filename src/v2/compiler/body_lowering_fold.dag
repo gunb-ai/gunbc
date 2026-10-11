@@ -65,7 +65,12 @@ import v2.extdeps.languages.dag {
   dag_lex_token_symbol,
   dag_loop_measure_node,
   dag_node_is_int_literal_atom,
+  dag_string_literal_node,
   dag_string_literal_value_symbol_optional,
+  string_template_parts_optional,
+  StringTemplatePart,
+  StringTemplateText,
+  StringTemplateHole,
   dag_symbol_literal_name_optional,
   dag_symbol_literal_node,
   parse_repeat_capture_items_with,
@@ -154,6 +159,7 @@ import v2.std.diagnostic {
   Some,
   Unavailable,
   bind_outcome,
+  diagnostics_fatal_reason,
   diagnostics_singleton,
   node_locus,
   diagnostics_merge,
@@ -952,6 +958,8 @@ fn body_lower_is_deferred_lower_emitted(emitted: Symbol) -> Bool {
 // them first would retain each one.
 fn body_lower_is_deferred_lower_at_normalize(emitted: Symbol, under_fn_decl: Bool) -> Bool {
   if (emitted == ^dag_surface_service_decl) || (emitted == ^dag_surface_resource_decl) {
+    true
+  } else if emitted == ^dag_string_template {
     true
   } else if emitted == ^dag_surface_fn_body {
     under_fn_decl
@@ -1820,7 +1828,13 @@ fn body_lower_operand_ref_read(node: Node) -> OperandRefRead {
 // The operand read of raw parse: a production, a token, or a sequence the parse stamped.
 fn body_lower_operand_raw_read(node: Node) -> OperandRefRead {
   match parse_production_emitted_identity_optional(node: node) {
-    Present { value: _emitted } =>
+    Present { value: emitted } =>
+      if emitted == ^dag_string_template {
+        match body_lower_string_template(shell: node) {
+          Accepted { value: lowered, diagnostics: _ } => OperandRefLowered { lowered: lowered }
+          Rejected { diagnostics: r } => OperandRefRefused { diagnostics: r }
+        }
+      } else {
       match parse_production_captured_child_optional(node: node) {
         Present { value: captured } =>
           match body_lower_operand_ref_read(node: captured) {
@@ -1829,6 +1843,7 @@ fn body_lower_operand_raw_read(node: Node) -> OperandRefRead {
             OperandRefRefused { diagnostics: r } => OperandRefRefused { diagnostics: r }
           }
         Absent => body_lower_operand_fold_children_read(node: node)
+      }
       }
     Absent =>
       match dag_node_is_int_literal_atom(node: node) {
@@ -3446,7 +3461,10 @@ fn body_lower_reduce_emitted(folded: Node, emitted: Symbol) -> Outcome<Node> {
   } else if emitted == ^dag_surface_primary_expr {
     body_lower_reduce_or_keep(o: body_term_sealed_outcome(o: body_lower_primary_expr(shell: folded), shape: LoweredPrimary), folded: folded)
   } else if emitted == ^dag_string_template {
-    body_lower_string_template_unlowered(shell: folded)
+    match body_term_sealed_outcome(o: body_lower_string_template(shell: folded), shape: LoweredOperatorExpression) {
+      Accepted { value: lowered, diagnostics: d } => Accepted { value: lowered, diagnostics: d }
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    }
   } else if body_lower_is_pass_through_emitted(emitted: emitted) {
     body_lower_reduce_passthrough(folded: folded)
   } else if emitted == ^dag_surface_fn_decl {
@@ -3770,7 +3788,7 @@ fn body_lower_fold_dispatch(node: Node, emitted: Symbol) -> Outcome<Node> {
         } else if emitted == ^dag_surface_stmt_seq {
           body_term_sealed_outcome(o: body_lower_stmt_seq(shell: node), shape: LoweredStatementSequence)
         } else if emitted == ^dag_string_template {
-          body_lower_string_template_unlowered(shell: node)
+          body_term_sealed_outcome(o: body_lower_string_template(shell: node), shape: LoweredOperatorExpression)
         } else if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
           outcome_accepted(value: node)
         } else if body_lower_is_deferred_lower_emitted(emitted: emitted) {
@@ -3780,11 +3798,77 @@ fn body_lower_fold_dispatch(node: Node, emitted: Symbol) -> Outcome<Node> {
         }
 }
 
-// A STRING TEMPLATE IS NOT A VALUE until a later change lowers it to a concat chain. Refusing here
-// names the unlowered template at its shell (DESIGN section 4b: a discriminating red on the real
-// acceptance path). Folding through would let an incidental later fatal stand in for this class.
-fn body_lower_string_template_unlowered(shell: Node) -> Outcome<Node> {
-  outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_string_template_unlowered, n: shell))
+fn body_lower_string_template(shell: Node) -> Outcome<Node> {
+  match string_template_parts_optional(node: shell) {
+    Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_string_template_unread, n: shell))
+    Present { value: parts } =>
+      bind_outcome(o: body_lower_string_template_chain(parts: parts, shell: shell), f: fn(chain) {
+        match chain {
+          Present { value: lowered } => outcome_accepted(value: lowered)
+          Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_string_template_unread, n: shell))
+        }
+      })
+  }
+}
+
+fn body_lower_string_template_chain(parts: List<StringTemplatePart>, shell: Node) -> Outcome<Optional<Node>> {
+  fold(parts, init: outcome_accepted(value: optional_absent()), f: fn(acc, part) {
+    bind_outcome(o: acc, f: fn(chain) {
+      bind_outcome(o: body_lower_string_template_part(part: part, shell: shell), f: fn(operand) {
+        match chain {
+          Absent => outcome_accepted(value: optional_present(value: operand))
+          Present { value: left } =>
+            outcome_accepted(value: optional_present(value: body_lower_string_template_concat(
+              left: left,
+              operand: operand,
+              cause: body_lower_string_template_part_source(part: part)
+            )))
+        }
+      })
+    })
+  })
+}
+
+fn body_lower_string_template_concat(left: Node, operand: Node, cause: Node) -> Node {
+  let occurrence = match cause.occurrence_id {
+    OccurrenceMinted { id: id } => OccurrencePending { caused_by: id }
+    OccurrenceProjected { id: id, caused_by: _ } => OccurrencePending { caused_by: id }
+    OccurrencePending { caused_by: c } => OccurrencePending { caused_by: c }
+    OccurrenceSynthetic => OccurrenceSynthetic
+  }
+  node_with_occurrence_id(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: node_with_occurrence_id(kind: TypeNode { connective: Atom { identity: ^collection_concat_shape } }, children: [], occurrence_id: occurrence) },
+      Edge { label: Positional, target: left },
+      Edge { label: Positional, target: operand }
+    ],
+    occurrence_id: occurrence
+  )
+}
+
+fn body_lower_string_template_part_source(part: StringTemplatePart) -> Node {
+  match part {
+    StringTemplateText { value: _, at: at } => at
+    StringTemplateHole { expr: expr } => expr
+  }
+}
+
+fn body_lower_string_template_part(part: StringTemplatePart, shell: Node) -> Outcome<Node> {
+  match part {
+    StringTemplateText { value: value, at: at } =>
+      outcome_accepted(value: dag_string_literal_node(value: value, occurrence_id: at.occurrence_id))
+    StringTemplateHole { expr: expr } =>
+      match body_lower_value_read(value: expr) {
+        Accepted { value: lowered, diagnostics: d } => Accepted { value: lowered, diagnostics: d }
+        Rejected { diagnostics: r } =>
+          if diagnostics_fatal_reason(d: r) == ^body_lowering_reason_value_unlowered {
+            outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_string_template_hole_unlowered, n: expr))
+          } else {
+            Rejected { diagnostics: r }
+          }
+      }
+  }
 }
 
 fn body_lower_fold_reduce(node: Node) -> Outcome<Node> {
@@ -12143,6 +12227,8 @@ fn body_lower_production_emitted(shell: Node, emitted: Symbol, fn_body_pass_thro
     body_lowering_lowered(o: outcome_accepted(value: shell))
   } else if body_producer_forward_is_registered_surface_identity(surface_identity: emitted) {
     body_lower_forward_row_apply(shell: shell, emitted: emitted)
+  } else if emitted == ^dag_string_template {
+    body_term_sealed_lowering(o: body_lowering_lowered(o: body_lower_string_template(shell: shell)), shape: LoweredOperatorExpression)
   } else if emitted == ^dag_surface_postfix_expr {
     body_term_sealed_lowering(o: body_lowering_lowered(o: body_lower_postfix_expr(shell: shell)), shape: LoweredPostfix)
   } else if body_lower_is_pass_through_emitted(emitted: emitted) {

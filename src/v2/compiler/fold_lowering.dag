@@ -280,6 +280,23 @@ fn collection_roster_fold_row_optional(head: Symbol) -> Optional<CollectionRoste
   }
 }
 
+// The primitive-call row an unbound atom binds to by the row's DECLARATION name (collection_concat_shape),
+// so a lowering that spells the row rather than the surface head `concat` still binds the same roster
+// entry. Asked after the head-name lookup, so a local named concat still wins over the roster.
+fn collection_roster_primitive_call_row_by_declaration_optional(decl_name: Symbol) -> Optional<CollectionRosterRow> {
+  fold_list(xs: collection_roster_rows, empty: optional_absent(), cons: fn(acc, r) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match r.form {
+          RosterFreeMonoidPrimitiveCall => if symbol_intern_lexeme(lexeme: r.row.decl_name) == decl_name { optional_present(value: r) } else { acc }
+          RosterAuthoredStep => acc
+          RosterCallbackStep { realization: _ } => acc
+        }
+    }
+  })
+}
+
 // The primitive-call row an unbound bare head binds to, if the roster carries one for it.
 fn collection_roster_primitive_call_row_optional(head: Symbol) -> Optional<CollectionRosterRow> {
   match collection_roster_row_optional(head: head) {
