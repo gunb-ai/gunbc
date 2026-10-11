@@ -332,7 +332,7 @@ test fn the_approval_broker_unit_would_install_these_bytes() -> Bool {
     eval_budget_flag_text(flag: "--eval-budget-wall-ms", limit: live_spec().approval_broker.serve_wall_limit),
   ], "")
   emitted == join([
-    "[Unit]\nDescription=gunbc approval broker HTTP server (gunbc serve)\nAfter=network-online.target tailscaled.service\nWants=network-online.target\n\n[Service]\nType=simple\nUser=briansrls\nGroup=briansrls\nSlice=gunbc-approval-broker.slice\nWorkingDirectory=/opt/gunbc/approval-broker/releases/b2dd729f92954e50e3d8d9bbd65022c2d58f14dd\nEnvironment=GUNBC_WORKSPACE_ROOT=/opt/gunbc/approval-broker/releases/b2dd729f92954e50e3d8d9bbd65022c2d58f14dd\nExecStart=/opt/gunbc/approval-broker/releases/b2dd729f92954e50e3d8d9bbd65022c2d58f14dd/gunbc serve --source-root dag --source-root src/v2 --entry dag/gunbc/auth/approval_broker_serve.dag --function approval_broker_handle --host 127.0.0.1 --port 8085 --release-revision b2dd729f92954e50e3d8d9bbd65022c2d58f14dd",
+    "[Unit]\nDescription=gunbc approval broker HTTP server (gunbc serve)\nAfter=network-online.target tailscaled.service\nWants=network-online.target\n\n[Service]\nType=simple\nUser=briansrls\nGroup=briansrls\nSlice=gunbc-approval-broker.slice\nWorkingDirectory=/opt/gunbc/approval-broker/releases/b2dd729f92954e50e3d8d9bbd65022c2d58f14dd\nEnvironment=GUNBC_WORKSPACE_ROOT=/opt/gunbc/approval-broker/releases/b2dd729f92954e50e3d8d9bbd65022c2d58f14dd\nEnvironment=GUNBC_APPROVAL_BROKER_BASE_URL=https://srv1.tailecbe08.ts.net\nExecStart=/opt/gunbc/approval-broker/releases/b2dd729f92954e50e3d8d9bbd65022c2d58f14dd/gunbc serve --source-root dag --source-root src/v2 --entry dag/gunbc/auth/approval_broker_serve.dag --function approval_broker_handle --host 127.0.0.1 --port 8085 --release-revision b2dd729f92954e50e3d8d9bbd65022c2d58f14dd",
     budgets,
     "\nRestart=on-failure\n\n[Install]\nWantedBy=multi-user.target\n",
   ], "")
@@ -791,7 +791,7 @@ fn spec_with_principal(wrong_user: NonEmptyStr) -> DeploymentSpec {
           instance_root: ir, repo_root: rr, service_uid: uid,
           listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
           DeploymentSpec {
-            target: t, steps: s, names: n, instance_id: iid, approval_broker: ab, directories: base.directories,
+            target: t, steps: s, names: n, instance_id: iid, approval_broker: ab, directories: base.directories, role_singletons: base.role_singletons,
             service: DeploymentServiceConfig {
               unit_name: u, serve_binary: b, serve_entry: se, serve_function: f,
               provider_state_root: ps,
@@ -830,7 +830,7 @@ fn spec_with_repo_root(wrong_root: NonEmptyStr) -> DeploymentSpec {
           instance_root: ir, service_user: su, service_uid: uid,
           listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
           DeploymentSpec {
-            target: t, steps: s, names: n, instance_id: iid, approval_broker: ab, directories: live_spec().directories,
+            target: t, steps: s, names: n, instance_id: iid, approval_broker: ab, directories: live_spec().directories, role_singletons: live_spec().role_singletons,
             service: DeploymentServiceConfig {
               unit_name: u, serve_binary: b, serve_entry: se, serve_function: f,
               provider_state_root: ps,
@@ -878,7 +878,7 @@ fn spec_with_port(wrong_port: Port) -> DeploymentSpec {
           instance_root: ir, repo_root: rr, service_user: su, service_uid: uid,
           listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
           DeploymentSpec {
-            target: t, steps: s, names: n, instance_id: iid, approval_broker: ab, directories: live_spec().directories,
+            target: t, steps: s, names: n, instance_id: iid, approval_broker: ab, directories: live_spec().directories, role_singletons: live_spec().role_singletons,
             service: DeploymentServiceConfig {
               unit_name: u, serve_binary: b, serve_entry: se, serve_function: f,
               provider_state_root: ps,

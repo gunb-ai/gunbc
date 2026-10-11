@@ -144,7 +144,8 @@ import gunbc.live_deploy.slice_bounds {
   repository_convergence_slice_memory_max, repository_convergence_slice_memory_high,
   repository_convergence_slice_memory_swap_max,
 }
-import gunbc.fabric_storage_placement { fabric_storage_door_socket }
+import gunbc.auth.approval_broker_placement { approval_broker_base_url_of_holder }
+import gunbc.auth.approval_broker_endpoint { approval_broker_base_url_env_name }
 import gunbc.owned_directory {
   OwnedDirectoryTarget, OwnedDirectoryManaged, OwnedDirectoryDeclared,
   owned_directory_path, owned_directory_member, owned_directory_install_plan_of, owned_directory_install_argv,
@@ -152,6 +153,7 @@ import gunbc.owned_directory {
 import gunbc.ensure { EnsurePlanAvailable, EnsurePlanUnavailable }
 import gunbc.roadmap_dashboard_instance { dashboard_dispatch_worktree_member, dashboard_attempt_state_member }
 import gunbc.live_deploy.spec {
+  HoldsProdRoleSingletons, HoldsNoRoleSingleton, deployment_fabric_storage_door_socket,
   deployment_slice_unit_name, deployment_slice_unit_path,
   deployment_fabric_storage_unit_name, deployment_fabric_storage_serve_endpoint, deployment_approval_broker_front_door_endpoints,
   gunbc_approval_broker_unit_name, gunbc_approval_broker_unit_path,
@@ -606,7 +608,7 @@ fn apply_tailnet_door_unit_write_step(spec: DeploymentSpec, revision: ReleaseRev
 // unbounded hold of the serial accept loop into a typed refusal exactly as they do there. The process
 // keeps no state between requests -- the store is the files under the ensured fabric DB directory --
 // so Restart=on-failure loses nothing.
-fn live_deploy_fabric_storage_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile {
+fn live_deploy_fabric_storage_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding, door_socket: NonEmptyStr) -> SystemdUnitFile {
   let svc = spec.service
   ServiceUnitFile {
     unit: [
@@ -625,7 +627,7 @@ fn live_deploy_fabric_storage_unit_file(spec: DeploymentSpec, revision: ReleaseR
         svc.serve_binary as String,
         " serve --source-root dag --source-root src/v2",
         " --entry dag/gunbc/fabric/fabric_storage_serve.dag --function fabric_storage_serve_handle",
-        " --unix-socket ", fabric_storage_door_socket() as String,
+        " --unix-socket ", door_socket as String,
         " --release-revision ", release_revision_execstart_text(binding: revision),
         eval_budget_flag_text(flag: "--eval-budget-cpu-ms", limit: svc.serve_cpu_limit),
         eval_budget_flag_text(flag: "--eval-budget-wall-ms", limit: svc.serve_wall_limit),
@@ -636,11 +638,19 @@ fn live_deploy_fabric_storage_unit_file(spec: DeploymentSpec, revision: ReleaseR
   }
 }
 
-fn apply_fabric_storage_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> PipelineStep {
+fn apply_fabric_storage_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevisionBinding, door_socket: NonEmptyStr) -> PipelineStep {
   deploy_raw(command: deploy_stage_write_command(
     stage_name: deployment_fabric_storage_unit_name(names: spec.names) as String,
-    content: render(doc: doc_text(text: serialize_systemd_unit_file(file: live_deploy_fabric_storage_unit_file(spec: spec, revision: revision))), proto: live_deploy_protocol),
+    content: render(doc: doc_text(text: serialize_systemd_unit_file(file: live_deploy_fabric_storage_unit_file(spec: spec, revision: revision, door_socket: door_socket))), proto: live_deploy_protocol),
   ))
+}
+
+// A fabric storage step for a spec that holds no prod role has no door socket to name;
+// the marker is not valid shell, so the stage fails rather than serving an invented path.
+data fabric_storage_door_unknown_instance_poison: String = "__GUNBC_DEPLOY_REFUSED__ fabric storage step reached with a deployment that holds no prod role (gunbc.live_deploy.spec RoleSingletonHolding), so it has no door socket (gunbc.live_deploy.spec deployment_fabric_storage_door_socket). instance="
+
+fn fabric_storage_door_unknown_step(spec: DeploymentSpec) -> PipelineStep {
+  deploy_raw(command: join([fabric_storage_door_unknown_instance_poison, spec.instance_id as String, "\n"], ""))
 }
 
 fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> Doc {
@@ -729,6 +739,7 @@ fn live_deploy_approval_broker_unit_file_on(
       ServiceSlice { name: gunbc_approval_broker_slice_unit_name },
       WorkingDirectory { path: release_dir as NonEmptyStr },
       release_locus_workspace_root_environment(release_dir: release_dir),
+      approval_broker_base_url_environment(spec: spec),
       ExecStart { command: join([
         approval_broker_release_binary_path(root: svc.repo_root as String, revision: revision),
         " serve --source-root dag --source-root src/v2",
@@ -1941,6 +1952,21 @@ data approval_broker_release_retention_note: String = "The broker's release locu
 // from a directory that is not a git checkout, and a locus is not one -- measured on srv1
 // 2026-09-21, where both the broker's serve unit and the microVM slot unit exited 101 in
 // workspace_root before any stage ran. One row feeds both units.
+// THE BROKER IS GIVEN ITS PUBLIC BASE URL, built from the holder token the spec carries
+// (gunbc.auth.approval_broker_placement approval_broker_base_url_of_holder), so the serving broker
+// reads where it runs instead of resolving it. A spec holding no role never reaches a broker unit
+// write (apply_approval_broker_unit_write_steps is empty for it); if one is rendered anyway the
+// binding is a refusal marker the broker's address read rejects as a non-URL, never a guessed host.
+data approval_broker_base_url_unbound_marker: String = "__GUNBC_DEPLOY_REFUSED__no-prod-role-holder"
+
+fn approval_broker_base_url_environment(spec: DeploymentSpec) -> SystemdServiceDirective {
+  let value = match spec.role_singletons {
+    HoldsProdRoleSingletons { holder } => approval_broker_base_url_of_holder(holder: holder) as String
+    HoldsNoRoleSingleton => approval_broker_base_url_unbound_marker
+  }
+  Environment { assignment: join([approval_broker_base_url_env_name as String, "=", value], "") as NonEmptyStr }
+}
+
 fn release_locus_workspace_root_environment(release_dir: String) -> SystemdServiceDirective {
   installed_release_environment(release_dir: release_dir)
 }
@@ -2934,8 +2960,10 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
       deploy_raw(command: "__GUNBC_FLEET_CONVERGE_REFUSED__ FleetConvergeTimerUnit retired from deployment membership — timer cadence is on-demand via fleet-converge.yml plan/apply, not live_deploy apply (sleek-heron-218)"),
     ]
     TailscaleServeMapping => tailscale_serve_mapping_apply_steps(spec: spec)
-    FabricStorageServeUnit => [
-      apply_fabric_storage_unit_write_step(spec: spec, revision: revision),
+    FabricStorageServeUnit => match deployment_fabric_storage_door_socket(spec: spec) {
+     Absent => [fabric_storage_door_unknown_step(spec: spec)]
+     Present { value: door_socket } => [
+      apply_fabric_storage_unit_write_step(spec: spec, revision: revision, door_socket: door_socket),
       deploy_raw(command: deploy_stage_install_command(
         stage_name: deployment_fabric_storage_unit_name(names: spec.names) as String,
         mode: install_file_shared_mode,
@@ -2944,12 +2972,16 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
       deploy_effect(inv: systemctl_daemon_reload_effect()),
       deploy_effect(inv: systemctl_enable_effect(unit: deployment_fabric_storage_unit_name(names: spec.names))),
       deploy_effect(inv: systemctl_restart_effect(unit: deployment_fabric_storage_unit_name(names: spec.names))),
-    ]
-    FabricStorageServeMapping => [
-      deploy_raw(command: shell_privileged_command_text_of_argv(
-        argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: deployment_fabric_storage_serve_endpoint())),
-      )),
-    ]
+     ]
+    }
+    FabricStorageServeMapping => match deployment_fabric_storage_door_socket(spec: spec) {
+      Absent => [fabric_storage_door_unknown_step(spec: spec)]
+      Present { value: door_socket } => [
+        deploy_raw(command: shell_privileged_command_text_of_argv(
+          argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: deployment_fabric_storage_serve_endpoint(door_socket: door_socket))),
+        )),
+      ]
+    }
     TailnetDoorServeUnit => [
       apply_tailnet_door_unit_write_step(spec: spec, revision: revision),
       deploy_raw(command: deploy_stage_install_command(
@@ -3008,11 +3040,14 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
     TailscaleServeMapping => [
       tailscale_serve_teardown_step(spec: spec),
     ]
-    FabricStorageServeMapping => [
-      deploy_raw(command: shell_privileged_command_text_of_argv(
-        argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: deployment_fabric_storage_serve_endpoint())),
-      )),
-    ]
+    FabricStorageServeMapping => match deployment_fabric_storage_door_socket(spec: spec) {
+      Absent => [fabric_storage_door_unknown_step(spec: spec)]
+      Present { value: door_socket } => [
+        deploy_raw(command: shell_privileged_command_text_of_argv(
+          argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: deployment_fabric_storage_serve_endpoint(door_socket: door_socket))),
+        )),
+      ]
+    }
     ApprovalBrokerFrontDoor => map(
       deployment_approval_broker_front_door_endpoints(),
       e => deploy_raw(command: shell_privileged_command_text_of_argv(argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: e)))),
@@ -3432,7 +3467,7 @@ fn approval_broker_dark_install_intent(
 // -- a stage that reports success having installed nothing, which is the absorbing fallback DESIGN
 // section 5 forbids at exactly the seam where the operator is being told a stage completed. The
 // marker is not valid shell, so the stage fails and names the owner.
-data approval_broker_dark_install_not_owner_poison: String = "__GUNBC_DEPLOY_REFUSED__ approval-broker DARK INSTALL was reached with a deployment that does not own this host's broker unit. gunbc-approval-broker.service is a HOST singleton owned by gunbc.live_deploy.spec gunbc_approval_broker_owning_instance; a twin apply installing it would point the host's broker at the twin's tree and restart it over production's process (review 68094). This marker is not valid deploy shell, so the stage fails loudly rather than emitting a script that installs nothing and reports success. instance="
+data approval_broker_dark_install_not_owner_poison: String = "__GUNBC_DEPLOY_REFUSED__ approval-broker DARK INSTALL was reached with a deployment that does not own this host's broker unit. gunbc-approval-broker.service is a HOST singleton owned by the spec that holds the prod role (gunbc.live_deploy.spec RoleSingletonHolding over gunbc.deployment_risk prod_role_selection), and is owned by nobody under NoProdRole; a twin apply installing it would point the host's broker at the twin's tree and restart it over production's process (review 68094). This marker is not valid deploy shell, so the stage fails loudly rather than emitting a script that installs nothing and reports success. instance="
 
 data approval_broker_dark_install_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ approval-broker DARK INSTALL intent emission was rejected by v2.compiler.emit_orchestration; this marker is not valid deploy shell, so stage 1 of the cutover fails loudly rather than a hand-spelled fallback masking the refusal (DESIGN section 5: refuse, never widen)\n"
 

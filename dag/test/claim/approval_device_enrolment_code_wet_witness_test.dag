@@ -1,5 +1,6 @@
 module test.claim.approval_device_enrolment_code_wet_witness_test
 
+import gunbc.auth.approval_broker_endpoint { ApprovalBrokerAddressResolved }
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, Timestamp, Int }
 import gunbc.auth.approval_device_enrolment_code {
@@ -29,9 +30,9 @@ test fn the_code_slot_is_written_before_delivery_by_real_execution() -> Bool {
   let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_enrol.XXXXXX").path
   let root = root_path as NonEmptyStr
   let publisher = PublisherTokenUnavailable { path: "/etc/gunbc-ntfy/publisher-token", detail: "absent" }
-  let first = issue_and_deliver_enrolment_code_until(root: root, now: "2026-09-21T20:00:00Z", expires_at: fx_expires, code: fx_code, publisher: publisher)
+  let first = issue_and_deliver_enrolment_code_until(root: root, now: "2026-09-21T20:00:00Z", expires_at: fx_expires, code: fx_code, publisher: publisher, broker: ApprovalBrokerAddressResolved { value: "https://srv1.example.ts.net" as NonEmptyStr })
   let slot = observe_enrolment_slot(root: root, code: fx_code)
-  let second = issue_and_deliver_enrolment_code_until(root: root, now: "2026-09-21T20:00:00Z", expires_at: fx_expires, code: fx_code, publisher: publisher)
+  let second = issue_and_deliver_enrolment_code_until(root: root, now: "2026-09-21T20:00:00Z", expires_at: fx_expires, code: fx_code, publisher: publisher, broker: ApprovalBrokerAddressResolved { value: "https://srv1.example.ts.net" as NonEmptyStr })
   let removed = shell.Remove.RecursiveForce(path: root_path)
   (match first {
     EnrolmentCodeIssued { topic: _, expires_at: x, delivery: DeliveryRefused { detail: _ } } => x == fx_expires

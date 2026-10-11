@@ -15,6 +15,7 @@ import extdeps.git {
 }
 import extdeps.github.github { github_https_clone_url }
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.spec {
   OwnedArtifactKind,
   PublicationHelperTimerUnit,
@@ -251,6 +252,7 @@ fn ordered_tags() -> List<String> {
     deployment_owned_steps(
       instance: srv1_live_dashboard_instance(),
       names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance()),
+      holding: deployment_spec_srv1().role_singletons,
     ),
     init: [],
     f: (acc, step) => {
