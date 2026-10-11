@@ -18,7 +18,7 @@ import v2.std.verification {
   ManualTcConjEmpty,
   ManualTcDisjEmpty,
   ManualTcArrowTwoConj,
-  ManualTcCardinalityEmpty,
+  ManualTcOccupancyEmpty,
   ManualTcInstantiationEmpty,
   ManualTcArrowEmpty,
   ManualTcTransformEmpty,
@@ -142,10 +142,10 @@ data claim_arrow_two_conj_compiles: TestClaim = CompilesClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_cardinality_empty_rejected: TestClaim = arity_rejection_claim(
+data claim_occupancy_empty_rejected: TestClaim = arity_rejection_claim(
   label: "manual/connective: empty Occupancy type-node fails well-formedness (A1 arity)",
   input: stub_empty_cardinality,
-  anchor: ManualTcCardinalityEmpty
+  anchor: ManualTcOccupancyEmpty
 )
 
 data claim_instantiation_empty_rejected: TestClaim = arity_rejection_claim(

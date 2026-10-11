@@ -7,7 +7,7 @@ data manual_anchor_tc_disj: ManualAnchorKey = ManualTcDisjEmpty
 
 data manual_anchor_tc_arrow: ManualAnchorKey = ManualTcArrowTwoConj
 
-data manual_anchor_tc_cardinality: ManualAnchorKey = ManualTcCardinalityEmpty
+data manual_anchor_tc_occupancy: ManualAnchorKey = ManualTcOccupancyEmpty
 
 data manual_anchor_tc_instantiation: ManualAnchorKey = ManualTcInstantiationEmpty
 

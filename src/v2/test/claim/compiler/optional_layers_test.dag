@@ -5,12 +5,12 @@ import std.algebra { Empty }
 import std.optional { Absent, Present }
 import std.nat { Zero }
 import v2.std.optional_layers {
-  CardinalityWrapperMalformed,
-  TypeNodeCardinality,
+  OccupancyWrapperMalformed,
+  TypeNodeOccupancy,
   one_optional_layer,
   two_optional_layers,
-  type_node_cardinality_read,
-  wrap_type_node_cardinality
+  type_node_occupancy_read,
+  wrap_type_node_occupancy
 }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.infer {
@@ -69,24 +69,24 @@ fn ol_obligation(declared: Node, produced: Node) -> DeclaredTypeObligation {
   }
 }
 
-test fn a_nested_cardinality_tree_reads_as_two_layers() -> Bool {
-  match type_node_cardinality_read(n: wrap_type_node_cardinality(base: ol_atom(id: ^ol_int), card: two_optional_layers())) {
-    TypeNodeCardinality { card: c, base: b } =>
+test fn a_nested_occupancy_tree_reads_as_two_layers() -> Bool {
+  match type_node_occupancy_read(n: wrap_type_node_occupancy(base: ol_atom(id: ^ol_int), depth: two_optional_layers())) {
+    TypeNodeOccupancy { depth: c, base: b } =>
       c == two_optional_layers()
         && (match b.kind {
           TypeNode { connective: Atom { identity: id } } => id == ^ol_int
           TypeNode { connective: _ } => false
           ComputationNode { behavior: _ } => false
         })
-    CardinalityWrapperMalformed { wrapper: _ } => false
+    OccupancyWrapperMalformed { wrapper: _ } => false
   }
 }
 
 test fn wrapping_required_is_the_base() -> Bool {
-  wrap_type_node_cardinality(base: ol_atom(id: ^ol_int), card: Zero) == ol_atom(id: ^ol_int)
+  wrap_type_node_occupancy(base: ol_atom(id: ^ol_int), depth: Zero) == ol_atom(id: ^ol_int)
 }
 
-fn ol_malformed_cardinality() -> Node {
+fn ol_malformed_occupancy() -> Node {
   Node {
     kind: TypeNode { connective: Occupancy },
     children: [],
@@ -94,16 +94,16 @@ fn ol_malformed_cardinality() -> Node {
   }
 }
 
-test fn a_malformed_cardinality_wrapper_refuses() -> Bool {
-  match type_node_cardinality_read(n: ol_malformed_cardinality()) {
-    CardinalityWrapperMalformed { wrapper: _ } => true
-    TypeNodeCardinality { card: _, base: _ } => false
+test fn a_malformed_occupancy_wrapper_refuses() -> Bool {
+  match type_node_occupancy_read(n: ol_malformed_occupancy()) {
+    OccupancyWrapperMalformed { wrapper: _ } => true
+    TypeNodeOccupancy { depth: _, base: _ } => false
   }
 }
 
-test fn a_malformed_cardinality_wrapper_is_refused_at_inhabitance() -> Bool {
-  let one = wrap_type_node_cardinality(base: ol_atom(id: ^ol_int), card: one_optional_layer())
-  match declared_type_inhabitance(obligation: ol_obligation(declared: ol_malformed_cardinality(), produced: one)) {
+test fn a_malformed_occupancy_wrapper_is_refused_at_inhabitance() -> Bool {
+  let one = wrap_type_node_occupancy(base: ol_atom(id: ^ol_int), depth: one_optional_layer())
+  match declared_type_inhabitance(obligation: ol_obligation(declared: ol_malformed_occupancy(), produced: one)) {
     InhabitanceRefused { find_witness_reason: r } => r == ^inhabitance_optional_layer_wrapper_malformed
     Inhabits { homomorphism: _ } => false
     InhabitanceUndecidable { reason: _ } => false
@@ -154,8 +154,8 @@ test fn an_int_at_a_list_formal_is_a_shape_mismatch() -> Bool {
 }
 
 test fn optional_t_matches_optional_int_and_binds_t() -> Bool {
-  let formal = wrap_type_node_cardinality(base: ol_atom(id: ^ol_t), card: one_optional_layer())
-  let produced = wrap_type_node_cardinality(base: ol_atom(id: ^ol_int), card: one_optional_layer())
+  let formal = wrap_type_node_occupancy(base: ol_atom(id: ^ol_t), depth: one_optional_layer())
+  let produced = wrap_type_node_occupancy(base: ol_atom(id: ^ol_int), depth: one_optional_layer())
   match infer_match_generic_formal(
     formal: formal,
     produced: produced,
@@ -170,11 +170,11 @@ test fn optional_t_matches_optional_int_and_binds_t() -> Bool {
 }
 
 test fn substituting_u_optional_into_t_optional_composes_two_layers() -> Bool {
-  let formal = wrap_type_node_cardinality(base: ol_atom(id: ^ol_t), card: one_optional_layer())
-  let u_opt = wrap_type_node_cardinality(base: ol_atom(id: ^ol_u), card: one_optional_layer())
+  let formal = wrap_type_node_occupancy(base: ol_atom(id: ^ol_t), depth: one_optional_layer())
+  let u_opt = wrap_type_node_occupancy(base: ol_atom(id: ^ol_u), depth: one_optional_layer())
   match infer_match_generic_formal(
     formal: formal,
-    produced: wrap_type_node_cardinality(base: u_opt, card: one_optional_layer()),
+    produced: wrap_type_node_occupancy(base: u_opt, depth: one_optional_layer()),
     type_params: [^ol_t],
     instances: Empty,
     declarations: empty_symbol_index()
@@ -182,13 +182,13 @@ test fn substituting_u_optional_into_t_optional_composes_two_layers() -> Bool {
     InferFormalShapeMismatch => false
     InferFormalMatched { instances: bound } =>
       infer_type_instantiated(t: formal, instances: bound)
-        == wrap_type_node_cardinality(base: ol_atom(id: ^ol_u), card: two_optional_layers())
+        == wrap_type_node_occupancy(base: ol_atom(id: ^ol_u), depth: two_optional_layers())
   }
 }
 
 test fn one_optional_layer_does_not_match_a_required_int() -> Bool {
   match infer_match_generic_formal(
-    formal: wrap_type_node_cardinality(base: ol_atom(id: ^ol_t), card: one_optional_layer()),
+    formal: wrap_type_node_occupancy(base: ol_atom(id: ^ol_t), depth: one_optional_layer()),
     produced: ol_atom(id: ^ol_int),
     type_params: [^ol_t],
     instances: Empty,
@@ -200,8 +200,8 @@ test fn one_optional_layer_does_not_match_a_required_int() -> Bool {
 }
 
 test fn two_optional_layers_are_not_one_at_inhabitance() -> Bool {
-  let one = wrap_type_node_cardinality(base: ol_atom(id: ^ol_int), card: one_optional_layer())
-  let two = wrap_type_node_cardinality(base: ol_atom(id: ^ol_int), card: two_optional_layers())
+  let one = wrap_type_node_occupancy(base: ol_atom(id: ^ol_int), depth: one_optional_layer())
+  let two = wrap_type_node_occupancy(base: ol_atom(id: ^ol_int), depth: two_optional_layers())
   match inhabitance_pair_undecidable_reason(declared: one, produced: two, type_variables: []) {
     Absent =>
       match declared_type_inhabitance(obligation: ol_obligation(declared: one, produced: two)) {
@@ -214,7 +214,7 @@ test fn two_optional_layers_are_not_one_at_inhabitance() -> Bool {
 }
 
 test fn matching_optional_depths_are_decidable_not_a_collapsed_carrier() -> Bool {
-  let one = wrap_type_node_cardinality(base: ol_atom(id: ^ol_int), card: one_optional_layer())
+  let one = wrap_type_node_occupancy(base: ol_atom(id: ^ol_int), depth: one_optional_layer())
   match inhabitance_pair_undecidable_reason(declared: one, produced: one, type_variables: []) {
     Absent =>
       match declared_type_inhabitance(obligation: ol_obligation(declared: one, produced: one)) {

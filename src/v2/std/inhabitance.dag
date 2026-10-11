@@ -38,9 +38,9 @@ import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 import std.nat { Succ, Zero }
 import v2.std.optional_layers {
-  CardinalityWrapperMalformed,
-  TypeNodeCardinality,
-  type_node_cardinality_read
+  OccupancyWrapperMalformed,
+  TypeNodeOccupancy,
+  type_node_occupancy_read
 }
 
 // WHAT A FORMAL IS DECLARED AS, READ AGAINST ITS OWN ARROW. A formal declared as one of the
@@ -202,7 +202,7 @@ fn inhabitance_declared_singleton(declared: Node) -> CandidateSet {
   }
 }
 
-fn inhabitance_cardinality_type(inner: Node) -> Node {
+fn inhabitance_occupancy_type(inner: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Occupancy },
     children: [
@@ -351,12 +351,12 @@ type OptionalLayerInhabitanceVerdict
   | OptionalLayerWrapperMalformed
 
 fn inhabitance_optional_layer_judgement(declared: Node, produced: Node) -> OptionalLayerInhabitanceVerdict {
-  match type_node_cardinality_read(n: declared) {
-    CardinalityWrapperMalformed { wrapper: _ } => OptionalLayerWrapperMalformed
-    TypeNodeCardinality { card: dc, base: _ } =>
-      match type_node_cardinality_read(n: produced) {
-        CardinalityWrapperMalformed { wrapper: _ } => OptionalLayerWrapperMalformed
-        TypeNodeCardinality { card: pc, base: _ } =>
+  match type_node_occupancy_read(n: declared) {
+    OccupancyWrapperMalformed { wrapper: _ } => OptionalLayerWrapperMalformed
+    TypeNodeOccupancy { depth: dc, base: _ } =>
+      match type_node_occupancy_read(n: produced) {
+        OccupancyWrapperMalformed { wrapper: _ } => OptionalLayerWrapperMalformed
+        TypeNodeOccupancy { depth: pc, base: _ } =>
           match dc {
             Zero => OptionalLayerInhabitanceHolds
             Succ { prev: _ } =>

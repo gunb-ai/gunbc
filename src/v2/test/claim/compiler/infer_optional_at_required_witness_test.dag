@@ -20,7 +20,7 @@ import v2.std.inhabitance {
   InhabitanceUndecidable,
   Inhabits,
   declared_type_inhabitance,
-  inhabitance_cardinality_type,
+  inhabitance_occupancy_type,
   inhabitance_undecidable_reason_symbol,
   position_declared_return
 }
@@ -103,7 +103,7 @@ fn oar_resolved_lift() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "
 fn oar_resolved_field_bad() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_field_bad") }
 
 fn oar_optional_int() -> Node {
-  inhabitance_cardinality_type(inner: integer_int_type_node())
+  inhabitance_occupancy_type(inner: integer_int_type_node())
 }
 
 fn oar_obligation(declared: Node, produced: Node, type_variables: List<Symbol>) -> DeclaredTypeObligation {

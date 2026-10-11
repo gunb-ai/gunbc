@@ -104,7 +104,7 @@ import v2.std.verification {
   ManualNatMulAssociativity,
   ManualNatMulLeftIdentity,
   ManualTcArrowTwoConj,
-  ManualTcCardinalityEmpty,
+  ManualTcOccupancyEmpty,
   ManualTcConjEmpty,
   ManualTcConjEqualsRefl,
   ManualTcDisjEmpty,
@@ -127,7 +127,7 @@ import v2.test.manual.connective_anchors {
   stub_empty_disj,
   stub_empty_transform,
   claim_arrow_two_conj_compiles,
-  claim_cardinality_empty_rejected,
+  claim_occupancy_empty_rejected,
   claim_conj_empty_compiles,
   claim_conj_equals_refl,
   claim_disj_empty_compiles,
@@ -255,7 +255,7 @@ fn generator_id_for_manual_anchor(key: ManualAnchorKey) -> GeneratorId {
     ManualTcConjEmpty => ^gen_id_tc_conj_empty
     ManualTcDisjEmpty => ^gen_id_tc_disj_empty
     ManualTcArrowTwoConj => ^gen_id_tc_arrow_two_conj
-    ManualTcCardinalityEmpty => ^gen_id_tc_cardinality_empty
+    ManualTcOccupancyEmpty => ^gen_id_tc_occupancy_empty
     ManualTcInstantiationEmpty => ^gen_id_tc_instantiation_empty
     ManualTcArrowEmpty => ^gen_id_tc_arrow_empty
     ManualTcTransformEmpty => ^gen_id_tc_transform_empty
@@ -532,7 +532,7 @@ fn testgen_emit_refinement_preservation_claim(
       Rejected {
         diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
       }
-    ManualTcCardinalityEmpty =>
+    ManualTcOccupancyEmpty =>
       Rejected {
         diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
       }
@@ -721,7 +721,7 @@ fn testgen_emit_language_behavior_equivalence_claim(
       Rejected {
         diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
       }
-    ManualTcCardinalityEmpty =>
+    ManualTcOccupancyEmpty =>
       Rejected {
         diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
       }
@@ -925,7 +925,7 @@ fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<Alg
           }
         )
       }
-    ManualTcCardinalityEmpty =>
+    ManualTcOccupancyEmpty =>
       Rejected {
         diagnostics: diagnostics_singleton(
           d: Diagnostic {
@@ -2289,7 +2289,7 @@ fn manual_test_claim_for_manual_anchor(key: ManualAnchorKey) -> Outcome<TestClai
     ManualTcConjEmpty => Accepted { value: claim_conj_empty_compiles, diagnostics: None }
     ManualTcDisjEmpty => Accepted { value: claim_disj_empty_compiles, diagnostics: None }
     ManualTcArrowTwoConj => Accepted { value: claim_arrow_two_conj_compiles, diagnostics: None }
-    ManualTcCardinalityEmpty => Accepted { value: claim_cardinality_empty_rejected, diagnostics: None }
+    ManualTcOccupancyEmpty => Accepted { value: claim_occupancy_empty_rejected, diagnostics: None }
     ManualTcInstantiationEmpty => Accepted { value: claim_instantiation_empty_rejected, diagnostics: None }
     ManualTcArrowEmpty => Accepted { value: claim_arrow_empty_rejected, diagnostics: None }
     ManualTcTransformEmpty => Accepted { value: claim_transform_empty_rejected, diagnostics: None }
@@ -2353,7 +2353,7 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
       Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Arrow },
         }, diagnostics: None }
-    ManualClaimAnchor { manual_anchor: ManualTcCardinalityEmpty } =>
+    ManualClaimAnchor { manual_anchor: ManualTcOccupancyEmpty } =>
       Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Occupancy },
         }, diagnostics: None }
