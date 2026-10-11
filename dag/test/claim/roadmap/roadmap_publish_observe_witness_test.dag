@@ -1,5 +1,6 @@
 module test.claim.roadmap_publish_observe_witness_test
 
+import std.unicode.scalar { char_text }
 import std.types { Bool, String, NonEmptyStr, Int, List, CommitSha }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.roadmap_publish_observe {
@@ -29,7 +30,7 @@ data witness_scope_note: String = "Every arm of the remote-branch observation is
 data fixture_sha_a: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 data fixture_sha_b: String = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
-fn tab() -> String { from_code_point(cp: 9) }
+fn tab() -> String { char_text(c: 9) }
 
 fn line_of(sha: String, ref_name: String) -> String {
   concat(sha, concat(tab(), ref_name))

@@ -1,5 +1,11 @@
 module test.claim.json_emit_witness
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.languages.json.emit { escape_json_string, json_array, json_bool, json_int, json_int_list, json_kv, json_null, json_number_from_lexeme_string, json_object, json_str_list, json_unicode_escape_hex4, quote_json_string, serialize_json }
+import extdeps.languages.json.grammar { json_int_lexeme, json_number_lexeme, json_number_lexeme_valid, json_production_rows }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.unicode.scalar { char_text }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_json_cites_rfc8259() -> Bool {
@@ -17,15 +23,15 @@ test fn witness_escape_newline() -> Bool {
 }
 
 test fn witness_escape_tab() -> Bool {
-  escape_json_string(s: concat("a", concat(from_code_point(cp: 9), "b"))) == "a\\tb"
+  escape_json_string(s: concat("a", concat(char_text(c: 9), "b"))) == "a\\tb"
 }
 
 test fn witness_escape_carriage_return() -> Bool {
-  escape_json_string(s: concat("x", concat(from_code_point(cp: 13), "y"))) == "x\\ry"
+  escape_json_string(s: concat("x", concat(char_text(c: 13), "y"))) == "x\\ry"
 }
 
 test fn witness_escape_control_u0001() -> Bool {
-  escape_json_string(s: from_code_point(cp: 1)) == "\\u0001"
+  escape_json_string(s: char_text(c: 1)) == "\\u0001"
 }
 
 // THE PASS DECOMPOSITION'S LOAD-BEARING ORDER, pinned: the backslash pass leads, so a literal
@@ -33,12 +39,12 @@ test fn witness_escape_control_u0001() -> Bool {
 // control range is covered to its top, so cp 31 escapes as \u001f exactly as the per-char fold
 // produced it. Both rows red the moment a pass is reordered or dropped.
 test fn witness_escape_backslash_leads_over_newline() -> Bool {
-  escape_json_string(s: concat(from_code_point(cp: 92), from_code_point(cp: 10))) == "\\\\\\n"
+  escape_json_string(s: concat(char_text(c: 92), char_text(c: 10))) == "\\\\\\n"
 }
 
 test fn witness_escape_control_top_of_range() -> Bool {
-  escape_json_string(s: from_code_point(cp: 31)) == "\\u001F"
-    && escape_json_string(s: from_code_point(cp: 11)) == "\\u000B"
+  escape_json_string(s: char_text(c: 31)) == "\\u001F"
+    && escape_json_string(s: char_text(c: 11)) == "\\u000B"
 }
 
 test fn witness_escape_combined_source_text() -> Bool {

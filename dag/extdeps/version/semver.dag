@@ -4,6 +4,7 @@ import extdeps.version { VersionIdentity, VersionComparison, VersionCompared, Ve
 import std.algebra { Ordering, Less, Equal, Greater, trim }
 import std.integer { NonNegativeInt }
 import std.types { List }
+import std.coercion { unicode_scalar_fold }
 import std.types { NonEmptyStr, String, Int }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -332,7 +333,7 @@ fn semver_numeric_run_without_leading_zero(cps: List<Int>) -> Bool {
 
 
 fn semver_label_from_code_points(cps: List<Int>) -> NonEmptyStr {
-  join(cps |> map(cp => from_code_point(cp: cp)), "") as NonEmptyStr
+  unicode_scalar_fold(xs: cps) as NonEmptyStr
 }
 
 // ---- core MAJOR.MINOR.PATCH -----------------------------------------------

@@ -1,5 +1,8 @@
 module test.claim.char_at_unicode_witness
 
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.unicode.scalar { char_text }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // CHARAT-0 discriminating control: char_at indexes Unicode code points, not UTF-8 bytes. A
@@ -7,7 +10,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // U+00A9 misread as ©) while code-point indexing returns U+00E9.
 
 fn ae_b_sample() -> String {
-  concat("a", concat(from_code_point(cp: 233), "b"))
+  concat("a", concat(char_text(c: 233), "b"))
 }
 
 test fn char_at_indexes_code_points_on_multibyte_text() -> Bool {
@@ -37,7 +40,7 @@ test fn string_length_counts_code_points_not_bytes() -> Bool {
 // rather than one that has never been seen to fail.
 
 fn ab_e_c_sample() -> String {
-  concat("ab", concat(from_code_point(cp: 233), "c"))
+  concat("ab", concat(char_text(c: 233), "c"))
 }
 
 test fn char_at_agrees_across_the_ascii_prefix_boundary() -> Bool {
@@ -50,5 +53,5 @@ test fn char_at_agrees_across_the_ascii_prefix_boundary() -> Bool {
 
 test fn char_at_past_the_multibyte_char_is_not_a_byte_offset() -> Bool {
   let s = ab_e_c_sample()
-  char_at(s: s, pos: 3) != from_code_point(cp: 169) && char_at(s: s, pos: 4) == ""
+  char_at(s: s, pos: 3) != char_text(c: 169) && char_at(s: s, pos: 4) == ""
 }

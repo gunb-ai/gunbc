@@ -810,7 +810,7 @@ fn curl_ascii_lower_from(s: String, i: Int, acc: String) -> String {
   } else {
     let c = char_at(s, i)
     let cp = code_point(c)
-    curl_ascii_lower_from(s: s, i: i + 1, acc: concat(acc, if cp >= 65 && cp <= 90 { from_code_point(cp: cp + 32) } else { c }))
+    curl_ascii_lower_from(s: s, i: i + 1, acc: concat(acc, if cp >= 65 && cp <= 90 { substring(s: "abcdefghijklmnopqrstuvwxyz", start: cp - 65, end: cp - 64) } else { c }))
   }
 }
 

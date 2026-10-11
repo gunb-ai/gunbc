@@ -1,0 +1,49 @@
+module std.unicode.scalar
+
+import std.algebra { Empty, list_snoc_item }
+import std.coercion { unicode_scalar_fold }
+import std.error_primitives { Result, Ok, Err }
+import std.types { Char }
+import std.unicode.types { unicode_scalar, unicode_surrogate_first_code_point, unicode_surrogate_last_code_point }
+
+// Unicode Standard 17.0 Core Specification section 3.9, D76: the scalar values are U+0000..U+D7FF
+// and U+E000..U+10FFFF, so an Int code point names a scalar only when std.unicode.types
+// unicode_scalar holds. It fails in exactly two ways, one arm each, carrying the code point refused
+// so a caller reports WHICH value and WHY.
+type NotUnicodeScalar
+  = SurrogateCodePoint { code_point: Int }
+  | CodePointOutOfRange { code_point: Int }
+
+// THE ONE REFINEMENT Int -> Char, and it is partial. A Char is `Int where unicode_scalar`
+// (std.types), so this is the only place an arbitrary Int becomes one; the two refusals are the two
+// ways the predicate fails. This sibling of std.unicode.types holds it because std.types imports
+// std.unicode.types for Char, so declaring it there would cycle.
+fn scalar_of_code_point(cp: Int) -> Result<Char, NotUnicodeScalar> {
+  if unicode_scalar(code_point: cp) {
+    Ok { value: cp }
+  } else if (cp >= unicode_surrogate_first_code_point) && (cp <= unicode_surrogate_last_code_point) {
+    Err { value: SurrogateCodePoint { code_point: cp } }
+  } else {
+    Err { value: CodePointOutOfRange { code_point: cp } }
+  }
+}
+
+// THE TOTAL SPELLING: a Char is a scalar by construction, so spelling it as host text cannot
+// refuse, and a caller holding one never handles a refusal (construction over validation, DESIGN
+// section 5). It is realized through the declared text-crossing route std.coercion
+// unicode_scalar_fold over a one-scalar sequence (DESIGN section 4, UnicodeScalarSequenceUnfold).
+fn char_text(c: Char) -> String {
+  unicode_scalar_fold(xs: list_snoc_item(xs: Empty, item: c))
+}
+
+// from_code_point: an Int is spelled as host text only if it is a scalar, otherwise it refuses
+// typed. It replaces the seed builtin of the same name, which was total over Int and answered a
+// different invented value per realization for a non-scalar (the interpreter U+0000, the emitted
+// runtimes the empty string) and wrapped through `cp as u32`, so -1 or 2^32 + 65 spelled a valid
+// scalar. gunbc.recurring_failure_mode bare_from_code_point_binds_the_total_seed_builtin records it.
+fn from_code_point(cp: Int) -> Result<String, NotUnicodeScalar> {
+  match scalar_of_code_point(cp: cp) {
+    Ok { value: c } => Ok { value: char_text(c: c) }
+    Err { value: n } => Err { value: n }
+  }
+}

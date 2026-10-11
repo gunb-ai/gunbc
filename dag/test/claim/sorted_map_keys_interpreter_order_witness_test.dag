@@ -1,5 +1,8 @@
 module test.claim.sorted_map_keys_interpreter_order_witness_test
 
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.unicode.scalar { char_text }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // sorted_map_keys HAD NO INTERPRETER ARM. It was declared in std.primitives, typed in
@@ -50,7 +53,7 @@ fn discriminating_key_map() -> Map<String, Int> {
     |> map_insert("B", 2)
     |> map_insert("Z9", 3)
     |> map_insert("Z10", 4)
-    |> map_insert(from_code_point(233), 5)
+    |> map_insert(char_text(c: 233), 5)
     |> map_insert("z", 6)
     |> map_insert("a", 7)
 }
@@ -59,7 +62,7 @@ fn reverse_insertion_key_map() -> Map<String, Int> {
   empty_map()
     |> map_insert("a", 7)
     |> map_insert("z", 6)
-    |> map_insert(from_code_point(233), 5)
+    |> map_insert(char_text(c: 233), 5)
     |> map_insert("Z10", 4)
     |> map_insert("Z9", 3)
     |> map_insert("B", 2)
@@ -67,7 +70,7 @@ fn reverse_insertion_key_map() -> Map<String, Int> {
 }
 
 fn expected_utf8_byte_order() -> List<String> {
-  ["B", "Z10", "Z9", "a", "b", "z", from_code_point(233)]
+  ["B", "Z10", "Z9", "a", "b", "z", char_text(c: 233)]
 }
 
 test fn sorted_map_keys_free_call_orders_as_emitted_rust_does() -> Bool {

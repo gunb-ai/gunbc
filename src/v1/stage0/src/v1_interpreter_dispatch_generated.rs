@@ -37,7 +37,6 @@ pub enum EvalBuiltinArm {
     FreeCallContains,
     FreeCallReplace,
     FreeCallCodePoint,
-    FreeCallFromCodePoint,
     FreeCallIsXidStart,
     FreeCallIsXidContinue,
     FreeCallIsEmojiIdent,
@@ -184,7 +183,6 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "contains" => Some(EvalBuiltinArm::FreeCallContains),
         "replace" => Some(EvalBuiltinArm::FreeCallReplace),
         "code_point" => Some(EvalBuiltinArm::FreeCallCodePoint),
-        "from_code_point" => Some(EvalBuiltinArm::FreeCallFromCodePoint),
         "is_xid_start" => Some(EvalBuiltinArm::FreeCallIsXidStart),
         "is_xid_continue" => Some(EvalBuiltinArm::FreeCallIsXidContinue),
         "is_emoji_ident" => Some(EvalBuiltinArm::FreeCallIsEmojiIdent),
@@ -335,7 +333,6 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.contains") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallContains };
     ("free_call.replace") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallReplace };
     ("free_call.code_point") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCodePoint };
-    ("free_call.from_code_point") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallFromCodePoint };
     ("free_call.is_xid_start") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallIsXidStart };
     ("free_call.is_xid_continue") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallIsXidContinue };
     ("free_call.is_emoji_ident") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallIsEmojiIdent };

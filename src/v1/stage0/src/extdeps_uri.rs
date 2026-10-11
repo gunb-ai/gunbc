@@ -18,8 +18,10 @@ use self::UriUnicodeScalarConstruction::*;
 use self::UriUtf8OctetConstruction::*;
 use self::UriValidatedScalarConstruction::*;
 pub use crate::std_algebra::trim;
+pub use crate::std_coercion::unicode_scalar_fold;
 pub use crate::std_optional::Optional;
-pub use crate::std_types::{List, NonEmptyStr};
+pub use crate::std_types::{Char, List, NonEmptyStr};
+pub use crate::std_unicode_scalar::char_text;
 pub use crate::std_unicode_types::{
     unicode_scalar_max_code_point, unicode_surrogate_first_code_point,
     unicode_surrogate_last_code_point,
@@ -769,7 +771,7 @@ pub fn uri_percent_encode_admitted_scalar_wire(
         let cp = uri_validated_scalar_code_point(scalar.clone());
         if uri_component_is_unreserved(cp.clone()) {
             Rc::new(UriPercentEncodeFoldState::UriPercentEncodeBuilding {
-                wire: v1_rt::from_code_point(cp.clone()),
+                wire: crate::std_unicode_scalar::char_text(cp.clone()),
             })
         } else {
             if (cp.clone() < 128) {
@@ -1093,15 +1095,15 @@ impl UriDecodeUtf8 {
 #[serde(tag = "_variant")]
 pub enum UriPercentDecodeFold {
     UriDecodeText {
-        out: Rc<Vec<i64>>,
+        out: Rc<Vec<Char>>,
         utf8: Rc<UriDecodeUtf8>,
     },
     UriDecodeAfterPercent {
-        out: Rc<Vec<i64>>,
+        out: Rc<Vec<Char>>,
         utf8: Rc<UriDecodeUtf8>,
     },
     UriDecodeAfterHighNibble {
-        out: Rc<Vec<i64>>,
+        out: Rc<Vec<Char>>,
         utf8: Rc<UriDecodeUtf8>,
         high: i64,
     },
@@ -1338,14 +1340,7 @@ pub fn uri_percent_decode_component(value: String) -> Rc<UriPercentDecodeCompone
             ),
             UriDecodeUtf8::UriUtf8Idle => {
                 Rc::new(UriPercentDecodeComponent::UriPercentComponentDecoded {
-                    value: Rc::new({
-                        let mut __result = Vec::new();
-                        for c in v1_rt::reverse(out.clone()).iter().cloned() {
-                            __result.push(v1_rt::from_code_point(c.clone()));
-                        }
-                        __result
-                    })
-                    .join(&"".to_string()),
+                    value: crate::std_coercion::unicode_scalar_fold(v1_rt::reverse(out.clone())),
                 })
             }
         },

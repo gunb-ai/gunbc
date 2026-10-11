@@ -1,5 +1,6 @@
 module test.claim.network_boot_manifest_broker_witness
 
+import std.unicode.scalar { char_text }
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String, list_length }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -169,7 +170,7 @@ fn identity_with_attempt_and_nonce(attempt_id: IntakeAttemptId, nonce: String) -
 // the same text for both), so it is red for any preimage that does not
 // bind field boundaries independently of field content.
 test fn claims_that_collide_under_a_separator_join_have_distinct_signing_inputs() -> Bool {
-  let us = from_code_point(cp: 31)
+  let us = char_text(c: 31)
   let a = identity_with_attempt_and_nonce(attempt_id: concat("intake", concat(us, "x")) as IntakeAttemptId, nonce: "n")
   let b = identity_with_attempt_and_nonce(attempt_id: "intake" as IntakeAttemptId, nonce: concat("x", concat(us, "n")))
   let separator_joined_a = join([a.attempt_id as String, a.nonce], us)

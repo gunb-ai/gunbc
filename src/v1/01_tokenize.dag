@@ -7,6 +7,7 @@ import std.source_annotation {
   advance_line_prefix_indent_only_text, placement_from_line_prefix
 }
 import std.unicode.types { unicode_scalar }
+import std.unicode.scalar { char_text }
 
 import v1.std.core {
   make_file_span,
@@ -345,7 +346,7 @@ fn scan_token(source: SourceRef, pos: TokPos, ch: Int, env: ParseEnvironment) ->
     }
   }
 
-  let ch_text = from_code_point(cp: ch)
+  let ch_text = char_text(c: ch)
   match lookup(single_punct, key: ch_text) {
     Present { value: sh } => emit(pos: pos, shape: sh, text: ch_text, len: 1, file: source.file)
     Absent => emit(pos: pos, shape: ShUnknown, text: ch_text, len: 1, file: source.file)

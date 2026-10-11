@@ -1,5 +1,6 @@
 module tools.prose_citation_census
 
+import std.unicode.scalar { char_text }
 import std.types { Bool, Int, String, GitRef, List, Map }
 import std.algebra { trim }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -696,7 +697,7 @@ fn prose_citation_render(census: ProseCitationCensus) -> String {
 // their own census until they were committed, and the first run that includes them reports their prose
 // among the sites.
 fn prose_citation_dag_source_paths(paths_nul: String) -> List<String> {
-  split(s: paths_nul, delimiter: from_code_point(cp: 0))
+  split(s: paths_nul, delimiter: char_text(c: 0))
     |> filter(p => ends_with(s: p, suffix: ".dag") && prose_citation_path_under_roots(path: p))
 }
 

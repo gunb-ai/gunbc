@@ -1,5 +1,6 @@
 module extdeps.unicode.display
 
+import std.unicode.scalar { char_text }
 import extdeps.unicode.blocks { zero_width_blocks, zero_width_codepoints, wide_blocks }
 import std.unicode.types {
   DisplayWidth,
@@ -46,7 +47,7 @@ fn truncate_text(text: String, max_width: Int) -> String {
     f: (acc, c) => if acc.used + char_width(c: c) > max_width {
       acc
     } else {
-      { result: concat(acc.result, from_code_point(c)), used: acc.used + char_width(c: c) }
+      { result: concat(acc.result, char_text(c: c)), used: acc.used + char_width(c: c) }
     }
   )
   state.result

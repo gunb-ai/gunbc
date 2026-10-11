@@ -1,5 +1,6 @@
 module test.claim.live_deploy.deployed_tree_observation_witness
 
+import std.unicode.scalar { char_text }
 import std.types { String, NonEmptyStr, List, Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.git
@@ -169,7 +170,7 @@ test fn witness_read_tree_argv_is_admitted_by_the_portability_wall() -> Bool {
 // NUL-separated ignored path list -- rather than with a pre-digested sentence, so a change to the
 // scanner reds these rather than passing on a shape nothing produces.
 fn nul() -> String {
-  from_code_point(0)
+  char_text(c: 0)
 }
 
 fn nul_join(fields: List<String>) -> String {

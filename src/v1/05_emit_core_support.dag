@@ -10,6 +10,7 @@ import v1.std.core {
 }
 
 import v1.compiler.artifact { RenderTarget }
+import std.unicode.scalar { char_text }
 import gunbc.rust_emitted_edge { EmittedEdge, module_to_filename }
 import gunbc.rust_emitted_crate { EmittedRustCrate }
 
@@ -142,7 +143,7 @@ fn to_snake(name: String) -> String {
         concat("_", to_lower_char(ch: ch))
       }
     } else {
-      from_code_point(cp: ch)
+      char_text(c: ch)
     }
   )
   result |> join(separator: "")
@@ -161,9 +162,9 @@ fn to_lower_char(ch: Int) -> String {
   let cp = ch
   if cp >= 65 && cp <= 90 {
     let lower_cp = cp + 32
-    from_code_point(cp: lower_cp)
+    char_text(c: lower_cp)
   } else {
-    from_code_point(cp: ch)
+    char_text(c: ch)
   }
 }
 
@@ -171,9 +172,9 @@ fn to_upper_char(ch: Int) -> String {
   let cp = ch
   if cp >= 97 && cp <= 122 {
     let upper_cp = cp - 32
-    from_code_point(cp: upper_cp)
+    char_text(c: upper_cp)
   } else {
-    from_code_point(cp: ch)
+    char_text(c: ch)
   }
 }
 
@@ -208,7 +209,7 @@ fn capitalize_first(s: String) -> String {
       if pair.first == 0 {
         to_upper_char(ch: pair.second)
       } else {
-        from_code_point(cp: pair.second)
+        char_text(c: pair.second)
       }
     ) |> join(separator: "")
   }

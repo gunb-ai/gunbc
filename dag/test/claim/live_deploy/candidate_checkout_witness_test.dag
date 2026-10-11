@@ -1,5 +1,6 @@
 module test.claim.live_deploy.candidate_checkout_witness_test
 
+import std.unicode.scalar { char_text }
 import std.types { Bool, String, List, Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.live_deploy.deployed_tree_scope {
@@ -34,7 +35,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // untracked-in-dag claim differ in exactly the prefix.
 
 fn nul() -> String {
-  from_code_point(0)
+  char_text(c: 0)
 }
 
 fn status_of(fields: List<String>) -> String {

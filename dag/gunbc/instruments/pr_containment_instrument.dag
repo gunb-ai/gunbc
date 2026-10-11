@@ -1,5 +1,6 @@
 module tools.pr_containment_instrument
 
+import std.unicode.scalar { char_text }
 import std.types { Bool, FilePath, GitRef, Int, List, Map, NonEmptyStr, String }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -227,7 +228,7 @@ fn observed_merge_driver() -> String {
 
 fn base_path_set(paths_nul: String) -> Map<String, Bool> {
   fold(
-    filter(split(s: paths_nul, delimiter: from_code_point(0)), p => p != ""),
+    filter(split(s: paths_nul, delimiter: char_text(c: 0)), p => p != ""),
     init: empty_map(),
     f: (acc, p) => map_insert(acc, p, true)
   )

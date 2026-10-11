@@ -1,6 +1,7 @@
 module test.claim.regen_scope_worktree_witness
 
 import std.types { Bool, String, List }
+import std.unicode.scalar { char_text }
 import v2.workflow.regen_scope_worktree {
   RegenScopeWorktreeAdmission, ScopeWorktreeAdmitted, ScopeWorktreeHasUncommittedDag, ScopeWorktreeUnobservable,
   regen_scope_worktree_admission, regen_scope_worktree_refusal
@@ -35,7 +36,7 @@ test fn the_local_no_event_baseline_diffs_from_the_merge_base() -> Bool {
   }
 }
 
-data nul: String = from_code_point(0)
+data nul: String = char_text(c: 0)
 
 test fn a_clean_tree_admits_the_scoped_round() -> Bool {
   match regen_scope_worktree_admission(status_success: true, entries_nul: "", stderr: "") {

@@ -1,0 +1,21 @@
+module gunbc.recurring_failure_mode.char_brand_admits_any_int
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data char_brand_admits_any_int: RecurringFailureMode = RecurringFailureMode {
+  identity: "char_brand_admits_any_int" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a plain Int, including a non-scalar, is accepted at a position declared std.types Char (type Char = Int where unicode_scalar, brand(\"Char\")). So Char is a BRAND, not a type: DESIGN section 4b -- a brand is cosmetic until construction and acceptance enforce the distinction. This is BELOW THE FLOOR (values inhabit declared types), not a differentiator gap.",
+    "HARM: every totality that rests on 'a Char is a scalar by construction' is unproven. std.unicode.scalar char_text is declared total over Char and spells its argument through std.coercion unicode_scalar_fold with no refusal, so a surrogate reaching it fabricates text silently. The 'Char by construction' reading of a call site cannot be checked by any reviewer or gate today.",
+    "MEASURED, BOTH ROUTES (2026-10-05, the XL-2 CHAR follow-up PR, session sleek-fox-462). SEED (v1, frozen): gunbc run resolves char_text(c: 55296) -- a surrogate literal -- and char_text(c: x) for x: Int from text.chars() and for cp + 32 with no diagnostic at the Char parameter: ADMITTED, silently. v2 INFER (through v2.test.claim.compiler.infer_fold_member_instance fmi_assemble then fmi_infer_tree, the route the gunbc#13187 controls use): over a fixture declaring the REAL shape, type Char = Int where unicode_scalar, brand(\"Char\"), infer does not judge at all -- every case, including the Char-typed positive control, ends in a runtime pattern-match failure ('non-exhaustive pattern match on: C') before a verdict, so v2 establishes nothing for Char. Over the same fixture with the brand clause removed (a plain refinement), v2 REFUSES both the Int variable and the surrogate literal with application_argument_does_not_inhabit -- so the refinement judge exists and the brand spelling is what v2 cannot read.",
+    "RUNG FOUND AT: below the ladder on the seed route (silent admission); v2 is loud but judges nothing (a crash, not a refusal). The class's rung is the MINIMUM across in-scope paths (DESIGN section 4b(1)), so it is silent wrongness until the seed route is retired or refuses.",
+    "CEILING: structurally impossible -- Char a confined type whose ONLY constructor is the checked scalar constructor, so an unchecked Int has no route into Char. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: C4 constructor confinement admits Char only through its checked constructor on the native route (gunbc#13123, sole_constructor + admit_callers), SUFFICIENT FOR char_text(c: 55296) and an Int variable at a Char position to refuse on the native route while a Char produced by the checked constructor is admitted. The same pattern is the parked nominal type-declaration plan gunbc#13024. No parallel remedy is declared here.",
+    "DEPENDENTS (each rests on this class and is unproven until the trigger holds): std.unicode.scalar char_text totality (gunbc#13378); the planned 'UTF-8 decoder yields Char' change; the 79 NAME-MIGRATED identities of gunbc.recurring_failure_mode bare_from_code_point_binds_the_total_seed_builtin, KIND CHAR, which are recorded there as not Char-proven for this reason.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "std.types", decl_name: "Char", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.unicode.scalar", decl_name: "char_text", field: WholeDeclaration },
+  ],
+}

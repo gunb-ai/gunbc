@@ -301,6 +301,7 @@ fn stage0_std_core_modules() -> List<String> {
       "std_checked_arithmetic",
       "std_induction",
       "std_graph",
+      "std_unicode_scalar",
       "extdeps_uri",
       "extdeps_external_authority",
       "extdeps_posix_clock_gettime",
@@ -433,6 +434,7 @@ fn stage0_r3_emit_reexport_surface_modules() -> List<String> {
   [
     "gunbc_rust_emitted_crate",
     "gunbc_rust_emitted_edge",
+    "std_unicode_scalar",
     "v1_compiler_artifact",
     "v1_compiler_infer_env",
     "v1_compiler_infer_items",
@@ -539,6 +541,12 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
     stage0_module_dag_edge(from: "std_realization_schedule", to: "std_measure"),
     stage0_module_dag_edge(from: "std_realization_schedule", to: "std_witness_admission"),
     stage0_module_dag_edge(from: "extdeps_uri", to: "std_unicode_types"),
+    stage0_module_dag_edge(from: "extdeps_uri", to: "std_unicode_scalar"),
+    stage0_module_dag_edge(from: "std_unicode_scalar", to: "std_algebra"),
+    stage0_module_dag_edge(from: "std_unicode_scalar", to: "std_coercion"),
+    stage0_module_dag_edge(from: "std_unicode_scalar", to: "std_error_primitives"),
+    stage0_module_dag_edge(from: "std_unicode_scalar", to: "std_types"),
+    stage0_module_dag_edge(from: "std_unicode_scalar", to: "std_unicode_types"),
     stage0_module_dag_edge(from: "std_unicode_types", to: "std_types"),
     stage0_module_dag_edge(from: "extdeps_external_authority", to: "extdeps_uri"),
     stage0_module_dag_edge(from: "extdeps_posix_clock_gettime", to: "extdeps_external_authority"),
@@ -599,6 +607,7 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
     stage0_module_dag_edge(from: "v1_compiler_emit_core_support", to: "gunbc_rust_emitted_edge"),
     stage0_module_dag_edge(from: "gunbc_rust_emitted_crate", to: "std_types"),
     stage0_module_dag_edge(from: "v1_compiler_emit_core_support", to: "gunbc_rust_emitted_crate"),
+    stage0_module_dag_edge(from: "v1_compiler_emit_core_support", to: "std_unicode_scalar"),
   ]
 }
 

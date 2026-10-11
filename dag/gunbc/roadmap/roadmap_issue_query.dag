@@ -1,5 +1,6 @@
 module gunbc.roadmap_issue_query
 
+import std.unicode.scalar { char_text }
 import std.types { String, Int, Bool, List }
 import gunbc.roadmap_view_preferences { IssueViewPreferences, ViewSortTerm, ViewAscending }
 import extdeps.google.issue_tracker { issue_results_sort_key_wire }
@@ -12,7 +13,7 @@ import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, J
 type IssueQueryRow { node_id: String, project: String, band: String, search: String, title: String, assignee: String, priority: Int, status: Int, html: String }
 data issue_query_separator: String = "\n<!-- gunbc-query-row -->\n"
 fn issue_query_fold(text: String) -> String {
-  join(map(text.chars(), cp => from_code_point(if cp >= 65 && cp <= 90 { cp + 32 } else { cp })), "")
+  join(map(text.chars(), cp => char_text(c: if cp >= 65 && cp <= 90 { cp + 32 } else { cp })), "")
 }
 fn issue_query_wire_field(fields: List<String>, position: Int) -> String {
   match fields.skip(n: position).first() { Present { value } => value Absent => "" }

@@ -12,7 +12,6 @@ import extdeps.languages.json.grammar {
   JsonTextParseResult, JsonTextParseOk, JsonTextParseFail,
   json_text_skip_ws, json_text_parse_string, json_text_parse_number,
   json_number_lexeme_unchecked, is_json_digit_char,
-  json_hex_nibble, json_hex4_at,
 }
 
 // parse_json is the FORWARD reading of RFC 8259: text -> JsonValue, the inverse of
@@ -25,17 +24,12 @@ import extdeps.languages.json.grammar {
 // the escape SET (one native split per string body, RFC 8259 section 7), so an unknown escape or
 // a short \u refuses the parse before a value is built and never reaches the unescaper below -
 // see json_escape_production_note for why that refusal lives at the scan and what it prevents
-// (review 45642). The malformed-\u arm in json_unescape_decode_piece is therefore unreachable for
-// any span this parser accepts; it is retained as a total fallback because json_unescape is
-// exported and a caller could hand it an unvalidated span. \uXXXX IS decoded to its code point,
-// which is what makes the round-trip total against escape_json_string: that emitter maps code
-// points 0-31 other than the six with short escapes to \uXXXX, so a parser that passed \u through
-// would silently corrupt every control character a receipt detail field can carry. Surrogate
-// PAIRS are not recombined - serialize_json never emits one (it escapes only 0-31), so a lone
-// \uXXXX decode is exact over this emitter's output; foreign JSON carrying an astral character as
-// a surrogate pair is outside the declared fragment. A malformed \u (fewer than four hex digits,
-// or a non-hex digit) refuses at the scan, so json_hex4_at's negative arm is likewise unreachable
-// from parse_json and kept only for the exported-caller case.
+// (review 45642). \uXXXX IS decoded to its scalar by the native json_unescape_checked kernel,
+// which recombines a UTF-16 surrogate pair (RFC 8259 section 7) and refuses an unpaired surrogate,
+// so a value this parser builds never carries a surrogate code point. There is no interpreted
+// unescaper beside it: the former json_unescape piece decoder had no consumer and spelled each
+// \u through the total seed from_code_point (gunbc.recurring_failure_mode
+// bare_from_code_point_binds_the_total_seed_builtin), so it was deleted rather than migrated.
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -48,111 +42,11 @@ type JsonParse =
     JsonParsed { value: JsonValue, next: Int }
   | JsonParseFail { at: Int }
 
-// THE UNESCAPER MOVES IN ESCAPE-SIZED STEPS, NOT PER CHARACTER (measured 2026-09-23 on
-// corpus-scale shards: even with the span unescape, the per-character next-escape scan put the
-// parse at roughly fourteen interpreter-minutes per megabyte, which is the 104 MB envelope's
-// wall). One native split on the backslash resolves the whole escape structure — the pieces'
-// boundaries ARE the parity answer, so `\\` and `\u` sequences cannot be misparsed the way
-// sequential replacement passes would misparse them — and each piece decodes in one interpreted
-// step. The decoded pieces stay in document order (the recursion carries the first piece
-// first) and the join is one native pass; neither side copies an accumulator per escape.
-// THE FIRST PIECE IS LITERAL BY CONSTRUCTION (it precedes the first backslash); the rest are
-// escapes. The split is walked once, head by head, and each decoded piece is carried in
-// document order.
-fn json_unescape_decoded_pieces(pieces: List<String>) -> List<String> {
-  match pieces.first() {
-    Absent => []
-    Present { value: head } =>
-      concat(
-        [head],
-        json_unescape_decode_rest(pieces: json_unescape_drop_first(xs: pieces), literal_next: false),
-      )
-  }
-}
-
-// THE WALK CARRIES THE PARITY ANSWER: an empty piece is a \\ pair, and the piece after a pair
-// is LITERAL — its head was never an escape letter, because the backslash that would have made
-// it one is the pair's second half. (Without the flag, `\\b` decodes the b as \b and `\q`
-// refuses a valid document.) The flag lasts exactly one piece.
-// ONE PASS, THE PARITY AND THE DECODED PIECES IN THE ACCUMULATOR: the recursive walk
-// re-dropped the tail at every level (and the drop concatenated at the end, copying per
-// element), the square of a string's escape count — the read's long pole at the project
-// envelope's ~3.45M escapes. The fold visits each piece once, prepends, and reverses once;
-// the state machine is the recursion's, so the decoded bytes are unchanged.
-type JsonUnescapeDecodeAcc { literal_next: Bool, decoded_rev: List<String> }
-
-fn json_unescape_decode_rest(pieces: List<String>, literal_next: Bool) -> List<String> {
-  let acc = fold(
-    pieces,
-    init: JsonUnescapeDecodeAcc { literal_next: literal_next, decoded_rev: [] },
-    f: fn(a, piece) {
-      if a.literal_next {
-        JsonUnescapeDecodeAcc { literal_next: false, decoded_rev: concat([piece], a.decoded_rev) }
-      } else if piece == "" {
-        JsonUnescapeDecodeAcc { literal_next: true, decoded_rev: concat(["\\"], a.decoded_rev) }
-      } else {
-        JsonUnescapeDecodeAcc {
-          literal_next: false,
-          decoded_rev: concat([json_unescape_decode_piece(piece: piece)], a.decoded_rev),
-        }
-      }
-    },
-  )
-  reverse(acc.decoded_rev)
-}
-
-type JsonUnescapeDropAcc { skipped: Bool, kept: List<String> }
-
-fn json_unescape_drop_first(xs: List<String>) -> List<String> {
-  let result = fold(xs, init: JsonUnescapeDropAcc { skipped: false, kept: [] }, f: fn(acc, x) {
-    if acc.skipped { JsonUnescapeDropAcc { skipped: true, kept: concat([x], acc.kept) } } else { JsonUnescapeDropAcc { skipped: true, kept: [] } }
-  })
-  reverse(result.kept)
-}
-
-// AN EMPTY PIECE IS THE ESCAPED BACKSLASH; any other piece's head is its escape letter, with \u
-// carrying exactly four hex digits. The malformed-\u arm is the exported-caller fallback (the
-// grammar refuses before value building, so a short or non-hex \u never reaches this builder
-// from the parser): it drops the backslash and rescans the remainder as literal text, the
-// total-fallback semantics, piece-local.
-fn json_unescape_decode_piece(piece: String) -> String {
-  if piece == "" {
-    "\\"
-  } else {
-    let c = char_at(s: piece, pos: 0)
-    if c == "u" {
-      let cp = json_hex4_at(s: piece, i: 1)
-      if cp < 0 {
-        concat("u", json_unescape(s: substring(s: piece, start: 1, end: piece.length())))
-      } else {
-        concat(from_code_point(cp: cp), substring(s: piece, start: 5, end: piece.length()))
-      }
-    } else {
-      let u = if c == "n" { from_code_point(cp: 10) }
-        else if c == "t" { from_code_point(cp: 9) }
-        else if c == "r" { from_code_point(cp: 13) }
-        else if c == "b" { from_code_point(cp: 8) }
-        else if c == "f" { from_code_point(cp: 12) }
-        else { c }
-      concat(u, substring(s: piece, start: 1, end: piece.length()))
-    }
-  }
-}
-
-fn json_unescape(s: String) -> String {
-  if string_contains(s: s, pattern: "\\") {
-    join(json_unescape_decoded_pieces(pieces: split(s: s, delimiter: "\\")), "")
-  } else {
-    s
-  }
-}
-
 // THE VALUE IS THE NATIVE json_unescape_checked DECODE: the span was validated by the grammar
 // production one call ago, so the kernel's refusal arm is unreachable here — it is matched
 // anyway, because a total path outlives the argument for why it is dead. This replaces the
 // interpreted piece decode (one interpreted step per escape over the project envelope's ~3.45M
-// escapes, the read's measured wall) with the same bytes at native speed; json_unescape below
-// stays as the exported-caller authority, malformed-\u fallback included.
+// escapes, the read's measured wall) with the same bytes at native speed.
 fn parse_json_string_at(s: String, i: Int) -> JsonParse {
   match json_text_parse_string(s: s, i: i) {
     JsonTextParseFail { end: e } => JsonParseFail { at: e }

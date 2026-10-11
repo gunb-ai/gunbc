@@ -6,6 +6,7 @@ use self::ContentHashComparison::*;
 use self::HashFamily::*;
 pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, NonEmptyStr};
+pub use crate::std_unicode_scalar::char_text;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -203,7 +204,7 @@ pub fn content_hash_combine_preimage(
     right: Rc<Fnv1a64Structural>,
 ) -> String {
     v1_rt::concat(
-        v1_rt::concat(left.digest.clone(), v1_rt::from_code_point(0)),
+        v1_rt::concat(left.digest.clone(), crate::std_unicode_scalar::char_text(0)),
         right.digest.clone(),
     )
 }

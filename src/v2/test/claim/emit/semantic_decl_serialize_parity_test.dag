@@ -257,7 +257,7 @@ test fn decoded_lex_live_bindings_match_live_target() -> Bool {
   }
 }
 
-// Row-decoded serialize profiles round-trip bundle spellings through concat/from_code_point native String grounding at decode; aggregate golden emit matches live path.
+// Row-decoded serialize profiles round-trip bundle spellings through concat/char_text native String grounding at decode; aggregate golden emit matches live path.
 test fn decoded_row_profile_matches_golden() -> Bool {
   match semantic_decl_emission_from_target(target: rust_semantic_decl_target_model_staging()) {
     Accepted { value: emission, diagnostics: _ } =>

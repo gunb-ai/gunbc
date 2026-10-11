@@ -4,6 +4,7 @@ import std.types { String, List, Bool, Int }
 import std.integer { UInt8 }
 import std.bytes { utf8_encode_bytes, bytes_octets }
 import std.encoding { utf8_decode_octets }
+import std.coercion { unicode_scalar_fold }
 import v2.std.algebra { any, filter }
 
 // WHATWG URL, application/x-www-form-urlencoded: split pairs before decoding, plus means space,
@@ -47,7 +48,7 @@ fn form_component(wire: String) -> String? {
     FormOctetsRefused => none
     FormOctetsDecoded { octets } => match utf8_decode_octets(octets: octets) {
       Absent => none
-      Present { value: scalars } => Present { value: join(map(scalars, cp => from_code_point(cp: cp)), "") }
+      Present { value: scalars } => Present { value: unicode_scalar_fold(xs: scalars) }
     }
   }
 }

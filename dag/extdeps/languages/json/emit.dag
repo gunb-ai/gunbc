@@ -1,5 +1,6 @@
 module extdeps.languages.json.emit
 
+import std.unicode.scalar { char_text }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.languages.json.grammar { JsonNumberLexeme, json_int_lexeme, json_number_lexeme }
 import extdeps.numeric.base16 { int_to_upper_hex }
@@ -101,7 +102,7 @@ data json_control_escape_code_points: List<Int> = [
 ]
 
 fn json_escape_replace(s: String, code_point: Int, replacement: String) -> String {
-  join(split(s: s, delimiter: from_code_point(code_point)), replacement)
+  join(split(s: s, delimiter: char_text(c: code_point)), replacement)
 }
 
 fn json_escape_named_replacement(code_point: Int) -> String {

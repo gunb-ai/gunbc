@@ -13,6 +13,7 @@ pub use crate::extdeps_version::{
 pub use crate::std_algebra::trim;
 pub use crate::std_algebra::Ordering;
 use crate::std_algebra::Ordering::{Equal, Greater, Less};
+pub use crate::std_coercion::unicode_scalar_fold;
 pub use crate::std_integer::NonNegativeInt;
 pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;
@@ -523,14 +524,7 @@ pub fn semver_numeric_run_without_leading_zero(cps: Rc<Vec<i64>>) -> bool {
 }
 
 pub fn semver_label_from_code_points(cps: Rc<Vec<i64>>) -> String {
-    Rc::new({
-        let mut __result = Vec::new();
-        for cp in cps.iter().cloned() {
-            __result.push(v1_rt::from_code_point(cp.clone()));
-        }
-        __result
-    })
-    .join(&"".to_string())
+    crate::std_coercion::unicode_scalar_fold(cps.clone())
 }
 
 pub fn semver_core_fields_parse(

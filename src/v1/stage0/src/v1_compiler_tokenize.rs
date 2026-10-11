@@ -13,6 +13,7 @@ pub use crate::std_source_annotation::{
 pub use crate::std_source_annotation::{AnnotationPlacement, UnboundAnnotationCapture};
 pub use crate::std_syntax::ParseEnvironment;
 pub use crate::std_types::SourceSpan;
+pub use crate::std_unicode_scalar::char_text;
 pub use crate::std_unicode_types::unicode_scalar;
 pub use crate::v1_compiler_languages::canonical_emoji_char_escape;
 pub use crate::v1_compiler_languages::EmojiCharEscape;
@@ -833,7 +834,7 @@ pub fn scan_token(
                 });
             }
         }
-        let ch_text = v1_rt::from_code_point(ch.clone());
+        let ch_text = crate::std_unicode_scalar::char_text(ch.clone());
         match v1_rt::lookup(&single_punct(), ch_text.clone()) {
             Some(sh) => emit(
                 pos.clone(),

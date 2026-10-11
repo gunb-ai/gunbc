@@ -1,5 +1,7 @@
 module v2.test.claim.bash_command_fold
 
+import std.unicode.scalar { char_text }
+
 import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.extdeps.languages.bash {
   bash_stmt_env_prefixed_emitted,
@@ -214,11 +216,11 @@ test fn bash_fold_command_single_lit_true_holds() -> Bool {
 }
 
 test fn bash_fold_command_multi_lit_echo_hi_holds() -> Bool {
-  bash_fold_stmt_kind_sentinel == from_code_point(cp: 2)
-    && bash_fold_word_lit_sentinel == from_code_point(cp: 0)
-    && bash_fold_word_var_sentinel == from_code_point(cp: 1)
-    && bash_fold_word_concat_sentinel == from_code_point(cp: 3)
-    && bash_fold_word_cmdsubst_sentinel == from_code_point(cp: 4)
+  bash_fold_stmt_kind_sentinel == char_text(c: 2)
+    && bash_fold_word_lit_sentinel == char_text(c: 0)
+    && bash_fold_word_var_sentinel == char_text(c: 1)
+    && bash_fold_word_concat_sentinel == char_text(c: 3)
+    && bash_fold_word_cmdsubst_sentinel == char_text(c: 4)
     && bash_emit_matches_golden(
       stmt: bash_fold_command_stmt(node: bash_fold_cmd_echo_hi_emitted),
       golden: bash_fold_cmd_echo_hi_golden

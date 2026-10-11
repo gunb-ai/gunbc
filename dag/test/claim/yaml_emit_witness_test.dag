@@ -1,5 +1,11 @@
 module test.claim.yaml_emit_witness
 
+import extdeps.languages.yaml.emit { EmittedYaml, YamlEmitRefused, emit_yaml }
+import extdeps.languages.yaml.ingest { IngestedYaml, ingest_yaml_source }
+import extdeps.languages.yaml.types { YamlBool, YamlFloat, YamlInt, YamlKeyValue, YamlMapping, YamlNull, YamlSequence, YamlString, YamlValue }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.unicode.scalar { char_text }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE WRITER'S CONTRACT IS DECODED STRUCTURE: for every value it writes, the reader returns that
@@ -124,5 +130,5 @@ test fn red_values_the_writer_cannot_write_refuse_with_their_path() -> Bool {
     && refused_at(v: YamlMapping { entries: [YamlKeyValue { key: "a", value: YamlNull }, YamlKeyValue { key: "a", value: YamlNull }] }, path: "a", reason_part: "twice")
     && refused_at(v: str(s: "top"), path: "", reason_part: "document root")
     && refused_at(v: YamlMapping { entries: [] }, path: "", reason_part: "empty mapping")
-    && refused_at(v: field(k: "a", v: str(s: concat("x", from_code_point(cp: 160)))), path: "line 1 of the emitted text", reason_part: "U+00A0")
+    && refused_at(v: field(k: "a", v: str(s: concat("x", char_text(c: 160)))), path: "line 1 of the emitted text", reason_part: "U+00A0")
 }

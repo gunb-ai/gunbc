@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.non_utf8_path_fixture_spelled_through_a_string_path_carrier
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data non_utf8_path_fixture_spelled_through_a_string_path_carrier: RecurringFailureMode = RecurringFailureMode {
+  identity: "non_utf8_path_fixture_spelled_through_a_string_path_carrier" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a fixture claims to exercise a non-UTF-8 filesystem path but builds the name as host text (a String) and hands it to a String-typed path carrier, so the octets that reach the disk are the UTF-8 encoding of the text -- valid UTF-8 by construction. The claimed property is falsified by the fixture's own construction, and the test stays green. Git pathnames are uninterpreted NUL-free octet strings upstream (git Documentation/gitformat-index 'Entry path name ... NUL-terminated'; core.quotePath: no encoding is assumed), so a non-UTF-8 path is a real input the model must preserve.",
+    "RECEIPT: test.manual.git_upstream_model_execution git_r0_typed_execution_read_back spelled its fixture as concat(from_code_point(255), \".dag\") (a 'raw' name) and wrote it through extdeps.filesystem Filesystem.Write(path: String): on disk the name was C3 BF 2E 64 61 67. The XL-2 octet-as-char migration renamed it honestly (non_ascii_name, char_text(c: 255)). Non-UTF-8 octets ARE held at the decode interface by test.claim.git_upstream_model_witness witness_git_ls_tree_z_preserves_non_utf8_path_octets, which supplies 0xFF through std.bytes octets_bytes.",
+    "HARM: no executing path proves a real non-UTF-8 path survives the filesystem -> git -> read-back round trip; under-asserted coverage hidden behind a name that said otherwise (DESIGN section 4d). RUNG FOUND AT: mitigatable (review). CEILING: structurally impossible -- a path whose octets may be non-UTF-8 is carried as octets, so a text spelling cannot stand in for it. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: a filesystem octet-path carrier (extdeps.filesystem write/read/list over a path held as octets, never as String), SUFFICIENT FOR the manual execution fixture to create, git-add and read back a name containing octet 0xFF and assert the octets git reports.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "test.manual.git_upstream_model_execution", decl_name: "git_r0_typed_execution_read_back", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.git_upstream_model_witness", decl_name: "witness_git_ls_tree_z_preserves_non_utf8_path_octets", field: WholeDeclaration },
+  ],
+}
