@@ -2,6 +2,7 @@ module extdeps.ninfer.ninfer_serve
 
 import std.types { NonEmptyStr, String, Bool, List, Int }
 import std.nat { Nat }
+import std.measure { Millisecond, millisecond }
 import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -71,7 +72,7 @@ type NinferServeLaunch {
   max_concurrency: Nat
   max_context: Nat
   max_pending_requests: Nat
-  pending_timeout_ms: Nat
+  pending_timeout: Millisecond
   default_max_tokens: Nat
   kv_dtype: NinferKvDtype
   kv_capacity_auto: Bool
@@ -86,7 +87,7 @@ data ninfer_serve_observed_launch: NinferServeLaunch = NinferServeLaunch {
   max_concurrency: 8,
   max_context: 262144,
   max_pending_requests: 64,
-  pending_timeout_ms: 900000,
+  pending_timeout: millisecond(count: 900000),
   default_max_tokens: 32768,
   kv_dtype: NinferKvFp8,
   kv_capacity_auto: true,
