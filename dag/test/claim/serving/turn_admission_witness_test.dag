@@ -10,7 +10,8 @@ import gunbc.spark.vllm_endpoint_process_launch {
   LaunchObserved, LaunchUnobserved,
 }
 import gunbc.serving.turn_admission {
-  ServingQueueReading, QueueDepthRead, QueueDepthUnread, GroupIdle, serving_co_tenancy,
+  GroupOccupied,
+  ServingQueueReading, QueueDepthRead, GroupOccupied, QueueDepthUnread, GroupIdle, serving_co_tenancy,
   serving_capacity_pressure, ServingCapacityPressure, RouteAdmittingMore, RouteHoldingForCapacity,
   CapacityPressureUnread,
   ServingSeatStanding, SeatStandingRead, SeatStandingUnread, ServingGroupAdmission,
@@ -20,6 +21,11 @@ import gunbc.serving.turn_admission {
   AdmissibilityUnread,
   serving_group_admission, serving_admission_detail, serving_availability, serving_transition_cost,
   serving_opportunity_cost,
+  ServingPrefixInterval, PrefixIntervalRead, PrefixIntervalUnread, ServingHostTierStanding, HostTierRetains,
+  HostTierEmpty, HostTierUnread, ServingSessionResidency, ResidentOnGpu, HostRestorable, MustReconstruct,
+  ResidencyUnread, TokenPrefixBroken, LaunchReplaced, PrefixMissedAndNotRetained,
+  serving_session_residency, serving_concurrency, ServingConcurrency, serving_session_placement,
+  ServingSessionPlacement, PlaceByAdmission, OwnedByAnotherReplica,
 }
 import gunbc.harness.harness_backend {
   harness_gauge_count, harness_queue_from_body, harness_launch_from_body,
@@ -320,5 +326,92 @@ test fn a_route_holding_for_capacity_refuses_a_tolerant_turn_with_ceiling_to_spa
   ) {
     InadmissibleRouteHoldingForCapacity { held: h } => h == 1
     _ => false
+  }
+}
+
+// ── WARM SESSION RESIDENCY ────────────────────────────────────────────────────────────────────
+fn residency_on(owner: String, current: String, intact: Bool, interval: ServingPrefixInterval, host: ServingHostTierStanding) -> ServingSessionResidency {
+  serving_session_residency(owner_launch: owner as NonEmptyStr, current_launch: current as NonEmptyStr, prefix_intact: intact, interval: interval, host: host)
+}
+
+test fn an_observed_hit_on_the_owning_launch_reads_resident() -> Bool {
+  match residency_on(owner: "L1", current: "L1", intact: true, interval: PrefixIntervalRead { queries: 10, hits: 8 }, host: HostTierUnread) {
+    ResidentOnGpu => true
+    _ => false
+  }
+}
+
+// THE DISCRIMINATING RED: hits were observed, and the token prefix is broken. It must reconstruct.
+test fn a_broken_token_prefix_reads_must_reconstruct_even_with_hits() -> Bool {
+  match residency_on(owner: "L1", current: "L1", intact: false, interval: PrefixIntervalRead { queries: 10, hits: 8 }, host: HostTierRetains) {
+    MustReconstruct { cause: TokenPrefixBroken } => true
+    _ => false
+  }
+}
+
+test fn a_replaced_launch_reads_must_reconstruct() -> Bool {
+  match residency_on(owner: "L1", current: "L2", intact: true, interval: PrefixIntervalRead { queries: 10, hits: 8 }, host: HostTierRetains) {
+    MustReconstruct { cause: LaunchReplaced } => true
+    _ => false
+  }
+}
+
+// Configuration is not an observation: no lookups in the interval is unread, never warm.
+test fn an_interval_without_lookups_or_unread_counters_is_never_warm() -> Bool {
+  (match residency_on(owner: "L1", current: "L1", intact: true, interval: PrefixIntervalRead { queries: 0, hits: 0 }, host: HostTierRetains) {
+     ResidencyUnread { obligation: _ } => true
+     _ => false
+   })
+    && (match residency_on(owner: "L1", current: "L1", intact: true, interval: PrefixIntervalUnread { obligation: "no scrape" as NonEmptyStr }, host: HostTierRetains) {
+          ResidencyUnread { obligation: _ } => true
+          _ => false
+        })
+}
+
+test fn a_gpu_miss_is_host_restorable_only_when_the_host_tier_retains() -> Bool {
+  (match residency_on(owner: "L1", current: "L1", intact: true, interval: PrefixIntervalRead { queries: 5, hits: 0 }, host: HostTierRetains) {
+     HostRestorable => true
+     _ => false
+   })
+    && (match residency_on(owner: "L1", current: "L1", intact: true, interval: PrefixIntervalRead { queries: 5, hits: 0 }, host: HostTierEmpty) {
+          MustReconstruct { cause: PrefixMissedAndNotRetained } => true
+          _ => false
+        })
+    && (match residency_on(owner: "L1", current: "L1", intact: true, interval: PrefixIntervalRead { queries: 5, hits: 0 }, host: HostTierUnread) {
+          ResidencyUnread { obligation: _ } => true
+          _ => false
+        })
+}
+
+fn idle_admission() -> ServingGroupAdmission {
+  AdmissibleForClass { class: BatchQualityTolerant, receipt: probe_receipt }
+}
+
+test fn a_warm_session_is_pinned_to_its_owner_and_a_cold_one_is_not() -> Bool {
+  (match serving_session_placement(residency: ResidentOnGpu, owner_launch: "L1" as NonEmptyStr, candidate_launch: "L2" as NonEmptyStr, admission: idle_admission()) {
+     OwnedByAnotherReplica { owner: o } => (o as String) == "L1"
+     _ => false
+   })
+    && (match serving_session_placement(residency: ResidentOnGpu, owner_launch: "L1" as NonEmptyStr, candidate_launch: "L1" as NonEmptyStr, admission: idle_admission()) {
+          PlaceByAdmission { admission: _ } => true
+          _ => false
+        })
+    && (match serving_session_placement(residency: MustReconstruct { cause: TokenPrefixBroken }, owner_launch: "L1" as NonEmptyStr, candidate_launch: "L2" as NonEmptyStr, admission: idle_admission()) {
+          PlaceByAdmission { admission: _ } => true
+          _ => false
+        })
+}
+
+test fn the_five_concurrency_quantities_stay_distinct() -> Bool {
+  match serving_concurrency(live_sessions: 40, retained_state: 12, seats: SeatStandingRead { quality_held: 1, tolerant_held: 2 }, tenancy: GroupOccupied { occupants: 3 }, replicas: 2) {
+    Present { value: c } => c.live_sessions == 40 && c.retained_state == 12 && c.admitted_turns == 3 && c.execution_batch == 3 && c.replicas == 2
+    Absent => false
+  }
+}
+
+test fn an_unread_ledger_yields_no_concurrency_reading() -> Bool {
+  match serving_concurrency(live_sessions: 1, retained_state: 1, seats: SeatStandingUnread { obligation: "x" as NonEmptyStr }, tenancy: GroupIdle, replicas: 1) {
+    Absent => true
+    Present { value: _ } => false
   }
 }

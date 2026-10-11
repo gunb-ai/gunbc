@@ -1,6 +1,7 @@
 module gunbc.serving.turn_admission
 
-import std.types { String, NonEmptyStr }
+import std.types { String, NonEmptyStr, Bool }
+import std.optional { Present }
 import std.nat { Nat }
 import std.measure { second, money_amount_micro, MoneyOnce, MoneyRate, MoneyPerSecond }
 import extdeps.currency.currency { Usd }
@@ -182,11 +183,11 @@ type ServingSeatStanding
 // we did not seat may be a person reading a stream, so an occupant we cannot account for is treated
 // as though it were, and nothing is admitted beside it.
 //
-// WHAT MAKES A TURN COLD-RISK, AND WHY THERE IS STILL NO WARM ARM. A turn is cold-risk when the
+// WHAT MAKES A TURN COLD-RISK, AND WHERE THE WARM ARM LIVES (serving_session_residency, below). A turn is cold-risk when the
 // prefix it would prefill is not established to be resident on the candidate. Nothing in this
-// repository observes prefix residency, so every turn is cold-risk today, and the class above is
-// about who is HARMED rather than about whether this turn prefills. The trigger for a warm arm is an
-// observed prefix-hit standing on a named launch.
+// repository observes prefix residency, so a session whose standing is unread is cold-risk, and the class above is
+// about who is HARMED rather than about whether this turn prefills. A warm standing is an observed prefix-hit
+// interval on the owning launch, never configuration.
 type ServingGroupAdmission
   = AdmissibleForClass { class: ServingCoTenancyClass, receipt: ObservationReceiptRef }
   | InadmissibleQualityTurnInFlight { held: Nat, basis: ObservationReceiptRef }
@@ -267,6 +268,127 @@ fn serving_admission_on_counts(
   }
 }
 
+// ── WARM SESSIONS: RESIDENCY IS OBSERVED ON A NAMED LAUNCH, NEVER READ FROM CONFIGURATION ─────
+//
+// Prefix caching being ENABLED is a launch argument; a prefix being RESIDENT is a fact about one
+// running engine's cache, and only the engine's own counters (extdeps.vllm.metrics PrefixCacheQueries
+// and PrefixCacheHits, read as an interval -- prefix_cache_verdict refuses the lifetime ratio) say so.
+// So the standing is built only from an observation taken on the launch that owns the session, and an
+// interval with no lookups is UNREAD, not a miss and never a hit.
+//
+// The five facts the earlier incumbency arm conflated are the inputs: last placement (owner), exact
+// current launch, prefix hit observed, prefix miss observed, prefix standing unread.
+type ServingPrefixInterval
+  = PrefixIntervalRead { queries: Nat, hits: Nat }
+  | PrefixIntervalUnread { obligation: NonEmptyStr }
+
+// A host tier is a separate observation: absent a reading, host-restorable is not claimed.
+type ServingHostTierStanding
+  = HostTierRetains
+  | HostTierEmpty
+  | HostTierUnread
+
+type ServingMustReconstructCause
+  = TokenPrefixBroken
+  | LaunchReplaced
+  | PrefixMissedAndNotRetained
+
+type ServingSessionResidency
+  = ResidentOnGpu
+  | HostRestorable
+  | MustReconstruct { cause: ServingMustReconstructCause }
+  | ResidencyUnread { obligation: NonEmptyStr }
+
+// ORDER IS THE LAW. A launch replacement or a broken token prefix voids every counter, because the
+// counters describe a cache that no longer holds this session's tokens -- so both are decided before
+// any hit is looked at, and a hit on a broken prefix cannot read warm.
+fn serving_session_residency(
+  owner_launch: NonEmptyStr,
+  current_launch: NonEmptyStr,
+  prefix_intact: Bool,
+  interval: ServingPrefixInterval,
+  host: ServingHostTierStanding,
+) -> ServingSessionResidency {
+  if owner_launch != current_launch {
+    MustReconstruct { cause: LaunchReplaced }
+  } else if !prefix_intact {
+    MustReconstruct { cause: TokenPrefixBroken }
+  } else {
+    match interval {
+      PrefixIntervalUnread { obligation: o } => ResidencyUnread { obligation: o }
+      PrefixIntervalRead { queries: q, hits: h } =>
+        if q == 0 {
+          ResidencyUnread { obligation: "no prefix-cache lookups in the interval, so neither a hit nor a miss was observed" as NonEmptyStr }
+        } else if h > 0 {
+          ResidentOnGpu
+        } else {
+          match host {
+            HostTierRetains => HostRestorable
+            HostTierEmpty => MustReconstruct { cause: PrefixMissedAndNotRetained }
+            HostTierUnread => ResidencyUnread { obligation: "prefix missed on GPU and the host tier was not read" as NonEmptyStr }
+          }
+        }
+    }
+  }
+}
+
+// FIVE QUANTITIES, FIVE FIELDS. live sessions (conversations alive), retained state (sessions whose
+// state is resident or restorable), admitted turns (seat ledger), execution batch (engine running),
+// replicas (launches). A single concurrency number answered none of them and let a session count
+// pose as a batch bound.
+type ServingConcurrency {
+  live_sessions: Nat
+  retained_state: Nat
+  admitted_turns: Nat
+  execution_batch: Nat
+  replicas: Nat
+}
+
+// The ceiling bounds ADMITTED TURNS only; live sessions and retained state are unbounded by it.
+fn serving_concurrency(
+  live_sessions: Nat,
+  retained_state: Nat,
+  seats: ServingSeatStanding,
+  tenancy: ServingCoTenancy,
+  replicas: Nat,
+) -> ServingConcurrency? {
+  match seats {
+    SeatStandingUnread { obligation: _ } => none
+    SeatStandingRead { quality_held: q, tolerant_held: t } =>
+      match tenancy {
+        CoTenancyUnread { obligation: _ } => none
+        GroupIdle => Present { value: ServingConcurrency { live_sessions: live_sessions, retained_state: retained_state, admitted_turns: q + t, execution_batch: 0, replicas: replicas } }
+        GroupOccupied { occupants: n } => Present { value: ServingConcurrency { live_sessions: live_sessions, retained_state: retained_state, admitted_turns: q + t, execution_batch: n, replicas: replicas } }
+      }
+  }
+}
+
+type ServingSessionPlacement
+  = PlaceByAdmission { admission: ServingGroupAdmission }
+  | OwnedByAnotherReplica { owner: NonEmptyStr }
+
+// A warm session stays on its owning replica: a candidate that is not the owner is refused for a
+// resident or restorable session, so adding a replica never moves it (rendezvous affinity alone
+// re-ranks ~1/n sessions on a new offer). A session that must reconstruct or is unread has nothing
+// to protect and takes ordinary admission anywhere -- warmth is never assumed for an unread one.
+fn serving_session_placement(
+  residency: ServingSessionResidency,
+  owner_launch: NonEmptyStr,
+  candidate_launch: NonEmptyStr,
+  admission: ServingGroupAdmission,
+) -> ServingSessionPlacement {
+  match residency {
+    ResidentOnGpu => serving_pin_to_owner(owner: owner_launch, candidate: candidate_launch, admission: admission)
+    HostRestorable => serving_pin_to_owner(owner: owner_launch, candidate: candidate_launch, admission: admission)
+    MustReconstruct { cause: _ } => PlaceByAdmission { admission: admission }
+    ResidencyUnread { obligation: _ } => PlaceByAdmission { admission: admission }
+  }
+}
+
+fn serving_pin_to_owner(owner: NonEmptyStr, candidate: NonEmptyStr, admission: ServingGroupAdmission) -> ServingSessionPlacement {
+  if owner == candidate { PlaceByAdmission { admission: admission } } else { OwnedByAnotherReplica { owner: owner } }
+}
+
 fn serving_admission_detail(group: FabricGroup, admission: ServingGroupAdmission) -> String {
   match admission {
     AdmissibleForClass { class: c, receipt: _ } =>
@@ -312,8 +434,8 @@ fn serving_availability(receipt: ObservationReceiptRef) -> AvailabilityObservati
 // restart, a KV eviction, a launch replacement, or a prefix that simply differs from the previous
 // turn's all leave the record intact and the cache empty. Those are separate facts -- last
 // placement, exact current launch, prefix hit observed, prefix miss observed, prefix standing unread
-// -- and only the last of them is true today. So affinity buys nothing here until prefix standing
-// is observed on a named launch, and this module offers no way to spell a zero it has not measured.
+// -- now carried by serving_session_residency. Fresh demand still has none, so affinity buys nothing
+// here until a session's standing is observed on a named launch, and this module offers no way to spell a zero it has not measured.
 fn serving_transition_cost() -> TransitionCostObservation {
   NoTransitionRequired
 }
