@@ -2041,19 +2041,13 @@ fn infer_operand_declared_type_instantiated(declared: Node, instances: List<Type
           }
       }
     TypeNode { connective: _ } =>
-      if any(
-        xs: node_positional_child_targets(node: declared),
-        predicate: fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) }
-      ) {
+      if node_positional_child_targets(node: declared) |> any(fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) }) {
         optional_absent()
       } else {
         optional_present(value: declared)
       }
     ComputationNode { behavior: _ } =>
-      if any(
-        xs: node_positional_child_targets(node: declared),
-        predicate: fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) }
-      ) {
+      if node_positional_child_targets(node: declared) |> any(fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) }) {
         optional_absent()
       } else {
         optional_present(value: declared)
@@ -2076,15 +2070,9 @@ fn infer_declared_type_mentions_free_formal(declared: Node, instances: List<Type
           }
       }
     TypeNode { connective: _ } =>
-      any(
-        xs: node_positional_child_targets(node: declared),
-        predicate: fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) }
-      )
+      node_positional_child_targets(node: declared) |> any(fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) })
     ComputationNode { behavior: _ } =>
-      any(
-        xs: node_positional_child_targets(node: declared),
-        predicate: fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) }
-      )
+      node_positional_child_targets(node: declared) |> any(fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) })
   }
 }
 
@@ -2334,7 +2322,7 @@ fn infer_coproduct_coverage_obligation(
   let covered_children = fold(coproduct.variants.children, init: Empty, f: fn(acc, e) {
     match e.label {
       Authored { name: variant_tag } =>
-        if any(xs: rows, predicate: fn(row) {
+        if rows |> any(fn(row) {
           match row.covers {
             CoversAll => true
             CoversVariant { tag: t } => t == variant_tag
@@ -2726,9 +2714,9 @@ fn infer_match(
   match list_tail(xs: positional_targets) {
     TailAbsent => outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
     TailFound { tail: arms } =>
-      if any(xs: arms, predicate: fn(arm) { infer_match_arm_pattern_is_literal(arm: arm) }) {
+      if arms |> any(fn(arm) { infer_match_arm_pattern_is_literal(arm: arm) }) {
         infer_match_bool(node: node, partials: partials, entries: entries, resolved: resolved)
-      } else if any(xs: arms, predicate: fn(arm) { infer_match_arm_pattern_is_constructor(arm: arm) }) {
+      } else if arms |> any(fn(arm) { infer_match_arm_pattern_is_constructor(arm: arm) }) {
         infer_match_coproduct(node: node, partials: partials, entries: entries, resolved: resolved)
       } else {
         infer_match_bool(node: node, partials: partials, entries: entries, resolved: resolved)

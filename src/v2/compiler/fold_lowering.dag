@@ -1371,7 +1371,7 @@ fn fold_loop_step(loop_node: Node) -> Optional<Node> {
 
 fn fold_type_is_variable_of(t: Node, step: Node) -> Bool {
   match node_atom_identity_optional(node: t) {
-    Present { value: id } => any(xs: type_param_names(n: step), predicate: fn(v) { v == id })
+    Present { value: id } => type_param_names(n: step) |> any(fn(v) { v == id })
     Absent => false
   }
 }

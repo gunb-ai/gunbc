@@ -3988,10 +3988,7 @@ fn dag_grammar_production_emits(production: GrammarProduction, n: Node) -> Bool 
 // occupies, so it shares that declared type.
 fn dag_grammar_production_member_declared_type(n: Node) -> Optional<Node> {
   if (n == namespace_graft_module_body_marker_node())
-    || any(
-      xs: dag_grammar_root().productions,
-      predicate: fn(production) { dag_grammar_production_emits(production: production, n: n) }
-    ) {
+    || (dag_grammar_root().productions |> any(fn(production) { dag_grammar_production_emits(production: production, n: n) })) {
     optional_present(value: dag_grammar_surface_production_type_node())
   } else {
     optional_absent()
@@ -4860,7 +4857,7 @@ fn dag_kernel_string_type_spelling(sym: Symbol) -> Bool {
 fn dag_kernel_type_declaration_binding_optional(path: QualifiedName) -> Optional<Symbol> {
   dag_kernel_value_type_row_binding(
     found: dag_kernel_value_type_first(select: fn(row, _binding) {
-      any(xs: row.declarations, predicate: fn(declared) { declared == path })
+      row.declarations |> any(fn(declared) { declared == path })
     })
   )
 }
