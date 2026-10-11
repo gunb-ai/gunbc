@@ -1,0 +1,59 @@
+module gunbc.rung_drop.population_parse_block_operand
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// ============================================================================================
+// THE DECLARED RUNG DROP for the modules v2's grammar cannot parse because of a block as the
+// right operand of a boolean connective (`a && { ... }`) (DESIGN 4b(3) no silent regression;
+// source layout cutover, check 2: the explicit population parse).
+// ============================================================================================
+//
+// WHAT FAILS. A fixed set of witness modules writes `condition && { ... }` with a block as the
+// right operand. `gunbc test //gunbc/instruments:v2-native-cli` runs the `parse-population` verb
+// over the governed roots, and these modules do not parse. They did not parse before the layout
+// cutover either: they sit outside every compile closure, so the required job never parsed them
+// until the explicit population parse ran, and nothing the sweep wrote causes it.
+//
+// THE BISECT, FOR WHOEVER RESTORES THE CAPABILITY. The minimal failing form is `a && { b }`,
+// which stops with `parse_g0_tokens_remain` in a plain `fn` and is reported as
+// `parse_declaration_marker_not_test` in a `test fn`; `a && b` parses.
+//
+// THE CAUSE KEYS. A `test fn` whose body fails to parse is reported by the verb as
+// `parse_declaration_marker_not_test`, not as the body failure: the marker row rejects the
+// declaration and the verb reports the first refusal. So the class holding test modules is keyed
+// to that cause and the class holding non-test modules to `parse_g0_tokens_remain`; a class
+// binds its members to its own cause, so a module that starts failing for the other cause is
+// red.
+//
+// WHY A DECLARED DROP AND NOT A SOURCE OR GRAMMAR EDIT HERE. The cutover moves where modules are
+// stored and how they are demanded; a change to v2's grammar or to these modules is a separate
+// capability with its own differential, and landing it inside the cutover would make a layout
+// change carry a change nothing in the layout reads.
+//
+// THE DROP IS TWO-SIDED, so it can only shrink. A module outside the list that fails to parse is
+// red, and a listed module that starts parsing is also red: `parse-population` reports both, and
+// the walked control additionally requires that the number of declared refusals it saw equals
+// the length of the lists. The population is the exact list of modules, by identity, in
+// `gunbc.parse_population_refusals` `block_operand_in_test_keys`.
+
+data population_parse_block_operand: RungDrop = RungDrop {
+  identity: "population_parse_block_operand" as NonEmptyStr,
+
+  subject: "the v2 parse of each module that writes a block as an operand of `&&`: the population parse that the source layout cutover makes a required step cannot judge these modules, so a defect in them would not be refused by it",
+
+  declared: "2026-10-11",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged { replacement: "the explicit population parse (`parse-population` on v2.cli.compile_cli), which parses every governed module and holds only when each parses or is declared here; the whole-repository ingest gate it replaces parsed these modules with the seed's parser" },
+    population: [
+      "every module named by `gunbc.parse_population_refusals` `block_operand_in_test_keys`, identified by tree and path (the list is the single authority; the verb refuses a listed module that parses)",
+    ],
+    restoration_trigger: "v2's grammar admits a block as an operand of a boolean connective, sufficient that `parse-population` over the live roots refuses none of the modules in `gunbc.parse_population_refusals` `block_operand_in_test_keys`; restoring it deletes that function and this drop together (restorer: tidy-raven-810)"
+  }
+}

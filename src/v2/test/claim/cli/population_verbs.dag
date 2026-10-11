@@ -35,14 +35,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data fixture_classes: List<RefusalClass> = [
   RefusalClass { drop: "fixture_drop_a", cause: "parse_g0_tokens_remain", keys: ["dag:a/one.dag", "dag:a/two.dag"] },
-  RefusalClass { drop: "fixture_drop_b", cause: "parse_declaration_marker_not_test", keys: ["src/v2:b/three.dag"] }
+  RefusalClass { drop: "fixture_drop_b", cause: "parse_declaration_marker_not_test", keys: ["v2:b/three.dag"] }
 ]
 
 data fixture_empty_tally: PopulationParse = PopulationParse { parsed: 0, declared: 0, refusals: [] }
 
 test fn a_listed_module_refused_for_its_class_cause_is_covered() -> Bool {
   declared_refusal_names(classes: fixture_classes, key: "dag:a/two.dag", cause: "parse_g0_tokens_remain")
-    && declared_refusal_names(classes: fixture_classes, key: "src/v2:b/three.dag", cause: "parse_declaration_marker_not_test")
+    && declared_refusal_names(classes: fixture_classes, key: "v2:b/three.dag", cause: "parse_declaration_marker_not_test")
 }
 
 test fn a_listed_module_refused_for_another_cause_is_not_covered() -> Bool {
@@ -55,12 +55,12 @@ test fn a_module_no_class_names_is_not_covered() -> Bool {
 }
 
 test fn a_module_is_named_by_a_class_only_under_that_class_cause() -> Bool {
-  !declared_refusal_names(classes: fixture_classes, key: "src/v2:b/three.dag", cause: "parse_g0_tokens_remain")
+  !declared_refusal_names(classes: fixture_classes, key: "v2:b/three.dag", cause: "parse_g0_tokens_remain")
 }
 
 test fn the_file_judgment_names_every_listed_module_and_no_other() -> Bool {
   declared_file_names(classes: fixture_classes, key: "dag:a/one.dag")
-    && declared_file_names(classes: fixture_classes, key: "src/v2:b/three.dag")
+    && declared_file_names(classes: fixture_classes, key: "v2:b/three.dag")
     && !declared_file_names(classes: fixture_classes, key: "dag:a/four.dag")
     && !declared_file_names(classes: fixture_classes, key: "dag:b/three.dag")
 }

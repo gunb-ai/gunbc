@@ -3,11 +3,11 @@ module gunbc.parse_population_refusals
 import std.types { List, String }
 
 // THE POPULATION PARSE'S DECLARED REFUSALS (rung drops, DESIGN section 4b(3)). `gunbc test //gunbc/instruments:v2-native-cli` walks
-// `parse-population` over the live trees; this module is the exact set of modules that verb is permitted to refuse, by module file key
-// (`<tree>:<path>`) and parse cause, one class per standing drop. The rule is two-sided: a module outside the list that fails to
-// parse (or fails for another cause) is red, and a listed module that parses is red, so a list can only shrink; the walked control
-// additionally requires that the verb met every listed module, so an entry cannot outlive its file. A class is retired by the
-// capability its drop's restoration trigger names, never by editing a list.
+// `parse-population` over the live trees; this module is the exact set of modules that verb is permitted to refuse, by module file
+// key (`<tree>:<path>`) and parse cause, one class per standing drop and cause the verb reports; a module is in exactly one class.
+// The rule is two-sided: a module outside the list that fails to parse (or fails for another cause) is red, and a listed module that
+// parses is red, so a list can only shrink; the walked control additionally requires that the verb met every listed module, so an
+// entry cannot outlive its file. A class is retired by the capability its drop's restoration trigger names, never by editing a list.
 type RefusalClass {
   drop: String
   cause: String
@@ -80,8 +80,129 @@ fn requires_transport_members_keys() -> List<String> {
     "dag:extdeps/test/http_pilot.dag",
     "dag:extdeps/tools/curl.dag",
     "dag:extdeps/tools/hostname.dag",
+    "dag:extdeps/tools/npm.dag",
     "dag:gunbc/auth/approval_ntfy_publish.dag",
     "dag:gunbc/instruments/native_serve_fixture.dag"
+  ]
+}
+
+// Lambda parameters spelled `module` or `alias` (gunbc.rung_drop population_parse_keyword_lambda_binder).
+fn keyword_lambda_binder_keys() -> List<String> {
+  [
+    "v2:std/compilers/compilation_unit.dag"
+  ]
+}
+
+// The same construct inside a `test fn`, where the verb reports the marker cause (gunbc.rung_drop population_parse_keyword_lambda_binder).
+fn keyword_lambda_binder_in_test_keys() -> List<String> {
+  [
+    "dag:test/claim/algebra_carrier_roster_witness.dag",
+    "v2:test/claim/regen_convergence_transaction_witness.dag",
+    "v2:test/claim/stage0_partition_rebuild_scope_witness.dag"
+  ]
+}
+
+// Match-arm guards (gunbc.rung_drop population_parse_match_arm_guard).
+fn match_arm_guard_keys() -> List<String> {
+  [
+    "dag:test/claim/emit/nested_constant_pattern_emission_witness.dag",
+    "dag:test/claim/interpreter_match_guard_witness.dag"
+  ]
+}
+
+// Uses of `??` (gunbc.rung_drop population_parse_null_coalesce).
+fn null_coalesce_keys() -> List<String> {
+  [
+    "dag:test/claim/eval_model_probe.dag"
+  ]
+}
+
+// Field refinements (gunbc.rung_drop population_parse_field_refinement).
+fn field_refinement_keys() -> List<String> {
+  [
+    "dag:std/decimal.dag"
+  ]
+}
+
+// Nested shorthand record initializers (gunbc.rung_drop population_parse_nested_record_shorthand).
+fn nested_record_shorthand_keys() -> List<String> {
+  [
+    "dag:test/claim/request_authentication_witness.dag"
+  ]
+}
+
+// Matches on an index expression (gunbc.rung_drop population_parse_indexed_match_scrutinee).
+fn indexed_match_scrutinee_keys() -> List<String> {
+  [
+    "dag:extdeps/linux/proc_mountinfo.dag",
+    "dag:gunbc/floor_cost_distribution.dag",
+    "dag:gunbc/gate_closure_decline_census.dag",
+    "dag:gunbc/instruments/native_emission_controls.dag"
+  ]
+}
+
+// The same construct inside a `test fn`, where the verb reports the marker cause (gunbc.rung_drop population_parse_indexed_match_scrutinee).
+fn indexed_match_scrutinee_in_test_keys() -> List<String> {
+  [
+    "dag:test/claim/check_removal_residual_witness.dag",
+    "dag:test/claim/floor/floor_phase_attribution_witness.dag",
+    "dag:test/claim/runner/runner_capacity_operator_access_witness.dag",
+    "dag:test/claim/runner/runner_microvm_shakedown_workflow_witness.dag",
+    "dag:test/claim/runner/runner_placement_witness.dag"
+  ]
+}
+
+// The caret sigil inside a `test fn`, where the verb reports the marker cause (gunbc.rung_drop population_parse_caret_expression).
+fn caret_expression_in_test_keys() -> List<String> {
+  [
+    "v2:test/claim/manual/caret_sigil_surface.dag"
+  ]
+}
+
+// A block operand inside a `test fn`, where the verb reports the marker cause (gunbc.rung_drop population_parse_block_operand).
+fn block_operand_in_test_keys() -> List<String> {
+  [
+    "dag:test/claim/machine_intake/pre_os_replay_witness.dag",
+    "dag:test/claim/spark/pair_serving_authority_log_real_execution.dag"
+  ]
+}
+
+// The `for ... in` comprehension (gunbc.rung_drop population_parse_for_loop).
+fn for_loop_keys() -> List<String> {
+  [
+    "dag:gunbc/tools/review.dag"
+  ]
+}
+
+// A dotted name in an import list (gunbc.rung_drop population_parse_dotted_import_name).
+fn dotted_import_name_keys() -> List<String> {
+  [
+    "dag:gunbc/superseded_run_starvation_census.dag"
+  ]
+}
+
+// Module paths with a keyword segment, and their importers (gunbc.rung_drop population_parse_keyword_path_segment).
+fn keyword_path_segment_keys() -> List<String> {
+  [
+    "dag:extdeps/languages/go/module.dag",
+    "dag:gunbc/instruments/cause_assertion_census.dag",
+    "dag:gunbc/namespace_cut/namespace_step0_candidate_run.dag",
+    "dag:gunbc/namespace_cut/namespace_step0_strip_producer.dag",
+    "dag:gunbc/namespace_cut/namespace_xl2_rehearsal_census.dag",
+    "dag:gunbc/namespace_cut/parsed_import_statement_production.dag",
+    "dag:std/import.dag",
+    "dag:test/claim/cause_assertion_census_witness.dag",
+    "dag:test/claim/go_module_versioning_witness.dag",
+    "dag:test/claim/namespace_step0_strip_producer_witness.dag"
+  ]
+}
+
+// Binders spelled `then` (gunbc.rung_drop population_parse_keyword_value_name).
+fn keyword_value_name_keys() -> List<String> {
+  [
+    "dag:gunbc/roadmap/roadmap_belt_tick_cli.dag",
+    "dag:gunbc/site/client_bindings.dag",
+    "dag:std/checkpointed_workspace.dag"
   ]
 }
 
@@ -91,6 +212,76 @@ fn parse_population_declared_refusal_classes() -> List<RefusalClass> {
       drop: "population_parse_service_requires_transport_members",
       cause: "parse_g0_tokens_remain",
       keys: requires_transport_members_keys()
+    },
+    RefusalClass {
+      drop: "population_parse_keyword_lambda_binder",
+      cause: "parse_g0_tokens_remain",
+      keys: keyword_lambda_binder_keys()
+    },
+    RefusalClass {
+      drop: "population_parse_keyword_lambda_binder",
+      cause: "parse_declaration_marker_not_test",
+      keys: keyword_lambda_binder_in_test_keys()
+    },
+    RefusalClass {
+      drop: "population_parse_match_arm_guard",
+      cause: "parse_g0_tokens_remain",
+      keys: match_arm_guard_keys()
+    },
+    RefusalClass {
+      drop: "population_parse_null_coalesce",
+      cause: "parse_g0_tokens_remain",
+      keys: null_coalesce_keys()
+    },
+    RefusalClass {
+      drop: "population_parse_field_refinement",
+      cause: "parse_g0_tokens_remain",
+      keys: field_refinement_keys()
+    },
+    RefusalClass {
+      drop: "population_parse_nested_record_shorthand",
+      cause: "parse_g0_tokens_remain",
+      keys: nested_record_shorthand_keys()
+    },
+    RefusalClass {
+      drop: "population_parse_indexed_match_scrutinee",
+      cause: "parse_g0_tokens_remain",
+      keys: indexed_match_scrutinee_keys()
+    },
+    RefusalClass {
+      drop: "population_parse_indexed_match_scrutinee",
+      cause: "parse_declaration_marker_not_test",
+      keys: indexed_match_scrutinee_in_test_keys()
+    },
+    RefusalClass {
+      drop: "population_parse_caret_expression",
+      cause: "parse_declaration_marker_not_test",
+      keys: caret_expression_in_test_keys()
+    },
+    RefusalClass {
+      drop: "population_parse_block_operand",
+      cause: "parse_declaration_marker_not_test",
+      keys: block_operand_in_test_keys()
+    },
+    RefusalClass {
+      drop: "population_parse_for_loop",
+      cause: "parse_g0_tokens_remain",
+      keys: for_loop_keys()
+    },
+    RefusalClass {
+      drop: "population_parse_dotted_import_name",
+      cause: "parse_g0_tokens_remain",
+      keys: dotted_import_name_keys()
+    },
+    RefusalClass {
+      drop: "population_parse_keyword_path_segment",
+      cause: "parse_keyword_as_path_segment",
+      keys: keyword_path_segment_keys()
+    },
+    RefusalClass {
+      drop: "population_parse_keyword_value_name",
+      cause: "parse_keyword_as_value_name",
+      keys: keyword_value_name_keys()
     }
   ]
 }

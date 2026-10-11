@@ -1,0 +1,54 @@
+module gunbc.rung_drop.population_parse_keyword_value_name
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// ============================================================================================
+// THE DECLARED RUNG DROP for the modules v2's grammar cannot parse because of a binder spelled
+// with the v2 keyword `then` (DESIGN 4b(3) no silent regression; source layout cutover, check 2:
+// the explicit population parse).
+// ============================================================================================
+//
+// WHAT FAILS. Three modules name a parameter or a record-pattern binder `then`, as in `fn
+// f(then: Int)` or `If { cond, then, else_stmt }`. `gunbc test //gunbc/instruments:v2-native-
+// cli` runs the `parse-population` verb over the governed roots, and these modules do not parse.
+// They did not parse before the layout cutover either: they sit outside every compile closure,
+// so the required job never parsed them until the explicit population parse ran, and nothing the
+// sweep wrote causes it.
+//
+// THE BISECT, FOR WHOEVER RESTORES THE CAPABILITY. v2 refuses a keyword in a value-name position
+// with the located cause `parse_keyword_as_value_name`; `fn f(then: Int) -> Int { then }` and
+// `match s { If { cond, then, else_stmt } => 1 }` are refused, and `fn f(next: Int) -> Int {
+// next }` parses.
+//
+// WHY A DECLARED DROP AND NOT A SOURCE OR GRAMMAR EDIT HERE. The cutover moves where modules are
+// stored and how they are demanded; a change to v2's grammar or to these modules is a separate
+// capability with its own differential, and landing it inside the cutover would make a layout
+// change carry a change nothing in the layout reads.
+//
+// THE DROP IS TWO-SIDED, so it can only shrink. A module outside the list that fails to parse is
+// red, and a listed module that starts parsing is also red: `parse-population` reports both, and
+// the walked control additionally requires that the number of declared refusals it saw equals
+// the length of the lists. The population is the exact list of modules, by identity, in
+// `gunbc.parse_population_refusals` `keyword_value_name_keys`.
+
+data population_parse_keyword_value_name: RungDrop = RungDrop {
+  identity: "population_parse_keyword_value_name" as NonEmptyStr,
+
+  subject: "the v2 parse of each module that names a parameter or a pattern binder `then`: the population parse that the source layout cutover makes a required step cannot judge these modules, so a defect in them would not be refused by it",
+
+  declared: "2026-10-11",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged { replacement: "the explicit population parse (`parse-population` on v2.cli.compile_cli), which parses every governed module and holds only when each parses or is declared here; the whole-repository ingest gate it replaces parsed these modules with the seed's parser" },
+    population: [
+      "every module named by `gunbc.parse_population_refusals` `keyword_value_name_keys`, identified by tree and path (the list is the single authority; the verb refuses a listed module that parses)",
+    ],
+    restoration_trigger: "v2 parses a binder spelled `then`, or the binder in each listed module is spelled without a keyword, sufficient that `parse-population` over the live roots refuses none of the modules in `gunbc.parse_population_refusals` `keyword_value_name_keys`; restoring it deletes that function and this drop together (restorer: tidy-raven-810)"
+  }
+}
