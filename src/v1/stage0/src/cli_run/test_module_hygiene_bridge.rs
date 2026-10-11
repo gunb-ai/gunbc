@@ -69,31 +69,6 @@ pub(crate) fn is_file_grain_function(function: &str) -> bool {
     function.is_empty()
 }
 
-fn test_decl_names_from_content(content: &str) -> Result<Vec<String>, String> {
-    let roots = super::default_source_roots();
-    let ctx = resolve_hygiene_ctx(&roots)?;
-    let args = [(Some("content".to_string()), str_value(content.to_string()))];
-    let result =
-        v1_interpreter::run_in_context_with_args(&ctx, "enumerate_entry_test_names", &args, false)
-            .map_err(|e| format!("enumerate_entry_test_names: {e}"))?;
-    let Value::List(ref items) = result else {
-        return Err(format!(
-            "enumerate_entry_test_names returned `{}`, expected List",
-            ctx.format_value(&result)
-        ));
-    };
-    items
-        .iter()
-        .map(|item| match item {
-            Value::Str(s) => Ok(s.to_string()),
-            other => Err(format!(
-                "enumerate_entry_test_names element `{}` is not String",
-                ctx.format_value(other)
-            )),
-        })
-        .collect()
-}
-
 fn repo_relative(path: &Path, ws: &Path) -> String {
     path.strip_prefix(ws)
         .unwrap_or(path)
@@ -199,7 +174,7 @@ pub(crate) fn witness_verdict_diagnostic_companion_from_authority(
 pub(crate) fn enumerate_entry_test_fns(entry_path: &str) -> Result<Vec<String>, String> {
     let content = std::fs::read_to_string(entry_path)
         .map_err(|e| format!("file-grain enumerate: read {entry_path}: {e}"))?;
-    let names = test_decl_names_from_content(&content)?;
+    let names = super::test_marker::test_marked_decl_names(&content, entry_path)?;
     if names.is_empty() {
         return Err(format!(
             "file-grain enumerate: entry {entry_path} has no test fn / test data declarations"
@@ -215,18 +190,27 @@ pub(crate) fn expand_explicit_entries(
     let ctx = resolve_hygiene_ctx(&roots)?;
     let mut inputs = Vec::new();
     for (entry, function) in explicit_entries {
-        let content = if is_file_grain_function(function) {
-            std::fs::read_to_string(entry)
-                .map_err(|e| format!("file-grain expand read {entry}: {e}"))?
+        // The marker fact is SUPPLIED to the authority: the fold neither parses nor resolves
+        // files, so the host reads the one declared marker channel and hands the names in.
+        let marked = if is_file_grain_function(function) {
+            let content = std::fs::read_to_string(entry)
+                .map_err(|e| format!("file-grain expand read {entry}: {e}"))?;
+            super::test_marker::test_marked_decl_names(&content, entry)
+                .map_err(|cause| format!("file-grain expand {entry}: {cause}"))?
         } else {
-            String::new()
+            Vec::new()
         };
         inputs.push(Value::Record {
             type_name: ctx.sym("ExplicitExpandInput"),
             fields: Rc::new(sorted_fields(vec![
                 (ctx.sym("entry"), str_value(entry.clone())),
                 (ctx.sym("function"), str_value(function.clone())),
-                (ctx.sym("content"), str_value(content)),
+                (
+                    ctx.sym("marked"),
+                    v1_interpreter::list_value(
+                        marked.into_iter().map(str_value).collect::<Vec<_>>(),
+                    ),
+                ),
             ])),
         });
     }
@@ -318,7 +302,7 @@ mod test_module_hygiene_bridge_equivalence_tests {
     fn file_grain_expand_enumerates_test_decls() {
         let dir = tmp_dir();
         std::fs::create_dir_all(&dir).unwrap();
-        let file = dir.join("expand_grain_test.dag");
+        let file = dir.join("expand_grain.dag");
         std::fs::write(
             &file,
             r#"module expand_grain
@@ -343,7 +327,7 @@ test data beta_fixture: Bool = true
     fn file_grain_expand_refuses_empty_test_decls() {
         let dir = tmp_dir();
         std::fs::create_dir_all(&dir).unwrap();
-        let file = dir.join("empty_grain_test.dag");
+        let file = dir.join("empty_grain.dag");
         std::fs::write(
             &file,
             r#"module empty_grain

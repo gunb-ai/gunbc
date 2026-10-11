@@ -569,11 +569,17 @@ pub(crate) fn run_claim_evaluation(
     .map_err(|payload| panic_payload_text(&payload))
 }
 
-/// Why the discovery authority's per-file fold produced no roster. Two causes, two repairs: the
-/// authority could not be EVALUATED (a frame or interpreter defect, located at the source when one
-/// was being folded), or it evaluated and REFUSED the corpus (a placement or sidecar violation,
-/// carried as the producer's own reason).
+/// Why the discovery authority's per-file fold produced no roster. Three causes, three repairs: a
+/// source's test-marked declarations could not be READ (it does not parse, so which of its
+/// declarations are tests is undeterminable), the authority could not be EVALUATED (a frame or
+/// interpreter defect, located at the source when one was being folded), or it evaluated and
+/// REFUSED the corpus (a placement or live_tree_disposition violation, carried as the producer's
+/// own reason).
 pub(crate) enum FloorDiscoveryFoldRefusal {
+    Unparseable {
+        source: String,
+        cause: String,
+    },
     Unevaluable {
         source: Option<String>,
         function: &'static str,
@@ -587,6 +593,9 @@ pub(crate) enum FloorDiscoveryFoldRefusal {
 impl FloorDiscoveryFoldRefusal {
     pub(crate) fn rendered(&self) -> String {
         match self {
+            FloorDiscoveryFoldRefusal::Unparseable { source, cause } => {
+                format!("cause=FloorDiscoveryTestMarkersUnreadable source={source} — {cause}")
+            }
             FloorDiscoveryFoldRefusal::Unevaluable {
                 source: Some(source),
                 function,
@@ -614,6 +623,12 @@ impl FloorDiscoveryFoldRefusal {
 /// `gunbc test`'s claim route folds it over the modules its operand names. Same authority, same
 /// calls, narrower subject: the subject narrows, the decision does not move (review 44641's rule).
 /// `frame` must have that module in scope by its qualified name.
+///
+/// THE MARKER FACT IS SUPPLIED, NOT SCANNED FOR. The authority neither parses nor resolves the
+/// files it enumerates, so each source's `marked` argument is the names of the declarations
+/// carrying the authored `test` marker, read once by `test_marker::test_marked_decl_names` (the
+/// seed's single consumer of the grammar's mark). A source that does not parse refuses here
+/// (`Unparseable`); no text scan stands in for the missing fact.
 pub(crate) fn floor_discovery_rows_over_sources<'a>(
     frame: &v1_interpreter::InterpContext,
     sources: impl IntoIterator<Item = &'a v1_compiler_compile::SourceFile>,
@@ -621,8 +636,19 @@ pub(crate) fn floor_discovery_rows_over_sources<'a>(
     let mut outcomes: Vec<v1_interpreter::Value> = Vec::new();
     for source in sources {
         let repo_path = source.path.replace('\\', "/");
+        let marked =
+            test_marker::test_marked_decl_names(&source.content, &repo_path).map_err(|cause| {
+                FloorDiscoveryFoldRefusal::Unparseable {
+                    source: repo_path.clone(),
+                    cause,
+                }
+            })?;
         let args = [
             (Some("repo_path".to_string()), str_value(repo_path.clone())),
+            (
+                Some("marked".to_string()),
+                list_value_from_vec(marked.into_iter().map(str_value).collect()),
+            ),
             (
                 Some("content".to_string()),
                 str_value(source.content.clone()),
@@ -867,10 +893,6 @@ pub fn run_claim_measured(
         eval_steps,
     );
     (outcome, receipt)
-}
-
-pub fn floor_discovery_path_excluded(path: &str) -> bool {
-    matching_discovery_exclusion_substring(path).is_some()
 }
 
 pub(crate) fn floor_git_diff_range() -> Result<String, String> {
@@ -1571,18 +1593,18 @@ pub(crate) fn floor_diff_edits_from_line_ranges_reading(
             m.insert(file_norm.clone(), nl.clone());
             m
         });
-        let test_fn_names: HashSet<String> = scan_test_decl_names(&content).into_iter().collect();
+        // A test is a declaration carrying the authored `test` marker, read off the item the
+        // parse above already produced: no second reading of the file, and no line scan.
+        let mut test_fn_names: HashSet<String> = HashSet::new();
         let mut decls: Vec<(i64, String, bool)> = Vec::new();
         for item in crate::v1_std_core::module_items(module_node.clone()).iter() {
             let line = byte_to_line_col(nl.clone(), item.span.start).line;
             let name = authored_name_at(single_si.clone(), item.clone());
             let is_data = item_kind(item.clone()) == ItemKind::DataItem;
-            decls.push((line, name, is_data));
-        }
-        for (name, line) in scan_test_decl_lines(&content) {
-            if !decls.iter().any(|(_, n, _)| n == &name) {
-                decls.push((line, name, false));
+            if item.declaration_marker == crate::v1_std_core::DeclarationMarker::TestMarked {
+                test_fn_names.insert(name.clone());
             }
+            decls.push((line, name, is_data));
         }
         if decls.is_empty() {
             // A declaration-less module (a lone `module` line — e.g. the
@@ -9596,22 +9618,18 @@ pub fn run_required_floor(
     }
     // ── the witness roster, as the `.dag` discovery authority answers it ──────────────────
     //
-    // ONE AUTHORITY FOR "WHAT DOES THE FLOOR DISCOVER". The roster used to be projected by a
-    // Rust text scan that was filename-blind, while
-    // `v2.workflow.floor_discovery_producer` -- reached only by claim_batch -- refused a
-    // `test`-marked decl outside a `*_test.dag` sidecar. Two answers to one question (DESIGN
-    // section 3), measured on main 2026-08-29: five files, 39 test fns, refused on one path and
-    // executed on the other. The floor now folds the producer's own per-file authority over the
-    // full module index and takes that fold's rows as the declared roster; Rust threads values and
-    // decides nothing. Every refusal the producer carries -- misplaced test decl, barren sidecar,
-    // misplaced wire contract, malformed live_tree_disposition row -- therefore stops THIS line,
-    // with the producer's own reason text.
+    // ONE AUTHORITY FOR "WHAT DOES THE FLOOR DISCOVER". A test is a declaration carrying the
+    // authored `test` marker and nothing else: the floor folds the `.dag` authority's per-file
+    // decision over the full module index and takes that fold's rows as the declared roster; Rust
+    // threads values and decides nothing. The one fact the authority cannot derive from bytes
+    // alone, which declarations carry the marker, is supplied per source by
+    // `floor_discovery_rows_over_sources` from the grammar's own mark. Every refusal the authority
+    // carries -- misplaced wire contract, malformed live_tree_disposition row -- and every source
+    // whose markers cannot be read therefore stops THIS line, with its own reason text.
     //
     // The subject is preparation's full index, not a filesystem walk or a Rust declaration scan.
-    // The prepared closure and exclusion map then classify producer-returned identities without
-    // rebuilding the population. Row admission (`witness_row_excluded_from_discovery`)
-    // is the discovery-corpus mode's policy and is deliberately NOT applied here -- see
-    // `floor_discovery_row_admission_policy_note` in the producer.
+    // The prepared closure and exclusion map then classify the returned identities without
+    // rebuilding the population.
     floor_seam("discovery-authority");
     let discovery_started = std::time::Instant::now();
     let producer_frame = floor_authority_frame(&prepared, FLOOR_DISCOVERY_AUTHORITY_MODULE)?;

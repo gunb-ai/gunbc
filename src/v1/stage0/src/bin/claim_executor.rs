@@ -1973,7 +1973,7 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     // than inferable.
     // AND THE SENTENCE IS NOW BOUNDED ABOVE, WHICH IT WAS NOT.
     // "every discovered site is exactly one of these" is a totality claim over SITES, and it was
-    // exact and silent at the same time: a `*_test.dag` entry declaring no `test fn` contributes
+    // exact and silent at the same time: an entry declaring no test-marked declaration contributes
     // no site at all, so it could never appear in any of the four numbers, and the line read as a
     // coverage guarantee over a denominator that had already dropped it. It cannot now — a barren
     // entry stops the line in `run_required_floor` before this point — so the guarantee is stated
@@ -1983,7 +1983,7 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
          declined_outside_required_gate={} declined_outside_gate_closure={} \
          declined_discovery_excluded={} — every DECLARED witness identity in the tree is exactly \
          one of these, joined at identity grain (FloorDispositionJoinInexact refuses otherwise), \
-         and no `*_test.dag` entry declared zero sites (v2.workflow.floor_discovery_producer \
+         and no entry declared zero sites (v2.workflow.floor_discovery_producer \
          refuses a barren or misplaced sidecar upstream of this line, over the full module \
          index)",
         outcome.declared_identities,

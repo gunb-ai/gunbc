@@ -389,8 +389,8 @@ pub fn languages_consumer_census_has_external_consumer(decl_name: String) -> boo
 
 // --- Inert carrier census (folded from inert_carrier_project.rs) ---
 //
-// A type carrier is "inert" iff (a) declared in a non-test file, (b) its name appears in at least
-// one *_test.dag file (self-tested), and (c) its name appears in NO non-test .dag file outside its
-// own declaration block (zero real consumer). This is DESIGN §5 coverage-by-illusion.
+// A type carrier is "inert" iff (a) declared outside a test-marked declaration, (b) its name appears
+// inside at least one test-marked declaration (self-tested), and (c) its name appears in NO
+// unmarked declaration outside its own block (zero real consumer). This is DESIGN §5 coverage-by-illusion.
 // DISSOLUTION TRIGGER: when .dag gains compile-graph / reference-edge access (gunbc#5364), the
 // token scan folds into a pure .dag reader over BindsTo edges and this Rust census deletes.

@@ -19,9 +19,7 @@ use im::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use crate::cli_run::{
-    collect_dag_files_tolerant, extract_module_path, is_test_dag, repo_rel, workspace_root,
-};
+use crate::cli_run::{collect_dag_files_tolerant, extract_module_path, repo_rel, workspace_root};
 use crate::module_path_index::parsed_dag_file::{parse_dag_content, parse_dag_file};
 use crate::v1_compiler_infer_env::lookup_binding_by_name;
 use crate::v1_compiler_infer_items::{item_kind, ItemKind};
@@ -1831,9 +1829,6 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
     let mut files_parsed = 0usize;
     for file in corpus_dag_files_for_roots(pool_roots) {
         let rel = repo_rel(file.path());
-        if is_test_dag(&rel) {
-            continue;
-        }
         files_scanned += 1;
         let content = file.read().ok();
         let module_path = content

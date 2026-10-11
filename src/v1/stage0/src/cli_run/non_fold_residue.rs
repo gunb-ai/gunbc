@@ -357,9 +357,6 @@ pub(crate) fn typed_fallback_arm_walk(
             continue;
         }
         let rel = rel_path_for_layer_import(Path::new(&tm.module.span.file));
-        if is_test_dag(&rel) {
-            continue;
-        }
         walk.covered_paths.insert(rel.clone());
         walk.module_of_path.insert(rel.clone(), module_path.clone());
         walk.covered_modules.insert(module_path);
@@ -875,29 +872,6 @@ mod nfr_typed_tests {
         let unjudged =
             non_fold_residue_row_subjects_unjudged(&[subject], &TypedFallbackArmWalk::default());
         assert_eq!(unjudged.len(), 1);
-    }
-
-    #[test]
-    fn red_control_row_subject_excluded_test_path_refuses() {
-        // The walk types the module but excludes `_test.dag` paths, so the row's exact path is
-        // never covered: the row must refuse rather than pass unjudged.
-        let src = "module t\ntype Mode = A | B\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    _ => false\n  }\n}\n";
-        let subject =
-            non_fold_residue_classify_row_subject("dag/test/x_test.dag", true, Ok(src.to_string()));
-        assert_eq!(
-            subject,
-            NonFoldResidueRowSubject::Module {
-                path: "dag/test/x_test.dag".to_string(),
-                module: "t".to_string()
-            }
-        );
-        let walk = typed_fallback_arm_walk_for_fixture(&[("dag/test/x_test.dag", src)])
-            .unwrap_or_else(|c| panic!("{c}"));
-        assert!(!walk.covered_paths.contains("dag/test/x_test.dag"));
-        assert_eq!(
-            non_fold_residue_row_subjects_unjudged(&[subject], &walk).len(),
-            1
-        );
     }
 
     #[test]

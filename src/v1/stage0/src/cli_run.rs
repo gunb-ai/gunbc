@@ -112,9 +112,8 @@ pub use native_lane_runner::{
 };
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
-    floor_discovery_path_excluded, floor_seam, make_eval_context,
-    make_eval_context_with_runtime_options, run_claim_measured, run_required_floor,
-    unimported_bare_provider_entry_refusals,
+    floor_seam, make_eval_context, make_eval_context_with_runtime_options, run_claim_measured,
+    run_required_floor, unimported_bare_provider_entry_refusals,
 };
 pub use required_lane_roster::{authority_lane_phase_rows, LanePhaseRow};
 mod entry_resolve;
@@ -152,8 +151,6 @@ pub use entry_resolve::{
 };
 mod live_read_decode;
 pub(crate) use live_read_decode::*;
-mod owned_data;
-pub(crate) use owned_data::*;
 mod p1_cohort;
 pub(crate) use p1_cohort::*;
 mod fallback_arm_census;
@@ -195,13 +192,13 @@ pub(crate) use non_fold_residue::*;
 mod compile_clean;
 pub use compile_clean::compile_clean_diagnostic_is_hard;
 pub(crate) use compile_clean::*;
+mod test_marker;
 mod test_migration;
 pub(crate) use test_migration::*;
 // THE BASELINE RECONSTRUCTION RIDES THE SAME SWEEP the index above is built by, which is why it
 // is registered here rather than beside it: `run_dag_parse_sweep` is the one parse both consume,
 // and a second acquisition of the corpus to answer a second question is the cost-shape defect
 // DESIGN §6 names.
-pub(crate) mod floor_discovery_snapshot;
 #[path = "namespace_baseline.rs"]
 pub mod namespace_baseline;
 #[path = "phase_profile.rs"]
@@ -237,12 +234,6 @@ mod evaluation_budget_consequence_falsifier_host;
 pub(crate) mod shared_fill;
 pub(crate) mod terminal_ledger_publish;
 pub(crate) mod test_module_hygiene_bridge;
-pub use floor_discovery_snapshot::{
-    append_discovery_trace_row, build_floor_discovery_request,
-    discover_floor_witness_roster_with_snapshot, floor_tested_commit_and_tree, floor_tool_identity,
-    request_identity_digest, verify_floor_discovery_terminal_for_coordinator,
-    FloorDiscoveryConsumerRole,
-};
 pub use phase_profile::{set_phase, FloorPhase, PhaseProfile};
 
 use crate::closure_identity::{subject_digest_for_closure, transform_content_digest};
@@ -311,10 +302,6 @@ mod generated_cli_dispatch_allocator_integration_tests {
         );
     }
 }
-
-pub const UNIFIED_CLAIM_VERIFICATION_MODULE: &str = "v2.std.verification";
-pub const BOOL_WITNESS_CLAIM_TYPE: &str = "BoolWitnessClaim";
-pub const NODE_CORPUS_TYPE: &str = "NodeCorpus";
 
 // cargo's build-output dir (a `target` dir beside a Cargo.toml) is realization output, not
 // source: a corpus copy under it (e.g. target/func_env_semantic_baseline_corpus/dag/**) must
@@ -3093,14 +3080,6 @@ mod process_workspace_root_tests {
     }
 
     #[test]
-    fn selected_closure_overlap_scaffold_marker_is_declared() {
-        assert_eq!(
-            super::CLI_RUN_SELECTED_CLOSURE_OVERLAP_SCAFFOLD_MARKER,
-            "cli_run_selected_closure_overlap_probe"
-        );
-    }
-
-    #[test]
     fn compile_clean_diagnostic_histogram_scaffold_marker_is_declared() {
         assert_eq!(
             super::CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER,
@@ -4974,10 +4953,6 @@ pub(crate) fn repo_rel(path: &Path) -> String {
     // caller-supplied roots (temp fixture trees, other checkouts), whose files key
     // by their absolute spelling; relative-not-under-root stays a refusal.
     module_index_path_key(path)
-}
-
-pub(crate) fn is_test_dag(path: &str) -> bool {
-    path.ends_with("_test.dag")
 }
 
 pub(crate) fn corpus_dag_files() -> Vec<(String, String)> {
@@ -22943,1000 +22918,7 @@ mod closure_bare_disposition_tests {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ResolvedDeclRef {
-    pub module: String,
-    pub name: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(tag = "arm", rename_all = "snake_case")]
-pub enum OwnedDataDeclInitializer {
-    BoolWitnessClaim {
-        witness_entry: String,
-        witness_function: String,
-    },
-    NodeCorpus,
-    Other {
-        resolved: ResolvedDeclRef,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct OwnedDataDeclRecord {
-    pub entry: String,
-    pub module: String,
-    pub decl_name: String,
-    pub initializer: OwnedDataDeclInitializer,
-}
-
-fn literal_string_from_expr(node: &Rc<Node>) -> Option<String> {
-    if let ExprData::ExprLiteral { value } = &*node.expr_data {
-        if let LiteralValue::LitStr { value: s } = value.as_ref() {
-            return Some(s.clone());
-        }
-    }
-    None
-}
-
-fn symbol_name_from_expr(
-    node: &Rc<Node>,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-) -> Option<String> {
-    binding_name_from_expr(node, source_indices)
-}
-
-fn field_init_label(
-    field_init: &Rc<Node>,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-) -> String {
-    let si = Rc::new(source_indices.clone());
-    let authored = field_init_node_name_at(field_init.clone(), si);
-    if !authored.is_empty() {
-        return authored;
-    }
-    field_init.name.clone()
-}
-
-fn field_init_named<'a>(
-    record: &'a Rc<Node>,
-    field: &str,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-) -> Option<Rc<Node>> {
-    for child in record.children.iter() {
-        if field_init_label(child, source_indices) == field {
-            return Some(field_init_node_value(child.clone()));
-        }
-    }
-    None
-}
-
-fn binding_name_from_expr(
-    node: &Rc<Node>,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-) -> Option<String> {
-    if let ExprData::ExprVar { .. } = &*node.expr_data {
-        let name = expr_var_name_at(node.clone(), Rc::new(source_indices.clone()));
-        if !name.is_empty() {
-            return Some(name);
-        }
-    }
-    let name = authored_name_at(Rc::new(source_indices.clone()), node.clone());
-    if name.is_empty() {
-        None
-    } else {
-        Some(name)
-    }
-}
-
-fn extract_bool_witness_transport(
-    claim_body: &Rc<Node>,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-) -> (String, String) {
-    let Some(witness_node) = field_init_named(claim_body, "witness", source_indices) else {
-        return (String::new(), String::new());
-    };
-    let entry = field_init_named(&witness_node, "entry", source_indices)
-        .and_then(|n| literal_string_from_expr(&n))
-        .unwrap_or_default();
-    let function = field_init_named(&witness_node, "function", source_indices)
-        .and_then(|n| symbol_name_from_expr(&n, source_indices))
-        .unwrap_or_default();
-    (entry, function)
-}
-
-fn module_from_qualified_identity(identity: &str) -> Option<String> {
-    let (module, name) = identity.rsplit_once('.')?;
-    if module.is_empty() || name.is_empty() {
-        None
-    } else {
-        Some(module.to_string())
-    }
-}
-
-fn defining_module_for_variant(
-    variant_to_enum: &im::HashMap<String, String>,
-    variant_name: &str,
-) -> Option<String> {
-    // variant_to_enum is keyed by VARIANT leaf. Values are owner identities `<module>.<name>`.
-    // No row, the collision sentinel "", or an unqualified identity has no module part:
-    // return None so the caller refuses. Do not scan type environments for a leaf match.
-    let parent_enum = variant_to_enum.get(variant_name)?;
-    module_from_qualified_identity(parent_enum)
-}
-
-fn defining_module_for_type_identity(
-    type_summaries: &Rc<crate::v1_compiler_infer_emit_info::TypeSummaryIndex>,
-    identity: &str,
-) -> Option<String> {
-    // Exact declaration key only. type_summary_lookup / type_summary_by_leaf are leaf scans.
-    if !identity.contains('.') {
-        return None;
-    }
-    match (*crate::v1_compiler_infer_emit_info::type_summary_at_key(
-        type_summaries.clone(),
-        identity.to_string(),
-    ))
-    .clone()
-    {
-        crate::v1_compiler_infer_emit_info::TypeSummaryLookup::TypeSummaryFound { summary } => {
-            module_from_qualified_identity(&summary.key)
-        }
-        _ => None,
-    }
-}
-
-fn defining_module_for_type_expr(
-    type_summaries: &Rc<crate::v1_compiler_infer_emit_info::TypeSummaryIndex>,
-    type_decls: &Rc<crate::v1_compiler_infer_emit_info::TypeDeclIndex>,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-    type_expr: &Rc<Node>,
-) -> Option<String> {
-    match (*crate::v1_compiler_infer_emit_info::type_summary_of_reference(
-        type_summaries.clone(),
-        type_decls.clone(),
-        type_expr.clone(),
-        Rc::new(source_indices.clone()),
-    ))
-    .clone()
-    {
-        crate::v1_compiler_infer_emit_info::TypeSummaryLookup::TypeSummaryFound { summary } => {
-            module_from_qualified_identity(&summary.key)
-        }
-        _ => None,
-    }
-}
-
-#[cfg(test)]
-mod defining_module_lookup_tests {
-    use super::*;
-
-    #[test]
-    fn bool_witness_claim_variant_resolves_to_verification_module() {
-        let mut variant_to_enum = im::HashMap::new();
-        variant_to_enum.insert(
-            "BoolWitnessClaim".to_string(),
-            "v2.std.verification.UnifiedTestClaim".to_string(),
-        );
-        variant_to_enum.insert(
-            "NodeCorpus".to_string(),
-            "v2.std.verification.UnifiedTestClaim".to_string(),
-        );
-        assert_eq!(
-            defining_module_for_variant(&variant_to_enum, "BoolWitnessClaim"),
-            Some("v2.std.verification".to_string()),
-            "the owned-data BoolWitnessClaim path keys variant_to_enum by the variant leaf"
-        );
-        assert_eq!(
-            defining_module_for_variant(&variant_to_enum, "UnifiedTestClaim"),
-            None,
-            "the coproduct leaf is not a variant key"
-        );
-    }
-
-    #[test]
-    fn unqualified_or_sentinel_variant_identity_refuses() {
-        let mut variant_to_enum = im::HashMap::new();
-        variant_to_enum.insert("NoDot".to_string(), "UnifiedTestClaim".to_string());
-        variant_to_enum.insert("Sentinel".to_string(), "".to_string());
-        assert_eq!(defining_module_for_variant(&variant_to_enum, "NoDot"), None);
-        assert_eq!(
-            defining_module_for_variant(&variant_to_enum, "Sentinel"),
-            None
-        );
-        assert_eq!(
-            defining_module_for_variant(&variant_to_enum, "Missing"),
-            None
-        );
-    }
-
-    #[test]
-    fn type_identity_uses_exact_summary_key_not_a_leaf() {
-        use crate::v1_compiler_infer_emit_info::{
-            empty_type_summary_index, type_summary_index_insert, TypeRepr, TypeSummary,
-        };
-        let summary = Rc::new(TypeSummary {
-            name: "UnifiedTestClaim".to_string(),
-            key: "v2.std.verification.UnifiedTestClaim".to_string(),
-            repr: Rc::new(TypeRepr::EnumRepr { unit_only: false }),
-            field_summaries: crate::v1_rt::rc_empty_map(),
-            field_type_map: crate::v1_rt::rc_empty_map(),
-            field_import_surface_names: Rc::new(im::Vector::new()),
-            variant_name_set: crate::v1_rt::rc_empty_map(),
-            generic_param_names: Rc::new(im::Vector::new()),
-            has_fn_fields: false,
-        });
-        let index = type_summary_index_insert(
-            empty_type_summary_index(),
-            "v2.std.verification.UnifiedTestClaim".to_string(),
-            "UnifiedTestClaim".to_string(),
-            summary,
-        );
-        assert_eq!(
-            defining_module_for_type_identity(&index, "v2.std.verification.UnifiedTestClaim"),
-            Some("v2.std.verification".to_string())
-        );
-        assert_eq!(
-            defining_module_for_type_identity(&index, "UnifiedTestClaim"),
-            None,
-            "a bare type leaf must not scan keys_by_leaf"
-        );
-    }
-
-    #[test]
-    fn user_type_named_like_a_known_variant_keeps_its_module() {
-        use crate::v1_compiler_infer_emit_info::{
-            empty_type_decl_index, empty_type_summary_index, type_summary_index_insert, TypeRepr,
-            TypeSummary,
-        };
-        let mut variant_to_enum = im::HashMap::new();
-        variant_to_enum.insert(
-            "BoolWitnessClaim".to_string(),
-            "v2.std.verification.UnifiedTestClaim".to_string(),
-        );
-        let summary = Rc::new(TypeSummary {
-            name: "BoolWitnessClaim".to_string(),
-            key: "owner.types.BoolWitnessClaim".to_string(),
-            repr: Rc::new(TypeRepr::StructRepr),
-            field_summaries: crate::v1_rt::rc_empty_map(),
-            field_type_map: crate::v1_rt::rc_empty_map(),
-            field_import_surface_names: Rc::new(im::Vector::new()),
-            variant_name_set: crate::v1_rt::rc_empty_map(),
-            generic_param_names: Rc::new(im::Vector::new()),
-            has_fn_fields: false,
-        });
-        let index = type_summary_index_insert(
-            empty_type_summary_index(),
-            "owner.types.BoolWitnessClaim".to_string(),
-            "BoolWitnessClaim".to_string(),
-            summary,
-        );
-        let source_indices = HashMap::new();
-        let decls = empty_type_decl_index();
-        assert_eq!(
-            defining_module_for_inferred_result(
-                &variant_to_enum,
-                &index,
-                &decls,
-                &source_indices,
-                None,
-                "owner.types.BoolWitnessClaim",
-            ),
-            Some("owner.types".to_string()),
-            "a user type identity named like a variant leaf is not routed to v2.std.verification"
-        );
-        assert_eq!(
-            defining_module_for_variant(&variant_to_enum, "BoolWitnessClaim"),
-            Some("v2.std.verification".to_string()),
-            "the variant map still answers the record-lit arm"
-        );
-    }
-
-    fn synthetic_named_node(name: &str) -> Rc<Node> {
-        let span = no_span();
-        Rc::new(Node {
-            occurrence_identity: Rc::new(
-                crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
-            ),
-            name: name.to_string(),
-            ident: None,
-            span: span.clone(),
-            ident_span: Some(span),
-            children: Rc::new(im::Vector::new()),
-            connective: Connective::NoConnective,
-            params: Rc::new(im::Vector::new()),
-            inferred: None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(im::Vector::new()),
-            body: None,
-            transport: None,
-            properties: Rc::new(im::Vector::new()),
-            type_annotation: None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: None,
-            module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
-            declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
-            declaration: None,
-            expr_data: Rc::new(ExprData::NoExprData),
-        })
-    }
-
-    #[test]
-    fn inferred_user_bool_witness_claim_keeps_its_module_at_initializer_ref() {
-        use crate::std_decl_ref::decl_ref;
-        use crate::v1_compiler_infer_emit_info::{
-            empty_emit_graph_info, empty_type_decl_index, empty_type_summary_index,
-            type_decl_index_insert, type_summary_index_insert, TypeRepr, TypeSummary,
-        };
-
-        let mut variant_to_enum = im::HashMap::new();
-        variant_to_enum.insert(
-            "BoolWitnessClaim".to_string(),
-            "v2.std.verification.UnifiedTestClaim".to_string(),
-        );
-
-        let mut type_node = (*synthetic_named_node("BoolWitnessClaim")).clone();
-        type_node.declaration = Some(decl_ref(
-            "owner.types".to_string(),
-            "BoolWitnessClaim".to_string(),
-        ));
-        let type_node = Rc::new(type_node);
-
-        let decl_item = type_node.clone();
-        let decls = type_decl_index_insert(
-            empty_type_decl_index(),
-            "owner.types".to_string(),
-            "BoolWitnessClaim".to_string(),
-            decl_item,
-        );
-        let summary = Rc::new(TypeSummary {
-            name: "BoolWitnessClaim".to_string(),
-            key: "owner.types.BoolWitnessClaim".to_string(),
-            repr: Rc::new(TypeRepr::StructRepr),
-            field_summaries: crate::v1_rt::rc_empty_map(),
-            field_type_map: crate::v1_rt::rc_empty_map(),
-            field_import_surface_names: Rc::new(im::Vector::new()),
-            variant_name_set: crate::v1_rt::rc_empty_map(),
-            generic_param_names: Rc::new(im::Vector::new()),
-            has_fn_fields: false,
-        });
-        let summaries = type_summary_index_insert(
-            empty_type_summary_index(),
-            "owner.types.BoolWitnessClaim".to_string(),
-            "BoolWitnessClaim".to_string(),
-            summary,
-        );
-
-        let mut emit_info = (*empty_emit_graph_info()).clone();
-        emit_info.variant_to_enum = Rc::new(variant_to_enum);
-        emit_info.type_summaries = summaries;
-        emit_info.type_decl_items = decls;
-
-        let mut body = (*synthetic_named_node("")).clone();
-        body.inferred = Some(Rc::new(InferredNode::Resolved { node: type_node }));
-        let body = Rc::new(body);
-
-        let graph = ResolvedGraph {
-            modules: Rc::new(im::Vector::new()),
-            item_registry: Rc::new(im::HashMap::new()),
-            item_leaf_owner_modules: Rc::new(im::HashMap::new()),
-            diagnostics: Rc::new(im::Vector::new()),
-        };
-        let source_indices = HashMap::new();
-        let resolved =
-            resolved_initializer_decl_ref(&graph, &source_indices, &emit_info, &body, None)
-                .expect("initializer ref must resolve the carried user declaration");
-        assert_eq!(
-            resolved.module, "owner.types",
-            "carried BoolWitnessClaim declaration must beat variant_to_enum UnifiedTestClaim"
-        );
-        assert_eq!(resolved.name, "BoolWitnessClaim");
-    }
-
-    #[test]
-    fn ambiguous_enum_name_is_not_answered_false() {
-        use crate::v1_compiler_infer_emit_info::{
-            empty_type_summary_index, is_enum_in_summaries, type_summary_index_insert, TypeRepr,
-            TypeSummary, TypeSummaryQuestion,
-        };
-        let enum_summary = Rc::new(TypeSummary {
-            name: "SharedName".to_string(),
-            key: "owner.enums.SharedName".to_string(),
-            repr: Rc::new(TypeRepr::EnumRepr { unit_only: false }),
-            field_summaries: crate::v1_rt::rc_empty_map(),
-            field_type_map: crate::v1_rt::rc_empty_map(),
-            field_import_surface_names: Rc::new(im::Vector::new()),
-            variant_name_set: crate::v1_rt::rc_empty_map(),
-            generic_param_names: Rc::new(im::Vector::new()),
-            has_fn_fields: false,
-        });
-        let struct_summary = Rc::new(TypeSummary {
-            name: "SharedName".to_string(),
-            key: "owner.types.SharedName".to_string(),
-            repr: Rc::new(TypeRepr::StructRepr),
-            field_summaries: crate::v1_rt::rc_empty_map(),
-            field_type_map: crate::v1_rt::rc_empty_map(),
-            field_import_surface_names: Rc::new(im::Vector::new()),
-            variant_name_set: crate::v1_rt::rc_empty_map(),
-            generic_param_names: Rc::new(im::Vector::new()),
-            has_fn_fields: false,
-        });
-        let index = type_summary_index_insert(
-            type_summary_index_insert(
-                empty_type_summary_index(),
-                "owner.enums.SharedName".to_string(),
-                "SharedName".to_string(),
-                enum_summary,
-            ),
-            "owner.types.SharedName".to_string(),
-            "SharedName".to_string(),
-            struct_summary,
-        );
-        assert!(
-            matches!(
-                (*is_enum_in_summaries(index, "SharedName".to_string())).clone(),
-                TypeSummaryQuestion::QuestionNameAmbiguous { leaf } if leaf == "SharedName"
-            ),
-            "disagreement must not collapse to a decided non-enum"
-        );
-    }
-
-    #[test]
-    fn ambiguous_enum_name_refuses_instead_of_non_enum_emission() {
-        use crate::v1_compiler_infer_emit_info::{
-            empty_type_summary_index, type_summary_index_insert, TypeRepr, TypeSummary,
-        };
-        let enum_summary = Rc::new(TypeSummary {
-            name: "SharedName".to_string(),
-            key: "owner.enums.SharedName".to_string(),
-            repr: Rc::new(TypeRepr::EnumRepr { unit_only: false }),
-            field_summaries: crate::v1_rt::rc_empty_map(),
-            field_type_map: crate::v1_rt::rc_empty_map(),
-            field_import_surface_names: Rc::new(im::Vector::new()),
-            variant_name_set: crate::v1_rt::rc_empty_map(),
-            generic_param_names: Rc::new(im::Vector::new()),
-            has_fn_fields: false,
-        });
-        let struct_summary = Rc::new(TypeSummary {
-            name: "SharedName".to_string(),
-            key: "owner.types.SharedName".to_string(),
-            repr: Rc::new(TypeRepr::StructRepr),
-            field_summaries: crate::v1_rt::rc_empty_map(),
-            field_type_map: crate::v1_rt::rc_empty_map(),
-            field_import_surface_names: Rc::new(im::Vector::new()),
-            variant_name_set: crate::v1_rt::rc_empty_map(),
-            generic_param_names: Rc::new(im::Vector::new()),
-            has_fn_fields: false,
-        });
-        let index = type_summary_index_insert(
-            type_summary_index_insert(
-                empty_type_summary_index(),
-                "owner.enums.SharedName".to_string(),
-                "SharedName".to_string(),
-                enum_summary,
-            ),
-            "owner.types.SharedName".to_string(),
-            "SharedName".to_string(),
-            struct_summary,
-        );
-        let parent = crate::v1_compiler_emit_rust::pattern_parent_enum(
-            "Arm".to_string(),
-            None,
-            "SharedName".to_string(),
-            index,
-        );
-        let refusal = crate::v1_compiler_emit_rust::rust_ambiguous_type_name_refusal(
-            "SharedName".to_string(),
-        );
-        assert_eq!(
-            parent,
-            Some(refusal),
-            "an ambiguous enum name must emit the typed refusal, not a non-enum parent"
-        );
-    }
-}
-
-fn lookup_resolved_type_node(graph: &ResolvedGraph, type_name: &str) -> Option<Rc<Node>> {
-    for tm in graph.modules.iter() {
-        if let Some(node) = lookup_type_by_name(tm.type_env.clone(), type_name.to_string()) {
-            return Some(node);
-        }
-    }
-    None
-}
-
-fn declared_type_name_from_annotation(
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-    type_annotation: &Rc<Node>,
-) -> Option<String> {
-    let si = Rc::new(source_indices.clone());
-    let name = authored_name_at(si, type_annotation.clone());
-    if name.is_empty() {
-        None
-    } else {
-        Some(name)
-    }
-}
-
-fn defining_module_for_inferred_result(
-    variant_to_enum: &im::HashMap<String, String>,
-    type_summaries: &Rc<crate::v1_compiler_infer_emit_info::TypeSummaryIndex>,
-    type_decls: &Rc<crate::v1_compiler_infer_emit_info::TypeDeclIndex>,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-    inferred_node: Option<&Rc<Node>>,
-    name: &str,
-) -> Option<String> {
-    // Type declaration identity first. A user type whose leaf matches a known variant
-    // (BoolWitnessClaim) must not be stolen by variant_to_enum spelling.
-    inferred_node
-        .and_then(|node| {
-            defining_module_for_type_expr(type_summaries, type_decls, source_indices, node)
-        })
-        .or_else(|| defining_module_for_type_identity(type_summaries, name))
-        .or_else(|| defining_module_for_variant(variant_to_enum, name))
-}
-
-fn resolved_decl_ref_from_type_name(
-    variant_to_enum: &im::HashMap<String, String>,
-    type_summaries: &Rc<crate::v1_compiler_infer_emit_info::TypeSummaryIndex>,
-    name: &str,
-) -> Result<ResolvedDeclRef, String> {
-    let module = defining_module_for_type_identity(type_summaries, name)
-        .or_else(|| defining_module_for_variant(variant_to_enum, name))
-        .ok_or_else(|| format!("no defining module for resolved type '{}'", name))?;
-    let stored_name = crate::v1_std_core::qualified_last_segment(name.to_string());
-    Ok(ResolvedDeclRef {
-        module,
-        name: if stored_name.is_empty() {
-            name.to_string()
-        } else {
-            stored_name
-        },
-    })
-}
-
-fn resolved_initializer_decl_ref(
-    graph: &ResolvedGraph,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-    emit_info: &crate::v1_compiler_infer_emit_info::EmitGraphInfo,
-    body: &Rc<Node>,
-    type_annotation: Option<&Rc<Node>>,
-) -> Result<ResolvedDeclRef, String> {
-    let variant_to_enum = emit_info.variant_to_enum.as_ref();
-    let type_summaries = &emit_info.type_summaries;
-    let type_decls = &emit_info.type_decl_items;
-    let si = Rc::new(source_indices.clone());
-    if let ExprData::ExprRecordLit { parent_enum } = &*body.expr_data {
-        if let Some(parent_name) = parent_enum.as_deref() {
-            // A qualified constructor spelling (v2.std.verification.BoolWitnessClaim)
-            // names the same arm as its bare last segment — the module prefix already
-            // resolved the parent coproduct (the #6869 payload-variant class). The arm
-            // check and the stored decl name both use the bare arm name; a genuinely
-            // wrong variant still refuses.
-            let variant_name = crate::v1_std_core::qualified_last_segment(authored_name_at(
-                si.clone(),
-                body.clone(),
-            ));
-            if variant_name.is_empty() {
-                return Err(
-                    "coproduct variant initializer missing constructor identity".to_string()
-                );
-            }
-            let parent_type = lookup_resolved_type_node(graph, parent_name).ok_or_else(|| {
-                format!(
-                    "resolved parent coproduct '{}' not found in typed graph",
-                    parent_name
-                )
-            })?;
-            if !has_child_named(parent_type, variant_name.clone(), si.clone()) {
-                return Err(format!(
-                    "'{}' is not a resolved variant arm of coproduct '{}'",
-                    variant_name, parent_name
-                ));
-            }
-            let module =
-                defining_module_for_variant(variant_to_enum, &variant_name).ok_or_else(|| {
-                    format!(
-                        "no defining module for resolved coproduct variant '{}'",
-                        variant_name
-                    )
-                })?;
-            return Ok(ResolvedDeclRef {
-                module,
-                name: variant_name,
-            });
-        }
-    }
-
-    let inferred_name = match body.inferred.as_deref() {
-        Some(InferredNode::Resolved { node }) => {
-            let resolved_name = authored_name_at(si.clone(), node.clone());
-            if resolved_name.is_empty() {
-                None
-            } else {
-                Some(resolved_name)
-            }
-        }
-        Some(InferredNode::CompilerError { message, .. }) => {
-            return Err(format!("unresolved initializer type: {}", message));
-        }
-        Some(InferredNode::TypeVariable { .. }) => {
-            return Err("unresolved initializer type variable".to_string());
-        }
-        Some(InferredNode::Divergent) => {
-            return Err("initializer diverges, so it names no declared type".to_string());
-        }
-        None => None,
-    };
-    if let Some(name) = inferred_name {
-        let inferred_node = match body.inferred.as_deref() {
-            Some(InferredNode::Resolved { node }) => Some(node),
-            _ => None,
-        };
-        if let Some(module) = defining_module_for_inferred_result(
-            variant_to_enum,
-            type_summaries,
-            type_decls,
-            source_indices,
-            inferred_node,
-            &name,
-        ) {
-            return Ok(ResolvedDeclRef {
-                module,
-                name: crate::v1_std_core::qualified_last_segment(name),
-            });
-        }
-        return Err(format!("no defining module for resolved type '{}'", name));
-    }
-    if let Some(ann) = type_annotation {
-        if let Some(module) =
-            defining_module_for_type_expr(type_summaries, type_decls, source_indices, ann)
-        {
-            let name = declared_type_name_from_annotation(source_indices, ann)
-                .unwrap_or_else(|| "type".to_string());
-            return Ok(ResolvedDeclRef {
-                module,
-                name: crate::v1_std_core::qualified_last_segment(name),
-            });
-        }
-        if let Some(name) = declared_type_name_from_annotation(source_indices, ann) {
-            return resolved_decl_ref_from_type_name(variant_to_enum, type_summaries, &name);
-        }
-    }
-    Err(
-        "resolved initializer has empty type identity (no inferred head or declared annotation)"
-            .to_string(),
-    )
-}
-
-fn is_resolved_bool_witness_claim(resolved: &ResolvedDeclRef) -> bool {
-    resolved.module == UNIFIED_CLAIM_VERIFICATION_MODULE && resolved.name == BOOL_WITNESS_CLAIM_TYPE
-}
-
-fn is_resolved_node_corpus(resolved: &ResolvedDeclRef) -> bool {
-    resolved.module == UNIFIED_CLAIM_VERIFICATION_MODULE && resolved.name == NODE_CORPUS_TYPE
-}
-
-fn entry_typed_module(
-    graph: &ResolvedGraph,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-    entry_module: &str,
-) -> Result<Rc<TypedModule>, String> {
-    let si = Rc::new(source_indices.clone());
-    graph
-        .modules
-        .iter()
-        .find(|tm| authored_name_at(si.clone(), tm.module.clone()) == entry_module)
-        .cloned()
-        .ok_or_else(|| {
-            format!(
-                "entry module '{}' not found in resolved graph",
-                entry_module
-            )
-        })
-}
-
-fn path_excluded(path: &Path, exclude_subpaths: &[String]) -> bool {
-    let path_str = path.to_string_lossy();
-    exclude_subpaths
-        .iter()
-        .any(|ex| !ex.is_empty() && path_str.contains(ex))
-}
-
-fn entry_likely_has_unified_claim_owned_data(content: &str) -> bool {
-    content
-        .lines()
-        .any(|line| line.trim_start().starts_with("data unified_claim_"))
-}
-
-fn top_level_decl_names(content: &str) -> Vec<String> {
-    const ITEM_KEYWORDS: [&str; 8] = [
-        "data ",
-        "fn ",
-        "func ",
-        "type ",
-        "service ",
-        "const ",
-        "pattern ",
-        "resource ",
-    ];
-    let mut names = Vec::new();
-    for line in content.lines() {
-        let Some(rest) = ITEM_KEYWORDS.iter().find_map(|kw| line.strip_prefix(kw)) else {
-            continue;
-        };
-        let name: String = rest
-            .chars()
-            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-            .collect();
-        if !name.is_empty() {
-            names.push(name);
-        }
-    }
-    names
-}
-
-struct DiscoveryResolveGroup {
-    entries: Vec<(String, String, usize)>,
-    sources: HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
-    decl_names: HashMap<String, String>,
-}
-
-fn closure_group_conflict(
-    group: &DiscoveryResolveGroup,
-    closure: &[Rc<v1_compiler_compile::SourceFile>],
-    names_by_file: &HashMap<String, Rc<Vec<String>>>,
-) -> Option<(String, String, String)> {
-    for source in closure {
-        if group.sources.contains_key(&source.path) {
-            continue;
-        }
-        for name in names_by_file[&source.path].iter() {
-            if let Some(existing) = group.decl_names.get(name) {
-                if existing != &source.path {
-                    return Some((name.clone(), existing.clone(), source.path.clone()));
-                }
-            }
-        }
-    }
-    None
-}
-
-fn add_closure_to_group(
-    group: &mut DiscoveryResolveGroup,
-    closure: Vec<Rc<v1_compiler_compile::SourceFile>>,
-    names_by_file: &HashMap<String, Rc<Vec<String>>>,
-) {
-    for source in closure {
-        if group.sources.contains_key(&source.path) {
-            continue;
-        }
-        for name in names_by_file[&source.path].iter() {
-            group.decl_names.insert(name.clone(), source.path.clone());
-        }
-        group.sources.insert(source.path.clone(), source);
-    }
-}
-
-pub struct OwnedDataDiscovery {
-    pub records: Vec<OwnedDataDeclRecord>,
-    pub entry_count: usize,
-    pub graph_resolves: usize,
-    pub group_split_collisions: Vec<String>,
-}
-
-pub fn discover_owned_data_decls(
-    source_roots: &[String],
-    scan_dir: &str,
-    exclude_subpaths: &[String],
-) -> Result<OwnedDataDiscovery, String> {
-    let scan_path = Path::new(scan_dir);
-    if !scan_path.is_dir() {
-        return Err(format!("scan dir does not exist: {}", scan_dir));
-    }
-
-    let mut files = Vec::new();
-    collect_dag_files(scan_path, &mut files);
-    files.retain(|p| !path_excluded(p.path(), exclude_subpaths));
-
-    // The process-shared index, so every entry's reference closure reads the one parse per file
-    // the floor's other closure walks already hold.
-    let index = try_process_shared_index(source_roots)?;
-
-    let mut names_by_file: HashMap<String, Rc<Vec<String>>> = HashMap::new();
-    let mut groups: Vec<DiscoveryResolveGroup> = Vec::new();
-    let mut group_split_collisions: Vec<String> = Vec::new();
-    let mut entry_count = 0usize;
-    for source in files {
-        let path = source.path();
-        let entry = path.to_string_lossy().to_string();
-        let content = source
-            .read()
-            .map_err(|e| format!("failed to read {:?}: {}", path, e))?;
-        if !entry_likely_has_unified_claim_owned_data(&content) {
-            continue;
-        }
-        let entry_module = extract_module_path(&content).ok_or_else(|| {
-            format!(
-                "missing module declaration in entry {}; cannot classify owned decls",
-                entry
-            )
-        })?;
-        let marker_count = content
-            .lines()
-            .filter(|line| line.starts_with("data unified_claim_"))
-            .count();
-        entry_count += 1;
-
-        let closure = load_sources_for_entry_with_index(&index, &entry)?;
-        for source in &closure {
-            names_by_file
-                .entry(source.path.clone())
-                .or_insert_with(|| Rc::new(top_level_decl_names(&source.content)));
-        }
-
-        let member = (entry, entry_module, marker_count);
-        let mut first_conflict: Option<(String, String, String)> = None;
-        match groups.iter_mut().find(|g| {
-            match closure_group_conflict(g, &closure, &names_by_file) {
-                None => true,
-                Some(conflict) => {
-                    first_conflict.get_or_insert(conflict);
-                    false
-                }
-            }
-        }) {
-            Some(group) => {
-                group.entries.push(member);
-                add_closure_to_group(group, closure, &names_by_file);
-            }
-            None => {
-                if let Some((name, existing_file, new_file)) = first_conflict {
-                    group_split_collisions.push(format!(
-                        "entry {} split off over decl `{}` ({} vs {})",
-                        member.0, name, existing_file, new_file
-                    ));
-                }
-                let mut group = DiscoveryResolveGroup {
-                    entries: vec![member],
-                    sources: HashMap::new(),
-                    decl_names: HashMap::new(),
-                };
-                add_closure_to_group(&mut group, closure, &names_by_file);
-                groups.push(group);
-            }
-        }
-    }
-
-    let graph_resolves = groups.len();
-    let mut all_records = Vec::new();
-    for group in groups {
-        let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
-            group.sources.into_iter().map(|(_, v)| v).collect();
-        sources.sort_by(|a, b| a.path.cmp(&b.path));
-        let (graph, source_indices) = resolved_graph_from_sources(sources)?;
-        let si: HashMap<String, Rc<NewlineIndex>> = source_indices
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
-        // THE ONE READER OF variant_to_enum BUILDS IT, once per group graph, through the builder
-        // emission uses: the resolve no longer carries EmitGraphInfo (v1.compiler.infer_items
-        // ResolvedGraph), and owned-data discovery is the consumer that demands this projection.
-        let emit_info = v1_compiler_infer::build_emit_graph_info(
-            graph.modules.clone(),
-            graph.item_registry.clone(),
-        );
-        for (entry, entry_module, marker_count) in group.entries {
-            let records =
-                owned_data_decls_for_entry(&graph, &si, &emit_info, &entry, &entry_module)?;
-            if records.len() != marker_count {
-                return Err(format!(
-                    "{}: merged-resolve discovery found {} owned unified_claim record(s) but the entry declares {} top-level `data unified_claim_` marker(s)",
-                    entry,
-                    records.len(),
-                    marker_count
-                ));
-            }
-            all_records.extend(records);
-        }
-    }
-
-    all_records.sort_by(|a, b| {
-        a.entry
-            .cmp(&b.entry)
-            .then_with(|| a.decl_name.cmp(&b.decl_name))
-    });
-    verify_bool_witness_transport_projection_complete(&all_records)?;
-    Ok(OwnedDataDiscovery {
-        records: all_records,
-        entry_count,
-        graph_resolves,
-        group_split_collisions,
-    })
-}
-
-pub fn bool_witness_claim_arm_count(records: &[OwnedDataDeclRecord]) -> usize {
-    records
-        .iter()
-        .filter(|r| {
-            matches!(
-                r.initializer,
-                OwnedDataDeclInitializer::BoolWitnessClaim { .. }
-            )
-        })
-        .count()
-}
-
-fn unified_claim_arm_count(records: &[OwnedDataDeclRecord]) -> usize {
-    records
-        .iter()
-        .filter(|r| {
-            matches!(
-                r.initializer,
-                OwnedDataDeclInitializer::BoolWitnessClaim { .. }
-                    | OwnedDataDeclInitializer::NodeCorpus
-            )
-        })
-        .count()
-}
-
-fn illegal_other_init_count(records: &[OwnedDataDeclRecord]) -> usize {
-    records
-        .iter()
-        .filter(|r| {
-            let OwnedDataDeclInitializer::Other { resolved } = &r.initializer else {
-                return false;
-            };
-            is_resolved_bool_witness_claim(resolved) || is_resolved_node_corpus(resolved)
-        })
-        .count()
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OwnedDataDiscoveryReceipt {
-    pub unified_claim_arm_count: usize,
-    pub bool_witness_claim_arm_count: usize,
-    pub illegal_other_init_count: usize,
-    pub bool_witness_transport_row_count: usize,
-    pub transport_projection_complete: bool,
-}
-
 pub const MANIFEST_INLINE_LIST_MAX: usize = 64;
-
-pub fn compute_owned_data_discovery_receipt(
-    records: &[OwnedDataDeclRecord],
-) -> Result<OwnedDataDiscoveryReceipt, String> {
-    verify_bool_witness_transport_projection_complete(records)?;
-    let bool_witness_transport_row_count = owned_data_bool_witness_transport_tsv(records)?
-        .lines()
-        .filter(|l| !l.is_empty())
-        .count();
-    let bool_witness_claim_arm_count = bool_witness_claim_arm_count(records);
-    let illegal = illegal_other_init_count(records);
-    Ok(OwnedDataDiscoveryReceipt {
-        unified_claim_arm_count: unified_claim_arm_count(records),
-        bool_witness_claim_arm_count,
-        illegal_other_init_count: illegal,
-        bool_witness_transport_row_count,
-        transport_projection_complete: illegal == 0
-            && bool_witness_claim_arm_count == bool_witness_transport_row_count,
-    })
-}
-
-pub fn verify_bool_witness_transport_projection_complete(
-    records: &[OwnedDataDeclRecord],
-) -> Result<(), String> {
-    let arm_count = bool_witness_claim_arm_count(records);
-    let tsv = owned_data_bool_witness_transport_tsv(records)?;
-    let row_count = tsv.lines().filter(|l| !l.is_empty()).count();
-    if arm_count != row_count {
-        return Err(format!(
-            "BoolWitnessClaim arm count ({arm_count}) != transport projection row count ({row_count})"
-        ));
-    }
-    Ok(())
-}
 
 fn dag_string_escape_core(s: &str) -> String {
     s.replace('\\', "\\\\")
@@ -23959,121 +22941,6 @@ fn dag_embedded_dag_source_escape(s: &str) -> String {
     dag_string_escape_core(s)
         .replace('{', "\\{")
         .replace('}', "\\}")
-}
-
-fn manifest_symbol_for_resolved_decl(module: &str, name: &str) -> String {
-    match (module, name) {
-        (UNIFIED_CLAIM_VERIFICATION_MODULE, BOOL_WITNESS_CLAIM_TYPE) => {
-            "unified_claim_arm_bool_witness_claim".to_string()
-        }
-        (UNIFIED_CLAIM_VERIFICATION_MODULE, NODE_CORPUS_TYPE) => {
-            "unified_claim_arm_node_corpus".to_string()
-        }
-        _ => format!("^{}", name),
-    }
-}
-
-fn emit_owned_data_initializer(initializer: &OwnedDataDeclInitializer) -> Result<String, String> {
-    match initializer {
-        OwnedDataDeclInitializer::BoolWitnessClaim {
-            witness_entry,
-            witness_function,
-        } => Ok(format!(
-            "    initializer: OwnedBoolWitnessClaimInit {{\n      witness_entry: \"{}\",\n      witness_function: \"{}\"\n    }}",
-            dag_manifest_scalar_escape(witness_entry)?,
-            dag_manifest_scalar_escape(witness_function)?
-        )),
-        OwnedDataDeclInitializer::NodeCorpus => {
-            Ok("    initializer: OwnedNodeCorpusInit".to_string())
-        }
-        OwnedDataDeclInitializer::Other { resolved } => Ok(format!(
-            "    initializer: OwnedOtherInit {{\n      resolved: ResolvedDeclRef {{\n        module: \"{}\",\n        name: {}\n      }}\n    }}",
-            dag_manifest_scalar_escape(&resolved.module)?,
-            manifest_symbol_for_resolved_decl(&resolved.module, &resolved.name)
-        )),
-    }
-}
-
-pub fn emit_owned_data_manifest(
-    path: &Path,
-    records: &[OwnedDataDeclRecord],
-) -> Result<(), String> {
-    let receipt = compute_owned_data_discovery_receipt(records)?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("failed to create manifest parent {:?}: {}", parent, e))?;
-    }
-
-    let mut out = String::new();
-    out.push_str(
-        "// GENERATED by discover_owned_data — ephemeral host transport. DO NOT COMMIT.\n",
-    );
-    out.push_str("module v2.test.claim.workflow.host_discovered_owned_data_manifest\n\n\n");
-    out.push_str("import std.types { List }\n");
-    out.push_str("import std.types { Bool }\n");
-    out.push_str(
-        "import v2.compiler.discovery_enumeration {\n  OwnedBoolWitnessClaimInit,\n  OwnedDataDeclRecord,\n  OwnedDataDiscoveryReceipt,\n  OwnedNodeCorpusInit,\n  OwnedOtherInit,\n  ResolvedDeclRef,\n  unified_claim_arm_bool_witness_claim,\n  unified_claim_arm_node_corpus\n}\n\n\n",
-    );
-    out.push_str("data host_owned_data_discovery_receipt: OwnedDataDiscoveryReceipt = OwnedDataDiscoveryReceipt {\n");
-    out.push_str(&format!(
-        "  unified_claim_arm_count: {},\n",
-        receipt.unified_claim_arm_count
-    ));
-    out.push_str(&format!(
-        "  bool_witness_claim_arm_count: {},\n",
-        receipt.bool_witness_claim_arm_count
-    ));
-    out.push_str(&format!(
-        "  illegal_other_init_count: {},\n",
-        receipt.illegal_other_init_count
-    ));
-    out.push_str(&format!(
-        "  bool_witness_transport_row_count: {},\n",
-        receipt.bool_witness_transport_row_count
-    ));
-    out.push_str(&format!(
-        "  transport_projection_complete: {}\n",
-        receipt.transport_projection_complete
-    ));
-    out.push_str("}\n\n\n");
-    let inline_records = if records.len() <= MANIFEST_INLINE_LIST_MAX {
-        records
-    } else {
-        &[]
-    };
-    if inline_records.is_empty() && !records.is_empty() {
-        out.push_str(
-            "// Large corpus: inline list omitted; standing gates use host_owned_data_discovery_receipt + transport sidecar.\n",
-        );
-    }
-    out.push_str("data host_discovered_owned_decls: List<OwnedDataDeclRecord> = [\n");
-    for (idx, rec) in inline_records.iter().enumerate() {
-        if idx > 0 {
-            out.push(',');
-            out.push('\n');
-        }
-        out.push_str("  OwnedDataDeclRecord {\n");
-        out.push_str(&format!(
-            "    entry: \"{}\",\n",
-            dag_manifest_scalar_escape(&rec.entry)?
-        ));
-        out.push_str(&format!(
-            "    module: \"{}\",\n",
-            dag_manifest_scalar_escape(&rec.module)?
-        ));
-        out.push_str(&format!(
-            "    decl_name: \"{}\",\n",
-            dag_manifest_scalar_escape(&rec.decl_name)?
-        ));
-        out.push_str(&format!(
-            "{}\n",
-            emit_owned_data_initializer(&rec.initializer)?
-        ));
-        out.push_str("  }");
-    }
-    out.push_str("\n]\n");
-
-    std::fs::write(path, out).map_err(|e| format!("failed to write manifest {:?}: {}", path, e))
 }
 
 #[derive(Clone)]
@@ -24744,13 +23611,6 @@ pub fn peak_rss_vhwm_bytes() -> Option<u64> {
     }
 }
 
-fn matching_discovery_exclusion_substring(path: &str) -> Option<String> {
-    witness_exclusion_substrings()
-        .iter()
-        .find(|sub| path.contains(sub.as_str()))
-        .cloned()
-}
-
 fn path_matches_any_substring(path: &str, subs: &[String]) -> bool {
     subs.iter().any(|sub| path.contains(sub.as_str()))
 }
@@ -25086,7 +23946,7 @@ pub enum WitnessExecutionStanding {
 pub fn collect_stale_frozen_path_deferrals() -> Vec<(String, String, &'static str)> {
     let offline = witness_admission_offline_exclusion_substrings();
     let mut stale: Vec<(String, String, &'static str)> = Vec::new();
-    let mut decls_cache: std::collections::BTreeMap<String, Option<Vec<String>>> =
+    let mut decls_cache: std::collections::BTreeMap<String, Option<Result<Vec<String>, String>>> =
         std::collections::BTreeMap::new();
     for key in frozen_path_deferral_keys() {
         let Some((entry, function)) = key.split_once("::") else {
@@ -25103,12 +23963,7 @@ pub fn collect_stale_frozen_path_deferrals() -> Vec<(String, String, &'static st
         let decls = decls_cache.entry(entry.to_string()).or_insert_with(|| {
             std::fs::read_to_string(workspace_root().join(entry))
                 .ok()
-                .map(|c| {
-                    scan_test_decl_lines(&c)
-                        .into_iter()
-                        .map(|(name, _)| name)
-                        .collect()
-                })
+                .map(|c| test_marker::test_marked_decl_names(&c, entry))
         });
         match decls {
             None => stale.push((
@@ -25116,12 +23971,19 @@ pub fn collect_stale_frozen_path_deferrals() -> Vec<(String, String, &'static st
                 function.to_string(),
                 "entry file is absent",
             )),
-            Some(names) if !names.iter().any(|n| n == function) => stale.push((
+            // An entry that does not parse has no determinable test set: the row is refused,
+            // never judged against a partial or text-scanned one.
+            Some(Err(_)) => stale.push((
+                entry.to_string(),
+                function.to_string(),
+                "entry does not parse, so its test-marked declarations cannot be read",
+            )),
+            Some(Ok(names)) if !names.iter().any(|n| n == function) => stale.push((
                 entry.to_string(),
                 function.to_string(),
                 "entry no longer declares this test decl",
             )),
-            Some(_) => {}
+            Some(Ok(_)) => {}
         }
     }
     stale
@@ -25560,56 +24422,6 @@ pub(crate) fn collect_dag_files_tolerant(
     Ok(())
 }
 
-fn scan_test_decl_names(content: &str) -> Vec<String> {
-    scan_test_decl_lines(content)
-        .into_iter()
-        .map(|(name, _line)| name)
-        .collect()
-}
-
-fn scan_wire_contract_decl_names(content: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    for line in content.lines() {
-        let trimmed = line.trim_start();
-        if let Some(rest) = trimmed.strip_prefix("data ") {
-            let name: String = rest
-                .chars()
-                .take_while(|c| c.is_alphanumeric() || *c == '_')
-                .collect();
-            if name.is_empty() {
-                continue;
-            }
-            let after_name = rest.get(name.len()..).unwrap_or("").trim_start();
-            if after_name.starts_with(": CoproductWireContract")
-                || after_name.starts_with(": VariantEncoding")
-            {
-                out.push(name);
-            }
-        }
-    }
-    out
-}
-
-fn scan_test_decl_lines(content: &str) -> Vec<(String, i64)> {
-    let mut out = Vec::new();
-    for (i, line) in content.lines().enumerate() {
-        let trimmed = line.trim_start();
-        let rest = trimmed
-            .strip_prefix("test fn ")
-            .or_else(|| trimmed.strip_prefix("test data "));
-        if let Some(rest) = rest {
-            let name: String = rest
-                .chars()
-                .take_while(|c| c.is_alphanumeric() || *c == '_')
-                .collect();
-            if !name.is_empty() {
-                out.push((name, (i + 1) as i64));
-            }
-        }
-    }
-    out
-}
-
 /// The producer entry above is repo-relative, and every resolve of it ultimately reads the
 /// path **cwd-relative** (`entry_source_from_index_or_disk` does a bare `Path::is_file`).
 /// The floor runs from the repo root, so that ambient dependency is invisible in production
@@ -25762,462 +24574,10 @@ fn parse_floor_discovery_producer_result(
             Err(reason)
         }
         other => Err(format!(
-            "discover_floor_corpus_rows_from_host_facts returned `{}`, expected FloorDiscoveryProducerResult",
+            "floor_discovery_finalize_source_outcomes returned `{}`, expected FloorDiscoveryProducerResult",
             ctx.format_value(other)
         )),
     }
-}
-
-pub(crate) fn invoke_floor_discovery_producer(
-    source_roots: &[String],
-    scan_dirs: &[String],
-    exclude_substrings: &[String],
-) -> Result<Vec<DiscoveryRow>, String> {
-    invoke_floor_discovery_producer_over_corpus(
-        source_roots,
-        source_roots,
-        scan_dirs,
-        exclude_substrings,
-    )
-}
-
-/// Two roles `source_roots` fuses, here separate parameters: `producer_roots` locates the
-/// MACHINERY (the `.dag` producer that decides discovery and its sidecar refusals), while
-/// `corpus_roots` is the SUBJECT (the roots whose `.dag` files are walked and judged).
-/// Production passes the same list for both — that is the whole floor's shape and does not
-/// change. What the fusion prevented was *asking about one file*: any question had to submit
-/// the entire live `src/v2` + `dag` corpus for judgement too, so an unrelated corpus file's
-/// refusal could answer first and mask the one under test (review 44641). The producer stays
-/// real machinery; only the subject narrows.
-fn invoke_floor_discovery_producer_over_corpus(
-    producer_roots: &[String],
-    corpus_roots: &[String],
-    scan_dirs: &[String],
-    exclude_substrings: &[String],
-) -> Result<Vec<DiscoveryRow>, String> {
-    let excludes: Vec<String> = exclude_substrings.to_vec();
-    let mut owned_data_records: Vec<OwnedDataDeclRecord> = Vec::new();
-    for scan_dir in scan_dirs {
-        let discovery = discover_owned_data_decls(corpus_roots, scan_dir, &excludes)?;
-        owned_data_records.extend(discovery.records);
-    }
-    let (graph, indices) = resolve_workspace_entry(producer_roots, FLOOR_DISCOVERY_PRODUCER_ENTRY)
-        .map_err(|e| format!("floor_discovery_producer resolve: {e}"))?;
-    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
-    let source_root_values: Vec<v1_interpreter::Value> =
-        corpus_roots.iter().map(|s| str_value(s.clone())).collect();
-    let exclude_values: Vec<v1_interpreter::Value> = exclude_substrings
-        .iter()
-        .map(|s| str_value(s.clone()))
-        .collect();
-    let owned_values: Vec<v1_interpreter::Value> = owned_data_records
-        .iter()
-        .map(|rec| owned_data_decl_record_to_value(rec, &ctx))
-        .collect();
-    let args = [
-        (
-            Some("source_roots".to_string()),
-            list_value_from_vec(source_root_values),
-        ),
-        (
-            Some("exclude_substrings".to_string()),
-            list_value_from_vec(exclude_values),
-        ),
-        (
-            Some("owned_data_records".to_string()),
-            list_value_from_vec(owned_values),
-        ),
-    ];
-    let result = v1_interpreter::run_in_context_with_args(
-        &ctx,
-        "discover_floor_corpus_rows_from_host_facts",
-        &args,
-        false,
-    )
-    .map_err(|e| format!("discover_floor_corpus_rows_from_host_facts: {e}"))?;
-    parse_floor_discovery_producer_result(&ctx, &result)
-}
-
-pub(crate) fn apply_discovery_scope_dirs_filter(
-    mut rows: Vec<DiscoveryRow>,
-    discovery_scope_dirs: &[String],
-) -> Vec<DiscoveryRow> {
-    if discovery_scope_dirs.is_empty() {
-        return rows;
-    }
-    rows.retain(|row| {
-        discovery_scope_dirs
-            .iter()
-            .any(|d| row.entry.contains(d.as_str()))
-    });
-    rows
-}
-
-// SCAFFOLD (§7 HAND-RUST — `cli_run_selected_closure_overlap_probe`):
-// ROADMAP lane §2 *Minimal work — caching by realization* (gunbc.roadmap.roadmap_authority /
-// ROADMAP.md), lane `ci-cost`, subject `entry-graph-union-construction` slice 1.
-// This is a ONE-SHOT INSTRUMENT, not standing infrastructure: it exists to answer whether
-// the entry-graph-union program is worth building, and it is allowed to conclude that the
-// program is worth less than assumed.
-// Unblock / DELETE WHEN: the slice-2 union verdict is taken — WHICHEVER WAY IT GOES. If
-// the union program proceeds, its own receipts supersede this probe; if the program is
-// shrunk or closed, the probe has discharged its purpose and goes with it. A standing
-// closure-overlap reader, should one ever be wanted, belongs in `v2.lens.affected_set`
-// over the containment tree, not here — this deliberately does NOT become permanent
-// host-side machinery by default.
-// DELETE WHEN dissolved: `SelectedEntryClosureOverlap`,
-// `measure_selected_entry_closure_overlap`, `render_selected_entry_closure_overlap_json`,
-// the `selected_entry_closure_overlap_arithmetic` test module, and
-// `src/v1/stage0/src/bin/measure_selected_closure_overlap.rs` — ~350 LOC incl. tests and
-// the bin.
-// Receipt: `rg -c cli_run_selected_closure_overlap_probe src/v1/stage0/src/cli_run.rs`
-// returns 4 while the scaffold stands (this block, the const, and its declaration test)
-// and must return 0 at deletion — the deletion is what the receipt checks, not a fixed hit
-// count. Not a compiler_frontier `.dag` row (seed-Rust, counted here not in the module
-// census), and not enrolled in `gunbc.ci.ci_release_bins` — no `measure_*` probe is.
-pub(crate) const CLI_RUN_SELECTED_CLOSURE_OVERLAP_SCAFFOLD_MARKER: &str =
-    "cli_run_selected_closure_overlap_probe";
-
-/// Closure-overlap measurement over the PRODUCTION-selected entry set
-/// (entry-graph-union slice 1 / lane ci-cost).
-///
-/// Every input is taken from the machinery the floor actually runs — the roster from
-/// `discover_floor_witness_roster`, the diff from the same `floor_diff_observe` entry the
-/// executor observes through, the selection verdict from
-/// `entry_eligible_for_discovery_skip_before_resolve`, and each closure from
-/// `collect_both_closure_module_names_for_entry` over the pooled loader. Nothing here
-/// re-decides selection: a second hand-written selection model would measure itself
-/// rather than the floor.
-///
-/// This counts MODULE MEMBERSHIP only. It resolves and typechecks nothing, so it is an
-/// upper bound on repeated membership, never a promise of equivalent wall savings.
-#[derive(Debug, Clone)]
-pub struct SelectedEntryClosureOverlap {
-    pub source_roots: Vec<String>,
-    pub scan_dirs: Vec<String>,
-    pub head_sha: String,
-    pub diff_base_override: Option<String>,
-    pub github_event_name: Option<String>,
-    pub github_base_ref: Option<String>,
-    pub changed_paths: Vec<String>,
-    pub departed_paths: Vec<String>,
-    /// Distinct entries in the production roster, before selection.
-    pub roster_entries: usize,
-    pub selected_entries: Vec<String>,
-    pub skipped_entries: Vec<String>,
-    /// (entry, |C_i|) for each selected entry.
-    pub closure_sizes: Vec<(String, usize)>,
-    pub sum_closure_memberships: usize,
-    pub union_modules: usize,
-    /// BYTE-weighted counterparts (operator review 2026-07-31). A module-count duplication
-    /// factor weights every membership equally, but the repeated unit
-    /// (`referenced_module_paths_of_source`) costs in proportion to CONTENT BYTES, and
-    /// closure sizes here span 504 modules down to a median of 2-5. So the module-count
-    /// factor and the byte factor are different claims, and only the byte one matches how
-    /// the scan actually costs. Both are reported; neither is presented as the other.
-    pub sum_closure_bytes: u128,
-    pub union_bytes: u128,
-    /// (module, number of selected entries whose closure contains it), descending.
-    pub fanout_by_module: Vec<(String, usize)>,
-}
-
-impl SelectedEntryClosureOverlap {
-    pub fn selected_count(&self) -> usize {
-        self.selected_entries.len()
-    }
-    /// Σ|Cᵢ| / |⋃Cᵢ| — mean times a union member is re-walked across selected entries.
-    pub fn duplication_factor(&self) -> Option<f64> {
-        if self.union_modules == 0 {
-            None
-        } else {
-            Some(self.sum_closure_memberships as f64 / self.union_modules as f64)
-        }
-    }
-    /// Byte-weighted duplication: Σ bytes over closures / distinct bytes in the union.
-    /// This is the factor that matches the scan's actual cost model.
-    pub fn byte_duplication_factor(&self) -> Option<f64> {
-        if self.union_bytes == 0 {
-            None
-        } else {
-            Some(self.sum_closure_bytes as f64 / self.union_bytes as f64)
-        }
-    }
-    /// Repeated BYTES a union could at most collapse.
-    pub fn byte_upper_bound(&self) -> u128 {
-        self.sum_closure_bytes.saturating_sub(self.union_bytes)
-    }
-    /// Σ|Cᵢ| − |⋃Cᵢ| — repeated memberships a union could at most collapse.
-    pub fn membership_upper_bound(&self) -> usize {
-        self.sum_closure_memberships
-            .saturating_sub(self.union_modules)
-    }
-    /// Percentile over the per-module selected-entry fanout (nearest-rank).
-    pub fn fanout_percentile(&self, p: f64) -> Option<usize> {
-        if self.fanout_by_module.is_empty() {
-            return None;
-        }
-        let mut counts: Vec<usize> = self.fanout_by_module.iter().map(|(_, n)| *n).collect();
-        counts.sort_unstable();
-        let rank = ((p / 100.0) * counts.len() as f64).ceil().max(1.0) as usize;
-        counts.get(rank.min(counts.len()) - 1).copied()
-    }
-}
-
-/// Membership overlap for an explicit selected-entry list (slice-1's both-closure walk).
-
-pub fn measure_selected_entry_closure_overlap(
-    source_roots: &[String],
-    scan_dirs: &[String],
-    exclude_substrings: &[String],
-    discovery_scope_dirs: &[String],
-) -> Result<SelectedEntryClosureOverlap, String> {
-    let rows = discover_floor_witness_roster(
-        source_roots,
-        scan_dirs,
-        exclude_substrings,
-        discovery_scope_dirs,
-    )?;
-
-    // The SAME observation the executor makes — unified diff for line grain, name-status
-    // for path identity. A failure refuses; it never widens to "measure everything".
-    let diff_text = floor_git_diff_range()?;
-    let (changed_paths, departed_paths) = floor_git_diff_name_status_range()?;
-    let mut line_ranges_by_file = parse_unified_diff_line_ranges(&diff_text);
-    for path in &changed_paths {
-        line_ranges_by_file.entry(path.clone()).or_default();
-    }
-    let added_paths = parse_unified_diff_added_paths(&diff_text);
-
-    let index = process_shared_index(source_roots);
-    let diff_edits = floor_diff_edits_from_line_ranges(
-        &index,
-        &line_ranges_by_file,
-        &departed_paths,
-        &added_paths,
-        None,
-        &std::collections::HashMap::new(),
-    )?;
-    let declared_paths = index.module_graph_facts.declared_repo_paths();
-
-    // Distinct entries in roster order; `reads_live_tree` is entry-grain, so the first
-    // row's disposition is the entry's.
-    let mut seen: HashSet<String> = HashSet::new();
-    let mut entries: Vec<(String, bool)> = Vec::new();
-    for row in &rows {
-        if seen.insert(row.entry.clone()) {
-            entries.push((row.entry.clone(), row.reads_live_tree));
-        }
-    }
-
-    let mut selected_entries = Vec::new();
-    let mut skipped_entries = Vec::new();
-    for (entry, reads_live_tree) in &entries {
-        if entry_eligible_for_discovery_skip_before_resolve(
-            true,
-            *reads_live_tree,
-            entry,
-            &index.module_graph_facts,
-            &declared_paths,
-            &changed_paths,
-            &diff_edits,
-        )? {
-            skipped_entries.push(entry.clone());
-        } else {
-            selected_entries.push(entry.clone());
-        }
-    }
-
-    let mut closure_sizes: Vec<(String, usize)> = Vec::new();
-    let mut sum_closure_memberships: usize = 0;
-    let mut fanout: HashMap<String, usize> = HashMap::new();
-    let mut sum_closure_bytes: u128 = 0;
-    let mut union_bytes_by_module: HashMap<String, u128> = HashMap::new();
-    for entry in &selected_entries {
-        // Same pooled loader the floor uses; bytes come from the very sources the scan
-        // reads, so the byte weighting is the scan's own input volume, not an estimate.
-        let mut members: HashSet<String> = HashSet::new();
-        for source in load_sources_for_entry_with_pool(&index, entry)? {
-            let Some(name) = extract_module_path(&source.content) else {
-                return Err(format!(
-                    "closure overlap: source '{}' in entry '{}' closure declares no module \
-                     header (fail-closed)",
-                    source.path, entry
-                ));
-            };
-            let bytes = source.content.len() as u128;
-            if members.insert(name.clone()) {
-                sum_closure_bytes += bytes;
-            }
-            union_bytes_by_module.insert(name, bytes);
-        }
-        closure_sizes.push((entry.clone(), members.len()));
-        sum_closure_memberships += members.len();
-        for m in members {
-            *fanout.entry(m).or_insert(0) += 1;
-        }
-    }
-    let union_bytes: u128 = union_bytes_by_module.values().sum();
-    let union_modules = fanout.len();
-    let mut fanout_by_module: Vec<(String, usize)> =
-        fanout.into_iter().map(|(k, v)| (k, v)).collect();
-    fanout_by_module.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-    closure_sizes.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-
-    let head_sha = std::process::Command::new("git")
-        .args(["rev-parse", "HEAD"])
-        .output()
-        .map_err(|e| format!("git rev-parse HEAD: {e}"))
-        .and_then(|o| {
-            if o.status.success() {
-                Ok(String::from_utf8_lossy(&o.stdout).trim().to_string())
-            } else {
-                Err("git rev-parse HEAD failed".to_string())
-            }
-        })?;
-
-    Ok(SelectedEntryClosureOverlap {
-        source_roots: source_roots.to_vec(),
-        scan_dirs: scan_dirs.to_vec(),
-        head_sha,
-        diff_base_override: std::env::var("GUNBC_CI_DIFF_BASE").ok(),
-        github_event_name: std::env::var("GITHUB_EVENT_NAME").ok(),
-        github_base_ref: std::env::var("GITHUB_BASE_REF").ok(),
-        changed_paths,
-        // Sorted: a HashSet iteration order would make the receipt non-reproducible for
-        // the same subject, which is the one property a named subject has to have.
-        departed_paths: {
-            let mut v: Vec<String> = departed_paths.into_iter().collect();
-            v.sort();
-            v
-        },
-        roster_entries: entries.len(),
-        selected_entries,
-        skipped_entries,
-        closure_sizes,
-        sum_closure_memberships,
-        union_modules,
-        sum_closure_bytes,
-        union_bytes,
-        fanout_by_module,
-    })
-}
-
-/// Machine-readable projection of the closure-overlap measurement.
-pub fn render_selected_entry_closure_overlap_json(m: &SelectedEntryClosureOverlap) -> String {
-    let esc = crate::v1_compiler_emit_core_support::escape_json_string;
-    let str_list = |v: &[String]| {
-        let mut s = String::from("[");
-        for (i, item) in v.iter().enumerate() {
-            if i > 0 {
-                s.push(',');
-            }
-            s.push('"');
-            s.push_str(&esc(item.clone()));
-            s.push('"');
-        }
-        s.push(']');
-        s
-    };
-    let opt_str = |o: &Option<String>| match o {
-        Some(v) => format!("\"{}\"", esc(v.clone())),
-        None => "null".to_string(),
-    };
-
-    let mut out = String::from("{\"subject\":{\"source_roots\":");
-    out.push_str(&str_list(&m.source_roots));
-    out.push_str(",\"scan_dirs\":");
-    out.push_str(&str_list(&m.scan_dirs));
-    out.push_str(",\"head_sha\":\"");
-    out.push_str(&esc(m.head_sha.clone()));
-    out.push_str("\",\"diff_base_override\":");
-    out.push_str(&opt_str(&m.diff_base_override));
-    out.push_str(",\"github_event_name\":");
-    out.push_str(&opt_str(&m.github_event_name));
-    out.push_str(",\"github_base_ref\":");
-    out.push_str(&opt_str(&m.github_base_ref));
-    out.push_str(",\"changed_path_count\":");
-    out.push_str(&m.changed_paths.len().to_string());
-    out.push_str(",\"changed_paths\":");
-    out.push_str(&str_list(&m.changed_paths));
-    out.push_str(",\"departed_paths\":");
-    out.push_str(&str_list(&m.departed_paths));
-    out.push_str("},\"selection\":{\"roster_entries\":");
-    out.push_str(&m.roster_entries.to_string());
-    out.push_str(",\"selected_entries\":");
-    out.push_str(&m.selected_count().to_string());
-    out.push_str(",\"skipped_entries\":");
-    out.push_str(&m.skipped_entries.len().to_string());
-    out.push_str("},\"overlap\":{\"N\":");
-    out.push_str(&m.selected_count().to_string());
-    out.push_str(",\"sum_closure_memberships\":");
-    out.push_str(&m.sum_closure_memberships.to_string());
-    out.push_str(",\"union_modules\":");
-    out.push_str(&m.union_modules.to_string());
-    out.push_str(",\"duplication_factor\":");
-    match m.duplication_factor() {
-        Some(f) => out.push_str(&format!("{f:.4}")),
-        None => out.push_str("null"),
-    }
-    out.push_str(",\"membership_upper_bound\":");
-    out.push_str(&m.membership_upper_bound().to_string());
-    out.push_str(",\"sum_closure_bytes\":");
-    out.push_str(&m.sum_closure_bytes.to_string());
-    out.push_str(",\"union_bytes\":");
-    out.push_str(&m.union_bytes.to_string());
-    out.push_str(",\"byte_duplication_factor\":");
-    match m.byte_duplication_factor() {
-        Some(f) => out.push_str(&format!("{f:.4}")),
-        None => out.push_str("null"),
-    }
-    out.push_str(",\"byte_upper_bound\":");
-    out.push_str(&m.byte_upper_bound().to_string());
-    out.push_str("},\"fanout\":{");
-    for (i, p) in [50.0_f64, 90.0, 99.0].iter().enumerate() {
-        if i > 0 {
-            out.push(',');
-        }
-        out.push_str(&format!("\"p{}\":", *p as u32));
-        match m.fanout_percentile(*p) {
-            Some(v) => out.push_str(&v.to_string()),
-            None => out.push_str("null"),
-        }
-    }
-    out.push_str(",\"max\":");
-    match m.fanout_by_module.first() {
-        Some((_, n)) => out.push_str(&n.to_string()),
-        None => out.push_str("null"),
-    }
-    out.push_str(",\"highest_fanout_modules\":[");
-    for (i, (name, n)) in m.fanout_by_module.iter().take(25).enumerate() {
-        if i > 0 {
-            out.push(',');
-        }
-        out.push_str("{\"module\":\"");
-        out.push_str(&esc(name.clone()));
-        out.push_str("\",\"selected_entry_fanout\":");
-        out.push_str(&n.to_string());
-        out.push('}');
-    }
-    out.push_str("]},\"largest_closures\":[");
-    for (i, (entry, n)) in m.closure_sizes.iter().take(25).enumerate() {
-        if i > 0 {
-            out.push(',');
-        }
-        out.push_str("{\"entry\":\"");
-        out.push_str(&esc(entry.clone()));
-        out.push_str("\",\"closure_modules\":");
-        out.push_str(&n.to_string());
-        out.push('}');
-    }
-    out.push_str("],\"interpretation_bound\":\"");
-    out.push_str(&esc(
-        "Module-membership counts from the loader's both-closure walk; nothing is resolved \
-         or typechecked. membership_upper_bound is an UPPER BOUND on repeated module \
-         membership, not a wall-time saving."
-            .to_string(),
-    ));
-    out.push_str("\"}");
-    out
 }
 
 /// One selected claim and what its evaluation observed. `module_path` is the entry's AUTHORED
@@ -26313,26 +24673,6 @@ pub fn run_claim_route(
         }
     }
     Ok(members)
-}
-
-pub fn discover_floor_witness_roster(
-    source_roots: &[String],
-    scan_dirs: &[String],
-    exclude_substrings: &[String],
-    discovery_scope_dirs: &[String],
-) -> Result<Vec<DiscoveryRow>, String> {
-    let mut rows = invoke_floor_discovery_producer(source_roots, scan_dirs, exclude_substrings)?;
-    rows = apply_discovery_scope_dirs_filter(rows, discovery_scope_dirs);
-    // The module-graph facts build now serves exactly two consumers on this path:
-    // effect-reach derivation below, and the cross-worker snapshot transport in
-    // `floor_discovery_snapshot::install_floor_discovery_snapshot`. The supply-side
-    // lens censuses that used to ride along (inert-lens reach, construction-justification)
-    // are deleted — they made every discovery run acquire a whole-corpus world to answer
-    // a question about lens authorship.
-    let facts = build_module_graph_facts_live(source_roots);
-    refuse_on_module_graph_read_refusals(&facts)?;
-    apply_effect_reach_derived_reads_live_tree(&mut rows, &facts);
-    Ok(rows)
 }
 
 // ITEM 2 (reference grounding): the construction->authority graph witness.
@@ -26787,37 +25127,6 @@ fn decl_span_end_line(sorted_decl_lines: &[i64], decl_line: i64) -> i64 {
                 .unwrap_or(i64::MAX)
         })
         .unwrap_or(i64::MAX)
-}
-
-fn collect_sorted_decl_lines_for_file(
-    index: &MultiEntryIndex,
-    file_path: &str,
-) -> Result<Vec<i64>, String> {
-    let file_norm = normalize_repo_path(file_path);
-    let (graph, source_indices) = resolve_entry_with_index(index, file_path)?;
-    let content = std::fs::read_to_string(file_path)
-        .map_err(|e| format!("read {file_path} for decl span: {e}"))?;
-    let mut decls: Vec<i64> = Vec::new();
-    for module in graph.modules.iter() {
-        for item in module.items.iter() {
-            if !span_file_matches(&item.span.file, &file_norm) {
-                continue;
-            }
-            let Some(nl) = newline_index_for_span(&item.span, &source_indices).cloned() else {
-                return Err(format!(
-                    "newline index missing for decl span in {file_path}"
-                ));
-            };
-            decls.push(byte_to_line_col(nl, item.span.start).line);
-        }
-    }
-    for (_, line) in scan_test_decl_lines(&content) {
-        if !decls.contains(&line) {
-            decls.push(line);
-        }
-    }
-    decls.sort_unstable();
-    Ok(decls)
 }
 
 // SCAFFOLD (DESIGN §6–§7): host-side diff→declaration attribution
@@ -27944,7 +26253,7 @@ mod floor_skip_frontier_tests {
         floor_diff_edits_from_diff_text_with_base_names_and_sources, list_value_from_vec,
         parse_unified_diff_added_paths, parse_unified_diff_changed_new_lines,
         parse_unified_diff_line_ranges, parse_unified_diff_rename_sources,
-        rerun_frontier_nodes_for_entry, scan_test_decl_lines, FileLineRange, FloorDiffEdits,
+        rerun_frontier_nodes_for_entry, FileLineRange, FloorDiffEdits,
     };
     use crate::v1_compiler_infer_items::{item_kind, ItemKind, ResolvedGraph};
     use crate::v1_interpreter::ExecutionMode;
@@ -28130,7 +26439,18 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
         let dest = "src/v2/test/claim/machine_shape_construction_wall.dag";
         let content = std::fs::read_to_string(super::process_workspace_root().join(dest))
             .expect("the renamed wall entry is in the tree");
-        let declared: HashSet<String> = super::scan_test_decl_names(&content).into_iter().collect();
+        let declared: HashSet<String> = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn({
+                let content = content.clone();
+                move || super::test_marker::test_marked_decl_names(&content, dest)
+            })
+            .expect("spawn the marker reader thread")
+            .join()
+            .expect("marker reader thread must not panic")
+            .expect("the renamed wall entry parses")
+            .into_iter()
+            .collect();
         assert!(
             declared.len() >= 2
                 && declared.contains("gate_red_synthetic_machine_shape_call")
@@ -28683,16 +27003,6 @@ new file mode 100644
 ";
         let added = parse_unified_diff_added_paths(diff);
         assert!(added.contains("dag/gunbc/instruments/new_transport.dag"));
-    }
-
-    #[test]
-    fn scan_test_decl_lines_pairs_names_with_1_based_lines() {
-        let source = "module m\n\ndata d: Int = 1\n\ntest fn witness_a() -> Bool { true }\n\ntest data witness_b: Int = 2\n";
-        let pairs = scan_test_decl_lines(source);
-        assert_eq!(
-            pairs,
-            vec![("witness_a".to_string(), 5), ("witness_b".to_string(), 7)]
-        );
     }
 
     #[test]
@@ -29299,7 +27609,7 @@ mod node_frontier_plumbing_controls {
     use super::{
         build_multi_entry_index, call_floor_kernel_would_skip, entry_touches_rerun_frontier,
         floor_diff_edits_from_diff_text, list_value_from_vec, parse_unified_diff_line_ranges,
-        rerun_frontier_nodes_for_entry, scan_test_decl_lines,
+        rerun_frontier_nodes_for_entry,
     };
     use crate::v1_interpreter::ExecutionMode;
     use std::path::PathBuf;
@@ -30849,10 +29159,7 @@ mod construction_authority_graph_tests {
 }
 
 #[cfg(test)]
-mod sidecar_placement_hygiene_tests {
-    use super::scan_wire_contract_decl_names;
-    use std::sync::atomic::{AtomicU64, Ordering};
-
+mod workspace_entry_boundary_tests {
     #[test]
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn workspace_entry_boundary_cwd_independence_positive_control() {
@@ -30863,142 +29170,6 @@ mod sidecar_placement_hygiene_tests {
         ];
         super::resolve_workspace_entry(&source_roots, super::FLOOR_DISCOVERY_PRODUCER_ENTRY)
             .expect("typed workspace-relative entry must resolve independently of process cwd");
-    }
-
-    static SEQ: AtomicU64 = AtomicU64::new(0);
-    /// Fixtures live under the workspace's own `target/`, not `std::env::temp_dir()`.
-    /// Anything on the floor's reporting path normalizes through
-    /// `repo_relative_path_normalized`, which fail-closed refuses paths outside the
-    /// workspace root — a `/tmp` fixture made this module panic on that refusal before
-    /// reaching its assertion. The refusal is correct; the fixture location was not, and
-    /// `target/` is the convention the other fixture-based tests in this file use.
-    fn tmp_dir() -> std::path::PathBuf {
-        let id = SEQ.fetch_add(1, Ordering::Relaxed);
-        super::process_workspace_root().join("target").join(format!(
-            "sidecar_placement_test_{}_{}",
-            std::process::id(),
-            id
-        ))
-    }
-
-    #[test]
-    fn scan_detects_coproduct_wire_contract_data() {
-        let content =
-            "data foo: CoproductWireContract = { coproduct: \"X\", encoding: UntaggedVariant }";
-        assert_eq!(
-            scan_wire_contract_decl_names(content),
-            vec!["foo".to_string()]
-        );
-    }
-
-    #[test]
-    fn scan_detects_variant_encoding_data() {
-        let content = "data bar: VariantEncoding = llm_snake_wire_contract";
-        assert_eq!(
-            scan_wire_contract_decl_names(content),
-            vec!["bar".to_string()]
-        );
-    }
-
-    #[test]
-    fn scan_ignores_non_wire_contract_data() {
-        let content = "data baz: Int = 42\ndata qux: String = \"hello\"\ndata flag: Bool = true";
-        assert!(
-            scan_wire_contract_decl_names(content).is_empty(),
-            "should not fire on non-wire-contract data decls"
-        );
-    }
-
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn misplaced_wire_contract_decl_drives_discover_to_err() {
-        let dir = tmp_dir();
-        std::fs::create_dir_all(&dir).expect("create temp dir");
-        let file = dir.join("anthropic.dag");
-        std::fs::write(
-            &file,
-            "data anthropic_chat_message_wire_contract: CoproductWireContract = { \
-             coproduct: \"AnthropicChatMessage\", encoding: UntaggedVariant }\n",
-        )
-        .expect("write temp file");
-        // SUBJECT is the fixture directory alone; MACHINERY roots locate the discovery
-        // producer. Passing one root list for both submitted every `.dag` in `src/v2` + `dag`
-        // for judgement too, so an unrelated corpus file's refusal could answer first and
-        // mask this assertion — the same live-tree coupling this PR removes from the
-        // resolution-divergence fixtures, recreated (review 44641). The producer is genuinely
-        // shared machinery and stays real; only the subject is narrowed.
-        //
-        // What this test uniquely carries is the WIRING: that a sidecar refusal raised inside
-        // the `.dag` producer reaches the Rust bridge as an `Err`. The rule itself is not
-        // asserted twice — `floor_discovery_hand_rust_equivalence_witness_test.dag`
-        // (`floor_discovery_equivalence_misplaced_wire_contract_refuses_holds`) already owns
-        // it content-side, so re-deriving it here would be a second representation (§2/§3).
-        // Hence the call is at the producer seam, where a wire-contract violation is
-        // observable at all. (This clause used to contrast the seam against
-        // `floor_filename_hygiene_refusal_for_paths`; that decided only the `__`-in-basename
-        // rule, which is deleted, so the contrast named nothing.)
-        //
-        // Nothing here chdirs, and that is load-bearing: the producer entry is located by
-        // `resolve_workspace_entry` (git-toplevel, not cwd), so this test
-        // behaves the same under `cargo test` (cwd = crate dir) as on the floor (cwd = repo
-        // root). Chdir is not the alternative — this harness is multi-threaded and cwd is
-        // process-global.
-        let ws = super::process_workspace_root();
-        let producer_roots = vec![
-            ws.join("src/v2").to_string_lossy().into_owned(),
-            ws.join("dag").to_string_lossy().into_owned(),
-        ];
-        let corpus_roots = vec![dir.to_string_lossy().into_owned()];
-        let result = super::invoke_floor_discovery_producer_over_corpus(
-            &producer_roots,
-            &corpus_roots,
-            &[],
-            &[],
-        );
-        let _ = std::fs::remove_dir_all(&dir);
-        let msg = result
-            .err()
-            .expect("misplaced wire-contract decl must drive discovery to Err");
-        assert!(
-            msg.contains("wire-contract decls") && msg.contains("_contracts.dag"),
-            "error must name the decl type and required suffix: {msg}"
-        );
-    }
-
-    /// Non-vacuity control for the test above. A narrowed corpus is a new shape for the
-    /// producer — one root, no scan dirs, an empty roster — so `Err` on its own proves
-    /// nothing: it could be the narrowing itself refusing rather than the sidecar rule.
-    /// Same call, same narrowing, only the decl's type changed, and it must come back `Ok`.
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn clean_dag_file_leaves_narrowed_discovery_ok() {
-        let dir = tmp_dir();
-        std::fs::create_dir_all(&dir).expect("create temp dir");
-        std::fs::write(
-            dir.join("anthropic.dag"),
-            "data anthropic_chat_message_label: String = \"AnthropicChatMessage\"\n",
-        )
-        .expect("write temp file");
-        let ws = super::process_workspace_root();
-        let producer_roots = vec![
-            ws.join("src/v2").to_string_lossy().into_owned(),
-            ws.join("dag").to_string_lossy().into_owned(),
-        ];
-        let corpus_roots = vec![dir.to_string_lossy().into_owned()];
-        let result = super::invoke_floor_discovery_producer_over_corpus(
-            &producer_roots,
-            &corpus_roots,
-            &[],
-            &[],
-        );
-        let _ = std::fs::remove_dir_all(&dir);
-        let rows = result.expect("a `.dag` file with no misplaced decl must not refuse");
-        let entries: Vec<&str> = rows.iter().map(|r| r.entry.as_str()).collect();
-        assert!(
-            entries.is_empty(),
-            "the fixture enrolls no witness, so the roster must be empty rather than \
-             carrying rows from outside the narrowed corpus: {entries:?}"
-        );
     }
 }
 
@@ -32925,10 +31096,7 @@ fn nfr_strip_comments(content: &str) -> String {
 
 fn nfr_closed_coproduct_names(files: &[(String, String)]) -> std::collections::BTreeSet<String> {
     let mut out = std::collections::BTreeSet::new();
-    for (rel, content) in files {
-        if is_test_dag(rel) {
-            continue;
-        }
+    for (_rel, content) in files {
         let lines: Vec<&str> = content.lines().collect();
         let mut i = 0;
         while i < lines.len() {
@@ -33333,9 +31501,6 @@ fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
     let mut self_block_refs: BTreeMap<String, i64> = BTreeMap::new();
     let mut type_variants: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for (rel, content) in files {
-        if is_test_dag(rel) {
-            continue;
-        }
         for (name, block) in inert_carrier_type_carrier_blocks(content) {
             declared.entry(name.clone()).or_insert_with(|| rel.clone());
             *decl_count.entry(name.clone()).or_insert(0) += 1;
@@ -33355,21 +31520,34 @@ fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
     let mut nontest_occ: BTreeMap<String, i64> = BTreeMap::new();
     let mut self_tested: BTreeSet<String> = BTreeSet::new();
     for (rel, content) in files {
-        let mut local: BTreeMap<String, i64> = BTreeMap::new();
-        for raw in content.lines() {
+        // A test is a declaration carrying the authored `test` marker, so a line is test code
+        // exactly when it lies inside a marked declaration's extent; every other line of the same
+        // file, helper fns and fixtures included, is production reference. A source that does not
+        // parse has no determinable test set and the lens refuses rather than guessing (the same
+        // refusal `corpus_dag_files` raises for a walk it cannot complete).
+        let extents = test_marker::test_marked_decls(content, rel)
+            .unwrap_or_else(|cause| panic!("inert-carrier lens: {cause}"));
+        let mut next_extent = 0usize;
+        let mut offset = 0i64;
+        for line in content.split_inclusive('\n') {
+            let line_start = offset;
+            offset += line.len() as i64;
+            while next_extent < extents.len() && extents[next_extent].span_end <= line_start {
+                next_extent += 1;
+            }
+            let in_test = extents[next_extent..]
+                .iter()
+                .take_while(|d| d.span_start < offset)
+                .any(|d| d.span_end > line_start);
+            let raw = line.trim_end_matches(['\n', '\r']);
             for tok in inert_carrier_identifier_tokens(&strip_line_comment(raw)) {
                 if names.contains(&tok) {
-                    *local.entry(tok).or_insert(0) += 1;
+                    if in_test {
+                        self_tested.insert(tok);
+                    } else {
+                        *nontest_occ.entry(tok).or_insert(0) += 1;
+                    }
                 }
-            }
-        }
-        if is_test_dag(rel) {
-            for (k, _) in local {
-                self_tested.insert(k);
-            }
-        } else {
-            for (k, v) in local {
-                *nontest_occ.entry(k).or_insert(0) += v;
             }
         }
     }
@@ -33468,8 +31646,8 @@ mod inert_carrier_tests {
                 "module a\ntype BuildState\n  = BuildInit\n  | BuildReady { expr: Int }\nfn go(x: Int) -> Int {\n  match BuildInit {\n    BuildInit => 0\n    BuildReady { expr: e } => e\n  }\n}\n",
             ),
             (
-                "a_test.dag",
-                "module t\nfn t() -> Bool { go(x: 1) == 0 }\nfn probe(s: BuildState) -> Bool { true }\n",
+                "t.dag",
+                "module t\ntest fn t() -> Bool { go(x: 1) == 0 }\ntest fn probe(s: BuildState) -> Bool { true }\n",
             ),
         ]);
         assert!(
@@ -33486,8 +31664,8 @@ mod inert_carrier_tests {
                 "module a\ntype LonelyState\n  = LonelyInit\n  | LonelyReady { expr: Int }\n",
             ),
             (
-                "a_test.dag",
-                "module t\nfn t() -> Bool { match LonelyInit { LonelyInit => true _ => false } }\nfn probe(s: LonelyState) -> Bool { true }\n",
+                "t.dag",
+                "module t\ntest fn t() -> Bool { match LonelyInit { LonelyInit => true _ => false } }\ntest fn probe(s: LonelyState) -> Bool { true }\n",
             ),
         ]);
         assert!(
@@ -33507,8 +31685,8 @@ mod inert_carrier_tests {
                 "module a\ntype Reach = Reach {\n  target: Int\n  access: Int\n}\nfn go(x: Int) -> Int {\n  let r = Reach { target: x, access: x }\n  r.target\n}\n",
             ),
             (
-                "a_test.dag",
-                "module t\nfn t() -> Bool { go(x: 1) == 1 }\nfn probe(s: Reach) -> Bool { true }\n",
+                "t.dag",
+                "module t\ntest fn t() -> Bool { go(x: 1) == 1 }\ntest fn probe(s: Reach) -> Bool { true }\n",
             ),
         ]);
         assert!(
@@ -33522,8 +31700,8 @@ mod inert_carrier_tests {
         let inert = inert_names_of(&[
             ("a.dag", "module a\ntype Lonely { x: Int }\n"),
             (
-                "a_test.dag",
-                "module t\nfn t() -> Bool { Lonely { x: 1 } == Lonely { x: 1 } }\n",
+                "t.dag",
+                "module t\ntest fn t() -> Bool { Lonely { x: 1 } == Lonely { x: 1 } }\n",
             ),
         ]);
         assert!(
@@ -33541,8 +31719,8 @@ mod inert_carrier_tests {
                 "module b\nimport a { Used }\nfn f(u: Used) -> Int { u.x }\n",
             ),
             (
-                "a_test.dag",
-                "module t\nfn t() -> Bool { Used { x: 1 } == Used { x: 1 } }\n",
+                "t.dag",
+                "module t\ntest fn t() -> Bool { Used { x: 1 } == Used { x: 1 } }\n",
             ),
         ]);
         assert!(
@@ -33558,7 +31736,7 @@ mod inert_carrier_tests {
                 "lens.dag",
                 "module lens\ntype LocalFact { x: Int }\nfn clean(fs: LocalFact) -> Bool { fs.x == 0 }\n",
             ),
-            ("lens_test.dag", "module t\nfn t() -> Bool { clean(fs: LocalFact { x: 0 }) }\n"),
+            ("t.dag", "module t\ntest fn t() -> Bool { clean(fs: LocalFact { x: 0 }) }\n"),
         ]);
         assert!(
             !inert.contains(&"LocalFact".to_string()),
@@ -33584,11 +31762,48 @@ mod inert_carrier_tests {
                 "module b\n// Noted is described here\nfn f() -> Int { 1 }\n",
             ),
             (
-                "a_test.dag",
-                "module t\nfn t() -> Bool { Noted { x: 1 } == Noted { x: 1 } }\n",
+                "t.dag",
+                "module t\ntest fn t() -> Bool { Noted { x: 1 } == Noted { x: 1 } }\n",
             ),
         ]);
         assert!(inert.contains(&"Noted".to_string()));
+    }
+
+    #[test]
+    fn unmarked_helper_beside_a_test_decl_is_a_production_reference() {
+        // Test-ness is declaration grain: the unmarked helper in the same file as the marked
+        // test reads the carrier, so the carrier has a consumer outside every test.
+        let inert = inert_names_of(&[
+            ("a.dag", "module a\ntype Aided { x: Int }\n"),
+            (
+                "t.dag",
+                "module t\nfn helper(a: Aided) -> Int { a.x }\ntest fn t() -> Bool { helper(a: Aided { x: 1 }) == 1 }\n",
+            ),
+        ]);
+        assert!(
+            !inert.contains(&"Aided".to_string()),
+            "an unmarked helper's read is not test code; got {inert:?}"
+        );
+    }
+
+    #[test]
+    fn file_name_suffix_does_not_make_a_test() {
+        // The carrier is read only from a file spelled `_test.dag` that declares no `test`
+        // marker, so nothing self-tests it and the lens (which flags only tested-but-unread
+        // carriers) stays silent. Paired with `red_control_self_tested_zero_consumer_carrier_is_inert`,
+        // which differs only by the marker, this pins that the marker decides and the spelling
+        // does not.
+        let inert = inert_names_of(&[
+            ("a.dag", "module a\ntype Spelled { x: Int }\n"),
+            (
+                "a_test.dag",
+                "module t\nfn t() -> Bool { Spelled { x: 1 } == Spelled { x: 1 } }\n",
+            ),
+        ]);
+        assert!(
+            !inert.contains(&"Spelled".to_string()),
+            "a `_test.dag` spelling without a marker is not test code; got {inert:?}"
+        );
     }
 
     #[test]
@@ -34214,7 +32429,7 @@ fn build_doc_graph_report(extra_roots: &[String]) -> DocGraphReport {
 }
 
 // Live derivation of seed-shrink-census (plan doc deleted 2026-08-28) §5B ("T2 coverage debt"): that table was a
-// hand-maintained snapshot of v1 test modules with no floor `*_test.dag` equivalent. This walks
+// hand-maintained snapshot of v1 test modules with no floor test-marked equivalent. This walks
 // `src/v1/tests/src/*.rs` (modules containing `#[test]`) and `corpus_dag_files()` (the same
 // witness-layer-roots roster the floor uses) and diffs them by stem, so the debt roster tracks
 // the live tree instead of drifting the moment either side changes.
@@ -34273,11 +32488,14 @@ fn build_test_migration_behavior_discovery_report() -> TestMigrationBehaviorDisc
     }
 
     for (path, content) in corpus_dag_files() {
-        witness_behavior_ids.extend(
-            test_migration_dag_test_fn_names(&content)
-                .into_iter()
-                .map(|name| format!("{}::{name}", normalize_repo_path(&path))),
-        );
+        match test_marker::test_marked_decl_names(&content, &path) {
+            Ok(names) => witness_behavior_ids.extend(
+                names
+                    .into_iter()
+                    .map(|name| format!("{}::{name}", normalize_repo_path(&path))),
+            ),
+            Err(err) => errors.push(err),
+        }
     }
 
     legacy_behavior_ids.sort();
@@ -35423,7 +33641,7 @@ mod witness_layer_roots_compile_clean_tests {
                 .nodes
                 .iter()
                 .map(|n| workspace_relative_repo_path(&n.path))
-                .filter(|p| p.ends_with("_test.dag") || p.contains("/test/claim/"))
+                .filter(|p| p.contains("/test/claim/"))
                 .collect();
             let edgeless: Vec<String> = claim_entries
                 .iter()
@@ -36250,12 +34468,6 @@ mod module_path_index_tests {
         assert_eq!(brace_delta("fn f() {"), 1);
         assert_eq!(brace_delta("let s = \"{ { {\""), 0);
         assert_eq!(brace_delta("} // }"), -1);
-    }
-
-    #[test]
-    fn is_test_dag_matches_suffix() {
-        assert!(is_test_dag("src/v2/lens/x_test.dag"));
-        assert!(!is_test_dag("src/v2/lens/x.dag"));
     }
 
     #[test]
@@ -37691,11 +35903,11 @@ fn serialize_untagged_variant(
 mod import_closure_equivalence_tests {
     use super::{
         build_module_graph_facts_live, build_module_index, build_multi_entry_index,
-        closure_subject_for_entry, default_source_roots, floor_discovery_path_excluded,
-        import_closure_live_paths, load_sources_for_entry_with_index,
-        module_graph_facts_build_count_for_test, reset_module_graph_facts_build_count_for_test,
-        resolve_entry_with_index, resolve_transitively, resolve_transitively_bfs_legacy,
-        witness_layer_roots, workspace_relative_repo_path,
+        closure_subject_for_entry, default_source_roots, import_closure_live_paths,
+        load_sources_for_entry_with_index, module_graph_facts_build_count_for_test,
+        reset_module_graph_facts_build_count_for_test, resolve_entry_with_index,
+        resolve_transitively, resolve_transitively_bfs_legacy, witness_layer_roots,
+        workspace_relative_repo_path,
     };
     use im::HashMap;
     use std::collections::BTreeSet;
@@ -37760,27 +35972,6 @@ mod import_closure_equivalence_tests {
         let index = build_module_index(pool_roots);
         let facts = super::build_module_graph_facts_live(pool_roots);
         assert_bfs_matches_import_closure_live_with_facts(entry_rel, &index, &facts);
-    }
-
-    /// Floor witness entry paths enrolled by the source-root `*_test.dag` pass
-    /// (`gunbc.ci.ci_layer_roots.witness_layer_roots`), minus the model exclusion list.
-    /// Avoids `discover_floor_witness_roster`'s producer + facts work — closure set-identity
-    /// only needs the witness entry roster.
-    fn floor_witness_entry_paths_for_oracle() -> BTreeSet<String> {
-        let mut entries = BTreeSet::new();
-        for root in default_source_roots() {
-            let mut dag_files = Vec::new();
-            super::collect_dag_files_tolerant(Path::new(&root), &mut dag_files)
-                .expect("acquire witness layer root");
-            for path in dag_files {
-                let rel = workspace_relative_repo_path(&path.path().to_string_lossy());
-                if !rel.ends_with("_test.dag") || floor_discovery_path_excluded(&rel) {
-                    continue;
-                }
-                entries.insert(rel);
-            }
-        }
-        entries
     }
 
     fn module_paths_for_sources(
@@ -38583,106 +36774,6 @@ mod exclusive_cost_partition_law {
         assert!(json.contains("\"excess_nanos\":1000"));
         // Elapsed wall is carried, never partitioned.
         assert!(json.contains("\"observations\":{\"elapsed_wall_nanos\":5000}"));
-    }
-}
-
-#[cfg(test)]
-mod selected_entry_closure_overlap_arithmetic {
-    //! Controls for the overlap arithmetic. The measurement's inputs come from live
-    //! production machinery, so these pin the derivations that turn those inputs into the
-    //! reported quantities — including the degenerate poles a real corpus rarely hits.
-
-    use super::*;
-
-    fn overlap(closures: Vec<(&str, Vec<&str>)>) -> SelectedEntryClosureOverlap {
-        let mut fanout: HashMap<String, usize> = HashMap::new();
-        let mut sum = 0usize;
-        let mut sizes = Vec::new();
-        for (entry, members) in &closures {
-            sizes.push((entry.to_string(), members.len()));
-            sum += members.len();
-            for m in members {
-                *fanout.entry((*m).to_string()).or_insert(0) += 1;
-            }
-        }
-        let union_modules = fanout.len();
-        let mut fanout_by_module: Vec<(String, usize)> = fanout.into_iter().collect();
-        fanout_by_module.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-        SelectedEntryClosureOverlap {
-            source_roots: vec!["dag".to_string()],
-            scan_dirs: vec!["dag/test/claim".to_string()],
-            head_sha: "0".repeat(40),
-            diff_base_override: None,
-            github_event_name: None,
-            github_base_ref: None,
-            changed_paths: Vec::new(),
-            departed_paths: Vec::new(),
-            roster_entries: closures.len(),
-            selected_entries: closures.iter().map(|(e, _)| e.to_string()).collect(),
-            skipped_entries: Vec::new(),
-            closure_sizes: sizes,
-            sum_closure_memberships: sum,
-            union_modules,
-            sum_closure_bytes: 0,
-            union_bytes: 0,
-            fanout_by_module,
-        }
-    }
-
-    #[test]
-    fn fully_disjoint_closures_have_no_displaceable_membership() {
-        // The pole that would CLOSE the union program: nothing is shared, so a union
-        // graph collapses nothing.
-        let m = overlap(vec![("a", vec!["m1", "m2"]), ("b", vec!["m3", "m4"])]);
-        assert_eq!(m.sum_closure_memberships, 4);
-        assert_eq!(m.union_modules, 4);
-        assert_eq!(m.duplication_factor(), Some(1.0));
-        assert_eq!(m.membership_upper_bound(), 0);
-        assert_eq!(m.fanout_percentile(99.0), Some(1));
-    }
-
-    #[test]
-    fn identical_closures_duplicate_by_the_entry_count() {
-        let m = overlap(vec![
-            ("a", vec!["m1", "m2"]),
-            ("b", vec!["m1", "m2"]),
-            ("c", vec!["m1", "m2"]),
-        ]);
-        assert_eq!(m.sum_closure_memberships, 6);
-        assert_eq!(m.union_modules, 2);
-        assert_eq!(m.duplication_factor(), Some(3.0));
-        assert_eq!(m.membership_upper_bound(), 4);
-        assert_eq!(m.fanout_by_module[0].1, 3);
-    }
-
-    #[test]
-    fn percentiles_are_nearest_rank_over_per_module_fanout() {
-        // m1 in all four, m2 in two, m3/m4 in one each → sorted fanout [1,1,2,4].
-        let m = overlap(vec![
-            ("a", vec!["m1", "m2", "m3"]),
-            ("b", vec!["m1", "m2"]),
-            ("c", vec!["m1"]),
-            ("d", vec!["m1", "m4"]),
-        ]);
-        assert_eq!(m.union_modules, 4);
-        assert_eq!(m.sum_closure_memberships, 8); // 3 + 2 + 1 + 2
-        assert_eq!(m.membership_upper_bound(), 4); // 8 - 4
-        assert_eq!(m.fanout_percentile(50.0), Some(1));
-        assert_eq!(m.fanout_percentile(99.0), Some(4));
-        assert_eq!(m.fanout_percentile(100.0), Some(4));
-    }
-
-    #[test]
-    fn empty_selection_reports_no_factor_rather_than_a_fabricated_one() {
-        // A diff that selects nothing is a real outcome; 0/0 must not become 1.0.
-        let m = overlap(Vec::new());
-        assert_eq!(m.union_modules, 0);
-        assert_eq!(m.duplication_factor(), None);
-        assert_eq!(m.membership_upper_bound(), 0);
-        assert_eq!(m.fanout_percentile(50.0), None);
-        let json = render_selected_entry_closure_overlap_json(&m);
-        assert!(json.contains("\"duplication_factor\":null"));
-        assert!(json.contains("\"max\":null"));
     }
 }
 

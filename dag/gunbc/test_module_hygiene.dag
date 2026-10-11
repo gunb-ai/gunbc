@@ -1,14 +1,13 @@
 module gunbc.test_module_hygiene
 
 import std.types { String, Bool, List }
-import v2.workflow.floor_naming_hygiene { floor_discovery_scan_test_decl_names }
 
 // U3 file-grain expand authority, plus the failure-receipt companion naming convention
 // claim_executor invokes. Host realizes the interpreter transport
 // (cli_run/test_module_hygiene_bridge.rs).
 //
 // WHAT THIS MODULE NO LONGER DOES (gunbc#8155): the U2 orphan enroll-or-refuse census is DELETED.
-// It walked every *_test.dag in the corpus, parsed each one, projected DeclSurface/ModuleSurface
+// It walked every module in the corpus carrying a test, parsed each one, projected DeclSurface/ModuleSurface
 // values, resolved a second interpreter context, and ran a fuelled reachability fixpoint with a
 // hand-authored cross-module export exception roster — all to decide whether a plain helper in a
 // test file was referenced. An unreferenced helper is dead-code hygiene; it is not evidence that
@@ -55,10 +54,13 @@ fn witness_verdict_diagnostic_companion(function: String) -> String {
   concat(witness_stem(function: function), "_verdict_diagnostic")
 }
 
+// `marked` is the names of the entry's test-marked declarations, SUPPLIED by the host: the fold
+// neither parses nor resolves files, and the marker is read once, by the parser's marker
+// channel, never re-derived here from text.
 type ExplicitExpandInput {
   entry: String
   function: String
-  content: String
+  marked: List<String>
 }
 
 type ExplicitEntryPair {
@@ -94,7 +96,7 @@ fn expand_explicit_pairs_or_refuse(inputs: List<ExplicitExpandInput>) -> ExpandE
         Refused { reason: reason } => Refused { reason: reason }
         Expanded { pairs: acc_pairs } => {
           if is_file_grain_function(function: inp.function) {
-            let names = floor_discovery_scan_test_decl_names(content: inp.content)
+            let names = inp.marked
             if length(xs: names) == 0 {
               Refused { reason: file_grain_empty_refusal(entry: inp.entry) }
             } else {
@@ -117,8 +119,4 @@ fn expand_explicit_pairs_or_refuse(inputs: List<ExplicitExpandInput>) -> ExpandE
       }
     }
   )
-}
-
-fn enumerate_entry_test_names(content: String) -> List<String> {
-  floor_discovery_scan_test_decl_names(content: content)
 }

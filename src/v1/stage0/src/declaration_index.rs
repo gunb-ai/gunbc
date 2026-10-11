@@ -394,27 +394,26 @@ pub struct DeclarationIntegrityFinding {
 /// Not a leniency carve-out: the difference between a claim and an input, decidable from the
 /// carrier's identity.
 ///
-/// NOT AN AUTHORED EXEMPTION LIST — read off the module's own path, the same `_test.dag`
-/// suffix `cli_run` `is_test_dag` uses corpus-wide, widened by the `test` namespace segment so
-/// a fixture module without the suffix (`test.fixture.decl_facts_reflection.specimens`) lands
-/// in the same class. The population is COUNTED, not dropped: `citations_in_fixtures` is
+/// NOT AN AUTHORED EXEMPTION LIST — read off the module's own path: a `test` namespace segment
+/// (`test.fixture.decl_facts_reflection.specimens`) puts a module in the class, and no file-name
+/// spelling does. The population is COUNTED, not dropped: `citations_in_fixtures` is
 /// reported beside the enrolled count, so a green cannot read as covering what it excluded.
 ///
 /// WHAT IT COSTS: a genuinely stale citation authored inside a witness module is not refused.
 /// Strictly better than what it replaces — `decl_facts` did not INDEX test modules at all, so
 /// citations INTO them refused spuriously and needed an authored outside-index disposition;
 /// here they resolve, and only citations FROM them are unenrolled.
-pub fn module_is_fixture_carrier(module_path: &str, rel_path: &str) -> bool {
-    rel_path.ends_with("_test.dag") || module_path.split('.').any(|segment| segment == "test")
+pub fn module_is_fixture_carrier(module_path: &str) -> bool {
+    module_path.split('.').any(|segment| segment == "test")
 }
 
 /// Whether a module path is a top-level lens — the population DESIGN §6's authorship
-/// obligation covers. A `*_test` module beside a lens is a witness carrier, not a lens.
+/// obligation covers.
 pub fn is_top_level_lens_module(module_path: &str) -> bool {
     let Some(tail) = module_path.strip_prefix("v2.lens.") else {
         return false;
     };
-    !tail.contains('.') && !tail.ends_with("_test")
+    !tail.contains('.')
 }
 
 /// Walk one node's whole subtree, visiting every reachable child edge.
@@ -1596,7 +1595,7 @@ pub fn record_from_module(
         arm_interfaces,
         coproduct_residuals,
         declares_construction_justification: declared.contains(CONSTRUCTION_JUSTIFICATION_DECL),
-        is_fixture_carrier: module_is_fixture_carrier(&module_path, rel_path),
+        is_fixture_carrier: module_is_fixture_carrier(&module_path),
         module_path,
         rel_path: rel_path.to_string(),
         declared,
@@ -2076,7 +2075,7 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 ///     module declares; the real module is `test.claim.witness_purpose_taxonomy_witness`. A
 ///     plain typo, invisible while the skip stood.
 ///   - `std.disposition` `Disposition` `marker` names a real authority and declaration with
-///     an absent field, cited twice from `v2.lens/disposition_redundancy_test.dag`.
+///     an absent field, cited twice from `v2.lens.disposition_redundancy`.
 ///
 /// WHAT THIS ROSTER IS AND IS NOT. An identity-grain exemption, not a debt contract — the
 /// difference is condition 3 of §5's four: a debt roster's terminal state is EMPTY and this

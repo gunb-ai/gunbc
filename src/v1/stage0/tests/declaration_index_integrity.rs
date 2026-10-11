@@ -554,8 +554,8 @@ fn fixture_citation_does_not_claim_authority_reachability() {
     author(&dir, "authority.dag", AUTHORITY);
     author(
         &dir,
-        "citer_test.dag",
-        "module probe.citer_test\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+        "citer_fixture.dag",
+        "module probe.test.citer\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
          data citation: DeclarationRef = DeclarationRef {\n  \
          module_path: \"probe.authority\",\n  decl_name: \"real_declaration\",\n  \
          field: WholeDeclaration\n}\n",
@@ -582,8 +582,8 @@ fn fixture_import_does_not_fabricate_production_authority_reachability() {
     );
     author(
         &dir,
-        "consumer_test.dag",
-        "module probe.consumer_test\n\nimport probe.authority { real_declaration }\n\n\
+        "consumer_fixture.dag",
+        "module probe.test.consumer\n\nimport probe.authority { real_declaration }\n\n\
          data fixture_consumes_authority: Bool = real_declaration\n",
     );
 
@@ -1179,8 +1179,8 @@ fn a_refusing_citation_inside_a_fixture_carrier_is_judged() {
     author(&dir, "authority.dag", AUTHORITY);
     author(
         &dir,
-        "witness_test.dag",
-        "module probe.witness\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+        "witness_fixture.dag",
+        "module probe.test.witness\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
          data cite: DeclarationRef = DeclarationRef {\n\u{20}\u{20}module_path: \
          \"probe.authority\",\n\u{20}\u{20}decl_name: \"no_such_declaration\",\n\u{20}\u{20}\
          field: WholeDeclaration,\n}\n",
@@ -1188,15 +1188,15 @@ fn a_refusing_citation_inside_a_fixture_carrier_is_judged() {
     let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
     // PRECONDITION 1: the module really is classified as a fixture carrier, or this test
     // proves nothing about the class it is named for.
-    let record = plant(&sweep.index, "probe.witness");
+    let record = plant(&sweep.index, "probe.test.witness");
     assert!(
         record.is_fixture_carrier,
-        "PLANT MALFORMED: `probe.witness` must be a fixture carrier for this arm to bite"
+        "PLANT MALFORMED: `probe.test.witness` must be a fixture carrier for this arm to bite"
     );
     // PRECONDITION 2: the citation was extracted.
     plant_cites(
         &sweep.index,
-        "probe.witness",
+        "probe.test.witness",
         "probe.authority",
         "no_such_declaration",
     );
@@ -1219,8 +1219,8 @@ fn a_fixture_citation_exemption_suppresses_only_its_own_identity() {
     author(&dir, "authority.dag", AUTHORITY);
     author(
         &dir,
-        "witness_test.dag",
-        "module probe.witness\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+        "witness_fixture.dag",
+        "module probe.test.witness\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
          data planted: DeclarationRef = DeclarationRef {\n\u{20}\u{20}module_path: \
          \"probe.authority\",\n\u{20}\u{20}decl_name: \"deliberately_absent\",\n\u{20}\u{20}\
          field: WholeDeclaration,\n}\n\ndata stale: DeclarationRef = DeclarationRef {\n\
@@ -1230,13 +1230,13 @@ fn a_fixture_citation_exemption_suppresses_only_its_own_identity() {
     let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
     plant_cites(
         &sweep.index,
-        "probe.witness",
+        "probe.test.witness",
         "probe.authority",
         "deliberately_absent",
     );
     plant_cites(
         &sweep.index,
-        "probe.witness",
+        "probe.test.witness",
         "probe.authority",
         "accidentally_absent",
     );
@@ -1249,7 +1249,7 @@ fn a_fixture_citation_exemption_suppresses_only_its_own_identity() {
     // Exempting ONE leaves the OTHER refusing. This is the whole content of the repair: the
     // exemption is keyed on the citation, so it cannot cover a sibling in the same module.
     let roster = [(
-        "probe.witness",
+        "probe.test.witness",
         "planted",
         "probe.authority",
         "deliberately_absent",
@@ -1274,8 +1274,8 @@ fn a_fixture_exemption_whose_citation_resolves_is_spent_and_refuses() {
     author(&dir, "authority.dag", AUTHORITY);
     author(
         &dir,
-        "witness_test.dag",
-        "module probe.witness\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+        "witness_fixture.dag",
+        "module probe.test.witness\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
          data cite: DeclarationRef = DeclarationRef {\n\u{20}\u{20}module_path: \
          \"probe.authority\",\n\u{20}\u{20}decl_name: \"real_declaration\",\n\u{20}\u{20}\
          field: WholeDeclaration,\n}\n",
@@ -1285,7 +1285,7 @@ fn a_fixture_exemption_whose_citation_resolves_is_spent_and_refuses() {
     // roster row over a resolving citation is exactly a spent row.
     plant_cites(
         &sweep.index,
-        "probe.witness",
+        "probe.test.witness",
         "probe.authority",
         "real_declaration",
     );
@@ -1295,7 +1295,7 @@ fn a_fixture_exemption_whose_citation_resolves_is_spent_and_refuses() {
         "PLANT MALFORMED: `real_declaration` must resolve for this to be a SPENT row"
     );
     let roster = [(
-        "probe.witness",
+        "probe.test.witness",
         "cite",
         "probe.authority",
         "real_declaration",

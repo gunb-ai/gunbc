@@ -21,7 +21,7 @@
 //! false for `FalsifierSelfHostWet`; `falsifier.yml` was deleted at 611fd02770/#8283), so it runs
 //! only by hand (`cargo test --release -p v1-compiler --test
 //! interpreter_dispatch_bijection_real_roster_red -- --ignored`) -- the same dark-lane state as
-//! `artifact_store_fs_witness_test.dag` and `direct_rust_door_write_compile_witness_test.dag`.
+//! `artifact_store_fs_witness.dag` and `direct_rust_door_write_compile_witness.dag`.
 //! Full accounting and shared dissolution trigger:
 //! `v2.test.claim.witness_exclusion_reconciliation`
 //! `dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note`. Presence in the tree

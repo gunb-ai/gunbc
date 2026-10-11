@@ -3643,7 +3643,7 @@ pub(crate) fn reference_edges_for_file_on_demand<
                 ImportlessBarePick::Unique(m) => upgrade(m.clone(), RefEdgeResolution::UniqueBare),
                 ImportlessBarePick::Ambiguous(winners) => {
                     if std::env::var("REFAMBIG_DUMP").is_ok() {
-                        let is_witness = rel.contains("/test/") || rel.ends_with("_test.dag");
+                        let is_witness = rel.contains("/test/");
                         let cands: Vec<String> = winners.iter().map(|s| (*s).clone()).collect();
                         eprintln!(
                             "REFAMBIG\t{}\t{}\t{}\t{}",

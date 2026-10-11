@@ -7,10 +7,9 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use v1_compiler::cli_run::{
-    closure_subject_for_entry, discover_floor_witness_roster, entry_closure_source_paths,
-    make_eval_context_with_runtime_options, peak_rss_vhwm_bytes,
-    precompute_whole_tree_published_mock_keys, process_shared_index, resolve_entry_with_index,
-    run_claim_measured, witness_exclusion_substrings, ClaimOutcome, DiscoveryRow, MultiEntryIndex,
+    closure_subject_for_entry, entry_closure_source_paths, make_eval_context_with_runtime_options,
+    peak_rss_vhwm_bytes, precompute_whole_tree_published_mock_keys, process_shared_index,
+    resolve_entry_with_index, run_claim_measured, ClaimOutcome, MultiEntryIndex,
 };
 use v1_compiler::recorded_fixture::RecordedFixtureStore;
 use v1_compiler::v1_compiler_compile::ResolvedGraph;
@@ -183,17 +182,11 @@ struct EntryGroup {
 struct ParsedArgs {
     source_roots: Vec<String>,
     entry_groups: Vec<EntryGroup>,
-    discovery: Option<DiscoveryConfig>,
     execution_mode: ExecutionMode,
     fixture_store: Option<PathBuf>,
     eval_budget_ms: Option<u64>,
     pre_push: bool,
     print_entry_closure: bool,
-}
-
-struct DiscoveryConfig {
-    scan_dirs: Vec<String>,
-    notice_title: String,
 }
 
 fn validate_explicit_functions(entry_groups: &[EntryGroup]) -> Result<(), ExitCode> {
@@ -240,9 +233,6 @@ fn validate_explicit_functions(entry_groups: &[EntryGroup]) -> Result<(), ExitCo
 fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
     let mut source_roots: Vec<String> = Vec::new();
     let mut entry_groups: Vec<EntryGroup> = Vec::new();
-    let mut roster_from_discovery = false;
-    let mut scan_dirs: Vec<String> = Vec::new();
-    let mut notice_title = "v2 CI claim gate".to_string();
     let mut execution_mode = ExecutionMode::Hermetic;
     let mut fixture_store: Option<PathBuf> = None;
     let mut eval_budget_ms: Option<u64> = None;
@@ -291,15 +281,6 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
                     }
                 }
             }
-            "--roster-from-discovery" => roster_from_discovery = true,
-            "--scan-dir" => {
-                i += 1;
-                scan_dirs.push(require_path_value(args, i, "--scan-dir")?);
-            }
-            "--notice-title" => {
-                i += 1;
-                notice_title = require_value(args, i, "--notice-title")?;
-            }
             "--claim-run" => {}
             "--wet" => execution_mode = ExecutionMode::Wet,
             "--hermetic" => execution_mode = ExecutionMode::Hermetic,
@@ -329,25 +310,9 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
         i += 1;
     }
 
-    let discovery = if roster_from_discovery {
-        if scan_dirs.is_empty() && entry_groups.is_empty() {
-            eprintln!(
-                "claim_batch: --roster-from-discovery requires at least one --scan-dir and/or explicit --entry row"
-            );
-            return Err(ExitCode::from(2));
-        }
-        Some(DiscoveryConfig {
-            scan_dirs,
-            notice_title,
-        })
-    } else {
-        None
-    };
-
     Ok(ParsedArgs {
         source_roots,
         entry_groups,
-        discovery,
         execution_mode,
         fixture_store,
         eval_budget_ms,
@@ -628,20 +593,6 @@ fn run_witnesses(
     Ok(())
 }
 
-fn group_discovered_rows(rows: Vec<DiscoveryRow>) -> Vec<EntryGroup> {
-    let mut groups: Vec<EntryGroup> = Vec::new();
-    for row in rows {
-        match groups.last_mut() {
-            Some(g) if g.entry == row.entry => g.functions.push(row.function),
-            _ => groups.push(EntryGroup {
-                entry: row.entry,
-                functions: vec![row.function],
-            }),
-        }
-    }
-    groups
-}
-
 /// Contiguous wall checkpoints from process start: each mark closes the span since the previous
 /// one, so the rows partition the process wall with no gap between them by construction.
 struct ProcessPartition {
@@ -708,10 +659,6 @@ fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
     // whole-pool bare-reference warm, output-policy resolution, mock precompute, and typed entry
     // resolve below: those are precisely the costs a prospective skip decision must avoid.
     if parsed.print_entry_closure {
-        if parsed.discovery.is_some() {
-            eprintln!("claim_batch: --print-entry-closure does not accept --roster-from-discovery");
-            return Err(ExitCode::from(2));
-        }
         if parsed.entry_groups.is_empty() {
             eprintln!("claim_batch: --print-entry-closure requires at least one --entry");
             return Err(ExitCode::from(2));
@@ -760,7 +707,6 @@ fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
 
     // Explicit names are entry-local facts. Refuse stale/typoed argv before the whole-tree
     // bare-reference warm, output-policy resolution, module-index construction, or entry resolve.
-    // Discovery-produced rows are validated by their producer and join later in this function.
     validate_explicit_functions(&parsed.entry_groups)?;
     partition.mark("args");
 
@@ -791,21 +737,14 @@ fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
     // it is. The warm stays HERE because the invariant is "before any consumer", not "before that
     // one" — and because the next accidental first toucher will not announce itself either.
     //
-    // THE SUBJECT DECIDES THE SCOPE. A discovery roster's subject is the scanned tree, and its
-    // entries are not known until discovery (itself a consumer) has run, so it keeps the
-    // whole-pool demand. A run over explicitly named entries consumes only the rows their closures
-    // reach, so it demands exactly those: the rows of every other pool file were produced for no
-    // consumer.
+    // THE SUBJECT DECIDES THE SCOPE. A run over explicitly named entries consumes only the rows
+    // their closures reach, so it demands exactly those: the rows of every other pool file were
+    // produced for no consumer.
     let warm_failed = |e: String| {
         eprintln!("claim_batch: bare-reference edge index warm failed: {e}");
         ExitCode::from(1)
     };
-    let (edge_index_warm, warm_scope) = if parsed.discovery.is_some() {
-        let warm =
-            v1_compiler::cli_run::warm_bare_reference_edge_index(&index).map_err(warm_failed)?;
-        let scope = format!("whole-pool pool_files={}", warm.source_files);
-        (warm, scope)
-    } else {
+    let (edge_index_warm, warm_scope) = {
         let entries: Vec<String> = parsed
             .entry_groups
             .iter()
@@ -846,47 +785,7 @@ fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
     let _phase_profile = v1_compiler::cli_run::PhaseProfile::install_from_env();
     partition.mark("output_policy");
 
-    let (entry_groups, discovery_notice) = if let Some(disc) = parsed.discovery {
-        let excludes = witness_exclusion_substrings();
-        let mut rows =
-            match discover_floor_witness_roster(&source_roots, &disc.scan_dirs, &excludes, &[]) {
-                Ok(r) => r,
-                Err(e) => {
-                    eprintln!("claim_batch: discovery roster failed: {e}");
-                    return Err(ExitCode::from(2));
-                }
-            };
-        let mut seen: std::collections::BTreeSet<(String, String)> = rows
-            .iter()
-            .map(|r| (r.entry.clone(), r.function.clone()))
-            .collect();
-        for group in &parsed.entry_groups {
-            for function in &group.functions {
-                if seen.insert((group.entry.clone(), function.clone())) {
-                    rows.push(DiscoveryRow {
-                        label: function.clone(),
-                        entry: group.entry.clone(),
-                        function: function.clone(),
-                        // claim_batch runs every row (no selection); the undeclared
-                        // fail-closed default is the honest fill for a transient row.
-                        reads_live_tree: true,
-                    });
-                }
-            }
-        }
-        if rows.is_empty() {
-            eprintln!("claim_batch: roster produced no rows (empty corpus → fail closed)");
-            return Err(ExitCode::from(2));
-        }
-        rows.sort_by(|a, b| {
-            a.entry
-                .cmp(&b.entry)
-                .then_with(|| a.function.cmp(&b.function))
-        });
-        (group_discovered_rows(rows), Some(disc.notice_title))
-    } else {
-        (parsed.entry_groups, None)
-    };
+    let entry_groups = parsed.entry_groups;
 
     partition.mark("roster");
 
@@ -1190,10 +1089,6 @@ fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
         return Ok(ExitCode::from(1));
     }
 
-    if let Some(title) = discovery_notice {
-        println!("{title}: {total_witnesses} discriminating witness(es) passed");
-    }
-
     Ok(ExitCode::SUCCESS)
 }
 
@@ -1397,24 +1292,5 @@ mod witness_report_line_tests {
         let line = witness_report_line("some_witness", &receipt(500, 500));
         assert!(line.contains("cpu=500ms"), "{line}");
         assert!(line.contains("wall=500ms"), "{line}");
-    }
-}
-
-#[cfg(test)]
-mod discovery_exclude_tests {
-    use v1_compiler::cli_run::floor_discovery_path_excluded;
-
-    #[test]
-    fn real_ingest_gate_only_path_excluded_on_ci_style_paths() {
-        let paths = [
-            "src/v2/test/claim/program_assembly/real_ingest.dag",
-            "/opt/actions-runner/work/gunbc/gunbc/src/v2/test/claim/program_assembly/real_ingest.dag",
-        ];
-        for path in paths {
-            assert!(
-                floor_discovery_path_excluded(path),
-                "expected gate-only overlay witness excluded: {path}"
-            );
-        }
     }
 }
