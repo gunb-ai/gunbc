@@ -102,7 +102,10 @@ fn parse_extent_holds(index: SpanIndex, node: Node, start: Int, end: Int, inside
     OccurrenceMinted { id: id } =>
       match span_index_extent(index: index, id: id) {
         Absent => false
-        Present { value: locus } =>
+        Present { value: recorded } =>
+          match recorded {
+            SourceExtentUnrepresentable => false
+            SourceExtentKnown { locus: locus } =>
           match locus {
             Textual { file: f, extent: ext } =>
               (f == ^parse_extent_file)
@@ -115,6 +118,25 @@ fn parse_extent_holds(index: SpanIndex, node: Node, start: Int, end: Int, inside
                 }
             _ => false
           }
+          }
+      }
+    OccurrenceSynthetic => false
+    OccurrenceProjected { id: _, caused_by: _ } => false
+    OccurrencePending { caused_by: _ } => false
+  }
+}
+
+// The node consumed input no single range covers: recorded Unrepresentable, never Absent.
+fn parse_extent_unrepresentable(index: SpanIndex, node: Node) -> Bool {
+  match node.occurrence_id {
+    OccurrenceMinted { id: id } =>
+      match span_index_extent(index: index, id: id) {
+        Present { value: recorded } =>
+          match recorded {
+            SourceExtentUnrepresentable => true
+            SourceExtentKnown { locus: _ } => false
+          }
+        Absent => false
       }
     OccurrenceSynthetic => false
     OccurrenceProjected { id: _, caused_by: _ } => false
@@ -270,8 +292,9 @@ test fn repeat_extent_spans_its_items_holds() -> Bool {
 }
 
 // A COMPOSITE WHOSE CHILDREN SPAN TWO FILES RECORDS NO EXTENT. Its closing brace comes from another
-// file, so no single byte range covers it; the fold refuses rather than recording `{ stmt` alone or a
-// range in one file that ends at an offset from the other.
+// file, so no single byte range covers it; the block records Unrepresentable -- distinct from the
+// Absent of a node that consumed nothing -- rather than `{ stmt` alone or a range in one file that
+// ends at an offset from the other.
 test fn cross_file_children_record_no_extent_holds() -> Bool {
   let tokens = Cons {
     head: parse_extent_token(class: ^parse_extent_lbrace, start: 0, end: 1),
@@ -285,7 +308,7 @@ test fn cross_file_children_record_no_extent_holds() -> Bool {
   }
   match parse_extent_parse(root: parse_extent_block_root(), tokens: tokens) {
     Rejected { diagnostics: _ } => false
-    Accepted { value: artifact, diagnostics: _ } => parse_extent_absent(index: artifact.span_index, node: artifact.tree)
+    Accepted { value: artifact, diagnostics: _ } => parse_extent_unrepresentable(index: artifact.span_index, node: artifact.tree)
   }
 }
 
@@ -306,6 +329,6 @@ test fn unrepresentable_child_refuses_its_ancestors_holds() -> Bool {
   }
   match parse_extent_parse(root: parse_extent_block_root(), tokens: tokens) {
     Rejected { diagnostics: _ } => false
-    Accepted { value: artifact, diagnostics: _ } => parse_extent_absent(index: artifact.span_index, node: artifact.tree)
+    Accepted { value: artifact, diagnostics: _ } => parse_extent_unrepresentable(index: artifact.span_index, node: artifact.tree)
   }
 }

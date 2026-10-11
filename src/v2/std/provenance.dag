@@ -73,35 +73,22 @@ fn span_index_record_extent_unrepresentable(index: SpanIndex, id: OccurrenceId) 
   }
 }
 
-// Whether `id` consumed input that no single range covers.
-fn span_index_extent_unrepresentable(index: SpanIndex, id: OccurrenceId) -> Bool {
-  match index.extents.lookup(id) {
-    Present { value: recorded } =>
-      match recorded {
-        SourceExtentUnrepresentable => true
-        SourceExtentKnown { locus: _ } => false
-      }
-    Absent => false
-  }
-}
 
-// THE WHOLE RANGE AN OCCURRENCE COVERS IN ITS SOURCE. A composed node answers with the extent its
-// parser recorded; a terminal answers with its own FromSource locus. Anything else -- a node a later
+// THE WHOLE RANGE AN OCCURRENCE COVERS IN ITS SOURCE, three-valued. A composed node answers with what
+// its parser recorded -- a known range, or Unrepresentable when it consumed input no single range
+// covers; a terminal answers Known with its own FromSource locus. Anything else -- a node a later
 // stage derived, a generated node, a production that consumed no token -- answers Absent, because
 // no producer recorded a range for it and inventing one from its causes is the reconstruction the
-// extents table exists to replace.
-fn span_index_extent(index: SpanIndex, id: OccurrenceId) -> Optional<Locus> {
+// extents table exists to replace. Unrepresentable is never folded into Absent: a containment reader
+// told "no extent" for a node that consumed input would answer as if it were empty (DESIGN 5).
+fn span_index_extent(index: SpanIndex, id: OccurrenceId) -> Optional<RecordedSourceExtent> {
   match index.extents.lookup(id) {
-    Present { value: recorded } =>
-      match recorded {
-        SourceExtentKnown { locus: extent } => Present { value: extent }
-        SourceExtentUnrepresentable => Absent
-      }
+    Present { value: recorded } => Present { value: recorded }
     Absent =>
       match index.entries.lookup(id) {
         Present { value: event } =>
           match event {
-            FromSource { locus } => Present { value: locus }
+            FromSource { locus } => Present { value: SourceExtentKnown { locus: locus } }
             DerivedBy { producer: _, from: _ } => Absent
             GeneratedBy { generator: _, from: _ } => Absent
           }

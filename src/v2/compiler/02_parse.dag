@@ -66,7 +66,9 @@ import v2.std.provenance {
   origin_event_from_source,
   span_index_empty,
   span_index_extent,
-  span_index_extent_unrepresentable,
+  RecordedSourceExtent,
+  SourceExtentKnown,
+  SourceExtentUnrepresentable,
   span_index_record_extent_unrepresentable,
   span_index_record,
   span_index_record_extent
@@ -982,25 +984,27 @@ fn parse_extent_span_step(acc: ParseExtentFold, index: SpanIndex, child: Node) -
       match node_occurrence_id_optional(node: child) {
         Absent => acc
         Present { value: child_id } =>
-          if span_index_extent_unrepresentable(index: index, id: child_id) { ParseExtentUnreadable } else {
           match span_index_extent(index: index, id: child_id) {
             Absent => acc
-            Present { value: locus } =>
-              match locus {
-                Textual { file: f, extent: ext } =>
-                  match ext {
-                    ByteRange { start: s, end: e } =>
-                      match acc {
-                        ParseExtentNoneYet => ParseExtentSpan { file: f, start: s, end: e }
-                        ParseExtentSpan { file: af, start: astart, end: _ } =>
-                          if af == f { ParseExtentSpan { file: af, start: astart, end: e } } else { ParseExtentUnreadable }
-                        ParseExtentUnreadable => ParseExtentUnreadable
+            Present { value: recorded } =>
+              match recorded {
+                SourceExtentUnrepresentable => ParseExtentUnreadable
+                SourceExtentKnown { locus: locus } =>
+                  match locus {
+                    Textual { file: f, extent: ext } =>
+                      match ext {
+                        ByteRange { start: s, end: e } =>
+                          match acc {
+                            ParseExtentNoneYet => ParseExtentSpan { file: f, start: s, end: e }
+                            ParseExtentSpan { file: af, start: astart, end: _ } =>
+                              if af == f { ParseExtentSpan { file: af, start: astart, end: e } } else { ParseExtentUnreadable }
+                            ParseExtentUnreadable => ParseExtentUnreadable
+                          }
+                        WholeFile => ParseExtentUnreadable
                       }
-                    WholeFile => ParseExtentUnreadable
+                    _ => ParseExtentUnreadable
                   }
-                _ => ParseExtentUnreadable
               }
-          }
           }
       }
   }
