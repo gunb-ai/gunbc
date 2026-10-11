@@ -4,6 +4,9 @@ import std.types { String, NonEmptyStr, List, Bool, Int, Port }
 import std.measure { second_count }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_path }
+import std.goal_assessment {
+  GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
+}
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
 import gunbc.auth.google_workspace_login {
@@ -14,6 +17,8 @@ import gunbc.auth.google_workspace_login {
 }
 import gunbc.auth.google_workspace_admin_convergence {
   WorkspaceIdentityBinding, WorkspaceAdminReadback, AdminConsoleReadback, EffectiveAtDeclaredScope,
+  WorkspaceAdminEvidence, WorkspaceAdminDifference, workspace_identity_admin_obligations,
+  workspace_admin_assess, BasicSignInOnly,
 }
 import gunbc.workspace_allocation_policy { workspace_operator_principal }
 import extdeps.google.workspace { AuthPlatformClient, RegisteredWebClient }
@@ -69,26 +74,64 @@ data tracker_web_test_lab_redirect_uri: NonEmptyStr = tracker_web_oauth_public_r
   https_port: tracker_web_test_lab_https_port,
 )
 
-type TrackerWebRedirectRealization {
-  assigned_instance_id: NonEmptyStr?
+type TrackerWebInstanceLoginRow {
+  instance_id: NonEmptyStr
+  environment: GoogleLoginEnvironment
+  redirect_uri: NonEmptyStr?
+}
+
+fn tracker_web_instance_login_rows() -> List<TrackerWebInstanceLoginRow> {
+  [
+    TrackerWebInstanceLoginRow {
+      instance_id: srv1_dashboard_lab_id,
+      environment: GoogleLoginEnvironmentTest,
+      redirect_uri: Present { value: tracker_web_test_lab_redirect_uri },
+    },
+    TrackerWebInstanceLoginRow {
+      instance_id: srv1_dashboard_live_id,
+      environment: GoogleLoginEnvironmentProd,
+      redirect_uri: none,
+    },
+  ]
+}
+
+type TrackerWebUnassignedRedirect {
+  environment: GoogleLoginEnvironment
   uri: NonEmptyStr
 }
 
-fn tracker_web_test_redirect_realizations() -> List<TrackerWebRedirectRealization> {
+fn tracker_web_unassigned_redirects() -> List<TrackerWebUnassignedRedirect> {
   [
-    TrackerWebRedirectRealization {
-      assigned_instance_id: Present { value: srv1_dashboard_lab_id },
-      uri: tracker_web_test_lab_redirect_uri,
-    },
-    TrackerWebRedirectRealization {
-      assigned_instance_id: none,
+    TrackerWebUnassignedRedirect {
+      environment: GoogleLoginEnvironmentTest,
       uri: tracker_web_test_srv2_redirect_uri,
     },
   ]
 }
 
-fn tracker_web_environment_redirect_uris(realizations: List<TrackerWebRedirectRealization>) -> List<NonEmptyStr> {
-  map(realizations, r => r.uri)
+fn tracker_web_assigned_redirect_uris(environment: GoogleLoginEnvironment) -> List<NonEmptyStr> {
+  map(
+    filter(tracker_web_instance_login_rows(), r =>
+      (r.environment == environment) && match r.redirect_uri {
+        Present { value: _ } => true
+        Absent => false
+      }
+    ),
+    r => match r.redirect_uri {
+      Present { value: uri } => uri
+      Absent => tracker_web_test_lab_redirect_uri
+    },
+  )
+}
+
+fn tracker_web_environment_redirect_uris(environment: GoogleLoginEnvironment) -> List<NonEmptyStr> {
+  concat(
+    tracker_web_assigned_redirect_uris(environment: environment),
+    map(
+      filter(tracker_web_unassigned_redirects(), u => u.environment == environment),
+      u => u.uri,
+    ),
+  )
 }
 
 fn tracker_web_test_oauth_client_binding() -> TrackerWebOauthClientBinding {
@@ -96,7 +139,7 @@ fn tracker_web_test_oauth_client_binding() -> TrackerWebOauthClientBinding {
     client: GoogleLoginClientTrackerWeb,
     environment: GoogleLoginEnvironmentTest,
     client_id: tracker_web_test_oauth_client_id,
-    redirect_uris: tracker_web_environment_redirect_uris(realizations: tracker_web_test_redirect_realizations()),
+    redirect_uris: tracker_web_environment_redirect_uris(environment: GoogleLoginEnvironmentTest),
     hosted_domain: gunb_ai_hosted_domain,
     admitted_audiences: [tracker_web_test_oauth_client_id],
   }
@@ -116,13 +159,14 @@ fn tracker_web_oauth_standing_for_environment(environment: GoogleLoginEnvironmen
   }
 }
 
+fn tracker_web_instance_login_row(instance_id: NonEmptyStr) -> TrackerWebInstanceLoginRow? {
+  filter(tracker_web_instance_login_rows(), r => (r.instance_id as String) == (instance_id as String)).first()
+}
+
 fn tracker_web_instance_environment(instance_id: NonEmptyStr) -> GoogleLoginEnvironment? {
-  if (instance_id as String) == (srv1_dashboard_lab_id as String) {
-    Present { value: GoogleLoginEnvironmentTest }
-  } else if (instance_id as String) == (srv1_dashboard_live_id as String) {
-    Present { value: GoogleLoginEnvironmentProd }
-  } else {
-    none
+  match tracker_web_instance_login_row(instance_id: instance_id) {
+    Absent => none
+    Present { value: row } => Present { value: row.environment }
   }
 }
 
@@ -173,32 +217,60 @@ type TrackerWebOidcServeConfig {
   binding: TrackerWebOauthClientBinding
 }
 
-fn tracker_web_realization_for_instance(instance_id: NonEmptyStr) -> TrackerWebRedirectRealization? {
-  filter(tracker_web_test_redirect_realizations(), r =>
-    match r.assigned_instance_id {
-      Absent => false
-      Present { value: id } => (id as String) == (instance_id as String)
-    }
-  ).first()
+type TrackerWebOidcServeStanding
+  = TrackerWebOidcServeConfigured { config: TrackerWebOidcServeConfig }
+  | TrackerWebOidcInstanceUnassigned { instance_id: NonEmptyStr }
+  | TrackerWebOidcEnvironmentUnbound { instance_id: NonEmptyStr, reason: NonEmptyStr }
+  | TrackerWebOidcRealizationMissing { instance_id: NonEmptyStr, environment: GoogleLoginEnvironment }
+  | TrackerWebOidcConsoleReadbackUnsatisfied { instance_id: NonEmptyStr, cause: NonEmptyStr }
+
+fn tracker_web_test_auth_platform_client_assessment(now_epoch: Int) -> GoalAssessment<WorkspaceAdminEvidence, WorkspaceAdminDifference, String, String> {
+  let binding = tracker_web_test_workspace_identity_binding()
+  match workspace_identity_admin_obligations(binding: binding, discovery: BasicSignInOnly).first() {
+    Absent => GoalAssessmentRefused { cause: "tracker-web TEST Auth Platform obligation is missing" }
+    Present { value: ob } =>
+      workspace_admin_assess(
+        goal: ob,
+        receipt: tracker_web_test_registered_web_client_console_readback(),
+        admitted_admins: [workspace_operator_principal()],
+        now_epoch: now_epoch,
+      )
+  }
 }
 
-fn tracker_web_oidc_serve_config(instance_id: NonEmptyStr) -> TrackerWebOidcServeConfig? {
-  match tracker_web_instance_environment(instance_id: instance_id) {
-    Absent => none
-    Present { value: env } =>
-      match tracker_web_oauth_standing_for_environment(environment: env) {
-        TrackerWebOauthClientUnbound { environment: _, reason: _ } => none
+fn tracker_web_oidc_serve_standing(instance_id: NonEmptyStr) -> TrackerWebOidcServeStanding {
+  match tracker_web_instance_login_row(instance_id: instance_id) {
+    Absent => TrackerWebOidcInstanceUnassigned { instance_id: instance_id }
+    Present { value: row } =>
+      match tracker_web_oauth_standing_for_environment(environment: row.environment) {
+        TrackerWebOauthClientUnbound { environment: _, reason } =>
+          TrackerWebOidcEnvironmentUnbound { instance_id: instance_id, reason: reason }
         TrackerWebOauthClientBound { binding: b } =>
-          match tracker_web_realization_for_instance(instance_id: instance_id) {
-            Absent => none
-            Present { value: r } =>
-              Present {
-                value: TrackerWebOidcServeConfig {
-                  config_path: tracker_web_dev_oidc_config_host_path,
-                  redirect_uri: r.uri,
-                  secret_file: tracker_web_dev_oauth_client_secret_host_path,
-                  binding: b,
-                }
+          match row.redirect_uri {
+            Absent => TrackerWebOidcRealizationMissing { instance_id: instance_id, environment: row.environment }
+            Present { value: uri } =>
+              match tracker_web_test_auth_platform_client_assessment(now_epoch: tracker_web_test_console_readback_observed_at_epoch + 1) {
+                GoalSatisfied { evidence: _ } =>
+                  TrackerWebOidcServeConfigured {
+                    config: TrackerWebOidcServeConfig {
+                      config_path: tracker_web_dev_oidc_config_host_path,
+                      redirect_uri: uri,
+                      secret_file: tracker_web_dev_oauth_client_secret_host_path,
+                      binding: b,
+                    }
+                  }
+                GoalDiverged { deviations: _ } =>
+                  TrackerWebOidcConsoleReadbackUnsatisfied {
+                    instance_id: instance_id,
+                    cause: "console readback diverged from Auth Platform obligation" as NonEmptyStr,
+                  }
+                GoalIndeterminate { known_deviations: _, unknowns: _ } =>
+                  TrackerWebOidcConsoleReadbackUnsatisfied {
+                    instance_id: instance_id,
+                    cause: "console readback is indeterminate" as NonEmptyStr,
+                  }
+                GoalAssessmentRefused { cause } =>
+                  TrackerWebOidcConsoleReadbackUnsatisfied { instance_id: instance_id, cause: cause as NonEmptyStr }
               }
           }
       }
@@ -223,22 +295,6 @@ fn tracker_web_oidc_env_assignment(cfg: TrackerWebOidcServeConfig) -> NonEmptySt
   join([oidc_config_env_var as String, "=", cfg.config_path as String], "") as NonEmptyStr
 }
 
-fn production_has_no_oidc_serve_config() -> Bool {
-  match tracker_web_oidc_serve_config(instance_id: srv1_dashboard_live_id) {
-    Absent => true
-    Present { value: _ } => false
-  }
-}
-
-fn tracker_web_test_unassigned_redirect_realizations() -> List<TrackerWebRedirectRealization> {
-  filter(tracker_web_test_redirect_realizations(), r =>
-    match r.assigned_instance_id {
-      Absent => true
-      Present { value: _ } => false
-    }
-  )
-}
-
 data srv2_hand_started_oidc_unit_dissolution: DissolutionCondition = unbound_dissolution(
   description: "TRIGGER: a DesiredDeployment whose serve unit and oidc-config/v1 file are emitted for an instance assigned the tracker-web TEST environment that currently realizes https://srv2.tailecbe08.ts.net:18082/auth/google/callback, sufficient to delete the hand-started gunbc-dash-18082.service and the hand-placed oidc-config.json as the live login path. A custody delivery of the client secret onto srv2 without a modeled serve unit is not this trigger." as NonEmptyStr
 )
@@ -259,6 +315,7 @@ data tracker_web_test_owned_domain_frontier: FrontierRow = frontier_row_path(
   dissolution: tracker_web_test_owned_domain_dissolution,
 )
 
-fn tracker_web_oauth_frontier_roster() -> List<FrontierRow> {
-  [srv2_hand_started_oidc_unit_frontier, tracker_web_test_owned_domain_frontier]
-}
+data tracker_web_oauth_frontier_rows: List<FrontierRow> = [
+  srv2_hand_started_oidc_unit_frontier,
+  tracker_web_test_owned_domain_frontier,
+]

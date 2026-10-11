@@ -195,7 +195,9 @@ import gunbc.live_deploy.spec {
 }
 import gunbc.ci_release_bins { gunbc_release_bin_name }
 import gunbc.auth.tracker_web_oauth_client {
-  tracker_web_oidc_serve_config, tracker_web_oidc_config_document, tracker_web_oidc_env_assignment,
+  tracker_web_oidc_serve_standing, tracker_web_oidc_config_document, tracker_web_oidc_env_assignment,
+  TrackerWebOidcServeConfigured, TrackerWebOidcInstanceUnassigned, TrackerWebOidcEnvironmentUnbound,
+  TrackerWebOidcRealizationMissing, TrackerWebOidcConsoleReadbackUnsatisfied,
 }
 import gunbc.host_layout {
   belt_spawn_workdir_env_var,
@@ -531,9 +533,12 @@ fn user_manager_environment_directives(uid: Int) -> List<SystemdServiceDirective
 }
 
 fn live_deploy_oidc_environment_directives(spec: DeploymentSpec) -> List<SystemdServiceDirective> {
-  match tracker_web_oidc_serve_config(instance_id: spec.instance_id) {
-    Absent => []
-    Present { value: cfg } => [Environment { assignment: tracker_web_oidc_env_assignment(cfg: cfg) }]
+  match tracker_web_oidc_serve_standing(instance_id: spec.instance_id) {
+    TrackerWebOidcServeConfigured { config: cfg } => [Environment { assignment: tracker_web_oidc_env_assignment(cfg: cfg) }]
+    TrackerWebOidcInstanceUnassigned { instance_id: _ } => []
+    TrackerWebOidcEnvironmentUnbound { instance_id: _, reason: _ } => []
+    TrackerWebOidcRealizationMissing { instance_id: _, environment: _ } => []
+    TrackerWebOidcConsoleReadbackUnsatisfied { instance_id: _, cause: _ } => []
   }
 }
 
@@ -1341,9 +1346,8 @@ fn apply_systemd_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevision
 }
 
 fn apply_oidc_config_steps(spec: DeploymentSpec) -> List<PipelineStep> {
-  match tracker_web_oidc_serve_config(instance_id: spec.instance_id) {
-    Absent => []
-    Present { value: cfg } => [
+  match tracker_web_oidc_serve_standing(instance_id: spec.instance_id) {
+    TrackerWebOidcServeConfigured { config: cfg } => [
       deploy_raw(command: deploy_stage_write_command(
         stage_name: "gunbc-oidc-config.json",
         content: tracker_web_oidc_config_document(cfg: cfg),
@@ -1356,6 +1360,10 @@ fn apply_oidc_config_steps(spec: DeploymentSpec) -> List<PipelineStep> {
         dest: cfg.config_path as String,
       )),
     ]
+    TrackerWebOidcInstanceUnassigned { instance_id: _ } => []
+    TrackerWebOidcEnvironmentUnbound { instance_id: _, reason: _ } => []
+    TrackerWebOidcRealizationMissing { instance_id: _, environment: _ } => []
+    TrackerWebOidcConsoleReadbackUnsatisfied { instance_id: _, cause: _ } => []
   }
 }
 
