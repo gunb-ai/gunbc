@@ -9,7 +9,7 @@ import extdeps.github.github { GitHubUser, User }
 import extdeps.github.workflow_runs { WorkflowRun, WorkflowRunStatus, InProgress, Completed }
 import gunbc.auth.heal_publisher_provision { FederationClassified, impersonation_cells, standing_principal_set }
 import gunbc.auth.gcp_iam_converge {
-  AddPolicyCells, CreateServiceAccount, ServiceAccountPolicy, SecretPolicy, GcpIamApply,
+  AddPolicyCells, ServiceAccountPolicy, SecretPolicy, GcpIamApply,
   PolicyObserved, PolicyResourceAbsent, GrantPolicyReading, plan_dedicated_federation, gcp_iam_converge_targets,
 }
 import gunbc.hetzner_cloud_acquisition { hetzner_cloud_default_read_token, hetzner_cloud_api_grants }
@@ -76,20 +76,19 @@ test fn the_account_holds_only_the_read_only_hetzner_token() -> Bool {
     && all(hetzner_cloud_api_grants(), g => (g.target.secret as String) == "hetzner-cloud-default-read-api-key")
 }
 
-// THE CONVERGE CREATES THE ACCOUNT AND GRANTS THE READ TOKEN, AND WRITES NOTHING ON THE ACCOUNT'S OWN
-// POLICY: no empty add, no standing cell.
+// THE CONVERGE GRANTS THE READ TOKEN AND WRITES NOTHING ON THE ACCOUNT'S OWN POLICY: no empty add, no
+// standing cell. The account itself is created by the bootstrap ceremony, not by the converge.
 test fn the_converge_provisions_the_account_without_touching_its_policy() -> Bool {
   let f = hetzner_cloud_control_federation()
   match plan_dedicated_federation(
     f: f,
-    classification: FederationClassified { create_pool: true, create_provider: true, create_account: true },
+    classification: FederationClassified { create_pool: false, create_provider: true, create_account: false },
     account_policy: PolicyResourceAbsent,
     secret_policies: map(f.secret_grants, g => GrantPolicyReading { grant: g, reading: PolicyObserved { policy: GcpPolicy { bindings: [], etag: "s0", version: 1 } } }),
   ) {
     GcpIamApply { diff: d } =>
       !any(d.effects, e => match e { AddPolicyCells { subject: ServiceAccountPolicy { email: _ }, observed_etag: _, cells: _ } => true  _ => false })
         && any(d.effects, e => match e { AddPolicyCells { subject: SecretPolicy { secret: s }, observed_etag: _, cells: _ } => (s as String) == "hetzner-cloud-default-read-api-key"  _ => false })
-        && any(d.effects, e => match e { CreateServiceAccount { account_id: a, display_name: _ } => (a as String) == "hetzner-cloud-control"  _ => false })
     _ => false
   }
 }

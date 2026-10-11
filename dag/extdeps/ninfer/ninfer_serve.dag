@@ -1,0 +1,146 @@
+module extdeps.ninfer.ninfer_serve
+
+import std.types { NonEmptyStr, String, Bool, List, Int }
+import std.optional { Present, Absent }
+import std.nat { Nat }
+import std.measure { Millisecond, TokenCount }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
+import extdeps.languages.json.parse { JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject, json_object_unique_member }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// NINFER-SERVE, as its own extdeps authority: an independently built inference server whose OpenAI-compatible
+// surface this repository calls. It is not vLLM and shares no flag, path or error-body fact with it.
+//
+// THE UPSTREAM IS CITED; THE REVISION IS THE POD'S CHECKOUT. Repository and revision are the operator
+// session's observation of the pod on 2026-10-11 (git checkout 81c8ce093b2c1646a87566a8e59d807fcf0ec95c,
+// dated 2026-10-07). The flags and surface below were read from `ninfer-serve --help` and from HTTP
+// replies; the help text is not a published page, so each figure stays TranscribedUncited until read at
+// the upstream revision.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "github.com/Neroued/ninfer" as NonEmptyStr }
+}
+
+
+data ninfer_serve_program: NonEmptyStr = "ninfer-serve" as NonEmptyStr
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ninfer.ninfer_serve",
+      decl_name: "ninfer_serve_program",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+data ninfer_upstream_read_obligation: NonEmptyStr = "Read ninfer's source and docs at github.com/Neroued/ninfer at the pod revision and replace each TranscribedUncited standing in this module with a CitedToAuthority citation. Until then each figure is the operator's observed command line or HTTP reading of 2026-10-11, not an upstream-published contract." as NonEmptyStr
+
+// ── THE OPENAI-COMPATIBLE SURFACE ───────────────────────────────────────────────────────────────
+//
+// Observed: /health answers 200 with no authorization; /v1/models answers `invalid_api_key` without a key and
+// the model list with `Authorization: Bearer <key>`. Chat completions is the OpenAI-compatible path; its
+// tool-calling and reasoning wire behaviour is UNREAD and nothing in this module asserts it.
+data ninfer_models_path: NonEmptyStr = "/v1/models" as NonEmptyStr
+data ninfer_chat_completions_path: NonEmptyStr = "/v1/chat/completions" as NonEmptyStr
+data ninfer_health_path: NonEmptyStr = "/health" as NonEmptyStr
+
+// The member of a /v1/models entry that reports the context window. Contrast with vLLM, whose entries carry
+// a `root` member this server was observed not to need; the field name is the observed one.
+
+fn ninfer_authorization_header_line(key: NonEmptyStr) -> String {
+  join(["Authorization: Bearer ", key as String, "\n"], "")
+}
+
+// ── THE FLAGS THE OPERATOR LAUNCHES IT WITH, as typed engine facts ─────────────────────────────
+type NinferKvDtype
+  = NinferKvBf16
+  | NinferKvInt8
+  | NinferKvFp8
+  | NinferKvNvfp4
+  | NinferKvK8V4
+
+type NinferSpeculation
+  = NinferMtp { draft_tokens: Nat, lm_head_draft: Bool }
+
+type NinferServeLaunch {
+  model_id: NonEmptyStr
+  max_concurrency: Nat
+  max_context: TokenCount
+  max_pending_requests: Nat
+  pending_timeout: Millisecond
+  default_max_tokens: TokenCount
+  kv_dtype: NinferKvDtype
+  kv_capacity_auto: Bool
+  speculation: NinferSpeculation
+  standing: CitedFigureStanding
+}
+
+// ── THE CHAT-COMPLETIONS READING, observed live 2026-10-11 (qwen3.8-27b through the srv1 tunnel) ───
+// One non-streaming request with one function tool: finish_reason `tool_calls`; message.content null;
+// reasoning in message.reasoning_content (not `reasoning`, no inline think tags); message.tool_calls[] with
+// string id, type function, function.name and function.arguments as a JSON STRING; usage with
+// completion_tokens_details.reasoning_tokens; extra top-level members `constraint` and `timings` that a
+// decoder must tolerate. Thinking is ON server-side by default; --no-thinking and --default-thinking-budget
+// are launch flags, and no per-request switch has been read. An observation receipt, one request, not a
+// published contract.
+data ninfer_message_reasoning_field: NonEmptyStr = "reasoning_content" as NonEmptyStr
+
+// The inline closer is NOT OBSERVED: the reading above showed reasoning split server-side with no inline tags,
+// so no decoder reads this while that holds. It is the closer harness_unit_thinking_end_token must answer
+// with to stay total, spelled as the Qwen family's usual think tag and standing as an unread assumption
+// (ninfer_upstream_read_obligation) until the chat template is read.
+type NinferAssumedToken {
+  token: NonEmptyStr
+  standing: CitedFigureStanding
+}
+
+data ninfer_inline_think_end_token: NinferAssumedToken = NinferAssumedToken {
+  token: "</think>" as NonEmptyStr,
+  standing: TranscribedUncited { read_obligation: ninfer_upstream_read_obligation },
+}
+
+// ── NINFER'S OWN READER OF ITS /v1/models LIST ───────────────────────────────────────────────────
+// The list is the OpenAI-compatible shape ({data:[{id,...}]}); ninfer's entries carry id, max_model_len and
+// owned_by and no vLLM `root`, so this module reads the one member it needs and shares no decoder with vLLM.
+// A document that is not that shape is unreadable, never an empty list.
+type NinferModelsList
+  = NinferModelsAdvertised { ids: List<String> }
+  | NinferModelsUnreadable { cause: NonEmptyStr }
+
+fn ninfer_entry_id(entry: JsonValue) -> String? {
+  match json_object_unique_member(v: entry, key: "id") {
+    JsonMemberFound { value: idv } =>
+      match idv {
+        JsonString { value: sv } => Present { value: sv }
+        JsonNull => none
+        JsonBool { value: _ } => none
+        JsonNumber { lexeme: _ } => none
+        JsonArray { elements: _ } => none
+        JsonObject { members: _ } => none
+      }
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+  }
+}
+
+fn ninfer_models_list(doc: JsonValue) -> NinferModelsList {
+  match json_object_unique_member(v: doc, key: "data") {
+    JsonMemberFound { value: d } =>
+      match d {
+        JsonArray { elements: els } => NinferModelsAdvertised { ids: flat_map(els, e => match ninfer_entry_id(entry: e) { Present { value: v } => [v]  Absent => [] }) }
+        JsonNull => NinferModelsUnreadable { cause: "the data member is not an array" as NonEmptyStr }
+        JsonBool { value: _ } => NinferModelsUnreadable { cause: "the data member is not an array" as NonEmptyStr }
+        JsonNumber { lexeme: _ } => NinferModelsUnreadable { cause: "the data member is not an array" as NonEmptyStr }
+        JsonString { value: _ } => NinferModelsUnreadable { cause: "the data member is not an array" as NonEmptyStr }
+        JsonObject { members: _ } => NinferModelsUnreadable { cause: "the data member is not an array" as NonEmptyStr }
+      }
+    JsonMemberAbsent => NinferModelsUnreadable { cause: "the document carries no data member" as NonEmptyStr }
+    JsonMemberDuplicated { count: _ } => NinferModelsUnreadable { cause: "the document carries more than one data member" as NonEmptyStr }
+    JsonMemberNotAnObject => NinferModelsUnreadable { cause: "the document is not an object" as NonEmptyStr }
+  }
+}
