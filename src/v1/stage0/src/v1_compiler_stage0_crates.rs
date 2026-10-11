@@ -320,20 +320,11 @@ pub fn stage0_lookup_module_owner_package_name(
     rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
 ) -> Rc<Stage0ModuleOwnerLookup> {
     {
-        let package_name =
-            crate::gunbc_stage0_stage0_emitted_edge_admission::partition_module_owner_packages_over(
-                module_basename.clone(),
-                rows.clone(),
-            )
-            .iter()
-            .cloned()
-            .fold("".to_string(), |acc: String, pkg: String| {
-                if (acc.clone() == "".to_string()) {
-                    pkg.clone()
-                } else {
-                    acc.clone()
-                }
-            });
+        let package_name = crate::gunbc_stage0_stage0_emitted_edge_admission::partition_module_owner_packages_over(module_basename.clone(), rows.clone()).iter().cloned().fold("".to_string(), |acc: String, pkg: String| if (acc.clone() == "".to_string()) {
+            pkg.clone()
+        } else {
+            acc.clone()
+        });
         if (package_name.clone() == "".to_string()) {
             Rc::new(Stage0ModuleOwnerLookup::Stage0ModuleOwnerRefused {
                 cause: Rc::new(Stage0ModuleOwnerRefusalCause::Stage0ModuleOwnerMissing {
