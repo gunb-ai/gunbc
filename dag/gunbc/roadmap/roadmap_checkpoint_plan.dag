@@ -1,5 +1,6 @@
 module gunbc.roadmap.roadmap_checkpoint_plan
 
+import gunbc.roadmap.roadmap_alignment_verdict { AlignmentVerdict, Aligned, Misaligned, ExtremelyMisaligned, CatastrophicallyMisaligned, RoutedConflict }
 import std.types { String, Int, List, NonEmptyStr }
 import std.content_hash { content_hash_atom }
 import gunbc.roadmap.roadmap_alignment {
@@ -9,12 +10,6 @@ import gunbc.roadmap.roadmap_alignment {
   RootPrinciplesLevel,
   ProjectIntentLevel,
   TaskContractLevel,
-  AlignmentVerdict,
-  Aligned,
-  Misaligned,
-  ExtremelyMisaligned,
-  CatastrophicallyMisaligned,
-  RoutedConflict,
   AlignmentCadenceState,
   AlignmentCheckpointIdentity,
   alignment_checkpoint_identity_digest,

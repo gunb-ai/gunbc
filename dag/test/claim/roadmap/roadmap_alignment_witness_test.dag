@@ -7,6 +7,7 @@ module test.claim.roadmap.roadmap_alignment_witness_test
 // Cadence claims pin the magnitudinal bases, the verdict step function's floor/ceiling walls, the
 // per-lineage state codec, and the due evaluation over an adaptive state.
 
+import gunbc.roadmap.roadmap_alignment_verdict { AlignmentVerdict, Aligned, Misaligned, ExtremelyMisaligned, CatastrophicallyMisaligned, RoutedConflict, alignment_verdict_key }
 import std.types { Bool, String, Int, List, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.decl_ref { DeclarationRef, decl_ref, decl_field_eq, WholeDeclaration }
@@ -29,9 +30,6 @@ import gunbc.roadmap.roadmap_alignment {
   alignment_base_cadence_state,
   AlignmentBinding, alignment_binding_text, alignment_binding_decode,
   AlignmentBindingDecoded, AlignmentBindingNotDecodable, alignment_binding_schema,
-  AlignmentVerdict,
-  Aligned, Misaligned, ExtremelyMisaligned, CatastrophicallyMisaligned, RoutedConflict,
-  alignment_verdict_key,
   AlignmentCadenceStep,
   CadenceStepInterval, CadenceStepStopTheLine,
   alignment_interval, alignment_interval_floor, alignment_interval_ceiling,
