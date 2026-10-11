@@ -8,7 +8,7 @@ Operator decision already on the record: cut Spark serving modules over to a har
 
 `gunbc.emitted_subject_build_gate` `emitted_subject_build_rows` is two labels: `//gunbc/instruments:self-host` (`v2.compiler.compile`) and `//gunbc/instruments:v2-native-cli` (`v2.cli.compile_cli`). **None of the Spark serving modules, and none of the production consumers named below, sit in those two closures.** A required-job green after deleting them would not refuse. DESIGN §3: for a root outside the gate, enumerate consumers **by name** before delete. Prose that *names* these modules (docs, rung-drops, runbooks) also cannot break loudly — grep those names in the same change that deletes them.
 
-This is the gap-intolerant carve-out for the **live Spark rack** (pair serving, GLM four-rank, harness turns on Group B): Y in shadow, then one authority transition. The **rented Blackwell cohort** (1× and 2× NVIDIA RTX PRO 6000 from Packet.ai / Vast.ai) is an independently complete root consumer and is the first vertical Y must hold.
+This is the gap-intolerant carve-out for the **live Spark rack** (GLM four-rank native serving and harness turns on Group B; the pair/Ray deployment is retired, see §1): Y in shadow, then one authority transition. The **rented Blackwell cohort** (1× and 2× NVIDIA RTX PRO 6000 from Packet.ai / Vast.ai) is an independently complete root consumer and is the first vertical Y must hold.
 
 ## 1. Authority being replaced (X)
 
@@ -41,7 +41,7 @@ The consumer that currently gets that answer from Spark-keyed group launches is 
 | `gunbc.spark.serving_subject` | Spark Group-B subject for deployment selection. Residue. |
 | `gunbc.spark.serving_rank_observe` / `serving_relaunch_transaction` | Rank inspect + relaunch delta on Spark containers. Residue. |
 | `gunbc.spark.serving_deployment_decision_pending` | **No production consumer, no witness.** Dangling (§3c). Retire with receipt at cut; not a Y obligation. |
-| `gunbc.spark.pair_serving_*` (desired, observed, realization, apply, authority, authority_log, launch_receipt) | **Spark pair (Ray, two-box).** Residue. Live rack boundary. |
+| `gunbc.spark.pair_serving_*` (desired, observed, realization, apply, authority, authority_log, launch_receipt) | **Retired, not a live boundary.** The modeled pair population is empty at this head: `FabricGroup` holds only Group B (Group A decommissioned, `gunbc.spark.fabric_switch_observed`), `spark_pair_serving_authorities` is `[]`, and `serving_group_launch` dispatches native GLM. Some declarations inside these files are still consumed (e.g. `pair_serving_realization` `declared_head_unit_render_for_group`, which delegates Group B to the native GLM renderer); each surviving helper gets its own disposition (re-home beside native GLM or delete). The pair deployment itself is not preserved or generalized. |
 | `gunbc.spark.native_serving_realization` / `native_serving_apply` / `native_experiment_apply` | **Spark GLM four-rank.** Residue. Live rack boundary. |
 | `gunbc.spark.fabric_serving_assignment` / `group_b_serving_capacity` | Fabric-group assignment and Group B alias/port. Residue; `gunbc.serving.admitted_model` / `serving_enrollment` still cite them. |
 | `gunbc.spark.first_party_serving` | Operator-owned Spark *site* allocation (not a GPU inventory). Residue. |
@@ -109,13 +109,37 @@ Reuse, do not fork: `gunbc.serving.turn_admission` `serving_group_admission`, `s
 
 **§3c for every new declaration:** the executing consumer is `gunbc.harness.harness_seat` (bind a seat on a replica of this collection) and the load path (`serving_load_runner` re-homed) over the 1×/2× inventories. No row without that route.
 
+**Warm-session contract (minimum Y must establish it, not only launch replicas).** `gunbc.serving.turn_admission` today has no observation of prefix residency and treats every turn as cold-risk; its warm arm lands in #13717. The first implementation must make each of these an executed obligation:
+
+- A session keeps its owning replica across model rounds and tool gaps. This preserves the behavior `gunbc.harness.harness_cli` `harness_worker_cli` already has (one backend bound for the whole tool loop) and lifts it from one call site to the collection.
+- Adding a replica does not move existing session attachments; new sessions use the new capacity.
+- Warmth is bound to the execution identity (the named launch) and the continuation identity (the exact token prefix). Context loss, process replacement and required reconstruction are distinct, typed outcomes (`ServingSessionResidency` in #13717), never folded into "warm".
+- Normal continuation declares its reuse expectation (new input plus a bounded boundary replay), and execution verifies it against observed prefix-cache counters.
+- vLLM stays responsible for its actual cache allocation. The model states the required lifetime and behavior, binds them to the serving profile, and names any missing backend capability as a gap rather than assuming it.
+
+**Replica identity is the capacity-accounting domain.** `gunbc.harness.harness_seat` `HarnessSeatPoolIdentity` currently carries a `FabricGroup`, and pool partitioning and acquisition derive from it. Y replaces that key with the replica identity consistently across capacity, acquisition, the front-door permit (`serving_front_door`) and release. Each loaded replica has its own capacity limit; collection capacity is derived from its members, never declared beside them.
+
 **What Y must refuse (minimum Y):** unread gauges are not idle (`serving_co_tenancy`); a model not in the admitted set is not served (`admitted_model`); missing inventory or a model that does not fit the per-device rule refuses rather than silently packing TP.
+
+### Acceptance: one warm-session qualification, same procedure for every inventory
+
+The existing load path does not exercise this workload. `extdeps.vllm.bench_serve` `VllmBenchServeRequest.dataset` is `RandomDatasetSpec` (input, output and shared-prefix lengths) and always emits `--dataset-name random`; `gunbc.spark.serving_load_runner` `ServingLoadSubject` names one host, container and endpoint. A shared random prefix exercises cache reuse, not a growing conversation that carries generated output forward, pauses for tools and resumes.
+
+So the first vertical owes a named producer of a representative warm agent-session trace that executes through the admitted serving path (`harness_bind_seat` on a replica of the collection), not around it. The same trace qualifies the 1× and 2× inventories, covering:
+
+- repeated continuation with realistic tool gaps and context growth;
+- the declared context envelope, including permitted maximum-context requests;
+- admission under pressure, and explicit recovery when warm state is lost;
+- adding the second replica while existing sessions continue;
+- a stated service envelope (turn latency, completion, sustainable admitted load), bound to a `serving_performance_subject`.
+
+Adding another compatible GPU reruns this procedure against the changed inventory; it does not reopen the architecture.
 
 ## 4. The atomic cut
 
 **Atomic = authority transition, not one commit.** Vehicle: integration branch. Main never hosts dual dispatch.
 
-**Maximal cut refused (exact refusal):** Y cannot hold the live Spark rack (GB10 unified pool, RoCE four-rank GLM, pair Ray) on day one. That is **Y-incomplete** for that cohort, not a licence to swap `serving_arm` leaf-upward.
+**Maximal cut refused (exact refusal):** Y cannot hold the live Spark rack (GB10 unified pool, RoCE four-rank native GLM on Group B) on day one. That is **Y-incomplete** for that cohort, not a licence to swap `serving_arm` leaf-upward.
 
 **First complete cohort (independently complete root consumer):** warm agent-session serving on **rented 1×/2× Blackwell**, Qwen, one-replica-per-fitting-device. That cohort’s production path executes only through Y. It is physically absent from Spark schedule/dispatch. No fallback to `FabricGroupB` / `glm_native_*`.
 
@@ -130,7 +154,7 @@ Reuse, do not fork: `gunbc.serving.turn_admission` `serving_group_admission`, `s
 Everything whose subject is the **operator Spark fleet** as a physical fabric:
 
 - `ServingTopology` Spark-count variants and GB10 pool arithmetic
-- pair serving (Ray two-box) and native GLM four-rank apply/realization/relaunch
+- native GLM four-rank apply/realization/relaunch (the retired pair/Ray deployment is not residue; it is deleted, with surviving helpers dispositioned per §1)
 - `FabricGroup` launch dispatch, Group B alias/port, first-party Spark site allocation
 - host claims on srv9–12, RoCE GID selection, staircase container names
 - GLM/DeepSeek-on-Spark checkpoint and `glm_native_*` launch policies
