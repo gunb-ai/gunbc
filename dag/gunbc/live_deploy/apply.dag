@@ -85,7 +85,6 @@ import gunbc.host_effect {
   HostEffectEvidence,
   ShellEffectApplied,
   LiveDeployApply,
-  LiveDeployApplyReported,
   LiveDeployRetract,
   LiveDeployApprovalBrokerDarkInstall,
   LiveDeployMicrovmControllerInstall,
@@ -187,7 +186,6 @@ import gunbc.running_release_identity {
 fn live_deploy_pre_mutation_access(effect: HostEffect, access: DeployAccess) -> DeployAccess {
   match effect {
     LiveDeployApply { warrant: _ } => deploy_access_sudoers_install_scope(access: access)
-    LiveDeployApplyReported { spec: _, candidate: _ } => deploy_access_sudoers_install_scope(access: access)
     LiveDeployRetract { spec: _ } => deploy_access_sudoers_install_scope(access: access)
     RedfishAction { action: _ } => access
     ConvergePlan { policy: _ } => access
@@ -235,6 +233,30 @@ fn live_deploy_preflight_intent(access: DeployAccess) -> HostEffectIntent {
     evidence: host_effect_identity_evidence,
     transport: access.transport,
     privilege_denial: none,
+  }
+}
+
+// THE APPLIED REPORT IS NOT A HOST EFFECT. After live_deploy_fold runs, callers need the spec and
+// candidate without the sole-constructor warrant (review 78624). HostEffectIntent is the thing to
+// realize; this subject is the thing that ran.
+type LiveDeployAppliedSubject {
+  spec: DeploymentSpec
+  candidate: CandidateRelease
+}
+
+fn live_deploy_applied_subject(spec: DeploymentSpec, candidate: CandidateRelease) -> LiveDeployAppliedSubject {
+  LiveDeployAppliedSubject { spec: spec, candidate: candidate }
+}
+
+fn live_deploy_subject_of_fold(
+  r: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  spec: DeploymentSpec,
+  candidate: CandidateRelease,
+) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> {
+  let subject = live_deploy_applied_subject(spec: spec, candidate: candidate)
+  match r {
+    Converged { evidence: e, applied: _ } => Converged { evidence: e, applied: subject }
+    NotConverged { reason: why, applied: _ } => NotConverged { reason: why, applied: subject }
   }
 }
 
@@ -360,7 +382,7 @@ fn live_deploy_apply_mutation_via_transport(
   candidate: CandidateRelease,
   transport: HostEffectTransport,
   access: DeployAccess
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> admit_callers: [
+) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> admit_callers: [
   decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_admitted_via_transport"),
 ] {
   live_deploy_apply_member_plan_via_transport(spec: admitted_spec(admission: admission), candidate: candidate, transport: transport, access: access)
@@ -371,17 +393,17 @@ fn live_deploy_apply_member_plan_via_transport(
   candidate: CandidateRelease,
   transport: HostEffectTransport,
   access: DeployAccess
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> admit_callers: [
+) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> admit_callers: [
   decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_mutation_via_transport"),
 ] {
   match deployment_effect_plan(spec: spec, candidate: candidate, transport: transport) {
     EffectsRefused { refusals } =>
       NotConverged {
         reason: join(["live_deploy: the deployment plan could not be derived from the host: ", join(map(refusals, d => decision_label(d: d)), "; ")], ""),
-        applied: live_deploy_preflight_intent(access: access),
+        applied: live_deploy_applied_subject(spec: spec, candidate: candidate),
       }
     EffectsDerived { plan } =>
-      live_deploy_apply_reported(
+      live_deploy_subject_of_fold(
         r: live_deploy_fold(
           spec: spec,
           effect: LiveDeployApply { warrant: warrant_live_deploy_apply(spec: spec, candidate: candidate, plan: plan) },
@@ -396,39 +418,14 @@ fn live_deploy_apply_member_plan_via_transport(
   }
 }
 
-fn live_deploy_apply_reported(
-  r: Reconciliation<HostEffectIntent, HostEffectEvidence>,
-  spec: DeploymentSpec,
-  candidate: CandidateRelease,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> admit_callers: [
-  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_member_plan_via_transport"),
-] {
-  match r {
-    Converged { evidence: e, applied: i } =>
-      Converged { evidence: e, applied: live_deploy_reported_intent(i: i, spec: spec, candidate: candidate) }
-    NotConverged { reason: why, applied: i } =>
-      NotConverged { reason: why, applied: live_deploy_reported_intent(i: i, spec: spec, candidate: candidate) }
-  }
-}
-
-fn live_deploy_reported_intent(i: HostEffectIntent, spec: DeploymentSpec, candidate: CandidateRelease) -> HostEffectIntent {
-  HostEffectIntent {
-    target: i.target,
-    effect: LiveDeployApplyReported { spec: spec, candidate: candidate },
-    evidence: i.evidence,
-    transport: i.transport,
-    privilege_denial: i.privilege_denial,
-  }
-}
-
 // One NotConverged, reached from both non-Ready arms. The Pending/Refused
 // distinction is NOT erased by the collapse: service_readiness_reason carries the
 // readiness value into the reason, and the retry decision that consumes the
 // distinction lives in the poll, not in this gate.
 fn readiness_gate_not_converged(
-  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  mutation: Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence>,
   readiness: ServiceReadiness,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> {
   let intent = match mutation {
     Converged { evidence: _, applied: applied_intent } => applied_intent
     NotConverged { reason: _, applied: applied_intent } => applied_intent
@@ -437,9 +434,9 @@ fn readiness_gate_not_converged(
 }
 
 fn live_deploy_apply_readiness_gate_with_readiness(
-  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  mutation: Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence>,
   readiness: ServiceReadiness,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> {
   if !reconciliation_converged(r: mutation) {
     mutation
   } else {
@@ -507,9 +504,9 @@ fn live_deploy_tailnet_door_cutover_effects(
 // was, and anything else is NotConverged carrying the outcome's own account, including what
 // became of the route.
 fn tailnet_door_cutover_reconciliation(
-  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  mutation: Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence>,
   outcome: ServeCutoverOutcome,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> {
   if serve_cutover_outcome_committed(outcome: outcome) {
     mutation
   } else {
@@ -525,7 +522,7 @@ fn tailnet_door_cutover_reconciliation(
 // be put back. What readiness decides is the PERMIT: a mutation that did not converge, or a door
 // that is not ready, yields no permit, so this run re-points nothing and can only resume or roll
 // back.
-fn tailnet_door_cutover_door_standing(mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>, readiness: ServiceReadiness) -> ServiceReadiness {
+fn tailnet_door_cutover_door_standing(mutation: Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence>, readiness: ServiceReadiness) -> ServiceReadiness {
   if reconciliation_converged(r: mutation) {
     readiness
   } else {
@@ -544,9 +541,9 @@ fn live_deploy_tailnet_door_cutover_gate(
   transport: HostEffectTransport,
   access: DeployAccess,
   readiness: ServiceReadiness,
-  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  mutation: Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence>,
   journal: FabricStorageBinding,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> {
   match deployment_tailnet_door_socket(names: spec.names) {
     Absent => mutation
     Present { value: _ } =>
@@ -587,9 +584,9 @@ fn live_deploy_apply_identity_readback_gate(
   spec: DeploymentSpec,
   candidate: CandidateRelease,
   transport: HostEffectTransport,
-  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let intent = match mutation {
+  mutation: Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence>,
+) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> {
+  let subject = match mutation {
     Converged { evidence: _, applied: i } => i
     NotConverged { reason: _, applied: i } => i
   }
@@ -598,12 +595,12 @@ fn live_deploy_apply_identity_readback_gate(
     IdentityReadbackDrift { remaining } =>
       NotConverged {
         reason: join(["live_deploy: the apply completed and readiness held, but the host's member identities still differ from the release: ", join(remaining, "; ")], ""),
-        applied: intent,
+        applied: subject,
       }
     IdentityReadbackRefused { refusals } =>
       NotConverged {
         reason: join(["live_deploy: the apply completed but the member identities could not be read back: ", join(map(refusals, d => decision_label(d: d)), "; ")], ""),
-        applied: intent,
+        applied: subject,
       }
   }
 }
@@ -615,7 +612,7 @@ fn live_deploy_apply_via_transport(
   candidate: CandidateRelease,
   transport: HostEffectTransport,
   access: DeployAccess
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> admit_callers: [
+) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> admit_callers: [
   decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_with_access"),
   decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_transaction_decided"),
 ] {
@@ -623,7 +620,7 @@ fn live_deploy_apply_via_transport(
     RoleSingletonNotAdmitted { cause } =>
       NotConverged {
         reason: role_singleton_refusal_detail(cause: cause),
-        applied: live_deploy_preflight_intent(access: access),
+        applied: live_deploy_applied_subject(spec: selected_deployment_spec(row: deployment), candidate: candidate),
       }
     RoleSingletonAdmitted { admission } => live_deploy_apply_admitted_via_transport(admission: admission, candidate: candidate, transport: transport, access: access)
   }
@@ -634,7 +631,7 @@ fn live_deploy_apply_admitted_via_transport(
   candidate: CandidateRelease,
   transport: HostEffectTransport,
   access: DeployAccess
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> admit_callers: [
+) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> admit_callers: [
   decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_via_transport"),
   decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_transaction_decided"),
 ] {
@@ -750,7 +747,7 @@ fn live_deploy_apply_with_access(
   deployment: DesiredDeployment,
   access: DeployAccess,
   candidate: CandidateRelease,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> {
   live_deploy_apply_via_transport(
     deployment: deployment,
     candidate: candidate,
@@ -762,7 +759,7 @@ fn live_deploy_apply_with_access(
 fn live_deploy_apply_srv1_with_access(
   access: DeployAccess,
   candidate: CandidateRelease,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> {
   live_deploy_apply_with_access(
     deployment: srv1_production_desired_deployment(),
     access: access,
@@ -795,7 +792,7 @@ fn live_deploy_retract_srv1_with_access(
   live_deploy_retract_with_access(spec: deployment_spec_srv1(), access: access)
 }
 
-fn live_deploy_apply_srv1(candidate: CandidateRelease) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn live_deploy_apply_srv1(candidate: CandidateRelease) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> {
   live_deploy_apply_srv1_with_access(access: ci_deploy_srv1_access, candidate: candidate)
 }
 
@@ -803,7 +800,7 @@ fn live_deploy_retract_srv1() -> Reconciliation<HostEffectIntent, HostEffectEvid
   live_deploy_retract_srv1_with_access(access: ci_deploy_srv1_access)
 }
 
-fn live_deploy_reconciliation_exit(r: Reconciliation<HostEffectIntent, HostEffectEvidence>) -> ProcessExit {
+fn live_deploy_reconciliation_exit<A>(r: Reconciliation<A, HostEffectEvidence>) -> ProcessExit {
   if reconciliation_converged(r: r) {
     ExitSuccess
   } else {

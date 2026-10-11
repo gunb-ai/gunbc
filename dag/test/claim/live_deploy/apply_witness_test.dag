@@ -2,6 +2,7 @@ module test.claim.live_deploy.apply
 
 import gunbc.live_deploy.apply {
   live_deploy_apply_readiness_gate_with_readiness,
+  LiveDeployAppliedSubject,
 }
 import gunbc.roadmap_static_site {
   roadmap_site_digest_readback_script,
@@ -23,16 +24,13 @@ import gunbc.live_deploy.service_ready {
   UnitDiagnosisUnavailable,
 }
 import gunbc.host_effect {
-  LiveDeployRetract,
-  HostOs,
-  host_effect_identity_evidence,
-  LocalShell,
-  HostEffectIntent,
   HostEffectEvidence,
   ShellEffectApplied,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
-import gunbc.fleet_intent { srv1_host }
+import gunbc.live_deploy.candidate_identity { CandidateRelease }
+import std.content_hash { Fnv1a64Structural }
+import std.types { CommitSha, NonEmptyStr }
 import std.realization_reconcile {
   Reconciliation,
   reconciliation_converged,
@@ -65,19 +63,19 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the annotation on gunbc.live_deploy.apply live_deploy_fold as the accepted cost of the
 // operator's single-deployment ruling, not papered over here.
 
-fn fixture_converged_mutation() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn fixture_converged_mutation() -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> {
   Converged {
     evidence: ShellEffectApplied {
       exit_code: 0,
       stdout: "live-deploy-mutation-applied",
       stderr: "",
     },
-    applied: HostEffectIntent {
-      target: HostOs { node: srv1_host },
-      effect: LiveDeployRetract { spec: deployment_spec_srv1() },
-      evidence: host_effect_identity_evidence,
-      transport: LocalShell,
-      privilege_denial: none,
+    applied: LiveDeployAppliedSubject {
+      spec: deployment_spec_srv1(),
+      candidate: CandidateRelease {
+        revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as CommitSha,
+        expected_surface_identity: Fnv1a64Structural { digest: "0123456789abcdef" as NonEmptyStr },
+      },
     },
   }
 }
