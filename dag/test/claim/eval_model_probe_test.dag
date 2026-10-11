@@ -97,25 +97,22 @@ test fn the_same_guard_admits_its_right_operand_when_it_holds() -> Bool {
   guarded_division(n: 5)
 }
 
-// NULL-COALESCING'S OWN PAIR, THE SAME SHAPE AS guarded_division AND FOR THE SAME REASON, spelled as the
-// match it denotes because v2's grammar has no `??` token. `??` had
-// the identical divergence the operand_demand row exists to close -- the interpreter evaluated both
-// operands before selecting, while extdeps.languages.rust.emit rust_null_coalesce_template renders
-// `{0}.unwrap_or_else(|| {1})`, whose closure body is demanded only when the left is absent -- so it
-// is declared DemandsRightOnlyWhenLeftIsAbsent. These two claims are what make that declaration a
-// READING rather than a hypothesis. The right operand REFUSES if it is evaluated, so the pair turns
-// on demand alone: division by zero aborts identically on both routes IF it runs at all.
-fn coalesced_division(left: Int?, divisor: Int) -> Int {
+// THIS PAIR NO LONGER MEASURES `??`. It did: `left ?? (100 / divisor)` was the interpreter's
+// null-coalesce, whose DemandsRightOnlyWhenLeftIsAbsent declaration in std.operator_realization it
+// held as a reading. v2's grammar has no `??` token, so the operand is spelled as the match it
+// denotes, and the pair now shows only that a match arm is demanded when selected. The `??`
+// measurement is removed and declared at gunbc.rung_drop null_coalesce_interpreter_demand_unmeasured.
+fn optional_or_refusing_default(left: Int?, divisor: Int) -> Int {
   match left {
     none => 100 / divisor
     present => present
   }
 }
 
-test fn null_coalesce_skips_a_refusing_right_when_left_is_present() -> Bool {
-  coalesced_division(left: 7, divisor: 0) == 7
+test fn match_arm_skips_a_refusing_default_when_present() -> Bool {
+  optional_or_refusing_default(left: 7, divisor: 0) == 7
 }
 
-test fn null_coalesce_demands_its_right_when_left_is_absent() -> Bool {
-  coalesced_division(left: none, divisor: 5) == 20
+test fn match_arm_demands_its_default_when_absent() -> Bool {
+  optional_or_refusing_default(left: none, divisor: 5) == 20
 }
