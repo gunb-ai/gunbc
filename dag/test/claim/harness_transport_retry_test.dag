@@ -1,0 +1,31 @@
+module test.claim.harness_transport_retry_test
+
+import std.types { Bool, String, List }
+import std.optional { Present, Absent }
+import extdeps.http.header_dump { HeaderDumpRead, HeaderDumpUnread }
+import gunbc.harness.harness_turn {
+  HarnessPostOutcome, harness_post_drew_no_response, harness_event_transport_retry,
+}
+
+// ONLY A REQUEST THAT DREW NO RESPONSE IS RETRIED (F85): the transport failed, nothing came back, and
+// no response header was received. The srv1 lab's empty reply -- curl 52, a zero-byte body, an empty
+// header dump -- qualifies; an engine that answered anything, an error status or an error body, does
+// not, because its answer is evidence about the request rather than the absence of one.
+test fn only_a_response_less_failure_is_retried() -> Bool {
+  let empty_reply = HarnessPostOutcome { body: "", success: false, headers: Present { value: HeaderDumpRead { text: "" } }, retries: [] as List<String> }
+  let seat_route_reset = HarnessPostOutcome { body: "", success: false, headers: Absent, retries: [] as List<String> }
+  let error_status = HarnessPostOutcome { body: "", success: false, headers: Present { value: HeaderDumpRead { text: "HTTP/1.1 500 Internal Server Error\r\n" } }, retries: [] as List<String> }
+  let error_body = HarnessPostOutcome { body: "\{\"error\": \"context length exceeded\"}", success: false, headers: Present { value: HeaderDumpRead { text: "" } }, retries: [] as List<String> }
+  let answered = HarnessPostOutcome { body: "\{\"choices\": []}", success: true, headers: Absent, retries: [] as List<String> }
+  harness_post_drew_no_response(posted: empty_reply)
+    && harness_post_drew_no_response(posted: seat_route_reset)
+    && !harness_post_drew_no_response(posted: error_status)
+    && !harness_post_drew_no_response(posted: error_body)
+    && !harness_post_drew_no_response(posted: answered)
+}
+
+// EVERY RETRY IS A RECORDED EVENT, naming the round it belongs to.
+test fn a_retry_is_recorded_with_its_round() -> Bool {
+  let e = harness_event_transport_retry(round: 16, detail: "no response to attempt 1")
+  e.contains("round.transport_retry") && e.contains("16") && e.contains("no response to attempt 1")
+}
