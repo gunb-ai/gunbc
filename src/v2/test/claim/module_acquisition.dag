@@ -1,0 +1,203 @@
+module v2.test.claim.module_acquisition
+
+import std.types { Bool, List }
+import v2.compiler.module_acquisition {
+  AcquireEntry,
+  AcquireImportedModule,
+  AcquireQualifiedReference,
+  AcquiredModule,
+  AcquisitionExact,
+  AcquisitionExactness,
+  AcquisitionKind,
+  AcquisitionMemberNotRead,
+  AcquisitionReadNotRequested,
+  AcquisitionReadTwice,
+  AcquisitionReadWithoutMember,
+  AcquisitionRequest,
+  AcquisitionRequestedNotRead,
+  acquisition_exactness,
+  acquisition_ingest,
+  acquisition_module_path
+}
+import v2.compiler.source_authority { ModuleFileRef, module_file_key }
+import v2.std.algebra { length }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WITNESSES FOR THE ACQUIRER'S EXACTNESS VERDICT (docs/plans/source-layout-authority.md R9: the read set
+// of a compile is checked against the requested closure, exactly). The verdict is a pure fold over a
+// completed acquisition's receipt -- the entries, the members with the requests each one's own text made,
+// and the keys of the files that were read -- so every control here states the receipt a host would hand
+// the fold and asserts the verdict; nothing reads a file. The pairing obligation (DESIGN section 3, a
+// witness discriminates at one interface) is carried by the native layout and compile verbs, which run
+// the same acquirer over the real repository: deleting that integration would not fail THIS file, which is
+// why it names no repository path.
+//
+// Every refusal control pins the KIND and the located subject of the one refusal it expects, because a
+// verdict that said "not exact" for the wrong reason would pass a boolean.
+
+fn exactness_kind(verdict: AcquisitionExactness) -> String {
+  match verdict {
+    AcquisitionExact => "exact"
+    AcquisitionReadWithoutMember { key: key } => concat("read-without-member:", key)
+    AcquisitionReadTwice { key: key } => concat("read-twice:", key)
+    AcquisitionMemberNotRead { key: key } => concat("member-not-read:", key)
+    AcquisitionReadNotRequested { module: unrequested } => concat("read-not-requested:", unrequested)
+    AcquisitionRequestedNotRead { spelling: spelling, from_module: from_module } =>
+      concat("requested-not-read:", spelling, "@", from_module)
+  }
+}
+
+fn a_request(from_module: String, spelling: String, kind: AcquisitionKind) -> AcquisitionRequest {
+  AcquisitionRequest { from_module: from_module, from_tree: V2Tree {}, spelling: spelling, kind: kind }
+}
+
+fn a_member(name: String, path: String, requests: List<AcquisitionRequest>) -> AcquiredModule {
+  AcquiredModule {
+    name: name,
+    file: ModuleFileRef { tree: V2Tree {}, relative_path: path },
+    host_directory: "src/v2",
+    content: "",
+    requests: requests,
+    test_markers: []
+  }
+}
+
+fn key_of(member: AcquiredModule) -> String {
+  module_file_key(file: member.file)
+}
+
+// The subject imports the logic module; the outsider is a module no request names.
+fn subject_importing(spelling: String) -> AcquiredModule {
+  a_member(
+    name: "v2.test.subject",
+    path: "test/subject.dag",
+    requests: [a_request(from_module: "v2.test.subject", spelling: spelling, kind: AcquireImportedModule {})]
+  )
+}
+
+fn subject_member() -> AcquiredModule {
+  subject_importing(spelling: "v2.std.logic")
+}
+
+fn logic_member() -> AcquiredModule {
+  a_member(name: "v2.std.logic", path: "std/logic.dag", requests: [])
+}
+
+fn outsider_member() -> AcquiredModule {
+  a_member(name: "v2.unrelated.outsider", path: "unrelated/outsider.dag", requests: [])
+}
+
+fn closure_entries() -> List<String> {
+  ["v2.test.subject"]
+}
+
+fn verdict_over(entries: List<String>, modules: List<AcquiredModule>, reads: List<String>) -> String {
+  exactness_kind(verdict: acquisition_exactness(entries: entries, modules: modules, reads: reads))
+}
+
+test fn a_read_set_that_is_the_requested_closure_is_exact() -> Bool {
+  verdict_over(
+    entries: closure_entries(),
+    modules: [subject_member(), logic_member()],
+    reads: [key_of(member: subject_member()), key_of(member: logic_member())]
+  ) == "exact"
+}
+
+// THE DISCRIMINATING RED FOR "A MODULE OUTSIDE THE CLOSURE CHANGES NOTHING": the outsider was read, and
+// no entry and no member's own text asked for it, so the closure the run holds is wider than the one it
+// requested and the verdict names the module -- never a smaller set, never a silently wider one.
+test fn a_module_nothing_requested_is_refused_as_unrequested() -> Bool {
+  verdict_over(
+    entries: closure_entries(),
+    modules: [subject_member(), logic_member(), outsider_member()],
+    reads: [key_of(member: subject_member()), key_of(member: logic_member()), key_of(member: outsider_member())]
+  ) == "read-not-requested:v2.unrelated.outsider"
+}
+
+test fn a_member_the_walk_did_not_read_is_refused() -> Bool {
+  verdict_over(
+    entries: closure_entries(),
+    modules: [subject_member(), logic_member()],
+    reads: [key_of(member: subject_member())]
+  ) == "member-not-read:v2:std/logic.dag"
+}
+
+test fn a_file_read_twice_is_refused() -> Bool {
+  verdict_over(
+    entries: closure_entries(),
+    modules: [subject_member(), logic_member()],
+    reads: [key_of(member: subject_member()), key_of(member: logic_member()), key_of(member: logic_member())]
+  ) == "read-twice:v2:std/logic.dag"
+}
+
+test fn a_read_that_belongs_to_no_member_is_refused() -> Bool {
+  verdict_over(
+    entries: closure_entries(),
+    modules: [subject_member(), logic_member()],
+    reads: [key_of(member: subject_member()), key_of(member: logic_member()), "v2:std/ghost.dag"]
+  ) == "read-without-member:v2:std/ghost.dag"
+}
+
+// An import is an EXACT request: it names a module whole, so a closure that holds no such member is
+// short of what its own text asked for, and the refusal carries the module that asked.
+test fn an_import_whose_module_was_never_acquired_is_refused() -> Bool {
+  verdict_over(
+    entries: closure_entries(),
+    modules: [subject_importing(spelling: "v2.std.missing")],
+    reads: [key_of(member: subject_member())]
+  ) == "requested-not-read:v2.std.missing@v2.test.subject"
+}
+
+test fn an_entry_no_member_covers_is_refused() -> Bool {
+  verdict_over(
+    entries: ["v2.test.subject", "v2.test.absent"],
+    modules: [subject_member(), logic_member()],
+    reads: [key_of(member: subject_member()), key_of(member: logic_member())]
+  ) == "requested-not-read:v2.test.absent@"
+}
+
+// A QUALIFIED REFERENCE IS NOT AN EXACT REQUEST. It names every dotted prefix of its spelling because the
+// lookup splits a reference by probing prefixes, so the module that owns `v2.std.logic.and` is requested
+// by it; and a reference whose prefixes name no module was never owed a read.
+test fn a_qualified_reference_requests_the_module_that_owns_it() -> Bool {
+  verdict_over(
+    entries: closure_entries(),
+    modules: [
+      a_member(
+        name: "v2.test.subject",
+        path: "test/subject.dag",
+        requests: [a_request(from_module: "v2.test.subject", spelling: "v2.std.logic.and", kind: AcquireQualifiedReference {})]
+      ),
+      logic_member()
+    ],
+    reads: [key_of(member: subject_member()), key_of(member: logic_member())]
+  ) == "exact"
+}
+
+test fn a_qualified_reference_that_names_no_module_is_not_owed_a_read() -> Bool {
+  verdict_over(
+    entries: closure_entries(),
+    modules: [
+      a_member(
+        name: "v2.test.subject",
+        path: "test/subject.dag",
+        requests: [a_request(from_module: "v2.test.subject", spelling: "local.record.field", kind: AcquireQualifiedReference {})]
+      )
+    ],
+    reads: [key_of(member: subject_member())]
+  ) == "exact"
+}
+
+// ---- the acquired members as the ingest later stages read ---------------------------------------------
+
+test fn the_ingest_holds_exactly_the_acquired_modules() -> Bool {
+  length(xs: acquisition_ingest(modules: [subject_member(), logic_member()])) == 2
+}
+
+test fn a_member_is_named_by_the_host_path_it_was_read_from() -> Bool {
+  acquisition_module_path(module: subject_member()) == "src/v2/test/subject.dag"
+}
