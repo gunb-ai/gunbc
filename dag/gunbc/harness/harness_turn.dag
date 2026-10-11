@@ -5,7 +5,7 @@ import std.measure { TokenCount, token_count_value, Second, second, second_count
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { trim }
 import extdeps.languages.json.emit {
-  JsonValue, JsonKeyValue, JsonBool, json_kv, json_string, json_int, json_array, json_object, serialize_json,
+  JsonValue, JsonKeyValue, JsonBool, JsonObject, JsonArray, JsonString, json_kv, json_string, json_int, json_array, json_object, serialize_json,
 }
 import gunbc.harness.harness_reasoning_wire {
   HarnessServingUnit, HarnessReasoningLevel, HarnessReasoningKwargs,
@@ -2150,11 +2150,62 @@ fn harness_event_supervision_unavailable(steps_taken: Int, cause: String) -> Str
   ]))
 }
 
-// A STEER IS THE ONLY TEXT A BOUNDARY EVER ADDS, and it is the direction verbatim, as the next user
-// message. Both wire shapes accept it after a tool round: the chat shape takes a user message after
-// tool messages, and the messages shape folds consecutive user messages into one turn.
+// A STEER IS THE ONLY TEXT A BOUNDARY EVER ADDS, and it is the direction verbatim. On the chat shape
+// it is the next user message, which that shape takes after tool messages. On the messages shape the
+// round's tool results already form the trailing user message, so the steer joins it as a text block
+// -- where the round countdown used to ride -- rather than relying on a second consecutive user turn.
 fn harness_messages_with_steer(shape: HarnessWireShape, messages: List<JsonValue>, steer: String) -> List<JsonValue> {
-  concat(messages, [harness_user_text_message_json(shape: shape, text: steer)])
+  match shape {
+    OpenAiChatCompletionsShape => concat(messages, [harness_user_text_message_json(shape: shape, text: steer)])
+    AnthropicMessagesShape => {
+      let n = list_length(items: messages)
+      match messages.last() {
+        Absent => [harness_user_text_message_json(shape: shape, text: steer)]
+        Present { value: last } =>
+          match harness_user_message_with_text_block(message: last, text: steer) {
+            Absent => concat(messages, [harness_user_text_message_json(shape: shape, text: steer)])
+            Present { value: joined } =>
+              concat(enumerate(messages) |> filter(pair => pair.first < n - 1) |> map(pair => pair.second), [joined])
+          }
+      }
+    }
+  }
+}
+
+fn harness_member_is(m: JsonKeyValue, key: String, text: String) -> Bool {
+  m.key == key && (match m.value { JsonString { value: v } => v == text  _ => false })
+}
+
+fn harness_member_is_array(m: JsonKeyValue, key: String) -> Bool {
+  m.key == key && (match m.value { JsonArray { elements: _ } => true  _ => false })
+}
+
+// A USER MESSAGE WHOSE CONTENT IS A BLOCK ARRAY, with one more text block; anything else is Absent.
+fn harness_user_message_with_text_block(message: JsonValue, text: String) -> JsonValue? {
+  match message {
+    JsonObject { members } =>
+      if any(members, m => harness_member_is(m: m, key: "role", text: "user")) && any(members, m => harness_member_is_array(m: m, key: "content")) {
+        Present {
+          value: JsonObject {
+            members: members |> map(m => match m.value {
+              JsonArray { elements } =>
+                if m.key == "content" {
+                  json_kv(key: "content", value: json_array(elements: concat(elements, [json_object([
+                    json_kv(key: "type", value: json_string(s: "text")),
+                    json_kv(key: "text", value: json_string(s: text)),
+                  ])])))
+                } else {
+                  m
+                }
+              _ => m
+            }),
+          },
+        }
+      } else {
+        none
+      }
+    _ => none
+  }
 }
 
 fn harness_turn_stop_by_supervision(config: HarnessTurnConfig, verdict: String, detail: String, steps_taken: Int, events: List<String>) -> HarnessTurnOutcome {
