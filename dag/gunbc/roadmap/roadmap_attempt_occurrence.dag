@@ -68,10 +68,9 @@ type DurableAttemptRecord {
 }
 
 // THE NAME PARSES, one per realization shape. The constructors that mint these names own them
-// (dispatch_tmux_session_name, dispatch_attempt_unit_name, dispatch_supervisor_unit_name); the
+// (dispatch_tmux_session_name, dispatch_attempt_unit_name); the
 // argv witnesses pin the minted shape and the occurrence witnesses pin this parse of it, so the
-// two ends cannot drift silently. A unit name that starts gunbc-attempt-/gunbc-supervisor- but
-// does not parse is malformed, never silently dropped.
+// two ends cannot drift silently. A unit name that starts gunbc-attempt- but does not parse is malformed, never silently dropped.
 type OccurrenceIdentity
   = OccurrenceIdentityParsed { node: String, attempt: String }
   | OccurrenceIdentityUnparseable { cause: String }
@@ -79,8 +78,6 @@ type OccurrenceIdentity
 data occurrence_tmux_session_prefix: String = "gunbc-dispatch-"
 
 data occurrence_attempt_unit_prefix: String = "gunbc-attempt-"
-
-data occurrence_supervisor_unit_prefix: String = "gunbc-supervisor-"
 
 fn occurrence_hex16(s: String) -> Bool {
   string_length(s: s) == 16
@@ -96,31 +93,7 @@ fn occurrence_unit_identity(unit: String) -> OccurrenceIdentity {
   } else {
     unit
   }
-  if starts_with(s: base, prefix: occurrence_supervisor_unit_prefix) {
-    let rest = substring(s: base, start: string_length(s: occurrence_supervisor_unit_prefix), end: string_length(s: base))
-    let segments = split(s: rest, delimiter: "-")
-    match segments.last() {
-      Absent => OccurrenceIdentityUnparseable { cause: "empty supervisor unit name" }
-      Present { value: turn_part } =>
-        if starts_with(s: turn_part, prefix: "t") && count(segments) >= 3 {
-          let node_and_key = split(s: join(segments |> take(count(segments) - 1), "-"), delimiter: "-")
-          match node_and_key.last() {
-            Absent => OccurrenceIdentityUnparseable { cause: "no attempt key segment" }
-            Present { value: key } =>
-              if occurrence_hex16(s: key) && count(node_and_key) >= 2 {
-                OccurrenceIdentityParsed {
-                  node: join(node_and_key |> take(count(node_and_key) - 1), "-"),
-                  attempt: key,
-                }
-              } else {
-                OccurrenceIdentityUnparseable { cause: "the segment before the turn is not a 16-hex attempt key" }
-              }
-          }
-        } else {
-          OccurrenceIdentityUnparseable { cause: "a supervisor unit name does not end in a turn segment" }
-        }
-    }
-  } else if starts_with(s: base, prefix: occurrence_attempt_unit_prefix) {
+  if starts_with(s: base, prefix: occurrence_attempt_unit_prefix) {
     let rest = substring(s: base, start: string_length(s: occurrence_attempt_unit_prefix), end: string_length(s: base))
     let segments = split(s: rest, delimiter: "-")
     match segments.last() {
@@ -136,7 +109,7 @@ fn occurrence_unit_identity(unit: String) -> OccurrenceIdentity {
         }
     }
   } else {
-    OccurrenceIdentityUnparseable { cause: "not an attempt or supervisor unit name" }
+    OccurrenceIdentityUnparseable { cause: "not an attempt unit name" }
   }
 }
 
@@ -180,7 +153,7 @@ fn occurrence_of_container(row: ObservedContainerRow, records: List<DurableAttem
     AttemptContainerSystemdUnit { unit } =>
       match occurrence_unit_identity(unit: unit) {
         OccurrenceIdentityUnparseable { cause } =>
-          if starts_with(s: unit, prefix: occurrence_attempt_unit_prefix) || starts_with(s: unit, prefix: occurrence_supervisor_unit_prefix) {
+          if starts_with(s: unit, prefix: occurrence_attempt_unit_prefix) {
             AttemptOccurrenceMalformed {
               observed_container: row.container,
               process: row.process,

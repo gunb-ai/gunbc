@@ -27,14 +27,10 @@ import gunbc.roadmap_model {
 import gunbc.roadmap_spawner { dispatch_brief_template }
 import gunbc.roadmap_status { node_title }
 import gunbc.roadmap.roadmap_centering { dispatch_centering_preamble, node_centering_plan_text }
-import gunbc.roadmap.roadmap_attempt_continuation {
-  AttemptOrigin, FreshFromBase, ContinueFromAttempt, attempt_origin_base_ref, continuation_brief_prefix,
-}
 import gunbc.roadmap.roadmap_alignment {
   AlignmentResolution, AlignmentReady, AlignmentUnresolved, alignment_refusal_reason,
-  alignment_resolve, alignment_base_cadence_state, alignment_chain_fingerprint, alignment_chain_render,
+  alignment_resolve, alignment_base_cadence_state, alignment_chain_fingerprint,
 }
-import gunbc.roadmap.roadmap_supervisor { supervisor_verdict_basename }
 import gunbc.dispatch_pipe_pane_emit {
   PipePaneEmission,
   PipeEmitted,
@@ -1290,25 +1286,6 @@ fn dispatch_actuator_selection_process_fingerprint(selection: DispatchActuatorSe
   }
 }
 
-// THE TURN NUMBER OF THIS ATTEMPT IN ITS LINEAGE (gunbc.roadmap.roadmap_attempt_continuation), written
-// at state initialization beside the attempt key. A first turn writes 1, so an attempt with no such
-// file predates the continuation and is read as turn 1 by the decision, never guessed at otherwise.
-fn dispatch_attempt_continuation_turn_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([
-    dispatch_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    "/continuation-turn",
-  ], "")
-}
-
-data dispatch_attempt_continuation_turn_basename: String = "continuation-turn"
 
 // THE ALIGNMENT BINDING PATH: the resolved chain's fingerprint, written at state initialization
 // beside the attempt key and turn (gunbc.roadmap.roadmap_alignment owns the binding's shape; this
@@ -1629,10 +1606,6 @@ fn dispatch_attempt_audit_events_path_for_instance(instance: HostDashboardInstan
   join([dispatch_attempt_audit_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", head_sha, ".provider-events.jsonl"], "")
 }
 
-fn dispatch_attempt_supervisor_events_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, turn: Int) -> String {
-  join([dispatch_attempt_supervisor_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/t", to_string(value: turn), ".provider-events.jsonl"], "")
-}
-
 fn dispatch_attempt_review_events_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, criterion_key: String, head_sha: String) -> String {
   join([dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", criterion_key, "@", head_sha, ".provider-events.jsonl"], "")
 }
@@ -1789,8 +1762,7 @@ fn dispatch_audit_unit_name(node_id: String, attempt_key: String) -> NonEmptyStr
 
 data gunbc_harness_auditor_function: String = "harness_auditor_cli"
 
-// Each launch writes its events to its OWN per-launch path (head-hash for the auditor, turn for
-// the supervisor): a path shared across launches let a later launch rewrite an earlier one's
+// Each launch writes its events to its OWN per-launch path (head-hash for the auditor): a path shared across launches let a later launch rewrite an earlier one's
 // stream, which erased that launch's token usage from the per-attempt metering — the metering
 // reader opens exactly these per-launch paths (roadmap_attempt_metering), so the writer and the
 // reader must name the same path expression, which the actuator witness pins on both sides.
@@ -1829,71 +1801,6 @@ fn dispatch_audit_unit_command(
       "--arg", join(["verdict_dir=", dir], ""),
       "--arg", join(["verdict_name=", dispatch_attempt_audit_verdict_basename(head_sha: head_sha)], ""),
       "--arg", join(["attempt_identity=", dispatch_auditor_attempt_identity(node_id: node_id as String, attempt_key: attempt_key, head_sha: head_sha)], ""),
-    ],
-  )
-}
-
-// THE SUPERVISOR DIRECTORY, the supervisor session's only writable path, beside review/ and
-// audit/. One supervisor per escalation record (node, attempt, turn): its verdict, event stream,
-// scratch and log are addressed together, and the belt's continuation decision reads the verdict
-// at this same address (belt_supervisor_verdict_observe), so writer and reader cannot disagree
-// about where an adjudication lands.
-data supervisor_directory_segment: String = "supervisor"
-
-fn dispatch_attempt_supervisor_dir_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
-  join([dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", supervisor_directory_segment], "")
-}
-
-fn dispatch_supervisor_unit_name(node_id: String, attempt_key: String, turn: Int) -> NonEmptyStr {
-  join(["gunbc-supervisor-", node_id, "-", attempt_key, "-t", to_string(value: turn), ".service"], "") as NonEmptyStr
-}
-
-fn dispatch_supervisor_attempt_identity(node_id: String, attempt_key: String, turn: Int) -> String {
-  join(["supervisor:", node_id, "-", attempt_key, "-t", to_string(value: turn)], "")
-}
-
-data gunbc_harness_supervisor_function: String = "harness_supervisor_cli"
-
-// THE SUPERVISOR'S UNIT: the auditor's shape (one session per subject, not per criterion) with the
-// escalation's turn in the unit name and the attempt identity, which is what makes one escalation
-// record convene at most one session -- a second convene over the same record names the same unit,
-// and the belt's liveness gate reads that. The worktree stays read-only to the session, as the
-// reviewer's is: the supervisor adjudicates the checkpoint; it does not edit it.
-fn dispatch_supervisor_unit_command(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-  turn: Int,
-  worktree_path: String,
-  brief: String,
-  exit_hook: NonEmptyStr,
-) -> SystemdRunCommandReading {
-  let dir = dispatch_attempt_supervisor_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
-  systemd_run_user_transient_command(
-    unit: dispatch_supervisor_unit_name(node_id: node_id as String, attempt_key: attempt_key, turn: turn),
-    properties: dispatch_review_unit_properties(
-      instance: instance,
-      working_directory: instance.repo_root as String,
-      log_path: join([dir, "/supervisor-stdout.log"], ""),
-      review_dir: dir,
-      exit_hook: exit_hook,
-    ),
-    setenv_bindings: [],
-    command_argv: [
-      instance.serve_binary as String,
-      "run",
-      "--source-root", join([instance.repo_root as String, "/dag"], ""),
-      "--source-root", join([instance.repo_root as String, "/src/v2"], ""),
-      "--entry", join([instance.repo_root as String, "/", gunbc_harness_worker_entry], ""),
-      "--function", gunbc_harness_supervisor_function,
-      "--arg", join(["worktree=", worktree_path], ""),
-      "--arg", join(["brief=", brief], ""),
-      "--arg", join(["timeout_program=", instance.toolchain.timeout as String], ""),
-      "--arg", join(["request_scratch_path=", dir, "/harness-request.json"], ""),
-      "--arg", join(["events_path=", dispatch_attempt_supervisor_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, turn: turn)], ""),
-      "--arg", join(["verdict_dir=", dir], ""),
-      "--arg", join(["verdict_name=", supervisor_verdict_basename as String], ""),
-      "--arg", join(["attempt_identity=", dispatch_supervisor_attempt_identity(node_id: node_id as String, attempt_key: attempt_key, turn: turn)], ""),
     ],
   )
 }
@@ -2253,8 +2160,8 @@ fn filled_dispatch_brief_for_node(node: RoadmapNode) -> String {
 // EVERY DISPATCHED BRIEF CARRIES THE SHARED PREAMBLE EXACTLY ONCE AND THE NODE'S CENTERING PLAN
 // (operator ruling 2026-09-19: centering is a dispatch prerequisite, supplied up front, never
 // re-derived per attempt). The preamble and the plan are read from their single authority
-// (gunbc.roadmap.roadmap_centering) at the one join site per brief assembly -- this function and
-// the continuation spawn path below -- so "exactly once" is construction, and the centering
+// (gunbc.roadmap.roadmap_centering) at the one join site per brief assembly -- this function -- so
+// "exactly once" is construction, and the centering
 // witness counts occurrences rather than trusting it. A node with no declared plan renders the
 // roster's loud marker here, but such a brief never dispatches: the launch admission's centering
 // gate refuses it first.
@@ -2266,39 +2173,6 @@ fn dispatch_brief_with_centering(node: RoadmapNode, fields: DispatchBriefFields)
     "\n\n",
     fill_dispatch_brief(template: dispatch_brief_template, fields: fields),
   ], "")
-}
-
-// THE CONTINUATION BRIEF RE-ALIGNS BEFORE IT RE-BRIEFS (docs/plans/harness-work-lifecycle.md,
-// alignment ladder: the continuation turn is a cadence point, and the answer rides in the
-// submission's explanation). The preamble sits between the verdict prefix and the ordinary brief,
-// exists only on continuation origins -- the initial brief is byte-identical to the pre-preamble
-// assembly -- and EVERY level of the chain renders, node to root, because the preamble IS the
-// resolution's rendered_prompt: gunbc.roadmap.roadmap_alignment is the one authority over the
-// alignment answer (chain, due levels, render), and this module only concatenates. A continuation
-// whose resolution is Unresolved renders a loud refusal marker here -- and never dispatches,
-// because the spawn fold below gates on the same resolution value before any command exists.
-fn dispatch_brief_for_origin(node: RoadmapNode, fields: DispatchBriefFields, origin: AttemptOrigin, resolution: AlignmentResolution) -> String {
-  join([
-    continuation_brief_prefix(origin: origin),
-    match origin {
-      FreshFromBase => ""
-      ContinueFromAttempt { parent_attempt_key: _, branch: _, turn: _, verdict_detail: _ } =>
-        dispatch_continuation_alignment_preamble(resolution: resolution)
-    },
-    dispatch_brief_with_centering(node: node, fields: fields),
-  ], "")
-}
-
-fn dispatch_continuation_alignment_preamble(resolution: AlignmentResolution) -> String {
-  match resolution {
-    AlignmentReady { chain: _, due_levels: _, rendered_prompt } => rendered_prompt
-    AlignmentUnresolved { cause } =>
-      join([
-        "\nAlignment UNRESOLVED -- this continuation does not dispatch: ",
-        alignment_refusal_reason(cause: cause),
-        "\n\n",
-      ], "")
-  }
 }
 
 fn host_exec_argv(program: String, args: List<String>) -> HostExecArgv {
@@ -3416,7 +3290,6 @@ fn dispatch_spawn_commands_for_inventory(
             provider: provider,
             effort: effort,
             model: model,
-            origin: FreshFromBase,
             resolution: resolution,
           )
         CodexDispatchProvider =>
@@ -3428,7 +3301,6 @@ fn dispatch_spawn_commands_for_inventory(
             provider: provider,
             effort: effort,
             model: model,
-            origin: FreshFromBase,
             resolution: resolution,
           )
         GunbcHarnessProvider =>
@@ -3440,7 +3312,6 @@ fn dispatch_spawn_commands_for_inventory(
             provider: provider,
             effort: effort,
             model: model,
-            origin: FreshFromBase,
             resolution: resolution,
           )
       }
@@ -3467,11 +3338,9 @@ fn dispatch_spawn_commands_for_instance(
   )
 }
 
-// THE ORIGIN DECIDES TWO THINGS AND ONLY TWO: which ref the worktree branches from, and what leads
-// the brief. A fresh start branches from the instance's base ref with the node brief alone; a
-// continuation branches from the prior attempt's branch, so the committed work is already in the
-// tree, and puts the verdict ahead of the brief. Nothing else about the spawn changes -- same
-// harness, same confinement, same state layout -- which is what makes the second turn ordinary.
+// EVERY ATTEMPT BRANCHES FROM THE INSTANCE'S BASE REF with the node brief alone: there is no second
+// origin (gunbc.plans.harness_session_lifecycle, slice S1 -- a session is never continued by a new
+// attempt, so nothing about a spawn depends on a predecessor).
 // THE ALIGNMENT GATE IS THE FIRST GATE, before destination, brief, or any command: the spawn
 // fold consumes the ONE resolution the caller derived from gunbc.roadmap.roadmap_alignment, and an
 // Unresolved chain refuses with zero commands — no worktree, no state, no session. The review
@@ -3486,7 +3355,6 @@ fn dispatch_spawn_commands_for_resolved_instance(
   provider: DispatchCliProvider,
   effort: ReasoningEffort,
   model: ProviderModelSelection,
-  origin: AttemptOrigin,
   resolution: AlignmentResolution,
 ) -> DispatchSpawnPlan {
   match resolution {
@@ -3495,7 +3363,7 @@ fn dispatch_spawn_commands_for_resolved_instance(
         step: "alignment" as NonEmptyStr,
         detail: alignment_refusal_reason(cause: cause),
       }
-    AlignmentReady { chain, due_levels: _, rendered_prompt: _ } =>
+    AlignmentReady { chain, due_levels: _, rendered_prompt } =>
   match node_dispatch_destination(node: node) {
     DispatchDestinationMissing { reason } =>
       DispatchSpawnRefused {
@@ -3513,7 +3381,7 @@ fn dispatch_spawn_commands_for_resolved_instance(
     node: node,
     environment: instance.execution_environment,
   )
-  let brief = dispatch_brief_for_origin(node: node, fields: fields, origin: origin, resolution: resolution)
+  let brief = dispatch_brief_with_centering(node: node, fields: fields)
   let session_name = dispatch_tmux_session_name(node_id: node.node)
   let worktree_path = dispatch_worktree_path_for_instance(
     instance: instance,
@@ -3532,7 +3400,7 @@ fn dispatch_spawn_commands_for_resolved_instance(
     worktree_path: worktree_path,
     brief: brief,
     alignment_chain_fingerprint: alignment_chain_fingerprint(chain: chain),
-    supervision_prompt: alignment_chain_render(chain: chain),
+    supervision_prompt: rendered_prompt,
   ) {
     CursorProviderOffCustodyHost { reason } =>
       DispatchSpawnRefused {
@@ -3569,7 +3437,7 @@ fn dispatch_spawn_commands_for_resolved_instance(
     instance: instance,
     worktree_path: worktree_path,
     branch_name: branch_name,
-    remote_ref: attempt_origin_base_ref(origin: origin, instance_base_ref: instance.dispatch_base_ref as String),
+    remote_ref: instance.dispatch_base_ref as String,
   )
   let state_prepare = attempt_state_prepare_argv_for_instance(
     instance: instance,

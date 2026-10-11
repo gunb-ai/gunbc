@@ -25,8 +25,6 @@ import gunbc.roadmap_belt_actuate {
   belt_verify_one_for_instance, BeltVerifyOneResult,
   VerifyOneVerdictRecorded, VerifyOneAlreadyRecorded, VerifyOneRefused,
   belt_verify_outcome_json,
-  belt_escalate_one_for_instance, BeltEscalateOneResult,
-  EscalateOneConvened, EscalateOneGateNoOp, EscalateOneNotDue, EscalateOneRefused,
   belt_integrate_candidate_core_for_instance, BeltIntegrationCoreStep,
   IntegrationCoreDeferred, IntegrationCoreUnreadable, IntegrationCoreBlocked, IntegrationCoreIntegrated,
   belt_instance_obligation_enqueue, belt_obligation_enqueue_json,
@@ -248,8 +246,7 @@ fn belt_review_report_cli(repo_root: String, node_id: String, attempt_key: Strin
 
 // ------------------------------------------------------------------------------------------------
 // PER-ITEM OBLIGATION ENTRIES (owner ruling 2026-09-22, "The belt demoted": wake-ups and
-// anti-entropy only). Verify one candidate, convene one lineage's supervisor, integrate one
-// verified candidate -- each on the item's own durable authorities, never the attempts ledger.
+// anti-entropy only). Verify one candidate, integrate one verified candidate -- each on the item's own durable authorities, never the attempts ledger.
 // Each is conditional and idempotent by construction: a repeat over unchanged state is a typed
 // no-op, so a duplicate, lost, or out-of-order wake-up is harmless. The tick's passes run the
 // same cores; these are their independent invocations.
@@ -288,49 +285,6 @@ fn belt_verify_one_cli(repo_root: String, node_id: String, attempt_key: String, 
       ))
       let w = Filesystem.Write(path: receipt_path, content: document)
       if !w.success { exit_failure(reason: join(["belt_verify_one_cli: receipt could not be written: ", w.error, "; result was ", document], "")) } else { ExitSuccess }
-    }
-  }
-}
-
-fn belt_escalate_one_result_json(r: BeltEscalateOneResult) -> JsonValue {
-  match r {
-    EscalateOneConvened { unit } =>
-      json_object(members: [
-        json_kv(key: "schema", value: json_string(s: "roadmap-escalate-one/v1")),
-        json_kv(key: "status", value: json_string(s: "convened")),
-        json_kv(key: "unit", value: json_string(s: unit)),
-      ])
-    EscalateOneGateNoOp { step, detail } =>
-      json_object(members: [
-        json_kv(key: "schema", value: json_string(s: "roadmap-escalate-one/v1")),
-        json_kv(key: "status", value: json_string(s: "gate-no-op")),
-        json_kv(key: "step", value: json_string(s: step)),
-        json_kv(key: "detail", value: json_string(s: detail)),
-      ])
-    EscalateOneNotDue { detail } =>
-      json_object(members: [
-        json_kv(key: "schema", value: json_string(s: "roadmap-escalate-one/v1")),
-        json_kv(key: "status", value: json_string(s: "not-due")),
-        json_kv(key: "detail", value: json_string(s: detail)),
-      ])
-    EscalateOneRefused { reason } =>
-      json_object(members: [
-        json_kv(key: "schema", value: json_string(s: "roadmap-escalate-one/v1")),
-        json_kv(key: "status", value: json_string(s: "refused")),
-        json_kv(key: "reason", value: json_string(s: reason)),
-      ])
-  }
-}
-
-fn belt_escalate_one_cli(repo_root: String, node_id: String, attempt_key: String, receipt_path: String) -> ProcessExit {
-  match dashboard_instance_for_repo_root(repo_root: repo_root) {
-    DashboardInstanceRootUnknown { repo_root: w } => exit_failure(reason: join(["belt_escalate_one_cli: no dashboard instance is rooted at ", w], ""))
-    DashboardInstanceResolved { instance } => {
-      let document = serialize_json(v: belt_escalate_one_result_json(
-        r: belt_escalate_one_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-      ))
-      let w = Filesystem.Write(path: receipt_path, content: document)
-      if !w.success { exit_failure(reason: join(["belt_escalate_one_cli: receipt could not be written: ", w.error, "; result was ", document], "")) } else { ExitSuccess }
     }
   }
 }

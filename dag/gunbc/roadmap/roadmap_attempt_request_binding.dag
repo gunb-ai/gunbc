@@ -24,44 +24,16 @@ import gunbc.roadmap.roadmap_attempt_request_record {
 // triggers. This type is that hand-off. It is NOT read back from the issue later -- by the time an
 // attempt initializes, another claim may be the current one, and binding whichever claim is current
 // would address this attempt's result to a request that did not cause it. A dispatch nobody's claim
-// caused (the timer's, or an operator pressing dispatch) is Autonomous when it starts a lineage: its
-// own launch class, with no requester, never a request whose identity went unobserved.
-//
-// A CONTINUATION IS NEITHER. When such a dispatch turns out to continue an earlier attempt's
-// lineage, that lineage may have a requester, and calling the new turn autonomous would erase the
-// obligation -- its result would never return. Continuing names the attempt it continues, and the
-// new attempt's binding is a COPY of that attempt's recorded, create-only binding
-// (attempt_launch_request_for_origin decides the class; attempt_request_binding_admission does the
-// copy). That carries a recorded fact forward along the lineage; it reads no issue state, so the
-// claim current at the time of the continuation has no way in.
+// caused (the timer's, or an operator pressing dispatch) is Autonomous: its own launch class, with
+// no requester, never a request whose identity went unobserved. Every attempt starts its own
+// lineage (gunbc.plans.harness_session_lifecycle, slice S1), so no launch inherits a predecessor's
+// requester.
 type AttemptLaunchRequest
   = LaunchForClaim { node: RoadmapNodeId, claim: RoadmapEventId }
-  | LaunchContinuing { predecessor_attempt_key: String }
   | LaunchAutonomous
 
-// THE LAUNCH CLASS ONCE THE LINEAGE IS KNOWN. The dispatch decision supplies the request; the
-// continuation decision, taken later in the spawn, says whether this attempt continues a
-// predecessor. A launch for a claim stays a launch for that claim even when it continues a lineage:
-// a new assignment caused it, and it answers that assignment. A launch nobody's claim caused becomes
-// Continuing when there is a predecessor and stays Autonomous when there is none. A Continuing
-// request is already what it is.
-fn attempt_launch_request_for_origin(request: AttemptLaunchRequest, predecessor_attempt_key: String?) -> AttemptLaunchRequest {
-  match request {
-    LaunchForClaim { node: _, claim: _ } => request
-    LaunchContinuing { predecessor_attempt_key: _ } => request
-    LaunchAutonomous => match predecessor_attempt_key {
-      Present { value: key } => LaunchContinuing { predecessor_attempt_key: key }
-      Absent => LaunchAutonomous
-    }
-  }
-}
-
-// WHETHER THE CARRIED REQUEST CAN BE BOUND TO THIS ATTEMPT, pure over the issue's log and the
-// predecessor's binding as read. An autonomous launch binds as autonomous and consults nothing. A
-// continuing launch takes exactly the binding its predecessor recorded -- bound to the same claim,
-// or autonomous -- and refuses when the predecessor has no readable binding, because a continuation
-// whose lineage's request is unknown would run unable to answer anyone (the remedy is a new
-// assignment, which launches for its own claim). A launch for a claim binds only when
+// WHETHER THE CARRIED REQUEST CAN BE BOUND TO THIS ATTEMPT, pure over the issue's log. An
+// autonomous launch binds as autonomous and consults nothing. A launch for a claim binds only when
 // the request names THIS attempt's node and the claim is a Claimed event on that node's readable,
 // ordered history. Everything else refuses and says which: a request for another node, a log that
 // could not be read, a history that forks or is incomplete, a claim id the history does not carry
@@ -71,17 +43,9 @@ type AttemptRequestBindingAdmission
   = RequestBindingAdmitted { binding: AttemptRequestBinding }
   | RequestBindingNotAdmitted { step: String, detail: String }
 
-fn attempt_request_binding_admission(request: AttemptLaunchRequest, node_id: RoadmapNodeId, read: RoadmapEventsRead, predecessor: AttemptRequestBindingRead) -> AttemptRequestBindingAdmission {
+fn attempt_request_binding_admission(request: AttemptLaunchRequest, node_id: RoadmapNodeId, read: RoadmapEventsRead) -> AttemptRequestBindingAdmission {
   match request {
     LaunchAutonomous => RequestBindingAdmitted { binding: RequestAutonomous }
-    LaunchContinuing { predecessor_attempt_key } =>
-      match predecessor {
-        RequestBindingRead { binding } => RequestBindingAdmitted { binding: binding }
-        RequestBindingAbsent =>
-          RequestBindingNotAdmitted { step: "request-predecessor", detail: join(["this attempt continues attempt ", predecessor_attempt_key, " of issue ", node_id as String, ", which recorded no request binding, so the request this lineage answers is unknown; assign the issue again to continue it under a recorded request"], "") }
-        RequestBindingUnreadable { reason } =>
-          RequestBindingNotAdmitted { step: "request-predecessor", detail: join(["this attempt continues attempt ", predecessor_attempt_key, " of issue ", node_id as String, ", whose request binding cannot be read: ", reason], "") }
-      }
     LaunchForClaim { node, claim } =>
       if (node as String) != (node_id as String) {
         RequestBindingNotAdmitted { step: "request-node", detail: join(["the launch request is for issue ", node as String, " and cannot bind an attempt of issue ", node_id as String], "") }
@@ -120,26 +84,16 @@ fn request_binding_history_after_snapshot_close(read: CarrierClosed<RoadmapEvent
 
 // THE LAUNCH-TIME COMMIT (gunbc.roadmap_belt_actuate belt_attempt_state_initialize_for_instance,
 // before the worker starts). The request arrives from the dispatch decision; the issue's log is
-// read only when the request names a claim, to establish it, and the predecessor's binding only
-// when the launch continues one (same issue, by the path it is read from); the binding is written
-// create-only.
+// read only when the request names a claim, to establish it; the binding is written create-only.
 // A refusal here fails the launch.
 fn attempt_request_binding_commit_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, request: AttemptLaunchRequest) -> AttemptRequestBindingCommit {
   let admission = match request {
-    LaunchAutonomous => attempt_request_binding_admission(request: request, node_id: node_id, read: EventsRead { node: node_id, envelopes: [] }, predecessor: RequestBindingAbsent)
-    LaunchContinuing { predecessor_attempt_key } =>
-      attempt_request_binding_admission(
-        request: request,
-        node_id: node_id,
-        read: EventsRead { node: node_id, envelopes: [] },
-        predecessor: attempt_request_binding_read_for_instance(instance: instance, node_id: node_id, attempt_key: predecessor_attempt_key),
-      )
+    LaunchAutonomous => attempt_request_binding_admission(request: request, node_id: node_id, read: EventsRead { node: node_id, envelopes: [] })
     LaunchForClaim { node: _, claim: _ } =>
       attempt_request_binding_admission(
         request: request,
         node_id: node_id,
         read: request_binding_history_after_snapshot_close(read: roadmap_events_read(layout: roadmap_event_carrier_layout_for_instance(instance: instance), node: node_id)),
-        predecessor: RequestBindingAbsent,
       )
   }
   match admission {
