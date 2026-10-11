@@ -1,0 +1,218 @@
+module v2.compiler.lexical_scope
+
+import std.types { List }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.algebra { list_snoc_item }
+import v2.std.algebra { list_map }
+import v2.std.integer { Int }
+import v2.std.node {
+  Arrow,
+  ArrowResourceRequirementsEdge,
+  ArrowSignatureOrderEdge,
+  Atom,
+  Authored,
+  Bind,
+  ComputationNode,
+  Conj,
+  Edge,
+  FirstPositionalAbsent,
+  FirstPositionalFound,
+  Node,
+  Positional,
+  StructuralLabel,
+  Symbol,
+  TypeNode,
+  arrow_first_positional_target,
+  arrow_named_edge_is_metadata,
+  edge_is_core,
+  positional_child_count,
+  positional_edges
+}
+import v2.std.type_binder { edge_is_type_params }
+
+// WHERE A NAME IS BOUND LEXICALLY, AS ONE FACT. Resolution decides what a name means at a site by the
+// frames that enclose the site; module acquisition decides whether a dotted spelling at a site can name
+// a module by the same frames, because a spelling whose head a frame binds is a projection off that
+// binder and names no module. These are the two questions v2.compiler.resolve and
+// v2.compiler.module_acquisition ask of the SAME tree, so the answer they share is declared here once and
+// each reads it: which names a binding construct introduces, and which of its children each name is
+// visible in. Neither stage restates the other's table.
+//
+// The module imports only std and v2.std and is a pure reading of one Node, so resolution and acquisition
+// both import it and no import cycle can form.
+
+type DeclaredBinding {
+  name: Symbol
+}
+
+fn try_edge_declared_binding(e: Edge) -> DeclaredBinding? {
+  match e.label {
+    Authored { name: sym } => Present { value: DeclaredBinding { name: sym } }
+    StructuralLabel { label: _ } => Absent
+    Positional => Absent
+  }
+}
+
+// ---- Arrow ---------------------------------------------------------------------------------------------
+
+// An Arrow's value binders are the AUTHORED Named edges of its domain Conj, in the domain's declared
+// order, each with the edge that carries its declared type (v2.std.node A4: a domain is a Conj of Named
+// binders). Only a Named binder binds.
+type ArrowDomainBinder {
+  name: Symbol
+  edge: Edge
+}
+
+fn arrow_domain_binders(n: Node) -> List<ArrowDomainBinder> {
+  match n.kind {
+    TypeNode { connective: Arrow } =>
+      match arrow_first_positional_target(children: n.children) {
+        FirstPositionalFound { target: domain } => conj_declared_binders(root: domain)
+        FirstPositionalAbsent => []
+      }
+    TypeNode { connective: _ } => []
+    ComputationNode { behavior: _ } => []
+  }
+}
+
+fn conj_declared_binders(root: Node) -> List<ArrowDomainBinder> {
+  match root.kind {
+    TypeNode { connective: Conj } =>
+      fold(root.children, init: [], f: fn(acc, e) {
+        match try_edge_declared_binding(e: e) {
+          Present { value: b } => list_snoc_item(xs: acc, item: ArrowDomainBinder { name: b.name, edge: e })
+          Absent => acc
+        }
+      })
+    TypeNode { connective: _ } => []
+    ComputationNode { behavior: _ } => []
+  }
+}
+
+fn arrow_domain_binder_names(n: Node) -> List<Symbol> {
+  list_map(xs: arrow_domain_binders(n: n), f: fn(b) { b.name })
+}
+
+// THE SLOT AN ARROW'S CHILD OCCUPIES, decided from the edge and its ordinal among ALL of the Arrow's
+// children (resolution counts every preceding child, authored or structural, not only positional ones).
+// The branches are ordered: an edge that is both a type-parameter edge and something else is a
+// type-parameter edge.
+type ArrowSlot
+  = ArrowTypeParamsSlot
+  | ArrowCarriedSlot
+  | ArrowResourceRequirementsSlot
+  | ArrowBodyOrNamedSlot
+  | ArrowAuthoredSlot
+  | ArrowDomainSlot
+  | ArrowCodomainSlot
+
+fn arrow_slot(e: Edge, ordinal: Int) -> ArrowSlot {
+  match e.label {
+    StructuralLabel { label: _ } =>
+      if edge_is_type_params(e: e) {
+        ArrowTypeParamsSlot
+      } else if edge_is_core(e: e, marker: ArrowSignatureOrderEdge) {
+        ArrowCarriedSlot
+      } else if edge_is_core(e: e, marker: ArrowResourceRequirementsEdge) {
+        ArrowResourceRequirementsSlot
+      } else if arrow_named_edge_is_metadata(e: e) {
+        ArrowCarriedSlot
+      } else {
+        ArrowBodyOrNamedSlot
+      }
+    Authored { name: _ } => ArrowAuthoredSlot
+    Positional =>
+      if ordinal == 0 {
+        ArrowDomainSlot
+      } else {
+        ArrowCodomainSlot
+      }
+  }
+}
+
+// THE FRAME EACH SLOT IS WALKED UNDER, relative to the scope the Arrow was reached under. The type
+// parameters bind types only, so a slot that sees them and no value parameter (the domain, the resource
+// requirements) still sees every value binder that encloses the Arrow. The value parameters are visible
+// in the codomain, the body and the authored edges, and in no part of the signature before them.
+type ArrowSlotScope
+  = SlotScopeOuter
+  | SlotScopeTypeParams
+  | SlotScopeParamsOverTypeParams
+  | SlotScopeParamsOverOuter
+
+fn arrow_slot_scope(slot: ArrowSlot) -> ArrowSlotScope {
+  match slot {
+    ArrowTypeParamsSlot => SlotScopeOuter
+    ArrowCarriedSlot => SlotScopeOuter
+    ArrowResourceRequirementsSlot => SlotScopeTypeParams
+    ArrowDomainSlot => SlotScopeTypeParams
+    ArrowCodomainSlot => SlotScopeParamsOverTypeParams
+    ArrowBodyOrNamedSlot => SlotScopeParamsOverOuter
+    ArrowAuthoredSlot => SlotScopeParamsOverOuter
+  }
+}
+
+fn arrow_slot_scope_binds_value_params(scope: ArrowSlotScope) -> Bool {
+  match scope {
+    SlotScopeOuter => false
+    SlotScopeTypeParams => false
+    SlotScopeParamsOverTypeParams => true
+    SlotScopeParamsOverOuter => true
+  }
+}
+
+// ---- Bind ----------------------------------------------------------------------------------------------
+
+// A `let`'s binder is its FIRST positional child when that child is an atom and the Bind carries its
+// three positional children (binder, value, body).
+type BindBinder {
+  name: Symbol
+  atom: Node
+}
+
+fn bind_binder(n: Node) -> Optional<BindBinder> {
+  match n.kind {
+    ComputationNode { behavior: Bind } =>
+      if positional_child_count(children: n.children) == 3 {
+        match first(positional_edges(children: n.children)) {
+          Present { value: e0 } =>
+            match e0.target.kind {
+              TypeNode { connective: Atom { identity: sym } } => optional_present(value: BindBinder { name: sym, atom: e0.target })
+              TypeNode { connective: _ } => optional_absent()
+              ComputationNode { behavior: _ } => optional_absent()
+            }
+          Absent => optional_absent()
+        }
+      } else {
+        optional_absent()
+      }
+    TypeNode { connective: _ } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
+  }
+}
+
+// THE SLOT A BIND'S POSITIONAL CHILD OCCUPIES, by its ordinal among the POSITIONAL children only: the
+// type-annotation edge may stand anywhere among the children, so counting it would shift the value into
+// the binder's inner scope. The binder is visible in the body and nowhere else.
+type BindSlot
+  = BindBinderSlot
+  | BindValueSlot
+  | BindBodySlot
+
+fn bind_positional_slot(ordinal: Int) -> BindSlot {
+  if ordinal == 0 {
+    BindBinderSlot
+  } else if ordinal == 1 {
+    BindValueSlot
+  } else {
+    BindBodySlot
+  }
+}
+
+fn bind_slot_sees_binder(slot: BindSlot) -> Bool {
+  match slot {
+    BindBinderSlot => false
+    BindValueSlot => false
+    BindBodySlot => true
+  }
+}

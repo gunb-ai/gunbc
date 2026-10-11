@@ -12,6 +12,30 @@ import v2.std.member_declaration_kind {
   no_member_declaration_kinds
 }
 import v2.compiler.namespace_graft { namespace_graft_module_body_optional }
+import v2.compiler.lexical_scope {
+  ArrowAuthoredSlot,
+  ArrowBodyOrNamedSlot,
+  ArrowCarriedSlot,
+  ArrowCodomainSlot,
+  ArrowDomainSlot,
+  ArrowResourceRequirementsSlot,
+  ArrowSlotScope,
+  ArrowTypeParamsSlot,
+  BindBinderSlot,
+  BindBodySlot,
+  BindValueSlot,
+  SlotScopeOuter,
+  SlotScopeParamsOverOuter,
+  SlotScopeParamsOverTypeParams,
+  SlotScopeTypeParams,
+  arrow_domain_binder_names,
+  arrow_domain_binders,
+  arrow_slot,
+  arrow_slot_scope,
+  bind_binder,
+  bind_positional_slot,
+  try_edge_declared_binding
+}
 import v2.std.declaration_marker {
   ReachesNoTestCode,
   ReachesTestMarkedDeclaration,
@@ -172,12 +196,7 @@ import v2.std.node {
   symbol_intern_lexeme,
   symbol_lexeme,
   arrow_domain_binds_a_name,
-  arrow_first_positional_target,
-  arrow_named_edge_is_metadata,
-  ArrowResourceRequirementsEdge,
   AdmitCallersEdge,
-  FirstPositionalAbsent,
-  FirstPositionalFound,
   edge_label_of,
   node_with_occurrence_id,
   Instantiation,
@@ -533,10 +552,6 @@ type DeclaringPosition
   | DeclaringInSpine { path: QualifiedName, body: Node }
   | NotDeclaring
 
-type DeclaredBinding {
-  name: Symbol
-}
-
 fn empty_edge_list() -> List<Edge> {
   []
 }
@@ -558,14 +573,6 @@ fn empty_canonical_symbol_set() -> PointwisePower<Symbol> {
     member: fn(_) {
       false
     }
-  }
-}
-
-fn try_edge_declared_binding(e: Edge) -> DeclaredBinding? {
-  match e.label {
-    Authored { name: sym } => optional_present(value: DeclaredBinding { name: sym })
-    StructuralLabel { label: _ } => optional_absent()
-    Positional => optional_absent()
   }
 }
 
@@ -651,36 +658,10 @@ fn binder_hides_visible_value_diagnostic(binder: Symbol, at: Node) -> Diagnostic
 
 // THE NAMES EACH BINDER SITE INTRODUCES, as LISTS rather than maps, because a map cannot answer the
 // question the admission asks. map_insert silently overwrites, so a frame built by insertion cannot tell
-// a duplicate binder from a single one -- the duplicate is exactly what must refuse. These collectors
-// mirror the frame builders beside them (arrow_domain_frame_binders, resolve_pattern_binders,
-// bind_frame_binders): an Arrow's list is the AUTHORED Named binders of its domain Conj, the same edges
-// arrow_domain_frame_binders binds.
-fn arrow_domain_binder_name_list(n: Node) -> List<Symbol> {
-  match n.kind {
-    TypeNode { connective: Arrow } =>
-      match arrow_first_positional_target(children: n.children) {
-        FirstPositionalFound { target: domain } => conj_named_binder_name_list(root: domain)
-        FirstPositionalAbsent => []
-      }
-    TypeNode { connective: _ } => []
-    ComputationNode { behavior: _ } => []
-  }
-}
-
-fn conj_named_binder_name_list(root: Node) -> List<Symbol> {
-  match root.kind {
-    TypeNode { connective: Conj } =>
-      fold(root.children, init: [], f: fn(acc, e) {
-        match try_edge_declared_binding(e: e) {
-          Present { value: b } => list_snoc_item(xs: acc, item: b.name)
-          Absent => acc
-        }
-      })
-    TypeNode { connective: _ } => []
-    ComputationNode { behavior: _ } => []
-  }
-}
-
+// a duplicate binder from a single one -- the duplicate is exactly what must refuse. An Arrow's list is
+// v2.compiler.lexical_scope arrow_domain_binder_names, the same binders arrow_domain_frame_binders
+// binds; a match arm's list (pattern_binder_name_list) mirrors resolve_pattern_binders and a `let`'s
+// (bind_binder_name_list) mirrors bind_frame_binders.
 // A match arm's list mirrors resolve_pattern_binders exactly, including its two exclusions: a wildcard
 // binds nothing, and a field target that names a CONSTRUCTOR is a nested pattern, not a binder.
 fn pattern_binder_name_list(ctx: ResolveContext, pat: Node) -> List<Symbol> {
@@ -874,68 +855,40 @@ fn lexical_frame(fb: FrameBinders, outer: Scope) -> Scope {
 }
 
 // An Arrow's domain binders: each Named domain edge, sited at the Arrow (the label is not a node),
-// with its declared type. Only a Named binder binds (v2.std.node A4: a domain is a Conj of Named
-// binders with its declared order).
+// with its declared type. Which edges bind is v2.compiler.lexical_scope arrow_domain_binders.
 fn arrow_domain_frame_binders(n: Node) -> FrameBinders {
-  match n.kind {
-    TypeNode { connective: Arrow } =>
-      match arrow_first_positional_target(children: n.children) {
-        FirstPositionalFound { target: domain } =>
-          match domain.kind {
-            TypeNode { connective: Conj } =>
-              fold(domain.children, init: frame_binders_empty(), f: fn(fb, e) {
-                match try_edge_declared_binding(e: e) {
-                  Present { value: b } =>
-                    frame_binders_add(
-                      fb: fb,
-                      name: b.name,
-                      binding: LexicalBinding {
-                        binder_site: n.occurrence_id,
-                        standing: match member_edge_type_node(e: e) {
-                          Present { value: t } => LexicalDeclared { node: t }
-                          Absent => LexicalUntyped
-                        }
-                      }
-                    )
-                  Absent => fb
-                }
-              })
-            _ => frame_binders_empty()
-          }
-        FirstPositionalAbsent => frame_binders_empty()
+  fold(arrow_domain_binders(n: n), init: frame_binders_empty(), f: fn(fb, b) {
+    frame_binders_add(
+      fb: fb,
+      name: b.name,
+      binding: LexicalBinding {
+        binder_site: n.occurrence_id,
+        standing: match member_edge_type_node(e: b.edge) {
+          Present { value: t } => LexicalDeclared { node: t }
+          Absent => LexicalUntyped
+        }
       }
-    _ => frame_binders_empty()
-  }
+    )
+  })
 }
 
-// A `let`'s binder: its first positional child, an atom, sited at itself.
+// A `let`'s binder: its first positional child, an atom, sited at itself
+// (v2.compiler.lexical_scope bind_binder).
 fn bind_frame_binders(n: Node) -> FrameBinders {
-  match n.kind {
-    ComputationNode { behavior: Bind } =>
-      if positional_child_count(children: n.children) == 3 {
-        match first(positional_edges(children: n.children)) {
-          Present { value: e0 } =>
-            match e0.target.kind {
-              TypeNode { connective: Atom { identity: sym } } =>
-                frame_binders_add(
-                  fb: frame_binders_empty(),
-                  name: sym,
-                  binding: LexicalBinding {
-                    binder_site: e0.target.occurrence_id,
-                    standing: match list_at_optional(xs: node_positional_child_targets(node: n), index: 1) {
-                      Present { value: v } => LexicalValued { node: v }
-                      Absent => LexicalUntyped
-                    }
-                  }
-                )
-              _ => frame_binders_empty()
-            }
-          Absent => frame_binders_empty()
+  match bind_binder(n: n) {
+    Present { value: b } =>
+      frame_binders_add(
+        fb: frame_binders_empty(),
+        name: b.name,
+        binding: LexicalBinding {
+          binder_site: b.atom.occurrence_id,
+          standing: match list_at_optional(xs: node_positional_child_targets(node: n), index: 1) {
+            Present { value: v } => LexicalValued { node: v }
+            Absent => LexicalUntyped
+          }
         }
-      } else {
-        frame_binders_empty()
-      }
-    _ => frame_binders_empty()
+      )
+    Absent => frame_binders_empty()
   }
 }
 
@@ -4390,9 +4343,27 @@ fn resolve_node_consumes_expectation(n: Node) -> Bool {
 // its structural check is the Arrow wall's at-most-once guard
 // (v2.std.node arrow_signature_edges_conform).
 fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
-  match gate_value_binders(names: arrow_domain_binder_name_list(n: n), outer: ctx.scope, at: n) {
+  match gate_value_binders(names: arrow_domain_binder_names(n: n), outer: ctx.scope, at: n) {
     BinderGateRefused { diagnostic: d } => resolve_walk_refused_one(chain: diagnostics_singleton(d: d))
     BinderGateAdmitted => resolve_arrow_node_admitted(outer_ctx: outer_ctx, ctx: ctx, n: n)
+  }
+}
+
+// WHICH FRAME EACH CHILD IS WALKED UNDER IS v2.compiler.lexical_scope arrow_slot / arrow_slot_scope, the
+// table module acquisition reads for the same question; this function only builds the scope each
+// answer names.
+fn resolve_arrow_slot_scope(
+  shape: ArrowSlotScope,
+  outer: Scope,
+  scope_type: Scope,
+  value_params: FrameBinders,
+  frame_kind: FrameKind
+) -> Scope {
+  match shape {
+    SlotScopeOuter => outer
+    SlotScopeTypeParams => scope_type
+    SlotScopeParamsOverTypeParams => ScopeFrame { locals: value_params.locals, outer: scope_type, kind: frame_kind }
+    SlotScopeParamsOverOuter => ScopeFrame { locals: value_params.locals, outer: outer, kind: frame_kind }
   }
 }
 
@@ -4404,55 +4375,55 @@ fn resolve_arrow_node_admitted(outer_ctx: ResolveContext, ctx: ResolveContext, n
     DeclaringInSpine { path: _, body: _ } => LexicalFrame { binders: value_params.binders }
     NotDeclaring => LexicalFrame { binders: value_params.binders }
   }
-  let scope_codomain = ScopeFrame { locals: value_params.locals, outer: scope_type, kind: frame_kind }
-  let scope_body = ScopeFrame { locals: value_params.locals, outer: ctx.scope, kind: frame_kind }
   let inner_ctx = resolve_ctx_leaving_containment(ctx: ctx)
   child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
-    match e.label {
-      StructuralLabel { label: _ } =>
-        if edge_is_type_params(e: e) {
-          child_walk_step(w: acc, e: e, r: resolve_type_params_conj(ctx: outer_ctx, conj: e.target))
-        } else if edge_is_core(e: e, marker: ArrowSignatureOrderEdge) {
-          child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] })
-        } else if edge_is_core(e: e, marker: ArrowResourceRequirementsEdge) {
-          child_walk_step(w: acc, e: e, r: resolve_arrow_resource_requirements(ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: scope_type), requirements: e.target))
-        } else if arrow_named_edge_is_metadata(e: e) {
-          child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] })
-        } else {
-          child_walk_step(
-            w: acc,
-            e: e,
-            r: resolve_arrow_body_or_named_edge(
-              ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: scope_body),
-              arrow: n,
-              e: e
-            )
-          )
-        }
-      Authored { name: _ } =>
+    let slot = arrow_slot(e: e, ordinal: acc.ordinal)
+    let slot_scope = resolve_arrow_slot_scope(
+      shape: arrow_slot_scope(slot: slot),
+      outer: ctx.scope,
+      scope_type: scope_type,
+      value_params: value_params,
+      frame_kind: frame_kind
+    )
+    match slot {
+      ArrowTypeParamsSlot =>
+        child_walk_step(w: acc, e: e, r: resolve_type_params_conj(ctx: outer_ctx, conj: e.target))
+      ArrowCarriedSlot =>
+        child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] })
+      ArrowResourceRequirementsSlot =>
+        child_walk_step(w: acc, e: e, r: resolve_arrow_resource_requirements(ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: slot_scope), requirements: e.target))
+      ArrowBodyOrNamedSlot =>
         child_walk_step(
           w: acc,
           e: e,
-          r: resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_body), n: e.target)
+          r: resolve_arrow_body_or_named_edge(
+            ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: slot_scope),
+            arrow: n,
+            e: e
+          )
         )
-      Positional =>
-        if acc.ordinal == 0 {
-          child_walk_step(
-            w: acc,
-            e: e,
-            r: resolve_arrow_domain_walk(
-              type_ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: scope_type),
-              default_ctx: inner_ctx,
-              domain: e.target
-            )
+      ArrowAuthoredSlot =>
+        child_walk_step(
+          w: acc,
+          e: e,
+          r: resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: ctx, scope: slot_scope), n: e.target)
+        )
+      ArrowDomainSlot =>
+        child_walk_step(
+          w: acc,
+          e: e,
+          r: resolve_arrow_domain_walk(
+            type_ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: slot_scope),
+            default_ctx: inner_ctx,
+            domain: e.target
           )
-        } else {
-          child_walk_step(
-            w: acc,
-            e: e,
-            r: resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: scope_codomain), n: e.target)
-          )
-        }
+        )
+      ArrowCodomainSlot =>
+        child_walk_step(
+          w: acc,
+          e: e,
+          r: resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: slot_scope), n: e.target)
+        )
     }
   }))
 }
@@ -4580,22 +4551,25 @@ fn resolve_bind_positional_edges(
   scope_inner: Scope
 ) -> ChildWalk {
   fold(edges, init: child_walk_init(), f: fn(acc, e) {
-    if acc.ordinal == 0 {
-      child_walk_step_prerequisite(w: acc, e: e, r: resolve_bind_binder_target(t: e.target))
-    } else if acc.ordinal == 1 {
-      child_walk_step(
-        w: acc,
-        e: e,
-        r: resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_outer), n: e.target)
-      )
-    } else if acc.scope_prerequisite_refused {
-      child_walk_unobservable(w: acc, reason: ^resolve_observation_bind_scope_prerequisite_refused)
-    } else {
-      child_walk_step(
-        w: acc,
-        e: e,
-        r: resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_inner), n: e.target)
-      )
+    match bind_positional_slot(ordinal: acc.ordinal) {
+      BindBinderSlot =>
+        child_walk_step_prerequisite(w: acc, e: e, r: resolve_bind_binder_target(t: e.target))
+      BindValueSlot =>
+        child_walk_step(
+          w: acc,
+          e: e,
+          r: resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_outer), n: e.target)
+        )
+      BindBodySlot =>
+        if acc.scope_prerequisite_refused {
+          child_walk_unobservable(w: acc, reason: ^resolve_observation_bind_scope_prerequisite_refused)
+        } else {
+          child_walk_step(
+            w: acc,
+            e: e,
+            r: resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_inner), n: e.target)
+          )
+        }
     }
   })
 }
