@@ -45,7 +45,8 @@ fn pair_modules() -> List<ModulePair> {
     ModulePair { old_name: "l.k.a", new_name: "l2.k.a_test" },
     ModulePair { old_name: "l.k.b", new_name: "l2.k.b" },
     ModulePair { old_name: "tools.docs_gate", new_name: "gunbc.instruments.docs_gate" },
-    ModulePair { old_name: "tools.other", new_name: "gunbc.instruments.other" }
+    ModulePair { old_name: "tools.other", new_name: "gunbc.instruments.other" },
+    ModulePair { old_name: "t.u_t", new_name: "t.u" }
   ]
 }
 
@@ -61,7 +62,8 @@ fn pair_files() -> List<PathPair> {
     PathPair { old_path: "dag/tools/other.dag", new_path: "dag/gunbc/instruments/other.dag" },
     PathPair { old_path: "dag/e/f/g_test.dag", new_path: "dag/e/f/g.dag" },
     PathPair { old_path: "dag/h/i/a_test.dag", new_path: "dag/h2/i/a.dag" },
-    PathPair { old_path: "dag/h/i/j/b_test.dag", new_path: "dag/h2/i/j/b.dag" }
+    PathPair { old_path: "dag/h/i/j/b_test.dag", new_path: "dag/h2/i/j/b.dag" },
+    PathPair { old_path: "dag/t/u_t.dag", new_path: "dag/t/u.dag" }
   ]
 }
 
@@ -120,6 +122,19 @@ test fn rewrite_follows_a_name_written_after_a_string_escape() -> Bool {
 // ordinary one, and a bare `n` is a word.
 test fn rewrite_does_not_take_a_letter_or_an_escaped_backslash_for_an_escape() -> Bool {
   let kept = "p\\\\na.b.c na.b.c"
+  text_of(text: kept) == kept
+}
+
+// A run that contains its own anchor text is read whole: under the anchor `t.` the run `t.u_t.f`
+// recurs at `_t.`, and cutting it there left every claim identity (module.function) whose module
+// ends in the retired suffix naming a module the sweep had already renamed. The anchor text inside
+// a word that is not a reference stays text.
+test fn rewrite_reads_a_run_that_contains_its_own_anchor_whole() -> Bool {
+  text_of(text: "t.u_t.f \"t.u_t.g\", tail: \"t.u_t.h\" t.u_t") == "t.u.f \"t.u.g\", tail: \"t.u.h\" t.u"
+}
+
+test fn rewrite_keeps_a_name_that_merely_contains_the_anchor_and_the_module() -> Bool {
+  let kept = "t.u_tx.f st.u_t.f t.u_t_x"
   text_of(text: kept) == kept
 }
 
