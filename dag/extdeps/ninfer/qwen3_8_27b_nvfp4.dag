@@ -32,6 +32,8 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [],
 }
 
+type NinferNvfp4 {}
+
 type NinferModelQuantization
   = NinferNvfp4
 
@@ -59,7 +61,7 @@ type NinferModelRow {
 data qwen3_8_27b_nvfp4_row: NinferModelRow = NinferModelRow {
   served_id: "qwen3.8-27b" as NonEmptyStr,
   context_tokens: token_count(count: 262144),
-  quantization: NinferNvfp4,
+  quantization: NinferNvfp4 {},
   quantized_from: NinferArtifactSource {
     repo: HubRepoId { kind: HubModelRepo, path: "unsloth/Qwen3.8-27B-NVFP4" as NonEmptyStr },
     revision: "60e813d4dbbdc5d64cf3f5a8caf2897bedf03679" as NonEmptyStr,
