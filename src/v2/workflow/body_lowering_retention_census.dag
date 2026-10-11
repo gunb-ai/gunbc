@@ -116,7 +116,7 @@ fn connective_label(c: Connective) -> String {
     Conj => "Conj"
     Disj => "Disj"
     Arrow => "Arrow"
-    Occupancy => "Cardinality"
+    Occupancy => "Occupancy"
     Instantiation => "Instantiation"
   }
 }
