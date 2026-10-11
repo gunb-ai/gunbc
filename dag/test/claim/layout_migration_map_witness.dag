@@ -5,6 +5,7 @@ import v2.std.cross_tree.import_model { DagTree, V2Tree }
 import v2.compiler.source_authority { SourceStorageLayout, StorageNamespaceRoot }
 import gunbc.instruments.layout_migration_map {
   CaseFoldCollision,
+  DecisionUnused,
   InstrumentNotInFolder,
   MigrationPlan,
   MigrationPlanRefused,
@@ -13,6 +14,7 @@ import gunbc.instruments.layout_migration_map {
   MigrationSite,
   ModuleCollision,
   SiteRefused,
+  SuffixDecision,
   TargetCollision,
   TargetOccupied,
   move_category_label,
@@ -47,6 +49,7 @@ fn refusal_kind(refusal: MigrationRefusal) -> String {
     TargetOccupied { new_path: _, source: _ } => "target-occupied"
     CaseFoldCollision { kind: kind, names: _ } => concat("case-fold-", kind)
     InstrumentNotInFolder { module: _, path: _ } => "instrument-not-in-folder"
+    DecisionUnused { module: _ } => "decision-unused"
   }
 }
 
@@ -60,15 +63,20 @@ fn plan_summary(plan: MigrationPlan) -> String {
   }
 }
 
-fn planned(sites: List<MigrationSite>, occupied: List<String>, name_wins: List<String>) -> String {
+fn planned_with(sites: List<MigrationSite>, occupied: List<String>, name_wins: List<String>, decisions: List<SuffixDecision>) -> String {
   plan_summary(plan: plan_migration(
     layout: layout(),
     name_wins_namespaces: name_wins,
+    decisions: decisions,
     instrument_namespace: "tools",
     instrument_folder: "dag/gunbc/instruments",
     sites: sites,
     occupied: occupied
   ))
+}
+
+fn planned(sites: List<MigrationSite>, occupied: List<String>, name_wins: List<String>) -> String {
+  planned_with(sites: sites, occupied: occupied, name_wins: name_wins, decisions: [])
 }
 
 test fn planner_leaves_a_file_the_rule_already_places() -> Bool {
@@ -102,6 +110,58 @@ test fn planner_renames_a_module_to_its_path_by_default_for_category_d() -> Bool
 
 test fn planner_moves_a_file_to_its_name_for_a_name_wins_namespace() -> Bool {
   planned(sites: [site(path: "dag/x/y/e.dag", module: "a.b.e")], occupied: ["dag/x/y/e.dag"], name_wins: ["a"]) == "D-name|dag/x/y/e.dag|dag/a/b/e.dag|a.b.e"
+}
+
+// A file's stem carries no status. A test is a declaration with the authored `test` marker, so a
+// file that ends in what used to be the discovery suffix is placed by the same rule as any other:
+// the file follows the module's name (R5), and the module is never renamed to keep the stem.
+test fn planner_places_a_formerly_suffixed_file_at_its_modules_name_for_category_a() -> Bool {
+  planned(sites: [site(path: "dag/a/b/c_test.dag", module: "a.b.d")], occupied: ["dag/a/b/c_test.dag"], name_wins: []) == "A|dag/a/b/c_test.dag|dag/a/b/d.dag|a.b.d"
+}
+
+test fn planner_moves_a_formerly_suffixed_file_down_to_its_modules_name_for_category_b() -> Bool {
+  planned(sites: [site(path: "dag/a/b_test.dag", module: "a.b.c")], occupied: ["dag/a/b_test.dag"], name_wins: []) == "B|dag/a/b_test.dag|dag/a/b/c.dag|a.b.c"
+}
+
+test fn planner_moves_a_formerly_suffixed_file_to_its_name_for_category_d() -> Bool {
+  planned(sites: [site(path: "dag/x/y/e_test.dag", module: "a.b.e")], occupied: ["dag/x/y/e_test.dag"], name_wins: ["a"]) == "D-name|dag/x/y/e_test.dag|dag/a/b/e.dag|a.b.e"
+}
+
+// A module the author named with the old suffix loses it, and the file follows the shortened name
+// by the rule (E). A name the suffix never ended is not touched, so a stem that merely contains the
+// text, or a segment that is the suffix alone, keeps its name.
+test fn planner_drops_the_retired_suffix_from_a_module_and_its_file_for_category_e() -> Bool {
+  planned(sites: [site(path: "dag/a/b/c_test.dag", module: "a.b.c_test")], occupied: ["dag/a/b/c_test.dag"], name_wins: []) == "E|dag/a/b/c_test.dag|dag/a/b/c.dag|a.b.c"
+}
+
+test fn planner_drops_the_retired_suffix_where_the_file_is_not_in_the_rules_folder_either() -> Bool {
+  planned(sites: [site(path: "dag/a/b_test.dag", module: "a.b.c_test")], occupied: ["dag/a/b_test.dag"], name_wins: []) == "E|dag/a/b_test.dag|dag/a/b/c.dag|a.b.c"
+}
+
+test fn planner_leaves_a_name_alone_that_only_contains_the_suffix_text() -> Bool {
+  planned(sites: [site(path: "dag/a/b/c_testing.dag", module: "a.b.c_testing"), site(path: "dag/a/b/x_test_y.dag", module: "a.b.x_test_y")], occupied: [], name_wins: []) == ""
+}
+
+test fn planner_stops_when_dropping_the_suffix_makes_two_modules_one_name() -> Bool {
+  planned(
+    sites: [site(path: "dag/a/b/c.dag", module: "a.b.c"), site(path: "dag/a/b/c_test.dag", module: "a.b.c_test")],
+    occupied: ["dag/a/b/c.dag", "dag/a/b/c_test.dag"],
+    name_wins: []
+  ) == "refused:target-collision,module-collision"
+}
+
+// A name taken from a path (the file is on a different branch and path wins) cannot be shortened by
+// the planner: no ruling says whether the path or the name yields, so it is refused.
+test fn planner_drops_the_retired_suffix_from_a_name_taken_from_the_path() -> Bool {
+  planned(sites: [site(path: "dag/x/y/e_test.dag", module: "a.b.e")], occupied: ["dag/x/y/e_test.dag"], name_wins: []) == "D-path|dag/x/y/e_test.dag|dag/x/y/e.dag|x.y.e"
+}
+
+test fn planner_drops_the_retired_suffix_from_a_name_taken_from_the_path_when_the_folder_enters_the_name() -> Bool {
+  planned(sites: [site(path: "dag/a/b/f/e_test.dag", module: "a.b.e_test")], occupied: ["dag/a/b/f/e_test.dag"], name_wins: []) == "C|dag/a/b/f/e_test.dag|dag/a/b/f/e.dag|a.b.f.e"
+}
+
+test fn planner_does_not_rename_a_fixture_module_to_gain_a_suffix_for_category_a() -> Bool {
+  planned(sites: [site(path: "dag/a/b/c_fixtures.dag", module: "a.b.c")], occupied: ["dag/a/b/c_fixtures.dag"], name_wins: []) == "A|dag/a/b/c_fixtures.dag|dag/a/b/c.dag|a.b.c"
 }
 
 test fn planner_refuses_two_sources_to_one_target() -> Bool {
@@ -154,4 +214,31 @@ test fn planner_refuses_an_instrument_namespace_member_outside_the_instruments_f
 // instruments folder is renamed to `gunbc.instruments.*` by its path and is not refused.
 test fn planner_names_an_instrument_by_its_folder() -> Bool {
   planned(sites: [site(path: "dag/gunbc/instruments/g.dag", module: "tools.g")], occupied: ["dag/gunbc/instruments/g.dag"], name_wins: []) == "D-path|dag/gunbc/instruments/g.dag|dag/gunbc/instruments/g.dag|gunbc.instruments.g"
+}
+
+test fn planner_gives_a_colliding_module_the_name_decided_for_it() -> Bool {
+  planned_with(
+    sites: [site(path: "dag/a/b/c.dag", module: "a.b.c"), site(path: "dag/a/b/c_test.dag", module: "a.b.c_test")],
+    occupied: ["dag/a/b/c.dag", "dag/a/b/c_test.dag"],
+    name_wins: [],
+    decisions: [SuffixDecision { module: "a.b.c_test", takes: "a.t.c" }]
+  ) == "E|dag/a/b/c_test.dag|dag/a/t/c.dag|a.t.c"
+}
+
+test fn planner_refuses_a_decision_for_a_module_no_file_declares() -> Bool {
+  planned_with(
+    sites: [site(path: "dag/a/b/c.dag", module: "a.b.c")],
+    occupied: ["dag/a/b/c.dag"],
+    name_wins: [],
+    decisions: [SuffixDecision { module: "a.b.gone_test", takes: "a.t.gone" }]
+  ) == "refused:decision-unused"
+}
+
+test fn planner_refuses_a_decision_whose_name_the_rule_cannot_place() -> Bool {
+  planned_with(
+    sites: [site(path: "dag/a/b/c_test.dag", module: "a.b.c_test")],
+    occupied: ["dag/a/b/c_test.dag"],
+    name_wins: [],
+    decisions: [SuffixDecision { module: "a.b.c_test", takes: "x" }]
+  ) == "refused:site-refused"
 }

@@ -25,6 +25,7 @@ import gunbc.source_layout { layout_governed_roots }
 import gunbc.instruments.layout_migration_rewrite {
   DispositionLeave,
   DispositionTo,
+  IdentityLiteral,
   ModulePair,
   PathPair,
   RewriteTables,
@@ -87,9 +88,114 @@ data layout_dispositions: List<RunDisposition> = [
   }
 ]
 
+// Values that spell a module name without referring to the module (see IdentityLiteral): wire
+// audiences and issuers a deployed peer compares byte for byte, and the markers a content hash or a
+// signature is derived from, whose rename would change every derived value with no version bump.
+// Each is pinned in its file by the path the file has after the sweep and the exact text it keeps.
+// The texts are built from their segments so that this table spells no module name: the sweep
+// reads this file too, and a table the sweep could rewrite would pin the wrong text on the next run.
+fn spelled(segments: List<String>) -> String {
+  join(segments, ".")
+}
+
+fn device_redemption_audience() -> String {
+  concat(spelled(segments: ["gunbc", "roadmap_serve"]), "/device-redemption")
+}
+
+data layout_identity_literals: List<IdentityLiteral> = [
+  IdentityLiteral {
+    file: "dag/gunbc/auth/approval_device_wire.dag",
+    text: device_redemption_audience(),
+    reason: "the audience of the device redemption protocol: the app and the broker compare it byte for byte"
+  },
+  IdentityLiteral {
+    file: "dag/gunbc/approve_ios_swift_protocol.dag",
+    text: device_redemption_audience(),
+    reason: "the Swift protocol source emits the same audience the broker expects"
+  },
+  IdentityLiteral {
+    file: "apps/approve-ios/Approve/Protocol.swift",
+    text: device_redemption_audience(),
+    reason: "the audience as compiled into the shipped app, generated from its protocol source"
+  },
+  IdentityLiteral {
+    file: "dag/test/fixture/approval_device_redemption/vectors.json",
+    text: device_redemption_audience(),
+    reason: "the vectors pin the audience inside a length-prefixed preimage the app verifies"
+  },
+  IdentityLiteral {
+    file: "dag/gunbc/auth/approval_decision_store.dag",
+    text: spelled(segments: ["gunbc", "roadmap_serve"]),
+    reason: "the issuer of an approval capability, a signed field"
+  },
+  IdentityLiteral {
+    file: "dag/gunbc/auth/approval_device_redemption_fixtures.dag",
+    text: spelled(segments: ["gunbc", "roadmap_serve"]),
+    reason: "the issuer inside the capability text the redemption fixtures sign"
+  },
+  IdentityLiteral {
+    file: "dag/gunbc/auth/approval_store_receipt.dag",
+    text: spelled(segments: ["gunbc", "fabric_storage_serve"]),
+    reason: "the audience of an approval store receipt, a signed field"
+  },
+  IdentityLiteral {
+    file: "dag/gunbc/host/host_identity_adopt.dag",
+    text: concat(spelled(segments: ["gunbc", "host_identity_adopt"]), ".v0"),
+    reason: "the model marker a host identity content hash is derived from"
+  },
+  IdentityLiteral {
+    file: "dag/gunbc/host/host_identity_assimilation.dag",
+    text: concat(spelled(segments: ["gunbc", "host_identity_assimilation"]), ".v0"),
+    reason: "the model marker a host identity content hash is derived from"
+  },
+  IdentityLiteral {
+    file: "dag/gunbc/instruments/frontier_ingestion_probe.dag",
+    text: concat(spelled(segments: ["gunbc", "tools", "frontier_ingestion_probe"]), ".frontier_roster"),
+    reason: "the atom the empty frontier roster hashes to"
+  },
+  IdentityLiteral {
+    file: "dag/gunbc/roadmap/roadmap_site_surface_observe.dag",
+    text: concat(spelled(segments: ["gunbc", "roadmap_site_surface_observe"]), "/v1"),
+    reason: "the versioned model atom of the site surface observation hash"
+  },
+  IdentityLiteral {
+    file: "dag/gunbc/roadmap/roadmap_static_site.dag",
+    text: concat(spelled(segments: ["gunbc", "roadmap_static_site"]), "/v1"),
+    reason: "the versioned model atom of the static site hash"
+  },
+  IdentityLiteral {
+    file: "dag/gunbc/roadmap/roadmap_site_surface_types.dag",
+    text: concat(spelled(segments: ["gunbc", "roadmap_static_site"]), "/live-tree"),
+    reason: "the subject a site surface observation names, paired with the versioned model atom"
+  },
+  IdentityLiteral {
+    file: "dag/gunbc/fabric/fabric_source_snapshot.dag",
+    text: concat(spelled(segments: ["gunbc", "fabric_source_snapshot"]), ".composition.v1;public="),
+    reason: "the domain a public source composition identity is derived under"
+  }
+]
+
 // The namespaces the operator ruled name-wins: a module there keeps its name and its file moves to
 // the name's path, where everywhere else the path's name wins.
 data name_wins_namespaces: List<String> = ["product"]
+
+// The modules the retired test-file suffix cannot simply be dropped from, because the shortened
+// name is another module's: the sidecars to the test tree they belong in, the two one-claim files
+// beside a helper module under the claim they hold, and the fixture module under the name it
+// describes. Operator decision, this cutover.
+data suffix_decisions: List<SuffixDecision> = [
+  SuffixDecision { module: "v2.lens.registry.completeness_test", takes: "v2.test.claim.lens.registry.completeness" },
+  SuffixDecision { module: "v2.workflow.ci_floor_peak_emit_test", takes: "v2.test.claim.workflow.ci_floor_peak_emit" },
+  SuffixDecision { module: "v2.workflow.ci_heal_revalidation_preflight_emit_test", takes: "v2.test.claim.workflow.ci_heal_revalidation_preflight_emit" },
+  SuffixDecision { module: "v2.workflow.ci_materialization_emit_test", takes: "v2.test.claim.workflow.ci_materialization_emit" },
+  SuffixDecision { module: "v2.workflow.floor_purpose_standing_test", takes: "v2.test.claim.workflow.floor_purpose_standing" },
+  SuffixDecision { module: "v2.workflow.floor_subject_seed_test", takes: "v2.test.claim.workflow.floor_subject_seed" },
+  SuffixDecision { module: "v2.workflow.floor_terminal_ledger_test", takes: "v2.test.claim.workflow.floor_terminal_ledger" },
+  SuffixDecision { module: "v2.workflow.floor_terminal_ledger_wire_test", takes: "v2.test.claim.workflow.floor_terminal_ledger_wire" },
+  SuffixDecision { module: "v2.test.extdeps_shape_transport_policy.coverage_domain_equivalence_test", takes: "v2.test.claim.extdeps_shape_transport_policy.coverage_domain_equivalence_holds" },
+  SuffixDecision { module: "v2.test.round_trip.source_authority_contract_test", takes: "v2.test.claim.round_trip.source_authority_contract_serializer_section_law_holds" },
+  SuffixDecision { module: "v2.extdeps.languages.rust_test", takes: "v2.extdeps.languages.rust_fixtures" }
+]
 
 // The instrument namespace and the folder R10 places every member of it in.
 data instrument_namespace: String = "tools"
@@ -214,6 +320,7 @@ fn layout_plan_report(report: String) -> ProcessExit {
       match plan_migration(
         layout: repository_storage_layout(),
         name_wins_namespaces: name_wins_namespaces,
+        decisions: suffix_decisions,
         instrument_namespace: instrument_namespace,
         instrument_folder: instrument_folder,
         sites: sites,
@@ -355,7 +462,8 @@ fn plan_tables(changes: List<ModuleMove>, sites: List<MigrationSite>, files: Lis
   rewrite_tables(
     modules: sites |> map(site => module_pair_of(index: modules_index, site: site)),
     files: files |> map(path => path_pair_of(index: paths_index, path: path)),
-    dispositions: layout_dispositions
+    dispositions: layout_dispositions,
+    pins: layout_identity_literals
   )
 }
 
@@ -371,6 +479,7 @@ fn read_plan() -> PlanRead {
       match plan_migration(
         layout: repository_storage_layout(),
         name_wins_namespaces: name_wins_namespaces,
+        decisions: suffix_decisions,
         instrument_namespace: instrument_namespace,
         instrument_folder: instrument_folder,
         sites: sites,
@@ -402,7 +511,7 @@ fn census_file(tables: RewriteTables, path: String) -> FileCensus {
   match read_text(path: path) {
     TextUnread { cause: cause } => FileCensus { path: path, edits: 0, notes: [], refusal: cause }
     TextObserved { text: text } =>
-      match rewrite_text(tables: tables, text: text) {
+      match rewrite_text(tables: tables, path: path, text: text) {
         TextRewritten { rewritten: rewritten } =>
           FileCensus { path: path, edits: rewritten.edits, notes: rewritten.notes, refusal: "" }
         TextRewriteRefused { cause: cause } => FileCensus { path: path, edits: 0, notes: [], refusal: concat(path, ": ", cause) }
@@ -529,7 +638,7 @@ fn apply_rewrite(tables: RewriteTables, acc: StepFold, path: String) -> StepFold
     match read_text(path: path) {
       TextUnread { cause: cause } => step_failure(acc: acc, cause: cause)
       TextObserved { text: text } =>
-        match rewrite_text(tables: tables, text: text) {
+        match rewrite_text(tables: tables, path: path, text: text) {
           TextRewriteRefused { cause: cause } => step_failure(acc: acc, cause: concat(path, ": ", cause))
           TextRewritten { rewritten: rewritten } =>
             if rewritten.text == text {

@@ -39,7 +39,9 @@ type MigrationSite {
 // module, because the folder carries structure the name lacks (R6). MoveUp (C-up) is the x/x.dag
 // case where the folder only repeats the module's own name. PathWins and NameWins are the two
 // outcomes for a file on a different branch altogether: the module takes the path's name, or the
-// file moves to the name's path (the namespaces the operator ruled name-wins).
+// file moves to the name's path (the namespaces the operator ruled name-wins). RetiredSuffix is a
+// module whose last segment ended in the retired test-file suffix: the module drops it and the file
+// follows the shortened name by the rule.
 type MoveCategory
   = AlreadyPlaced
   | SameFolderRename
@@ -48,6 +50,7 @@ type MoveCategory
   | MoveUp
   | PathWins
   | NameWins
+  | RetiredSuffix
 
 fn move_category_label(category: MoveCategory) -> String {
   match category {
@@ -58,6 +61,7 @@ fn move_category_label(category: MoveCategory) -> String {
     MoveUp => "C-up"
     PathWins => "D-path"
     NameWins => "D-name"
+    RetiredSuffix => "E"
   }
 }
 
@@ -156,11 +160,30 @@ fn renamed_by_path(layout: SourceStorageLayout, site: MigrationSite, category: M
   }
 }
 
+// THE RETIRED SUFFIX IS NOT PART OF A NAME. A test is a declaration with the authored `test`
+// marker, and a file's name carries no status, so the old test-file suffix on the last segment of a
+// module name is a convention's residue and the sweep drops it (operator ruling, this cutover). The
+// shortened name is then placed by the rule like any other, and a name that the shortening makes
+// equal to another module's is the ordinary module collision, which stops the sweep for a decision.
+fn retired_test_suffix() -> String {
+  "_test"
+}
+
+fn without_retired_suffix(module: String) -> String {
+  let last = module_last_segment(module: module)
+  let width = string_length(s: retired_test_suffix())
+  if last.ends_with(suffix: retired_test_suffix()) && string_length(s: last) > width {
+    substring(s: module, start: 0, end: string_length(s: module) - width)
+  } else {
+    module
+  }
+}
+
 // ONE SITE, PLACED. The cases are the plan's procedure in order: already at the rule's position;
 // same folder (A); the rule's folder below the file's (B); the file's folder below the rule's (C,
 // or C-up when the folder only repeats the module's name); otherwise a different branch, decided
 // by namespace.
-fn place_site(layout: SourceStorageLayout, name_wins_namespaces: List<String>, site: MigrationSite) -> SitePlacement {
+fn place_named(layout: SourceStorageLayout, name_wins_namespaces: List<String>, site: MigrationSite) -> SitePlacement {
   match rule_path_of(layout: layout, module: site.module) {
     RulePathUnderivable { cause: cause } => SiteUnplaceable { site: site, cause: cause }
     RulePathDerived { path: target } => {
@@ -189,6 +212,53 @@ fn place_site(layout: SourceStorageLayout, name_wins_namespaces: List<String>, s
   }
 }
 
+// A MODULE WHOSE SHORTENED NAME IS ANOTHER MODULE'S takes the name the operator decided for it, and
+// its file takes the rule's position for that name. A decision is a typed row, never a guess: a
+// module the retired suffix collides on stops the sweep until a row names it.
+type SuffixDecision {
+  module: String
+  takes: String
+}
+
+fn place_decided(layout: SourceStorageLayout, site: MigrationSite, takes: String) -> SitePlacement {
+  match rule_path_of(layout: layout, module: takes) {
+    RulePathUnderivable { cause: cause } => SiteUnplaceable { site: site, cause: cause }
+    RulePathDerived { path: path } => SitePlaced { change: ModuleMove { old_path: site.path, new_path: path, old_module: site.module, new_module: takes, category: RetiredSuffix {} } }
+  }
+}
+
+// A SITE'S NAME IS ITS MODULE WITHOUT THE RETIRED SUFFIX. The shortened name is placed by the rule;
+// when the placement takes the name from the file's path and the file's stem still carries the
+// suffix, that implied name is shortened the same way and the file takes the rule's position for
+// it, so a file's stem and its name end the same way. A module that only lost the suffix is
+// category E whatever the file then does, since the shortening is what moved it.
+fn place_shortened(layout: SourceStorageLayout, name_wins_namespaces: List<String>, site: MigrationSite) -> SitePlacement {
+  let shortened = without_retired_suffix(module: site.module)
+  match place_named(layout: layout, name_wins_namespaces: name_wins_namespaces, site: MigrationSite { path: site.path, module: shortened }) {
+    SiteUnplaceable { site: _, cause: cause } => SiteUnplaceable { site: site, cause: cause }
+    SitePlaced { change: change } => {
+      let implied = without_retired_suffix(module: change.new_module)
+      if implied != change.new_module {
+        match rule_path_of(layout: layout, module: implied) {
+          RulePathUnderivable { cause: cause } => SiteUnplaceable { site: site, cause: cause }
+          RulePathDerived { path: path } => SitePlaced { change: ModuleMove { old_path: site.path, new_path: path, old_module: site.module, new_module: implied, category: change.category } }
+        }
+      } else if shortened != site.module && change.new_module == shortened {
+        SitePlaced { change: ModuleMove { old_path: site.path, new_path: change.new_path, old_module: site.module, new_module: change.new_module, category: RetiredSuffix {} } }
+      } else {
+        SitePlaced { change: ModuleMove { old_path: site.path, new_path: change.new_path, old_module: site.module, new_module: change.new_module, category: change.category } }
+      }
+    }
+  }
+}
+
+fn place_site(layout: SourceStorageLayout, name_wins_namespaces: List<String>, decisions: List<SuffixDecision>, site: MigrationSite) -> SitePlacement {
+  match decisions |> filter(d => d.module == site.module) |> first {
+    Present { value: decision } => place_decided(layout: layout, site: site, takes: decision.takes)
+    Absent => place_shortened(layout: layout, name_wins_namespaces: name_wins_namespaces, site: site)
+  }
+}
+
 // ---- refusals that need the whole population ----------------------------------------------------
 type MigrationRefusal
   = SiteRefused { path: String, module: String, cause: String }
@@ -197,6 +267,7 @@ type MigrationRefusal
   | TargetOccupied { new_path: String, source: String }
   | CaseFoldCollision { kind: String, names: List<String> }
   | InstrumentNotInFolder { module: String, path: String }
+  | DecisionUnused { module: String }
 
 fn migration_refusal_line(refusal: MigrationRefusal) -> String {
   match refusal {
@@ -212,6 +283,8 @@ fn migration_refusal_line(refusal: MigrationRefusal) -> String {
       concat("case-fold equal ", kind, "s: ", join(names, ", "))
     InstrumentNotInFolder { module: module, path: path } =>
       concat("instrument-namespace member ", module, " is not in the instruments folder (", path, "): not an instrument, stop for a decision")
+    DecisionUnused { module: module } =>
+      concat("a name decision is recorded for ", module, ", which no file declares")
   }
 }
 
@@ -285,6 +358,12 @@ fn instrument_violations(instrument_namespace: String, instrument_folder: String
     |> map(s => InstrumentNotInFolder { module: s.module, path: s.path })
 }
 
+fn unused_decision_refusals(decisions: List<SuffixDecision>, sites: List<MigrationSite>) -> List<MigrationRefusal> {
+  decisions
+    |> filter(d => count(sites |> filter(s => s.module == d.module)) == 0)
+    |> map(d => DecisionUnused { module: d.module })
+}
+
 fn occupied_target_refusals(changes: List<ModuleMove>, occupied: List<String>) -> List<MigrationRefusal> {
   let occupied_index = fold(occupied, init: empty_map(), f: (index, path) => map_insert(m: index, key: path, value: true))
   let leaving = fold(changes, init: empty_map(), f: (index, change) => map_insert(m: index, key: change.old_path, value: true))
@@ -306,6 +385,7 @@ fn plan_refusals(
   placements: List<SitePlacement>,
   sites: List<MigrationSite>,
   occupied: List<String>,
+  decisions: List<SuffixDecision>,
   instrument_namespace: String,
   instrument_folder: String
 ) -> List<MigrationRefusal> {
@@ -324,7 +404,10 @@ fn plan_refusals(
       concat(by_module, occupied_target_refusals(changes: all_changes, occupied: occupied)),
       concat(
         concat(folded_paths, folded_modules),
-        instrument_violations(instrument_namespace: instrument_namespace, instrument_folder: instrument_folder, sites: sites)
+        concat(
+          unused_decision_refusals(decisions: decisions, sites: sites),
+          instrument_violations(instrument_namespace: instrument_namespace, instrument_folder: instrument_folder, sites: sites)
+        )
       )
     )
   )
@@ -337,13 +420,14 @@ fn plan_refusals(
 fn plan_migration(
   layout: SourceStorageLayout,
   name_wins_namespaces: List<String>,
+  decisions: List<SuffixDecision>,
   instrument_namespace: String,
   instrument_folder: String,
   sites: List<MigrationSite>,
   occupied: List<String>
 ) -> MigrationPlan {
-  let placements = sites |> map(site => place_site(layout: layout, name_wins_namespaces: name_wins_namespaces, site: site))
-  let refusals = plan_refusals(placements: placements, sites: sites, occupied: occupied, instrument_namespace: instrument_namespace, instrument_folder: instrument_folder)
+  let placements = sites |> map(site => place_site(layout: layout, name_wins_namespaces: name_wins_namespaces, decisions: decisions, site: site))
+  let refusals = plan_refusals(placements: placements, sites: sites, occupied: occupied, decisions: decisions, instrument_namespace: instrument_namespace, instrument_folder: instrument_folder)
   if count(refusals) == 0 {
     MigrationPlanned {
       changes: placed_changes(placements: placements)

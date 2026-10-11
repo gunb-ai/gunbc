@@ -4,13 +4,16 @@ import std.types { Bool, List, String }
 import gunbc.instruments.layout_migration_rewrite {
   DispositionLeave,
   DispositionTo,
+  IdentityLiteral,
   ModulePair,
   PathPair,
   RunDisposition,
   TextRewriteRefused,
   TextRewritten,
   note_directory_apart,
+  note_identity_literal_absent,
   note_namespace_unmapped,
+  pin_mark,
   rewrite_tables,
   rewrite_text,
   sentinel
@@ -69,14 +72,14 @@ fn standard_dispositions() -> List<RunDisposition> {
 // The rewritten text under the given dispositions, or the refusal's cause marked so a refused
 // control can never equal an expected text.
 fn text_with(dispositions: List<RunDisposition>, text: String) -> String {
-  match rewrite_text(tables: rewrite_tables(modules: pair_modules(), files: pair_files(), dispositions: dispositions), text: text) {
+  match rewrite_text(tables: rewrite_tables(modules: pair_modules(), files: pair_files(), dispositions: dispositions, pins: []), path: "dag/x/y/c.dag", text: text) {
     TextRewritten { rewritten: done } => done.text
     TextRewriteRefused { cause: cause } => concat("REFUSED: ", cause)
   }
 }
 
 fn notes_with(dispositions: List<RunDisposition>, text: String) -> List<String> {
-  match rewrite_text(tables: rewrite_tables(modules: pair_modules(), files: pair_files(), dispositions: dispositions), text: text) {
+  match rewrite_text(tables: rewrite_tables(modules: pair_modules(), files: pair_files(), dispositions: dispositions, pins: []), path: "dag/x/y/c.dag", text: text) {
     TextRewritten { rewritten: done } => done.notes
     TextRewriteRefused { cause: cause } => [concat("REFUSED: ", cause)]
   }
@@ -100,6 +103,21 @@ test fn rewrite_leaves_a_module_that_keeps_its_name() -> Bool {
 test fn rewrite_respects_name_boundaries() -> Bool {
   let embedded = "xa.b.c a.b.cc foo.a.b.c a.b.c_x"
   text_of(text: embedded) == embedded
+}
+
+// A name straight after a string-literal escape starts a reference: in `\\n` the `n` belongs to the
+// escape, not to a word, so a module name written right after a spelled-out line break or tab is
+// the same reference it would be after a space. Missing this left a generated plan document and the
+// source that generates it naming different modules.
+test fn rewrite_follows_a_name_written_after_a_string_escape() -> Bool {
+  text_of(text: "p\\na.b.c q\\ta.b.c r\\ra.b.c") == "p\\nx.y.c q\\tx.y.c r\\rx.y.c"
+}
+
+// The escape needs its own backslash: an escaped backslash before the letter leaves the letter an
+// ordinary one, and a bare `n` is a word.
+test fn rewrite_does_not_take_a_letter_or_an_escaped_backslash_for_an_escape() -> Bool {
+  let kept = "p\\\\na.b.c na.b.c"
+  text_of(text: kept) == kept
 }
 
 // The longest module prefix of a run decides: `tools.docs_gate.run` renames the module and keeps
@@ -174,7 +192,73 @@ test fn rewrite_is_idempotent_over_its_own_output() -> Bool {
 // The sentinel is reserved: a text that already contains it cannot be rewritten unambiguously and
 // is refused rather than passed through.
 test fn rewrite_refuses_a_text_containing_the_sentinel() -> Bool {
-  match rewrite_text(tables: rewrite_tables(modules: pair_modules(), files: pair_files(), dispositions: standard_dispositions()), text: concat("a.b.c ", sentinel())) {
+  match rewrite_text(tables: rewrite_tables(modules: pair_modules(), files: pair_files(), dispositions: standard_dispositions(), pins: []), path: "dag/x/y/c.dag", text: concat("a.b.c ", sentinel())) {
+    TextRewriteRefused { cause: _ } => true
+    TextRewritten { rewritten: _ } => false
+  }
+}
+
+// ---- identity literals ---------------------------------------------------------------------------
+fn pin_of(file: String, text: String) -> IdentityLiteral {
+  IdentityLiteral { file: file, text: text, reason: "witness" }
+}
+
+// The rewrite of a text read at `path` while the given literals are pinned.
+fn pinned_text(path: String, pins: List<IdentityLiteral>, text: String) -> String {
+  match rewrite_text(tables: rewrite_tables(modules: pair_modules(), files: pair_files(), dispositions: standard_dispositions(), pins: pins), path: path, text: text) {
+    TextRewritten { rewritten: done } => done.text
+    TextRewriteRefused { cause: cause } => concat("REFUSED: ", cause)
+  }
+}
+
+fn pinned_notes(path: String, pins: List<IdentityLiteral>, text: String) -> List<String> {
+  match rewrite_text(tables: rewrite_tables(modules: pair_modules(), files: pair_files(), dispositions: standard_dispositions(), pins: pins), path: path, text: text) {
+    TextRewritten { rewritten: done } => done.notes
+    TextRewriteRefused { cause: cause } => [concat("REFUSED: ", cause)]
+  }
+}
+
+// A pinned text stays as written, every occurrence of it, while a reference to the same module in
+// the same file is rewritten: the pin keeps a value and never a reference.
+test fn a_pinned_identity_literal_is_kept_while_a_reference_beside_it_is_rewritten() -> Bool {
+  pinned_text(path: "dag/x/y/c.dag", pins: [pin_of(file: "dag/x/y/c.dag", text: "a.b.c/wire")], text: "import a.b.c { f } x \"a.b.c/wire\" y a.b.c/wire") == "import x.y.c { f } x \"a.b.c/wire\" y a.b.c/wire"
+}
+
+// The same spelling in a file with no pin is a reference like any other: a pin is scoped to its file.
+test fn a_pin_does_not_protect_the_same_text_in_another_file() -> Bool {
+  pinned_text(path: "dag/z/s.dag", pins: [pin_of(file: "dag/x/y/c.dag", text: "a.b.c/wire")], text: "x a.b.c/wire") == "x x.y.c/wire"
+}
+
+// A pin names the path the file has after the sweep, so it holds on the tree before the files move
+// and on the tree after.
+test fn a_pin_is_found_by_the_path_a_file_has_after_the_sweep() -> Bool {
+  let pins = [pin_of(file: "dag/x/y/c.dag", text: "a.b.c/wire")]
+  pinned_text(path: "dag/a/b/c.dag", pins: pins, text: "a.b.c/wire a.b.c") == "a.b.c/wire x.y.c" && pinned_text(path: "dag/x/y/c.dag", pins: pins, text: "a.b.c/wire a.b.c") == "a.b.c/wire x.y.c"
+}
+
+// A second pass over pinned output changes nothing.
+test fn pinned_rewrite_is_idempotent_over_its_own_output() -> Bool {
+  let pins = [pin_of(file: "dag/x/y/c.dag", text: "a.b.c/wire")]
+  let original = "import a.b.c { f } \"a.b.c/wire\" q.r.s.f"
+  let once = pinned_text(path: "dag/x/y/c.dag", pins: pins, text: original)
+  once != original && pinned_text(path: "dag/x/y/c.dag", pins: pins, text: once) == once
+}
+
+// A pin whose text the file does not contain is stale and is reported, never skipped: the sweep
+// refuses on the note.
+test fn a_pin_the_file_no_longer_contains_is_reported() -> Bool {
+  pinned_notes(path: "dag/x/y/c.dag", pins: [pin_of(file: "dag/x/y/c.dag", text: "a.b.c/gone")], text: "a.b.c") == [note_identity_literal_absent(subject: "dag/x/y/c.dag: a.b.c/gone")]
+}
+
+// Several pins in one file are each set aside and each restored to its own text.
+test fn two_pins_in_one_file_are_each_restored() -> Bool {
+  let pins = [pin_of(file: "dag/x/y/c.dag", text: "a.b.c/wire"), pin_of(file: "dag/x/y/c.dag", text: "a.b.c;sig")]
+  pinned_text(path: "dag/x/y/c.dag", pins: pins, text: "a.b.c;sig a.b.c a.b.c/wire") == "a.b.c;sig x.y.c a.b.c/wire"
+}
+
+// The pin mark is reserved like the sentinel.
+test fn rewrite_refuses_a_text_containing_the_pin_mark() -> Bool {
+  match rewrite_text(tables: rewrite_tables(modules: pair_modules(), files: pair_files(), dispositions: standard_dispositions(), pins: []), path: "dag/x/y/c.dag", text: concat("a.b.c ", pin_mark())) {
     TextRewriteRefused { cause: _ } => true
     TextRewritten { rewritten: _ } => false
   }
