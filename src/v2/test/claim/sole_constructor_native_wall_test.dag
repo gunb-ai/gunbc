@@ -14,8 +14,7 @@ import v2.compiler.body_lowering_fold {
   QualifiedDeclaredTypeModifiers,
   SoleConstructorModifier,
   TypeDeclarationModifierChannel,
-  TypeDeclarationModifiersCaptured,
-  TypeDeclarationModifiersUnavailable
+  TypeDeclarationModifiersCaptured
 }
 import v2.compiler.infer { infer_sole_constructor_path_diags }
 import v2.compiler.resolve { ResolvedTree }
@@ -177,15 +176,3 @@ test fn a_homonym_in_another_module_does_not_seal_this_modules_open_type_holds()
   }
 }
 
-test fn an_unavailable_channel_refuses_unreadable_holds() -> Bool {
-  match infer_sole_constructor_path_diags(
-    at: wall_at,
-    type_path: wall_type_path(),
-    constructing_module: optional_present(value: wall_foreign_module()),
-    tree: wall_tree(channel: TypeDeclarationModifiersUnavailable)
-  ) {
-    None => false
-    Some { diagnostics: d } =>
-      diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_reason_sole_constructor_modifiers_unreadable)
-  }
-}

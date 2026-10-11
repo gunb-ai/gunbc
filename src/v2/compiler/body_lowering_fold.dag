@@ -10851,20 +10851,18 @@ type QualifiedDeclaredTypeModifiers {
   modifiers: FreeMonoid<TypeDeclModifier>
 }
 
-// THE CHANNEL INFER READS. Unavailable is a hand-built ResolvedTree that never captured modifiers:
-// judging a construction through it refuses (unreadable provenance), never admits as open.
-// Captured covers every NormalizedTree the ingest held, so a type whose declaring module is
-// outside `covered` is unreadable rather than silently open. A fixture that never parsed must
-// still name the modules it claims via Captured; it may not pass Unavailable and expect a pass.
+// THE CHANNEL INFER READS. There is no unavailable default: a tree states the modules it covered.
+// Absence of a row inside `covered` is "not sealed". A declaring module outside `covered` is
+// unreadable rather than silently open. Hand-built fixtures pass Captured with the modules they
+// claim (often none: covered Empty) and an empty row list.
 type TypeDeclarationModifierChannel
-  = TypeDeclarationModifiersUnavailable
-  | TypeDeclarationModifiersCaptured {
+  = TypeDeclarationModifiersCaptured {
       covered: List<QualifiedName>
       rows: List<QualifiedDeclaredTypeModifiers>
     }
 
 fn no_type_declaration_modifiers_channel() -> TypeDeclarationModifierChannel {
-  TypeDeclarationModifiersCaptured { covered: [Empty], rows: Empty }
+  TypeDeclarationModifiersCaptured { covered: Empty, rows: Empty }
 }
 
 fn type_decl_modifiers_include_sole_constructor(modifiers: FreeMonoid<TypeDeclModifier>) -> Bool {
@@ -10881,8 +10879,7 @@ fn type_decl_modifiers_include_sole_constructor(modifiers: FreeMonoid<TypeDeclMo
 }
 
 type TypeDeclModifierRowLookup
-  = TypeDeclModifierChannelUnavailable
-  | TypeDeclModifierModuleUncovered
+  = TypeDeclModifierModuleUncovered
   | TypeDeclModifierRowAbsent
   | TypeDeclModifierRowPresent { modifiers: FreeMonoid<TypeDeclModifier> }
 
@@ -10896,7 +10893,6 @@ fn type_declaration_modifier_row_at(
   name: Symbol
 ) -> TypeDeclModifierRowLookup {
   match channel {
-    TypeDeclarationModifiersUnavailable => TypeDeclModifierChannelUnavailable
     TypeDeclarationModifiersCaptured { covered: covered, rows: rows } =>
       if !type_declaration_modifier_module_covered(covered: covered, module: module) {
         TypeDeclModifierModuleUncovered

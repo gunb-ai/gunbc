@@ -5,8 +5,7 @@ import v2.compiler.normalized_tree { normalized_tree_record_declarations, Member
 import v2.compiler.body_lowering_fold {
   QualifiedDeclaredTypeModifiers,
   TypeDeclarationModifierChannel,
-  TypeDeclarationModifiersCaptured,
-  TypeDeclarationModifiersUnavailable
+  TypeDeclarationModifiersCaptured
 }
 import v2.std.member_declaration_kind {
   DeclaredMember,
@@ -442,7 +441,6 @@ fn type_declaration_modifier_channel_of_trees(trees: FreeMonoid<NormalizedTree>)
                 )
               }
           }
-        TypeDeclarationModifiersUnavailable => TypeDeclarationModifiersCaptured { covered: Empty, rows: Empty }
       }
     }
   )

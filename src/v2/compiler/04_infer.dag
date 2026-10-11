@@ -23,7 +23,6 @@ import v2.std.compilers.target_model {
 import v2.compiler.resolve { LexicalBinding, LexicalDeclared, LexicalOwedFormal, LexicalUntyped, LexicalValued, ResolvedTree, resolved_tree_lexical_binding, resolved_tree_unavailable_provider }
 import v2.compiler.body_lowering_fold {
   TypeDeclModifier,
-  TypeDeclModifierChannelUnavailable,
   TypeDeclModifierModuleUncovered,
   TypeDeclModifierRowAbsent,
   TypeDeclModifierRowPresent,
@@ -8918,14 +8917,6 @@ fn infer_sole_constructor_path_diags(
         module: module,
         name: name
       ) {
-        TypeDeclModifierChannelUnavailable =>
-          infer_admission_diags_of([
-            Diagnostic {
-              reason: ^infer_reason_sole_constructor_modifiers_unreadable,
-              at: node_locus(node: at),
-              correction: Unavailable { reason: UserInputBoundary }
-            }
-          ])
         TypeDeclModifierRowAbsent => None
         TypeDeclModifierModuleUncovered =>
           infer_admission_diags_of([
