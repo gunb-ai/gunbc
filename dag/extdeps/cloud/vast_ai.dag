@@ -12,6 +12,10 @@ import extdeps.uri { Uri, Https }
 // and verification vary per machine. This module owns the wire SHAPE only. Which offers this
 // repository will rent, and for what role, is supplier policy in product.supplier.vast_ai.
 //
+// gpu_arch is the host machine's GPU architecture as a string (docs.vast.ai search-offers: "Host machine
+// GPU architecture (e.g. nvidia, amd)"). It is optional here because an offer that omits it states no
+// architecture; absence is an unread fact, not NVIDIA.
+//
 // NUMBER-SHAPED FIELDS ARE JSON NUMBERS: dph_total (dollars per hour), gpu_ram (MB per GPU) and
 // gpu_mem_bw (GB/s) arrive as floats. std has no Float-to-Int route, so a consumer cannot mint money
 // from dph_total by coercion; it must receive the rate as an explicit parameter (see the supplier).
@@ -54,6 +58,7 @@ type VastAiOffer {
   gpu_total_ram: Float
   gpu_mem_bw: Float
   compute_cap: Int
+  gpu_arch: String?
   cpu_cores_effective: Float
   cpu_ram: Float
   disk_space: Float

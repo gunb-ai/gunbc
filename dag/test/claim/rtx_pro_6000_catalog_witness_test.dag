@@ -8,8 +8,8 @@ import extdeps.gpu.nvidia {
   nvidia_rtx_pro_6000_server_catalog,
 }
 import extdeps.pricing.hetzner_dedicated { hetzner_gex131_listed }
-import std.types { NonEmptyStr }
-import std.decl_ref { decl_ref }
+import std.types { NonEmptyStr, String }
+import std.decl_ref { decl_ref, DeclarationRef }
 import std.measure { hardware_thread_count, byte_size, second, money_amount_micro, MoneyPerHour }
 import extdeps.currency.currency { Usd }
 import product.fabric.provider_route { ProviderRegionObservation, ProviderRegionRead, ProviderRegionUnread }
@@ -26,9 +26,9 @@ import product.supplier.vast_ai { vast_ai_rental_role, bind_vast_ai_offer }
 import product.supplier.packet_ai {
   bind_packet_ai_offer, PacketAiPoolGpuCount, CountFixedByPool, CountUnestablished,
   packet_ai_tier_standing, PacketAiTierFact, TierNotEstablished, TierShared, TierWholeCard,
-  packet_ai_vram_unstated_obligation,
+  packet_ai_vram_unstated_obligation, packet_ai_pool_region,
 }
-import extdeps.cloud.packet_ai { PacketAiProduct, PacketAiRegion }
+import extdeps.cloud.packet_ai { PacketAiProduct, PacketAiRegion, PacketAiPool }
 import extdeps.cloud.vast_ai { VastAiOffer }
 import product.supplier.packet_ai { packet_ai_rental_role }
 
@@ -73,22 +73,26 @@ fn a_read_region() -> ProviderRegionObservation {
   }
 }
 
-fn vast_offer(gpus: Int) -> VastAiOffer {
+fn vast_offer_arch(gpus: Int, arch: String?) -> VastAiOffer {
   VastAiOffer {
     id: 1, machine_id: 2, gpu_name: "RTX PRO 6000 S", num_gpus: gpus, gpu_ram: 97887.0,
-    gpu_total_ram: 195774.0, gpu_mem_bw: 1597.0, compute_cap: 1200, cpu_cores_effective: 16.0,
+    gpu_total_ram: 195774.0, gpu_mem_bw: 1597.0, compute_cap: 1200, gpu_arch: arch, cpu_cores_effective: 16.0,
     cpu_ram: 128000.0, disk_space: 500.0, dph_total: 3.2, reliability: 0.99,
     verification: "verified", geolocation: "US", rentable: true, rented: false,
   }
+}
+
+fn vast_offer(gpus: Int) -> VastAiOffer {
+  vast_offer_arch(gpus: gpus, arch: Present { value: "nvidia" })
 }
 
 fn hourly() -> MoneyPerHour {
   MoneyPerHour { amount: money_amount_micro(count: 3200000), currency: Usd }
 }
 
-fn vast_shape_for(gpus: Int, region: ProviderRegionObservation) -> Shape? {
+fn vast_shape_arch(offer: VastAiOffer, region: ProviderRegionObservation) -> Shape? {
   match bind_vast_ai_offer(
-    principal: "gunbc", executor: "gunbc", offer: vast_offer(gpus: gpus),
+    principal: "gunbc", executor: "gunbc", offer: offer,
     threads: hardware_thread_count(count: 16), min_vram: byte_size(103079215104), rate: hourly(),
     billing_quantum: second(count: 1), capabilities: "cap-1", trust_domain: "trust-1",
     readiness: ReadinessMeasured { ready_at: "2026-10-11T00:00:00Z", receipt: "r1" },
@@ -101,6 +105,10 @@ fn vast_shape_for(gpus: Int, region: ProviderRegionObservation) -> Shape? {
 }
 
 // Unmet axes of an offered-GPUs shape against a needed-GPUs shape; -1 when either refused to bind.
+fn vast_shape_for(gpus: Int, region: ProviderRegionObservation) -> Shape? {
+  vast_shape_arch(offer: vast_offer(gpus: gpus), region: region)
+}
+
 fn unmet_count(offered_gpus: Int, needed_gpus: Int) -> Int {
   match vast_shape_for(gpus: offered_gpus, region: a_read_region()) {
     Absent => 0 - 1
@@ -129,6 +137,61 @@ test fn w_vast_unobserved_region_refuses() -> Bool {
     Present { value: _ } => false
     Absent => true
   }
+}
+
+// RED: AMD and an unread gpu_arch refuse (no Cuda runtime is minted for them); nvidia is the control.
+test fn w_vast_non_nvidia_or_unread_arch_refuses() -> Bool {
+  match vast_shape_arch(offer: vast_offer_arch(gpus: 2, arch: Present { value: "amd" }), region: a_read_region()) {
+    Present { value: _ } => false
+    Absent =>
+      match vast_shape_arch(offer: vast_offer_arch(gpus: 2, arch: none), region: a_read_region()) {
+        Present { value: _ } => false
+        Absent => true
+      }
+  }
+}
+
+test fn w_vast_nvidia_arch_binds_with_cuda() -> Bool {
+  match vast_shape_arch(offer: vast_offer(gpus: 2), region: a_read_region()) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn packet_pool(region: PacketAiRegion?) -> PacketAiPool {
+  PacketAiPool {
+    id: "pool-1", name: "pool", gpu_model: "RTX 6000 Pro", available_gpus: 8, price_per_hour: 1.89,
+    region: region,
+  }
+}
+
+fn packet_binds_in(region: ProviderRegionObservation) -> String {
+  match bind_packet_ai_offer(
+    principal: "gunbc", executor: "gunbc", product: packet_product(vram: Present { value: 96 }),
+    gpu_count: CountFixedByPool { gpus_per_instance: 2 },
+    threads: hardware_thread_count(count: 16), billing_quantum: second(count: 3600),
+    capabilities: "cap-1", trust_domain: "trust-1",
+    readiness: ReadinessMeasured { ready_at: "2026-10-11T00:00:00Z", receipt: "r1" },
+    region: region, quoted_at: "2026-10-11T00:00:00Z",
+    valid_until: "2026-10-12T00:00:00Z", receipt: "r2",
+  ) {
+    OfferBound { bound: _ } => "bound"
+    OfferBindingRefused { runs_on_label: _, cause: _ } => "refused"
+  }
+}
+
+fn observed_region_row() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.rtx_pro_6000_catalog_witness", decl_name: "observed_region")
+}
+
+// RED: a pool with no region is an unread location and the region admission refuses at the bind;
+// the same pool with a region is the positive control.
+test fn w_packet_pool_without_region_refuses() -> Bool {
+  packet_binds_in(region: packet_ai_pool_region(pool: packet_pool(region: none), region_row: observed_region_row())) == "refused"
+    && packet_binds_in(region: packet_ai_pool_region(
+      pool: packet_pool(region: Present { value: PacketAiRegion { id: none, name: "r", city: "c", country: "US" } }),
+      region_row: observed_region_row(),
+    )) == "bound"
 }
 
 fn packet_product(vram: Int?) -> PacketAiProduct {

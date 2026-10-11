@@ -12,7 +12,7 @@ import product.fabric.envelope { ResourceEnvelope, GpuRequirement }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.supply { SupplierOffer, OfferQuote, QuotedPerHour, QuotedSupply }
 import product.fabric.provider_route {
-  ProviderRegionObservation, ProviderRouteStanding, ProviderRouteObserved, ProviderRouteRegionUnobserved,
+  ProviderRegionObservation, ProviderRegionRead, ProviderRegionUnread, ProviderRouteStanding, ProviderRouteObserved, ProviderRouteRegionUnobserved,
   provider_route_from_region,
 }
 import product.supplier.ubicloud {
@@ -21,7 +21,7 @@ import product.supplier.ubicloud {
 }
 import extdeps.gpu.types { Cuda }
 import extdeps.currency.currency { Usd }
-import extdeps.cloud.packet_ai { PacketAiProduct }
+import extdeps.cloud.packet_ai { PacketAiProduct, PacketAiPool }
 
 // PACKET.AI AS A SUPPLIER: POLICY OVER extdeps.cloud.packet_ai, NOTHING RESTATED.
 //
@@ -60,6 +60,19 @@ fn packet_ai_tier_standing() -> PacketAiTierFact {
 }
 
 data packet_ai_vram_unstated_obligation: NonEmptyStr = "A Packet product with vramGb null states no per-GPU memory, so no shape can be projected from it. Read the pool's GPU model memory from the vendor's console or datasheet and cite it."
+
+data packet_ai_pool_region_unread_obligation: NonEmptyStr = "A Packet pool whose region is omitted states no location, so no route can be minted from it. Read the pool's region from the vendor's console and cite the row that records it."
+
+// An omitted pool region is an unread location; the existing region admission refuses it at the bind.
+fn packet_ai_pool_region(pool: PacketAiPool, region_row: DeclarationRef) -> ProviderRegionObservation {
+  match pool.region {
+    Absent =>
+      ProviderRegionUnread {
+        obligation: decl_ref(module_path: "product.supplier.packet_ai", decl_name: "packet_ai_pool_region_unread_obligation"),
+      }
+    Present { value: _ } => ProviderRegionRead { region: region_row }
+  }
+}
 
 fn packet_ai_route(region: ProviderRegionObservation) -> ProviderRouteStanding {
   provider_route_from_region(
