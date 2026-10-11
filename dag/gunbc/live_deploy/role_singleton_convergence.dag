@@ -1079,11 +1079,16 @@ fn first_unobservable_refusal(readings: List<HostRoleSingletonReading>) -> RoleS
   }
 }
 
-fn local_placement_change(spec: DeploymentSpec, realizations: List<ObservedRealization>, desired: ProdRoleRealization) -> Bool {
+// A NON-HOLDER CHANGES PLACEMENT ONLY THROUGH ITS OWN STRAY UNITS. The leftover rule (review 78627) is
+// about a deployment's own singleton units left behind; reading ANY realization on the host as a change
+// made every lab and preview deploy on srv1 a Remove of srv1-live's broker and fabric units, refused
+// while srv2 is unobservable (srv1 lab, 2026-10-11; owner confirmed, fix lane
+// census/d2-colocated-nonholder-admission). A spec absent from the roster stays a change: fail closed.
+fn local_placement_change(spec: DeploymentSpec, realizations: List<ObservedRealization>, desired: ProdRoleRealization, rows: List<DesiredDeployment>) -> Bool {
   match spec.role_singletons {
-    HoldsNoRoleSingleton => match realizations |> first {
-      Absent => false
-      Present { value: _ } => true
+    HoldsNoRoleSingleton => match rows |> filter(r => instance_id_text(id: r.instance.instance_id) == instance_id_text(id: spec.instance_id)) |> first {
+      Absent => true
+      Present { value: own } => realizations |> any(r => r.deployment == own.instance.deployment)
     }
     HoldsProdRoleSingletons { holder } => match desired {
       ProdRoleRealizationRefused { cause: _ } => true
@@ -1140,7 +1145,7 @@ fn assess_spec_over_roster_in(spec: DeploymentSpec, source: RoleSingletonReading
                 rows: rows,
               ),
             )
-          } else if local_placement_change(spec: spec, realizations: realizations, desired: desired) {
+          } else if local_placement_change(spec: spec, realizations: realizations, desired: desired, rows: rows) {
             RoleSingletonInadmissible { cause: first_unobservable_refusal(readings: readings) }
           } else {
             classify_role_singleton_admission(
