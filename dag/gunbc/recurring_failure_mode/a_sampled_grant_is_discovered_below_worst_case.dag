@@ -25,7 +25,7 @@ data a_sampled_grant_is_discovered_below_worst_case: RecurringFailureMode = Recu
 
   evidence: [
     decl_ref(module_path: "gunbc.compute.work_class_grant", decl_name: "work_class_grant"),
-    decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_run_granted"),
+    decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_run_opened"),
     decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_grant_exceeded_count"),
     decl_ref(module_path: "extdeps.systemd.systemd_run", decl_name: "systemd_run_wait_summary"),
   ],

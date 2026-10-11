@@ -102,7 +102,7 @@ fn run_selected_module(instance: HostDashboardInstance, worktree: String, commit
           if count(planned) == 0 {
             ModuleAllDeclined { label: render_label(l: label), module_path: module_path, declined: declined }
           } else {
-            let result = compute_provide(instance: instance, commit: commit, op: RunClaims { entry: file.path as FilePath, functions: join(planned, ",") as NonEmptyStr, hermetic: true })
+            let result = compute_provide(instance: instance, commit: commit, op: RunClaims { entry: file.path as FilePath, functions: join(planned, ",") as NonEmptyStr, hermetic: true, window: none })
             ModuleRan {
               label: render_label(l: label), module_path: module_path, planned: planned, declined: declined,
               ending: provide_result_ending(r: result), identity: provide_result_identity(r: result), document: provide_result_document(r: result),
