@@ -11,6 +11,9 @@ import v2.compiler.module_acquisition {
   AcquisitionEnv,
   AcquisitionKind,
   AcquisitionMemberNotRead,
+  AcquisitionMarkerRead,
+  AcquisitionMarkersRead,
+  AcquisitionMarkersRefused,
   AcquisitionMemberRead,
   AcquisitionMemberReadOk,
   AcquisitionMemberReadRefused,
@@ -33,6 +36,7 @@ import v2.compiler.module_acquisition {
   acquisition_member_requests,
   acquisition_module_path,
   acquisition_parse,
+  acquisition_test_markers,
   acquisition_refusal_text,
   bound_modules_prepended,
   namespace_directory_is_the_absent_path,
@@ -298,6 +302,68 @@ test fn a_well_formed_import_is_requested_and_its_marked_declaration_is_captured
   member_read_of(
     content: "module v2.test.subject\nimport v2.std.optional { Present }\ntest fn a_claim() -> Bool { true }\n"
   ) == "read|v2.std.optional|a_claim"
+}
+
+// ---- the marker channel, read off the parse tree alone -----------------------------------------------------
+//
+// THE SUBJECT IS acquisition_test_markers: which declarations of one member carry the authored `test`
+// marker, asked of a member whether or not it can be lowered. The paired control is the member read above:
+// a service declaration whose realization is set aside refuses ordinary normalization, so the same text
+// that member_read_of refuses is the text whose markers are still read here -- the route is asserted, not
+// only the answer. And the refusal arm is the other half: a file that does not parse is a refusal, never
+// an empty list, because an unread file read as unmarked is the absent-reads-as-false class the channel
+// exists to close.
+
+fn markers_text(read: AcquisitionMarkerRead) -> String {
+  match read {
+    AcquisitionMarkersRead { names: names } => concat("read|", join(names, ","))
+    AcquisitionMarkersRefused { cause: cause } => concat("refused|", cause)
+  }
+}
+
+fn markers_of(content: String) -> String {
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: _ } => "grammar-unprepared"
+    Accepted { value: prepared, diagnostics: _ } =>
+      markers_text(
+        read: acquisition_test_markers(
+          env: AcquisitionEnv {
+            layout: repository_storage_layout(),
+            bindings: [],
+            lex: prepare_lex_rules(rules: dag_language_model().lex),
+            grammar: prepared
+          },
+          file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" },
+          content: content
+        )
+      )
+  }
+}
+
+fn service_with_a_marked_claim() -> String {
+  concat(
+    "module v2.test.subject\nservice s.Svc {\n  operation Op {\n    requires none\n    input { n: Int }\n",
+    "    output { ok: Bool from \"exit_success\" }\n    transport shell { argv: [\"true\"] }\n",
+    "    exit {\n      0 => Unit\n      nonzero => String \"failed\"\n    }\n  }\n}\n",
+    "test fn a_claim() -> Bool { true }\n"
+  )
+}
+
+test fn only_the_marked_declaration_of_a_member_is_read_as_marked() -> Bool {
+  markers_of(content: "module v2.test.subject\nfn plain() -> Bool { true }\ntest fn a_claim() -> Bool { true }\n") == "read|a_claim"
+}
+
+test fn a_member_declaring_no_test_reads_as_marked_nothing_not_as_refused() -> Bool {
+  markers_of(content: "module v2.test.subject\nfn plain() -> Bool { true }\n") == "read|"
+}
+
+test fn a_member_that_does_not_parse_is_refused_not_read_as_unmarked() -> Bool {
+  starts_with(s: markers_of(content: "module v2.test.subject\ntest fn a_claim( -> Bool { true }\n"), prefix: "refused|")
+}
+
+test fn a_member_ordinary_normalization_refuses_still_has_its_markers_read() -> Bool {
+  starts_with(s: member_read_of(content: service_with_a_marked_claim()), prefix: refused_member_prefix())
+    && markers_of(content: service_with_a_marked_claim()) == "read|a_claim"
 }
 
 // ---- enumerating the declared namespaces ----------------------------------------------------------------

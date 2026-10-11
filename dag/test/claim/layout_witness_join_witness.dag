@@ -1,18 +1,21 @@
 module test.claim.layout_witness_join_witness
 
-import std.types { Bool, List, String }
-import std.optional { Present }
+import std.types { Bool, Int, List, String }
+import std.optional { Absent, Present }
 import v2.std.live_tree { SubstrateInputsOnly }
 import v2.workflow.floor_discovery_row { FloorDiscoveryRow }
+import v2.cli.repository_layout { repository_path_of_module_file }
 import gunbc.instruments.layout_witness_join {
   JoinFinding,
   Observation,
   ObservedRow,
   PlanEdges,
   finding_line,
+  governed_dag_paths,
   join_summary_lines,
   observation_of,
   observed_file_line,
+  observed_file_ref,
   observed_row_line,
   plan_edges_of,
   red_findings,
@@ -23,9 +26,10 @@ import gunbc.instruments.layout_witness_join {
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // WITNESSES FOR THE WITNESS-SET IDENTITY JOIN (gunbc.instruments.layout_witness_join), the C4 admission
-// that the floor's discovered witness set is the same set, carried through the sweep's rename map,
-// before and after the sweep. Each control isolates one way a sweep can change the set, over invented
-// observations, so a red names the discrepancy that broke.
+// that the floor's discovered set of test-MARKED declarations is the same set, carried through the
+// sweep's rename map, before and after the sweep. Each control isolates one way a sweep can change the
+// set, over invented observations, so a red names the discrepancy that broke. No file name identifies a
+// test here: a row is a (entry, function) pair and a file is only where it lives.
 //
 // THE PAIRING OBLIGATION. These claims supply the observations; the real producer is run by
 // layout_witness_observe, once per tree, and its receipt is the join over the real trees. The one
@@ -74,10 +78,10 @@ fn infos(old: Observation, new: Observation, edges: PlanEdges, removals: List<St
 
 fn base_old() -> Observation {
   observation(lines: [
-    file_line(path: "dag/a/x_test.dag"),
+    file_line(path: "dag/a/x.dag"),
     file_line(path: "dag/a/y.dag"),
-    row_line(entry: "dag/a/x_test.dag", function: "f1"),
-    row_line(entry: "dag/a/x_test.dag", function: "f2")
+    row_line(entry: "dag/a/x.dag", function: "f1"),
+    row_line(entry: "dag/a/x.dag", function: "f2")
   ])
 }
 
@@ -88,112 +92,123 @@ test fn an_unchanged_set_is_equal() -> Bool {
 
 test fn a_set_carried_through_the_plan_is_equal() -> Bool {
   let moved = observation(lines: [
-    file_line(path: "dag/b/x_test.dag"),
+    file_line(path: "dag/b/x.dag"),
     file_line(path: "dag/a/y.dag"),
-    row_line(entry: "dag/b/x_test.dag", function: "f1"),
-    row_line(entry: "dag/b/x_test.dag", function: "f2")
+    row_line(entry: "dag/b/x.dag", function: "f1"),
+    row_line(entry: "dag/b/x.dag", function: "f2")
   ])
-  reds(old: base_old(), new: moved, edges: plan(edges: [edge(old_path: "dag/a/x_test.dag", new_path: "dag/b/x_test.dag")]), removals: []) == ""
+  reds(old: base_old(), new: moved, edges: plan(edges: [edge(old_path: "dag/a/x.dag", new_path: "dag/b/x.dag")]), removals: []) == ""
 }
 
 test fn a_carried_set_reports_nothing_beyond_preservation() -> Bool {
   let moved = observation(lines: [
-    file_line(path: "dag/b/x_test.dag"),
+    file_line(path: "dag/b/x.dag"),
     file_line(path: "dag/a/y.dag"),
-    row_line(entry: "dag/b/x_test.dag", function: "f1"),
-    row_line(entry: "dag/b/x_test.dag", function: "f2")
+    row_line(entry: "dag/b/x.dag", function: "f1"),
+    row_line(entry: "dag/b/x.dag", function: "f2")
   ])
-  infos(old: base_old(), new: moved, edges: plan(edges: [edge(old_path: "dag/a/x_test.dag", new_path: "dag/b/x_test.dag")]), removals: []) == ""
+  infos(old: base_old(), new: moved, edges: plan(edges: [edge(old_path: "dag/a/x.dag", new_path: "dag/b/x.dag")]), removals: []) == ""
+}
+
+// An element read at an index is an Optional, and it is READ by matching it: comparing it with a
+// constructed `Present` is not the same question and answers false on a present element.
+fn line_at_is(lines: List<String>, index: Int, want: String) -> Bool {
+  match lines[index] {
+    Present { value: line } => line == want
+    Absent => false
+  }
 }
 
 test fn an_equal_join_says_equal_in_its_summary() -> Bool {
   let findings = witness_set_join(old: base_old(), new: base_old(), plan: no_plan(), declared_removals: [])
-  join_summary_lines(old: base_old(), new: base_old(), findings: findings)[4] == Present { value: "RESULT\tEQUAL" }
+  line_at_is(lines: join_summary_lines(old: base_old(), new: base_old(), findings: findings), index: 4, want: "RESULT\tEQUAL")
 }
 
 // ---- the join refuses ------------------------------------------------------------------------------
 test fn a_lost_row_is_red() -> Bool {
   let fewer = observation(lines: [
-    file_line(path: "dag/a/x_test.dag"),
+    file_line(path: "dag/a/x.dag"),
     file_line(path: "dag/a/y.dag"),
-    row_line(entry: "dag/a/x_test.dag", function: "f1")
+    row_line(entry: "dag/a/x.dag", function: "f1")
   ])
-  reds(old: base_old(), new: fewer, edges: no_plan(), removals: []) == "RED\tROW_LOST\tdag/a/x_test.dag\tf2"
+  reds(old: base_old(), new: fewer, edges: no_plan(), removals: []) == "RED\tROW_LOST\tdag/a/x.dag\tf2"
 }
 
 test fn a_gained_row_in_a_retained_file_is_red() -> Bool {
   let more = observation(lines: [
-    file_line(path: "dag/a/x_test.dag"),
+    file_line(path: "dag/a/x.dag"),
     file_line(path: "dag/a/y.dag"),
-    row_line(entry: "dag/a/x_test.dag", function: "f1"),
-    row_line(entry: "dag/a/x_test.dag", function: "f2"),
-    row_line(entry: "dag/a/x_test.dag", function: "f3")
+    row_line(entry: "dag/a/x.dag", function: "f1"),
+    row_line(entry: "dag/a/x.dag", function: "f2"),
+    row_line(entry: "dag/a/x.dag", function: "f3")
   ])
-  reds(old: base_old(), new: more, edges: no_plan(), removals: []) == "RED\tROW_GAINED\tdag/a/x_test.dag\tf3"
+  reds(old: base_old(), new: more, edges: no_plan(), removals: []) == "RED\tROW_GAINED\tdag/a/x.dag\tf3"
 }
 
 test fn an_altered_label_is_red() -> Bool {
   let relabelled = observation(lines: [
-    file_line(path: "dag/a/x_test.dag"),
+    file_line(path: "dag/a/x.dag"),
     file_line(path: "dag/a/y.dag"),
-    row_line(entry: "dag/a/x_test.dag", function: "f1"),
-    row_line_labelled(entry: "dag/a/x_test.dag", function: "f2", label: "another_label")
+    row_line(entry: "dag/a/x.dag", function: "f1"),
+    row_line_labelled(entry: "dag/a/x.dag", function: "f2", label: "another_label")
   ])
-  string_contains(s: reds(old: base_old(), new: relabelled, edges: no_plan(), removals: []), pattern: "RED\tROW_ALTERED\tdag/a/x_test.dag\tf2")
+  string_contains(s: reds(old: base_old(), new: relabelled, edges: no_plan(), removals: []), pattern: "RED\tROW_ALTERED\tdag/a/x.dag\tf2")
 }
 
 test fn an_altered_live_tree_disposition_is_red() -> Bool {
   let live = observation(lines: [
-    file_line(path: "dag/a/x_test.dag"),
+    file_line(path: "dag/a/x.dag"),
     file_line(path: "dag/a/y.dag"),
-    row_line(entry: "dag/a/x_test.dag", function: "f1"),
-    row_line_live(entry: "dag/a/x_test.dag", function: "f2")
+    row_line(entry: "dag/a/x.dag", function: "f1"),
+    row_line_live(entry: "dag/a/x.dag", function: "f2")
   ])
-  string_contains(s: reds(old: base_old(), new: live, edges: no_plan(), removals: []), pattern: "RED\tROW_ALTERED\tdag/a/x_test.dag\tf2")
+  string_contains(s: reds(old: base_old(), new: live, edges: no_plan(), removals: []), pattern: "RED\tROW_ALTERED\tdag/a/x.dag\tf2")
 }
 
-// THE DEFECT THIS ADMISSION EXISTS FOR: a sweep that renames a sidecar-stem file to a stem without the
-// suffix. The count of files is unchanged and the total of rows would be equal if the rows moved to a
-// file the floor still reads; here the file no longer qualifies, so its rows are lost AND the file's
-// status changed, and both are reported.
-test fn a_dropped_sidecar_suffix_is_red() -> Bool {
-  let renamed = observation(lines: [
+// THE DEFECT THIS ADMISSION EXISTS FOR: a sweep that moves a file's tests out of the discovered set.
+// The count of files is unchanged and the total of rows would be equal if the rows reappeared in a
+// file the floor still reads; here the moved file's declarations no longer carry the marker, so its
+// rows are lost, and each lost row is listed by name for the run's author to disposition.
+test fn a_moved_file_whose_declarations_lost_their_marker_is_red() -> Bool {
+  let unmarked = observation(lines: [
     file_line(path: "dag/b/x.dag"),
     file_line(path: "dag/a/y.dag")
   ])
-  let found = reds(old: base_old(), new: renamed, edges: plan(edges: [edge(old_path: "dag/a/x_test.dag", new_path: "dag/b/x.dag")]), removals: [])
-  string_contains(s: found, pattern: "RED\tTEST_STATUS_CHANGED\tdag/a/x_test.dag\tdag/b/x.dag")
-    && string_contains(s: found, pattern: "RED\tROW_LOST\tdag/a/x_test.dag\tf1")
+  let found = reds(old: base_old(), new: unmarked, edges: plan(edges: [edge(old_path: "dag/a/x.dag", new_path: "dag/b/x.dag")]), removals: [])
+  string_contains(s: found, pattern: "RED\tROW_LOST\tdag/a/x.dag\tf1")
+    && string_contains(s: found, pattern: "RED\tROW_LOST\tdag/a/x.dag\tf2")
 }
 
 test fn a_rename_the_plan_does_not_name_is_red() -> Bool {
   let renamed = observation(lines: [
-    file_line(path: "dag/b/x_test.dag"),
+    file_line(path: "dag/b/x.dag"),
     file_line(path: "dag/a/y.dag"),
-    row_line(entry: "dag/b/x_test.dag", function: "f1"),
-    row_line(entry: "dag/b/x_test.dag", function: "f2")
+    row_line(entry: "dag/b/x.dag", function: "f1"),
+    row_line(entry: "dag/b/x.dag", function: "f2")
   ])
-  string_contains(s: reds(old: base_old(), new: renamed, edges: no_plan(), removals: []), pattern: "RED\tTEST_FILE_REMOVED\tdag/a/x_test.dag")
+  string_contains(s: reds(old: base_old(), new: renamed, edges: no_plan(), removals: []), pattern: "RED\tROW_IN_REMOVED_FILE\tdag/a/x.dag\tf1")
 }
 
-test fn an_undeclared_removal_of_a_sidecar_stem_file_is_red() -> Bool {
+test fn an_undeclared_removal_of_a_file_holding_rows_is_red_row_by_row() -> Bool {
   let without = observation(lines: [file_line(path: "dag/a/y.dag")])
-  reds(old: base_old(), new: without, edges: no_plan(), removals: []) == "RED\tTEST_FILE_REMOVED\tdag/a/x_test.dag"
+  reds(old: base_old(), new: without, edges: no_plan(), removals: []) == "RED\tROW_IN_REMOVED_FILE\tdag/a/x.dag\tf1|RED\tROW_IN_REMOVED_FILE\tdag/a/x.dag\tf2"
 }
 
-test fn a_declared_removal_of_a_sidecar_stem_file_is_not_red() -> Bool {
+test fn a_declared_removal_of_a_file_holding_rows_is_not_red() -> Bool {
   let without = observation(lines: [file_line(path: "dag/a/y.dag")])
-  reds(old: base_old(), new: without, edges: no_plan(), removals: ["dag/a/x_test.dag"]) == ""
+  reds(old: base_old(), new: without, edges: no_plan(), removals: ["dag/a/x.dag"]) == ""
 }
 
-test fn a_declared_removal_is_still_reported() -> Bool {
+test fn a_declared_removal_is_still_reported_row_by_row() -> Bool {
   let without = observation(lines: [file_line(path: "dag/a/y.dag")])
-  string_contains(s: infos(old: base_old(), new: without, edges: no_plan(), removals: ["dag/a/x_test.dag"]), pattern: "INFO\tTEST_FILE_REMOVED_DECLARED\tdag/a/x_test.dag")
+  let found = infos(old: base_old(), new: without, edges: no_plan(), removals: ["dag/a/x.dag"])
+  string_contains(s: found, pattern: "INFO\tROW_IN_REMOVED_FILE_DECLARED\tdag/a/x.dag\tf1")
+    && string_contains(s: found, pattern: "INFO\tROW_IN_REMOVED_FILE_DECLARED\tdag/a/x.dag\tf2")
 }
 
 test fn a_declaration_for_another_path_does_not_excuse_a_removal() -> Bool {
   let without = observation(lines: [file_line(path: "dag/a/y.dag")])
-  reds(old: base_old(), new: without, edges: no_plan(), removals: ["dag/a/y.dag"]) == "RED\tTEST_FILE_REMOVED\tdag/a/x_test.dag"
+  reds(old: base_old(), new: without, edges: no_plan(), removals: ["dag/a/y.dag"]) == "RED\tROW_IN_REMOVED_FILE\tdag/a/x.dag\tf1|RED\tROW_IN_REMOVED_FILE\tdag/a/x.dag\tf2"
 }
 
 test fn a_plan_edge_for_a_file_the_old_tree_lacks_is_red() -> Bool {
@@ -210,34 +225,34 @@ test fn two_files_carried_to_one_path_are_red() -> Bool {
 }
 
 test fn a_malformed_observation_line_is_red() -> Bool {
-  let bad = observation(lines: [file_line(path: "dag/a/x_test.dag"), "ROW\tonly\tthree"])
+  let bad = observation(lines: [file_line(path: "dag/a/x.dag"), "ROW\tonly\tthree"])
   string_contains(s: reds(old: bad, new: bad, edges: no_plan(), removals: []), pattern: "RED\tINPUT_MALFORMED\told\tROW")
 }
 
 test fn a_malformed_plan_line_is_red() -> Bool {
-  let bad = plan_edges_of(text: "dag/a/x_test.dag\tdag/b/x_test.dag")
+  let bad = plan_edges_of(text: "dag/a/x.dag\tdag/b/x.dag")
   string_contains(s: reds(old: base_old(), new: base_old(), edges: bad, removals: []), pattern: "RED\tINPUT_MALFORMED\tplan")
 }
 
 // ---- what is not red -------------------------------------------------------------------------------
 test fn rows_in_an_added_file_are_introduced_not_red() -> Bool {
   let added = observation(lines: [
-    file_line(path: "dag/a/x_test.dag"),
+    file_line(path: "dag/a/x.dag"),
     file_line(path: "dag/a/y.dag"),
-    file_line(path: "dag/c/z_test.dag"),
-    row_line(entry: "dag/a/x_test.dag", function: "f1"),
-    row_line(entry: "dag/a/x_test.dag", function: "f2"),
-    row_line(entry: "dag/c/z_test.dag", function: "g1")
+    file_line(path: "dag/c/z.dag"),
+    row_line(entry: "dag/a/x.dag", function: "f1"),
+    row_line(entry: "dag/a/x.dag", function: "f2"),
+    row_line(entry: "dag/c/z.dag", function: "g1")
   ])
   reds(old: base_old(), new: added, edges: no_plan(), removals: []) == ""
-    && string_contains(s: infos(old: base_old(), new: added, edges: no_plan(), removals: []), pattern: "INFO\tROW_INTRODUCED\tdag/c/z_test.dag\tg1")
+    && string_contains(s: infos(old: base_old(), new: added, edges: no_plan(), removals: []), pattern: "INFO\tROW_INTRODUCED\tdag/c/z.dag\tg1")
 }
 
-test fn removing_a_file_without_the_sidecar_suffix_is_reported_not_red() -> Bool {
+test fn removing_a_file_holding_no_rows_is_reported_not_red() -> Bool {
   let without = observation(lines: [
-    file_line(path: "dag/a/x_test.dag"),
-    row_line(entry: "dag/a/x_test.dag", function: "f1"),
-    row_line(entry: "dag/a/x_test.dag", function: "f2")
+    file_line(path: "dag/a/x.dag"),
+    row_line(entry: "dag/a/x.dag", function: "f1"),
+    row_line(entry: "dag/a/x.dag", function: "f2")
   ])
   reds(old: base_old(), new: without, edges: no_plan(), removals: []) == ""
     && string_contains(s: infos(old: base_old(), new: without, edges: no_plan(), removals: []), pattern: "INFO\tFILE_REMOVED\tdag/a/y.dag")
@@ -247,17 +262,45 @@ test fn removing_a_file_without_the_sidecar_suffix_is_reported_not_red() -> Bool
 test fn the_line_the_observer_writes_for_a_discovery_row_is_the_row_the_join_reads() -> Bool {
   let row = FloorDiscoveryRow {
     label: "a_label",
-    entry: "dag/a/x_test.dag",
+    entry: "dag/a/x.dag",
     function: "f1",
     reads_live_tree: SubstrateInputsOnly
   }
   let read = observation_of(text: observed_row_line(row: row))
-  count(read.rows) == 1
-    && count(read.malformed) == 0
-    && read.rows[0] == Present { value: ObservedRow { entry: "dag/a/x_test.dag", function: "f1", label: "a_label", live: "SubstrateInputsOnly" } }
+  count(read.rows) == 1 && count(read.malformed) == 0 && first_row_is(rows: read.rows, want: ObservedRow { entry: "dag/a/x.dag", function: "f1", label: "a_label", live: "SubstrateInputsOnly" })
+}
+
+fn first_row_is(rows: List<ObservedRow>, want: ObservedRow) -> Bool {
+  match rows[0] {
+    Present { value: row } => row == want
+    Absent => false
+  }
 }
 
 test fn a_tracked_file_line_round_trips() -> Bool {
-  let read = observation_of(text: observed_file_line(path: "dag/a/x_test.dag"))
-  count(read.files) == 1 && count(read.malformed) == 0 && read.files[0] == Present { value: "dag/a/x_test.dag" }
+  let read = observation_of(text: observed_file_line(path: "dag/a/x.dag"))
+  count(read.files) == 1 && count(read.malformed) == 0 && line_at_is(lines: read.files, index: 0, want: "dag/a/x.dag")
+}
+
+// ---- the observer's pure half ---------------------------------------------------------------------
+// Which tracked files the producer is owed a marker fact for, and which module file each is. The
+// producer walks the floor's own roots, so a governed path this selection misses is a walked file with
+// no supplied fact and the observation refuses; a path it adds beyond the roots is read for nothing.
+test fn the_governed_paths_are_the_dag_files_under_a_layer_root() -> Bool {
+  governed_dag_paths(listing: "dag/a/x.dag\nsrc/v2/b/y.dag\nREADME.md\ndocs/z.dag\ndag/a/notes.txt\n") == ["dag/a/x.dag", "src/v2/b/y.dag"]
+}
+
+fn round_trip(path: String) -> String {
+  match observed_file_ref(path: path) {
+    Present { value: file } => repository_path_of_module_file(file: file)
+    Absent => ""
+  }
+}
+
+test fn a_governed_path_is_the_module_file_it_names() -> Bool {
+  round_trip(path: "dag/a/x.dag") == "dag/a/x.dag" && round_trip(path: "src/v2/b/y.dag") == "src/v2/b/y.dag"
+}
+
+test fn a_path_under_no_bound_tree_is_no_module_file() -> Bool {
+  round_trip(path: "docs/z.dag") == ""
 }

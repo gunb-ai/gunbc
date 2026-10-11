@@ -30,6 +30,7 @@ import v2.compiler.name_resolve { Import }
 import v2.compiler.normalize { normalize }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { ParseArtifact, PreparedGrammar, parse_module_prepared, prepare_grammar }
+import v2.compiler.test_marker_capture { test_marker_capture }
 import v2.compiler.reference_site_collector { collect_module_reference_sites, reference_site_collection_is_total }
 import v2.compiler.source_authority {
   ModuleFileAbsent,
@@ -469,6 +470,30 @@ fn acquisition_parse(env: AcquisitionEnv, file: ModuleFileRef, content: String) 
   match acquisition_parsed(env: env, file: file, content: content) {
     Rejected { diagnostics: d } => MemberParseRefused { cause: symbol_lexeme(sym: diagnostics_fatal_reason(d: d)) }
     Accepted { value: _, diagnostics: _ } => MemberParses {}
+  }
+}
+
+// THE MARKED NAMES OF ONE MEMBER, read from its parse tree alone. A test is a declaration carrying the
+// authored `test` marker, and the marker channel (v2.compiler.test_marker_capture) is a pure reader over
+// the parse tree -- the same capture normalize runs beside lowering -- so the names a file marks do not
+// wait on lowering. That is what lets a job whose subject is every governed file ask this of a module
+// that cannot be lowered in isolation (a service declaration whose realization lives in another module
+// refuses ordinary normalization, v2.compiler.normalize), without a second reading of the marker and
+// without reading an unlowerable file as an unmarked one: a file that does not parse, or whose shell the
+// capture cannot read, is a refusal and never an empty list.
+type AcquisitionMarkerRead
+  = AcquisitionMarkersRead { names: List<String> }
+  | AcquisitionMarkersRefused { cause: String }
+
+fn acquisition_test_markers(env: AcquisitionEnv, file: ModuleFileRef, content: String) -> AcquisitionMarkerRead {
+  match acquisition_parsed(env: env, file: file, content: content) {
+    Rejected { diagnostics: d } => AcquisitionMarkersRefused { cause: symbol_lexeme(sym: diagnostics_fatal_reason(d: d)) }
+    Accepted { value: artifact, diagnostics: _ } =>
+      match test_marker_capture(tree: artifact.tree) {
+        Rejected { diagnostics: d } => AcquisitionMarkersRefused { cause: symbol_lexeme(sym: diagnostics_fatal_reason(d: d)) }
+        Accepted { value: channel, diagnostics: _ } =>
+          AcquisitionMarkersRead { names: list_map(xs: channel.marked, f: fn(marked) { symbol_lexeme(sym: marked.name) }) }
+      }
   }
 }
 
