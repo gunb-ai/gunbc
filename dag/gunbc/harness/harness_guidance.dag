@@ -73,7 +73,6 @@ type HarnessConclusion
   | VerifyWithTheTool
   | ReadingAloneCompletesNothing
   | ActBeforeTheRoundsRun { rounds: Int }
-  | RoundsEndInAlignmentCheck
   | ReRunForDroppedOutput { rounds: Int }
   | IterateNarrowThenAccept { iterate: String }
 
@@ -231,8 +230,6 @@ fn harness_conclusion_text(c: HarnessConclusion) -> String {
         "So if ", to_string(value: n),
         " rounds will not cover both more investigation and the change, make the change now.",
       ], "")
-    RoundsEndInAlignmentCheck =>
-      "When this execution epoch reaches its round boundary, the harness returns control for an independent alignment checkpoint. This is not task completion or task failure. The workflow may resume the same lineage with guidance."
     ReRunForDroppedOutput { rounds: n } =>
       join([
         "So re-run a command if you need output from one of those ",
@@ -468,7 +465,6 @@ fn harness_conclusion_key(c: HarnessConclusion) -> String {
     VerifyWithTheTool => "verify-with-the-tool"
     ReadingAloneCompletesNothing => "reading-alone-completes-nothing"
     ActBeforeTheRoundsRun { rounds: _ } => "act-before-the-rounds-run"
-    RoundsEndInAlignmentCheck => "rounds-end-in-alignment-check"
     ReRunForDroppedOutput { rounds: _ } => "rerun-for-dropped-output"
     IterateNarrowThenAccept { iterate: _ } => "iterate-narrow-then-accept"
   }

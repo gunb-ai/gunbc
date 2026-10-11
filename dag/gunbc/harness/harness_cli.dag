@@ -13,7 +13,7 @@ import std.measure { TokenCount, token_count, token_count_value, Second, second,
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.harness.harness_tool { HarnessToolEnvironment }
 import gunbc.harness.harness_turn {
-  HarnessTurnConfig, HarnessTurnOutcome, TurnProviderStopped, TurnCompletedByArtifact, TurnAlignmentCheckpointDue, harness_tool_contract_wire,
+  HarnessTurnConfig, HarnessTurnOutcome, TurnProviderStopped, TurnCompletedByArtifact, TurnStoppedBySupervision, TurnSupervisionUnavailable, HarnessSupervision, Unsupervised, SupervisedRounds, harness_tool_contract_wire,
   CompletesOnProviderStop, CompletesWhenEntryPresent, harness_run_turn, harness_outcome_label, TurnHostedQuotaFull, TurnHostedQuotaUnleasable, TurnHostedFailure,
   harness_outcome_detail, harness_event_placement_waiting,
 }
@@ -249,7 +249,7 @@ fn harness_macbook_config(backend: HarnessBoundBackend) -> HarnessTurnConfig {
     reasoning_mode: backend.reasoning,
     wire_shape: harness_default_wire_shape,
     system_prompt: harness_default_system_prompt,
-    alignment_chain_fingerprint: "",
+    supervision: Unsupervised,
     request_scratch_path: harness_request_scratch_path,
     events_path: harness_probe_events_path,
     context_budget: harness_context_budget_for(unit: backend.unit),
@@ -279,9 +279,9 @@ fn harness_probe_outcome(backend: HarnessBoundBackend) -> HarnessTurnOutcome {
 // happened rather than whether the task succeeded. Nothing here inspects the assistant's text for
 // correctness: that is external verification's subject, and a harness that graded its own worker's
 // answer would be the same conflation DCH-2 forbids between a stop reason and a completed task.
-// CHECKPOINT-DUE IS A CONTROL TRANSFER, NOT A FAILURE (review 5358022153): it gets its own admitted
-// exit standing (3) rather than the generic failure code, so a consumer matching on 1 never reads a
-// planned adjudication handoff as a crash. The belt's authority remains the provider event stream.
+// A SUPERVISED SESSION NEVER EXITS AT A ROUND BOUNDARY (gunbc.plans.harness_session_lifecycle), so
+// there is no control-transfer exit any more; a supervision stop is the session's typed end and the
+// provider event stream stays the authority.
 fn harness_turn_exit(outcome: HarnessTurnOutcome) -> ProcessExit {
   match outcome {
     TurnProviderStopped { wire_stop_reason: _, assistant_text: _, steps_taken: _, input_tokens: _, output_tokens: _ } =>
@@ -299,8 +299,8 @@ fn harness_turn_exit(outcome: HarnessTurnOutcome) -> ProcessExit {
     TurnHostedQuotaFull { wire: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnHostedQuotaUnleasable { detail: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnHostedFailure { failure: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
-    TurnAlignmentCheckpointDue { steps_taken: _ } =>
-      ExitFailure { code: 3, reason: harness_outcome_label(outcome: outcome) }
+    TurnStoppedBySupervision { verdict: _, detail: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnSupervisionUnavailable { cause: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
   }
 }
 
@@ -659,7 +659,7 @@ fn harness_worker_config(
   events_path: FilePath,
   backend: HarnessBoundBackend,
   system_prompt: String,
-  alignment_chain_fingerprint: String,
+  supervision: HarnessSupervision,
 ) -> HarnessTurnConfig {
   HarnessTurnConfig {
     backend_url: backend.url,
@@ -669,7 +669,7 @@ fn harness_worker_config(
     reasoning_mode: backend.reasoning,
     wire_shape: harness_default_wire_shape,
     system_prompt: system_prompt,
-    alignment_chain_fingerprint: alignment_chain_fingerprint,
+    supervision: supervision,
     request_scratch_path: request_scratch_path,
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: backend.unit),
@@ -744,6 +744,22 @@ fn harness_seat_pointer_refused_exit(binding: HarnessSeatBinding, detail: String
   ExitFailure { code: 1, reason: join(["harness seat pointer write failed: ", detail, "; seat ", harness_seat_release_wire(r: released)], "") }
 }
 
+// A WORKER IS SUPERVISED WHEN IT CARRIES A CHAIN. The alignment check needs the rendered chain to ask
+// its question and a directory under the attempt's own state to leave its verdict in; a worker spawned
+// without a chain (a local probe) is unsupervised and keeps the hard round budget.
+fn harness_worker_supervision(chain_fingerprint: String, check_prompt: String, check_directory: String) -> HarnessSupervision {
+  if chain_fingerprint == "" {
+    Unsupervised
+  } else {
+    SupervisedRounds {
+      chain_fingerprint: chain_fingerprint,
+      check_prompt: check_prompt,
+      check_directory: check_directory,
+      round_steps: harness_worker_step_budget,
+    }
+  }
+}
+
 // EXIT SAYS WHETHER THE HARNESS COMPLETED A TURN, NOT WHETHER THE TASK WAS DONE. A provider
 // terminal exits zero; every harness refusal exits non-zero with its typed cause. Whether the WORK
 // satisfies the node is decided by the belt's pinned verification against the attempt head, which
@@ -764,6 +780,8 @@ fn harness_worker_cli(
   gunbc_program: String,
   attempt_identity: String,
   alignment_chain_fingerprint: String,
+  supervision_prompt: String,
+  supervision_dir: String,
 ) -> ProcessExit {
   let system_prompt = harness_worker_system_prompt_at(worktree: worktree, repo_root: repo_root, gunbc_program: gunbc_program)
   let binding = harness_bind_seat_waiting(role: "worker", system_prompt: system_prompt, brief: brief, actor: join(["worker:", worktree], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, events_path: events_path)
@@ -782,7 +800,11 @@ fn harness_worker_cli(
               events_path: events_path as FilePath,
               backend: backend,
               system_prompt: system_prompt,
-              alignment_chain_fingerprint: alignment_chain_fingerprint,
+              supervision: harness_worker_supervision(
+                chain_fingerprint: alignment_chain_fingerprint,
+                check_prompt: supervision_prompt,
+                check_directory: supervision_dir,
+              ),
             ),
             prompt: brief,
             step_budget: harness_worker_step_budget,
@@ -831,7 +853,7 @@ fn harness_reviewer_config(
     reasoning_mode: backend.reasoning,
     wire_shape: harness_default_wire_shape,
     system_prompt: system_prompt,
-    alignment_chain_fingerprint: "",
+    supervision: Unsupervised,
     request_scratch_path: request_scratch_path,
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: backend.unit),
@@ -915,7 +937,7 @@ fn harness_auditor_config(
     reasoning_mode: backend.reasoning,
     wire_shape: harness_default_wire_shape,
     system_prompt: system_prompt,
-    alignment_chain_fingerprint: "",
+    supervision: Unsupervised,
     request_scratch_path: request_scratch_path,
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: backend.unit),
@@ -1008,7 +1030,7 @@ fn harness_supervisor_config(
     reasoning_mode: backend.reasoning,
     wire_shape: harness_default_wire_shape,
     system_prompt: system_prompt,
-    alignment_chain_fingerprint: "",
+    supervision: Unsupervised,
     request_scratch_path: request_scratch_path,
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: backend.unit),
@@ -1160,7 +1182,7 @@ fn harness_hosted_probe_cli(worktree: String, timeout_program: String, request_s
                 events_path: events_path as FilePath,
                 backend: backend,
                 system_prompt: harness_default_system_prompt,
-                alignment_chain_fingerprint: "",
+                supervision: Unsupervised,
               ),
               prompt: harness_probe_prompt,
               step_budget: harness_default_step_budget,

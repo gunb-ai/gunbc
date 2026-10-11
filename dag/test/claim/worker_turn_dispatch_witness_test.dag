@@ -18,9 +18,11 @@ import gunbc.roadmap_dispatch_actuator {
   GunbcHarnessSpawnNeedsInstance,
   CursorDispatchProvider,
   CodexDispatchProvider,
+  GunbcHarnessProvider,
   DispatchCliProvider,
   dispatch_provider_inner_argv_for_instance,
   dispatch_credential_snapshot_path_for_instance,
+  dispatch_attempt_state_path_for_instance,
 }
 import extdeps.llm.cli { ReasoningMedium, ProviderAccountDefaultModel }
 import gunbc.cursor_harness_credential { cursor_worker_turn_api_key_host_path }
@@ -45,6 +47,7 @@ fn inner_for(instance: HostDashboardInstance, provider: DispatchCliProvider) -> 
     worktree_path: "/tmp/w",
     brief: "brief",
     alignment_chain_fingerprint: "fp",
+    supervision_prompt: "the rendered chain",
   )
 }
 
@@ -168,5 +171,23 @@ test fn an_abandoned_cursor_attempt_leaves_no_snapshot_the_belt_does_not_discard
       abandoned_discards
         && any(argv, a => a == belt_path as String)
         && any(argv, a => string_contains(s: a, pattern: "|| exit 79"))
+  }
+}
+
+// THE HARNESS WORKER IS SPAWNED SUPERVISED (gunbc.plans.harness_session_lifecycle, slice S1): the
+// production spawn fold hands it the rendered chain its alignment check asks about and the attempt's
+// own state directory for the check's verdicts, beside the fingerprint -- so the pause at a round
+// boundary has everything it needs in-process and nothing routes back through the belt.
+test fn a_harness_worker_on_srv1_carries_its_supervision() -> Bool {
+  let instance = srv1_live_dashboard_instance()
+  match ready_argv(inner: inner_for(instance: instance, provider: GunbcHarnessProvider)) {
+    Absent => false
+    Present { value: argv } =>
+      has_pair(argv: argv, flag: "--arg", value: "alignment_chain_fingerprint=fp")
+        && has_pair(argv: argv, flag: "--arg", value: "supervision_prompt=the rendered chain")
+        && has_pair(argv: argv, flag: "--arg", value: join([
+             "supervision_dir=",
+             dispatch_attempt_state_path_for_instance(instance: instance, node_id: "node-worker-turn" as NonEmptyStr as RoadmapNodeId, attempt_key: "0123456789abcdef"),
+           ], ""))
   }
 }

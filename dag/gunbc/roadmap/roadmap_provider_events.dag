@@ -81,7 +81,9 @@ type ProviderEventKind
   | ProviderStreamError
   | HarnessRoundUsage
   | HarnessBudgetExhausted
-  | HarnessAlignmentCheckpointDue
+  | HarnessSupervisionVerdict
+  | HarnessStoppedBySupervision
+  | HarnessSupervisionUnavailable
   | HarnessWireLogUnwritable
   | HarnessPlacementWaiting
 
@@ -478,8 +480,12 @@ fn classify_provider_event_line(raw: String) -> ProviderEventLineDisposition {
     ProviderEventObserved { kind: HarnessBudgetExhausted }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "round.usage") {
     ProviderEventObserved { kind: HarnessRoundUsage }
-  } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.alignment_checkpoint_due") {
-    ProviderEventObserved { kind: HarnessAlignmentCheckpointDue }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "supervision.verdict") {
+    ProviderEventObserved { kind: HarnessSupervisionVerdict }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.stopped_by_supervision") {
+    ProviderEventObserved { kind: HarnessStoppedBySupervision }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.supervision_unavailable") {
+    ProviderEventObserved { kind: HarnessSupervisionUnavailable }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.placement_waiting") {
     ProviderEventObserved { kind: HarnessPlacementWaiting }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.wire_log_unwritable") {
@@ -689,11 +695,11 @@ fn provider_execution_fold_event(
         HarnessRoundUsage => state
         HarnessWireLogUnwritable => state
         HarnessPlacementWaiting => ProviderAwaitingSeat { detail: harness_placement_waiting_detail(raw: event.raw) }
-        HarnessAlignmentCheckpointDue =>
-          ProviderBudgetSpent {
-            activity: "Alignment checkpoint due · adjudication decides resume",
-            detail: event.raw,
-          }
+        HarnessSupervisionVerdict => state
+        HarnessStoppedBySupervision =>
+          ProviderFailed { activity: "stopped by supervision", detail: event.raw }
+        HarnessSupervisionUnavailable =>
+          ProviderFailed { activity: "supervision unavailable", detail: event.raw }
         ItemStarted { activity } =>
           ProviderRunning {
             activity: join(

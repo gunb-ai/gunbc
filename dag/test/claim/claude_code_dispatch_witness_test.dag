@@ -636,6 +636,7 @@ test fn the_captured_trip_reaches_a_credential_bound_claude_spawn_on_srv1() -> B
         worktree_path: "/tmp/w",
         brief: "brief",
         alignment_chain_fingerprint: "fp",
+        supervision_prompt: "the rendered chain",
       ) {
         DispatchProviderInnerArgvReady { argv } =>
           match argv.first() {
