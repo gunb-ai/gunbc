@@ -29,18 +29,19 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // BEHAVIOURAL CONTROL for gunbc.commit_workflow commit_writer_index_entries_for_path, owed by the
 // operator verdict on gunbc#7480 (2026-08-02). That function selects index entries by path, and its
-// body is a DECLARED SCAFFOLD: it spells the selection with flat_map because the bare name filter
-// is captured in that module by v2.std.algebra's filter<T> over FreeMonoid<T>, which enters the
-// resolution population through the semantically-required v2.compiler.source_authority import and
-// cannot reconcile with List<GitIndexEntry>. The scaffold's own note in commit_workflow carries the
-// root cause and the dissolve-on. THIS file is the other half: the whole-tree compile is the
-// discriminating red for the CAPTURE, while these rows prove the interim spelling did not change
-// commit-writer SEMANTICS. They must therefore keep executing after the resolver fix restores the
-// filter spelling -- a control that proves the two spellings agree is exactly what makes that
-// restoration safe, so it does not retire with the scaffold. The closure is deliberately live
-// rather than synthetic: importing gunbc.commit_workflow pulls v2.compiler.source_authority, and
-// therefore v2.std.algebra, into this test's population too, so these rows execute under the same
-// capture conditions as production rather than in a closure where the defect could not arise.
+// body is a DECLARED SCAFFOLD: it spells the selection with flat_map because, at the time of the
+// scaffold, the bare name filter was captured in that module by v2.std.algebra's filter<T> over
+// FreeMonoid<T>, which entered the resolution population through the semantically-required
+// v2.compiler.source_authority import and could not reconcile with List<GitIndexEntry>. The
+// algebra filter/any declarations have since been retired onto the collection roster callback
+// (census #13541); that particular capture surface is gone. The scaffold's own note in
+// commit_workflow carries the root cause and the dissolve-on (namespace-only name-resolution).
+// THIS file is the other half: these rows prove the interim spelling did not change commit-writer
+// SEMANTICS. They must therefore keep executing after the resolver fix restores the filter
+// spelling -- a control that proves the two spellings agree is exactly what makes that restoration
+// safe, so it does not retire with the scaffold. The closure is deliberately live rather than
+// synthetic: importing gunbc.commit_workflow pulls v2.compiler.source_authority, and therefore
+// v2.std.algebra, into this test's population too.
 // Coverage is the verdict's list: two or more entries, matching AND nonmatching paths, and
 // preservation of both the ORDER and the STAGE of matching entries -- order and stage are asserted
 // rather than counted because a selection that returned the right NUMBER of entries while
