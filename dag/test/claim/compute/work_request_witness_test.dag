@@ -3,6 +3,8 @@ module test.claim.compute.work_request_witness_test
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
 import gunbc.compute.work_provider_local {
+  compute_attempt_slot_references, compute_seat_sweep_failures, ComputeSeatsSwept, ComputeSeatSweepRefused,
+  RecoveryReleased, RecoveryDeclined, RecoverySettledButHeld, RecoveryRefused,
   UnitTermination, UnitAttemptCompleted, UnitAbsentAuthoritatively, UnitPopulated, UnitTerminationUnavailable,
   UnitPropertyReading, UnitObservations, unit_termination_decide,
   unit_termination_frees_capacity, unit_termination_wire, compute_attempt_completed,
@@ -683,4 +685,22 @@ test fn a_dependency_read_refuses_an_absent_or_refused_build() -> Bool {
       ComputeDependencyRefused { detail } => string_contains(s: detail, pattern: "tampered")
       ComputeDependencyResolved { dependency: _ } => false
     })
+}
+
+// THE SEAT SWEEP OFFERS EACH SLOT ONCE AND FAILS ONLY ON WHAT IT COULD NOT SETTLE. Slot files are
+// <reference>.<generation>, so one attempt's generations reduce to one reference. A declined seat is
+// the door doing its job; a refusal, or a closed attempt whose seat did not come back, is loud. RED
+// against a sweep that offered every generation, or that failed on a seat still inside its window.
+test fn the_seat_sweep_offers_each_slot_once_and_fails_only_on_the_unsettled() -> Bool {
+  compute_attempt_slot_references(names: ["e632@2026-10-11T04:49:31Z.1", "e632@2026-10-11T04:49:31Z.2", "", "f37b@2026-10-11T12:40:38Z.1", "e632@2026-10-11T04:49:31Z.3"])
+    == ["e632@2026-10-11T04:49:31Z", "f37b@2026-10-11T12:40:38Z"]
+    && count(compute_seat_sweep_failures(s: ComputeSeatsSwept { recoveries: [
+      RecoveryReleased { reference: "a", verdict: "unit gone", seat: "released" },
+      RecoveryDeclined { reference: "b", why: "TOO EARLY" },
+    ] })) == 0
+    && count(compute_seat_sweep_failures(s: ComputeSeatsSwept { recoveries: [
+      RecoverySettledButHeld { reference: "c", verdict: "unit gone", seat: "ledger refused" },
+      RecoveryRefused { detail: "slot unreadable" },
+    ] })) == 2
+    && count(compute_seat_sweep_failures(s: ComputeSeatSweepRefused { detail: "unlistable" })) == 1
 }
