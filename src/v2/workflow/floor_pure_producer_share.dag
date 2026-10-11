@@ -989,7 +989,8 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     module: "v2.test.claim.compiler.collection_callback_realization",
     claims: [
       SingleClaimFillDebtClaim { claim: "ccr_all_head_binds_its_row", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "ccr_declared_any_stays_an_ordinary_call", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "ccr_declared_any_refuses_rather_than_binding_silently", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "ccr_declared_any_stays_an_ordinary_call", standing: RetiredFillDebt { disposition: ClaimDeleted } },
       SingleClaimFillDebtClaim { claim: "ccr_map_undeclared_field_refuses_at_the_field", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "ccr_piped_map_head_binds_its_row", standing: ActiveFillDebt }
     ]
