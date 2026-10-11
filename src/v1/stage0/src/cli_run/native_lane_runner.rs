@@ -2772,24 +2772,65 @@ fn walk_native_ingest_layout_controls(binary: &Path, workspace: &Path) -> Result
 /// the head it owes and no more, so a report that held for a different reason cannot satisfy it.
 const POPULATION_LAYOUT_HOLDS_HEAD: &str = "layout holds";
 const POPULATION_PARSES_HEAD: &str = "population parses: ";
-const POPULATION_PARSES_ONE: &str = "population parses: 1 module(s)";
+const POPULATION_PARSED_UNIT: &str = " module(s)";
 const POPULATION_NOTHING_DETAIL: &str = "a parse over nothing is not a parse of zero";
-/// What follows `D of K` in the tally a held parse report carries whenever any refusal is declared
-/// (`v2.cli.population_verbs` `population_parse_declared_suffix`): D declared modules met refused exactly
-/// as declared, of K declared by `gunbc.parse_population_refusals`.
+/// What follows `D` in the tally every held parse report carries, declared or not
+/// (`v2.cli.population_verbs` `population_parse_report`): D declared modules were met refused exactly as
+/// declared by `gunbc.parse_population_refusals`, and a held report says every declared refusal was met.
 const POPULATION_DECLARED_TALLY_TAIL: &str =
-    " refusals declared by gunbc.parse_population_refusals";
+    " refusal(s) declared by gunbc.parse_population_refusals, each met";
+/// What every located line of a declared refusal the walk never judged contains
+/// (`v2.cli.population_verbs` `population_parse_unmet`).
+const POPULATION_UNMET_MARKER: &str = "but the population parse never met the module";
 
-/// The `(met, declared)` tally of a held parse report, or `None` when it carries none, which the verb
-/// prints exactly when nothing is declared.
-fn population_declared_tally(report: &str) -> Option<(usize, usize)> {
-    let tally = report
+/// The count of modules a held parse report says parsed outright (`population parses: N module(s)...`).
+fn population_parsed_count(report: &str) -> Option<usize> {
+    report
+        .trim()
+        .strip_prefix(POPULATION_PARSES_HEAD)?
+        .split_once(POPULATION_PARSED_UNIT)?
+        .0
+        .parse()
+        .ok()
+}
+
+/// How many `.dag` files lie under a governed tree directory, walked on disk: the referent the parse
+/// verb's population is joined to. The verb walks the namespaces the layout declares and parses each
+/// module; this reads the directory, so a verb that walked fewer modules than the tree holds cannot
+/// satisfy the join by agreeing with itself.
+fn count_dag_files(root: &Path) -> Result<usize, String> {
+    let mut count = 0;
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(directory) = pending.pop() {
+        let entries = std::fs::read_dir(&directory)
+            .map_err(|e| format!("reading {}: {e}", directory.display()))?;
+        for entry in entries {
+            let entry = entry.map_err(|e| format!("reading {}: {e}", directory.display()))?;
+            let kind = entry
+                .file_type()
+                .map_err(|e| format!("reading {}: {e}", entry.path().display()))?;
+            if kind.is_dir() {
+                pending.push(entry.path());
+            } else if entry.path().extension().is_some_and(|ext| ext == "dag") {
+                count += 1;
+            }
+        }
+    }
+    Ok(count)
+}
+
+/// The number of declared refusals a held parse report says it met, or `None` when it carries no tally,
+/// which the verb never does: it prints the tally even when nothing is declared, so a report without one
+/// is a verb that stopped reporting what it judged. A held report meets EVERY declared refusal, so this
+/// is also the size of the declaration.
+fn population_declared_met(report: &str) -> Option<usize> {
+    report
         .trim()
         .strip_suffix(POPULATION_DECLARED_TALLY_TAIL)?
         .rsplit("; ")
-        .next()?;
-    let (met, declared) = tally.split_once(" of ")?;
-    Some((met.parse().ok()?, declared.parse().ok()?))
+        .next()?
+        .parse()
+        .ok()
 }
 
 /// The lines of a population report worth quoting in a refusal: the report of a refused layout
@@ -2833,9 +2874,12 @@ fn population_refusal_framed(stderr: &str, parts: &[&str]) -> bool {
 /// fail. Both verbs hold over the live governed roots (`dag` and `src/v2`), which is the job these
 /// verbs have on `witnesses`; every other control differs from a holding one in a single fact:
 ///
-/// - `parse-population` over the door fixture's root parses exactly one module, and over the
-///   materialized malformed specimen refuses it by file; an empty root refuses (a parse over nothing
-///   is not a parse of zero) and an absent root refuses instead of reading as empty;
+/// - `parse-population` over the door fixture's root refuses every declared refusal the root does not
+///   hold (the declaration is an obligation on the walk) and nothing else, and over the materialized
+///   malformed specimen refuses it by file; an empty root refuses (a parse over nothing is not a parse
+///   of zero) and an absent root refuses instead of reading as empty;
+/// - the same specimen, as the dag tree of a compile whose closure never requests it, is refused by
+///   `parse-population` while that compile's verdict and emission equal the clean tree's;
 /// - `check-layout` over the misplaced fixture refuses the module whose line disagrees with its
 ///   position and the namespace no row declares, while the door fixture, where the same module line
 ///   IS at its rule position, is not refused for either; both refuse the declared rows their small
@@ -2901,16 +2945,20 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
         ));
     }
     let parse_live = run_cli_door(binary, &population_argv("parse-population", &live))?;
-    // THE LIST MAY NOT OUTLIVE ITS FILES: a declared refusal the walk did not meet is a module that was
-    // deleted, renamed or now fails for another cause, and the declaration then names a population the
-    // repository no longer has.
-    let declared_unmet = match population_declared_tally(&parse_live.stdout) {
-        Some((met, declared)) => met != declared,
-        None => parse_live.stdout.contains(POPULATION_DECLARED_TALLY_TAIL),
+    // THE VERDICT IS THE VERB'S (`v2.cli.population_verbs` `population_parse_report`): a declared refusal
+    // the walk did not meet is a located red the verb reports itself, so the list cannot outlive its files
+    // there. THIS JOIN IS ONLY REDUNDANT EVIDENCE THAT THE VERB JUDGED THE POPULATION IT NAMES: a held
+    // report without its tally, or one whose modules (parsed outright plus refused as declared) are not
+    // the `.dag` files the two trees hold on disk, did not walk the repository, whatever it printed.
+    let walked_files = count_dag_files(&live_dag)? + count_dag_files(&live_v2)?;
+    let declared_live = population_declared_met(&parse_live.stdout);
+    let population_unjudged = match (population_parsed_count(&parse_live.stdout), declared_live) {
+        (Some(parsed), Some(met)) => parsed + met != walked_files,
+        _ => true,
     };
     if parse_live.status != Some(0)
         || !parse_live.stdout.starts_with(POPULATION_PARSES_HEAD)
-        || declared_unmet
+        || population_unjudged
     {
         return Err(format!(
             "V2-NATIVE REFUSAL cause=NativePopulationParseDoesNotHoldOverTheLiveRoots — status={:?} stdout={} stderr={}",
@@ -2924,19 +2972,40 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
         parse_live.stdout.trim()
     );
 
-    // PARSE: the accepting control carries a count, the malformed specimen is refused by file.
+    // PARSE: the door root is refused for the declaration alone, the malformed specimen is refused by file.
     let door = run_cli_door(
         binary,
         &population_argv("parse-population", &[door_root.as_path()]),
     )?;
-    // The fixture holds one module, none of them declared: its tally, when the verb prints one, is zero met.
+    // THE DOOR ROOT HOLDS ONE CLEAN MODULE AND NONE OF THE DECLARED ONES, so the declaration is the only
+    // thing that can refuse it: every declared refusal is a module this root does not have, one located
+    // line each, and nothing else is reported (the module it holds parses). The line count is the live
+    // report's own count of met refusals, a join of two runs of the verb on the size of the declaration.
     let door_text = door.stdout.trim();
-    let door_is_one_module = door_text == POPULATION_PARSES_ONE
-        || (door_text.starts_with(POPULATION_PARSES_ONE)
-            && population_declared_tally(door_text).is_some_and(|(met, _)| met == 0)
-            && door_text[POPULATION_PARSES_ONE.len()..].starts_with("; 0 of "));
-    if door.status != Some(0) || !door_is_one_module {
-        return Err(fail("NativePopulationParseDoorRootNotOneModule", &door));
+    let door_declared_unmet = door_text
+        .lines()
+        .filter(|line| line.contains(POPULATION_UNMET_MARKER))
+        .count();
+    let door_is_only_the_unmet_declaration = !door_text.is_empty()
+        && door_text
+            .lines()
+            .all(|line| line.contains(POPULATION_UNMET_MARKER))
+        && declared_live == Some(door_declared_unmet);
+    if door.status != Some(CLI_DOOR_REFUSAL_EXIT)
+        || door.stdout.starts_with(POPULATION_PARSES_HEAD)
+        || !door_is_only_the_unmet_declaration
+        || !population_refusal_framed(
+            &door.stderr,
+            &[
+                "0 module(s) did not parse",
+                &format!("{door_declared_unmet} declared refusal(s) never met"),
+            ],
+        )
+    {
+        return Err(fail(
+            "NativePopulationParseDoorRootDeclarationNotUnmet",
+            &door,
+        ));
     }
     let malformed = run_cli_door(
         binary,
@@ -2953,6 +3022,60 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
         return Err(fail(
             "NativePopulationParseMalformedSpecimenNotRefusedByFile",
             &malformed,
+        ));
+    }
+    // A MODULE NO REQUEST NAMES FAILS THE POPULATION AND CHANGES NOTHING ABOUT A COMPILE. The malformed
+    // specimen's root is the dag tree of a compile whose closure (a v2 entry importing nothing) never asks
+    // for it: the emission must be the one a clean dag tree gives, so the specimen is neither read into
+    // the verdict nor into the output, while the population parse over the same two roots still refuses it
+    // by file. Reading it would change the verdict, because the acquirer refuses a read nothing requested.
+    let outside_two_v2 = workspace.join(NATIVE_INGEST_TWO_ROOTS_V2);
+    let outside_clean_dag = workspace.join(NATIVE_INGEST_TWO_ROOTS_DAG);
+    let emit_v2_entry = |dag_root: &Path| {
+        run_cli_door(
+            binary,
+            &[
+                "emit".to_string(),
+                "--entry".to_string(),
+                "v2.native_ingest.v2_other".to_string(),
+                "--source-root".to_string(),
+                dag_root.display().to_string(),
+                "--source-root".to_string(),
+                outside_two_v2.display().to_string(),
+            ],
+        )
+    };
+    let outside_clean = emit_v2_entry(&outside_clean_dag)?;
+    let outside_poisoned = emit_v2_entry(&malformed_root)?;
+    if outside_clean.status != Some(0)
+        || !outside_clean
+            .stdout
+            .contains("native_ingest_v2_other_value")
+        || outside_poisoned.status != outside_clean.status
+        || outside_poisoned.stdout != outside_clean.stdout
+    {
+        return Err(fail(
+            "NativeMalformedModuleOutsideTheClosureChangedTheCompile",
+            &outside_poisoned,
+        ));
+    }
+    let outside_parse = run_cli_door(
+        binary,
+        &population_argv(
+            "parse-population",
+            &[malformed_root.as_path(), outside_two_v2.as_path()],
+        ),
+    )?;
+    if outside_parse.status != Some(CLI_DOOR_REFUSAL_EXIT)
+        || !outside_parse
+            .stdout
+            .lines()
+            .any(|line| line.starts_with("dag:gunbc/malformed_specimen.dag: "))
+        || !population_refusal_framed(&outside_parse.stderr, &["1 module(s) did not parse"])
+    {
+        return Err(fail(
+            "NativeMalformedModuleOutsideTheClosureNotRefusedByTheParse",
+            &outside_parse,
         ));
     }
     let empty = run_cli_door(
@@ -3064,7 +3187,8 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
     }
     eprintln!(
         "v2-native-cli: population controls held (live roots hold both verbs; door root parses one module, \
-         the malformed specimen and an empty or absent root refuse; misplaced and undeclared files are \
+         the malformed specimen and an empty or absent root refuse, and a malformed module outside a compile's \
+         closure refuses the parse and leaves the compile unchanged; misplaced and undeclared files are \
          refused by file; usage refusals)"
     );
     Ok(())

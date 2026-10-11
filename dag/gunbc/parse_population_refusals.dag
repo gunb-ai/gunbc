@@ -6,8 +6,9 @@ import std.types { List, String }
 // `parse-population` over the live trees; this module is the exact set of modules that verb is permitted to refuse, by module file
 // key (`<tree>:<path>`) and parse cause, one class per standing drop and cause the verb reports; a module is in exactly one class.
 // The rule is two-sided: a module outside the list that fails to parse (or fails for another cause) is red, and a listed module that
-// parses is red, so a list can only shrink; the walked control additionally requires that the verb met every listed module, so an
-// entry cannot outlive its file. A class is retired by the capability its drop's restoration trigger names, never by editing a list.
+// parses is red, so a list can only shrink; a listed module the verb never meets is red too (`v2.cli.population_verbs`
+// `population_parse_report`), so an entry cannot outlive its file. A class is retired by the capability its drop's restoration trigger
+// names, never by editing a list.
 type RefusalClass {
   drop: String
   cause: String

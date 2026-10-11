@@ -27,9 +27,11 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // change carry a change nothing in the layout reads.
 //
 // THE DROP IS TWO-SIDED, so it can only shrink. A module outside the list that fails to parse is
-// red, and a listed module that starts parsing is also red: `parse-population` reports both, and
-// the walked control additionally requires that the number of declared refusals it saw equals
-// the length of the lists. The population is the exact list of modules, by identity, in
+// red, and a listed module that starts parsing is also red: `parse-population` reports both, and a
+// listed module it never meets (deleted, renamed or left out of the enumeration) is red too, each
+// located by identity in the verb's own typed verdict (`v2.cli.population_verbs`
+// `population_parse_report`); the walked control only joins that verdict's tally to the files on
+// disk. The population is the exact list of modules, by identity, in
 // `gunbc.parse_population_refusals` `field_refinement_keys`.
 
 data population_parse_field_refinement: RungDrop = RungDrop {

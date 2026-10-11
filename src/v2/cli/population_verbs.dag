@@ -1,7 +1,8 @@
 module v2.cli.population_verbs
 
-import std.types { Bool, Int, List }
+import std.types { Bool, Int, List, Map }
 import std.algebra { Cons }
+import std.optional { Absent, Optional, Present }
 import std.integer { int_to_decimal_string }
 import gunbc.parse_population_refusals { RefusalClass, parse_population_declared_refusal_classes }
 import gunbc.source_layout_namespaces { layout_namespaces }
@@ -45,7 +46,8 @@ import v2.compiler.source_authority {
   module_file_key,
   module_header_declared_name
 }
-import v2.std.algebra { HeadAbsent, HeadFound, any, length, list_head, list_map, list_reverse, skip }
+import v2.std.algebra { HeadAbsent, HeadFound, filter, fold_list, is_empty, length, list_head, list_map, list_reverse, skip }
+import v2.std.collection { empty_map, map_contains_key, map_insert, map_lookup }
 import v2.std.text { String }
 
 // THE WHOLE-POPULATION VERBS. Compiling an entry reads the modules that entry requests and nothing
@@ -163,101 +165,232 @@ fn check_layout(bindings: List<SourceRootBinding>) -> PopulationReport {
 
 // ---- parse-population --------------------------------------------------------------------------------
 
-// What a streaming parse keeps: how many parsed, how many members the declared drops
-// (gunbc.parse_population_refusals) name and refused exactly as declared, and one located line per
-// module that the population parse must report (newest first). No tree, no content and no module list
-// survives the member that produced it.
+// A DECLARED REFUSAL IS A MODULE FILE KEY AND A PARSE CAUSE, EXACTLY (gunbc.parse_population_refusals): a
+// module the declared classes do not name, or a named module that now fails for another cause, is not
+// covered by them. The DECLARATION is also an obligation on the walk: it names modules the walk must
+// meet, so a declared refusal the walk never judged is itself a refusal of the population.
+type DeclaredRefusal {
+  key: String
+  cause: String
+}
+
+// The declaration as the fold consumes it: every declared refusal in class order, and the cause each
+// module file key is declared refused for. A key is declared once, so the second map holds exactly the
+// first.
+type DeclaredRoster {
+  ordered: List<DeclaredRefusal>
+  causes: Map<String, String>
+}
+
+// What a streaming parse keeps: how many parsed outright, how many members refused exactly as
+// declared, the roster and the keys the walk has judged (a declared refusal is REMAINING until its key
+// is judged, and what remains when the walk ends is a located refusal), and one located line per module
+// the population parse must report (newest first). No tree, no content and no module list survives the
+// member that produced it.
 type PopulationParse {
   parsed: Int
   declared: Int
+  roster: DeclaredRoster
+  judged: Map<String, Bool>
   refusals: List<String>
 }
 
-// A DECLARED REFUSAL IS A MODULE FILE KEY AND A PARSE CAUSE, EXACTLY (gunbc.parse_population_refusals): a
-// module the declared classes do not name, or a named module that now fails for another cause, is not
-// covered by them.
-fn declared_refusal_names(classes: List<RefusalClass>, key: String, cause: String) -> Bool {
-  any(xs: classes, predicate: fn(group) { group.cause == cause && any(xs: group.keys, predicate: fn(listed) { listed == key }) })
+type RosterBuild {
+  ordered_reversed: List<DeclaredRefusal>
+  causes: Map<String, String>
+  duplicates_reversed: List<String>
 }
 
-fn declared_file_names(classes: List<RefusalClass>, key: String) -> Bool {
-  any(xs: classes, predicate: fn(group) { any(xs: group.keys, predicate: fn(listed) { listed == key }) })
-}
-
-fn declared_total(classes: List<RefusalClass>, total: Int) -> Int {
-  match list_head(xs: classes) {
-    HeadAbsent => total
-    HeadFound { value: group } => declared_total(classes: skip(xs: classes, n: 1), total: total + length(xs: group.keys))
+fn roster_build_add(acc: RosterBuild, key: String, cause: String) -> RosterBuild {
+  if map_contains_key(m: acc.causes, key: key) {
+    RosterBuild {
+      ordered_reversed: acc.ordered_reversed,
+      causes: acc.causes,
+      duplicates_reversed: Cons { head: key, tail: acc.duplicates_reversed }
+    }
+  } else {
+    RosterBuild {
+      ordered_reversed: Cons { head: DeclaredRefusal { key: key, cause: cause }, tail: acc.ordered_reversed },
+      causes: map_insert(m: acc.causes, key: key, value: cause),
+      duplicates_reversed: acc.duplicates_reversed
+    }
   }
 }
 
-fn population_parse_refused(classes: List<RefusalClass>, tally: PopulationParse, key: String, cause: String) -> PopulationParse {
-  if declared_refusal_names(classes: classes, key: key, cause: cause) {
-    PopulationParse { parsed: tally.parsed, declared: tally.declared + 1, refusals: tally.refusals }
+// THE ROSTER REFUSES A MODULE DECLARED TWICE, whether by two classes or twice by one: a module has one
+// parse result, so a second declaration is a second authority for it, and consuming whichever came first
+// would hide the other.
+type PopulationBegin
+  = PopulationBegun { tally: PopulationParse }
+  | PopulationDeclarationDuplicated { keys: List<String> }
+
+fn population_parse_begin(classes: List<RefusalClass>) -> PopulationBegin {
+  let no_causes: Map<String, String> = empty_map()
+  let no_judged: Map<String, Bool> = empty_map()
+  let built = fold_list(
+    xs: classes,
+    empty: RosterBuild { ordered_reversed: [], causes: no_causes, duplicates_reversed: [] },
+    cons: fn(acc, group) {
+      fold_list(xs: group.keys, empty: acc, cons: fn(inner, key) { roster_build_add(acc: inner, key: key, cause: group.cause) })
+    }
+  )
+  if is_empty(xs: built.duplicates_reversed) {
+    PopulationBegun {
+      tally: PopulationParse {
+        parsed: 0,
+        declared: 0,
+        roster: DeclaredRoster { ordered: list_reverse(xs: built.ordered_reversed), causes: built.causes },
+        judged: no_judged,
+        refusals: []
+      }
+    }
   } else {
-    PopulationParse { parsed: tally.parsed, declared: tally.declared, refusals: Cons { head: concat(key, ": ", cause), tail: tally.refusals } }
+    PopulationDeclarationDuplicated { keys: list_reverse(xs: built.duplicates_reversed) }
+  }
+}
+
+// THE ONE LOOKUP OF A DECLARATION: the cause a module file key is declared refused for, if it is.
+fn roster_cause(roster: DeclaredRoster, key: String) -> Optional<String> {
+  map_lookup(m: roster.causes, key: key)
+}
+
+// Whether the declaration names this module refused for exactly this cause: how a consumer that
+// judges a refusal outside the walk (the witness-set join's declared unread files) asks the same
+// question the walk asks.
+fn roster_declares(roster: DeclaredRoster, key: String, cause: String) -> Bool {
+  match roster_cause(roster: roster, key: key) {
+    Present { value: declared_cause } => declared_cause == cause
+    Absent => false
+  }
+}
+
+fn population_parse_judged(tally: PopulationParse, key: String) -> Map<String, Bool> {
+  map_insert(m: tally.judged, key: key, value: true)
+}
+
+// A member the walk judged: exactly as declared (consumes its declaration), declared for another cause
+// (consumes it and contradicts it), or not declared at all (a refusal of its own).
+fn population_parse_refused(tally: PopulationParse, key: String, cause: String) -> PopulationParse {
+  match roster_cause(roster: tally.roster, key: key) {
+    Present { value: declared_cause } =>
+      if declared_cause == cause {
+        PopulationParse {
+          parsed: tally.parsed,
+          declared: tally.declared + 1,
+          roster: tally.roster,
+          judged: population_parse_judged(tally: tally, key: key),
+          refusals: tally.refusals
+        }
+      } else {
+        PopulationParse {
+          parsed: tally.parsed,
+          declared: tally.declared,
+          roster: tally.roster,
+          judged: population_parse_judged(tally: tally, key: key),
+          refusals: Cons {
+            head: concat(key, ": ", cause, "; gunbc.parse_population_refusals declares it refused for ", declared_cause),
+            tail: tally.refusals
+          }
+        }
+      }
+    Absent =>
+      PopulationParse {
+        parsed: tally.parsed,
+        declared: tally.declared,
+        roster: tally.roster,
+        judged: tally.judged,
+        refusals: Cons { head: concat(key, ": ", cause), tail: tally.refusals }
+      }
   }
 }
 
 // THE OTHER DIRECTION OF THE SAME EXACTNESS: a module the declared classes name that parses is not an
 // unchanged state, so the list can only shrink -- a class is retired by the capability, never carried
 // past it.
-fn population_parse_accepted(classes: List<RefusalClass>, tally: PopulationParse, key: String) -> PopulationParse {
-  if declared_file_names(classes: classes, key: key) {
-    PopulationParse {
-      parsed: tally.parsed,
-      declared: tally.declared,
-      refusals: Cons { head: concat(key, ": parses, but gunbc.parse_population_refusals declares it refused; remove it from its class"), tail: tally.refusals }
-    }
-  } else {
-    PopulationParse { parsed: tally.parsed + 1, declared: tally.declared, refusals: tally.refusals }
-  }
-}
-
-fn population_parse_member(env: AcquisitionEnv, classes: List<RefusalClass>, name: String, tally: PopulationParse) -> PopulationParse {
-  match population_member(layout: env.layout, bindings: env.bindings, name: name) {
-    PopulationMemberRefused { cause: cause } =>
-      PopulationParse { parsed: tally.parsed, declared: tally.declared, refusals: Cons { head: concat(name, ": ", cause), tail: tally.refusals } }
-    PopulationMemberRead { member: member } =>
-      match acquisition_parse(env: env, file: member.file, content: member.content) {
-        MemberParses => population_parse_accepted(classes: classes, tally: tally, key: module_file_key(file: member.file))
-        MemberParseRefused { cause: cause } =>
-          population_parse_refused(classes: classes, tally: tally, key: module_file_key(file: member.file), cause: cause)
+fn population_parse_accepted(tally: PopulationParse, key: String) -> PopulationParse {
+  match roster_cause(roster: tally.roster, key: key) {
+    Present { value: declared_cause } =>
+      PopulationParse {
+        parsed: tally.parsed,
+        declared: tally.declared,
+        roster: tally.roster,
+        judged: population_parse_judged(tally: tally, key: key),
+        refusals: Cons {
+          head: concat(key, ": parses, but gunbc.parse_population_refusals declares it refused for ", declared_cause, "; remove it from its class"),
+          tail: tally.refusals
+        }
+      }
+    Absent =>
+      PopulationParse {
+        parsed: tally.parsed + 1,
+        declared: tally.declared,
+        roster: tally.roster,
+        judged: tally.judged,
+        refusals: tally.refusals
       }
   }
 }
 
-fn population_parse_go(env: AcquisitionEnv, classes: List<RefusalClass>, pending: List<String>, tally: PopulationParse) -> PopulationParse {
+fn population_parse_member(env: AcquisitionEnv, name: String, tally: PopulationParse) -> PopulationParse {
+  match population_member(layout: env.layout, bindings: env.bindings, name: name) {
+    PopulationMemberRefused { cause: cause } =>
+      PopulationParse {
+        parsed: tally.parsed,
+        declared: tally.declared,
+        roster: tally.roster,
+        judged: tally.judged,
+        refusals: Cons { head: concat(name, ": ", cause), tail: tally.refusals }
+      }
+    PopulationMemberRead { member: member } =>
+      match acquisition_parse(env: env, file: member.file, content: member.content) {
+        MemberParses => population_parse_accepted(tally: tally, key: module_file_key(file: member.file))
+        MemberParseRefused { cause: cause } => population_parse_refused(tally: tally, key: module_file_key(file: member.file), cause: cause)
+      }
+  }
+}
+
+fn population_parse_go(env: AcquisitionEnv, pending: List<String>, tally: PopulationParse) -> PopulationParse {
   match list_head(xs: pending) {
     HeadAbsent => tally
     HeadFound { value: name } =>
-      population_parse_go(
-        env: env,
-        classes: classes,
-        pending: skip(xs: pending, n: 1),
-        tally: population_parse_member(env: env, classes: classes, name: name, tally: tally)
+      population_parse_go(env: env, pending: skip(xs: pending, n: 1), tally: population_parse_member(env: env, name: name, tally: tally))
+  }
+}
+
+// THE DECLARED REFUSALS THE WALK NEVER JUDGED, one located line each, in declaration order. A module
+// deleted, renamed or left out of the enumeration leaves its declaration here, so the list may not
+// outlive its files.
+fn population_parse_unmet(tally: PopulationParse) -> List<String> {
+  list_map(
+    xs: filter(xs: tally.roster.ordered, predicate: fn(declaration) { !map_contains_key(m: tally.judged, key: declaration.key) }),
+    f: fn(declaration) {
+      concat(
+        declaration.key,
+        ": gunbc.parse_population_refusals declares it refused for ",
+        declaration.cause,
+        ", but the population parse never met the module; it is not in the enumerated population, so remove it from its class"
       )
-  }
+    }
+  )
 }
 
-// The tally is printed whenever anything is declared, even when none was met: a walk that met none of the
-// declared modules is the walk the live-root control must be able to refuse (the list may not outlive its
-// files), and a report with no tally says that nothing is declared.
-fn population_parse_declared_suffix(tally: PopulationParse) -> String {
-  let total = declared_total(classes: parse_population_declared_refusal_classes(), total: 0)
-  if total > 0 {
-    concat("; ", int_to_decimal_string(value: tally.declared), " of ", int_to_decimal_string(value: total), " refusals declared by gunbc.parse_population_refusals")
-  } else {
-    ""
-  }
-}
-
+// THE VERDICT IS THIS FUNCTION'S, AND ONLY THIS FUNCTION'S. `held` follows from the typed result: no
+// contradicted or unreadable member, no declared refusal left unmet, and at least one module parsed. A
+// host that prints the report reads `held`; it does not reinterpret the text to decide whether a held
+// population held.
 fn population_parse_report(tally: PopulationParse) -> PopulationReport {
-  if length(xs: tally.refusals) > 0 {
+  let unmet = population_parse_unmet(tally: tally)
+  let lines = list_reverse(xs: fold_list(xs: unmet, empty: tally.refusals, cons: fn(acc, line) { Cons { head: line, tail: acc } }))
+  if length(xs: lines) > 0 {
     PopulationReport {
-      text: join(list_reverse(xs: tally.refusals), "\n"),
+      text: join(lines, "\n"),
       held: false,
-      detail: concat(int_to_decimal_string(value: length(xs: tally.refusals)), " module(s) did not parse, could not be read, or contradict the declared refusals, each on its own line of the report")
+      detail: concat(
+        int_to_decimal_string(value: length(xs: tally.refusals)),
+        " module(s) did not parse, could not be read, or contradict the declared refusals; ",
+        int_to_decimal_string(value: length(xs: unmet)),
+        " declared refusal(s) never met, each on its own line of the report"
+      )
     }
   } else if tally.parsed == 0 {
     PopulationReport {
@@ -267,17 +400,32 @@ fn population_parse_report(tally: PopulationParse) -> PopulationReport {
     }
   } else {
     PopulationReport {
-      text: concat("population parses: ", int_to_decimal_string(value: tally.parsed), " module(s)", population_parse_declared_suffix(tally: tally)),
+      text: concat(
+        "population parses: ",
+        int_to_decimal_string(value: tally.parsed),
+        " module(s); ",
+        int_to_decimal_string(value: tally.declared),
+        " refusal(s) declared by gunbc.parse_population_refusals, each met"
+      ),
       held: true,
-      detail: "every enumerated module parsed or is refused exactly as declared"
+      detail: "every enumerated module parsed or is refused exactly as declared, and every declared refusal was met"
     }
   }
 }
 
+fn population_declaration_duplicated_report(keys: List<String>) -> PopulationReport {
+  PopulationReport {
+    text: join(list_map(xs: keys, f: fn(key) { concat(key, ": gunbc.parse_population_refusals declares it more than once") }), "\n"),
+    held: false,
+    detail: "gunbc.parse_population_refusals declares a module more than once; a module is declared in exactly one class"
+  }
+}
+
 fn parse_population_listed(env: AcquisitionEnv, modules: List<String>) -> PopulationReport {
-  population_parse_report(
-    tally: population_parse_go(env: env, classes: parse_population_declared_refusal_classes(), pending: modules, tally: PopulationParse { parsed: 0, declared: 0, refusals: [] })
-  )
+  match population_parse_begin(classes: parse_population_declared_refusal_classes()) {
+    PopulationDeclarationDuplicated { keys: keys } => population_declaration_duplicated_report(keys: keys)
+    PopulationBegun { tally: tally } => population_parse_report(tally: population_parse_go(env: env, pending: modules, tally: tally))
+  }
 }
 
 fn parse_population_prepared(env: AcquisitionEnv) -> PopulationReport {
