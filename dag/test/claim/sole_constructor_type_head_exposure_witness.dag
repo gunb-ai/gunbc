@@ -59,16 +59,11 @@ data sc_sealed_at_payload_red: String = "module probe_sc_sealed_at_payload_red\n
 // this one silent, and a one-direction wall would read as covering the class.
 data sc_payload_at_sealed_red: String = "module probe_sc_payload_at_sealed_red\ntype Inner { v: Int }\ntype Wrapped sole_constructor { root: Inner }\nfn takes_wrapped(x: Wrapped) -> Int { 0 }\nfn f(i: Inner) -> Int { takes_wrapped(x: i) }\n"
 
-// RED 3 -- a sealed carrier at a KERNEL formal, which this repair does NOT close. Measured on the
-// repaired compiler, in the same run that shows the two record positions above now refusing:
-// record_at_scalar_needs_identity reads the exposure this change repairs, so the head is now
-// visible and something ELSE declines the judgment at this position; what that is has not been
-// established and is not guessed at here. This probe asserts the REFUSAL the floor requires, not
-// the accepting answer the compiler gives today, and is therefore enrolled in
-// v2.workflow.floor_expected_red -- where it still executes and is still asserted, its failure
-// counts as agreement, and it REDS THE BUILD the moment it starts passing, naming itself for
-// removal. An earlier revision asserted `!sc_refuses_inhabitance` instead; that made the defective
-// answer required green behaviour, which DESIGN section 4b(4) forbids.
+// RED 3 -- a sealed carrier at a KERNEL formal. The head-exposure repair made the head visible
+// but the kernel position kept accepting: the judgment there declined for want of a produced
+// declaration identity. v1.compiler.infer product_at_scalar_declared_type (gunbc#13391) refuses it
+// from the identity-keyed head census, so this probe left v2.workflow.floor_expected_red and stays
+// as a permanent regression control (DESIGN section 4b(4)).
 data sc_sealed_at_kernel_red: String = "module probe_sc_sealed_at_kernel_red\ntype Inner { v: Int }\ntype Wrapped sole_constructor { root: Inner }\nfn takes_int(n: Int) -> Int { n }\nfn f(w: Wrapped) -> Int { takes_int(n: w) }\n"
 
 // THE NO-FORK CONTROL. Identical to RED 1 except the actual's declaration is not sealed. It

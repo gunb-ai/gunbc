@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.a_checkpoint_announces_an_adjudication_that_only_happens_at_the_turn_cap
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+// Consumer: directory-derived recurring_failure_mode.roster, projected by
+// gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
+data a_checkpoint_announces_an_adjudication_that_only_happens_at_the_turn_cap: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_checkpoint_announces_an_adjudication_that_only_happens_at_the_turn_cap" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: an epoch-boundary checkpoint is presented as an adjudication of the work, while the modeled supervisor adjudication runs only when a lineage reaches continuation_turn_cap. HARM: operators and later turns treat a cadence stop as a judged resume, so unfinished work continues or stops on a label that no adjudicator produced (DESIGN section 5; a second meaning for one announcement is section 3's meaning fork).",
+
+    "OCCURRENCE, 2026-10-11, srv1 workspace bring-up findings ledger F60 (ledger v3 numbering; later additions are F60+), operator review of source pinned to main at acc218340ed6e24a9ad06c550a5494307d0320bb. HarnessAlignmentCheckpointDue is folded to ProviderBudgetSpent with activity Alignment checkpoint due / adjudication decides resume (gunbc.roadmap.roadmap_provider_events). The comments there already say adjudication is the workflow's and is not a pronouncement on the work. The place a lineage actually asks the supervisor's question is continuation_at_cap (gunbc.roadmap.roadmap_attempt_continuation), which runs only at t >= continuation_turn_cap. Below the cap, continuation_continue_next_turn mints the next turn with no supervisor receipt. Roadmap leaf cc-evidence-to-consumers: a result must qualify the exact behavior the next step relies on.",
+
+    "DISTINGUISHING FACTS: this is not a missing checkpoint-due event -- the event is real. It is not a FreshFromBase restart. It is the pair: UI/activity text that names adjudication, and an adjudicator that is not on that path. RUNG FOUND AT: mitigatable when a reader notices the comment; silent when they trust the activity line. CEILING: structurally guaranteed -- whether a supervisor receipt was read is decidable. NEXT TRIGGER: a checkpoint-due presentation that names adjudication refuses unless continuation_at_cap actually ran for that turn, with a red that a mid-cap checkpoint is labeled adjudicated while supervisor_verdict is absent.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.roadmap.roadmap_provider_events", decl_name: "provider_execution_fold_event", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.roadmap.roadmap_attempt_continuation", decl_name: "continuation_at_cap", field: WholeDeclaration },
+  ],
+}

@@ -44,7 +44,7 @@ import v2.std.node {
   Behavior,
   Bind,
   Branch,
-  Cardinality,
+  Occupancy,
   ComputationNode,
   Conj,
   Connective,
@@ -1052,7 +1052,7 @@ fn connective_to_dimension_family(connective: Connective) -> AffectedDimension {
     Conj => ^canonical_tag_conj
     Disj => ^canonical_tag_disj
     Arrow => ^canonical_tag_arrow
-    Cardinality => ^canonical_tag_cardinality
+    Occupancy => ^canonical_tag_cardinality
     Instantiation => ^canonical_tag_instantiation
   }
 }

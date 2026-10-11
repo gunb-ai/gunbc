@@ -507,7 +507,8 @@ fn cas_window_generations(root: NonEmptyStr, key: NonEmptyStr) -> CasWindowGener
 }
 
 fn cas_window_max_generation(generations: List<CasGeneration>) -> CasGeneration? {
-  fold(generations, init: none, f: (best, g) => match best {
+  let no_generation_yet: CasGeneration? = none
+  fold(generations, init: no_generation_yet, f: (best, g) => match best {
     Absent => Present { value: g }
     Present { value: b } => if cas_generation_count(g: g) > cas_generation_count(g: b) { Present { value: g } } else { best }
   })

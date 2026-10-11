@@ -11,7 +11,7 @@ import v2.std.diagnostic {
   Suggested,
   diagnostics_singleton
 }
-import v2.std.node { Edge, Authored, Node, Positional, Symbol, TypeNode, Atom, Cardinality }
+import v2.std.node { Edge, Authored, Node, Positional, Symbol, TypeNode, Atom, Occupancy }
 import v2.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -34,12 +34,12 @@ fn atom_node(s: Symbol) -> Node {
 data flattened_optional_input: Node = atom_node(s: ^flattened_optional_symbol)
 
 data falsification_nested_optional: Node = Node {
-  kind: TypeNode { connective: Cardinality },
+  kind: TypeNode { connective: Occupancy },
   children: [
     Edge {
       label: Positional,
       target: Node {
-        kind: TypeNode { connective: Cardinality },
+        kind: TypeNode { connective: Occupancy },
         children: [
           Edge { label: Positional, target: atom_node(s: ^optional_value_symbol) },
         ],
@@ -51,7 +51,7 @@ data falsification_nested_optional: Node = Node {
 }
 
 data falsification_optional_double_unwrap: Node = Node {
-  kind: TypeNode { connective: Cardinality },
+  kind: TypeNode { connective: Occupancy },
   children: [
     Edge { label: Positional, target: atom_node(s: ^double_unwrap_symbol) },
   ],

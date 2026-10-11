@@ -237,6 +237,10 @@ fn serving_route(group: FabricGroup) -> ServingRoute {
 // route identity minted now, with two routes that happen to sit one per cage, would be a second name
 // for a distinction nothing yet exercises.
 //
+// THE FIRST NON-FABRICGROUP ROUTE EXISTS: the operator-run ninfer endpoint (gunbc.harness.harness_operator_route
+// harness_operator_route) is a route identified by its own unit and group_wire, not a FabricGroup. It is NOT
+// enrolled here -- enrollment names fleet cages -- and the harness roster folds it beside the enrolled routes.
+//
 // A NOTE ON THE WORD FABRIC, because this module sits between both senses: FabricGroup here is the
 // NETWORK interconnect sense (gunbc.spark.fabric_switch_observed), while the selection and capacity
 // machinery this feeds is the COMPUTE fabric sense (product.fabric.selection). They are two concepts

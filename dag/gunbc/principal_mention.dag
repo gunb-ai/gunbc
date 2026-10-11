@@ -1,7 +1,7 @@
 module gunbc.principal_mention
 
 import gunbc.principal_projection { PrincipalRef, principal_ref_label, principal_ref_parse_label }
-import extdeps.uri { uri_percent_encode_component, UriPercentComponentEncoded, UriPercentComponentRefused }
+import extdeps.uri.percent_encoding { uri_percent_encode_component, UriPercentComponentEncoded, UriPercentComponentRefused }
 import extdeps.http.form_urlencoded { form_component }
 
 // Persisted v1 mention: Markdown display snapshot plus canonical stable principal label.

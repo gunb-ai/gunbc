@@ -12,7 +12,7 @@ import gunbc.roadmap.roadmap_dispatch_environment {
   CapabilityNotGrounded,
 }
 import test.claim.capability_ensure_fixture { grounded_capability_ensure_witness_fixture }
-import gunbc.fleet.fleet_desired_observe {
+import gunbc.fleet.origin_main_revision_observe {
   LocalTreeRevision,
   LocalTreeRevisionObserved,
   LocalTreeRevisionUnobserved,

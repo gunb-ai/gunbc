@@ -66,7 +66,7 @@ fn use_site_verdict_move_field_of(children: List<Edge>) -> UseSiteVerdict {
         TypeNode { connective: Conj } => Unclassified
         TypeNode { connective: Disj } => Unclassified
         TypeNode { connective: Arrow } => Unclassified
-        TypeNode { connective: Cardinality } => Unclassified
+        TypeNode { connective: Occupancy } => Unclassified
         TypeNode { connective: Instantiation } => Unclassified
         ComputationNode { behavior: _ } => Unclassified
       }
@@ -92,7 +92,7 @@ fn use_site_verdict_of_node(target: Node) -> UseSiteVerdict {
     TypeNode { connective: Conj } => Unclassified
     TypeNode { connective: Disj } => Unclassified
     TypeNode { connective: Arrow } => Unclassified
-    TypeNode { connective: Cardinality } => Unclassified
+    TypeNode { connective: Occupancy } => Unclassified
     TypeNode { connective: Instantiation } => Unclassified
     ComputationNode { behavior: _ } => Unclassified
   }

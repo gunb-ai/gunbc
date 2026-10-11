@@ -21,7 +21,7 @@ import extdeps.http.header_dump { HeaderDumpRead, HeaderDumpUnread }
 import gunbc.harness.harness_reasoning_wire {
   NemotronUltraFreeOnOpenRouter, ReasoningOff, ReasoningStandard, ReasoningMaximum,
   harness_openrouter_reasoning_kwargs, harness_reasoning_kwargs_for, ReasoningKwargsAdmitted, ReasoningLevelUnsupported,
-  harness_unit_model_id, harness_unit_placement, LeasedFromHostedQuota, PlacedOnFleetSeat,
+  harness_unit_model_id, harness_unit_placement, LeasedFromHostedQuota, PlacedOnFleetSeat, RunOnOperatorEndpoint,
 }
 import gunbc.harness.harness_hosted_route {
   hosted_round_decision, RoundBothLeased, RoundRefusedFull, RoundRefusedUnleasable,
@@ -226,7 +226,7 @@ test fn the_hosted_nemotron_route_is_quota_leased_https_and_selects_effort_high(
   match harness_hosted_route_for(unit: NemotronUltraFreeOnOpenRouter) {
     Absent => false
     Present { value: route } =>
-      (match harness_unit_placement(unit: NemotronUltraFreeOnOpenRouter) { LeasedFromHostedQuota => true  PlacedOnFleetSeat => false })
+      (match harness_unit_placement(unit: NemotronUltraFreeOnOpenRouter) { LeasedFromHostedQuota => true  PlacedOnFleetSeat => false  RunOnOperatorEndpoint => false })
         && (route.url as String).starts_with("https://")
         && (harness_unit_model_id(unit: NemotronUltraFreeOnOpenRouter) as String) == "nvidia/nemotron-3-ultra-550b-a55b:free"
         && (match harness_hosted_level_choice(route: route, max_tokens: harness_default_max_token_count) {

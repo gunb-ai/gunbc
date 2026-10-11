@@ -16,7 +16,7 @@ import std.optional {
   optional_present
 }
 import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, outcome_accepted, outcome_rejected, invariant_port_locus, port_refusal_locus, Unavailable, AmbiguousIntent }
-import v2.std.node { Arrow, Atom, Cardinality, ComputationNode, Conj, Disj, Edge, Instantiation, Authored, Node, Symbol, TypeNode, is_empty_conj_root }
+import v2.std.node { Arrow, Atom, Occupancy, ComputationNode, Conj, Disj, Edge, Instantiation, Authored, Node, Symbol, TypeNode, is_empty_conj_root }
 import v2.std.node_query { find_named_child }
 import std.integer { Signedness, Signed, Unsigned, decimal_digit_of_units, int_to_decimal_string }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural }
@@ -1287,7 +1287,7 @@ fn integer_decimal_digit_from_node_optional(node: Node) -> Optional<DecimalDigit
         Conj => optional_absent()
         Disj => optional_absent()
         Arrow => optional_absent()
-        Cardinality => optional_absent()
+        Occupancy => optional_absent()
         Instantiation => optional_absent()
       }
     ComputationNode { behavior: _ } => optional_absent()

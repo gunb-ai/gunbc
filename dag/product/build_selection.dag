@@ -299,6 +299,6 @@ fn build_standing(
     subject: project_entry(candidate: subject, declared: declared),
     field: project_field(candidates: field, declared: declared),
     axes: build_selection_axes(),
-    sensitivities: no_missing,
+    sensitivities: [],
   )
 }

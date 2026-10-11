@@ -120,7 +120,7 @@ fn t_subject(prompt: String, attempt: String) -> HarnessTurnSubject {
 }
 
 fn t_empty() -> HarnessCandidates {
-  HarnessCandidates { candidates: [], notes: [], retryable: false, incarnations: [] }
+  HarnessCandidates { candidates: [], notes: [], retryable: false, incarnations: [], owner_standing: none }
 }
 
 // RED, THROUGH THE PRODUCTION ROUTE. harness_bind_candidate is the fold production calls; with a

@@ -393,7 +393,7 @@ fn belt_integrate_one_cli(repo_root: String, node_id: String, attempt_key: Strin
 // that function's fail-closed reason.
 // ------------------------------------------------------------------------------------------------
 
-fn belt_instance_from_env(entry: String, then: fn(HostDashboardInstance) -> ProcessExit) -> ProcessExit {
+fn belt_instance_from_env(entry: String, continuation: fn(HostDashboardInstance) -> ProcessExit) -> ProcessExit {
   match shell.Env.Get(name: belt_spawn_workdir_env_var).value {
     Absent => exit_failure(reason: join([entry, ": GUNBC_BELT_SPAWN_WORKDIR not set -- the instance is a per-deployment fact (fail-closed)"], ""))
     Present { value: workdir } =>
@@ -402,7 +402,7 @@ fn belt_instance_from_env(entry: String, then: fn(HostDashboardInstance) -> Proc
       } else {
         match dashboard_instance_for_repo_root(repo_root: workdir) {
           DashboardInstanceRootUnknown { repo_root: w } => exit_failure(reason: join([entry, ": GUNBC_BELT_SPAWN_WORKDIR does not match a known dashboard instance repo root: ", w], ""))
-          DashboardInstanceResolved { instance } => then(instance)
+          DashboardInstanceResolved { instance } => continuation(instance)
         }
       }
   }
@@ -454,7 +454,7 @@ fn belt_attempt_obligations_pass(instance: HostDashboardInstance, node_id: Strin
 }
 
 fn belt_attempt_obligations_cli(node_id: String, attempt_key: String) -> ProcessExit {
-  belt_instance_from_env(entry: "belt_attempt_obligations_cli", then: instance => {
+  belt_instance_from_env(entry: "belt_attempt_obligations_cli", continuation: instance => {
     let run_failures = belt_attempt_obligations_pass(instance: instance, node_id: node_id, attempt_key: attempt_key, passes_left: belt_attempt_obligation_pass_bound)
     let tail = belt_obligations_enqueued_exit(
       context: "after the attempt's obligations",
@@ -469,7 +469,7 @@ fn belt_instance_obligation_cli(kind: String) -> ProcessExit {
   match belt_instance_obligation_kind_of_key(key: kind) {
     Absent => exit_failure(reason: join(["belt_instance_obligation_cli: no instance obligation is named ", kind], ""))
     Present { value: k } =>
-      belt_instance_from_env(entry: "belt_instance_obligation_cli", then: instance => belt_instance_obligation_run(instance: instance, kind: k))
+      belt_instance_from_env(entry: "belt_instance_obligation_cli", continuation: instance => belt_instance_obligation_run(instance: instance, kind: k))
   }
 }
 
@@ -495,7 +495,7 @@ fn belt_instance_obligation_run(instance: HostDashboardInstance, kind: BeltInsta
 }
 
 fn belt_exit_drain_cli() -> ProcessExit {
-  belt_instance_from_env(entry: "belt_exit_drain_cli", then: instance => {
+  belt_instance_from_env(entry: "belt_exit_drain_cli", continuation: instance => {
     let drained = belt_exit_drain_for_instance(instance: instance)
     let failures = belt_exit_drain_failures(d: drained)
     if count(failures) == 0 { ExitSuccess } else { exit_failure(reason: join([serialize_json(v: belt_exit_drain_json(d: drained)), "\n", join(failures, "\n")], "")) }
@@ -503,7 +503,7 @@ fn belt_exit_drain_cli() -> ProcessExit {
 }
 
 fn belt_discover_once_cli() -> ProcessExit {
-  belt_instance_from_env(entry: "belt_discover_once_cli", then: instance => {
+  belt_instance_from_env(entry: "belt_discover_once_cli", continuation: instance => {
     let discovered = belt_discover_for_instance(instance: instance)
     match belt_discovery_pass_outcome(discovery: discovered) {
       BeltPassRecorded => ExitSuccess
@@ -515,6 +515,6 @@ fn belt_discover_once_cli() -> ProcessExit {
 }
 
 fn belt_launch_enqueue_cli() -> ProcessExit {
-  belt_instance_from_env(entry: "belt_launch_enqueue_cli", then: instance =>
+  belt_instance_from_env(entry: "belt_launch_enqueue_cli", continuation: instance =>
     belt_obligations_enqueued_exit(context: "belt_launch_enqueue_cli", enqueues: [belt_instance_obligation_enqueue(instance: instance, kind: LaunchObligation)]))
 }

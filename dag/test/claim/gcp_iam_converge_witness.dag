@@ -7,14 +7,14 @@ import std.content_hash { Sha256Digest }
 import std.optional { Present, Absent }
 import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding, GcpIamBindingCell }
 import gunbc.auth.approval_decision_store { request_revision_of }
-import gunbc.auth.heal_publisher_provision { DedicatedFederation, FederationClassification, FederationClassified, FederationUnclassified, heal_publisher_dedicated_federation, impersonation_cells, heal_publisher_impersonation_cell }
+import gunbc.auth.heal_publisher_provision { DedicatedFederation, FederationClassification, FederationClassified, FederationUnclassified, PoolReading, PoolForbidden, AccountForbidden, PoolUnreadable, PoolObservedAbsent, AccountObservedAbsent, ProvidersObserved, classify_dedicated_federation, heal_publisher_dedicated_federation, impersonation_cells, heal_publisher_impersonation_cell }
 import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_access_desired_cells }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.cloud.gcp.gcp { GcpProjectId }
 import gunbc.auth.gcp_iam_converge {
   GcpIamPlan, GcpIamDiff, GcpIamNoop, GcpIamApply, GcpIamRefused,
-  GcpIamEstateDiff, GcpIamEstatePlan, GcpIamEstateNoop, GcpIamEstateApply, GcpIamEstateRefused,
-  GcpIamEffect, CreatePool, CreateProvider, CreateServiceAccount, AddPolicyCells,
+  GcpIamEstateDiff, GcpIamEstatePlan, GcpIamEstateNoop, GcpIamEstateApply, GcpIamEstatePartialNoop, GcpIamEstateRefused, GcpIamTargetRefusal,
+  GcpIamEffect, CreateProvider, AddPolicyCells,
   PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable, GrantPolicyReading,
   PolicySubject, ServiceAccountPolicy, policy_subject_resource,
   ApprovedPolicyWrite, WriteApprovedCells, ApprovedCellsRefused, approved_policy_write,
@@ -93,30 +93,38 @@ fn effects_of(p: GcpIamPlan) -> List<GcpIamEffect> {
   }
 }
 
-fn is_create_account(e: GcpIamEffect) -> Bool {
-  match e { CreateServiceAccount { account_id: _ } => true  _ => false }
-}
-
 fn is_add_cells_on(e: GcpIamEffect, resource: String, etag: String) -> Bool {
   match e { AddPolicyCells { subject: sj, observed_etag: t, cells: _ } => policy_subject_resource(s: sj) == resource && t == etag  _ => false }
 }
 
 // ── The plan ─────────────────────────────────────────────────────────────────────────────────
 
-// A FRESH ESTATE: every subject absent. The plan creates all three and binds the impersonation cell
-// on the account it is about to create (etag empty: consent to a policy on a resource that does not
-// exist yet), and grants on the existing secrets at their observed etags.
-test fn a_fresh_federation_plans_every_create_and_every_cell() -> Bool {
-  let p = plan_dedicated_federation(
+// A POOL OR ACCOUNT THAT IS NOT THERE REFUSES, NAMING THE BOOTSTRAP: this converge creates neither
+// (iam-observe cannot even tell absent from unbound), so the plan carries no create-pool or
+// create-service-account effect and the refusal names the ceremony entry and the stages. The
+// provider, reachable after the bootstrap, is the only create it plans.
+test fn an_absent_pool_or_account_refuses_naming_the_bootstrap() -> Bool {
+  match plan_dedicated_federation(
     f: heal,
     classification: FederationClassified { create_pool: true, create_provider: true, create_account: true },
     account_policy: PolicyResourceAbsent,
     secret_policies: heal_secret_readings(reading: PolicyObserved { policy: empty_policy(etag: "s0") }),
-  )
-  let es = effects_of(p: p)
-  es.length() == 4 + heal.secret_grants.length()
-    && any(es, e => is_create_account(e: e))
-    && any(es, e => is_add_cells_on(e: e, resource: service_account_resource(email: heal.service_account), etag: ""))
+  ) {
+    GcpIamRefused { target: _, reasons: rs } =>
+      rs.length() == 2 && all(rs, r => string_contains(s: r, pattern: "iam_bootstrap_apply") && string_contains(s: r, pattern: "not yet bootstrapped"))
+    _ => false
+  }
+}
+
+test fn a_missing_provider_alone_plans_the_provider_and_the_cells() -> Bool {
+  let es = effects_of(p: plan_dedicated_federation(
+    f: heal,
+    classification: FederationClassified { create_pool: false, create_provider: true, create_account: false },
+    account_policy: PolicyObserved { policy: empty_policy(etag: "a0") },
+    secret_policies: heal_secret_readings(reading: PolicyObserved { policy: empty_policy(etag: "s0") }),
+  ))
+  es.length() == 2 + heal.secret_grants.length()
+    && any(es, e => is_add_cells_on(e: e, resource: service_account_resource(email: heal.service_account), etag: "a0"))
 }
 
 // CONVERGED IS NOOP, and Noop asks nobody: the RED is a plan that files a request for a converged
@@ -171,18 +179,83 @@ test fn an_unreadable_policy_refuses_the_plan() -> Bool {
   }
 }
 
-// ONE REFUSING TARGET REFUSES THE ESTATE; an estate of Noops is Noop.
-test fn the_estate_refuses_if_any_target_refuses_and_is_noop_only_when_all_are() -> Bool {
-  let refused = plan_estate(plans: [GcpIamNoop { target: "a" }, GcpIamRefused { target: "b", reasons: ["x"] }])
+// A REFUSING TARGET IS ISOLATED, NOT FATAL: the readable target still converges, the refused one is
+// carried by label and reasons, and an estate of Noops is Noop.
+test fn a_refusing_target_is_isolated_and_carried_as_partial() -> Bool {
+  let mixed = plan_estate(plans: [GcpIamApply { diff: heal_account_diff(etag: "e1") }, GcpIamRefused { target: "b", reasons: ["x"] }])
   let noop = plan_estate(plans: [GcpIamNoop { target: "a" }, GcpIamNoop { target: "b" }])
-  match refused { GcpIamEstateRefused { reasons: rs } => rs == ["b: x"]  _ => false }
-    && match noop { GcpIamEstateNoop => true  _ => false }
+  match mixed {
+    GcpIamEstateApply { diff: d } => d.diffs.length() == 1 && d.refused == [GcpIamTargetRefusal { target: "b", reasons: ["x"] }]
+    _ => false
+  } && match noop { GcpIamEstateNoop => true  _ => false }
+}
+
+// NOTHING TO APPLY BUT A REFUSED TARGET IS PARTIAL, never Noop: the receipt cannot read as a full
+// convergence.
+test fn a_noop_beside_a_refusal_is_partial_not_noop() -> Bool {
+  match plan_estate(plans: [GcpIamNoop { target: "a" }, GcpIamRefused { target: "b", reasons: ["x"] }]) {
+    GcpIamEstatePartialNoop { refused: rs } => rs == [GcpIamTargetRefusal { target: "b", reasons: ["x"] }]
+    _ => false
+  }
+}
+
+test fn an_all_refused_estate_still_refuses() -> Bool {
+  match plan_estate(plans: [GcpIamRefused { target: "a", reasons: ["y"] }, GcpIamRefused { target: "b", reasons: ["x"] }]) {
+    GcpIamEstateRefused { reasons: rs } => rs == ["a: y", "b: x"]
+    _ => false
+  }
+}
+
+fn partial_estate() -> GcpIamEstateDiff {
+  GcpIamEstateDiff { diffs: [heal_account_diff(etag: "e1")], refused: [GcpIamTargetRefusal { target: "unbootstrapped-target", reasons: ["not bootstrapped"] }] }
+}
+
+// APPROVING A PARTIAL ESTATE IS CONSENT TO "THESE TARGETS, AND NOT THOSE": the refused target is in
+// the preimage, its absence is a different preimage (so a digest of the whole cannot be spent on the
+// partial), and the encoding version is the new one.
+test fn the_preimage_names_the_refused_target() -> Bool {
+  let p = gcp_iam_estate_diff_preimage(d: partial_estate())
+  let without = gcp_iam_estate_diff_preimage(d: GcpIamEstateDiff { diffs: [heal_account_diff(etag: "e1")], refused: [] })
+  string_contains(s: p, pattern: "unbootstrapped-target")
+    && string_contains(s: p, pattern: "gunbc-gcp-iam-converge-diff/2")
+    && !string_contains(s: without, pattern: "unbootstrapped-target")
+    && p != without
+}
+
+// A 403 ON THE POOL CANNOT DISTINGUISH ABSENT FROM UNBOUND, so the arm says both and names the
+// repair; a 404 stays absent and creatable, and an unreadable cause keeps its own text.
+fn federation_reasons(pool: PoolReading) -> List<String> {
+  match classify_dedicated_federation(f: heal, pool: pool, providers: ProvidersObserved { providers: [] }, account: AccountObservedAbsent) {
+    FederationUnclassified { reasons: rs } => rs
+    FederationClassified { create_pool: _, create_provider: _, create_account: _ } => []
+  }
+}
+
+test fn a_403_pool_reading_names_the_bootstrap_repair() -> Bool {
+  let rs = federation_reasons(pool: PoolForbidden { cause: "status 403: denied" })
+  rs.length() == 1
+    && string_contains(s: join(rs, ""), pattern: "absent or not yet bootstrapped")
+    && string_contains(s: join(rs, ""), pattern: "iam_bootstrap_apply")
+    && string_contains(s: join(rs, ""), pattern: "identities stage")
+    && string_contains(s: join(rs, ""), pattern: "capabilities stage")
+}
+
+test fn an_unreadable_pool_keeps_its_own_text_and_a_404_stays_absent() -> Bool {
+  let rs = federation_reasons(pool: PoolUnreadable { cause: "status 503: busy" })
+  rs.length() == 1 && string_contains(s: join(rs, ""), pattern: "the pool could not be read: status 503")
+    && !string_contains(s: join(rs, ""), pattern: "bootstrapped")
+    && federation_reasons(pool: PoolObservedAbsent).length() == 0
+}
+
+// The estate-as-a-whole refusal is unaffected by isolation.
+test fn a_shared_label_still_refuses_the_whole_estate() -> Bool {
+  gcp_iam_estate_labels_unique()
 }
 
 // ── The consent binding ──────────────────────────────────────────────────────────────────────
 
 fn one_effect_estate(etag: String) -> GcpIamEstateDiff {
-  GcpIamEstateDiff { diffs: [heal_account_diff(etag: etag)] }
+  GcpIamEstateDiff { diffs: [heal_account_diff(etag: etag)], refused: [] }
 }
 
 fn heal_account_diff(etag: String) -> GcpIamDiff {
@@ -471,9 +544,7 @@ fn added_cell_count(p: GcpIamPlan) -> Int {
   match p {
     GcpIamApply { diff: d } => fold(d.effects, init: 0, f: (acc, e) => match e {
       AddPolicyCells { subject: _, observed_etag: _, cells: cs } => acc + cs.length()
-      CreatePool { pool_id: _, display_name: _ } => acc
       CreateProvider { pool_id: _, provider_id: _, issuer_uri: _, attribute_mapping: _, attribute_condition: _ } => acc
-      CreateServiceAccount { account_id: _, display_name: _ } => acc
     })
     GcpIamNoop { target: _ } => 0
     GcpIamRefused { target: _, reasons: _ } => 0
@@ -532,9 +603,7 @@ fn added_members(p: GcpIamPlan) -> List<String> {
   match p {
     GcpIamApply { diff: d } => flat_map(d.effects, e => match e {
       AddPolicyCells { subject: _, observed_etag: _, cells: cs } => map(cs, c => c.member)
-      CreatePool { pool_id: _, display_name: _ } => []
       CreateProvider { pool_id: _, provider_id: _, issuer_uri: _, attribute_mapping: _, attribute_condition: _ } => []
-      CreateServiceAccount { account_id: _, display_name: _ } => []
     })
     GcpIamNoop { target: _ } => []
     GcpIamRefused { target: _, reasons: _ } => []
@@ -554,4 +623,27 @@ test fn custody_cells_name_the_resolved_convergence_principal_never_iam_converge
       GrantMemberResolved { member: m } => all(ms, x => x == m && x != granter)
       GrantMemberUnresolved { cause: _ } => false
     }
+}
+
+// THE HAND-APPLIED CELLS, DECLARED SO THE NEXT CONVERGE READS THEM AS NOOP: every cell of the
+// "fleet accessor cells applied by hand" grant set is exactly the one the operator's
+// `gcloud secrets add-iam-policy-binding --role roles/secretmanager.secretAccessor` writes -- that
+// role, the fleet convergence member, no condition. A mismatch would plan a second cell.
+test fn the_hand_applied_accessor_cells_read_back_as_noop() -> Bool {
+  match grant_member_resolution() {
+    GrantMemberUnresolved { cause: _ } => false
+    GrantMemberResolved { member: m } => {
+      let g = match filter(gcp_iam_converge_grant_sets, x => x.label == "fleet accessor cells applied by hand").first() {
+        Present { value: x } => x
+        Absent => GrantSet { label: "absent", grants: [] }
+      }
+      let held = map(grant_set_secrets(g: g), sec => SecretPolicyReading {
+        secret: sec,
+        reading: PolicyObserved { policy: policy_of(cells: [GcpIamBindingCell { role: "roles/secretmanager.secretAccessor", member: m, condition: Absent }], etag: "h1") },
+      })
+      g.grants.length() == 2
+        && map(grant_set_secrets(g: g), x => x as String) == ["openrouter-free-tier-api-key-harness", "oracle-oci-api-signing-key"]
+        && match plan_grant_set(g: g, member: grant_member_resolution(), secret_policies: held) { GcpIamNoop { target: _ } => true  _ => false }
+    }
+  }
 }

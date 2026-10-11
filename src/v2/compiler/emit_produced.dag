@@ -93,7 +93,7 @@ fn emit_produced_decl_inner_arrow(decl: Node) -> Outcome<Node> {
     TypeNode { connective: Atom { identity: _ } } => emit_produced_decl_not_conj_refusal(decl: decl)
     TypeNode { connective: Disj } => emit_produced_decl_not_conj_refusal(decl: decl)
     TypeNode { connective: Arrow } => emit_produced_decl_not_conj_refusal(decl: decl)
-    TypeNode { connective: Cardinality } => emit_produced_decl_not_conj_refusal(decl: decl)
+    TypeNode { connective: Occupancy } => emit_produced_decl_not_conj_refusal(decl: decl)
     TypeNode { connective: Instantiation } => emit_produced_decl_not_conj_refusal(decl: decl)
     ComputationNode { behavior: _ } => emit_produced_decl_not_conj_refusal(decl: decl)
   }
@@ -133,7 +133,7 @@ fn produced_decl_edge_is_decl(edge: Edge) -> Bool {
         TypeNode { connective: Atom { identity: _ } } => false
         TypeNode { connective: Conj } => false
         TypeNode { connective: Disj } => false
-        TypeNode { connective: Cardinality } => false
+        TypeNode { connective: Occupancy } => false
         TypeNode { connective: Instantiation } => false
         ComputationNode { behavior: _ } => false
       }
