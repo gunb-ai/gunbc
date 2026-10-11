@@ -31,7 +31,9 @@ import gunbc.live_deploy.emit {
   live_deploy_belt_service_unit_file,
   live_deploy_belt_exit_path_unit_file, live_deploy_belt_answer_path_unit_file,
   live_deploy_belt_exit_drain_service_unit_file, live_deploy_belt_discovery_service_unit_file,
-  live_deploy_serve_unit_file,
+  live_deploy_serve_unit_emission,
+  LiveDeployServeUnitEmitted,
+  LiveDeployServeUnitOidcReadbackRefused,
   live_deploy_slice_unit_file,
   user_manager_environment_directives,
   eval_budget_flag_text,
@@ -361,7 +363,7 @@ test fn the_broker_inherits_the_roadmap_evaluation_caps() -> Bool {
 // other's allowance, which is the mechanism, not a side effect.
 test fn the_broker_and_the_roadmap_join_different_slices() -> Bool {
   let broker = live_deploy_approval_broker_unit_file(spec: live_spec(), revision: live_revision())
-  let roadmap = live_deploy_serve_unit_file(spec: live_spec(), revision: live_revision())
+  let roadmap = serve_file()
   service_has(file: broker, target: ServiceSlice { name: gunbc_approval_broker_slice_unit_name })
     && !service_has(file: roadmap, target: ServiceSlice { name: gunbc_approval_broker_slice_unit_name })
     && !service_has(file: broker, target: ServiceSlice { name: deployment_slice_unit_name(names: live_spec().names) })
@@ -623,7 +625,14 @@ test fn the_event_services_run_their_entries_as_the_belt_service_does() -> Bool 
 //   - the serve unit is installable as WantedBy=multi-user.target
 
 fn serve_file() -> SystemdUnitFile {
-  live_deploy_serve_unit_file(spec: live_spec(), revision: live_revision())
+  serve_file_of(spec: live_spec())
+}
+
+fn serve_file_of(spec: DeploymentSpec) -> SystemdUnitFile {
+  match live_deploy_serve_unit_emission(spec: spec, revision: live_revision()) {
+    LiveDeployServeUnitEmitted { file } => file
+    LiveDeployServeUnitOidcReadbackRefused { cause: _ } => live_deploy_slice_unit_file(spec: spec)
+  }
 }
 
 // DECISION: the serve unit runs as the deployment's service principal.
@@ -848,11 +857,6 @@ fn belt_service_file_of(spec: DeploymentSpec) -> SystemdUnitFile {
   live_deploy_belt_service_unit_file(spec: spec)
 }
 
-fn serve_file_of(spec: DeploymentSpec) -> SystemdUnitFile {
-  live_deploy_serve_unit_file(spec: spec, revision: live_revision())
-}
-
-
 // RED: a spec with a different service_user makes belt_service_runs_as_service_principal go red.
 test fn belt_service_user_goes_red_under_different_user() -> Bool {
   let wrong_user = divergent_principal()
@@ -998,7 +1002,7 @@ test fn the_convergence_oneshot_does_not_join_the_broker_slice() -> Bool {
 // added later cannot join it by default and inherit the approval loop's allowance.
 test fn only_the_broker_unit_joins_the_broker_slice() -> Bool {
   let broker = live_deploy_approval_broker_unit_file(spec: live_spec(), revision: live_revision())
-  let roadmap = live_deploy_serve_unit_file(spec: live_spec(), revision: live_revision())
+  let roadmap = serve_file()
   let belt = live_deploy_belt_service_unit_file(spec: live_spec())
   let broker_slice = ServiceSlice { name: gunbc_approval_broker_slice_unit_name }
   service_has(file: broker, target: broker_slice)

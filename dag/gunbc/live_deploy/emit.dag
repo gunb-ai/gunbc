@@ -584,13 +584,6 @@ fn live_deploy_serve_unit_emission_at(
   }
 }
 
-fn live_deploy_serve_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile {
-  match live_deploy_serve_unit_emission(spec: spec, revision: revision) {
-    LiveDeployServeUnitEmitted { file } => file
-    LiveDeployServeUnitOidcReadbackRefused { cause: _ } => live_deploy_serve_unit_file_over(spec: spec, revision: revision)
-  }
-}
-
 // One unit shape for both of an instance's listeners: the principal, slice, tree, binary, user
 // manager environment and evaluation caps are the same value, and the two differ only in the
 // entry function they launch and the listener they bind.

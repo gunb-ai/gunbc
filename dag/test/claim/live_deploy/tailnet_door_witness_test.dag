@@ -5,7 +5,10 @@ import std.layout { render }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import extdeps.tailscale.serve { tailscale_serve_enable_argv, tailscale_serve_unix_target_path, tailscale_serve_backend_is_unix_target }
 import gunbc.live_deploy.desired { deployment_spec_srv1, selected_deployment_spec, srv1_lab_desired_deployment }
-import gunbc.live_deploy.emit { live_deploy_serve_unit_file, live_deploy_tailnet_door_unit_file, live_deploy_protocol }
+import gunbc.live_deploy.emit {
+  live_deploy_serve_unit_emission, LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused,
+  live_deploy_tailnet_door_unit_file, live_deploy_protocol,
+}
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
 import gunbc.live_deploy.spec {
   DeploymentSpec, DeploymentStep, ArtifactStep, Dependency, TailnetDoorServeUnit, TailscaleServeMapping,
@@ -59,7 +62,10 @@ test fn production_serve_route_unit_and_mapping_name_one_door_socket() -> Bool {
 test fn the_door_unit_differs_from_the_loopback_unit_only_in_entry_and_listener() -> Bool {
   let spec = deployment_spec_srv1()
   let door = unit_text(spec: spec)
-  let loopback = serialize_systemd_unit_file(file: live_deploy_serve_unit_file(spec: spec, revision: door_revision()))
+  let loopback = match live_deploy_serve_unit_emission(spec: spec, revision: door_revision()) {
+    LiveDeployServeUnitEmitted { file } => serialize_systemd_unit_file(file: file)
+    LiveDeployServeUnitOidcReadbackRefused { cause: _ } => ""
+  }
   let rebuilt = door
     .replace(from: "gunbc roadmap tailnet door (gunbc serve)", to: "gunbc roadmap HTTP server (gunbc serve)")
     .replace(from: " --function roadmap_serve_handle_door ", to: " --function roadmap_serve_handle ")

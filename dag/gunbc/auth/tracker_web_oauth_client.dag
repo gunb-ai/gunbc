@@ -33,6 +33,9 @@ import extdeps.languages.json.emit {
   json_object, json_kv, json_string, json_int, json_array, serialize_json,
 }
 import v2.std.collection { Present, Absent }
+import extdeps.units.iso8601_calendar {
+  iso8601_days_from_civil, iso8601_seconds_per_day, iso8601_seconds_per_hour,
+}
 
 // REDIRECT URIS BELONG TO AN ENVIRONMENT, NOT A HOST (operator 2026-10-11). The binding is
 // tracker-web × {test, stage, prod}. An instance is assigned an environment; that environment
@@ -186,9 +189,16 @@ data tracker_web_test_console_observed_redirect_uris: List<NonEmptyStr> = [
   tracker_web_test_srv2_redirect_uri,
 ]
 
-data tracker_web_test_console_readback_observed_at_epoch: Int = 1760155200
+// Unix seconds at a UTC civil clock, via the ISO-8601 calendar (Hinnant days_from_civil),
+// not a transcribed epoch integer. The console receipt date is the civil triple; the
+// instrument is iso8601_days_from_civil. Inverse: iso8601_utc_text.
+fn tracker_web_test_console_readback_unix_at(year: Int, month: Int, day: Int, hour: Int) -> Int {
+  iso8601_days_from_civil(y: year, m: month, d: day) * iso8601_seconds_per_day() + hour * iso8601_seconds_per_hour()
+}
 
-data tracker_web_test_console_readback_valid_until_epoch: Int = 1762747200
+data tracker_web_test_console_readback_observed_at_epoch: Int = tracker_web_test_console_readback_unix_at(year: 2026, month: 10, day: 11, hour: 4)
+
+data tracker_web_test_console_readback_valid_until_epoch: Int = tracker_web_test_console_readback_unix_at(year: 2026, month: 11, day: 10, hour: 4)
 
 fn tracker_web_oidc_deploy_now_epoch() -> Int? {
   match observer_clock_read() {

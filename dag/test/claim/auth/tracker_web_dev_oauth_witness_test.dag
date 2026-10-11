@@ -36,9 +36,11 @@ import gunbc.auth.tracker_web_oauth_client {
 }
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.live_deploy.emit {
-  live_deploy_serve_unit_file, apply_step_effects, apply_oidc_config_steps_at,
-  live_deploy_serve_unit_emission_at, LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused,
+  apply_step_effects, apply_oidc_config_steps_at,
+  live_deploy_serve_unit_emission, live_deploy_serve_unit_emission_at,
+  LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused,
 }
+import extdeps.units.iso8601_calendar { iso8601_utc_text }
 import gunbc.live_deploy.desired { srv1_lab_desired_deployment, srv1_production_desired_deployment, selected_deployment_spec }
 import gunbc.live_deploy.spec { ArtifactStep, Dependency, OidcConfigArtifact }
 import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, apply_empty_host_effects }
@@ -77,13 +79,14 @@ test fn production_serve_unit_carries_no_oidc_env() -> Bool {
       TrackerWebOauthClientUnbound { environment: _, reason: _ } => true
       TrackerWebOauthClientBound { binding: _ } => false
     }
-    && !string_contains(
-      s: serialize_systemd_unit_file(file: live_deploy_serve_unit_file(
-        spec: selected_deployment_spec(row: srv1_production_desired_deployment()),
-        revision: witness_revision(),
-      )),
-      pattern: oidc_config_env_var as String,
-    )
+    && match live_deploy_serve_unit_emission(
+      spec: selected_deployment_spec(row: srv1_production_desired_deployment()),
+      revision: witness_revision(),
+    ) {
+      LiveDeployServeUnitEmitted { file } =>
+        !string_contains(s: serialize_systemd_unit_file(file: file), pattern: oidc_config_env_var as String)
+      LiveDeployServeUnitOidcReadbackRefused { cause: _ } => false
+    }
 }
 
 test fn lab_serve_unit_carries_oidc_env() -> Bool {
@@ -91,13 +94,14 @@ test fn lab_serve_unit_carries_oidc_env() -> Bool {
     Present { value: GoogleLoginEnvironmentTest } => true
     _ => false
   }
-    && string_contains(
-      s: serialize_systemd_unit_file(file: live_deploy_serve_unit_file(
-        spec: selected_deployment_spec(row: srv1_lab_desired_deployment()),
-        revision: witness_revision(),
-      )),
-      pattern: oidc_config_env_var as String,
-    )
+    && match live_deploy_serve_unit_emission(
+      spec: selected_deployment_spec(row: srv1_lab_desired_deployment()),
+      revision: witness_revision(),
+    ) {
+      LiveDeployServeUnitEmitted { file } =>
+        string_contains(s: serialize_systemd_unit_file(file: file), pattern: oidc_config_env_var as String)
+      LiveDeployServeUnitOidcReadbackRefused { cause: _ } => false
+    }
 }
 
 test fn admin_obligation_redirect_uris_equal_the_binding() -> Bool {
@@ -142,6 +146,11 @@ test fn srv2_hand_started_unit_is_unmodeled_and_not_adopted() -> Bool {
         })
       _ => false
     }
+}
+
+test fn console_readback_epochs_are_the_2026_calendar_receipt() -> Bool {
+  iso8601_utc_text(unix: tracker_web_test_console_readback_observed_at_epoch) == "2026-10-11T04:00:00Z"
+    && iso8601_utc_text(unix: tracker_web_test_console_readback_valid_until_epoch) == "2026-11-10T04:00:00Z"
 }
 
 test fn console_readback_is_independent_and_expires() -> Bool {
