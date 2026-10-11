@@ -998,11 +998,6 @@ fn resolve_in_context(context: Outcome<ResolutionContext>, admission: Admission)
 // Resolve(module) AND Resolve(each provider it consumes); here that is discharged by resolving the whole
 // SELECTED closure, which is broader than the import closure. Narrowing it to the exact provider set changes
 // WHICH roots are folded and not the inference rule.
-//
-// RECORD AND RESOURCE PAYLOAD MARKS ARE NOT CARRIED HERE, AND THAT IS INHERITED RATHER THAN CHOSEN: a resolved
-// Node does not carry the normalize-time record roster, so each root is filled with Empty carriers, and
-// v2.std.symbol_index symbol_index_declared_payload_at answers Absent for a RECORD in this index. The
-// projection path reads through symbol_index_lookup and is unaffected.
 type ClosureDeclarations {
   declarations: SymbolIndex
   refused: List<ClosureProviderRefusal>
