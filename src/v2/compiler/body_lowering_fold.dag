@@ -3445,6 +3445,8 @@ fn body_lower_reduce_emitted(folded: Node, emitted: Symbol) -> Outcome<Node> {
     body_lower_reduce_or_keep(o: body_term_sealed_outcome(o: body_lower_postfix_expr(shell: folded), shape: LoweredPostfix), folded: folded)
   } else if emitted == ^dag_surface_primary_expr {
     body_lower_reduce_or_keep(o: body_term_sealed_outcome(o: body_lower_primary_expr(shell: folded), shape: LoweredPrimary), folded: folded)
+  } else if emitted == ^dag_string_template {
+    body_lower_string_template_unlowered(shell: folded)
   } else if body_lower_is_pass_through_emitted(emitted: emitted) {
     body_lower_reduce_passthrough(folded: folded)
   } else if emitted == ^dag_surface_fn_decl {
@@ -3767,6 +3769,8 @@ fn body_lower_fold_dispatch(node: Node, emitted: Symbol) -> Outcome<Node> {
           body_term_sealed_outcome(o: body_lower_let_expr(shell: node), shape: LoweredLet)
         } else if emitted == ^dag_surface_stmt_seq {
           body_term_sealed_outcome(o: body_lower_stmt_seq(shell: node), shape: LoweredStatementSequence)
+        } else if emitted == ^dag_string_template {
+          body_lower_string_template_unlowered(shell: node)
         } else if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
           outcome_accepted(value: node)
         } else if body_lower_is_deferred_lower_emitted(emitted: emitted) {
@@ -3774,6 +3778,13 @@ fn body_lower_fold_dispatch(node: Node, emitted: Symbol) -> Outcome<Node> {
         } else {
           body_lower_fold_reduce(node: node)
         }
+}
+
+// A STRING TEMPLATE IS NOT A VALUE until a later change lowers it to a concat chain. Refusing here
+// names the unlowered template at its shell (DESIGN section 4b: a discriminating red on the real
+// acceptance path). Folding through would let an incidental later fatal stand in for this class.
+fn body_lower_string_template_unlowered(shell: Node) -> Outcome<Node> {
+  outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_string_template_unlowered, n: shell))
 }
 
 fn body_lower_fold_reduce(node: Node) -> Outcome<Node> {
