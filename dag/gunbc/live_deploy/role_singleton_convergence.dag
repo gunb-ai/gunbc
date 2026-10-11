@@ -31,6 +31,12 @@ import std.algebra { trim }
 import std.list { distinct_by_key }
 import std.types { FilePath }
 import gunbc.live_deploy.desired { DesiredDeployment, desired_deployment_roster, prod_role_actuated_realization, selected_deployment_spec, bind_desired_selected_identity, DesiredSelectedIdentityBound, DesiredSelectedIdentityUnknownInstance, DesiredSelectedIdentityRosterRefused, DesiredSelectedIdentityMismatch, instance_id_text }
+import v2.std.operation_argv {
+  ArgvMaterialized,
+  ArgvMaterializationRefused,
+  operation_argv_bind_text,
+  operation_argv_cause_label,
+}
 import gunbc.live_deploy.member_observe {
   ObservationArm,
   OnTheHostItself,
@@ -453,15 +459,19 @@ fn presence_cause(p: EntryPresence) -> String? {
 // fabric_storage_ownership_marker_spec). Only an exact match is the marker; any differing field is a
 // distinct sighting the adjudication refuses, and a field that cannot be read makes the host
 // unobservable rather than reading as either.
-// WHICH STAT FIELD A LEG READS, as a closed choice: each arm names its own shell.Stat operation and its
-// own format, so there is no string to mistype and no arm that a wrong value falls through to.
+// WHICH STAT FIELD A LEG READS, as a closed choice over shell.Stat operations. Local dispatch
+// invokes the operation; the remote arm materializes THAT SAME row's argv (v2.std.operation_argv)
+// and carries it over the transport. The format string is declared once, on the operation.
 type MarkerStatField = MarkerStatMode | MarkerStatOwner | MarkerStatGroup
 
-fn marker_stat_format(field: MarkerStatField) -> String {
+data shell_stat_operation_path: String = "dag/extdeps/shell.dag"
+data shell_stat_operation_service: String = "shell.Stat"
+
+fn marker_stat_operation(field: MarkerStatField) -> String {
   match field {
-    MarkerStatMode => "%a"
-    MarkerStatOwner => "%U"
-    MarkerStatGroup => "%G"
+    MarkerStatMode => "ModeOf"
+    MarkerStatOwner => "OwnerOf"
+    MarkerStatGroup => "GroupOf"
   }
 }
 
@@ -475,7 +485,17 @@ fn stat_leg(arm: ObservationArm, path: String, field: MarkerStatField, leg: Stri
       }
       if r.success { LegOut { stdout: r.stdout } } else { LegRefused { cause: join([leg, " failed: ", r.stderr], "") } }
     }
-    OverTransport { transport } => remote_leg(transport: transport, argv: ["stat", "-c", marker_stat_format(field: field), "--", path], leg: leg)
+    OverTransport { transport } =>
+      match shell_materialize_operation_argv(
+        shell_stat_operation_path,
+        shell_stat_operation_service,
+        marker_stat_operation(field: field),
+        [operation_argv_bind_text(name: "path", text: path)],
+      ) {
+        ArgvMaterialized { argv } => remote_leg(transport: transport, argv: argv, leg: leg)
+        ArgvMaterializationRefused { at: _, cause } =>
+          LegRefused { cause: join([leg, ": ", operation_argv_cause_label(cause: cause)], "") }
+      }
   }
 }
 
