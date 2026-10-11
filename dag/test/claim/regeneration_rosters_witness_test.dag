@@ -1,0 +1,42 @@
+module test.claim.regeneration_rosters_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, Bool }
+import gunbc.generated_artifact { artifact_path }
+import gunbc.generated_artifact_registry { committed_generated_artifact_paths }
+import gunbc.seed_build_artifact_emit { seed_build_artifacts }
+import gunbc.tier_o_artifact_emit { tier_o_artifacts }
+
+// THE TWO REGENERATION ROSTERS ARE SUBSETS OF THE REGISTRY, JOINED BY PATH.
+// gunbc.seed_build_artifact_emit and gunbc.tier_o_artifact_emit list the artifacts they produce
+// without loading the registry's closure, so the registry cannot be consulted at runtime to keep them
+// honest; this is where the two are joined. A roster entry the registry does not commit would be an
+// artifact the push-back job or the drift check writes or judges that no authority rosters (a
+// parallel authority, DESIGN section 3).
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn registry_commits(path: String) -> Bool {
+  any(committed_generated_artifact_paths(), p => p == path)
+}
+
+test fn witness_every_seed_build_artifact_is_a_committed_registry_artifact() -> Bool {
+  seed_build_artifacts().length() > 0
+    && all(seed_build_artifacts(), a => registry_commits(path: artifact_path(a: a)))
+}
+
+test fn witness_every_tier_o_artifact_is_a_committed_registry_artifact() -> Bool {
+  tier_o_artifacts().length() > 0
+    && all(tier_o_artifacts(), a => registry_commits(path: artifact_path(a: a)))
+}
+
+// THE DISCRIMINATING CONTROL: the rosters are not "everything". A registry artifact that is in neither
+// (the design document, which needs the whole registry's projections) is absent from both, so a
+// roster that quietly swallowed the registry would go red here.
+test fn witness_the_design_document_is_in_neither_roster() -> Bool {
+  !any(seed_build_artifacts(), a => artifact_path(a: a) == "DESIGN.md")
+    && !any(tier_o_artifacts(), a => artifact_path(a: a) == "DESIGN.md")
+}
+
+test fn witness_the_two_rosters_share_no_artifact() -> Bool {
+  !any(seed_build_artifacts(), a => any(tier_o_artifacts(), b => artifact_path(a: b) == artifact_path(a: a)))
+}
