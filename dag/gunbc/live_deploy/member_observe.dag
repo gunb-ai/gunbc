@@ -755,6 +755,8 @@ fn deployment_effect_plan(spec: DeploymentSpec, candidate: CandidateRelease, tra
         desired_executable_is_another_member(desired_bin: desired_bin)
       RootAt { root: _ } =>
         desired_executable_is_another_member(desired_bin: desired_bin)
+      OidcConfigAt { file: _ } =>
+        desired_executable_is_another_member(desired_bin: desired_bin)
     }
   }
 }
