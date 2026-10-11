@@ -1083,6 +1083,9 @@ fn harness_collect_candidates(session: ServingSessionRecord, class: ServingCoTen
   harness_apply_session_attachment(session: session, collected: collected, kept: kept)
 }
 
+// THE FINAL FILTER harness_collect_candidates applies after the route fold: one pass over kept
+// candidates, partitioned on ServingSessionPlacement. Missing owner standing is unread (pinned).
+// There is no Bool predicate beside this match -- PlacementFree stays, OwnedByAnotherReplica notes.
 fn harness_apply_session_attachment(session: ServingSessionRecord, collected: HarnessCandidates, kept: List<HarnessCandidate>) -> HarnessCandidates {
   match session {
     NoSessionRecord =>
@@ -1092,32 +1095,30 @@ fn harness_apply_session_attachment(session: ServingSessionRecord, collected: Ha
         Present { value: s } => s
         Absent => serving_unread_when_owner_unprobed()
       }
-      let free = filter(kept, c => harness_session_admits_launch(session: session, standing: standing, launch: c.launch))
-      HarnessCandidates {
-        candidates: free,
-        notes: concat(collected.notes, map(filter(kept, c => !harness_session_admits_launch(session: session, standing: standing, launch: c.launch)), c => join([fabric_group_wire(g: c.group) as String, ": this session is attached to another launch, so it is not moved to a different replica"], ""))),
-        retryable: collected.retryable || length(free) < length(kept),
+      fold(kept, init: HarnessCandidates {
+        candidates: [],
+        notes: collected.notes,
+        retryable: collected.retryable,
         incarnations: collected.incarnations,
         owner_standing: match collected.owner_standing {
           Present { value: s } => Present { value: s }
           Absent => Present { value: standing }
         },
-      }
+      }, f: (acc, c) =>
+        match serving_session_placement(residency: standing, record: session, candidate_launch: vllm_endpoint_process_launch_key(launch: c.launch)) {
+          PlacementFree =>
+            HarnessCandidates { candidates: concat(acc.candidates, [c]), notes: acc.notes, retryable: acc.retryable, incarnations: acc.incarnations, owner_standing: acc.owner_standing }
+          OwnedByAnotherReplica { owner: _ } =>
+            HarnessCandidates {
+              candidates: acc.candidates,
+              notes: concat(acc.notes, [join([fabric_group_wire(g: c.group) as String, ": this session is attached to another launch, so it is not moved to a different replica"], "")]),
+              retryable: true,
+              incarnations: acc.incarnations,
+              owner_standing: acc.owner_standing,
+            }
+        })
     }
   }
-}
-
-// THE FINAL FILTER harness_collect_candidates applies after the route fold: a recorded session
-// always runs serving_session_placement, treating a missing owner probe as unread (pinned).
-fn harness_session_admits_launch(session: ServingSessionRecord, standing: ServingSessionResidency, launch: VllmEndpointProcessLaunch) -> Bool {
-  match serving_session_placement(residency: standing, record: session, candidate_launch: vllm_endpoint_process_launch_key(launch: launch)) {
-    PlacementFree => true
-    OwnedByAnotherReplica { owner: _ } => false
-  }
-}
-
-fn harness_placement_is_free(standing: ServingSessionResidency, session: ServingSessionRecord, launch: VllmEndpointProcessLaunch) -> Bool {
-  harness_session_admits_launch(session: session, standing: standing, launch: launch)
 }
 
 // THE OWNER'S STANDING IS READ WHERE THE OWNER IS PROBED: only a candidate whose launch IS the recorded
