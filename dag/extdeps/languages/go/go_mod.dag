@@ -1,4 +1,4 @@
-module extdeps.languages.go.module
+module extdeps.languages.go.go_mod
 
 import std.types { NonEmptyStr, brand }
 import std.algebra { Ordering, Less, Equal, Greater }

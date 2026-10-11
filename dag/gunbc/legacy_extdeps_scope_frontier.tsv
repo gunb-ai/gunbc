@@ -156,7 +156,7 @@ dag/extdeps/languages/dag/emit.dag
 dag/extdeps/languages/dag/syntax.dag
 dag/extdeps/languages/dag/types.dag
 dag/extdeps/languages/go/emit.dag
-dag/extdeps/languages/go/module.dag
+dag/extdeps/languages/go/go_mod.dag
 dag/extdeps/languages/go/primitives.dag
 dag/extdeps/languages/go/syntax.dag
 dag/extdeps/languages/go/types.dag

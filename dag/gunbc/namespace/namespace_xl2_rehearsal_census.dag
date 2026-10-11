@@ -1,7 +1,7 @@
 module gunbc.namespace_xl2_rehearsal_census
 
 import std.types { Int, List, String }
-import std.import { ImportStripCoordinateSegment }
+import std.import_statement { ImportStripCoordinateSegment }
 import extdeps.git.object_store { GitObjectId }
 import extdeps.communication.medium { Lossless, Medium }
 import tools.multi_module_compile_fixture { FixtureSource }

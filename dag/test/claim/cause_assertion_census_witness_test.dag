@@ -1,7 +1,7 @@
 module test.claim.cause_assertion_census_witness
 
 import std.types { Bool, Int, List, String, SourceSpan }
-import std.import { ParsedImportStatement }
+import std.import_statement { ParsedImportStatement }
 import tools.cause_assertion_census {
   CauseModuleSyntax, CauseDeclarationJoined, CauseDeclarationMissing, CauseDeclarationAmbiguous,
   CauseCaretOccurrence, cause_witness_module,

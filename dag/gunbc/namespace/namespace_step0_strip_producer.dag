@@ -1,7 +1,7 @@
 module gunbc.namespace_step0_strip_producer
 
 import std.types { List, NonEmptyStr, String }
-import std.import {
+import std.import_statement {
   ImportStripOutcome,
   ImportStatementsStripped,
   ImportStripRefused,

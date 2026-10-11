@@ -2863,7 +2863,7 @@ pub(crate) fn source_root_ingest_symbol_from_stem(stem: &str) -> String {
         // and stopped there. A stem that IS a keyword still lexes as a keyword, so `dag/std/
         // import.dag` emitted `^import` and the manifest failed to parse -- measured, at the
         // caret: "expected identifier or `(` after `^`, found keyword". Two stems in the tree
-        // reach it today, `dag/std/import.dag` and `dag/extdeps/languages/go/module.dag`.
+        // reach it today, `dag/std/import_statement.dag` and `dag/extdeps/languages/go/go_mod.dag`.
         //
         // The mint promised a valid symbol and returned an unparseable one with no refusal,
         // which is why nothing caught it: the emitter succeeded, the file was written, and the

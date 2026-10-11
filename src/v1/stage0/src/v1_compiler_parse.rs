@@ -11,14 +11,14 @@ use self::ParserHelperIdentity::*;
 use self::ParserResultWitness::*;
 pub use crate::extdeps_languages_dag_syntax::dag_parse_environment;
 pub use crate::std_algebra::FreeMonoid;
-use crate::std_import::ImportStatementParseCause::{
+use crate::std_import_statement::ImportStatementParseCause::{
     ImportParseInstrumentAnomaly, ImportStatementMalformed, ModuleDeclarationPathMalformed,
     SourceHasNoModuleDeclaration,
 };
-use crate::std_import::ParsedImportStatements::{
+use crate::std_import_statement::ParsedImportStatements::{
     ImportStatementParseRefused, ImportStatementsParsed,
 };
-pub use crate::std_import::{
+pub use crate::std_import_statement::{
     ImportStatementParseCause, ParsedImportStatement, ParsedImportStatements,
 };
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::{

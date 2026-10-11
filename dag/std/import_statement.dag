@@ -1,4 +1,4 @@
-module std.import
+module std.import_statement
 
 import std.types { FilePath, Int, List, NonEmptyStr, SourceSpan, String }
 

@@ -70,7 +70,7 @@ fn namespace_step0_v2_manifest_identity() -> NonEmptyStr {
 
 // ONE EXCLUDED MEMBER, carrying the parse's own refusal rather than a category this contract invents.
 // AN EXCLUDED ENTRY CARRIES NO CAUSE BECAUSE THERE IS EXACTLY ONE ADMISSIBLE CAUSE. Exclusion means
-// one thing and only one: the file is not a module, which std.import answers as
+// one thing and only one: the file is not a module, which std.import_statement answers as
 // SourceHasNoModuleDeclaration and nothing else does. Carrying a cause field would be a place to
 // write any other answer down -- and the failure this closes is precisely that: with a stringly
 // cause, a module whose declaration was malformed and even the parser's own instrument anomalies
