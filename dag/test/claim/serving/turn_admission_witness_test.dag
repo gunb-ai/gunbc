@@ -24,12 +24,13 @@ import gunbc.serving.turn_admission {
   ServingPrefixInterval, PrefixIntervalRead, PrefixIntervalUnread, ServingHostTierStanding, HostTierRetains,
   HostTierEmpty, HostTierUnread, ServingSessionResidency, ResidentOnGpu, HostRestorable, MustReconstruct,
   ResidencyUnread, TokenPrefixBroken, LaunchReplaced, PrefixMissedAndNotRetained,
-  serving_session_residency, serving_concurrency, ServingConcurrency, serving_session_placement,
+  serving_session_residency, serving_session_placement, ServingSessionRecord, NoSessionRecord, SessionRecord,
+  ServingPrefixFields, PrefixFieldsRead, PrefixFieldsUnread, serving_prefix_interval, serving_session_standing,
   ServingSessionPlacement, PlaceByAdmission, OwnedByAnotherReplica,
 }
 import gunbc.harness.harness_backend {
   harness_gauge_count, harness_queue_from_body, harness_launch_from_body,
-  harness_capacity_pressure_from_body,
+  harness_capacity_pressure_from_body, harness_prefix_fields_from_body,
 }
 
 data probe_receipt: ObservationReceiptRef = "test.claim.serving.turn_admission_witness" as ObservationReceiptRef
@@ -335,7 +336,7 @@ fn residency_on(owner: String, current: String, intact: Bool, interval: ServingP
 }
 
 test fn an_observed_hit_on_the_owning_launch_reads_resident() -> Bool {
-  match residency_on(owner: "L1", current: "L1", intact: true, interval: PrefixIntervalRead { queries: 10, hits: 8 }, host: HostTierUnread) {
+  match residency_on(owner: "L1", current: "L1", intact: true, interval: PrefixIntervalRead { lookups_advanced: true, hits_advanced: true }, host: HostTierUnread) {
     ResidentOnGpu => true
     _ => false
   }
@@ -343,14 +344,14 @@ test fn an_observed_hit_on_the_owning_launch_reads_resident() -> Bool {
 
 // THE DISCRIMINATING RED: hits were observed, and the token prefix is broken. It must reconstruct.
 test fn a_broken_token_prefix_reads_must_reconstruct_even_with_hits() -> Bool {
-  match residency_on(owner: "L1", current: "L1", intact: false, interval: PrefixIntervalRead { queries: 10, hits: 8 }, host: HostTierRetains) {
+  match residency_on(owner: "L1", current: "L1", intact: false, interval: PrefixIntervalRead { lookups_advanced: true, hits_advanced: true }, host: HostTierRetains) {
     MustReconstruct { cause: TokenPrefixBroken } => true
     _ => false
   }
 }
 
 test fn a_replaced_launch_reads_must_reconstruct() -> Bool {
-  match residency_on(owner: "L1", current: "L2", intact: true, interval: PrefixIntervalRead { queries: 10, hits: 8 }, host: HostTierRetains) {
+  match residency_on(owner: "L1", current: "L2", intact: true, interval: PrefixIntervalRead { lookups_advanced: true, hits_advanced: true }, host: HostTierRetains) {
     MustReconstruct { cause: LaunchReplaced } => true
     _ => false
   }
@@ -358,7 +359,7 @@ test fn a_replaced_launch_reads_must_reconstruct() -> Bool {
 
 // Configuration is not an observation: no lookups in the interval is unread, never warm.
 test fn an_interval_without_lookups_or_unread_counters_is_never_warm() -> Bool {
-  (match residency_on(owner: "L1", current: "L1", intact: true, interval: PrefixIntervalRead { queries: 0, hits: 0 }, host: HostTierRetains) {
+  (match residency_on(owner: "L1", current: "L1", intact: true, interval: PrefixIntervalRead { lookups_advanced: false, hits_advanced: false }, host: HostTierRetains) {
      ResidencyUnread { obligation: _ } => true
      _ => false
    })
@@ -369,15 +370,15 @@ test fn an_interval_without_lookups_or_unread_counters_is_never_warm() -> Bool {
 }
 
 test fn a_gpu_miss_is_host_restorable_only_when_the_host_tier_retains() -> Bool {
-  (match residency_on(owner: "L1", current: "L1", intact: true, interval: PrefixIntervalRead { queries: 5, hits: 0 }, host: HostTierRetains) {
+  (match residency_on(owner: "L1", current: "L1", intact: true, interval: PrefixIntervalRead { lookups_advanced: true, hits_advanced: false }, host: HostTierRetains) {
      HostRestorable => true
      _ => false
    })
-    && (match residency_on(owner: "L1", current: "L1", intact: true, interval: PrefixIntervalRead { queries: 5, hits: 0 }, host: HostTierEmpty) {
+    && (match residency_on(owner: "L1", current: "L1", intact: true, interval: PrefixIntervalRead { lookups_advanced: true, hits_advanced: false }, host: HostTierEmpty) {
           MustReconstruct { cause: PrefixMissedAndNotRetained } => true
           _ => false
         })
-    && (match residency_on(owner: "L1", current: "L1", intact: true, interval: PrefixIntervalRead { queries: 5, hits: 0 }, host: HostTierUnread) {
+    && (match residency_on(owner: "L1", current: "L1", intact: true, interval: PrefixIntervalRead { lookups_advanced: true, hits_advanced: false }, host: HostTierUnread) {
           ResidencyUnread { obligation: _ } => true
           _ => false
         })
@@ -387,31 +388,57 @@ fn idle_admission() -> ServingGroupAdmission {
   AdmissibleForClass { class: BatchQualityTolerant, receipt: probe_receipt }
 }
 
+fn rec(owner: String) -> ServingSessionRecord {
+  SessionRecord { owner_launch: owner as NonEmptyStr, prefix_intact: true, prior_queries_field: "1.0" as NonEmptyStr, prior_hits_field: "1.0" as NonEmptyStr }
+}
+
 test fn a_warm_session_is_pinned_to_its_owner_and_a_cold_one_is_not() -> Bool {
-  (match serving_session_placement(residency: ResidentOnGpu, owner_launch: "L1" as NonEmptyStr, candidate_launch: "L2" as NonEmptyStr, admission: idle_admission()) {
+  (match serving_session_placement(residency: ResidentOnGpu, record: rec(owner: "L1"), candidate_launch: "L2" as NonEmptyStr, admission: idle_admission()) {
      OwnedByAnotherReplica { owner: o } => (o as String) == "L1"
      _ => false
    })
-    && (match serving_session_placement(residency: ResidentOnGpu, owner_launch: "L1" as NonEmptyStr, candidate_launch: "L1" as NonEmptyStr, admission: idle_admission()) {
+    && (match serving_session_placement(residency: ResidentOnGpu, record: rec(owner: "L1"), candidate_launch: "L1" as NonEmptyStr, admission: idle_admission()) {
           PlaceByAdmission { admission: _ } => true
           _ => false
         })
-    && (match serving_session_placement(residency: MustReconstruct { cause: TokenPrefixBroken }, owner_launch: "L1" as NonEmptyStr, candidate_launch: "L2" as NonEmptyStr, admission: idle_admission()) {
+    && (match serving_session_placement(residency: MustReconstruct { cause: TokenPrefixBroken }, record: rec(owner: "L1"), candidate_launch: "L2" as NonEmptyStr, admission: idle_admission()) {
           PlaceByAdmission { admission: _ } => true
           _ => false
         })
 }
 
-test fn the_five_concurrency_quantities_stay_distinct() -> Bool {
-  match serving_concurrency(live_sessions: 40, retained_state: 12, seats: SeatStandingRead { quality_held: 1, tolerant_held: 2 }, tenancy: GroupOccupied { occupants: 3 }, replicas: 2) {
-    Present { value: c } => c.live_sessions == 40 && c.retained_state == 12 && c.admitted_turns == 3 && c.execution_batch == 3 && c.replicas == 2
-    Absent => false
+// No record, no standing: nothing was placed whose residency could be read.
+test fn an_unrecorded_session_reads_unread_never_warm() -> Bool {
+  match serving_session_standing(record: NoSessionRecord, current_launch: "L1" as NonEmptyStr, now: PrefixFieldsRead { queries_field: "2.0" as NonEmptyStr, hits_field: "2.0" as NonEmptyStr }, host: HostTierRetains) {
+    ResidencyUnread { obligation: _ } => true
+    _ => false
   }
 }
 
-test fn an_unread_ledger_yields_no_concurrency_reading() -> Bool {
-  match serving_concurrency(live_sessions: 1, retained_state: 1, seats: SeatStandingUnread { obligation: "x" as NonEmptyStr }, tenancy: GroupIdle, replicas: 1) {
-    Absent => true
-    Present { value: _ } => false
-  }
+// Counter FIELDS advance by inequality: equal queries is no lookup, unequal hits is a hit.
+test fn the_interval_is_read_from_counter_fields_by_equality() -> Bool {
+  (match serving_prefix_interval(prior_queries: "5.0" as NonEmptyStr, prior_hits: "2.0" as NonEmptyStr, now: PrefixFieldsRead { queries_field: "9.0" as NonEmptyStr, hits_field: "2.0" as NonEmptyStr }) {
+     PrefixIntervalRead { lookups_advanced: l, hits_advanced: h } => l && !h
+     _ => false
+   })
+    && (match serving_prefix_interval(prior_queries: "5.0" as NonEmptyStr, prior_hits: "2.0" as NonEmptyStr, now: PrefixFieldsUnread { obligation: "x" as NonEmptyStr }) {
+          PrefixIntervalUnread { obligation: _ } => true
+          _ => false
+        })
+}
+
+// INHABITANCE: the real producer emits the interval's field shape from a served body, both counters or
+// neither, and the fields travel verbatim (an exponent rendering stays readable).
+test fn the_producer_emits_prefix_fields_verbatim_and_refuses_a_half_reading() -> Bool {
+  (match harness_prefix_fields_from_body(body: join([
+     "vllm:prefix_cache_queries_total\{model_name=\"m\"} 9.7885348e+07\n",
+     "vllm:prefix_cache_hits_total\{model_name=\"m\"} 1.5e+06\n",
+   ], "")) {
+     PrefixFieldsRead { queries_field: q, hits_field: h } => (q as String) == "9.7885348e+07" && (h as String) == "1.5e+06"
+     _ => false
+   })
+    && (match harness_prefix_fields_from_body(body: "vllm:prefix_cache_queries_total\{model_name=\"m\"} 3.0\n") {
+          PrefixFieldsUnread { obligation: _ } => true
+          _ => false
+        })
 }

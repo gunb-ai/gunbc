@@ -7,9 +7,11 @@ import product.fabric.demand { ObservationReceiptRef }
 import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
 import gunbc.serving.turn_admission {
   BatchQualityTolerant, QueueDepthRead, RouteAdmittingMore, SeatStandingRead,
+  PrefixFieldsUnread, PrefixFieldsRead, ServingPrefixFields, ServingSessionRecord, NoSessionRecord, SessionRecord,
 }
 import gunbc.spark.vllm_endpoint_process_launch {
   VllmEndpointProcessLaunch, VllmEndpointProcessLaunchObservation, vllm_endpoint_process_launch, LaunchObserved,
+  vllm_endpoint_process_launch_key,
 }
 import gunbc.spark.vllm_observed { ModelsRouteEntryAbsent, VllmModelsRouteReadbackStanding }
 import gunbc.fleet_ssh_locus { FleetSshContextRefused }
@@ -55,10 +57,15 @@ fn w_seen(field: String) -> VllmEndpointProcessLaunchObservation {
 // An idle engine: nothing waiting, nothing running, the route admitting more. Supplied, because the
 // claim is about what the placement fold does with a roster, not about reading a metrics endpoint.
 fn w_idle_engine(field: String) -> HarnessEngineReading {
+  w_engine_with(field: field, prefix: PrefixFieldsUnread { obligation: "fixture: no prefix counters" as NonEmptyStr })
+}
+
+fn w_engine_with(field: String, prefix: ServingPrefixFields) -> HarnessEngineReading {
   HarnessEngineReading {
     queue: QueueDepthRead { waiting: 0, running: 0, pressure: RouteAdmittingMore },
     launch: w_seen(field: field),
     progress: none,
+    prefix: prefix,
   }
 }
 
@@ -67,6 +74,10 @@ fn w_idle_engine(field: String) -> HarnessEngineReading {
 // per bind at harness_bind_seat, this fold no longer reaches for it, and the roster is a parameter
 // like every other reading. The two rows below therefore differ ONLY in the roster they are handed.
 fn w_place(declared_units: HarnessDeclaredUnitRoster) -> HarnessCandidates {
+  w_place_session(declared_units: declared_units, session: NoSessionRecord, prefix: PrefixFieldsUnread { obligation: "fixture: no prefix counters" as NonEmptyStr })
+}
+
+fn w_place_session(declared_units: HarnessDeclaredUnitRoster, session: ServingSessionRecord, prefix: ServingPrefixFields) -> HarnessCandidates {
   let field = "1789300000.12"
   harness_add_serving_candidate(
     acc: HarnessCandidates { candidates: [], notes: [], retryable: false, incarnations: [] },
@@ -76,12 +87,13 @@ fn w_place(declared_units: HarnessDeclaredUnitRoster) -> HarnessCandidates {
     subject: harness_turn_subject(request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness"]), attempt: "witness-attempt" as NonEmptyStr),
     availability: harness_route_availability(endpoint: w_endpoint, before: w_seen(field: field), standing: w_serving_standing(), after: w_seen(field: field), now: w_now),
     launch: w_launch(field: field),
-    engine: w_idle_engine(field: field),
+    engine: w_engine_with(field: field, prefix: prefix),
     readback: w_readback(),
     model: w_model,
     unit: DeepseekV4FlashOnVllm,
     seats: 4,
     seats_held: SeatStandingRead { quality_held: 0, tolerant_held: 0 },
+    session: session,
     now: 1789400000,
     access: FleetSshContextRefused { cause: "wet witness supplies a refused fleet context so incarnation is unobserved" },
     declared_units: declared_units,
@@ -161,4 +173,30 @@ test fn a_ready_route_reaches_the_existing_incarnation_frontier_in_the_product_p
   )
   length(bound.candidates) == 0
     && any(bound.notes, n => n.contains(spark_serving_incarnation_unobserved_obligation as String))
+}
+
+// THE ROUTE, NOT ONLY THE ANSWER. A session recorded as owned by ANOTHER launch with a hit observed
+// on this one is not a candidate here (the pin fires before the incarnation frontier), while the same
+// engine for a session owned by THIS launch, and the same engine with no session record, both reach
+// the incarnation frontier. Deleting the harness call to serving_session_placement fails the first.
+fn w_record(owner: String, intact: Bool) -> ServingSessionRecord {
+  SessionRecord { owner_launch: owner as NonEmptyStr, prefix_intact: intact, prior_queries_field: "10.0" as NonEmptyStr, prior_hits_field: "4.0" as NonEmptyStr }
+}
+
+data w_hit_prefix: ServingPrefixFields = PrefixFieldsRead { queries_field: "20.0" as NonEmptyStr, hits_field: "9.0" as NonEmptyStr }
+
+test fn a_warm_session_owned_elsewhere_is_not_a_candidate_here_but_the_owner_and_an_unrecorded_session_are() -> Bool {
+  let own = vllm_endpoint_process_launch_key(launch: w_launch(field: "1789300000.12")) as String
+  let elsewhere = w_place_session(declared_units: harness_declared_unit_roster(), session: w_record(owner: "some-other-launch", intact: true), prefix: w_hit_prefix)
+  let owner = w_place_session(declared_units: harness_declared_unit_roster(), session: w_record(owner: own, intact: true), prefix: w_hit_prefix)
+  let none_recorded = w_place_session(declared_units: harness_declared_unit_roster(), session: NoSessionRecord, prefix: w_hit_prefix)
+  any(elsewhere.notes, n => n.contains("owned by launch some-other-launch"))
+    && !any(owner.notes, n => n.contains("owned by launch"))
+    && !any(none_recorded.notes, n => n.contains("owned by launch"))
+}
+
+// A broken prefix on a session owned elsewhere reads must-reconstruct, so nothing pins it.
+test fn a_broken_prefix_session_is_not_pinned_to_its_old_owner() -> Bool {
+  let p = w_place_session(declared_units: harness_declared_unit_roster(), session: w_record(owner: "some-other-launch", intact: false), prefix: w_hit_prefix)
+  !any(p.notes, n => n.contains("owned by launch"))
 }
