@@ -10,11 +10,14 @@ import extdeps.filesystem.filesystem_io {
   FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused
 }
 import std.optional { Absent, Present }
+import std.algebra { Cons }
 
 // Compiler policy over the existing file transport. A failed listing is never an empty
 // directory. Only the host's NotADirectory observation admits a candidate as a file; every
 // other failure stops the walk. In particular a disappearing entry or a broken symlink cannot
 // silently shrink the compiler's source population. The transport refuses lossy name encodings.
+// The walked paths are prepended and sorted once at the end, so the walk costs the size of the
+// population and not its square.
 type SourceRootWalkTask { path: String, root: Bool, origin: String }
 type SourceRootWalkedPath { path: String, origin: String }
 type SourceRootPaths
@@ -59,7 +62,7 @@ fn source_root_walk(pending: List<SourceRootWalkTask>, paths: List<SourceRootWal
         FilesystemDirectoryListingRefused { directory: _, error: cause } =>
           if source_root_candidate_is_file(root: task.root, error_kind: listed.error_kind) {
             let next = if task.path.ends_with(suffix: suffix) {
-              concat(paths, [SourceRootWalkedPath { path: task.path, origin: task.origin }])
+              Cons { head: SourceRootWalkedPath { path: task.path, origin: task.origin }, tail: paths }
             } else { paths }
             source_root_walk(pending: rest, paths: next, suffix: suffix)
           } else {
