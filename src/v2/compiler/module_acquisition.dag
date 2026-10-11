@@ -8,21 +8,28 @@ import extdeps.filesystem.filesystem_io {
   FilesystemExactPathKindUnrecognized,
   FilesystemExactPathRead,
   FilesystemExactPathUnreadable,
+  FilesystemFailureKindAdmitted,
+  FilesystemFailureKindUnrecognized,
+  FilesystemNotFound,
+  admit_filesystem_failure_kind,
   filesystem_failure_kind_name
 }
 import gunbc.source_root_read {
+  SourceRootDirectoryListed,
+  SourceRootDirectoryRefused,
   SourceRootPathsRead,
   SourceRootPathsRefused,
   SourceRootWalkTask,
   SourceRootWalkedPath,
   source_root_child_path,
+  source_root_directory,
   source_root_read_file,
   source_root_walk
 }
 import v2.compiler.name_resolve { Import }
 import v2.compiler.normalize { normalize }
 import v2.compiler.normalized_tree { NormalizedTree }
-import v2.compiler.parse { PreparedGrammar, parse_module_prepared, prepare_grammar }
+import v2.compiler.parse { ParseArtifact, PreparedGrammar, parse_module_prepared, prepare_grammar }
 import v2.compiler.reference_site_collector { collect_module_reference_sites, reference_site_collection_is_total }
 import v2.compiler.source_authority {
   ModuleFileAbsent,
@@ -431,21 +438,38 @@ fn acquisition_requests_ok(front: AcquisitionFrontEnd, imported: List<String>) -
   }
 }
 
-fn acquisition_front_end(env: AcquisitionEnv, file: ModuleFileRef, content: String) -> Outcome<AcquisitionFrontEnd> {
+// Tokenize and parse, which is all the population parse's subject needs and the first two thirds of the
+// front end a closure member needs.
+fn acquisition_parsed(env: AcquisitionEnv, file: ModuleFileRef, content: String) -> Outcome<ParseArtifact> {
   bind_outcome(
     o: tokenize_prepared(text: content, file: symbol_intern_lexeme(lexeme: module_file_key(file: file)), prepared: env.lex),
-    f: fn(tokens) {
+    f: fn(tokens) { parse_module_prepared(tokens: tokens, prepared: env.grammar) }
+  )
+}
+
+fn acquisition_front_end(env: AcquisitionEnv, file: ModuleFileRef, content: String) -> Outcome<AcquisitionFrontEnd> {
+  bind_outcome(
+    o: acquisition_parsed(env: env, file: file, content: content),
+    f: fn(artifact) {
       bind_outcome(
-        o: parse_module_prepared(tokens: tokens, prepared: env.grammar),
-        f: fn(artifact) {
-          bind_outcome(
-            o: normalize(parse_tree: artifact.tree),
-            f: fn(tree) { outcome_accepted(value: AcquisitionFrontEnd { parse_root: artifact.tree, tree: tree }) }
-          )
-        }
+        o: normalize(parse_tree: artifact.tree),
+        f: fn(tree) { outcome_accepted(value: AcquisitionFrontEnd { parse_root: artifact.tree, tree: tree }) }
       )
     }
   )
+}
+
+// WHETHER ONE MEMBER PARSES, and nothing retained of it: the verdict a streaming population parse
+// folds, carrying the cause and never the tree.
+type MemberParse
+  = MemberParses
+  | MemberParseRefused { cause: String }
+
+fn acquisition_parse(env: AcquisitionEnv, file: ModuleFileRef, content: String) -> MemberParse {
+  match acquisition_parsed(env: env, file: file, content: content) {
+    Rejected { diagnostics: d } => MemberParseRefused { cause: symbol_lexeme(sym: diagnostics_fatal_reason(d: d)) }
+    Accepted { value: _, diagnostics: _ } => MemberParses {}
+  }
 }
 
 fn acquisition_member_requests(env: AcquisitionEnv, module: String, file: ModuleFileRef, content: String) -> AcquisitionMemberRead {
@@ -615,21 +639,37 @@ fn acquisition_entry_requests(
   }
 }
 
-fn acquisition_start(
-  layout: SourceStorageLayout,
-  bindings: List<SourceRootBinding>,
-  entries: List<String>,
-  grammar: PreparedGrammar,
-  lex: PreparedLexRules
-) -> Acquisition {
-  match acquisition_entry_requests(layout: layout, pending: entries, acc: []) {
+fn acquisition_start(env: AcquisitionEnv, entries: List<String>) -> Acquisition {
+  match acquisition_entry_requests(layout: env.layout, pending: entries, acc: []) {
     AcquisitionEntriesRefused { refusal: refusal } => AcquisitionRefused { refusal: refusal, reads: [] }
     AcquisitionEntriesDerived { requests: requests } =>
       acquisition_loop(
-        env: AcquisitionEnv { layout: layout, bindings: bindings, lex: lex, grammar: grammar },
+        env: env,
         state: AcquisitionState { pending: requests, modules: [], known: empty_map(), absent: empty_map(), absent_probes: 0, reads: [] },
         entries: entries
       )
+  }
+}
+
+// THE FRONT END, PREPARED ONCE: the dag grammar and lexical rules every acquisition and every
+// population job parses with. A grammar that does not prepare is a refusal carried whole, never a
+// front end that parses nothing.
+type AcquisitionEnvPrepared
+  = AcquisitionEnvReady { env: AcquisitionEnv }
+  | AcquisitionEnvUnprepared { diagnostics: NonEmptyDiagnostics }
+
+fn acquisition_env(layout: SourceStorageLayout, bindings: List<SourceRootBinding>) -> AcquisitionEnvPrepared {
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: d } => AcquisitionEnvUnprepared { diagnostics: d }
+    Accepted { value: prepared, diagnostics: _ } =>
+      AcquisitionEnvReady {
+        env: AcquisitionEnv {
+          layout: layout,
+          bindings: bindings,
+          lex: prepare_lex_rules(rules: dag_language_model().lex),
+          grammar: prepared
+        }
+      }
   }
 }
 
@@ -637,16 +677,9 @@ fn acquisition_start(
 // acquisition for several entries shares its known and absent memos, so a module two entries both
 // reach is read once.
 fn acquire_closure_of(layout: SourceStorageLayout, bindings: List<SourceRootBinding>, entries: List<String>) -> Acquisition {
-  match prepare_grammar(grammar: dag_language_model().grammar) {
-    Rejected { diagnostics: d } => AcquisitionRefused { refusal: AcquisitionGrammarUnprepared { diagnostics: d }, reads: [] }
-    Accepted { value: prepared, diagnostics: _ } =>
-      acquisition_start(
-        layout: layout,
-        bindings: bindings,
-        entries: entries,
-        grammar: prepared,
-        lex: prepare_lex_rules(rules: dag_language_model().lex)
-      )
+  match acquisition_env(layout: layout, bindings: bindings) {
+    AcquisitionEnvUnprepared { diagnostics: d } => AcquisitionRefused { refusal: AcquisitionGrammarUnprepared { diagnostics: d }, reads: [] }
+    AcquisitionEnvReady { env: env } => acquisition_start(env: env, entries: entries)
   }
 }
 
@@ -898,6 +931,12 @@ type NamespaceModules
   = NamespaceModulesListed { namespace: String, modules: List<String> }
   | NamespaceModulesRefused { namespace: String, cause: String }
 
+// What one directory walk observed, before a caller decides what an absent directory means.
+type NamespaceWalk
+  = NamespaceWalkListed { namespace: String, modules: List<String> }
+  | NamespaceWalkAbsent { namespace: String, directory: String }
+  | NamespaceWalkRefused { namespace: String, cause: String }
+
 fn namespace_module_name(namespace: String, directory: String, path: String) -> String {
   let prefix_length = string_length(s: source_root_child_path(directory: directory, name: ""))
   concat(namespace, ".", replace(s: substring(s: path, start: prefix_length, end: string_length(s: path) - 4), from: "/", to: "."))
@@ -913,23 +952,53 @@ fn namespace_relative_directory(probe_relative_path: String) -> String {
   }
 }
 
-fn namespace_walk(namespace: String, directory: String) -> NamespaceModules {
+// Whether a refused walk is the namespace directory itself not existing, which is the answer "no
+// module of this namespace is stored under this tree" and not a listing that failed. Any other
+// refusal, including a missing entry beneath the directory, is a failed listing and stays a refusal.
+fn namespace_directory_is_the_absent_path(path: String, directory: String, kind: String) -> Bool {
+  if path == directory {
+    match admit_filesystem_failure_kind(observed: kind) {
+      FilesystemFailureKindAdmitted { kind: FilesystemNotFound } => true
+      FilesystemFailureKindAdmitted { kind: _ } => false
+      FilesystemFailureKindUnrecognized { observed: _ } => false
+    }
+  } else {
+    false
+  }
+}
+
+fn namespace_walk(namespace: String, directory: String) -> NamespaceWalk {
   match source_root_walk(pending: [SourceRootWalkTask { path: directory, root: true, origin: directory }], paths: [], suffix: ".dag") {
     SourceRootPathsRefused { path: path, kind: kind, cause: cause } =>
-      NamespaceModulesRefused { namespace: namespace, cause: concat(path, ": ", kind, ": ", cause) }
+      if namespace_directory_is_the_absent_path(path: path, directory: directory, kind: kind) {
+        NamespaceWalkAbsent { namespace: namespace, directory: directory }
+      } else {
+        NamespaceWalkRefused { namespace: namespace, cause: concat(path, ": ", kind, ": ", cause) }
+      }
     SourceRootPathsRead { paths: paths } =>
-      NamespaceModulesListed {
+      NamespaceWalkListed {
         namespace: namespace,
         modules: list_map(xs: paths, f: fn(walked) { namespace_module_name(namespace: namespace, directory: directory, path: walked.path) })
       }
   }
 }
 
-fn namespace_walk_under(namespace: String, root: String, relative: String) -> NamespaceModules {
+fn namespace_walk_under(namespace: String, root: String, relative: String) -> NamespaceWalk {
   if relative == "" {
     namespace_walk(namespace: namespace, directory: root)
   } else {
     namespace_walk(namespace: namespace, directory: source_root_child_path(directory: root, name: relative))
+  }
+}
+
+// A population job that NAMES one namespace gets its modules, and a named namespace with no directory
+// is a refusal: the caller asked for a population that is not there.
+fn namespace_named_listing(walk: NamespaceWalk) -> NamespaceModules {
+  match walk {
+    NamespaceWalkAbsent { namespace: namespace, directory: directory } =>
+      NamespaceModulesRefused { namespace: namespace, cause: concat(directory, ": the namespace has no directory under its tree") }
+    NamespaceWalkListed { namespace: namespace, modules: modules } => NamespaceModulesListed { namespace: namespace, modules: modules }
+    NamespaceWalkRefused { namespace: namespace, cause: cause } => NamespaceModulesRefused { namespace: namespace, cause: cause }
   }
 }
 
@@ -940,7 +1009,10 @@ fn enumerate_namespace_modules(layout: SourceStorageLayout, bindings: List<Sourc
       match acquisition_host_directory(bindings: bindings, tree: file.tree) {
         Absent =>
           NamespaceModulesRefused { namespace: namespace, cause: concat("tree ", source_root_ref_label(tree: file.tree), " is not bound") }
-        Present { value: root } => namespace_walk_under(namespace: namespace, root: root, relative: namespace_relative_directory(probe_relative_path: file.relative_path))
+        Present { value: root } =>
+          namespace_named_listing(
+            walk: namespace_walk_under(namespace: namespace, root: root, relative: namespace_relative_directory(probe_relative_path: file.relative_path))
+          )
       }
   }
 }
@@ -950,10 +1022,31 @@ fn enumerate_namespace_modules(layout: SourceStorageLayout, bindings: List<Sourc
 // directly contain modules); each tree directory is walked once per top-level namespace they name,
 // so nothing is enumerated that the layout does not declare and no namespace is listed twice. A
 // top-level namespace whose tree is not bound contributes nothing (the caller bound the trees it
-// wants); a bound one that cannot be listed refuses the whole enumeration, never a partial population.
+// wants), and so does one with no directory under a bound tree: the rows declare the namespaces of
+// the whole repository, and a tree holding only some of them is a smaller population, not a failed
+// listing. What that cannot hide is the converse: a row that no governed file realizes is refused by
+// the layout check (NamespaceRowWithoutModules), and every bound root must itself be a listable
+// directory, so an unreadable or missing tree refuses here instead of reading as empty. Any other
+// listing that fails refuses the whole enumeration, never a partial population.
 type BoundModules
   = BoundModulesListed { modules: List<String> }
-  | BoundModulesRefused { namespace: String, cause: String }
+  | BoundModulesRefused { subject: String, cause: String }
+
+type BoundRootsListing
+  = BoundRootsListable
+  | BoundRootUnlistable { tree: String, path: String, kind: String, cause: String }
+
+fn bound_roots_listing(pending: List<SourceRootBinding>) -> BoundRootsListing {
+  match list_head(xs: pending) {
+    HeadAbsent => BoundRootsListable {}
+    HeadFound { value: binding } =>
+      match source_root_directory(path: binding.host_directory) {
+        SourceRootDirectoryListed { path: _ } => bound_roots_listing(pending: skip(xs: pending, n: 1))
+        SourceRootDirectoryRefused { path: path, kind: kind, cause: cause } =>
+          BoundRootUnlistable { tree: source_root_ref_label(tree: binding.tree), path: path, kind: kind, cause: cause }
+      }
+  }
+}
 
 fn bound_modules_prepended(listed: List<String>, acc: List<String>) -> List<String> {
   fold_list(xs: list_reverse(xs: listed), empty: acc, cons: fn(rest, name) { Cons { head: name, tail: rest } })
@@ -995,14 +1088,16 @@ fn enumerate_bound_modules_go(
     HeadAbsent => BoundModulesListed { modules: acc }
     HeadFound { value: namespace } =>
       match module_file(layout: layout, name: concat(namespace, ".x")) {
-        ModuleNameUnderivable { name: _, cause: cause } => BoundModulesRefused { namespace: namespace, cause: cause }
+        ModuleNameUnderivable { name: _, cause: cause } => BoundModulesRefused { subject: namespace, cause: cause }
         ModuleFileDerived { file: file } =>
           match acquisition_host_directory(bindings: bindings, tree: file.tree) {
             Absent => enumerate_bound_modules_go(layout: layout, bindings: bindings, pending: skip(xs: pending, n: 1), acc: acc)
             Present { value: root } =>
               match namespace_walk_under(namespace: namespace, root: root, relative: namespace_relative_directory(probe_relative_path: file.relative_path)) {
-                NamespaceModulesRefused { namespace: refused, cause: cause } => BoundModulesRefused { namespace: refused, cause: cause }
-                NamespaceModulesListed { namespace: _, modules: listed } =>
+                NamespaceWalkRefused { namespace: refused, cause: cause } => BoundModulesRefused { subject: refused, cause: cause }
+                NamespaceWalkAbsent { namespace: _, directory: _ } =>
+                  enumerate_bound_modules_go(layout: layout, bindings: bindings, pending: skip(xs: pending, n: 1), acc: acc)
+                NamespaceWalkListed { namespace: _, modules: listed } =>
                   enumerate_bound_modules_go(
                     layout: layout,
                     bindings: bindings,
@@ -1016,7 +1111,12 @@ fn enumerate_bound_modules_go(
 }
 
 fn enumerate_bound_modules(layout: SourceStorageLayout, bindings: List<SourceRootBinding>, namespaces: List<String>) -> BoundModules {
-  enumerate_bound_modules_go(layout: layout, bindings: bindings, pending: top_level_namespaces(namespaces: namespaces), acc: [])
+  match bound_roots_listing(pending: bindings) {
+    BoundRootUnlistable { tree: tree, path: path, kind: kind, cause: cause } =>
+      BoundModulesRefused { subject: concat("tree ", tree), cause: concat(path, ": ", kind, ": ", cause) }
+    BoundRootsListable =>
+      enumerate_bound_modules_go(layout: layout, bindings: bindings, pending: top_level_namespaces(namespaces: namespaces), acc: [])
+  }
 }
 
 // ---- reading a named population (a census's explicit input) -----------------------------------------------

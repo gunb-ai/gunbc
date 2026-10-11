@@ -19,13 +19,25 @@ import v2.compiler.module_acquisition {
   AcquisitionReadWithoutMember,
   AcquisitionRequest,
   AcquisitionRequestedNotRead,
+  MemberParseRefused,
+  MemberParses,
+  NamespaceModules,
+  NamespaceModulesListed,
+  NamespaceModulesRefused,
+  NamespaceWalk,
+  NamespaceWalkAbsent,
+  NamespaceWalkListed,
+  NamespaceWalkRefused,
   acquisition_exactness,
   acquisition_ingest,
   acquisition_member_requests,
   acquisition_module_path,
+  acquisition_parse,
   acquisition_refusal_text,
   bound_modules_prepended,
+  namespace_directory_is_the_absent_path,
   namespace_module_name,
+  namespace_named_listing,
   namespace_relative_directory,
   namespace_top_level,
   top_level_namespaces
@@ -346,4 +358,95 @@ test fn a_walked_path_directly_in_the_namespace_directory_names_a_direct_member(
 // enumeration the callers see is one flat list of module names with none repeated and none dropped.
 test fn a_listing_is_added_ahead_of_the_names_already_listed() -> Bool {
   joined(bound_modules_prepended(listed: ["a.x", "a.y"], acc: ["b.z"])) == "a.x,a.y,b.z"
+}
+
+// ---- what a walk of one namespace directory means to a caller who named the namespace ------------------
+//
+// THE SUBJECT IS THE MAPPING FROM WHAT A DIRECTORY WALK OBSERVED TO WHAT A CALLER IS TOLD. A caller that
+// names one namespace asked for a population that must be there, so an absent directory refuses; the
+// population enumeration over every bound tree reads the same observation as an empty namespace instead,
+// and that reading is not stated here because it is a different caller of the same walk. The three
+// walk observations are supplied; the walk itself is carried by the native population verbs over a real
+// tree.
+
+fn named_listing_text(listing: NamespaceModules) -> String {
+  match listing {
+    NamespaceModulesListed { namespace: namespace, modules: modules } => concat("listed|", namespace, "|", joined(modules))
+    NamespaceModulesRefused { namespace: namespace, cause: cause } => concat("refused|", namespace, "|", cause)
+  }
+}
+
+test fn a_named_namespace_with_no_directory_is_refused_naming_the_directory() -> Bool {
+  named_listing_text(
+    listing: namespace_named_listing(walk: NamespaceWalkAbsent { namespace: "std", directory: "dag/std" })
+  ) == "refused|std|dag/std: the namespace has no directory under its tree"
+}
+
+test fn a_listed_namespace_hands_back_its_modules_in_the_order_the_walk_observed() -> Bool {
+  named_listing_text(
+    listing: namespace_named_listing(walk: NamespaceWalkListed { namespace: "std", modules: ["std.a", "std.b"] })
+  ) == "listed|std|std.a,std.b"
+}
+
+test fn a_namespace_whose_walk_failed_is_refused_with_the_walks_own_cause() -> Bool {
+  named_listing_text(
+    listing: namespace_named_listing(walk: NamespaceWalkRefused { namespace: "std", cause: "dag/std/x: permission_denied: denied" })
+  ) == "refused|std|dag/std/x: permission_denied: denied"
+}
+
+// ---- when a refused walk is the namespace directory itself being absent --------------------------------
+//
+// Only the namespace directory missing answers "no module of this namespace is stored here"; the same
+// failure kind one level down, or another kind on the directory, is a listing that failed and stays a
+// refusal. The four controls differ from the one positive in exactly one input each, so a predicate
+// that read only the kind, only the path, or accepted any kind it could not name is told apart.
+
+test fn the_namespace_directory_not_being_found_is_the_absent_path() -> Bool {
+  namespace_directory_is_the_absent_path(path: "dag/std", directory: "dag/std", kind: "not_found")
+}
+
+test fn a_missing_entry_beneath_the_namespace_directory_is_not_the_absent_path() -> Bool {
+  namespace_directory_is_the_absent_path(path: "dag/std/x", directory: "dag/std", kind: "not_found") == false
+}
+
+test fn an_unreadable_namespace_directory_is_not_the_absent_path() -> Bool {
+  namespace_directory_is_the_absent_path(path: "dag/std", directory: "dag/std", kind: "permission_denied") == false
+}
+
+test fn a_failure_kind_the_filesystem_authority_does_not_name_is_not_the_absent_path() -> Bool {
+  namespace_directory_is_the_absent_path(path: "dag/std", directory: "dag/std", kind: "no_such_kind") == false
+}
+
+// ---- whether one member parses, and what is kept of it -------------------------------------------------
+//
+// THE SUBJECT IS THE VERDICT THE STREAMING POPULATION PARSE FOLDS: parses, or refused with the cause.
+// The well-formed control differs from the malformed one in one token, so a verdict that refused every
+// member, or accepted every member, is told apart.
+
+fn member_parse_text(content: String) -> String {
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: _ } => "grammar-unprepared"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match acquisition_parse(
+        env: AcquisitionEnv {
+          layout: repository_storage_layout(),
+          bindings: [],
+          lex: prepare_lex_rules(rules: dag_language_model().lex),
+          grammar: prepared
+        },
+        file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" },
+        content: content
+      ) {
+        MemberParses => "parses"
+        MemberParseRefused { cause: _ } => "refused"
+      }
+  }
+}
+
+test fn a_well_formed_member_parses() -> Bool {
+  member_parse_text(content: "module v2.test.subject\nfn subject() -> Bool { true }\n") == "parses"
+}
+
+test fn a_member_with_an_unclosed_body_is_refused() -> Bool {
+  member_parse_text(content: "module v2.test.subject\nfn subject() -> Bool { true\n") == "refused"
 }

@@ -17,9 +17,14 @@ import v2.cli.compile_cli {
   CliTargetRust,
   CliTargetSwift,
   CliUsageRefused,
-  CliDifferentialReported,
+  CliPopulationReported,
   CliIfArmReaderDifferential,
+  CliCheckLayout,
+  CliParsePopulation,
   cli_emit_target_spelling,
+  cli_verb_check_layout,
+  cli_verb_if_arm_reader_differential,
+  cli_verb_parse_population,
   v2_cli_exit,
   v2_cli_parse,
   v2_cli_plan_source_roots,
@@ -69,6 +74,8 @@ fn plan_first_root(plan: CliPlan) -> String {
             HeadFound { value: first } => first
           }
         CliIfArmReaderDifferential { source_roots: _ } => ""
+        CliCheckLayout { source_roots: _ } => ""
+        CliParsePopulation { source_roots: _ } => ""
       }
   }
 }
@@ -79,7 +86,7 @@ fn outcome_refusal_reason(outcome: CliRunOutcome) -> Symbol {
     CliUsageRefused { reason: reason, detail: _ } => reason
     CliEmitted { text: _, closure_size: _, refused_count: _, refusal_detail: _ } =>
       ^cli_outcome_was_not_refused
-    CliDifferentialReported { text: _, observed: _, detail: _ } =>
+    CliPopulationReported { text: _, held: _, detail: _ } =>
       ^cli_outcome_was_not_refused
   }
 }
@@ -89,7 +96,7 @@ fn outcome_emitted(outcome: CliRunOutcome) -> Bool {
     CliRunRefused { reason: _, detail: _ } => false
     CliUsageRefused { reason: _, detail: _ } => false
     CliEmitted { text: _, closure_size: _, refused_count: _, refusal_detail: _ } => true
-    CliDifferentialReported { text: _, observed: _, detail: _ } => false
+    CliPopulationReported { text: _, held: _, detail: _ } => false
   }
 }
 
@@ -262,6 +269,8 @@ fn plan_is_target(plan: CliPlan, expected: CliEmitTarget) -> Bool {
         CliEmitClosure { entry: _, source_roots: _, target: target } =>
           cli_emit_target_spelling(t: target) == cli_emit_target_spelling(t: expected)
         CliIfArmReaderDifferential { source_roots: _ } => false
+        CliCheckLayout { source_roots: _ } => false
+        CliParsePopulation { source_roots: _ } => false
       }
   }
 }
@@ -470,6 +479,115 @@ test fn a_trailing_token_refusal_locates_its_fatal_in_the_file_holds() -> Bool {
         && string_contains(s: detail, pattern: "parse_g0_tokens_remain @ cli_probe_trailing_cu bytes ")
     CliUsageRefused { reason: _, detail: _ } => false
     CliEmitted { text: _, closure_size: _, refused_count: _, refusal_detail: _ } => false
-    CliDifferentialReported { text: _, observed: _, detail: _ } => false
+    CliPopulationReported { text: _, held: _, detail: _ } => false
+  }
+}
+
+// THE WHOLE-POPULATION VERBS TAKE SOURCE ROOTS AND NO ENTRY. Their parse is one walk shared by three
+// verbs (`if-arm-reader-differential`, `check-layout`, `parse-population`), so the claim that matters
+// is that each SPELLING selects its OWN verb: a parser that mapped every roots verb to the first arm
+// would parse all three and select one. The argv below is supplied at this CLI's boundary, and the
+// verbs' own subject -- what a held or refused population looks like -- is claimed where it is
+// decided (`v2.test.claim.source_layout_lookup`) and executed on the built binary
+// (`v1_compiler.cli_run.native_lane_runner` `walk_population_controls`), which is where the real
+// producer runs.
+fn argv_roots_verb(verb: String, root: String) -> FreeMonoid<String> {
+  Cons { head: verb, tail: Cons { head: "--source-root", tail: Cons { head: root, tail: Empty } } }
+}
+
+fn plan_roots_verb_label(plan: CliPlan) -> String {
+  match plan {
+    CliPlanRefused { reason: _, detail: _ } => ""
+    CliPlanParsed { verb: verb } =>
+      match verb {
+        CliEmitClosure { entry: _, source_roots: _, target: _ } => "emit"
+        CliIfArmReaderDifferential { source_roots: _ } => cli_verb_if_arm_reader_differential
+        CliCheckLayout { source_roots: _ } => cli_verb_check_layout
+        CliParsePopulation { source_roots: _ } => cli_verb_parse_population
+      }
+  }
+}
+
+test fn the_check_layout_spelling_selects_its_own_verb_holds() -> Bool {
+  plan_roots_verb_label(plan: v2_cli_parse(argv: argv_roots_verb(verb: "check-layout", root: "dag")))
+    == cli_verb_check_layout
+}
+
+test fn the_parse_population_spelling_selects_its_own_verb_holds() -> Bool {
+  plan_roots_verb_label(plan: v2_cli_parse(argv: argv_roots_verb(verb: "parse-population", root: "dag")))
+    == cli_verb_parse_population
+}
+
+test fn the_differential_spelling_selects_its_own_verb_holds() -> Bool {
+  plan_roots_verb_label(plan: v2_cli_parse(argv: argv_roots_verb(verb: "if-arm-reader-differential", root: "dag")))
+    == cli_verb_if_arm_reader_differential
+}
+
+test fn a_population_verb_names_the_roots_it_was_given_holds() -> Bool {
+  let plan = v2_cli_parse(argv: argv_roots_verb(verb: "check-layout", root: "src/v2"))
+  (length(xs: v2_cli_plan_source_roots(plan: plan)) == 1) && (plan_first_root_of_roots_verb(plan: plan) == "src/v2")
+}
+
+fn plan_first_root_of_roots_verb(plan: CliPlan) -> String {
+  match list_head(xs: v2_cli_plan_source_roots(plan: plan)) {
+    HeadAbsent => ""
+    HeadFound { value: first } => first
+  }
+}
+
+// A POPULATION VERB WITH NO ROOT IS A REFUSAL AND NOT AN EMPTY POPULATION: it would check or parse
+// nothing and hold, which is the empty-observation narrow section 5 forbids.
+data argv_check_layout_no_root: FreeMonoid<String> = Cons { head: "check-layout", tail: Empty }
+
+data argv_parse_population_dangling_root: FreeMonoid<String> = Cons {
+  head: "parse-population",
+  tail: Cons { head: "--source-root", tail: Empty }
+}
+
+data argv_check_layout_with_entry: FreeMonoid<String> = Cons {
+  head: "check-layout",
+  tail: Cons { head: "--entry", tail: Cons { head: "cli_probe", tail: Empty } }
+}
+
+test fn a_population_verb_without_a_source_root_refuses_holds() -> Bool {
+  plan_refusal_reason(plan: v2_cli_parse(argv: argv_of(items: argv_check_layout_no_root))) == ^cli_no_source_root
+}
+
+test fn a_population_verb_with_a_dangling_source_root_option_refuses_holds() -> Bool {
+  plan_refusal_reason(plan: v2_cli_parse(argv: argv_of(items: argv_parse_population_dangling_root)))
+    == ^cli_source_root_missing_value
+}
+
+// THE POPULATION VERBS HAVE NO ENTRY: the option that selects a closure's subject is an unknown option
+// to a verb whose subject is the population, rather than a value the verb would quietly ignore.
+test fn a_population_verb_given_an_entry_refuses_holds() -> Bool {
+  plan_refusal_reason(plan: v2_cli_parse(argv: argv_of(items: argv_check_layout_with_entry))) == ^cli_unknown_option
+}
+
+// A POPULATION VERB READS THE BOUND TREES ITSELF AND ACQUIRES NO CLOSURE, so running it over a
+// supplied ingest refuses by name; it does not answer from the ingest it was never meant to have.
+test fn a_population_verb_over_an_ingest_refuses_holds() -> Bool {
+  (outcome_refusal_reason(
+    outcome: v2_cli_run(plan: v2_cli_parse(argv: argv_roots_verb(verb: "check-layout", root: "dag")), ingest: Empty)
+  ) == ^cli_population_verb_takes_no_ingest)
+    && (outcome_refusal_reason(
+      outcome: v2_cli_run(plan: v2_cli_parse(argv: argv_roots_verb(verb: "parse-population", root: "dag")), ingest: Empty)
+    ) == ^cli_population_verb_takes_no_ingest)
+}
+
+// THE STATUS OF A POPULATION VERB IS WHETHER IT HELD. A held verdict exits 0 and a refused one exits
+// 1 -- "the subject did not hold", the same code an emit refusal exits, and not the misuse code that
+// means the invocation was unusable.
+test fn a_held_population_verdict_exits_success_holds() -> Bool {
+  match v2_cli_exit(outcome: CliPopulationReported { text: "", held: true, detail: "held" }) {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+}
+
+test fn a_refused_population_verdict_exits_general_error_holds() -> Bool {
+  match v2_cli_exit(outcome: CliPopulationReported { text: "a located line", held: false, detail: "did not hold" }) {
+    ExitSuccess => false
+    ExitFailure { code: code, reason: _ } => code == exit_code_general_error
   }
 }

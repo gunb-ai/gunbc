@@ -1,0 +1,237 @@
+module v2.cli.population_verbs
+
+import std.types { Bool, Int, List }
+import std.algebra { Cons }
+import std.integer { int_to_decimal_string }
+import gunbc.source_layout_namespaces { layout_namespaces }
+import gunbc.source_root_read {
+  SourceRootPathsRead,
+  SourceRootPathsRefused,
+  SourceRootWalkTask,
+  source_root_child_path,
+  source_root_walk
+}
+import v2.cli.repository_layout { repository_storage_layout }
+import v2.compiler.module_acquisition {
+  AcquisitionEnv,
+  AcquisitionEnvReady,
+  AcquisitionEnvUnprepared,
+  BoundModulesListed,
+  BoundModulesRefused,
+  MemberParseRefused,
+  MemberParses,
+  PopulationMemberRead,
+  PopulationMemberRefused,
+  SourceRootBinding,
+  acquisition_env,
+  acquisition_parse,
+  acquisition_probe,
+  enumerate_bound_modules,
+  population_member
+}
+import v2.compiler.source_authority {
+  LayoutFileHeader,
+  LayoutHolds,
+  LayoutRefused,
+  LayoutVerdict,
+  ModuleFileAbsent,
+  ModuleFilePresent,
+  ModuleFileRef,
+  ModuleFileRefused,
+  layout_check,
+  layout_verdict_holds,
+  layout_verdict_text,
+  module_file_key,
+  module_header_declared_name
+}
+import v2.std.algebra { HeadAbsent, HeadFound, length, list_head, list_map, list_reverse, skip }
+import v2.std.text { String }
+
+// THE WHOLE-POPULATION VERBS. Compiling an entry reads the modules that entry requests and nothing
+// else (v2.compiler.module_acquisition); a job whose subject IS the population -- is every governed
+// file where the storage rule puts it, does every governed module parse -- is a different question
+// and gets its own explicit verb, enumerated from the layout and never a side effect of compiling
+// something. Each verb holds or refuses: it has no mode that proceeds past a refusal, it reads no
+// body it does not need, and it retains no index of what it read.
+//
+// WHAT EACH VERB'S POPULATION IS.
+//   check-layout        every `.dag` file physically under a bound tree. The physical walk is the
+//                       point: a file in a namespace the declared rows do not name, or one stored
+//                       where its name does not put it, is invisible to any enumeration that starts
+//                       from the layout, so only a walk can refuse it. Each file contributes its
+//                       position and the module line it declares -- the header, not the body -- and
+//                       the pure verdict is `v2.compiler.source_authority` `layout_check`.
+//   parse-population   every module the declared namespace rows store under the bound trees
+//                       (`enumerate_bound_modules`), read and parsed one at a time. Only the
+//                       verdict of each parse is kept, so the memory is the refusals and not the
+//                       population. A population that enumerates to zero modules refuses: a parse
+//                       over nothing is not a parse of zero.
+type PopulationReport {
+  text: String
+  held: Bool
+  detail: String
+}
+
+// ---- check-layout -----------------------------------------------------------------------------------
+
+type TreeFiles
+  = TreeFilesListed { files: List<ModuleFileRef> }
+  | TreeFilesRefused { path: String, kind: String, cause: String }
+
+type LayoutHeaders
+  = LayoutHeadersRead { headers: List<LayoutFileHeader> }
+  | LayoutHeadersRefused { cause: String }
+
+fn tree_relative_path(directory: String, path: String) -> String {
+  substring(s: path, start: string_length(s: source_root_child_path(directory: directory, name: "")), end: string_length(s: path))
+}
+
+fn tree_files(binding: SourceRootBinding) -> TreeFiles {
+  match source_root_walk(
+    pending: [SourceRootWalkTask { path: binding.host_directory, root: true, origin: binding.host_directory }],
+    paths: [],
+    suffix: ".dag"
+  ) {
+    SourceRootPathsRefused { path: path, kind: kind, cause: cause } => TreeFilesRefused { path: path, kind: kind, cause: cause }
+    SourceRootPathsRead { paths: paths } =>
+      TreeFilesListed {
+        files: list_map(xs: paths, f: fn(walked) {
+          ModuleFileRef { tree: binding.tree, relative_path: tree_relative_path(directory: binding.host_directory, path: walked.path) }
+        })
+      }
+  }
+}
+
+fn layout_headers_go(host_directory: String, pending: List<ModuleFileRef>, acc: List<LayoutFileHeader>) -> LayoutHeaders {
+  match list_head(xs: pending) {
+    HeadAbsent => LayoutHeadersRead { headers: acc }
+    HeadFound { value: file } =>
+      match acquisition_probe(host_directory: host_directory, file: file) {
+        ModuleFilePresent { file: _, content: content } =>
+          layout_headers_go(
+            host_directory: host_directory,
+            pending: skip(xs: pending, n: 1),
+            acc: Cons { head: LayoutFileHeader { file: file, declared_module: module_header_declared_name(content: content) }, tail: acc }
+          )
+        ModuleFileAbsent { file: _ } =>
+          LayoutHeadersRefused { cause: concat(module_file_key(file: file), ": the walk listed the file and it is absent") }
+        ModuleFileRefused { file: _, cause: cause } => LayoutHeadersRefused { cause: concat(module_file_key(file: file), ": ", cause) }
+      }
+  }
+}
+
+fn layout_bindings_headers(pending: List<SourceRootBinding>, acc: List<LayoutFileHeader>) -> LayoutHeaders {
+  match list_head(xs: pending) {
+    HeadAbsent => LayoutHeadersRead { headers: acc }
+    HeadFound { value: binding } =>
+      match tree_files(binding: binding) {
+        TreeFilesRefused { path: path, kind: kind, cause: cause } =>
+          LayoutHeadersRefused { cause: concat("could not walk ", path, ": ", kind, ": ", cause) }
+        TreeFilesListed { files: files } =>
+          match layout_headers_go(host_directory: binding.host_directory, pending: files, acc: acc) {
+            LayoutHeadersRefused { cause: cause } => LayoutHeadersRefused { cause: cause }
+            LayoutHeadersRead { headers: headers } => layout_bindings_headers(pending: skip(xs: pending, n: 1), acc: headers)
+          }
+      }
+  }
+}
+
+fn layout_verdict_detail(verdict: LayoutVerdict) -> String {
+  match verdict {
+    LayoutHolds => "the layout holds"
+    LayoutRefused { refusals: refusals } =>
+      concat("the layout does not hold: ", int_to_decimal_string(value: length(xs: refusals)), " refusal(s), each on its own line of the report")
+  }
+}
+
+fn layout_report(verdict: LayoutVerdict) -> PopulationReport {
+  PopulationReport { text: layout_verdict_text(verdict: verdict), held: layout_verdict_holds(verdict: verdict), detail: layout_verdict_detail(verdict: verdict) }
+}
+
+// THE LAYOUT CHECK OVER THE BOUND TREES. A tree that cannot be walked or a file that cannot be read
+// refuses the whole check: a layout verdict over a population that silently lost a member would
+// certify a smaller repository.
+fn check_layout(bindings: List<SourceRootBinding>) -> PopulationReport {
+  match layout_bindings_headers(pending: bindings, acc: []) {
+    LayoutHeadersRefused { cause: cause } =>
+      PopulationReport { text: cause, held: false, detail: concat("the layout could not be observed: ", cause) }
+    LayoutHeadersRead { headers: headers } =>
+      layout_report(verdict: layout_check(layout: repository_storage_layout(), namespaces: layout_namespaces(), headers: headers))
+  }
+}
+
+// ---- parse-population --------------------------------------------------------------------------------
+
+// What a streaming parse keeps: how many parsed, and one located line per module that did not (newest
+// first). No tree, no content and no module list survives the member that produced it.
+type PopulationParse {
+  parsed: Int
+  refusals: List<String>
+}
+
+fn population_parse_member(env: AcquisitionEnv, name: String, tally: PopulationParse) -> PopulationParse {
+  match population_member(layout: env.layout, bindings: env.bindings, name: name) {
+    PopulationMemberRefused { cause: cause } =>
+      PopulationParse { parsed: tally.parsed, refusals: Cons { head: concat(name, ": ", cause), tail: tally.refusals } }
+    PopulationMemberRead { member: member } =>
+      match acquisition_parse(env: env, file: member.file, content: member.content) {
+        MemberParses => PopulationParse { parsed: tally.parsed + 1, refusals: tally.refusals }
+        MemberParseRefused { cause: cause } =>
+          PopulationParse { parsed: tally.parsed, refusals: Cons { head: concat(module_file_key(file: member.file), ": ", cause), tail: tally.refusals } }
+      }
+  }
+}
+
+fn population_parse_go(env: AcquisitionEnv, pending: List<String>, tally: PopulationParse) -> PopulationParse {
+  match list_head(xs: pending) {
+    HeadAbsent => tally
+    HeadFound { value: name } =>
+      population_parse_go(env: env, pending: skip(xs: pending, n: 1), tally: population_parse_member(env: env, name: name, tally: tally))
+  }
+}
+
+fn population_parse_report(tally: PopulationParse) -> PopulationReport {
+  if length(xs: tally.refusals) > 0 {
+    PopulationReport {
+      text: join(list_reverse(xs: tally.refusals), "\n"),
+      held: false,
+      detail: concat(int_to_decimal_string(value: length(xs: tally.refusals)), " module(s) did not parse or could not be read, each on its own line of the report")
+    }
+  } else if tally.parsed == 0 {
+    PopulationReport {
+      text: "",
+      held: false,
+      detail: "the bound trees store no module under the declared namespaces; a parse over nothing is not a parse of zero"
+    }
+  } else {
+    PopulationReport {
+      text: concat("population parses: ", int_to_decimal_string(value: tally.parsed), " module(s)"),
+      held: true,
+      detail: "every enumerated module parsed"
+    }
+  }
+}
+
+fn parse_population_listed(env: AcquisitionEnv, modules: List<String>) -> PopulationReport {
+  population_parse_report(tally: population_parse_go(env: env, pending: modules, tally: PopulationParse { parsed: 0, refusals: [] }))
+}
+
+fn parse_population_prepared(env: AcquisitionEnv) -> PopulationReport {
+  match enumerate_bound_modules(layout: env.layout, bindings: env.bindings, namespaces: layout_namespaces()) {
+    BoundModulesRefused { subject: subject, cause: cause } =>
+      PopulationReport {
+        text: concat(subject, ": ", cause),
+        held: false,
+        detail: concat("could not enumerate the modules of ", subject)
+      }
+    BoundModulesListed { modules: modules } => parse_population_listed(env: env, modules: modules)
+  }
+}
+
+fn parse_population(bindings: List<SourceRootBinding>) -> PopulationReport {
+  match acquisition_env(layout: repository_storage_layout(), bindings: bindings) {
+    AcquisitionEnvUnprepared { diagnostics: _ } =>
+      PopulationReport { text: "", held: false, detail: "the dag grammar did not prepare; no module was observed" }
+    AcquisitionEnvReady { env: env } => parse_population_prepared(env: env)
+  }
+}

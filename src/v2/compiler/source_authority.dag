@@ -21,7 +21,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node
 }
 import v2.std.compilers.lexing { TokenStream }
-import std.algebra { Empty, FreeMonoid, list_snoc_item, trim }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, trim }
 import v2.std.algebra {
   HeadAbsent,
   HeadFound,
@@ -1919,17 +1919,25 @@ fn header_declaration_refusals(layout: SourceStorageLayout, header: LayoutFileHe
   }
 }
 
+fn no_refusals() -> List<LayoutRefusal> {
+  []
+}
+
+// Folded from the last header to the first, each header's few refusals joined ahead of the rest, so the
+// refusals come out in the headers' order at the cost of the population and not its square.
 fn headers_position_refusals(layout: SourceStorageLayout, namespaces: Map<String, Bool>, headers: List<LayoutFileHeader>) -> List<LayoutRefusal> {
   fold_list(
-    xs: headers,
-    empty: [],
-    cons: fn(refusals, header) { concat(refusals, header_position_refusals(layout: layout, namespaces: namespaces, header: header)) }
+    xs: list_reverse(xs: headers),
+    empty: no_refusals(),
+    cons: fn(refusals, header) { concat(header_position_refusals(layout: layout, namespaces: namespaces, header: header), refusals) }
   )
 }
 
 // The headers grouped by the ASCII case fold of the module they declare: two files declaring one
 // module, or modules differing only by case (which collide on a case-insensitive filesystem), land
-// in one group.
+// in one group. Both lists are built by prepending, so the grouping costs the size of the population
+// and not its square; `order` and each group's members therefore run newest first, and the readers
+// restore the order the headers came in.
 type DeclaredGroups {
   order: List<String>
   members: Map<String, List<LayoutFileHeader>>
@@ -1946,13 +1954,13 @@ fn declared_group_insert(groups: DeclaredGroups, key: String, header: LayoutFile
   match map_lookup(m: groups.members, key: key) {
     Absent =>
       DeclaredGroups {
-        order: list_snoc_item(xs: groups.order, item: key),
+        order: Cons { head: key, tail: groups.order },
         members: map_insert(m: groups.members, key: key, value: [header])
       }
     Present { value: seen } =>
       DeclaredGroups {
         order: groups.order,
-        members: map_insert(m: groups.members, key: key, value: list_snoc_item(xs: seen, item: header))
+        members: map_insert(m: groups.members, key: key, value: Cons { head: header, tail: seen })
       }
   }
 }
@@ -1964,7 +1972,7 @@ fn duplicate_refusal_of(groups: DeclaredGroups, key: String) -> List<LayoutRefus
       if length(xs: members) < 2 {
         []
       } else {
-        [DuplicateModule { module: key, files: list_map(xs: members, f: fn(header) { header.file }) }]
+        [DuplicateModule { module: key, files: list_map(xs: list_reverse(xs: members), f: fn(header) { header.file }) }]
       }
   }
 }
@@ -1977,36 +1985,30 @@ fn headers_duplicate_refusals(headers: List<LayoutFileHeader>) -> List<LayoutRef
   )
   fold_list(
     xs: groups.order,
-    empty: [],
-    cons: fn(refusals, key) { concat(refusals, duplicate_refusal_of(groups: groups, key: key)) }
+    empty: no_refusals(),
+    cons: fn(refusals, key) { concat(duplicate_refusal_of(groups: groups, key: key), refusals) }
   )
 }
 
 // The namespaces the observed files actually occupy, by position.
 fn occupied_namespaces(layout: SourceStorageLayout, headers: List<LayoutFileHeader>) -> Map<String, Bool> {
-  text_set_of(names: fold_list(
+  fold_list(
     xs: headers,
-    empty: [],
-    cons: fn(names, header) {
+    empty: empty_map(),
+    cons: fn(occupied, header) {
       match module_name_for_file(layout: layout, file: header.file) {
-        ModuleNameDerived { name: positional } => list_snoc_item(xs: names, item: module_namespace(name: positional))
-        ModuleFileNotNamed { file: _, cause: _ } => names
+        ModuleNameDerived { name: positional } => map_insert(m: occupied, key: module_namespace(name: positional), value: true)
+        ModuleFileNotNamed { file: _, cause: _ } => occupied
       }
     }
-  ))
+  )
 }
 
+// One refusal per declared row no file occupies, in the rows' order.
 fn namespace_row_refusals(occupied: Map<String, Bool>, namespaces: List<String>) -> List<LayoutRefusal> {
-  fold_list(
-    xs: namespaces,
-    empty: [],
-    cons: fn(refusals, namespace) {
-      if text_set_has(set: occupied, name: namespace) {
-        refusals
-      } else {
-        list_snoc_item(xs: refusals, item: NamespaceRowWithoutModules { namespace: namespace })
-      }
-    }
+  list_map(
+    xs: filter(xs: namespaces, predicate: fn(namespace) { text_set_has(set: occupied, name: namespace) == false }),
+    f: fn(namespace) { NamespaceRowWithoutModules { namespace: namespace } }
   )
 }
 
@@ -2035,5 +2037,42 @@ fn layout_check(
     LayoutHolds {}
   } else {
     LayoutRefused { refusals: refusals }
+  }
+}
+
+// ---- rendering the verdict ------------------------------------------------------------
+//
+// One line per refusal and none capped: the verdict carries all of them so a line stopped is analyzed
+// whole, and each line names the file by its tree and path (module_file_key) so the author can act on
+// it where it is.
+fn layout_refusal_text(refusal: LayoutRefusal) -> String {
+  match refusal {
+    UndeclaredNamespace { file: file, namespace: namespace } =>
+      concat(module_file_key(file: file), ": namespace ", namespace, " has no declared row")
+    NamespaceRowWithoutModules { namespace: namespace } =>
+      concat("namespace ", namespace, " is declared but no governed file holds a module in it")
+    NotAtRulePosition { file: file, declared: declared, expected: expected } =>
+      concat(module_file_key(file: file), ": declares module ", declared, ", whose rule position is ", module_file_key(file: expected))
+    DeclaredModuleUnderivable { file: file, declared: declared, cause: cause } =>
+      concat(module_file_key(file: file), ": declares module ", declared, ", which names no storable position: ", cause)
+    FileNotNamed { file: file, cause: cause } =>
+      concat(module_file_key(file: file), ": the file's position names no module: ", cause)
+    ModuleLineMissing { file: file } => concat(module_file_key(file: file), ": no module line")
+    DuplicateModule { module: module, files: files } =>
+      concat("module ", module, " is declared by ", join(list_map(xs: files, f: fn(file) { module_file_key(file: file) }), ", "))
+  }
+}
+
+fn layout_verdict_text(verdict: LayoutVerdict) -> String {
+  match verdict {
+    LayoutHolds => "layout holds: every governed file is at the rule position of the module it declares"
+    LayoutRefused { refusals: refusals } => join(list_map(xs: refusals, f: fn(refusal) { layout_refusal_text(refusal: refusal) }), "\n")
+  }
+}
+
+fn layout_verdict_holds(verdict: LayoutVerdict) -> Bool {
+  match verdict {
+    LayoutHolds => true
+    LayoutRefused { refusals: _ } => false
   }
 }

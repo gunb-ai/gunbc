@@ -2863,8 +2863,8 @@ fn native_lane_census_read(bindings: List<SourceRootBinding>, names: List<String
 
 fn native_lane_census_listed(bindings: List<SourceRootBinding>, listed: BoundModules) -> Outcome<SourceRootIngest> {
   match listed {
-    BoundModulesRefused { namespace: namespace, cause: cause } =>
-      native_lane_refused(reason: ^native_lane_population_unlisted, detail: concat(namespace, ": ", cause))
+    BoundModulesRefused { subject: subject, cause: cause } =>
+      native_lane_refused(reason: ^native_lane_population_unlisted, detail: concat(subject, ": ", cause))
     BoundModulesListed { modules: names } => native_lane_census_read(bindings: bindings, names: names)
   }
 }

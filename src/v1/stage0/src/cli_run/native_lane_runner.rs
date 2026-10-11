@@ -119,6 +119,7 @@ const MALFORMED_MATERIALIZED_PATH: &str =
 /// ACCEPTS; anything less is that class returning, not an emission.
 const WELL_FORMED_CONTROL_ROOT: &str = "fixtures/native_cli_door/dag";
 const NATIVE_INGEST_COPIED_SINGLE_ROOT: &str = "fixtures/native_ingest_copied_single_root";
+const LAYOUT_CHECK_MISPLACED_ROOT: &str = "fixtures/layout_check_misplaced/dag";
 const NATIVE_INGEST_TWO_ROOTS_DAG: &str = "fixtures/native_ingest_two_roots/dag";
 const NATIVE_INGEST_TWO_ROOTS_V2: &str = "fixtures/native_ingest_two_roots/src/v2";
 const CLI_DOOR_ENTRY_MODULE: &str = "gunbc.native_cli_door_probe";
@@ -2645,6 +2646,7 @@ fn walk_cli_door(
     }
     eprintln!("v2-native-cli: filesystem controls refused absent root and unreadable source with typed, located causes");
     walk_native_ingest_layout_controls(binary, workspace)?;
+    walk_population_controls(binary, workspace, scratch)?;
     let refusal_status = i64::from(refused.status.unwrap_or_default());
     eprintln!("v2-native-cli: door refused as cli_no_entry — exit {refusal_status}");
     Ok((door_exit_status, emitted_bytes, refusal_status))
@@ -2762,6 +2764,268 @@ fn walk_native_ingest_layout_controls(binary: &Path, workspace: &Path) -> Result
         ));
     }
     eprintln!("v2-native-cli: native-ingest layout controls held (unrecognized copied root, two roots emit only the requested closure, two directories for one tree)");
+    Ok(())
+}
+
+/// THE FIRST LINES OF THE TWO POPULATION VERBS' HELD REPORTS, from `v2.compiler.source_authority`
+/// `layout_verdict_text` and `v2.cli.population_verbs` `population_parse_report`. Each control reads
+/// the head it owes and no more, so a report that held for a different reason cannot satisfy it.
+const POPULATION_LAYOUT_HOLDS_HEAD: &str = "layout holds";
+const POPULATION_PARSES_HEAD: &str = "population parses: ";
+const POPULATION_PARSES_ONE: &str = "population parses: 1 module(s)";
+const POPULATION_NOTHING_DETAIL: &str = "a parse over nothing is not a parse of zero";
+
+/// The lines of a population report worth quoting in a refusal: the report of a refused layout
+/// lists one line per refusal, so the whole of it would bury the control that failed.
+fn population_excerpt(text: &str) -> String {
+    let lines: Vec<&str> = text.lines().take(12).collect();
+    format!(
+        "{} (first {} line(s) of {} byte(s))",
+        lines.join(" // "),
+        lines.len(),
+        text.len()
+    )
+}
+
+fn population_argv(verb: &str, roots: &[&Path]) -> Vec<String> {
+    let mut argv = vec![verb.to_string()];
+    for root in roots {
+        argv.push("--source-root".to_string());
+        argv.push(root.display().to_string());
+    }
+    argv
+}
+
+/// A line of `stderr` the rendered main framed as a refusal and that carries every part in `parts`.
+fn population_refusal_framed(stderr: &str, parts: &[&str]) -> bool {
+    stderr.lines().any(|line| {
+        line.starts_with(CLI_REFUSAL_PREFIX) && parts.iter().all(|part| line.contains(part))
+    })
+}
+
+/// THE WHOLE-POPULATION VERBS, WALKED. `check-layout` and `parse-population`
+/// (`v2.cli.population_verbs`) are folds over what the host handed them; claims over those folds
+/// supply the observations, so these walks are the inhabitance that the BUILT binary reads real
+/// directories and decides with the real verdicts -- deleting the integration makes a control here
+/// fail. Both verbs hold over the live governed roots (`dag` and `src/v2`), which is the job these
+/// verbs have on `witnesses`; every other control differs from a holding one in a single fact:
+///
+/// - `parse-population` over the door fixture's root parses exactly one module, and over the
+///   materialized malformed specimen refuses it by file; an empty root refuses (a parse over nothing
+///   is not a parse of zero) and an absent root refuses instead of reading as empty;
+/// - `check-layout` over the misplaced fixture refuses the module whose line disagrees with its
+///   position and the namespace no row declares, while the door fixture, where the same module line
+///   IS at its rule position, is not refused for either; both refuse the declared rows their small
+///   roots do not occupy, which is the check observing the whole declared roster;
+/// - a population verb takes source roots and nothing else, and an argument naming no tree is usage.
+///
+/// SEED DELTA (ctrl hand-Rust receipt): extend `walk_cli_door` with one inhabitance walk over the
+/// existing `run_cli_door`; no new production route and no scaffold. Accounted on
+/// `gunbc.source_root_eval_driver_seed_growth` `source_root_eval_driver_seed_growth_justification`
+/// (lane `v1-hand-queue-drain`), with the walk above it.
+fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> Result<(), String> {
+    let live_dag = workspace.join("dag");
+    let live_v2 = workspace.join("src/v2");
+    let door_root = workspace.join(WELL_FORMED_CONTROL_ROOT);
+    let misplaced_root = workspace.join(LAYOUT_CHECK_MISPLACED_ROOT);
+    let copied_root = workspace.join(NATIVE_INGEST_COPIED_SINGLE_ROOT);
+    let malformed_root = workspace.join(materialize_malformed_specimen(workspace)?);
+    for (label, path) in [
+        ("live-dag", live_dag.as_path()),
+        ("live-v2", live_v2.as_path()),
+        ("door", door_root.as_path()),
+        ("misplaced", misplaced_root.as_path()),
+        ("copied-single-root", copied_root.as_path()),
+        ("malformed", malformed_root.as_path()),
+    ] {
+        if !path.is_dir() {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=NativePopulationControlRootAbsent — {label} {} is not a directory, \
+                 so the control has no input and a green here would describe nothing",
+                path.display()
+            ));
+        }
+    }
+    let probes = scratch.join("population-door-controls");
+    let empty_root = probes.join("empty").join("dag");
+    let absent_root = probes.join("absent").join("dag");
+    if probes.exists() {
+        std::fs::remove_dir_all(&probes)
+            .map_err(|e| format!("clearing {}: {e}", probes.display()))?;
+    }
+    std::fs::create_dir_all(&empty_root)
+        .map_err(|e| format!("create {}: {e}", empty_root.display()))?;
+
+    let fail = |cause: &str, run: &CliDoorRun| -> String {
+        format!(
+            "V2-NATIVE REFUSAL cause={cause} — status={:?} stdout={} stderr={}",
+            run.status,
+            population_excerpt(&run.stdout),
+            population_excerpt(&run.stderr)
+        )
+    };
+
+    // THE JOB THE VERBS HAVE ON `witnesses`: both hold over the live governed roots.
+    eprintln!("v2-native-cli: population controls — check-layout and parse-population over the live roots");
+    let live = [live_dag.as_path(), live_v2.as_path()];
+    let layout_live = run_cli_door(binary, &population_argv("check-layout", &live))?;
+    if layout_live.status != Some(0)
+        || !layout_live.stdout.starts_with(POPULATION_LAYOUT_HOLDS_HEAD)
+    {
+        return Err(fail(
+            "NativeLayoutCheckDoesNotHoldOverTheLiveRoots",
+            &layout_live,
+        ));
+    }
+    let parse_live = run_cli_door(binary, &population_argv("parse-population", &live))?;
+    if parse_live.status != Some(0) || !parse_live.stdout.starts_with(POPULATION_PARSES_HEAD) {
+        return Err(fail(
+            "NativePopulationParseDoesNotHoldOverTheLiveRoots",
+            &parse_live,
+        ));
+    }
+    eprintln!(
+        "v2-native-cli: live roots — check-layout held; parse-population: {}",
+        parse_live.stdout.trim()
+    );
+
+    // PARSE: the accepting control carries a count, the malformed specimen is refused by file.
+    let door = run_cli_door(
+        binary,
+        &population_argv("parse-population", &[door_root.as_path()]),
+    )?;
+    if door.status != Some(0) || door.stdout.trim() != POPULATION_PARSES_ONE {
+        return Err(fail("NativePopulationParseDoorRootNotOneModule", &door));
+    }
+    let malformed = run_cli_door(
+        binary,
+        &population_argv("parse-population", &[malformed_root.as_path()]),
+    )?;
+    if malformed.status != Some(CLI_DOOR_REFUSAL_EXIT)
+        || malformed.stdout.starts_with(POPULATION_PARSES_HEAD)
+        || !malformed
+            .stdout
+            .lines()
+            .any(|line| line.starts_with("dag:gunbc/malformed_specimen.dag: "))
+        || !population_refusal_framed(&malformed.stderr, &["1 module(s) did not parse"])
+    {
+        return Err(fail(
+            "NativePopulationParseMalformedSpecimenNotRefusedByFile",
+            &malformed,
+        ));
+    }
+    let empty = run_cli_door(
+        binary,
+        &population_argv("parse-population", &[empty_root.as_path()]),
+    )?;
+    if empty.status != Some(CLI_DOOR_REFUSAL_EXIT)
+        || !population_refusal_framed(&empty.stderr, &[POPULATION_NOTHING_DETAIL])
+    {
+        return Err(fail("NativePopulationParseEmptyRootNotRefused", &empty));
+    }
+    for verb in ["parse-population", "check-layout"] {
+        let absent = run_cli_door(binary, &population_argv(verb, &[absent_root.as_path()]))?;
+        if absent.status != Some(CLI_DOOR_REFUSAL_EXIT)
+            || absent.stdout.starts_with(POPULATION_PARSES_HEAD)
+            || absent.stdout.starts_with(POPULATION_LAYOUT_HOLDS_HEAD)
+            || !absent.stdout.contains(&absent_root.display().to_string())
+            || !absent
+                .stderr
+                .lines()
+                .any(|line| line.starts_with(CLI_REFUSAL_PREFIX))
+        {
+            return Err(fail("NativePopulationAbsentRootNotRefused", &absent));
+        }
+    }
+
+    // LAYOUT: the misplaced fixture is refused by file; the door fixture, whose module line is at its
+    // rule position, is refused for neither fact.
+    let misplaced = run_cli_door(
+        binary,
+        &population_argv("check-layout", &[misplaced_root.as_path()]),
+    )?;
+    let misplaced_line = "dag:gunbc/misplaced.dag: declares module gunbc.native_cli_door_probe, \
+                          whose rule position is dag:gunbc/native_cli_door_probe.dag";
+    if misplaced.status != Some(CLI_DOOR_REFUSAL_EXIT)
+        || !misplaced.stdout.lines().any(|line| line == misplaced_line)
+        || !misplaced.stdout.lines().any(|line| {
+            line.starts_with("dag:undeclared_probe/member.dag: ")
+                && line.contains("has no declared row")
+        })
+    {
+        return Err(fail(
+            "NativeLayoutCheckMisplacementNotRefusedByFile",
+            &misplaced,
+        ));
+    }
+    let placed = run_cli_door(
+        binary,
+        &population_argv("check-layout", &[door_root.as_path()]),
+    )?;
+    if placed.status != Some(CLI_DOOR_REFUSAL_EXIT)
+        || placed.stdout.contains("whose rule position is")
+        || placed.stdout.contains("has no declared row")
+        || placed.stdout.contains("namespace gunbc is declared but")
+        || !placed
+            .stdout
+            .contains("is declared but no governed file holds a module in it")
+    {
+        return Err(fail(
+            "NativeLayoutCheckPlacedFixtureRefusedForTheWrongFact",
+            &placed,
+        ));
+    }
+
+    // USAGE: a population verb takes source roots, at least one, each a governed tree directory.
+    let no_roots = run_cli_door(binary, &["check-layout".to_string()])?;
+    if no_roots.status != Some(CLI_DOOR_USAGE_REFUSAL_EXIT)
+        || !no_roots.stdout.is_empty()
+        || !population_refusal_framed(
+            &no_roots.stderr,
+            &["check-layout needs at least one source root"],
+        )
+    {
+        return Err(fail("NativePopulationVerbWithoutRootsNotUsage", &no_roots));
+    }
+    let with_entry = run_cli_door(
+        binary,
+        &[
+            "parse-population".to_string(),
+            "--entry".to_string(),
+            CLI_DOOR_ENTRY_MODULE.to_string(),
+            "--source-root".to_string(),
+            door_root.display().to_string(),
+        ],
+    )?;
+    if with_entry.status != Some(CLI_DOOR_USAGE_REFUSAL_EXIT)
+        || !with_entry.stdout.is_empty()
+        || !population_refusal_framed(&with_entry.stderr, &["unknown option --entry"])
+    {
+        return Err(fail("NativePopulationVerbTookAnEntry", &with_entry));
+    }
+    let unrecognized = run_cli_door(
+        binary,
+        &population_argv("check-layout", &[copied_root.as_path()]),
+    )?;
+    if unrecognized.status != Some(CLI_DOOR_USAGE_REFUSAL_EXIT)
+        || !unrecognized.stdout.is_empty()
+        || !unrecognized
+            .stderr
+            .contains("source root is not a governed tree directory")
+        || !unrecognized
+            .stderr
+            .contains(&copied_root.display().to_string())
+    {
+        return Err(fail(
+            "NativePopulationVerbUnrecognizedRootNotUsage",
+            &unrecognized,
+        ));
+    }
+    eprintln!(
+        "v2-native-cli: population controls held (live roots hold both verbs; door root parses one module, \
+         the malformed specimen and an empty or absent root refuse; misplaced and undeclared files are \
+         refused by file; usage refusals)"
+    );
     Ok(())
 }
 

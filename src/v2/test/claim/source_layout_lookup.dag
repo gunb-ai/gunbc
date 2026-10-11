@@ -31,6 +31,10 @@ import v2.compiler.source_authority {
   StorageNamespaceRoot,
   UndeclaredNamespace,
   layout_check,
+  layout_refusal_text,
+  layout_verdict_holds,
+  layout_verdict_text,
+  module_file_key,
   reference_prefixes,
   resolve_reference_over
 }
@@ -323,4 +327,74 @@ fn is_misplacement_of_text(refusal: LayoutRefusal) -> Bool {
     ModuleLineMissing { file: _ } => false
     DuplicateModule { module: _, files: _ } => false
   }
+}
+
+// ---- the order a duplicate's evidence is reported in ----------------------------------------------------
+//
+// The grouping behind the duplicate refusal is built newest-first and restored once, so the report is
+// the same one a grouping that appended would give: duplicate keys in the order their first member
+// appears, and the files of each in the order the headers listed them. The controls interleave two
+// colliding pairs so that an order restored the wrong way round, or a grouping that flattened the
+// pairs together, reports a different line.
+
+fn duplicate_files_text(refusal: LayoutRefusal) -> String {
+  match refusal {
+    DuplicateModule { module: module, files: files } =>
+      concat(module, "=", join(list_map(xs: files, f: fn(file) { module_file_key(file: file) }), ","))
+    UndeclaredNamespace { file: _, namespace: _ } => "other"
+    NamespaceRowWithoutModules { namespace: _ } => "other"
+    NotAtRulePosition { file: _, declared: _, expected: _ } => "other"
+    DeclaredModuleUnderivable { file: _, declared: _, cause: _ } => "other"
+    FileNotNamed { file: _, cause: _ } => "other"
+    ModuleLineMissing { file: _ } => "other"
+  }
+}
+
+fn colliding_pairs() -> List<LayoutFileHeader> {
+  [
+    header(file: dag_file(path: "a/b/c.dag"), declared: "a.b.c"),
+    header(file: dag_file(path: "a/b/d.dag"), declared: "a.b.d"),
+    header(file: dag_file(path: "a/b/C.dag"), declared: "a.b.C"),
+    header(file: dag_file(path: "a/b/D.dag"), declared: "a.b.D")
+  ]
+}
+
+test fn colliding_modules_are_reported_in_first_appearance_order_with_their_files_in_header_order() -> Bool {
+  match layout_check(layout: layout(), namespaces: ["a.b"], headers: colliding_pairs()) {
+    LayoutHolds => false
+    LayoutRefused { refusals: refusals } =>
+      join(list_map(xs: refusals, f: fn(refusal) { duplicate_files_text(refusal: refusal) }), ";")
+        == "a.b.c=dag:a/b/c.dag,dag:a/b/C.dag;a.b.d=dag:a/b/d.dag,dag:a/b/D.dag"
+  }
+}
+
+// ---- the report a refusal is read from -----------------------------------------------------------------
+//
+// One line per refusal, each starting with the located file or namespace, so the operator reading a
+// failed run is pointed at the offending subject without a second lookup.
+
+test fn a_misplaced_module_is_reported_with_its_file_and_its_rule_position() -> Bool {
+  layout_refusal_text(refusal: NotAtRulePosition {
+    file: dag_file(path: "v2/std/text.dag"),
+    declared: "v2.std.text",
+    expected: v2_file(path: "std/text.dag")
+  }) == "dag:v2/std/text.dag: declares module v2.std.text, whose rule position is v2:std/text.dag"
+}
+
+test fn a_stale_row_is_reported_by_the_namespace_it_declares() -> Bool {
+  layout_refusal_text(refusal: NamespaceRowWithoutModules { namespace: "q.r" })
+    == "namespace q.r is declared but no governed file holds a module in it"
+}
+
+test fn a_refused_layout_is_reported_one_line_per_refusal() -> Bool {
+  layout_verdict_text(verdict: LayoutRefused {
+    refusals: [
+      ModuleLineMissing { file: dag_file(path: "a/b/c.dag") },
+      NamespaceRowWithoutModules { namespace: "q.r" }
+    ]
+  }) == "dag:a/b/c.dag: no module line\nnamespace q.r is declared but no governed file holds a module in it"
+}
+
+test fn a_layout_that_holds_says_so_and_a_refused_one_does_not() -> Bool {
+  layout_verdict_holds(verdict: LayoutHolds {}) && layout_verdict_holds(verdict: LayoutRefused { refusals: [ModuleLineMissing { file: dag_file(path: "a/b/c.dag") }] }) == false
 }

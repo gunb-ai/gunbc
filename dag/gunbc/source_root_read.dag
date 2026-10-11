@@ -80,6 +80,24 @@ fn source_root_walk(pending: List<SourceRootWalkTask>, paths: List<SourceRootWal
   }
 }
 
+// One directory's listing and no descent: whether the host lists this path as a directory, with the
+// host's classification of why it does not.
+type SourceRootDirectory
+  = SourceRootDirectoryListed { path: String }
+  | SourceRootDirectoryRefused { path: String, kind: String, cause: String }
+
+fn source_root_directory(path: String) -> SourceRootDirectory {
+  let listed = Filesystem.List(path: path)
+  match filesystem_listing_observation(directory: path, success: listed.success,
+    entries: listed.entries, error: listed.error) {
+    FilesystemDirectoryListed(listing) => SourceRootDirectoryListed { path: path }
+    FilesystemDirectoryListingRefused { directory: _, error: cause } =>
+      SourceRootDirectoryRefused { path: path, kind: listed.error_kind, cause: cause }
+    FilesystemDirectorySubjectRefused { directory: subject, cause: cause } =>
+      SourceRootDirectoryRefused { path: subject, kind: "invalid_subject", cause: cause }
+  }
+}
+
 fn source_root_read_file(path: String) -> FilesystemExactRead {
   let read = Filesystem.Read(path: path)
   filesystem_exact_read(path: path, content: read.content, success: read.success,
