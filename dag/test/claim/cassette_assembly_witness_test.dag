@@ -17,7 +17,7 @@ test fn moved_guard_is_not_admitted() -> Bool {
  !review_model_checks(parts:map(all_parts(),p=>if p.id=="G2" {displaced(p:p)} else {p}),interfaces:interfaces())
 }
 test fn missing_member_is_not_admitted() -> Bool {
- !review_model_checks(parts:filter(all_parts(),p=>p.id!="M2"),interfaces:interfaces())
+ !review_model_checks(parts:all_parts()|>filter(p=>p.id!="M2"),interfaces:interfaces())
 }
 test fn oversized_piece_is_not_admitted() -> Bool {
  let p=part(id:"oversized",name:"negative control",kind:Printed,scope:Cassette,adds:[block(w:181000,h:8000,d:90000,x:0,y:0,z:0)],cuts:[],x:0,y:0,z:0,ex:0,ey:0,ez:0,plane:LayOnXZ,notes:"")
