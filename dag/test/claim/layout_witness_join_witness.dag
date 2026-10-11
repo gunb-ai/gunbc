@@ -81,8 +81,24 @@ fn reds(old: Observation, new: Observation, edges: PlanEdges, removals: List<Str
 }
 
 fn reds_unread(old: Observation, new: Observation, edges: PlanEdges, removals: List<String>, declared_unread: List<String>) -> String {
+  reds_declared(old: old, new: new, edges: edges, removals: removals, row_removals: [], row_additions: [], declared_unread: declared_unread)
+}
+
+fn reds_rows(old: Observation, new: Observation, row_removals: List<String>, row_additions: List<String>) -> String {
+  reds_declared(old: old, new: new, edges: no_plan(), removals: [], row_removals: row_removals, row_additions: row_additions, declared_unread: [])
+}
+
+fn reds_declared(
+  old: Observation,
+  new: Observation,
+  edges: PlanEdges,
+  removals: List<String>,
+  row_removals: List<String>,
+  row_additions: List<String>,
+  declared_unread: List<String>
+) -> String {
   join(
-    red_findings(findings: witness_set_join(old: old, new: new, plan: edges, declared_removals: removals, declared_unread: declared_unread)) |> map(f => finding_line(finding: f)),
+    red_findings(findings: witness_set_join(old: old, new: new, plan: edges, declared_removals: removals, declared_row_removals: row_removals, declared_row_additions: row_additions, declared_unread: declared_unread)) |> map(f => finding_line(finding: f)),
     "|"
   )
 }
@@ -92,10 +108,31 @@ fn infos(old: Observation, new: Observation, edges: PlanEdges, removals: List<St
 }
 
 fn infos_unread(old: Observation, new: Observation, edges: PlanEdges, removals: List<String>, declared_unread: List<String>) -> String {
+  infos_declared(old: old, new: new, edges: edges, removals: removals, row_removals: [], row_additions: [], declared_unread: declared_unread)
+}
+
+fn infos_rows(old: Observation, new: Observation, row_removals: List<String>, row_additions: List<String>) -> String {
+  infos_declared(old: old, new: new, edges: no_plan(), removals: [], row_removals: row_removals, row_additions: row_additions, declared_unread: [])
+}
+
+fn infos_declared(
+  old: Observation,
+  new: Observation,
+  edges: PlanEdges,
+  removals: List<String>,
+  row_removals: List<String>,
+  row_additions: List<String>,
+  declared_unread: List<String>
+) -> String {
   join(
-    reported_findings(findings: witness_set_join(old: old, new: new, plan: edges, declared_removals: removals, declared_unread: declared_unread)) |> map(f => finding_line(finding: f)),
+    reported_findings(findings: witness_set_join(old: old, new: new, plan: edges, declared_removals: removals, declared_row_removals: row_removals, declared_row_additions: row_additions, declared_unread: declared_unread)) |> map(f => finding_line(finding: f)),
     "|"
   )
+}
+
+// The rows a declaration names are the join's own row key: the entry's path, a tab, the function.
+fn row_declaration(entry: String, function: String) -> String {
+  concat(entry, "\t", function)
 }
 
 fn base_old() -> Observation {
@@ -143,12 +180,12 @@ fn line_at_is(lines: List<String>, index: Int, want: String) -> Bool {
 }
 
 test fn an_equal_join_says_equal_in_its_summary() -> Bool {
-  let findings = witness_set_join(old: base_old(), new: base_old(), plan: no_plan(), declared_removals: [], declared_unread: [])
+  let findings = witness_set_join(old: base_old(), new: base_old(), plan: no_plan(), declared_removals: [], declared_row_removals: [], declared_row_additions: [], declared_unread: [])
   line_at_is(lines: join_summary_lines(old: base_old(), new: base_old(), findings: findings), index: 5, want: "RESULT\tEQUAL")
 }
 
 test fn the_summary_counts_the_files_the_channel_could_not_read() -> Bool {
-  let findings = witness_set_join(old: base_old(), new: base_old(), plan: no_plan(), declared_removals: [], declared_unread: [])
+  let findings = witness_set_join(old: base_old(), new: base_old(), plan: no_plan(), declared_removals: [], declared_row_removals: [], declared_row_additions: [], declared_unread: [])
   line_at_is(lines: join_summary_lines(old: base_old(), new: unread_x(cause: "parse_g0_tokens_remain"), findings: findings), index: 2, want: "unread files: 1")
 }
 
@@ -237,6 +274,98 @@ test fn a_declared_removal_is_still_reported_row_by_row() -> Bool {
 test fn a_declaration_for_another_path_does_not_excuse_a_removal() -> Bool {
   let without = observation(lines: [file_line(path: "dag/a/y.dag")])
   reds(old: base_old(), new: without, edges: no_plan(), removals: ["dag/a/y.dag"]) == "RED\tROW_IN_REMOVED_FILE\tdag/a/x.dag\tf1|RED\tROW_IN_REMOVED_FILE\tdag/a/x.dag\tf2"
+}
+
+// ---- the rows a change deletes or writes ----------------------------------------------------------------
+// A declaration is the caller's reading of the sources (a function the change deletes with its declaration, a test
+// it writes). It excuses a row only when the join finds that row lost or gained, it is reported beside the row, and
+// it never reaches an altered row, a row in a removed file, or any other row.
+fn without_f2() -> Observation {
+  observation(lines: [file_line(path: "dag/a/x.dag"), file_line(path: "dag/a/y.dag"), row_line(entry: "dag/a/x.dag", function: "f1")])
+}
+
+fn with_f3() -> Observation {
+  observation(lines: [
+    file_line(path: "dag/a/x.dag"),
+    file_line(path: "dag/a/y.dag"),
+    row_line(entry: "dag/a/x.dag", function: "f1"),
+    row_line(entry: "dag/a/x.dag", function: "f2"),
+    row_line(entry: "dag/a/x.dag", function: "f3")
+  ])
+}
+
+test fn a_lost_row_the_caller_declares_removed_is_not_red() -> Bool {
+  reds_rows(old: base_old(), new: without_f2(), row_removals: [row_declaration(entry: "dag/a/x.dag", function: "f2")], row_additions: []) == ""
+}
+
+test fn a_declared_lost_row_is_still_reported() -> Bool {
+  infos_rows(old: base_old(), new: without_f2(), row_removals: [row_declaration(entry: "dag/a/x.dag", function: "f2")], row_additions: []) == "INFO\tROW_LOST_DECLARED\tdag/a/x.dag\tf2"
+}
+
+test fn a_declaration_for_another_row_does_not_excuse_a_lost_row() -> Bool {
+  reds_rows(old: base_old(), new: without_f2(), row_removals: [row_declaration(entry: "dag/a/x.dag", function: "f1")], row_additions: []) == "RED\tROW_LOST\tdag/a/x.dag\tf2"
+}
+
+test fn a_declaration_for_the_function_in_another_file_does_not_excuse_a_lost_row() -> Bool {
+  reds_rows(old: base_old(), new: without_f2(), row_removals: [row_declaration(entry: "dag/a/y.dag", function: "f2")], row_additions: []) == "RED\tROW_LOST\tdag/a/x.dag\tf2"
+}
+
+test fn a_removal_is_declared_against_the_path_the_old_tree_had() -> Bool {
+  let moved_without_f2 = observation(lines: [
+    file_line(path: "dag/b/x.dag"),
+    file_line(path: "dag/a/y.dag"),
+    row_line(entry: "dag/b/x.dag", function: "f1")
+  ])
+  let edges = plan(edges: [edge(old_path: "dag/a/x.dag", new_path: "dag/b/x.dag")])
+  reds_declared(old: base_old(), new: moved_without_f2, edges: edges, removals: [], row_removals: [row_declaration(entry: "dag/a/x.dag", function: "f2")], row_additions: [], declared_unread: []) == ""
+    && reds_declared(old: base_old(), new: moved_without_f2, edges: edges, removals: [], row_removals: [row_declaration(entry: "dag/b/x.dag", function: "f2")], row_additions: [], declared_unread: [])
+      == "RED\tROW_LOST\tdag/a/x.dag\tf2"
+}
+
+test fn a_gained_row_the_caller_declares_added_is_not_red() -> Bool {
+  reds_rows(old: base_old(), new: with_f3(), row_removals: [], row_additions: [row_declaration(entry: "dag/a/x.dag", function: "f3")]) == ""
+}
+
+test fn a_declared_gained_row_is_still_reported() -> Bool {
+  infos_rows(old: base_old(), new: with_f3(), row_removals: [], row_additions: [row_declaration(entry: "dag/a/x.dag", function: "f3")]) == "INFO\tROW_GAINED_DECLARED\tdag/a/x.dag\tf3"
+}
+
+test fn a_declaration_for_another_row_does_not_excuse_a_gained_row() -> Bool {
+  reds_rows(old: base_old(), new: with_f3(), row_removals: [], row_additions: [row_declaration(entry: "dag/a/x.dag", function: "f4")]) == "RED\tROW_GAINED\tdag/a/x.dag\tf3"
+}
+
+test fn a_removal_declaration_does_not_excuse_a_gained_row_nor_the_converse() -> Bool {
+  reds_rows(old: base_old(), new: with_f3(), row_removals: [row_declaration(entry: "dag/a/x.dag", function: "f3")], row_additions: []) == "RED\tROW_GAINED\tdag/a/x.dag\tf3"
+    && reds_rows(old: base_old(), new: without_f2(), row_removals: [], row_additions: [row_declaration(entry: "dag/a/x.dag", function: "f2")]) == "RED\tROW_LOST\tdag/a/x.dag\tf2"
+}
+
+test fn a_row_declaration_does_not_excuse_an_altered_row() -> Bool {
+  let relabelled = observation(lines: [
+    file_line(path: "dag/a/x.dag"),
+    file_line(path: "dag/a/y.dag"),
+    row_line(entry: "dag/a/x.dag", function: "f1"),
+    row_line_labelled(entry: "dag/a/x.dag", function: "f2", label: "another_label")
+  ])
+  string_contains(
+    s: reds_rows(old: base_old(), new: relabelled, row_removals: [row_declaration(entry: "dag/a/x.dag", function: "f2")], row_additions: [row_declaration(entry: "dag/a/x.dag", function: "f2")]),
+    pattern: "RED\tROW_ALTERED\tdag/a/x.dag\tf2"
+  )
+}
+
+test fn a_row_declaration_does_not_excuse_a_row_in_an_undeclared_removed_file() -> Bool {
+  let without = observation(lines: [file_line(path: "dag/a/y.dag")])
+  reds_rows(old: base_old(), new: without, row_removals: [row_declaration(entry: "dag/a/x.dag", function: "f1"), row_declaration(entry: "dag/a/x.dag", function: "f2")], row_additions: [])
+    == "RED\tROW_IN_REMOVED_FILE\tdag/a/x.dag\tf1|RED\tROW_IN_REMOVED_FILE\tdag/a/x.dag\tf2"
+}
+
+test fn a_declaration_for_a_row_that_is_preserved_reports_nothing() -> Bool {
+  reds_rows(old: base_old(), new: base_old(), row_removals: [row_declaration(entry: "dag/a/x.dag", function: "f1")], row_additions: [row_declaration(entry: "dag/a/x.dag", function: "f2")]) == ""
+    && infos_rows(old: base_old(), new: base_old(), row_removals: [row_declaration(entry: "dag/a/x.dag", function: "f1")], row_additions: [row_declaration(entry: "dag/a/x.dag", function: "f2")]) == ""
+}
+
+test fn a_malformed_row_declaration_is_red() -> Bool {
+  string_contains(s: reds_rows(old: base_old(), new: base_old(), row_removals: ["dag/a/x.dag"], row_additions: []), pattern: "RED\tINPUT_MALFORMED\trow_removals\tdag/a/x.dag")
+    && string_contains(s: reds_rows(old: base_old(), new: base_old(), row_removals: [], row_additions: ["dag/a/x.dag\tf3\textra"]), pattern: "RED\tINPUT_MALFORMED\trow_additions")
 }
 
 test fn a_plan_edge_for_a_file_the_old_tree_lacks_is_red() -> Bool {

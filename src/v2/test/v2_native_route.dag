@@ -50,8 +50,10 @@ import v2.compiler.compile {
   NativeLaneAcquisition,
   native_lane_acquired,
   native_lane_candidate_entries,
-  native_lane_declared_module_name
+  native_lane_declared_module_name,
+  native_lane_module_reachable
 }
+import v2.std.collection { Map, empty_map, map_insert }
 import v2.compiler.module_acquisition { AcquiredModule }
 import v2.compiler.source_authority { ModuleFileRef }
 import v2.std.cross_tree.import_model { V2Tree }
@@ -1634,6 +1636,51 @@ test fn a_single_target_that_spells_a_module_refuses_naming_the_module_spelling(
         outcome: acquired_over(modules: [control_acquired()], population: ["v2.test.subject"], pattern: pattern),
         reason: ^native_lane_pattern_names_a_module
       )
+  }
+}
+
+// ── the reachability walk's budget ─────────────────────────────────────────────────────
+//
+// THE WALK THE CENSUS' CLOSURE FAN-OUT RUNS (native_lane_module_reachable) IS DISCRIMINATED AT THE
+// INTERFACE IT ANSWERS FOR: the index is a SUPPLIED value, so these claims never read a population.
+// The budget is rounds of breadth-first expansion and the closure below is two rounds deep: the seed
+// expands to `v2.std.logic` in round one, and round two finds nothing new. A budget of one round leaves
+// `v2.std.logic` on the frontier, and the walk must REFUSE by its typed reason rather than answer with
+// the seed it had seen: a walk that absorbed the exhaustion would still hold the seed, so only this
+// pair tells it apart. A budget of exactly two is the boundary: the frontier is empty when the fuel
+// runs out, and the closure is accepted.
+fn budget_probe_index() -> Map<String, List<String>> {
+  let no_imports: List<String> = []
+  map_insert(
+    map_insert(empty_map(), "v2.test.subject", ["v2.std.logic"]),
+    "v2.std.logic",
+    no_imports
+  )
+}
+
+fn closure_budget_probe(budget: Int) -> Outcome<List<String>> {
+  native_lane_module_reachable(
+    index: budget_probe_index(),
+    frontier: ["v2.test.subject"],
+    seen: ["v2.test.subject"],
+    seen_set: map_insert(empty_map(), "v2.test.subject", true),
+    fuel: budget,
+    budget: budget
+  )
+}
+
+test fn an_exhausted_closure_budget_refuses_the_derivation() -> Bool {
+  match closure_budget_probe(budget: 1) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^native_lane_closure_budget_exhausted
+  }
+}
+
+test fn a_closure_finishing_on_its_last_round_is_accepted() -> Bool {
+  match closure_budget_probe(budget: 2) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: closure, diagnostics: _ } =>
+      length(xs: closure) == 2 && fold_list(xs: closure, empty: false, cons: fn(held, m) { held || m == "v2.std.logic" })
   }
 }
 

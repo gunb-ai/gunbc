@@ -52,9 +52,11 @@ import v2.workflow.floor_discovery_source_authority {
 // parse tree by v2.compiler.module_acquisition acquisition_test_markers) and hands them to the real
 // producer as supplied values. The before-side is whatever the retired convention enrolled, which is what the floor
 // actually ran; a member the old convention enrolled that carries no marker is a ROW_LOST difference,
-// listed and never absorbed. A row the join does not list as preserved is either a real claim that is
-// owed its marker or a member that was never a claim, and the join cannot tell which: the run's author
-// does, and says so beside the list.
+// listed and never absorbed. A row the join does not list as preserved is either a claim the change deleted
+// or wrote, or a real claim that is owed its marker, and the join cannot tell which from the two
+// observations: the caller can, from the sources, and declares the rows the change deletes with their
+// declaration and the rows it writes. A declared row is still reported beside its difference; an undeclared
+// one is red.
 //
 // WHAT IS NOT OBSERVED. The producer is given no owned-data records here, exactly as
 // v2.compiler.effect_demand_floor_join effect_demand_floor_join_live gives it none: a Bool-valued owned
@@ -175,6 +177,10 @@ fn row_key(entry: String, function: String) -> String {
   concat(entry, "\t", function)
 }
 
+fn line_is_row_key(line: String) -> Bool {
+  count(split(s: line, delimiter: "\t")) == 2
+}
+
 fn row_value(row: ObservedRow) -> String {
   concat(row.label, "\t", row.live)
 }
@@ -248,8 +254,8 @@ fn preimages_of(forward: Map<String, String>, old_files: List<String>) -> Preima
 // ---- the join -------------------------------------------------------------------------------------
 type JoinFinding
   = RowPreserved
-  | RowLost { entry: String, function: String }
-  | RowGained { entry: String, function: String }
+  | RowLost { entry: String, function: String, declared: Bool }
+  | RowGained { entry: String, function: String, declared: Bool }
   | RowAltered { entry: String, function: String, was: String, now: String }
   | RowUnread { entry: String, function: String, declared: Bool }
   | RowIntroduced { entry: String, function: String }
@@ -263,8 +269,8 @@ type JoinFinding
 fn finding_is_red(finding: JoinFinding) -> Bool {
   match finding {
     RowPreserved => false
-    RowLost { entry: _, function: _ } => true
-    RowGained { entry: _, function: _ } => true
+    RowLost { entry: _, function: _, declared: declared } => !declared
+    RowGained { entry: _, function: _, declared: declared } => !declared
     RowAltered { entry: _, function: _, was: _, now: _ } => true
     RowUnread { entry: _, function: _, declared: declared } => !declared
     RowIntroduced { entry: _, function: _ } => false
@@ -280,8 +286,10 @@ fn finding_is_red(finding: JoinFinding) -> Bool {
 fn finding_line(finding: JoinFinding) -> String {
   match finding {
     RowPreserved => "PRESERVED"
-    RowLost { entry: e, function: f } => join(["RED", "ROW_LOST", e, f], "\t")
-    RowGained { entry: e, function: f } => join(["RED", "ROW_GAINED", e, f], "\t")
+    RowLost { entry: e, function: f, declared: d } =>
+      join([if d { "INFO" } else { "RED" }, if d { "ROW_LOST_DECLARED" } else { "ROW_LOST" }, e, f], "\t")
+    RowGained { entry: e, function: f, declared: d } =>
+      join([if d { "INFO" } else { "RED" }, if d { "ROW_GAINED_DECLARED" } else { "ROW_GAINED" }, e, f], "\t")
     RowAltered { entry: e, function: f, was: w, now: n } => join(["RED", "ROW_ALTERED", e, f, w, n], "\t")
     RowUnread { entry: e, function: f, declared: d } =>
       join([if d { "INFO" } else { "RED" }, if d { "ROW_UNREAD_DECLARED" } else { "ROW_UNREAD" }, e, f], "\t")
@@ -304,6 +312,7 @@ fn old_row_finding(
   new_files: Map<String, Bool>,
   new_rows: Map<String, String>,
   declared: Map<String, Bool>,
+  removed_rows: Map<String, Bool>,
   unread: Map<String, Bool>,
   row: ObservedRow
 ) -> JoinFinding {
@@ -315,7 +324,7 @@ fn old_row_finding(
       Absent =>
         match map_lookup(m: unread, key: moved) {
           Present { value: covered } => RowUnread { entry: row.entry, function: row.function, declared: covered }
-          Absent => RowLost { entry: row.entry, function: row.function }
+          Absent => RowLost { entry: row.entry, function: row.function, declared: path_present(index: removed_rows, path: row_key(entry: row.entry, function: row.function)) }
         }
       Present { value: now } =>
         if now == row_value(row: row) {
@@ -331,13 +340,14 @@ fn old_row_finding(
 fn new_row_finding(
   preimage: Map<String, String>,
   old_rows: Map<String, String>,
+  added_rows: Map<String, Bool>,
   row: ObservedRow
 ) -> JoinFinding {
   match map_lookup(m: preimage, key: row.entry) {
     Absent => RowIntroduced { entry: row.entry, function: row.function }
     Present { value: was_path } =>
       match map_lookup(m: old_rows, key: row_key(entry: was_path, function: row.function)) {
-        Absent => RowGained { entry: row.entry, function: row.function }
+        Absent => RowGained { entry: row.entry, function: row.function, declared: path_present(index: added_rows, path: row_key(entry: row.entry, function: row.function)) }
         Present { value: _ } => RowPreserved
       }
   }
@@ -359,7 +369,12 @@ fn new_file_finding(preimage: Map<String, String>, path: String) -> JoinFinding 
 }
 
 // The full join. `declared_removals` are old-tree paths the caller names from the independent record of
-// the change; `declared_unread` are new-tree paths whose channel refusal the caller has found declared
+// the change; `declared_row_removals` are old-side rows (`entry<TAB>function`, the entry the old tree's
+// path) the change deletes with the declaration, and `declared_row_additions` are new-side rows the change
+// writes (entry the new tree's path). A declaration excuses a row only when the row is actually lost or
+// gained, and it is reported beside the row (ROW_LOST_DECLARED, ROW_GAINED_DECLARED), never absorbed; a
+// declaration that matches no such row excuses nothing, and a function the new file still declares
+// without its marker is a lost marker, which the caller does not declare. `declared_unread` are new-tree paths whose channel refusal the caller has found declared
 // (a supplied value, so the join judges the shape of the declaration and never reads the live one);
 // `plan` is the sweep's own digest of the old tree.
 fn witness_set_join(
@@ -367,6 +382,8 @@ fn witness_set_join(
   new: Observation,
   plan: PlanEdges,
   declared_removals: List<String>,
+  declared_row_removals: List<String>,
+  declared_row_additions: List<String>,
   declared_unread: List<String>
 ) -> List<JoinFinding> {
   let old_rows = row_index(rows: old.rows)
@@ -374,12 +391,14 @@ fn witness_set_join(
   let old_files = path_index(paths: old.files)
   let new_files = path_index(paths: new.files)
   let declared = path_index(paths: declared_removals)
+  let removed_rows = path_index(paths: declared_row_removals)
+  let added_rows = path_index(paths: declared_row_additions)
   let covered_unread = path_index(paths: declared_unread)
   let unread = fold(new.unread, init: empty_map(), f: (index, u) => map_insert(m: index, key: u.path, value: path_present(index: covered_unread, path: u.path)))
   let preimages = preimages_of(forward: plan.forward, old_files: old.files)
   let row_findings = concat(
-    old.rows |> map(r => old_row_finding(forward: plan.forward, new_files: new_files, new_rows: new_rows, declared: declared, unread: unread, row: r)),
-    new.rows |> map(r => new_row_finding(preimage: preimages.index, old_rows: old_rows, row: r))
+    old.rows |> map(r => old_row_finding(forward: plan.forward, new_files: new_files, new_rows: new_rows, declared: declared, removed_rows: removed_rows, unread: unread, row: r)),
+    new.rows |> map(r => new_row_finding(preimage: preimages.index, old_rows: old_rows, added_rows: added_rows, row: r))
   )
   let file_findings = concat(
     old.files |> map(p => old_file_finding(forward: plan.forward, new_files: new_files, path: p)),
@@ -398,7 +417,11 @@ fn witness_set_join(
       )
     )
   )
-  concat(concat(row_findings, file_findings), input_findings)
+  let declaration_findings = concat(
+    declared_row_removals |> filter(l => !line_is_row_key(line: l)) |> map(l => InputMalformed { source: "row_removals", line: l }),
+    declared_row_additions |> filter(l => !line_is_row_key(line: l)) |> map(l => InputMalformed { source: "row_additions", line: l })
+  )
+  concat(concat(row_findings, file_findings), concat(input_findings, declaration_findings))
 }
 
 fn reported_findings(findings: List<JoinFinding>) -> List<JoinFinding> {
@@ -572,7 +595,7 @@ fn layout_witness_observe(files: String, report: String) -> ProcessExit {
 }
 
 // JOIN TWO OBSERVATIONS THROUGH THE SWEEP'S PLAN. Exits success only when no finding is red.
-fn layout_witness_join(old: String, new: String, plan: String, removals: String, report: String) -> ProcessExit {
+fn layout_witness_join(old: String, new: String, plan: String, removals: String, row_removals: String, row_additions: String, report: String) -> ProcessExit {
   match read_text(path: old) {
     TextReadRefused { path: p, cause: c } => exit_failure(reason: concat("layout witness join: cannot read ", p, ": ", c))
     TextReadOk { text: old_text } =>
@@ -584,13 +607,25 @@ fn layout_witness_join(old: String, new: String, plan: String, removals: String,
             TextReadOk { text: plan_text } =>
               match read_text(path: removals) {
                 TextReadRefused { path: p, cause: c } => exit_failure(reason: concat("layout witness join: cannot read ", p, ": ", c))
-                TextReadOk { text: removal_text } => joined_report(
-                  old: observation_of(text: old_text),
-                  new: observation_of(text: new_text),
-                  plan: plan_edges_of(text: plan_text),
-                  removals: split(s: removal_text, delimiter: "\n") |> filter(l => l != ""),
-                  report: report
-                )
+                TextReadOk { text: removal_text } =>
+                  match read_text(path: row_removals) {
+                    TextReadRefused { path: p, cause: c } => exit_failure(reason: concat("layout witness join: cannot read ", p, ": ", c))
+                    TextReadOk { text: row_removal_text } =>
+                      match read_text(path: row_additions) {
+                        TextReadRefused { path: p, cause: c } => exit_failure(reason: concat("layout witness join: cannot read ", p, ": ", c))
+                        TextReadOk { text: row_addition_text } => joined_report(
+                          old: observation_of(text: old_text),
+                          new: observation_of(text: new_text),
+                          plan: plan_edges_of(text: plan_text),
+                          declarations: Declarations {
+                            files: split(s: removal_text, delimiter: "\n") |> filter(l => l != ""),
+                            row_removals: split(s: row_removal_text, delimiter: "\n") |> filter(l => l != ""),
+                            row_additions: split(s: row_addition_text, delimiter: "\n") |> filter(l => l != "")
+                          },
+                          report: report
+                        )
+                      }
+                  }
               }
           }
       }
@@ -611,12 +646,20 @@ fn declared_unread_paths(classes: List<RefusalClass>, unread: List<UnreadFile>) 
   unread |> filter(u => unread_is_declared(classes: classes, unread: u)) |> map(u => u.path)
 }
 
-fn joined_report(old: Observation, new: Observation, plan: PlanEdges, removals: List<String>, report: String) -> ProcessExit {
+type Declarations {
+  files: List<String>
+  row_removals: List<String>
+  row_additions: List<String>
+}
+
+fn joined_report(old: Observation, new: Observation, plan: PlanEdges, declarations: Declarations, report: String) -> ProcessExit {
   let findings = witness_set_join(
     old: old,
     new: new,
     plan: plan,
-    declared_removals: removals,
+    declared_removals: declarations.files,
+    declared_row_removals: declarations.row_removals,
+    declared_row_additions: declarations.row_additions,
     declared_unread: declared_unread_paths(classes: parse_population_declared_refusal_classes(), unread: new.unread)
   )
   let written = write_text(
