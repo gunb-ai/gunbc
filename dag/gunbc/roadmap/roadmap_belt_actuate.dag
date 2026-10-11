@@ -10646,7 +10646,8 @@ data belt_dispatch_instance_env_var: NonEmptyStr = "GUNBC_BELT_INSTANCE_ID" as N
 // The instance comes from the one roster (gunbc.roadmap_dashboard_instance dashboard_instance_for_id),
 // so no constructor is named here. Admission for belt dispatch is a narrower set than the roster
 // (DashboardActuating alone also admits srv1-lab and macbook-local) and is not yet a modeled row, so
-// it stays this list of roster ids, unchanged from before; modelling it is a declared frontier.
+// it stays this list of roster ids, unchanged from before. Trigger: an entry takes the instance its deployment names (frontier A of D2 layer 4,
+// gunb-ai/gunbc#13726); the list is then replaced by a modeled belt-dispatch admission row on the roster.
 data belt_dispatch_admitted_instance_ids: List<String> = ["srv2-deploy", "srv1-live"]
 
 fn belt_dispatch_instance_named(id: String) -> HostDashboardInstance? {
