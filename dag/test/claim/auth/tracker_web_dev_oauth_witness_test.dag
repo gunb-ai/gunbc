@@ -6,21 +6,27 @@ import extdeps.google.workspace { RegisteredWebClient }
 import gunbc.auth.google_workspace_admin_convergence {
   workspace_identity_admin_obligations, BasicSignInOnly,
 }
+import gunbc.auth.google_workspace_login {
+  GoogleLoginEnvironmentTest, GoogleLoginEnvironmentProd, TrackerWebOauthClientBound, TrackerWebOauthClientUnbound,
+}
 import gunbc.auth.oidc_deployment_config {
   oidc_secret_from_file_standing, OidcSecretFileMissing, OidcConfigFieldStringUnavailable, oidc_config_env_var,
 }
 import gunbc.auth.tracker_web_oauth_client {
-  tracker_web_dev_oauth_client_binding, tracker_web_dev_workspace_identity_binding,
+  tracker_web_test_oauth_client_binding, tracker_web_test_workspace_identity_binding,
   tracker_web_oidc_serve_config, tracker_web_oidc_config_document,
-  tracker_web_dev_srv1_lab_redirect_uri, tracker_web_dev_oauth_client_secret_host_path,
-  production_has_no_oidc_serve_config, tracker_web_prod_oauth_client_standing,
-  TrackerWebOauthClientUnbound, TrackerWebOauthClientBound, srv2_hand_started_oidc_unit_frontier,
+  tracker_web_test_lab_redirect_uri, tracker_web_dev_oauth_client_secret_host_path,
+  production_has_no_oidc_serve_config, tracker_web_oauth_standing_for_environment,
+  tracker_web_instance_environment, tracker_web_test_target_owned_domain,
+  tracker_web_test_console_redirect_uris_actuation, tracker_web_test_secret_manager_actuation,
+  tracker_web_dev_oauth_client_secret_ref,
+  srv2_hand_started_oidc_unit_frontier, tracker_web_test_owned_domain_frontier,
 }
 import std.roster_frontier { PathSubject }
 import gunbc.live_deploy.emit { live_deploy_serve_unit_file }
 import gunbc.live_deploy.desired { srv1_lab_desired_deployment, srv1_production_desired_deployment, selected_deployment_spec }
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
-import gunbc.roadmap_dashboard_instance { srv1_dashboard_lab_id }
+import gunbc.roadmap_dashboard_instance { srv1_dashboard_lab_id, srv1_dashboard_live_id }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import v2.std.collection { Present, Absent }
 
@@ -33,7 +39,7 @@ test fn lab_rendered_oidc_config_names_lab_redirect_and_secret_path() -> Bool {
     Absent => false
     Present { value: cfg } =>
       let body = tracker_web_oidc_config_document(cfg: cfg)
-      string_contains(s: body, pattern: tracker_web_dev_srv1_lab_redirect_uri as String)
+      string_contains(s: body, pattern: tracker_web_test_lab_redirect_uri as String)
         && string_contains(s: body, pattern: tracker_web_dev_oauth_client_secret_host_path as String)
         && string_contains(s: body, pattern: "client_secret_file")
         && !string_contains(s: body, pattern: "\"client_secret\":")
@@ -42,7 +48,11 @@ test fn lab_rendered_oidc_config_names_lab_redirect_and_secret_path() -> Bool {
 
 test fn production_serve_unit_carries_no_oidc_env() -> Bool {
   production_has_no_oidc_serve_config()
-    && match tracker_web_prod_oauth_client_standing() {
+    && match tracker_web_instance_environment(instance_id: srv1_dashboard_live_id) {
+      Present { value: GoogleLoginEnvironmentProd } => true
+      _ => false
+    }
+    && match tracker_web_oauth_standing_for_environment(environment: GoogleLoginEnvironmentProd) {
       TrackerWebOauthClientUnbound { environment: _, reason: _ } => true
       TrackerWebOauthClientBound { binding: _ } => false
     }
@@ -56,18 +66,22 @@ test fn production_serve_unit_carries_no_oidc_env() -> Bool {
 }
 
 test fn lab_serve_unit_carries_oidc_env() -> Bool {
-  string_contains(
-    s: serialize_systemd_unit_file(file: live_deploy_serve_unit_file(
-      spec: selected_deployment_spec(row: srv1_lab_desired_deployment()),
-      revision: witness_revision(),
-    )),
-    pattern: oidc_config_env_var as String,
-  )
+  match tracker_web_instance_environment(instance_id: srv1_dashboard_lab_id) {
+    Present { value: GoogleLoginEnvironmentTest } => true
+    _ => false
+  }
+    && string_contains(
+      s: serialize_systemd_unit_file(file: live_deploy_serve_unit_file(
+        spec: selected_deployment_spec(row: srv1_lab_desired_deployment()),
+        revision: witness_revision(),
+      )),
+      pattern: oidc_config_env_var as String,
+    )
 }
 
 test fn admin_obligation_redirect_uris_equal_the_binding() -> Bool {
-  let binding = tracker_web_dev_workspace_identity_binding()
-  let b = tracker_web_dev_oauth_client_binding()
+  let binding = tracker_web_test_workspace_identity_binding()
+  let b = tracker_web_test_oauth_client_binding()
   match workspace_identity_admin_obligations(binding: binding, discovery: BasicSignInOnly).first() {
     Absent => false
     Present { value: ob } =>
@@ -92,4 +106,16 @@ test fn srv2_hand_started_unit_is_recorded_unmodeled() -> Bool {
     PathSubject { path: p } => p == "gunbc-dash-18082.service"
     _ => false
   }
+}
+
+test fn test_environment_owns_uris_and_actuation_receipts_are_recorded() -> Bool {
+  let b = tracker_web_test_oauth_client_binding()
+  (b.environment == GoogleLoginEnvironmentTest)
+    && string_contains(s: tracker_web_test_console_redirect_uris_actuation as String, pattern: "8444")
+    && string_contains(s: tracker_web_test_secret_manager_actuation as String, pattern: "version 1")
+    && (tracker_web_dev_oauth_client_secret_ref.version as String) == "1"
+    && match tracker_web_test_owned_domain_frontier.subject {
+      PathSubject { path: p } => p == (tracker_web_test_target_owned_domain as String)
+      _ => false
+    }
 }
