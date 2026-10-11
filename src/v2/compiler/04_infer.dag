@@ -2,9 +2,9 @@ module v2.compiler.infer
 
 import std.types { List }
 
-import std.occurrence_identity { OccurrenceSynthetic }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
 import std.kind { Kind, RosterKindIndex, TypeDenotationKind, kind_denoted_by_node, kind_node, roster_kind_index, roster_kind_index_lookup }
-import v2.std.algebra { any, Empty, TailAbsent, TailFound, length, list_map, list_tail, skip, zip_map }
+import v2.std.algebra { any, contains, Empty, TailAbsent, TailFound, length, list_map, list_tail, skip, zip_map }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import v2.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
@@ -20,7 +20,7 @@ import v2.std.compilers.target_model {
   canonical_operation_op_sub,
   target_model_canonical_operation_member_declared_type,
 }
-import v2.compiler.resolve { ResolvedTree, resolved_tree_lexical_binding, resolved_tree_unavailable_provider }
+import v2.compiler.resolve { LexicalBinding, LexicalDeclared, LexicalOwedFormal, LexicalUntyped, LexicalValued, ResolvedTree, resolved_tree_lexical_binding, resolved_tree_unavailable_provider }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.compiler.inferred_tree {
   DerivedGrounding,
@@ -78,7 +78,7 @@ import std.optional {
   optional_present
 }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_init, qualified_name_last_segment }
-import v2.std.node_query { BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_labeled_child, find_named_child, arrow_constant_member_codomain }
+import v2.std.node_query { is_wildcard_pattern, BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_labeled_child, find_named_child, arrow_constant_member_codomain }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_lookup }
 import v2.std.grammar { node_atom_identity_optional }
@@ -991,12 +991,12 @@ fn infer_product_facts_from_entries(
 // declared type -- so `x` in `fn f(x: Pos)` reads Pos from f's own domain entry, never from whichever
 // Arrow a walk meets first. A path the index cannot answer here is the index disagreeing with the
 // resolver that minted it: refused, located, never left underived.
-fn infer_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>, resolved: ResolvedTree, instances: List<TypeVariableInstance>) -> Outcome<InferredFacts> {
+fn infer_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>, resolved: ResolvedTree, instances: List<TypeVariableInstance>, binder_types: List<InferBinderType>) -> Outcome<InferredFacts> {
   match parameter_reference_path_optional(node: n) {
     Present { value: path } => infer_parameter_reference_facts(n: n, path: path, index: resolved.resolved_declarations)
     Absent =>
       match lexical_reference_label_optional(node: n) {
-        Present { value: _ } => infer_lexical_reference_facts(n: n, resolved: resolved, instances: instances)
+        Present { value: _ } => infer_lexical_reference_facts(n: n, resolved: resolved, instances: instances, binder_types: binder_types)
         Absent => infer_term_node_facts(n: n, partials: partials, kinds: kinds, resolved: resolved)
       }
   }
@@ -1008,16 +1008,30 @@ fn infer_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>,
 // that declares a type (a lambda parameter's domain edge) grounds to it; one that declares none (a
 // `let` or a pattern binder, which carry no type here) is underived, as before. A reference resolve
 // did not record is the tree disagreeing with the resolver that produced it: refused, located.
-fn infer_lexical_reference_facts(n: Node, resolved: ResolvedTree, instances: List<TypeVariableInstance>) -> Outcome<InferredFacts> {
+fn infer_lexical_reference_facts(n: Node, resolved: ResolvedTree, instances: List<TypeVariableInstance>, binder_types: List<InferBinderType>) -> Outcome<InferredFacts> {
   match infer_descent_witness_for_node(n: n) {
     Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
     Holds { value: descent_proof } =>
       match resolved_tree_lexical_binding(tree: resolved, reference: n) {
         Present { value: binding } =>
-          match binding.declared {
-            Present { value: declared } =>
-              inferred_facts_from_derived_type(node: n, derived_type: infer_frame_instantiated(declared: declared, instances: instances), descent: Holds { value: descent_proof })
-            Absent => inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
+          match infer_payload_binder_derived_type(binder_types: binder_types, binding: binding) {
+            Present { value: derived } =>
+              inferred_facts_from_derived_type(node: n, derived_type: derived, descent: Holds { value: descent_proof })
+            Absent =>
+              match binding.standing {
+                LexicalOwedFormal { field_type: _ } =>
+                  Rejected {
+                    diagnostics: diagnostics_singleton(d: Diagnostic {
+                      reason: ^infer_reason_pattern_payload_formal_uninstantiated,
+                      at: node_locus(node: n),
+                      correction: Unavailable { reason: ExternalContractUnknown }
+                    })
+                  }
+                LexicalDeclared { node: declared } =>
+                  inferred_facts_from_derived_type(node: n, derived_type: infer_frame_instantiated(declared: declared, instances: instances), descent: Holds { value: descent_proof })
+                LexicalValued { node: _ } => inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
+                LexicalUntyped => inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
+              }
           }
         Absent =>
           Rejected {
@@ -1029,6 +1043,15 @@ fn infer_lexical_reference_facts(n: Node, resolved: ResolvedTree, instances: Lis
           }
       }
   }
+}
+
+fn infer_payload_binder_derived_type(binder_types: List<InferBinderType>, binding: LexicalBinding) -> Optional<Node> {
+  fold(binder_types, init: optional_absent(), f: fn(acc, row) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if row.site == binding.binder_site { optional_present(value: row.derived) } else { acc }
+    }
+  })
 }
 
 fn infer_parameter_reference_facts(n: Node, path: QualifiedName, index: SymbolIndex) -> Outcome<InferredFacts> {
@@ -1951,8 +1974,8 @@ fn infer_branch_operand_resolved_type_with_entries(
     Rejected { diagnostics: _ } =>
       match resolved_tree_lexical_binding(tree: resolved, reference: node) {
         Present { value: binding } =>
-          match binding.declared {
-            Present { value: declared } =>
+          match binding.standing {
+            LexicalDeclared { node: declared } =>
               match infer_operand_declared_type_instantiated(declared: declared, instances: instances) {
                 Present { value: instantiated } => Holds { value: instantiated }
                 Absent =>
@@ -1961,11 +1984,13 @@ fn infer_branch_operand_resolved_type_with_entries(
                     Absent => inferred_facts_resolved_type(facts: facts)
                   }
               }
-            Absent =>
+            LexicalValued { node: _ } =>
               match infer_let_binder_value_type_optional(entries: entries, binding: binding) {
                 Present { value: value_type } => Holds { value: value_type }
                 Absent => inferred_facts_resolved_type(facts: facts)
               }
+            LexicalOwedFormal { field_type: _ } => inferred_facts_resolved_type(facts: facts)
+            LexicalUntyped => inferred_facts_resolved_type(facts: facts)
           }
         Absent => inferred_facts_resolved_type(facts: facts)
       }
@@ -2087,13 +2112,15 @@ fn infer_let_binder_value_type_optional(
   entries: List<InferredFactsEntry>,
   binding: LexicalBinding,
 ) -> Optional<Node> {
-  match binding.value {
-    Absent => optional_absent()
-    Present { value: value_target } =>
+  match binding.standing {
+    LexicalValued { node: value_target } =>
       match lookup_inferred_facts_in_entries(entries: entries, key: value_target) {
         Absent => optional_absent()
         Present { value: facts } => inferred_facts_resolved_type_optional(facts: facts)
       }
+    LexicalDeclared { node: _ } => optional_absent()
+    LexicalOwedFormal { field_type: _ } => optional_absent()
+    LexicalUntyped => optional_absent()
   }
 }
 
@@ -2745,7 +2772,7 @@ fn infer_type_head_and_args(t: Node) -> InferTypeHeadArgs {
 }
 
 fn infer_match_coproduct_of_type(scrutinee_type: Node, resolved: ResolvedTree) -> InferMatchCoproductRead {
-  let head_args = infer_type_head_and_args(t: scrutinee_type)
+  let head_args = infer_type_head_and_args(t: infer_type_alias_normalized(t: scrutinee_type, declarations: resolved.resolved_declarations))
   match declaration_reference_path_optional(node: head_args.head) {
     Absent => CoproductNotDeclared
     Present { value: path } =>
@@ -2796,7 +2823,8 @@ fn infer_match_variant_payload(variants: Node, tag: Symbol) -> Optional<Node> {
 
 
 // A VARIANT FIELD'S TYPE AT THIS INSTANTIATION, OR NOTHING. A field declared as one of the
-// declaration's type parameters is that parameter's argument -- a type the USE SITE resolved. A field
+// declaration's type parameters is that parameter's argument -- a type the USE SITE resolved; a field
+// declared as an instantiation (`tail: FreeMonoid<T>`) is that instantiation with each parameter replaced. A field
 // declared as a kernel type is that type's denotation, the same join infer_arrow_declared_return_type
 // reads. Any other field type is a reference authored in the DECLARATION'S scope, which the index
 // holds as written and this stage does not re-resolve (infer_declaration_reference_facts states the
@@ -2813,7 +2841,12 @@ fn infer_match_field_type_instantiated(field_type: Node, instances: List<TypeVar
       } else {
         optional_absent()
       }
-    TypeNode { connective: _ } => Absent
+    TypeNode { connective: _ } =>
+      if infer_declared_type_mentions_free_formal(declared: field_type, instances: instances) {
+        optional_absent()
+      } else {
+        optional_present(value: infer_type_instantiated(t: field_type, instances: instances))
+      }
     ComputationNode { behavior: _ } => Absent
   }
 }
@@ -3066,7 +3099,10 @@ fn infer_coproduct_arm_body_types(
           Present { value: held } =>
             InferArmBodyTypes {
               derived: acc.derived,
-              mismatch: acc.mismatch || !infer_type_equal_ignoring_provenance(a: held, b: t),
+              mismatch: acc.mismatch || !infer_type_equal_ignoring_provenance(
+                a: infer_type_alias_normalized(t: held, declarations: resolved.resolved_declarations),
+                b: infer_type_alias_normalized(t: t, declarations: resolved.resolved_declarations)
+              ),
               underived: acc.underived
             }
         }
@@ -4806,8 +4842,9 @@ fn infer_gather_transform_frontier_on_entries(
   kinds: List<RosterKindIndex>,
   resolved: ResolvedTree,
   instances: List<TypeVariableInstance>,
+  binder_types: List<InferBinderType>,
 ) -> InferGatherFoldAcc {
-  match infer_node_facts(n: node, partials: partials, kinds: kinds, resolved: resolved, instances: instances) {
+  match infer_node_facts(n: node, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types) {
     Rejected { diagnostics: r } =>
       infer_gather_fold_acc_failed(
         node: node,
@@ -4958,7 +4995,7 @@ fn infer_gather_transform_row_on_entries(
     Present { value: elements } =>
     match infer_transform_freemonoid_introduction(node: node, elements: elements, entries: entries, resolved: resolved) {
       Absent =>
-        infer_gather_transform_frontier_on_entries(node: node, entries: entries, pending: pending, partials: partials, kinds: kinds, resolved: resolved, instances: infer_no_type_variable_instances())
+        infer_gather_transform_frontier_on_entries(node: node, entries: entries, pending: pending, partials: partials, kinds: kinds, resolved: resolved, instances: infer_no_type_variable_instances(), binder_types: infer_no_binder_types())
       Present { value: introduced } =>
         match introduced {
           Rejected { diagnostics: r } =>
@@ -5104,7 +5141,8 @@ fn infer_gather_application_row_on_arguments(
           partials: partials,
           kinds: kinds,
           resolved: resolved,
-          instances: infer_no_type_variable_instances()
+          instances: infer_no_type_variable_instances(),
+          binder_types: infer_no_binder_types()
         )
       }
   }
@@ -5167,7 +5205,8 @@ fn infer_gather_bind_annotation_row_on_entries(
         partials: partials,
         kinds: kinds,
         resolved: resolved,
-        instances: infer_no_type_variable_instances()
+        instances: infer_no_type_variable_instances(),
+        binder_types: infer_no_binder_types()
       )
   }
 }
@@ -5333,7 +5372,7 @@ fn infer_transform_cast_optional(node: Node, entries: List<InferredFactsEntry>, 
 // added without deciding, at this site, whether it derives its type or joins the counted frontier
 // -- never defaulted into by omission (DESIGN §4 closed vocabulary, §5 unwritable-by-construction).
 
-fn infer_gather_fold_not_derived(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>, resolved: ResolvedTree, instances: List<TypeVariableInstance>) -> InferGatherFoldAcc {
+fn infer_gather_fold_not_derived(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>, resolved: ResolvedTree, instances: List<TypeVariableInstance>, binder_types: List<InferBinderType>) -> InferGatherFoldAcc {
   infer_gather_transform_frontier_on_entries(
     node: n,
     entries: empty_inferred_facts_entry_list(),
@@ -5341,7 +5380,8 @@ fn infer_gather_fold_not_derived(n: Node, partials: List<Node>, kinds: List<Rost
     partials: partials,
     kinds: kinds,
     resolved: resolved,
-    instances: instances
+    instances: instances,
+    binder_types: binder_types
   )
 }
 
@@ -5353,7 +5393,7 @@ fn infer_gather_fold_not_derived(n: Node, partials: List<Node>, kinds: List<Rost
 // -- a grounding this fold does not derive -- and it takes that arm. Deriving the reference's type
 // FROM its declaration by path is the end-state the roster lookups above already name as their
 // dissolution, not this arm.
-fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>, resolved: ResolvedTree, instances: List<TypeVariableInstance>) -> InferGatherFoldAcc {
+fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>, resolved: ResolvedTree, instances: List<TypeVariableInstance>, binder_types: List<InferBinderType>) -> InferGatherFoldAcc {
   match n.kind {
     ComputationNode { behavior: Branch } =>
       infer_gather_fold_acc_ok(
@@ -5388,7 +5428,7 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
         await_transform_row: false,
         children_remaining: length(xs: n.children)
       )
-    ComputationNode { behavior: Value } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances)
+    ComputationNode { behavior: Value } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types)
     ComputationNode { behavior: Transform } =>
       if length(xs: n.children) == 0 {
         infer_gather_transform_row_on_entries(
@@ -5436,19 +5476,19 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
             await_transform_row: false,
             children_remaining: length(xs: n.children)
           )
-        Absent => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances)
+        Absent => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types)
       }
       }
-    TypeNode { connective: Atom { identity: _ } } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances)
+    TypeNode { connective: Atom { identity: _ } } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types)
     TypeNode { connective: Conj } =>
       match declaration_reference_path_optional(node: n) {
-        Present { value: _ } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances)
+        Present { value: _ } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types)
         Absent =>
       match parameter_reference_path_optional(node: n) {
-        Present { value: _ } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances)
+        Present { value: _ } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types)
         Absent =>
       match lexical_reference_label_optional(node: n) {
-        Present { value: _ } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances)
+        Present { value: _ } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types)
         Absent =>
       if infer_type_node_awaits_product_row(kinds: kinds, n: n) {
         infer_gather_fold_acc_ok(
@@ -5462,7 +5502,7 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
           children_remaining: length(xs: n.children)
         )
       } else {
-        infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances)
+        infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types)
       }
       }
       }
@@ -5480,7 +5520,7 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
           children_remaining: length(xs: n.children)
         )
       } else {
-        infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances)
+        infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types)
       }
     TypeNode { connective: Arrow } =>
       if infer_type_node_awaits_product_row(kinds: kinds, n: n) {
@@ -5495,10 +5535,10 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
           children_remaining: length(xs: n.children)
         )
       } else {
-        infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances)
+        infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types)
       }
-    TypeNode { connective: Cardinality } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances)
-    TypeNode { connective: Instantiation } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances)
+    TypeNode { connective: Cardinality } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types)
+    TypeNode { connective: Instantiation } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types)
   }
 }
 
@@ -6868,7 +6908,22 @@ fn infer_gather_settled_unannotated_row(
 // the binder is minted, and no other route types a parameter.
 type InferFrame {
   instances: List<TypeVariableInstance>
+  binder_types: List<InferBinderType>
   entering: InferFrameEntry
+}
+
+// A MATCH-PAYLOAD BINDER'S TYPE, KEYED BY ITS BINDER SITE. Resolve records only that a payload binder is
+// owed its field's declared type (LexicalOwedFormal); the type itself needs the scrutinee's instantiated
+// arguments, which exist only once the scrutinee has settled, so it is minted at arm entry and read at
+// the reference. One row per binder occurrence; the frame is lexical, so a row is visible exactly in its
+// arm's subtree.
+type InferBinderType {
+  site: NodeOccurrenceIdentity
+  derived: Node
+}
+
+fn infer_no_binder_types() -> List<InferBinderType> {
+  Empty
 }
 
 // What the frame brings INTO the subtree it opens, charged once at that subtree's root: nothing; a
@@ -6880,11 +6935,11 @@ type InferFrameEntry
   | InferFrameEnteredRefused { refused: NonEmptyDiagnostics }
 
 fn infer_root_frame() -> InferFrame {
-  InferFrame { instances: infer_no_type_variable_instances(), entering: InferFrameEnteredPlain }
+  InferFrame { instances: infer_no_type_variable_instances(), binder_types: infer_no_binder_types(), entering: InferFrameEnteredPlain }
 }
 
 fn infer_frame_inherited(frame: InferFrame) -> InferFrame {
-  InferFrame { instances: frame.instances, entering: InferFrameEnteredPlain }
+  InferFrame { instances: frame.instances, binder_types: frame.binder_types, entering: InferFrameEnteredPlain }
 }
 
 // A binder's declared type, read through the frame: a type variable the frame instantiates IS its instance.
@@ -6924,7 +6979,7 @@ fn infer_fold_member_advisory(reason: Symbol, at: Node) -> NonEmptyDiagnostics {
 }
 
 fn infer_frame_with_advisory(frame: InferFrame, reason: Symbol, at: Node) -> InferFrame {
-  InferFrame { instances: frame.instances, entering: InferFrameEnteredWith { advisory: infer_fold_member_advisory(reason: reason, at: at) } }
+  InferFrame { instances: frame.instances, binder_types: frame.binder_types, entering: InferFrameEnteredWith { advisory: infer_fold_member_advisory(reason: reason, at: at) } }
 }
 
 // THE DEPENDENT CHILD'S FRAME: the domain's settled type (already folded into `acc`, because the domain is
@@ -6965,6 +7020,7 @@ fn infer_fold_member_formal_frame(frame: InferFrame, formal: FoldMemberFormal, m
       if formal.fresh {
         InferFrame {
           instances: list_snoc_item(xs: frame.instances, item: TypeVariableInstance { binder: variable, instance: member }),
+          binder_types: frame.binder_types,
           entering: InferFrameEnteredPlain
         }
       } else {
@@ -6977,12 +7033,13 @@ fn infer_fold_member_formal_frame(frame: InferFrame, formal: FoldMemberFormal, m
 fn infer_fold_member_judged_frame(frame: InferFrame, formal: FoldMemberFormal, member: Node, step: Node, resolved: ResolvedTree) -> InferFrame {
   let obligation = infer_declared_type_obligation(position: PositionDirectCallArgument, parameter_identity: formal.formal.name, declared: infer_declared_type_denotation(declared: formal.formal.type_node), produced: member, application: formal.formal.type_node, type_variables: type_param_names(n: step), declarations: resolved.resolved_declarations)
   match declared_type_inhabitance(obligation: obligation) {
-    Inhabits { homomorphism: _ } => InferFrame { instances: frame.instances, entering: InferFrameEnteredPlain }
+    Inhabits { homomorphism: _ } => InferFrame { instances: frame.instances, binder_types: frame.binder_types, entering: InferFrameEnteredPlain }
     InhabitanceUndecidable { reason: _ } =>
       infer_frame_with_advisory(frame: frame, reason: ^infer_reason_fold_member_formal_undecided, at: formal.formal.type_node)
     InhabitanceRefused { find_witness_reason: fw_reason } =>
       InferFrame {
         instances: frame.instances,
+        binder_types: frame.binder_types,
         entering: InferFrameEnteredRefused {
           refused: diagnostics_singleton(d: application_argument_does_not_inhabit_diagnostic(obligation: obligation, find_witness_reason: fw_reason))
         }
@@ -6998,10 +7055,169 @@ fn infer_gather_child_context(parent: Node, frame: InferFrame, acc: InferGatherF
       } else if infer_loop_takes_collection_member(loop_node: parent) {
         infer_fold_member_frame(loop_node: parent, frame: infer_frame_inherited(frame: frame), acc: acc, step: edge.target, resolved: resolved)
       } else {
-        infer_frame_inherited(frame: frame)
+        match parent.kind {
+          ComputationNode { behavior: Match } =>
+            infer_match_arm_child_frame(parent: parent, frame: frame, acc: acc, edge: edge, resolved: resolved)
+          ComputationNode { behavior: _ } => infer_frame_inherited(frame: frame)
+          TypeNode { connective: _ } => infer_frame_inherited(frame: frame)
+        }
       }
     Authored { name: _ } => infer_frame_inherited(frame: frame)
     StructuralLabel { label: _ } => infer_frame_inherited(frame: frame)
+  }
+}
+
+fn infer_append_binder_types(xs: List<InferBinderType>, ys: List<InferBinderType>) -> List<InferBinderType> {
+  fold(ys, init: xs, f: fn(acc, y) { list_snoc_item(xs: acc, item: y) })
+}
+
+// THE MATCH ARM IS ENTERED AFTER THE SCRUTINEE HAS SETTLED. Resolve recorded each payload binder's
+// standing (LexicalOwedFormal: owed the field's declared type); the scrutinee's instantiated arguments
+// are the only thing that pays it, and they exist in `acc` exactly when the first positional child's
+// facts are in. So the arm's frame carries one InferBinderType row per payload binder, and a binder whose
+// field is a free formal the scrutinee's arguments do not instantiate REFUSES the arm (located), never
+// types as the bare formal and never stays untyped to be accepted on the advisory frontier (section 5).
+fn infer_match_arm_child_frame(parent: Node, frame: InferFrame, acc: InferGatherFoldAcc, edge: Edge, resolved: ResolvedTree) -> InferFrame {
+  match list_at_optional(xs: node_positional_child_targets(node: parent), index: 0) {
+    Absent => infer_frame_inherited(frame: frame)
+    Present { value: scrutinee } =>
+      if scrutinee == edge.target {
+        infer_frame_inherited(frame: frame)
+      } else {
+        match lookup_inferred_facts_in_entries(entries: acc.entries, key: scrutinee) {
+          Absent => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
+          Present { value: facts } =>
+            match inferred_facts_resolved_type(facts: facts) {
+              Violates { diagnostic: _ } => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
+              Holds { value: scrutinee_type } =>
+                match infer_match_coproduct_of_type(scrutinee_type: scrutinee_type, resolved: resolved) {
+                  CoproductNotDeclared => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
+                  CoproductArityMismatch => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
+                  CoproductRead { coproduct: coproduct } => infer_match_arm_paid_frame(frame: frame, arm: edge.target, coproduct: coproduct)
+                }
+            }
+        }
+      }
+  }
+}
+
+fn infer_match_arm_paid_frame(frame: InferFrame, arm: Node, coproduct: InferMatchCoproduct) -> InferFrame {
+  match infer_match_arm_binder_types(arm: arm, coproduct: coproduct, owed: infer_no_owed_formals()) {
+    MatchArmFormalUndischarged { at: at } => infer_match_arm_formal_refused(frame: frame, at: at)
+    MatchArmBinders { rows: rows } =>
+      InferFrame {
+        instances: frame.instances,
+        binder_types: infer_append_binder_types(xs: frame.binder_types, ys: rows),
+        entering: InferFrameEnteredPlain
+      }
+  }
+}
+
+fn infer_match_arm_formal_refused(frame: InferFrame, at: Node) -> InferFrame {
+  InferFrame {
+    instances: frame.instances,
+    binder_types: frame.binder_types,
+    entering: InferFrameEnteredRefused {
+      refused: diagnostics_singleton(d: Diagnostic {
+        reason: ^infer_reason_pattern_payload_formal_uninstantiated,
+        at: node_locus(node: at),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
+    }
+  }
+}
+
+// The scrutinee's arguments are not known (its type is not derived, or not a declared coproduct): the arm
+// is read against the arm's own declared coproduct with NO instances, so a payload binder that is a free
+// formal refuses and a concrete one is inherited untouched.
+fn infer_match_arm_unpaid_frame(frame: InferFrame, arm: Node, resolved: ResolvedTree) -> InferFrame {
+  match find_core_child(root: arm, marker: MatchArmPatternEdge) {
+    Rejected { diagnostics: _ } => infer_frame_inherited(frame: frame)
+    Accepted { value: pat, diagnostics: _ } =>
+      match construct_tag_path_optional(n: pat) {
+        Absent => infer_frame_inherited(frame: frame)
+        Present { value: arm_path } =>
+          match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: qualified_name_init(qn: arm_path)) {
+            Absent => infer_frame_inherited(frame: frame)
+            Present { value: declared } =>
+              match declared.kind {
+                TypeNode { connective: Disj } =>
+                  match infer_match_arm_binder_types(
+                    arm: arm,
+                    coproduct: InferMatchCoproduct { path: qualified_name_init(qn: arm_path), variants: declared, instances: infer_no_type_variable_instances() },
+                    owed: symbol_index_declared_type_params_at(index: resolved.resolved_declarations, qualified_path: qualified_name_init(qn: arm_path))
+                  ) {
+                    MatchArmFormalUndischarged { at: at } => infer_match_arm_formal_refused(frame: frame, at: at)
+                    MatchArmBinders { rows: _ } => infer_frame_inherited(frame: frame)
+                  }
+                TypeNode { connective: _ } => infer_frame_inherited(frame: frame)
+                ComputationNode { behavior: _ } => infer_frame_inherited(frame: frame)
+              }
+          }
+      }
+  }
+}
+
+type InferMatchArmBinders
+  = MatchArmBinders { rows: List<InferBinderType> }
+  | MatchArmFormalUndischarged { at: Node }
+
+fn infer_no_owed_formals() -> List<Symbol> {
+  Empty
+}
+
+fn infer_match_arm_binders_empty() -> InferMatchArmBinders {
+  MatchArmBinders { rows: infer_no_binder_types() }
+}
+
+fn infer_match_arm_binder_types(arm: Node, coproduct: InferMatchCoproduct, owed: List<Symbol>) -> InferMatchArmBinders {
+  match find_core_child(root: arm, marker: MatchArmPatternEdge) {
+    Rejected { diagnostics: _ } => infer_match_arm_binders_empty()
+    Accepted { value: pat, diagnostics: _ } =>
+      match infer_coproduct_arm_pattern(pat: pat) {
+        ArmPatternUnread => infer_match_arm_binders_empty()
+        ArmPatternWildcard => infer_match_arm_binders_empty()
+        ArmPatternVariant { tag: tag, fields: fields } =>
+          match infer_match_variant_payload(variants: coproduct.variants, tag: tag) {
+            Absent => infer_match_arm_binders_empty()
+            Present { value: payload } =>
+              fold(fields, init: infer_match_arm_binders_empty(), f: fn(acc, e) {
+                match acc {
+                  MatchArmFormalUndischarged { at: _ } => acc
+                  MatchArmBinders { rows: rows } => infer_match_arm_field_binder(acc: acc, rows: rows, payload: payload, coproduct: coproduct, owed: owed, e: e)
+                }
+              })
+          }
+      }
+  }
+}
+
+// A paid binder takes the field type the scrutinee's arguments instantiate. `owed` names the declaring
+// type's formals NO argument instantiates (empty when the scrutinee settled): a binder whose field is
+// one of them has nothing to be typed from and refuses the arm.
+fn infer_match_arm_field_binder(acc: InferMatchArmBinders, rows: List<InferBinderType>, payload: Node, coproduct: InferMatchCoproduct, owed: List<Symbol>, e: Edge) -> InferMatchArmBinders {
+  match e.label {
+    Positional => acc
+    StructuralLabel { label: _ } => acc
+    Authored { name: field } =>
+      if is_wildcard_pattern(pattern: e.target) {
+        acc
+      } else {
+        match infer_conj_named_type_for_binding(domain: payload, binding: field) {
+          Absent => acc
+          Present { value: field_type } =>
+            match infer_match_field_type_instantiated(field_type: field_type, instances: coproduct.instances) {
+              Present { value: derived } =>
+                MatchArmBinders { rows: list_snoc_item(xs: rows, item: InferBinderType { site: e.target.occurrence_id, derived: derived }) }
+              Absent =>
+                match node_atom_identity_optional(node: field_type) {
+                  Present { value: id } =>
+                    if contains(xs: owed, item: id, eq: fn(x, y) { x == y }) { MatchArmFormalUndischarged { at: e.target } } else { acc }
+                  Absent => acc
+                }
+            }
+        }
+      }
   }
 }
 
@@ -7136,7 +7352,8 @@ fn infer_gather_fold_bind_row_on_entries(
         partials: partials,
         kinds: kinds,
         resolved: resolved,
-        instances: infer_no_type_variable_instances()
+        instances: infer_no_type_variable_instances(),
+        binder_types: infer_no_binder_types()
       )
   }
 }
@@ -7185,7 +7402,7 @@ fn infer_gather_fold_algebra(partials: List<Node>, kinds: List<RosterKindIndex>,
   NodeFoldDependent {
     init: fn(n0, frame) {
       infer_gather_framed_init(
-        acc: infer_gather_fold_init(n: n0, partials: partials, kinds: kinds, resolved: resolved, instances: frame.instances),
+        acc: infer_gather_fold_init(n: n0, partials: partials, kinds: kinds, resolved: resolved, instances: frame.instances, binder_types: frame.binder_types),
         frame: frame
       )
     },
@@ -7547,6 +7764,24 @@ fn infer_admission_judge_entries(
 // application. The entries come from the facts gather, so an imported callee's clause is read the
 // same way a same-module one is.
 fn infer_caller_admission_application_diags(
+  application: Node,
+  caller: Optional<InferAdmissionCallerKey>,
+  module_symbol: Optional<Symbol>,
+  entries: List<InferredFactsEntry>,
+  declarations: SymbolIndex
+) -> Diagnostics {
+  match application.kind {
+    TypeNode { connective: Instantiation } => None
+    TypeNode { connective: _ } => infer_caller_admission_callee_diags(application: application, caller: caller, module_symbol: module_symbol, entries: entries, declarations: declarations)
+    ComputationNode { behavior: _ } => infer_caller_admission_callee_diags(application: application, caller: caller, module_symbol: module_symbol, entries: entries, declarations: declarations)
+  }
+}
+
+// A TYPE INSTANTIATION IS NOT A CALL (above): `List<Pair>` names a declaration as its head exactly as a
+// call names its callee, but no admit clause rides a type's declaration and nothing is applied, so
+// judging it read the type's Disj/Conj as a callee whose Arrow was unreadable and refused every module
+// that wrote a generic type in a signature.
+fn infer_caller_admission_callee_diags(
   application: Node,
   caller: Optional<InferAdmissionCallerKey>,
   module_symbol: Optional<Symbol>,

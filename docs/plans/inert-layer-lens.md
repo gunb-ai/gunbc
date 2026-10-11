@@ -13,7 +13,7 @@ So: **inert = declared ∧ ¬reachable(run-roots)**. Decidable (graph reachabili
 
 ### 1.1 The rules — what is a hard wall, and what only looks like one
 
-Four cases decide whether this is a *rule* or a *vibe*. Each lands in a different frontier region ([expressibility-frontier](expressibility-frontier.md)); the design discipline is to keep them apart.
+Four cases decide whether this is a *rule* or a *vibe*. Each lands in a different frontier region; the design discipline is to keep them apart.
 
 - **Does a test consumer count? — NO, for the *live* verdict; it is a separate, labeled state.** Run reachability from each root set independently: run-roots (executed entries) → "inert in production?"; test-roots (witnesses) → "covered?". A concept reachable from tests but not from run-roots is **"tested but unrun"** — its own bucket (a test can pin dead code alive). Report it; **wall only on run-root-inert.** Decidable per root set → ①.
 - **One consumer, but that consumer is dead? — you never count local consumers.** The verdict is *membership in the complement of the reachable set*, a fixpoint from the roots over the whole tree. A node alive only through a dead consumer is simply not in the reachable set → inert. "Inspect the entire tree" is exactly right: global reachability, not per-node degree. This is the case reference-count gets wrong (§1). Decidable → ①.
@@ -72,7 +72,7 @@ The reading: the **schedule/width** arm of the realization layer is now wired; t
 
 "Inert" is decidable; **"load-bearing" is a heuristic** — so the lens *decides* inertness and *ranks* apparent load-bearingness, never gates on the ranking. Rank an inert concept by structural richness: coproduct arm-count + record field-count + fn return-type richness, plus name signals (`Plan`/`Account`/`Receipt`/`Schedule`/`Demand`/`Policy`). A 6-arm `ParallelismShape` with 0 consumers ranks far above an unused 1-line helper. This is the operator's exact ask — "ones that *seem* load-bearing but are unwired" — surfaced as the ranked head of the inert list.
 
-## 5. Frontier placement (per [expressibility-frontier](expressibility-frontier.md))
+## 5. Frontier placement
 
 - **Inertness is a ① wall candidate.** Reachability is decidable; an inert load-bearing carrier should eventually **fail closed** as #5433 once did for lenses ("an inert lens is a lie" → "an inert load-bearing carrier is a lie") — stated in the past tense because that backstop is deleted (gunbc#8141) and no lens-inertness gate runs today. The honest path: ship as a ② *observing* lens first (a ranked report, no gate), promote to a ① wall once the corpus is clean enough that a new inert load-bearing carrier is a genuine defect rather than expected staged-ahead modeling.
 - **The "staged-ahead" exception is the catch.** Much of the inert set is *deliberately* modeled before its consumer (the realization loop is built model-first by design). So a blanket wall would fight the project's own just-in-time-after-modeling discipline. The resolution is the #5433 pattern: a **named, shrinking exception roster** (carriers modeled ahead of a tracked consumer-PR) that empties as the realization loop wires them — the same ratchet-during-migration → wall-when-empty shape as the realization-vocabulary guard. Each roster entry names its dissolve-on (the PR that wires it).

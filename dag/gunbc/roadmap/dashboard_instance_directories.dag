@@ -26,6 +26,11 @@ import gunbc.fabric_storage_placement { fabric_storage_directory_demands }
 // writes, at which point this list stops being authored. Until then, adding a directory writer means
 // declaring its demand in its own module and adding one row here.
 //
+// A DEPLOYMENT'S OWN DEMANDS ARE NOT INSTANCE CONSUMERS: the tailnet door's directory exists only
+// where a deployment's serve route targets a unix socket, which the instance does not know, so
+// gunbc.live_deploy.spec deployment_spec_for appends it (deployment_tailnet_door_directories) to this
+// list for the live_deploy route. The dashboard apply runs no door and reads this list alone.
+//
 // It lives above the consumers rather than in gunbc.roadmap_dashboard_instance because every consumer
 // imports the instance type from there; composing them there would close a cycle.
 fn dashboard_instance_directory_demands(instance: HostDashboardInstance) -> List<OwnedDirectoryTarget> {

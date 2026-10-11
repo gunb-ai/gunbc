@@ -20,7 +20,7 @@ import gunbc.managed_host_unit_hold {
   unit_hold_refusal, operator_maintenance_owner, boot_run_owner, host_reset_owner,
   ProbeHoldReleaseDecision, ProbeHoldReleaseAt, ProbeHoldFreeNoop, ProbeHoldForeignNoop, ProbeHoldUnobservable,
   ProbeHoldReleaseOutcome, ProbeHoldReleased, ProbeHoldAlreadyFree, ProbeHoldNotOurs, ProbeHoldStale, ProbeHoldUnreleased,
-  probe_hold_release_decision, probe_hold_release_refused, probe_hold_release_committed,
+  probe_hold_release_decision, probe_hold_release_refused, probe_hold_release_committed, probe_hold_release_step_exit,
   HolderLivenessRoute, HolderObserveProcess, HolderNotObservable, holder_liveness_route,
   UnitHoldSubjectAdmitted, UnitHoldNotRequired, admit_unit_hold_subject,
   UnitHoldHostAdmitted, UnitHoldHostNotManaged, UnitHoldHostNotRequired,
@@ -399,4 +399,23 @@ test fn a_probe_holder_is_observed_by_its_process_and_a_processless_one_is_not()
       HolderNotObservable { cause: c } => string_contains(s: c as String, pattern: "only the operator")
       _ => false
     })
+}
+
+// THE HOLD EXIT IS A HERMETIC DECISION: probe_hold_release_step_exit answers each release outcome
+// by name, so the wet step's verdict is pinned here without GitHub Actions, a journal or a store.
+// ONLY UNRELEASED IS LOUD -- released, already-free, not-ours and left-alone-stale each report
+// that nothing this run owns stays held -- and the failure carries the run's context line.
+test fn an_unreleased_hold_fails_loudly_with_the_run_context() -> Bool {
+  match probe_hold_release_step_exit(o: ProbeHoldUnreleased { cause: "the unit is still held" }, context_line: "megarac kvm observer release: unit hold NOT released: the unit is still held") {
+    ExitFailure { code: _, reason: r } => r == "megarac kvm observer release: unit hold NOT released: the unit is still held"
+    _ => false
+  }
+}
+
+// A REAL RELEASE STILL PASSES, by arm; so do already-free, not-ours and stale.
+test fn released_and_no_op_holds_still_pass() -> Bool {
+  probe_hold_release_step_exit(o: ProbeHoldReleased, context_line: "unused on success") == ExitSuccess
+    && probe_hold_release_step_exit(o: ProbeHoldAlreadyFree, context_line: "unused on success") == ExitSuccess
+    && probe_hold_release_step_exit(o: ProbeHoldNotOurs { holder: "another-run" }, context_line: "unused on success") == ExitSuccess
+    && probe_hold_release_step_exit(o: ProbeHoldStale { detail: "the slot moved to another generation" }, context_line: "unused on success") == ExitSuccess
 }

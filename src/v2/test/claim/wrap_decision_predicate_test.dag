@@ -39,7 +39,7 @@ import v2.std.collection { list_at_optional }
 import v2.std.node_query { node_positional_child_targets }
 import std.optional { Absent, Present }
 
-// Derisk witnesses for rc-ownership-wrap-decision-design.md: wrap_decision_gate is the single
+// Derisk witnesses: wrap_decision_gate is the single
 // authority for Rc/Box/owned type wrapping at ONE emit position, and wrap_decision_flow_gate is the
 // single authority over a producer/consumer PAIR, refusing disagreement. UseSiteVerdict enrolled
 // (owned-at-all-sites). RED, position surface: omit Diagnostics param row -> param witness rejects;
