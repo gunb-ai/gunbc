@@ -1,6 +1,7 @@
 module gunbc.auth.tracker_web_oauth_client
 
 import std.types { String, NonEmptyStr, List, Bool, Int, Port }
+import std.measure { second_count }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_path }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
@@ -13,7 +14,7 @@ import gunbc.auth.google_workspace_login {
 }
 import gunbc.auth.google_workspace_admin_convergence { WorkspaceIdentityBinding }
 import gunbc.auth.oidc_deployment_config {
-  oidc_config_schema, oidc_config_env_var, oidc_session_lifetime_seconds, oidc_login_transaction_lifetime_seconds,
+  oidc_config_schema, oidc_config_env_var, oidc_session_lifetime, oidc_login_transaction_lifetime,
 }
 import gunbc.roadmap_dashboard_instance { srv1_dashboard_lab_id, srv1_dashboard_live_id }
 import gunbc.fleet_tailnet { fleet_tailnet_domain }
@@ -194,8 +195,8 @@ fn tracker_web_oidc_config_document(cfg: TrackerWebOidcServeConfig) -> String {
     json_kv(key: "redirect_uri", value: json_string(s: cfg.redirect_uri as String)),
     json_kv(key: "admitted_audiences", value: json_array(elements: map(b.admitted_audiences, a => json_string(s: a as String)))),
     json_kv(key: "expected_hosted_domain", value: json_string(s: b.hosted_domain.domain as String)),
-    json_kv(key: "session_lifetime_seconds", value: json_int(n: oidc_session_lifetime_seconds)),
-    json_kv(key: "login_transaction_lifetime_seconds", value: json_int(n: oidc_login_transaction_lifetime_seconds)),
+    json_kv(key: "session_lifetime_seconds", value: json_int(n: second_count(s: oidc_session_lifetime) as Int)),
+    json_kv(key: "login_transaction_lifetime_seconds", value: json_int(n: second_count(s: oidc_login_transaction_lifetime) as Int)),
   ]))
 }
 
