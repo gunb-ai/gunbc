@@ -8918,7 +8918,14 @@ fn infer_sole_constructor_path_diags(
         module: module,
         name: name
       ) {
-        TypeDeclModifierChannelUnavailable => None
+        TypeDeclModifierChannelUnavailable =>
+          infer_admission_diags_of([
+            Diagnostic {
+              reason: ^infer_reason_sole_constructor_modifiers_unreadable,
+              at: node_locus(node: at),
+              correction: Unavailable { reason: UserInputBoundary }
+            }
+          ])
         TypeDeclModifierRowAbsent => None
         TypeDeclModifierModuleUncovered =>
           infer_admission_diags_of([

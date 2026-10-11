@@ -10851,10 +10851,11 @@ type QualifiedDeclaredTypeModifiers {
   modifiers: FreeMonoid<TypeDeclModifier>
 }
 
-// THE CHANNEL INFER READS. Unavailable is a hand-built ResolvedTree that never saw a parse: no
-// type is sealed through it (absence of provenance, not "every type is open"). Captured covers
-// every NormalizedTree the ingest held, so a type whose declaring module is outside `covered` is
-// unreadable rather than silently open.
+// THE CHANNEL INFER READS. Unavailable is a hand-built ResolvedTree that never captured modifiers:
+// judging a construction through it refuses (unreadable provenance), never admits as open.
+// Captured covers every NormalizedTree the ingest held, so a type whose declaring module is
+// outside `covered` is unreadable rather than silently open. A fixture that never parsed must
+// still name the modules it claims via Captured; it may not pass Unavailable and expect a pass.
 type TypeDeclarationModifierChannel
   = TypeDeclarationModifiersUnavailable
   | TypeDeclarationModifiersCaptured {
@@ -10863,7 +10864,7 @@ type TypeDeclarationModifierChannel
     }
 
 fn no_type_declaration_modifiers_channel() -> TypeDeclarationModifierChannel {
-  TypeDeclarationModifiersUnavailable
+  TypeDeclarationModifiersCaptured { covered: [Empty], rows: Empty }
 }
 
 fn type_decl_modifiers_include_sole_constructor(modifiers: FreeMonoid<TypeDeclModifier>) -> Bool {

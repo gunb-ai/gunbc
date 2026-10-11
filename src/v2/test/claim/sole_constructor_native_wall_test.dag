@@ -177,14 +177,15 @@ test fn a_homonym_in_another_module_does_not_seal_this_modules_open_type_holds()
   }
 }
 
-test fn an_unavailable_channel_seals_nothing_holds() -> Bool {
+test fn an_unavailable_channel_refuses_unreadable_holds() -> Bool {
   match infer_sole_constructor_path_diags(
     at: wall_at,
     type_path: wall_type_path(),
     constructing_module: optional_present(value: wall_foreign_module()),
     tree: wall_tree(channel: TypeDeclarationModifiersUnavailable)
   ) {
-    None => true
-    Some { diagnostics: _ } => false
+    None => false
+    Some { diagnostics: d } =>
+      diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_reason_sole_constructor_modifiers_unreadable)
   }
 }
