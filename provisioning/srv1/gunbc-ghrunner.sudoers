@@ -146,6 +146,7 @@ ghrunner ALL=(root) NOPASSWD: /usr/bin/stat -c %F|%U|%G|%a -- /opt/gunbc/tailnet
 ghrunner ALL=(root) NOPASSWD: /usr/bin/stat -c %F|%U|%G|%a -- /var/lib/gunbc/artifacts.git
 ghrunner ALL=(root) NOPASSWD: /usr/bin/stat -c %F|%U|%G|%a -- /opt/gunbc/provider-runtime/codex
 ghrunner ALL=(root) NOPASSWD: /usr/bin/stat -c %F|%U|%G|%a -- /var/lib/gunbc/materialization-store
+ghrunner ALL=(root) NOPASSWD: /usr/bin/stat -c %F|%U|%G|%a -- /var/lib/gunbc/materialization-store-staging
 ghrunner ALL=(root) NOPASSWD: /usr/bin/ls -1A -- /opt/gunbc
 ghrunner ALL=(root) NOPASSWD: /usr/bin/ls -1A -- /opt
 ghrunner ALL=(root) NOPASSWD: /usr/bin/ls -1A -- /
