@@ -1,5 +1,6 @@
 module test.claim.materialization_store_local_wet_witness
 
+import std.judgment_contract { identity_structural_component }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Bool, Int, List, String, NonEmptyStr }
@@ -102,7 +103,7 @@ fn bundle_req(module: String) -> ArtifactRequest {
 fn universe_req() -> ArtifactRequest {
   UniverseArtifactRequest {
     tested_tree_identity: h(v: "tree-1"),
-    route_binary: DeclaredInput { ref: "route_binary_identity", digest: h(v: "route-binary-1") }
+    route_binary: DeclaredInput { ref: "route_binary_identity", component: identity_structural_component(digest: h(v: "route-binary-1")) }
   }
 }
 

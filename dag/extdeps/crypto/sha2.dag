@@ -1,6 +1,7 @@
 module extdeps.crypto.sha2
 
 import std.types { Int, List, String }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
 import std.integer { qualified_octets }
 import std.bitwise { word32_and, word32_xor, word32_not, word32_add, word32_shr, word32_rotr, bitwise_pow2, Word64, word64_and, word64_xor, word64_not, word64_add, word64_shr, word64_rotr }
 import extdeps.external_authority { ExternalAuthority }
@@ -210,6 +211,15 @@ fn sha256(message: List<Int>) -> List<Int> {
 // named in std.integer qualified_octets' admission roster.
 fn sha256_hex(message: List<Int>) -> String {
   base16_encode_lower(octets: qualified_octets(members: sha256(message: message)))
+}
+
+// THE DIGEST AS THE TYPED FAMILY CARRIER, minted rather than re-admitted for the reason sha256_hex's
+// octets are: the text is sixty-four lowercase hex digits because base16_encode_lower rendered the
+// thirty-two octets sha256 computed, so the refinement holds by the operation that produced the
+// value. A consumer that parsed this text back through a validating reader would owe an arm for a
+// malformed digest that no execution of this function can reach.
+fn sha256_computed_digest(message: List<Int>) -> Sha256Digest {
+  Sha256Digest { hex: sha256_hex(message: message) as Sha256DigestHex }
 }
 
 // ── SHA-384 (§6.5): the SHA-512 computation, truncated ──────────────────────────────────────

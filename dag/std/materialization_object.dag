@@ -43,7 +43,7 @@ import std.materialization_provider {
   HashFamily, KeyingScope,
   evaluation_result_binding_outcome,
   artifact_manifest, artifact_from_manifest, artifact_content_digest, artifact_kind, artifact_carried_outputs,
-  carried_outputs_digest, request_artifact_binding, lookup_fold,
+  carried_outputs_digest, request_artifact_binding, request_artifact_binding_at, lookup_fold,
   provider_lookup_outcome_tag,
 }
 
@@ -777,7 +777,7 @@ fn store_commit_prepare_admitted(
   match decode {
     ManifestDecoded { artifact: a } => {
       let offered_digest = artifact_content_digest(artifact: a)
-      let binding = request_artifact_binding(req: req, artifact: a, observed_digest: offered_digest)
+      let binding = request_artifact_binding_at(req: req, key: key, artifact: a, observed_digest: offered_digest)
       match binding {
         BindingOk => {
           let offered_result = result_content_identity_from_payloads(parts: artifact_carried_outputs(artifact: a), payloads: payloads)

@@ -1,5 +1,6 @@
 module test.claim.materialization_provider_witness
 
+import std.judgment_contract { identity_structural_component }
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.content_hash {
   ContentHash,
@@ -763,7 +764,7 @@ fn witness_universe_request() -> ArtifactRequest {
     tested_tree_identity: content_hash_atom(value: "tree-1"),
     route_binary: DeclaredInput {
       ref: "route_binary_identity",
-      digest: content_hash_atom(value: "route-binary-1")
+      component: identity_structural_component(digest: content_hash_atom(value: "route-binary-1"))
     }
   }
 }
@@ -948,24 +949,24 @@ test fn demand_canonical_encoding_is_injective_and_c1_lossy_collapses() -> Bool 
   let h3 = content_hash_atom(value: "p3")
   let a = DemandIdentity {
     kind: parse_source_artifact_kind,
-    subject: content_hash_atom(value: "subj"),
+    subject: identity_structural_component(digest: content_hash_atom(value: "subj")),
     declared_inputs: [
-      DeclaredInput { ref: "a", digest: h1 },
-      DeclaredInput { ref: concat("b:", concat(h2.digest as String, ":c")) as NonEmptyStr, digest: h3 }
+      DeclaredInput { ref: "a", component: identity_structural_component(digest: h1) },
+      DeclaredInput { ref: concat("b:", concat(h2.digest as String, ":c")) as NonEmptyStr, component: identity_structural_component(digest: h3) }
     ]
   }
   let b = DemandIdentity {
     kind: parse_source_artifact_kind,
-    subject: content_hash_atom(value: "subj"),
+    subject: identity_structural_component(digest: content_hash_atom(value: "subj")),
     declared_inputs: [
-      DeclaredInput { ref: concat("a:", concat(h1.digest as String, ":b")) as NonEmptyStr, digest: h2 },
-      DeclaredInput { ref: "c", digest: h3 }
+      DeclaredInput { ref: concat("a:", concat(h1.digest as String, ":b")) as NonEmptyStr, component: identity_structural_component(digest: h2) },
+      DeclaredInput { ref: "c", component: identity_structural_component(digest: h3) }
     ]
   }
   let hostile = DemandIdentity {
     kind: parse_source_artifact_kind,
-    subject: content_hash_atom(value: "subj"),
-    declared_inputs: [DeclaredInput { ref: "a:/ %\n1111deadbeef12", digest: h1 }]
+    subject: identity_structural_component(digest: content_hash_atom(value: "subj")),
+    declared_inputs: [DeclaredInput { ref: "a:/ %\n1111deadbeef12", component: identity_structural_component(digest: h1) }]
   }
   let decoded_a = demand_identity_decode(encoded: demand_identity_canonical(demand: a) as String)
   let decoded_hostile = demand_identity_decode(encoded: demand_identity_canonical(demand: hostile) as String)

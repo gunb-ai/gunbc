@@ -90,6 +90,8 @@ import v2.std.source_position { source_line_col_at_byte }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural }
 import std.judgment_contract {
   DeclaredInput,
+  identity_structural_component,
+  identity_text_component,
   JudgmentContract,
   ResultContract,
   Scoped,
@@ -5064,7 +5066,7 @@ fn native_module_resolve_judgment_contract(
   JudgmentContract {
     demand_identity: DemandIdentity {
       kind: native_module_resolve_artifact_kind,
-      subject: module_digest,
+      subject: identity_structural_component(digest: module_digest),
       declared_inputs: [compiler]
     },
     result: ResultContract {
@@ -5087,7 +5089,7 @@ fn native_module_infer_judgment_contract(
   JudgmentContract {
     demand_identity: DemandIdentity {
       kind: native_module_infer_artifact_kind,
-      subject: module_digest,
+      subject: identity_structural_component(digest: module_digest),
       declared_inputs: [compiler]
     },
     result: ResultContract {
@@ -5114,7 +5116,7 @@ fn native_test_identity_judgment_contract(
   JudgmentContract {
     demand_identity: DemandIdentity {
       kind: native_test_identity_artifact_kind,
-      subject: identity_digest,
+      subject: identity_structural_component(digest: identity_digest),
       declared_inputs: [compiler]
     },
     result: ResultContract {
@@ -5181,7 +5183,7 @@ fn native_module_occurrence_census_judgment_contract(
   JudgmentContract {
     demand_identity: DemandIdentity {
       kind: native_module_occurrence_census_artifact_kind,
-      subject: module_digest,
+      subject: identity_structural_component(digest: module_digest),
       declared_inputs: [compiler]
     },
     result: ResultContract {
@@ -5870,7 +5872,7 @@ fn native_demand_schedule_universe(
 fn native_demand_tested_tree_input(tree: String) -> DeclaredInput {
   DeclaredInput {
     ref: "tested_tree" as NonEmptyStr,
-    digest: content_hash_atom(value: tree as NonEmptyStr)
+    component: identity_text_component(content: tree as NonEmptyStr)
   }
 }
 
