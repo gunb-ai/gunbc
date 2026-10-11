@@ -23,7 +23,7 @@ import v2.std.algebra { any, length }
 import gunbc.ci.ci_layer_roots { known_red_probe_roster }
 import v2.std.text { String }
 
-data normalize_entry: String = "dag/test/claim/self_host_03_normalize_behavioral_witness.dag"
+data normalize_entry: String = "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag"
 data normalize_fn: String = "self_host_03_normalize_behavioral_receipt_holds"
 
 // 2026-07-25 review #7199: SelfEmitted wet bindings that red on assemble are Wet expect_red
@@ -115,7 +115,7 @@ test fn witness_field_access_wet_falsifier_consumer_holds() -> Bool {
 // self_host_logic_behavioral_witness_test.dag.
 test fn witness_self_host_logic_local_repo_wet_consumer_holds() -> Bool {
   match witness_consumer_cadence_for_row(
-    entry: "dag/test/claim/self_host_logic_behavioral_witness.dag",
+    entry: "dag/test/claim/self_host_logic_behavioral_witness_test.dag",
     function: "self_host_logic_behavioral_receipt_holds",
     excluded_from_discovery: true
   ) {
@@ -126,7 +126,7 @@ test fn witness_self_host_logic_local_repo_wet_consumer_holds() -> Bool {
 
 test fn witness_namespace_import_closure_falsifier_wet_consumer_holds() -> Bool {
   match witness_consumer_cadence_for_row(
-    entry: "dag/test/claim/namespace_import_closure_witness.dag",
+    entry: "dag/test/claim/namespace_import_closure_witness_test.dag",
     function: "namespace_import_closure_receipt_holds",
     excluded_from_discovery: true
   ) {
@@ -208,7 +208,7 @@ test fn witness_discovery_row_consumer_holds() -> Bool {
 
 test fn witness_bin_wet_live_rust_observation_consumer_holds() -> Bool {
   match witness_consumer_cadence_for_row(
-    entry: "dag/test/claim/stage0_rust_host_observation_live_witness.dag",
+    entry: "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag",
     function: "live_rust_observation_matches_actions_subject",
     excluded_from_discovery: true
   ) {

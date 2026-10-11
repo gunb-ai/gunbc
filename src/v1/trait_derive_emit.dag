@@ -2123,7 +2123,7 @@ fn v1_item_field_type_exprs(item: Node, source_indices: Map<String, NewlineIndex
 // a parameter in the well-formedness record while its DECLARATION correctly prints bare, because
 // derive supplies the bound per-impl. At a struct FIELD that distinction does not arise the same
 // way -- the field's own declaration is what must be well-formed -- so the descent belongs here and
-// not in the shared predicate. It was caught by test.claim.trait_bound_witness
+// not in the shared predicate. It was caught by test.claim.trait_bound_witness_test
 // `call_forwarding_scope_excludes_match_wrapped_body`, the FN-level trigger's own declared-boundary
 // negative control, doing exactly the job a converse control exists to do.
 fn v1_item_field_type_expr_wf_needs_clone_param(

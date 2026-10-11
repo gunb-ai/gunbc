@@ -39,7 +39,7 @@ import v2.workflow.local_repo_wet_terminal {
 // WHAT THIS MODULE STILL OWNS AFTER THE JOIN MOVED OUT, and why it is smaller rather than thinner.
 //
 // The completeness join that used to live here is now `wet_evidence_validate`, shared with the
-// transported route, and its acceptance matrix moved with it to `v2.test.wet_evidence` -- one
+// transported route, and its acceptance matrix moved with it to `v2.test.wet_evidence_test` -- one
 // authority, one matrix. Re-asserting those causes here would be a second test over one behaviour,
 // which is the duplication the migration exists to remove.
 //

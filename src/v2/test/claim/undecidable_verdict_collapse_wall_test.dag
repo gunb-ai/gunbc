@@ -202,7 +202,7 @@ test fn findings_empty_on_clean_tree() -> Bool {
 //
 // Every control above plants a tree with NO module node, so none of them can see the scope
 // predicate at all -- which is exactly how an over-wide carve-out survived them. `v2.test.` as a
-// prefix exempted v2.test.runtimes.effect_io_handler_claims, a module this change repaired, so the
+// prefix exempted v2.test.runtimes.effect_io_handler_claims_test, a module this change repaired, so the
 // wall would not have refused a regression there. These controls pin the boundary directly.
 
 fn module_admits(dotted: String) -> Bool {
@@ -226,7 +226,7 @@ test fn module_scope_claim_fixtures_are_exempt() -> Bool {
 // THE DISCRIMINATING CONTROL. An ordinary test module outside the claim namespace is NOT a fixture
 // namespace and must be walled. This is the arm review 57883 found open.
 test fn module_scope_ordinary_test_module_is_walled() -> Bool {
-  !module_admits(dotted: "v2.test.runtimes.effect_io_handler_claims")
+  !module_admits(dotted: "v2.test.runtimes.effect_io_handler_claims_test")
     && !module_admits(dotted: "v2.test.lens_common.infer_fixture")
 }
 

@@ -4,7 +4,7 @@ import v2.extdeps.languages.rust {
   rust_decl_derive_binding_spellings,
   rust_decl_derive_lex_spelling
 }
-import v2.extdeps.languages.rust_test { rust_semantic_decl_target_model_staging }
+import v2.extdeps.languages.rust_test_fixtures { rust_semantic_decl_target_model_staging }
 import extdeps.languages.rust.emit { rust_enum_derives_copy }
 import v2.std.compilers.semantic_decl_emission {
   semantic_decl_binding_spelling_lookup,

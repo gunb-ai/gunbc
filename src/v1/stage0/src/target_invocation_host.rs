@@ -3916,7 +3916,7 @@ mod native_route_termination_tests {
     use super::*;
 
     /// `gunbc.target_invocation` `claim_route_termination`, mirrored: the same five rows
-    /// `test.claim.target_invocation_witness` `the_claim_route_termination_maps_to_the_three_exit_statuses`
+    /// `test.claim.target_invocation_witness_test` `the_claim_route_termination_maps_to_the_three_exit_statuses`
     /// pins on the model, so the host mirror cannot drift from it silently.
     #[test]
     fn claim_route_termination_matches_the_model() {
@@ -3939,8 +3939,8 @@ mod native_route_termination_tests {
                 &claim_route_universe(),
             )
         };
-        assert!(within("//test/claim/target_invocation_witness:w"));
-        assert!(within("//test/claim/target_invocation_witness:all"));
+        assert!(within("//test/claim/target_invocation_witness_test:w"));
+        assert!(within("//test/claim/target_invocation_witness_test:all"));
         assert!(within("//test/claim/..."));
         assert!(!within("//test/..."));
         assert!(!within("//dag/test/claim/compute:all"));
@@ -4000,7 +4000,7 @@ mod binary_freshness_tests {
     use super::*;
 
     /// THE OLD BEHAVIOUR RAN THE INSTRUMENT ON EVERY ARM BELOW; the stale and undecided arms are
-    /// the refusals it lacked. Mirrors `test.claim.target_invocation_witness`'s freshness tests.
+    /// the refusals it lacked. Mirrors `test.claim.target_invocation_witness_test`'s freshness tests.
     #[test]
     fn freshness_precedence_matches_the_model() {
         let obs = |inputs: Vec<BinaryInput>| BinaryInputObservation::Observed {

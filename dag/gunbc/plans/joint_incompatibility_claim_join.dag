@@ -28,8 +28,8 @@ fn section_2() -> List<MarkdownBlock> {
       header: row(cells: [cell(text: "Instance"), cell(text: "Removing side"), cell(text: "Claiming side"), cell(text: "What shrank")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [cell(text: "#10933 × #10934"), cell(text: "#10934 deletes `DurableOriginRead`, `DisposableCacheRead` from `gunbc.fabric.fabric_m0_commit`"), cell(text: "#10933 adds `test.claim.fabric_m0_publication_witness` importing both"), cell(text: "`variants` — a DELETION")]),
-        row(cells: [cell(text: "#10865 × colo NJ census"), cell(text: "#10865 renames `grain_admits_single_cabinet` to `grain_offers_single_cabinet`"), cell(text: "`test.claim.colo_nj_central_south_census` imports the old name"), cell(text: "`declared` — a RENAME, whose removal half is what fired")]),
+        row(cells: [cell(text: "#10933 × #10934"), cell(text: "#10934 deletes `DurableOriginRead`, `DisposableCacheRead` from `gunbc.fabric.fabric_m0_commit`"), cell(text: "#10933 adds `test.claim.fabric_m0_publication_witness_test` importing both"), cell(text: "`variants` — a DELETION")]),
+        row(cells: [cell(text: "#10865 × colo NJ census"), cell(text: "#10865 renames `grain_admits_single_cabinet` to `grain_offers_single_cabinet`"), cell(text: "`test.claim.colo_nj_central_south_census_test` imports the old name"), cell(text: "`declared` — a RENAME, whose removal half is what fired")]),
         row(cells: [cell(text: "#10925 × #10923"), cell(text: "#10923 MOVES `mutation_status_is_commit_ambiguous` out of `gunbc.secret_provision_actuator` (its base declared it at line 242) into `extdeps.transports.rest`"), cell(text: "#10925 imports that name from its OLD home"), cell(text: "`declared` of the old home — a MOVE: the declaration survived, its home stopped exporting it (the first draft of this table called this a dropped re-export; the instrument's `(declared)` corrected it)")]),
       ],
     },

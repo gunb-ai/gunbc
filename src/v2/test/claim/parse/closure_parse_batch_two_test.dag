@@ -92,7 +92,7 @@ test fn empty_admit_callers_refuses_as_in_v1_holds() -> Bool {
 // followed by a statement parses and lowers, to Branch(c, arm, rest of the spine)
 // (v2.compiler.body_lowering_fold body_lower_guard_branch). It refused
 // body_lowering_reason_else_less_if_unlowered until the guard had a lowered form; a guard that falls
-// through still refuses (v2.test.claim.namespace_xl0.return_tail_position).
+// through still refuses (v2.test.claim.namespace_xl0.return_tail_position_test).
 test fn an_early_return_guard_parses_and_lowers_holds() -> Bool {
   match cb2_normalized_7() {
     Accepted { value: _, diagnostics: _ } => true

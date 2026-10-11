@@ -391,9 +391,9 @@ data accumulator_copy_obligation: V2CompileObligation = V2CompileObligation {
       module_path: "v2.test.claim.long.accumulator_copy_fold_analysis_test"
     ),
     witness_subject(
-      entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate.dag",
+      entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_test.dag",
       function: "roster_machine_code_zero_suspects_within_ratchet",
-      module_path: "v2.test.claim.complexity.accumulator_copy_roster_gate"
+      module_path: "v2.test.claim.complexity.accumulator_copy_roster_gate_test"
     ),
   ],
   ceiling: StructurallyGuaranteed,
@@ -423,9 +423,9 @@ data determinism_obligation: V2CompileObligation = V2CompileObligation {
       module_path: "v2.test.claim.determinism_contract_test"
     ),
     witness_subject(
-      entry: "src/v2/test/lens_determinism/reach_witness.dag",
+      entry: "src/v2/test/lens_determinism/reach_witness_test.dag",
       function: "determinism_flags_map_keys_reach",
-      module_path: "v2.test.lens_determinism.reach_witness"
+      module_path: "v2.test.lens_determinism.reach_witness_test"
     ),
   ],
   ceiling: StructurallyGuaranteed,
@@ -442,22 +442,22 @@ data machine_shape_obligation: V2CompileObligation = V2CompileObligation {
   home: HomeAuthority { authority: decl_ref(module_path: "v2.lens.machine_shape", decl_name: "machine_shape_compile_gate") },
   claimed_rung: MechanicallyPreventable,
   discriminating_red: "a tree carrying a flat machine-shape scalar where the modeled carrier is required, which the gate must reject" as NonEmptyStr,
-  positive_control: "the modeled-carrier fixture in src/v2/test/claim/machine_shape_construction_wall.dag, which must pass" as NonEmptyStr,
+  positive_control: "the modeled-carrier fixture in src/v2/test/claim/machine_shape_construction_wall_test.dag, which must pass" as NonEmptyStr,
   witnesses: [
     witness_subject(
-      entry: "src/v2/test/claim/machine_shape_construction_wall.dag",
+      entry: "src/v2/test/claim/machine_shape_construction_wall_test.dag",
       function: "gate_red_synthetic_machine_shape_call",
-      module_path: "v2.test.claim.machine_shape_construction_wall"
+      module_path: "v2.test.claim.machine_shape_construction_wall_test"
     ),
     witness_subject(
-      entry: "src/v2/test/claim/machine_shape_construction_wall.dag",
+      entry: "src/v2/test/claim/machine_shape_construction_wall_test.dag",
       function: "gate_green_synthetic_shape_from_catalog_call",
-      module_path: "v2.test.claim.machine_shape_construction_wall"
+      module_path: "v2.test.claim.machine_shape_construction_wall_test"
     ),
     witness_subject(
-      entry: "src/v2/test/claim/machine_shape_construction_wall.dag",
+      entry: "src/v2/test/claim/machine_shape_construction_wall_test.dag",
       function: "gate_red_machine_shape_record_literal_outside_its_home",
-      module_path: "v2.test.claim.machine_shape_construction_wall"
+      module_path: "v2.test.claim.machine_shape_construction_wall_test"
     ),
   ],
   ceiling: StructurallyGuaranteed,
@@ -551,14 +551,14 @@ data fact_density_obligation: V2CompileObligation = V2CompileObligation {
   positive_control: "the named fact-bundle fixture in the same directory, which must pass the same roster" as NonEmptyStr,
   witnesses: [
     witness_subject(
-      entry: "src/v2/test/lens_fact_density/hollow_alias_blocked_via_always_required_lenses.dag",
+      entry: "src/v2/test/lens_fact_density/hollow_alias_blocked_via_always_required_lenses_test.dag",
       function: "hollow_alias_blocked_via_always_required_lenses_holds",
-      module_path: "v2.test.lens_fact_density.hollow_alias_blocked_via_always_required_lenses"
+      module_path: "v2.test.lens_fact_density.hollow_alias_blocked_via_always_required_lenses_test"
     ),
     witness_subject(
-      entry: "src/v2/test/lens_fact_density/fact_bundle_compile_lens_passes.dag",
+      entry: "src/v2/test/lens_fact_density/fact_bundle_compile_lens_passes_test.dag",
       function: "fact_bundle_compile_lens_passes_holds",
-      module_path: "v2.test.lens_fact_density.fact_bundle_compile_lens_passes"
+      module_path: "v2.test.lens_fact_density.fact_bundle_compile_lens_passes_test"
     ),
   ],
   ceiling: StructurallyGuaranteed,
@@ -578,14 +578,14 @@ data unit_modeling_obligation: V2CompileObligation = V2CompileObligation {
   positive_control: "the modeled-unit field and the coordinate-index fixtures, which must NOT be flagged — this gate's positive controls are load-bearing because a gate that flagged every scalar would satisfy every red above" as NonEmptyStr,
   witnesses: [
     witness_subject(
-      entry: "src/v2/test/lens_unit_modeling/unit_modeling_blocked_via_always_required_lenses.dag",
+      entry: "src/v2/test/lens_unit_modeling/unit_modeling_blocked_via_always_required_lenses_test.dag",
       function: "unit_modeling_blocked_via_always_required_lenses_holds",
-      module_path: "v2.test.lens_unit_modeling.unit_modeling_blocked_via_always_required_lenses"
+      module_path: "v2.test.lens_unit_modeling.unit_modeling_blocked_via_always_required_lenses_test"
     ),
     witness_subject(
-      entry: "src/v2/test/lens_unit_modeling/modeled_unit_field_admitted_via_always_required_lenses.dag",
+      entry: "src/v2/test/lens_unit_modeling/modeled_unit_field_admitted_via_always_required_lenses_test.dag",
       function: "modeled_unit_field_admitted_via_always_required_lenses_holds",
-      module_path: "v2.test.lens_unit_modeling.modeled_unit_field_admitted_via_always_required_lenses"
+      module_path: "v2.test.lens_unit_modeling.modeled_unit_field_admitted_via_always_required_lenses_test"
     ),
   ],
   ceiling: StructurallyGuaranteed,
@@ -605,14 +605,14 @@ data lifecycle_carrier_obligation: V2CompileObligation = V2CompileObligation {
   positive_control: "a typed carrier in the same position, which must pass" as NonEmptyStr,
   witnesses: [
     witness_subject(
-      entry: "src/v2/test/lens_lifecycle_carrier/raw_prose_field_flagged.dag",
+      entry: "src/v2/test/lens_lifecycle_carrier/raw_prose_field_flagged_test.dag",
       function: "raw_dissolve_on_string_field_is_rejected",
-      module_path: "v2.test.lens_lifecycle_carrier.raw_prose_field_flagged"
+      module_path: "v2.test.lens_lifecycle_carrier.raw_prose_field_flagged_test"
     ),
     witness_subject(
-      entry: "src/v2/test/lens_lifecycle_carrier/raw_prose_field_flagged.dag",
+      entry: "src/v2/test/lens_lifecycle_carrier/raw_prose_field_flagged_test.dag",
       function: "typed_dissolution_condition_field_is_accepted",
-      module_path: "v2.test.lens_lifecycle_carrier.raw_prose_field_flagged"
+      module_path: "v2.test.lens_lifecycle_carrier.raw_prose_field_flagged_test"
     ),
   ],
   ceiling: StructurallyGuaranteed,
@@ -641,17 +641,17 @@ data compile_door_obligation: V2CompileObligation = V2CompileObligation {
   home: HomeAuthority { authority: decl_ref(module_path: "v2.compiler.compile", decl_name: "validate_then_compile") },
   claimed_rung: MechanicallyPreventable,
   discriminating_red: "a real corpus module carrying a violation of any enrolled lens, handed to the door, which must be Rejected before compile-core" as NonEmptyStr,
-  positive_control: "the same module with the violation removed, which must reach compile-core (src/v2/test/lens_application/rejecting_lens_blocks_before_compile.dag holds the fixture-grain pair)" as NonEmptyStr,
+  positive_control: "the same module with the violation removed, which must reach compile-core (src/v2/test/lens_application/rejecting_lens_blocks_before_compile_test.dag holds the fixture-grain pair)" as NonEmptyStr,
   witnesses: [
     witness_subject(
-      entry: "src/v2/test/lens_application/rejecting_lens_blocks_before_compile.dag",
+      entry: "src/v2/test/lens_application/rejecting_lens_blocks_before_compile_test.dag",
       function: "rejecting_lens_blocks_before_compile_claim_holds",
-      module_path: "v2.test.lens_application.rejecting_lens_blocks_before_compile"
+      module_path: "v2.test.lens_application.rejecting_lens_blocks_before_compile_test"
     ),
     witness_subject(
-      entry: "src/v2/test/lens_application/empty_required_lenses_skip_gate.dag",
+      entry: "src/v2/test/lens_application/empty_required_lenses_skip_gate_test.dag",
       function: "empty_required_lenses_skip_gate_claim_holds",
-      module_path: "v2.test.lens_application.empty_required_lenses_skip_gate"
+      module_path: "v2.test.lens_application.empty_required_lenses_skip_gate_test"
     ),
   ],
   ceiling: StructurallyGuaranteed,
@@ -696,14 +696,14 @@ data primitive_map_keys_obligation: V2CompileObligation = V2CompileObligation {
   positive_control: "the same tree calling sorted_map_keys, which must be accepted" as NonEmptyStr,
   witnesses: [
     witness_subject(
-      entry: "src/v2/test/lens_determinism/reach_witness.dag",
+      entry: "src/v2/test/lens_determinism/reach_witness_test.dag",
       function: "determinism_flags_map_keys_reach",
-      module_path: "v2.test.lens_determinism.reach_witness"
+      module_path: "v2.test.lens_determinism.reach_witness_test"
     ),
     witness_subject(
-      entry: "src/v2/test/lens_determinism/reach_witness.dag",
+      entry: "src/v2/test/lens_determinism/reach_witness_test.dag",
       function: "determinism_holds_sorted_map_keys_sibling",
-      module_path: "v2.test.lens_determinism.reach_witness"
+      module_path: "v2.test.lens_determinism.reach_witness_test"
     ),
   ],
   ceiling: StructurallyGuaranteed,
@@ -723,9 +723,9 @@ data primitive_map_values_obligation: V2CompileObligation = V2CompileObligation 
   positive_control: "a tree whose values are read through a sorted key list, which must be accepted" as NonEmptyStr,
   witnesses: [
     witness_subject(
-      entry: "src/v2/test/lens_determinism/reach_witness.dag",
+      entry: "src/v2/test/lens_determinism/reach_witness_test.dag",
       function: "determinism_flags_map_values_reach",
-      module_path: "v2.test.lens_determinism.reach_witness"
+      module_path: "v2.test.lens_determinism.reach_witness_test"
     ),
   ],
   ceiling: StructurallyGuaranteed,

@@ -1,6 +1,5 @@
 module gunbc.merge_admission
 
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import std.types { NonEmptyStr, CommitSha, String, List, Bool, Int, brand }
 import std.content_hash {
@@ -91,7 +90,7 @@ type MergeAdmissionReceipt {
 }
 
 // THE FOURTH ARM IS THE LIVE ONE, AND IT IS WEAKER THAN THE ARM THIS REPOSITORY HAS BEEN CALLING
-// LIVE. `gunbc.merge_lifecycle` and `test.claim.merge_lifecycle_interleaving_witness` both name
+// LIVE. `gunbc.merge_lifecycle` and `test.claim.merge_lifecycle_interleaving_witness_test` both name
 // `PerPrGateOnly` as "the live policy -- GitHub strict_required_status_checks false, no queue",
 // and that reading is refuted by measurement rather than by argument. `PerPrGateOnly` requires a
 // SUCCESS receipt minted for the exact head; a head with no receipt is refused under it, because
@@ -807,10 +806,6 @@ fn merge_admission_verdict_label(v: MergeAdmissionVerdict) -> String {
 // receipt carrying a synthetic changed-roster hash against the current roster, and admits a receipt
 // minted under the current roster. A correctly computed but uninvoked verdict is staging, not a
 // warning and not a wall.
-
-data merge_admission_v2_production_wires_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "FIRST DISSOLVE-ON: production captures TestedSubject before the floor, mints MergeAdmissionReceiptV2 after the floor, and persists both through merge_admission_tested_subject_path and merge_admission_floor_receipt_path for the same WalkAttemptId. Until both producers execute, gunbc.instruments.merge_admission_current_context has no production subject or evidence to consume and cannot be called live.")
-
-data merge_admission_required_check_binding_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "SECOND DISSOLVE-ON, after merge_admission_v2_production_wires_dissolution_trigger: gunbc.ci.ci_failure_class.merge_freshness_gating_status changes from GatingComputedDeferred to the existing GatingEnforced arm after operator sign-off and the ci_failure_class prerequisites. That transition binds the V2 current-context verdict into the approved merge-time consumption path so a denial refuses rather than merely being invocable. The later policy-content increment is already declared by gate_content_hash_variant_tag_scaffold: replacing gate_content_hash's variant-tag placeholder fires that SingleAuthority dissolution; it is not part of this staged increment.")
 
 fn merge_admission_verdict_would_block(v: MergeAdmissionVerdict) -> Bool {
   match v {

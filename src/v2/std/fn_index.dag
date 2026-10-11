@@ -286,7 +286,7 @@ type CalleeTextRead
 // every call of every reached body is work no consumer of the walk demands (DESIGN §2). A named
 // edge or a missing, residue or non-callee head still refuses, located. Skeleton arguments are
 // wrapper nodes anyway (`count(x)` marshals to Transform[count, Conj[Conj[]]]);
-// v2.test.claim.enforcement.skeleton_call_route_witness holds application_read over the real
+// v2.test.claim.enforcement.skeleton_call_route_witness_test holds application_read over the real
 // marshal's output separately.
 fn callee_text_read(node: Node) -> CalleeTextRead {
   match application_head_read(site: node) {

@@ -11,7 +11,7 @@ data external_model_scope_live_cover_stall: GuaranteeStall = GuaranteeStall {
   current: OutsideTheLadder,
   ceiling: MechanicallyPreventable,
   blocker: ClimbableButUnbuilt,
-  population: BoundedPopulation { members: Cons { head: "test.claim.external_model_scope_live_cover_witness.frontier_cover_of_live_extdeps_tree_holds", tail: Empty {} } },
+  population: BoundedPopulation { members: Cons { head: "test.claim.external_model_scope_live_cover_witness_test.frontier_cover_of_live_extdeps_tree_holds", tail: Empty {} } },
   next_rung_trigger: climbs_when_awaiting(
     capability: "the live extdeps-tree cover is exact -- no live dag/extdeps module sits outside the scope frontier's union -- and its routed witness returns true on the real acceptance path",
     awaiting: [dashboard_work_item_referent(node: "adhoc-89fcf94a-bdd" as RoadmapNodeId)],

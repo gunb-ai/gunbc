@@ -22,7 +22,7 @@ import gunbc.merge_admission {
 // landed tree is the PR applied to CURRENT main at merge time (squash_result_tree), never the base
 // the receipt recorded — which is exactly why staleness is expressible at all. Trees and rosters
 // are symbolic fixture identities (content_hash_atom roots advanced by content_hash_tagged,
-// injective in tag x payload), the same fixture idiom test.claim.merge_admission_witness already
+// injective in tag x payload), the same fixture idiom test.claim.merge_admission_witness_test already
 // uses for its b0/b1/r0/r1 hashes.
 
 // Grounding incident (2026-07-16, the #6663 x #6686 main-red): PR #6663 went green on run
@@ -36,7 +36,7 @@ import gunbc.merge_admission {
 // live one, and it is weaker on the absent-receipt input. The withdrawal is a correction to this
 // module's account of the LIVE SYSTEM and not to its account of THIS INCIDENT, whose receipt
 // existed. The incident trace is the permanent RED fixture in
-// test.claim.merge_lifecycle_interleaving_witness.
+// test.claim.merge_lifecycle_interleaving_witness_test.
 
 // SEMANTIC MERGE BREAKS ARE KNOWINGLY ACCEPTED DEBT, NOT AN UNOWNED GAP (operator ruling,
 // 2026-08-27, relayed through the parent lane). THE CLASS: one PR widens a closed coproduct,
@@ -111,7 +111,7 @@ import gunbc.merge_admission {
 // `merge_enabled` seeded its fold with `false` and thereby answered the absent-receipt question for
 // every policy with a caller-local constant. `policy_admits` now takes an OPTIONAL receipt, so that
 // verdict is an arm of the admission decision itself, and
-// `test.claim.merge_lifecycle_interleaving_witness` now carries the discriminating
+// `test.claim.merge_lifecycle_interleaving_witness_test` now carries the discriminating
 // pair: the one-event sequence latches an unverified tip under `ReportedContextsAtMergeInstant` and
 // does not latch under `PerPrGateOnly`.
 //

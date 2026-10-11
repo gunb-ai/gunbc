@@ -308,7 +308,7 @@ data native_claim_route_denominator: NativeEffectDenominator = NativeEffectDenom
 // structural would be the rung inflation DESIGN section 4b(1) names.
 //
 // RUNG HELD: 3, mechanically preventable, and the mechanism is a discriminating witness rather
-// than construction. test.claim.native_driver_cost_partition exclusive_sum_is_every_row_the_law_folds
+// than construction. test.claim.native_driver_cost_partition_test exclusive_sum_is_every_row_the_law_folds
 // folds the constructed collection and compares against a fixture-grounded total, so a key missing
 // from the roster shortens the sum and fails it -- PROVIDED that key's fixture value is non-zero,
 // which is why that fixture now carries a distinct non-zero for every key. Three of them read 0

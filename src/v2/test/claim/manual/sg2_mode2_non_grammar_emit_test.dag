@@ -18,7 +18,7 @@ import v2.extdeps.languages.rust {
   rust_sg2_sum_xy_emitted,
   rust_type_expression_projection
 }
-import v2.extdeps.languages.rust_sg2_mode2_test {
+import v2.extdeps.languages.rust_sg2_mode2_fixtures {
   rust_sg2_mode2_shared_target_model
 }
 import v2.std.algebra { is_empty }

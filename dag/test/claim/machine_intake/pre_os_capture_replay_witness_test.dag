@@ -2,7 +2,7 @@ module test.claim.machine_intake.pre_os_capture_replay_witness_test
 
 import gunbc.machine_intake.mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
 
-import test.claim.fleet_observation_capture_witness { t_pos, t_stream, t_other_stream }
+import test.claim.fleet_observation_capture_witness_test { t_pos, t_stream, t_other_stream }
 
 import gunbc.machine_intake.pre_os_refusal { PreOsSourceRefusal }
 import std.types { Bool, String }

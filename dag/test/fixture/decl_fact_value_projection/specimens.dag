@@ -2,7 +2,7 @@ module test.fixture.decl_fact_value_projection.specimens
 
 import std.types { List, String }
 
-// VALUE-ONLY SPECIMENS for test.claim.decl_fact_value_projection_witness.
+// VALUE-ONLY SPECIMENS for test.claim.decl_fact_value_projection_witness_test.
 //
 // WHY THEY LIVE IN A FIXTURE MODULE AND NOT IN THE WITNESS FILE, measured rather than assumed:
 // decl_facts_corpus_walk skips any path for which is_test_dag holds, and is_test_dag is the

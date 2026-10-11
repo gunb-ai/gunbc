@@ -173,7 +173,7 @@ data validation_disjoint_choice_root: GrammarRoot = GrammarRoot {
 }
 
 // An overlapping choice is REFUSED at validation, located at the production that owns it. The
-// single-overlap control is enrolled on the merge path in test.claim.parse_test_grammar_choice_overlap;
+// single-overlap control is enrolled on the merge path in test.claim.parse_test_grammar_choice_overlap_test;
 // this one holds the same wall for an overlap in the TAIL of a three-way choice.
 fn validation_refuses_overlap_at_production(root: GrammarRoot, production: Symbol) -> Bool {
   let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_validation_grammar_contract)

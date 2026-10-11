@@ -229,7 +229,7 @@ fn init_outcome_of_save(save: RepositorySave) -> ScmInitOutcome {
 
 // AND THE MUTATION THAT WOULD MATTER MOST CANNOT BE WRITTEN. Routing the indeterminate or the
 // present arm to the write arm is authorable, and both are held red by
-// test.claim.scm.scm_cli_witness (an_unobservable_path_does_not_authorize_a_write and
+// test.claim.scm.scm_cli_witness_test (an_unobservable_path_does_not_authorize_a_write and
 // only_an_established_absence_may_create each fail under exactly that edit). Routing the DISAGREEMENT
 // arm there is not authorable at all: ScmInitMayCreate carries a FilesystemEstablishedAbsence, which
 // is sole_constructor and minted only by the substrate fold from a listing that succeeded, so no arm

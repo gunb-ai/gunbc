@@ -349,7 +349,7 @@ fn floor_expected_red_chunk_00() -> List<String> {
 }
 
 fn floor_expected_red_chunk_02() -> List<String> {
-  Cons { head: "test.claim.exact_witness_admission_witness.both_red_expectations_are_known_red_but_only_one_expects_a_pre_verdict_refusal", tail: Cons { head: "test.claim.exact_witness_admission_witness.no_batch_mixes_a_pre_verdict_row_with_an_assertion_false_row", tail: Empty {} } }
+  Cons { head: "test.claim.exact_witness_admission_witness_test.both_red_expectations_are_known_red_but_only_one_expects_a_pre_verdict_refusal", tail: Cons { head: "test.claim.exact_witness_admission_witness_test.no_batch_mixes_a_pre_verdict_row_with_an_assertion_false_row", tail: Empty {} } }
 }
 
 // ShellCommand dissolution moved these controls onto typed principal reads. Measured
@@ -362,7 +362,7 @@ fn floor_expected_red_chunk_03() -> List<String> {
 }
 
 fn floor_expected_red_chunk_04() -> List<String> {
-     Cons { head: "test.claim.namespace_reference_derived_closure_acceptance.witness_namespace_reference_derived_closure_closing_contract_holds", tail: Cons { head: "test.claim.observation_raw_print_retirement_acceptance_test.observation_emit_frontier_is_zero", tail: Cons { head: "test.claim.operation_admit_callers_inert_witness.operation_form_admission_refuses_unadmitted_caller", tail:           Empty {} } } }
+     Cons { head: "test.claim.namespace_reference_derived_closure_acceptance_test.witness_namespace_reference_derived_closure_closing_contract_holds", tail: Cons { head: "test.claim.observation_raw_print_retirement_acceptance_test.observation_emit_frontier_is_zero", tail: Cons { head: "test.claim.operation_admit_callers_inert_witness_test.operation_form_admission_refuses_unadmitted_caller", tail:           Empty {} } } }
 }
 
 // shell-typed-invocation's acceptance oracle. It was RED until the node's slice landed (2026-09-29):
@@ -379,7 +379,7 @@ fn floor_expected_red_chunk_05() -> List<String> {
 }
 
 fn floor_expected_red_chunk_06() -> List<String> {
-              Cons { head: "test.claim.source_integration_proof_kernel_acceptance.witness_p1_proof_kernel_acceptance_contract_holds", tail:                   Empty {} }
+              Cons { head: "test.claim.source_integration_proof_kernel_acceptance_test.witness_p1_proof_kernel_acceptance_contract_holds", tail:                   Empty {} }
 }
 
 // SEVENTEEN generated_conformance_floor ROWS LEFT THIS ROSTER BECAUSE THE FIX THIS BRANCH CARRIES
@@ -595,7 +595,7 @@ fn floor_expected_red_chunk_14() -> List<String> {
 // read reached if arms. The bind row greened when v2.compiler.body_lowering_fold body_lower_stmt_spine
 // and body_lower_bound_value began reading each statement and the bound value through
 // body_lower_value_read, so the Bind carries lowered children rather than the precedence spine the
-// fold keeps around them. Both stay in v2.test.claim.namespace_xl0.body_shape_contract as permanent
+// fold keeps around them. Both stay in v2.test.claim.namespace_xl0.body_shape_contract_test as permanent
 // regression controls.
 fn floor_expected_red_chunk_15() -> List<String> {
   Empty {}
@@ -691,11 +691,11 @@ fn floor_expected_red_chunk_20() -> List<String> {
 // spelling collides with a builtin or module free function; the gate is widened against a
 // measured population, never speculatively.
 fn floor_expected_red_chunk_21() -> List<String> {
-  Cons { head: "v2.test.claim.local_binding_shadow.a_noncallable_local_binding_does_not_fall_through_to_the_module_function", tail:Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_extra_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_missing_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_wrong_argument_type_must_refuse_at_compile", tail: Empty {} } } } }
+  Cons { head: "v2.test.claim.local_binding_shadow_test.a_noncallable_local_binding_does_not_fall_through_to_the_module_function", tail:Cons { head: "test.claim.compile_accepted_unevaluable_program_control_test.primitive_call_with_extra_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control_test.primitive_call_with_missing_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control_test.primitive_call_with_wrong_argument_type_must_refuse_at_compile", tail: Empty {} } } } }
 }
 
 // THE SHADOW CHUNK IS DELETED AND THE ROSTER IS RENUMBERED RATHER THAN LEFT WITH A HOLE. The chunk
-// carrying `v2.test.claim.local_binding_shadow.local_named_function_binding_is_what_the_call_reaches`
+// carrying `v2.test.claim.local_binding_shadow_test.local_named_function_binding_is_what_the_call_reaches`
 // was the last one when enrolled; the resolver repair made that row PASS, so its enrolment is
 // deleted — leaving it would be the stale-quarantine arm firing on a red that no longer exists,
 // which an enrolment must not outlive. THE WITNESS IS NOT DELETED WITH IT (DESIGN 4b(4)): the
@@ -714,7 +714,7 @@ fn floor_expected_red_chunk_21() -> List<String> {
 
 // RETIRED chunk_01 EXPECTED-RED ADMISSION. A record literal naming one field twice now refuses in
 // `v1.compiler.parse` `parse_field_init_list_acc`, naming the field and both positions, so
-// `test.claim.duplicate_record_field_refusal_witness` holds. THE WITNESS IS NOT DELETED (DESIGN
+// `test.claim.duplicate_record_field_refusal_witness_test` holds. THE WITNESS IS NOT DELETED (DESIGN
 // 4b(4)): its red, its accepted control, and a new positions assertion stay enrolled as the
 // ordinary regression control; only the expected-red admission is deleted here.
 
@@ -802,7 +802,7 @@ fn floor_expected_red_chunk_21() -> List<String> {
 // stays enrolled after repair: when it becomes true this roster row is deleted and the claim
 // remains as the regression control.
 fn floor_expected_red_chunk_interpreter_first_optional_divergence() -> List<String> {
-  Cons { head: "test.claim.cli_dispatch_surface.interpreter_first_returns_the_modeled_optional", tail: Empty {} }
+  Cons { head: "test.claim.cli_dispatch_surface_test.interpreter_first_returns_the_modeled_optional", tail: Empty {} }
 }
 
 // A coproduct arm with no constructor name (`type T = { x: Int } | B`) is accepted by v2
@@ -818,7 +818,7 @@ fn floor_expected_red_chunk_coproduct_arm_without_constructor_name() -> List<Str
 // module-level free function now reaches the LOCAL -- was enrolled with ONE row of its own. On the
 // first required run after it landed, thirteen OTHER enrolled reds across five unrelated modules
 // passed: test.claim.host.host_phase_status_witness_test (2), test.claim.interpreter_replacement_cut_witness_test
-// (2), test.claim.srv3.srv3_subsumption_witness_test (6), v2.test.claim.staging (2) and
+// (2), test.claim.srv3.srv3_subsumption_witness_test (6), v2.test.claim.staging_test (2) and
 // v2.test.claim.emit.produced_decl_support_preserved_test (1). None was authored as a shadow probe or names
 // the class; they were filed as ordinary reds against their own subjects, which is exactly what a
 // SILENT wrong value looks like from the consumer's side -- the fold returns a plausible answer,
@@ -889,10 +889,10 @@ fn floor_expected_red_chunk_coproduct_arm_without_constructor_name() -> List<Str
 // than guessed at, because whether the figure or the clock attribution is the wrong half is not
 // decidable from this file and predates this change),
 // concentrated in live-tree corpus witnesses (13 in
-// `v2.test.claim.enforcement.grammar_coverage_witness`, 6 in
-// `v2.test.claim.enforcement_live_witness`, 6 in
-// `v2.test.claim.complexity.accumulator_copy_roster_gate`, the rest spread across 10 modules);
-// and 2 completed-over-cost, both in `test.claim.transport_script_wall_compile_red`, on the wall
+// `v2.test.claim.enforcement.grammar_coverage_witness_test`, 6 in
+// `v2.test.claim.enforcement_live_witness_test`, 6 in
+// `v2.test.claim.complexity.accumulator_copy_roster_gate_test`, the rest spread across 10 modules);
+// and 2 completed-over-cost, both in `test.claim.transport_script_wall_compile_red_test`, on the wall
 // clock at 18882ms and 19024ms against 10000ms. Every interrupted figure is a LOWER BOUND -- the
 // deadline preempted the measurement -- so their real cost is unmeasured and the sum is not this
 // population's cost.
@@ -1110,16 +1110,16 @@ fn floor_expected_red_chunk_coproduct_arm_without_constructor_name() -> List<Str
 // which reds the build and names itself for removal -- measured, on the plain-record row, above. The witness itself is permanent under
 // DESIGN 4b(4) -- it flips to a regression control rather than retiring.
 fn floor_expected_red_chunk_24() -> List<String> {
-  Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_different_application_head_at_a_declared_return_is_refused",
-  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_nested_type_argument_at_a_declared_return_is_refused",
-  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_genuine_unit_argument_of_a_two_arm_coproduct_at_a_declared_return_is_refused", tail: Empty {} } } }
+  Cons { head: "test.claim.declared_type_expected_type_path_witness_test.w_a_different_application_head_at_a_declared_return_is_refused",
+  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness_test.w_a_wrong_nested_type_argument_at_a_declared_return_is_refused",
+  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness_test.w_a_genuine_unit_argument_of_a_two_arm_coproduct_at_a_declared_return_is_refused", tail: Empty {} } } }
 }
 
 // The disjoint-chain floor hole, enrolled red because the defect is LIVE rather than new.
 // Class, mechanism, attribution and capability-grain trigger:
 // gunbc.recurring_failure_mode.absence_classifier_default_bucket.
 fn floor_expected_red_chunk_disjoint_refinement_chains() -> List<String> {
-  Cons { head: "test.claim.declared_type_inhabitance_direct_call_witness.w_a_branded_product_refinement_at_an_unrelated_product_formal_still_refuses", tail: Empty {} }
+  Cons { head: "test.claim.declared_type_inhabitance_direct_call_witness_test.w_a_branded_product_refinement_at_an_unrelated_product_formal_still_refuses", tail: Empty {} }
 }
 
 // SHELL-DAG-CRON-ENTRY-LINE-BUILDER'S ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the same
@@ -1237,7 +1237,7 @@ fn floor_expected_red_chunk_shell_dag_live_deploy_restart_tailscale() -> List<St
 }
 
 fn floor_expected_red_chunk_live_tree_admission() -> List<String> {
-  Cons { head: "test.claim.argument_shape_at_a_declared_position_probe_test.an_unapplied_function_at_a_concrete_position_is_refused", tail: Cons { head: "test.claim.argument_shape_at_a_declared_position_probe_test.a_string_at_a_generic_position_is_refused", tail: Cons { head: "test.claim.doc_reachability_witness.doc_graph_has_no_dangling_links", tail: Cons { head: "test.claim.doc_reachability_witness.doc_graph_has_no_orphan_docs", tail: Cons { head: "test.claim.doc_reachability_witness.doc_graph_registered_plan_roots_all_admitted", tail: Cons { head: "test.claim.external_model_scope_live_cover_witness.frontier_cover_of_live_extdeps_tree_holds", tail: Cons { head: "test.claim.external_model_scope_witness.carriers_declare_scope_on_disk", tail: Cons { head: "test.claim.guarantee_floor_class_probe_witness.floor_generic_instantiation_hole_does_not_satisfy_the_refusing_control", tail: Cons { head: "test.claim.guarantee_floor_class_probe_witness.floor_generic_instantiation_is_still_silently_accepted", tail: Cons { head: "test.claim.guarantee_floor_class_probe_witness.floor_hole_receipt_records_acceptance_as_the_observation", tail: Cons { head: "test.claim.guarantee_probe_corpus_witness_test.bare_none_generic_parameter_field_is_outside_the_wall_boundary", tail: Cons { head: "test.claim.guarantee_probe_corpus_witness_test.dark_suite_dispositions_cover_migrated_v1_probes", tail: Cons { head: "test.claim.legacy_test_behavior_disposition_acceptance_test.legacy_test_behavior_unclassified_frontier_is_zero", tail: Cons { head: "test.claim.operation_argv_corpus_witness.operation_argv_corpus_executable_position_wall_fires_on_the_fixture_only", tail: Cons { head: "test.claim.operation_argv_corpus_witness.operation_argv_corpus_expression_residue_is_pinned", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe_test.f10_direct_selected_open_type_is_clean", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe_test.f10_direct_selected_sealed_type_refuses", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe_test.f10_neither_direct_ab_at_least_one_violation", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe_test.f10_neither_direct_order_independent", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe_test.f13_variant_construction_refuses", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe_test.f19_record_lit_default_value_position_refuses", tail: Cons { head: "v2.lens.mandatory_tag.corpus_scan_witness_test.corpus_live_clean_tree_wall_holds", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_dag_logic_has_three_fn_bodies", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_file_row_totality_holds_on_smoke", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_v2_ingested_body_is_not_decl_facts_skeleton", tail: Cons { head: "v2.test.claim.execution.emit_ingest_grammar_relation_round_trip_test.same_grammar_parse_ingest_bridge_holds", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability_test.doc_graph_has_no_dangling_links", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability_test.doc_graph_has_no_orphan_docs", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability_test.doc_graph_is_clean", tail: Cons { head: "v2.test.claim.manual.test_migration_debt_test.retained_rust_kernel_wall_holds_against_live_tree", tail: Cons { head: "v2.test.claim.program_assembly.real_ingest_test.program_assembly_real_ingest_host_manifest_receipt_holds", tail: Cons { head: "v2.test.claim.program_assembly.real_ingest_test.program_assembly_real_ingest_module_roots_parse_holds", tail: Cons { head: "v2.test.claim.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli_test.withdrawing_the_consumer_admissions_surfaces_exactly_three", tail: Cons { head: "v2.test.claim.self_host.compiler_closure_emit_from_ingest_test.compiler_closure_ingest_overflow_refuses_never_empty_holds", tail: Cons { head: "v2.test.claim.self_host.compiler_closure_emit_from_ingest_test.compiler_closure_ingest_receipt_describes_carrier_holds", tail: Cons { head: "v2.test.claim.self_host.compiler_closure_emit_from_ingest_test.compiler_closure_scoped_ingest_module_count_ok_holds", tail: Cons { head: "v2.test.claim.self_host.compiler_closure_ingest_boundary_witness_test.compiler_closure_ingest_boundary_exact_cap_transport_holds", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: "test.claim.argument_shape_at_a_declared_position_probe_test.an_unapplied_function_at_a_concrete_position_is_refused", tail: Cons { head: "test.claim.argument_shape_at_a_declared_position_probe_test.a_string_at_a_generic_position_is_refused", tail: Cons { head: "test.claim.doc_reachability_witness_test.doc_graph_has_no_dangling_links", tail: Cons { head: "test.claim.doc_reachability_witness_test.doc_graph_has_no_orphan_docs", tail: Cons { head: "test.claim.doc_reachability_witness_test.doc_graph_registered_plan_roots_all_admitted", tail: Cons { head: "test.claim.external_model_scope_live_cover_witness_test.frontier_cover_of_live_extdeps_tree_holds", tail: Cons { head: "test.claim.external_model_scope_witness_test.carriers_declare_scope_on_disk", tail: Cons { head: "test.claim.guarantee_floor_class_probe_witness_test.floor_generic_instantiation_hole_does_not_satisfy_the_refusing_control", tail: Cons { head: "test.claim.guarantee_floor_class_probe_witness_test.floor_generic_instantiation_is_still_silently_accepted", tail: Cons { head: "test.claim.guarantee_floor_class_probe_witness_test.floor_hole_receipt_records_acceptance_as_the_observation", tail: Cons { head: "test.claim.guarantee_probe_corpus_witness_test.bare_none_generic_parameter_field_is_outside_the_wall_boundary", tail: Cons { head: "test.claim.guarantee_probe_corpus_witness_test.dark_suite_dispositions_cover_migrated_v1_probes", tail: Cons { head: "test.claim.legacy_test_behavior_disposition_acceptance_test.legacy_test_behavior_unclassified_frontier_is_zero", tail: Cons { head: "test.claim.operation_argv_corpus_witness_test.operation_argv_corpus_executable_position_wall_fires_on_the_fixture_only", tail: Cons { head: "test.claim.operation_argv_corpus_witness_test.operation_argv_corpus_expression_residue_is_pinned", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe_test.f10_direct_selected_open_type_is_clean", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe_test.f10_direct_selected_sealed_type_refuses", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe_test.f10_neither_direct_ab_at_least_one_violation", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe_test.f10_neither_direct_order_independent", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe_test.f13_variant_construction_refuses", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe_test.f19_record_lit_default_value_position_refuses", tail: Cons { head: "v2.lens.mandatory_tag.corpus_scan_witness_test.corpus_live_clean_tree_wall_holds", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness_test.cost_coverage_dag_logic_has_three_fn_bodies", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness_test.cost_coverage_file_row_totality_holds_on_smoke", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness_test.cost_coverage_v2_ingested_body_is_not_decl_facts_skeleton", tail: Cons { head: "v2.test.claim.execution.emit_ingest_grammar_relation_round_trip_test.same_grammar_parse_ingest_bridge_holds", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability_test.doc_graph_has_no_dangling_links", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability_test.doc_graph_has_no_orphan_docs", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability_test.doc_graph_is_clean", tail: Cons { head: "v2.test.claim.manual.test_migration_debt_test.retained_rust_kernel_wall_holds_against_live_tree", tail: Cons { head: "v2.test.claim.program_assembly.real_ingest_test.program_assembly_real_ingest_host_manifest_receipt_holds", tail: Cons { head: "v2.test.claim.program_assembly.real_ingest_test.program_assembly_real_ingest_module_roots_parse_holds", tail: Cons { head: "v2.test.claim.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli_test.withdrawing_the_consumer_admissions_surfaces_exactly_three", tail: Cons { head: "v2.test.claim.self_host.compiler_closure_emit_from_ingest_test.compiler_closure_ingest_overflow_refuses_never_empty_holds", tail: Cons { head: "v2.test.claim.self_host.compiler_closure_emit_from_ingest_test.compiler_closure_ingest_receipt_describes_carrier_holds", tail: Cons { head: "v2.test.claim.self_host.compiler_closure_emit_from_ingest_test.compiler_closure_scoped_ingest_module_count_ok_holds", tail: Cons { head: "v2.test.claim.self_host.compiler_closure_ingest_boundary_witness_test.compiler_closure_ingest_boundary_exact_cap_transport_holds", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }
 
 }
 
@@ -1327,5 +1327,5 @@ fn floor_expected_red_chunk_product_at_kernel_scalar_formal() -> List<String> {
 // recommends. Its positive control (a match on the same read) is an ordinary claim. When the
 // interpreter's `first` realizes the modeled optional this row is deleted and the claim remains.
 fn floor_expected_red_chunk_optional_equality_by_representation() -> List<String> {
-  Cons { head: "test.claim.optional_equality_by_representation.a_present_first_equals_its_present_literal", tail: Empty {} }
+  Cons { head: "test.claim.optional_equality_by_representation_test.a_present_first_equals_its_present_literal", tail: Empty {} }
 }

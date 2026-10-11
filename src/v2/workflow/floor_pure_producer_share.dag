@@ -786,20 +786,20 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // eleven rows main added to the hand roster after the comparison (gunbc#13118, #13069, #13120): each is
 // the one claim demanding a nullary producer that roster had warmed.
 // Five more were added from probe 37186494805, for the six rows gunbc#13060 added to the hand roster
-// (v2.test.claim.algebra_operator_derivation), on the same ground.
+// (v2.test.claim.algebra_operator_derivation_test), on the same ground.
 // Four more were added from the probe pair 37204679518 against 37204680949 (main 072c37b6cf): claims
 // over budget only without the roster after main's corpus moved, each in a module with a producer
 // only it demands.
 // Nine more were added from the probe pair 37210396855 against 37210398646 (main 44ed81c294), for the
-// nine rows gunbc#13038 added to the hand roster (v2.test.claim.type_application_kind).
+// nine rows gunbc#13038 added to the hand roster (v2.test.claim.type_application_kind_test).
 // Those nine were RETIRED as ClaimDeleted when gunbc#13293 reverted #13038, and are ACTIVE again on
 // the re-land (gunbc#13309), re-probed by its floor run 37268087131 at 27e140c4f3: with no warm row,
 // each refused enrolment as the one claim demanding its own assembly specimen (410642-422505 eval
 // steps each against the 72300 new-witness budget). That run names exactly these nine.
 // Twelve more were added from probe 37238532455, for the sixteen rows gunbc#13187 added to the hand
-// roster (v2.test.claim.compiler.generic_formal_instantiation): all twelve claims of the module.
+// roster (v2.test.claim.compiler.generic_formal_instantiation_test): all twelve claims of the module.
 // One more was added from gunbc#13308's own floor run 37270043819 (head dc9a7079), which measured it
-// COMPLETED-OVER-COST-REQUIREMENT as a single-claim demander: v2.test.claim.native_census.infer_cascade
+// COMPLETED-OVER-COST-REQUIREMENT as a single-claim demander: v2.test.claim.native_census.infer_cascade_test
 // census_infer_provider_cascade_is_one_root_with_fan_out_one_holds, the one real-route inhabitance
 // claim; assemble + resolve + infer of the cascade fixture. Its module's other controls supply values
 // at the folds they judge (DESIGN section 3 witness rule) and are not members. Trigger: assemble + infer
@@ -818,7 +818,7 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // one-module fixture runs under the per-claim budget (gunbc.recurring_failure_mode
 // shared_precondition_re_derived_once_per_claim_frame).
 //
-// THE xl2 MEMBERS (test.claim.namespace_xl2_rehearsal_census) were the bundle `xl2_control_runs`,
+// THE xl2 MEMBERS (test.claim.namespace_xl2_rehearsal_census_test) were the bundle `xl2_control_runs`,
 // declined as BundleOfDisjointProjections on floor run 37194676016: each reads its own rehearsal
 // run, a front end plus resolves that exceeds a new-witness budget, and the rehearsal itself is the
 // claims' subject, so supplying its output would leave them asserting nothing. Un-bundled into one
@@ -841,7 +841,7 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // written in the change itself rather than read from a probe pair, because the change and the
 // roster's deletion met only at the merge; re-derive them with the probe like every other member.
 // One more for gunbc#13325, from floor run 37247019357 (930,914 eval steps): the ONE real-path
-// inhabitance claim of v2.test.claim.compiler.declared_return_result, whose other five claims supply
+// inhabitance claim of v2.test.claim.compiler.declared_return_result_test, whose other five claims supply
 // their inputs at the result-type interface (DESIGN section 3). Its fixture program, drr_route_source,
 // has no other demander, so derived sharing cannot cover it.
 // gunbc#13207 (XL-2 collection concat): its ONE real-path inhabitance claim, kept per the DESIGN section 3
@@ -850,9 +850,9 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // pipeline's per-claim fixed cost of assembling and inferring a one-module fixture, not the test's own work.
 // Trigger: assemble plus infer of a one-module fixture runs under the per-claim budget
 // (gunbc.recurring_failure_mode shared_precondition_re_derived_once_per_claim_frame).
-// gunbc#13511 (kernel-value join): the ONE real-path inhabitance of v2.test.claim.compiler.generic_closure_outcome_construct_probe,
+// gunbc#13511 (kernel-value join): the ONE real-path inhabitance of v2.test.claim.compiler.generic_closure_outcome_construct_probe_test,
 // gbo_a_kernel_literal_inhabits_an_alias_of_the_corpus_int_holds (red with the join deleted and with input-only recognition). Its own-frame eval steps are
-// re-derived by claim_batch --hermetic --entry src/v2/test/claim/compiler/generic_closure_outcome_construct_probe.dag
+// re-derived by claim_batch --hermetic --entry src/v2/test/claim/compiler/generic_closure_outcome_construct_probe_test.dag
 // --functions gbo_a_kernel_literal_inhabits_an_alias_of_the_corpus_int_holds (receipt: BuildBuddy a63835e8, pinned
 // 46da0c8fa0; red with the join deleted, BuildBuddy 50c58a76, and with input-only recognition, BuildBuddy 2002ea86).
 // Trigger: shared_precondition_re_derived_once_per_claim_frame, as above.
@@ -868,50 +868,50 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // assembly -- or the shared_precondition_re_derived_once_per_claim_frame trigger above, whichever lands first.
 data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.body_lowering_data_literal_door",
+    module: "v2.test.claim.body_lowering_data_literal_door_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_data_declaration_with_an_int_literal_normalizes_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.body_lowering_unrecognised_lowered_shape",
+    module: "v2.test.claim.body_lowering_unrecognised_lowered_shape_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_passed_through_atom_leaves_the_fold_sealed", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.compiler.literal_elaboration",
+    module: "v2.test.claim.compiler.literal_elaboration_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "lel_route_runs_on_the_real_path", standing: ActiveFillDebt },
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.compiler.collection_count_realization",
+    module: "v2.test.claim.compiler.collection_count_realization_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "ccc_route_runs_on_the_real_path", standing: ActiveFillDebt },
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.compiler.declared_return_result",
+    module: "v2.test.claim.compiler.declared_return_result_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "drr_the_real_route_judges_a_projected_generic_call_result", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.compiler.generic_closure_outcome_construct_probe",
+    module: "v2.test.claim.compiler.generic_closure_outcome_construct_probe_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "gbo_a_kernel_literal_inhabits_an_alias_of_the_corpus_int_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.body_lowering.fold_operand_structure",
+    module: "v2.test.claim.body_lowering.fold_operand_structure_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_call_with_a_fold_argument_lowers_as_the_call_over_the_loop", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "the_body_walker_lowers_a_call_with_a_fold_argument_as_the_call_over_the_loop", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "test.claim.namespace_xl2_rehearsal_census",
+    module: "test.claim.namespace_xl2_rehearsal_census_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "xl2_residual_control_resolves_before_the_cut_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "xl2_two_failures_in_one_module_are_two_rows_holds", standing: ActiveFillDebt },
@@ -920,19 +920,19 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.compiler.data_reference_value",
+    module: "v2.test.claim.compiler.data_reference_value_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "drv_a_data_reference_is_typed_at_its_declared_type_and_evaluates_to_its_value", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.compiler.collection_concat_realization",
+    module: "v2.test.claim.compiler.collection_concat_realization_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "cca_route_runs_on_the_real_path", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.compiler.generic_formal_instantiation",
+    module: "v2.test.claim.compiler.generic_formal_instantiation_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "gfi_alias_argument_at_its_aliased_formal_is_accepted", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "gfi_alias_argument_at_two_instances_refuses", standing: ActiveFillDebt },
@@ -949,7 +949,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.type_application_kind",
+    module: "v2.test.claim.type_application_kind_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "tak_application_of_a_non_generic_declaration_refuses", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "tak_application_with_more_arguments_than_binders_refuses", standing: ActiveFillDebt },
@@ -963,13 +963,13 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.callexec.synthetic_facts_key_collision",
+    module: "v2.test.claim.callexec.synthetic_facts_key_collision_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "sfk_the_separation_is_not_specific_to_one_fixture_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.algebra_operator_derivation",
+    module: "v2.test.claim.algebra_operator_derivation_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "aod_bool_add_refuses", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "aod_bool_join_derives_bool", standing: ActiveFillDebt },
@@ -979,14 +979,14 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.callexec.let_match_early_return_eval",
+    module: "v2.test.claim.callexec.let_match_early_return_eval_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "the_binding_path_of_a_let_match_and_its_rewrite_refuse_alike_at_infer_grounding", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "the_exit_path_of_a_let_match_and_its_rewrite_refuse_alike_at_infer_grounding", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.compiler.collection_callback_realization",
+    module: "v2.test.claim.compiler.collection_callback_realization_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "ccr_all_head_binds_its_row", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "ccr_declared_any_stays_an_ordinary_call", standing: ActiveFillDebt },
@@ -995,25 +995,25 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.native_census.infer_cascade",
+    module: "v2.test.claim.native_census.infer_cascade_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "census_infer_provider_cascade_is_one_root_with_fan_out_one_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.native_census.cascade_root_fan_out",
+    module: "v2.test.claim.native_census.cascade_root_fan_out_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "census_diamond_cascade_counts_modules_not_paths_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.compiler.dependency_demand_census",
+    module: "v2.test.claim.compiler.dependency_demand_census_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "production_lowering_of_the_same_fns_still_refuses_at_the_clause_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.compiler.infer_fold_member_instance",
+    module: "v2.test.claim.compiler.infer_fold_member_instance_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "fmi_fold_member_undeclared_field_refuses", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "fmi_fold_over_records_is_accepted", standing: ActiveFillDebt },
@@ -1023,7 +1023,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.anonymous_param_binder",
+    module: "v2.test.claim.anonymous_param_binder_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "apb_body_reference_to_an_anonymous_slot_refuses_located", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "apb_slot_label_is_the_position_in_its_own_binder_list", standing: ActiveFillDebt },
@@ -1031,7 +1031,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.binder_default_judgment",
+    module: "v2.test.claim.binder_default_judgment_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_default_does_not_see_a_sibling_parameter_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "a_default_in_a_generic_coproduct_payload_refuses_until_modeled_holds", standing: ActiveFillDebt },
@@ -1043,7 +1043,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.body_cast_node",
+    module: "v2.test.claim.body_cast_node_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "bcn_call_argument_cast_carries_its_target", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "bcn_call_operand_cast_carries_its_target", standing: ActiveFillDebt },
@@ -1064,7 +1064,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.body_let_annotation",
+    module: "v2.test.claim.body_let_annotation_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "bla_ambiguous_imported_int_refuses_rather_than_defaulting_to_the_kernel", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "bla_ambiguous_kernel_declarations_bind_the_kernel_type", standing: ActiveFillDebt },
@@ -1091,7 +1091,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.body_lowering.anonymous_record",
+    module: "v2.test.claim.body_lowering.anonymous_record_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "ar_a_binder_field_type_is_not_substituted_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "ar_a_call_argument_has_no_expected_type_holds", standing: ActiveFillDebt },
@@ -1106,13 +1106,13 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.body_lowering.declaration_structure_preserved",
+    module: "v2.test.claim.body_lowering.declaration_structure_preserved_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "where_refinement_clause_interior_is_not_retained_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.body_lowering.enclosing_expression_structure",
+    module: "v2.test.claim.body_lowering.enclosing_expression_structure_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_call_with_a_match_argument_lowers_as_the_call_over_every_argument", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "an_operand_beside_a_match_lowers_as_the_operator_over_both_operands", standing: ActiveFillDebt },
@@ -1121,14 +1121,14 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.body_lowering.function_value_body_route",
+    module: "v2.test.claim.body_lowering.function_value_body_route_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_curried_function_typed_return_emits_impl_fn_over_box_dyn_fn", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "a_fn_returning_fn_emits_impl_fn_with_a_move_closure", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.body_lowering.map_literal",
+    module: "v2.test.claim.body_lowering.map_literal_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "ml_a_call_argument_has_no_expected_type_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "ml_a_duplicate_key_refuses_holds", standing: ActiveFillDebt },
@@ -1143,7 +1143,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.body_lowering.plain_type_decl_lowering",
+    module: "v2.test.claim.body_lowering.plain_type_decl_lowering_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_plain_alias_declares_no_members_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "a_plain_alias_lowers_to_the_alias_wrapper_with_no_binders_holds", standing: ActiveFillDebt },
@@ -1152,7 +1152,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.body_lowering.qualified_construct",
+    module: "v2.test.claim.body_lowering.qualified_construct_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "qc_a_type_tag_refuses_as_not_a_constructor_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "qc_dropping_the_qualifier_unbinds_the_constructor_holds", standing: ActiveFillDebt },
@@ -1161,14 +1161,14 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.body_lowering.single_arm_match",
+    module: "v2.test.claim.body_lowering.single_arm_match_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "three_arm_match_keeps_every_arm_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "zero_arm_match_still_refuses_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.body_lowering.statement_let_bind",
+    module: "v2.test.claim.body_lowering.statement_let_bind_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "single_statement_body_unchanged_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "statement_let_chain_lowers_holds", standing: ActiveFillDebt },
@@ -1178,20 +1178,20 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.body_lowering_block_body_call",
+    module: "v2.test.claim.body_lowering_block_body_call_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "body_lowering_block_body_call_reaches_arrow_body", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "body_lowering_block_call_parses_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.body_lowering_qualified_path",
+    module: "v2.test.claim.body_lowering_qualified_path_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "body_lowering_qualified_value_reaches_arrow_body_whole", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.body_type_annotation_refusal",
+    module: "v2.test.claim.body_type_annotation_refusal_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "btar_if_arm_fn_literal_is_not_erased", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "btar_let_annotation_refuses", standing: ActiveFillDebt },
@@ -1201,7 +1201,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.callexec.declaration_reference_eval",
+    module: "v2.test.claim.callexec.declaration_reference_eval_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "cref_a_named_call_with_an_argument_executes_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
       SingleClaimFillDebtClaim { claim: "cref_a_zero_argument_named_call_executes_to_its_callee_value_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
@@ -1212,7 +1212,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.coercion.identity_cast_emission_route",
+    module: "v2.test.claim.coercion.identity_cast_emission_route_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_cast_with_no_witness_refuses_before_realization_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "an_admitted_identity_cast_emits_through_the_closure_route_holds", standing: ActiveFillDebt }
@@ -1259,7 +1259,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.declaration_graft_assemble",
+    module: "v2.test.claim.declaration_graft_assemble_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "declaration_graft_alias_spelled_as_emitted_identity_survives_flatten", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "declaration_graft_alias_spelled_as_production_name_survives_flatten", standing: ActiveFillDebt },
@@ -1271,7 +1271,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.declared_parameter_order",
+    module: "v2.test.claim.declared_parameter_order_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "dpo_an_order_label_does_not_bind_to_a_name_in_scope", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "dpo_eleven_anonymous_slots_bind_in_declared_order", standing: ActiveFillDebt },
@@ -1279,7 +1279,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.emit.module_member_emission",
+    module: "v2.test.claim.emit.module_member_emission_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_bare_literal_body_emits_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "a_bare_parameter_body_emits_holds", standing: ActiveFillDebt },
@@ -1297,7 +1297,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.field_projection.field_projection_stages",
+    module: "v2.test.claim.field_projection.field_projection_stages_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "fps_a_root_bound_data_value_projects_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "fps_a_cross_module_record_projection_infers_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
@@ -1314,14 +1314,14 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.machine_shape_construction_wall",
+    module: "v2.test.claim.machine_shape_construction_wall_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "gate_green_machine_shape_record_literal_in_its_home", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "gate_red_machine_shape_record_literal_outside_its_home", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.match_arm_binder_frame",
+    module: "v2.test.claim.match_arm_binder_frame_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "mab_binder_does_not_leak_to_a_sibling_arm", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "mab_binder_spelling_a_non_payload_declared_in_two_modules_binds", standing: ActiveFillDebt },
@@ -1342,7 +1342,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.match_binder.match_binder_typing",
+    module: "v2.test.claim.match_binder.match_binder_typing_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "mbt_a_binder_hiding_a_same_named_parameter_refuses_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "mbt_an_underived_arm_body_is_a_counted_frontier_holds", standing: RetiredFillDebt { disposition: BecameSharedByDemand } },
@@ -1350,14 +1350,14 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.named_argument_binding",
+    module: "v2.test.claim.named_argument_binding_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "nab_malformed_named_mixes_refuse_at_lowering", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "nab_reordering_named_actuals_preserves_identity", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.namespace_xl0.cross_module_reference_resolution",
+    module: "v2.test.claim.namespace_xl0.cross_module_reference_resolution_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_binder_shadowing_a_root_segment_projects_from_the_binder_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "a_cross_module_reference_to_a_data_declaration_resolves_to_its_declaring_path_holds", standing: ActiveFillDebt },
@@ -1374,14 +1374,14 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.namespace_xl0.list_literal_value_lowering",
+    module: "v2.test.claim.namespace_xl0.list_literal_value_lowering_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "std_algebra_own_list_literals_bind_to_its_own_qualified_names", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "std_algebra_without_freemonoid_refuses_its_own_list_literal_at_resolve", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.namespace_xl0.reference_conservation",
+    module: "v2.test.claim.namespace_xl0.reference_conservation_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_block_with_a_second_statement_is_refused_not_accepted_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "a_list_literal_call_argument_conserves_every_element_holds", standing: ActiveFillDebt },
@@ -1399,7 +1399,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.namespace_xl0.reference_conservation_accepted_drops",
+    module: "v2.test.claim.namespace_xl0.reference_conservation_accepted_drops_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_binary_operand_beside_a_match_is_conserved_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "a_binary_operand_beside_an_if_is_conserved_holds", standing: ActiveFillDebt },
@@ -1413,7 +1413,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.namespace_xl0.reference_conservation_admission",
+    module: "v2.test.claim.namespace_xl0.reference_conservation_admission_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_conserving_body_lowering_member_is_observed_conserved_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "a_dropping_body_lowering_member_is_observed_dropped_holds", standing: ActiveFillDebt },
@@ -1424,26 +1424,26 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.namespace_xl0.reference_conservation_census",
+    module: "v2.test.claim.namespace_xl0.reference_conservation_census_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_share_under_the_floor_takes_six_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "the_rule_takes_its_quota_at_the_floor_indices_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.normalize.operation_modifier",
+    module: "v2.test.claim.normalize.operation_modifier_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "an_operations_modifiers_lower_onto_its_contract_edges_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.normalize.resource_declaration_lowering",
+    module: "v2.test.claim.normalize.resource_declaration_lowering_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_default_tail_lowers_onto_its_binder_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.normalize.service_realization_lowering",
+    module: "v2.test.claim.normalize.service_realization_lowering_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_config_only_realization_is_held_off_the_full_route_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "an_unrealizable_realization_refuses_located_holds", standing: ActiveFillDebt },
@@ -1452,7 +1452,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.normalize.service_spine",
+    module: "v2.test.claim.normalize.service_spine_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_merged_namespace_body_grants_no_scope_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "a_namespace_body_and_a_declaration_of_one_name_refuse_holds", standing: ActiveFillDebt },
@@ -1464,7 +1464,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.parameter_reference",
+    module: "v2.test.claim.parameter_reference_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "pr_let_shadowing_a_parameter_refuses_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "pr_ordinary_named_call_deficit_still_refuses_holds", standing: ActiveFillDebt },
@@ -1472,27 +1472,27 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.parse.admit_callers_trailing_comma",
+    module: "v2.test.claim.parse.admit_callers_trailing_comma_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_trailing_comma_in_admit_callers_parses_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "an_admit_callers_list_without_a_trailing_comma_parses_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.parse.data_keyword_as_value",
+    module: "v2.test.claim.parse.data_keyword_as_value_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "the_data_keyword_as_a_value_normalizes_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.parse.default_value",
+    module: "v2.test.claim.parse.default_value_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_record_field_default_lowers_onto_its_binder_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "a_service_io_default_lowers_onto_its_binder_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.parse.expression_bodied_continuation",
+    module: "v2.test.claim.parse.expression_bodied_continuation_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "cont_braced_fn_decl_survives_normalize_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "cont_expression_bodied_fn_decl_survives_normalize_holds", standing: ActiveFillDebt },
@@ -1500,7 +1500,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.parse.parameter_refinement",
+    module: "v2.test.claim.parse.parameter_refinement_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "an_unrefined_parameter_still_normalizes_holds", standing: ActiveFillDebt }
     ]
@@ -1518,27 +1518,27 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.parse.record_field_tail",
+    module: "v2.test.claim.parse.record_field_tail_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_record_field_with_a_default_parses_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "a_record_without_a_tail_still_normalizes_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.parse.where_clause_required_comma",
+    module: "v2.test.claim.parse.where_clause_required_comma_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_service_after_a_refined_alias_parses_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "comma_separated_predicates_still_parse_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.provenance.loaded_carrier_receipts",
+    module: "v2.test.claim.provenance.loaded_carrier_receipts_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_record_through_the_located_pool_is_a_declared_payload_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.reference_evidence.declaration_reference_evidence",
+    module: "v2.test.claim.reference_evidence.declaration_reference_evidence_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "dre_a_named_call_to_a_bool_fn_is_grounded_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
       SingleClaimFillDebtClaim { claim: "dre_a_same_leaf_reference_gets_its_own_declarations_contract_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
@@ -1548,21 +1548,21 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.self_host.closure_emission",
+    module: "v2.test.claim.self_host.closure_emission_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_closure_member_whose_body_does_not_lower_refuses_the_emission_at_its_cause_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "two_files_declaring_one_module_refuse_the_emission_at_the_census_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.self_host.rust_module_emission_population",
+    module: "v2.test.claim.self_host.rust_module_emission_population_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "population_two_declaration_module_collects_two", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "population_two_declaration_module_refuses_whole_on_unwired_target", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.text_string_importer_census",
+    module: "v2.test.claim.text_string_importer_census_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "tsic_every_window_predicate_matches_the_real_parse", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "tsic_real_raw_parse_route_reaches_the_classifier", standing: ActiveFillDebt },
@@ -1573,7 +1573,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.type_param_binder_frame",
+    module: "v2.test.claim.type_param_binder_frame_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "tpb_emitter_refuses_a_generic_arrow", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "tpb_every_declared_type_param_is_a_binder", standing: ActiveFillDebt },
@@ -1597,7 +1597,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.value_base_projection",
+    module: "v2.test.claim.value_base_projection_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "vbp_a_param_spelled_like_the_field_is_not_captured", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "vbp_undeclared_field_off_a_call_result_is_carried_on_the_direct_infer_outcome", standing: ActiveFillDebt },
@@ -1605,7 +1605,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.where_predicate_binding",
+    module: "v2.test.claim.where_predicate_binding_test",
     claims: [
       SingleClaimFillDebtClaim { claim: "wpb_declared_predicate_binds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "wpb_labelled_arguments_and_marker_bind", standing: ActiveFillDebt },
@@ -1905,9 +1905,9 @@ data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = [
       repaired_by: "gunbc.self_host_compile_phase_frontier.current_compile_phase_frontier_standing"
     },
     carrier_modules: [
-      "test.claim.compiler_frontend_program_status_witness",
-      "test.claim.self_host_compile_phase_frontier_witness",
-      "test.claim.self_host_compile_phase_live_gate_witness"
+      "test.claim.compiler_frontend_program_status_witness_test",
+      "test.claim.self_host_compile_phase_frontier_witness_test",
+      "test.claim.self_host_compile_phase_live_gate_witness_test"
     ],
     measurement: "gunbc#10094 measured this enrolment as a large WIN and withdrew it anyway; the refusal is DESIGN section 3, not cost -- gunbc#10108 removes the receipt-series argument instead of paying to reify and verify it per consuming frame, so one fact gets one row at the declaration that makes it cheap",
     next_trigger: "none that restores THIS spelling: the general declaration takes the series as an argument and is meant to keep taking it. The row retires when its repair lands, and re-proposing this producer means proposing to serve the argument-taking shape again"
@@ -1918,12 +1918,12 @@ data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = [
       undeclared_input: "the RESOLVING CONTEXT. coproduct_arm_keys(type_name: Symbol) reaches resolve_type_node, whose host arm eval_resolve_type_node calls type_item_by_name(ctx, type_name); that fold iterates ctx.modules and matches on the AUTHORED (bare) name. So the value is a function of type_name AND of which modules the claim scope carries and which bare name wins among them. The cross-claim memo key is (fn_node, args_hash) and args_hash covers the declared arguments only, so ctx is invisible to it" as String,
     },
     carrier_modules: [
-      "v2.test.claim.affected_set_universe",
-      "v2.test.claim.generated_conformance_floor",
+      "v2.test.claim.affected_set_universe_test",
+      "v2.test.claim.generated_conformance_floor_test",
       "v2.test.claim.manual.value_null_split_witness_test",
       "v2.test.claim.manual.coproduct_reflection_conformance_test"
     ],
-    measurement: concat("The refusal is a SOUNDNESS verdict and does not rest on the cost figures, which are reported because the census is what named the producer: required floor run 34742966153, artifact required-floor-cross-claim-demand (required_floor_cross_claim_demand.tsv), the row keyed producer=coproduct_arm_keys arg_shape=keyed, decl_site src/v2/std/node_reflection.dag. ITS COST COLUMNS ARE NOT COPIED HERE (DESIGN section 6: name the instrument, never transcribe its output). The run, the artifact and the row key above ARE the citation; a figure copied into this prose is unreachable from the producer that owns it and rots without anyone touching either end. THE DECIDING OBSERVATION IS IN THE SAME ARTIFACT AND IS NOT A COST FIGURE: that file carries SEVERAL keyed rows for this producer, one per distinct type_name, and one of them reports a consumer-module count ABOVE ONE, over v2.test.claim.generated_conformance_floor and v2.test.claim.manual.value_null_split_witness_test. Claims of different modules carry different scopes (claim_scope_for prepares per module), so that row is the shape a cross-SCOPE serve would take if this producer were enrolled. IT IS NOT A SERVE TODAY AND THIS ROW DOES NOT CLAIM ONE: cross_claim_pure_admitted gates storing on the roster, so an unenrolled producer is re-derived and never served, and the census column reports cross-claim DEMAND rather than sharing. An earlier revision of this sentence said the cross-scope serve was ALREADY OCCURRING; that was wrong in the direction that flatters the refusal, and is corrected here rather than deleted. The refusal is therefore PREVENTIVE and the harm is unobserved: enrolling is what would make the key load-bearing, and the failure mode it would admit is not a refusal. WHAT THE SEAM ACTUALLY DOES WAS EXECUTED RATHER THAN READ OFF THE RUST, and the two specimens do not behave alike (witty-otter-157, 2026-09-13): for one it ANSWERS from one of several candidate declarations -- a coproduct in one module and a record in another, with an enrolled claim green on main over the arm list it returned -- and for the other it FAILS UNTYPED with an unknown-closed-type host error rather than picking between two disjoint arm sets. So the mechanism is: answers from one of several, or fails untyped, NEVER refuses. An earlier revision of this row said first-match-wins serves a plausible wrong arm set; that is true of the first shape only, and was read from the Rust rather than run. Neither shape is a typed located refusal, which is why the defect and this refusal both stand unchanged ", homonym_census_note()),
+    measurement: concat("The refusal is a SOUNDNESS verdict and does not rest on the cost figures, which are reported because the census is what named the producer: required floor run 34742966153, artifact required-floor-cross-claim-demand (required_floor_cross_claim_demand.tsv), the row keyed producer=coproduct_arm_keys arg_shape=keyed, decl_site src/v2/std/node_reflection.dag. ITS COST COLUMNS ARE NOT COPIED HERE (DESIGN section 6: name the instrument, never transcribe its output). The run, the artifact and the row key above ARE the citation; a figure copied into this prose is unreachable from the producer that owns it and rots without anyone touching either end. THE DECIDING OBSERVATION IS IN THE SAME ARTIFACT AND IS NOT A COST FIGURE: that file carries SEVERAL keyed rows for this producer, one per distinct type_name, and one of them reports a consumer-module count ABOVE ONE, over v2.test.claim.generated_conformance_floor_test and v2.test.claim.manual.value_null_split_witness_test. Claims of different modules carry different scopes (claim_scope_for prepares per module), so that row is the shape a cross-SCOPE serve would take if this producer were enrolled. IT IS NOT A SERVE TODAY AND THIS ROW DOES NOT CLAIM ONE: cross_claim_pure_admitted gates storing on the roster, so an unenrolled producer is re-derived and never served, and the census column reports cross-claim DEMAND rather than sharing. An earlier revision of this sentence said the cross-scope serve was ALREADY OCCURRING; that was wrong in the direction that flatters the refusal, and is corrected here rather than deleted. The refusal is therefore PREVENTIVE and the harm is unobserved: enrolling is what would make the key load-bearing, and the failure mode it would admit is not a refusal. WHAT THE SEAM ACTUALLY DOES WAS EXECUTED RATHER THAN READ OFF THE RUST, and the two specimens do not behave alike (witty-otter-157, 2026-09-13): for one it ANSWERS from one of several candidate declarations -- a coproduct in one module and a record in another, with an enrolled claim green on main over the arm list it returned -- and for the other it FAILS UNTYPED with an unknown-closed-type host error rather than picking between two disjoint arm sets. So the mechanism is: answers from one of several, or fails untyped, NEVER refuses. An earlier revision of this row said first-match-wins serves a plausible wrong arm set; that is true of the first shape only, and was read from the Rust rather than run. Neither shape is a typed located refusal, which is why the defect and this refusal both stand unchanged ", homonym_census_note()),
     next_trigger: "REFLECTION KEYED BY QUALIFIED OR SCOPED IDENTITY, as a capability and not as a witness. Either type_item_by_name resolves a QUALIFIED name so the value is a function of its arguments alone, or the reflection carries the resolving scope into the key so the memo can tell two resolutions apart. A scope-invariance witness is explicitly NOT the trigger: it is validation standing where construction is available (DESIGN section 5), the value would still be computed from an input the key cannot see, and a witness over today's corpus says nothing about tomorrow's homonym. Bare-name resolution is a namespace-layer subject (gunbc.rung_drop bare_name_fork_lens and the namespace cut), so this trigger is an upstream obligation rather than work this roster can do. When it lands, this producer and the two rows below return as enrolments with the ordinary present-versus-absent receipt" as String
   },
   RefusedShareCandidate {
@@ -1931,7 +1931,7 @@ data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = [
     verdict: KeyOmitsAnInputTheValueDependsOn {
       undeclared_input: "the RESOLVING CONTEXT, inherited one level up and with LESS to look at. This producer is nullary, so its args_hash is EMPTY and its key is the declaration alone -- while its whole value is a fold over coproduct_arm_keys(type_name: affected_set_reflect_gate_type). An empty key over a ctx-dependent value is the same defect as the row above with nothing in the key to inspect" as String,
     },
-    carrier_modules: ["v2.test.claim.affected_set_universe"],
+    carrier_modules: ["v2.test.claim.affected_set_universe_test"],
     measurement: concat("required floor run 34742966153, artifact required-floor-cross-claim-demand, the row keyed producer=ci_gate_processes arg_shape=keyed, decl_site src/v2/lens/affected_set.dag; its cost and module columns are read from that artifact rather than copied here. arg_shape reads `keyed` because a nullary call has zero unkeyable arguments, which is exactly the point: the census cannot distinguish `every input is in the key` from `there are no inputs in the key`. that row reports a SINGLE consumer module today, so no cross-scope serve is observed for THIS producer -- the refusal is that nothing prevents one and the key could not express the constraint if it did ", homonym_census_note()),
     next_trigger: "the same capability as the row above: reflection keyed by qualified or scoped identity. This producer has no repair of its own -- it is sound exactly when its callee is" as String
   },
@@ -1940,7 +1940,7 @@ data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = [
     verdict: KeyOmitsAnInputTheValueDependsOn {
       undeclared_input: "the RESOLVING CONTEXT, by the same route as ci_gate_processes: nullary, empty key, value folded over coproduct_arm_keys(type_name: affected_set_reflect_meta_process_kind_type)" as String,
     },
-    carrier_modules: ["v2.test.claim.affected_set_universe"],
+    carrier_modules: ["v2.test.claim.affected_set_universe_test"],
     measurement: "THIS ROW IS A WITHDRAWAL OF AN ENROLMENT THIS LANE PROPOSED, recorded as such rather than as a candidate that was never admitted. gunbc#11247 proposed carrying this producer WARM on a real duplication measurement -- the floor own census carried a producer=meta_processes row whose cross-claim share was a visible fraction of its total, and the carry demonstrably worked: with it applied, affected_set_universe_includes_meta_self drops to a SMALL FRACTION of its unserved step count and meta_processes DISAPPEARS from the cross-claim census of run 34742966153 because it is served rather than re-derived. The cost case was correct and is not what refuses it. NO FIGURE FROM THAT MEASUREMENT IS TRANSCRIBED HERE, and the withdrawal does not need one: what is preserved is that a real duplication was measured and that the cost case was sound, both re-derivable from the named run and artifact. What refuses it is the key: the serve-boundary check made when it was proposed asked whether the VALUE was portable (no Closure, no OriginBoundNode at any depth) and never asked whether the KEY covered every input. It does not" as String,
     next_trigger: "the same capability: reflection keyed by qualified or scoped identity. When it lands this refused row is deleted and the derived share admits the producer wherever its planned demand qualifies, with the receipt gunbc#11247 already measured, which is why that measurement is preserved above rather than discarded with the enrolment" as String
   }
@@ -2193,22 +2193,22 @@ type CarriedInputWarmRow {
 
 data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = [
   PreparedEffectInput {
-    acquisition: "v2.test.claim.declaring_identity_spelling.production_ingest.xl3_fixture_reads",
+    acquisition: "v2.test.claim.declaring_identity_spelling.production_ingest_test.xl3_fixture_reads",
     checkout_input: "src/v2/test/fixture/declaring_identity_spelling/ (+ dag/test/probe/declaring_identity_spelling_unresolvable_probe.dag)",
-    ground: "The NAMESPACE-XL-3 fixture corpus: eight committed .dag files read through filesystem_read into one list of read witnesses; each census is STILL a single-file ingest over its own witness (the census semantics are per file), the acquisition only performs the reads once. Content fixed by the commit the run prepared. Demanded by every claim of v2.test.claim.declaring_identity_spelling.production_ingest through xl3_fixture_censuses.",
+    ground: "The NAMESPACE-XL-3 fixture corpus: eight committed .dag files read through filesystem_read into one list of read witnesses; each census is STILL a single-file ingest over its own witness (the census semantics are per file), the acquisition only performs the reads once. Content fixed by the commit the run prepared. Demanded by every claim of v2.test.claim.declaring_identity_spelling.production_ingest_test through xl3_fixture_censuses.",
     measurement: "The floor's own refusal on gunbc#11461 run 35074340220 is the absent arm: fifteen claims of that file COMPLETED-OVER-COST-REQUIREMENT at 130k-430k eval steps against the new-witness budget, each re-deriving its own parse-and-normalize. The present arm is the same run shape with these rows enrolled, read over required_floor_claim_cost.tsv and the [floor-shared-fill] ledger; the acquisition's own arm is the effect-dispatch count for this carrier - eight reads at preparation with the row enrolled, eight per consuming claim without it."
   },
   PreparedEffectInput {
     acquisition: "v2.test.claim.reference_derived_graph_fixture.fixture_ingest",
     checkout_input: "dag/test/fixture/reference_derived_graph/",
-    ground: "The NAMESPACE-XL-4 fixture corpus: eleven committed .dag modules under the checkout root, read through filesystem_read into one SourceRootIngest so the reference-derived graph claims measure the SAME files the instrument gunbc.instruments.reference_derived_graph reads (one fixture authority - review 65417 on gunbc#11202). Their content is fixed by the commit the run prepared, which is what makes one acquisition at preparation the same ingest every claim would have read for itself. Demanded by v2.test.claim.reference_derived_graph_call_arg_tree and reference_derived_graph_production_ingest through xl4_fixture_trees.",
+    ground: "The NAMESPACE-XL-4 fixture corpus: eleven committed .dag modules under the checkout root, read through filesystem_read into one SourceRootIngest so the reference-derived graph claims measure the SAME files the instrument gunbc.instruments.reference_derived_graph reads (one fixture authority - review 65417 on gunbc#11202). Their content is fixed by the commit the run prepared, which is what makes one acquisition at preparation the same ingest every claim would have read for itself. Demanded by v2.test.claim.reference_derived_graph_call_arg_tree_test and reference_derived_graph_production_ingest through xl4_fixture_trees.",
     measurement: "The floor's own refusal on gunbc#11461 run 35059914771 (PureProducerShareWarmDispatchedEffect producer=xl4_fixture_trees effects=11) is the absent arm: the warm reached the world eleven times. The present arm is the same run shape with this row enrolled, read over required_floor_claim_cost.tsv and the [floor-shared-fill] ledger; the acquisition's own arm is the effect-dispatch count for this carrier, which is one prepared acquisition with the row enrolled and eleven inside the warm without it."
   },
   PreparedEffectInput {
-    acquisition: "test.claim.legacy_repair_tap_live_bridge_witness.xl1_fixture_root_tap",
+    acquisition: "test.claim.legacy_repair_tap_live_bridge_witness_test.xl1_fixture_root_tap",
     checkout_input: "dag/test/fixture/reference_derived_graph/ (primary root) + dag/std/ (dependency pool) + tools/whole_corpus_compile_measured_root_demands.json (the root's admission row)",
     ground: "The NAMESPACE-XL-1 live tap over its measured fixture root: the seed builtin emit_rust_reference_derived_rows_bridge compiles the eleven committed fixture modules against the dag/std pool and returns the Observed encoding (repair rows, occurrence transport, binding rows). Every input is under the checkout root and fixed by the commit the run prepared - the sources, and the demand projection whose row admits the root - so one acquisition at preparation is the same value each of the two Observed-arm claims of that module would have compiled for itself. Demanded by a_measured_fixture_root_reaches_the_observed_arm_with_rows_and_bindings and the_live_census_over_the_measured_fixture_root_counts_its_rows. THE MODULE IS UNDER dag/test/claim/**, OUTSIDE THE GATE CLOSURE, AND THAT IS ADMITTED BY gunbc#11455 RATHER THAN BY THE LIVE-DEPLOY ARGUMENT ABOVE: roster admission is scoped to the prepared subject, and a rostered module present in the corpus but outside the subject is counted and not evaluated (required_floor_runner disposition 2) - so this acquisition runs exactly when its two consumers are planned, which is when this witness module is in the subject, and is never demanded by a subject that does not carry it.",
-    measurement: "Absent arm: claim_batch --entry dag/test/claim/legacy_repair_tap_live_bridge_witness.dag on a session host records each of those two claims paying the compile itself (the [witness] lines carry seconds of cpu against the floor's 500 ms per-claim ceiling), and before this row's root was measured the floor refused the arm at admission in microseconds (gunbc#11461 runs 35074340220, 35079253040). Present arm: the same run shape with this row enrolled, read over required_floor_claim_cost.tsv and the [floor-shared-fill] ledger, the acquisition landing once at preparation with disposition=Stored and both claims serving hits."
+    measurement: "Absent arm: claim_batch --entry dag/test/claim/legacy_repair_tap_live_bridge_witness_test.dag on a session host records each of those two claims paying the compile itself (the [witness] lines carry seconds of cpu against the floor's 500 ms per-claim ceiling), and before this row's root was measured the floor refused the arm at admission in microseconds (gunbc#11461 runs 35074340220, 35079253040). Present arm: the same run shape with this row enrolled, read over required_floor_claim_cost.tsv and the [floor-shared-fill] ledger, the acquisition landing once at preparation with disposition=Stored and both claims serving hits."
   },
   PreparedEffectInput {
     acquisition: "gunbc.roadmap.roadmap_authority.roadmap_acceptance_event_history_load",
@@ -2220,8 +2220,8 @@ data floor_cross_claim_prepared_effect_inputs: List<PreparedEffectInput> = [
 
 data floor_cross_claim_carried_input_warm_rows: List<CarriedInputWarmRow> = [
   CarriedInputWarmRow {
-    producer: "v2.test.claim.declaring_identity_spelling.production_ingest.xl3_fixture_censuses",
-    carried_input: "v2.test.claim.declaring_identity_spelling.production_ingest.xl3_fixture_reads",
+    producer: "v2.test.claim.declaring_identity_spelling.production_ingest_test.xl3_fixture_censuses",
+    carried_input: "v2.test.claim.declaring_identity_spelling.production_ingest_test.xl3_fixture_reads",
     dependence: ImplicitAcquisition,
     measurement: "The per-fixture parse-normalize-census of the carried reads, computed once and served to every claim of the file as a field read. Present-vs-absent as its input row (gunbc#11461 run 35074340220 absent; the enrolled run present), normalised on claims in no consumer module of any enrolled key. ImplicitAcquisition: xl3_fixture_censuses is nullary and calls xl3_fixture_reads inside itself."
   },

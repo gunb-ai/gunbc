@@ -1,0 +1,10 @@
+module v2.test.workflow.lens_discrimination_family_eval_test
+
+import v2.test.claim.discrimination_gate.discrimination_roster_test {
+  discrimination_family_gate
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test data witness_lens_discrimination_family_gate_closed: Bool = discrimination_family_gate()

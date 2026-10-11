@@ -243,7 +243,7 @@ test fn a_duplicated_documented_row_still_admits_its_own_multiset() -> Bool {
 //   deleted local pareto_frontier over PartCandidate rows with authored stick
 //   counts and prices. Their content — an association must not remove a part
 //   from the market, a decoded syndrome must — is re-enrolled against the
-//   replacement in test.claim.build_fulfillment_witness, where a sample-required
+//   replacement in test.claim.build_fulfillment_witness_test, where a sample-required
 //   verdict resolves to pending evidence and a decoded refusal stops the line.
 
 data stick_32g: ByteSize = byte_size(count: 34359738368)

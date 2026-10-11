@@ -410,7 +410,7 @@ data vacuity_bool_witness_file_anchor: Symbol = ^vacuity_bool_witness_file_ancho
 // --source-root paths): cost_coverage_dag_logic_has_three_fn_bodies FAILS on clean main too, so
 // this is pre-existing and corpus-wide, not introduced by this branch and not limited to vacuity's
 // own mandate. Consequence for this lens: vacuity_consumer_witness_live_derived_sites()
-// (v2.test.claim.vacuity_consumer_witness) legitimately enumerates zero sites against its declared
+// (v2.test.claim.vacuity_consumer_witness_test) legitimately enumerates zero sites against its declared
 // fixture file today, even though that file is independently confirmed to normalize() cleanly — the
 // derived-site/shadow join still holds by real execution (empty == empty, never vacuously skipped),
 // and the fixture-module-reach requirement (DESIGN.md §6 inert-lens hygiene) is separately

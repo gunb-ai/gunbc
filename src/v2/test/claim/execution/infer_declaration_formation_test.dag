@@ -9,7 +9,7 @@ import v2.std.node { Atom, Conj, Disj, Authored, Node, Positional, Symbol, TypeN
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.witness { Holds, Violates }
 import v2.std.type_binder { node_inferred_subtree_nodes }
-import v2.test.claim.type_param_binder_frame { tpb_assemble }
+import v2.test.claim.type_param_binder_frame_test { tpb_assemble }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

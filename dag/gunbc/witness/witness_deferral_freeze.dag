@@ -106,7 +106,7 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // 100k and 164k eval steps against the 72.3k new-witness line. The helper repair stays. OWED: the
 // add-lowering fact (real ingest lowers add to Arrow+Transform) has no floor claim; a cheaper claim
 // at one interface is the gap's filler. The file deletes whole. 2026-08-26 — 3 entries
-// (src/v2/test/claim/enforcement/lens_module_gate_witness.dag [partial],
+// (src/v2/test/claim/enforcement/lens_module_gate_witness_test.dag [partial],
 // src/v2/test/claim/execution/emit_ingest_grammar_relation_round_trip_test.dag [partial],
 // src/v2/test/claim/execution/self_host_candidate_generation_test.dag [partial]), 5 identities,
 // DELETED not exempted: required-floor run 32916382395 on merge head
@@ -115,15 +115,15 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // expected-red roster proves they now have an executing required-floor consumer, so
 // LegacyFrozenPathDeferral is stale evidence rather than a live exemption. Every non-colliding
 // sibling in all three partial entries remains frozen. 2026-08-25 —
-// src/v2/test/claim/enforcement_inventory_witness.dag [partial], 7 identities replaced by 1
+// src/v2/test/claim/enforcement_inventory_witness_test.dag [partial], 7 identities replaced by 1
 // executing identity: required-floor run 32794539384 safety-interrupted seven tests because each
 // independently acquired lens_enforcement_inventory_live and its whole-corpus declaration facts.
 // enforcement_inventory_global_receipt_holds acquires that immutable global inventory once and
 // folds all seven assertions over the shared value; the seven old witness declarations and frozen
 // rows delete together, while the three cheap non-inventory siblings remain frozen. 2026-08-25 — 3
-// entries (src/v2/test/claim/complexity/accumulator_copy_roster_gate_std.dag [partial],
-// src/v2/test/claim/complexity/accumulator_copy_roster_gate.dag [partial],
-// src/v2/test/claim/enforcement/cost_coverage_witness.dag [partial]), 3 identities, DELETED
+// entries (src/v2/test/claim/complexity/accumulator_copy_roster_gate_std_test.dag [partial],
+// src/v2/test/claim/complexity/accumulator_copy_roster_gate_test.dag [partial],
+// src/v2/test/claim/enforcement/cost_coverage_witness_test.dag [partial]), 3 identities, DELETED
 // not migrated or exempted: required-floor run 32794539384 proved these rows never produced a
 // verdict — two called a scanner absent from the loaded execution index and one divided by zero.
 // The witness declarations delete in the same change rather than being enrolled as semantic reds,
@@ -134,7 +134,7 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // authority for what the population is right now. This row records migrations OUT, which is the
 // only direction permitted, so that the baseline stays legible as history rather than decaying into
 // a false present-tense claim. 2026-08-24 — 2 entries
-// (dag/test/claim/deploy_access_privilege_witness.dag [partial],
+// (dag/test/claim/deploy_access_privilege_witness_test.dag [partial],
 // dag/test/claim/host_effect_apply_witness_test.dag [partial]), 4 identities, DELETED not exempted:
 // these identities were simultaneously enrolled in v2.workflow.floor_route_gap
 // floor_route_gap_roster — a typed receipt that the required floor EXECUTED the identity and could
@@ -160,14 +160,14 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // on the required floor — so the disposition is DELETED, matching the 2026-08-19 38-identity sweep
 // below, which is the same shape: a frozen row naming a witness an executing roster already
 // consumes. Both entries are partial and every non-colliding sibling remains frozen. 2026-08-24 —
-// 10 entries (dag/test/claim/artifact_store_fs_witness.dag [partial],
+// 10 entries (dag/test/claim/artifact_store_fs_witness_test.dag [partial],
 // dag/test/claim/direct_rust_door_write_compile_witness_test.dag,
-// dag/test/claim/external_model_scope_live_cover_witness.dag,
-// dag/test/claim/served_surface_browser_artifact_integrity_witness.dag,
-// dag/test/claim/stage0_rust_host_observation_live_witness.dag,
-// dag/test/manual/git_upstream_model_execution.dag,
-// dag/test/manual/mercurial_upstream_model_execution.dag,
-// dag/test/manual/pijul_upstream_model_execution.dag,
+// dag/test/claim/external_model_scope_live_cover_witness_test.dag,
+// dag/test/claim/served_surface_browser_artifact_integrity_witness_test.dag,
+// dag/test/claim/stage0_rust_host_observation_live_witness_test.dag,
+// dag/test/manual/git_upstream_model_execution_test.dag,
+// dag/test/manual/mercurial_upstream_model_execution_test.dag,
+// dag/test/manual/pijul_upstream_model_execution_test.dag,
 // src/v2/test/claim/execution/native_selected_witness_bundle_test.dag [partial],
 // src/v2/test/claim/manual/emit_source_store_test.dag [partial]), 19 identities, MIGRATED not
 // exempted: run 32721781133 executed each through the required floor and observed an
@@ -177,7 +177,7 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // non-colliding siblings remain frozen. No construction wall currently refuses the route-gap/freeze
 // pair, unlike expected_red_freeze_intersection, so this join is recorded evidence rather than a
 // mechanically guarded invariant. 2026-08-24 — 3 entries
-// (src/v2/test/claim/enforcement/cost_coverage_witness.dag [partial],
+// (src/v2/test/claim/enforcement/cost_coverage_witness_test.dag [partial],
 // src/v2/test/claim/program_assembly/real_ingest_test.dag [partial],
 // src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag [partial]), 6 identities,
 // MIGRATED not exempted: RequiredFloorDisposition.DeclinedLiveTree was deleted and run 32730435751
@@ -201,20 +201,20 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // longer exist in the tree under those names, so their frozen rows are StaleFrozenPathDeferral and
 // delete in this change rather than after it; this is a shrink, and the remaining functions at this
 // entry are untouched. 2026-08-19 — 24 entries (dag/test/claim/ci_exclusion_proof_test.dag,
-// dag/test/claim/deploy_access_privilege_witness.dag [partial],
+// dag/test/claim/deploy_access_privilege_witness_test.dag [partial],
 // dag/test/claim/host_effect_apply_witness_test.dag [partial],
 // dag/test/claim/interp_recorded_fixture_witness_test.dag,
-// dag/test/claim/random_bytes_csprng_witness.dag,
-// dag/test/claim/self_host_00_compile_behavioral_witness.dag,
-// dag/test/claim/self_host_01_tokenize_behavioral_witness.dag,
-// dag/test/claim/self_host_02_parse_behavioral_witness.dag,
-// dag/test/claim/self_host_03_ingest_behavioral_witness.dag,
-// dag/test/claim/self_host_03_resolve_behavioral_witness.dag,
-// dag/test/claim/self_host_04_infer_behavioral_witness.dag,
-// dag/test/claim/self_host_materialization_carriers_behavioral_witness.dag,
-// dag/test/claim/self_host_program_assembly_behavioral_witness.dag,
-// dag/test/claim/self_host_program_partition_behavioral_witness.dag,
-// dag/test/claim/self_host_source_authority_behavioral_witness.dag,
+// dag/test/claim/random_bytes_csprng_witness_test.dag,
+// dag/test/claim/self_host_00_compile_behavioral_witness_test.dag,
+// dag/test/claim/self_host_01_tokenize_behavioral_witness_test.dag,
+// dag/test/claim/self_host_02_parse_behavioral_witness_test.dag,
+// dag/test/claim/self_host_03_ingest_behavioral_witness_test.dag,
+// dag/test/claim/self_host_03_resolve_behavioral_witness_test.dag,
+// dag/test/claim/self_host_04_infer_behavioral_witness_test.dag,
+// dag/test/claim/self_host_materialization_carriers_behavioral_witness_test.dag,
+// dag/test/claim/self_host_program_assembly_behavioral_witness_test.dag,
+// dag/test/claim/self_host_program_partition_behavioral_witness_test.dag,
+// dag/test/claim/self_host_source_authority_behavioral_witness_test.dag,
 // dag/test/claim/srv3_host_effect_apply_witness_test.dag [partial],
 // src/v2/test/claim/execution/dag_add_emit_round_trip_test.dag [partial],
 // src/v2/test/claim/execution/emit_host_complement_equals_eval_test.dag,
@@ -281,7 +281,7 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // falsifier_substrate_long_lane_rows (FalsifierSubstrateLongLane cadence), so the freeze row
 // deletes and the live-corpus receipt executes on the scheduled lane. 2026-08-05 —
 // src/v2/test/claim/long/orchestration_while_emit_test.dag, 14 identities, MIGRATED not exempted:
-// the file returned to src/v2/workflow/orchestration_while_emit.dag, the per-PR-discovered
+// the file returned to src/v2/workflow/orchestration_while_emit_test.dag, the per-PR-discovered
 // path it occupied before gunbc#7098 relocated it, so its rows now classify as
 // WitnessHasExecutingConsumer and the freeze row had to go — a row naming a witness the tree no
 // longer carries at that entry is a StaleFrozenPathDeferral refusal, and its diagnostic says to
@@ -384,21 +384,21 @@ type FrozenPathDeferral {
 
 data frozen_path_deferrals: List<FrozenPathDeferral> = [
   FrozenPathDeferral {
-    entry: "dag/test/claim/artifact_store_fs_witness.dag",
+    entry: "dag/test/claim/artifact_store_fs_witness_test.dag",
     functions: [
       "artifact_fs_refuses_non_scratch_store_root_holds",
       "artifact_fs_eviction_of_empty_receipt_deletes_nothing"
     ]
   },
   FrozenPathDeferral {
-    entry: "dag/test/claim/deploy_access_privilege_witness.dag",
+    entry: "dag/test/claim/deploy_access_privilege_witness_test.dag",
     functions: [
       "witness_modeled_unprivileged_fixture_is_denied",
       "witness_unprivileged_mutation_refused_before_shell",
       "witness_unprivileged_mutation_directive_is_refused_terminal"
     ]
   },
-  FrozenPathDeferral { entry: "dag/test/claim/lever_a_local_receipt_witness.dag", functions: ["lever_a_local_receipts_hold"] },
+  FrozenPathDeferral { entry: "dag/test/claim/lever_a_local_receipt_witness_test.dag", functions: ["lever_a_local_receipts_hold"] },
   FrozenPathDeferral {
     entry: "dag/test/claim/long/carrier_reference_integrity_witness_test.dag",
     functions: [
@@ -427,15 +427,15 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "decl_ref_refuses_ambiguous_binding", "decl_ref_refuses_named_field_absent"
     ]
   },
-  FrozenPathDeferral { entry: "dag/test/claim/long/commit_witness_claim_roster_witness.dag", functions: ["commit_witness_claim_roster_holds"] },
+  FrozenPathDeferral { entry: "dag/test/claim/long/commit_witness_claim_roster_witness_test.dag", functions: ["commit_witness_claim_roster_holds"] },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_std.dag",
+    entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_std_test.dag",
     functions: [
       "roster_std_change_dag_zero_suspects_within_ratchet"
     ]
   },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate.dag",
+    entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_test.dag",
     functions: [
       "roster_machine_code_zero_suspects_within_ratchet",
       "roster_lens_cost_model_zero_suspects_within_ratchet",
@@ -443,7 +443,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/enforcement/cost_coverage_witness.dag",
+    entry: "src/v2/test/claim/enforcement/cost_coverage_witness_test.dag",
     functions: [
       "cost_coverage_smoke_totality_holds", "cost_coverage_smoke_recomputed_by_execution_holds",
       "cost_coverage_reject_is_typed_not_silent",
@@ -453,7 +453,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/enforcement/grammar_coverage_witness.dag",
+    entry: "src/v2/test/claim/enforcement/grammar_coverage_witness_test.dag",
     functions: [
       "grammar_coverage_smoke_totality_holds",
       "grammar_coverage_smoke_recomputed_by_execution_holds",
@@ -470,7 +470,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/enforcement/lens_module_gate_witness.dag",
+    entry: "src/v2/test/claim/enforcement/lens_module_gate_witness_test.dag",
     functions: [
       "red_control_unenrolled_lens_refused", "red_control_redundant_verdict_remedy_refused",
       "red_control_genuinely_new_distinct_surface_passes",
@@ -480,7 +480,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/enforcement_inventory_witness.dag",
+    entry: "src/v2/test/claim/enforcement_inventory_witness_test.dag",
     functions: [
       "enforcement_live_witness_exclusion_inventory_matches_frontier",
       "witness_admission_inventory_reconciles_exclusion_frontier",
@@ -488,7 +488,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/enforcement_live_witness.dag",
+    entry: "src/v2/test/claim/enforcement_live_witness_test.dag",
     functions: [
       "enforcement_consistency_gate_holds", "complexity_repo_wide_verdict_matches_roadmap",
       "roster_read_liveness_discriminates", "empty_facts_feed_reds_subjects_leg",
@@ -668,7 +668,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "emit_typescript_backward_fails_closed_on_foreign_emitted_holds"
     ]
   },
-  FrozenPathDeferral { entry: "src/v2/test/claim/execution/eval_bind_non_bind_interpreter_rejects.dag", functions: ["eval_bind_node_eval_rejects_value_interpreter_holds"] },
+  FrozenPathDeferral { entry: "src/v2/test/claim/execution/eval_bind_non_bind_interpreter_rejects_test.dag", functions: ["eval_bind_node_eval_rejects_value_interpreter_holds"] },
   FrozenPathDeferral {
     entry: "src/v2/test/claim/execution/fold_assembly_round_trip_test.dag",
     functions: [
@@ -1185,14 +1185,14 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/self_host/crate_layout_witness.dag",
+    entry: "src/v2/test/claim/self_host/crate_layout_witness_test.dag",
     functions: [
       "crate_layout_witnesses"
     ]
   },
   FrozenPathDeferral { entry: "src/v2/test/manual/long/grounding_lens_whole_tree_test.dag", functions: ["grounding_lens_whole_tree_witnesses"] },
   FrozenPathDeferral {
-    entry: "src/v2/test/manual/ownership_movable.dag",
+    entry: "src/v2/test/manual/ownership_movable_test.dag",
     functions: [
       "witness_read_then_consume_param_is_movable", "witness_double_consume_is_not_movable",
       "witness_zero_consume_is_not_movable", "witness_whole_read_then_consume_is_not_movable",

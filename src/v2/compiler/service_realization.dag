@@ -75,7 +75,7 @@ import v2.std.node {
 // response class), read here and never restated.
 //
 // STANDING (DESIGN section 3c): a declared frontier. Its consumers by execution in 3a are this wall and
-// v2.test.claim.service_realization_conformance; its production consumer is 3b's lowering
+// v2.test.claim.service_realization_conformance_test; its production consumer is 3b's lowering
 // (v2.compiler.body_lowering_fold body_lower_service_decl), which emits the sibling and runs this wall on
 // it. TRIGGER: 3b lands. If 3b is abandoned the sibling's labels and this wall are deleted.
 

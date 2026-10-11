@@ -10,7 +10,7 @@ import extdeps.github.actions {
 import gunbc.fleet.org_actions_inspection { RunnerGroupListDecoded, RunnerGroupIdentity }
 import gunbc.runner.runner_group_restriction_observation { RunnerGroupRestrictionRefused, RunnerGroupAbsent }
 import gunbc.fleet.fleet_desired_admission_workflow { fleet_desired_admission_workflow }
-import test.claim.github_app_registry { group_restricted_to }
+import test.claim.github_app_registry_test { group_restricted_to }
 import gunbc.runner.runner_qualification_ref_pin {
   qualification_branch_name, QualificationBranchNamed, QualificationBranchNameRefused, branch_full_ref,
   qualification_selected_workflow, qualification_runner_group_name,

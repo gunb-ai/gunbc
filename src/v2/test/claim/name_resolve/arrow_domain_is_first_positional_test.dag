@@ -20,7 +20,7 @@ import v2.std.node_query { binder_edge }
 // binder and indexes nothing; reading the first positional finds `x`.
 //
 // The real producers' route (a lowered fn declaration, domain first) stays exercised by
-// v2.test.claim.declared_parameter_order_test and v2.test.claim.normalize.service_declaration_lowering;
+// v2.test.claim.declared_parameter_order_test and v2.test.claim.normalize.service_declaration_lowering_test;
 // this claim supplies the Arrow because no producer emits the named-first order it discriminates.
 
 fn adf_leaf(sym: Symbol) -> Node {

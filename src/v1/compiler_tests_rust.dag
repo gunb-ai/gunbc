@@ -5402,7 +5402,7 @@ fn ct_test_marker_item_kind_test() -> String {
 }
 
 // THE ONE WALL ROW THAT STAYS OFF THE FLOOR, AND WHY. Every other red and control of the wall runs on
-// the floor in test.claim.test_reference_wall_witness; their compiler_tests copies were deleted when
+// the floor in test.claim.test_reference_wall_witness_test; their compiler_tests copies were deleted when
 // those were enrolled (review 67649). The identity-grain swap cannot move: it must compile a module
 // that carries a real ledger row, and on the floor such a module collides with the loaded corpus and
 // the census refuses rather than answers. It runs in no CI step. Next-rung trigger: a census probe
@@ -5497,7 +5497,7 @@ fn ct_test_reference_import_all_test() -> String {
 // compile, so it cannot be authored into the real ledger; the arm is therefore exercised at its own
 // interface, v1.compiler.compile test_reference_unevaluated_row_diag, on synthetic rows. Like every
 // compiler_tests row it runs in no CI step. The floor carries its positive control instead: a
-// census-backed fixture compile raises no orphan (test.claim.test_reference_wall_witness).
+// census-backed fixture compile raises no orphan (test.claim.test_reference_wall_witness_test).
 // Next-rung trigger: a census probe that can compile against an injected ledger.
 fn ct_test_reference_orphan_row_test() -> String {
   concat(

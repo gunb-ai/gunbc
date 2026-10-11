@@ -38,7 +38,7 @@ import std.types { FilePathParts, NonEmptyStr }
 // obvious first repair — dropping And, Not and Or from the import list and qualifying every
 // construction — CHANGES NOTHING and the identical three errors reappear. What clears it is
 // dropping the TYPE NAME PathPredicate from the import list and annotating the declaration
-// std.path_intent.PathPredicate, the shape the v2.workflow.orchestration_while_emit witness already
+// std.path_intent.PathPredicate, the shape the v2.workflow.orchestration_while_emit_test witness already
 // used and the reason that file compiles while a naive port does not. Two consequences. The
 // refusal itself is CORRECT and wanted (the namespace lane's no-ambiguity-at-any-layer rule), and
 // qualifying is the containment tree answering the question it exists to answer, so renaming

@@ -157,7 +157,7 @@ fn header_init_plan_text(plan: HeaderInitPlan) -> String {
 // THE CONSUMER IS PRIVATE AND LATER. strategy.buyer_review_live (gunbc-private, H2) plans the
 // header row from the FORMULA reading and performs the write from header_row_value_range_write
 // under its transaction, with an independent readback. header_row_span is executed by
-// test.claim.review_sheet_header_init_witness with supplied schemas, and plan_header_init is
+// test.claim.review_sheet_header_init_witness_test with supplied schemas, and plan_header_init is
 // executed there against the hermetic values.get fixture and against supplied occupied and refused
 // readings; a witness is not a production consumer, so the routes below are frontier.
 data review_sheet_header_init_consumer_frontier_rows: List<FrontierRow> = [

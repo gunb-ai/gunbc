@@ -2003,7 +2003,7 @@ fn approval_broker_tree_copy_steps(spec: DeploymentSpec, revision: ReleaseRevisi
 // owner through the granted `sudo -n install -d -o`, so the job user can neither write into them
 // nor chgrp them. The broker once had a second arm that rsynced the tree as the job user on the
 // premise that the job user could write a service-user-owned directory; it could not, and the
-// premise was already denied in test.claim.live_deploy.emit unprivileged_principal_witness_note
+// premise was already denied in test.claim.live_deploy.emit_test unprivileged_principal_witness_note
 // (fleet-converge run 36347245905: `chgrp .../dag/. failed: Operation not permitted`, `mkdir
 // .../dag/gunbc failed: Permission denied`, rsync 23 -- so no release dir since 361db901 was ever
 // populated and the unit 203/EXEC'd on a missing binary). The arm is deleted rather than guarded:
@@ -2518,7 +2518,7 @@ fn path_ancestors_inclusive(path: String) -> List<String> {
 // root-owned 0755, and an entry they cannot read is an observation failure, which stops the stage.
 //
 // The owner is a WORD, so the same statements can be executed against a scratch tree owned by
-// whoever runs the check (test.claim.live_deploy.approval_broker_helper_readback_real_execution
+// whoever runs the check (test.claim.live_deploy.approval_broker_helper_readback_real_execution_test
 // passes `$(id -un)`). Production passes the literal root.
 fn helper_snapshot_find_intent(roots: List<String>, top_only: Bool, owner: Node) -> Node {
   bash_build_command_with_words(words: concat(
@@ -3600,7 +3600,7 @@ data live_deploy_remote_mutation_service_op_realization_dissolution_trigger: Dis
 // executed .github/live-deploy-srv1-apply.sh or -retract.sh, and their registry rows named a
 // HostReconciler consumer that does not exist — the real deploy runs live_deploy_apply_srv1_wet
 // through gunbc run. A committed artifact nobody reads is not coverage. The byte oracle those
-// goldens provided now lives where a fixture revision is legitimate, in test.claim.live_deploy.emit
+// goldens provided now lives where a fixture revision is legitimate, in test.claim.live_deploy.emit_test
 // against RevisionBoundAtEmission, and it is strictly stronger there: the goldens compared whole
 // files and located nothing, while the witnesses pin the exact ExecStart line with three REDs (flag
 // absent, wrong candidate's value, flag duplicated). RESIDUE (named, not this slice): Run.command

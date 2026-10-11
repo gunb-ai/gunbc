@@ -22,7 +22,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // body_lower_pattern_lowered lowers `A(x) =>`, `A { v: x } =>` and `A { v } =>` to the construct over
 // their binders, so the #11998 positional-binder refusal is retired. The resolver frame is executed
 // too: v2.compiler.resolve resolve_match_node_walk scopes those binders as the arm's lexical frame, and
-// v2.test.claim.match_arm_binder_frame holds that a binder binds. What is NOT established is the
+// v2.test.claim.match_arm_binder_frame_test holds that a binder binds. What is NOT established is the
 // capability this row's subject names: that the NATIVE ROUTE, the emitted compiler, lowers fields and
 // binds binders. Nothing has observed it there yet. When this row was declared the emitted
 // compiler did not build; it has built on main since gunbc#12089 (emit-build is green on this PR's
@@ -34,7 +34,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // resolved silently to the MODULE v2.std.node because resolve_pattern_node_is_constructor
 // classifies by shape. That came from review 70101's reading and was never executed. Execution
 // falsified it (nimble-boar-636, 2026-09-22, on #12033's head bbc77204a49):
-// v2.test.claim.match_arm_binder_frame mab_binder_spelling_a_sibling_module_binds_the_arm (authored on gunbc#12082), with
+// v2.test.claim.match_arm_binder_frame_test mab_binder_spelling_a_sibling_module_binds_the_arm (authored on gunbc#12082), with
 // v2.std.node supplied beside that arm, holds and the binder binds. v2.compiler.symbol_index_fill
 // inserts no path for a module spine, so lexical ascent cannot reach a module, and the global-bare
 // Unbound arm refuses rather than falling back to one. The shape classifier remains a construction

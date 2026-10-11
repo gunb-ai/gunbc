@@ -5,7 +5,7 @@ import v2.extdeps.languages.rust {
   rust_operator_realizations_catalog_node,
   rust_value_expression_projection
 }
-import v2.extdeps.languages.rust_emit_small_test { rust_emit_small_conditional_target }
+import v2.extdeps.languages.rust_emit_small_fixtures { rust_emit_small_conditional_target }
 import v2.std.compilers.target_model {
   ConditionalClosedByToken,
   ConditionalDelimiting,

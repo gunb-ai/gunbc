@@ -50,7 +50,7 @@ import v2.std.fn_index {
 //
 // NOT A FLOOR WITNESS AND DELIBERATELY NOT ONE. It reads `fn_arrow_decl_facts_live` over the two
 // source roots the required lanes pass, and that whole-tree cost is the standing blocker recorded in
-// v2.test.claim.enforcement.determinism_transitive_witness; enrolling a whole-corpus subject on the
+// v2.test.claim.enforcement.determinism_transitive_witness_test; enrolling a whole-corpus subject on the
 // per-subject line would repeat exactly the finding that file documents. The grain claims are held
 // at the floor by fixture rows there; this is the re-derivation entry point for the corpus numbers.
 data construction_justification: ConstructionJustification = ConstructionJustification {

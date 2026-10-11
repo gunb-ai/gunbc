@@ -13,7 +13,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 //
 // WHY A HOST SEAM AND NOT THE PURE FOLD. extdeps.crypto.sha2 sha256_hex is the substrate's SHA-256 and
 // stays its authority and oracle, but interpreted it costs ~200k eval steps per 64-octet block
-// (measured with claim_batch on test.claim.sha256_host_known_answer_witness), and the fabric store
+// (measured with claim_batch on test.claim.sha256_host_known_answer_witness_test), and the fabric store
 // door (gunbc.fabric.fabric_store_operation_admission) digests an approved intent on every protected write.
 //
 // NOT COUNTED BELOW, disclosed: the interpreter arms free_call.hmac_sha256_hex, free_call.hmac_sha256_

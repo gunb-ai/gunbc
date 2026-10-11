@@ -62,7 +62,7 @@ import std.algebra { FreeMonoid, Empty, Cons, FreeSemigroup }
 //     that and cannot: a request is by nature caller-chosen.
 //
 // So the honest rung for goal-blindness is STRUCTURAL against the parameter and MITIGATED BY REVIEW
-// against both capture and goal-derived requests. test.claim.goal_assessment_witness holds the
+// against both capture and goal-derived requests. test.claim.goal_assessment_witness_test holds the
 // capture residual as an executing fact.
 //
 // NEXT-RUNG TRIGGER, and it is one lens covering both residuals: a reader over the `Node` tree that

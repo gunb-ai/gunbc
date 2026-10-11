@@ -11,7 +11,7 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, UncountedNotE
 //
 // WHAT HOLDS TODAY. The floor carries route controls on supplied source: one per production the
 // zero-overlap grammar program changed, plus the verbatim broken shapes, in the admitted
-// test.claim.parse_test family (test.claim.parse_test_grammar_program_routes and its siblings). They
+// test.claim.parse_test family (test.claim.parse_test_grammar_program_routes_test and its siblings). They
 // catch a regression of those shapes and no other: a grammar change that breaks a real file through a
 // shape no control spells still merges.
 //

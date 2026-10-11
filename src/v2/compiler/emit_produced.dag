@@ -305,7 +305,7 @@ fn emit_refinement_declaration(
 }
 
 // A REFINEMENT'S CARRIER MUST BE A LOWERED TYPE. The production route lowers it (a module member's
-// where-refinement emits `type Pos = i32;` in v2.test.claim.emit.module_member_emission); a carrier that
+// where-refinement emits `type Pos = i32;` in v2.test.claim.emit.module_member_emission_test); a carrier that
 // is still a parse-production shell refuses under its own reason rather than as an unrealized type, so the
 // refusal says what is missing.
 fn refinement_carrier_is_unlowered(carrier: Node) -> Bool {

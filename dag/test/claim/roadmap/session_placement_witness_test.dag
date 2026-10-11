@@ -41,7 +41,7 @@ import extdeps.languages.json.emit { serialize_json }
 //   - the reader's BINDING: a record or release that belongs to another attempt or fence is refused;
 //   - the settlement DECISION over a slot, pure;
 //   - (the settlement PASS run for real over a temporary store is in
-//     test.claim.roadmap.session_placement_wet_witness, on the required floor's local-repo wet lane,
+//     test.claim.roadmap.session_placement_wet_witness_test, on the required floor's local-repo wet lane,
 //     because it creates a directory -- an effect the hermetic route has no arm for).
 // The inhabitance claim: the bytes the real writer produces (session_placement_record_write) are what
 // the real reader and the real settlement read back as this attempt's grant.

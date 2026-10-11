@@ -637,7 +637,7 @@ fn symbol_index_fill_module_root(
 // So the rows are gathered from EVERY root before any of them is applied, and retried until no
 // further row can bind. Both order dependences are then gone for the same reason -- nothing is
 // decided by when a root was visited -- and the permutation control
-// (v2.test.claim.resolve.namespace_candidate_rule) carries a chained specimen so the claim is not
+// (v2.test.claim.resolve.namespace_candidate_rule_test) carries a chained specimen so the claim is not
 // larger than its evidence.
 fn symbol_index_fill_module_roots(
   index: SymbolIndex,

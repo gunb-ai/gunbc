@@ -30,7 +30,7 @@ import v2.lens.complexity_accumulator_copy { Finding }
 // duplicated on #6440). Serial wet claim_batch only — do not codify GUNBC_EVAL_MEMO=0 in CI;
 // diagnostic local runs may set it. Std tranche (PR #6440): claim_batch --source-root dag
 // --source-root src/v2 --entry
-// src/v2/test/claim/complexity/accumulator_copy_roster_gate_std.dag --function
+// src/v2/test/claim/complexity/accumulator_copy_roster_gate_std_test.dag --function
 // roster_std_change_dag_zero_suspects_within_ratchet --claim-run --wet. Large-file walks are
 // ordinary fns named by gunbc.offline_local_recipe RecipeFunctions. The cap is not raised.
 

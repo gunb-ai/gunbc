@@ -405,8 +405,8 @@ fn namespace_graft_disposition_from_named_opt(named: Edge?) -> NamespaceGraftUni
 // parse shell -- locating dag_surface_type_alias_rhs, else the captured child -- had no remaining input
 // and is DELETED with its helpers (gunbc.recurring_failure_mode plain_type_alias_left_as_a_parse_shell_in_v2:
 // the shell representation's readers go with its producer). Measured before deletion: with the arm
-// answering UnitResidual, every claim in v2.test.claim.declaration_graft_assemble,
-// v2.test.claim.type_param_binder_frame and v2.test.claim.body_lowering.plain_type_decl_lowering held.
+// answering UnitResidual, every claim in v2.test.claim.declaration_graft_assemble_test,
+// v2.test.claim.type_param_binder_frame_test and v2.test.claim.body_lowering.plain_type_decl_lowering_test held.
 // A type_decl shell that did arrive would fall to UnitResidual and be refused by normalize's retention
 // admission, never named from a shell.
 // AN `alias` DECLARATION DISSOLVES, AS AN IMPORT DOES. Its meaning is a binding row (binding name ->
@@ -723,7 +723,7 @@ fn namespace_graft_dual_position_refused(root: Node) -> Bool {
 // keyed by declaration name, so a repeated name has no well-formed body: before this arm the graft
 // built the Conj anyway and normalize's recursive well_formed gate refused the whole module at its
 // root with no locus (gen-two census: two `data fixture_v3_tick_wire` in
-// test.claim.roadmap.roadmap_launch_deployment_observe_witness). A repeated name is also a §3 fork --
+// test.claim.roadmap.roadmap_launch_deployment_observe_witness_test). A repeated name is also a §3 fork --
 // the seed answers it last-write-wins, so the first declaration was dead. The repeat is found by the
 // keyed grouping below (namespace_graft_merge_namespace_bodies), and a group that does not merge refuses
 // at its second edge (namespace_graft_repeated_name_refusal), located at that member node, which carries

@@ -31,7 +31,7 @@ import product.fabric.provider_admission {
 // still exactly one constructor, and this module is a caller of it like any other.
 //
 // The discriminating reds for admission itself do NOT live here and must not: they belong to
-// test.claim.fabric.provider_admission_witness, which builds its own inputs precisely so that a
+// test.claim.fabric.provider_admission_witness_test, which builds its own inputs precisely so that a
 // change to this convenience fixture cannot quietly weaken them.
 
 // THE ROUTE COMPONENTS ARE DECLARED HERE SO THE CITATIONS RESOLVE. An earlier revision had each

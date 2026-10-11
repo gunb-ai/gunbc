@@ -171,7 +171,7 @@ type PermittedJurisdictionPopulation
 //
 // WHAT EXECUTES, AND AT WHICH RUNG. gunbc.jurisdiction_drop_accounting joins the reference to our
 // rung-drop roster and refuses an enrollment whose drop names no rostered row or names one that is
-// no longer STANDING, and test.claim.fabric.jurisdiction_drop_accounting_witness runs that join over
+// no longer STANDING, and test.claim.fabric.jurisdiction_drop_accounting_witness_test runs that join over
 // the production postures. That is rung 2: the invalid state stays writable and the wall holds only
 // while the gate executes and the posture is in its enumerated population.
 //

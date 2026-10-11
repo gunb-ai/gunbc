@@ -58,6 +58,6 @@ test fn census_emit_host_execution_family_row_holds() -> Bool {
 }
 
 test fn census_emit_host_gate_not_family_grain_holds() -> Bool {
-  census_reason_column_for_entry(entry: "dag/test/claim/emit_host_gate_witness.dag") == "BulkFlipPendingCensusIncomplete"
+  census_reason_column_for_entry(entry: "dag/test/claim/emit_host_gate_witness_test.dag") == "BulkFlipPendingCensusIncomplete"
 }
 

@@ -28,7 +28,7 @@ import v2.extdeps.languages.dag {
   dag_match_if_body_fixture
 }
 import v2.extdeps.languages.rust { rust_emit_host_runtime_primitive_type_node }
-import v2.extdeps.languages.rust_execution_test {
+import v2.extdeps.languages.rust_execution_fixtures {
   rust_execution_match_target,
   rust_execution_match_runtime_target
 }

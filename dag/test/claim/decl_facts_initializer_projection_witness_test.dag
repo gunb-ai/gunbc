@@ -53,7 +53,7 @@ data missing_variant_specimen_qn: String = "test.fixture.decl_facts_reflection.s
 
 // The compile-clean fixture uses SingleAuthority at dissolves_to; the pre-wall
 // Terminal-at-ConstructionMechanism specimen is pinned as a permanent compile-refusal regression
-// control in test.claim.structured_application_mismatch_wall_witness (review 52087 §4b
+// control in test.claim.structured_application_mismatch_wall_witness_test (review 52087 §4b
 // dissolution-on-climb).
 data ambiguous_arm_specimen_qn: String = "test.fixture.decl_facts_reflection.ambiguous_specimen.ambiguous_arm_specimen"
 data ambiguous_b_arm_specimen_qn: String = "test.fixture.decl_facts_reflection.ambiguous_b_specimen.ambiguous_b_arm_specimen"

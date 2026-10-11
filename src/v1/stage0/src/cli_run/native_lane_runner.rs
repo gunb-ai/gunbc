@@ -162,7 +162,7 @@ const CLI_DOOR_EMIT_BODY_REFUSAL: &str = "translate_arrow_body_not_a_type_expres
 /// `v2.cli.compile_cli`'s own annotation warns about ("the head is not the cause"), kept invisible
 /// by a `contains()` that matched the advisory anywhere in the line. Decoding the LAST link
 /// surfaced it on the first real run against the built binary. The corpus already held the answer:
-/// `v2.test.claim.translate_underived_refusal` `translate_refused_canonical_grounding` asserts BOTH
+/// `v2.test.claim.translate_underived_refusal_test` `translate_refused_canonical_grounding` asserts BOTH
 /// halves -- the fatal is `translate_rejected_grounding_not_derived`, and it is NOT the advisory.
 const CLI_DOOR_EMIT_LIMITATION: &str = "translate_rejected_grounding_not_derived";
 
@@ -3887,7 +3887,7 @@ mod tests {
     /// byte-for-byte verified. All 3992 carried `NativeTestRefused`. So this is a reading of the
     /// shape the real producer emits, not a hypothesis about it, and it needs no closure to run --
     /// which is the point: a decoder over rows must be reddable by handing it rows.
-    const REAL_REFUSED_ROW: &str = r#"{"identity":{"module":"v2.test.v2_native_route","declaration":"a_divergence_is_refused"},"verdict":{"_variant":"NativeTestRefused","stage":{"_variant":"NativeTestStageContext"},"diagnostics":{"head":{"reason":"parse_g0_tokens_remain","at":{"_variant":"Textual","file":"src/v2/test/v2_native_route.dag","extent":{"_variant":"WholeFile"}},"correction":{"_variant":"Unavailable","reason":{"_variant":"UserInputBoundary"}}},"tail":[]}}}"#;
+    const REAL_REFUSED_ROW: &str = r#"{"identity":{"module":"v2.test.v2_native_route_test","declaration":"a_divergence_is_refused"},"verdict":{"_variant":"NativeTestRefused","stage":{"_variant":"NativeTestStageContext"},"diagnostics":{"head":{"reason":"parse_g0_tokens_remain","at":{"_variant":"Textual","file":"src/v2/test/v2_native_route_test.dag","extent":{"_variant":"WholeFile"}},"correction":{"_variant":"Unavailable","reason":{"_variant":"UserInputBoundary"}}},"tail":[]}}}"#;
 
     #[test]
     fn a_real_refused_row_decodes_and_folds_to_subject_unreached() {

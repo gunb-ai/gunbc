@@ -16,8 +16,8 @@ data default_value_has_no_carrier: RecurringFailureMode = RecurringFailureMode {
   ],
 
   evidence: [
-    DeclarationRef { module_path: "v2.test.claim.parse.default_value", decl_name: "a_parameter_default_lowers_onto_its_binder_holds", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.parse.default_value", decl_name: "a_record_field_default_lowers_onto_its_binder_holds", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.binder_node", decl_name: "a_binder_with_a_default_reads_back_both", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.default_value_test", decl_name: "a_parameter_default_lowers_onto_its_binder_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.default_value_test", decl_name: "a_record_field_default_lowers_onto_its_binder_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.binder_node_test", decl_name: "a_binder_with_a_default_reads_back_both", field: WholeDeclaration },
   ],
 }

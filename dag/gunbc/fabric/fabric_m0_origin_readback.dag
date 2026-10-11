@@ -57,7 +57,7 @@ import extdeps.crypto.hash
 // restated.
 //
 // THE EGRESS QUESTION, SNAPSHOT-BOUND BECAUSE NOTHING RECOMPUTES IT. Measured at gunbc#10972 over
-// test.claim.fabric_m0_commit_witness and test.claim.fabric_m0_completion_witness: every function
+// test.claim.fabric_m0_commit_witness_test and test.claim.fabric_m0_completion_witness_test: every function
 // there returning a value that carries an OriginReading REQUIRED one as a parameter, so it
 // propagated and never minted, and the only zero-argument egress was a call to
 // read_origin_staged_file itself, whose result a caller cannot aim -- it is the digest of whatever

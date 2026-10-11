@@ -98,7 +98,7 @@ fn refusal_or_reason_rows() -> List<LifecycleResidueRow> {
 // The name pattern matched; the declaration is not a lifecycle carrier at all.
 fn not_a_lifecycle_carrier_rows() -> List<LifecycleResidueRow> {
   [
-    residue_row(module_path: "test.claim.generated_artifact_merge_driver_real_execution", decl_name: "witness_retired_take_ours_driver_value", class: NotALifecycleCarrier, rationale: "the literal git config value \"true\" for a retired merge driver, not a condition"),
+    residue_row(module_path: "test.claim.generated_artifact_merge_driver_real_execution_test", decl_name: "witness_retired_take_ours_driver_value", class: NotALifecycleCarrier, rationale: "the literal git config value \"true\" for a retired merge driver, not a condition"),
   ]
 }
 

@@ -36,7 +36,7 @@ data githooks_repo_local_git_config_emit_dissolution_trigger: DissolutionConditi
 // %P` — seven arguments where git expects two, so the self-healing converge block would have failed
 // on every hook invocation while looking entirely ordinary in the diff. Rendering through
 // extdeps.exec.command shell_command_render fixes the class rather than this value: every token is
-// single-quoted with embedded apostrophes escaped (witnessed in test.claim.argv_command_render), so
+// single-quoted with embedded apostrophes escaped (witnessed in test.claim.argv_command_render_test), so
 // a value carrying spaces, quotes, or shell metacharacters is emitted correctly by construction and
 // no future binding can reintroduce the defect by being multi-word.
 

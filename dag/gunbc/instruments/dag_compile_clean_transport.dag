@@ -238,7 +238,7 @@ fn run_dag_shell_primary_precedence_receipt_evidence() -> SubjectEvidence<Witnes
   )
 }
 
-// The two corpus-grain claims (test.claim.long.dag_compile_clean_perturb_corpus) keep a Bool
+// The two corpus-grain claims (test.claim.long.dag_compile_clean_perturb_corpus_test) keep a Bool
 // surface that asserts the EvidenceSubjectCompleted arm through subject_evidence_establishes, so
 // an unready compiler still cannot read as a green; the typed evidence is the _evidence fn above.
 // Their claim file is left unedited because it has no executing route at all (dark cadence,

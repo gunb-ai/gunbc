@@ -96,7 +96,7 @@ import v2.std.algebra { Cons, Empty }
 //
 // THE LIVE POPULATION IS ZERO AS OF 2026-08-26, WHICH IS THIS ROSTER'S DECLARED TERMINAL STATE
 // AND NOT A HOLE IN IT. Eleven identities stood here -- two test.claim.host.host_phase_status_witness_test, six
-// test.claim.srv3.srv3_subsumption_witness_test, two v2.test.claim.staging and
+// test.claim.srv3.srv3_subsumption_witness_test, two v2.test.claim.staging_test and
 // v2.test.claim.emit.produced_decl_support_preserved_test -- and every one now PRODUCES A VERDICT and passes,
 // measured by the required floor. They retired together by one cause: the local-binding-shadow
 // repair, which made a call site spelling a name held by both a local binding and a module-level

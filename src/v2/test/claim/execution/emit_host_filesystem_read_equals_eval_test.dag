@@ -6,7 +6,7 @@ import v2.compiler.eval { inputs_root_only }
 import v2.compiler.target_carriers { source_medium }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.extdeps.languages.dag { dag_meet_eval_subgraph_fixture }
-import v2.extdeps.languages.rust_test {
+import v2.extdeps.languages.rust_test_fixtures {
   rust_filesystem_read_family_target_model_staging,
   rust_family_member_run_args
 }

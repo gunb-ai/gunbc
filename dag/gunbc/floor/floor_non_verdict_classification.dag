@@ -68,7 +68,7 @@ fn non_verdict_row_identity(module_path: String, function: String) -> NonVerdict
 // closure-dependent: nothing about the witness or its subject changed, only which names were in
 // scope. A row that throws under both is closure-independent and its cause is in the code it names.
 
-data local_binding_shadow_probe_note: String = "THE DEFECT BEHIND THE CLOSURE-DEPENDENT ROWS, established on a complete grid by two lanes independently (calm-boar-150 and silent-bear-842) and enrolled as v2.test.claim.local_binding_shadow local_named_function_binding_is_what_the_call_reaches: a call site spelling a name held by BOTH a local binding and a module-level free function reaches the FREE FUNCTION when the local's value is a reference to a named top-level function. let, parameter and pattern bindings behave identically; a local bound to a LAMBDA reaches the local. The collision is decided at the CALL SITE by the spelling used there, which is why a rename repairs it. Where the shadowing symbol's arity DIFFERS the call refuses loudly; where it AGREES a plausible wrong value returns with no diagnostic. It is closure-sensitive by construction, which is exactly why these rows only lose their verdict once the pool is big enough to contain the colliding name."
+data local_binding_shadow_probe_note: String = "THE DEFECT BEHIND THE CLOSURE-DEPENDENT ROWS, established on a complete grid by two lanes independently (calm-boar-150 and silent-bear-842) and enrolled as v2.test.claim.local_binding_shadow_test local_named_function_binding_is_what_the_call_reaches: a call site spelling a name held by BOTH a local binding and a module-level free function reaches the FREE FUNCTION when the local's value is a reference to a named top-level function. let, parameter and pattern bindings behave identically; a local bound to a LAMBDA reaches the local. The collision is decided at the CALL SITE by the spelling used there, which is why a rename repairs it. Where the shadowing symbol's arity DIFFERS the call refuses loudly; where it AGREES a plausible wrong value returns with no diagnostic. It is closure-sensitive by construction, which is exactly why these rows only lose their verdict once the pool is big enough to contain the colliding name."
 
 // WHAT IS NOT CLAIMED, and it is the join rather than either half. Closure-dependence is MEASURED
 // for the nine rows below. The shadowing defect is MEASURED, on its own grid. That the shadowing
@@ -103,7 +103,7 @@ data closure_dependent_evidence: String = "PASSES under a narrow claim_batch --h
 
 // EMPTY, AND THAT IS A REPAYMENT RECEIPT AND A MEASURED JOIN RATHER THAN A MISSING MEASUREMENT.
 // This list held NINE ClosureDependentResolution / AssertsARedThatDoesNotExist rows -- six
-// test.claim.srv3.srv3_subsumption_witness_test, two v2.test.claim.staging, and
+// test.claim.srv3.srv3_subsumption_witness_test, two v2.test.claim.staging_test, and
 // v2.test.claim.emit.produced_decl_support_preserved_test. All nine now ANSWER and PASS on the required floor,
 // so they left this carrier and left floor_expected_red in the same change. THE JOIN THIS CARRIER
 // DECLARED AS INFERENCE IS NOW MEASURED, and that is the substantive result rather than the

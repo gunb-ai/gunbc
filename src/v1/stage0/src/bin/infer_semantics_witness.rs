@@ -1203,7 +1203,7 @@ fn coproduct_runtime_arm_names_match_on_last_segment_not_type_name_compatible() 
 
     let admission = "product.compute_board.admission.DuplicateComponentIdentity".to_string();
     let witness =
-        "test.claim.compute_board_admission_witness.DuplicateComponentIdentity".to_string();
+        "test.claim.compute_board_admission_witness_test.DuplicateComponentIdentity".to_string();
 
     assert!(
         !type_name_compatible(admission.clone(), witness.clone()),

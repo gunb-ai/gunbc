@@ -217,7 +217,7 @@ fn claude_sdk_control_response_parser_drop_holds(
 //
 // SO THE READ-IT-BACK WITNESS IS RETIRED RATHER THAN REPOINTED, and the loss is stated here rather
 // than left to be inferred from its absence: the predicate below and its five discriminating
-// controls survive intact in test.claim.claude_sdk_parser_drop_witness, but nothing any longer
+// controls survive intact in test.claim.claude_sdk_parser_drop_witness_test, but nothing any longer
 // establishes that the fixture agrees with a committed observation. Re-authoring the JSON by hand
 // would have made the witness green while fabricating exactly the measurement receipt the
 // bankruptcy existed to end. If the paired probe is ever modeled as an entry point, the honest

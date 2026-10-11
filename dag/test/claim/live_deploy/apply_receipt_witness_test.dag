@@ -1,0 +1,93 @@
+module test.claim.live_deploy.apply_receipt_witness_test
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data apply_receipt_fixture_r: String = "0123456789abcdef0123456789abcdef01234567"
+data apply_receipt_fixture_tree: String = "fedcba9876543210fedcba9876543210fedcba98"
+
+fn fixture_dashboard_receipt() -> LiveDeployApplyReceipt {
+  LiveDeployApplyReceipt {
+    run: ActionsRunBinding {
+      repository: "gunb-ai/gunbc",
+      workflow_ref: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main",
+      run_id: "1003",
+      run_revision: apply_receipt_fixture_r,
+    },
+    target: "srv1",
+    instance_id: "srv1-live",
+    expected_revision: apply_receipt_fixture_r,
+    candidate_revision: apply_receipt_fixture_r,
+    candidate_surface_identity: "0011223344556677",
+    candidate_tree_oid: apply_receipt_fixture_tree,
+    apply_outcome: LiveDeployApplyConverged,
+    readiness: LiveDeployReadinessObserved { revision: apply_receipt_fixture_r, surface: "0011223344556677" },
+    provenance: LiveDeployFleetProvenance { plan_run_id: "1001", apply_run_id: "1002", plan_artifact_hash: "a1b2c3d4e5f60718", plan_receipt_identity: "1111111111111111", apply_receipt_identity: "2222222222222222" },
+    completed_at: "2026-08-30T12:00:00Z",
+  }
+}
+
+test fn witness_dashboard_receipt_round_trips() -> Bool {
+  let r = fixture_dashboard_receipt()
+  match live_deploy_apply_receipt_decode(raw: serialize_json(v: live_deploy_apply_receipt_json(r: r))) {
+    LiveDeployApplyReceiptDecoded { receipt: back } =>
+      live_deploy_apply_receipt_identity_hex(r: back) == live_deploy_apply_receipt_identity_hex(r: r)
+        && back.candidate_tree_oid == apply_receipt_fixture_tree
+        && back.completed_at == "2026-08-30T12:00:00Z"
+        && back.instance_id == "srv1-live"
+        && (match back.readiness { LiveDeployReadinessObserved { revision: rv, surface: _ } => rv == apply_receipt_fixture_r  LiveDeployReadinessRefused { detail: _ } => false })
+    LiveDeployApplyReceiptUnreadable { reason: _ } => false
+  }
+}
+
+test fn witness_dashboard_receipt_not_converged_round_trips_its_reason() -> Bool {
+  let base = fixture_dashboard_receipt()
+  let r = LiveDeployApplyReceipt {
+    run: base.run, target: base.target, instance_id: base.instance_id, expected_revision: base.expected_revision, candidate_revision: base.candidate_revision,
+    candidate_surface_identity: base.candidate_surface_identity, candidate_tree_oid: base.candidate_tree_oid,
+    apply_outcome: LiveDeployApplyNotConverged { reason: "terminal no-op: this run installed nothing" },
+    readiness: LiveDeployReadinessRefused { detail: "not observed" },
+    provenance: base.provenance, completed_at: base.completed_at,
+  }
+  match live_deploy_apply_receipt_decode(raw: serialize_json(v: live_deploy_apply_receipt_json(r: r))) {
+    LiveDeployApplyReceiptDecoded { receipt: back } =>
+      (match back.apply_outcome { LiveDeployApplyNotConverged { reason: why } => string_contains(s: why, pattern: "terminal no-op")  LiveDeployApplyConverged => false })
+    LiveDeployApplyReceiptUnreadable { reason: _ } => false
+  }
+}
+
+// RED: a tampered candidate revision fails the identity check.
+test fn witness_dashboard_receipt_with_tampered_candidate_refuses() -> Bool {
+  let wire = serialize_json(v: live_deploy_apply_receipt_json(r: fixture_dashboard_receipt()))
+  let tampered = replace(wire, join(["\"candidate_revision\": \"", apply_receipt_fixture_r, "\""], ""), "\"candidate_revision\": \"89abcdef0123456789abcdef0123456789abcdef\"")
+  tampered != wire
+    && (match live_deploy_apply_receipt_decode(raw: tampered) {
+      LiveDeployApplyReceiptDecoded { receipt: _ } => false
+      LiveDeployApplyReceiptUnreadable { reason: r } => string_contains(s: r, pattern: "identity does not match")
+    })
+}
+
+test fn witness_dashboard_receipt_without_completed_at_refuses() -> Bool {
+  let wire = serialize_json(v: live_deploy_apply_receipt_json(r: fixture_dashboard_receipt()))
+  let tampered = replace(wire, "\"completed_at\"", "\"finished_at\"")
+  match live_deploy_apply_receipt_decode(raw: tampered) {
+    LiveDeployApplyReceiptDecoded { receipt: _ } => false
+    LiveDeployApplyReceiptUnreadable { reason: r } => string_contains(s: r, pattern: "completed_at")
+  }
+}
+
+// THE TWO target_decision LABEL WITNESSES WERE DELETED 2026-09-07 WITH THEIR SUBJECT. They were
+// real evidence -- a round trip over all three labels, and a tampered wire value refusing as a
+// typed Unreadable rather than being absorbed -- but the field they tested no longer exists, and a
+// witness kept over a deleted subject is the decoration DESIGN section 4b names: permanently green
+// by construction, carrying no information, and worse than absent because it reads as coverage.
+
+// RED: a substituted predecessor receipt identity fails the identity check (review 5061891290 P1-4).
+test fn witness_dashboard_receipt_with_tampered_plan_receipt_identity_refuses() -> Bool {
+  let wire = serialize_json(v: live_deploy_apply_receipt_json(r: fixture_dashboard_receipt()))
+  let tampered = replace(wire, "1111111111111111", "9999999999999999")
+  tampered != wire
+    && (match live_deploy_apply_receipt_decode(raw: tampered) {
+      LiveDeployApplyReceiptDecoded { receipt: _ } => false
+      LiveDeployApplyReceiptUnreadable { reason: r } => string_contains(s: r, pattern: "identity does not match")
+    })
+}

@@ -4,7 +4,7 @@ import std.realization { Materialization, Memoize, Recompute, Share }
 import std.disposition { Disposition, Terminal }
 
 data v2_compiler_materialization_memo_gate_predicate_contract: Disposition = Terminal {
-  reason: "Structural coproduct reader over std.realization.Materialization (materialization_allows_memo_store — Memoize => store permitted, Recompute/Share => refused) — closed by the three declared Materialization variants; discriminating corpus: v2.test.claim.self_host_contract.materialization_carriers_emitted_contract."
+  reason: "Structural coproduct reader over std.realization.Materialization (materialization_allows_memo_store — Memoize => store permitted, Recompute/Share => refused) — closed by the three declared Materialization variants; discriminating corpus: v2.test.claim.self_host_contract.materialization_carriers_emitted_contract_test."
 }
 
 // THE COMPILER'S MEMO DEMANDS AND PROVIDERS ARE GONE, AND THIS MODULE KEEPS ONLY THE PREDICATE.
@@ -15,7 +15,7 @@ data v2_compiler_materialization_memo_gate_predicate_contract: Disposition = Ter
 // served. The generic ladder obligations those controls exercised -- RefusedScopeTooNarrow on
 // an isolated plural site, RefusedNoProvider without a provider, discharge inside the
 // provider's scope, single recompute -- stay enrolled on fixture subjects in
-// test.claim.materialization_ladder_witness.
+// test.claim.materialization_ladder_witness_test.
 fn materialization_allows_memo_store(m: Materialization) -> Bool {
   match m {
     Memoize => true

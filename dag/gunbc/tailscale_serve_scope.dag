@@ -70,7 +70,7 @@ fn tailscale_serve_route_key_of(subject: TailscaleServeRouteSubject) -> Tailscal
 // Phantom relation brand (std.key_relation key_relation_brand_type_tag_note): keeps this relation distinct from other TailscaleServeEndpoint x ScopedKey rows that share carriers — orthogonal to scope correctness (see the // block above tailscale_serve_route_key_relation).
 type TailscaleServeRouteKeyRelation
 
-// KEYING-0 follow-on (node://adhoc-907f1da5-c20): tailscale_serve_route_key_relation scopes route keys by TailscaleServeScope { node, service } instead of GlobalKeyScope. Two nodes may each own the same listener×mount route as distinct scoped keys; collapsing them was the DeploymentArtifactStep poison class reached from the scope axis. Witness: test.claim.tailscale_serve_route_key_witness w_per_device_scope_preserves_distinct_nodes_same_route and its GlobalKeyScope RED control.
+// KEYING-0 follow-on (node://adhoc-907f1da5-c20): tailscale_serve_route_key_relation scopes route keys by TailscaleServeScope { node, service } instead of GlobalKeyScope. Two nodes may each own the same listener×mount route as distinct scoped keys; collapsing them was the DeploymentArtifactStep poison class reached from the scope axis. Witness: test.claim.tailscale_serve_route_key_witness_test w_per_device_scope_preserves_distinct_nodes_same_route and its GlobalKeyScope RED control.
 data tailscale_serve_route_key_relation: KeyRelation<TailscaleServeRouteKeyRelation, TailscaleServeRouteSubject, TailscaleServeScope, TailscaleServeRouteKey> = KeyRelation {
   scope_of: tailscale_serve_route_scope_of,
   key_of: tailscale_serve_route_key_of,

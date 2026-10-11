@@ -36,7 +36,7 @@ type UInt = Nat
 // to write wrongly, which is the construction rung. INHABITANCE is not: the composition is a
 // phantom and transparent to Int at a formal, so a bare Int reaches a UInt8 parameter unchecked.
 // The receipt is in the corpus rather than in an argument: std.encoding base64_octets declares
-// List<UInt8> and test.claim.machine_word_witness calls it with [256, 0, 0], and that claim
+// List<UInt8> and test.claim.machine_word_witness_test calls it with [256, 0, 0], and that claim
 // COMPILED AND EXECUTED in the floor receipt at 9ca9d9ab -- 256 crossed a UInt8 formal with no
 // refusal.
 //

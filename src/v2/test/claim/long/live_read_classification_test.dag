@@ -42,7 +42,7 @@ import v2.std.fn_index {
 import std.disposition { Scaffold, Terminal }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.text { String }
-import v2.test.claim.complexity.accumulator_copy_roster_gate {
+import v2.test.claim.complexity.accumulator_copy_roster_gate_test {
   accumulator_copy_roster_gate_entry_live_tree_disposition
 }
 
@@ -189,7 +189,7 @@ test fn v0_registry_two_hop_decl_index_runtime_read() -> Bool {
 
 data roster_gate_corpus_facts: List<ModuleImportFact> = [
   ModuleImportFact {
-    module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
+    module: "v2.test.claim.complexity.accumulator_copy_roster_gate_test",
     imports: [
       "v2.lens.complexity_accumulator_copy.roster_gate",
       "v2.std.logic",
@@ -205,7 +205,7 @@ data roster_gate_corpus_facts: List<ModuleImportFact> = [
 
 data g2_union_corpus_facts: List<ModuleImportFact> = [
   ModuleImportFact {
-    module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
+    module: "v2.test.claim.complexity.accumulator_copy_roster_gate_test",
     imports: [
       "v2.lens.complexity_accumulator_copy.roster_gate",
       "gunbc.instruments.dag_compile_clean_scope",
@@ -232,7 +232,7 @@ data g2_union_corpus_facts: List<ModuleImportFact> = [
 // in this module classifies over explicit fixture facts and never reaches this authority.
 fn roster_gate_g2_live_classification() -> LiveReadClassification {
   live_read_classification_g2_from_facts(
-    entry_module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
+    entry_module: "v2.test.claim.complexity.accumulator_copy_roster_gate_test",
     facts: roster_gate_corpus_facts,
     decls: fn_arrow_decl_facts_live(pool_roots: witness_layer_roots, pool_files: []),
     carrier_homes: live_read_carrier_homes_v0

@@ -60,8 +60,8 @@ import std.types { NonEmptyStr, List }
 //
 // A path-shaped guess is NOT available here and the corpus proves it: the admission entry
 // src/v2/test/claim/manual/english_emit_add_test.dag declares module v2.test.claim.manual.english_emit_add_test,
-// dropping a segment and a suffix, and dag/test/claim/self_host_03_normalize_behavioral_witness.dag
-// declares test.claim.self_host_03_normalize_behavioral_witness. Deriving the identity from the
+// dropping a segment and a suffix, and dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag
+// declares test.claim.self_host_03_normalize_behavioral_witness_test. Deriving the identity from the
 // path would silently miss the roster this fold joins against, and a miss reads as an alarm.
 // ONE PASS OVER THE CORPUS CENSUS. The admission entries are keyed first, then the census is
 // read once and only the entries' own rows are kept, so each subject reads its module by key.

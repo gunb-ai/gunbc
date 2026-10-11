@@ -8,7 +8,7 @@ import v2.extdeps.languages.rust {
   rust_type_expression_projection,
   rust_target_atom_realization_symbol
 }
-import v2.extdeps.languages.rust_freemonoid_char_test {
+import v2.extdeps.languages.rust_freemonoid_char_fixtures {
   fmc_fixture_target_model
 }
 import v2.std.compilers.target_model {

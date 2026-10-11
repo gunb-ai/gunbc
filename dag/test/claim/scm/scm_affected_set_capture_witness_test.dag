@@ -57,7 +57,7 @@ import gunbc.scm.write_spine {
   commit_staged, StagedCommitMinted, StagedCommitCandidateRefused, StagedCommitNothingToFreeze,
   StagedCommitAllocatorInvalid, StagedCommitSourceUnrecoverable,
 }
-import test.claim.scm_repository_save_witness { scm_sv_v7_fixture_path, scm_sv_v8_fixture_path, scm_sv_v9_fixture_path }
+import test.claim.scm_repository_save_witness_test { scm_sv_v7_fixture_path, scm_sv_v8_fixture_path, scm_sv_v9_fixture_path }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -499,7 +499,7 @@ test fn a_roster_disagreeing_with_its_shard_is_caught_by_the_whole_load() -> Boo
 }
 
 // THE COMMITTED v8 FIXTURE IS THE WRITER'S OWN BYTES for an empty repository, so the guarded save's
-// idempotent rewrite over it (test.claim.scm_repository_save_real_execution_witness) writes what is
+// idempotent rewrite over it (test.claim.scm_repository_save_real_execution_witness_test) writes what is
 // already there.
 test fn the_committed_v8_fixture_is_the_writers_bytes() -> Bool {
   Filesystem.Read(path: scm_sv_v8_fixture_path).content == serialize_json(v: encode_repository_v8(repo: empty_repository()))

@@ -15,7 +15,7 @@ data uses_clause_has_no_carrier: RecurringFailureMode = RecurringFailureMode {
   ],
 
   evidence: [
-    DeclarationRef { module_path: "v2.test.claim.parse.uses_clause", decl_name: "a_fn_with_a_uses_clause_parses_holds", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.parse.uses_clause", decl_name: "a_fn_with_a_uses_clause_refuses_at_the_clause_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.uses_clause_test", decl_name: "a_fn_with_a_uses_clause_parses_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.uses_clause_test", decl_name: "a_fn_with_a_uses_clause_refuses_at_the_clause_holds", field: WholeDeclaration },
   ],
 }

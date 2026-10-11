@@ -712,7 +712,7 @@ fn admit_host_held_by_subject(raw: HostIdentity, subject: ServingSubject) -> Str
 //
 // AND THE ANNOTATION IS NOT THAT EVIDENCE, which section 4c settles: no Accepted program can read one.
 // The executing evidence is
-// `test.claim.spark.spark_host_commitment_witness` `a_multi_cause_host_renders_every_cause_with_both_separators`,
+// `test.claim.spark.spark_host_commitment_witness_test` `a_multi_cause_host_renders_every_cause_with_both_separators`,
 // which renders a host committed by a cell role AND a claimed serving group AND a held reservation at
 // once and compares the result to a written expectation carrying both separators.
 //

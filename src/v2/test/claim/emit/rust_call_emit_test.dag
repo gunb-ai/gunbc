@@ -5,7 +5,7 @@ import std.optional { Optional, Present, Absent }
 import v2.std.arrow_signature { DeclaredSignatureEdges, declared_signature }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.extdeps.languages.rust_test {
+import v2.extdeps.languages.rust_test_fixtures {
   rust_call_binding_spellings,
   rust_call_host_source_text,
   rust_call_lex,

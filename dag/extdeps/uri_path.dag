@@ -135,7 +135,7 @@ type PathTemplateMatch
 // extdeps.uri_path.render_path_template reads backward into a rendered path — three directions, one
 // row set, never parallel authorities (DESIGN 4); the binding record is
 // extdeps.uri_path.PathParamBinding, the single binding authority (a local duplicate here briefly
-// shadowed it and broke no-import name resolution for test.claim.uri_path_parse_witness — the §3
+// shadowed it and broke no-import name resolution for test.claim.uri_path_parse_witness_test — the §3
 // nickname caught by execution). Parity contract with the emitted regex, kept strict so the two
 // realizations agree on every input: one token = one path segment joined by '/' (LiteralToken ==
 // segment text; ParamToken binds any NON-EMPTY segment, the [^/]+ class); the empty template

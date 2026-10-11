@@ -232,7 +232,7 @@ data spark_first_party_use_posture: FirstPartySelfUsePosture = FirstPartySelfUse
 // which is the telemetry path's own evidence declaration, and names the drop row that carries the
 // reason, the bounded population and the restoration trigger. A second route citing the same
 // undocumented-jurisdiction field is NOT enrolled and refuses as TransferOrLocationUnresolved --
-// which is enrolled as a red in test.claim.fabric.provider_admission_witness, because the property
+// which is enrolled as a red in test.claim.fabric.provider_admission_witness_test, because the property
 // that the exception is bound to the path rather than to the value is the one a reader most needs
 // and the one no other test in that set can see.
 //

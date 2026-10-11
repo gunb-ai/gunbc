@@ -58,7 +58,7 @@ import v2.test.algebra_laws.nat_semiring { nat_add_left_identity_input }
 import v2.test.claim.nat_semiring.rung_5 {
   claim_phase1_nat_semiring_rung5_rust_add_left_identity_emit_equals_eval
 }
-import v2.extdeps.languages.rust_test { rust_minimal_target_model_staging }
+import v2.extdeps.languages.rust_test_fixtures { rust_minimal_target_model_staging }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

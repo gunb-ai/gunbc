@@ -15,7 +15,7 @@ data parameter_refinement_has_no_carrier: RecurringFailureMode = RecurringFailur
   ],
 
   evidence: [
-    DeclarationRef { module_path: "v2.test.claim.parse.parameter_refinement", decl_name: "a_refined_parameter_parses_holds", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.parse.parameter_refinement", decl_name: "a_refined_parameter_refuses_at_its_clause_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.parameter_refinement_test", decl_name: "a_refined_parameter_parses_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.parameter_refinement_test", decl_name: "a_refined_parameter_refuses_at_its_clause_holds", field: WholeDeclaration },
   ],
 }

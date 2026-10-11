@@ -78,7 +78,7 @@ type PopulationBasis
 // corrected that module's header, closing the `NonVerdictRowUnreachable` refusal on main. It did
 // not reach here, so main carried a typed census describing 142 identities with 119 unresolved
 // names beside a roster of 15 with none -- and a `dominant_cause_specimen` naming
-// `test.claim.design_argument_witness design_s1_argument_form_is_valid`, an identity the same PR
+// `test.claim.design_argument_witness_test design_s1_argument_form_is_valid`, an identity the same PR
 // had just established PRODUCES A VERDICT. NOTHING DETECTED IT: the census witness checks that the
 // arms sum to the total, and 119+13+9+1 == 142 stays true however far the population moves away
 // from it. A sum is an internal consistency check, never a binding to the run it claims.

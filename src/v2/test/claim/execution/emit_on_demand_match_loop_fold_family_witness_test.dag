@@ -43,7 +43,7 @@ import v2.compiler.eval {
   inferred_tree_digest,
 }
 import v2.compiler.infer { InferredTree }
-import v2.extdeps.languages.rust_test {
+import v2.extdeps.languages.rust_test_fixtures {
   rust_match_target_model_staging,
   rust_loop_target_model_staging,
   rust_fold_call_target_model_staging,

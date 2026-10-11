@@ -71,7 +71,7 @@ fn efib_context() -> Outcome<NativeTestContext> {
 
 // THE SHARE POINT: every claim below reads one verdict of ONE context, so the context and all four
 // verdicts are built once by this nullary producer, enrolled warm in
-// v2.workflow.floor_pure_producer_share for the reason v2.test.native_decl_selection
+// v2.workflow.floor_pure_producer_share for the reason v2.test.native_decl_selection_test
 // collision_resolved is: eight supplied reads through tokenize/parse/normalize/resolve cost more
 // than one claim's budget. A context the fixtures cannot build answers Absent, and every claim reads
 // Absent as false: a fixture failing is never a pass.

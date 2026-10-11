@@ -426,7 +426,7 @@ type LocalStorePreOpening
 fn local_store_open_decide(root: MaterializationStoreRoot, marker_read: FilesystemExactRead, budgets: List<LocalStoreFamilyBudget>) -> LocalStorePreOpening
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_open"),
-    decl_ref(module_path: "test.claim.materialization_store_witness", decl_name: "a_store_opens_only_on_its_own_marker"),
+    decl_ref(module_path: "test.claim.materialization_store_witness_test", decl_name: "a_store_opens_only_on_its_own_marker"),
   ]
 {
   let root_path = materialization_store_root_path(root: root)
@@ -942,8 +942,8 @@ fn local_store_read_index(root_path: String, family: ArtifactKindId) -> LocalSto
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_reserve"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_indexed_names"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_record_recency_current"),
-    decl_ref(module_path: "test.claim.materialization_store_local_wet_witness", decl_name: "only_canonical_object_names_are_indexed_or_swept_by_real_execution"),
-    decl_ref(module_path: "test.claim.materialization_store_local_wet_witness", decl_name: "index_row_count"),
+    decl_ref(module_path: "test.claim.materialization_store_local_wet_witness_test", decl_name: "only_canonical_object_names_are_indexed_or_swept_by_real_execution"),
+    decl_ref(module_path: "test.claim.materialization_store_local_wet_witness_test", decl_name: "index_row_count"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_doom_copy"),
   ]
 {
@@ -1275,7 +1275,7 @@ fn local_store_with_family_of<T>(binding: LocalStoreBinding, family: ArtifactKin
 // A HELD SESSION: acquire the family once, run many lookups and commits under LocalStoreFamilyHeld,
 // release once. Distinct from local_store_commit, which still brackets every write; this operation
 // does not change that signature.
-// Consumed now by test.claim.materialization_store_local_wet_witness
+// Consumed now by test.claim.materialization_store_local_wet_witness_test
 // n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution (inhabitance).
 // Named later consumer: v2.compiler.compile, when its typecheck writes leave per-commit
 // local_store_commit (the host typed_module_cache still does) and take one session around the
@@ -1290,7 +1290,7 @@ fn local_store_with_family_of<T>(binding: LocalStoreBinding, family: ArtifactKin
 // whose process has died is recovered by the next writer's liveness observation, never by age.
 fn local_store_held_session<T>(capability: LocalStoreCapability, family: ArtifactKindId, run: fn(LocalStoreFamilyHeld) -> T) -> LocalStoreBracket<T>
   admit_callers: [
-    decl_ref(module_path: "test.claim.materialization_store_local_wet_witness", decl_name: "n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution"),
+    decl_ref(module_path: "test.claim.materialization_store_local_wet_witness_test", decl_name: "n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution"),
   ]
 {
   local_store_with_family_of(binding: capability.binding, family: family, run: run)

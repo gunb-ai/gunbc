@@ -1547,7 +1547,7 @@ fn eval_node_is_arrow(node: Node) -> Bool {
 // built at OccurrenceSynthetic because the authored occurrence belongs to the marker node, and infer
 // visits it too, so each component held an entry with grounding underived and the walk refused with
 // eval_rejected_grounding_not_derived anchored on path data. The regression control for exactly that
-// anchor is v2.test.claim.callexec.declaration_reference_eval.
+// anchor is v2.test.claim.callexec.declaration_reference_eval_test.
 //
 // A lexical reference is the name a bare Atom callee was before resolve marked it, so it routes as one.
 fn eval_node_is_callee_reference(node: Node) -> Bool {
@@ -2735,7 +2735,7 @@ fn eval_fold_control_transfer_state(
 // than the callee -- and eval_transform_callee_edge already answers the question directly.
 //
 // IT IS LEFT ALONE BECAUSE REWRITING IT CHANGED NO VERDICT. Keying on eval_transform_callee_edge was
-// written and measured: all seven controls in v2.test.claim.callexec.declaration_reference_eval pass
+// written and measured: all seven controls in v2.test.claim.callexec.declaration_reference_eval_test pass
 // either way, in both directions. A second formulation nothing needs is redundant work (DESIGN section
 // 2), so the count-based test stays and the observation is recorded here rather than acted on. Whoever
 // finds a call shape where the two DISAGREE has the discriminating case this lacked, and that case is

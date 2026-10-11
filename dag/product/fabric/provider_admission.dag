@@ -203,7 +203,7 @@ type ProviderUsePermit<P> sole_constructor {
 // stated restoration trigger was "a posture revision that carries its permitted-jurisdiction
 // population", and product.fabric.provider_route CompliancePostureRevision now carries exactly
 // that, so both arms land below with producers that reached them by matching the coproduct that
-// caused them, and with discriminating reds in test.claim.fabric.provider_admission_witness.
+// caused them, and with discriminating reds in test.claim.fabric.provider_admission_witness_test.
 //
 // THE TWO ARMS ANSWER DIFFERENT QUESTIONS, AND EACH SENDS THE CALLER SOMEWHERE ELSE. If they did
 // not, this would be one arm written twice.

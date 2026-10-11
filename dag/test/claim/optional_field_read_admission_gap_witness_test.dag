@@ -13,7 +13,7 @@ import gunbc.compile_diagnostic_census {
 // the direct-call argument, the declared list element and the undeclared list-literal member, but
 // not a field projection. So `levels().first().id` compiles with no blocking diagnostic, although
 // `.first()` produces Level? and Absent has no `id` field. Found in review 72657 on gunbc#12572 at
-// test.claim.machine_shape_catalog_integration_witness `memory.first().id`.
+// test.claim.machine_shape_catalog_integration_witness_test `memory.first().id`.
 //
 // THIS IS AN EVIDENCE FIXTURE AT THE GAP, NOT A WALL. The two claims are a discriminating pair
 // over one source shape, which differs only in the position that consumes `.first()`:

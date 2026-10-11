@@ -42,7 +42,7 @@ import v2.compiler.eval {
   inferred_tree_digest,
 }
 import v2.compiler.infer { InferredTree }
-import v2.extdeps.languages.rust_test { rust_field_access_target_model_staging }
+import v2.extdeps.languages.rust_test_fixtures { rust_field_access_target_model_staging }
 import v2.test.claim.execution.emit_host_field_access_equals_eval_test {
   emit_field_eval_producer_tree,
   emit_field_eval_alt_descent_producer_tree,

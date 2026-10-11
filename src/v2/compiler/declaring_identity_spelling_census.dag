@@ -58,7 +58,7 @@ import v2.std.namespace_alias { ModuleBindingSource, module_binding_source_roots
 // IdentityUnbound on a same-module ingest census row is an INDEX-PATH probe:
 // enrolled control cfp_own_module_site binds; ingest fill does not insert the
 // data name at the collector site's parser-keyed path (same class as
-// v2.test.claim.provenance.loaded_carrier_receipts receipt 2). Not a fact
+// v2.test.claim.provenance.loaded_carrier_receipts_test receipt 2). Not a fact
 // that v2 cannot compile a local name.
 
 type DeclaringIdentitySpellingCensus {

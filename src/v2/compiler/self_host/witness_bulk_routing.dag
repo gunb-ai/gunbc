@@ -129,14 +129,14 @@ data witness_bulk_routing_sample_roster: List<WitnessEntryRoutingRow> = [
     }
   },
   WitnessEntryRoutingRow {
-    entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_std.dag",
+    entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_std_test.dag",
     disposition: EmitIneligible {
       cause: OfflineLocalRecipe,
       detail: "operator-ruled offline; explicit local claim_batch recipe is the executing consumer"
     }
   },
   WitnessEntryRoutingRow {
-    entry: "src/v2/test/claim/enforcement/lens_module_gate_witness.dag",
+    entry: "src/v2/test/claim/enforcement/lens_module_gate_witness_test.dag",
     disposition: InterpretedRetained {
       reason: RetainedReadsLiveTreeCarrier,
       dissolution: unbound_dissolution(description: "module_graph pure/live split lands and the witness row's live_tree_disposition is derived, not hand-stamped")
@@ -150,7 +150,7 @@ data witness_bulk_routing_sample_roster: List<WitnessEntryRoutingRow> = [
     }
   },
   WitnessEntryRoutingRow {
-    entry: "dag/test/claim/uri_witness.dag",
+    entry: "dag/test/claim/uri_witness_test.dag",
     disposition: InterpretedRetained {
       reason: HostFedCeiling,
       dissolution: unbound_dissolution(description: "native host-effect transport lane delivers typed host_effect_apply execution for this entry's sink class (deliberately uncoupled from bulk flip per ROADMAP 2a)")
@@ -164,7 +164,7 @@ data witness_bulk_routing_sample_roster: List<WitnessEntryRoutingRow> = [
     }
   },
   WitnessEntryRoutingRow {
-    entry: "dag/test/claim/access_validation.dag",
+    entry: "dag/test/claim/access_validation_test.dag",
     disposition: InterpretedRetained {
       reason: BulkFlipPendingCensusIncomplete,
       dissolution: unbound_dissolution(description: "744-entry srvN sweep receipt names this entry's measured first-error class; row flips to NativeRouted or EmitIneligible in the bulk flip PR (ROADMAP 2a section 3), never before the in-PR agreement receipt")

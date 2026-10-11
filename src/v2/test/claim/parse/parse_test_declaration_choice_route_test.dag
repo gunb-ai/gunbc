@@ -186,7 +186,7 @@ test fn a_plain_typed_param_takes_the_bare_route_holds() -> Bool {
   param_routes(text: "(a: Int)") == "a"
 }
 
-// The TAIL route (`b: Int = 1`) is not re-claimed here: v2.test.claim.parse.default_value
+// The TAIL route (`b: Int = 1`) is not re-claimed here: v2.test.claim.parse.default_value_test
 // a_parameter_default_lowers_onto_its_binder_holds already drives a defaulted parameter through this
 // grammar and the real slot reader onto its binder, which it can reach only by the tail route, and a
 // second parse of a default here costs over the new-witness budget for no new subject.

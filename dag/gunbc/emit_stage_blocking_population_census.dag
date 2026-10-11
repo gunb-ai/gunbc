@@ -400,27 +400,27 @@ data layer_two_census: CensusReading = PopulationRead {
   stopping_gate: AnonymousRecordLiteralGate,
   blocking: [
     BlockingSite {
-      subject: SiteInDeclaration { declaration: decl_ref(module_path: "test.claim.access_validation", decl_name: "sample_file") },
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "test.claim.access_validation_test", decl_name: "sample_file") },
       origin: ProducedByEmit,
       cause: "ambiguous anonymous record literal shape matches 2 structs: FileOwnership, PosixSubject" as NonEmptyStr
     },
     BlockingSite {
-      subject: SiteInDeclaration { declaration: decl_ref(module_path: "test.claim.access_validation", decl_name: "posix_owner_can_read") },
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "test.claim.access_validation_test", decl_name: "posix_owner_can_read") },
       origin: ProducedByEmit,
       cause: "ambiguous anonymous record literal shape matches 2 structs: FileOwnership, PosixSubject" as NonEmptyStr
     },
     BlockingSite {
-      subject: SiteInDeclaration { declaration: decl_ref(module_path: "test.claim.access_validation", decl_name: "posix_owner_cannot_execute") },
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "test.claim.access_validation_test", decl_name: "posix_owner_cannot_execute") },
       origin: ProducedByEmit,
       cause: "ambiguous anonymous record literal shape matches 2 structs: FileOwnership, PosixSubject" as NonEmptyStr
     },
     BlockingSite {
-      subject: SiteInDeclaration { declaration: decl_ref(module_path: "test.claim.access_validation", decl_name: "posix_group_can_read") },
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "test.claim.access_validation_test", decl_name: "posix_group_can_read") },
       origin: ProducedByEmit,
       cause: "ambiguous anonymous record literal shape matches 2 structs: FileOwnership, PosixSubject" as NonEmptyStr
     },
     BlockingSite {
-      subject: SiteInDeclaration { declaration: decl_ref(module_path: "test.claim.access_validation", decl_name: "posix_other_cannot_read") },
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "test.claim.access_validation_test", decl_name: "posix_other_cannot_read") },
       origin: ProducedByEmit,
       cause: "ambiguous anonymous record literal shape matches 2 structs: FileOwnership, PosixSubject" as NonEmptyStr
     },
@@ -496,7 +496,7 @@ data layer_three_census: CensusReading = NoPopulation {
 // AND ITS POPULATION IS ALMOST ENTIRELY NOT THE CLASS. Twenty hard diagnostics stand at the emit
 // refusal and NINETEEN of them are name-resolution and inference causes carried into it; not one
 // member is emit-produced. Nineteen of the twenty are one module's cascade behind a single
-// unresolved import -- v2.test.manual.ownership_movable imports v1.compiler.ownership, which is
+// unresolved import -- v2.test.manual.ownership_movable_test imports v1.compiler.ownership, which is
 // outside both source roots, and that module's own note says so in as many words. The twentieth
 // is a DELIBERATE NEGATIVE FIXTURE: a planted sole_constructor leak whose whole purpose is to be
 // refused. Counting either as an emit-stage defect would have been a finding manufactured by the
@@ -555,97 +555,97 @@ data src_v2_root_census: CensusReading = PopulationRead {
   stopping_gate: EmitStoppedOnUpstreamCauses,
   blocking: [
     BlockingSite {
-      subject: SiteAtModuleImport { module_path: "v2.test.manual.ownership_movable" as NonEmptyStr },
+      subject: SiteAtModuleImport { module_path: "v2.test.manual.ownership_movable_test" as NonEmptyStr },
       origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
       cause: "unresolved import: module 'v1.compiler.ownership' not found" as NonEmptyStr
     },
     BlockingSite {
-      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "proof_one") },
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable_test", decl_name: "proof_one") },
       origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
       cause: "unresolved type 'EdgeClassification'" as NonEmptyStr
     },
     BlockingSite {
-      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "proof_one") },
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable_test", decl_name: "proof_one") },
       origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
       cause: "unresolved type 'OwnershipProof'" as NonEmptyStr
     },
     BlockingSite {
-      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "proof_one") },
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable_test", decl_name: "proof_one") },
       origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
       cause: "unresolved type 'BindingUsage'" as NonEmptyStr
     },
     BlockingSite {
-      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "proof_one") },
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable_test", decl_name: "proof_one") },
       origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
       cause: "unresolved type 'OwnershipProof'" as NonEmptyStr
     },
     BlockingSite {
-      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "edge") },
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable_test", decl_name: "edge") },
       origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
       cause: "unresolved type 'EdgeKind'" as NonEmptyStr
     },
     BlockingSite {
-      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "edge") },
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable_test", decl_name: "edge") },
       origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
       cause: "unresolved type 'EdgeClassification'" as NonEmptyStr
     },
     BlockingSite {
-      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "edge") },
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable_test", decl_name: "edge") },
       origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
       cause: "unresolved type 'EdgeClassification'" as NonEmptyStr
     },
     BlockingSite {
-      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "movable_of") },
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable_test", decl_name: "movable_of") },
       origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
       cause: "unresolved type 'OwnershipProof'" as NonEmptyStr
     },
     BlockingSite {
-      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "movable_of") },
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable_test", decl_name: "movable_of") },
       origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
       cause: "function 'build_movable_set' not found in scope" as NonEmptyStr
     },
     BlockingSite {
-      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "movable_of") },
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable_test", decl_name: "movable_of") },
       origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
       cause: "set_contains receiver must be a Set" as NonEmptyStr
     },
     BlockingSite {
-      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "witness_read_then_consume_param_is_movable") },
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable_test", decl_name: "witness_read_then_consume_param_is_movable") },
       origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
       cause: "undefined variable 'Projected'" as NonEmptyStr
     },
     BlockingSite {
-      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "witness_read_then_consume_param_is_movable") },
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable_test", decl_name: "witness_read_then_consume_param_is_movable") },
       origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
       cause: "undefined variable 'Consumed'" as NonEmptyStr
     },
     BlockingSite {
-      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "witness_double_consume_is_not_movable") },
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable_test", decl_name: "witness_double_consume_is_not_movable") },
       origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
       cause: "undefined variable 'Consumed'" as NonEmptyStr
     },
     BlockingSite {
-      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "witness_double_consume_is_not_movable") },
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable_test", decl_name: "witness_double_consume_is_not_movable") },
       origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
       cause: "undefined variable 'Consumed'" as NonEmptyStr
     },
     BlockingSite {
-      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "witness_zero_consume_is_not_movable") },
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable_test", decl_name: "witness_zero_consume_is_not_movable") },
       origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
       cause: "undefined variable 'Projected'" as NonEmptyStr
     },
     BlockingSite {
-      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "witness_whole_read_then_consume_is_not_movable") },
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable_test", decl_name: "witness_whole_read_then_consume_is_not_movable") },
       origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
       cause: "undefined variable 'Consumed'" as NonEmptyStr
     },
     BlockingSite {
-      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "witness_threaded_then_consume_is_not_movable") },
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable_test", decl_name: "witness_threaded_then_consume_is_not_movable") },
       origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
       cause: "undefined variable 'Threaded'" as NonEmptyStr
     },
     BlockingSite {
-      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "witness_threaded_then_consume_is_not_movable") },
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable_test", decl_name: "witness_threaded_then_consume_is_not_movable") },
       origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
       cause: "undefined variable 'Consumed'" as NonEmptyStr
     },

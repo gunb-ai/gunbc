@@ -191,7 +191,7 @@ data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
 // v2.compiler.normalized_tree normalized_tree_roots_to_nodes), and the collector returns no sites
 // at all. Independently reproduced by warm-ibex-518 over real .dag files, with and without
 // normalize. The producer is named here so the next reader re-runs it rather than trusting this
-// sentence: v2.test.claim.namespace_xl0.call_argument_mention_survival.
+// sentence: v2.test.claim.namespace_xl0.call_argument_mention_survival_test.
 //
 // WHAT THE PRODUCER ACTUALLY SEES ON THE PRODUCTION ROUTE, MEASURED OVER EVERY INGESTED ROOT
 // (re-stated 2026-09-18; re-run the producer rather than trust this table):
@@ -232,7 +232,7 @@ data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
 //      is v2.compiler.body_lowering_fold body_lower_dotted_reference_optional and its type-position
 //      twin; the class is rostered as gunbc.recurring_failure_mode
 //      dotted_reference_truncated_at_v2_body_lowering. Whether resolution reads the chain is now
-//      ANSWERED by execution: v2.test.claim.namespace_xl0.cross_module_reference_resolution -- a
+//      ANSWERED by execution: v2.test.claim.namespace_xl0.cross_module_reference_resolution_test -- a
 //      declared cross-module fn target is FOUND and refused identity-unrepresentable (the resolver
 //      carries no exact declaring identity yet), an undeclared one refuses unbound, a same-module
 //      control stays Accepted. A dotted CALLEE (last segment with a call or brace suffix) is the
@@ -253,7 +253,7 @@ data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
 //      (field_decl_block) stays a residual shell under
 //      gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft until body
 //      lowering rehomes it, so the bare FIELD-position miss remains open there. Producer for the measurement:
-//      v2.test.claim.namespace_xl0.field_type_tree_presence; the same loss is why a cross-module
+//      v2.test.claim.namespace_xl0.field_type_tree_presence_test; the same loss is why a cross-module
 //      reference to a DATA target still refuses (today-row in cross_module_reference_resolution).
 //
 // THE RESTORATION TRIGGER WAS THEREFORE NOT THE BODY-LOWERING REPAIR ALONE, and an earlier revision

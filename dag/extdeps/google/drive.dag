@@ -396,10 +396,10 @@ service drive.Permissions {
 // builder emits field names as written and cannot take one from a parameter -- and
 // gunbc.review_sheet_drive_converge review_sheet_marker_property_key carries the same spelling for
 // consumers. NOTHING PINS THE TWO TO EACH OTHER, and saying so is the point: the claim
-// test.claim.review_sheet_drive_converge_witness marker_property_key_matches_the_created_property
+// test.claim.review_sheet_drive_converge_witness_test marker_property_key_matches_the_created_property
 // joins that declaration to a copy of the string inside the claim, not to the literal in the body
 // below, so editing the body literal alone leaves it green. The honest sibling is the search side,
-// where test.claim.review_sheet_transport_pin_witness search_query_carries_the_declared_property_key
+// where test.claim.review_sheet_transport_pin_witness_test search_query_carries_the_declared_property_key
 // reads the query BUILT from the declaration and therefore ties the declaration to the search. The
 // write side has no such tie and is asserted by a human reading two lines.
 // GetFile IS AN EXACT READ OF ONE FILE, WHICH IS A DIFFERENT QUESTION FROM A SEARCH. ListFiles

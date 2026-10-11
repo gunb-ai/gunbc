@@ -141,7 +141,7 @@ fn qualified_name_is_verdict_authority(qn: QualifiedName) -> Bool {
 // collapse in order to exercise this wall's RED arm is building the escape hatch to TEST it; an
 // ORDINARY test module has no such licence, and exempting one would leave a real acceptance path
 // unenforced. `v2.test.` was the first spelling here and it was too wide: it exempted
-// v2.test.runtimes.effect_io_handler_claims -- a module this same change repaired -- so a
+// v2.test.runtimes.effect_io_handler_claims_test -- a module this same change repaired -- so a
 // regression there would have re-collapsed the verdict with no compile refusal, which is the wall
 // claiming a rung it did not hold (DESIGN 4b rung honesty). Narrowed to the claim namespaces, and
 // module_scope_* controls in the wall test hold it there.

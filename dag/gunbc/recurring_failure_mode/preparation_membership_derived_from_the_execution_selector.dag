@@ -15,7 +15,7 @@ data preparation_membership_derived_from_the_execution_selector: RecurringFailur
 
     "**THE DISTINGUISHING FACT AGAINST EVERY NEIGHBOURING CLASS IS THAT NOTHING EVER LOOKED.** No diagnostic was produced and dropped, no lane swallowed an error, no aggregation lost a red, no exit status was mis-propagated. The first missing edge is ADMISSION TO THE PREPARED POPULATION, upstream of body resolution, which is why every instrument downstream of preparation reads clean and why looking for a suppressed diagnostic finds nothing.",
 
-    "SPECIMEN WITH ITS POSITIVE CONTROL, both executed on main at 4da9c1a3fdd through the real acceptance path (`claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/systemd_property_directive_overlap.dag`, GUNBC_MEMORY_BUDGET_BYTES set): `extdeps.systemd` declares `RuntimeDirectoryProperty` as a variant of `SystemdUnitProperty`; `gunbc.systemd_property_directive_overlap` `systemd_property_writability` does not eliminate it.",
+    "SPECIMEN WITH ITS POSITIVE CONTROL, both executed on main at 4da9c1a3fdd through the real acceptance path (`claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/systemd_property_directive_overlap_test.dag`, GUNBC_MEMORY_BUDGET_BYTES set): `extdeps.systemd` declares `RuntimeDirectoryProperty` as a variant of `SystemdUnitProperty`; `gunbc.systemd_property_directive_overlap` `systemd_property_writability` does not eliminate it.",
 
     "The run refuses at closure-strict-resolve with `non-exhaustive match: missing variant(s) RuntimeDirectoryProperty`.",
 

@@ -48,7 +48,7 @@ import extdeps.github.action.rust_cache { rust_cache_manifest_readings }
 //   - every realized workflow file in .github/workflows, whether generated or hand-authored, read
 //     by the modeled YAML reader (realized_workflow_reading) and admitted per distinct use
 //     (realized_distinct_uses, admit_realized_action_use). The census over the live tree lives in
-//     test.claim.action_use_admission_witness, one claim per file.
+//     test.claim.action_use_admission_witness_test, one claim per file.
 // The second route closes what the first cannot see: a file nobody emitted.
 
 // ---------------------------------------------------------------------------------------------
@@ -595,7 +595,7 @@ type RealizedCensusCostStanding {
 
 data realized_census_cost_standing: RealizedCensusCostStanding = RealizedCensusCostStanding {
   subject: "fleet-converge.yml" as NonEmptyStr,
-  instrument: "claim_batch --entry dag/test/claim/action_use_admission_witness.dag --functions census_fleet_converge_uses_are_modeled_and_executed_exactly, against v2.workflow.required_floor corpus_census_eval_step_allowance (the claim is rostered in corpus_census_roster; the floor run prints its derived budget on a [floor-corpus-census] line)" as NonEmptyStr,
+  instrument: "claim_batch --entry dag/test/claim/action_use_admission_witness_test.dag --functions census_fleet_converge_uses_are_modeled_and_executed_exactly, against v2.workflow.required_floor corpus_census_eval_step_allowance (the claim is rostered in corpus_census_roster; the floor run prints its derived budget on a [floor-corpus-census] line)" as NonEmptyStr,
   remedy: "cut real work, never the population: the per-entry cost of extdeps.languages.yaml.ingest's accepted-path walk, and the census traversal's own cost shape (realized_jobs_reading, realized_distinct_uses), each chosen by measurement rather than by reading -- a claim over a document of one repeated shape with DISTINCT content per repetition (identical repetitions are memoized and read as nearly free), eval_steps from its [witness] line, and the path that shape spends in" as NonEmptyStr,
   refused_remedies: [
     "raising the claim's eval-step budget, including its per-entry rate: v2.workflow.required_floor corpus_census_allowance_policy is floor policy with its own reason, admitted by the 2026-09-23 ruling, and is never refitted to this claim" as NonEmptyStr,

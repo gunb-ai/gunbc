@@ -55,7 +55,7 @@ fn closing_frontier_clauses() -> List<FrontierClause> {
       id: "contract-exists-and-can-fail",
       statement: "The v1-materialization-kernel node has an actual, checkable audit capable of failing on zero progress (brief step 1).",
       verdict: Delivered {
-        witness_module: "test.claim.materialization_kernel_closing_frontier_audit_witness",
+        witness_module: "test.claim.materialization_kernel_closing_frontier_audit_witness_test",
         witness_fn: "materialization_kernel_audit_not_all_delivered_today",
         evidence: "This module and its paired witness test are the audit; the fold below evaluates false against the audited clauses that follow, proving by execution that the audit summary can read false rather than vacuously passing."
       }

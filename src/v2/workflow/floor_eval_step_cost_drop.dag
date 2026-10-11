@@ -96,11 +96,11 @@ data floor_eval_step_cost_drop_rows: List<EvalStepCostDropMeasurement> = [
 // expensive; the fill left.
 data floor_eval_step_cost_drop_apply_render_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
-    identity: "test.claim.live_deploy.emit.apply_script_stays_within_ci_runner_grants" as NonEmptyStr,
+    identity: "test.claim.live_deploy.emit_test.apply_script_stays_within_ci_runner_grants" as NonEmptyStr,
     measured_by: "required floor run 35174104379, artifact required-floor-claim-cost; planned_as_changed_witness, verdict pass, eval_steps billed to live_deploy_apply_script_for after gunbc#11457 unrostered the warm share fill" as NonEmptyStr,
   },
   EvalStepCostDropMeasurement {
-    identity: "test.claim.live_deploy.emit.repository_convergence_is_ordered_after_binary_and_before_readback" as NonEmptyStr,
+    identity: "test.claim.live_deploy.emit_test.repository_convergence_is_ordered_after_binary_and_before_readback" as NonEmptyStr,
     measured_by: "required floor run 35174104379, artifact required-floor-claim-cost; planned_as_changed_witness, verdict pass, eval_steps billed to live_deploy_apply_script_for after gunbc#11457 unrostered the warm share fill" as NonEmptyStr,
   },
 ]
@@ -128,7 +128,7 @@ data floor_eval_step_cost_drop_live_forecast_rows: List<EvalStepCostDropMeasurem
 
 data floor_eval_step_cost_drop_page_style_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
-    identity: "test.claim.long.roadmap_page_witness.witness_ready_node_doc_emits_button_and_external_script" as NonEmptyStr,
+    identity: "test.claim.long.roadmap_page_witness_test.witness_ready_node_doc_emits_button_and_external_script" as NonEmptyStr,
     measured_by: "required floor run 35428496562, artifact required-floor-claim-cost; planned_as_changed_witness, verdict pass, over the new-witness budget. The billed work is the one real derivation of gunbc.roadmap.roadmap_style roadmap_css inside the claim frame, which this claim is the page's only inhabitance route for" as NonEmptyStr,
   },
 ]
@@ -364,14 +364,14 @@ data floor_eval_step_cost_drop_boot_matrix_rows: List<EvalStepCostDropMeasuremen
 ]
 
 // NINTH DROP, SAME MEMBERSHIP TEST, OPERATOR-ADMITTED (2026-09-29, relayed by proud-deer-538). One
-// identity: whichever test.claim.live_deploy.emit claim first reads witness_approval_broker_dark_script_text
+// identity: whichever test.claim.live_deploy.emit_test claim first reads witness_approval_broker_dark_script_text
 // is billed a marginal the generic bash emit path's per-step overhead causes (bundle lookup,
 // grounding, translate, fidelity decode, token fold; jolly-bee-43's #12576 findings). Inherited
 // from main and unchanged by gunbc#12482, which only re-planned the claim because
 // deployment_spec_srv1 changed.
 data floor_eval_step_cost_drop_dark_install_render_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
-    identity: "test.claim.live_deploy.emit.the_receipt_command_substitutes_the_digest_rather_than_splicing_it" as NonEmptyStr,
+    identity: "test.claim.live_deploy.emit_test.the_receipt_command_substitutes_the_digest_rather_than_splicing_it" as NonEmptyStr,
     measured_by: "gunbc#12482 required floor run 36490489535 (job 109157637341), floor-shared-fill line for this identity: planned_as_changed_witness, verdict pass, marginal eval_steps over the new-witness budget with the script render's fill netted separately; the same marginal lands on whichever claim reads the script first (gunbc#12482 floor runs at e8d4fed9bd and c81cc22ff0 billed it to two other identities)" as NonEmptyStr,
   },
 ]
@@ -386,7 +386,7 @@ data floor_eval_step_cost_drop_dark_install_render_rows: List<EvalStepCostDropMe
 // claim. The step's content is held by its own claim under the budget, with no drop.
 data floor_eval_step_cost_drop_build_job_membership_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
-    identity: "test.claim.workflow_dispatch_input_witness.the_build_job_carries_the_reset_observer_dispatch_admission" as NonEmptyStr,
+    identity: "test.claim.workflow_dispatch_input_witness_test.the_build_job_carries_the_reset_observer_dispatch_admission" as NonEmptyStr,
     measured_by: "PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6, floor-shared-fill line for this identity: verdict pass, marginal_eval_steps=155333 with the shared fill netted separately, against the 72,300 new-witness budget. The same claim read marginal_eval_steps=174583 on run 36743802719 at ec1b8190320, when gunbc#12437's job-gate equality built the whole host-reset-return job inside it; splitting that equality into its own claim removed about 19k, so the ~155k is the cost the claim carried before gunbc#12437, not one this change introduced" as NonEmptyStr,
   },
 ]

@@ -250,7 +250,7 @@ data compile_clean_shard_entry_paths_fast_hand_rust_receipt_plan_anchor: String 
 
 data compile_clean_shard_entry_paths_fast_hand_rust_roadmap_lane_anchor: String = "docs/plans/floor-shared-compute-memoization.md — M2 entry-graph union / per-entry memoization"
 
-data compile_clean_shard_entry_paths_fast_hand_rust_receipt_witness_entry: String = "dag/test/claim/compile_clean_shard_entry_paths_fast_hand_rust_witness.dag"
+data compile_clean_shard_entry_paths_fast_hand_rust_receipt_witness_entry: String = "dag/test/claim/compile_clean_shard_entry_paths_fast_hand_rust_witness_test.dag"
 
 data compile_clean_shard_entry_paths_fast_hand_rust_paths: List<String> = [
   "src/v1/stage0/src/cli_run.rs::compile_clean_shard_entry_paths_from_decl_facts",

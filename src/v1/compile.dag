@@ -313,7 +313,7 @@ fn test_reference_debt() -> List<TestReferenceDebtRow> {
     // DISCHARGED (roadmap node test-reference-discipline-remainder): the 28 CorpusDebtRow
     // entries naming test.claim.climbing_hold_witness_roster (22), the roll-up claim of
     // test.claim.materialization_provider_consumer_hand_rust_witness (4), and the citation in
-    // test.claim.native_witness_transition_receipt_witness (2) are gone together with the
+    // test.claim.native_witness_transition_receipt_witness_test (2) are gone together with the
     // references they paid for -- the roster file is deleted, the roll-up claim and its import
     // are removed, and the shared evidence moved into an ordinary fn that both callers use.
     // The wall's own control row above stays: it is FixtureControlRow, not debt.

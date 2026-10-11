@@ -1366,7 +1366,7 @@ data rust_fn_trait_sugar: FunctionTypeSugarRows = FunctionTypeSugarRows {
 // WHICH ROW STANDS AT WHICH POSITION IS A SELECTION, NOT A PICK MADE HERE. It is executed by
 // gunbc.rust_function_type_selection over std.decision select_realization, each row's
 // `realization` names the candidate that selection returns, and
-// test.claim.rust_function_type_selection_witness executes the selection and pins these rows to its
+// test.claim.rust_function_type_selection_witness_test executes the selection and pins these rows to its
 // SelectedWithin receipt. At an Fn bound's return E0562 is a hard constraint excluding impl before
 // Pareto, so Box is selected by construction; at a function item's return both are admitted, neither
 // dominates, and the stated policy prefers impl.

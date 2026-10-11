@@ -56,7 +56,7 @@ service diagnostic.edac.RasMcCtl {
 
 // ── who owns the memory controller, which is what decides whether EDAC can answer about topology ──
 
-// WHO CONSUMES THESE FOLDS (DESIGN §3c). Today: test.claim.linux_edac_topology_authority_witness
+// WHO CONSUMES THESE FOLDS (DESIGN §3c). Today: test.claim.linux_edac_topology_authority_witness_test
 // exercises every arm of every fold below, including the discriminating red control on the dmesg
 // detector and the release every channel-topology reading carries. The named later consumer is the observing layer's receipt — gunbc#10965's
 // mtcollins1_edac_channel_map_unavailable_reason, which currently restates this mechanism as prose

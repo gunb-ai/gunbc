@@ -59,8 +59,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/compile.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/self_host_contract/compile_emitted_contract.dag",
-      contract_module: "v2.test.claim.self_host_contract.compile_emitted_contract",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/compile_emitted_contract_test.dag",
+      contract_module: "v2.test.claim.self_host_contract.compile_emitted_contract_test",
       contract_function: "compile_emitted_contract_holds"
     },
     pass_marker: "SELF_HOST_00_COMPILE_BEHAVIORAL_RECEIPT: PASS",
@@ -69,8 +69,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/tokenize.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/self_host_contract/tokenize_emitted_contract.dag",
-      contract_module: "v2.test.claim.self_host_contract.tokenize_emitted_contract",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/tokenize_emitted_contract_test.dag",
+      contract_module: "v2.test.claim.self_host_contract.tokenize_emitted_contract_test",
       contract_function: "tokenize_emitted_contract_holds"
     },
     pass_marker: "SELF_HOST_01_TOKENIZE_BEHAVIORAL_RECEIPT: PASS",
@@ -79,8 +79,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/parse.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/self_host_contract/parse_emitted_contract.dag",
-      contract_module: "v2.test.claim.self_host_contract.parse_emitted_contract",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/parse_emitted_contract_test.dag",
+      contract_module: "v2.test.claim.self_host_contract.parse_emitted_contract_test",
       contract_function: "parse_emitted_contract_holds"
     },
     pass_marker: "SELF_HOST_02_PARSE_BEHAVIORAL_RECEIPT: PASS",
@@ -89,8 +89,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/body_producer.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/self_host_contract/body_producer_emitted_contract.dag",
-      contract_module: "v2.test.claim.self_host_contract.body_producer_emitted_contract",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/body_producer_emitted_contract_test.dag",
+      contract_module: "v2.test.claim.self_host_contract.body_producer_emitted_contract_test",
       contract_function: "body_producer_emitted_contract_holds"
     },
     pass_marker: "SELF_HOST_BODY_PRODUCER_BEHAVIORAL_RECEIPT: PASS",
@@ -104,8 +104,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/ingest.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/self_host_contract/ingest_emitted_contract.dag",
-      contract_module: "v2.test.claim.self_host_contract.ingest_emitted_contract",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/ingest_emitted_contract_test.dag",
+      contract_module: "v2.test.claim.self_host_contract.ingest_emitted_contract_test",
       contract_function: "ingest_emitted_contract_holds"
     },
     pass_marker: "SELF_HOST_03_INGEST_BEHAVIORAL_RECEIPT: PASS",
@@ -114,8 +114,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/normalize.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/self_host_contract/normalize_emitted_contract.dag",
-      contract_module: "v2.test.claim.self_host_contract.normalize_emitted_contract",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/normalize_emitted_contract_test.dag",
+      contract_module: "v2.test.claim.self_host_contract.normalize_emitted_contract_test",
       contract_function: "normalize_emitted_contract_holds"
     },
     pass_marker: "SELF_HOST_03_NORMALIZE_BEHAVIORAL_RECEIPT: PASS",
@@ -124,8 +124,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/resolve.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/self_host_contract/resolve_emitted_contract.dag",
-      contract_module: "v2.test.claim.self_host_contract.resolve_emitted_contract",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/resolve_emitted_contract_test.dag",
+      contract_module: "v2.test.claim.self_host_contract.resolve_emitted_contract_test",
       contract_function: "resolve_emitted_contract_holds"
     },
     pass_marker: "SELF_HOST_03_RESOLVE_BEHAVIORAL_RECEIPT: PASS",
@@ -134,14 +134,14 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/infer.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/self_host_contract/infer_emitted_contract.dag",
-      contract_module: "v2.test.claim.self_host_contract.infer_emitted_contract",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/infer_emitted_contract_test.dag",
+      contract_module: "v2.test.claim.self_host_contract.infer_emitted_contract_test",
       contract_function: "infer_emitted_contract_holds"
     },
     pass_marker: "SELF_HOST_04_INFER_BEHAVIORAL_RECEIPT: PASS",
     claim_runs: [
       CuratedSeedLinkedClaimRun {
-        entry_rel: "src/v2/test/compiler/pipeline/infer_stage.dag",
+        entry_rel: "src/v2/test/compiler/pipeline/infer_stage_test.dag",
         function: "pipeline_infer_add_fixture_relationship_green"
       }
     ]
@@ -149,8 +149,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/target_carriers.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/self_host_contract/target_carriers_emitted_contract.dag",
-      contract_module: "v2.test.claim.self_host_contract.target_carriers_emitted_contract",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/target_carriers_emitted_contract_test.dag",
+      contract_module: "v2.test.claim.self_host_contract.target_carriers_emitted_contract_test",
       contract_function: "target_carriers_emitted_contract_holds"
     },
     pass_marker: "SELF_HOST_TARGET_CARRIERS_BEHAVIORAL_RECEIPT: PASS",
@@ -164,8 +164,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/discovery_enumeration.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/self_host_contract/discovery_enumeration_emitted_contract.dag",
-      contract_module: "v2.test.claim.self_host_contract.discovery_enumeration_emitted_contract",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/discovery_enumeration_emitted_contract_test.dag",
+      contract_module: "v2.test.claim.self_host_contract.discovery_enumeration_emitted_contract_test",
       contract_function: "discovery_enumeration_emitted_contract_holds"
     },
     pass_marker: "SELF_HOST_DISCOVERY_ENUMERATION_BEHAVIORAL_RECEIPT: PASS",
@@ -179,8 +179,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/materialization_carriers.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/self_host_contract/materialization_carriers_emitted_contract.dag",
-      contract_module: "v2.test.claim.self_host_contract.materialization_carriers_emitted_contract",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/materialization_carriers_emitted_contract_test.dag",
+      contract_module: "v2.test.claim.self_host_contract.materialization_carriers_emitted_contract_test",
       contract_function: "materialization_carriers_emitted_contract_holds"
     },
     pass_marker: "SELF_HOST_MATERIALIZATION_CARRIERS_BEHAVIORAL_RECEIPT: PASS",
@@ -199,8 +199,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/program_partition.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/self_host_contract/program_partition_emitted_contract.dag",
-      contract_module: "v2.test.claim.self_host_contract.program_partition_emitted_contract",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/program_partition_emitted_contract_test.dag",
+      contract_module: "v2.test.claim.self_host_contract.program_partition_emitted_contract_test",
       contract_function: "program_partition_emitted_contract_holds"
     },
     pass_marker: "SELF_HOST_PROGRAM_PARTITION_BEHAVIORAL_RECEIPT: PASS",
@@ -209,8 +209,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/source_authority.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/self_host_contract/source_authority_emitted_contract.dag",
-      contract_module: "v2.test.claim.self_host_contract.source_authority_emitted_contract",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/source_authority_emitted_contract_test.dag",
+      contract_module: "v2.test.claim.self_host_contract.source_authority_emitted_contract_test",
       contract_function: "source_authority_emitted_contract_holds"
     },
     pass_marker: "SELF_HOST_SOURCE_AUTHORITY_BEHAVIORAL_RECEIPT: PASS",
@@ -219,8 +219,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/use_site_verdict.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/self_host_contract/use_site_verdict_emitted_contract.dag",
-      contract_module: "v2.test.claim.self_host_contract.use_site_verdict_emitted_contract",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/use_site_verdict_emitted_contract_test.dag",
+      contract_module: "v2.test.claim.self_host_contract.use_site_verdict_emitted_contract_test",
       contract_function: "use_site_verdict_emitted_contract_holds"
     },
     pass_marker: "SELF_HOST_USE_SITE_VERDICT_BEHAVIORAL_RECEIPT: PASS",

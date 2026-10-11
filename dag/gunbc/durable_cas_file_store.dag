@@ -688,8 +688,8 @@ fn observe_cas_slot_state(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotObserva
 fn observe_cas_slot_state_windowed(root: NonEmptyStr, key: NonEmptyStr, window: CasGenerationWindow) -> CasSlotObservation<NonEmptyStr>
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_read_index"),
-    decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_window_slot_holds_at_most_k_plus_one_generations_by_real_execution"),
-    decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_window_observation_at_generation_1500_terminates_by_real_execution"),
+    decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness_test", decl_name: "a_window_slot_holds_at_most_k_plus_one_generations_by_real_execution"),
+    decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness_test", decl_name: "a_window_observation_at_generation_1500_terminates_by_real_execution"),
   ]
 {
   observe_cas_slot_state_retained(root: root, key: key, retention: KeepGenerationWindow { window: window })
@@ -1112,7 +1112,7 @@ fn cas_reclaim_below(root: NonEmptyStr, key: NonEmptyStr, window: CasGenerationW
   admit_callers: [
     decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set_retained"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_settle_slot"),
-    decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "reclaim_stops_before_a_later_generation_when_an_earlier_delete_fails_by_real_execution"),
+    decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness_test", decl_name: "reclaim_stops_before_a_later_generation_when_an_earlier_delete_fails_by_real_execution"),
   ]
 {
   match cas_window_generations(root: root, key: key) {
@@ -1174,7 +1174,7 @@ fn file_compare_and_set(root: NonEmptyStr, publication: CasGenerationPublication
 fn file_compare_and_set_windowed(root: NonEmptyStr, publication: CasGenerationPublication, verified: VerifiedCasAttempt, window: CasGenerationWindow) -> CasFileWrite
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_write_index_settled"),
-    decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "run_cas_in"),
+    decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness_test", decl_name: "run_cas_in"),
   ]
 {
   file_compare_and_set_retained(root: root, publication: publication, retention: KeepGenerationWindow { window: window }, verified: verified)

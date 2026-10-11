@@ -24,7 +24,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // evidence `gunbc.recurring_failure_mode` `zero_field_construction_escapes_the_field_set_check`
 // cites for a rung-3 climb on the ORDINARY COMPILER FLOOR, and a floor run's green is evidence
 // only for what that run PLANNED. Their previous home,
-// `test.claim.guarantee_floor_class_probe_witness`, matches no row of
+// `test.claim.guarantee_floor_class_probe_witness_test`, matches no row of
 // `v2.workflow.required_floor` `required_gate_prefixes` and no row of
 // `required_gate_authored_modules` after the 2026-09-19 nominal-roster ruling, so the required
 // floor discovers it and dispositions every identity in it `DeclinedOutsideRequiredGate` --
@@ -42,7 +42,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // resolves its synthetic source against the live checkout. `DeclinedLiveTree` was deleted at the
 // root of `v2.workflow.required_floor`, and the sibling admitted probes
 // `test.claim.infer_record_lit_variant_field_witness_test` and
-// `test.claim.match_exhaustiveness_coproduct_witness` call the same builtin and execute on the
+// `test.claim.match_exhaustiveness_coproduct_witness_test` call the same builtin and execute on the
 // floor today.
 //
 // WHAT STAYED BEHIND: the record-completeness partial-omission red, its green control, and the

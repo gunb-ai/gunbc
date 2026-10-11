@@ -18,7 +18,7 @@ import std.measure { Millisecond, millisecond, millisecond_count, EvalStepCount,
 // between the interface (what the analysis IS) and the realization (where the bytes come from).
 // The consequence that matters for evidence: every derivation below is witnessable on a hand-built
 // fixture with no run artifacts present, which is what
-// `test.claim.floor_cost_distribution_witness` does.
+// `test.claim.floor_cost_distribution_witness_test` does.
 //
 // THE INPUT IS THE `required-floor-claim-cost` ARTIFACT that every required-floor run uploads --
 // the COMPLETE executed population, not the 25-row `[over-cost]` preview the job log prints.

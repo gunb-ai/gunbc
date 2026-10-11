@@ -83,7 +83,7 @@ data target_subject: String = "Coproduct(BootDeliveryCandidateStanding)"
 // THE COMPARATOR IS CONSUMED FROM ITS HOME, not implemented here. These four helpers used to live
 // in this file, and gunbc.compile_diagnostic_census named THIS RECEIPT as the authority for the
 // exact forms -- which reads as reusable and is not: the next battery that needed the comparison
-// (test.claim.fabric_m0_origin_readback_seal) implemented it again and got the multiplicity wrong,
+// (test.claim.fabric_m0_origin_readback_seal_test) implemented it again and got the multiplicity wrong,
 // counting row entries instead of summing r.count. Naming a receipt as the authority for a form
 // does not make the form reusable; the function does. It now lives in the module that owns the
 // rule, parameterised by the target key, and this file passes its own.

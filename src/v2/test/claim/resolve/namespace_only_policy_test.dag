@@ -25,7 +25,7 @@ import v2.std.qualified_name {
 }
 import v2.std.resolution_policy { ImportScoped, NameResolutionPolicy, NamespaceOnlyY }
 import v2.std.symbol_index { SymbolIndex }
-import v2.test.claim.symbol_index.containment {
+import v2.test.claim.symbol_index.containment_test {
   si_index,
   si_module_qn,
   si_shadow_index,

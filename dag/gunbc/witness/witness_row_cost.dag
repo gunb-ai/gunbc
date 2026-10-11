@@ -76,8 +76,8 @@ import v2.std.text { String }
 // via AttentionLevel/ObservationDensity (Ambient may suppress a render line while the complete
 // receipt still retains the row). Basis values MUST cite an arm64 srv-fleet run id (never local
 // x86). A row with no dated basis is BasisAbsent. Drift is falsifier-cadence counted, not
-// merge-refusing. Executing consumers: dag/test/claim/witness_row_cost_drift.dag and
-// dag/test/claim/witness_row_cost_projection.dag.
+// merge-refusing. Executing consumers: dag/test/claim/witness_row_cost_drift_test.dag and
+// dag/test/claim/witness_row_cost_projection_test.dag.
 
 // WHAT A ROSTER CAN DETECT AND WHICH ROWS GET TO TRY ARE DIFFERENT FACTS, AND NEITHER ALONE IS A
 // COVERAGE STATEMENT (derived 2026-08-18, sharp-raven-273, from two instruments run against the
@@ -340,7 +340,7 @@ type WitnessRowCostVerdict
 // witness threshold is stated on, and handing one to this comparator against a wall observation now
 // REFUSES instead of answering. WHERE THIS WALL RUNS, stated so the rung is neither inflated nor
 // understated (DESIGN section 4b). It is reached in the witness corpus by
-// dag/test/claim/witness_row_cost_drift.dag AND on the production falsifier cadence,
+// dag/test/claim/witness_row_cost_drift_test.dag AND on the production falsifier cadence,
 // which is the half that took a second pass: the seed's write_witness_row_cost_drift_receipt_at
 // used to call only witness_row_cost_exceeds_basis, the bare ratio predicate, and rebuild
 // DriftExceeded / WithinBasis / BasisAbsent as Rust string literals -- a second representation of

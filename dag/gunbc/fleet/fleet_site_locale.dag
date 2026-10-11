@@ -12,7 +12,7 @@ import std.types { NonEmptyStr, Bool, List, Int }
 // scan. CALLING THAT MODULE INNOCENT WAS WRONG and the correction is load-bearing: it carries a
 // pre-existing UNDECLARED BARE TYPE REFERENCE that resolved only because the declaration was
 // globally unique in the module pool -- the class witnessed by
-// test.claim.undeclared_bare_type_reference_class_witness. The failure had TWO CONJUNCTIVE
+// test.claim.undeclared_bare_type_reference_class_witness_test. The failure had TWO CONJUNCTIVE
 // CONDITIONS and removing either prevents it. The causes are not symmetric: this module
 // introduced a new authority fork, while host_standup carried resolution debt the
 // global-uniqueness fallback admits, and a consumer's latent defect never makes a duplicate

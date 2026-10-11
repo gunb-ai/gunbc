@@ -39,7 +39,7 @@ import gunbc.roadmap.roadmap_launch_canary {
   roadmap_launch_canary_parent_lineage,
   roadmap_launch_canary_parent_centering_plan, roadmap_launch_canary_child_centering_plan,
 }
-import test.manual.roadmap_launch_canary_oracle {
+import test.manual.roadmap_launch_canary_oracle_test {
   roadmap_launch_canary_nonce,
   roadmap_launch_canary_expected_sentinel,
   roadmap_launch_canary_sentinel_completed,
@@ -116,7 +116,7 @@ fn canary_child() -> RoadmapNode {
 fn accepted_signoff() -> Signoff {
   SignedOff {
     by: "operator",
-    works: RedControlExecuted { witness_module: "test.manual.roadmap_launch_canary_oracle", witness_fn: "roadmap_launch_canary_oracle_completed", executed_on: "2026-08-29" },
+    works: RedControlExecuted { witness_module: "test.manual.roadmap_launch_canary_oracle_test", witness_fn: "roadmap_launch_canary_oracle_completed", executed_on: "2026-08-29" },
     scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] },
     as_expected: true,
   }

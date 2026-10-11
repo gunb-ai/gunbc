@@ -64,7 +64,7 @@ fn node_keyed_store_node_count<V>(store: NodeKeyedStore<V>) -> Int {
 // by its content hash, children referenced BY HASH and never inline; a decode rebuilds the
 // structural sharing. Witness homes, precisely: the SIZE/TOPOLOGY/REFUSAL witnesses
 // (shared-row-counted-once with the tree-double-count RED, missing-ref refusals, interning check)
-// execute in v2.test.claim.realization_runner_witness; the two SHARING witnesses are
+// execute in v2.test.claim.realization_runner_witness_test; the two SHARING witnesses are
 // pointer-identity facts only a host realization can observe, so they executed in the seed test
 // module src/v1/tests/src/node_keyed_graph_artifact_codec_test.rs, DELETED 2026-08-11 by the
 // gunbc#8146 test-suite cutover — that module was gated by --no-run and never actually ran, so the

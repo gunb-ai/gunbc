@@ -21,7 +21,7 @@ import v2.std.grounding {
   RuntimeVerdicts,
   host_verdict_surface_runtime_authoritative
 }
-import v2.extdeps.languages.rust_test { rust_minimal_target_model_staging }
+import v2.extdeps.languages.rust_test_fixtures { rust_minimal_target_model_staging }
 
 import v2.std.verification {
   BoolWitness,

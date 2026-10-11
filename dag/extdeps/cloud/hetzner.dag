@@ -141,10 +141,10 @@ data cax41_catalog: HetznerCloudServerCatalogRow = HetznerCloudServerCatalogRow 
 // named cax41_catalog became cax41_catalog_superseded and a NEW row took the old name, so every
 // consumer of that name now reads a different tariff. Three consumers existed at the rename and all
 // three are accounted for:
-//   test.claim.hetzner_cost_quote_witness - updated in the same change; its pinned literal moved
+//   test.claim.hetzner_cost_quote_witness_test - updated in the same change; its pinned literal moved
 //     50500 -> 65700 deliberately, and it now ALSO asserts the superseded row at 50500, so a silent
 //     swap of one row for the other reds rather than passing.
-//   test.claim.hetzner_listing_witness - authored in the same change; asserts both rows by identity.
+//   test.claim.hetzner_listing_witness_test - authored in the same change; asserts both rows by identity.
 //   strategy.node_rental (private tree) - imported the name but had already stopped reading it;
 //     the dead import and the prose naming it were removed in the same landing.
 // No consumer silently changed meaning. A future rename here owes the same census.

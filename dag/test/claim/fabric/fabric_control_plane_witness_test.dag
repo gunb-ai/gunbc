@@ -435,9 +435,9 @@ test fn the_encumbered_liability_is_the_full_selection_cost() -> Bool {
 // real hold. end_cell_hold now reads the store itself, so its walls -- another
 // reservation's hold, an already-free slot, the right owner at another
 // generation, and the money fence refusing before the slot is freed -- are
-// evidenced on a real store in test.claim.fabric.fabric_control_plane_wet_witness,
+// evidenced on a real store in test.claim.fabric.fabric_control_plane_wet_witness_test,
 // and the protocol's own walls on supplied values in
-// test.claim.durable_exclusive_hold_witness.
+// test.claim.durable_exclusive_hold_witness_test.
 
 // SETTLEMENT'S OWN WALLS. The receipt admission is where settlement differs
 // from release, so it is where the rows go: everything downstream of an

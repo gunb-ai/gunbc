@@ -208,7 +208,7 @@ data spark_pair_serving_declared_enforcers: List<MemoryEnforcerKind> = [KernelOo
 //
 // AND EMPTYING THIS ROW IS NOT SILENT TODAY, which is worth knowing before you assume you are the only
 // guard. Two enrolled witnesses go RED rather than vacuous:
-// test.claim.spark.spark_pair_serving_desired_witness asserted length(spark_pair_serving_groups) == 1 until
+// test.claim.spark.spark_pair_serving_desired_witness_test asserted length(spark_pair_serving_groups) == 1 until
 // the row WAS emptied (Group A decommissioned, 2026-10-07); it now asserts == 0 and that Group B is not in
 // the roster, so the empty state is a claim rather than a vacuum, and
 // test.claim.spark.serving_deployment_selection_witness_test reaches the roster through `any`, which is FALSE on

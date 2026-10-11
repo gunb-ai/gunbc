@@ -47,7 +47,7 @@ data exact_duplicate_match_arm_not_refused: RecurringFailureMode = RecurringFail
 
     "**RECURRENCE, FOUR DAYS LATER, SAME AUTHOR, FOUND THE SAME WAY -- BY A REVIEWER READING THE ARM LIST** (gunbc#10723, review 61771, 2026-09-07).",
 
-    "`unrealized_actuator_steps_refuse_rather_than_reporting_absent` in `test.claim.nbd_proxy_virtual_media_install` carried `ActuatorStepRefused { cause: ActuatorStepActuatorHostUnsatisfiable }` TWICE in each of two of its three match blocks -- copy residue from pasting the new arm, at a different indentation from the arm it duplicated.",
+    "`unrealized_actuator_steps_refuse_rather_than_reporting_absent` in `test.claim.nbd_proxy_virtual_media_install_test` carried `ActuatorStepRefused { cause: ActuatorStepActuatorHostUnsatisfiable }` TWICE in each of two of its three match blocks -- copy residue from pasting the new arm, at a different indentation from the arm it duplicated.",
 
     "The witness ran GREEN with the duplicates present, which is the whole point: the recurrence is not evidence that the earlier filing was wrong, it is evidence that a filed class with a named trigger and no built wall keeps producing specimens.",
 

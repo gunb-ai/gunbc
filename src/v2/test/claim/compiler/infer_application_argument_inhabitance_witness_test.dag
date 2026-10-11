@@ -382,7 +382,7 @@ test fn inhabitance_product_produced_at_a_collection_formal_refuses_holds() -> B
 // declared_type_inhabitance_declared_carrier). The obligation is SUPPLIED: from source a call to a
 // named fn does not reach the judge yet (infer reads no formals off a callee reference), so the
 // argument position is claimed at the relation's interface, and the real route's inhabitance is
-// v2.test.claim.body_let_annotation (5e), which runs the same rule from source at the other three
+// v2.test.claim.body_let_annotation_test (5e), which runs the same rule from source at the other three
 // positions. `Pos` stands for a refinement whose declaration states carrier Int, `Pos2` one whose
 // carrier is Pos, `Neg` a sibling refinement of Int. RED BEFORE: the relation had no carrier arm, so
 // a Pos argument at an Int formal refused.

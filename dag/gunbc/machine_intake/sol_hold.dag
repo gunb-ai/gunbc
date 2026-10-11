@@ -68,7 +68,7 @@ import v2.extdeps.languages.bash_build {
 //
 // THE EXECUTABLE IS AN INPUT so the launch can be exercised against a probe: the boot passes
 // `ipmitool` (resolved on the runner's PATH, as every extdeps.bmc.ipmi operation is), and
-// test.claim.machine_intake.sol_hold_stdin_wet_witness passes a process that reports what arrived
+// test.claim.machine_intake.sol_hold_stdin_wet_witness_test passes a process that reports what arrived
 // on its stdin -- the executed evidence that the stdin supplies zero bytes and no EOF.
 
 data mtcollins1_sol_hold_shell_emit_scaffold: Disposition = Scaffold {

@@ -1,0 +1,154 @@
+module test.claim.documentary_refs_witness_test
+
+import std.types { Bool, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.lens.module_graph { ModuleDeclarationFact }
+import v2.std.decl_index { DeclFact, FnItem, TypeItem, decl_facts_at }
+import v2.lens.enforcement.receipts { enforcement_red_probe_body_leaf }
+import v2.std.decl_ref_resolution { cited_declaration_ref_refusal_count }
+import gunbc.documentary_refs {
+  documentary_ref_symbol_text,
+  generated_document_declaration_refs,
+}
+import gunbc.design_document { expected_design_md }
+import gunbc.design_ruling { design_rulings }
+
+// THE PERTURBATIONS ARE THE POINT, AND EACH RUNS AGAINST THE SAME RESOLVER PRODUCTION USES.
+// cited_declaration_ref_refusal_count is v2.std.decl_ref_resolution's own counter -- the one the
+// required cited-symbol gate calls -- so a refusal proved here is a refusal on the real acceptance
+// path rather than a second algorithm agreeing with it. The fact populations below are planted
+// rather than live because the SUBJECT of these claims is the mechanism: that a reference which
+// cannot resolve refuses, and that the same reference against an intact population does not. The
+// smallest crossing specimen is the requirement plus one.
+
+fn fixture_modules() -> List<ModuleDeclarationFact> {
+  [
+    ModuleDeclarationFact { module: "v2.std.symbol_index", path: "src/v2/std/symbol_index.dag" },
+    ModuleDeclarationFact { module: "v2.compiler.resolve", path: "src/v2/compiler/resolve.dag" },
+    ModuleDeclarationFact { module: "gunbc.roadmap.roadmap_authority", path: "dag/gunbc/roadmap/roadmap_authority.dag" },
+    ModuleDeclarationFact { module: "gunbc.v1.v1_maintenance_standing", path: "dag/gunbc/v1/v1_maintenance_standing.dag" },
+    ModuleDeclarationFact { module: "gunbc.emitted_subject_build_gate", path: "dag/gunbc/emitted_subject_build_gate.dag" },
+    ModuleDeclarationFact { module: "gunbc.design_ruling", path: "dag/gunbc/design_ruling.dag" },
+  ]
+}
+
+fn fixture_fact(qualified_name: String, name: String, path: String) -> DeclFact {
+  DeclFact {
+    qualified_name: qualified_name,
+    name: name,
+    kind: FnItem,
+    node: enforcement_red_probe_body_leaf,
+    rel_path: path,
+  }
+}
+
+// The declarations the generated document names, present exactly once each, one per row of
+// generated_document_declaration_refs(). This is the
+// control that proves the refusals below are caused by the perturbation rather than by a fixture
+// that never resolved anything.
+fn fixed_facts() -> List<DeclFact> {
+  [
+    fixture_fact(
+      qualified_name: "gunbc.v1.v1_maintenance_standing.v1_seed_standing",
+      name: "v1_seed_standing",
+      path: "dag/gunbc/v1/v1_maintenance_standing.dag",
+    ),
+    fixture_fact(
+      qualified_name: "gunbc.emitted_subject_build_gate.emitted_subject_build_rows",
+      name: "emitted_subject_build_rows",
+      path: "dag/gunbc/emitted_subject_build_gate.dag",
+    ),
+  ]
+}
+
+// The ruling rows' facts come from the same roster the document's references do, so a ruling
+// added to gunbc.design_ruling design_rulings() is resolved and render-checked with no edit here.
+fn ruling_facts() -> List<DeclFact> {
+  map(design_rulings(), r => fixture_fact(
+    qualified_name: concat("gunbc.design_ruling.", r.reference.decl_name as String),
+    name: r.reference.decl_name as String,
+    path: "dag/gunbc/design_ruling.dag",
+  ))
+}
+
+fn intact_facts() -> List<DeclFact> {
+  concat(fixed_facts(), ruling_facts())
+}
+
+fn refusals_against(facts: List<DeclFact>) -> Int {
+  cited_declaration_ref_refusal_count(
+    refs: generated_document_declaration_refs(),
+    facts: facts,
+    modules: fixture_modules(),
+  )
+}
+
+test fn documentary_refs_intact_population_resolves_clean() -> Bool {
+  refusals_against(facts: intact_facts()) == 0
+}
+
+// THE PRODUCT RED. A referenced system is renamed -- here by removing the declaration the document
+// names and leaving the rest of the population intact -- and NO DOCUMENT SOURCE IS EDITED. The
+// refusal count rises, which is the whole claim: the generated paragraph names its systems through
+// typed rows, so the rename reaches the required gate rather than leaving a sentence quietly
+// describing a declaration that no longer exists. Before this change that same rename moved
+// nothing, because the name lived inside a string literal.
+
+fn facts_without(qualified_name: String) -> List<DeclFact> {
+  fold(intact_facts(), init: [], f: fn(acc, f) {
+    if f.qualified_name == qualified_name { acc } else { concat(acc, [f]) }
+  })
+}
+
+test fn documentary_refs_renamed_system_refuses() -> Bool {
+  let clean = refusals_against(facts: intact_facts())
+  let renamed = refusals_against(
+    facts: facts_without(qualified_name: "gunbc.v1.v1_maintenance_standing.v1_seed_standing")
+  )
+  clean == 0 && renamed == 1
+}
+
+// THE SECOND PERTURBATION, AND IT IS A DIFFERENT FAILURE FROM THE FIRST. A system forked into two
+// same-named declarations still EXISTS -- an existence check passes and a grep passes -- so only a
+// resolver that answers zero/one/many catches it. The document's reference no longer identifies one
+// system, which is exactly the §3 fork the citation rule is about, and it must refuse rather than
+// pick the first.
+
+test fn documentary_refs_ambiguous_system_refuses() -> Bool {
+  let forked = concat(
+    intact_facts(),
+    [
+      fixture_fact(
+        qualified_name: "gunbc.v1.v1_maintenance_standing.v1_seed_standing",
+        name: "v1_seed_standing",
+        path: "dag/gunbc/v1_maintenance_standing_fork.dag",
+      ),
+    ]
+  )
+  refusals_against(facts: forked) == 1
+}
+
+// THE BYTES COME FROM THE ROWS, WHICH IS WHAT MAKES THE ROWS LOAD-BEARING RATHER THAN DECORATIVE. A
+// typed reference sitting beside a paragraph that independently spells the same name is two
+// representations of one fact -- the rename would move the row and leave the sentence, and the
+// enrolled population would resolve while the document lied. This claim asserts the rendered symbol
+// text of EVERY row appears in the generated document, so the row and the printed name cannot
+// diverge, and a row no paragraph renders is a red rather than an orphan.
+
+test fn documentary_refs_generated_document_renders_the_rows() -> Bool {
+  let md = expected_design_md()
+  all(generated_document_declaration_refs(), r => string_contains(s: md, pattern: documentary_ref_symbol_text(reference: r)))
+}
+
+
+// THE INHABITANCE HALF. The fixture above derives the ruling facts from the rows' own references, so
+// it proves the resolver's behaviour, not that a row's reference names the row: a row whose
+// decl_name drifted from its declaration would plant its own matching fact and stay green. This
+// claim reads the live declaration pool, keyed, so each ruling reference must name exactly one real
+// declaration.
+test fn documentary_refs_ruling_references_name_live_declarations() -> Bool {
+  all(design_rulings(), r => length(xs: decl_facts_at(
+    pool_roots: ["dag"],
+    qualified_name: concat("gunbc.design_ruling.", r.reference.decl_name as String),
+  )) == 1)
+}

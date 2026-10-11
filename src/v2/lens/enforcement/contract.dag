@@ -141,7 +141,7 @@ data lens_contract_emitted_binary_effect_confinement: LensContract = {
   claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: BoundConsumerWitness {
     witness: ScheduleWitnessEntry {
-      entry: "src/v2/test/claim/emitted_binary_effect_confinement_red_control.dag",
+      entry: "src/v2/test/claim/emitted_binary_effect_confinement_red_control_test.dag",
       function: "emitted_binary_effect_confinement_authority_points_at_host_transport",
       kind: CorpusWitnessKind
     }

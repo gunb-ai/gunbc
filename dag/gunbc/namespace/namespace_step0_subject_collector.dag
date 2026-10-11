@@ -58,7 +58,7 @@ import gunbc.instruments.multi_module_compile_fixture { FixtureSource }
 // declared budget -- batched object reads rather than one dispatch per member is the mechanism, and
 // a scheduled CI dispatch of the canary run whose per-run receipt is the executing consumer is the
 // other shape. Until one exists, the PURE half carries the enrolled evidence
-// (test.claim.namespace_step0_subject_collector_witness: the entry decoder, the subject filter, the
+// (test.claim.namespace_step0_subject_collector_witness_test: the entry decoder, the subject filter, the
 // declared-root and empty-population refusals, the blob-kind rule) and the live half is executed by
 // hand on the canary's own route.
 type Step0SubjectPinRefusal

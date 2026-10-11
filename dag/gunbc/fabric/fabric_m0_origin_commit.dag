@@ -138,7 +138,7 @@ type OriginCommitObservation sole_constructor {
 //
 // CONSUMERS (DESIGN 3c): gunbc.instruments.fabric_m0_origin_object_probe canary_ending, the identified canary
 // whose process conclusion follows the JobEnding built over this observation. The pure fold above
-// is exercised by test.claim.fabric_m0_origin_commit_witness across every PUT x fetch arm.
+// is exercised by test.claim.fabric_m0_origin_commit_witness_test across every PUT x fetch arm.
 fn commit_manifest_to_origin(
   namespace: CommitNamespace,
   attempt: AttemptIdentity,
@@ -241,7 +241,7 @@ fn fabric_durable_origin_route() -> ProviderRoute {
 // is editing, and is not taken here.
 //
 // CONSUMERS (DESIGN 3c): gunbc.instruments.fabric_m0_origin_object_probe canary_ending; the fold above is
-// exercised by test.claim.fabric_m0_origin_commit_witness.
+// exercised by test.claim.fabric_m0_origin_commit_witness_test.
 type OriginObjectCommit sole_constructor {
   readback: OriginReadback
   credential: WriteCredentialCustody

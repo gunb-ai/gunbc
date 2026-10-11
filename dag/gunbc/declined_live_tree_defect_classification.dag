@@ -116,19 +116,19 @@ data permanent_evidence_ruling_question: String = "STATED AS A VIOLATION THAT AL
 
 data doc_reachability_rows: List<ClassifiedRow> = [
   ClassifiedRow {
-    identity: identity(module_path: "test.claim.doc_reachability_witness", function: "doc_graph_registered_plan_roots_all_admitted"),
+    identity: identity(module_path: "test.claim.doc_reachability_witness_test", function: "doc_graph_registered_plan_roots_all_admitted"),
     classification: RealDefect { subject: StaleAuthorityAfterDeletion },
     measured_evidence: "228 declared roots, 209 admitted; the 19 unadmitted are exactly the docs/probes/ files the 2026-08-24 bankruptcy deleted, enumerated by walking doc_graph_roots_all() against the worktree",
     disposition: NeedsOperatorRuling { question: permanent_evidence_ruling_question }
   },
   ClassifiedRow {
-    identity: identity(module_path: "test.claim.doc_reachability_witness", function: "doc_graph_has_no_dangling_links"),
+    identity: identity(module_path: "test.claim.doc_reachability_witness_test", function: "doc_graph_has_no_dangling_links"),
     classification: RealDefect { subject: StaleAuthorityAfterDeletion },
     measured_evidence: "16 dangling .md links: 12 into deleted docs/probes/ targets, 4 at docs/plans/ci-selection-vs-scheduling.md (one of them from ROADMAP.md itself)",
     disposition: RoutedToOwner { owner: "the measurement-bankruptcy cut's owner: the residue DESIGN already names as the next cut" }
   },
   ClassifiedRow {
-    identity: identity(module_path: "test.claim.doc_reachability_witness", function: "doc_graph_has_no_orphan_docs"),
+    identity: identity(module_path: "test.claim.doc_reachability_witness_test", function: "doc_graph_has_no_orphan_docs"),
     classification: RealDefect { subject: StaleAuthorityAfterDeletion },
     measured_evidence: "35 orphans against the admitted root set; 8 are docs/briefs/ authored 2026-08-24 with no bind at all, 2 are the surviving docs/probes/ files, the rest are docs/plans/ rows never registered",
     disposition: RoutedToOwner { owner: "doc-graph roots authority (gunbc.doc_graph_roots) plus each orphan's authoring lane" }
@@ -168,13 +168,13 @@ data doc_reachability_rows: List<ClassifiedRow> = [
 // and no hand-authored exemption roster can drift or absorb a new finding.
 data lens_module_gate_rows: List<ClassifiedRow> = [
   ClassifiedRow {
-    identity: identity(module_path: "v2.test.claim.enforcement.lens_module_gate_witness", function: "lens_module_gate_holds_live"),
+    identity: identity(module_path: "v2.test.claim.enforcement.lens_module_gate_witness_test", function: "lens_module_gate_holds_live"),
     classification: WrongWitness { fault: CriterionCannotHoldOnLiveCorpus { measured: 42, denominator: 58 } },
     measured_evidence: "decomposed by execution on main: lens_module_gate_unenrolled_count() == 0 PASS, lens_module_gate_unjustified_count() == 0 PASS, lens_module_gate_redundant_blocking_count() == 0 FAIL; the 42 offending pairs were re-derived independently from the registry order and the surface table",
     disposition: RoutedToOwner { owner: "v2.lens.enforcement.lens_module_gate -- the fix is at the criterion (surface declared on-carrier, its own dissolution condition); adding exemption rows is ruled out" }
   },
   ClassifiedRow {
-    identity: identity(module_path: "v2.test.claim.enforcement.lens_module_gate_witness", function: "question_zero_verdict_live_holds"),
+    identity: identity(module_path: "v2.test.claim.enforcement.lens_module_gate_witness_test", function: "question_zero_verdict_live_holds"),
     classification: WrongWitness { fault: CriterionCannotHoldOnLiveCorpus { measured: 42, denominator: 58 } },
     measured_evidence: "same redundant_claim leg; this witness passes facts: [] so its unenrolled and unjustified legs are vacuously clean and only the shared leg can fail",
     disposition: RoutedToOwner { owner: "v2.lens.enforcement.lens_module_gate -- same criterion, same prohibition on exemption rows" }

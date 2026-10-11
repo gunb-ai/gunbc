@@ -82,8 +82,6 @@ fn nid(s: String) -> RoadmapNodeId { s }
 
 data namespace_kernel_authority_amendment_note: String = "THE KERNEL BAR AS FIRST WRITTEN DEADLOCKED ITS OWN SUCCESSOR, and this amendment is the fix (operator ruling, 2026-08-01). The recut landed namespace-binding-kernel with a red_control ending 'no second place in the compiler makes that same decision' and a handback demanding 'evidence that nothing else decides the same question'. That bar cannot be met while the bootstrap seed keeps its own hand-written none/one/many mirror inside the v1 adapter, and that mirror cannot be deleted until generic emission carries the canonical carrier with its required bounds. But namespace-reference-derived-closure DEPENDS on the kernel. So on the day the recut merged, the next step was already unstartable for a reason that had nothing to do with what the next step needs: deriving candidate populations does not require the seed mirror to be gone, it requires the canonical decision to EXIST and be callable.\n\nTHE CUT IS AUTHORITY VERSUS RETIREMENT. Owning the canonical decision and removing every rival implementation of it are separate achievements with separate evidence, and fusing them made an acceptance bar that no amount of correct kernel work could satisfy. The kernel now owns being the one canonical authority; namespace-legacy-choice-retirement owns deleting the older mechanisms, and the seed mirror is named there as one of its rows. A new node was deliberately NOT minted: that node already reads 'delete every other way of deciding what a name means' and already inventories every remaining place that decides, so the mirror is a row it should always have carried, and minting a sibling would have been a second home for one concept.\n\nTHE ADAPTER IS NOT THEREBY BLESSED. It remains a declared scaffold with its dissolution trigger on its own carrier, counted and visible; moving WHERE its retirement is tracked does not lower what is owed. What changes is only that a temporary bootstrap realization no longer gates work that does not depend on it.\n\nTWO ACCEPTANCE SENTENCES WERE ALSO WRONG AND ARE CORRECTED HERE. The red_control said 'a malformed name refuses', but this boundary accepts occurrence identities and derives no name spelling at all, so it named a check no implementation executes — it now reads malformed occurrence TRANSPORT. And the bar now states the two refusals that distinguish a malformed supplied population from a real verdict: a candidate handed in the wrong role refuses distinctly from one that is absent, and the same declaration supplied twice refuses as malformed rather than counting as two. Only two DISTINCT declaration identities are ambiguity. Collapsing either of those into an ordinary verdict would let a defective candidate producer read as a legitimate naming answer, which is the state-space conflation this whole lane exists to remove."
 
-data five_minute_ci_gate_program_note: String = "PROGRAM BOUNDARY, NOT A SINGLE PR (operator dispatch K, 2026-08-01; sequence revision eager-boar-610, 2026-08-01; contract re-anchored by operator ruling 2026-08-02). Product contract: every required operation performs the bare minimum computation needed to serve it — no recomputation of any semantic fact whose inputs did not change; wall-clock falls out of the realization/materialization goals rather than defining them. Five minutes is NOT the contract — it is the distress ceiling ('this is hard / not working well'), retained only as the Stage C checkpoint bound. Sub-lane roster, revised by the CI2-0 STOP (operator ruling 2026-08-10, superseding the 2026-08-08 CI-0 recut) — UNORDERED: dispatch order follows the graph edges, and THE NATIVE ROW NO LONGER PRECEDES THIS GATE. That edge is deleted, on a measurement rather than a preference: a 3,290s floor carries 97s of witness evaluation, so an infinitely fast evaluator leaves ~97 percent of the floor standing and native execution cannot be this gate's prerequisite. The one-PR CI-0 shape is retired with it — #8043/#8080 attempted it, the cohort was empty at the real frontier, and native-selected-witness-bundle is re-cut as the named self-host frontier it always was. The lanes: #7522 warm-merge-admission with net wall receipt; #7534 continued as materialization substrate under module-grain (hierarchy: module parse/type/interface → resolved entry → native bundle; no default CI savings until ordinary invocations consume it); union CLOSED per #7533 → per-entry-assembly narrow lane; this parent registration. Native-at-small-scale evidence has LANDED; operational migration rate remains OPEN with equivalence/fallback/identity/memory fail-closed. The landed change, its merge commit, the head the witnesses actually executed at, and the cited executing witness are execution evidence, not design criteria: they live in ONE typed receipt, gunbc.native_witness_transition_receipt native_at_small_scale_transition_receipt, and are restated neither here nor in gunbc.design_document (operator ruling on gunbc#7710, 2026-08-02 — this note and the design document previously carried independent hand-maintained copies of the same advancing status). Staged expectations (not flat 30–35min): Stage A modest admission saving only; Stage B first order-of-magnitude witness reduction after production native cutover; Stage C five-minute gate when the whole Stage C conjunction holds. Dispositions: entry-graph-union CLOSED; retention PARKED (#7581)."
-
 // THE BROAD NAMESPACE NODE WAS TOO COARSE TO CLOSE HONESTLY, and the recut is the fix (operator
 // ruling, 2026-07-31). namespace-canonical-binding previously combined two separable things in one
 // boundary: working out which declarations a name can see, and calling one decision function on
@@ -257,7 +255,7 @@ fn dogfood_route_execution_contract() -> WorkItemExecutionContract {
 
 fn v1_rust_source_observation_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/stage0_rust_host_observation_live_witness.dag" as FilePath,
+    entry: "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag" as FilePath,
     function: "live_rust_observation_matches_actions_subject" as NonEmptyStr,
   )
 }
@@ -266,7 +264,7 @@ data namespace_structural_observations_execution_contract_note: String = "BOUND 
 
 fn namespace_structural_observations_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/namespace_structural_observations_acceptance.dag" as FilePath,
+    entry: "dag/test/claim/namespace_structural_observations_acceptance_test.dag" as FilePath,
     function: "namespace_structural_observations_closing_contract_holds_on_one_ordinary_compiled_file" as NonEmptyStr,
   )
 }
@@ -284,7 +282,7 @@ fn namespace_structural_observations_execution_contract() -> WorkItemExecutionCo
 
 fn namespace_reference_derived_closure_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/namespace_reference_derived_closure_acceptance.dag" as FilePath,
+    entry: "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag" as FilePath,
     function: "witness_namespace_reference_derived_closure_closing_contract_holds" as NonEmptyStr,
   )
 }
@@ -311,7 +309,7 @@ fn namespace_reference_derived_closure_execution_contract() -> WorkItemExecution
 
 fn v1_interpreter_primitive_roster_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/v1_interpreter_primitive_roster_acceptance.dag" as FilePath,
+    entry: "dag/test/claim/v1_interpreter_primitive_roster_acceptance_test.dag" as FilePath,
     function: "v1_interpreter_primitive_roster_acceptance_contract_holds" as NonEmptyStr,
   )
 }
@@ -336,7 +334,7 @@ fn service_evidence_capture_execution_contract() -> WorkItemExecutionContract {
 
 fn v1_interpreter_primitive_dispatch_authority_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/v1_interpreter_primitive_dispatch_authority_acceptance.dag" as FilePath,
+    entry: "dag/test/claim/v1_interpreter_primitive_dispatch_authority_acceptance_test.dag" as FilePath,
     function: "v1_interpreter_primitive_dispatch_authority_acceptance_contract_holds" as NonEmptyStr,
   )
 }
@@ -385,7 +383,7 @@ fn v1_interpreter_primitive_dispatch_authority_execution_contract() -> WorkItemE
 
 fn v2_emitter_producer_provenance_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "src/v2/test/claim/self_host/emitter_producer_provenance_witness.dag" as FilePath,
+    entry: "src/v2/test/claim/self_host/emitter_producer_provenance_witness_test.dag" as FilePath,
     function: "witness_restored_binding_without_executed_receipt_does_not_authorize_reds" as NonEmptyStr,
   )
 }
@@ -1010,7 +1008,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "Each of the four cases fails on its own when the rule is broken: a neighbour written earlier goes missing, a declaration from another branch leaks in, one written further down leaks in, or two same-spelled declarations merge into one.",
         out_of_scope: "Names answered by another file, and working out what a file depends on — both belong to the next row. Does not change the check that closes the parent row, and does not stand in for the cases it does not cover.",
         handback: "One ordinary compiled file producing all four observations, each case shown failing on its own, and the closing check written and bound."
-      ), on: "2026-09-30", note: "Awaiting the operator's acceptance event: namespace_structural_observations_closing_contract_holds_on_one_ordinary_compiled_file (dag/test/claim/namespace_structural_observations_acceptance.dag), its bound contract; evidence #9554.")),
+      ), on: "2026-09-30", note: "Awaiting the operator's acceptance event: namespace_structural_observations_closing_contract_holds_on_one_ordinary_compiled_file (dag/test/claim/namespace_structural_observations_acceptance_test.dag), its bound contract; evidence #9554.")),
       dispatch: dispatchable(),
       execution: bound(contract: namespace_structural_observations_execution_contract()),
       parent: in_project(project: "namespace-unique-on-chain", contribution: "Observing all four in-view cases on one ordinary compiled file -- rather than on hand-built examples -- is the evidence base the program's derived closure and canonical changeover stand on."),
@@ -1026,7 +1024,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           boundary: "XL-4 of gunbc.namespace.namespace_cut_stage. For every reference, record which declaration answered it. Derive each file's dependency set from those answers alone, identical whichever unrelated files are loaded. This absorbs cross-file provenance (clause e) and pool independence (clause f).",
           displaced_cost: "Hand-written dependency statements can disagree with what files actually reference, and hundreds were patched by hand to keep them in step.",
           first_slice: "Replace one typed-unavailable row in the six-arm witness's admission seam with a production observation from the ordinary compile route (XL-4 producer #11461/#12186/#12048), starting with clause (e).",
-          red_control: "The six-arm witness (dag/test/claim/namespace_reference_derived_closure_acceptance.dag) stays red until all six clauses come from production observations. A pool perturbation that changes an answer while the file set stays the same is caught.",
+          red_control: "The six-arm witness (dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag) stays red until all six clauses come from production observations. A pool perturbation that changes an answer while the file set stays the same is caught.",
           out_of_scope: "Bounding the producer's memory; ambiguity discharge; any wave.",
           handback: "The witness green on production, its expect-red enrolment retired, and the ReferenceGraphDigest over one base ready for ACT-0."
         ), on: "2026-09-30", note: "Not yet centered: witness is expected-red on production seams; next step is an XL-4 producer, not a bounded fix.")),
@@ -1366,7 +1364,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "A module owned by two pieces, or by none, refuses. A cycle between pieces refuses. A declaration one piece needs and another does not expose must fail the build rather than be papered over by exporting everything. And a one-line edit to a leaf must be shown to rebuild that leaf's owner and the pieces that depend on it — NOT the whole compiler, which is what a single package always does and is why crate count alone is not the claim.",
         out_of_scope: "Not inventing piece names up front, not copying the old compiler's hand-made layout, and not blocking the first real module flip or the initial native CI routing — those establish different facts and can run on the one-package artifact meanwhile, provided that artifact is carried as a temporary probe with this step as its end condition.",
         handback: "The derived module graph, the split and what selected it, the generated workspace, a build and behavioral run of the same corpus through it, a deliberately broken cross-piece export that fails, and a receipt showing a leaf edit rebuilding only its own dependents."
-      ), on: "2026-09-30", note: "Awaiting the operator's acceptance event: src/v2/test/claim/stage0_partition_rebuild_scope_witness.dag over gunbc.stage0_partition_rebuild_scope; evidence Pkg7a/b #11961, Pkg7d/e #12214.")),
+      ), on: "2026-09-30", note: "Awaiting the operator's acceptance event: src/v2/test/claim/stage0_partition_rebuild_scope_witness_test.dag over gunbc.stage0_partition_rebuild_scope; evidence Pkg7a/b #11961, Pkg7d/e #12214.")),
       dispatch: dispatchable(),
       parent: in_project(project: "v2-emitter-production", contribution: "The emitted closure split into crates is what makes each generation buildable."),
       centering: plan(text: "Run the named test process on src/v2/test/claim:stage0_partition_rebuild_scope_witness_test (covers gunbc.stage0_partition_rebuild_scope). Confirm green at head, and that the partition from Pkg7a/b (#11961) and Pkg7d/e (#12214) is the one gunbc.stage0.stage0_partition_package_graph builds. Change nothing. Hand back the receipt. Stop if red."),
@@ -1418,7 +1416,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "A read that fails must not come back as an empty or partial set. Discovery and classification are separate axes and are checked separately: finding every tracked file is one question, and every found file carrying a disposition is a different one, so a roster that is complete but unclassified fails the second while passing the first.",
         out_of_scope: "Deciding what each file's fate should be, and the product-reachability question, both belong downstream. This node only makes the population honest.",
         handback: "The live observation, its typed refusals, and a count that comes from enumerating the tracked set rather than from inspection."
-      ), on: "2026-09-30", note: "Awaiting the operator's acceptance event: live_rust_observation_matches_actions_subject (dag/test/claim/stage0_rust_host_observation_live_witness.dag).")),
+      ), on: "2026-09-30", note: "Awaiting the operator's acceptance event: live_rust_observation_matches_actions_subject (dag/test/claim/stage0_rust_host_observation_live_witness_test.dag).")),
       dispatch: dispatchable(),
       execution: bound(contract: v1_rust_source_observation_execution_contract()),
       parent: in_project(project: "v1-deletion-program", contribution: "Reading the hand-written population from the repository at a known revision -- and refusing a failed read -- is what makes the deletion frontier a count from observation instead of from inspection."),
@@ -1559,7 +1557,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "On single-family dispatch sites (eval_builtin_inner, eval_algebra_method_inner, try_v2_std_collection_map_primitive_grounding), a roster row with no Rust handler must fail COMPILATION, not a test. On eval_call_bridge and eval_call_native_intercept — shared enums with per-family macro subsets — the same mismatch degrades to runtime unreachable! until per-family enum split lands (named follow-up). A Rust handler that is not reachable through a generated arm identity must not be addable as another string-dispatch path. Editing alias order or an authored spelling must not change an arm identity. One spelling under two different forms must stay representable. An accepted shape or arity is either modeled on the roster or typed as unknown -- never guessed. And no Rust-only spelling denominator may remain anywhere: if one does, this node is not done.",
         out_of_scope: "Semantic primitive identity, which stays with the identity join. Deleting the interpreter, which is downstream. Any widening of what counts as a primitive: this node changes who decides, not the population. Per-family enum split for bridge/native-intercept compile-time exhaustiveness is follow-up, not a blocker for this node's narrowed bar.",
         handback: "The generated identity and lookup; site-scoped exhaustive handler match — compile-time refusal on single-family sites (witnessed in interpreter_dispatch_authority.rs), runtime unreachable! backstop on bridge/native-intercept with per-family enum split named as follow-up; deletion of the R0 macro authorities, the roster functions and the interpreter_dispatch_arm_rows self-reading bridge; a stated disposition for each of the two declared R0 residual rows -- either moved into the authority or retained with its own independently justified non-primitive reason; and the hand-Rust line delta the inversion removes."
-      ), on: "2026-09-30", note: "Awaiting the operator's acceptance event: v1_interpreter_primitive_dispatch_authority_acceptance_contract_holds (dag/test/claim/v1_interpreter_primitive_dispatch_authority_acceptance.dag); evidence #7682.")),
+      ), on: "2026-09-30", note: "Awaiting the operator's acceptance event: v1_interpreter_primitive_dispatch_authority_acceptance_contract_holds (dag/test/claim/v1_interpreter_primitive_dispatch_authority_acceptance_test.dag); evidence #7682.")),
       dispatch: dispatchable(),
       execution: bound(contract: v1_interpreter_primitive_dispatch_authority_execution_contract()),
       parent: in_project(project: "v1-deletion-program", contribution: "Moving the primitive denominator from Rust into the model stops the roster growing behind every consumer's back, so the deletion frontier is a derived population rather than a judgment call."),
@@ -2412,6 +2410,22 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "v2-compiler-live", contribution: "The compiler that goes live must hold the ordinary floor (DESIGN §4b). A self-hosted compiler that accepts wrong programs only makes those wrong programs cheaper to produce."),
     ),
     roadmap_node(
+      identity: "rn_ZBFRF5QZPMSD6FY93DR7GRATHV",
+      id: "v2-complexity-analysis-parity",
+      owner: "compiler-guarantee",
+      carriers: carrier(path: "dag/gunbc/plans/v2_complexity_capability_parity.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "Give the new compiler the cost analysis the old one had, and let something act on it",
+        boundary: "gunbc.plans.v2_complexity_capability_parity phases C1 to C6: v2.lens.cost derives a work, span and space summary for a function, evaluates it on concrete bounded inputs, and feeds a consumer that refuses a change which makes a linear function quadratic. This row also owns three items that plan assigned to the deleted discrete-cost-derivation note: the valuation environment, bounded-input evaluation (C3), and the witness-cost admission consumer.",
+        displaced_cost: "The v1 seed can report that a function is quadratic and v2 cannot, so a cost regression in v2-compiled code is found by a slow run instead of at compile time.",
+        first_slice: "Decide whether the plan absorbs the three inherited items or drops them, and record that in the plan; then the next unlanded phase after C0.",
+        red_control: "A planted accumulator-copy loop that the summary reports as linear keeps this red; so does a blocking mode with no live consumer.",
+        out_of_scope: "Not pricing CI lanes or scheduling the fleet, and not restoring the v1 floor's per-claim budgets.",
+        handback: "The derived summary on a real function, the bounded-input evaluation, and one live consumer that refused a planted regression."
+      ), on: "2026-10-10", note: "Added when the discrete-cost-derivation note was deleted (gunbc#13697). Not dispatchable until the plan records who owns the three inherited items.")),
+      parent: in_project(project: "compiler-guarantee", contribution: "A blown complexity bound is one of the classes DESIGN section 4b says the ladder reaches above the ordinary floor."),
+    ),
+    roadmap_node(
       identity: "rn_HP5MD938340H36VVD8B9ZAWHKZ",
       id: "native-seven",
       owner: "self-host",
@@ -2901,9 +2915,9 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           handback: "The deleted rows by path, each match total, and the frontier witness green."
         )),
       dispatch: dispatchable(),
-      execution: bound(contract: gunbc_claim_execution_contract(entry: "dag/test/claim/non_fold_residue_frontier.dag" as FilePath, function: "non_fold_residue_frontier_rows_well_formed_holds" as NonEmptyStr)),
+      execution: bound(contract: gunbc_claim_execution_contract(entry: "dag/test/claim/non_fold_residue_frontier_test.dag" as FilePath, function: "non_fold_residue_frontier_rows_well_formed_holds" as NonEmptyStr)),
       parent: in_project(project: "dp-m4-closed-matches-total", contribution: "The src/v2/lens mint-era rows are the first bounded batch of wildcard arms to total, in pure-reader code."),
-      centering: plan(text: "Target: the 13 nfr_reason_mint_era rows of gunbc.non_fold_residue non_fold_residue_frontier (dag/gunbc/non_fold_residue.dag) whose paths lie under src/v2/lens, and the matches they name. (1) For each row, open the named match, replace the wildcard arm with an arm per remaining variant of the closed coproduct (derive the variants from the type declaration, never from a guess), then delete the row. (2) If a row's wildcard is over an open or foreign type, leave the row and hand it back with the reason. (3) Acceptance: the named test process on dag/test/claim/non_fold_residue_frontier.dag, which must stay green; the stale-row check lives in the seed (nfr_roster_receipt in cli_run.rs), so also report the rows you deleted by path. Do NOT touch rows outside src/v2/lens and do NOT edit cli_run.rs."),
+      centering: plan(text: "Target: the 13 nfr_reason_mint_era rows of gunbc.non_fold_residue non_fold_residue_frontier (dag/gunbc/non_fold_residue.dag) whose paths lie under src/v2/lens, and the matches they name. (1) For each row, open the named match, replace the wildcard arm with an arm per remaining variant of the closed coproduct (derive the variants from the type declaration, never from a guess), then delete the row. (2) If a row's wildcard is over an open or foreign type, leave the row and hand it back with the reason. (3) Acceptance: the named test process on dag/test/claim/non_fold_residue_frontier_test.dag, which must stay green; the stale-row check lives in the seed (nfr_roster_receipt in cli_run.rs), so also report the rows you deleted by path. Do NOT touch rows outside src/v2/lens and do NOT edit cli_run.rs."),
     ),
     roadmap_node(
       identity: "rn_GFFS76KGHVTPS8QDMP8KAGDPSP",
@@ -3361,13 +3375,13 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "src/v1/compile.dag"),
       line: ticket(t: updated(t: fields(
         headline: "Finish the test-reference discipline: its own evidence onto the gate, and the ledger to zero",
-        boundary: "The v1 and v2 test-reference walls are landed; what remains is around them. (1) Pay down test_reference_debt (equality budget at module, referrer, target) by deleting each reference with its row. (2) Put the v1 wall's discriminating reds (test.claim.test_reference_wall_witness) on a required_gate_prefixes entry; today they run nowhere on the merge path. (3) Enforce the v2 wall corpus-wide: no required lane compiles the corpus through v2 name resolution; this waits on the native route. (4) Close two instrument gaps: warm-roster admission does not execute in the restored floor, and a producer's emission (labels included) cannot be cheaply read.",
+        boundary: "The v1 and v2 test-reference walls are landed; what remains is around them. (1) Pay down test_reference_debt (equality budget at module, referrer, target) by deleting each reference with its row. (2) Put the v1 wall's discriminating reds (test.claim.test_reference_wall_witness_test) on a required_gate_prefixes entry; today they run nowhere on the merge path. (3) Enforce the v2 wall corpus-wide: no required lane compiles the corpus through v2 name resolution; this waits on the native route. (4) Close two instrument gaps: warm-roster admission does not execute in the restored floor, and a producer's emission (labels included) cannot be cheaply read.",
         displaced_cost: "A wall whose own red executes nowhere is the inflation DESIGN 4b(1) names: the class reports mechanically-preventable while nothing would catch its regression. The ledger is that debt in the other direction -- every CorpusDebtRow is a live reference someone must eventually delete, while the FixtureControlRow is not debt at all -- it admits nothing and exists to keep the paid-down arm discriminating, and while rows stand the corpus keeps teaching the pattern the wall exists to end. The instrument gaps are why several of these rounds cost four passes each: an unmeasured cache row and a hand-reconstructed fixture are both cheap to write and expensive to disprove.",
         first_slice: "One prefix line so the v1 wall's reds execute on the gate, then the rows the landed PRs already made deletable.",
         red_control: "A test calling a test refuses on the required lane and not only locally; a real source carrying a test-fn reference reaches v2 name resolution through a required corpus route and refuses THERE, not only at the interface; deleting a reference without its ledger row refuses; a ledger row whose module is gone refuses when the census is loaded; and at close, test_reference_debt contains ZERO CorpusDebtRow entries while the FixtureControlRow remains as the discriminating control.",
         out_of_scope: "No re-enrolment of the cache rows deleted while landing this work without a controlled row-present against row-absent experiment on one host -- portability establishes that a value CAN be served, never that serving beats recomputing. No widening of the wall to shapes v1 inference cannot see: a function value reached through an import-all types as LocalValueBinding, and that is a declared gap rather than a silent one.",
         handback: "The prefix landed with its reds observed executing on a required run; the v2 corpus route either carrying a refusal for a real test-fn reference or that obligation transferred BY NAME to the node owning the native route; test_reference_debt carrying zero corpus-debt rows, or that remainder transferred BY NAME to a successor node and this node's headline narrowed accordingly; and the two instrument gaps either closed or written down as their own rows."
-      ), on: "2026-09-24", note: "The brief before the 100-word re-cut, verbatim (obligations kept in the brief, context here): The walls themselves are landed -- v1 IDENTIFIES every test reference its typed frontier can see (a call from anywhere including another test, a function value, a parameter default, a named import) and refuses any that the shrink-only debt ledger does not exactly cover -- a reference matching a surviving row is ADMITTED, as a temporary admission awaiting deletion, not permitted; v2 refuses at name resolution. That frontier is not the whole language: out_of_scope names the import-all function value v1 inference cannot see. What remains is around them. THE LEDGER: test_reference_debt carries the surviving corpus rows plus one fixture control, an equality budget at (module, referrer, target) refusing in BOTH directions, so a row is paid down only by deleting the reference and its row together. THE EVIDENCE GAP: the v1 wall's discriminating reds live in test.claim.test_reference_wall_witness, which matches no entry in v2.workflow.required_floor required_gate_prefixes, so they execute nowhere on the merge path while every other gated class runs; the loss is covered generically by gunbc.rung_drop witness_floor_off_the_required_gate rather than specifically. THE V2 WALL'S COVERAGE IS NARROWER THAN ITS NAME: its refusal is established by execution AT THE INTERFACE, on supplied roots plus two route claims, and NO required lane compiles the corpus through v2 name resolution -- so a real test-fn reference in the tree does not red it, which is how one survived until a reviewer read for it. Corpus-wide v2 enforcement waits on the native route. TWO INSTRUMENT GAPS found while landing the four PRs: the warm-roster admission instrument does not execute in the restored floor -- a row naming a declaration that no longer existed passed green, though the roster's own rule says an unresolvable row stops preparation -- and there is no cheap way to read what a producer actually emits, labels included, which is what let a supplied fixture diverge silently until its pairing claim went red.")),
+      ), on: "2026-09-24", note: "The brief before the 100-word re-cut, verbatim (obligations kept in the brief, context here): The walls themselves are landed -- v1 IDENTIFIES every test reference its typed frontier can see (a call from anywhere including another test, a function value, a parameter default, a named import) and refuses any that the shrink-only debt ledger does not exactly cover -- a reference matching a surviving row is ADMITTED, as a temporary admission awaiting deletion, not permitted; v2 refuses at name resolution. That frontier is not the whole language: out_of_scope names the import-all function value v1 inference cannot see. What remains is around them. THE LEDGER: test_reference_debt carries the surviving corpus rows plus one fixture control, an equality budget at (module, referrer, target) refusing in BOTH directions, so a row is paid down only by deleting the reference and its row together. THE EVIDENCE GAP: the v1 wall's discriminating reds live in test.claim.test_reference_wall_witness_test, which matches no entry in v2.workflow.required_floor required_gate_prefixes, so they execute nowhere on the merge path while every other gated class runs; the loss is covered generically by gunbc.rung_drop witness_floor_off_the_required_gate rather than specifically. THE V2 WALL'S COVERAGE IS NARROWER THAN ITS NAME: its refusal is established by execution AT THE INTERFACE, on supplied roots plus two route claims, and NO required lane compiles the corpus through v2 name resolution -- so a real test-fn reference in the tree does not red it, which is how one survived until a reviewer read for it. Corpus-wide v2 enforcement waits on the native route. TWO INSTRUMENT GAPS found while landing the four PRs: the warm-roster admission instrument does not execute in the restored floor -- a row naming a declaration that no longer existed passed green, though the roster's own rule says an unresolvable row stops preparation -- and there is no cheap way to read what a producer actually emits, labels included, which is what let a supplied fixture diverge silently until its pairing claim went red.")),
       dispatch: dispatchable(),
       execution: bound(contract: gunbc_claim_execution_contract(
         entry: "dag/test/claim/closing/test_reference_discipline_remainder_closing_contract_witness_test.dag" as FilePath,
@@ -4373,7 +4387,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
 // their child would erase history and violate roadmap_acceptance_receipt_note.
 
 // P0 acceptance maps the roadmap clauses through
-// test.claim.source_integration_landing_spine_witness (P0 journey witnesses; former roll-up deleted):
+// test.claim.source_integration_landing_spine_witness_test (P0 journey witnesses; former roll-up deleted):
 // all seven removed closure receipts stay machine-owned; evidence
 // support/challenge/neither/conflict and terminal blocking do not become a preference question;
 // both material alternatives resume by structural position; authorization, self-amendment,
@@ -5502,7 +5516,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         red_control: "The claims carrier's v2 self-grounding path flips BelowFloor-to-FrontierAccepted exactly here; the identity path refuses caller-supplied candidate sets.",
         out_of_scope: "Translate propagation; carrier completeness; target realization (each its own node downstream).",
         handback: "The merged receipts and the frontier diagnostic counts by class."
-      ), on: "2026-09-30", note: "Awaiting the operator's acceptance event; evidence: #7485 merged, receipt recorded 2026-08-01; src/v2/test/claim/infer_self_grounding_wall.dag."), on: "2026-09-30", note: "Not yet centered: awaiting the operator's acceptance event; evidence: #7485 merged, receipt recorded 2026-08-01; src/v2/test/claim/infer_self_grounding_wall.dag.")),
+      ), on: "2026-09-30", note: "Awaiting the operator's acceptance event; evidence: #7485 merged, receipt recorded 2026-08-01; src/v2/test/claim/infer_self_grounding_wall_test.dag."), on: "2026-09-30", note: "Not yet centered: awaiting the operator's acceptance event; evidence: #7485 merged, receipt recorded 2026-08-01; src/v2/test/claim/infer_self_grounding_wall_test.dag.")),
       dispatch: dispatchable(),
       parent: in_project(project: "v2-shared-type-check", contribution: "v2 infer refuses a self-certified fact."),
     ),

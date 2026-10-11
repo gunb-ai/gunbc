@@ -6,7 +6,7 @@ import v2.test.claim.complexity_gate.table_fixture_loop_subject_producer {
 }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.extdeps.languages.rust_test {
+import v2.extdeps.languages.rust_test_fixtures {
   rust_loop_source_text,
   rust_loop_wrong_value_source_text,
   rust_loop_target_model_staging

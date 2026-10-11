@@ -186,7 +186,7 @@ type CommitSha    = String
 // census should read that ruling, which admits a fix to a shared predicate and refuses only an
 // author admitting their own.
 //
-// THE EQUALITY IS THE CONTRACT, not the shape: test.claim.std_commit_sha_text_witness keeps the
+// THE EQUALITY IS THE CONTRACT, not the shape: test.claim.std_commit_sha_text_witness_test keeps the
 // per-character spelling as an oracle and claims the two answer the same on every input either can
 // be given, with a red per refusal cause -- the lengths either side of forty, uppercase, the
 // characters adjacent to both ranges, and the empty string.

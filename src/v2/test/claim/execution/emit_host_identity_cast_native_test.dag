@@ -4,7 +4,7 @@ import extdeps.communication.medium { Lossless, Medium }
 import std.emit_on_demand { emit_on_demand_family_cache_root }
 import v2.compiler.emit_host { emit_host_octets_byte_string, run_emit_host_cached_with_run_args }
 import v2.compiler.eval { Inputs, inputs_root_only }
-import v2.extdeps.languages.rust_test { rust_identity_cast_run_args, rust_identity_cast_target_model }
+import v2.extdeps.languages.rust_test_fixtures { rust_identity_cast_run_args, rust_identity_cast_target_model }
 import v2.std.diagnostic { Accepted, None, Rejected }
 import v2.std.host_run { EmitHostRunReceipt, HostLogicalRun }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -12,7 +12,7 @@ import v2.std.node { Node, node_synthetic }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import v2.std.witness { Violates }
-import v2.test.claim.coercion.identity_cast_emission_route {
+import v2.test.claim.coercion.identity_cast_emission_route_test {
   IdentityCastClosureRefused, IdentityCastEntryEmitted, IdentityCastEntryRefused,
   identity_cast_route_verdict,
 }
@@ -22,14 +22,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE ADMITTED IDENTITY CAST, BUILT AND RUN. One native control reads the REAL member text from
 // identity_cast_route_verdict and every runtime case builds and runs that artifact (DESIGN section 3
 // pairing). The last merge-time execution of the door on the required gate is still
-// v2.test.claim.coercion.identity_cast_emission_route.an_admitted_identity_cast_emits_through_the_closure_route_holds.
+// v2.test.claim.coercion.identity_cast_emission_route_test.an_admitted_identity_cast_emits_through_the_closure_route_holds.
 //
 // STANDING, STATED SO IT IS NOT READ AS COVERAGE: this module is outside the required gate
 // (v2.workflow.required_floor required_gate_authored_modules) by operator decision, because every
 // run spawns the host build tool. The required floor therefore executes it ONLY as a changed witness
 // (v2.workflow.floor_changed_witness) -- on a change that touches this module or its closure -- and
 // nothing re-runs it between such changes. It is change-time native evidence, not standing
-// regression enforcement. Its admission partner, v2.test.claim.coercion.identity_cast_emission_route,
+// regression enforcement. Its admission partner, v2.test.claim.coercion.identity_cast_emission_route_test,
 // IS a gate row and runs on every required run. It is not a member of
 // gunbc.guarantee_stall.self_host_wet_route_receipt_lifetime_stall's measured population and does
 // not discharge that stall.

@@ -10,7 +10,7 @@ import gunbc.fleet_observation.collector_ownership { FollowerReadOnly }
 import std.goal_assessment { ObservationEstablished, ObservationRefused, GoalAssessmentRefused, GoalSatisfied, GoalIndeterminate }
 import gunbc.fleet_observation.observation_envelope { ObservationEnvelope, SourceGenerationObserved, SourceGenerationUnavailable, NativeCursor, ExposedToCollectorHostLoss, RetainedBeyondCollectorHost, ForwardRefused }
 import gunbc.fleet_observation.capture_chunk { continuity_from_committed_chunks, DerivedContinuity, stream_position, StreamContinuity, ContinuityEstablished, ContinuityUnknown, DownstreamNotOffered, DownstreamAccepted, DownstreamRejected, ChunkCommitRefused, CommitNoReceipt, CommitAttestsOtherPayload, LocalCommitStanding, LocalCommitNotAttempted }
-import test.claim.fleet_observation_capture_witness { t_envelope, t_chunk, t_owner, t_unfenced, t_commit_for, t_other_session, t_reach, t_pos, t_other_stream, t_one, t_committed_chunk_on_stream }
+import test.claim.fleet_observation_capture_witness_test { t_envelope, t_chunk, t_owner, t_unfenced, t_commit_for, t_other_session, t_reach, t_pos, t_other_stream, t_one, t_committed_chunk_on_stream }
 import gunbc.machine_intake.pre_os_replay { pre_os_sel_cursor, pre_os_ingest_sel }
 
 import gunbc.machine_intake.pre_os_timeline { pre_os_cycle_anchor, pre_os_console_span, pre_os_utf8_size, PreOsReplayObservation, PreOsConsoleText, PreOsTimelineRow, pre_os_machine_timeline, pre_os_timeline_view, pre_os_captured_cycles }

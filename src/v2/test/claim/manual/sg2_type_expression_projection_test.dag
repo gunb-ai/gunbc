@@ -46,7 +46,7 @@ import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node { Atom, Node, Symbol, TypeNode, content_hash }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.extdeps.languages.rust_test {
+import v2.extdeps.languages.rust_test_fixtures {
   rust_sg2_type_expression_projection_target_model
 }
 

@@ -152,7 +152,7 @@ type MalformedBridgeRow {
 // The Observed arm's block (ObservedArmUnexercisedOnRequiredRoute) is retired: the required
 // floor now executes it over a MEASURED fixture root (gunbc#11265 keyed whole-root admission on
 // the root's own row; whole_corpus_compile_xl1_fixture_root_demand is that row), and the
-// controls that read it are enrolled in test.claim.legacy_repair_tap_live_bridge_witness. The
+// controls that read it are enrolled in test.claim.legacy_repair_tap_live_bridge_witness_test. The
 // variant went with its block: a cause nothing constructs is a dangling declaration (DESIGN 3c).
 type LegacyBaselineCaptureRefusal
   = ObserverNeverReachedDecision {}
@@ -364,7 +364,7 @@ type LegacyBaselineCaptureCapability
 // THE CAPABILITY IS A REPORT OF EXECUTED EVIDENCE ON A REQUIRED ROUTE, NOT A CONSTANT BY FIAT.
 // Both arms of the tap now execute on the required floor: the refusal arms as before, and the
 // Observed arm over the measured XL-4 fixture root, acquired once at preparation as the
-// prepared effect input test.claim.legacy_repair_tap_live_bridge_witness.xl1_fixture_root_tap
+// prepared effect input test.claim.legacy_repair_tap_live_bridge_witness_test.xl1_fixture_root_tap
 // and read by a_measured_fixture_root_reaches_the_observed_arm_with_rows_and_bindings and
 // the_live_census_over_the_measured_fixture_root_counts_its_rows (first executed there on
 // gunbc#11461 run 35181521483: the floor's own [floor-phase] prepared-effect-input-acquire

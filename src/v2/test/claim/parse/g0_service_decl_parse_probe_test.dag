@@ -109,7 +109,7 @@ data mock_entry_without_expr_red_source: String = "module m\nservice S {\n  oper
 // The plain type control. The field tail is no longer service-scoped: since #12810 every field
 // admits v1's `[from "key"] [= default]` tail at parse, a record field with a wire key refuses at
 // lowering, and since #12948 a record field default lowers onto its binder. Those routes are
-// asserted by v2.test.claim.parse.record_field_tail, so the two claims that pinned a PARSE refusal
+// asserted by v2.test.claim.parse.record_field_tail_test, so the two claims that pinned a PARSE refusal
 // here were deleted as contradicting a ruled change rather than re-pointed at a second copy.
 data plain_type_source: String = "module m\ntype T { x: Int }\n"
 

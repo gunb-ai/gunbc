@@ -5,9 +5,12 @@ import extdeps.filesystem.filesystem_io {
   Filesystem,
   FilesystemFileObservation,
   FilesystemFileSubjectRefused,
+  FilesystemEntryPresence,
+  FilesystemEntrySubjectRefused,
   filesystem_read_outcome,
   filesystem_listing_observation,
   filesystem_file_observation,
+  filesystem_entry_presence,
 }
 
 type FilesystemPathDecomposition
@@ -106,6 +109,30 @@ fn filesystem_file_observation_of_path(path: String) -> FilesystemFileObservatio
         name: name,
         path: path,
         read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+      )
+    }
+  }
+}
+
+// THE SAME QUESTION ONE LEVEL UP: is the entry at this path present, whatever kind of entry it is.
+// A directory cannot be answered by filesystem_file_observation_of_path, whose read of a listed
+// directory is indeterminate, so its presence is the listing of its parent folded through
+// filesystem_entry_presence -- absence established from a successful listing, a failed listing
+// indeterminate, never absent. The decomposition authority is the same one, refused the same way.
+fn filesystem_entry_presence_of_path(path: String) -> FilesystemEntryPresence {
+  match filesystem_path_decomposition(path: path) {
+    FilesystemPathUndecomposable { cause: cause } =>
+      FilesystemEntrySubjectRefused { directory: "", name: "", cause: cause }
+    FilesystemPathDecomposed { directory: directory, name: name } => {
+      let listing = Filesystem.List(path: directory)
+      filesystem_entry_presence(
+        listing: filesystem_listing_observation(
+          directory: directory,
+          success: listing.success,
+          entries: listing.entries,
+          error: listing.error,
+        ),
+        name: name,
       )
     }
   }

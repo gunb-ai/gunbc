@@ -197,7 +197,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
   ),
   retained_no_cached_carrier(
     subject: family_subject(
-      module_path: "v2.extdeps.languages.rust_test",
+      module_path: "v2.extdeps.languages.rust_test_fixtures",
       decl_name: "rust_filesystem_read_family_target_model_staging"
     ),
     entry: "src/v2/test/claim/execution/emit_host_filesystem_read_equals_eval_test.dag",
@@ -205,7 +205,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
   ),
   retained_no_cached_carrier(
     subject: family_subject(
-      module_path: "v2.extdeps.languages.rust_test",
+      module_path: "v2.extdeps.languages.rust_test_fixtures",
       decl_name: "rust_shell_exec_run_family_target_model_staging"
     ),
     entry: "src/v2/test/claim/execution/emit_host_shell_exec_run_equals_eval_test.dag",

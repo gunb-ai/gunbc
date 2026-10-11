@@ -40,7 +40,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // These claims supply the collector's intermediate values -- decoded log entries and telemetry
 // points -- because they are about the window arithmetic, not about the wire. The wire decoders are
-// witnessed on real responses in test.claim.redfish_telemetry_witness; the route that joins the two
+// witnessed on real responses in test.claim.redfish_telemetry_witness_test; the route that joins the two
 // on live BMCs is the collector's own run.
 
 fn entry(id: Int, message: NonEmptyStr) -> RedfishLogEntry {

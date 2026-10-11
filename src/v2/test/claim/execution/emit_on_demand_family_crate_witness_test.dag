@@ -35,7 +35,7 @@ import v2.extdeps.languages.dag {
   dag_complement_arrow_with_body_fixture,
   dag_complement_arrow_with_body_swapped_arms_fixture,
 }
-import v2.extdeps.languages.rust_test {
+import v2.extdeps.languages.rust_test_fixtures {
   rust_logic_meet_target_model_staging,
   rust_logic_join_target_model_staging,
   rust_logic_complement_target_model_staging,

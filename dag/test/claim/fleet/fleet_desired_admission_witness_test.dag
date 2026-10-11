@@ -444,7 +444,7 @@ test fn the_admission_workflow_action_step_names_no_revision_of_its_own() -> Boo
 // asserting another.
 //
 // The property it guarded is not lost, it is subsumed: a workflow that does not exist cannot
-// advance the ref, and test.claim.deploy_workflow_retirement_witness asserts the retired path
+// advance the ref, and test.claim.deploy_workflow_retirement_witness_test asserts the retired path
 // is absent from the committed artifact roster -- which is what stops the file being
 // regenerated, and is strictly stronger than "the file exists but no longer pushes".
 //

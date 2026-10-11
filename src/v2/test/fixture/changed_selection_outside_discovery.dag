@@ -3,7 +3,7 @@ module v2.test.fixture.changed_selection_outside_discovery
 import std.types { List }
 import v2.workflow.required_floor { ChangedSelectionDispositionRow, DeclinedChangedWitnessOutsideDiscovery }
 
-// ONE FIXTURE, READ BY BOTH SIDES. `test.claim.discovery_census_witness` asserts the modeled decider
+// ONE FIXTURE, READ BY BOTH SIDES. `test.claim.discovery_census_witness_test` asserts the modeled decider
 // (`v2.workflow.required_floor` `changed_selections_outside_discovery`) over these rows on the floor.
 // The seed's `required_floor_runner` `changed_selections_outside_discovery_mirror_tests` evaluates
 // the same rows through the .dag function and through its host mirror, and joins the two at identity

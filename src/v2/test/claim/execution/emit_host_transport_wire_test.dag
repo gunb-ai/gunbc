@@ -15,7 +15,7 @@ import v2.extdeps.languages.rust {
   rust_emit_host_cargo_manifest,
   rust_source_text
 }
-import v2.extdeps.languages.rust_execution_test {
+import v2.extdeps.languages.rust_execution_fixtures {
   rust_execution_unused_target,
   rust_execution_wire_target
 }

@@ -3,7 +3,7 @@ module test.fixture.payload_arm_excess_field.carrier
 import std.types { List, NonEmptyStr, String }
 
 // THE SUBJECT OF THE EXCESS-FIELD ADMISSION MATRIX, DECLARED IN ITS OWN MODULE ON PURPOSE.
-// test.claim.payload_arm_excess_field_admission compiles probe sources that IMPORT this module and
+// test.claim.payload_arm_excess_field_admission_test compiles probe sources that IMPORT this module and
 // construct the arm below, so the declaration and the record literal live in DIFFERENT modules --
 // the same configuration a production construction site has. Declaring the type inside the probe
 // source itself would have been one module, and a same-module literal is not the configuration the

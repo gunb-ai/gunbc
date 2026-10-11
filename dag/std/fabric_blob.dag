@@ -38,7 +38,7 @@ import extdeps.tools.coreutils_stat
 // realizations, which spell neither the object key, the size bound nor the verdicts on their own.
 //
 // CONSUMERS (DESIGN 3c). The reading mint, the put plan and the address are exercised by
-// test.claim.std_fabric_blob. FabricBlobPut, FabricBlobGet and fabric_blob_fault_text are consumed by
+// test.claim.std_fabric_blob_test. FabricBlobPut, FabricBlobGet and fabric_blob_fault_text are consumed by
 // gunbc.fabric.fabric_blob_r2 (put and get over R2), which this module's declared frontier named
 // (gunbc#13080) and which discharges it; the bounded local store's byte parts (C1b) are a second
 // consumer.

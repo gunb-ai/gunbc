@@ -7,7 +7,7 @@ module test.claim.closing.test_reference_discipline_remainder_closing_contract_w
 // end; reviews 74160 and 74167 on the discharging PR caught exactly that overstatement here):
 //
 //   (1) test-calling-test refuses on the required lane and not only locally
-//       -> PROVEN HERE: the wall witness test.claim.test_reference_wall_witness is enrolled on the
+//       -> PROVEN HERE: the wall witness test.claim.test_reference_wall_witness_test is enrolled on the
 //          required gate's authored-module roster, at exact module grain (no prefix family admits
 //          it), so its refusal arms execute on every required run. This claim is placement, not
 //          re-execution: re-running the wall's census probes here would be identical call+input
@@ -20,7 +20,7 @@ module test.claim.closing.test_reference_discipline_remainder_closing_contract_w
 //          v2 wall over a real source is that route's admission. This node does not report the
 //          obligation done.
 //   (3) deleting a reference without its ledger row refuses
-//       -> OWNED BY NAME by the enrolled wall's arms (test.claim.test_reference_wall_witness:
+//       -> OWNED BY NAME by the enrolled wall's arms (test.claim.test_reference_wall_witness_test:
 //          TestCodeReferenced for the unledgered direction, TestCodeReferenceBudgetMismatch for
 //          the paid-down direction; the budget is equality in both directions, so
 //          deletion-without-row is the same arm). Not duplicated here (DESIGN 2).
@@ -50,7 +50,7 @@ import gunbc.guarantee_stall.test_reference_ledger_typed_census_stall { test_ref
 import gunbc.guarantee_stall.roster { all_guarantee_stalls }
 import v2.workflow.required_floor { required_gate_authored_modules, required_gate_prefixes }
 
-data wall_module: String = "test.claim.test_reference_wall_witness"
+data wall_module: String = "test.claim.test_reference_wall_witness_test"
 
 fn test_reference_closing_roster_contains(xs: List<String>, needle: String) -> Bool {
   any(xs, x => x == needle)

@@ -377,7 +377,7 @@ fn internal_disposition_over_current_absence(
 //   file-by-id preflight and the intended subject. The same converge calls it, on the same route.
 //
 // THE DECLARATION HALF OF BOTH CHAINS EXECUTES IN CI, against real files on disk, at
-// test.claim.review_sheet_legacy_declaration_wet_witness; the two Drive legs -- the superseded
+// test.claim.review_sheet_legacy_declaration_wet_witness_test; the two Drive legs -- the superseded
 // query and the file-by-id preflight -- execute on the operator's live converge run. Neither half
 // is an import, and this annotation does not claim CI runs the network legs.
 //

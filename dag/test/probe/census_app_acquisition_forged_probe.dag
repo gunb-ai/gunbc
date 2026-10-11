@@ -23,7 +23,7 @@ module test.probe.census_app_acquisition_forged_probe
 // was dissolved with the boundary; the admissible disposition below is the strongest installation
 // evidence a caller can still write, and it is not a parameter either.
 //
-// The witness test.claim.census_app_acquisition_refusal_probe_witness enrolls this probe and asserts
+// The witness test.claim.census_app_acquisition_refusal_probe_witness_test enrolls this probe and asserts
 // each refusal class at its subject by name. dag/test/probe/ sits under the whole-tree strict-resolve
 // exclusion, so this source reaches the compiler only through that witness.
 

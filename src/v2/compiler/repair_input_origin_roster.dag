@@ -87,7 +87,7 @@ import v2.std.namespace_alias { ModuleBindingSource, module_binding_source_roots
 // IT IS ADMITTED AS A DECLARED FRONTIER RATHER THAN A FORK BECAUSE IT IS DORMANT, AND THE DORMANCY
 // IS A MEASUREMENT, NOT A PLAN. XL-0 stands NotDerivable: the collector sees no cross-module
 // reference on the production route, so the roster is EMPTY there and this function executes only
-// over the hand-built trees in v2.test.claim.namespace_xl0.repair_input_origin_denominator. A second
+// over the hand-built trees in v2.test.claim.namespace_xl0.repair_input_origin_denominator_test. A second
 // relation that currently answers nothing is not yet a second authority. It becomes one the moment
 // the roster starts producing -- which is the same moment XL-0 stops being NotDerivable, so the two
 // cannot diverge unobserved.

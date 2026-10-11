@@ -152,7 +152,7 @@ fn install_media_remaster_attribute_pins(input: UbuntuSeededInstallMediaBuildInp
 // already contains the cmdline anywhere is left unchanged -- the earlier fixed-string grep probe.
 // As a pure fold the cmdline's `;` and quotes are data, never shell or sed syntax (sed would also
 // have read `&` and `\` in it as replacement syntax). The differential control against GNU sed 4.9
-// over the stock medium's grub.cfg is in test.claim.install_media_remaster_grub_cmdline_witness.
+// over the stock medium's grub.cfg is in test.claim.install_media_remaster_grub_cmdline_witness_test.
 
 // POSIX [[:space:]] in the C locale: tab, line feed, vertical tab, form feed, carriage return, space.
 fn install_media_remaster_is_posix_space(cp: Int) -> Bool {

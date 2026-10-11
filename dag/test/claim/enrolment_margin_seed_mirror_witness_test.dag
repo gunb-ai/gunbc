@@ -25,7 +25,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // output, which is the seed_mirror_constant_lens pattern applied to a coproduct's wire vocabulary.
 // It pins the VOCABULARY, not the decision logic; the seed's decision logic is pinned by its own unit
 // test the_dead_band_ground_holds_only_an_exact_reading_inside_margin_and_line and the roster-ground
-// sibling, and the model's by v2.test.floor_enrolment_margin.
+// sibling, and the model's by v2.test.floor_enrolment_margin_test.
 data seed_path: String = "src/v1/stage0/src/cli_run/required_floor_runner.rs"
 
 fn every_arm() -> List<EnrolmentMarginStanding> {

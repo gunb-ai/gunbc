@@ -29,7 +29,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // consumer — not dead vocabulary. No production consumer today. Sole owner: gunb.ai
 // site-subsumption. Dissolution is react_jsx_site_subsumption_jsx_page_emission below — not an
 // already-landed HTML helper, not belt-B, not an unnamed census. If that lane closes without
-// adopting JSX, delete the removal set: this module, dag/test/claim/react_jsx_emit.dag,
+// adopting JSX, delete the removal set: this module, dag/test/claim/react_jsx_emit_test.dag,
 // corpus_ci_gate_row_react_jsx_emit_keystone enrollment (+ roster row at :580), and the
 // void_element_test import of serialize_jsx_component.
 

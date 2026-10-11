@@ -12,7 +12,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // subsumption lane. The three original witness notes are preserved verbatim below.
 
 // Green-by-execution proof for the CONCRETE gunbc srv3 reach row (gunbc.fleet.fleet_reach.srv3_reach),
-// distinct from the extdeps model mechanics that test.claim.network_grounding already proves. These
+// distinct from the extdeps model mechanics that test.claim.network_grounding_test already proves. These
 // pin the FLEET fact: srv3_reach is the ProxyJump-through-srv2 interim (exactly one hop), its
 // network reach is realizable (grounded live 2026-07-25 — a Permission-denied handshake from srv2
 // proves packets reach srv3), and its target renders to srv3's grounded address 192.168.1.221

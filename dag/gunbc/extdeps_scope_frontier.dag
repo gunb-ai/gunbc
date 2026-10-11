@@ -8,10 +8,10 @@ module gunbc.extdeps_scope_frontier
 // declared scope, admitted by execution), scope_machinery_exempt_paths (the citation vocabulary
 // itself plus synthetic mock corpora — the v2.lens.mandatory_tag region-1 exemption semantics), or
 // a row of the FROZEN legacy manifest (legacy_extdeps_scope_frontier_manifest_path). The live-cover
-// witness (dag/test/claim/external_model_scope_live_cover_witness.dag — wet,
+// witness (dag/test/claim/external_model_scope_live_cover_witness_test.dag — wet,
 // discovery-excluded per the gunbc.ci.ci_layer_roots wet-integration posture with a documented local
 // recipe; its pure decision fns live HERE and their hermetic RED controls stay discovery-enrolled
-// in dag/test/claim/external_model_scope_witness.dag) walks dag/extdeps live, parses the
+// in dag/test/claim/external_model_scope_witness_test.dag) walks dag/extdeps live, parses the
 // manifest, and refuses any file in none of the three. GRAIN HONESTY (codex review 46258 — the
 // enforcement grain must be stated, not implied): the per-PR MERGE-GATED half is the hermetic one —
 // every rostered path resolves on disk (roster_paths_resolve_on_disk over all three rosters via the

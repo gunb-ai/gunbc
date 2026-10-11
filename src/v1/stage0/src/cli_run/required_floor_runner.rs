@@ -5735,7 +5735,7 @@ pub fn floor_prepared_subject_exclusions() -> Vec<String> {
         // callees are undeclared spellings by design, so it must never resolve. Nothing imports it,
         // so it stayed out of preparation by that accident alone until gunbc#12761's widened
         // subject prepared it and it refused. Its designed refusal is asserted by class and subject
-        // in test.claim.fleet.health_read_only_fixture_refusal_witness.
+        // in test.claim.fleet.health_read_only_fixture_refusal_witness_test.
         "test/fixture/health_read_only/".to_string(),
         "test/manual/ownership_movable_test.dag".to_string(),
         // WET RECEIPT, AND IT HAS NO CI CONSUMER TODAY — stated plainly rather than dressed up
@@ -10823,7 +10823,7 @@ pub fn run_required_floor(
     // `.floor_route_gap_admission_partition` through the hermetic frame the manifest was folded
     // in. There is no Rust copy of the membership test to rot apart from the roster it joins;
     // the arms and their meaning live on the authority's contract, and the pairing witness
-    // (`test.claim.route_gap_partition_witness`, floor-side) drives the same surface over the
+    // (`test.claim.route_gap_partition_witness_test`, floor-side) drives the same surface over the
     // shared fixture.
     let mut route_gap_suppressed = suppress_withheld(&mut route_gap_roster, "floor_route_gap");
     route_gap_suppressed.extend(suppress_declined_no_ci_wet_lane(
@@ -12506,7 +12506,7 @@ pub fn run_required_floor(
         // §4b(4) is the rule that says to delete it rather than keep it as a belt: a climb deletes
         // the redundant lower-rung PRODUCTION machinery it obsoletes, while the class's
         // discriminating RED and positive control REMAIN ENROLLED. The evidence is separate and
-        // stays -- `dag/test/claim/bare_name_ambiguity_wall_witness.dag` holds the eight rows,
+        // stays -- `dag/test/claim/bare_name_ambiguity_wall_witness_test.dag` holds the eight rows,
         // including the subject that must refuse and the field-label and local-parameter controls
         // that must not.
         //
@@ -16720,7 +16720,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
     }
 
     /// FLOOR-CHANGED-COST-0 host arms. The model fold is witnessed in
-    /// `v2.test.floor_changed_witness`; these assert that the HOST realization joins the same
+    /// `v2.test.floor_changed_witness_test`; these assert that the HOST realization joins the same
     /// two populations onto it, which is the seam the .dag fold cannot reach.
     /// The figure production actually puts in this field, named once so the fixture cannot drift
     /// from its source again. It minted a bare `500` -- the CPU ceiling that no longer exists --
@@ -17294,7 +17294,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
     /// floor it is stale and blocks (182), above
     /// the line it is the wrong ground and blocks (501), and no cost row blocks as NotMeasured.
     /// THE HOST-SPEED CALIBRATION CONTROLS (node adhoc-c9504740-637), the seed half of
-    /// `v2.test.floor_enrolment_margin`'s. Policy figures are the model's today: the specimen's
+    /// `v2.test.floor_enrolment_margin_test`'s. Policy figures are the model's today: the specimen's
     /// 55,011 steps at 723 steps/ms, plausible range [400, 2500] permille.
     fn test_calibration_policy() -> HostSpeedCalibrationPolicy {
         HostSpeedCalibrationPolicy {
@@ -18041,7 +18041,7 @@ mod route_gap_admission_partition_tests {
     /// decision. It asserts both arms at identity grain: a declared suppressed row comes back
     /// MEASURED with its ground kept, and an enrollment the tree does not declare -- renamed,
     /// deleted, or fabricated -- comes back REFUSED, the wall's discriminating arm. The
-    /// floor-side route witness (`test.claim.route_gap_partition_witness`) asserts the same
+    /// floor-side route witness (`test.claim.route_gap_partition_witness_test`) asserts the same
     /// fixture rows on the floor, so the answer and the route are pinned on both sides.
     #[test]
     fn the_partition_route_decides_the_shared_fixture_at_identity_grain() {
@@ -18418,7 +18418,7 @@ mod pure_producer_share_refused_carrier_overlap_tests {
             )],
         );
         fill_from(
-            "v2.test.claim.bash_command_fold",
+            "v2.test.claim.bash_command_fold_test",
             "rust_target_model_staging",
         );
         assert!(refuse_pure_producer_share_refused_carrier_overlap().is_ok());
@@ -18566,7 +18566,7 @@ mod pure_producer_share_refused_carrier_overlap_tests {
     #[test]
     fn fills_without_an_installed_roster_refuse_rather_than_read_as_clean() {
         PURE_PRODUCER_SHARE_ROSTER.with(|r| *r.borrow_mut() = None);
-        fill_from("v2.test.claim.bash_command_fold", "bash_fold_lex");
+        fill_from("v2.test.claim.bash_command_fold_test", "bash_fold_lex");
         let why = refuse_pure_producer_share_refused_carrier_overlap()
             .expect_err("fills with no installed roster must refuse");
         assert!(
@@ -19141,7 +19141,7 @@ mod changed_witness_sublane_join_tests {
 /// THE HOST DECIDER AND ITS .dag AUTHORITY CLASSIFY ONE SHARED FIXTURE IDENTICALLY.
 ///
 /// The rows are `v2.test.fixture.changed_selection_outside_discovery`, which
-/// `test.claim.discovery_census_witness` also asserts on the floor. This test evaluates them through
+/// `test.claim.discovery_census_witness_test` also asserts on the floor. This test evaluates them through
 /// `v2.workflow.required_floor` `changed_selections_outside_discovery` and through the host's
 /// `changed_selections_outside_discovery`, and joins the two at identity grain: same identities,
 /// each with the same `DeclinedChangedWitnessOutsideDiscovery` module. The .dag side is enforced

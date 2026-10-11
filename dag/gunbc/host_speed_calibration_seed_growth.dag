@@ -23,7 +23,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // refusal arms and the calibrated reading are v2.workflow.floor_eval_step_calibration
 // (HostSpeedCalibration, host_speed_calibration_of, calibrated_cpu_ms) and
 // v2.workflow.floor_enrolment_margin (enrolment_host_speed_calibration, enrolment_calibrated_reading),
-// tested by v2.test.floor_enrolment_margin. Every policy figure the host uses is read from the model
+// tested by v2.test.floor_enrolment_margin_test. Every policy figure the host uses is read from the model
 // through floor_enrolment_margin's enrolment_host_speed_* read points.
 data host_speed_calibration_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [

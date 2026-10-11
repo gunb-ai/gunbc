@@ -389,7 +389,7 @@ pub struct DeclarationIntegrityFinding {
 /// live corpus the wall refuses in two different populations: the rot §3's rule exists to
 /// catch (a citation naming a module the floor cut deleted), and DELIBERATELY FALSE TEXT — a
 /// witness proving the resolver refuses an absent module must AUTHOR one, so
-/// `test.claim.annotation_carrier` cites `extdeps.network.mac` `parse_mac_addres` on purpose,
+/// `test.claim.annotation_carrier_test` cites `extdeps.network.mac` `parse_mac_addres` on purpose,
 /// one letter short, and refusing it would refuse the evidence for the wall's own mechanism.
 /// Not a leniency carve-out: the difference between a claim and an input, decidable from the
 /// carrier's identity.
@@ -2073,7 +2073,7 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// AND THE HOLE WAS OCCUPIED, not merely reachable — a defect, not a disclosed boundary. Two
 /// rows below are ordinary staleness unrelated to fixture intent:
 ///   - `dag.test.claim.witness_purpose_taxonomy_witness` is a `dag.`-prefixed module path no
-///     module declares; the real module is `test.claim.witness_purpose_taxonomy_witness`. A
+///     module declares; the real module is `test.claim.witness_purpose_taxonomy_witness_test`. A
 ///     plain typo, invisible while the skip stood.
 ///   - `std.disposition` `Disposition` `marker` names a real authority and declaration with
 ///     an absent field, cited twice from `v2.lens/disposition_redundancy_test.dag`.
@@ -2096,8 +2096,8 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// ALSO THIS KIND, 2026-09-07: `v2.test.claim.construction_justification.outside_modeled_guarantee_witness_test`
 /// `nonexistent_capability_ref` cites `v2.lens.cost` `capability_absent_from_decl_facts`. The
 /// cited name is never a next-rung capability and is never supposed to be authored; the probe
-/// is that the join still treats absence as outside. Same shape as `test.claim.altra_placement_witness`
-/// citing `some_other_board` and `test.claim.annotation_carrier` citing a one-letter miss.
+/// is that the join still treats absence as outside. Same shape as `test.claim.altra_placement_witness_test`
+/// citing `some_other_board` and `test.claim.annotation_carrier_test` citing a one-letter miss.
 /// It does not belong on `NEXT_RUNG_TRIGGER_CITATIONS`: that roster's arm reds when a citation
 /// stops refusing because the named capability was authored — the stamp firing as designed.
 /// For this probe a resolving citation would mean the control had lost its discriminating
@@ -2105,56 +2105,56 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// the other fixture carriers.
 const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &[
     (
-        "test.claim.altra_placement_witness",
+        "test.claim.altra_placement_witness_test",
         "w_a_plan_from_another_design_is_refused_as_incomparable",
         "product.altra_motherboard.minimal_design",
         "some_other_board",
         "",
     ),
     (
-        "test.claim.annotation_carrier",
+        "test.claim.annotation_carrier_test",
         "bound_condition_does_not_fire_on_a_near_miss_ref",
         "extdeps.network.mac",
         "parse_mac_addres",
         "",
     ),
     (
-        "test.claim.annotation_carrier",
+        "test.claim.annotation_carrier_test",
         "bound_condition_does_not_fire_on_a_near_miss_ref",
         "extdeps.network.max",
         "parse_mac_address",
         "",
     ),
     (
-        "test.claim.annotation_carrier",
+        "test.claim.annotation_carrier_test",
         "planted_bound_row_ref",
         "test.fixture.frontier",
         "planted_bound_trigger",
         "",
     ),
     (
-        "test.claim.annotation_carrier",
+        "test.claim.annotation_carrier_test",
         "planted_rows",
         "test.fixture.frontier",
         "planted_subject",
         "",
     ),
     (
-        "test.claim.annotation_carrier",
+        "test.claim.annotation_carrier_test",
         "planted_rows",
         "test.fixture.frontier",
         "planted_unbound_subject",
         "",
     ),
     (
-        "test.claim.annotation_carrier",
+        "test.claim.annotation_carrier_test",
         "frontier_expiry_fired_trigger_absent_from_rows_is_clean",
         "test.fixture.frontier",
         "never_a_trigger_here",
         "",
     ),
     (
-        "test.claim.capability_binding_witness",
+        "test.claim.capability_binding_witness_test",
         "witness_the_bob_requirement_is_still_provisional",
         "gunbc.capability_binding",
         "x",
@@ -2203,21 +2203,21 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
         "",
     ),
     (
-        "test.claim.keyed_roster_witness",
+        "test.claim.keyed_roster_witness_test",
         "frontier_rows_keyed_build_admits_distinct_decl_fields",
         "synthetic.mod",
         "HostConfig",
         "",
     ),
     (
-        "test.claim.keyed_roster_witness",
+        "test.claim.keyed_roster_witness_test",
         "frontier_rows_keyed_build_admits_distinct_decl_fields",
         "synthetic.mod",
         "HostConfig",
         "memory_swap",
     ),
     (
-        "test.claim.language_target_subject_registration",
+        "test.claim.language_target_subject_registration_test",
         "red_unregistered_subject_ref_is_not_reported_as_present",
         "extdeps.languages.nonexistent.subject",
         "nonexistent_language",
@@ -2329,14 +2329,14 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
         "",
     ),
     (
-        "test.claim.repository_census_observation_witness",
+        "test.claim.repository_census_observation_witness_test",
         "witness_a_declaration_field_selector_reaches_the_identity",
-        "test.claim.repository_census_observation_witness",
+        "test.claim.repository_census_observation_witness_test",
         "census_witness_classifier",
         "rows",
     ),
     (
-        "test.claim.witness_purpose_taxonomy_witness",
+        "test.claim.witness_purpose_taxonomy_witness_test",
         "fixture_population_ref",
         "dag.test.claim.witness_purpose_taxonomy_witness",
         "witness_purpose_taxonomy_witness_note",
@@ -2364,9 +2364,9 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
         "",
     ),
     (
-        "v2.test.lens_cost.valuation",
+        "v2.test.lens_cost.valuation_test",
         "effect_operation",
-        "v2.test.lens_cost.valuation",
+        "v2.test.lens_cost.valuation_test",
         "unmodelled_effect_specimen",
         "",
     ),

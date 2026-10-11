@@ -51,7 +51,7 @@ data executed_conjunct_discriminates_nothing: RecurringFailureMode = RecurringFa
 
     "**SPECIMEN, with both halves executed** (gunbc#9838, `gunbc.self_host_compile_phase_frontier`): `census_population_is_duplicate_free` was added as a conjunct of `receipt_population_coherent`, evaluated on every coherence check and reachable from the live path; deleting it left the whole witness module green.",
 
-    "The fixture that isolates it is a receipt whose `refused_files` REPEATS A PATH -- enrolled as `a_receipt_whose_refused_population_repeats_a_path_is_refused_by_coherence` in `test.claim.self_host_compile_phase_frontier_witness`, with `the_same_receipt_without_the_repeat_is_coherent` as its positive control.",
+    "The fixture that isolates it is a receipt whose `refused_files` REPEATS A PATH -- enrolled as `a_receipt_whose_refused_population_repeats_a_path_is_refused_by_coherence` in `test.claim.self_host_compile_phase_frontier_witness_test`, with `the_same_receipt_without_the_repeat_is_coherent` as its positive control.",
 
     "The subject that looks equally good and is not: a repeated ERROR DIAGNOSTIC IDENTITY also reddens the module, but it breaks a count invariant one line over rather than this conjunct, so it would have scored the DEAD conjunct as LIVE and closed the investigation with the wall still inert.",
 

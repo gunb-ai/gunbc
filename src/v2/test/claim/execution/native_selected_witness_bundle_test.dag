@@ -75,7 +75,7 @@ import v2.extdeps.languages.dag {
   dag_join_eval_subgraph_fixture,
   dag_meet_eval_subgraph_fixture,
 }
-import v2.extdeps.languages.rust_test {
+import v2.extdeps.languages.rust_test_fixtures {
   rust_logic_selected_bundle_target_model_staging,
 }
 import v2.std.collection { list_at_optional }

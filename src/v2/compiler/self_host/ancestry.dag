@@ -396,7 +396,7 @@ data genesis_migration_deletion_trigger: DissolutionCondition = unbound_dissolut
 // request description, because a consumer described outside the diff is exactly the state
 // DESIGN section 3c calls dangling ("consumption described in the PR body but absent from
 // the diff"). As of this declaration acquire_native_ancestor's only executing consumers are
-// the controls in v2.test.claim.self_host.ancestry_witness; the PRODUCTION consumer has not
+// the controls in v2.test.claim.self_host.ancestry_witness_test; the PRODUCTION consumer has not
 // landed, and this row says so rather than letting the surrounding prose imply otherwise.
 //
 // CONSUMER: the emitted-compiler acquisition in the v2-native route harness — the host

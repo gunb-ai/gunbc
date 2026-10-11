@@ -28,7 +28,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Each claim supplies its subject at one interface: the plan's typed steps, the conformance
 // relation, the converge verdict. The wet write is the converge's own and is not re-run here.
 // EXECUTION STANDING: the converge's REAL executions are the wet receipts
-// (test.claim.runner.browser_ready_label_real_path_witness) -- the production converge over
+// (test.claim.runner.browser_ready_label_real_path_witness_test) -- the production converge over
 // LocalShell, the unprivileged posture, against a mktemp scratch destination. The production FLEET
 // route is the declared stall gunbc.guarantee_stall.browser_ready_labels_fleet_route_stall: both shared host-effect runners refuse FleetSsh before any leg,
 // so the converge executes nowhere over fleet until that arm is admitted by its own change.

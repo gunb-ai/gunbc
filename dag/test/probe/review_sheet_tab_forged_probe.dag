@@ -27,7 +27,7 @@ module test.probe.review_sheet_tab_forged_probe
 // an authored body reaches the same mint. It is sealed for exactly that reason and refuses at its
 // own name.
 //
-// The witness test.claim.review_sheet_tab_refusal_probe_witness enrolls this probe and asserts
+// The witness test.claim.review_sheet_tab_refusal_probe_witness_test enrolls this probe and asserts
 // each refusal class at its subject by name. dag/test/probe/ sits under the whole-tree
 // strict-resolve exclusion, so this source reaches the compiler only through that witness.
 
@@ -44,7 +44,7 @@ import gunbc.review_sheet_tab_locator {
   review_tab_standing_from_classification,
   review_tab_standing_of_outcome,
 }
-import test.claim.review_sheet_format_target_witness { located_tab_for_witness }
+import test.claim.review_sheet_format_target_witness_test { located_tab_for_witness }
 import gunbc.review_sheet_format_actuator {
   FreezeRowsRequest,
   HeaderBandRequest,

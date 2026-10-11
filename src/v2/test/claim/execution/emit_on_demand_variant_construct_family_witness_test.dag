@@ -42,7 +42,7 @@ import v2.compiler.eval {
 }
 import v2.compiler.infer { InferredTree }
 import v2.extdeps.languages.dag { dag_variant_construct_body_fixture }
-import v2.extdeps.languages.rust_test { rust_variant_construct_target_model_staging }
+import v2.extdeps.languages.rust_test_fixtures { rust_variant_construct_target_model_staging }
 import v2.test.claim.execution.emit_host_variant_construct_equals_eval_test {
   emit_variant_construct_eval_tree,
   emit_variant_construct_eval_wrong_value_tree,

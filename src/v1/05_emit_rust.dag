@@ -5953,7 +5953,7 @@ fn is_import_graph_type_name(name: String, import_module: String, typed_modules:
 //
 // TRIGGER, AND IT IS AUTHORABLE TODAY, WHICH IS WHY THIS IS 4b(2) AND NOT AN UNTRACKED STALL:
 // `gunbc.instruments.multi_module_compile_fixture` compiles authored sources, and
-// `v2.test.claim.local_binding_shadow_compile` already uses it to make two modules declare one
+// `v2.test.claim.local_binding_shadow_compile_test` already uses it to make two modules declare one
 // spelling. So the RED is expressible in a fixture even though an ambiguous leaf is not authorable
 // in the ACCEPTED corpus, and declining to write it would be specification-without-execution by
 // section 4b's own test. It lands next, as its own witness rather than a change to this wall.
@@ -8012,7 +8012,7 @@ fn emit_item_clone_bound_refusal(item: Node, item_name: String, emit_info: EmitG
 // bound alone would not have been enough; neither half closes this carrier without the other.
 //
 // EVIDENCE, both halves the note demanded: a controlled fixture
-// (test.claim.clone_bound_callable_field_witness, four arms — argument position, return position,
+// (test.claim.clone_bound_callable_field_witness_test, four arms — argument position, return position,
 // a plain-field positive control, and a converse control requiring that a callable over UNBOUNDED
 // parameters still emits bare), PLUS the regen fixed point over the live callable-field carriers
 // as the regression control that the 16 derive carriers did not gain a header bound.

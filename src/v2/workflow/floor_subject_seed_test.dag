@@ -351,13 +351,13 @@ test fn the_checker_ground_prints_under_its_own_name() -> Bool {
   seed_ground_wire_name(
     ground: SeedCheckerSourceChanged {
       changed_checker_path: "src/v1/stage0/src/v1_compiler_infer.rs",
-      module_path: "v2.test.claim.type_param_binder_frame"
+      module_path: "v2.test.claim.type_param_binder_frame_test"
     }
   ) == "SeedCheckerSourceChanged"
     && !seed_ground_is_textual_prefix(
       ground: SeedCheckerSourceChanged {
         changed_checker_path: "src/v1/stage0/src/v1_compiler_infer.rs",
-        module_path: "v2.test.claim.type_param_binder_frame"
+        module_path: "v2.test.claim.type_param_binder_frame_test"
       }
     )
 }

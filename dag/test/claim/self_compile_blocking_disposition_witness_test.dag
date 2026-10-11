@@ -41,7 +41,7 @@ test fn receipt_declares_its_stale_historical_rung() -> Bool {
 
 fn first_identity() -> SelfCompileDiagnosticIdentity {
   diagnostic_identity(
-    module_path: "v2.test.manual.ownership_movable",
+    module_path: "v2.test.manual.ownership_movable_test",
     site: "<module-import>",
     diagnostic: "unresolved import: module 'v1.compiler.ownership' not found",
     occurrence: 1,
@@ -74,7 +74,7 @@ test fn a_new_subject_is_refused_RED() -> Bool {
 
 test fn an_equal_count_identity_substitution_is_refused_RED() -> Bool {
   let replacement = diagnostic_identity(
-    module_path: "v2.test.manual.ownership_movable",
+    module_path: "v2.test.manual.ownership_movable_test",
     site: "invented_site",
     diagnostic: "invented diagnostic",
     occurrence: 1,

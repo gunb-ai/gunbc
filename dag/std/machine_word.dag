@@ -790,7 +790,7 @@ fn word_from_octets(width: WordWidth, octets: QualifiedOctets, endianness: Endia
 // consolidation, which is the deferred cost section 2 prices.
 //
 // THE FOUR CALL SITES NOW NAME THE ACCESSOR DIRECTLY -- `std.encoding` `base64_decode_step_flush`
-// and three rows of `test.claim.machine_word_witness`. Two historical receipts still SPELL the old
+// and three rows of `test.claim.machine_word_witness_test`. Two historical receipts still SPELL the old
 // name (`std.integer`'s inhabitance annotation and this file's count-check note) because they record
 // what the route ANSWERED at a past head; they are past-tense measurements, not live citations.
 // THE DECLARATIONS THIS MODULE LANDS AHEAD OF THEIR CONSUMERS, AS ROWS RATHER THAN AS PROSE.

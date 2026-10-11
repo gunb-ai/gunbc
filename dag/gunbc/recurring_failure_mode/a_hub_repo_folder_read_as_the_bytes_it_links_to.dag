@@ -15,7 +15,7 @@ data a_hub_repo_folder_read_as_the_bytes_it_links_to: RecurringFailureMode = Rec
 
     "DISTINGUISHING FACTS: on srv7 the repo blobs were symlinks whose targets lay under the cache root, outside the repo folder, and only .incomplete partials were regular files there; another cache, or another file in the same cache, may hold a regular repo-local blob instead.",
 
-    "RUNG: found at 1. Now 2: the conditional per-file law is cited in extdeps.huggingface.hub, the byte operations (hub_dereferenced_bytes_argv, hub_repo_blob_hard_link_argv) dereference unconditionally, the three consumers route through them, and test.claim.huggingface.hub_blob_store_layout_witness reds when the -L is removed, including over a mixed cache. CEILING 3: a consumer could still spell its own `du`/`ln` argv over a hub path. NEXT-RUNG TRIGGER: hub cache paths carried as a typed path whose only byte-reading operations are the derived argvs, SUFFICIENT FOR no consumer to construct an undereferenced read of a repo folder.",
+    "RUNG: found at 1. Now 2: the conditional per-file law is cited in extdeps.huggingface.hub, the byte operations (hub_dereferenced_bytes_argv, hub_repo_blob_hard_link_argv) dereference unconditionally, the three consumers route through them, and test.claim.huggingface.hub_blob_store_layout_witness_test reds when the -L is removed, including over a mixed cache. CEILING 3: a consumer could still spell its own `du`/`ln` argv over a hub path. NEXT-RUNG TRIGGER: hub cache paths carried as a typed path whose only byte-reading operations are the derived argvs, SUFFICIENT FOR no consumer to construct an undereferenced read of a repo folder.",
   ],
 
   evidence: [],

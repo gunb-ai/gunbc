@@ -1316,7 +1316,7 @@ fn undecidable_sites() -> List<SiteVerdict> {
 // THE IDENTITY JOIN between what the census finds unreasoned and what the follow-up roster admits.
 // Both directions: a found site the roster does not name is undeclared debt; a rostered site the
 // census no longer finds is a paid debt whose row was not retired. Both are executed by
-// test.claim.authorization_pattern_selection_witness, which is the census's consumer.
+// test.claim.authorization_pattern_selection_witness_test, which is the census's consumer.
 fn unrostered_unreasoned_divergences() -> List<DeclarationRef> {
   filter(map(unreasoned_divergences(), v => v.site), s => !declaration_ref_in_list(target: s, refs: follow_up_sites))
 }

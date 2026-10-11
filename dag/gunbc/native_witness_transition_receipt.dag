@@ -8,7 +8,7 @@ import gunbc.open_node_partial_evidence { OpenNodePartialEvidenceReceipt }
 // ONE HOME FOR A MUTABLE PROGRAM STATUS, SO NO DOCUMENT HAS TO HOLD IT TWICE (operator ruling on
 // gunbc#7710, 2026-08-02). That PR wrote the same changing observation -- native-at-small-scale
 // evidence landed, with its pull request, merge commit, evaluated head and pass count --
-// independently into gunbc.roadmap.roadmap_authority five_minute_ci_gate_program_note AND into
+// independently into a program note in gunbc.roadmap.roadmap_authority (since deleted) AND into
 // gunbc.design_document, and therefore into generated DESIGN.md. Two hand-maintained copies of one
 // advancing status is the DESIGN section 3 dual representation: someone updates one, the other
 // silently goes stale, and both read as authoritative. The operator's split is the model here --
@@ -63,7 +63,7 @@ import gunbc.open_node_partial_evidence { OpenNodePartialEvidenceReceipt }
 // native and interpreted execution is actually established -- deliberately not the
 // native_selected_witness_bundle_cutover_evidence_holds wrapper around it, which is a test
 // function: a test-to-test reference here is exactly the debt the test-reference wall refuses
-// (test.claim.native_witness_transition_receipt_witness imports the ordinary fn for the same
+// (test.claim.native_witness_transition_receipt_witness_test imports the ordinary fn for the same
 // reason). The timing ratio against interpreted and warm-cargo paths remains claimed-not-verified
 // per the design note, and nothing here asserts it.
 

@@ -72,7 +72,7 @@ test fn witness_allocation_signed_out_cannot_request() -> Bool {
 // renders the connection only as the server's text, and never assembles an SSH command. A write
 // answered with the typed unavailable value disables the write controls and shows reason and cause.
 // The retry-safety behaviour itself is executed, not grepped, by
-// test.claim.roadmap.allocation_client_execution_wet_witness.
+// test.claim.roadmap.allocation_client_execution_wet_witness_test.
 test fn witness_allocation_client_drives_the_real_contract() -> Bool {
   let js = allocation_live_source()
   string_contains(s: js, pattern: concat("'", concat(allocation_list_path, "'")))

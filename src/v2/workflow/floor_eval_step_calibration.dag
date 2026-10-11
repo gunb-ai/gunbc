@@ -134,7 +134,7 @@ type EvalStepCalibration = PinnedSpecimenCalibration {
 // does not deliver that for a gate that compares a CPU READING to a budget, because the reading
 // carries the runner's speed and the pin does not. Measured on gunbc#13168 at b72b994: fifteen parse
 // claims refused with eval steps identical to their green run (48,811 vs 48,755), while a same-step
-// peer already on main (test.claim.parse_test_fn_decl_return_clause nfbcp_eq_body_specimen_parses_holds,
+// peer already on main (test.claim.parse_test_fn_decl_return_clause_test nfbcp_eq_body_specimen_parses_holds,
 // about 48,760 steps) went 240 -> 426 ms between runs on a runner about 1.75x slower. Runner speed
 // flipped the verdict; the pin let it. So the ban's purpose is now better served by a SAME-RUN
 // factor than by the pin, and the overturn is bounded by the conditions of that decision:

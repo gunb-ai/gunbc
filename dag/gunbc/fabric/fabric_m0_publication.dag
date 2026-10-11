@@ -38,7 +38,7 @@ import gunbc.fabric.fabric_m0_commit {
 // invented.
 //
 // CONSUMERS, NAMED POSITIVELY (DESIGN 3c): this fold is called by
-// test.claim.fabric_m0_publication_witness, which exercises it across the five
+// test.claim.fabric_m0_publication_witness_test, which exercises it across the five
 // publication arms, and by gunbc.fabric.fabric_m0_job_ending end_required_job, which
 // derives the check conclusion from the JobPublication. THE REMAINING FRONTIER
 // IS THE REQUIRED-CI WIRE, not a claim about what is absent: claim_executor

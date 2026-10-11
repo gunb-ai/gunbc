@@ -317,7 +317,7 @@ fn seed_ground_is_textual_prefix(ground: PreparedSubjectSeedGround) -> Bool {
 // of the frontier and false of the verdict. RECEIPT: gunbc#12441 (7299157) added a check to the
 // seed's infer (v1_compiler_infer.rs) that refuses a distinct type argument of one generic
 // coproduct at a declared return. Its landing run 36641740799 prepared 2342 of 7028 admitted
-// modules and left out v2.test.claim.type_param_binder_frame, which the new check refuses. That
+// modules and left out v2.test.claim.type_param_binder_frame_test, which the new check refuses. That
 // module had been prepared green on gunbc#12432's own landing run 36585500472, so the red entered
 // main with the checker change and not with any .dag change. Class:
 // gunbc.recurring_failure_mode.checker_change_landing_subject_keyed_to_changed_files.

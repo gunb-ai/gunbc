@@ -255,7 +255,7 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
 // CLAUSE 2 IS NOT SATISFIED, AND THIS PARAGRAPH SAYS SO BEFORE IT SAYS ANYTHING THAT SOUNDS LIKE
 // PROGRESS. The trigger is a CAPABILITY -- a consumer whose declared substrate and cadence
 // truthfully match the inputs it reads, WHOSE FAILURE REACHES THE REQUIRED PR FLOOR, and which
-// cannot predict-skip. v2.test.claim.enforcement.determinism_transitive_witness
+// cannot predict-skip. v2.test.claim.enforcement.determinism_transitive_witness_test
 // determinism_live_intra_holds (renamed from determinism_transitive_live_closure_holds when
 // corpus_dependency_view was deleted — see gunbc.rung_drop.determinism_transitive_reachability)
 // met three of those four at the time of the rename. It declares ReadsLiveTree in

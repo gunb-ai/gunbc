@@ -7,7 +7,7 @@ import extdeps.mercurial {
   MercurialInaccessibleProjection,
   MercurialPublishingServer,
 }
-import test.claim.mercurial_upstream_model_witness {
+import test.claim.mercurial_upstream_model_witness_test {
   mercurial_r0_fixture_projection,
   projection_with_publishing,
 }

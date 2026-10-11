@@ -10,7 +10,7 @@ import extdeps.pijul {
   PijulInaccessibleProjection,
   pijul_upstream_version,
 }
-import test.claim.pijul_upstream_model_witness {
+import test.claim.pijul_upstream_model_witness_test {
   pijul_r0_fixture_projection,
   pijul_r0_fixture_repository,
   pijul_state_partial,

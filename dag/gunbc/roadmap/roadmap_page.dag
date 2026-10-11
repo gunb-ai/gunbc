@@ -166,7 +166,7 @@ fn roadmap_page_max_depth() -> Int { 12 }
 // scaffold that shipped this section unstyled dissolved in the same pass: the gate/brick rules are
 // deleted, .finish-line-* rules exist on the tokened grain, and roadmap_css_lift_parity_digest was
 // re-pinned by execution (see the A1 re-pin note in
-// test.claim.design_register_lift_parity_witness). The count line under the heading is the LOCAL
+// test.claim.design_register_lift_parity_witness_test). The count line under the heading is the LOCAL
 // denominator — accepted finish lines over the four — never the global roadmap population, which
 // belonged to a different question (review: the section visually implied a denominator of four
 // while reporting an unrelated global one).

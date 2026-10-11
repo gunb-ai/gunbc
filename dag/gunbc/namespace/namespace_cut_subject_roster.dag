@@ -191,7 +191,7 @@ fn subject_probe_list(s: NamespaceCutSubjectIdentity) -> List<NamespaceCutSubjec
 //
 // WHAT WOULD MOVE A SUBJECT BACK EARLIER: an EXECUTED proof that deleting it cannot change live
 // resolution or closure -- a run, not an argument that it looks independent. Until then the
-// cutover owns it, and test.claim.compiler_frontend_program_status_witness executes the
+// cutover owns it, and test.claim.compiler_frontend_program_status_witness_test executes the
 // no-subject-at-XL-5 rule so a reassignment reds rather than being noticed in review.
 //
 // XL-7 keeps grammar, parse surface and AST carriers, structurally, by the grammar-last ruling

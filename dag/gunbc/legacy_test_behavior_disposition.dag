@@ -425,7 +425,7 @@ data legacy_discovery_known_positive: String = "src/v1/tests/src/class_b_trim_sp
 
 // Deliberately a witness with no relationship to test migration, so that
 // draining the retained kernel to zero cannot silently drain this control too.
-data witness_discovery_known_positive: String = "dag/test/claim/content_hash_family_grounded_witness.dag::content_hash_cited_sha256_literals_validate"
+data witness_discovery_known_positive: String = "dag/test/claim/content_hash_family_grounded_witness_test.dag::content_hash_cited_sha256_literals_validate"
 
 fn legacy_discovery_known_positive_present(discovered_legacy: List<String>) -> Bool {
   discovered_legacy |> any(id => id == legacy_discovery_known_positive)

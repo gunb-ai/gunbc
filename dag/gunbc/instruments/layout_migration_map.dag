@@ -17,6 +17,10 @@ import v2.cli.repository_layout {
   repository_module_file_of_path,
   repository_path_of_module_file
 }
+import v2.workflow.floor_naming_hygiene {
+  floor_entry_requires_test_sidecar,
+  floor_test_sidecar_suffix
+}
 
 // THE MOVE-AND-RENAME MAP (docs/plans/source-layout-authority.md, Appendix B), COMPUTED. Given each
 // governed module's file and the `module` line it carries, derive where the storage rule puts it
@@ -160,7 +164,7 @@ fn renamed_by_path(layout: SourceStorageLayout, site: MigrationSite, category: M
 // same folder (A); the rule's folder below the file's (B); the file's folder below the rule's (C,
 // or C-up when the folder only repeats the module's name); otherwise a different branch, decided
 // by namespace.
-fn place_site(layout: SourceStorageLayout, name_wins_namespaces: List<String>, site: MigrationSite) -> SitePlacement {
+fn place_site_by_rule(layout: SourceStorageLayout, name_wins_namespaces: List<String>, site: MigrationSite) -> SitePlacement {
   match rule_path_of(layout: layout, module: site.module) {
     RulePathUnderivable { cause: cause } => SiteUnplaceable { site: site, cause: cause }
     RulePathDerived { path: target } => {
@@ -184,6 +188,66 @@ fn place_site(layout: SourceStorageLayout, name_wins_namespaces: List<String>, s
         } else {
           renamed_by_path(layout: layout, site: site, category: PathWins {})
         }
+      }
+    }
+  }
+}
+
+// THE DISCOVERY SUFFIX IS A FACT OF THE FILE, AND A SWEEP KEEPS IT. Witness discovery keys on the
+// file's stem (v2.workflow.floor_naming_hygiene floor_entry_requires_test_sidecar), never on the
+// module, so a placement that changes whether a path ends in the suffix changes which files are
+// witnesses: dropping it silently un-enrols the witness the file carries, and gaining it enrols a
+// fixture that was never one. Both are refused as placements and answered the other way round, by
+// moving the module's name and never the file's status.
+//
+// A file that would lose the suffix is asked again for the module that already ends in it, which
+// keeps the stem and gives the name the suffix too; the category stays the one the plan's procedure
+// chose, because that procedure is still the one fixing the file. A file that would gain the suffix
+// is only decided where its own folder carries the answer: the same-folder rename keeps the file
+// and the module takes the path's name, and any other category has no ruling, so it is refused
+// rather than guessed.
+fn discovery_stem_suffix() -> String {
+  file_stem(path: floor_test_sidecar_suffix)
+}
+
+fn keep_discovery_stem(layout: SourceStorageLayout, name_wins_namespaces: List<String>, site: MigrationSite, category: MoveCategory) -> SitePlacement {
+  let extended = MigrationSite { path: site.path, module: concat(site.module, discovery_stem_suffix()) }
+  match place_site_by_rule(layout: layout, name_wins_namespaces: name_wins_namespaces, site: extended) {
+    SiteUnplaceable { site: _, cause: cause } => SiteUnplaceable { site: site, cause: cause }
+    SitePlaced { change: change } => SitePlaced { change: ModuleMove {
+      old_path: site.path,
+      new_path: change.new_path,
+      old_module: site.module,
+      new_module: change.new_module,
+      category: category
+    } }
+  }
+}
+
+fn refuse_discovery_suffix_gain(site: MigrationSite, category: MoveCategory) -> SitePlacement {
+  SiteUnplaceable { site: site, cause: concat("placing it (", move_category_label(category: category), ") would give a file that is not a witness the discovery suffix, and no ruling decides which of the two names yields") }
+}
+
+fn place_site(layout: SourceStorageLayout, name_wins_namespaces: List<String>, site: MigrationSite) -> SitePlacement {
+  match place_site_by_rule(layout: layout, name_wins_namespaces: name_wins_namespaces, site: site) {
+    SiteUnplaceable { site: unplaced, cause: cause } => SiteUnplaceable { site: unplaced, cause: cause }
+    SitePlaced { change: change } => {
+      let was_witness = floor_entry_requires_test_sidecar(entry_path: site.path)
+      let is_witness = floor_entry_requires_test_sidecar(entry_path: change.new_path)
+      if was_witness && !is_witness {
+        keep_discovery_stem(layout: layout, name_wins_namespaces: name_wins_namespaces, site: site, category: change.category)
+      } else if is_witness && !was_witness {
+        match change.category {
+          SameFolderRename => renamed_by_path(layout: layout, site: site, category: PathWins {})
+          AlreadyPlaced => SitePlaced { change: change }
+          MoveDown => refuse_discovery_suffix_gain(site: site, category: change.category)
+          FolderEntersName => refuse_discovery_suffix_gain(site: site, category: change.category)
+          MoveUp => refuse_discovery_suffix_gain(site: site, category: change.category)
+          PathWins => refuse_discovery_suffix_gain(site: site, category: change.category)
+          NameWins => refuse_discovery_suffix_gain(site: site, category: change.category)
+        }
+      } else {
+        SitePlaced { change: change }
       }
     }
   }

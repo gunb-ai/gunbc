@@ -15,7 +15,7 @@ import v2.compiler.emit_host {
 }
 import v2.compiler.emit_module { EmitFamilyMember, emit_family }
 import v2.compiler.native_selected_bundle_process { NativeSelectedBundleProcessSpec }
-import v2.extdeps.languages.rust_test { rust_logic_selected_bundle_target_model_staging }
+import v2.extdeps.languages.rust_test_fixtures { rust_logic_selected_bundle_target_model_staging }
 import v2.std.compilers.target_model { runtime_row_from_target }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.test.claim.execution.emit_on_demand_family_crate_witness_test {

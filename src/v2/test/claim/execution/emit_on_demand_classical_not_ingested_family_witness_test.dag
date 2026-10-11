@@ -45,7 +45,7 @@ import v2.compiler.eval {
   inferred_tree_digest,
 }
 import v2.compiler.infer { InferredTree }
-import v2.extdeps.languages.rust_test { rust_classical_not_ingested_target_model_staging }
+import v2.extdeps.languages.rust_test_fixtures { rust_classical_not_ingested_target_model_staging }
 import v2.test.claim.execution.long.emit_host_classical_not_ingested_equals_eval_test {
   ingested_classical_not_source,
   ingested_classical_not_swapped_source,

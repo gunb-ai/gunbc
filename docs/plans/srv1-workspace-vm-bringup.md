@@ -302,7 +302,7 @@ fences. This fixes the normal start overlap; recovery-path aggregate memory has
 not been measured. No live commissioning OOM is claimed.
 
 The manual transport experiment used `export_executor` from
-`dag/test/claim/workspace_commissioning_executor_witness.dag` and the local
+`dag/test/claim/workspace_commissioning_executor_witness_test.dag` and the local
 `target/srv1-bringup-evidence/executor-bind-order-controls.py` driver against
 `target/workspace-commissioning-executor.sh`. The Python driver is local dev
 tooling, excluded from the committed substrate by `gunbc.repo_workspace`; these

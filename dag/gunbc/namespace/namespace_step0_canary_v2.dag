@@ -391,7 +391,7 @@ fn namespace_step0_v2_fixture_receipt(
   import_dependence: Step0ImportDependenceStanding
 ) -> NamespaceStep0V2Receipt
   admit_callers: [
-    decl_ref(module_path: "test.claim.namespace_step0_canary_v2_witness", decl_name: "fixture_receipt")
+    decl_ref(module_path: "test.claim.namespace_step0_canary_v2_witness_test", decl_name: "fixture_receipt")
   ]
   = NamespaceStep0V2Receipt {
     contract_identity: contract_identity,

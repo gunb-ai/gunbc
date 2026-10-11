@@ -259,7 +259,7 @@ data holder_process: ProcessIdentity = ProcessIdentity { boot_id: "73c8153e-0e0e
 // Supplied at the interface (DESIGN §3, a witness discriminates at one interface), and only into the
 // PURE refusal fold: a supplied outcome yields text and never a UnitHoldProof, whose one mint is the
 // live acquire (the forged-carrier refusals are test.claim.host.managed_host_unit_hold_forged_probe_witness_test).
-// The store route itself is test.claim.durable_exclusive_hold_file_store_wet_witness.
+// The store route itself is test.claim.durable_exclusive_hold_file_store_wet_witness_test.
 
 fn first_generation() -> CasGeneration {
   cas_generation_first()

@@ -147,7 +147,7 @@ type CommonPaperCloudServiceAgreementStandardTerms {
 // RouteScopeSanction.requires_agreement and ProviderUseScope.agreement are DeclarationRefs, and
 // this row is what they are supposed to name; admit_provider_use compares the two by
 // declaration_ref_eq and refuses RequiredAgreementAuthorityAbsent when the scope presents any
-// other agreement. The executing consumer is test.claim.fabric.common_paper_csa_agreement_witness,
+// other agreement. The executing consumer is test.claim.fabric.common_paper_csa_agreement_witness_test,
 // which runs both arms against this exact reference.
 data common_paper_csa_v2_1: CommonPaperCloudServiceAgreementStandardTerms = CommonPaperCloudServiceAgreementStandardTerms {
   title: common_paper_csa_title,

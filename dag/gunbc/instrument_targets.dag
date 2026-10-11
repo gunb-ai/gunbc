@@ -277,7 +277,7 @@ fn v2_native_frontier_label() -> Label {
 // partition check (members summed over groups == rows reported) was tried and withdrawn in review
 // 74324: every row reaches a group through the same call that counts it, so its red was not
 // authorable in a real run -- a decoration by DESIGN section 4b. The grouping's discriminating red
-// lives where it is authorable, in v2.test.claim.native_census.whole_tree_census_resolve.
+// lives where it is authorable, in v2.test.claim.native_census.whole_tree_census_resolve_test.
 fn v2_native_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "v2-native-census" } }
 }

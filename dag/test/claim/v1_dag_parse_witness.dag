@@ -1,8 +1,0 @@
-module test.claim.v1_dag_parse_witness
-
-
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
-test fn v1_dag_parse_witnesses() -> Bool {
-  run_v1_dag_parse()
-}

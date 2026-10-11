@@ -61,7 +61,7 @@ import product.data_category {
 // changes representation, never permission.
 //
 // WHAT THE TYPE ARGUMENT C ESTABLISHES TODAY, STATED SO IT IS NOT OVER-READ. On the emitted-Rust
-// path distinct markers render distinctly (test.claim.phantom_marker_type_argument_identity_witness
+// path distinct markers render distinctly (test.claim.phantom_marker_type_argument_identity_witness_test
 // and the Classified instance of it in test.claim.data_class_marker_identity_witness), so a
 // Classified<PersonalIdentity, T> handed to a Sink<JobLog> is a rustc type error THERE. On the
 // interpretation path the checker does not yet judge marker identity at generic argument

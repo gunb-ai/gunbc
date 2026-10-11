@@ -16,7 +16,7 @@ import v2.extdeps.languages.rust {
   rust_value_expression_projection,
   rust_fn_add_lex
 }
-import v2.extdeps.languages.rust_test {
+import v2.extdeps.languages.rust_test_fixtures {
   rust_binop_target_model_staging,
   rust_target_model_with_operators_and_lex
 }

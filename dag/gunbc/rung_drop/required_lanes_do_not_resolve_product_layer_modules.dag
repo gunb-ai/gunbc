@@ -22,7 +22,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // four approvals and a side-chat exact-head APPROVE and reached position 1 in the merge queue.
 // The same day #11722's witness landed importing names #11675 had renamed,
 // gunbc.fabric.fabric_required_build_cell landed passing an Optional from first() into a String
-// parameter, and test.claim.workflow_dispatch_input_witness sat on main not resolving --
+// parameter, and test.claim.workflow_dispatch_input_witness_test sat on main not resolving --
 // repaired by #11839 ("two composition breaks the PR gate could not see"). DESIGN section 3's
 // sentence -- a product-layer dependent can stop resolving, stay broken, and let every required
 // lane report SUCCESS -- was the live state, not a warning.

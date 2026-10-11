@@ -46,7 +46,7 @@ fn crawl_entry() -> ObservationSubject {
     segments: [
       RunSegment { id: "30044816605" as NonEmptyStr },
       BatchSegment { index: 3, label: "witness discovery" as NonEmptyStr },
-      EntrySegment { source_path: "dag/test/claim/virtual_media_unification.dag" as NonEmptyStr }
+      EntrySegment { source_path: "dag/test/claim/virtual_media_unification_test.dag" as NonEmptyStr }
     ]
   }
 }
@@ -56,7 +56,7 @@ fn crawl_leaf() -> ObservationSubject {
     segments: [
       RunSegment { id: "30044816605" as NonEmptyStr },
       BatchSegment { index: 3, label: "witness discovery" as NonEmptyStr },
-      EntrySegment { source_path: "dag/test/claim/virtual_media_unification.dag" as NonEmptyStr },
+      EntrySegment { source_path: "dag/test/claim/virtual_media_unification_test.dag" as NonEmptyStr },
       ModuleSegment { module_path: "v2.compiler.normalized_tree" as NonEmptyStr },
       PhaseSegment { name: "typecheck" as NonEmptyStr }
     ]

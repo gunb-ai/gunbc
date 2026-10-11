@@ -22,7 +22,7 @@ import gunbc.runner.jit_registration_subject { host_unit_registration_subject }
 import gunbc.runner.runner_jit_admission { jit_admission_axis_standing, AttemptBindingAxis }
 import gunbc.runner.runner_jit_perform { JitMintDispatchAuthorized, JitMintDispatchRefused, dispatch_jit_mint, receive_jit_mint }
 import gunbc.runner.runner_throughput_qualification_route { ephemeral_slot_labels, ephemeral_slot_unit, qualification_instruments, FloorPhaseRows, FloorCgroupRows }
-import test.claim.github_app_registry {
+import test.claim.github_app_registry_test {
   app_credential, other_app_credential, other_installation_credential, a_pull_request_job_credential,
   bot_installation_id, other_installation_id, observed_grant, runner_grant, gunbai_org_ref, group_restricted_to, minted_outcome,
 }

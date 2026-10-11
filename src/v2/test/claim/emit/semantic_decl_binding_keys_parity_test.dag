@@ -1,7 +1,7 @@
 module v2.test.claim.emit.semantic_decl_binding_keys_parity_test
 
 import v2.extdeps.languages.rust { rust_decl_derive_binding_spellings }
-import v2.extdeps.languages.rust_test { rust_semantic_decl_target_model_staging }
+import v2.extdeps.languages.rust_test_fixtures { rust_semantic_decl_target_model_staging }
 import v2.std.compilers.semantic_decl_emission {
   semantic_decl_emission_from_target,
   semantic_decl_profile_binding_spellings

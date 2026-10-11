@@ -6,7 +6,7 @@ import std.types { Bool }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE MARKER-NOMINAL WITNESS APPLIED TO Classified, on the emitted-Rust path.
-// test.claim.phantom_marker_type_argument_identity_witness establishes that distinct bare
+// test.claim.phantom_marker_type_argument_identity_witness_test establishes that distinct bare
 // marker declarations used as type arguments render distinctly; this is the same claim on the
 // product's carrier: Classified<PersonalIdentity, T> and Classified<BuildOutput, T> are two
 // declared identities in the projection, never one erased Classified<()>, so on that path a

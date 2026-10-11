@@ -106,14 +106,14 @@ data list_membership_gap_sites: List<ListMembershipGapSite> = [
     argument_shape: NamedItemWithoutEquality,
   },
   {
-    collection_producer: decl_ref(module_path: "test.claim.attribution_span_witness", decl_name: "unattributed_widths"),
+    collection_producer: decl_ref(module_path: "test.claim.attribution_span_witness_test", decl_name: "unattributed_widths"),
     index_coverage: OutsideDeclIndexTestWitnessModule,
     element_type: "Nat",
     occurrences: 3,
     argument_shape: PositionalPair,
   },
   {
-    collection_producer: decl_ref(module_path: "test.claim.recorded_observation_envelope_witness", decl_name: "active_ids"),
+    collection_producer: decl_ref(module_path: "test.claim.recorded_observation_envelope_witness_test", decl_name: "active_ids"),
     index_coverage: OutsideDeclIndexTestWitnessModule,
     element_type: "String",
     occurrences: 4,
@@ -124,7 +124,7 @@ data list_membership_gap_sites: List<ListMembershipGapSite> = [
 // TWO OF THE MODULE PATHS THIS CARRIER MERGED WITH WERE FALSE, and the enrollment below
 // caught them on its first execution. Both named the FILE
 // (`test.claim.attribution_span_witness_test`) where the module declares itself without the `_test`
-// suffix (`test.claim.attribution_span_witness`). A grep for the declaration name passed, because
+// suffix (`test.claim.attribution_span_witness_test`). A grep for the declaration name passed, because
 // the declaration name was right; nothing checked the module path it was attributed to. Four
 // reviews passed over the false rows, one of which verified the citations by hand.
 //

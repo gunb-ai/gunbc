@@ -10,7 +10,7 @@ import v2.workflow.floor_route_gap {
   floor_route_gap_admission_partition,
 }
 
-// ONE FIXTURE, READ BY ALL THREE SIDES. `test.claim.route_gap_partition_witness` asserts the
+// ONE FIXTURE, READ BY ALL THREE SIDES. `test.claim.route_gap_partition_witness_test` asserts the
 // modeled partition over these rows on the floor (the route: the same surface the run site
 // marshals into). The seed's `required_floor_runner` pairing witness evaluates the same rows
 // through `run_in_context_with_args` -- the real call path the run site uses -- and asserts both

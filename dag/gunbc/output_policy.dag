@@ -206,7 +206,7 @@ fn is_condensed(channel: OutputChannel, verbosity: Verbosity) -> Bool {
 // why 324 mechanical annotations were NOT landed with this change. 🟡 dissolve-on: the counted
 // frontier reaches zero corpus-wide, at which point the UntracedDefault arm deletes and an
 // undeclared site becomes a hard typed refusal — absence unwritable rather than merely counted.
-// Executing consumer: dag/test/claim/expectation_frontier_witness.dag (present-and-absent
+// Executing consumer: dag/test/claim/expectation_frontier_witness_test.dag (present-and-absent
 // pair, both live).
 
 type ExpectedOutcome = ExpectSuccess | ExpectFailure | OutcomeIsData

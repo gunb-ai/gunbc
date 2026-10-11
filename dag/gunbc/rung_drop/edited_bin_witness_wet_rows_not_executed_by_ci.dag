@@ -34,7 +34,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // so widening this drop is a change to this list, reviewed as one.
 //
 // THE HARM IS OBSERVED, NOT HYPOTHETICAL. The bin_wet receipt run for gunbc#12741 on 2026-09-30
-// found `v2.test.claim.auth_declared_but_unwired_witness auth_declared_but_unwired_witness_keystone_holds`
+// found `v2.test.claim.auth_declared_but_unwired_witness_test auth_declared_but_unwired_witness_keystone_holds`
 // FAILING on main at 7e2ddfee90 as well: its binary panics in
 // `auth_declared_no_source_fails_closed_pre_send` with `undefined variable 'Bearer'`. A member of
 // this population had broken with nothing in CI able to notice, which is exactly what this row

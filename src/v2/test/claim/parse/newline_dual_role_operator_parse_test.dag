@@ -47,7 +47,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // continuation point of dag_grammar_binary_expr_expr. Each side of the rule, through the
 // live prepared grammar on a lexed stream (which carries its layout): the next-line forms refuse at
 // the `-`, for a plain operand and for a block, and the same-line form parses. The
-// mutation that reds the refusals is test.claim.parse_test_newline_dual_role_operator_mutation.
+// mutation that reds the refusals is test.claim.parse_test_newline_dual_role_operator_mutation_test.
 
 fn n_tokenize_parse(text: String, file: Symbol) -> Outcome<Node> {
   match dag_prepared_grammar() {

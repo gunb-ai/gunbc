@@ -1363,7 +1363,7 @@ fn gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation(obs: R
 // admission was recorded on that conjunct's earlier form and the record survives here: it once
 // passed a two-variant resolution coproduct to a parameter declared as a one-field measure at a
 // CALL-argument position and the corpus accepted it over 3,136 witnesses -- a floor-level "values
-// inhabit declared types" admission. test.claim.declared_type_inhabitance_direct_call_witness
+// inhabit declared types" admission. test.claim.declared_type_inhabitance_direct_call_witness_test
 // refuses distinct unapplied constructors through a call, so this is not that case; the
 // discriminator (coproduct producer, alias-expanded generic at the parameter, cross-module
 // resolution) is unmeasured and the trigger is a probe matrix over producer kind x judgment

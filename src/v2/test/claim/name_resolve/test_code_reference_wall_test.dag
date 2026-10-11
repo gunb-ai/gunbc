@@ -426,7 +426,7 @@ test fn a_modules_own_declaration_beats_a_same_named_test_fn_holds() -> Bool {
 }
 
 // A REFERENCE FROM A PARAMETER DEFAULT CANNOT REACH RESOLUTION: since gunbc#12876 a default parses
-// and lowering refuses it with one typed reason, which v2.test.claim.parse.default_value
+// and lowering refuses it with one typed reason, which v2.test.claim.parse.default_value_test
 // a_parameter_default_refuses_at_the_default_holds owns. The row that stood here asserted a parse
 // refusal #12876 made false; it is deleted rather than re-stated, because the re-statement was that
 // control a second time.

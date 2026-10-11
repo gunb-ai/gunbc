@@ -529,7 +529,7 @@ test fn specimen_route_selects_the_specimen_handler() -> Bool {
 // EVERY REGISTERED ELEMENT HAS ITS SPECIMEN. Which sections an element has is a total match over
 // the element identity (gunbc.site.element.styles SiteElement) that the registry rows are also a
 // match over, so a registry row that names no sections does not compile (the language's red for
-// that state is test.claim.match_exhaustiveness_coproduct_witness
+// that state is test.claim.match_exhaustiveness_coproduct_witness_test
 // w_cross_module_provider_growth_reports_one_non_exhaustive). What is still writable is an element
 // mapped to no section, and a section that draws something other than its element: the first is a
 // join over the registry, the second is one rendered section per claim, each carrying its

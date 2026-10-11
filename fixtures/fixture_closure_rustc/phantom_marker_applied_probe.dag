@@ -12,7 +12,7 @@ module fixture.closure.rustc_phantom_marker_applied_probe
 // the markers are declared, the applied heads carry them, and the field reads type-check. It does
 // NOT by itself prove the two arguments render DIFFERENTLY -- an emitter that collapsed both to
 // `()` would also compile here, which is precisely why the spelling half of this class stays
-// enrolled at `test.claim.phantom_marker_type_argument_identity_witness` (DESIGN 4b(4): a climb
+// enrolled at `test.claim.phantom_marker_type_argument_identity_witness_test` (DESIGN 4b(4): a climb
 // deletes lower-rung production machinery, never the evidence). This arm is the half a substring
 // oracle cannot answer: whether what the emitter wrote is a crate rustc accepts.
 // THE NAMES CARRY NO DOMAIN SEMANTICS ON PURPOSE, AND THAT IS LOAD-BEARING TWICE. This fixture

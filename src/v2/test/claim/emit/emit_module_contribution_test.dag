@@ -9,7 +9,7 @@ import v2.compiler.target_carriers { emit_module_decl_separator }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredTree }
 import v2.extdeps.languages.rust { rust_source_text }
-import v2.extdeps.languages.rust_test { rust_add_target_model_staging }
+import v2.extdeps.languages.rust_test_fixtures { rust_add_target_model_staging }
 import v2.test.claim.execution.emit_host_add_equals_eval_test { emit_eval_subject_tree }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }

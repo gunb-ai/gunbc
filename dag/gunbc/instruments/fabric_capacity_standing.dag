@@ -539,7 +539,7 @@ fn group_report(group: FabricGroup) -> GroupStanding {
 // THE VERDICT TAKES ITS ROSTER, AND THAT SPLIT IS THE POINT. Folding the roster read into the entry
 // point would leave the guard below reachable only by deleting the live row, so its refusal would be
 // unauthorable and the wall would carry no executed evidence. The controls that exercise both arms
-// live on test.claim.spark.fabric_capacity_standing_witness, against this seam rather than a copy.
+// live on test.claim.spark.fabric_capacity_standing_witness_test, against this seam rather than a copy.
 // A SUSPENDED GROUP IS A STANDING, NOT AN ABSENCE. The roster keeps its member through a replacement
 // transaction, so this instrument keeps its subject -- but probing a deliberately paused group and
 // refusing it for not answering reports a fleet defect where there is a fleet decision. The three

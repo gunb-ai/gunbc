@@ -21,7 +21,7 @@ data non_execution_undifferentiated_by_what_it_silenced: RecurringFailureMode = 
 
     "The rows whose silencing motivated this class carry it FALSE.",
 
-    "`test.claim.self_host_compile_phase_live_gate_witness` `a_live_tree_that_gained_an_identity_refuses_and_names_it` and `a_live_tree_that_swapped_an_identity_at_equal_cardinality_refuses` are ordinary PASSING rows on no expected-red, cost-debt or quarantine roster in the tree; their content is that `live_tree_frontier_verdict` returns `LiveFrontierRefused` and NAMES the planted identity.",
+    "`test.claim.self_host_compile_phase_live_gate_witness_test` `a_live_tree_that_gained_an_identity_refuses_and_names_it` and `a_live_tree_that_swapped_an_identity_at_equal_cardinality_refuses` are ordinary PASSING rows on no expected-red, cost-debt or quarantine roster in the tree; their content is that `live_tree_frontier_verdict` returns `LiveFrontierRefused` and NAMES the planted identity.",
 
     "The second carries an in-source comment stating that it is precisely the probe that would go green if the join were replaced by a population-size comparison -- so preempting that one row makes that sentence stop being true while the run reports one more undecided claim.",
 
@@ -33,7 +33,7 @@ data non_execution_undifferentiated_by_what_it_silenced: RecurringFailureMode = 
 
     "`std.witness_purpose` `WitnessPurpose` declares the authored taxonomy -- BehavioralDiscriminator, BoundaryCrossing, PopulationTotality, ExternalFidelity, ResourceContract -- landed under the operator's 2026-08-04 witness-cost-derives-from-purpose ruling, its own header stating that purpose is AUTHORED AND NOT INFERRED FROM IMPLEMENTATION.",
 
-    "It is rostered in `v2.lens.inert_carrier` with the reason that it landed ahead of the consumer that derives witness size from it: zero witnesses declare one, zero consumers read one, and its only reference is its own taxonomy test `test.claim.witness_purpose_taxonomy_witness`.",
+    "It is rostered in `v2.lens.inert_carrier` with the reason that it landed ahead of the consumer that derives witness size from it: zero witnesses declare one, zero consumers read one, and its only reference is its own taxonomy test `test.claim.witness_purpose_taxonomy_witness_test`.",
 
     "So the purpose vocabulary landed, the consumer slices never did, and in the meantime the required floor grew a cost mechanism that JUDGES ROWS WITH NO ACCESS TO WHAT ANY ROW IS FOR.",
 

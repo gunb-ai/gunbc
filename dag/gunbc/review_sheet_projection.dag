@@ -662,7 +662,7 @@ fn first_omitted_derived_column(row: ProjectionRow, schema: ReviewSheetSchema) -
 // prepended and the header row is one wider than the column roster. It is stated as a shape rather
 // than by naming a schema on purpose: the roster-derived schema that inhabits it is private
 // (strategy.buyer_review_projection), so a name cited here would be a citation this repository
-// cannot resolve. test.claim.review_sheet_header_schema_witness carries a generic specimen of that
+// cannot resolve. test.claim.review_sheet_header_schema_witness_test carries a generic specimen of that
 // shape and asserts its header order, width and Standing position.
 //
 // The two shapes are one rule: the identity is rendered where the schema puts it, and prepended

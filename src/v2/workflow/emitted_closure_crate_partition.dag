@@ -197,7 +197,7 @@ fn emitted_compiler_closure_module_dag() -> ModuleDagDerivation {
 // that renders this assignment as a Cargo workspace -- manifests, cross-crate paths, the facade --
 // is the emitted-crate rendering package (Pkg7d), and that is this declaration's declared frontier
 // and its trigger. Until then its executing consumer is the inhabitance claim in
-// v2.test.claim.emitted_closure_crate_partition, which runs the same route over fixture source trees.
+// v2.test.claim.emitted_closure_crate_partition_test, which runs the same route over fixture source trees.
 type EmittedClosurePartitionOutcome
   = EmittedClosureDagRefused { cause: ModuleDagDerivationRefusal }
   | EmittedClosureResolved { outcome: ResolvePartitionOutcome }

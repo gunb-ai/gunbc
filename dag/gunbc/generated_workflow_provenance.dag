@@ -21,8 +21,8 @@ type GeneratedWorkflowProvenance {
 // THE SAME THREE WORKFLOWS AS A LIST, beside the match that gives each its provenance, for a consumer
 // that must ask which files under .github/workflows a generator owns without evaluating the whole
 // generated-artifact registry (its cost is re-derived by claim_batch's eval_steps on
-// test.claim.action_use_admission_witness). This list is NOT a second authority for that
-// population: test.claim.action_use_admission_witness
+// test.claim.action_use_admission_witness_test). This list is NOT a second authority for that
+// population: test.claim.action_use_admission_witness_test
 // generated_workflow_artifacts_are_exactly_the_registry_workflows joins it to
 // gunbc.generated_artifact_registry generated_artifact_registry by identity in BOTH directions, so a row
 // that outlives its generator (the direction that would let the census skip a hand-authored file)

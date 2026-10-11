@@ -123,19 +123,19 @@ test fn a_cost_between_the_ceilings_refuses_for_a_new_identity() -> Bool {
 // "looks like an existing witness", or on any caller-supplied label passes the first half of this
 // and fails the second.
 fn a_real_grandfathered_identity() -> String {
-  "test.claim.arity_zero_import_refusal_witness.an_arity_zero_import_member_list_refuses_at_parse"
+  "test.claim.arity_zero_import_refusal_witness_test.an_arity_zero_import_member_list_refuses_at_parse"
 }
 
 test fn a_renamed_grandfathered_identity_is_classified_new() -> Bool {
   match claim_ceiling_tier(identity: a_real_grandfathered_identity()) {
     NewWitnessTier => false
     GrandfatheredTier =>
-      match claim_ceiling_tier(identity: "test.claim.arity_zero_import_refusal_witness.an_arity_zero_import_member_list_refuses_at_parse_renamed") {
+      match claim_ceiling_tier(identity: "test.claim.arity_zero_import_refusal_witness_test.an_arity_zero_import_member_list_refuses_at_parse_renamed") {
         GrandfatheredTier => false
         NewWitnessTier =>
           (claim_eval_step_budget_for_identity(identity: a_real_grandfathered_identity())
              == claim_ceiling_eval_step_budget(tier: GrandfatheredTier {}))
-            && (claim_eval_step_budget_for_identity(identity: "test.claim.arity_zero_import_refusal_witness.an_arity_zero_import_member_list_refuses_at_parse_renamed")
+            && (claim_eval_step_budget_for_identity(identity: "test.claim.arity_zero_import_refusal_witness_test.an_arity_zero_import_member_list_refuses_at_parse_renamed")
              == claim_ceiling_eval_step_budget(tier: NewWitnessTier {}))
       }
   }
@@ -537,7 +537,7 @@ test fn a_struck_identity_selects_the_new_witness_tier() -> Bool {
 // may separate the two outcomes. A drop arm that ignored identity (every overrun admitted) fails the
 // RED; one that never fired fails the control; one that dropped the figures fails both.
 fn drop_member_identity() -> String {
-  "test.claim.live_deploy.emit.repository_convergence_is_ordered_after_binary_and_before_readback"
+  "test.claim.live_deploy.emit_test.repository_convergence_is_ordered_after_binary_and_before_readback"
 }
 
 fn drop_probe_steps() -> EvalStepCount {
@@ -630,7 +630,7 @@ test fn the_declared_drop_roster_has_no_duplicate_identity() -> Bool {
 // THE APPLY-RENDER LIST IS A SECOND DROP, SAME TEST. If membership is only the live-roadmap four,
 // this identity stays EvalStepsOverBudget and the C2 changed-witness floor refuses.
 fn apply_render_drop_member_identity() -> String {
-  "test.claim.live_deploy.emit.apply_script_stays_within_ci_runner_grants"
+  "test.claim.live_deploy.emit_test.apply_script_stays_within_ci_runner_grants"
 }
 
 test fn an_over_budget_apply_render_drop_member_is_reported_not_refused() -> Bool {

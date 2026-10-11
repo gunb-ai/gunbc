@@ -1,0 +1,78 @@
+module test.claim.workspace_dispatch_fleet_witness_test
+
+import gunbc.fleet.fleet_converge_scope { WorkspaceSlotCommissioningOnly }
+
+import extdeps.crypto.hash { sha256_digest }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.workspace_commissioning_executor_input { workspace_executor_grant_digest_matches }
+
+import std.types { Bool, String }
+import gunbc.fleet.fleet_converge_plan {
+  ScopeDecoded,
+  fleet_converge_scope_of_wire,
+  fleet_converge_scope_wire
+}
+import gunbc.workspace_commissioning_executor_plan { workspace_executor_scope_wire }
+import gunbc.workspace_commissioning_dispatch_operations { workspace_dispatch_grant_content, workspace_dispatch_grant_read_operation }
+import gunbc.workspace_commissioning_dispatch_transport { workspace_dispatch_captured_command }
+import gunbc.fleet.fleet_generation_execution { fleet_generation_writer }
+import gunbc.executor_privileged_operation { executor_privileged_operation_argv, executor_privileged_operation_sudoers_line }
+
+
+fn dispatch_grant_fixture() -> String {
+  workspace_dispatch_grant_content(release_dir: "/opt/gunbc/microvm-controller/releases/0123456789abcdef0123456789abcdef01234567")
+}
+
+test fn commissioning_scope_roundtrips_through_fleet_authority() -> Bool {
+  fleet_converge_scope_wire(scope: WorkspaceSlotCommissioningOnly) == workspace_executor_scope_wire
+    && (match fleet_converge_scope_of_wire(wire: workspace_executor_scope_wire) {
+      ScopeDecoded { scope } => scope == WorkspaceSlotCommissioningOnly
+      _ => false
+    })
+}
+
+test fn installed_grants_name_only_exact_argument_free_entries() -> Bool {
+  let grant = dispatch_grant_fixture()
+  string_contains(s: grant, pattern: "workspace_dispatch_plan_cli")
+    && string_contains(s: grant, pattern: "workspace_dispatch_stage_cli")
+    && string_contains(s: grant, pattern: "workspace_dispatch_complete_cli")
+    && string_contains(s: grant, pattern: "/0123456789abcdef0123456789abcdef01234567/")
+    && !string_contains(s: grant, pattern: "*")
+    && !string_contains(s: grant, pattern: "--arg")
+}
+
+test fn dispatch_uses_fleet_lock_owner_without_reopening_artifacts() -> Bool {
+  let owner = workspace_dispatch_captured_command(effective_user: fleet_generation_writer(), shell: "exit 0", bundle: "0123456789abcdef", payload: "captured input")
+  let operator = workspace_dispatch_captured_command(effective_user: "different-operator", shell: "exit 0", bundle: "0123456789abcdef", payload: "captured input")
+  !string_contains(s: owner, pattern: "'-u'")
+    && string_contains(s: operator, pattern: "'-u'")
+    && string_contains(s: operator, pattern: fleet_generation_writer() as String)
+    && string_contains(s: operator, pattern: "'exit 0'")
+    && string_contains(s: operator, pattern: "'captured input'")
+    && !string_contains(s: operator, pattern: "apply.sh")
+}
+
+// A job can read exactly its installation policy, without gaining a general root file reader.
+test fn installation_readback_grants_only_the_exact_policy_file() -> Bool {
+  let op = workspace_dispatch_grant_read_operation()
+  let argv = executor_privileged_operation_argv(op: op)
+  let grant = executor_privileged_operation_sudoers_line(grantee: fleet_generation_writer(), op: op) as String
+  argv == ["/usr/bin/sha256sum", "--", "/etc/sudoers.d/gunbc-workspace-commissioning"]
+    && string_contains(s: dispatch_grant_fixture(), pattern: grant)
+    && ends_with(s: grant, suffix: "/usr/bin/sha256sum -- /etc/sudoers.d/gunbc-workspace-commissioning")
+    && !string_contains(s: grant, pattern: "*")
+    && !string_contains(s: grant, pattern: "state-writer-mac-key")
+}
+
+
+// Independent SHA-256 fixtures for "policy\n" and "policy": captured text normalizes their
+// trailing newline, but the file digest must still distinguish them.
+test fn policy_digest_readback_preserves_final_newline_identity() -> Bool {
+  let expected = sha256_digest(hex: "c82fc52c78bf8154d4dd7d8766c422ab151052d72098d72ded237aafcd78e4e0")
+  workspace_executor_grant_digest_matches(expected: expected,
+    observed: ProcessOutputPresent { text: "c82fc52c78bf8154d4dd7d8766c422ab151052d72098d72ded237aafcd78e4e0  /etc/sudoers.d/gunbc-workspace-commissioning" })
+    && !workspace_executor_grant_digest_matches(expected: expected,
+      observed: ProcessOutputPresent { text: "823412d1eacb67956220e532959f0104603057c88704863ca38e7cd188fda812  /etc/sudoers.d/gunbc-workspace-commissioning" })
+    && !workspace_executor_grant_digest_matches(expected: expected, observed: ProcessOutputAbsent)
+    && !workspace_executor_grant_digest_matches(expected: expected, observed: ProcessRefused { exit_code: 1, stderr: "denied" })
+}

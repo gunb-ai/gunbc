@@ -36,7 +36,7 @@ fn shell_emission_model_body() -> List<MarkdownBlock> {
     p(text: "Load-bearing: `host_effect.dag` is a DESIGN-named seam. **Gated** on srv3 `OsInstalled` + Receipt-lock (#5725) milestones — record direction here; execution sequences behind those gates."),
     h2(text: "4. Faithfulness boundary (§5)"),
     p(text: "Shell-orchestration sites are **emit-only** (regime-2 class): no round-trip oracle. Faithfulness = **byte-identity vs the current committed emitted output** + a discriminating one-byte-perturbation RED tooth."),
-    p(text: "**Critical honesty — `live_deploy`:** has **no committed artifact**. Its \"drift gate\" (`dag/test/claim/live_deploy/emit.dag:123-128`) compares `expected_live_deploy_apply_script()` to **itself** (the emit fn) = a self-referential fabricated-green trap (#6023 disease). `live_deploy` must **freeze** its current output as a committed golden literal **before** it is provable."),
+    p(text: "**Critical honesty — `live_deploy`:** has **no committed artifact**. Its \"drift gate\" (`dag/test/claim/live_deploy/emit_test.dag:123-128`) compares `expected_live_deploy_apply_script()` to **itself** (the emit fn) = a self-referential fabricated-green trap (#6023 disease). `live_deploy` must **freeze** its current output as a committed golden literal **before** it is provable."),
     p(text: "**Committed real goldens that exist:** `.github/workflows/ci.yml`, `.github/fleet-converge.sh`."),
     p(text: "**Done bar:** green by **execution** vs frozen bytes, RED on perturb — never typechecks/emits/self-referential-gate."),
     h2(text: "5. Slice sequence (each gated by a frozen committed byte oracle)"),

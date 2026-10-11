@@ -72,7 +72,7 @@ Done when: The run announces one phase line per phase it owns and one routed lin
 
 Run ONE witness file's claims in ONE process. The floor above runs everything; while you are changing one module you want its witness, and the cost of a run is dominated by loading and typechecking the entry's closure -- minutes -- not by the claims. `gunbc run --claim-run` with no `--function` executes every `test fn` the entry declares over one load, prints one PASS or FAIL line per claim, runs every claim even after a red so the file reports all of its reds, and exits nonzero if any failed. `--function` is repeatable when you want a subset; the named functions run in the order given.
 
-`./target/release/gunbc run --source-root dag --source-root src/v2 --entry dag/test/claim/spark/pair_serving_authority_witness.dag --claim-run`
+`./target/release/gunbc run --source-root dag --source-root src/v2 --entry dag/test/claim/spark/pair_serving_authority_witness_test.dag --claim-run`
 
 Who is needed: self-serve
 

@@ -251,7 +251,7 @@ fn where_predicate_grounded_rows(rows: List<WherePredicateRow>) -> List<WherePre
 // 15984-row floor, and they ran because these files CHANGED. The floor's other arms are 3595
 // planned (inside the gate closure, the transitive import/reference closure of the gate seeds) and
 // 11824 declined_outside_gate_closure. THE SIBLING SETTLES WHICH ARM THIS FILE LANDS IN once it
-// stops changing: test.claim.compile_diagnostic_census_witness -- same directory, same host
+// stops changing: test.claim.compile_diagnostic_census_witness_test -- same directory, same host
 // builtin, the module this witness was modelled on -- is declined_outside_gate_closure on that very
 // run. So this is a CHANGE-TRIGGERED control, not a continuously-executing one.
 //

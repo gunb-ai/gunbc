@@ -491,7 +491,7 @@ data required_lens_grain_note: String = "Two registered grains, one roster, one 
 // compile-importing entry reach a live-read carrier and putting 31 SubstrateInputsOnly witness
 // stamps in the lying_substrate_inputs_only_stamp_census red class. Enforcement was NOT reduced: the
 // invariant executes per-PR via its honestly-stamped consumer
-// v2.test.claim.enforcement.lens_module_gate_witness (live_tree_disposition: ReadsLiveTree, never
+// v2.test.claim.enforcement.lens_module_gate_witness_test (live_tree_disposition: ReadsLiveTree, never
 // predict-skips), which reds the floor when registry completeness breaks.
 // SO THE ELIGIBILITY RULE, stated because "adding a lens is one row" would otherwise read as an
 // invitation to the exact regression: a row here must be a PURE FOLD OVER THE TREE BEING COMPILED
@@ -1019,7 +1019,7 @@ fn validated_from_compile_output(
 //
 // The arms are not decoration, because they are discriminated where their REDs are authorable: a
 // fixture may hand the join an observation set this door cannot produce, and
-// `v2.test.lens_application.required_lens_coverage_join` does exactly that for every arm. DESIGN
+// `v2.test.lens_application.required_lens_coverage_join_test` does exactly that for every arm. DESIGN
 // section 4b is explicit that a state unrepresentable in the accepted corpus may still be
 // representable as source handed to the compiler by a fixture, and that declining the evidence
 // there would be specification-without-execution. The honest statement is therefore about grain:
@@ -2554,7 +2554,7 @@ fn native_lane_universe_module_for_source(
 // section 2, one fact one home) rather than a section 4b rung drop.
 //
 // THE NARROWING IS NOT TAKEN ON THIS NOTE'S WORD. Four arms in
-// test.claim.native_lane_import_refusal pin it at the boundary, in refusals rather than row
+// test.claim.native_lane_import_refusal_test pin it at the boundary, in refusals rather than row
 // counts: a walked member's violation still refuses here, a non-member's no longer does, the
 // floor's own producer still refuses THAT SAME non-member content, and a module-less source keeps
 // its walk and still refuses. Restore the walk for non-members and the second goes red; disarm
@@ -2874,7 +2874,7 @@ fn native_lane_module_by_path(facts: List<NativeLaneSourceFacts>) -> Map<Symbol,
 // measurement of today's corpus: an acyclic import graph of N modules is at most N rounds deep, so
 // any budget is a statement of how deep a chain the route agrees to pay for before asking whether
 // the graph is wrong, and a real chain that deep is itself the finding. Its RED and its boundary
-// are enrolled in v2.test.v2_native_route.
+// are enrolled in v2.test.v2_native_route_test.
 data native_lane_closure_round_budget: Int = 512
 
 fn native_lane_closure_exhausted_detail(budget: Int, frontier: List<String>) -> String {
@@ -4539,7 +4539,7 @@ fn native_census_cause_groups_add_resolve_refused(
 // and the reasons immediately before it must be exactly the provider's chain. That is the shape
 // infer_closure_miss_refusal builds. The binds enclosing it may prepend M's own pending advisories,
 // so the provider chain sits at the end of M's chain, not at its head (measured on the cascade control
-// in v2.test.claim.native_census.infer_cascade: a seven-element chain carrying a one-element provider
+// in v2.test.claim.native_census.infer_cascade_test: a seven-element chain carrying a one-element provider
 // chain). A chain that two providers would both match is Unattributed, never assigned to the first. The provider's own root is one hop
 // further when the provider is itself a cascade member of a refused file: that is read through the
 // same attribution authority census C uses (native_import_target_attribution), so the member names the

@@ -103,9 +103,9 @@ fn gate_admitted_subject() -> WitnessSubject {
 // and inside the native lane -- and outside the required gate.
 fn discovered_subject() -> WitnessSubject {
   witness_subject(
-    entry: "src/v2/test/lens_fact_density/hollow_alias_blocked_via_always_required_lenses.dag",
+    entry: "src/v2/test/lens_fact_density/hollow_alias_blocked_via_always_required_lenses_test.dag",
     function: "hollow_alias_blocked_via_always_required_lenses_holds",
-    module_path: "v2.test.lens_fact_density.hollow_alias_blocked_via_always_required_lenses"
+    module_path: "v2.test.lens_fact_density.hollow_alias_blocked_via_always_required_lenses_test"
   )
 }
 

@@ -819,7 +819,7 @@ test fn an_open_workload_section_refuses_only_on_what_it_has_proven() -> Bool {
 
 // THE LAUNCH CARRIES THE HOLD'S OWN LINE SPELLINGS AND KEEPS THE CLIENT'S WORDS OUT OF THE CAPTURE,
 // read off the data row the operation's argv carries (the materializer refuses an identifier argv element as expression residue, so the row is read directly -- it is the one spelling). The zero-bytes and no-EOF behaviour is not a string
-// property and is EXECUTED in test.claim.machine_intake.sol_hold_stdin_wet_witness; this claim covers
+// property and is EXECUTED in test.claim.machine_intake.sol_hold_stdin_wet_witness_test; this claim covers
 // what only the text decides: stdout alone reaches the capture, stderr reaches the client file, and
 // the exit and pid-not-published lines the watch classifies by are the ones the launch writes.
 test fn the_sol_launch_separates_client_words_from_host_bytes() -> Bool {
@@ -835,7 +835,7 @@ test fn the_sol_launch_separates_client_words_from_host_bytes() -> Bool {
 // RELEASE SIGNALS ONLY THE PROCESS THE HOLD RECORDED, and only while it is still that process. The
 // data row is ReleaseHeld's argv, the one the teardown executes; the boot step's EXIT trap carries the same data row
 // (gunbc.ci.ci_spec gunbc_ci_mtcollins1_boot_trap_body). Its executed controls are in
-// test.claim.machine_intake.sol_hold_stdin_wet_witness.
+// test.claim.machine_intake.sol_hold_stdin_wet_witness_test.
 test fn the_sol_release_kills_only_the_recorded_process() -> Bool {
   let script = mtcollins1_sol_hold_release_script
   !string_contains(s: script, pattern: "__GUNBC_INVOKE_EMIT_REFUSED__")

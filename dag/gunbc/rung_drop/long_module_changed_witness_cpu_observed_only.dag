@@ -42,7 +42,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // class at docs/plans/floor-cost-distribution-near-the-ceiling.md, which says reducing the shared
 // fixed cost is the only lever. It is not a widening either -- a changed witness outside the long
 // home and off the cost-debt roster still reds at the line, and
-// v2.test.floor_changed_witness.changed_short_module_witness_still_takes_the_ordinary_policy is the
+// v2.test.floor_changed_witness_test.changed_short_module_witness_still_takes_the_ordinary_policy is the
 // control that keeps that true.
 //
 // THE RESTORATION TRIGGER NAMES A CAPABILITY, NOT AN ARTIFACT, and the capability is the one that
