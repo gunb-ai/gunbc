@@ -28,6 +28,7 @@ import v2.workflow.floor_discovery_source_authority {
   FloorDiscoveryWalkState,
   discover_floor_rows_for_source,
   floor_discovery_finalize_source_outcomes,
+  floor_discovery_first_token_before_space,
   floor_discovery_walk_state_zero
 }
 import extdeps.bazel.label { Label, LabelParsed, LabelRefused, render_package }

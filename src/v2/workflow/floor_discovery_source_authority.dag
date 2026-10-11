@@ -14,15 +14,9 @@ import std.optional {
   optional_absent,
   optional_present
 }
-import v2.workflow.floor_discovery_row { FloorDiscoveryRow, FloorDiscoverySidecarKind, FloorDiscoverySidecarViolation }
-import v2.workflow.floor_naming_hygiene {
-  floor_entry_is_barren_test_sidecar,
-  floor_test_marked_decl_allowed_in_entry,
-  floor_wire_contract_decl_allowed_in_entry,
-  floor_test_sidecar_suffix,
-  floor_wire_contract_sidecar_suffix,
-  floor_discovery_first_token_before_space,
-  floor_discovery_scan_test_decl_names
+import v2.workflow.floor_discovery_row {
+  FloorDiscoveryRow,
+  floor_wire_contract_decl_allowed_in_entry
 }
 
 // THE PER-FILE DISCOVERY AUTHORITY: everything floor discovery decides about ONE source, and the
@@ -47,7 +41,7 @@ type FloorDiscoveryWalkState {
   rows: List<FloorDiscoveryRow>
   walk_failures: Int
   walk_failure_path: Optional<String>
-  sidecar_violations: List<FloorDiscoverySidecarViolation>
+  wire_contract_misplaced_paths: List<String>
   disposition_refusal: Optional<String>
 }
 
@@ -56,7 +50,7 @@ fn floor_discovery_walk_state_zero() -> FloorDiscoveryWalkState {
     rows: [],
     walk_failures: 0,
     walk_failure_path: optional_absent(),
-    sidecar_violations: [],
+    wire_contract_misplaced_paths: [],
     disposition_refusal: optional_absent()
   }
 }
@@ -71,7 +65,7 @@ fn floor_discovery_record_disposition_refusal(
       rows: state.rows,
       walk_failures: state.walk_failures,
       walk_failure_path: state.walk_failure_path,
-      sidecar_violations: state.sidecar_violations,
+      wire_contract_misplaced_paths: state.wire_contract_misplaced_paths,
       disposition_refusal: optional_present(value: reason)
     }
   }
@@ -88,7 +82,7 @@ fn floor_discovery_record_walk_failure(
       Present { value: _ } => state.walk_failure_path
       Absent => optional_present(value: path)
     },
-    sidecar_violations: state.sidecar_violations,
+    wire_contract_misplaced_paths: state.wire_contract_misplaced_paths,
     disposition_refusal: state.disposition_refusal
   }
 }
@@ -257,6 +251,23 @@ fn floor_discovery_initializer_rest_is_strict_single_token(rest: String, token: 
   } else {
     false
   }
+}
+
+// The first non-empty space-delimited token of a segment, "" when there is none.
+fn floor_discovery_first_token_before_space(seg: String) -> String {
+  fold(
+    split(s: seg, delimiter: " "),
+    init: "",
+    f: fn(name, token) {
+      if name != "" {
+        name
+      } else if token == "" {
+        ""
+      } else {
+        token
+      }
+    }
+  )
 }
 
 fn floor_discovery_disposition_row_variant(line: String) -> Optional<LiveTreeDisposition> {
@@ -429,77 +440,55 @@ fn floor_discovery_append_row(
       rows: concat(state.rows, [row]),
       walk_failures: state.walk_failures,
       walk_failure_path: state.walk_failure_path,
-      sidecar_violations: state.sidecar_violations,
+      wire_contract_misplaced_paths: state.wire_contract_misplaced_paths,
       disposition_refusal: state.disposition_refusal
     }
   }
 }
 
-fn floor_discovery_collect_sidecar_violation(
+fn floor_discovery_collect_misplaced_wire_contract(
   state: FloorDiscoveryWalkState,
-  entry_path: String,
-  kind: FloorDiscoverySidecarKind,
-  required_suffix: String
+  entry_path: String
 ) -> FloorDiscoveryWalkState {
   FloorDiscoveryWalkState {
     rows: state.rows,
     walk_failures: state.walk_failures,
     walk_failure_path: state.walk_failure_path,
-    sidecar_violations: concat(state.sidecar_violations, [
-      FloorDiscoverySidecarViolation {
-        entry_path: entry_path,
-        kind: kind,
-        required_suffix: required_suffix
-      }
-    ]),
+    wire_contract_misplaced_paths: concat(state.wire_contract_misplaced_paths, [entry_path]),
     disposition_refusal: state.disposition_refusal
   }
 }
 
-fn floor_discovery_apply_test_sidecar_rules(
+// ENROLMENT IS THE MARKER, AND NOTHING ELSE. Every name in `marked` is a declaration that carries
+// the authored `test` marker in this source -- supplied, not scanned for -- and each becomes one
+// row. Where the file sits and what it is called decide nothing, so a source with no marked name
+// enrols nothing and that is not a violation: a file that declares no test is not a placement
+// error, it is a file.
+fn floor_discovery_enrol_marked_tests(
   state: FloorDiscoveryWalkState,
   repo_path: String,
+  marked: List<String>,
   content: String
 ) -> FloorDiscoveryWalkState {
   match floor_discovery_resolve_entry_live_tree(entry_path: repo_path, content: content) {
     EntryLiveTreeDispositionRefused { reason: reason } =>
       floor_discovery_record_disposition_refusal(state: state, reason: reason)
-    EntryLiveTreeResolved { disposition: reads_live } => {
-      let test_names = floor_discovery_scan_test_decl_names(content: content)
-      if floor_entry_is_barren_test_sidecar(entry_path: repo_path, content: content) {
-        floor_discovery_collect_sidecar_violation(
-          state: state,
-          entry_path: repo_path,
-          kind: BarrenTestSidecar,
-          required_suffix: floor_test_sidecar_suffix
-        )
-      } else if floor_test_marked_decl_allowed_in_entry(entry_path: repo_path) {
-        fold(
-          test_names,
-          init: state,
-          f: fn(acc, name) {
-            floor_discovery_append_row(
-              state: acc,
-              row: FloorDiscoveryRow {
-                label: name,
-                entry: repo_path,
-                function: name,
-                reads_live_tree: reads_live
-              }
-            )
-          }
-        )
-      } else if length(xs: test_names) > 0 {
-        floor_discovery_collect_sidecar_violation(
-          state: state,
-          entry_path: repo_path,
-          kind: TestMarkedDecl,
-          required_suffix: floor_test_sidecar_suffix
-        )
-      } else {
-        state
-      }
-    }
+    EntryLiveTreeResolved { disposition: reads_live } =>
+      fold(
+        marked,
+        init: state,
+        f: fn(acc, name) {
+          floor_discovery_append_row(
+            state: acc,
+            row: FloorDiscoveryRow {
+              label: name,
+              entry: repo_path,
+              function: name,
+              reads_live_tree: reads_live
+            }
+          )
+        }
+      )
   }
 }
 
@@ -511,22 +500,17 @@ fn floor_discovery_apply_wire_contract_sidecar_rules(
   if floor_wire_contract_decl_allowed_in_entry(entry_path: repo_path) {
     state
   } else if floor_discovery_content_has_wire_contract_decl(content: content) {
-    floor_discovery_collect_sidecar_violation(
-      state: state,
-      entry_path: repo_path,
-      kind: WireContractDecl,
-      required_suffix: floor_wire_contract_sidecar_suffix
-    )
+    floor_discovery_collect_misplaced_wire_contract(state: state, entry_path: repo_path)
   } else {
     state
   }
 }
 
-// THE PER-FILE AUTHORITY. Everything discovery decides about ONE source -- which test decls it
-// enrolls, whether its `test`-marked decls sit in a `*_test.dag` sidecar, whether a sidecar is
-// barren, whether its wire-contract decls sit in `*_contracts.dag`, whether its
-// live_tree_disposition row is well-formed -- is decided here, from the path and the bytes, with
-// no host effect. Both consumers compose exactly this function and nothing else per file:
+// THE PER-FILE AUTHORITY. Everything discovery decides about ONE source -- which marked test decls it
+// enrolls, whether its wire-contract decls sit in `*_contracts.dag`, whether its
+// live_tree_disposition row is well-formed -- is decided here, from the path, the supplied marker
+// fact and the bytes, with no host effect. Its consumers compose exactly this function and nothing
+// else per file:
 //
 //   discover_floor_corpus_rows_from_host_facts   walks the roots with Filesystem.List/Read and
 //                                                 folds this over every non-excluded `.dag` file
@@ -535,20 +519,21 @@ fn floor_discovery_apply_wire_contract_sidecar_rules(
 //                                                 prepared source's bytes and folds this over its
 //                                                 prepared inventory (cli_run required_floor_runner)
 //
-// Before this seam existed the required floor enrolled its roster from a SECOND scanner in Rust
-// (the former cli_run.rs floor scanner), filename-blind, so a `test`-marked decl outside a
-// sidecar was refused on the claim_batch path and executed on the floor -- two authorities for
-// one fact (DESIGN section 3), measured on main 2026-08-29: five files, 39 test fns. That scanner
-// is deleted; the floor's roster is this fold's answer.
+// The marker fact is a SUPPLIED value because this fold neither parses nor resolves the files it
+// enumerates: whoever holds the canonical parse supplies it -- the seed host from its parser, the
+// native lane from the normalized tree's test_markers -- and the inhabitance claim over the real
+// path is the one that runs both ends together.
 fn floor_discovery_fold_source(
   state: FloorDiscoveryWalkState,
   repo_path: String,
+  marked: List<String>,
   content: String
 ) -> FloorDiscoveryWalkState {
   floor_discovery_apply_wire_contract_sidecar_rules(
-    state: floor_discovery_apply_test_sidecar_rules(
+    state: floor_discovery_enrol_marked_tests(
       state: state,
       repo_path: repo_path,
+      marked: marked,
       content: content
     ),
     repo_path: repo_path,
@@ -561,17 +546,19 @@ fn floor_discovery_fold_source(
 // floor_discovery_finalize_source_outcomes -- the host threads values and decides nothing.
 fn discover_floor_rows_for_source(
   repo_path: String,
+  marked: List<String>,
   content: String
 ) -> FloorDiscoveryWalkState {
   floor_discovery_fold_source(
     state: floor_discovery_walk_state_zero(),
     repo_path: repo_path,
+    marked: marked,
     content: content
   )
 }
 
 // THE FOLD IS A MONOID HOMOMORPHISM OVER FILES, which is what lets the floor evaluate it one
-// source at a time. Every field of the walk state combines associatively: rows and violations
+// source at a time. Every field of the walk state combines associatively: rows and misplaced-path lists
 // concatenate, walk failures add, the first located failure path and the first disposition
 // refusal are kept. Folding the corpus in one pass and merging per-file outcomes therefore
 // produce the same state, with one exception stated rather than hidden: floor_discovery_append_row
@@ -588,7 +575,7 @@ fn floor_discovery_merge_walk_states(
       Present { value: _ } => left.walk_failure_path
       Absent => right.walk_failure_path
     },
-    sidecar_violations: concat(left.sidecar_violations, right.sidecar_violations),
+    wire_contract_misplaced_paths: concat(left.wire_contract_misplaced_paths, right.wire_contract_misplaced_paths),
     disposition_refusal: match left.disposition_refusal {
       Present { value: _ } => left.disposition_refusal
       Absent => right.disposition_refusal
@@ -612,85 +599,24 @@ fn floor_discovery_finalize_source_outcomes(
   )
 }
 
-fn floor_discovery_paths_for_sidecar_kind(
-  violations: List<FloorDiscoverySidecarViolation>,
-  kind: FloorDiscoverySidecarKind
-) -> String {
-  fold_list(
-    xs: violations,
-    empty: "",
-    cons: fn(acc, v) {
-      if v.kind == kind {
+// ONE WIRE-CONTRACT REFUSAL, in the words every route shares.
+data floor_discovery_wire_contract_sidecar_reason_prefix: String = "wire-contract decls (`CoproductWireContract` and `VariantEncoding` data items) must live in `*_contracts.dag` files; found in: "
+
+fn floor_discovery_wire_contract_sidecar_refusal_reason(paths: List<String>) -> String {
+  concat(
+    floor_discovery_wire_contract_sidecar_reason_prefix,
+    fold_list(
+      xs: paths,
+      empty: "",
+      cons: fn(acc, path) {
         if acc == "" {
-          v.entry_path
+          path
         } else {
-          concat(acc, ", ", v.entry_path)
+          concat(acc, ", ", path)
         }
-      } else {
-        acc
       }
-    }
-  )
-}
-
-data floor_discovery_barren_test_sidecar_reason_prefix: String = "a `*_test.dag` entry must declare at least one `test fn`/`test data` decl; floor discovery enrolls nothing from: "
-
-fn floor_discovery_barren_test_sidecar_refusal_for_content(
-  repo_path: String,
-  content: String
-) -> Optional<String> {
-  if floor_entry_is_barren_test_sidecar(entry_path: repo_path, content: content) {
-    optional_present(
-      value: concat(floor_discovery_barren_test_sidecar_reason_prefix, repo_path)
     )
-  } else {
-    optional_absent()
-  }
-}
-
-fn floor_discovery_sidecar_refusal_reason(
-  violations: List<FloorDiscoverySidecarViolation>
-) -> String {
-  let barren_paths = floor_discovery_paths_for_sidecar_kind(
-    violations: violations,
-    kind: BarrenTestSidecar
   )
-  let barren_clause = if barren_paths == "" {
-    ""
-  } else {
-    concat(floor_discovery_barren_test_sidecar_reason_prefix, barren_paths, "; ")
-  }
-  let test_paths = floor_discovery_paths_for_sidecar_kind(
-    violations: violations,
-    kind: TestMarkedDecl
-  )
-  let wire_paths = floor_discovery_paths_for_sidecar_kind(
-    violations: violations,
-    kind: WireContractDecl
-  )
-  if test_paths == "" && wire_paths == "" {
-    barren_clause
-  } else if test_paths != "" && wire_paths != "" {
-    concat(
-      barren_clause,
-      "`test`-marked decls must live in `*_test.dag` files; found in: ",
-      test_paths,
-      "; wire-contract decls (`CoproductWireContract` and `VariantEncoding` data items) must live in `*_contracts.dag` files; found in: ",
-      wire_paths
-    )
-  } else if test_paths != "" {
-    concat(
-      barren_clause,
-      "`test`-marked decls must live in `*_test.dag` files; found in: ",
-      test_paths
-    )
-  } else {
-    concat(
-      barren_clause,
-      "wire-contract decls (`CoproductWireContract` and `VariantEncoding` data items) must live in `*_contracts.dag` files; found in: ",
-      wire_paths
-    )
-  }
 }
 
 fn floor_discovery_finalize(state: FloorDiscoveryWalkState) -> FloorDiscoveryProducerResult {
@@ -702,9 +628,11 @@ fn floor_discovery_finalize(state: FloorDiscoveryWalkState) -> FloorDiscoveryPro
     match state.disposition_refusal {
       Present { value: reason } => FloorDiscoveryRefused { reason: reason }
       Absent =>
-        if length(xs: state.sidecar_violations) > 0 {
+        if length(xs: state.wire_contract_misplaced_paths) > 0 {
           FloorDiscoveryRefused {
-            reason: floor_discovery_sidecar_refusal_reason(violations: state.sidecar_violations)
+            reason: floor_discovery_wire_contract_sidecar_refusal_reason(
+              paths: state.wire_contract_misplaced_paths
+            )
           }
         } else {
           FloorDiscoveryAccepted { rows: state.rows }
@@ -721,10 +649,7 @@ fn floor_discovery_wire_contract_sidecar_refusal_for_content(
     optional_absent()
   } else if floor_discovery_content_has_wire_contract_decl(content: content) {
     optional_present(
-      value: concat(
-        "wire-contract decls (`CoproductWireContract` and `VariantEncoding` data items) must live in `*_contracts.dag` files; found in: ",
-        repo_path
-      )
+      value: floor_discovery_wire_contract_sidecar_refusal_reason(paths: [repo_path])
     )
   } else {
     optional_absent()
@@ -734,12 +659,12 @@ fn floor_discovery_wire_contract_sidecar_refusal_for_content(
 data floor_discovery_surface_text_scan_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "v2.workflow.floor_naming_hygiene",
-    decl_name: "floor_discovery_scan_test_decl_names",
+    module_path: "v2.workflow.floor_discovery_source_authority",
+    decl_name: "floor_discovery_content_has_wire_contract_decl",
     field: WholeDeclaration
   }
 }
 
 data floor_discovery_live_tree_disposition_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: floor_discovery_live_tree_disposition — producer reads and refuses malformed/duplicate `data live_tree_disposition: LiveTreeDisposition = …` rows (undeclared = ReadsLiveTree). Effect-reach reclassification remains on the Rust bridge until discovery admission consumes `v2.lens.effect_reach` directly (same trigger as cli_run `reads_live_tree_effective` scaffold).")
 
-data floor_discovery_surface_text_scan_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: floor_discovery_surface_text_scan — naming hygiene recovers test-decl names (and the producer recovers live_tree_disposition rows + CoproductWireContract markers) via hand-rolled line/token splitting over raw source text (§4 grammar-owned-reads violation); DISSOLVES WHEN discovery enumeration consumes grammar-owned parse/AST facts from the same ingress surface as v2.compiler, so structure the parser already decided is read rather than re-derived by splitting raw text. Until then the scan is the authority for test-decl names and for the live_tree_disposition / CoproductWireContract markers, and its output is only as good as the spelling it matches.")
+data floor_discovery_surface_text_scan_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: floor_discovery_surface_text_scan — the producer recovers live_tree_disposition rows and CoproductWireContract markers via hand-rolled line/token splitting over raw source text (§4 grammar-owned-reads violation); DISSOLVES WHEN discovery consumes grammar-owned parse/AST facts from the same ingress surface as v2.compiler, so structure the parser already decided is read rather than re-derived by splitting raw text. Test identification is NOT part of this scan: a test is the declaration carrying the authored `test` marker, supplied to discovery as FloorMarkedSource from the canonical parse. Until then the scan is the authority for the live_tree_disposition / CoproductWireContract markers, and its output is only as good as the spelling it matches.")
