@@ -1,13 +1,13 @@
 module test.claim.auth.tracker_web_dev_oauth_witness_test
 
-import std.types { Bool, String, CommitSha }
+import std.types { Bool, String, CommitSha, NonEmptyStr }
 import v2.std.algebra { any }
-import std.goal_assessment { GoalSatisfied, GoalAssessmentRefused }
+import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalAssessmentRefused }
 import std.keyed_roster { KeyedRosterBuilt }
 import std.roster_frontier { PathSubject, frontier_rows_keyed_roster_build }
 import extdeps.google.workspace { RegisteredWebClient }
 import gunbc.auth.google_workspace_admin_convergence {
-  workspace_identity_admin_obligations, BasicSignInOnly,
+  workspace_identity_admin_obligations, workspace_admin_assess, WorkspaceIdentityBinding, BasicSignInOnly,
 }
 import gunbc.auth.google_workspace_login {
   GoogleLoginEnvironmentTest, GoogleLoginEnvironmentProd, TrackerWebOauthClientBound, TrackerWebOauthClientUnbound,
@@ -27,6 +27,7 @@ import gunbc.auth.tracker_web_oauth_client {
   tracker_web_instance_environment, tracker_web_test_target_owned_domain,
   tracker_web_test_oauth_client_secret_ref,
   tracker_web_test_auth_platform_client_assessment,
+  tracker_web_test_registered_web_client_console_readback,
   tracker_web_test_console_readback_observed_at_epoch,
   tracker_web_test_console_readback_valid_until_epoch,
   tracker_web_test_console_observed_redirect_uris,
@@ -47,6 +48,7 @@ import gunbc.live_deploy.spec { ArtifactStep, Dependency, OidcConfigArtifact }
 import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, apply_empty_host_effects }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan }
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
+import gunbc.workspace_allocation_policy { workspace_operator_principal }
 import gunbc.roadmap_dashboard_instance { srv1_dashboard_lab_id, srv1_dashboard_live_id, srv2_deploy_dashboard_id }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import v2.std.collection { Present, Absent }
@@ -148,6 +150,30 @@ test fn srv2_hand_started_unit_is_unmodeled_and_not_adopted() -> Bool {
 test fn console_readback_epochs_are_the_2026_calendar_receipt() -> Bool {
   iso8601_utc_text(unix: tracker_web_test_console_readback_observed_at_epoch) == "2026-10-11T04:00:00Z"
     && iso8601_utc_text(unix: tracker_web_test_console_readback_valid_until_epoch) == "2026-11-10T04:00:00Z"
+}
+
+test fn a_desired_redirect_uri_change_diverges_from_the_console_receipt() -> Bool {
+  let base = tracker_web_test_workspace_identity_binding()
+  let drifted = WorkspaceIdentityBinding {
+    customer: base.customer,
+    project: base.project,
+    client: base.client,
+    top_org_unit: base.top_org_unit,
+    redirect_uris: ["https://example.invalid/auth/google/callback" as NonEmptyStr],
+    desired_revision: base.desired_revision,
+  }
+  match workspace_identity_admin_obligations(binding: drifted, discovery: BasicSignInOnly).first() {
+    Absent => false
+    Present { value: ob } => match workspace_admin_assess(
+      goal: ob,
+      receipt: tracker_web_test_registered_web_client_console_readback(),
+      admitted_admins: [workspace_operator_principal()],
+      now_epoch: tracker_web_test_console_readback_observed_at_epoch,
+    ) {
+      GoalDiverged { deviations } => count(deviations) > 0
+      _ => false
+    }
+  }
 }
 
 test fn console_readback_is_independent_and_expires() -> Bool {

@@ -184,9 +184,12 @@ fn tracker_web_test_workspace_identity_binding() -> WorkspaceIdentityBinding {
   }
 }
 
+// Transcribed from the bright-moth-475 2026-10-11 console receipt. These strings are the
+// observation, not a second name for the desired URIs: aliasing the desired symbols here
+// made workspace_admin_assess compare a value with itself (DESIGN §3d / §5).
 data tracker_web_test_console_observed_redirect_uris: List<NonEmptyStr> = [
-  tracker_web_test_lab_redirect_uri,
-  tracker_web_test_srv2_redirect_uri,
+  "https://srv1.tailecbe08.ts.net:8444/auth/google/callback" as NonEmptyStr,
+  "https://srv2.tailecbe08.ts.net:18082/auth/google/callback" as NonEmptyStr,
 ]
 
 // Unix seconds at a UTC civil clock, via the ISO-8601 calendar (Hinnant days_from_civil),
@@ -337,7 +340,11 @@ fn tracker_web_oidc_env_assignment(cfg: TrackerWebOidcServeConfig) -> NonEmptySt
 }
 
 data srv2_hand_started_oidc_unit_dissolution: DissolutionCondition = unbound_dissolution(
-  description: "TRIGGER: a DesiredDeployment whose serve unit and oidc-config/v1 file are emitted for an instance assigned the tracker-web TEST environment that currently realizes https://srv2.tailecbe08.ts.net:18082/auth/google/callback, sufficient to delete the hand-started gunbc-dash-18082.service and the hand-placed oidc-config.json as the live login path. A custody delivery of the client secret onto srv2 without a modeled serve unit is not this trigger." as NonEmptyStr
+  description: join([
+    "TRIGGER: a DesiredDeployment whose serve unit and oidc-config/v1 file are emitted for an instance assigned the tracker-web TEST environment that currently realizes ",
+    tracker_web_test_srv2_redirect_uri as String,
+    ", sufficient to delete the hand-started gunbc-dash-18082.service and the hand-placed oidc-config.json as the live login path. A custody delivery of the client secret onto srv2 without a modeled serve unit is not this trigger.",
+  ], "") as NonEmptyStr
 )
 
 data srv2_hand_started_oidc_unit_frontier: FrontierRow = frontier_row_path(
