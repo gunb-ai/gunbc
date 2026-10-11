@@ -5,11 +5,14 @@ import std.optional { Absent, Present }
 import v2.std.live_tree { SubstrateInputsOnly }
 import v2.workflow.floor_discovery_row { FloorDiscoveryRow }
 import v2.cli.repository_layout { repository_path_of_module_file }
+import gunbc.parse_population_refusals { RefusalClass }
 import gunbc.instruments.layout_witness_join {
   JoinFinding,
   Observation,
   ObservedRow,
   PlanEdges,
+  UnreadFile,
+  declared_unread_paths,
   finding_line,
   governed_dag_paths,
   join_summary_lines,
@@ -17,6 +20,7 @@ import gunbc.instruments.layout_witness_join {
   observed_file_line,
   observed_file_ref,
   observed_row_line,
+  observed_unread_line,
   plan_edges_of,
   red_findings,
   reported_findings,
@@ -68,12 +72,30 @@ fn no_plan() -> PlanEdges {
   plan(edges: [])
 }
 
+fn unread_line(path: String, cause: String) -> String {
+  observed_unread_line(unread: UnreadFile { path: path, cause: cause })
+}
+
 fn reds(old: Observation, new: Observation, edges: PlanEdges, removals: List<String>) -> String {
-  join(red_findings(findings: witness_set_join(old: old, new: new, plan: edges, declared_removals: removals)) |> map(f => finding_line(finding: f)), "|")
+  reds_unread(old: old, new: new, edges: edges, removals: removals, declared_unread: [])
+}
+
+fn reds_unread(old: Observation, new: Observation, edges: PlanEdges, removals: List<String>, declared_unread: List<String>) -> String {
+  join(
+    red_findings(findings: witness_set_join(old: old, new: new, plan: edges, declared_removals: removals, declared_unread: declared_unread)) |> map(f => finding_line(finding: f)),
+    "|"
+  )
 }
 
 fn infos(old: Observation, new: Observation, edges: PlanEdges, removals: List<String>) -> String {
-  join(reported_findings(findings: witness_set_join(old: old, new: new, plan: edges, declared_removals: removals)) |> map(f => finding_line(finding: f)), "|")
+  infos_unread(old: old, new: new, edges: edges, removals: removals, declared_unread: [])
+}
+
+fn infos_unread(old: Observation, new: Observation, edges: PlanEdges, removals: List<String>, declared_unread: List<String>) -> String {
+  join(
+    reported_findings(findings: witness_set_join(old: old, new: new, plan: edges, declared_removals: removals, declared_unread: declared_unread)) |> map(f => finding_line(finding: f)),
+    "|"
+  )
 }
 
 fn base_old() -> Observation {
@@ -121,8 +143,13 @@ fn line_at_is(lines: List<String>, index: Int, want: String) -> Bool {
 }
 
 test fn an_equal_join_says_equal_in_its_summary() -> Bool {
-  let findings = witness_set_join(old: base_old(), new: base_old(), plan: no_plan(), declared_removals: [])
-  line_at_is(lines: join_summary_lines(old: base_old(), new: base_old(), findings: findings), index: 4, want: "RESULT\tEQUAL")
+  let findings = witness_set_join(old: base_old(), new: base_old(), plan: no_plan(), declared_removals: [], declared_unread: [])
+  line_at_is(lines: join_summary_lines(old: base_old(), new: base_old(), findings: findings), index: 5, want: "RESULT\tEQUAL")
+}
+
+test fn the_summary_counts_the_files_the_channel_could_not_read() -> Bool {
+  let findings = witness_set_join(old: base_old(), new: base_old(), plan: no_plan(), declared_removals: [], declared_unread: [])
+  line_at_is(lines: join_summary_lines(old: base_old(), new: unread_x(cause: "parse_g0_tokens_remain"), findings: findings), index: 2, want: "unread files: 1")
 }
 
 // ---- the join refuses ------------------------------------------------------------------------------
@@ -233,6 +260,94 @@ test fn a_malformed_observation_line_is_red() -> Bool {
 test fn a_malformed_plan_line_is_red() -> Bool {
   let bad = plan_edges_of(text: "dag/a/x.dag\tdag/b/x.dag")
   string_contains(s: reds(old: base_old(), new: base_old(), edges: bad, removals: []), pattern: "RED\tINPUT_MALFORMED\tplan")
+}
+
+// ---- a file the marker channel could not read -----------------------------------------------------
+// The new tree holds dag/a/x.dag, but the channel refused it: there is no marker fact for it, so its
+// rows are not in the observation and the producer was never asked. Its old rows are unobserved, which
+// is neither preserved nor lost, and the join says so row by row.
+fn unread_x(cause: String) -> Observation {
+  observation(lines: [
+    file_line(path: "dag/a/x.dag"),
+    file_line(path: "dag/a/y.dag"),
+    unread_line(path: "dag/a/x.dag", cause: cause)
+  ])
+}
+
+test fn rows_of_a_file_the_channel_could_not_read_are_red_unless_declared() -> Bool {
+  reds(old: base_old(), new: unread_x(cause: "parse_g0_tokens_remain"), edges: no_plan(), removals: [])
+    == "RED\tROW_UNREAD\tdag/a/x.dag\tf1|RED\tROW_UNREAD\tdag/a/x.dag\tf2"
+}
+
+test fn rows_of_a_declared_unreadable_file_are_reported_and_not_red() -> Bool {
+  let covered = ["dag/a/x.dag"]
+  reds_unread(old: base_old(), new: unread_x(cause: "parse_g0_tokens_remain"), edges: no_plan(), removals: [], declared_unread: covered) == ""
+    && string_contains(
+      s: infos_unread(old: base_old(), new: unread_x(cause: "parse_g0_tokens_remain"), edges: no_plan(), removals: [], declared_unread: covered),
+      pattern: "INFO\tROW_UNREAD_DECLARED\tdag/a/x.dag\tf2"
+    )
+}
+
+test fn a_declaration_for_another_file_does_not_excuse_an_unread_file() -> Bool {
+  reds_unread(old: base_old(), new: unread_x(cause: "parse_g0_tokens_remain"), edges: no_plan(), removals: [], declared_unread: ["dag/a/y.dag"])
+    == "RED\tROW_UNREAD\tdag/a/x.dag\tf1|RED\tROW_UNREAD\tdag/a/x.dag\tf2"
+}
+
+test fn an_unread_file_does_not_excuse_a_row_lost_from_a_file_that_was_read() -> Bool {
+  let old = observation(lines: [
+    file_line(path: "dag/a/x.dag"),
+    file_line(path: "dag/a/y.dag"),
+    row_line(entry: "dag/a/x.dag", function: "f1"),
+    row_line(entry: "dag/a/y.dag", function: "g1")
+  ])
+  let new = observation(lines: [
+    file_line(path: "dag/a/x.dag"),
+    file_line(path: "dag/a/y.dag"),
+    unread_line(path: "dag/a/x.dag", cause: "parse_g0_tokens_remain")
+  ])
+  reds_unread(old: old, new: new, edges: no_plan(), removals: [], declared_unread: ["dag/a/x.dag"]) == "RED\tROW_LOST\tdag/a/y.dag\tg1"
+}
+
+test fn an_unread_line_round_trips() -> Bool {
+  let read = observation_of(text: unread_line(path: "dag/a/x.dag", cause: "parse_g0_tokens_remain"))
+  count(read.unread) == 1 && count(read.malformed) == 0 && first_unread_is(unread: read.unread, want: UnreadFile { path: "dag/a/x.dag", cause: "parse_g0_tokens_remain" })
+}
+
+fn first_unread_is(unread: List<UnreadFile>, want: UnreadFile) -> Bool {
+  let element = unread[0]
+  match element {
+    Present { value: file } => file == want
+    Absent => false
+  }
+}
+
+// A refusal is declared only under the exact cause the population parse's own declaration names (the one
+// declaration answering for the parse and for the markers). The classes here are supplied.
+data unread_classes: List<RefusalClass> = [
+  RefusalClass { drop: "fixture_drop", cause: "parse_g0_tokens_remain", keys: ["dag:a/x.dag", "v2:b/y.dag"] }
+]
+
+fn declared_paths(unread: List<UnreadFile>) -> List<String> {
+  declared_unread_paths(classes: unread_classes, unread: unread)
+}
+
+test fn a_refusal_the_declaration_names_under_its_cause_is_declared() -> Bool {
+  declared_paths(unread: [
+    UnreadFile { path: "dag/a/x.dag", cause: "parse_g0_tokens_remain" },
+    UnreadFile { path: "src/v2/b/y.dag", cause: "parse_g0_tokens_remain" }
+  ]) == ["dag/a/x.dag", "src/v2/b/y.dag"]
+}
+
+test fn a_refusal_for_another_cause_than_the_declared_one_is_not_declared() -> Bool {
+  count(declared_paths(unread: [UnreadFile { path: "dag/a/x.dag", cause: "parse_keyword_as_path_segment" }])) == 0
+}
+
+test fn a_refusal_of_a_file_no_class_names_is_not_declared() -> Bool {
+  count(declared_paths(unread: [UnreadFile { path: "dag/a/z.dag", cause: "parse_g0_tokens_remain" }])) == 0
+}
+
+test fn a_refusal_of_a_file_under_no_bound_tree_is_not_declared() -> Bool {
+  count(declared_paths(unread: [UnreadFile { path: "docs/z.dag", cause: "parse_g0_tokens_remain" }])) == 0
 }
 
 // ---- what is not red -------------------------------------------------------------------------------

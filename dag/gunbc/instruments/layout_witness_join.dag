@@ -12,6 +12,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemReadRefused
 }
 import gunbc.ci.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings }
+import gunbc.parse_population_refusals { RefusalClass, parse_population_declared_refusal_classes }
 import v2.std.algebra { HeadAbsent, HeadFound, list_find_first, list_head, skip }
 import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
 import std.algebra { Cons }
@@ -26,7 +27,8 @@ import v2.compiler.module_acquisition {
   acquisition_env,
   acquisition_test_markers
 }
-import v2.compiler.source_authority { ModuleFileRef }
+import v2.cli.population_verbs { declared_refusal_names }
+import v2.compiler.source_authority { ModuleFileRef, module_file_key }
 import v2.workflow.floor_discovery_row { FloorDiscoveryRow, FloorMarkedSource }
 import v2.workflow.floor_discovery_producer { discover_floor_corpus_rows_from_host_facts }
 import v2.workflow.floor_discovery_source_authority {
@@ -59,6 +61,15 @@ import v2.workflow.floor_discovery_source_authority {
 // data witness is enrolled by the host's own scan, which has no substrate producer yet. The join
 // therefore establishes the set of test-marked declarations and nothing over a data witness.
 //
+// A FILE THE MARKER CHANNEL CANNOT READ IS A LOCATED OBSERVATION, NOT AN ABORT AND NOT AN EMPTY LIST. A
+// governed file the v2 grammar refuses has no marker fact, so the producer is not asked about it and the
+// observation records it as UNREAD with the cause the channel refused with. Its old rows are then neither
+// lost nor preserved but unobserved (RowUnread), and red unless gunbc.parse_population_refusals declares
+// that file under that exact cause: the same declaration that excuses the population parse excuses the
+// markers, so the loss is one drop and the capability that restores it (a grammar that parses the file)
+// restores both. A file the channel reads but the declaration still names is the population parse's red,
+// not this join's.
+//
 // THE RENAME MAP IS LAYOUT_MIGRATION'S OWN PLAN (layout_plan_report on the pre-sweep tree), not a second
 // mapping derived from the two trees: a derived mapping would agree with whatever the sweep did. A path
 // the plan does not name is carried through unchanged.
@@ -70,7 +81,10 @@ import v2.workflow.floor_discovery_source_authority {
 
 // ---- the observation -------------------------------------------------------------------------------
 // One line per fact. `ROW<TAB>entry<TAB>function<TAB>label<TAB>live` is an enrolled witness;
-// `FILE<TAB>path` is a tracked source file, the population the file-grain check reads.
+// `FILE<TAB>path` is a tracked source file, the population the file-grain check reads;
+// `UNREAD<TAB>path<TAB>cause` is a governed file the marker channel refused, located by the cause it
+// refused with. An unread file has no marker fact, so it is never walked and never read as an
+// unmarked one.
 type ObservedRow {
   entry: String
   function: String
@@ -78,9 +92,15 @@ type ObservedRow {
   live: String
 }
 
+type UnreadFile {
+  path: String
+  cause: String
+}
+
 type Observation {
   rows: List<ObservedRow>
   files: List<String>
+  unread: List<UnreadFile>
   malformed: List<String>
 }
 
@@ -97,6 +117,10 @@ fn observed_row_line(row: FloorDiscoveryRow) -> String {
 
 fn observed_file_line(path: String) -> String {
   concat("FILE\t", path)
+}
+
+fn observed_unread_line(unread: UnreadFile) -> String {
+  join(["UNREAD", unread.path, unread.cause], "\t")
 }
 
 fn field_of(fields: List<String>, index: Int) -> String {
@@ -117,6 +141,16 @@ fn line_is_file(line: String) -> Bool {
   field_of(fields: fields, index: 0) == "FILE" && count(fields) == 2
 }
 
+fn line_is_unread(line: String) -> Bool {
+  let fields = split(s: line, delimiter: "\t")
+  field_of(fields: fields, index: 0) == "UNREAD" && count(fields) == 3
+}
+
+fn observed_unread_of(line: String) -> UnreadFile {
+  let fields = split(s: line, delimiter: "\t")
+  UnreadFile { path: field_of(fields: fields, index: 1), cause: field_of(fields: fields, index: 2) }
+}
+
 fn observed_row_of(line: String) -> ObservedRow {
   let fields = split(s: line, delimiter: "\t")
   ObservedRow {
@@ -132,7 +166,8 @@ fn observation_of(text: String) -> Observation {
   Observation {
     rows: lines |> filter(l => line_is_row(line: l)) |> map(l => observed_row_of(line: l)),
     files: lines |> filter(l => line_is_file(line: l)) |> map(l => field_of(fields: split(s: l, delimiter: "\t"), index: 1)),
-    malformed: lines |> filter(l => !line_is_row(line: l) && !line_is_file(line: l))
+    unread: lines |> filter(l => line_is_unread(line: l)) |> map(l => observed_unread_of(line: l)),
+    malformed: lines |> filter(l => !line_is_row(line: l) && !line_is_file(line: l) && !line_is_unread(line: l))
   }
 }
 
@@ -216,6 +251,7 @@ type JoinFinding
   | RowLost { entry: String, function: String }
   | RowGained { entry: String, function: String }
   | RowAltered { entry: String, function: String, was: String, now: String }
+  | RowUnread { entry: String, function: String, declared: Bool }
   | RowIntroduced { entry: String, function: String }
   | RowInRemovedFile { entry: String, function: String, declared: Bool }
   | FileRemoved { path: String }
@@ -230,6 +266,7 @@ fn finding_is_red(finding: JoinFinding) -> Bool {
     RowLost { entry: _, function: _ } => true
     RowGained { entry: _, function: _ } => true
     RowAltered { entry: _, function: _, was: _, now: _ } => true
+    RowUnread { entry: _, function: _, declared: declared } => !declared
     RowIntroduced { entry: _, function: _ } => false
     RowInRemovedFile { entry: _, function: _, declared: declared } => !declared
     FileRemoved { path: _ } => false
@@ -246,6 +283,8 @@ fn finding_line(finding: JoinFinding) -> String {
     RowLost { entry: e, function: f } => join(["RED", "ROW_LOST", e, f], "\t")
     RowGained { entry: e, function: f } => join(["RED", "ROW_GAINED", e, f], "\t")
     RowAltered { entry: e, function: f, was: w, now: n } => join(["RED", "ROW_ALTERED", e, f, w, n], "\t")
+    RowUnread { entry: e, function: f, declared: d } =>
+      join([if d { "INFO" } else { "RED" }, if d { "ROW_UNREAD_DECLARED" } else { "ROW_UNREAD" }, e, f], "\t")
     RowIntroduced { entry: e, function: f } => join(["INFO", "ROW_INTRODUCED", e, f], "\t")
     RowInRemovedFile { entry: e, function: f, declared: d } =>
       join([if d { "INFO" } else { "RED" }, if d { "ROW_IN_REMOVED_FILE_DECLARED" } else { "ROW_IN_REMOVED_FILE" }, e, f], "\t")
@@ -257,12 +296,15 @@ fn finding_line(finding: JoinFinding) -> String {
   }
 }
 
-// An old row, carried through the plan, against the new observation.
+// An old row, carried through the plan, against the new observation. `unread` maps each new-side file the
+// marker channel refused to whether that refusal is declared: a row whose file the channel could not read
+// is neither lost nor preserved, it is unobserved, and it is red unless the refusal is a declared one.
 fn old_row_finding(
   forward: Map<String, String>,
   new_files: Map<String, Bool>,
   new_rows: Map<String, String>,
   declared: Map<String, Bool>,
+  unread: Map<String, Bool>,
   row: ObservedRow
 ) -> JoinFinding {
   let moved = carried(forward: forward, path: row.entry)
@@ -270,7 +312,11 @@ fn old_row_finding(
     RowInRemovedFile { entry: row.entry, function: row.function, declared: path_present(index: declared, path: row.entry) }
   } else {
     match map_lookup(m: new_rows, key: row_key(entry: moved, function: row.function)) {
-      Absent => RowLost { entry: row.entry, function: row.function }
+      Absent =>
+        match map_lookup(m: unread, key: moved) {
+          Present { value: covered } => RowUnread { entry: row.entry, function: row.function, declared: covered }
+          Absent => RowLost { entry: row.entry, function: row.function }
+        }
       Present { value: now } =>
         if now == row_value(row: row) {
           RowPreserved
@@ -313,16 +359,26 @@ fn new_file_finding(preimage: Map<String, String>, path: String) -> JoinFinding 
 }
 
 // The full join. `declared_removals` are old-tree paths the caller names from the independent record of
-// the change; `plan` is the sweep's own digest of the old tree.
-fn witness_set_join(old: Observation, new: Observation, plan: PlanEdges, declared_removals: List<String>) -> List<JoinFinding> {
+// the change; `declared_unread` are new-tree paths whose channel refusal the caller has found declared
+// (a supplied value, so the join judges the shape of the declaration and never reads the live one);
+// `plan` is the sweep's own digest of the old tree.
+fn witness_set_join(
+  old: Observation,
+  new: Observation,
+  plan: PlanEdges,
+  declared_removals: List<String>,
+  declared_unread: List<String>
+) -> List<JoinFinding> {
   let old_rows = row_index(rows: old.rows)
   let new_rows = row_index(rows: new.rows)
   let old_files = path_index(paths: old.files)
   let new_files = path_index(paths: new.files)
   let declared = path_index(paths: declared_removals)
+  let covered_unread = path_index(paths: declared_unread)
+  let unread = fold(new.unread, init: empty_map(), f: (index, u) => map_insert(m: index, key: u.path, value: path_present(index: covered_unread, path: u.path)))
   let preimages = preimages_of(forward: plan.forward, old_files: old.files)
   let row_findings = concat(
-    old.rows |> map(r => old_row_finding(forward: plan.forward, new_files: new_files, new_rows: new_rows, declared: declared, row: r)),
+    old.rows |> map(r => old_row_finding(forward: plan.forward, new_files: new_files, new_rows: new_rows, declared: declared, unread: unread, row: r)),
     new.rows |> map(r => new_row_finding(preimage: preimages.index, old_rows: old_rows, row: r))
   )
   let file_findings = concat(
@@ -357,6 +413,7 @@ fn join_summary_lines(old: Observation, new: Observation, findings: List<JoinFin
   [
     concat("old rows: ", count(old.rows) as String),
     concat("new rows: ", count(new.rows) as String),
+    concat("unread files: ", count(new.unread) as String),
     concat("preserved: ", count(findings |> filter(f => match f { RowPreserved => true _ => false })) as String),
     concat("red findings: ", count(red_findings(findings: findings)) as String),
     if count(red_findings(findings: findings)) == 0 { "RESULT\tEQUAL" } else { "RESULT\tNOT_EQUAL" }
@@ -411,73 +468,91 @@ fn observed_file_ref(path: String) -> Optional<ModuleFileRef> {
   }
 }
 
+// A governed file the marker channel cannot read is a located observation (MarkedNamesUnread), not an
+// abort: the channel's refusal is a fact about the file, and the join reads it as one. A governed path
+// under no bound tree is a fault of the run itself (MarkedNamesUnbound) and stops it.
 type MarkedNames
   = MarkedNamesRead { names: List<String> }
-  | MarkedNamesRefused { cause: String }
+  | MarkedNamesUnread { cause: String }
+  | MarkedNamesUnbound { cause: String }
 
 fn marked_names_of(env: AcquisitionEnv, path: String, content: String) -> MarkedNames {
   match observed_file_ref(path: path) {
-    Absent => MarkedNamesRefused { cause: concat(path, ": under no bound tree") }
+    Absent => MarkedNamesUnbound { cause: concat(path, ": under no bound tree") }
     Present { value: file } =>
       match acquisition_test_markers(env: env, file: file, content: content) {
         AcquisitionMarkersRead { names: names } => MarkedNamesRead { names: names }
-        AcquisitionMarkersRefused { cause: cause } => MarkedNamesRefused { cause: concat(path, ": ", cause) }
+        AcquisitionMarkersRefused { cause: cause } => MarkedNamesUnread { cause: cause }
       }
   }
 }
 
 type MarkedSources
-  = MarkedSourcesRead { sources: List<FloorMarkedSource> }
+  = MarkedSourcesRead { sources: List<FloorMarkedSource>, unread: List<UnreadFile> }
   | MarkedSourcesRefused { cause: String }
 
 // One governed file at a time: read it, take the names its own normalized tree marks, keep the fact and
 // drop the content, so the memory is the facts and not the population.
-fn marked_sources_go(env: AcquisitionEnv, pending: List<String>, acc: List<FloorMarkedSource>) -> MarkedSources {
+fn marked_sources_go(env: AcquisitionEnv, pending: List<String>, acc: List<FloorMarkedSource>, unread: List<UnreadFile>) -> MarkedSources {
   match list_head(xs: pending) {
-    HeadAbsent => MarkedSourcesRead { sources: acc }
+    HeadAbsent => MarkedSourcesRead { sources: acc, unread: unread }
     HeadFound { value: path } =>
       match read_text(path: path) {
         TextReadRefused { path: p, cause: c } => MarkedSourcesRefused { cause: concat(p, ": ", c) }
         TextReadOk { text: content } =>
           match marked_names_of(env: env, path: path, content: content) {
-            MarkedNamesRefused { cause: cause } => MarkedSourcesRefused { cause: cause }
+            MarkedNamesUnbound { cause: cause } => MarkedSourcesRefused { cause: cause }
+            MarkedNamesUnread { cause: cause } =>
+              marked_sources_go(
+                env: env,
+                pending: skip(xs: pending, n: 1),
+                acc: acc,
+                unread: Cons { head: UnreadFile { path: path, cause: cause }, tail: unread }
+              )
             MarkedNamesRead { names: names } =>
               marked_sources_go(
                 env: env,
                 pending: skip(xs: pending, n: 1),
-                acc: Cons { head: FloorMarkedSource { repo_path: path, marked: names }, tail: acc }
+                acc: Cons { head: FloorMarkedSource { repo_path: path, marked: names }, tail: acc },
+                unread: unread
               )
           }
       }
   }
 }
 
-fn observed_report(listing: String, rows: List<FloorDiscoveryRow>) -> String {
+fn observed_report(listing: String, rows: List<FloorDiscoveryRow>, unread: List<UnreadFile>) -> String {
   join(
     concat(
-      split(s: listing, delimiter: "\n") |> filter(p => p != "" && ends_with(s: p, suffix: ".dag")) |> map(p => observed_file_line(path: p)),
+      concat(
+        split(s: listing, delimiter: "\n") |> filter(p => p != "" && ends_with(s: p, suffix: ".dag")) |> map(p => observed_file_line(path: p)),
+        unread |> map(u => observed_unread_line(unread: u))
+      ),
       rows |> map(r => observed_row_line(row: r))
     ),
     "\n"
   )
 }
 
-fn observed_rows_of(sources: List<FloorMarkedSource>, listing: String, report: String) -> ProcessExit {
+// The producer refuses a walked file it holds no marker fact for, so a file the channel could not read is
+// withheld from the walk by its own full path (a whole-file path policy, as the floor's exclusions are)
+// and reported as UNREAD: the producer is never handed an empty list for a file nobody read.
+fn observed_rows_of(sources: List<FloorMarkedSource>, unread: List<UnreadFile>, listing: String, report: String) -> ProcessExit {
   match discover_floor_corpus_rows_from_host_facts(
     source_roots: witness_layer_roots,
-    exclude_substrings: witness_exclusion_substrings(),
+    exclude_substrings: concat(witness_exclusion_substrings(), unread |> map(u => u.path)),
     owned_data_records: [],
     marked_sources: sources
   ) {
     FloorDiscoveryRefused { reason: reason } => exit_failure(reason: concat("layout witness join: discovery refused: ", reason))
-    FloorDiscoveryAccepted { rows: rows } => write_text(path: report, content: observed_report(listing: listing, rows: rows))
+    FloorDiscoveryAccepted { rows: rows } => write_text(path: report, content: observed_report(listing: listing, rows: rows, unread: unread))
   }
 }
 
 fn observed_marked(env: AcquisitionEnv, listing: String, report: String) -> ProcessExit {
-  match marked_sources_go(env: env, pending: governed_dag_paths(listing: listing), acc: []) {
+  match marked_sources_go(env: env, pending: governed_dag_paths(listing: listing), acc: [], unread: []) {
     MarkedSourcesRefused { cause: cause } => exit_failure(reason: concat("layout witness join: cannot read the markers: ", cause))
-    MarkedSourcesRead { sources: sources } => observed_rows_of(sources: sources, listing: listing, report: report)
+    MarkedSourcesRead { sources: sources, unread: unread } => observed_rows_of(sources: sources, unread: unread, listing: listing, report: report)
   }
 }
 
@@ -522,8 +597,28 @@ fn layout_witness_join(old: String, new: String, plan: String, removals: String,
   }
 }
 
+// A channel refusal is declared when gunbc.parse_population_refusals names that file under that exact
+// cause (the population parse's own judgment, v2.cli.population_verbs declared_refusal_names), so one
+// declaration answers both for the parse and for the markers.
+fn unread_is_declared(classes: List<RefusalClass>, unread: UnreadFile) -> Bool {
+  match observed_file_ref(path: unread.path) {
+    Absent => false
+    Present { value: file } => declared_refusal_names(classes: classes, key: module_file_key(file: file), cause: unread.cause)
+  }
+}
+
+fn declared_unread_paths(classes: List<RefusalClass>, unread: List<UnreadFile>) -> List<String> {
+  unread |> filter(u => unread_is_declared(classes: classes, unread: u)) |> map(u => u.path)
+}
+
 fn joined_report(old: Observation, new: Observation, plan: PlanEdges, removals: List<String>, report: String) -> ProcessExit {
-  let findings = witness_set_join(old: old, new: new, plan: plan, declared_removals: removals)
+  let findings = witness_set_join(
+    old: old,
+    new: new,
+    plan: plan,
+    declared_removals: removals,
+    declared_unread: declared_unread_paths(classes: parse_population_declared_refusal_classes(), unread: new.unread)
+  )
   let written = write_text(
     path: report,
     content: join(concat(join_summary_lines(old: old, new: new, findings: findings), reported_findings(findings: findings) |> map(f => finding_line(finding: f))), "\n")
