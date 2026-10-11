@@ -496,6 +496,8 @@ fn labels_distinct(labels: List<String>) -> Bool {
   all(labels, l => count(filter(labels, x => x == l)) == 1)
 }
 
+// THE PIN COUNTS THE EXEMPLAR ROSTER, one per LaunchRefusal arm: 15 -> 16 WITH LaunchNoPlacementGrant
+// (G5, #13074) and 16 -> 17 WITH LaunchRevisionNotLanded (#13703), neither of which moved it.
 test fn witness_refusal_labels_are_distinct_and_total() -> Bool {
   let labels = map(launch_refusal_exemplars(), r => launch_refusal_label(r: r))
   count(labels) == 17 && labels_distinct(labels: labels)
