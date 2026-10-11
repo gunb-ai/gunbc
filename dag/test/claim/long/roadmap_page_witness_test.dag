@@ -2282,6 +2282,42 @@ test fn witness_issue_rail_renders_no_build_meter_without_fabric_or_an_attempt()
     && fx_rail_meter_html(holder: none, attempts: [ attempt ]) == "<dl class=\"el-field-list\"></dl>"
 }
 
+// THE WORK TAB DRAWS THE WORKER OF THE CURRENT ATTEMPT. The real projection of an attempt is
+// supplied with a running provider and a handoff still awaiting the worker (the specimen's
+// working fixture), and the tab places the meter in the working pose from the producer's own
+// derivation; a node with no attempt gets no meter node at all rather than a fabricated one.
+fn fx_work_tab_html(attempts: List<gunbc.roadmap_workflow_progress.WorkflowAttemptProgress>) -> String {
+  extdeps.languages.html.serialize_html_source(node: gunbc.site.markup.el_class("section", "panel-work", gunbc.roadmap_page.issue_work_tab_nodes(view: issue_detail_fixture_view(), attempts: attempts, events: [])))
+}
+
+fn fx_working_attempt() -> gunbc.roadmap_workflow_progress.WorkflowAttemptProgress {
+  let done = completed_attempt_progress(node_id: "issue-detail-specimen")
+  gunbc.roadmap_workflow_progress.WorkflowAttemptProgress {
+    node_id: done.node_id,
+    attempt_key: done.attempt_key,
+    branch: done.branch,
+    admission_receipt: done.admission_receipt,
+    provider: gunbc.roadmap_provider_events.ProviderRunning { activity: "Agent working" },
+    process: done.process,
+    validation_summary: done.validation_summary,
+    segments: done.segments,
+    reconciliation: done.reconciliation,
+    rounds: done.rounds,
+    handoff: gunbc.roadmap.roadmap_submission.HandoffAwaitingWorker,
+  }
+}
+
+test fn witness_issue_work_tab_draws_the_working_meter_for_the_current_attempt() -> Bool {
+  let h = fx_work_tab_html(attempts: [ fx_working_attempt() ])
+  string_contains(s: h, pattern: "class=\"el-build-meter\"")
+    && string_contains(s: h, pattern: "data-build-meter=\"issue-detail-specimen\"")
+    && string_contains(s: h, pattern: join([gunbc.site.element.build_meter.build_meter_pose_attribute, "=\"working\""], ""))
+}
+
+test fn witness_issue_work_tab_draws_no_meter_without_an_attempt() -> Bool {
+  !string_contains(s: fx_work_tab_html(attempts: []), pattern: "el-build-meter")
+}
+
 // THE RAIL IS ONE FIELD LIST AND HAS NO EMPTY ROWS. The rail of the fixture issue (one attempt,
 // no events) is rendered by the page's own function: it holds exactly one field list, every row
 // the page composed is one row of it, no row's value is empty, and none of the retired rail

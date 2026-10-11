@@ -130,8 +130,8 @@ import gunbc.roadmap_presentation {
   issue_status_label, issue_status_details, issue_first_open_kind, issue_wait_state_label,
 }
 import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
-import gunbc.roadmap.roadmap_build_meter { compact_work_summary, FailureEvent, attempt_failure_events }
-import gunbc.site.element.build_meter { failure_event_words }
+import gunbc.roadmap.roadmap_build_meter { compact_work_summary, compact_work_summary_of, FailureEvent, attempt_failure_events }
+import gunbc.site.element.build_meter { failure_event_words, build_meter }
 import gunbc.site.element.priority_mark { PriorityMark, priority_mark }
 import gunbc.site.element.status_chip { status_chip_accepted_label, status_chip_withheld_label }
 import gunbc.site.element.field_list {
@@ -2243,6 +2243,8 @@ fn issue_create_page(command_context: IssueFormContext) -> Fragment {
 fn issue_work_tab_nodes(view: WorkRowView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>) -> List<Fragment> {
   let rounds = issue_work_history_rounds(ledger: view.rounds)
   concat(
+    issue_work_meter_nodes(view: view, attempts: attempts),
+    concat(
     if count(attempts) == 0 { [] } else {
       [ el_class("div", "issue-attempt-history", map(attempts, issue_attempt_history_row_node)) ]
     },
@@ -2263,7 +2265,18 @@ fn issue_work_tab_nodes(view: WorkRowView, attempts: List<WorkflowAttemptProgres
             located_reason: located_reason)
         CompletedWork { outcome: _, evidence, obligations } =>
           issue_work_ledger_nodes(view: view, obligations: obligations, evidence: evidence, located_reason: "")
-      }))
+      })))
+}
+
+// THE WORKER GRAPHIC OF THE CURRENT ATTEMPT, drawn from the same attempt projection the rail's
+// Work row and the history rows read (gunbc.roadmap.roadmap_build_meter compact_work_summary_of
+// over attempts.first(), newest first), so the pose is the producer's and not re-derived here.
+// No attempt, no meter.
+fn issue_work_meter_nodes(view: WorkRowView, attempts: List<WorkflowAttemptProgress>) -> List<Fragment> {
+  match attempts.first() {
+    Absent => []
+    Present { value: latest } => [ build_meter(summary: compact_work_summary_of(progress: latest, stale: view.attempt_stale), link_attributes: []) ]
+  }
 }
 
 fn issue_work_ledger_row_node(s: WorkflowSegment, wait_target: String) -> Fragment {
