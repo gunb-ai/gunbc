@@ -1,7 +1,6 @@
 module v1.tests.claim.parse_source_extent_control_test
 
 import extdeps.languages.dag.syntax { dag_parse_environment }
-import extdeps.filesystem.filesystem_io
 import std.types { String, List, Int, Bool, SourceSpan }
 import std.algebra { FreeMonoid, Empty, Cons }
 import std.occurrence_identity {
@@ -237,31 +236,3 @@ fn fixture_uncovered_occurrences() -> List<String> {
 }
 
 
-// THE SAME CONTROL OVER AUTHORED CORPUS FILES, for a reader who wants it beyond the fixture: each
-// file's uncovered occurrences, as `path: name@start`. Manual; reads the live tree.
-data extent_corpus_paths: List<String> = [
-  "dag/std/source_annotation.dag",
-  "dag/std/occurrence_identity.dag",
-  "src/v1/annotation_bind.dag",
-  "dag/gunbc/roadmap/roadmap_review_criteria.dag",
-]
-
-fn corpus_file_uncovered(path: String) -> List<String> {
-  let source = filesystem_read(path: path).content
-  let parsed = parse_with_table(
-    tokens: tokenize(source: source, file: path, env: dag_parse_environment),
-    source_indices: map_insert(empty_map(), path, build_newline_index(file: path, source: source)),
-    intern_table: empty_intern_table(),
-  )
-  let refusal = match parsed.result.error {
-    Present { value: _ } => [concat(path, ": refused to parse")]
-    Absent => []
-  }
-  concat(refusal, parsed.occurrence_transport.index.entries
-    |> filter(e => !entry_covered(parsed: parsed, entry: e))
-    |> map(e => concat(path, ": ", e.projection.authored_name, "@", to_string(e.projection.diagnostic_span.start))))
-}
-
-fn corpus_uncovered_occurrences() -> List<String> {
-  extent_corpus_paths |> flat_map(p => corpus_file_uncovered(path: p))
-}
