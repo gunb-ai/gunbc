@@ -2453,7 +2453,7 @@ fn compute_provide_dependent(instance: HostDashboardInstance, commit: String, su
     match compute_dependency_read(store: compute_durable_store, build: ComputeWorkRequest { subject: subject, operation: work_default_build(), toolchain: toolchain }) {
       ComputeDependencyRefused { detail } =>
         provide_result_with_host_record(
-          r: compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: DependencyNotSucceeded { dependency_identity: build_identity, ending: join(["succeeded, but ", detail], "") } }, subject: subject, op: op),
+          r: compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: DependencyNotSucceeded { dependency_identity: build_identity, ending: join(["succeeded, but ", detail], ""), dependency_outcome: provide_result_document(r: build) } }, subject: subject, op: op),
           carried: provide_result_host_record(r: build))
       ComputeDependencyResolved { dependency } =>
         provide_result_with_host_record(
@@ -2463,7 +2463,7 @@ fn compute_provide_dependent(instance: HostDashboardInstance, commit: String, su
   } else {
     let identity = compute_work_identity(subject: subject, op: op, toolchain: toolchain)
     provide_result_with_host_record(
-      r: compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: DependencyNotSucceeded { dependency_identity: provide_result_identity(r: build), ending: provide_result_ending(r: build) } }, subject: subject, op: op),
+      r: compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: DependencyNotSucceeded { dependency_identity: provide_result_identity(r: build), ending: provide_result_ending(r: build), dependency_outcome: provide_result_document(r: build) } }, subject: subject, op: op),
       carried: provide_result_host_record(r: build))
   }
 }

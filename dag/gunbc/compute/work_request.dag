@@ -235,6 +235,10 @@ type WorkOutcome
 // reservation. The arm is reached only when no larger reservation remains -- a grant below the
 // ceiling that is exceeded retries at the ceiling first (gunbc.compute.work_provider_local
 // compute_run_opened), and that retry is counted per class.
+// A DEPENDENCY THAT DID NOT SUCCEED CARRIES ITS OWN STORED OUTCOME. With the ending word alone, a
+// refused build reached the dependent's caller as 'dependency <id> ended refused_by_infrastructure'
+// and its typed cause was gone: no outcome.json is written for a refusal, so nothing else held it
+// (srv1 lab 2026-10-11, a worker's compile refused and the worker never saw why).
 type WorkInfrastructureRefusal
   = ProducerInFlight { lease_path: String }
   | HostComputeCapacityFull { wire: String }
@@ -243,7 +247,7 @@ type WorkInfrastructureRefusal
   | CheckoutUnavailable { detail: String }
   | StoreUnavailable { detail: String }
   | ToolchainUnobserved { detail: String }
-  | DependencyNotSucceeded { dependency_identity: String, ending: String }
+  | DependencyNotSucceeded { dependency_identity: String, ending: String, dependency_outcome: String }
   | SubjectUnresolved { detail: String }
   | UnitMemoryGrantExceeded { class: String, granted: Kibibyte, peak_upper: Kibibyte?, grant_was_ceiling: Bool }
   | UnitEndingUnclassifiable { exit_code: Int, cause: String }
@@ -312,7 +316,7 @@ fn work_refusal_detail(r: WorkInfrastructureRefusal) -> String {
     CheckoutUnavailable { detail } => join(["checkout unavailable: ", detail], "")
     StoreUnavailable { detail } => join(["store unavailable: ", detail], "")
     ToolchainUnobserved { detail } => join(["toolchain unobserved: ", detail], "")
-    DependencyNotSucceeded { dependency_identity, ending } => join(["dependency ", dependency_identity, " ended ", ending], "")
+    DependencyNotSucceeded { dependency_identity, ending, dependency_outcome } => join(["dependency ", dependency_identity, " ended ", ending, "; its outcome: ", dependency_outcome], "")
     SubjectUnresolved { detail } => join(["subject unresolved: ", detail], "")
     UnitEndingUnclassifiable { exit_code, cause } =>
       join(["the unit exited ", to_string(value: exit_code), " and its ending could not be classified, so it is neither reported as failed nor as grant-exceeded: ", cause], "")

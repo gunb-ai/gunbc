@@ -51,7 +51,7 @@ import gunbc.compute.work_request {
   ClaimDiffWindow, GunbcDriver, ClaimBatchRunner, WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoRelease, CargoDebug,
   WorkToolchainIdentity, work_toolchain_observed, work_default_build, work_declared_outputs,
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
-  WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, HostComputeCapacityFull,
+  WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, HostComputeCapacityFull, DependencyNotSucceeded,
   work_outcome_wire, stored_outcome_decode, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_is_success,
 }
 
@@ -262,6 +262,21 @@ test fn the_stored_outcome_round_trips_and_a_broken_one_is_unreadable() -> Bool 
     && string_contains(s: ok, pattern: "\"blob\": \"deadbeef\"")
     && (match stored_outcome_decode(text: "{\"identity\": \"abc\"}") { StoredOutcomeUnreadable { reason: _ } => true  StoredOutcomeFound { ending: _, identity: _, document: _ } => false })
     && (match stored_outcome_decode(text: "not json") { StoredOutcomeUnreadable { reason: _ } => true  StoredOutcomeFound { ending: _, identity: _, document: _ } => false })
+}
+
+// A COMPILE REFUSED BECAUSE ITS BUILD WAS REFUSED NAMES THE BUILD'S CAUSE. The dependent's stored
+// outcome is the only record the worker reads; RED against the refusal that carried the build's
+// ending word alone, which is what left a lab worker unable to see why its compile never ran.
+test fn a_dependent_refusal_carries_its_dependency_outcome() -> Bool {
+  let subject = tree(hex: tree_a)
+  let build = work_outcome_wire(o: WorkRefusedByInfrastructure { identity: "b8", cause: HostComputeCapacityFull { wire: "pool-full (attempt 1)" } }, subject: subject, op: work_default_build())
+  let compile = work_outcome_wire(
+    o: WorkRefusedByInfrastructure { identity: "c1", cause: DependencyNotSucceeded { dependency_identity: "b8", ending: "refused_by_infrastructure", dependency_outcome: build } },
+    subject: subject,
+    op: CompileEntry { entry: "dag/x.dag" as FilePath },
+  )
+  string_contains(s: compile, pattern: "dependency b8 ended refused_by_infrastructure")
+    && string_contains(s: compile, pattern: "pool-full (attempt 1)")
 }
 
 // THE CONTROLS SIT AT THE OBSERVATION-TO-DECISION BOUNDARY, not at the variant-to-release mapping,
