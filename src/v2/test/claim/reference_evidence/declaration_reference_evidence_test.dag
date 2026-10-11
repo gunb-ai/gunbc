@@ -1,6 +1,7 @@
 module v2.test.claim.reference_evidence.declaration_reference_evidence
 
 import v2.std.member_declaration_kind { no_member_declaration_kinds }
+import v2.compiler.body_lowering_fold { no_type_declaration_modifiers_channel }
 import v2.compiler.resolve { ResolvedTree }
 import v2.std.symbol_index { symbol_index_lookup }
 import v2.compiler.infer { infer, inferred_facts_grounding_derived, infer_type_equal_ignoring_provenance }
@@ -335,7 +336,8 @@ fn dre_same_leaf_resolved() -> ResolvedTree {
     resolved_declarations: symbol_index_insert(index: call.resolved_declarations, qualified_path: [^p, ^Wrap], resolved: dre_same_leaf_wrap_declaration()),
     lexical_bindings: call.lexical_bindings,
     unavailable_providers: call.unavailable_providers,
-    member_kinds: no_member_declaration_kinds()
+    member_kinds: no_member_declaration_kinds(),
+    type_declaration_modifiers: no_type_declaration_modifiers_channel()
   }
 }
 

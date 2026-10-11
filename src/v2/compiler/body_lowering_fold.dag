@@ -225,6 +225,7 @@ import v2.std.node {
   node_rebuild,
   node_synthetic,
   node_with_occurrence_id,
+  symbol_eq,
   symbol_intern_lexeme,
   symbol_lexeme,
   Disj,
@@ -10821,16 +10822,14 @@ fn declared_resource_names(kinds: FreeMonoid<DeclaredTypeKind>) -> FreeMonoid<Sy
 
 // THE TYPE-DECLARATION MODIFIER SLOT, CARRIED. `type X <modifier> = Y` -- the slot
 // v2.extdeps.languages.dag dag_grammar_type_decl_modifiers_expr admits between the name (and its
-// `<T>`) and the body -- was consumed and minted nothing on this route
-// (gunbc.rung_drop g0_type_decl_modifier_parse_without_sealing_property), so no reader of a lowered
-// declaration could tell `type X nominal_opaque = Y` from `type X = Y`. It is read HERE, on the parse,
-// for the reason DeclaredTypeKind is: lowering leaves no trace of it in the node.
+// `<T>`) and the body. It is read HERE, on the parse, for the reason DeclaredTypeKind is: lowering
+// leaves no trace of it in the node. Infer consumes the channel as the construction wall.
 //
 // A CLOSED VOCABULARY, NOT A FLAG PER SPELLING. The slot is where the ruled nominal-type plan
 // (docs/plans/nominal-type-declaration-plan.md S1) puts constructor and view visibility, so a later
 // modifier is a new variant here and a new terminal in the grammar's slot, never a second carrier.
-// Carrying a modifier ENFORCES nothing: the sealing property v1 parsed_sole_constructor_properties
-// mints is still not checked on this route, which is the half of that drop this does not restore.
+// Carrying a modifier is the minting half; the construction wall that consumes it is
+// v2.compiler.infer infer_sole_constructor_diags, keyed on the declaring module (not a file path).
 type TypeDeclModifier
   = NominalOpaqueModifier
   | SoleConstructorModifier
@@ -10841,6 +10840,101 @@ type TypeDeclModifier
 type DeclaredTypeModifiers {
   name: Symbol
   modifiers: FreeMonoid<TypeDeclModifier>
+}
+
+// THE SAME ROW, QUALIFIED BY THE DECLARING MODULE, so a later stage can key ownership on the
+// resolved type's module rather than a file-path string. Bare `name` is unique only inside one
+// module; the construction wall looks this up by (module, name).
+type QualifiedDeclaredTypeModifiers {
+  module: QualifiedName
+  name: Symbol
+  modifiers: FreeMonoid<TypeDeclModifier>
+}
+
+// THE CHANNEL INFER READS. Unavailable is a hand-built ResolvedTree that never saw a parse: no
+// type is sealed through it (absence of provenance, not "every type is open"). Captured covers
+// every NormalizedTree the ingest held, so a type whose declaring module is outside `covered` is
+// unreadable rather than silently open.
+type TypeDeclarationModifierChannel
+  = TypeDeclarationModifiersUnavailable
+  | TypeDeclarationModifiersCaptured {
+      covered: List<QualifiedName>
+      rows: List<QualifiedDeclaredTypeModifiers>
+    }
+
+fn no_type_declaration_modifiers_channel() -> TypeDeclarationModifierChannel {
+  TypeDeclarationModifiersUnavailable
+}
+
+fn type_decl_modifiers_include_sole_constructor(modifiers: FreeMonoid<TypeDeclModifier>) -> Bool {
+  fold(modifiers, init: false, f: fn(acc, m) {
+    if acc {
+      true
+    } else {
+      match m {
+        SoleConstructorModifier => true
+        NominalOpaqueModifier => false
+      }
+    }
+  })
+}
+
+type TypeDeclModifierRowLookup
+  = TypeDeclModifierChannelUnavailable
+  | TypeDeclModifierModuleUncovered
+  | TypeDeclModifierRowAbsent
+  | TypeDeclModifierRowPresent { modifiers: FreeMonoid<TypeDeclModifier> }
+
+fn type_declaration_modifier_module_covered(covered: List<QualifiedName>, module: QualifiedName) -> Bool {
+  fold(covered, init: false, f: fn(acc, m) { acc || (m == module) })
+}
+
+type TypeDeclModifierNameHits
+  = TypeDeclModifierNameNone
+  | TypeDeclModifierNameUnique { row: QualifiedDeclaredTypeModifiers }
+  | TypeDeclModifierNameAmbiguous
+
+fn type_declaration_modifier_unique_name(
+  channel: TypeDeclarationModifierChannel,
+  name: Symbol
+) -> TypeDeclModifierNameHits {
+  match channel {
+    TypeDeclarationModifiersUnavailable => TypeDeclModifierNameNone
+    TypeDeclarationModifiersCaptured { covered: _, rows: rows } =>
+      fold(rows, init: TypeDeclModifierNameNone, f: fn(acc, row) {
+        if symbol_eq(a: row.name, b: name) {
+          match acc {
+            TypeDeclModifierNameNone => TypeDeclModifierNameUnique { row: row }
+            TypeDeclModifierNameUnique { row: _ } => TypeDeclModifierNameAmbiguous
+            TypeDeclModifierNameAmbiguous => acc
+          }
+        } else {
+          acc
+        }
+      })
+  }
+}
+
+fn type_declaration_modifier_row_at(
+  channel: TypeDeclarationModifierChannel,
+  module: QualifiedName,
+  name: Symbol
+) -> TypeDeclModifierRowLookup {
+  match channel {
+    TypeDeclarationModifiersUnavailable => TypeDeclModifierChannelUnavailable
+    TypeDeclarationModifiersCaptured { covered: covered, rows: rows } =>
+      if !type_declaration_modifier_module_covered(covered: covered, module: module) {
+        TypeDeclModifierModuleUncovered
+      } else {
+        fold(rows, init: TypeDeclModifierRowAbsent, f: fn(acc, row) {
+          if (row.module == module) && symbol_eq(a: row.name, b: name) {
+            TypeDeclModifierRowPresent { modifiers: row.modifiers }
+          } else {
+            acc
+          }
+        })
+      }
+  }
 }
 
 type TypeDeclModifierSlotRead

@@ -21,6 +21,19 @@ import v2.std.compilers.target_model {
   target_model_canonical_operation_member_declared_type,
 }
 import v2.compiler.resolve { LexicalBinding, LexicalDeclared, LexicalOwedFormal, LexicalUntyped, LexicalValued, ResolvedTree, resolved_tree_lexical_binding, resolved_tree_unavailable_provider }
+import v2.compiler.body_lowering_fold {
+  TypeDeclModifier,
+  TypeDeclModifierChannelUnavailable,
+  TypeDeclModifierModuleUncovered,
+  TypeDeclModifierNameAmbiguous,
+  TypeDeclModifierNameNone,
+  TypeDeclModifierNameUnique,
+  TypeDeclModifierRowAbsent,
+  TypeDeclModifierRowPresent,
+  type_decl_modifiers_include_sole_constructor,
+  type_declaration_modifier_row_at,
+  type_declaration_modifier_unique_name
+}
 import v2.std.grammar { node_atom_identity_optional }
 import v2.compiler.inferred_tree {
   DerivedGrounding,
@@ -88,7 +101,7 @@ import std.optional {
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_init, qualified_name_last_segment }
 import v2.std.node_query { is_wildcard_pattern, BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_labeled_child, find_named_child, arrow_constant_member_codomain }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
-import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_lookup }
+import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_declaring_path_of, symbol_index_lookup }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_formal_at, fold_step_member_formal }
 import v2.std.node { symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_label_of, fold_node_topdown, match_arm_pattern_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, production_edge_label, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme }
@@ -8085,10 +8098,19 @@ fn infer_malformed_tree_diagnostic(n: Node) -> Diagnostic {
 // the exact silent widen DESIGN section 5 refuses. Refusal keeps the gather's diagnostics, so no
 // evidence is dropped by the short-circuit.
 fn infer_well_formed(tree: ResolvedTree) -> Outcome<ObligatedInferredTree> {
+  let sealed = infer_sole_constructor_diags(tree: tree)
   match infer_entries_for_tree(tree: tree) {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } =>
+      match sealed {
+        None => Rejected { diagnostics: r }
+        Some { diagnostics: sd } =>
+          Rejected { diagnostics: non_empty_diagnostics_append(a: r, b: sd) }
+      }
     Accepted { value: entries, diagnostics: d } =>
-      match infer_caller_admission_diags(tree: tree, entries: entries) {
+      match diagnostics_merge(
+        outer: infer_caller_admission_diags(tree: tree, entries: entries),
+        inner: sealed
+      ) {
         Some { diagnostics: ned } =>
           match d {
             None => Rejected { diagnostics: ned }
@@ -8743,4 +8765,235 @@ fn infer_caller_admission_diags(tree: ResolvedTree, entries: List<InferredFactsE
           step: fn(acc, _edge, sub) { diagnostics_merge(outer: acc, inner: sub) }
         }
       )
+}
+
+// ===================================================================
+// SOLE_CONSTRUCTOR — the construction wall.
+//
+// Restoration of gunbc.rung_drop.g0_type_decl_modifier_parse_without_sealing_property:
+// v2 parse already mints TypeDeclModifier onto NormalizedTree.type_declaration_modifiers.
+// This stage consumes that channel from ResolvedTree and refuses a construction of a
+// sole_constructor type whose constructing MODULE is not the declaring module.
+// Forms: record literal, `as` cast, variant construction of a sealed coproduct, and
+// parameter-default expressions (BinderDefaultEdge is walked with the rest of the tree).
+// Unreadable modifier provenance or ownership refuses (fail-closed). A channel that was
+// never captured (hand-built ResolvedTree) seals nothing.
+fn infer_sole_constructor_diags(tree: ResolvedTree) -> Diagnostics {
+  fold_node_topdown(
+    n: tree.root,
+    ctx: infer_admission_root_module_symbol(root: tree.root),
+    algebra: NodeFoldTopDown {
+      init: fn(self, ctx) {
+        infer_sole_constructor_node_diags(node: self, constructing_module: ctx, tree: tree)
+      },
+      child_context: fn(_self, ctx, _edge) { ctx },
+      step: fn(acc, _edge, sub) { diagnostics_merge(outer: acc, inner: sub) }
+    }
+  )
+}
+
+fn infer_sole_constructor_is_cast(node: Node) -> Bool {
+  if infer_transform_is_cast(node: node) {
+    true
+  } else {
+    match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+      Absent => false
+      Present { value: op } =>
+        match node_atom_identity_optional(node: op) {
+          Absent => false
+          Present { value: id } => id == ^dag_token_kw_as
+        }
+    }
+  }
+}
+
+fn infer_sole_constructor_node_diags(
+  node: Node,
+  constructing_module: Optional<Symbol>,
+  tree: ResolvedTree
+) -> Diagnostics {
+  if infer_sole_constructor_is_cast(node: node) {
+    match cast_target_optional(n: node) {
+      Absent =>
+        infer_admission_diags_of([
+          Diagnostic {
+            reason: ^infer_reason_sole_constructor_target_unreadable,
+            at: node_locus(node: node),
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        ])
+      Present { value: target } =>
+        match infer_sole_constructor_head_path(n: target) {
+          SealedPathAbsent => None
+          SealedPathUnreadable =>
+            infer_admission_diags_of([
+              Diagnostic {
+                reason: ^infer_reason_sole_constructor_target_unreadable,
+                at: node_locus(node: node),
+                correction: Suggested { node: target }
+              }
+            ])
+          SealedPathFound { path: path } =>
+            infer_sole_constructor_path_diags(
+              at: node,
+              type_path: path,
+              constructing_module: constructing_module,
+              tree: tree
+            )
+        }
+    }
+  } else {
+    match infer_record_construct_read(node: node, resolved: tree) {
+      ConstructIsRecord { construct: construct } =>
+        infer_sole_constructor_path_diags(
+          at: node,
+          type_path: construct.path,
+          constructing_module: constructing_module,
+          tree: tree
+        )
+      ConstructIsVariantArm { construct: construct } =>
+        infer_sole_constructor_path_diags(
+          at: node,
+          type_path: construct.variant_path,
+          constructing_module: constructing_module,
+          tree: tree
+        )
+      ConstructNotARecord =>
+        match construct_tag_path_optional(n: node) {
+          Absent => None
+          Present { value: path } =>
+            infer_sole_constructor_path_diags(
+              at: node,
+              type_path: path,
+              constructing_module: constructing_module,
+              tree: tree
+            )
+        }
+    }
+  }
+}
+
+type InferSealedPathRead
+  = SealedPathAbsent
+  | SealedPathUnreadable
+  | SealedPathFound { path: QualifiedName }
+
+fn infer_sole_constructor_head_path(n: Node) -> InferSealedPathRead {
+  match declaration_reference_path_optional(node: n) {
+    Present { value: path } => SealedPathFound { path: path }
+    Absent =>
+      match resolved_reference_body_kind(target: n) {
+        MarkedReference { kind: DeclarationReferenceKind } => SealedPathUnreadable
+        MarkedReference { kind: _ } => SealedPathAbsent
+        NotMarkedReference =>
+          match n.kind {
+            TypeNode { connective: Instantiation } =>
+              match list_at_optional(xs: node_positional_child_targets(node: n), index: 0) {
+                Absent => SealedPathUnreadable
+                Present { value: head } => infer_sole_constructor_head_path(n: head)
+              }
+            TypeNode { connective: _ } => SealedPathAbsent
+            ComputationNode { behavior: _ } => SealedPathAbsent
+          }
+      }
+  }
+}
+
+fn infer_sole_constructor_path_diags(
+  at: Node,
+  type_path: QualifiedName,
+  constructing_module: Optional<Symbol>,
+  tree: ResolvedTree
+) -> Diagnostics {
+  let declaring_path = symbol_index_declaring_path_of(index: tree.resolved_declarations, target: type_path)
+  match qualified_name_last_segment(qn: declaring_path) {
+    Absent =>
+      infer_admission_diags_of([
+        Diagnostic {
+          reason: ^infer_reason_sole_constructor_ownership_unreadable,
+          at: node_locus(node: at),
+          correction: Unavailable { reason: UserInputBoundary }
+        }
+      ])
+    Present { value: name } =>
+      let module = qualified_name_init(qn: declaring_path)
+      match type_declaration_modifier_row_at(
+        channel: tree.type_declaration_modifiers,
+        module: module,
+        name: name
+      ) {
+        TypeDeclModifierChannelUnavailable => None
+        TypeDeclModifierRowAbsent =>
+          match type_declaration_modifier_unique_name(channel: tree.type_declaration_modifiers, name: name) {
+            TypeDeclModifierNameNone => None
+            TypeDeclModifierNameAmbiguous =>
+              infer_admission_diags_of([
+                Diagnostic {
+                  reason: ^infer_reason_sole_constructor_modifiers_unreadable,
+                  at: node_locus(node: at),
+                  correction: Unavailable { reason: UserInputBoundary }
+                }
+              ])
+            TypeDeclModifierNameUnique { row: row } =>
+              infer_sole_constructor_owner_diags(
+                at: at,
+                declaring_module: row.module,
+                modifiers: row.modifiers,
+                constructing_module: constructing_module
+              )
+          }
+        TypeDeclModifierModuleUncovered =>
+          infer_admission_diags_of([
+            Diagnostic {
+              reason: ^infer_reason_sole_constructor_modifiers_unreadable,
+              at: node_locus(node: at),
+              correction: Unavailable { reason: UserInputBoundary }
+            }
+          ])
+        TypeDeclModifierRowPresent { modifiers: modifiers } =>
+          infer_sole_constructor_owner_diags(
+            at: at,
+            declaring_module: module,
+            modifiers: modifiers,
+            constructing_module: constructing_module
+          )
+      }
+  }
+}
+
+fn infer_sole_constructor_owner_diags(
+  at: Node,
+  declaring_module: QualifiedName,
+  modifiers: FreeMonoid<TypeDeclModifier>,
+  constructing_module: Optional<Symbol>
+) -> Diagnostics {
+  if !type_decl_modifiers_include_sole_constructor(modifiers: modifiers) {
+    None
+  } else {
+    match constructing_module {
+      Absent =>
+        infer_admission_diags_of([
+          Diagnostic {
+            reason: ^infer_reason_sole_constructor_ownership_unreadable,
+            at: node_locus(node: at),
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        ])
+      Present { value: ctor_mod } =>
+        if symbol_eq(
+          a: ctor_mod,
+          b: symbol_intern_lexeme(lexeme: qualified_name_to_dotted_string(qn: declaring_module))
+        ) {
+          None
+        } else {
+          infer_admission_diags_of([
+            Diagnostic {
+              reason: ^infer_reason_sole_constructor_refused,
+              at: node_locus(node: at),
+              correction: Unavailable { reason: UserInputBoundary }
+            }
+          ])
+        }
+    }
+  }
 }

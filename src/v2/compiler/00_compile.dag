@@ -181,7 +181,8 @@ import v2.compiler.resolve {
   resolve,
   resolved_tree_of,
   ResolvedTree,
-  ClosureProviderRefusal
+  ClosureProviderRefusal,
+  type_declaration_modifier_channel_of_trees
 }
 import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules, tokenize }
 import v2.std.staging { then_outcome }
@@ -3511,6 +3512,7 @@ fn native_module_resolve_verdict(
                     closure_declarations: closure.declarations,
                     unavailable_providers: closure.refused,
                     member_kinds: no_member_declaration_kinds(),
+                    type_declaration_modifiers: type_declaration_modifier_channel_of_trees(trees: shared.roots.roots),
                     lexical: lexical
                   )
                 },

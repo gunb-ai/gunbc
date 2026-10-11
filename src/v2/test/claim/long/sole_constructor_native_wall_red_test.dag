@@ -1,0 +1,172 @@
+// sole_constructor_native_wall_red_test -- REAL-PATH INHABITANCE for the former drop
+// gunbc.rung_drop.g0_type_decl_modifier_parse_without_sealing_property.
+//
+// Native ingest (parse -> assemble -> lower -> infer) over a two-module fixture. The hermetic
+// judge lives in src/v2/test/claim/sole_constructor_native_wall_test.dag. This file is in the
+// long home because the interpreter's parse of even a trivial source dominates the armed
+// new-witness budget.
+
+module v2.test.claim.long.sole_constructor_native_wall_red
+
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.compiler.infer { infer }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.algebra { fold_list }
+import std.types { List }
+import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+fn wall_peer_sealed_text() -> String {
+  "module aca\n\ntype SealedRec sole_constructor { n: Int }\n\ntype SealedChoice sole_constructor\n  = SealedA { n: Int }\n  | SealedB { s: String }\n\nfn mint_rec(n: Int) -> SealedRec {\n  SealedRec { n: n }\n}\n\nfn read_rec(v: SealedRec) -> Int { v.n }\n"
+}
+
+fn wall_peer_open_text() -> String {
+  "module aca\n\ntype SealedRec { n: Int }\n\ntype SealedChoice\n  = SealedA { n: Int }\n  | SealedB { s: String }\n\nfn mint_rec(n: Int) -> SealedRec {\n  SealedRec { n: n }\n}\n\nfn read_rec(v: SealedRec) -> Int { v.n }\n"
+}
+
+fn wall_subject_forge_literal_text() -> String {
+  "module bcb\n\nimport aca { SealedRec }\n\nfn forged_lit() -> SealedRec { SealedRec { n: 999 } }\n"
+}
+
+fn wall_subject_forge_cast_text() -> String {
+  "module bcb\n\nimport aca { SealedRec }\n\nfn forged_cast(x: Int) -> SealedRec { x as SealedRec }\n"
+}
+
+fn wall_subject_forge_variant_text() -> String {
+  "module bcb\n\nimport aca { SealedChoice, SealedA }\n\nfn forged_variant() -> SealedChoice { SealedA { n: 999 } }\n"
+}
+
+fn wall_subject_forge_default_text() -> String {
+  "module bcb\n\nimport aca { SealedRec }\n\nfn forged_default(p: SealedRec = SealedRec { n: 1 }) -> SealedRec { p }\n"
+}
+
+fn wall_subject_forge_all_text() -> String {
+  "module bcb\n\nimport aca { SealedRec, SealedChoice, SealedA, mint_rec, read_rec }\n\nfn forged_lit() -> SealedRec { SealedRec { n: 999 } }\n\nfn forged_cast(x: Int) -> SealedRec { x as SealedRec }\n\nfn forged_variant() -> SealedChoice { SealedA { n: 999 } }\n\nfn forged_default(p: SealedRec = SealedRec { n: 1 }) -> SealedRec { p }\n\nfn consume(n: Int) -> Int {\n  read_rec(v: mint_rec(n: n))\n}\n"
+}
+
+fn wall_subject_consume_text() -> String {
+  "module bcb\n\nimport aca { mint_rec, read_rec }\n\nfn consume(n: Int) -> Int {\n  read_rec(v: mint_rec(n: n))\n}\n"
+}
+
+data wall_subject_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^wall_sc_subject_artifact,
+  file_path: "src/v2/pilot/sole_constructor_wall_subject.dag"
+}
+
+data wall_peer_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^wall_sc_peer_artifact,
+  file_path: "src/v2/pilot/sole_constructor_wall_peer.dag"
+}
+
+fn wall_source(src: String, artifact: Artifact, cu: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: src, fidelity: Lossless },
+    artifact: artifact,
+    compilation_unit: cu,
+    source_root: V2Tree
+  }
+}
+
+fn wall_assembled(subject_src: String, peer_src: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: wall_source(src: subject_src, artifact: wall_subject_artifact, cu: ^wall_sc_subject_cu),
+      tail: [
+        wall_source(src: peer_src, artifact: wall_peer_artifact, cu: ^wall_sc_peer_cu)
+      ]
+    },
+    admission: Admission {
+      subject: ResolutionSubject { name: Cons { head: ^bcb, tail: Empty } },
+      imports: Empty
+    },
+    lm: dag_language_model()
+  )
+}
+
+fn wall_refusal_count(head: Diagnostic, tail: List<Diagnostic>) -> Int {
+  fold_list(
+    xs: tail,
+    empty: if head.reason == ^infer_reason_sole_constructor_refused { 1 } else { 0 },
+    cons: fn(n, d) { if d.reason == ^infer_reason_sole_constructor_refused { n + 1 } else { n } }
+  )
+}
+
+fn wall_infer_refusal_count(assembled: Outcome<ResolvedTree>) -> Int {
+  match assembled {
+    Rejected { diagnostics: d } => wall_refusal_count(head: d.head, tail: d.tail)
+    Accepted { value: rt, diagnostics: _ } =>
+      match infer(tree: rt) {
+        Rejected { diagnostics: d } => wall_refusal_count(head: d.head, tail: d.tail)
+        Accepted { value: _, diagnostics: _ } => 0
+      }
+  }
+}
+
+fn wall_infer_has_reason(assembled: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
+  match assembled {
+    Rejected { diagnostics: d } =>
+      (d.head.reason == reason)
+        || fold_list(xs: d.tail, empty: false, cons: fn(acc, x) { acc || (x.reason == reason) })
+    Accepted { value: rt, diagnostics: _ } =>
+      match infer(tree: rt) {
+        Rejected { diagnostics: d } =>
+          (d.head.reason == reason)
+            || fold_list(xs: d.tail, empty: false, cons: fn(acc, x) { acc || (x.reason == reason) })
+        Accepted { value: _, diagnostics: _ } => false
+      }
+  }
+}
+
+test fn the_native_route_refuses_a_foreign_record_literal_holds() -> Bool {
+  wall_infer_has_reason(
+    assembled: wall_assembled(subject_src: wall_subject_forge_literal_text(), peer_src: wall_peer_sealed_text()),
+    reason: ^infer_reason_sole_constructor_refused
+  )
+}
+
+test fn the_native_route_refuses_a_foreign_cast_holds() -> Bool {
+  wall_infer_refusal_count(
+    assembled: wall_assembled(subject_src: wall_subject_forge_cast_text(), peer_src: wall_peer_sealed_text())
+  ) >= 1
+}
+
+test fn the_native_route_refuses_a_foreign_variant_holds() -> Bool {
+  wall_infer_refusal_count(
+    assembled: wall_assembled(subject_src: wall_subject_forge_variant_text(), peer_src: wall_peer_sealed_text())
+  ) >= 1
+}
+
+test fn the_native_route_refuses_a_foreign_parameter_default_holds() -> Bool {
+  wall_infer_refusal_count(
+    assembled: wall_assembled(subject_src: wall_subject_forge_default_text(), peer_src: wall_peer_sealed_text())
+  ) >= 1
+}
+
+test fn the_native_route_admits_in_module_construction_and_foreign_consumption_holds() -> Bool {
+  match wall_assembled(subject_src: wall_subject_consume_text(), peer_src: wall_peer_sealed_text()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: rt, diagnostics: _ } =>
+      match infer(tree: rt) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+      }
+  }
+}
+
+test fn removing_the_modifier_clears_the_sole_constructor_refusals_holds() -> Bool {
+  wall_infer_refusal_count(
+    assembled: wall_assembled(subject_src: wall_subject_forge_all_text(), peer_src: wall_peer_open_text())
+  ) == 0
+}

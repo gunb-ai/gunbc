@@ -28,7 +28,8 @@ import v2.compiler.resolve {
   resolve_walk_prefix_pending,
   resolve_walk_with_namespace_policy,
   try_edge_declared_binding,
-  ResolveWalkAccepted
+  ResolveWalkAccepted,
+  type_declaration_modifier_channel_of_trees
 }
 import v2.std.resolution_policy {
   ImportScoped,
@@ -961,7 +962,8 @@ fn resolve_in_context(context: Outcome<ResolutionContext>, admission: Admission)
               symbol_index: shared.symbol_index,
               closure_declarations: closure.declarations,
               unavailable_providers: closure.refused,
-              member_kinds: channel
+              member_kinds: channel,
+              type_declaration_modifiers: type_declaration_modifier_channel_of_trees(trees: shared.roots.roots)
             )
         },
         context: Accepted { value: closure.context, diagnostics: d }

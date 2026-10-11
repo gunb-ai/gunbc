@@ -39,7 +39,7 @@ import v2.compiler.reference_closure {
   reference_closure_neighbours,
   reference_derived_closure
 }
-import v2.compiler.resolve { ResolvedTree, resolved_tree_outcome }
+import v2.compiler.resolve { ResolvedTree, resolved_tree_outcome, type_declaration_modifier_channel_of_tree }
 import v2.compiler.source_authority {
   DagSourceReadWitness,
   SourceRootIngest,
@@ -385,7 +385,7 @@ fn closure_resolve_member(
           policy: default_name_resolution_policy()
         )),
         admission: Admission { subject: ResolutionSubject { name: member_module }, imports: Empty }
-      ).walk, symbol_index: symbol_index, closure_declarations: empty_symbol_index(), unavailable_providers: [], member_kinds: no_member_declaration_kinds())
+      ).walk, symbol_index: symbol_index, closure_declarations: empty_symbol_index(), unavailable_providers: [], member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifier_channel_of_tree(tree: tree))
     }
   )
 }
