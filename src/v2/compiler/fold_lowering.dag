@@ -213,9 +213,11 @@ type CallbackRealization
   | CallbackAllByAnd
 
 // A ROSTER ROW IS EITHER REALIZED AS A FOLD (an authored or synthesized step over the one Loop encoding)
-// or IS A PRIMITIVE CALL: concat is not an iteration, so its call stays a call, its unbound bare head binds
-// to the row through this one roster (v2.compiler.resolve resolve_atom_unscoped, after every in-scope
-// declaration, the symbol index and the kernel have declined it), and v2.compiler.infer types it by the
+// or IS A PRIMITIVE CALL: concat is not an iteration, so its call stays a call, its unbound bare head
+// `concat` binds to the row through this one roster (v2.compiler.resolve resolve_atom_unscoped, after
+// every in-scope declaration, the symbol index and the kernel have declined it). A compiler-generated
+// operator carries the row's DeclarationRef as a marked declaration_reference_node (never a bare atom
+// of the row's declaration name). v2.compiler.infer types it by the
 // row's own param_types/return_type (collection_roster_signature_arrow) -- the row IS the signature; no
 // body is read. The receiver carrier the row's ReceiverSelf denotes is named by the form, not assumed: the
 // one primitive-call form today is over the free monoid, and a second carrier is a second form.
@@ -248,11 +250,13 @@ fn collection_roster_row(t: AlgebraFieldTemplate, decl_name: String, form: Colle
 // classifying a head is a symbol comparison. fold_family_realization runs at every call site body
 // lowering meets, and building templates and comparing lexemes there was a per-call-site cost on the
 // native route's context phase (gunbc#12550 census).
+data collection_concat_shape_roster_row: CollectionRosterRow = collection_roster_row(t: collection_concat_shape(), decl_name: "collection_concat_shape", form: RosterFreeMonoidPrimitiveCall)
+
 data collection_roster_rows: List<CollectionRosterRow> = [
   collection_roster_row(t: collection_fold_shape(), decl_name: "collection_fold_shape", form: RosterAuthoredStep),
   collection_roster_row(t: collection_map_shape(), decl_name: "collection_map_shape", form: RosterCallbackStep { realization: CallbackMapsToCons }),
   collection_roster_row(t: collection_all_shape(), decl_name: "collection_all_shape", form: RosterCallbackStep { realization: CallbackAllByAnd }),
-  collection_roster_row(t: collection_concat_shape(), decl_name: "collection_concat_shape", form: RosterFreeMonoidPrimitiveCall),
+  collection_concat_shape_roster_row,
   collection_roster_row(t: collection_count_shape(), decl_name: "collection_count_shape", form: RosterFreeMonoidPrimitiveCall)
 ]
 
@@ -265,6 +269,15 @@ fn collection_roster_row_optional(head: Symbol) -> Optional<CollectionRosterRow>
       Absent => if r.head == head { optional_present(value: r) } else { acc }
     }
   })
+}
+
+// THE CONCAT ROW'S DECLARING PATH, derived from that named roster row. A generated operator carries
+// this identity as a marked declaration_reference_node; it is never a bare atom of the declaration name.
+fn collection_concat_shape_declaration_path() -> QualifiedName {
+  qualified_name_snoc(
+    qn: qualified_name_from_dotted_string(dotted: collection_concat_shape_roster_row.row.module_path),
+    segment: symbol_intern_lexeme(lexeme: collection_concat_shape_roster_row.row.decl_name)
+  )
 }
 
 // The roster rows lowering realizes as a fold Loop; a primitive-call row is never one.

@@ -820,7 +820,7 @@ data gunbc_ci_live_deploy_step_timeout_minutes: Duration = 30
 // WHAT THIS GROUP DOES NOT ESTABLISH, named so it is not mistaken for a wall it is not:
 // serialization is not ORDERING -- a slow build of an older revision can acquire the lease after a
 // fast build of a newer one and install backwards -- and it is not COMPLETE INGRESS, because
-// `gunbc.apply` DashboardSrv1 reaches live_deploy_apply_srv1_wet directly and never traverses a
+// `gunbc.apply` DashboardSrv1 reaches live_deploy_apply_prod_role_wet directly and never traverses a
 // GitHub concurrency group at all. The first is open. The second's closing construction NOW EXISTS:
 // `gunbc.deploy_transition` `acquire_transition_lease` is the host-local lease, an O_EXCL create
 // under the deployment's own instance root, so both ingresses contend for one file and the loser

@@ -73,6 +73,16 @@ fn materialization_store_root_path(root: MaterializationStoreRoot) -> String {
   }
 }
 
+// THE STAGING SIBLING BELONGS TO THE STORE, so its path derives here, once, for both the producer
+// that stages into it (gunbc.compute.work_provider_local compute_staging_dir) and the deployment
+// that must create it. It was spelled only at the producer, so the deploy created the store and not
+// its sibling, and every build on srv1 refused 'store unavailable' because the service user cannot
+// create a directory under the root-owned /var/lib/gunbc (srv1 lab, 2026-10-11). A sibling and not a
+// child because the store lists its root. It lies outside the grant root above: declared, not modeled.
+fn materialization_store_staging_root_path(root: MaterializationStoreRoot) -> String {
+  join([materialization_store_root_path(root: root), "-staging"], "")
+}
+
 fn materialization_store_durability(root: MaterializationStoreRoot) -> MaterializationStoreDurability {
   match root {
     DurableHostVolumeRoot => DurableAcrossRuns
