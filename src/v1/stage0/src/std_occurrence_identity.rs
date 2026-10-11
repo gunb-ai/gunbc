@@ -58,7 +58,9 @@ pub fn authored_token_ordinal_eq(left: AuthoredTokenOrdinal, right: AuthoredToke
     (left.value.clone() == right.value.clone())
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash,
+)]
 pub struct OccurrenceId {
     pub value: i64,
 }

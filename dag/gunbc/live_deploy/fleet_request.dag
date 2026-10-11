@@ -43,6 +43,8 @@ import gunbc.live_deploy.member_identity {
   UnitFileAt,
   UnitFileIdentity,
   RootAt,
+  OidcConfigFile,
+  OidcConfigAt,
   member_identity_member,
   decide_release_members,
   decision_label,
@@ -138,6 +140,7 @@ fn root_path_in_roster(roster: List<ConvergedMember>, path: NonEmptyStr) -> Bool
         UnitFile => false
         UnitManager => false
         ServiceProcess => false
+        OidcConfigFile => false
       }
     })
 }
@@ -152,6 +155,7 @@ fn replacement_is_foreign(target: ReleaseTarget, roster: List<ConvergedMember>, 
         ExecutableIdentity { digest: _ } => false
         UnitManagerAt { standing: _ } => false
         ProcessAt { process: _ } => false
+        OidcConfigAt { file: _ } => false
       }
     AlreadyConverged { member: _ } => false
     Create { member: _, to: _ } => false
@@ -263,7 +267,7 @@ fn admit_live_deploy_member_basis(
   candidate: CandidateRelease,
   target: ReleaseTarget,
   observed: List<ObservedMember>,
-  desired: fn(ConvergedMember) -> MemberIdentity,
+  desired: fn(ConvergedMember) -> MemberIdentity?,
 ) -> LiveDeployMemberBasisAdmission {
   let roster = release_member_roster()
   match first_unreadable(observed: observed) {
@@ -273,7 +277,15 @@ fn admit_live_deploy_member_basis(
       if count(missing) > 0 {
         LiveDeployBasisRefused { cause: LiveDeployIncompletePopulation { missing: missing } }
       } else {
-        match live_deploy_inspect_member(member: Executable, desired: desired(Executable), observed: observed) {
+        match desired(Executable) {
+          Absent => LiveDeployBasisRefused {
+            cause: LiveDeployUnreadableMember {
+              member: Executable,
+              cause: "desired identity unavailable",
+            },
+          }
+          Present { value: desired_executable } =>
+        match live_deploy_inspect_member(member: Executable, desired: desired_executable, observed: observed) {
           GoalObservationRefused { subject: s, goal: _, request: _, cause: c } =>
             LiveDeployBasisRefused { cause: LiveDeployUnreadableMember { member: s, cause: c } }
           GoalInspected { subject: _, goal: _, request: _, observed: _, assessment: _ } => {
@@ -319,6 +331,7 @@ fn admit_live_deploy_member_basis(
               }
             }
           }
+        }
         }
       }
     }
@@ -368,9 +381,11 @@ type LiveDeployReleaseTargetBind
 fn bind_release_target_to_desired(
   row: DesiredDeployment,
   candidate: CandidateRelease,
-  desired_member: fn(ConvergedMember) -> MemberIdentity,
+  desired_member: fn(ConvergedMember) -> MemberIdentity?,
 ) -> LiveDeployReleaseTargetBind {
   match desired_member(UnitFile) {
+    Absent => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestUnitFileUnbound }
+    Present { value: unit_identity } => match unit_identity {
     UnitFileAt { file } =>
       if (file.unit as String) != (row.names.unit_name as String) {
         LiveDeployReleaseTargetRefused {
@@ -381,6 +396,8 @@ fn bind_release_target_to_desired(
         }
       } else {
         match desired_member(Executable) {
+          Absent => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestExecutableUnbound }
+          Present { value: exec_identity } => match exec_identity {
           ExecutableIdentity { digest } =>
             LiveDeployReleaseTargetBound {
               target: ReleaseTarget {
@@ -394,6 +411,8 @@ fn bind_release_target_to_desired(
           UnitManagerAt { standing: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestExecutableUnbound }
           ProcessAt { process: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestExecutableUnbound }
           RootAt { root: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestExecutableUnbound }
+          OidcConfigAt { file: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestExecutableUnbound }
+          }
         }
       }
     TreeIdentity { tree: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestUnitFileUnbound }
@@ -401,6 +420,8 @@ fn bind_release_target_to_desired(
     UnitManagerAt { standing: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestUnitFileUnbound }
     ProcessAt { process: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestUnitFileUnbound }
     RootAt { root: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestUnitFileUnbound }
+    OidcConfigAt { file: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestUnitFileUnbound }
+    }
   }
 }
 
@@ -408,7 +429,7 @@ fn admit_live_deploy_fleet_request(
   desired: DesiredDeployment,
   candidate: CandidateRelease,
   observed: List<ObservedMember>,
-  desired_member: fn(ConvergedMember) -> MemberIdentity,
+  desired_member: fn(ConvergedMember) -> MemberIdentity?,
 ) -> LiveDeployFleetRequestAdmission {
   match bind_desired_selected_identity(desired: desired) {
     DesiredSelectedIdentityUnknownInstance { instance_id } =>
