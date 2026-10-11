@@ -942,6 +942,10 @@ fn provider_inventory_for_instance(instance: HostDashboardInstance) -> ProviderI
   }
 }
 
+// THE CLAUDE OFFER BELONGS TO THE HOST, NOT TO ONE INSTANCE ON IT: srv1's instances share its
+// provider state and its Claude credential, so the lab offered only Codex while the host held
+// Claude, and an operator dispatch with executor=claude on the lab refused at selection
+// (srv1 lab, 2026-10-11). The inventory below therefore keys the Claude offer on host_identity.
 // THE DECLARED INVENTORY, BEFORE THE OPERATOR GATE. Kept as its own function so the gate has an
 // unfiltered denominator to compare against; a gate folded into the construction below would have
 // nothing to report a withdrawal against.
@@ -983,7 +987,7 @@ fn declared_provider_inventory_for_instance(instance: HostDashboardInstance) -> 
       ),
     }
   } else {
-    if instance.instance_id == srv1_live_dashboard_instance().instance_id {
+    if instance.host_identity == srv1_live_dashboard_instance().host_identity {
       ProviderInventory {
         offers: concat(
           codex_inventory_offers_for_instance(instance: instance),
