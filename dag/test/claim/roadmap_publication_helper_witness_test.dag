@@ -46,6 +46,7 @@ import gunbc.live_deploy.emit {
   emit_belt_service_unit_doc,
   emit_systemd_unit_doc,
 }
+import test.claim.live_deploy.apply_emission_projection { claim_oidc_now }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
@@ -426,7 +427,7 @@ fn belt_unit_text() -> String {
 }
 
 fn serve_unit_text() -> String {
-  render(doc: emit_systemd_unit_doc(spec: live_spec(), revision: live_revision()), proto: live_deploy_protocol)
+  render(doc: emit_systemd_unit_doc(spec: live_spec(), revision: live_revision(), now_epoch: claim_oidc_now()), proto: live_deploy_protocol)
 }
 
 test fn the_publication_unit_binds_the_credential_and_the_other_two_do_not() -> Bool {
@@ -489,5 +490,5 @@ test fn the_publication_helper_is_triggered_by_a_path_unit_not_a_timer() -> Bool
   any(lines, l => l == join(["DirectoryNotEmpty=", request_dir], ""))
     && any(lines, l => l == join(["Unit=", deployment_publication_service_unit_name(names: spec.names) as String], ""))
     && !any(lines, l => string_contains(s: l, pattern: "OnUnitInactiveSec"))
-    && !any(deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names), s => string_contains(s: s.path as String, pattern: "-publication.timer"))
+    && !any(deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names, holding: spec.role_singletons), s => string_contains(s: s.path as String, pattern: "-publication.timer"))
 }

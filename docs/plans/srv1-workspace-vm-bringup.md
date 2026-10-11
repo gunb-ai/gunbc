@@ -155,7 +155,7 @@ The first operator-local attempt installed the generated `ghrunner` sudoers but
 refused its exact `tailscale` grant probe under the operator account before other
 mutations. The operator's broad sudo grant does not satisfy this exact grant-list
 probe; the same probe admits the existing `ghrunner` grant. The retry uses the
-existing `live_deploy_apply_srv1_wet` entry as `ghrunner`, without expanding the
+existing `live_deploy_apply_prod_role_wet` entry as `ghrunner`, without expanding the
 operator grant roster. The failed attempt also exposed 720 unnecessary readiness
 waits after refusal. Readiness polling now requires a converged mutation; cutover
 recovery still runs so interrupted route changes can be rolled back.
@@ -223,7 +223,7 @@ from `fleet_converge_mode_job_id` to remove that second assignment.
 The successful build artifact was downloaded and verified on srv1 using the exact
 existing installer consumer script and the key recorded by the build job. All
 16 binaries passed verification, and the image/kernel hashes still match. The
-existing `microvm_controller_install_srv1_wet` entry is running as `ghrunner`
+existing `microvm_controller_install_wet` entry is running as `ghrunner`
 under an operator-local 24 GiB/no-swap scope. No workflow identity was fabricated.
 
 The workflow-selection repair passes five focused witnesses. Regeneration succeeds,

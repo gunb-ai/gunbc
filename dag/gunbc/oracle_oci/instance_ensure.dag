@@ -15,7 +15,7 @@ import extdeps.filesystem.filesystem_io {
   Filesystem, filesystem_exact_read,
   FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
 }
-import extdeps.uri { uri_percent_encode_component, UriPercentComponentEncoded, UriPercentComponentRefused }
+import extdeps.uri.percent_encoding { uri_percent_encode_component, UriPercentComponentEncoded, UriPercentComponentRefused }
 import product.supplier.oracle_oci {
   OciPlannedInstance, OciInstanceSize, A1FlexSize, E2MicroSize,
   InHomeRegion, InMicroEligibleDomain,
@@ -80,7 +80,7 @@ fn oci_free_authorized_keys() -> String {
 //
 // The signing page requires query values URL-encoded per RFC 3986, and the signed target and the sent
 // target to be one string. Availability domain names carry a colon, and the image query carries a
-// space. The encoding is extdeps.uri uri_percent_encode_component, which encodes UTF-8 and refuses
+// space. The encoding is extdeps.uri.percent_encoding uri_percent_encode_component, which encodes UTF-8 and refuses
 // with a typed cause. Its refusal stops the read that needed the value.
 type OciQueryValue
   = OciQueryEncoded { wire: String }
