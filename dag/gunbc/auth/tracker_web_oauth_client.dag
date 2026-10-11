@@ -12,7 +12,11 @@ import gunbc.auth.google_workspace_login {
   TrackerWebOauthClientBinding, TrackerWebOauthClientStanding,
   TrackerWebOauthClientBound, TrackerWebOauthClientUnbound, gunb_ai_hosted_domain,
 }
-import gunbc.auth.google_workspace_admin_convergence { WorkspaceIdentityBinding }
+import gunbc.auth.google_workspace_admin_convergence {
+  WorkspaceIdentityBinding, WorkspaceAdminReadback, AdminConsoleReadback, EffectiveAtDeclaredScope,
+}
+import gunbc.workspace_allocation_policy { workspace_operator_principal }
+import extdeps.google.workspace { AuthPlatformClient, RegisteredWebClient }
 import gunbc.auth.oidc_deployment_config {
   oidc_config_schema, oidc_config_env_var, oidc_session_lifetime, oidc_login_transaction_lifetime,
 }
@@ -134,9 +138,24 @@ fn tracker_web_test_workspace_identity_binding() -> WorkspaceIdentityBinding {
   }
 }
 
-data tracker_web_test_console_redirect_uris_actuation: NonEmptyStr = "2026-10-11 operator (via bright-moth-475): added https://srv1.tailecbe08.ts.net:8444/auth/google/callback to client 433089409875-2c1u5obhaeafee9ve7igpopt5oiqoa8k; the client now carries the srv2 :18082 and srv1 :8444 URIs. Console step; no Auth Platform write API." as NonEmptyStr
+data tracker_web_test_console_readback_observed_at_epoch: Int = 1760155200
 
-data tracker_web_test_secret_manager_actuation: NonEmptyStr = "2026-10-11 operator (via bright-moth-475): created Secret Manager secret tracker-web-dev-oauth-client-secret in gunbai-secrets, version 1." as NonEmptyStr
+data tracker_web_test_console_readback_valid_until_epoch: Int = 1762747200
+
+fn tracker_web_test_registered_web_client_console_readback() -> WorkspaceAdminReadback {
+  let binding = tracker_web_test_workspace_identity_binding()
+  WorkspaceAdminReadback {
+    subject: AuthPlatformClient { project: binding.project, client: binding.client },
+    observed: RegisteredWebClient { redirect_uris: binding.redirect_uris },
+    source: AdminConsoleReadback {
+      administrator: workspace_operator_principal(),
+      evidence: "bright-moth-475 2026-10-11 operator console URI add; no Auth Platform write API" as NonEmptyStr,
+    },
+    observed_at_epoch: tracker_web_test_console_readback_observed_at_epoch,
+    valid_until_epoch: tracker_web_test_console_readback_valid_until_epoch,
+    coverage: EffectiveAtDeclaredScope,
+  }
+}
 
 data tracker_web_dev_oauth_client_secret_ref: SecretRef = secret_ref_pin_version(
   ref: fleet_secret_ref(secret_id: "tracker-web-dev-oauth-client-secret"),
@@ -211,6 +230,15 @@ fn production_has_no_oidc_serve_config() -> Bool {
   }
 }
 
+fn tracker_web_test_unassigned_redirect_realizations() -> List<TrackerWebRedirectRealization> {
+  filter(tracker_web_test_redirect_realizations(), r =>
+    match r.assigned_instance_id {
+      Absent => true
+      Present { value: _ } => false
+    }
+  )
+}
+
 data srv2_hand_started_oidc_unit_dissolution: DissolutionCondition = unbound_dissolution(
   description: "TRIGGER: a DesiredDeployment whose serve unit and oidc-config/v1 file are emitted for an instance assigned the tracker-web TEST environment that currently realizes https://srv2.tailecbe08.ts.net:18082/auth/google/callback, sufficient to delete the hand-started gunbc-dash-18082.service and the hand-placed oidc-config.json as the live login path. A custody delivery of the client secret onto srv2 without a modeled serve unit is not this trigger." as NonEmptyStr
 )
@@ -230,3 +258,7 @@ data tracker_web_test_owned_domain_frontier: FrontierRow = frontier_row_path(
   reason: "the TEST environment's stable redirect target is tracker-dev.gunb.ai; today's ts.net URIs are the current realization until DNS and a non-tailnet TLS path exist",
   dissolution: tracker_web_test_owned_domain_dissolution,
 )
+
+fn tracker_web_oauth_frontier_roster() -> List<FrontierRow> {
+  [srv2_hand_started_oidc_unit_frontier, tracker_web_test_owned_domain_frontier]
+}
