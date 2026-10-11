@@ -2300,7 +2300,11 @@ fn fx_working_attempt() -> gunbc.roadmap_workflow_progress.WorkflowAttemptProgre
     provider: gunbc.roadmap_provider_events.ProviderRunning { activity: "Agent working" },
     process: done.process,
     validation_summary: done.validation_summary,
-    segments: done.segments,
+    segments: [
+      gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.EnvironmentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "" },
+      gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.WorkspaceWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "" },
+      gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.AgentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentActive, detail: "" },
+    ],
     reconciliation: done.reconciliation,
     rounds: done.rounds,
     handoff: gunbc.roadmap.roadmap_submission.HandoffAwaitingWorker,
