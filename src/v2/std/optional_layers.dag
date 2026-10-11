@@ -15,12 +15,15 @@ import v2.std.node {
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.collection { list_at_optional }
 
-// WHAT NonZeroNat CANNOT CARRY (parent ruling B, smart-gull-336): zero optional layers
-// (`Required`), compose/peel over Required mixed with a positive count, and the Node
-// Cardinality-wrapper reading. Layer COUNT is v2.std.cardinality NonZeroNat { prev: Nat } — every
-// value is a successor, so zero layers is unconstructible on CardOptional (gunbc#13488: `layers:
-// Nat` was forbidden because Nat admits Zero). Mapping: OneLayer = NonZeroNat { prev: Zero };
-// MoreLayers { inner: t } = NonZeroNat { prev: Succ corresponding to t }.
+// TypeCardinality IS NOT Nat (review 78547). Nat is a count. Required is the required-type
+// constructor (a type that admits no absence). CardOptional is one or more optional wrappers
+// around a base. Identifying Required with Zero is a meaning fork (DESIGN §3): the number zero
+// and a required type are not one concept. The COUNT on the optional arm is v2.std.cardinality
+// NonZeroNat { prev: Nat } — every value is a successor, so zero layers is unconstructible on
+// CardOptional (gunbc#13488 forbade `layers: Nat` because Nat admits Zero). Mapping: OneLayer =
+// NonZeroNat { prev: Zero }; MoreLayers = successor on prev. compose/peel mix Required with that
+// count; they are not a second Peano tower. NonZeroNat cannot carry Required, the mixed
+// compose/peel, or the Node Cardinality-wrapper reading — those stay here.
 //
 // CONSUMERS (DESIGN §3c): type_node_cardinality_read / wrap_type_node_cardinality; production
 // v2.compiler.infer infer_match_generic_formal peels with peel_optional_layer;
