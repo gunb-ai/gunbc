@@ -181,13 +181,15 @@ fn tracker_web_test_workspace_identity_binding() -> WorkspaceIdentityBinding {
 }
 
 data tracker_web_test_console_observed_redirect_uris: List<NonEmptyStr> = [
-  "https://srv1.tailecbe08.ts.net:8444/auth/google/callback" as NonEmptyStr,
-  "https://srv2.tailecbe08.ts.net:18082/auth/google/callback" as NonEmptyStr,
+  tracker_web_test_lab_redirect_uri,
+  tracker_web_test_srv2_redirect_uri,
 ]
 
 data tracker_web_test_console_readback_observed_at_epoch: Int = 1760155200
 
 data tracker_web_test_console_readback_valid_until_epoch: Int = 1762747200
+
+data tracker_web_oidc_deploy_now_epoch: Int = tracker_web_test_console_readback_observed_at_epoch
 
 fn tracker_web_test_registered_web_client_console_readback() -> WorkspaceAdminReadback {
   WorkspaceAdminReadback {
