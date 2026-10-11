@@ -9,7 +9,7 @@ import gunbc.live_deploy.role_singleton_convergence {
   RoleSingletonSighting, SightedDeploymentMember, SightedBroker,
   HostRoleSingletonReading, HostRoleSingletonsRead, HostRoleSingletonsUnobservable,
   RoleSingletonRemovalUnimplemented, RoleSingletonRealizedOnTwoHosts, RoleSingletonStaleSpec,
-  RoleSingletonHostUnobservable, RoleSingletonDesiredRealizationRefused, RoleSingletonDesiredRosterRefused,
+  RoleSingletonHostUnobservable, RoleSingletonDesiredRealizationRefused, RoleSingletonDeploymentUnrostered,
   RoleSingletonConvergence, RoleSingletonNoop, RoleSingletonInPlace, RoleSingletonInstall, RoleSingletonRefused,
   RoleSingletonAdmissible, RoleSingletonInadmissible,
   RoleSingletonReadingSource,
@@ -22,7 +22,7 @@ import gunbc.live_deploy.role_singleton_convergence {
 import gunbc.live_deploy.desired {
   DesiredDeployment,
   desired_deployment_roster, srv1_production_desired_deployment, srv1_lab_desired_deployment, srv2_deploy_desired_deployment, selected_deployment_spec,
-  prod_role_actuated_realization, prod_role_actuated_realization_in, instance_id_text, DesiredRosterDuplicateInstanceId,
+  prod_role_actuated_realization, prod_role_actuated_realization_in, instance_id_text,
 }
 import gunbc.live_deploy.spec {
   HoldsProdRoleSingletons, HoldsNoRoleSingleton,
@@ -288,15 +288,16 @@ test fn leftover_singletons_of_a_colocated_non_holder_need_the_global_gate() -> 
   }
 }
 
-test fn a_roster_polluted_elsewhere_refuses_the_colocated_non_holder() -> Bool {
+test fn a_duplicate_instance_id_on_the_roster_fails_closed_for_the_colocated_non_holder() -> Bool {
   let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
   let srv2 = srv2_deploy_desired_deployment()
   match spec.role_singletons {
     HoldsProdRoleSingletons { holder: _ } => false
     HoldsNoRoleSingleton =>
       match assess_spec_over_roster_over(spec: spec, source: srv2_unobservable_peers_source(), selection: prod_role_selection, rows: concat(desired_deployment_roster(), [srv2])) {
-        RoleSingletonInadmissible { cause: RoleSingletonDesiredRosterRefused { refusal: DesiredRosterDuplicateInstanceId { instance_id } } } =>
-          instance_id == instance_id_text(id: srv2.instance.instance_id)
+        RoleSingletonInadmissible { cause: RoleSingletonDeploymentUnrostered { instance_id: _, detail } } =>
+          string_contains(s: detail, pattern: instance_id_text(id: srv2.instance.instance_id))
+        RoleSingletonAdmissible { decision: RoleSingletonInPlace { global_unobservable: _ } } => false
         _ => false
       }
   }
