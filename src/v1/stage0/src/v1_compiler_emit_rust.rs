@@ -41,12 +41,12 @@ pub use crate::gunbc_cli_dispatch_surface::{
     CliArmRealization, CliBootstrapDagOperationBinding, CliBootstrapExecutionClass, CliOperandRow,
     CliOptionArity, CliOptionRow, CliOptionValue, CliSubcommandRow,
 };
-use crate::gunbc_namespace_reference_derived_candidate::ReferenceDerivedCandidateDisposition::{
+use crate::gunbc_namespace_cut_reference_derived_candidate::ReferenceDerivedCandidateDisposition::{
     CandidateExportProofFailed, CandidateLeafAmbiguous, CandidateOwnModule,
     CandidateRegistryAbsent, CandidateSurvived, CandidateVariantDelegatedToParent,
     CandidateVariantParentUnresolved,
 };
-pub use crate::gunbc_namespace_reference_derived_candidate::{
+pub use crate::gunbc_namespace_cut_reference_derived_candidate::{
     ReferenceDerivedCandidateDisposition, ReferenceDerivedCandidateRow,
 };
 pub use crate::gunbc_rust_decl_type_overlay::rust_decl_type_container_overlay_is_admitted;

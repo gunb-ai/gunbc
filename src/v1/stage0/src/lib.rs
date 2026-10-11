@@ -147,7 +147,7 @@ pub mod gunbc_emitted_crate_workspace;
     suspicious_double_ref_op,
     clippy::all
 )]
-pub mod gunbc_namespace_namespace_reference_derived_closure_admission;
+pub mod gunbc_namespace_cut_namespace_reference_derived_closure_admission;
 #[allow(
     unused_imports,
     unused_variables,
@@ -158,7 +158,7 @@ pub mod gunbc_namespace_namespace_reference_derived_closure_admission;
     suspicious_double_ref_op,
     clippy::all
 )]
-pub mod gunbc_namespace_reference_derived_candidate;
+pub mod gunbc_namespace_cut_reference_derived_candidate;
 #[allow(
     unused_imports,
     unused_variables,

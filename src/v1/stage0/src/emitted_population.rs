@@ -35,8 +35,8 @@
 // src/gunbc_cli_dispatch_surface.rs
 // src/gunbc_crate_partition.rs
 // src/gunbc_emitted_crate_workspace.rs
-// src/gunbc_namespace_namespace_reference_derived_closure_admission.rs
-// src/gunbc_namespace_reference_derived_candidate.rs
+// src/gunbc_namespace_cut_namespace_reference_derived_closure_admission.rs
+// src/gunbc_namespace_cut_reference_derived_candidate.rs
 // src/gunbc_rust_crate_package_ident.rs
 // src/gunbc_rust_decl_type_overlay.rs
 // src/gunbc_rust_emitted_crate.rs
