@@ -1035,6 +1035,29 @@ fn isolated_dashboard_instance(
   actuation: DashboardActuationPosture,
   provision_transport: DashboardProvisionTransport,
 ) -> HostDashboardInstance {
+  isolated_dashboard_instance_admitting(
+    deployment: deployment, instance_id: instance_id, layout: layout, root: root,
+    serve_function: serve_function, listen_port: listen_port, source_anchor_ref: source_anchor_ref,
+    actuation: actuation, provision_transport: provision_transport,
+    admitted_revision: fleet_admitted_revision_source,
+  )
+}
+
+// An isolated instance whose admitted revision is NOT the fleet's: a development instance that serves
+// a branch is admitted by a ref in its own repository the operator advances deliberately (the
+// DashboardAdmittedRevisionSource annotation; precedent srv2_deploy_admitted_revision_source).
+fn isolated_dashboard_instance_admitting(
+  deployment: DeploymentId,
+  instance_id: NonEmptyStr,
+  layout: GunbcHostLayout,
+  root: FilePath,
+  serve_function: NonEmptyStr,
+  listen_port: Port,
+  source_anchor_ref: NonEmptyStr,
+  actuation: DashboardActuationPosture,
+  provision_transport: DashboardProvisionTransport,
+  admitted_revision: DashboardAdmittedRevisionSource,
+) -> HostDashboardInstance {
   HostDashboardInstance {
     deployment: deployment,
     instance_id: instance_id,
@@ -1073,15 +1096,25 @@ fn isolated_dashboard_instance(
       anchor_ref: source_anchor_ref,
       history_remote: "origin" as NonEmptyStr,
     },
-    admitted_revision: fleet_admitted_revision_source,
+    admitted_revision: admitted_revision,
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: linux_service_directory_owner(),
   }
 }
 
+// THE SRV1 LAB SERVES A DEVELOPMENT BRANCH, SO MAIN CANNOT BE ITS ADMITTING AUTHORITY. Under the fleet's
+// origin/main every landing on main refused all lab dispatch ('deployed_revision_unobserved': the lab's
+// repository did not even hold main's new head) until the next redeploy (srv1 lab, 2026-10-11, twice
+// in one night). The operator admits the lab's tree by advancing this ref -- a visible act with a
+// reflog receipt -- exactly as srv2-deploy does.
+data srv1_lab_admitted_revision_source: DashboardAdmittedRevisionSource = DashboardAdmittedRevisionSource {
+  remote: ".",
+  ref_name: "refs/gunbc/srv1-lab-admitted" as GitRef,
+}
+
 fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
-  isolated_dashboard_instance(
+  isolated_dashboard_instance_admitting(
     deployment: srv1_lab_codex_feedback_deployment,
     instance_id: srv1_dashboard_lab_id,
     layout: srv1_host_layout(),
@@ -1091,6 +1124,7 @@ fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
     source_anchor_ref: "refs/remotes/origin/main" as NonEmptyStr,
     actuation: DashboardActuating,
     provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
+    admitted_revision: srv1_lab_admitted_revision_source,
   )
 }
 
