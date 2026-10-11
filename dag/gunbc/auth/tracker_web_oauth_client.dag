@@ -1,0 +1,158 @@
+module gunbc.auth.tracker_web_oauth_client
+
+import std.types { String, NonEmptyStr, List, Bool, Int, Port }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_path }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
+import gunbc.auth.google_workspace_login {
+  GoogleLoginClientTrackerWeb, GoogleLoginEnvironmentDev, GoogleLoginEnvironmentProd,
+  TrackerWebOauthClientBinding, TrackerWebOauthClientStanding,
+  TrackerWebOauthClientUnbound, gunb_ai_hosted_domain,
+}
+import gunbc.auth.google_workspace_admin_convergence { WorkspaceIdentityBinding }
+import gunbc.auth.oidc_deployment_config {
+  oidc_config_schema, oidc_config_env_var, oidc_session_lifetime_seconds, oidc_login_transaction_lifetime_seconds,
+}
+import gunbc.roadmap_dashboard_instance { srv1_dashboard_lab_id, srv1_dashboard_live_id }
+import gunbc.fleet_tailnet { fleet_tailnet_domain }
+import gunbc.fleet_intent { srv1_host, srv2_host }
+import extdeps.languages.json.emit {
+  json_object, json_kv, json_string, json_int, json_array, serialize_json,
+}
+import v2.std.collection { Present, Absent }
+
+// THE TRACKER-WEB DEV OAUTH CLIENT, observed 2026-10-11 by bright-moth-475: the client exists and
+// works (client_id below, hosted domain gunb.ai). Actuation of its Cloud Console registration is
+// the operator's hand step — there is no Auth Platform write API modeled here (extdeps.google.workspace
+// ConsoleReadbackRequired). Convergence owns the desired RegisteredWebClient (redirect URIs derived
+// from this binding) and admits a console readback receipt; it does not pretend the console step
+// is automated.
+
+data tracker_web_dev_oauth_client_id: NonEmptyStr = "433089409875-2c1u5obhaeafee9ve7igpopt5oiqoa8k.apps.googleusercontent.com" as NonEmptyStr
+
+data tracker_web_dev_oauth_console_project: NonEmptyStr = "433089409875" as NonEmptyStr
+
+data tracker_web_dev_oauth_workspace_customer: NonEmptyStr = "gunb.ai" as NonEmptyStr
+
+data tracker_web_dev_oauth_desired_revision: NonEmptyStr = "tracker-web-dev-2026-10-11" as NonEmptyStr
+
+data tracker_web_oauth_callback_path: String = "/auth/google/callback"
+
+data tracker_web_dev_srv2_public_port: Port = 18082
+
+data tracker_web_dev_srv1_lab_https_port: Port = 8444
+
+fn tracker_web_oauth_public_redirect_uri(host_identity: String, https_port: Port) -> NonEmptyStr {
+  match fleet_tailnet_domain {
+    Absent => join(["https://", host_identity, ":", to_string(https_port), tracker_web_oauth_callback_path], "") as NonEmptyStr
+    Present { value: domain } =>
+      join(["https://", host_identity, ".", domain as String, ":", to_string(https_port), tracker_web_oauth_callback_path], "") as NonEmptyStr
+  }
+}
+
+data tracker_web_dev_srv2_redirect_uri: NonEmptyStr = tracker_web_oauth_public_redirect_uri(
+  host_identity: srv2_host.identity as String,
+  https_port: tracker_web_dev_srv2_public_port,
+)
+
+data tracker_web_dev_srv1_lab_redirect_uri: NonEmptyStr = tracker_web_oauth_public_redirect_uri(
+  host_identity: srv1_host.identity as String,
+  https_port: tracker_web_dev_srv1_lab_https_port,
+)
+
+fn tracker_web_dev_oauth_client_binding() -> TrackerWebOauthClientBinding {
+  TrackerWebOauthClientBinding {
+    client: GoogleLoginClientTrackerWeb,
+    environment: GoogleLoginEnvironmentDev,
+    client_id: tracker_web_dev_oauth_client_id,
+    redirect_uris: [tracker_web_dev_srv2_redirect_uri, tracker_web_dev_srv1_lab_redirect_uri],
+    hosted_domain: gunb_ai_hosted_domain,
+    admitted_audiences: [tracker_web_dev_oauth_client_id],
+  }
+}
+
+fn tracker_web_prod_oauth_client_standing() -> TrackerWebOauthClientStanding {
+  TrackerWebOauthClientUnbound {
+    environment: GoogleLoginEnvironmentProd,
+    reason: "no tracker-web PROD OAuth client is declared; production serve stays unconfigured until one exists" as NonEmptyStr,
+  }
+}
+
+fn tracker_web_dev_workspace_identity_binding() -> WorkspaceIdentityBinding {
+  let b = tracker_web_dev_oauth_client_binding()
+  WorkspaceIdentityBinding {
+    customer: tracker_web_dev_oauth_workspace_customer,
+    project: tracker_web_dev_oauth_console_project,
+    client: b.client_id,
+    top_org_unit: "/" as NonEmptyStr,
+    redirect_uris: b.redirect_uris,
+    desired_revision: tracker_web_dev_oauth_desired_revision,
+  }
+}
+
+data tracker_web_dev_oauth_client_secret_ref: SecretRef = secret_ref_pin_version(
+  ref: fleet_secret_ref(secret_id: "tracker-web-dev-oauth-client-secret"),
+  version: "latest",
+)
+
+data tracker_web_dev_oauth_client_secret_host_path: NonEmptyStr = "/etc/gunbc-oidc/tracker-web-dev-client-secret" as NonEmptyStr
+
+data tracker_web_dev_oidc_config_host_path: NonEmptyStr = "/etc/gunbc-oidc/tracker-web-dev.json" as NonEmptyStr
+
+type TrackerWebOidcServeConfig {
+  config_path: NonEmptyStr
+  redirect_uri: NonEmptyStr
+  secret_file: NonEmptyStr
+  binding: TrackerWebOauthClientBinding
+}
+
+fn tracker_web_oidc_serve_config(instance_id: NonEmptyStr) -> TrackerWebOidcServeConfig? {
+  if (instance_id as String) == (srv1_dashboard_lab_id as String) {
+    Present {
+      value: TrackerWebOidcServeConfig {
+        config_path: tracker_web_dev_oidc_config_host_path,
+        redirect_uri: tracker_web_dev_srv1_lab_redirect_uri,
+        secret_file: tracker_web_dev_oauth_client_secret_host_path,
+        binding: tracker_web_dev_oauth_client_binding(),
+      }
+    }
+  } else {
+    none
+  }
+}
+
+fn tracker_web_oidc_config_document(cfg: TrackerWebOidcServeConfig) -> String {
+  let b = cfg.binding
+  serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: oidc_config_schema)),
+    json_kv(key: "client_id", value: json_string(s: b.client_id as String)),
+    json_kv(key: "client_secret_file", value: json_string(s: cfg.secret_file as String)),
+    json_kv(key: "redirect_uri", value: json_string(s: cfg.redirect_uri as String)),
+    json_kv(key: "admitted_audiences", value: json_array(elements: map(b.admitted_audiences, a => json_string(s: a as String)))),
+    json_kv(key: "expected_hosted_domain", value: json_string(s: b.hosted_domain.domain as String)),
+    json_kv(key: "session_lifetime_seconds", value: json_int(n: oidc_session_lifetime_seconds)),
+    json_kv(key: "login_transaction_lifetime_seconds", value: json_int(n: oidc_login_transaction_lifetime_seconds)),
+  ]))
+}
+
+fn tracker_web_oidc_env_assignment(cfg: TrackerWebOidcServeConfig) -> NonEmptyStr {
+  join([oidc_config_env_var as String, "=", cfg.config_path as String], "") as NonEmptyStr
+}
+
+fn production_has_no_oidc_serve_config() -> Bool {
+  match tracker_web_oidc_serve_config(instance_id: srv1_dashboard_live_id) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+data srv2_hand_started_oidc_unit_dissolution: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: a DesiredDeployment whose serve unit and oidc-config/v1 file are emitted for the srv2 tracker-web DEV instance, sufficient to delete the hand-started gunbc-dash-18082.service and the hand-placed oidc-config.json as the live login path. A custody delivery of the client secret onto srv2 without a modeled serve unit is not this trigger." as NonEmptyStr
+)
+
+data srv2_hand_started_oidc_unit_frontier: FrontierRow = frontier_row_path(
+  path: "gunbc-dash-18082.service",
+  reason: "srv2 tracker-web DEV login is a hand-started transient user unit with a hand-placed oidc-config.json; live_deploy does not own that instance in this change",
+  dissolution: srv2_hand_started_oidc_unit_dissolution,
+)
