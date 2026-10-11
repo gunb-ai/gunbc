@@ -644,8 +644,11 @@ import extdeps.filesystem.filesystem_io {
   FilesystemReadSucceeded,
   filesystem_read_outcome,
   filesystem_file_observation,
+  FilesystemFileObservation,
+  FilesystemEntryPresence,
+  FilesystemEstablishedAbsence,
 }
-import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
+import gunbc.filesystem_file_observe { filesystem_file_observation_of_path, filesystem_entry_presence_of_path }
 import extdeps.llm.cli {
   shape_codex_login_status_env_args_for_program,
   shape_codex_version_env_args_for_program,
@@ -5147,62 +5150,104 @@ fn belt_occurrence_unit_row(unit: String) -> ObservedContainerRow {
 
 // THE PERSISTED SPAWN IDENTITY IS THE RECORD'S CONTENT, not a current selection. The launch
 // identity the attempt was admitted under is read back from its own attempt-state path; an
-// attempt whose identity cannot be read produces no record, so a live container over it joins
-// nothing and reads Unclassified -- visible, occupying, never reaped -- rather than borrowing
-// today's selection as its meaning.
-// The attempt's durable occurrence is a typed read outcome, never a silently emptied list: before
-// the fold conversion, an unreadable launch record returned [] and the occurrence census lost the
-// attempt without a word. A refusal here reaches the census as a refusal naming the attempt, the
-// same way an unobservable attempt population already does.
+// attempt with no launch record produces no record, so a live container over it joins nothing and
+// reads Unclassified -- visible, occupying, never reaped -- rather than borrowing today's selection
+// as its meaning, and a record-less attempt with no live container is historical, never a census
+// row (gunbc.roadmap.roadmap_attempt_occurrence occurrence_population).
+// NO RECORD AND AN UNKNOWN RECORD ARE TWO FACTS. Before the fold conversion an unreadable launch
+// record returned [] and the census lost the attempt without a word; the conversion then refused
+// on every failed read, which made an ESTABLISHED absence -- an attempt dispatched before launch
+// identities were written, or whose attempt state is gone -- poison the whole live-session census
+// on every tick (srv1, 2026-10-10: ten July/August dispatch branches refused every spawn pass and
+// rendered every row Unknown). Absence is established from a successful listing of the attempt
+// directory's parent and of the directory itself, through the filesystem_io folds; anything that
+// could not be looked at, did not decode, or moved while observed still refuses, naming the attempt.
 type AttemptOccurrenceRecordRead
   = AttemptOccurrenceRecordDecoded { record: DurableAttemptRecord }
+  | AttemptOccurrenceRecordAbsent { absence: FilesystemEstablishedAbsence }
   | AttemptOccurrenceRecordRefused { reason: NonEmptyStr }
 
-fn belt_occurrence_record_from_launch_read(attempt: DispatchAttemptRef, read: FilesystemReadOutcome) -> AttemptOccurrenceRecordRead {
-  match read {
-    FilesystemReadRefused { error } =>
-      AttemptOccurrenceRecordRefused { reason: join(["attempt ", attempt.attempt_key, ": the launch record could not be read, so its durable occurrence is unknown: ", error], "") }
-    FilesystemReadSucceeded { content } =>
-      match parse_json_document(s: content) {
-        JsonDocumentUnreadable { gap } =>
-          AttemptOccurrenceRecordRefused { reason: join(["attempt ", attempt.attempt_key, ": the launch record does not decode as JSON: ", gap], "") }
-        JsonDocumentParsed { value: doc } =>
-          match launch_identity_of_json(doc: doc) {
-            LaunchIdentityUnreadable { reason } =>
-              AttemptOccurrenceRecordRefused { reason: join(["attempt ", attempt.attempt_key, ": the launch record carries no readable launch identity: ", reason], "") }
-            LaunchIdentityDecoded { identity } =>
-              AttemptOccurrenceRecordDecoded {
-                record: DurableAttemptRecord {
-                  node: attempt.node_id as String,
-                  attempt: attempt.attempt_key,
-                  spawn_identity: join([
-                    "cause=", launch_cause_label(c: identity.cause),
-                    " mode=", spawn_mode_label(m: identity.mode),
-                    " instance=", identity.instance_id as String,
-                    " revision=", git_object_id_wire_hex(oid: identity.revision) as String,
-                  ], ""),
-                },
-              }
+fn belt_occurrence_record_unobserved(attempt: DispatchAttemptRef, cause: String) -> AttemptOccurrenceRecordRead {
+  AttemptOccurrenceRecordRefused { reason: join(["attempt ", attempt.attempt_key, ": the launch record could not be observed, so its durable occurrence is unknown: ", cause], "") }
+}
+
+fn belt_occurrence_record_from_launch_content(attempt: DispatchAttemptRef, content: String) -> AttemptOccurrenceRecordRead {
+  match parse_json_document(s: content) {
+    JsonDocumentUnreadable { gap } =>
+      AttemptOccurrenceRecordRefused { reason: join(["attempt ", attempt.attempt_key, ": the launch record does not decode as JSON: ", gap], "") }
+    JsonDocumentParsed { value: doc } =>
+      match launch_identity_of_json(doc: doc) {
+        LaunchIdentityUnreadable { reason } =>
+          AttemptOccurrenceRecordRefused { reason: join(["attempt ", attempt.attempt_key, ": the launch record carries no readable launch identity: ", reason], "") }
+        LaunchIdentityDecoded { identity } =>
+          AttemptOccurrenceRecordDecoded {
+            record: DurableAttemptRecord {
+              node: attempt.node_id as String,
+              attempt: attempt.attempt_key,
+              spawn_identity: join([
+                "cause=", launch_cause_label(c: identity.cause),
+                " mode=", spawn_mode_label(m: identity.mode),
+                " instance=", identity.instance_id as String,
+                " revision=", git_object_id_wire_hex(oid: identity.revision) as String,
+              ], ""),
+            },
           }
       }
   }
 }
 
-fn belt_occurrence_record_for_attempt(instance: HostDashboardInstance, attempt: DispatchAttemptRef) -> AttemptOccurrenceRecordRead {
-  let path = dispatch_attempt_launch_path_for_instance(
-    instance: instance,
-    node_id: attempt.node_id as gunbc.roadmap_model.RoadmapNodeId,
-    attempt_key: attempt.attempt_key,
-  )
-  let read = Filesystem.Read(path: path)
-  belt_occurrence_record_from_launch_read(
-    attempt: attempt,
-    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
-  )
+// ONE OBSERVATION PER DECISION, IN SEQUENCE. The attempt directory's presence under the attempt-state
+// root is observed first, and the launch record inside it only when that listing names the
+// directory: a missing directory makes the record's own listing fail, which is indeterminate rather
+// than absent, and observing both up front would join two instants -- a directory that appeared
+// between the calls would pair "absent" with a readable record (review 78482). Sequenced, the absent
+// arm consults nothing else, and a directory that vanished after being listed reaches the record
+// observation as a failed listing, which refuses.
+type AttemptDirectoryStanding
+  = AttemptDirectoryListed
+  | AttemptDirectoryDecided { read: AttemptOccurrenceRecordRead }
+
+fn belt_occurrence_attempt_directory_standing(attempt: DispatchAttemptRef, directory: FilesystemEntryPresence) -> AttemptDirectoryStanding {
+  match directory {
+    FilesystemEntryAbsent(absence) =>
+      AttemptDirectoryDecided { read: AttemptOccurrenceRecordAbsent { absence: absence } }
+    FilesystemEntryPresenceIndeterminate { cause } => AttemptDirectoryDecided { read: belt_occurrence_record_unobserved(attempt: attempt, cause: cause) }
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause } => AttemptDirectoryDecided { read: belt_occurrence_record_unobserved(attempt: attempt, cause: cause) }
+    FilesystemEntryListed { directory: _, name: _ } => AttemptDirectoryListed
+  }
 }
 
-// One unreadable attempt refuses the whole census rather than shrinking it silently: a census with
-// a hole is not a census. The refusal names every attempt whose record could not be read.
+fn belt_occurrence_record_from_launch_observation(attempt: DispatchAttemptRef, launch: FilesystemFileObservation) -> AttemptOccurrenceRecordRead {
+  match launch {
+    FilesystemFileAbsent(absence) =>
+      AttemptOccurrenceRecordAbsent { absence: absence }
+    FilesystemFileRead { path: _, content } => belt_occurrence_record_from_launch_content(attempt: attempt, content: content)
+    FilesystemFileIndeterminate { cause } => belt_occurrence_record_unobserved(attempt: attempt, cause: cause)
+    FilesystemFileObservationsDisagree { path: _, cause } => belt_occurrence_record_unobserved(attempt: attempt, cause: cause)
+    FilesystemFileSubjectRefused { directory: _, name: _, cause } => belt_occurrence_record_unobserved(attempt: attempt, cause: cause)
+  }
+}
+
+fn belt_occurrence_record_for_attempt(instance: HostDashboardInstance, attempt: DispatchAttemptRef) -> AttemptOccurrenceRecordRead {
+  let node_id = attempt.node_id as gunbc.roadmap_model.RoadmapNodeId
+  let directory = filesystem_entry_presence_of_path(
+    path: dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt.attempt_key),
+  )
+  match belt_occurrence_attempt_directory_standing(attempt: attempt, directory: directory) {
+    AttemptDirectoryDecided { read } => read
+    AttemptDirectoryListed =>
+      belt_occurrence_record_from_launch_observation(
+        attempt: attempt,
+        launch: filesystem_file_observation_of_path(
+          path: dispatch_attempt_launch_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt.attempt_key),
+        ),
+      )
+  }
+}
+
+// One unobservable attempt refuses the whole census rather than shrinking it silently: a census with
+// a hole is not a census. The refusal names every attempt whose record could not be observed. An
+// established absence is not a hole: the attempt contributes no record, exactly as the join reads it.
 type BeltAttemptOccurrenceRecords
   = BeltAttemptOccurrenceRecordsObserved { records: List<DurableAttemptRecord> }
   | BeltAttemptOccurrenceRecordsRefused { reason: NonEmptyStr }
@@ -5215,10 +5260,12 @@ fn belt_occurrence_records_for_instance(instance: HostDashboardInstance) -> Belt
       let outcomes = map(attempts, a => belt_occurrence_record_for_attempt(instance: instance, attempt: a))
       let refusal_reasons = fold(outcomes, init: [], f: (acc, o) => match o {
         AttemptOccurrenceRecordRefused { reason } => concat(acc, [reason as String])
+        AttemptOccurrenceRecordAbsent { absence: _ } => acc
         AttemptOccurrenceRecordDecoded { record: _ } => acc
       })
       if any(outcomes, o => match o {
         AttemptOccurrenceRecordRefused { reason: _ } => true
+        AttemptOccurrenceRecordAbsent { absence: _ } => false
         AttemptOccurrenceRecordDecoded { record: _ } => false
       }) {
         BeltAttemptOccurrenceRecordsRefused { reason: join(refusal_reasons, "; ") as NonEmptyStr }
@@ -5226,6 +5273,7 @@ fn belt_occurrence_records_for_instance(instance: HostDashboardInstance) -> Belt
         BeltAttemptOccurrenceRecordsObserved {
           records: flat_map(outcomes, o => match o {
             AttemptOccurrenceRecordDecoded { record: r } => [r]
+            AttemptOccurrenceRecordAbsent { absence: _ } => []
             AttemptOccurrenceRecordRefused { reason: _ } => []
           }),
         }

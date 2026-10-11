@@ -49,6 +49,7 @@ import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   dashboard_instance_provider_state_root,
   dashboard_instance_tailnet_door_socket,
+  dashboard_instance_tailnet_door_directory,
 }
 import extdeps.http.server { HttpServerListenConfig }
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port, approval_broker_listen_host, approval_broker_confirm_front_door }
@@ -1334,7 +1335,18 @@ fn deployment_spec_for(
     ),
     names: names,
     instance_id: instance.instance_id,
-    directories: dashboard_instance_directory_demands(instance: instance),
+    directories: concat(dashboard_instance_directory_demands(instance: instance), deployment_tailnet_door_directories(instance: instance, names: names)),
+  }
+}
+
+// THE DOOR'S DIRECTORY IS A DEPLOYMENT DEMAND, NOT AN INSTANCE ONE: only a deployment whose serve
+// route targets a unix socket runs a door (deployment_tailnet_door_socket), and only the spec knows
+// the route. It joins the instance's own list here, so the one provider ensures and reads it back
+// before the door unit binds; a deployment routed to a port demands nothing.
+fn deployment_tailnet_door_directories(instance: HostDashboardInstance, names: DeploymentNames) -> List<OwnedDirectoryTarget> {
+  match deployment_tailnet_door_socket(names: names) {
+    Present { value: _ } => [dashboard_instance_tailnet_door_directory(instance: instance)]
+    Absent => []
   }
 }
 

@@ -1,0 +1,101 @@
+module v2.test.claim.compiler.infer_payload_binder
+
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_infer, fmi_reason }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, Some, None, diagnostics_has_reason }
+import v2.std.algebra { contains, list_map }
+import v2.std.collection { List }
+import std.algebra { Cons, Empty }
+
+// SUBJECT: a match arm's payload binder takes the field type the SCRUTINEE'S arguments instantiate
+// (v2.compiler.resolve records the binder as owed its field's declared type, LexicalOwedFormal;
+// v2.compiler.infer infer_match_arm_child_frame pays it at arm entry from the scrutinee's coproduct, read
+// through its transparent alias). BOUNDARY: source text through the production assembly route
+// (fmi_assemble: List<T> is FreeMonoid<T>) into infer. Each refusal claim has an accepted sibling that
+// differs only in the type the binder must carry, so the refusal is the binder's derived type and nothing
+// else. Rule A' (a type parameter binds only inside its own declaration) rides the same fixtures.
+// gunbc.recurring_failure_mode payload_binder_is_owed_its_field_type_not_refused_at_resolve.
+
+
+data ipb_grounds: String = "module p\n\nimport v2.std.collection { List }\nimport std.algebra { Cons, Empty }\n\nfn f(xs: List<Int>) -> Int {\n  match xs {\n    Cons { head: h, tail: t } => h\n    Empty => 0\n  }\n}\n"
+data ipb_head_is_bool: String = "module p\n\nimport v2.std.collection { List }\nimport std.algebra { Cons, Empty }\n\nfn f(xs: List<Bool>) -> Int {\n  match xs {\n    Cons { head: h, tail: t } => h\n    Empty => 0\n  }\n}\n"
+data ipb_tail_is_list: String = "module p\n\nimport v2.std.collection { List }\nimport std.algebra { Cons, Empty }\n\nfn f(xs: List<Int>) -> List<Int> {\n  match xs {\n    Cons { head: h, tail: t } => t\n    Empty => xs\n  }\n}\n"
+data ipb_tail_as_int: String = "module p\n\nimport v2.std.collection { List }\nimport std.algebra { Cons, Empty }\n\nfn f(xs: List<Int>) -> Int {\n  match xs {\n    Cons { head: h, tail: t } => t\n    Empty => 0\n  }\n}\n"
+data ipb_sibling_own: String = "module p\n\ntype Box<Q> = Pk { v: Q }\n\ntype Res<T> = Ok { value: T } | Er\n\nfn f(b: Box<Bool>, r: Res<Int>) -> Int {\n  match r {\n    Ok { value: n } => n\n    Er => 0\n  }\n}\n"
+data ipb_sibling_leak: String = "module p\n\ntype Box<Q> = Pk { v: Q }\n\ntype Res<T> = Ok { value: T } | Er\n\nfn f(b: Box<Bool>, r: Res<Int>) -> Bool {\n  match r {\n    Ok { value: n } => n\n    Er => false\n  }\n}\n"
+data ipb_param_scope_leak: String = "module p\n\ntype Box<Q> = Pk { v: Q }\n\nfn f(x: Int) -> Q {\n  x\n}\n"
+data ipb_signature_instantiation: String = "module p\n\nimport v2.std.collection { List }\n\nfn f(xs: List<Bool>) -> Int {\n  0\n}\n"
+data ipb_empty_fold: String = "module p\n\nimport v2.std.collection { List }\nimport std.algebra { Cons, Empty }\n\nfn f(xs: List<Int>) -> List<Int> {\n  fold(xs, init: Empty, f: fn(acc, x) { Cons { head: x, tail: acc } })\n}\n"
+data ipb_untyped_lambda: String = "module p\n\nfn f(a: Int) -> Int {\n  let g = fn(x) { x }\n  g(a)\n}\n"
+
+fn ipb_reasons(o: Outcome<Bool>) -> List<Symbol> {
+  match o {
+    Accepted { value: _, diagnostics: d } =>
+      match d {
+        None => []
+        Some { diagnostics: r } => Cons { head: r.head.reason, tail: list_map(xs: r.tail, f: fn(x) { x.reason }) }
+      }
+    Rejected { diagnostics: r } => Cons { head: r.head.reason, tail: list_map(xs: r.tail, f: fn(x) { x.reason }) }
+  }
+}
+
+fn ipb_has(o: Outcome<Bool>, reason: Symbol) -> Bool {
+  contains(xs: ipb_reasons(o: o), item: reason, eq: fn(a, b) { a == b })
+}
+
+test fn ipb_the_head_binder_takes_the_instantiated_argument_holds() -> Bool {
+  fmi_reason(o: fmi_infer(src: ipb_grounds)) == ^accepted
+}
+
+test fn ipb_the_head_binder_is_the_argument_not_int_red() -> Bool {
+  fmi_reason(o: fmi_infer(src: ipb_head_is_bool)) == ^infer_match_arm_type_mismatch
+}
+
+test fn ipb_the_tail_binder_is_the_instantiated_alias_holds() -> Bool {
+  fmi_reason(o: fmi_infer(src: ipb_tail_is_list)) == ^accepted
+}
+
+test fn ipb_the_tail_binder_is_not_its_element_type_red() -> Bool {
+  fmi_reason(o: fmi_infer(src: ipb_tail_as_int)) == ^infer_match_arm_type_mismatch
+}
+
+// RULE A' (gunbc#13265): the arguments of ANOTHER declaration in the module (Box<Bool>) never instantiate
+// this coproduct's parameter. The accepted sibling and the refused one share a module and differ in the
+// declared result only.
+test fn ipb_the_sibling_declarations_arguments_do_not_leak_holds() -> Bool {
+  fmi_reason(o: fmi_infer(src: ipb_sibling_own)) == ^accepted
+}
+
+test fn ipb_the_sibling_declarations_arguments_do_not_leak_red() -> Bool {
+  fmi_reason(o: fmi_infer(src: ipb_sibling_leak)) == ^infer_match_arm_type_mismatch
+}
+
+test fn ipb_a_type_parameter_does_not_bind_outside_its_declaration_red() -> Bool {
+  fmi_reason(o: fmi_infer(src: ipb_param_scope_leak)) == ^resolve_reason_unbound_symbol
+}
+
+// A TYPE INSTANTIATION IS NOT A CALL: the caller-admission wall used to judge `List<Bool>` as an
+// application and refuse every module that wrote a generic type in a signature.
+test fn ipb_a_generic_type_in_a_signature_is_not_a_call_holds() -> Bool {
+  fmi_reason(o: fmi_infer(src: ipb_signature_instantiation)) == ^accepted
+}
+
+// gunbc#13475: an empty initial value must not lock the accumulator. v2 does not type `Empty` / `[]`, so the
+// carrier stays not-derived (advisory) rather than List<Unit>; the step's `tail: acc` then cannot be
+// inhabited by an underived value, a declared residual refusal that flips when the carrier is read from the
+// fold's declared result.
+test fn ipb_an_empty_init_leaves_the_carrier_not_derived_holds() -> Bool {
+  ipb_has(o: fmi_infer(src: ipb_empty_fold), reason: ^infer_reason_fold_carrier_type_not_derived)
+}
+
+test fn ipb_an_empty_init_fold_over_a_collection_is_a_declared_residual_red() -> Bool {
+  fmi_reason(o: fmi_infer(src: ipb_empty_fold)) == ^record_field_value_does_not_inhabit
+}
+
+// THE UNTYPED LAMBDA ARGUMENT (gunbc#13558, #13623): v2 types a lambda binder only from its consumer
+// (a fold's member and carrier frames, an application's formal), never from its own body, and refuses a
+// typed formal at parse; a binder with no consumer stays LexicalUntyped, not derived.
+test fn ipb_an_unconsumed_lambda_binder_stays_not_derived_holds() -> Bool {
+  ipb_has(o: fmi_infer(src: ipb_untyped_lambda), reason: ^infer_grounding_not_derived)
+}

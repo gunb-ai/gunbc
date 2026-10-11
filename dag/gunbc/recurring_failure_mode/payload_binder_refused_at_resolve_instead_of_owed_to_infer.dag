@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.payload_binder_refused_at_resolve_instead_of_owed_to_infer
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data payload_binder_refused_at_resolve_instead_of_owed_to_infer: RecurringFailureMode = RecurringFailureMode {
+  identity: "payload_binder_refused_at_resolve_instead_of_owed_to_infer" as NonEmptyStr,
+
+  receipts: [
+    "**a match arm's payload binder whose variant field is typed by the declaring type's formal (Ok { value: n } over Res<Int>) was refused at resolve (resolve_reason_pattern_payload_formal_uninstantiated), because resolve cannot see the scrutinee's arguments; every generic-coproduct match was therefore unwritable in the native front end.** Resolve now records the binder as owed its field type (LexicalOwedFormal, beside LexicalDeclared / LexicalValued / LexicalUntyped) and infer pays it at arm entry from the scrutinee's instantiated arguments, read through transparent aliases (List<T> is FreeMonoid<T>) and instantiating the field type itself (tail: FreeMonoid<T>). Re-derives gunbc#13558 / #13623 (closed, never ran CI); the claims are src/v2/test/claim/compiler/infer_payload_binder_test.dag.",
+    "THREE DEFECTS FOUND ON THE CHAIN, each at its own boundary: (1) the caller-admission wall judged a TypeNode Instantiation (a generic type written in a signature) as a call and refused it callee_unreadable -- a type instantiation is not a call; (2) match arms were compared without alias normalization, so FreeMonoid<Int> and List<Int> mismatched; (3) coproduct reading did not unfold the scrutinee's alias.",
+    "UNTYPED LAMBDA ARGUMENT, RECORDED DECISION: v2 types a lambda binder only from its consumer (a fold's member and carrier frames, an application's formal) and from nothing in its own body; a binder with no consumer stays LexicalUntyped and is not derived (advisory), never guessed. #13623's prefix typing is NOT carried: it types from the first use, which is inference by the body the consumer should have declared (DESIGN section 5, refuse never widen). A correction of the seed's rule, not a retention.",
+    "RULE A' (#13265): a type parameter binds only inside its own declaration. v2 already refuses a leaked parameter at resolve (resolve_reason_unbound_symbol) and a sibling declaration's arguments do not instantiate another coproduct's parameter; both are pinned with discriminating reds. Nothing carried from v1.",
+    "EMPTY FOLD ACCUMULATOR (#13475): v2 does not lock the accumulator to List<Unit>, because it does not type Empty / [] at all: the carrier stays not-derived (infer_reason_fold_carrier_type_not_derived). The residual is declared, not hidden: a step that stores the underived accumulator in a typed field (Cons { tail: acc }) refuses record_field_value_does_not_inhabit, pinned as a red that flips when the carrier is read from the fold's declared result. RUNG: mitigatable (typed refusal); CEILING structurally guaranteed; NEXT TRIGGER: carrier typed from the fold's declared result."
+  ],
+
+  evidence: [],
+}
