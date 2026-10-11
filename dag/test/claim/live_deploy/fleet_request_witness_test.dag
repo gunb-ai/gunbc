@@ -233,8 +233,7 @@ test fn a_desired_identity_for_another_member_refuses_the_effect_plan() -> Bool 
     candidate: candidate(),
     target: target(),
     observed: matching_obs(),
-    desired: m => Present { value:
-      match m {
+    desired: m => Present { value: match m {
         Executable => desired_tree()
         _ => desired_for(m: m)
       } },
