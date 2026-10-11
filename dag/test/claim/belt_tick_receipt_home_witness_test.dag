@@ -129,7 +129,7 @@ fn belt_upsert_commands() -> List<String> {
     art: art,
     spec: spec,
     revision: RevisionBoundAtEmission { revision: "0000000000000000000000000000000000000000" as CommitSha },
-    oidc_now: none,
+    oidc_now: Absent,
   ))
 }
 

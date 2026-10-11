@@ -1097,7 +1097,7 @@ test fn production_apply_serves_its_own_endpoint_and_scopes_no_path() -> Bool {
     },
     spec: spec,
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
-    oidc_now: none,
+    oidc_now: Absent,
   ))
   let route = deployment_serve_route_script(endpoint: spec.names.tailscale_serve_endpoint, enabled: true)
   !string_contains(s: own, pattern: "tailscale")

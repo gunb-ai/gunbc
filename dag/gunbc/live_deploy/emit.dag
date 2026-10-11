@@ -3648,7 +3648,7 @@ fn retract_intent_from_effects(
         concat(
           flat_map(
             effects,
-            e => emit_deploy_member_effect(effect: e, spec: spec, revision: RevisionNotInstalled, oidc_now: none),
+            e => emit_deploy_member_effect(effect: e, spec: spec, revision: RevisionNotInstalled, oidc_now: Absent),
           ),
           [
             deploy_raw(command: deploy_receipt_command(host: spec.target.host.identity, fold: "retract")),

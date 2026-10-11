@@ -1,7 +1,6 @@
 module test.claim.auth.tracker_web_dev_oauth_witness_test
 
-import std.types { Bool, String, CommitSha, NonEmptyStr, Int }
-import std.measure { second_count }
+import std.types { Bool, String, CommitSha, NonEmptyStr }
 import v2.std.algebra { any }
 import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalAssessmentRefused }
 import std.keyed_roster { KeyedRosterBuilt }
@@ -31,6 +30,7 @@ import gunbc.auth.tracker_web_oauth_client {
   tracker_web_test_registered_web_client_console_readback,
   tracker_web_test_console_readback_observed_at_epoch,
   tracker_web_test_console_readback_valid_until_epoch,
+  tracker_web_test_console_readback_unix_int,
   tracker_web_test_console_observed_redirect_uris,
   tracker_web_unassigned_redirects,
   tracker_web_test_srv2_redirect_uri,
@@ -73,7 +73,7 @@ test fn production_serve_unit_emits_without_an_observer_clock() -> Bool {
   match live_deploy_serve_unit_emission(
     spec: selected_deployment_spec(row: srv1_production_desired_deployment()),
     revision: witness_revision(),
-    now_epoch: none,
+    now_epoch: Absent,
   ) {
     LiveDeployServeUnitEmitted { file } =>
       !string_contains(s: serialize_systemd_unit_file(file: file), pattern: oidc_config_env_var as String)
@@ -85,7 +85,7 @@ test fn lab_serve_unit_refuses_without_an_observer_clock() -> Bool {
   match live_deploy_serve_unit_emission(
     spec: selected_deployment_spec(row: srv1_lab_desired_deployment()),
     revision: witness_revision(),
-    now_epoch: none,
+    now_epoch: Absent,
   ) {
     LiveDeployServeUnitOidcReadbackRefused { cause } =>
       string_contains(s: cause as String, pattern: "observer clock unreadable")
@@ -174,8 +174,10 @@ test fn srv2_hand_started_unit_is_unmodeled_and_not_adopted() -> Bool {
 }
 
 test fn console_readback_epochs_are_the_2026_calendar_receipt() -> Bool {
-  iso8601_utc_text(unix: second_count(s: tracker_web_test_console_readback_observed_at_epoch) as Int) == "2026-10-11T04:00:00Z"
-    && iso8601_utc_text(unix: second_count(s: tracker_web_test_console_readback_valid_until_epoch) as Int) == "2026-11-10T04:00:00Z"
+  iso8601_utc_text(unix: tracker_web_test_console_readback_unix_int(year: 2026, month: 10, day: 11, hour: 4)) == "2026-10-11T04:00:00Z"
+    && iso8601_utc_text(unix: tracker_web_test_console_readback_unix_int(year: 2026, month: 11, day: 10, hour: 4)) == "2026-11-10T04:00:00Z"
+    && match tracker_web_test_console_readback_observed_at_epoch { Present { value: _ } => true  Absent => false }
+    && match tracker_web_test_console_readback_valid_until_epoch { Present { value: _ } => true  Absent => false }
 }
 
 test fn a_desired_redirect_uri_change_diverges_from_the_console_receipt() -> Bool {
@@ -194,7 +196,7 @@ test fn a_desired_redirect_uri_change_diverges_from_the_console_receipt() -> Boo
       goal: ob,
       receipt: tracker_web_test_registered_web_client_console_readback(),
       admitted_admins: [workspace_operator_principal()],
-      now_epoch: second_count(s: tracker_web_test_console_readback_observed_at_epoch) as Int,
+      now_epoch: tracker_web_test_console_readback_unix_int(year: 2026, month: 10, day: 11, hour: 4),
     ) {
       GoalDiverged { deviations: _ } => true
       _ => false
@@ -209,21 +211,33 @@ test fn console_readback_is_independent_and_expires() -> Bool {
     && (tracker_web_test_oauth_client_secret_ref.version as String) == "1"
     && all(observed, x => any(b.redirect_uris, y => x == y))
     && all(b.redirect_uris, x => any(observed, y => x == y))
-    && match tracker_web_test_auth_platform_client_assessment(now_epoch: tracker_web_test_console_readback_observed_at_epoch) {
-      GoalSatisfied { evidence: _ } => true
-      _ => false
+    && match tracker_web_test_console_readback_observed_at_epoch {
+      Absent => false
+      Present { value: now } => match tracker_web_test_auth_platform_client_assessment(now_epoch: now) {
+        GoalSatisfied { evidence: _ } => true
+        _ => false
+      }
     }
-    && match tracker_web_test_auth_platform_client_assessment(now_epoch: tracker_web_test_console_readback_valid_until_epoch) {
-      GoalAssessmentRefused { cause: _ } => true
-      _ => false
+    && match tracker_web_test_console_readback_valid_until_epoch {
+      Absent => false
+      Present { value: until } => match tracker_web_test_auth_platform_client_assessment(now_epoch: until) {
+        GoalAssessmentRefused { cause: _ } => true
+        _ => false
+      }
     }
-    && match tracker_web_oidc_serve_standing(instance_id: srv1_dashboard_lab_id, now_epoch: tracker_web_test_console_readback_observed_at_epoch) {
-      TrackerWebOidcServeConfigured { config: _ } => true
-      _ => false
+    && match tracker_web_test_console_readback_observed_at_epoch {
+      Absent => false
+      Present { value: now } => match tracker_web_oidc_serve_standing(instance_id: srv1_dashboard_lab_id, now_epoch: now) {
+        TrackerWebOidcServeConfigured { config: _ } => true
+        _ => false
+      }
     }
-    && match tracker_web_oidc_serve_standing(instance_id: srv1_dashboard_lab_id, now_epoch: tracker_web_test_console_readback_valid_until_epoch) {
-      TrackerWebOidcConsoleReadbackUnsatisfied { instance_id: _, cause: _ } => true
-      _ => false
+    && match tracker_web_test_console_readback_valid_until_epoch {
+      Absent => false
+      Present { value: until } => match tracker_web_oidc_serve_standing(instance_id: srv1_dashboard_lab_id, now_epoch: until) {
+        TrackerWebOidcConsoleReadbackUnsatisfied { instance_id: _, cause: _ } => true
+        _ => false
+      }
     }
     && match frontier_rows_keyed_roster_build(rows: tracker_web_oauth_frontier_rows) {
       KeyedRosterBuilt { rows: roster } =>
@@ -256,34 +270,44 @@ test fn lab_apply_identity_route_writes_oidc_config_file() -> Bool {
 }
 
 test fn lab_apply_oidc_config_refuses_when_console_readback_expired() -> Bool {
-  let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
-  let sh = pipeline_steps_text(steps: apply_oidc_config_steps_at(
-    spec: spec,
-    now_epoch: tracker_web_test_console_readback_valid_until_epoch,
-    should_write: false,
-  ))
-  string_contains(s: sh, pattern: "__GUNBC_OIDC_READBACK_REFUSED__")
-    && !string_contains(s: sh, pattern: tracker_web_test_oidc_config_host_path as String)
+  match tracker_web_test_console_readback_valid_until_epoch {
+    Absent => false
+    Present { value: until } =>
+      let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
+      let sh = pipeline_steps_text(steps: apply_oidc_config_steps_at(
+        spec: spec,
+        now_epoch: until,
+        should_write: false,
+      ))
+      string_contains(s: sh, pattern: "__GUNBC_OIDC_READBACK_REFUSED__")
+        && !string_contains(s: sh, pattern: tracker_web_test_oidc_config_host_path as String)
+  }
 }
 
 test fn lab_serve_unit_emission_refuses_when_console_readback_expired() -> Bool {
-  match live_deploy_serve_unit_emission_at(
-    spec: selected_deployment_spec(row: srv1_lab_desired_deployment()),
-    revision: witness_revision(),
-    now_epoch: tracker_web_test_console_readback_valid_until_epoch,
-  ) {
-    LiveDeployServeUnitOidcReadbackRefused { cause: _ } => true
-    LiveDeployServeUnitEmitted { file: _ } => false
+  match tracker_web_test_console_readback_valid_until_epoch {
+    Absent => false
+    Present { value: until } => match live_deploy_serve_unit_emission_at(
+      spec: selected_deployment_spec(row: srv1_lab_desired_deployment()),
+      revision: witness_revision(),
+      now_epoch: until,
+    ) {
+      LiveDeployServeUnitOidcReadbackRefused { cause: _ } => true
+      LiveDeployServeUnitEmitted { file: _ } => false
+    }
   }
 }
 
 test fn lab_oidc_unit_env_refuses_when_console_readback_expired() -> Bool {
-  match live_deploy_oidc_unit_env_at(
-    spec: selected_deployment_spec(row: srv1_lab_desired_deployment()),
-    now_epoch: tracker_web_test_console_readback_valid_until_epoch,
-  ) {
-    LiveDeployOidcEnvRefused { cause: _ } => true
-    LiveDeployOidcEnvAdmitted { directives: _ } => false
+  match tracker_web_test_console_readback_valid_until_epoch {
+    Absent => false
+    Present { value: until } => match live_deploy_oidc_unit_env_at(
+      spec: selected_deployment_spec(row: srv1_lab_desired_deployment()),
+      now_epoch: until,
+    ) {
+      LiveDeployOidcEnvRefused { cause: _ } => true
+      LiveDeployOidcEnvAdmitted { directives: _ } => false
+    }
   }
 }
 

@@ -137,7 +137,7 @@ fn pipeline_steps_text(steps: List<PipelineStep>) -> String {
 }
 
 fn claim_oidc_now() -> Second? {
-  Present { value: tracker_web_test_console_readback_observed_at_epoch }
+  tracker_web_test_console_readback_observed_at_epoch
 }
 
 fn apply_emitted_steps_text(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> String {
