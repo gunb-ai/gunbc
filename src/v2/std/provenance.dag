@@ -41,9 +41,18 @@ fn origin_event_from_source(locus: Locus) -> OriginEvent {
 // to the gap between ordered source children of its innermost containing scope reads
 // span_index_extent for containment. Trigger: that node's change lands; until it does, the only
 // readers are v2.test.provenance.parse_production_extent.
+//
+// A composite that consumed input but whose children's ranges do not compose into one range (they
+// lie in different files, or one is not a byte range) records SourceExtentUnrepresentable rather
+// than nothing. Absence means the occurrence consumed nothing; the two must stay distinct, or an
+// enclosing composite reads the unrepresentable child as empty and publishes a range that omits it.
+type RecordedSourceExtent
+  = SourceExtentKnown { locus: Locus }
+  | SourceExtentUnrepresentable
+
 type SpanIndex {
   entries: Map<OccurrenceId, OriginEvent>
-  extents: Map<OccurrenceId, Locus>
+  extents: Map<OccurrenceId, RecordedSourceExtent>
 }
 
 fn span_index_empty() -> SpanIndex {
@@ -53,7 +62,26 @@ fn span_index_empty() -> SpanIndex {
 fn span_index_record_extent(index: SpanIndex, id: OccurrenceId, extent: Locus) -> SpanIndex {
   SpanIndex {
     entries: index.entries,
-    extents: map_insert(m: index.extents, key: id, value: extent)
+    extents: map_insert(m: index.extents, key: id, value: SourceExtentKnown { locus: extent })
+  }
+}
+
+fn span_index_record_extent_unrepresentable(index: SpanIndex, id: OccurrenceId) -> SpanIndex {
+  SpanIndex {
+    entries: index.entries,
+    extents: map_insert(m: index.extents, key: id, value: SourceExtentUnrepresentable)
+  }
+}
+
+// Whether `id` consumed input that no single range covers.
+fn span_index_extent_unrepresentable(index: SpanIndex, id: OccurrenceId) -> Bool {
+  match index.extents.lookup(id) {
+    Present { value: recorded } =>
+      match recorded {
+        SourceExtentUnrepresentable => true
+        SourceExtentKnown { locus: _ } => false
+      }
+    Absent => false
   }
 }
 
@@ -64,7 +92,11 @@ fn span_index_record_extent(index: SpanIndex, id: OccurrenceId, extent: Locus) -
 // extents table exists to replace.
 fn span_index_extent(index: SpanIndex, id: OccurrenceId) -> Optional<Locus> {
   match index.extents.lookup(id) {
-    Present { value: extent } => Present { value: extent }
+    Present { value: recorded } =>
+      match recorded {
+        SourceExtentKnown { locus: extent } => Present { value: extent }
+        SourceExtentUnrepresentable => Absent
+      }
     Absent =>
       match index.entries.lookup(id) {
         Present { value: event } =>

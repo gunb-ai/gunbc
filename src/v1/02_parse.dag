@@ -495,21 +495,35 @@ fn parse_context_record_erased_scope(ctx: ParseContext, kind: ErasedSourceScopeK
   }
 }
 
-// `absorbed`'s identity was folded into `into`, which survives in its place.
+// `absorbed` was folded into `into`, which survives in its place. EVERY identity in the absorbed
+// subtree is mapped, not only its root: in `(ns).Type { .. }` the record absorbs the field access
+// `ns.Type`, and the `(ns)` scope encloses `ns`, a descendant of that root. A descendant that also
+// survives elsewhere is unaffected, because publication consults `absorbed` only for occurrences it
+// did not publish. Each absorbed subtree is walked once, at the one site that removes it.
 fn parse_context_record_absorbed(ctx: ParseContext, absorbed: Node, into: NodeOccurrenceIdentity) -> ParseContext {
-  match absorbed.occurrence_identity {
-    OccurrenceMinted { id: from } =>
-      match into {
-        OccurrenceMinted { id: to } =>
-          parse_context_with_source_extents(ctx: ctx, source_extents: ParseSourceExtentState {
-            recorded: ctx.source_extents.recorded,
-            published: ctx.source_extents.published,
-            erased_scopes: ctx.source_extents.erased_scopes,
-            absorbed: map_insert(ctx.source_extents.absorbed, from, to),
-          })
-        _ => ctx
-      }
+  match into {
+    OccurrenceMinted { id: to } =>
+      parse_context_with_source_extents(ctx: ctx, source_extents: ParseSourceExtentState {
+        recorded: ctx.source_extents.recorded,
+        published: ctx.source_extents.published,
+        erased_scopes: ctx.source_extents.erased_scopes,
+        absorbed: absorbed_subtree_into(acc: ctx.source_extents.absorbed, node: absorbed, into: to),
+      })
     _ => ctx
+  }
+}
+
+fn absorbed_subtree_into(acc: Map<OccurrenceId, OccurrenceId>, node: Node, into: OccurrenceId) -> Map<OccurrenceId, OccurrenceId> {
+  let with_self = match node.occurrence_identity {
+    OccurrenceMinted { id: id } => map_insert(acc, id, into)
+    _ => acc
+  }
+  let with_children = node.children |> fold(init: with_self, f: (m, c) => absorbed_subtree_into(acc: m, node: c, into: into))
+  let with_params = node.params |> fold(init: with_children, f: (m, c) => absorbed_subtree_into(acc: m, node: c, into: into))
+  let with_properties = node.properties |> fold(init: with_params, f: (m, c) => absorbed_subtree_into(acc: m, node: c, into: into))
+  match node.body {
+    Present { value: b } => absorbed_subtree_into(acc: with_properties, node: b, into: into)
+    Absent => with_properties
   }
 }
 

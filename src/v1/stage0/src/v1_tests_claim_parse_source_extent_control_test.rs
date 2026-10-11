@@ -36,7 +36,7 @@ pub fn extent_fixture_file() -> String {
 pub fn extent_fixture_source() -> String {
     thread_local! {
         static CACHED: String = {
-            "module zqxext.user\n\nimport std.types { Int, String }\nimport std.algebra\n\ntype ZqxRecord {\n  first: Int?\n  second: List<Int>\n}\n\ntype ZqxChoice = ZqxLeft | ZqxRight { n: Int }\n\ntype ZqxAlias = Int\n\ndata zqx_value: Int = (1 + 2) * 3\n\ndata zqx_brace: Int = { 1 }\n\nfn zqx_fn(arg: Int, other: String) -> Int {\n  let x = ((arg))\n  let c = ^(x)\n  let k = ((zqx_g))(x)\n  let s = \"a{x}b\"\n  let r = ZqxRecord { first: x, second: [1, 2] }\n  let y = match r {\n    ZqxRecord { first: f, second: _ } => { f }\n    _ => 0\n  }\n  if x > 1 { x |> add(1) } else { zqx_other(a: x, b: [1, 2]) }\n}\n".to_string()
+            "module zqxext.user\n\nimport std.types { Int, String }\nimport std.algebra\n\ntype ZqxRecord {\n  first: Int?\n  second: List<Int>\n}\n\ntype ZqxChoice = ZqxLeft | ZqxRight { n: Int }\n\ntype ZqxAlias = Int\n\ndata zqx_value: Int = (1 + 2) * 3\n\ndata zqx_brace: Int = { 1 }\n\nfn zqx_fn(arg: Int, other: String) -> Int {\n  let x = ((arg))\n  let c = ^(x)\n  let k = ((zqx_g))(x)\n  let q = (zqx_ns).ZqxType { zqx_field: 1 }\n  let s = \"a{x}b\"\n  let r = ZqxRecord { first: x, second: [1, 2] }\n  let y = match r {\n    ZqxRecord { first: f, second: _ } => { f }\n    _ => 0\n  }\n  if x > 1 { x |> add(1) } else { zqx_other(a: x, b: [1, 2]) }\n}\n".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -594,6 +594,52 @@ pub fn scopes_around_an_absorbed_callee_lie_inside_its_call_holds() -> bool {
                             Some(outer) => {
                                 ((extent_text(extent_fixture_source(), outer.clone())
                                     == "((zqx_g))(x)".to_string())
+                                    && span_within(scope.extent.clone(), outer.clone()))
+                            }
+                            std::option::Option::None => false,
+                        }
+                    }
+                }) {
+                    __all = false;
+                    break;
+                }
+            }
+            __all
+        })
+    }
+}
+
+pub fn scope_around_an_absorbed_descendant_lies_inside_its_container_holds() -> bool {
+    {
+        let parsed = parse_fixture(extent_fixture_source());
+        let ns_scopes = Rc::new({
+            let mut __result = Vec::new();
+            for scope in parsed
+                .source_extents
+                .clone()
+                .erased_scopes
+                .clone()
+                .iter()
+                .cloned()
+            {
+                if (extent_text(extent_fixture_source(), scope.extent.clone())
+                    == "(zqx_ns)".to_string())
+                {
+                    __result.push(scope);
+                }
+            }
+            __result
+        });
+        (((ns_scopes.clone().len() as i64) == 1) && {
+            let mut __all = true;
+            for scope in ns_scopes.iter().cloned() {
+                if !(match (*scope.relation.clone()).clone() {
+                    ErasedScopeRelation::ErasedScopeEncloses { occurrence: _, .. } => false,
+                    ErasedScopeRelation::ErasedScopeInside { container: c, .. } => {
+                        match extent_of(parsed.clone(), c.clone()) {
+                            Some(outer) => {
+                                ((extent_text(extent_fixture_source(), outer.clone())
+                                    == "(zqx_ns).ZqxType { zqx_field: 1 }".to_string())
                                     && span_within(scope.extent.clone(), outer.clone()))
                             }
                             std::option::Option::None => false,

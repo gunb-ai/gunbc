@@ -736,29 +736,61 @@ pub fn parse_context_record_absorbed(
     absorbed: Rc<Node>,
     into: Rc<NodeOccurrenceIdentity>,
 ) -> Rc<ParseContext> {
-    match (*absorbed.occurrence_identity.clone()).clone() {
-        NodeOccurrenceIdentity::OccurrenceMinted { id: from, .. } => {
-            match (*into.clone()).clone() {
-                NodeOccurrenceIdentity::OccurrenceMinted { id: to, .. } => {
-                    parse_context_with_source_extents(
-                        ctx.clone(),
-                        Rc::new(ParseSourceExtentState {
-                            recorded: ctx.source_extents.clone().recorded.clone(),
-                            published: ctx.source_extents.clone().published.clone(),
-                            erased_scopes: ctx.source_extents.clone().erased_scopes.clone(),
-                            absorbed: v1_rt::rc_map_insert(
-                                ctx.source_extents.clone().absorbed.clone(),
-                                from.clone(),
-                                to.clone(),
-                            ),
-                        }),
-                    )
-                }
-                _ => ctx.clone(),
-            }
+    match (*into.clone()).clone() {
+        NodeOccurrenceIdentity::OccurrenceMinted { id: to, .. } => {
+            parse_context_with_source_extents(
+                ctx.clone(),
+                Rc::new(ParseSourceExtentState {
+                    recorded: ctx.source_extents.clone().recorded.clone(),
+                    published: ctx.source_extents.clone().published.clone(),
+                    erased_scopes: ctx.source_extents.clone().erased_scopes.clone(),
+                    absorbed: absorbed_subtree_into(
+                        ctx.source_extents.clone().absorbed.clone(),
+                        absorbed.clone(),
+                        to.clone(),
+                    ),
+                }),
+            )
         }
         _ => ctx.clone(),
     }
+}
+
+pub fn absorbed_subtree_into(
+    acc: Rc<HashMap<OccurrenceId, OccurrenceId>>,
+    node: Rc<Node>,
+    into: OccurrenceId,
+) -> Rc<HashMap<OccurrenceId, OccurrenceId>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let with_self = match (*node.occurrence_identity.clone()).clone() {
+            NodeOccurrenceIdentity::OccurrenceMinted { id: id, .. } => {
+                v1_rt::rc_map_insert(acc.clone(), id.clone(), into.clone())
+            }
+            _ => acc.clone(),
+        };
+        let with_children = node.children.clone().iter().cloned().fold(
+            with_self.clone(),
+            |m: Rc<HashMap<OccurrenceId, OccurrenceId>>, c: Rc<Node>| {
+                absorbed_subtree_into(m, c.clone(), into.clone())
+            },
+        );
+        let with_params = node.params.clone().iter().cloned().fold(
+            with_children.clone(),
+            |m: Rc<HashMap<OccurrenceId, OccurrenceId>>, c: Rc<Node>| {
+                absorbed_subtree_into(m, c.clone(), into.clone())
+            },
+        );
+        let with_properties = node.properties.clone().iter().cloned().fold(
+            with_params.clone(),
+            |m: Rc<HashMap<OccurrenceId, OccurrenceId>>, c: Rc<Node>| {
+                absorbed_subtree_into(m, c.clone(), into.clone())
+            },
+        );
+        match node.body.clone() {
+            Some(b) => absorbed_subtree_into(with_properties.clone(), b.clone(), into.clone()),
+            std::option::Option::None => with_properties.clone(),
+        }
+    })
 }
 
 pub fn parse_context_with_source_extents(

@@ -66,6 +66,8 @@ import v2.std.provenance {
   origin_event_from_source,
   span_index_empty,
   span_index_extent,
+  span_index_extent_unrepresentable,
+  span_index_record_extent_unrepresentable,
   span_index_record,
   span_index_record_extent
 }
@@ -957,16 +959,17 @@ fn parse_composite_extent(index: SpanIndex, id: OccurrenceId, children: List<Nod
     ParseExtentSpan { file: file, start: start, end: end } =>
       span_index_record_extent(index: index, id: id, extent: Textual { file: file, extent: ByteRange { start: start, end: end } })
     ParseExtentNoneYet => index
-    ParseExtentUnreadable => index
+    ParseExtentUnreadable => span_index_record_extent_unrepresentable(index: index, id: id)
   }
 }
 
 
 // THE FOLD OVER A COMPOSITE'S CHILDREN, as a closed sum: nothing read yet, a same-file byte range,
 // or a child whose extent this cannot compose. A child in another file, a WholeFile locus or a
-// non-textual locus is UNREADABLE and absorbing: the parent then records no extent rather than a
-// range that silently omits that child (DESIGN 5: a failure arm refuses, never narrows). A child
-// with no extent consumed nothing and leaves the fold unchanged.
+// non-textual locus, or a child itself recorded unrepresentable, is UNREADABLE and absorbing: the
+// parent then records itself unrepresentable -- so ITS parent refuses too -- rather than a range
+// that silently omits that child (DESIGN 5: a failure arm refuses, never narrows). A child with no
+// extent at all consumed nothing and leaves the fold unchanged.
 type ParseExtentFold
   = ParseExtentNoneYet
   | ParseExtentSpan { file: Symbol, start: Int, end: Int }
@@ -979,6 +982,7 @@ fn parse_extent_span_step(acc: ParseExtentFold, index: SpanIndex, child: Node) -
       match node_occurrence_id_optional(node: child) {
         Absent => acc
         Present { value: child_id } =>
+          if span_index_extent_unrepresentable(index: index, id: child_id) { ParseExtentUnreadable } else {
           match span_index_extent(index: index, id: child_id) {
             Absent => acc
             Present { value: locus } =>
@@ -996,6 +1000,7 @@ fn parse_extent_span_step(acc: ParseExtentFold, index: SpanIndex, child: Node) -
                   }
                 _ => ParseExtentUnreadable
               }
+          }
           }
       }
   }
