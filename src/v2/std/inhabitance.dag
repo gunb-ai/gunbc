@@ -20,7 +20,6 @@ import v2.std.find_witness {
   find_witness
 }
 import v2.std.node {
-  Arrow,
   Atom,
   Occupancy,
   ComputationNode,
@@ -31,6 +30,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  node_is_arrow,
   node_subtree_nodes,
   node_synthetic
 }
@@ -466,17 +466,10 @@ fn inhabitance_arrow_signature_types(domain: Node, codomain: Node, labels: List<
   }
 }
 
-fn inhabitance_node_is_arrow(n: Node) -> Bool {
-  match n.kind {
-    TypeNode { connective: Arrow } => true
-    _ => false
-  }
-}
-
 fn inhabitance_signature_holds_arrow(domain_types: List<Node>, codomain: Node) -> Bool {
-  fold(node_subtree_nodes(root: codomain), init: false, f: fn(acc, m) { acc || inhabitance_node_is_arrow(n: m) })
+  fold(node_subtree_nodes(root: codomain), init: false, f: fn(acc, m) { acc || node_is_arrow(n: m) })
     || fold(domain_types, init: false, f: fn(acc, t) {
-      acc || fold(node_subtree_nodes(root: t), init: false, f: fn(a, m) { a || inhabitance_node_is_arrow(n: m) })
+      acc || fold(node_subtree_nodes(root: t), init: false, f: fn(a, m) { a || node_is_arrow(n: m) })
     })
 }
 
@@ -488,7 +481,7 @@ fn declared_type_inhabitance_structural(obligation: DeclaredTypeObligation) -> I
   ) {
     Present { value: reason } => InhabitanceUndecidable { reason: reason }
     Absent =>
-      if inhabitance_node_is_arrow(n: obligation.declared) && inhabitance_node_is_arrow(n: obligation.produced) {
+      if node_is_arrow(n: obligation.declared) && node_is_arrow(n: obligation.produced) {
         declared_type_inhabitance_arrow(obligation: obligation)
       } else {
         declared_type_inhabitance_exact(obligation: obligation)
