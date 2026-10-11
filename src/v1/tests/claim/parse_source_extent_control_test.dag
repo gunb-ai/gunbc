@@ -1,0 +1,267 @@
+module v1.tests.claim.parse_source_extent_control_test
+
+import extdeps.languages.dag.syntax { dag_parse_environment }
+import extdeps.filesystem.filesystem_io
+import std.types { String, List, Int, Bool, SourceSpan }
+import std.algebra { FreeMonoid, Empty, Cons }
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceIndexEntry,
+}
+import v1.compiler.tokenize { tokenize }
+import v1.compiler.parse {
+  parse_with_table,
+  ParseWithTableResult,
+  ParsedSourceExtent,
+  ErasedSourceScope,
+  ErasedSourceScopeKind,
+  ErasedParenScope,
+  ErasedSingletonBlockScope,
+}
+import v1.std.core {
+  build_newline_index,
+  empty_intern_table,
+}
+
+// THE v1 HALF OF ROADMAP NODE parse-node-source-extent, asserted against the production parser.
+// v1.compiler.parse publishes a source-extent side table with its result: one interval per published
+// occurrence, recorded when the occurrence's syntax completed, plus the source scopes the semantic
+// tree erases (`(x)` and a one-statement block). These controls read that table from
+// parse_with_table, never from a hand-built one.
+//
+// They import v1.compiler.parse, so no witness under dag/test/claim can call them, and they run on no
+// required path. Direct execution is evidence they HOLD; it is not evidence CI runs them.
+//
+//   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 --claim-run \
+//     --entry src/v1/tests/claim/parse_source_extent_control_test.dag \
+//     --function <test fn>
+
+data extent_fixture_file: String = "zqxext_fixture.dag"
+
+// One module exercising every production family the parser mints from: imports, record, coproduct
+// and alias types, an optional suffix, generic arguments, a data row, a function with parameters,
+// let, nested parentheses, interpolation, record literal, match with patterns and arm bodies, if,
+// pipe, calls with named arguments, list literal and binary operators.
+data extent_fixture_source: String = "module zqxext.user\n\nimport std.types \{ Int, String \}\nimport std.algebra\n\ntype ZqxRecord \{\n  first: Int?\n  second: List<Int>\n\}\n\ntype ZqxChoice = ZqxLeft | ZqxRight \{ n: Int \}\n\ntype ZqxAlias = Int\n\ndata zqx_value: Int = (1 + 2) * 3\n\nfn zqx_fn(arg: Int, other: String) -> Int \{\n  let x = ((arg))\n  let s = \"a\{x}b\"\n  let r = ZqxRecord \{ first: x, second: [1, 2] \}\n  let y = match r \{\n    ZqxRecord \{ first: f, second: _ \} => \{ f \}\n    _ => 0\n  \}\n  if x > 1 \{ x |> add(1) \} else \{ zqx_other(a: x, b: [1, 2]) \}\n\}\n"
+
+fn parse_fixture(source: String) -> ParseWithTableResult {
+  parse_with_table(
+    tokens: tokenize(source: source, file: extent_fixture_file, env: dag_parse_environment),
+    source_indices: map_insert(empty_map(), extent_fixture_file, build_newline_index(file: extent_fixture_file, source: source)),
+    intern_table: empty_intern_table(),
+  )
+}
+
+fn parsed_ok(parsed: ParseWithTableResult) -> Bool {
+  match parsed.result.error {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+fn extent_rows_for(parsed: ParseWithTableResult, id: OccurrenceId) -> List<ParsedSourceExtent> {
+  parsed.source_extents.extents |> filter(row => row.occurrence == id)
+}
+
+fn free_monoid_last(xs: FreeMonoid<OccurrenceId>, last: OccurrenceId?) -> OccurrenceId? {
+  match xs {
+    Empty => last
+    Cons { head: h, tail: t } => free_monoid_last(xs: t, last: Present { value: h })
+  }
+}
+
+fn span_within(inner: SourceSpan, outer: SourceSpan) -> Bool {
+  outer.start <= inner.start && inner.end <= outer.end
+}
+
+// The source text an extent covers.
+fn extent_text(source: String, extent: SourceSpan) -> String {
+  substring(s: source, start: extent.start, end: extent.end)
+}
+
+fn extent_texts(parsed: ParseWithTableResult, source: String) -> List<String> {
+  parsed.source_extents.extents |> map(row => extent_text(source: source, extent: row.extent))
+}
+
+fn has_extent_text(parsed: ParseWithTableResult, source: String, text: String) -> Bool {
+  extent_texts(parsed: parsed, source: source) |> any(t => t == text)
+}
+
+// AN OCCURRENCE IS COVERED when it has exactly one row and that row lies inside its parent's row.
+// Exactly-one is the identity join (a row per published occurrence, no duplicates); containment is
+// what makes the rows a tree of source regions a gap can be located in rather than a bag of spans.
+fn entry_covered(parsed: ParseWithTableResult, entry: OccurrenceIndexEntry) -> Bool {
+  match extent_rows_for(parsed: parsed, id: entry.projection.occurrence) |> first {
+    Absent => false
+    Present { value: own } =>
+      (extent_rows_for(parsed: parsed, id: entry.projection.occurrence) |> count) == 1
+        && match free_monoid_last(xs: entry.containment.ancestors, last: none) {
+          Absent => true
+          Present { value: parent } =>
+            match extent_rows_for(parsed: parsed, id: parent) |> first {
+              Absent => false
+              Present { value: outer } => span_within(inner: own.extent, outer: outer.extent)
+            }
+        }
+  }
+}
+
+// The occurrences that are NOT covered, rendered as `name@start` for a reader -- the diagnostic
+// form of the coverage control, run with --function to see what a failure means.
+fn uncovered_occurrences(source: String) -> List<String> {
+  let parsed = parse_fixture(source: source)
+  parsed.occurrence_transport.index.entries
+    |> filter(e => !entry_covered(parsed: parsed, entry: e))
+    |> map(e => concat(e.projection.authored_name, "@", to_string(e.projection.diagnostic_span.start)))
+}
+
+// Every row belongs to a published occurrence: a speculative or refused branch that minted and
+// recorded, then was abandoned, would leave a row naming an identity no tree carries.
+fn every_row_is_published(parsed: ParseWithTableResult) -> Bool {
+  parsed.source_extents.extents
+    |> all(row => parsed.occurrence_transport.index.entries |> any(e => e.projection.occurrence == row.occurrence))
+}
+
+// THE WHOLE-POPULATION CONTROL. Every published occurrence of the fixture has exactly one extent
+// inside its parent's, and no row is orphaned. A production that minted without recording, recorded
+// twice, recorded an interval its parent does not contain, or leaked a row from an abandoned branch
+// makes this RED. The population is the parser's own index, not a list written here.
+test fn every_published_occurrence_has_one_contained_extent_holds() -> Bool {
+  let parsed = parse_fixture(source: extent_fixture_source)
+  parsed_ok(parsed: parsed)
+    && (parsed.occurrence_transport.index.entries |> count) > 50
+    && (uncovered_occurrences(source: extent_fixture_source) |> count) == 0
+    && every_row_is_published(parsed: parsed)
+}
+
+// AN OPTIONAL TYPE INCLUDES ITS `?`. The identity of `Int` is minted before the parser reads `?`, so
+// an extent recorded at mint time would read `Int`; the row is recorded where the suffix completes.
+test fn optional_type_extent_includes_its_suffix_holds() -> Bool {
+  let parsed = parse_fixture(source: extent_fixture_source)
+  has_extent_text(parsed: parsed, source: extent_fixture_source, text: "Int?")
+    && has_extent_text(parsed: parsed, source: extent_fixture_source, text: "first: Int?")
+}
+
+// AN IMPORT STOPS AT ITS LAST TOKEN. parse_import consumes the newlines after a statement; the extent
+// excludes them, so removing the statement does not remove the blank line after it.
+test fn import_extent_stops_before_its_newlines_holds() -> Bool {
+  let parsed = parse_fixture(source: extent_fixture_source)
+  has_extent_text(parsed: parsed, source: extent_fixture_source, text: "import std.types \{ Int, String \}")
+    && has_extent_text(parsed: parsed, source: extent_fixture_source, text: "import std.algebra")
+    && !has_extent_text(parsed: parsed, source: extent_fixture_source, text: "import std.algebra\n")
+}
+
+// A BINARY EXPRESSION STARTS AT ITS LEFT OPERAND, not at the operator its diagnostic span names;
+// `(1 + 2) * 3` starts at the parenthesis that opens its left operand.
+test fn binary_expression_extent_starts_at_its_left_operand_holds() -> Bool {
+  let parsed = parse_fixture(source: extent_fixture_source)
+  has_extent_text(parsed: parsed, source: extent_fixture_source, text: "1 + 2")
+    && has_extent_text(parsed: parsed, source: extent_fixture_source, text: "(1 + 2) * 3")
+    && has_extent_text(parsed: parsed, source: extent_fixture_source, text: "x > 1")
+    && has_extent_text(parsed: parsed, source: extent_fixture_source, text: "x |> add(1)")
+}
+
+// A BLOCK RUNS TO ITS CLOSING BRACE. The function's extent ends at its final `}`, so a position
+// between the last statement and that brace is inside the function, and one after it is not.
+test fn function_extent_reaches_its_closing_brace_holds() -> Bool {
+  let parsed = parse_fixture(source: extent_fixture_source)
+  parsed.source_extents.extents
+    |> any(row =>
+      starts_with(s: extent_text(source: extent_fixture_source, extent: row.extent), prefix: "fn zqx_fn(")
+        && row.extent.end == string_length(s: extent_fixture_source) - 1)
+}
+
+// EACH INTERPOLATION FRAGMENT KEEPS ITS OWN SOURCE. The fragments are minted together after the
+// closing token, when the cursor no longer locates them; each still carries the token or expression
+// it was read from.
+test fn interpolation_fragments_keep_their_own_extents_holds() -> Bool {
+  let parsed = parse_fixture(source: extent_fixture_source)
+  has_extent_text(parsed: parsed, source: extent_fixture_source, text: "\"a\{x}b\"")
+    && has_extent_text(parsed: parsed, source: extent_fixture_source, text: "x")
+}
+
+fn erased_scope_texts(parsed: ParseWithTableResult, source: String, kind_is_paren: Bool) -> List<String> {
+  parsed.source_extents.erased_scopes
+    |> filter(scope => match scope.kind {
+      ErasedParenScope => kind_is_paren
+      ErasedSingletonBlockScope => !kind_is_paren
+    })
+    |> map(scope => extent_text(source: source, extent: scope.extent))
+}
+
+// `((arg))` IS `arg` IN THE SEMANTIC TREE, so its two parenthesis scopes survive only in the side
+// table: innermost first, each enclosing the same occurrence.
+test fn nested_parentheses_keep_both_erased_scopes_holds() -> Bool {
+  let parsed = parse_fixture(source: extent_fixture_source)
+  let parens = erased_scope_texts(parsed: parsed, source: extent_fixture_source, kind_is_paren: true)
+  let arg_scopes = parsed.source_extents.erased_scopes
+    |> filter(scope => extent_text(source: extent_fixture_source, extent: scope.extent) == "(arg)"
+      || extent_text(source: extent_fixture_source, extent: scope.extent) == "((arg))")
+  (parens |> any(t => t == "(arg)"))
+    && (parens |> any(t => t == "((arg))"))
+    && (parens |> any(t => t == "(1 + 2)"))
+    && (arg_scopes |> count) == 2
+    && match arg_scopes |> first {
+      Absent => false
+      Present { value: inner } =>
+        extent_text(source: extent_fixture_source, extent: inner.extent) == "(arg)"
+          && (arg_scopes |> all(scope => scope.enclosed == inner.enclosed))
+    }
+}
+
+// `{ f }` IS `f`: a one-statement block keeps its brace scope as an erased scope. A multi-statement
+// block is a node of its own and records no erased scope.
+test fn singleton_block_keeps_its_erased_scope_holds() -> Bool {
+  let parsed = parse_fixture(source: extent_fixture_source)
+  let blocks = erased_scope_texts(parsed: parsed, source: extent_fixture_source, kind_is_paren: false)
+  (blocks |> any(t => t == "\{ f \}"))
+    && (blocks |> any(t => t == "\{ x |> add(1) \}"))
+    && !(blocks |> any(t => starts_with(s: t, prefix: "\{\n  let x")))
+}
+
+// THE SPECULATIVE CONTROL. `if zqx_c == ZqxLeft \{ .. \}` is first read as a record literal
+// `ZqxLeft \{ .. \}` and then re-parsed with the brace as the branch. The abandoned reading minted and
+// recorded; none of its rows may survive into the published table.
+data speculative_fixture_source: String = "module zqxext.spec\n\nfn zqx_spec(zqx_c: Int) -> Int \{\n  if zqx_c == ZqxLeft \{ 1 \} else \{ 2 \}\n\}\n"
+
+test fn abandoned_branch_leaves_no_extent_rows_holds() -> Bool {
+  let parsed = parse_fixture(source: speculative_fixture_source)
+  parsed_ok(parsed: parsed)
+    && every_row_is_published(parsed: parsed)
+    && (uncovered_occurrences(source: speculative_fixture_source) |> count) == 0
+}
+
+// The rendering of the coverage control's failures for the main fixture, for --function.
+fn fixture_uncovered_occurrences() -> List<String> {
+  uncovered_occurrences(source: extent_fixture_source)
+}
+
+
+// THE SAME CONTROL OVER AUTHORED CORPUS FILES, for a reader who wants it beyond the fixture: each
+// file's uncovered occurrences, as `path: name@start`. Manual; reads the live tree.
+data extent_corpus_paths: List<String> = [
+  "dag/std/source_annotation.dag",
+  "dag/std/occurrence_identity.dag",
+  "src/v1/annotation_bind.dag",
+  "dag/gunbc/roadmap/roadmap_review_criteria.dag",
+]
+
+fn corpus_file_uncovered(path: String) -> List<String> {
+  let source = filesystem_read(path: path).content
+  let parsed = parse_with_table(
+    tokens: tokenize(source: source, file: path, env: dag_parse_environment),
+    source_indices: map_insert(empty_map(), path, build_newline_index(file: path, source: source)),
+    intern_table: empty_intern_table(),
+  )
+  let refusal = match parsed.result.error {
+    Present { value: _ } => [concat(path, ": refused to parse")]
+    Absent => []
+  }
+  concat(refusal, parsed.occurrence_transport.index.entries
+    |> filter(e => !entry_covered(parsed: parsed, entry: e))
+    |> map(e => concat(path, ": ", e.projection.authored_name, "@", to_string(e.projection.diagnostic_span.start))))
+}
+
+fn corpus_uncovered_occurrences() -> List<String> {
+  extent_corpus_paths |> flat_map(p => corpus_file_uncovered(path: p))
+}

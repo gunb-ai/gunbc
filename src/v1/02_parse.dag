@@ -108,17 +108,22 @@ import std.syntax {
 import extdeps.languages.dag.syntax { dag_parse_environment }
 import std.syntax { ParseEnvironment }
 
+// `consumed_end` is the end of the last non-newline token this stream has advanced past. It is
+// carried by every advance because that is the only moment the fact is free: a node completing
+// at this stream ends there, and reading it back from `all` later would rescan tokens the parser
+// already walked. Newlines are excluded because they separate syntax rather than belong to it.
 type TokenStream {
   all: List<Token>
   pos: Int
+  consumed_end: Int?
 }
 
 fn token_stream_new(all: List<Token>) -> TokenStream {
-  TokenStream { all: all, pos: 0 }
+  TokenStream { all: all, pos: 0, consumed_end: none }
 }
 
 fn token_stream_empty() -> TokenStream {
-  TokenStream { all: [], pos: 0 }
+  TokenStream { all: [], pos: 0, consumed_end: none }
 }
 
 fn token_stream_position(stream: TokenStream) -> Int {
@@ -130,7 +135,27 @@ fn token_stream_first(stream: TokenStream) -> Token? {
 }
 
 fn token_stream_advance(stream: TokenStream, n: Int) -> TokenStream {
-  TokenStream { all: stream.all, pos: stream.pos + n }
+  TokenStream {
+    all: stream.all,
+    pos: stream.pos + n,
+    consumed_end: token_window_consumed_end(all: stream.all, from: stream.pos, until: stream.pos + n, end: stream.consumed_end),
+  }
+}
+
+fn token_window_consumed_end(all: List<Token>, from: Int, until: Int, end: Int?) -> Int? {
+  if from >= until {
+    end
+  } else {
+    match get(xs: all, index: from) {
+      Absent => token_window_consumed_end(all: all, from: from + 1, until: until, end: end)
+      Present { value: t } =>
+        if is_newline_shape(shape: t.shape) {
+          token_window_consumed_end(all: all, from: from + 1, until: until, end: end)
+        } else {
+          token_window_consumed_end(all: all, from: from + 1, until: until, end: Present { value: t.span.end })
+        }
+    }
+  }
 }
 
 fn token_stream_peek(stream: TokenStream, offset: Int) -> Token? {
@@ -153,6 +178,75 @@ type ParseContext {
   reference_occurrences: List<ReferenceOccurrence>?
   heads_only: Bool
   env: ParseEnvironment
+  source_extents: ParseSourceExtentState
+}
+
+// THE PARSER'S SOURCE-EXTENT SIDE TABLE (roadmap parse-node-source-extent). Each published source
+// occurrence's complete interval, recorded once, at the moment its syntax completes: from its first
+// token to the last non-newline token it consumed, so a suffix read after the identity was minted
+// (`Int?`) is inside and the newlines after an import are not. It is a side table rather than a Node
+// field so no later reconstruction of a semantic Node has to carry parser facts, and it rides the
+// ParseContext so a refused or speculative branch discards its rows with its allocator.
+//
+// RECORDED IS NOT PUBLISHED. An identity can be minted, recorded, and then absorbed by its parent --
+// a callee variable folded into its call node -- so the rows are recorded by occurrence while parsing
+// and PUBLISHED by stamp_parsed_node as it walks the surviving tree: the published table is exactly
+// the published occurrences, in the same pass that builds the occurrence index, with no row for an
+// identity no tree carries.
+//
+// `erased_scopes` are source regions the semantic tree simplifies away -- the parentheses of `(x)`
+// and the braces of a one-statement block both return the inner node unchanged -- kept with the
+// occurrence they enclose, innermost first, so a comment between `(` and `x` still has a scope.
+type ParsedSourceExtent {
+  occurrence: OccurrenceId
+  extent: SourceSpan
+}
+
+type ErasedSourceScopeKind = ErasedParenScope | ErasedSingletonBlockScope
+
+type ErasedSourceScope {
+  kind: ErasedSourceScopeKind
+  extent: SourceSpan
+  enclosed: OccurrenceId
+}
+
+// The published table, carried on ParseWithTableResult.
+type ParsedSourceExtents {
+  extents: List<ParsedSourceExtent>
+  erased_scopes: List<ErasedSourceScope>
+}
+
+// The parse-time state: `recorded` by occurrence while parsing, `published` by the stamping walk.
+type ParseSourceExtentState {
+  recorded: Map<OccurrenceId, SourceSpan>
+  published: List<ParsedSourceExtent>
+  erased_scopes: List<ErasedSourceScope>
+}
+
+fn parse_source_extent_state_empty() -> ParseSourceExtentState {
+  ParseSourceExtentState { recorded: empty_map(), published: [], erased_scopes: [] }
+}
+
+// The recorded extent of `node`, or Absent when it has no minted identity or recorded no row.
+fn parsed_source_extent_of(extents: ParseSourceExtentState, node: Node) -> SourceSpan? {
+  match node.occurrence_identity {
+    OccurrenceMinted { id: id } => lookup(extents.recorded, key: id)
+    _ => none
+  }
+}
+
+// THE PUBLISHED TABLE. `published` was built by the stamping walk, so it already holds exactly the
+// published occurrences; an erased scope is published only when the occurrence it encloses was, since
+// `(f)(x)` absorbs `f` into its call exactly as `f(x)` does.
+fn parsed_source_extents_published(state: ParseSourceExtentState) -> ParsedSourceExtents {
+  let published_ids = state.published |> fold(init: empty_map(), f: (acc, row) => map_insert(acc, row.occurrence, true))
+  ParsedSourceExtents {
+    extents: state.published,
+    erased_scopes: state.erased_scopes |> filter(scope => match lookup(published_ids, key: scope.enclosed) {
+      Present { value: _ } => true
+      Absent => false
+    }),
+  }
 }
 
 type ParseResult {
@@ -165,6 +259,7 @@ type ParseWithTableResult {
   intern_table: InternTable
   occurrence_allocator: OccurrenceIdAllocator
   occurrence_transport: OccurrenceTransport
+  source_extents: ParsedSourceExtents
 }
 
 type ParsedNodeStampResult {
@@ -204,19 +299,163 @@ type ParsedNodeIdentityMint {
   ctx: ParseContext
 }
 
-fn mint_parsed_node_identity(ctx: ParseContext) -> ParsedNodeIdentityMint {
+// WHERE A MINTED OCCURRENCE'S SOURCE ENDS is stated by the mint's caller, because only the caller
+// knows whether its syntax is complete. `ConsumedWindow` is the common case: the node is exactly the
+// tokens consumed between `from` and `to`. `CompletedLater` is for an identity minted before its
+// syntax ends -- `Int` before a `?` suffix, a binary expression whose start is its left operand --
+// and obliges the completing site to call parse_context_record_extent; the whole-parse coverage
+// control in v1.test.parse.source_extent fails on any occurrence left without a row.
+//
+// `FromToken` is the same window stated by its first token's span, for productions entered after
+// their leading keyword was consumed (`parse_type_after_kw`) that carry that keyword's span.
+type ParsedExtentAt
+  = ConsumedWindow { from: TokenStream, to: TokenStream }
+  | FromToken { start: SourceSpan, to: TokenStream }
+  | AtToken { span: SourceSpan }
+  | CompletedLater
+
+fn mint_parsed_node_identity(ctx: ParseContext, at: ParsedExtentAt) -> ParsedNodeIdentityMint {
   let allocated = alloc_occurrence_id(
     alloc: ctx.occurrence_allocator
   )
+  let advanced = parse_context_with_occurrence_state(
+    ctx: ctx,
+    occurrence_allocator: allocated.alloc,
+    occurrence_index: ctx.occurrence_index,
+    declaration_occurrences: ctx.declaration_occurrences,
+    reference_occurrences: ctx.reference_occurrences
+  )
   ParsedNodeIdentityMint {
     identity: node_occurrence_identity_minted(id: allocated.id),
-    ctx: parse_context_with_occurrence_state(
-      ctx: ctx,
-      occurrence_allocator: allocated.alloc,
-      occurrence_index: ctx.occurrence_index,
-      declaration_occurrences: ctx.declaration_occurrences,
-      reference_occurrences: ctx.reference_occurrences
-    ),
+    ctx: match at {
+      ConsumedWindow { from: from, to: to } =>
+        parse_context_record_window(ctx: advanced, occurrence: allocated.id, from: from, to: to)
+      FromToken { start: start, to: to } =>
+        match token_extent_from(start: start, to: to) {
+          Absent => advanced
+          Present { value: extent } => parse_context_record_extent(ctx: advanced, occurrence: allocated.id, extent: extent)
+        }
+      AtToken { span: span } => parse_context_record_extent(ctx: advanced, occurrence: allocated.id, extent: span)
+      CompletedLater => advanced
+    },
+  }
+}
+
+// The first non-newline token at or after `from`, provided the window consumed it.
+fn token_window_start(stream: TokenStream, until: Int) -> SourceSpan? {
+  if stream.pos >= until {
+    none
+  } else {
+    match token_stream_first(stream: stream) {
+      Absent => none
+      Present { value: t } =>
+        if is_newline_shape(shape: t.shape) {
+          token_window_start(stream: token_stream_advance(stream: stream, n: 1), until: until)
+        } else {
+          Present { value: t.span }
+        }
+    }
+  }
+}
+
+// The interval a consumed window covers, or Absent for a window that consumed no non-newline
+// token: an empty match has no source interval and is not given one at a guessed position.
+fn token_window_extent(from: TokenStream, to: TokenStream) -> SourceSpan? {
+  match token_window_start(stream: from, until: to.pos) {
+    Absent => none
+    Present { value: first } =>
+      match to.consumed_end {
+        Absent => none
+        Present { value: end } => Present { value: SourceSpan { file: first.file, start: first.start, end: end } }
+      }
+  }
+}
+
+fn token_extent_from(start: SourceSpan, to: TokenStream) -> SourceSpan? {
+  match to.consumed_end {
+    Absent => none
+    Present { value: end } =>
+      if end < start.end { none } else { Present { value: SourceSpan { file: start.file, start: start.start, end: end } } }
+  }
+}
+
+fn parse_context_record_window(ctx: ParseContext, occurrence: OccurrenceId, from: TokenStream, to: TokenStream) -> ParseContext {
+  match token_window_extent(from: from, to: to) {
+    Absent => ctx
+    Present { value: extent } => parse_context_record_extent(ctx: ctx, occurrence: occurrence, extent: extent)
+  }
+}
+
+fn parse_context_record_extent(ctx: ParseContext, occurrence: OccurrenceId, extent: SourceSpan) -> ParseContext {
+  parse_context_with_source_extents(ctx: ctx, source_extents: ParseSourceExtentState {
+    recorded: map_insert(ctx.source_extents.recorded, occurrence, extent),
+    published: ctx.source_extents.published,
+    erased_scopes: ctx.source_extents.erased_scopes,
+  })
+}
+
+// Records the extent of a node whose identity was minted `CompletedLater`. A node with no minted
+// identity has no row to own.
+fn parse_context_record_node_from(ctx: ParseContext, node: Node, start: SourceSpan, to: TokenStream) -> ParseContext {
+  match node.occurrence_identity {
+    OccurrenceMinted { id: id } =>
+      match token_extent_from(start: start, to: to) {
+        Absent => ctx
+        Present { value: extent } => parse_context_record_extent(ctx: ctx, occurrence: id, extent: extent)
+      }
+    _ => ctx
+  }
+}
+
+// An already-recorded node whose syntax is extended after it completed -- a resource type `T` that
+// gains configuration arguments `T(..)` under the same identity -- has its row replaced, so each
+// occurrence keeps exactly one extent.
+fn parse_context_extend_node_extent(ctx: ParseContext, node: Node, from: TokenStream, to: TokenStream) -> ParseContext {
+  match node.occurrence_identity {
+    OccurrenceMinted { id: id } =>
+      match token_window_extent(from: from, to: to) {
+        Absent => ctx
+        Present { value: extent } =>
+          parse_context_record_extent(ctx: ctx, occurrence: id, extent: extent)
+      }
+    _ => ctx
+  }
+}
+
+fn parse_context_record_node_window(ctx: ParseContext, node: Node, from: TokenStream, to: TokenStream) -> ParseContext {
+  match node.occurrence_identity {
+    OccurrenceMinted { id: id } => parse_context_record_window(ctx: ctx, occurrence: id, from: from, to: to)
+    _ => ctx
+  }
+}
+
+fn parse_context_record_erased_scope(ctx: ParseContext, kind: ErasedSourceScopeKind, enclosed: Node, from: TokenStream, to: TokenStream) -> ParseContext {
+  match enclosed.occurrence_identity {
+    OccurrenceMinted { id: id } =>
+      match token_window_extent(from: from, to: to) {
+        Absent => ctx
+        Present { value: extent } =>
+          parse_context_with_source_extents(ctx: ctx, source_extents: ParseSourceExtentState {
+            recorded: ctx.source_extents.recorded,
+            published: ctx.source_extents.published,
+            erased_scopes: list_push(ctx.source_extents.erased_scopes, ErasedSourceScope { kind: kind, extent: extent, enclosed: id }),
+          })
+      }
+    _ => ctx
+  }
+}
+
+fn parse_context_with_source_extents(ctx: ParseContext, source_extents: ParseSourceExtentState) -> ParseContext {
+  ParseContext {
+    source_indices: ctx.source_indices,
+    intern_table: ctx.intern_table,
+    occurrence_allocator: ctx.occurrence_allocator,
+    occurrence_index: ctx.occurrence_index,
+    declaration_occurrences: ctx.declaration_occurrences,
+    reference_occurrences: ctx.reference_occurrences,
+    heads_only: ctx.heads_only,
+    env: ctx.env,
+    source_extents: source_extents,
   }
 }
 
@@ -261,6 +500,7 @@ fn parse_context_with_occurrence_state(
     reference_occurrences: reference_occurrences,
     heads_only: ctx.heads_only,
     env: ctx.env,
+    source_extents: ctx.source_extents,
   }
 }
 
@@ -277,6 +517,7 @@ fn parse_context_with_intern_table(
     reference_occurrences: ctx.reference_occurrences,
     heads_only: ctx.heads_only,
     env: ctx.env,
+    source_extents: ctx.source_extents,
   }
 }
 
@@ -346,12 +587,14 @@ type ParsedPropertiesResult { properties: List<Node>, ctx: ParseContext }
 type ParsedPropertyResult { property: Node, ctx: ParseContext }
 type ParsedNodesResult { nodes: List<Node>, ctx: ParseContext }
 
+// `from` is where the expression's syntax began and `tokens` where it completed.
 fn parsed_expr_result(
+  from: TokenStream,
   tokens: TokenStream,
   ctx: ParseContext,
   build: fn(NodeOccurrenceIdentity) -> Node
 ) -> ExprResult {
-  let minted = mint_parsed_node_identity(ctx: ctx)
+  let minted = mint_parsed_node_identity(ctx: ctx, at: ConsumedWindow { from: from, to: tokens })
   ExprResult {
     expr: build(minted.identity),
     tokens: tokens,
@@ -360,10 +603,11 @@ fn parsed_expr_result(
   }
 }
 
-fn parsed_sole_constructor_properties(ctx: ParseContext, enabled: Bool, span: SourceSpan) -> ParsedPropertiesResult {
+// The implied `true` and its property both stand for the marker's own tokens, `at`.
+fn parsed_sole_constructor_properties(ctx: ParseContext, enabled: Bool, span: SourceSpan, at: ParsedExtentAt) -> ParsedPropertiesResult {
   if enabled {
-    let value_mint = mint_parsed_node_identity(ctx: ctx)
-    let property_mint = mint_parsed_node_identity(ctx: value_mint.ctx)
+    let value_mint = mint_parsed_node_identity(ctx: ctx, at: at)
+    let property_mint = mint_parsed_node_identity(ctx: value_mint.ctx, at: at)
     ParsedPropertiesResult {
       properties: [make_field_init_node(
         occurrence_identity: property_mint.identity,
@@ -379,9 +623,9 @@ fn parsed_sole_constructor_properties(ctx: ParseContext, enabled: Bool, span: So
   }
 }
 
-fn mint_parsed_bool_property(ctx: ParseContext, name: String, span: SourceSpan) -> ParsedPropertyResult {
-  let value_mint = mint_parsed_node_identity(ctx: ctx)
-  let property_mint = mint_parsed_node_identity(ctx: value_mint.ctx)
+fn mint_parsed_bool_property(ctx: ParseContext, name: String, span: SourceSpan, at: ParsedExtentAt) -> ParsedPropertyResult {
+  let value_mint = mint_parsed_node_identity(ctx: ctx, at: at)
+  let property_mint = mint_parsed_node_identity(ctx: value_mint.ctx, at: at)
   ParsedPropertyResult {
     property: make_field_init_node(
       occurrence_identity: property_mint.identity,
@@ -394,11 +638,12 @@ fn mint_parsed_bool_property(ctx: ParseContext, name: String, span: SourceSpan) 
   }
 }
 
-fn mint_parsed_optional_int_property(ctx: ParseContext, name: String, value: Int?, span: SourceSpan) -> ParsedPropertiesResult {
+fn mint_parsed_optional_int_property(ctx: ParseContext, name: String, value: RangeBound?, span: SourceSpan) -> ParsedPropertiesResult {
   match value {
-    Present { value: n } => {
-      let value_mint = mint_parsed_node_identity(ctx: ctx)
-      let property_mint = mint_parsed_node_identity(ctx: value_mint.ctx)
+    Present { value: bound } => {
+      let n = bound.value
+      let value_mint = mint_parsed_node_identity(ctx: ctx, at: bound.value_at)
+      let property_mint = mint_parsed_node_identity(ctx: value_mint.ctx, at: bound.property_at)
       ParsedPropertiesResult {
         properties: [make_field_init_node(occurrence_identity: property_mint.identity, name: name, value: make_expr_node(occurrence_identity: value_mint.identity, expr_data: ExprLiteral { value: LitInt { value: n } }, children: [], inferred: none, span: span), span: span, name_span: span)],
         ctx: property_mint.ctx,
@@ -408,10 +653,16 @@ fn mint_parsed_optional_int_property(ctx: ParseContext, name: String, value: Int
   }
 }
 
-fn mint_parsed_string_part_nodes(parts: List<StringPart>, ctx: ParseContext, span: SourceSpan, acc: List<Node>) -> ParsedNodesResult {
+// One fragment of an interpolated string, with the source it was read from: a text fragment is its
+// string token, an interpolation is its expression's tokens. Kept beside the part because the
+// fragments are minted together after the closing token, when the cursor no longer locates them.
+type ParsedStringPart { part: StringPart, at: ParsedExtentAt }
+
+fn mint_parsed_string_part_nodes(parts: List<ParsedStringPart>, ctx: ParseContext, span: SourceSpan, acc: List<Node>) -> ParsedNodesResult {
   match parts |> first {
-    Present { value: part } => {
-      let minted = mint_parsed_node_identity(ctx: ctx)
+    Present { value: parsed } => {
+      let part = parsed.part
+      let minted = mint_parsed_node_identity(ctx: ctx, at: parsed.at)
       let node = match part {
         Text { value: text } => make_text_part_node(occurrence_identity: minted.identity, text: text, span: span)
         Interpolation { expr: expr } => make_interp_part_node(occurrence_identity: minted.identity, expr: expr, span: span)
@@ -425,12 +676,14 @@ fn mint_parsed_string_part_nodes(parts: List<StringPart>, ctx: ParseContext, spa
 // Predicate values are structurally inside their field-init wrapper, so this
 // helper mints the child first and the enclosing occurrence second.
 fn parsed_predicate_result(
+  value_at: ParsedExtentAt,
+  predicate_at: ParsedExtentAt,
   tokens: TokenStream,
   ctx: ParseContext,
   build: fn(NodeOccurrenceIdentity, NodeOccurrenceIdentity) -> Node
 ) -> PredResult {
-  let value_mint = mint_parsed_node_identity(ctx: ctx)
-  let predicate_mint = mint_parsed_node_identity(ctx: value_mint.ctx)
+  let value_mint = mint_parsed_node_identity(ctx: ctx, at: value_at)
+  let predicate_mint = mint_parsed_node_identity(ctx: value_mint.ctx, at: predicate_at)
   PredResult {
     predicate: build(value_mint.identity, predicate_mint.identity),
     tokens: tokens,
@@ -511,8 +764,10 @@ type PipeCalleeResult { spine: Node?, method: String, method_span: SourceSpan, t
 type ParserParam { occurrence_identity: NodeOccurrenceIdentity, name: String, span: SourceSpan }
 type LambdaCheckResult { is_lambda: Bool, params: List<ParserParam>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 type IdentCollectResult { success: Bool, params: List<ParserParam>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
-type RangeArgsResult { min_val: Int?, max_val: Int?, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
-type NamedIntResult { arg_name: String, arg_value: Int, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+// A `range(min: 1, max: 9)` bound: its value, and the windows of its `min: 1` property and `1` value.
+type RangeBound { value: Int, property_at: ParsedExtentAt, value_at: ParsedExtentAt }
+type RangeArgsResult { min_val: RangeBound?, max_val: RangeBound?, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type NamedIntResult { arg_name: String, arg_value: RangeBound, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 type ServiceBodyResult { config: ServiceConfig?, transport: Node, operations: List<Node>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 type IOResult { inputs: List<Node>, outputs: List<Node>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 type ResPropResult { properties: List<Node>, capabilities: List<Node>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
@@ -1189,7 +1444,7 @@ fn parse_type_angle_arg(tokens: TokenStream, ctx: ParseContext) -> TypeResult {
       if has_err(err: r.err) {
         TypeResult { type_expr: leaf_type_node(occurrence_identity: OccurrenceSynthetic, name: "", span: span), tokens: r.tokens, ctx: ctx, err: r.err }
       } else {
-        let minted = mint_parsed_node_identity(ctx: ctx)
+        let minted = mint_parsed_node_identity(ctx: ctx, at: ConsumedWindow { from: tokens, to: r.tokens })
         TypeResult { type_expr: literal_width_nat_type_node(occurrence_identity: minted.identity, value: r.value, span: span), tokens: r.tokens, ctx: minted.ctx, err: none }
       }
     }
@@ -1880,7 +2135,16 @@ fn stamp_parsed_node(
         declaration_occurrences: ctx.declaration_occurrences,
         reference_occurrences: ctx.reference_occurrences
       )
-      parse_context_record_occurrence(ctx: with_index, role: effective_role, occurrence: id, containment: containment, diagnostic_span: node.span)
+      let recorded = ctx.source_extents
+      let with_extent = match lookup(recorded.recorded, key: id) {
+        Present { value: extent } => parse_context_with_source_extents(ctx: with_index, source_extents: ParseSourceExtentState {
+          recorded: recorded.recorded,
+          published: list_push(recorded.published, ParsedSourceExtent { occurrence: id, extent: extent }),
+          erased_scopes: recorded.erased_scopes,
+        })
+        Absent => with_index
+      }
+      parse_context_record_occurrence(ctx: with_extent, role: effective_role, occurrence: id, containment: containment, diagnostic_span: node.span)
     }
     Absent => ctx
   }
@@ -1989,6 +2253,7 @@ fn parse_context_for_tokens(
     reference_occurrences: Present { value: [] },
     heads_only: heads_only,
     env: env,
+    source_extents: parse_source_extent_state_empty(),
   }
 }
 
@@ -2034,6 +2299,7 @@ fn parse_with_table_at(
       ),
       occurrence_allocator: occurrence_allocator,
       occurrence_transport: occurrence_transport,
+      source_extents: ParsedSourceExtents { extents: [], erased_scopes: [] },
     }
   } else {
     let stamped = stamp_parsed_node(
@@ -2060,6 +2326,7 @@ fn parse_with_table_at(
       ),
       occurrence_allocator: occurrence_allocator,
       occurrence_transport: occurrence_transport,
+      source_extents: parsed_source_extents_published(state: stamped.ctx.source_extents),
     }
   }
 }
@@ -2177,7 +2444,7 @@ fn parse_module(tokens: TokenStream, ctx: ParseContext) -> ModuleResult {
     ctx: ctx,
     intern_table: mod_ir.table
   )
-  let minted = mint_parsed_node_identity(ctx: ctx)
+  let minted = mint_parsed_node_identity(ctx: ctx, at: FromToken { start: start_span, to: tokens })
   let base_mod = Node { occurrence_identity: minted.identity,
     name: mod_name, span: start_span,
     ident_span: Present { value: mod_name_span },
@@ -2213,29 +2480,13 @@ fn parse_imports_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>) ->
 // than left to recognise `import` in the text, which a member list running over several lines and a
 // string containing the word both defeat.
 //
-// THERE IS NO SECOND GRAMMAR HERE. Statements are produced by parse_import, exactly as the full
-// reading produces them; this walk decides only where that production started and stopped, from the
-// token stream's own position before and after it. A rule added or corrected in parse_import is
-// reflected here with no edit.
-// The last non-newline token in a consumed window. parse_import consumes the newlines that FOLLOW a
-// statement and they are not part of it: ending the extent at them would make removing a statement
-// also remove the blank line after it, which is a second and unstated edit.
-fn last_consumed_token_end(all: List<Token>, from: Int, until: Int, end: Int?) -> Int? {
-  if from >= until {
-    end
-  } else {
-    match get(xs: all, index: from) {
-      Absent => last_consumed_token_end(all: all, from: from + 1, until: until, end: end)
-      Present { value: t } =>
-        if is_newline_shape(shape: t.shape) {
-          last_consumed_token_end(all: all, from: from + 1, until: until, end: end)
-        } else {
-          last_consumed_token_end(all: all, from: from + 1, until: until, end: Present { value: t.span.end })
-        }
-    }
-  }
-}
-
+// THERE IS NO SECOND GRAMMAR HERE, AND NO SECOND READING OF THE TOKENS. Statements are produced by
+// parse_import, exactly as the full reading produces them, and each statement's extent is the row
+// parse_import recorded in the source-extent table when the statement completed (roadmap
+// parse-node-source-extent): from the `import` keyword to its last non-newline token. parse_import
+// consumes the newlines that FOLLOW a statement and they are not part of it: ending the extent at
+// them would make removing a statement also remove the blank line after it, which is a second and
+// unstated edit. A rule added or corrected in parse_import is reflected here with no edit.
 fn parse_import_statement_extents_acc(
   tokens: TokenStream,
   ctx: ParseContext,
@@ -2243,36 +2494,26 @@ fn parse_import_statement_extents_acc(
 ) -> ParsedImportStatements {
   let tokens = skip_newlines(tokens: tokens)
   if tok_is_keyword(tok: token_stream_first(stream: tokens), kw: "import") {
-    let before = tokens.pos
     let r = parse_import(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) {
       return ImportStatementParseRefused { cause: ImportStatementMalformed }
     }
-    match token_stream_first(stream: tokens) {
-      Absent => ImportStatementParseRefused { cause: ImportParseInstrumentAnomaly { detail: "an import statement parsed from no token" as NonEmptyStr } }
-      Present { value: first } =>
-        match last_consumed_token_end(all: tokens.all, from: before, until: r.tokens.pos, end: none) {
-          Absent => ImportStatementParseRefused { cause: ImportParseInstrumentAnomaly { detail: "an import statement parsed without consuming a token" as NonEmptyStr } }
-          Present { value: end } =>
-            parse_import_statement_extents_acc(
-              tokens: r.tokens,
-              ctx: parse_context_after_node(ctx: r.ctx, node: r.import),
-              acc: list_push(acc, ParsedImportStatement {
-                span: SourceSpan { file: first.span.file, start: first.span.start, end: end },
-                imported_module: r.import.name
-              })
-            )
-        }
+    match parsed_source_extent_of(extents: r.ctx.source_extents, node: r.import) {
+      Absent => ImportStatementParseRefused { cause: ImportParseInstrumentAnomaly { detail: "an import statement completed without recording its source extent" as NonEmptyStr } }
+      Present { value: extent } =>
+        parse_import_statement_extents_acc(
+          tokens: r.tokens,
+          ctx: parse_context_after_node(ctx: r.ctx, node: r.import),
+          acc: list_push(acc, ParsedImportStatement {
+            span: extent,
+            imported_module: r.import.name
+          })
+        )
     }
   } else {
     ImportStatementsParsed { statements: acc }
   }
 }
-
-// The reading is entered at the module declaration because that is where the grammar admits
-// imports; reaching them costs one `expect` and one parse_dotted_ident, both parser primitives and
-// neither a production of its own. A source that does not open with a module declaration has no
-// import statements to delimit, and says so rather than reporting none.
 fn parse_import_statement_extents(
   tokens: List<Token>,
   source_indices: Map<String, NewlineIndex>,
@@ -2347,7 +2588,7 @@ fn parse_import(tokens: TokenStream, ctx: ParseContext) -> ImportResult {
     let r = expect(tokens: tokens, expected: ExpectRBrace)
     if has_err(err: r.err) { return ImportResult { import: err_import, tokens: r.tokens, ctx: ctx, err: r.err } }
     let tokens = skip_newlines(tokens: r.tokens)
-    let minted = mint_parsed_node_identity(ctx: ctx)
+    let minted = mint_parsed_node_identity(ctx: ctx, at: FromToken { start: start_span, to: tokens })
     let base_imp = import_node(occurrence_identity: minted.identity, module_path: mod_path, is_all: false, specific_names: names, span: start_span, name_span: mod_path_span)
     let imp_ir = intern(table: ctx.intern_table, s: mod_path)
     let ctx = parse_context_with_intern_table(
@@ -2358,7 +2599,7 @@ fn parse_import(tokens: TokenStream, ctx: ParseContext) -> ImportResult {
     ImportResult { import: imp, tokens: tokens, ctx: ctx, err: none }
   EatUnchanged { tokens: __eu } =>
     let tokens = skip_newlines(tokens: tokens)
-    let minted = mint_parsed_node_identity(ctx: ctx)
+    let minted = mint_parsed_node_identity(ctx: ctx, at: FromToken { start: start_span, to: tokens })
     let base_imp = import_node(occurrence_identity: minted.identity, module_path: mod_path, is_all: true, specific_names: [], span: start_span, name_span: mod_path_span)
     let imp_ir = intern(table: ctx.intern_table, s: mod_path)
     let ctx = parse_context_with_intern_table(
@@ -2385,7 +2626,7 @@ fn parse_import_names_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node
   } else {
     let r = parse_dotted_ident(tokens: tokens, env: ctx.env)
     if has_err(err: r.err) { return NamesResult { names: [], tokens: r.tokens, ctx: ctx, err: r.err } }
-    let minted = mint_parsed_node_identity(ctx: ctx)
+    let minted = mint_parsed_node_identity(ctx: ctx, at: ConsumedWindow { from: tokens, to: r.tokens })
     let name_node = parsed_name_leaf(occurrence_identity: minted.identity, name: r.name, span: r.span)
     let tokens = skip_newlines(tokens: r.tokens)
     let e = eat(tokens: tokens, expected: ExpectComma)
@@ -2583,6 +2824,7 @@ fn parse_type_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: Sourc
   let tokens = skip_newlines(tokens: type_params_result.tokens)
   let ctx = type_params_result.ctx
   let is_sole_constructor = tok_is_ident_text(tok: token_stream_first(stream: tokens), text: "sole_constructor")
+  let sole_at = AtToken { span: token_span(tok: token_stream_first(stream: tokens)) }
   let tokens = type_body_tokens_after_modifiers(tokens: tokens)
 
   match eat(tokens: tokens, expected: ExpectLBrace) {
@@ -2595,18 +2837,18 @@ fn parse_type_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: Sourc
     let r2 = expect(tokens: tokens, expected: ExpectRBrace)
     if has_err(err: r2.err) { return ItemResult { item: named_dummy, tokens: r2.tokens, ctx: ctx, err: r2.err } }
     let type_children = r.fields |> map(f => field_to_child_node(field: f, source_indices: ctx.source_indices))
-    let sole = parsed_sole_constructor_properties(ctx: ctx, enabled: is_sole_constructor, span: start_span)
-    let minted = mint_parsed_node_identity(ctx: sole.ctx)
+    let sole = parsed_sole_constructor_properties(ctx: ctx, enabled: is_sole_constructor, span: start_span, at: sole_at)
+    let minted = mint_parsed_node_identity(ctx: sole.ctx, at: FromToken { start: start_span, to: r2.tokens })
     let item = Node { occurrence_identity: minted.identity, name: name, span: start_span, ident_span: Present { value: name_span }, children: type_children, connective: Conj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: sole.properties, type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: ModuleItemTypeDeclaration, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
     ItemResult { item: item, tokens: skip_newlines(tokens: r2.tokens), ctx: minted.ctx, err: none }
   EatUnchanged { tokens: __eu } =>
     match eat(tokens: tokens, expected: ExpectEq) {
       EatConsumed { token: _, tokens: __ec } =>
         let tokens = skip_newlines(tokens: __ec)
-        parse_type_body_after_eq(tokens: tokens, ctx: ctx, name: name, name_span: name_span, start_span: start_span, type_params: type_params, is_sole_constructor: is_sole_constructor)
+        parse_type_body_after_eq(tokens: tokens, ctx: ctx, name: name, name_span: name_span, start_span: start_span, type_params: type_params, is_sole_constructor: is_sole_constructor, sole_at: sole_at)
       EatUnchanged { tokens: __eu } =>
-        let type_mint = mint_parsed_node_identity(ctx: ctx)
-        let item_mint = mint_parsed_node_identity(ctx: type_mint.ctx)
+        let type_mint = mint_parsed_node_identity(ctx: ctx, at: AtToken { span: name_span })
+        let item_mint = mint_parsed_node_identity(ctx: type_mint.ctx, at: FromToken { start: start_span, to: __eu })
         let item = Node { occurrence_identity: item_mint.identity, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Present { value: Resolved { node: leaf_type_node(occurrence_identity: type_mint.identity, name: name, span: name_span) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: ModuleItemTypeDeclaration, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
         ItemResult { item: item, tokens: __eu, ctx: item_mint.ctx, err: none }
     }
@@ -2621,6 +2863,7 @@ fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan)
   let named_dummy = Node { occurrence_identity: OccurrenceSynthetic, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
   let raw_tokens = skip_newlines(tokens: prefix.tokens)
   let is_sole_constructor = tok_is_ident_text(tok: token_stream_first(stream: raw_tokens), text: "sole_constructor")
+  let sole_at = AtToken { span: token_span(tok: token_stream_first(stream: raw_tokens)) }
   let tokens = type_body_tokens_after_modifiers(tokens: raw_tokens)
 
   match eat(tokens: tokens, expected: ExpectLBrace) {
@@ -2632,18 +2875,18 @@ fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan)
     let r2 = expect(tokens: tokens, expected: ExpectRBrace)
     if has_err(err: r2.err) { return ItemResult { item: named_dummy, tokens: r2.tokens, ctx: ctx, err: r2.err } }
     let type_children = r.fields |> map(f => field_to_child_node(field: f, source_indices: ctx.source_indices))
-    let sole = parsed_sole_constructor_properties(ctx: ctx, enabled: is_sole_constructor, span: start_span)
-    let minted = mint_parsed_node_identity(ctx: sole.ctx)
+    let sole = parsed_sole_constructor_properties(ctx: ctx, enabled: is_sole_constructor, span: start_span, at: sole_at)
+    let minted = mint_parsed_node_identity(ctx: sole.ctx, at: FromToken { start: start_span, to: r2.tokens })
     let item = Node { occurrence_identity: minted.identity, name: name, span: start_span, ident_span: Present { value: name_span }, children: type_children, connective: Conj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: sole.properties, type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: ModuleItemTypeDeclaration, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
     ItemResult { item: item, tokens: skip_newlines(tokens: r2.tokens), ctx: minted.ctx, err: none }
   EatUnchanged { tokens: __eu } =>
     match eat(tokens: tokens, expected: ExpectEq) {
       EatConsumed { token: _, tokens: __ec } =>
         let tokens = skip_newlines(tokens: __ec)
-        parse_type_body_after_eq(tokens: tokens, ctx: ctx, name: name, name_span: name_span, start_span: start_span, type_params: type_params, is_sole_constructor: is_sole_constructor)
+        parse_type_body_after_eq(tokens: tokens, ctx: ctx, name: name, name_span: name_span, start_span: start_span, type_params: type_params, is_sole_constructor: is_sole_constructor, sole_at: sole_at)
       EatUnchanged { tokens: __eu } =>
-        let type_mint = mint_parsed_node_identity(ctx: ctx)
-        let item_mint = mint_parsed_node_identity(ctx: type_mint.ctx)
+        let type_mint = mint_parsed_node_identity(ctx: ctx, at: AtToken { span: name_span })
+        let item_mint = mint_parsed_node_identity(ctx: type_mint.ctx, at: FromToken { start: start_span, to: __eu })
         let item = Node { occurrence_identity: item_mint.identity, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Present { value: Resolved { node: leaf_type_node(occurrence_identity: type_mint.identity, name: name, span: name_span) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: ModuleItemTypeDeclaration, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
         ItemResult { item: item, tokens: __eu, ctx: item_mint.ctx, err: none }
     }
@@ -2707,7 +2950,8 @@ fn type_item_from_alias_rhs(occurrence_identity: NodeOccurrenceIdentity, name: S
   }
 }
 
-fn parse_type_body_after_eq(tokens: TokenStream, ctx: ParseContext, name: String, name_span: SourceSpan, start_span: SourceSpan, type_params: List<Node>, is_sole_constructor: Bool) -> ItemResult {
+fn parse_type_body_after_eq(tokens: TokenStream, ctx: ParseContext, name: String, name_span: SourceSpan, start_span: SourceSpan, type_params: List<Node>, is_sole_constructor: Bool, sole_at: ParsedExtentAt) -> ItemResult {
+  let rhs_from = tokens
   let dummy = Node { occurrence_identity: OccurrenceSynthetic, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 
   match eat(tokens: tokens, expected: ExpectPipe) {
@@ -2723,7 +2967,7 @@ fn parse_type_body_after_eq(tokens: TokenStream, ctx: ParseContext, name: String
     let rest = parse_more_variants_acc(tokens: rv.tokens, ctx: rv.ctx, acc: [rv.variant])
     if has_err(err: rest.err) { return ItemResult { item: dummy, tokens: rest.tokens, ctx: rest.ctx, err: rest.err } }
     let type_children = rest.variants |> map(v => variant_to_child_node(variant: v, source_indices: ctx.source_indices))
-    let minted = mint_parsed_node_identity(ctx: rest.ctx)
+    let minted = mint_parsed_node_identity(ctx: rest.ctx, at: FromToken { start: start_span, to: rest.tokens })
     let item = Node { occurrence_identity: minted.identity, name: name, span: start_span, ident_span: Present { value: name_span }, children: type_children, connective: Disj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: ModuleItemTypeDeclaration, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
     ItemResult { item: item, tokens: skip_newlines(tokens: rest.tokens), ctx: minted.ctx, err: none }
   EatUnchanged { tokens: _ } =>
@@ -2742,40 +2986,41 @@ fn parse_type_body_after_eq(tokens: TokenStream, ctx: ParseContext, name: String
       if has_err(err: rest.err) { return ItemResult { item: dummy, tokens: rest.tokens, ctx: rest.ctx, err: rest.err } }
       let variants = rest.variants
       let type_children = variants |> map(v => variant_to_child_node(variant: v, source_indices: ctx.source_indices))
-      let minted = mint_parsed_node_identity(ctx: rest.ctx)
+      let minted = mint_parsed_node_identity(ctx: rest.ctx, at: FromToken { start: start_span, to: rest.tokens })
       let item = Node { occurrence_identity: minted.identity, name: name, span: start_span, ident_span: Present { value: name_span }, children: type_children, connective: Disj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: ModuleItemTypeDeclaration, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
       ItemResult { item: item, tokens: skip_newlines(tokens: rest.tokens), ctx: minted.ctx, err: none }
     } else {
       let r = finish_type_expr_from_name(tokens: tokens, ctx: ctx, type_name: first_name, start_span: first_name_span)
       if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-      let wr = try_where_clause(tokens: r.tokens, ctx: r.ctx, base_te: r.type_expr, start_span: start_span)
+      let wr = try_where_clause(tokens: r.tokens, ctx: r.ctx, base_te: r.type_expr, base_from: rhs_from, start_span: start_span)
       if has_err(err: wr.err) { return ItemResult { item: dummy, tokens: wr.tokens, ctx: wr.ctx, err: wr.err } }
-      let sole = parsed_sole_constructor_properties(ctx: wr.ctx, enabled: is_sole_constructor, span: start_span)
-      let minted = mint_parsed_node_identity(ctx: sole.ctx)
+      let sole = parsed_sole_constructor_properties(ctx: wr.ctx, enabled: is_sole_constructor, span: start_span, at: sole_at)
+      let minted = mint_parsed_node_identity(ctx: sole.ctx, at: FromToken { start: start_span, to: wr.tokens })
       let item = type_item_from_alias_rhs(occurrence_identity: minted.identity, name: name, name_span: name_span, start_span: start_span, type_params: type_params, te: wr.type_expr, sole_constructor_properties: sole.properties)
       ItemResult { item: item, tokens: skip_newlines(tokens: wr.tokens), ctx: minted.ctx, err: none }
     }
   } else {
     let r = parse_type_expr(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-    let wr = try_where_clause(tokens: r.tokens, ctx: r.ctx, base_te: r.type_expr, start_span: start_span)
+    let wr = try_where_clause(tokens: r.tokens, ctx: r.ctx, base_te: r.type_expr, base_from: rhs_from, start_span: start_span)
     if has_err(err: wr.err) { return ItemResult { item: dummy, tokens: wr.tokens, ctx: wr.ctx, err: wr.err } }
-    let sole = parsed_sole_constructor_properties(ctx: wr.ctx, enabled: is_sole_constructor, span: start_span)
-    let minted = mint_parsed_node_identity(ctx: sole.ctx)
+    let sole = parsed_sole_constructor_properties(ctx: wr.ctx, enabled: is_sole_constructor, span: start_span, at: sole_at)
+    let minted = mint_parsed_node_identity(ctx: sole.ctx, at: FromToken { start: start_span, to: wr.tokens })
     let item = type_item_from_alias_rhs(occurrence_identity: minted.identity, name: name, name_span: name_span, start_span: start_span, type_params: type_params, te: wr.type_expr, sole_constructor_properties: sole.properties)
     ItemResult { item: item, tokens: skip_newlines(tokens: wr.tokens), ctx: minted.ctx, err: none }
   }
   }
 }
 
-fn try_where_clause(tokens: TokenStream, ctx: ParseContext, base_te: Node, start_span: SourceSpan) -> TypeResult {
+// `base_from` is where `base_te` began: a refined type `T where p` spans from `T` to its last predicate.
+fn try_where_clause(tokens: TokenStream, ctx: ParseContext, base_te: Node, base_from: TokenStream, start_span: SourceSpan) -> TypeResult {
   if tok_is_keyword(tok: token_stream_first(stream: tokens), kw: "where") {
     match advance(tokens: tokens) {
       AdvanceOk { token: _, tokens: rest } =>
         let r = parse_predicates(tokens: rest, ctx: ctx)
         if has_err(err: r.err) { return TypeResult { type_expr: base_te, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-        let predicate_mint = mint_parsed_node_identity(ctx: r.ctx)
-        let refined_mint = mint_parsed_node_identity(ctx: predicate_mint.ctx)
+        let predicate_mint = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: rest, to: r.tokens })
+        let refined_mint = mint_parsed_node_identity(ctx: predicate_mint.ctx, at: ConsumedWindow { from: base_from, to: r.tokens })
         let predicate_node = Node { occurrence_identity: predicate_mint.identity, name: "", span: start_span, ident_span: none, children: r.predicates, connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
         let refined = Node { occurrence_identity: refined_mint.identity, name: "", span: start_span, ident_span: none, children: [base_te], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: Present { value: predicate_node }, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
         TypeResult { type_expr: refined, tokens: r.tokens, ctx: refined_mint.ctx, err: none }
@@ -2804,6 +3049,7 @@ fn parse_predicates_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>)
 }
 
 fn parse_single_predicate(tokens: TokenStream, ctx: ParseContext) -> PredResult {
+  let entry = tokens
   let zero_span = no_span()
   let dummy_pred = make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: "", value: make_expr_node(occurrence_identity: OccurrenceSynthetic, expr_data: ExprLiteral { value: LitBool { value: false } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span)
   let r = expect_name(tokens: tokens, env: ctx.env)
@@ -2820,35 +3066,35 @@ fn parse_single_predicate(tokens: TokenStream, ctx: ParseContext) -> PredResult 
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, tokens: r2.tokens, ctx: ctx, err: r2.err } }
         let r3 = expect(tokens: r2.tokens, expected: ExpectRParen)
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, tokens: r3.tokens, ctx: ctx, err: r3.err } }
-        parsed_predicate_result(tokens: r3.tokens, ctx: ctx, build: (value_identity, predicate_identity) => make_field_init_node(occurrence_identity: predicate_identity, name: "Pattern", value: make_expr_node(occurrence_identity: value_identity, expr_data: ExprLiteral { value: LitStr { value: r2.value } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span))
+        parsed_predicate_result(value_at: ConsumedWindow { from: tokens, to: r2.tokens }, predicate_at: ConsumedWindow { from: entry, to: r3.tokens }, tokens: r3.tokens, ctx: ctx, build: (value_identity, predicate_identity) => make_field_init_node(occurrence_identity: predicate_identity, name: "Pattern", value: make_expr_node(occurrence_identity: value_identity, expr_data: ExprLiteral { value: LitStr { value: r2.value } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span))
       }
       "format" => {
         let r2 = expect_ident(tokens: tokens)
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, tokens: r2.tokens, ctx: ctx, err: r2.err } }
         let r3 = expect(tokens: r2.tokens, expected: ExpectRParen)
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, tokens: r3.tokens, ctx: ctx, err: r3.err } }
-        parsed_predicate_result(tokens: r3.tokens, ctx: ctx, build: (value_identity, predicate_identity) => make_field_init_node(occurrence_identity: predicate_identity, name: "Format", value: make_expr_node(occurrence_identity: value_identity, expr_data: ExprLiteral { value: LitStr { value: r2.name } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span))
+        parsed_predicate_result(value_at: ConsumedWindow { from: tokens, to: r2.tokens }, predicate_at: ConsumedWindow { from: entry, to: r3.tokens }, tokens: r3.tokens, ctx: ctx, build: (value_identity, predicate_identity) => make_field_init_node(occurrence_identity: predicate_identity, name: "Format", value: make_expr_node(occurrence_identity: value_identity, expr_data: ExprLiteral { value: LitStr { value: r2.name } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span))
       }
       "brand" => {
         let r2 = parse_string_literal_value(tokens: tokens)
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, tokens: r2.tokens, ctx: ctx, err: r2.err } }
         let r3 = expect(tokens: r2.tokens, expected: ExpectRParen)
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, tokens: r3.tokens, ctx: ctx, err: r3.err } }
-        parsed_predicate_result(tokens: r3.tokens, ctx: ctx, build: (value_identity, predicate_identity) => make_field_init_node(occurrence_identity: predicate_identity, name: "Brand", value: make_expr_node(occurrence_identity: value_identity, expr_data: ExprLiteral { value: LitStr { value: r2.value } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span))
+        parsed_predicate_result(value_at: ConsumedWindow { from: tokens, to: r2.tokens }, predicate_at: ConsumedWindow { from: entry, to: r3.tokens }, tokens: r3.tokens, ctx: ctx, build: (value_identity, predicate_identity) => make_field_init_node(occurrence_identity: predicate_identity, name: "Brand", value: make_expr_node(occurrence_identity: value_identity, expr_data: ExprLiteral { value: LitStr { value: r2.value } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span))
       }
       "content" => {
         let r2 = expect_ident(tokens: tokens)
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, tokens: r2.tokens, ctx: ctx, err: r2.err } }
         let r3 = expect(tokens: r2.tokens, expected: ExpectRParen)
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, tokens: r3.tokens, ctx: ctx, err: r3.err } }
-        parsed_predicate_result(tokens: r3.tokens, ctx: ctx, build: (value_identity, predicate_identity) => make_field_init_node(occurrence_identity: predicate_identity, name: "ContentEncoding", value: make_expr_node(occurrence_identity: value_identity, expr_data: ExprLiteral { value: LitStr { value: r2.name } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span))
+        parsed_predicate_result(value_at: ConsumedWindow { from: tokens, to: r2.tokens }, predicate_at: ConsumedWindow { from: entry, to: r3.tokens }, tokens: r3.tokens, ctx: ctx, build: (value_identity, predicate_identity) => make_field_init_node(occurrence_identity: predicate_identity, name: "ContentEncoding", value: make_expr_node(occurrence_identity: value_identity, expr_data: ExprLiteral { value: LitStr { value: r2.name } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span))
       }
       "domain" => {
         let r2 = expect_ident(tokens: tokens)
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, tokens: r2.tokens, ctx: ctx, err: r2.err } }
         let r3 = expect(tokens: r2.tokens, expected: ExpectRParen)
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, tokens: r3.tokens, ctx: ctx, err: r3.err } }
-        parsed_predicate_result(tokens: r3.tokens, ctx: ctx, build: (value_identity, predicate_identity) => make_field_init_node(occurrence_identity: predicate_identity, name: "Domain", value: make_expr_node(occurrence_identity: value_identity, expr_data: ExprLiteral { value: LitStr { value: r2.name } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span))
+        parsed_predicate_result(value_at: ConsumedWindow { from: tokens, to: r2.tokens }, predicate_at: ConsumedWindow { from: entry, to: r3.tokens }, tokens: r3.tokens, ctx: ctx, build: (value_identity, predicate_identity) => make_field_init_node(occurrence_identity: predicate_identity, name: "Domain", value: make_expr_node(occurrence_identity: value_identity, expr_data: ExprLiteral { value: LitStr { value: r2.name } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span))
       }
       "range" => {
         let r2 = parse_named_int_args(tokens: tokens, ctx: ctx)
@@ -2857,7 +3103,7 @@ fn parse_single_predicate(tokens: TokenStream, ctx: ParseContext) -> PredResult 
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, tokens: r3.tokens, ctx: r2.ctx, err: r3.err } }
         let min = mint_parsed_optional_int_property(ctx: r2.ctx, name: "min", value: r2.min_val, span: zero_span)
         let max = mint_parsed_optional_int_property(ctx: min.ctx, name: "max", value: r2.max_val, span: zero_span)
-        parsed_predicate_result(tokens: r3.tokens, ctx: max.ctx, build: (value_identity, predicate_identity) => make_field_init_node(occurrence_identity: predicate_identity, name: "range", value: make_expr_node(occurrence_identity: value_identity, expr_data: ExprRecordLit { parent_enum: none }, children: concat(min.properties, max.properties), inferred: none, span: zero_span), span: zero_span, name_span: zero_span))
+        parsed_predicate_result(value_at: ConsumedWindow { from: tokens, to: r2.tokens }, predicate_at: ConsumedWindow { from: entry, to: r3.tokens }, tokens: r3.tokens, ctx: max.ctx, build: (value_identity, predicate_identity) => make_field_init_node(occurrence_identity: predicate_identity, name: "range", value: make_expr_node(occurrence_identity: value_identity, expr_data: ExprRecordLit { parent_enum: none }, children: concat(min.properties, max.properties), inferred: none, span: zero_span), span: zero_span, name_span: zero_span))
       }
       _ =>
         PredResult { predicate: dummy_pred, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: concat("unknown where predicate `", pred_name, "`"), span: token_span(tok: token_stream_first(stream: tokens))) } }
@@ -2865,9 +3111,9 @@ fn parse_single_predicate(tokens: TokenStream, ctx: ParseContext) -> PredResult 
   EatUnchanged { tokens: __eu } =>
     match pred_name {
       "string_non_empty" =>
-        parsed_predicate_result(tokens: tokens, ctx: ctx, build: (value_identity, predicate_identity) => make_field_init_node(occurrence_identity: predicate_identity, name: "string_non_empty", value: make_expr_node(occurrence_identity: value_identity, expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span))
+        parsed_predicate_result(value_at: ConsumedWindow { from: entry, to: tokens }, predicate_at: ConsumedWindow { from: entry, to: tokens }, tokens: tokens, ctx: ctx, build: (value_identity, predicate_identity) => make_field_init_node(occurrence_identity: predicate_identity, name: "string_non_empty", value: make_expr_node(occurrence_identity: value_identity, expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span))
       _ =>
-        parsed_predicate_result(tokens: tokens, ctx: ctx, build: (value_identity, predicate_identity) => make_field_init_node(occurrence_identity: predicate_identity, name: pred_name, value: make_expr_node(occurrence_identity: value_identity, expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span))
+        parsed_predicate_result(value_at: ConsumedWindow { from: entry, to: tokens }, predicate_at: ConsumedWindow { from: entry, to: tokens }, tokens: tokens, ctx: ctx, build: (value_identity, predicate_identity) => make_field_init_node(occurrence_identity: predicate_identity, name: pred_name, value: make_expr_node(occurrence_identity: value_identity, expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span))
     }
   }
 }
@@ -2894,14 +3140,25 @@ fn parse_named_int_args(tokens: TokenStream, ctx: ParseContext) -> RangeArgsResu
 }
 
 fn parse_single_named_int(tokens: TokenStream, ctx: ParseContext) -> NamedIntResult {
+  let refused = RangeBound { value: 0, property_at: CompletedLater, value_at: CompletedLater }
   let r = expect_ident(tokens: tokens)
-  if has_err(err: r.err) { return NamedIntResult { arg_name: "", arg_value: 0, tokens: r.tokens, ctx: ctx, err: r.err } }
+  if has_err(err: r.err) { return NamedIntResult { arg_name: "", arg_value: refused, tokens: r.tokens, ctx: ctx, err: r.err } }
   let name = r.name
   let r2 = expect(tokens: r.tokens, expected: ExpectColon)
-  if has_err(err: r2.err) { return NamedIntResult { arg_name: name, arg_value: 0, tokens: r2.tokens, ctx: ctx, err: r2.err } }
+  if has_err(err: r2.err) { return NamedIntResult { arg_name: name, arg_value: refused, tokens: r2.tokens, ctx: ctx, err: r2.err } }
   let r3 = parse_int_literal_value(tokens: r2.tokens)
-  if has_err(err: r3.err) { return NamedIntResult { arg_name: name, arg_value: 0, tokens: r3.tokens, ctx: ctx, err: r3.err } }
-  NamedIntResult { arg_name: name, arg_value: r3.value, tokens: r3.tokens, ctx: ctx, err: none }
+  if has_err(err: r3.err) { return NamedIntResult { arg_name: name, arg_value: refused, tokens: r3.tokens, ctx: ctx, err: r3.err } }
+  NamedIntResult {
+    arg_name: name,
+    arg_value: RangeBound {
+      value: r3.value,
+      property_at: ConsumedWindow { from: tokens, to: r3.tokens },
+      value_at: ConsumedWindow { from: r2.tokens, to: r3.tokens },
+    },
+    tokens: r3.tokens,
+    ctx: ctx,
+    err: none
+  }
 }
 
 fn parse_positional_variant_type_fields(tokens: TokenStream, ctx: ParseContext) -> FieldsResult {
@@ -2917,7 +3174,7 @@ fn parse_positional_variant_type_fields(tokens: TokenStream, ctx: ParseContext) 
       err: Present { value: parse_error(msg: "positional variant payload accepts a single type only (comma-separated fields not supported yet)", span: token_span(tok: Present { value: comma_tok })) }
     }
   EatUnchanged { tokens: __eu } =>
-    let minted = mint_parsed_node_identity(ctx: r.ctx)
+    let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: tokens, to: r.tokens })
     let field = make_field_node(occurrence_identity: minted.identity,
       name: "0",
       type_expr: r.type_expr,
@@ -2940,7 +3197,7 @@ fn parse_variant_fields(tokens: TokenStream, ctx: ParseContext, vname: String, v
     let tokens = skip_newlines(tokens: r.tokens)
     let r2 = expect(tokens: tokens, expected: ExpectRBrace)
     if has_err(err: r2.err) { return VariantResult { variant: make_variant_node(occurrence_identity: OccurrenceSynthetic, name: vname, fields: [], span: start_span, name_span: vname_span), tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
-    let minted = mint_parsed_node_identity(ctx: r.ctx)
+    let minted = mint_parsed_node_identity(ctx: r.ctx, at: FromToken { start: vname_span, to: r2.tokens })
     let v = make_variant_node(occurrence_identity: minted.identity, name: vname, fields: r.fields, span: start_span, name_span: vname_span)
     VariantResult { variant: v, tokens: r2.tokens, ctx: minted.ctx, err: none }
   EatUnchanged { tokens: __eu } =>
@@ -2950,11 +3207,11 @@ fn parse_variant_fields(tokens: TokenStream, ctx: ParseContext, vname: String, v
       if has_err(err: r.err) { return VariantResult { variant: make_variant_node(occurrence_identity: OccurrenceSynthetic, name: vname, fields: [], span: start_span, name_span: vname_span), tokens: r.tokens, ctx: r.ctx, err: r.err } }
       let r2 = expect(tokens: r.tokens, expected: ExpectRParen)
       if has_err(err: r2.err) { return VariantResult { variant: make_variant_node(occurrence_identity: OccurrenceSynthetic, name: vname, fields: [], span: start_span, name_span: vname_span), tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
-      let minted = mint_parsed_node_identity(ctx: r.ctx)
+      let minted = mint_parsed_node_identity(ctx: r.ctx, at: FromToken { start: vname_span, to: r2.tokens })
       let v = make_variant_node(occurrence_identity: minted.identity, name: vname, fields: r.fields, span: start_span, name_span: vname_span)
       VariantResult { variant: v, tokens: r2.tokens, ctx: minted.ctx, err: none }
     EatUnchanged { tokens: __eu2 } =>
-      let minted = mint_parsed_node_identity(ctx: ctx)
+      let minted = mint_parsed_node_identity(ctx: ctx, at: AtToken { span: vname_span })
       let v = make_variant_node(occurrence_identity: minted.identity, name: vname, fields: [], span: vname_span, name_span: vname_span)
       VariantResult { variant: v, tokens: tokens, ctx: minted.ctx, err: none }
     }
@@ -2992,7 +3249,7 @@ fn parse_type_expr(tokens: TokenStream, ctx: ParseContext) -> TypeResult {
       let tokens = skip_newlines(tokens: r.tokens)
       let r2 = expect(tokens: tokens, expected: ExpectRBrace)
       if has_err(err: r2.err) { return TypeResult { type_expr: leaf_type_node(occurrence_identity: OccurrenceSynthetic, name: "", span: span), tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
-      let minted = mint_parsed_node_identity(ctx: r.ctx)
+      let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: tokens, to: r2.tokens })
       let te = Node { occurrence_identity: minted.identity, name: "", span: span, ident_span: none, children: map(r.fields, f => field_to_child_node(field: f, source_indices: ctx.source_indices)), connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
       TypeResult { type_expr: te, tokens: r2.tokens, ctx: minted.ctx, err: none }
     }
@@ -3043,7 +3300,7 @@ fn parse_callable_type_expr(tokens: TokenStream, ctx: ParseContext, start_span: 
   let ret = parse_type_expr(tokens: r3.tokens, ctx: params_result.ctx)
   if has_err(err: ret.err) { return TypeResult { type_expr: dummy_te, tokens: ret.tokens, ctx: ret.ctx, err: ret.err } }
 
-  let minted = mint_parsed_node_identity(ctx: ret.ctx)
+  let minted = mint_parsed_node_identity(ctx: ret.ctx, at: CompletedLater)
   let te = Node { occurrence_identity: minted.identity, name: "Callable", span: start_span, ident_span: Present { value: start_span }, children: [], connective: Arrow, params: params_result.params, inferred: Present { value: Resolved { node: ret.type_expr } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
   maybe_optional(tokens: ret.tokens, ctx: minted.ctx, te: te, start_span: start_span)
 }
@@ -3051,7 +3308,7 @@ fn parse_callable_type_expr(tokens: TokenStream, ctx: ParseContext, start_span: 
 fn parse_callable_param_types(tokens: TokenStream, ctx: ParseContext, acc: List<Node>) -> ParamsResult {
   let r = parse_type_expr(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return ParamsResult { params: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
-  let minted = mint_parsed_node_identity(ctx: r.ctx)
+  let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: tokens, to: r.tokens })
   let param = make_param_node(occurrence_identity: minted.identity, name: "", type_expr: r.type_expr, default_value: none, span: r.type_expr.span, name_span: r.type_expr.span)
   let acc = list_push(acc, param)
 
@@ -3080,11 +3337,11 @@ fn finish_type_expr_from_name(tokens: TokenStream, ctx: ParseContext, type_name:
     if has_err(err: type_args.err) { return TypeResult { type_expr: dummy_te, tokens: type_args.tokens, ctx: type_args.ctx, err: type_args.err } }
     let r3 = expect(tokens: type_args.tokens, expected: ExpectGt)
     if has_err(err: r3.err) { return TypeResult { type_expr: dummy_te, tokens: r3.tokens, ctx: type_args.ctx, err: r3.err } }
-    let minted = mint_parsed_node_identity(ctx: type_args.ctx)
+    let minted = mint_parsed_node_identity(ctx: type_args.ctx, at: CompletedLater)
     let te = Node { occurrence_identity: minted.identity, name: type_name, span: start_span, ident_span: Present { value: start_span }, children: type_args.args, connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
     maybe_optional(tokens: r3.tokens, ctx: minted.ctx, te: te, start_span: start_span)
   EatUnchanged { tokens: __eu } =>
-    let minted = mint_parsed_node_identity(ctx: ctx)
+    let minted = mint_parsed_node_identity(ctx: ctx, at: CompletedLater)
     let te = leaf_type_node(occurrence_identity: minted.identity, name: type_name, span: start_span)
     maybe_optional(tokens: tokens, ctx: minted.ctx, te: te, start_span: start_span)
   }
@@ -3117,10 +3374,10 @@ fn collect_type_param_names(tokens: TokenStream, ctx: ParseContext, params: List
   if tok_is_ident(tok: token_stream_first(stream: tokens)) {
     let r = expect_ident(tokens: tokens)
     let span = r.span
-    let type_mint = mint_parsed_node_identity(ctx: ctx)
+    let type_mint = mint_parsed_node_identity(ctx: ctx, at: AtToken { span: span })
     let type_expr = leaf_type_node(occurrence_identity: type_mint.identity, name: r.name, span: span)
     let kind_result = parse_optional_type_param_kind(tokens: r.tokens, ctx: type_mint.ctx)
-    let param_mint = mint_parsed_node_identity(ctx: kind_result.ctx)
+    let param_mint = mint_parsed_node_identity(ctx: kind_result.ctx, at: ConsumedWindow { from: tokens, to: kind_result.tokens })
     let bare_param = make_param_node(occurrence_identity: param_mint.identity, name: r.name, type_expr: type_expr, default_value: none, span: span, name_span: span)
     let param = with_type_param_kind_property(param: bare_param, kind: kind_result.kind)
     let next_params = list_push(params, param)
@@ -3145,7 +3402,7 @@ fn parse_optional_type_param_kind(tokens: TokenStream, ctx: ParseContext) -> Typ
   match eat(tokens: tokens, expected: ExpectColon) {
   EatConsumed { token: _, tokens: __ec } =>
     let r = expect_ident(tokens: __ec)
-    let kind_mint = mint_parsed_node_identity(ctx: ctx)
+    let kind_mint = mint_parsed_node_identity(ctx: ctx, at: AtToken { span: r.span })
     TypeParamKindResult {
       kind: Present { value: leaf_type_node(occurrence_identity: kind_mint.identity, name: r.name, span: r.span) },
       tokens: r.tokens,
@@ -3199,13 +3456,16 @@ fn collect_type_args(tokens: TokenStream, ctx: ParseContext, args: List<Node>) -
   }
 }
 
+// THE TYPE COMPLETES HERE, not where its identity was minted: `te` was minted `CompletedLater` so the
+// `?` this reads is inside its extent. Every caller passes a `te` it minted for this call.
 fn maybe_optional(tokens: TokenStream, ctx: ParseContext, te: Node, start_span: SourceSpan) -> TypeResult {
   match eat(tokens: tokens, expected: ExpectQuestion) {
   EatConsumed { token: _, tokens: __ec } =>
+    let ctx = parse_context_record_node_from(ctx: ctx, node: te, start: start_span, to: __ec)
     let ote = Node { occurrence_identity: te.occurrence_identity, name: te.name, span: te.span, ident_span: te.ident_span, children: te.children, connective: te.connective, params: te.params, inferred: te.inferred, return_cardinality: CardOptional, uses: te.uses, body: te.body, transport: te.transport, properties: te.properties, type_annotation: te.type_annotation, is_self_recursive: te.is_self_recursive, has_non_tail_self_call: te.has_non_tail_self_call, match_pattern: te.match_pattern, module_item_kind: te.module_item_kind, declaration_marker: te.declaration_marker, declaration: te.declaration, expr_data: te.expr_data }
     TypeResult { type_expr: ote, tokens: __ec, ctx: ctx, err: none }
   EatUnchanged { tokens: __eu } =>
-    TypeResult { type_expr: te, tokens: tokens, ctx: ctx, err: none }
+    TypeResult { type_expr: te, tokens: tokens, ctx: parse_context_record_node_from(ctx: ctx, node: te, start: start_span, to: tokens), err: none }
   }
 }
 
@@ -3233,6 +3493,7 @@ fn parse_field_list_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>)
 }
 
 fn parse_field(tokens: TokenStream, ctx: ParseContext) -> FieldResult {
+  let entry = tokens
   let start_span = token_span(tok: token_stream_first(stream: tokens))
   let dummy_field = make_field_node(occurrence_identity: OccurrenceSynthetic, name: "", type_expr: leaf_type_node(occurrence_identity: OccurrenceSynthetic, name: "", span: start_span), cardinality: Required, default_value: none, from_key_properties: [], span: start_span, name_span: start_span)
   let r = expect_name(tokens: tokens, env: ctx.env)
@@ -3247,7 +3508,7 @@ fn parse_field(tokens: TokenStream, ctx: ParseContext) -> FieldResult {
   let r3 = parse_type_expr(tokens: r2.tokens, ctx: ctx)
   if has_err(err: r3.err) { return FieldResult { field: dummy_field, tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
 
-  let wr = try_where_clause(tokens: r3.tokens, ctx: r3.ctx, base_te: r3.type_expr, start_span: start_span)
+  let wr = try_where_clause(tokens: r3.tokens, ctx: r3.ctx, base_te: r3.type_expr, base_from: r2.tokens, start_span: start_span)
   if has_err(err: wr.err) { return FieldResult { field: dummy_field, tokens: wr.tokens, ctx: wr.ctx, err: wr.err } }
   let te = wr.type_expr
   let tokens = wr.tokens
@@ -3262,14 +3523,14 @@ fn parse_field(tokens: TokenStream, ctx: ParseContext) -> FieldResult {
   EatConsumed { token: _, tokens: __ec } =>
     let r4 = parse_expr(tokens: __ec, ctx: ctx)
     if has_err(err: r4.err) { return FieldResult { field: dummy_field, tokens: r4.tokens, ctx: r4.ctx, err: r4.err } }
-    let minted = mint_parsed_node_identity(ctx: r4.ctx)
+    let minted = mint_parsed_node_identity(ctx: r4.ctx, at: ConsumedWindow { from: entry, to: r4.tokens })
     let f = make_field_node(occurrence_identity: minted.identity,
       name: name, type_expr: te, cardinality: te.return_cardinality,
       default_value: Present { value: r4.expr }, from_key_properties: from_key_properties, span: start_span, name_span: name_span
     )
     FieldResult { field: f, tokens: r4.tokens, ctx: minted.ctx, err: none }
   EatUnchanged { tokens: __eu } =>
-    let minted = mint_parsed_node_identity(ctx: ctx)
+    let minted = mint_parsed_node_identity(ctx: ctx, at: ConsumedWindow { from: entry, to: tokens })
     let f = make_field_node(occurrence_identity: minted.identity,
       name: name, type_expr: te, cardinality: te.return_cardinality,
       default_value: none, from_key_properties: from_key_properties, span: start_span, name_span: name_span
@@ -3289,8 +3550,8 @@ fn parse_optional_from_key(tokens: TokenStream, ctx: ParseContext) -> FromKeyRes
         match sh2 {
           Present { value: ShLitStr } => {
             let key = tok2.value.text
-            let value_mint = mint_parsed_node_identity(ctx: ctx)
-            let property_mint = mint_parsed_node_identity(ctx: value_mint.ctx)
+            let value_mint = mint_parsed_node_identity(ctx: ctx, at: AtToken { span: token_span(tok: tok2) })
+            let property_mint = mint_parsed_node_identity(ctx: value_mint.ctx, at: ConsumedWindow { from: tokens, to: token_stream_advance(stream: tokens, n: 2) })
             let value = make_named_expr_node(occurrence_identity: value_mint.identity, name: key, expr_data: ExprLiteral { value: LitStr { value: key } }, children: [], inferred: none, span: token_span(tok: tok2), name_span: token_span(tok: tok2))
             let property = make_field_init_node(occurrence_identity: property_mint.identity, name: field_from_key_property_name, value: value, span: token_span(tok: tok), name_span: token_span(tok: tok))
             FromKeyResult { properties: [property], tokens: token_stream_advance(stream: tokens, n: 2), ctx: property_mint.ctx, err: none }
@@ -3376,7 +3637,7 @@ fn parse_fn_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -
     ctx: parse_context_after_node(ctx: body_result.ctx, node: body),
     nodes: admit_props
   )
-  let minted = mint_parsed_node_identity(ctx: parent_ctx)
+  let minted = mint_parsed_node_identity(ctx: parent_ctx, at: FromToken { start: start_span, to: body_result.tokens })
   let item = Node { occurrence_identity: minted.identity, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: all_params,
     inferred: inferred, return_cardinality: Required, uses: prefix.uses,
     body: Present { value: body }, connective: NoConnective, transport: none,
@@ -3398,7 +3659,7 @@ fn parse_block_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let body = r.expr
 
-  let minted = mint_parsed_node_identity(ctx: r.ctx)
+  let minted = mint_parsed_node_identity(ctx: r.ctx, at: FromToken { start: start_span, to: r.tokens })
   let item = Node { occurrence_identity: minted.identity, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: params,
     inferred: inferred, return_cardinality: Required, uses: uses,
     body: Present { value: body }, connective: NoConnective, transport: none,
@@ -3408,7 +3669,7 @@ fn parse_block_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan
 }
 
 fn parse_no_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -> ItemResult {
-  let minted = mint_parsed_node_identity(ctx: prefix.ctx)
+  let minted = mint_parsed_node_identity(ctx: prefix.ctx, at: FromToken { start: start_span, to: prefix.tokens })
   let item = Node { occurrence_identity: minted.identity,
     name: prefix.name, span: start_span, ident_span: Present { value: prefix.name_span }, children: [],
     params: prefix.params, inferred: prefix.inferred, return_cardinality: Required, uses: prefix.uses,
@@ -3453,6 +3714,7 @@ fn parse_uses_list_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>) 
 }
 
 fn parse_uses_entry(tokens: TokenStream, ctx: ParseContext) -> ResUseResult {
+  let entry = tokens
   let start_span = token_span(tok: token_stream_first(stream: tokens))
   let dummy = make_resource_use_node(occurrence_identity: OccurrenceSynthetic, name: "", resource: leaf_type_node(occurrence_identity: OccurrenceSynthetic, name: "", span: start_span), span: start_span, name_span: start_span)
   let r = expect_ident(tokens: tokens)
@@ -3478,11 +3740,12 @@ fn parse_uses_entry(tokens: TokenStream, ctx: ParseContext) -> ResUseResult {
       properties: ar.fields, type_annotation: r3.type_expr.type_annotation,
       is_self_recursive: r3.type_expr.is_self_recursive, has_non_tail_self_call: r3.type_expr.has_non_tail_self_call,
       match_pattern: r3.type_expr.match_pattern, module_item_kind: r3.type_expr.module_item_kind, declaration_marker: r3.type_expr.declaration_marker, declaration: r3.type_expr.declaration, expr_data: r3.type_expr.expr_data }
-    let minted = mint_parsed_node_identity(ctx: ar.ctx)
+    let configured_ctx = parse_context_extend_node_extent(ctx: ar.ctx, node: res_node, from: r2.tokens, to: r4.tokens)
+    let minted = mint_parsed_node_identity(ctx: configured_ctx, at: ConsumedWindow { from: entry, to: r4.tokens })
     let ru = make_resource_use_node(occurrence_identity: minted.identity, name: name, resource: res_node, span: start_span, name_span: r.span)
     ResUseResult { resource_use: ru, tokens: r4.tokens, ctx: minted.ctx, err: none }
   EatUnchanged { tokens: __eu } =>
-    let minted = mint_parsed_node_identity(ctx: r3.ctx)
+    let minted = mint_parsed_node_identity(ctx: r3.ctx, at: ConsumedWindow { from: entry, to: r3.tokens })
     let ru = make_resource_use_node(occurrence_identity: minted.identity, name: name, resource: r3.type_expr, span: start_span, name_span: r.span)
     ResUseResult { resource_use: ru, tokens: r3.tokens, ctx: minted.ctx, err: none }
   }
@@ -3495,6 +3758,7 @@ fn parse_resource_config_args(tokens: TokenStream, ctx: ParseContext) -> ResConf
 }
 
 fn parse_resource_config_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>) -> ResConfigResult {
+  let entry = tokens
   if tok_is_rparen(tok: token_stream_first(stream: tokens)) {
     return ResConfigResult { fields: acc, tokens: tokens, ctx: ctx, err: none }
   }
@@ -3506,7 +3770,7 @@ fn parse_resource_config_acc(tokens: TokenStream, ctx: ParseContext, acc: List<N
   if has_err(err: r2.err) { return ResConfigResult { fields: [], tokens: r2.tokens, ctx: ctx, err: r2.err } }
   let r3 = parse_expr(tokens: r2.tokens, ctx: ctx)
   if has_err(err: r3.err) { return ResConfigResult { fields: [], tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
-  let minted = mint_parsed_node_identity(ctx: r3.ctx)
+  let minted = mint_parsed_node_identity(ctx: r3.ctx, at: ConsumedWindow { from: entry, to: r3.tokens })
   let fi = make_field_init_node(occurrence_identity: minted.identity, name: field_name, value: r3.expr, span: zero_span, name_span: r.span)
   let acc = list_push(acc, fi)
   match eat(tokens: r3.tokens, expected: ExpectComma) {
@@ -3558,9 +3822,9 @@ fn parse_service_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: So
   let r2 = expect(tokens: tokens, expected: ExpectRBrace)
   if has_err(err: r2.err) { return ItemResult { item: named_dummy, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
 
-  let ns_value_mint = mint_parsed_node_identity(ctx: r.ctx)
-  let ns_property_mint = mint_parsed_node_identity(ctx: ns_value_mint.ctx)
-  let item_mint = mint_parsed_node_identity(ctx: ns_property_mint.ctx)
+  let ns_value_mint = mint_parsed_node_identity(ctx: r.ctx, at: AtToken { span: r_ns.span })
+  let ns_property_mint = mint_parsed_node_identity(ctx: ns_value_mint.ctx, at: AtToken { span: r_ns.span })
+  let item_mint = mint_parsed_node_identity(ctx: ns_property_mint.ctx, at: FromToken { start: start_span, to: r2.tokens })
   let ns_prop = make_field_init_node(occurrence_identity: ns_property_mint.identity, name: "namespace_root", value: make_expr_node(occurrence_identity: ns_value_mint.identity, expr_data: ExprLiteral { value: LitStr { value: namespace_root } }, children: [], inferred: none, span: start_span), span: start_span, name_span: no_span())
   let svc_props = match r.config {
     Present { value: cfg } => service_config_properties(endpoint: cfg.endpoint, auth: cfg.auth, auth_input: cfg.auth_input, auth_source: cfg.auth_source, rate_limit: cfg.rate_limit)
@@ -3685,7 +3949,7 @@ fn parse_transport_binding(tokens: TokenStream, ctx: ParseContext) -> TransportR
         if has_err(err: r2.err) { return TransportResult { transport: r2.transport, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
         let r3 = expect(tokens: skip_newlines(tokens: r2.tokens), expected: ExpectRBrace)
         if has_err(err: r3.err) { return TransportResult { transport: dummy, tokens: r3.tokens, ctx: r2.ctx, err: r3.err } }
-        TransportResult { transport: r2.transport, tokens: r3.tokens, ctx: r2.ctx, err: none }
+        TransportResult { transport: r2.transport, tokens: r3.tokens, ctx: parse_context_record_node_window(ctx: r2.ctx, node: r2.transport, from: tokens, to: r3.tokens), err: none }
       } else if tok_text == "shell" {
         let r = expect(tokens: token_stream_advance(stream: tokens, n: 1), expected: ExpectLBrace)
         if has_err(err: r.err) { return TransportResult { transport: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -3693,7 +3957,7 @@ fn parse_transport_binding(tokens: TokenStream, ctx: ParseContext) -> TransportR
         if has_err(err: r2.err) { return TransportResult { transport: r2.transport, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
         let r3 = expect(tokens: skip_newlines(tokens: r2.tokens), expected: ExpectRBrace)
         if has_err(err: r3.err) { return TransportResult { transport: dummy, tokens: r3.tokens, ctx: r2.ctx, err: r3.err } }
-        TransportResult { transport: r2.transport, tokens: r3.tokens, ctx: r2.ctx, err: none }
+        TransportResult { transport: r2.transport, tokens: r3.tokens, ctx: parse_context_record_node_window(ctx: r2.ctx, node: r2.transport, from: tokens, to: r3.tokens), err: none }
       } else if tok_text == "file" {
         let r = expect(tokens: token_stream_advance(stream: tokens, n: 1), expected: ExpectLBrace)
         if has_err(err: r.err) { return TransportResult { transport: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -3701,7 +3965,7 @@ fn parse_transport_binding(tokens: TokenStream, ctx: ParseContext) -> TransportR
         if has_err(err: r2.err) { return TransportResult { transport: r2.transport, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
         let r3 = expect(tokens: skip_newlines(tokens: r2.tokens), expected: ExpectRBrace)
         if has_err(err: r3.err) { return TransportResult { transport: dummy, tokens: r3.tokens, ctx: r2.ctx, err: r3.err } }
-        TransportResult { transport: r2.transport, tokens: r3.tokens, ctx: r2.ctx, err: none }
+        TransportResult { transport: r2.transport, tokens: r3.tokens, ctx: parse_context_record_node_window(ctx: r2.ctx, node: r2.transport, from: tokens, to: r3.tokens), err: none }
       } else {
         TransportResult { transport: dummy, tokens: tokens, ctx: ctx, err: none }
       }
@@ -3711,6 +3975,8 @@ fn parse_transport_binding(tokens: TokenStream, ctx: ParseContext) -> TransportR
   }
 }
 
+// A transport's identity is minted here but its syntax completes at the binding's closing brace, so
+// the rest/shell/file field readers mint `CompletedLater` and parse_transport_binding records it.
 fn parse_rest_binding_body(tokens: TokenStream, ctx: ParseContext) -> TransportResult {
   parse_rest_fields(tokens: tokens, ctx: ctx, base_url: none, method: none, path_template: none, query: none, request_body: none, response_format: none, headers: [])
 }
@@ -3724,9 +3990,10 @@ fn parse_rest_fields(tokens: TokenStream, ctx: ParseContext, base_url: Node?, me
       Present { value: e } => e
       Absent => make_expr_node(occurrence_identity: OccurrenceSynthetic, expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: no_span())
     }
-    let minted = mint_parsed_node_identity(ctx: ctx)
+    let minted = mint_parsed_node_identity(ctx: ctx, at: CompletedLater)
     TransportResult { transport: rest_transport_node(occurrence_identity: minted.identity, base_url: bu, auth_props: [], headers: headers, method: method, path: path_template, query: query, request_body: request_body, response_format: response_format, span: span), tokens: tokens, ctx: minted.ctx, err: none }
   } else {
+    let field_from = tokens
     let r = expect_ident(tokens: tokens)
     if has_err(err: r.err) { return TransportResult { transport: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
     let fname = r.name
@@ -3756,7 +4023,7 @@ fn parse_rest_fields(tokens: TokenStream, ctx: ParseContext, base_url: Node?, me
       }
       parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: h)
     } else if fname == transport_auth_basic_key || fname == transport_tls_key {
-      let minted = mint_parsed_node_identity(ctx: ctx)
+      let minted = mint_parsed_node_identity(ctx: ctx, at: ConsumedWindow { from: field_from, to: r3.tokens })
       let field = make_field_init_node(occurrence_identity: minted.identity, name: fname, value: r3.expr, span: no_span(), name_span: no_span())
       parse_rest_fields(tokens: tokens, ctx: minted.ctx, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: concat(headers, [field]))
     } else {
@@ -3774,7 +4041,7 @@ fn parse_shell_fields(tokens: TokenStream, ctx: ParseContext, argv: List<Node>, 
   let span = token_span(tok: token_stream_first(stream: tokens))
   let dummy = local_transport_node(occurrence_identity: OccurrenceSynthetic, span: span)
   if tok_is_rbrace(tok: token_stream_first(stream: tokens)) || tok_is_eof(tok: token_stream_first(stream: tokens)) {
-    let minted = mint_parsed_node_identity(ctx: ctx)
+    let minted = mint_parsed_node_identity(ctx: ctx, at: CompletedLater)
     TransportResult { transport: shell_transport_node(occurrence_identity: minted.identity, argv: argv, env: [], stdin: stdin, span: span), tokens: tokens, ctx: minted.ctx, err: none }
   } else {
     let r = expect_ident(tokens: tokens)
@@ -3815,7 +4082,7 @@ fn parse_file_fields(tokens: TokenStream, ctx: ParseContext, base_path: Node?, v
   if tok_is_rbrace(tok: token_stream_first(stream: tokens)) || tok_is_eof(tok: token_stream_first(stream: tokens)) {
     match base_path {
       Present { value: bp } =>
-        let minted = mint_parsed_node_identity(ctx: ctx)
+        let minted = mint_parsed_node_identity(ctx: ctx, at: CompletedLater)
         TransportResult { transport: file_transport_node(occurrence_identity: minted.identity, base_path: bp, verb: verb, span: span), tokens: tokens, ctx: minted.ctx, err: none }
       Absent =>
         TransportResult { transport: dummy, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: "transport file declares no `path:` field; a file transport must name the path it reads or writes", span: span) } }
@@ -3895,7 +4162,7 @@ fn parse_operation_v2_inline(tokens: TokenStream, ctx: ParseContext, name: Strin
   let tokens = skip_newlines(tokens: mock_r.tokens)
   let ctx = mock_r.ctx
 
-  let minted = mint_parsed_node_identity(ctx: ctx)
+  let minted = mint_parsed_node_identity(ctx: ctx, at: FromToken { start: start_span, to: tokens })
   let op = make_operation_node(
     occurrence_identity: minted.identity,
     name: name, ident_span: Present { value: name_span }, inputs: inputs, outputs: outputs,
@@ -3921,7 +4188,7 @@ fn parse_operation_v1_body(tokens: TokenStream, ctx: ParseContext, name: String,
   let r3 = expect(tokens: skip_newlines(tokens: r2.tokens), expected: ExpectRBrace)
   if has_err(err: r3.err) { return OpResult { operation: dummy_op, tokens: r3.tokens, ctx: r2.ctx, err: r3.err } }
 
-  let minted = mint_parsed_node_identity(ctx: r2.ctx)
+  let minted = mint_parsed_node_identity(ctx: r2.ctx, at: FromToken { start: start_span, to: r3.tokens })
   let op = make_operation_node(
     occurrence_identity: minted.identity,
     name: name, ident_span: Present { value: name_span }, inputs: r2.inputs, outputs: r2.outputs,
@@ -3967,13 +4234,13 @@ fn parse_op_body_entries(
           if has_err(err: r3.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: r3.tokens, ctx: r2.ctx, err: r3.err } }
           parse_op_body_entries(tokens: r3.tokens, ctx: r2.ctx, inputs: inputs, outputs: r2.fields, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
         } else if kw_text == "idempotent" {
-          let minted = mint_parsed_bool_property(ctx: ctx, name: "idempotent", span: span)
+          let minted = mint_parsed_bool_property(ctx: ctx, name: "idempotent", span: span, at: ConsumedWindow { from: tokens, to: token_stream_advance(stream: tokens, n: 1) })
           parse_op_body_entries(tokens: token_stream_advance(stream: tokens, n: 1), ctx: minted.ctx, inputs: inputs, outputs: outputs, modifier_props: list_push(modifier_props, minted.property), transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
         } else if kw_text == "readonly" {
-          let minted = mint_parsed_bool_property(ctx: ctx, name: "readonly", span: span)
+          let minted = mint_parsed_bool_property(ctx: ctx, name: "readonly", span: span, at: ConsumedWindow { from: tokens, to: token_stream_advance(stream: tokens, n: 1) })
           parse_op_body_entries(tokens: token_stream_advance(stream: tokens, n: 1), ctx: minted.ctx, inputs: inputs, outputs: outputs, modifier_props: list_push(modifier_props, minted.property), transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
         } else if kw_text == "hermetic" {
-          let minted = mint_parsed_bool_property(ctx: ctx, name: "hermetic", span: span)
+          let minted = mint_parsed_bool_property(ctx: ctx, name: "hermetic", span: span, at: ConsumedWindow { from: tokens, to: token_stream_advance(stream: tokens, n: 1) })
           parse_op_body_entries(tokens: token_stream_advance(stream: tokens, n: 1), ctx: minted.ctx, inputs: inputs, outputs: outputs, modifier_props: list_push(modifier_props, minted.property), transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
         } else {
           mk_result
@@ -4130,7 +4397,7 @@ fn parse_exit_entries_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node
     }
     let code_str = status_expr_to_str(expr: code, source_indices: ctx.source_indices)
     let prop_name = concat("exit_", code_str)
-    let minted = mint_parsed_node_identity(ctx: r3.ctx)
+    let minted = mint_parsed_node_identity(ctx: r3.ctx, at: ConsumedWindow { from: tokens, to: desc_tokens })
     let entry = make_field_init_node(occurrence_identity: minted.identity, name: prop_name, value: r3.type_expr, span: r3.type_expr.span, name_span: no_span())
     let e = eat(tokens: desc_tokens, expected: ExpectComma)
     let tokens = skip_newlines(tokens: match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => desc_tokens })
@@ -4161,11 +4428,11 @@ fn parse_op_requires_clause(tokens: TokenStream, ctx: ParseContext, span: Source
   let tok = token_stream_first(stream: tokens)
   let word = match tok { Present { value: t } => t.text  Absent => "" }
   if word == "none" || word == "opaque" {
-    let value_mint = mint_parsed_node_identity(ctx: ctx)
-    let property_mint = mint_parsed_node_identity(ctx: value_mint.ctx)
+    let rest = token_stream_advance(stream: tokens, n: 1)
+    let value_mint = mint_parsed_node_identity(ctx: ctx, at: ConsumedWindow { from: tokens, to: rest })
+    let property_mint = mint_parsed_node_identity(ctx: value_mint.ctx, at: FromToken { start: span, to: rest })
     let word_value = make_expr_node(occurrence_identity: value_mint.identity, expr_data: ExprLiteral { value: LitStr { value: word } }, children: [], inferred: none, span: span)
     let property = make_field_init_node(occurrence_identity: property_mint.identity, name: "requires", value: word_value, span: span, name_span: span)
-    let rest = token_stream_advance(stream: tokens, n: 1)
     if tok_is_comma(tok: token_stream_first(stream: rest)) {
       ModsResult { properties: [], tokens: rest, ctx: property_mint.ctx, err: Present { value: parse_error(msg: concat("`requires ", concat(word, "` is a whole clause and takes no member")), span: span) } }
     } else {
@@ -4179,7 +4446,7 @@ fn parse_op_requires_clause(tokens: TokenStream, ctx: ParseContext, span: Source
 fn parse_op_requires_members(tokens: TokenStream, ctx: ParseContext, span: SourceSpan, acc: List<Node>) -> ModsResult {
   let r = parse_type_expr(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return ModsResult { properties: acc, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-  let minted = mint_parsed_node_identity(ctx: r.ctx)
+  let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: tokens, to: r.tokens })
   let property = make_field_init_node(occurrence_identity: minted.identity, name: "requires", value: r.type_expr, span: span, name_span: span)
   let next = list_push(acc, property)
   if tok_is_comma(tok: token_stream_first(stream: r.tokens)) {
@@ -4234,13 +4501,13 @@ fn parse_operation_modifiers(tokens: TokenStream, ctx: ParseContext) -> ModsResu
 fn parse_operation_modifiers_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>) -> ModsResult {
   let kw = tok_keyword_text(tok: token_stream_first(stream: tokens))
   if kw == "idempotent" {
-    let minted = mint_parsed_bool_property(ctx: ctx, name: "idempotent", span: token_span(tok: token_stream_first(stream: tokens)))
+    let minted = mint_parsed_bool_property(ctx: ctx, name: "idempotent", span: token_span(tok: token_stream_first(stream: tokens)), at: ConsumedWindow { from: tokens, to: token_stream_advance(stream: tokens, n: 1) })
     parse_operation_modifiers_acc(tokens: token_stream_advance(stream: tokens, n: 1), ctx: minted.ctx, acc: list_push(acc, minted.property))
   } else if kw == "readonly" {
-    let minted = mint_parsed_bool_property(ctx: ctx, name: "readonly", span: token_span(tok: token_stream_first(stream: tokens)))
+    let minted = mint_parsed_bool_property(ctx: ctx, name: "readonly", span: token_span(tok: token_stream_first(stream: tokens)), at: ConsumedWindow { from: tokens, to: token_stream_advance(stream: tokens, n: 1) })
     parse_operation_modifiers_acc(tokens: token_stream_advance(stream: tokens, n: 1), ctx: minted.ctx, acc: list_push(acc, minted.property))
   } else if kw == "hermetic" {
-    let minted = mint_parsed_bool_property(ctx: ctx, name: "hermetic", span: token_span(tok: token_stream_first(stream: tokens)))
+    let minted = mint_parsed_bool_property(ctx: ctx, name: "hermetic", span: token_span(tok: token_stream_first(stream: tokens)), at: ConsumedWindow { from: tokens, to: token_stream_advance(stream: tokens, n: 1) })
     parse_operation_modifiers_acc(tokens: token_stream_advance(stream: tokens, n: 1), ctx: minted.ctx, acc: list_push(acc, minted.property))
   } else {
     ModsResult { properties: acc, tokens: tokens, ctx: ctx, err: none }
@@ -4248,6 +4515,7 @@ fn parse_operation_modifiers_acc(tokens: TokenStream, ctx: ParseContext, acc: Li
 }
 
 fn parse_status_pattern(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
+  let entry = tokens
   let tok = token_stream_first(stream: tokens)
   let sh = match tok { Present { value: t } => Present { value: t.shape }  Absent => none }
   let span = token_span(tok: tok)
@@ -4259,22 +4527,22 @@ fn parse_status_pattern(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
       match next_tok {
         Present { value: t } => {
           if is_ident_shape(shape: t.shape) && t.text == "xx" {
-            parsed_expr_result(tokens: token_stream_advance(stream: tokens, n: 2), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLiteral { value: LitStr { value: "{n}xx" } }, children: [], inferred: none, span: span))
+            parsed_expr_result(from: entry, tokens: token_stream_advance(stream: tokens, n: 2), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLiteral { value: LitStr { value: "{n}xx" } }, children: [], inferred: none, span: span))
           } else {
-            parsed_expr_result(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLiteral { value: LitInt { value: n } }, children: [], inferred: none, span: span))
+            parsed_expr_result(from: entry, tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLiteral { value: LitInt { value: n } }, children: [], inferred: none, span: span))
           }
         }
         Absent => {
-          parsed_expr_result(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLiteral { value: LitInt { value: n } }, children: [], inferred: none, span: span))
+          parsed_expr_result(from: entry, tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLiteral { value: LitInt { value: n } }, children: [], inferred: none, span: span))
         }
       }
     }
     Present { value: ShIdent } => {
       let id = tok.value.text
-      parsed_expr_result(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLiteral { value: LitStr { value: id } }, children: [], inferred: none, span: span))
+      parsed_expr_result(from: entry, tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLiteral { value: LitStr { value: id } }, children: [], inferred: none, span: span))
     }
     _ => {
-      parsed_expr_result(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLiteral { value: LitStr { value: "_" } }, children: [], inferred: none, span: span))
+      parsed_expr_result(from: entry, tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLiteral { value: LitStr { value: "_" } }, children: [], inferred: none, span: span))
     }
   }
 }
@@ -4317,7 +4585,7 @@ fn parse_response_entries_acc(tokens: TokenStream, ctx: ParseContext, acc: List<
     let status_str = status_expr_to_str(expr: status, source_indices: ctx.source_indices)
     let type_name = node_to_name_str(n: r3.type_expr, source_indices: ctx.source_indices)
     let prop_name = concat("response_", status_str)
-    let minted = mint_parsed_node_identity(ctx: r3.ctx)
+    let minted = mint_parsed_node_identity(ctx: r3.ctx, at: ConsumedWindow { from: tokens, to: r3.tokens })
     let entry = make_field_init_node(occurrence_identity: minted.identity, name: prop_name, value: make_named_expr_node(occurrence_identity: r3.type_expr.occurrence_identity, name: type_name, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: r3.type_expr.span, name_span: r3.type_expr.span), span: r3.type_expr.span, name_span: no_span())
     let e = eat(tokens: r3.tokens, expected: ExpectComma)
     let tokens = skip_newlines(tokens: match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r3.tokens })
@@ -4369,7 +4637,7 @@ fn parse_mock_response_entries_acc(tokens: TokenStream, ctx: ParseContext, acc: 
     }
     let status_str = status_expr_to_str(expr: status, source_indices: ctx.source_indices)
     let prop_name = concat("mock_", status_str)
-    let minted = mint_parsed_node_identity(ctx: r3.ctx)
+    let minted = mint_parsed_node_identity(ctx: r3.ctx, at: ConsumedWindow { from: tokens, to: desc_tokens })
     let entry = make_field_init_node(occurrence_identity: minted.identity, name: prop_name, value: body, span: no_span(), name_span: no_span())
     let e = eat(tokens: desc_tokens, expected: ExpectComma)
     let tokens = skip_newlines(tokens: match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => desc_tokens })
@@ -4403,7 +4671,7 @@ fn parse_resource_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: S
   let r2 = expect(tokens: skip_newlines(tokens: r.tokens), expected: ExpectRBrace)
   if has_err(err: r2.err) { return ItemResult { item: named_dummy, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
 
-  let minted = mint_parsed_node_identity(ctx: r.ctx)
+  let minted = mint_parsed_node_identity(ctx: r.ctx, at: FromToken { start: start_span, to: r2.tokens })
   let item = Node { occurrence_identity: minted.identity, name: name, span: start_span, ident_span: Present { value: name_span },
     children: r.capabilities,
     params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective,
@@ -4455,7 +4723,7 @@ fn parse_resource_entries(tokens: TokenStream, ctx: ParseContext, properties: Li
           if has_err(err: r2.err) { return ResPropResult { properties: properties, capabilities: capabilities, tokens: r2.tokens, ctx: ctx, err: r2.err } }
           let r3 = parse_expr(tokens: r2.tokens, ctx: ctx)
           if has_err(err: r3.err) { return ResPropResult { properties: properties, capabilities: capabilities, tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
-          let minted = mint_parsed_node_identity(ctx: r3.ctx)
+          let minted = mint_parsed_node_identity(ctx: r3.ctx, at: ConsumedWindow { from: tokens, to: r3.tokens })
           let fi = make_field_init_node(occurrence_identity: minted.identity, name: fname, value: r3.expr, span: no_span(), name_span: r.span)
           parse_resource_entries(tokens: skip_newlines(tokens: r3.tokens), ctx: minted.ctx, properties: list_push(properties, fi), capabilities: capabilities)
         } else {
@@ -4507,7 +4775,7 @@ fn parse_capability(tokens: TokenStream, ctx: ParseContext) -> CapResult {
     if has_err(err: io.err) { return CapResult { capability: dummy_cap, tokens: io.tokens, ctx: io.ctx, err: io.err } }
     let r3 = expect(tokens: skip_newlines(tokens: io.tokens), expected: ExpectRBrace)
     if has_err(err: r3.err) { return CapResult { capability: dummy_cap, tokens: r3.tokens, ctx: io.ctx, err: r3.err } }
-    let minted = mint_parsed_node_identity(ctx: io.ctx)
+    let minted = mint_parsed_node_identity(ctx: io.ctx, at: FromToken { start: start_span, to: r3.tokens })
     let cap = make_capability_node(occurrence_identity: minted.identity, name: name, ident_span: Present { value: name_span }, inputs: io.inputs, outputs: io.outputs, span: start_span, source_indices: ctx.source_indices)
     CapResult { capability: cap, tokens: skip_newlines(tokens: r3.tokens), ctx: minted.ctx, err: none }
   } else if tok_is_lparen(tok: token_stream_first(stream: tokens)) {
@@ -4524,11 +4792,11 @@ fn parse_capability(tokens: TokenStream, ctx: ParseContext) -> CapResult {
       Present { value: Resolved { node: rt } } => node_inferred_to_outputs(rt: rt, source_indices: ret.ctx.source_indices)
       _ => []
     }
-    let minted = mint_parsed_node_identity(ctx: ret.ctx)
+    let minted = mint_parsed_node_identity(ctx: ret.ctx, at: FromToken { start: start_span, to: ret.tokens })
     let cap = make_capability_node(occurrence_identity: minted.identity, name: name, ident_span: Present { value: name_span }, inputs: inputs, outputs: outputs, span: start_span, source_indices: ctx.source_indices)
     CapResult { capability: cap, tokens: skip_newlines(tokens: ret.tokens), ctx: minted.ctx, err: none }
   } else {
-    let minted = mint_parsed_node_identity(ctx: ctx)
+    let minted = mint_parsed_node_identity(ctx: ctx, at: FromToken { start: start_span, to: tokens })
     let cap = make_capability_node(occurrence_identity: minted.identity, name: name, ident_span: Present { value: name_span }, inputs: [], outputs: [], span: start_span, source_indices: ctx.source_indices)
     CapResult { capability: cap, tokens: skip_newlines(tokens: tokens), ctx: minted.ctx, err: none }
   }
@@ -4586,13 +4854,14 @@ fn parse_alias_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: Sour
   let r = expect(tokens: r.tokens, expected: ExpectEq)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
 
+  let target_from = r.tokens
   let r = parse_dotted_ident(tokens: r.tokens, env: ctx.env)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
   let target_path = r.name
 
-  let value_mint = mint_parsed_node_identity(ctx: ctx)
-  let property_mint = mint_parsed_node_identity(ctx: value_mint.ctx)
-  let item_mint = mint_parsed_node_identity(ctx: property_mint.ctx)
+  let value_mint = mint_parsed_node_identity(ctx: ctx, at: ConsumedWindow { from: target_from, to: r.tokens })
+  let property_mint = mint_parsed_node_identity(ctx: value_mint.ctx, at: ConsumedWindow { from: target_from, to: r.tokens })
+  let item_mint = mint_parsed_node_identity(ctx: property_mint.ctx, at: FromToken { start: start_span, to: r.tokens })
   let target_prop = make_field_init_node(occurrence_identity: property_mint.identity,
     name: "namespace_alias_target",
     value: make_expr_node(occurrence_identity: value_mint.identity,
@@ -4646,7 +4915,7 @@ fn parse_data_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: Sourc
   }
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
 
-  let minted = mint_parsed_node_identity(ctx: r.ctx)
+  let minted = mint_parsed_node_identity(ctx: r.ctx, at: FromToken { start: start_span, to: r.tokens })
   let item = Node { occurrence_identity: minted.identity, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: [],
     inferred: none, return_cardinality: Required, uses: [],
     body: Present { value: r.expr }, connective: NoConnective, transport: none,
@@ -4696,6 +4965,7 @@ fn parse_param_list_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>)
 }
 
 fn parse_param(tokens: TokenStream, ctx: ParseContext) -> ParamResult {
+  let entry = tokens
   let start_span = token_span(tok: token_stream_first(stream: tokens))
   let dummy_param = make_param_node(occurrence_identity: OccurrenceSynthetic, name: "", type_expr: leaf_type_node(occurrence_identity: OccurrenceSynthetic, name: "", span: start_span), default_value: none, span: start_span, name_span: start_span)
   let r = expect_name(tokens: tokens, env: ctx.env)
@@ -4709,7 +4979,7 @@ fn parse_param(tokens: TokenStream, ctx: ParseContext) -> ParamResult {
   let r3 = parse_type_expr(tokens: r2.tokens, ctx: ctx)
   if has_err(err: r3.err) { return ParamResult { param: dummy_param, tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
 
-  let wr = try_where_clause(tokens: r3.tokens, ctx: r3.ctx, base_te: r3.type_expr, start_span: start_span)
+  let wr = try_where_clause(tokens: r3.tokens, ctx: r3.ctx, base_te: r3.type_expr, base_from: r2.tokens, start_span: start_span)
   if has_err(err: wr.err) { return ParamResult { param: dummy_param, tokens: wr.tokens, ctx: wr.ctx, err: wr.err } }
   let type_expr = wr.type_expr
   let tokens = wr.tokens
@@ -4719,14 +4989,14 @@ fn parse_param(tokens: TokenStream, ctx: ParseContext) -> ParamResult {
   EatConsumed { token: _, tokens: __ec } =>
     let r4 = parse_expr(tokens: __ec, ctx: ctx)
     if has_err(err: r4.err) { return ParamResult { param: dummy_param, tokens: r4.tokens, ctx: r4.ctx, err: r4.err } }
-    let minted = mint_parsed_node_identity(ctx: r4.ctx)
+    let minted = mint_parsed_node_identity(ctx: r4.ctx, at: ConsumedWindow { from: entry, to: r4.tokens })
     let p = make_param_node(occurrence_identity: minted.identity,
       name: name, type_expr: type_expr,
       default_value: Present { value: r4.expr }, span: start_span, name_span: name_span
     )
     ParamResult { param: p, tokens: r4.tokens, ctx: minted.ctx, err: none }
   EatUnchanged { tokens: __eu } =>
-    let minted = mint_parsed_node_identity(ctx: ctx)
+    let minted = mint_parsed_node_identity(ctx: ctx, at: ConsumedWindow { from: entry, to: tokens })
     let p = make_param_node(occurrence_identity: minted.identity,
       name: name, type_expr: type_expr,
       default_value: none, span: start_span, name_span: name_span
@@ -4862,7 +5132,10 @@ fn parse_item_block_body(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   }
 }
 
+// A one-statement block returns that statement: the braces leave no semantic node, so their source
+// scope is kept as an erased scope enclosing the statement.
 fn parse_block(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
+  let entry = tokens
   let dummy_expr = parse_recovery_placeholder()
   let block_span = token_span(tok: token_stream_first(stream: tokens))
   let r = expect(tokens: tokens, expected: ExpectLBrace)
@@ -4879,9 +5152,10 @@ fn parse_block(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
 
   if count(stmts) == 1 {
-    ExprResult { expr: first(stmts).value, tokens: r.tokens, ctx: ctx, err: none }
+    let sole = first(stmts).value
+    ExprResult { expr: sole, tokens: r.tokens, ctx: parse_context_record_erased_scope(ctx: ctx, kind: ErasedSingletonBlockScope, enclosed: sole, from: entry, to: r.tokens), err: none }
   } else {
-    parsed_expr_result(tokens: r.tokens, ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprBlock, children: stmts, inferred: none, span: block_span))
+    parsed_expr_result(from: entry, tokens: r.tokens, ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprBlock, children: stmts, inferred: none, span: block_span))
   }
 }
 
@@ -4958,6 +5232,7 @@ fn is_constraint_bracket_after_ident(tokens: TokenStream) -> Bool {
 }
 
 fn parse_constrained_assignment(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
+  let entry = tokens
   let span = token_span(tok: token_stream_first(stream: tokens))
   let dummy_expr = parse_recovery_placeholder()
   let r = expect_name(tokens: tokens, env: ctx.env)
@@ -4971,6 +5246,7 @@ fn parse_constrained_assignment(tokens: TokenStream, ctx: ParseContext) -> ExprR
   let r3 = parse_expr(tokens: r2.tokens, ctx: cr.ctx)
   if has_err(err: r3.err) { return r3 }
   parsed_expr_result(
+    from: entry,
     tokens: r3.tokens,
     ctx: r3.ctx,
     build: identity => Node { occurrence_identity: identity, name: name, span: span,
@@ -4990,6 +5266,7 @@ fn peek_text_is(tokens: TokenStream, expected: String) -> Bool {
 }
 
 fn parse_node_decl(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
+  let entry = tokens
   let span = token_span(tok: token_stream_first(stream: tokens))
   let dummy_expr = parse_recovery_placeholder()
   let tokens = token_stream_advance(stream: tokens, n: 1)
@@ -5010,6 +5287,7 @@ fn parse_node_decl(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let ret = parse_optional_inferred(tokens: r3.tokens, ctx: r3.ctx)
   if has_err(err: ret.err) { return ExprResult { expr: dummy_expr, tokens: ret.tokens, ctx: ret.ctx, err: ret.err } }
   parsed_expr_result(
+    from: entry,
     tokens: ret.tokens,
     ctx: ret.ctx,
     build: identity => Node { occurrence_identity: identity, name: name, span: span,
@@ -5022,6 +5300,7 @@ fn parse_node_decl(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
 }
 
 fn parse_bare_assignment(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
+  let entry = tokens
   let span = token_span(tok: token_stream_first(stream: tokens))
   let dummy_expr = parse_recovery_placeholder()
   let r = expect_name(tokens: tokens, env: ctx.env)
@@ -5035,6 +5314,7 @@ fn parse_bare_assignment(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let cr = try_constraint_annotations(tokens: r3.tokens, ctx: r3.ctx)
   if has_err(err: cr.err) { return ExprResult { expr: dummy_expr, tokens: cr.tokens, ctx: cr.ctx, err: cr.err } }
   parsed_expr_result(
+    from: entry,
     tokens: cr.tokens,
     ctx: cr.ctx,
     build: identity => Node { occurrence_identity: identity, name: name, span: span,
@@ -5054,10 +5334,12 @@ fn parse_expr_bp(tokens: TokenStream, ctx: ParseContext, min_bp: Int) -> ExprRes
   let r = parse_prefix(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return r }
   let lhs = r.expr
-  parse_expr_loop(tokens: r.tokens, ctx: r.ctx, lhs: lhs, min_bp: min_bp)
+  parse_expr_loop(tokens: r.tokens, ctx: r.ctx, lhs: lhs, lhs_from: tokens, min_bp: min_bp)
 }
 
-fn parse_expr_loop(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: Int) -> ExprResult {
+// `lhs_from` is where `lhs` began. Every operator application, call, access or cast built here
+// begins there too -- `a + b` begins at `a`, not at the `+` its diagnostic span names.
+fn parse_expr_loop(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: TokenStream, min_bp: Int) -> ExprResult {
   let ctx = parse_context_after_node(ctx: ctx, node: lhs)
   if tok_is_eof(tok: token_stream_first(stream: tokens)) {
     ExprResult { expr: lhs, tokens: tokens, ctx: ctx, err: none }
@@ -5077,12 +5359,12 @@ fn parse_expr_loop(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: In
       }
     }
     let tokens = skip_continuation_newlines(tokens: tokens, env: ctx.env)
-    let post = try_postfix(tokens: tokens, ctx: ctx, lhs: lhs, min_bp: min_bp)
+    let post = try_postfix(tokens: tokens, ctx: ctx, lhs: lhs, lhs_from: lhs_from, min_bp: min_bp)
     if has_err(err: post.err) {
       ExprResult { expr: lhs, tokens: post.tokens, ctx: post.ctx, err: post.err }
     } else {
     if post.changed {
-      parse_expr_loop(tokens: post.tokens, ctx: post.ctx, lhs: post.expr, min_bp: min_bp)
+      parse_expr_loop(tokens: post.tokens, ctx: post.ctx, lhs: post.expr, lhs_from: lhs_from, min_bp: min_bp)
     } else {
       let bp = infix_bp(tokens: tokens, env: ctx.env)
       match bp {
@@ -5096,13 +5378,13 @@ fn parse_expr_loop(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: In
                 if is_dot_shape(shape: op_shape) {
                   let r = expect_name(tokens: rest, env: ctx.env)
                   if has_err(err: r.err) { return ExprResult { expr: lhs, tokens: r.tokens, ctx: ctx, err: r.err } }
-                  let minted = mint_parsed_node_identity(ctx: ctx)
+                  let minted = mint_parsed_node_identity(ctx: ctx, at: ConsumedWindow { from: lhs_from, to: r.tokens })
                   let new_lhs = make_named_expr_node(occurrence_identity: minted.identity, name: r.name, expr_data: ExprFieldAccess { summary: none }, children: [lhs], inferred: none, span: loop_span, name_span: r.span)
-                  parse_expr_loop(tokens: r.tokens, ctx: minted.ctx, lhs: new_lhs, min_bp: min_bp)
+                  parse_expr_loop(tokens: r.tokens, ctx: minted.ctx, lhs: new_lhs, lhs_from: lhs_from, min_bp: min_bp)
                 } else if is_pipe_arrow_shape(shape: op_shape) {
-                  let r = parse_pipe_rhs(tokens: rest, ctx: ctx, receiver: lhs, span: loop_span)
+                  let r = parse_pipe_rhs(tokens: rest, ctx: ctx, receiver: lhs, receiver_from: lhs_from, receiver_to: tokens, span: loop_span)
                   if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-                  parse_expr_loop(tokens: r.tokens, ctx: r.ctx, lhs: r.expr, min_bp: min_bp)
+                  parse_expr_loop(tokens: r.tokens, ctx: r.ctx, lhs: r.expr, lhs_from: lhs_from, min_bp: min_bp)
                 } else {
                   let tokens = skip_newlines(tokens: rest)
                   let r = parse_expr_bp(tokens: tokens, ctx: ctx, min_bp: bps.right)
@@ -5110,9 +5392,9 @@ fn parse_expr_loop(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: In
                   let binop_opt = find_operator_binop(ops: ctx.env.syntax_spec.operators, symbol: op_tok.text)
                   match binop_opt {
                     Present { value: binop } => {
-                      let minted = mint_parsed_node_identity(ctx: r.ctx)
+                      let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: lhs_from, to: r.tokens })
                       let new_lhs = make_expr_node(occurrence_identity: minted.identity, expr_data: ExprBinOp { op: binop, algebra_field: none, operand: none }, children: [lhs, r.expr], inferred: none, span: loop_span)
-                      parse_expr_loop(tokens: r.tokens, ctx: minted.ctx, lhs: new_lhs, min_bp: min_bp)
+                      parse_expr_loop(tokens: r.tokens, ctx: minted.ctx, lhs: new_lhs, lhs_from: lhs_from, min_bp: min_bp)
                     }
                     Absent => ExprResult { expr: lhs, tokens: r.tokens, ctx: r.ctx, err: Present { value: parse_error(msg: concat("unknown binary operator: ", op_tok.text), span: loop_span) } }
                   }
@@ -5164,26 +5446,28 @@ fn pipe_callee_path_is_applied(candidate: PipeCalleeResult) -> Bool {
   }
 }
 
-fn parse_pipe_callee_rest(tokens: TokenStream, ctx: ParseContext, spine: Node?, name: String, name_span: SourceSpan) -> PipeCalleeResult {
+// `path_start` is the first segment of the callee path; each spine node spans from it to its own segment.
+fn parse_pipe_callee_rest(tokens: TokenStream, ctx: ParseContext, spine: Node?, name: String, name_span: SourceSpan, path_start: SourceSpan) -> PipeCalleeResult {
   if tok_is_dot(tok: token_stream_first(stream: tokens)) {
     let r = expect_name(tokens: token_stream_advance(stream: tokens, n: 1), env: ctx.env)
     if has_err(err: r.err) { return PipeCalleeResult { spine: spine, method: name, method_span: name_span, tokens: r.tokens, ctx: ctx, err: r.err } }
-    let minted = mint_parsed_node_identity(ctx: ctx)
+    let minted = mint_parsed_node_identity(ctx: ctx, at: FromToken { start: path_start, to: tokens })
     let next_spine = match spine {
       Absent => make_named_expr_node(occurrence_identity: minted.identity, name: name, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: name_span, name_span: name_span)
       Present { value: base } => make_named_expr_node(occurrence_identity: minted.identity, name: name, expr_data: ExprFieldAccess { summary: none }, children: [base], inferred: none, span: name_span, name_span: name_span)
     }
-    parse_pipe_callee_rest(tokens: r.tokens, ctx: minted.ctx, spine: Present { value: next_spine }, name: r.name, name_span: r.span)
+    parse_pipe_callee_rest(tokens: r.tokens, ctx: minted.ctx, spine: Present { value: next_spine }, name: r.name, name_span: r.span, path_start: path_start)
   } else {
     PipeCalleeResult { spine: spine, method: name, method_span: name_span, tokens: tokens, ctx: ctx, err: none }
   }
 }
 
-fn parse_pipe_rhs(tokens: TokenStream, ctx: ParseContext, receiver: Node, span: SourceSpan) -> ExprResult {
+// `receiver_from`..`receiver_to` is the receiver's own source; the call `x |> f(..)` spans from it.
+fn parse_pipe_rhs(tokens: TokenStream, ctx: ParseContext, receiver: Node, receiver_from: TokenStream, receiver_to: TokenStream, span: SourceSpan) -> ExprResult {
   let dummy_expr = parse_recovery_placeholder()
   let r = expect_name(tokens: tokens, env: ctx.env)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
-  let dotted = parse_pipe_callee_rest(tokens: r.tokens, ctx: ctx, spine: none, name: r.name, name_span: r.span)
+  let dotted = parse_pipe_callee_rest(tokens: r.tokens, ctx: ctx, spine: none, name: r.name, name_span: r.span, path_start: r.span)
   if has_err(err: dotted.err) { return ExprResult { expr: dummy_expr, tokens: dotted.tokens, ctx: ctx, err: dotted.err } }
   let callee = if pipe_callee_path_is_applied(candidate: dotted) {
     dotted
@@ -5194,7 +5478,7 @@ fn parse_pipe_rhs(tokens: TokenStream, ctx: ParseContext, receiver: Node, span: 
   let leading_result = match callee.spine {
     Absent => ParsedNodesResult { nodes: [receiver], ctx: callee.ctx }
     Present { value: qualifier } => {
-      let wrapper_mint = mint_parsed_node_identity(ctx: callee.ctx)
+      let wrapper_mint = mint_parsed_node_identity(ctx: callee.ctx, at: ConsumedWindow { from: receiver_from, to: receiver_to })
       ParsedNodesResult { nodes: [qualifier, make_arg_node(occurrence_identity: wrapper_mint.identity, name: none, value: receiver, span: receiver.span, name_span: receiver.span)], ctx: wrapper_mint.ctx }
     }
   }
@@ -5203,13 +5487,14 @@ fn parse_pipe_rhs(tokens: TokenStream, ctx: ParseContext, receiver: Node, span: 
   if tok_is_lparen(tok: token_stream_first(stream: tokens)) {
     let r2 = parse_call_args(tokens: tokens, ctx: leading_result.ctx)
     if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
-    parsed_expr_result(tokens: r2.tokens, ctx: r2.ctx, build: identity => make_named_expr_node(occurrence_identity: identity, name: method, expr_data: ExprMethodCall { method_semantics: none }, children: concat(leading_result.nodes, r2.args |> map(na => make_arg_node(occurrence_identity: na.occurrence_identity, name: arg_name_at(n: na, source_indices: ctx.source_indices), value: arg_value(n: na), span: na.span, name_span: node_name_span(n: na)))), inferred: none, span: span, name_span: callee.method_span))
+    parsed_expr_result(from: receiver_from, tokens: r2.tokens, ctx: r2.ctx, build: identity => make_named_expr_node(occurrence_identity: identity, name: method, expr_data: ExprMethodCall { method_semantics: none }, children: concat(leading_result.nodes, r2.args |> map(na => make_arg_node(occurrence_identity: na.occurrence_identity, name: arg_name_at(n: na, source_indices: ctx.source_indices), value: arg_value(n: na), span: na.span, name_span: node_name_span(n: na)))), inferred: none, span: span, name_span: callee.method_span))
   } else {
-    parsed_expr_result(tokens: tokens, ctx: leading_result.ctx, build: identity => make_named_expr_node(occurrence_identity: identity, name: method, expr_data: ExprMethodCall { method_semantics: none }, children: leading_result.nodes, inferred: none, span: span, name_span: callee.method_span))
+    parsed_expr_result(from: receiver_from, tokens: tokens, ctx: leading_result.ctx, build: identity => make_named_expr_node(occurrence_identity: identity, name: method, expr_data: ExprMethodCall { method_semantics: none }, children: leading_result.nodes, inferred: none, span: span, name_span: callee.method_span))
   }
 }
 
 fn parse_prefix(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
+  let entry = tokens
   let tok = token_stream_first(stream: tokens)
   let sh = match tok { Present { value: t } => Present { value: t.shape }  Absent => none }
   let span = token_span(tok: tok)
@@ -5217,12 +5502,12 @@ fn parse_prefix(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
     Present { value: ShBang } => {
       let r = parse_expr_bp(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, min_bp: 12)
       if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-      parsed_expr_result(tokens: r.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprUnaryOp { op: Not }, children: [r.expr], inferred: none, span: span))
+      parsed_expr_result(from: entry, tokens: r.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprUnaryOp { op: Not }, children: [r.expr], inferred: none, span: span))
     }
     Present { value: ShMinus } => {
       let r = parse_expr_bp(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, min_bp: 12)
       if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-      parsed_expr_result(tokens: r.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprUnaryOp { op: Neg }, children: [r.expr], inferred: none, span: span))
+      parsed_expr_result(from: entry, tokens: r.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprUnaryOp { op: Neg }, children: [r.expr], inferred: none, span: span))
     }
     _ => parse_primary(tokens: tokens, ctx: ctx)
   }
@@ -5240,6 +5525,7 @@ fn parse_caret_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
       let end_span = token_span(tok: next)
       let lit_span = make_file_span(file: span.file, start: span.start, end: end_span.end)
       parsed_expr_result(
+        from: tokens,
         tokens: token_stream_advance(stream: after_caret, n: 1),
         ctx: ctx,
         build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLiteral { value: LitSymbol { value: spelling } }, children: [], inferred: none, span: lit_span)
@@ -5252,9 +5538,9 @@ fn parse_caret_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
       let r2 = expect(tokens: tokens, expected: ExpectRParen)
       if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
       let call_span = make_file_span(file: span.file, start: span.start, end: r2.token.span.end)
-      let callee_mint = mint_parsed_node_identity(ctx: r.ctx)
+      let callee_mint = mint_parsed_node_identity(ctx: r.ctx, at: AtToken { span: span })
       let callee = make_named_expr_node(occurrence_identity: callee_mint.identity, name: "discriminant", expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: call_span, name_span: kernel_span(name: "discriminant"))
-      let call_mint = mint_parsed_node_identity(ctx: callee_mint.ctx)
+      let call_mint = mint_parsed_node_identity(ctx: callee_mint.ctx, at: ConsumedWindow { from: tokens, to: r2.tokens })
       let call = make_call_expr(occurrence_identity: call_mint.identity, lhs: callee, args: [r.expr], span: call_span, source_indices: ctx.source_indices)
       ExprResult { expr: call, tokens: r2.tokens, ctx: call_mint.ctx, err: none }
     }
@@ -5274,6 +5560,7 @@ fn parse_caret_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
 }
 
 fn parse_primary(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
+  let entry = tokens
   let tok = token_stream_first(stream: tokens)
   let sh = match tok { Present { value: t } => Present { value: t.shape }  Absent => none }
   let span = token_span(tok: tok)
@@ -5283,7 +5570,7 @@ fn parse_primary(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
       let lit_val = lookup(ctx.env.syntax_spec.keyword_literals, key: kw_text)
       match lit_val {
         Present { value: lv } => {
-          parsed_expr_result(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLiteral { value: lv }, children: [], inferred: none, span: span))
+          parsed_expr_result(from: entry, tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLiteral { value: lv }, children: [], inferred: none, span: span))
         }
         Absent => {
       if kw_text == "match" { parse_match(tokens: tokens, ctx: ctx) }
@@ -5312,15 +5599,15 @@ fn parse_primary(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
     Present { value: ShLitInt } => {
       let n_opt = parse_int(s: tok.value.text)
       let n = match n_opt { Present { value: v } => v  Absent => { return ExprResult { expr: make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: concat("internal: ShLitInt token text not parseable as int: '", tok.value.text, "'"), span: span), tokens: tokens, ctx: ctx, err: none } } }
-      parsed_expr_result(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLiteral { value: LitInt { value: n } }, children: [], inferred: none, span: span))
+      parsed_expr_result(from: entry, tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLiteral { value: LitInt { value: n } }, children: [], inferred: none, span: span))
     }
     Present { value: ShLitFloat } => {
       let f = tok.value.text
-      parsed_expr_result(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLiteral { value: LitFloat { value: f } }, children: [], inferred: none, span: span))
+      parsed_expr_result(from: entry, tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLiteral { value: LitFloat { value: f } }, children: [], inferred: none, span: span))
     }
     Present { value: ShLitStr } => {
       let s = tok.value.text
-      parsed_expr_result(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLiteral { value: LitStr { value: s } }, children: [], inferred: none, span: span))
+      parsed_expr_result(from: entry, tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLiteral { value: LitStr { value: s } }, children: [], inferred: none, span: span))
     }
     Present { value: ShStrBegin } => parse_string_interp(tokens: tokens, ctx: ctx)
     Present { value: ShCaret } => parse_caret_expr(tokens: tokens, ctx: ctx)
@@ -5347,6 +5634,7 @@ fn parse_primary(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
 }
 
 fn parse_lambda_body(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
+  let entry = tokens
   let tokens = skip_newlines(tokens: tokens)
   let tok = token_stream_first(stream: tokens)
   let is_block = tok_is_keyword(tok: tok, kw: "let") || tok_is_keyword(tok: tok, kw: "return")
@@ -5357,7 +5645,7 @@ fn parse_lambda_body(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
     if count(r.stmts) == 1 {
       ExprResult { expr: first(r.stmts).value, tokens: r.tokens, ctx: r.ctx, err: none }
     } else {
-      parsed_expr_result(tokens: r.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprBlock, children: r.stmts, inferred: none, span: span))
+      parsed_expr_result(from: entry, tokens: r.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprBlock, children: r.stmts, inferred: none, span: span))
     }
   } else {
     parse_expr(tokens: tokens, ctx: ctx)
@@ -5377,19 +5665,20 @@ fn parse_lambda_stmts(tokens: TokenStream, ctx: ParseContext, acc: List<Node>) -
 }
 
 fn parse_ident_expr(tokens: TokenStream, ctx: ParseContext, name: String) -> ExprResult {
+  let entry = tokens
   let span = token_span(tok: token_stream_first(stream: tokens))
   let tokens = token_stream_advance(stream: tokens, n: 1)
 
   if tok_is_fat_arrow(tok: token_stream_first(stream: tokens)) {
     let r = parse_lambda_body(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx)
     if has_err(err: r.err) { return r }
-    let param_mint = mint_parsed_node_identity(ctx: r.ctx)
-    parsed_expr_result(tokens: r.tokens, ctx: param_mint.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLambda, children: concat([r.expr], [parsed_name_leaf(occurrence_identity: param_mint.identity, name: name, span: span)]), inferred: none, span: span))
+    let param_mint = mint_parsed_node_identity(ctx: r.ctx, at: AtToken { span: span })
+    parsed_expr_result(from: entry, tokens: r.tokens, ctx: param_mint.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLambda, children: concat([r.expr], [parsed_name_leaf(occurrence_identity: param_mint.identity, name: name, span: span)]), inferred: none, span: span))
   } else {
     if is_uppercase_start(name: name) && tok_is_lbrace(tok: token_stream_first(stream: tokens)) {
-      parse_record_literal(tokens: tokens, ctx: ctx, name: name, span: span)
+      parse_record_literal(tokens: tokens, ctx: ctx, name: name, span: span, from: entry)
     } else {
-      parsed_expr_result(tokens: tokens, ctx: ctx, build: identity => make_named_expr_node(occurrence_identity: identity, name: name, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: span, name_span: span))
+      parsed_expr_result(from: entry, tokens: tokens, ctx: ctx, build: identity => make_named_expr_node(occurrence_identity: identity, name: name, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: span, name_span: span))
     }
   }
 }
@@ -5407,7 +5696,7 @@ fn is_variant_pattern_start(name: String) -> Bool {
   }
 }
 
-fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: Int) -> PostfixResult {
+fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: TokenStream, min_bp: Int) -> PostfixResult {
   let tok = token_stream_first(stream: tokens)
   let sh = match tok { Present { value: t } => Present { value: t.shape }  Absent => none }
   let span = token_span(tok: tok)
@@ -5419,7 +5708,7 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: Int) -
       } else {
         let r = parse_call_args(tokens: tokens, ctx: ctx)
         if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-        let minted = mint_parsed_node_identity(ctx: r.ctx)
+        let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: lhs_from, to: r.tokens })
         let call_expr = make_call_expr(occurrence_identity: minted.identity, lhs: lhs, args: r.args, span: span, source_indices: ctx.source_indices)
         PostfixResult { expr: call_expr, changed: true, tokens: r.tokens, ctx: minted.ctx, err: none }
       }
@@ -5431,7 +5720,7 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: Int) -
         } else {
           let r = parse_type_expr(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx)
           if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-          let minted = mint_parsed_node_identity(ctx: r.ctx)
+          let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: lhs_from, to: r.tokens })
           PostfixResult { expr: make_expr_node(occurrence_identity: minted.identity, expr_data: ExprCast, children: [lhs, r.type_expr], inferred: none, span: span), changed: true, tokens: r.tokens, ctx: minted.ctx, err: none }
         }
       } else {
@@ -5446,7 +5735,7 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: Int) -
         if is_constraint_bracket(tokens: tokens) {
           PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
         } else {
-          let r = parse_index_or_slice(tokens: tokens, ctx: ctx, base: lhs, span: span)
+          let r = parse_index_or_slice(tokens: tokens, ctx: ctx, base: lhs, base_from: lhs_from, span: span)
           if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, tokens: r.tokens, ctx: r.ctx, err: r.err } }
           PostfixResult { expr: r.expr, changed: true, tokens: r.tokens, ctx: r.ctx, err: none }
         }
@@ -5460,7 +5749,7 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: Int) -
             PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
           } else {
             if is_uppercase_start(name: n) {
-              let r = parse_record_literal(tokens: tokens, ctx: ctx, name: n, span: lhs.span)
+              let r = parse_record_literal(tokens: tokens, ctx: ctx, name: n, span: lhs.span, from: lhs_from)
               if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, tokens: r.tokens, ctx: r.ctx, err: r.err } }
               PostfixResult { expr: r.expr, changed: true, tokens: r.tokens, ctx: r.ctx, err: none }
             } else {
@@ -5476,7 +5765,7 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: Int) -
             if is_uppercase_start(name: last_seg) {
               match field_access_spine(texpr: lhs, source_indices: ctx.source_indices) {
                 Present { value: spine } => {
-                  let r = parse_record_literal_named(tokens: tokens, ctx: ctx, name: spine.dotted, span: field_access_chain_span(texpr: lhs), name_span: kernel_span(name: spine.dotted))
+                  let r = parse_record_literal_named(tokens: tokens, ctx: ctx, name: spine.dotted, span: field_access_chain_span(texpr: lhs), name_span: kernel_span(name: spine.dotted), from: lhs_from)
                   if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, tokens: r.tokens, ctx: r.ctx, err: r.err } }
                   PostfixResult { expr: r.expr, changed: true, tokens: r.tokens, ctx: r.ctx, err: none }
                 }
@@ -5533,7 +5822,7 @@ fn parse_constraint_list(tokens: TokenStream, ctx: ParseContext, acc: List<Node>
   let kw_name = tok.value.text
   let r = parse_expr(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx)
   if has_err(err: r.err) { return ConstraintsResult { constraints: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
-  let minted = mint_parsed_node_identity(ctx: r.ctx)
+  let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: tokens, to: r.tokens })
   let fi = make_field_init_node(occurrence_identity: minted.identity, name: kw_name, value: r.expr, span: no_span(), name_span: no_span())
   let acc = list_push(acc, fi)
   match eat(tokens: r.tokens, expected: ExpectComma) {
@@ -5560,7 +5849,7 @@ fn make_call_expr(occurrence_identity: NodeOccurrenceIdentity, lhs: Node, args: 
   }
 }
 
-fn parse_index_or_slice(tokens: TokenStream, ctx: ParseContext, base: Node, span: SourceSpan) -> ExprResult {
+fn parse_index_or_slice(tokens: TokenStream, ctx: ParseContext, base: Node, base_from: TokenStream, span: SourceSpan) -> ExprResult {
   let dummy_expr = parse_recovery_placeholder()
   let r = expect(tokens: tokens, expected: ExpectLBracket)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -5578,11 +5867,11 @@ fn parse_index_or_slice(tokens: TokenStream, ctx: ParseContext, base: Node, span
     let ctx = parse_context_after_node(ctx: r.ctx, node: end_expr)
     let r = expect(tokens: r.tokens, expected: ExpectRBracket)
     if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
-    parsed_expr_result(tokens: r.tokens, ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprSlice, children: [base, first_expr, end_expr], inferred: none, span: span))
+    parsed_expr_result(from: base_from, tokens: r.tokens, ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprSlice, children: [base, first_expr, end_expr], inferred: none, span: span))
   } else {
     let r = expect(tokens: tokens, expected: ExpectRBracket)
     if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
-    parsed_expr_result(tokens: r.tokens, ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprIndex, children: [base, first_expr], inferred: none, span: span))
+    parsed_expr_result(from: base_from, tokens: r.tokens, ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprIndex, children: [base, first_expr], inferred: none, span: span))
   }
 }
 
@@ -5637,32 +5926,33 @@ fn parse_single_arg(tokens: TokenStream, ctx: ParseContext) -> ArgResult {
     if has_err(err: name_r.err) {
       let r = parse_expr(tokens: tokens, ctx: ctx)
       if has_err(err: r.err) { return ArgResult { arg: dummy_arg, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-      let minted = mint_parsed_node_identity(ctx: r.ctx)
+      let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: tokens, to: r.tokens })
       let arg = make_arg_node(occurrence_identity: minted.identity, name: none, value: r.expr, span: span, name_span: span)
       ArgResult { arg: arg, tokens: r.tokens, ctx: minted.ctx, err: none }
     } else if tok_is_colon(tok: token_stream_first(stream: name_r.tokens)) {
       let r = parse_expr(tokens: token_stream_advance(stream: name_r.tokens, n: 1), ctx: ctx)
       if has_err(err: r.err) { return ArgResult { arg: dummy_arg, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-      let minted = mint_parsed_node_identity(ctx: r.ctx)
+      let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: tokens, to: r.tokens })
       let arg = make_arg_node(occurrence_identity: minted.identity, name: Present { value: name_r.name }, value: r.expr, span: span, name_span: name_r.span)
       ArgResult { arg: arg, tokens: r.tokens, ctx: minted.ctx, err: none }
     } else {
       let r = parse_expr(tokens: tokens, ctx: ctx)
       if has_err(err: r.err) { return ArgResult { arg: dummy_arg, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-      let minted = mint_parsed_node_identity(ctx: r.ctx)
+      let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: tokens, to: r.tokens })
       let arg = make_arg_node(occurrence_identity: minted.identity, name: none, value: r.expr, span: span, name_span: span)
       ArgResult { arg: arg, tokens: r.tokens, ctx: minted.ctx, err: none }
     }
   } else {
     let r = parse_expr(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) { return ArgResult { arg: dummy_arg, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-    let minted = mint_parsed_node_identity(ctx: r.ctx)
+    let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: tokens, to: r.tokens })
     let arg = make_arg_node(occurrence_identity: minted.identity, name: none, value: r.expr, span: span, name_span: span)
     ArgResult { arg: arg, tokens: r.tokens, ctx: minted.ctx, err: none }
   }
 }
 
 fn parse_match(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
+  let entry = tokens
   let span = token_span(tok: token_stream_first(stream: tokens))
   let dummy_expr = parse_recovery_placeholder()
   let r = expect(tokens: tokens, expected: ExpectKeyword { text: "match" })
@@ -5684,7 +5974,7 @@ fn parse_match(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let r = expect(tokens: skip_newlines(tokens: r.tokens), expected: ExpectRBrace)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
 
-  parsed_expr_result(tokens: r.tokens, ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprMatch, children: concat([scrutinee], arms), inferred: none, span: span))
+  parsed_expr_result(from: entry, tokens: r.tokens, ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprMatch, children: concat([scrutinee], arms), inferred: none, span: span))
 }
 
 fn parse_expr_no_brace(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
@@ -5700,17 +5990,18 @@ fn parse_expr_bp_no_brace(tokens: TokenStream, ctx: ParseContext, min_bp: Int) -
   let next = token_stream_first(stream: token_stream_advance(stream: tokens, n: 1))
   let r = parse_prefix(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return r }
-  let parsed = parse_expr_loop_no_brace(tokens: r.tokens, ctx: r.ctx, lhs: r.expr, min_bp: min_bp)
+  let parsed = parse_expr_loop_no_brace(tokens: r.tokens, ctx: r.ctx, lhs: r.expr, lhs_from: tokens, min_bp: min_bp)
   let leading_ident_brace = match tok { Present { value: t } => is_ident_shape(shape: t.shape)  Absent => false } && tok_is_lbrace(tok: next)
   let stopped_at_infix = match infix_bp(tokens: parsed.tokens, env: ctx.env) { Present { value: _ } => true  Absent => false }
   if leading_ident_brace && !has_err(err: parsed.err) && !tok_is_lbrace(tok: token_stream_first(stream: parsed.tokens)) && !stopped_at_infix {
     let span = token_span(tok: tok)
-    let minted = mint_parsed_node_identity(ctx: ctx)
+    let minted = mint_parsed_node_identity(ctx: ctx, at: ConsumedWindow { from: tokens, to: token_stream_advance(stream: tokens, n: 1) })
     let lhs = make_named_expr_node(occurrence_identity: minted.identity, name: tok.value.text, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: span, name_span: span)
     parse_expr_loop_no_brace(
       tokens: token_stream_advance(stream: tokens, n: 1),
       ctx: minted.ctx,
       lhs: lhs,
+      lhs_from: tokens,
       min_bp: min_bp
     )
   } else {
@@ -5718,7 +6009,7 @@ fn parse_expr_bp_no_brace(tokens: TokenStream, ctx: ParseContext, min_bp: Int) -
   }
 }
 
-fn parse_expr_loop_no_brace(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: Int) -> ExprResult {
+fn parse_expr_loop_no_brace(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: TokenStream, min_bp: Int) -> ExprResult {
   let ctx = parse_context_after_node(ctx: ctx, node: lhs)
   let tok = token_stream_first(stream: tokens)
   if tok_is_eof(tok: tok) || tok_is_lbrace(tok: tok) {
@@ -5744,14 +6035,14 @@ fn parse_expr_loop_no_brace(tokens: TokenStream, ctx: ParseContext, lhs: Node, m
       let r = parse_call_args(tokens: tokens, ctx: ctx)
       if has_err(err: r.err) { return ExprResult { expr: lhs, tokens: r.tokens, ctx: r.ctx, err: r.err } }
       let span = token_span(tok: token_stream_first(stream: tokens))
-      let minted = mint_parsed_node_identity(ctx: r.ctx)
+      let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: lhs_from, to: r.tokens })
       let new_lhs = make_call_expr(occurrence_identity: minted.identity, lhs: lhs, args: r.args, span: span, source_indices: ctx.source_indices)
-      parse_expr_loop_no_brace(tokens: r.tokens, ctx: minted.ctx, lhs: new_lhs, min_bp: min_bp)
+      parse_expr_loop_no_brace(tokens: r.tokens, ctx: minted.ctx, lhs: new_lhs, lhs_from: lhs_from, min_bp: min_bp)
     } else if tok_is_lbracket(tok: token_stream_first(stream: tokens)) && 21 >= min_bp {
       let span = token_span(tok: token_stream_first(stream: tokens))
-      let r = parse_index_or_slice(tokens: tokens, ctx: ctx, base: lhs, span: span)
+      let r = parse_index_or_slice(tokens: tokens, ctx: ctx, base: lhs, base_from: lhs_from, span: span)
       if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-      parse_expr_loop_no_brace(tokens: r.tokens, ctx: r.ctx, lhs: r.expr, min_bp: min_bp)
+      parse_expr_loop_no_brace(tokens: r.tokens, ctx: r.ctx, lhs: r.expr, lhs_from: lhs_from, min_bp: min_bp)
     } else {
       let bp = infix_bp(tokens: tokens, env: ctx.env)
       match bp {
@@ -5765,13 +6056,13 @@ fn parse_expr_loop_no_brace(tokens: TokenStream, ctx: ParseContext, lhs: Node, m
                 if is_dot_shape(shape: op_shape) {
                   let r = expect_name(tokens: rest, env: ctx.env)
                   if has_err(err: r.err) { return ExprResult { expr: lhs, tokens: r.tokens, ctx: ctx, err: r.err } }
-                  let minted = mint_parsed_node_identity(ctx: ctx)
+                  let minted = mint_parsed_node_identity(ctx: ctx, at: ConsumedWindow { from: lhs_from, to: r.tokens })
                   let new_lhs = make_named_expr_node(occurrence_identity: minted.identity, name: r.name, expr_data: ExprFieldAccess { summary: none }, children: [lhs], inferred: none, span: loop_span, name_span: r.span)
-                  parse_expr_loop_no_brace(tokens: r.tokens, ctx: minted.ctx, lhs: new_lhs, min_bp: min_bp)
+                  parse_expr_loop_no_brace(tokens: r.tokens, ctx: minted.ctx, lhs: new_lhs, lhs_from: lhs_from, min_bp: min_bp)
                 } else if is_pipe_arrow_shape(shape: op_shape) {
-                  let r = parse_pipe_rhs(tokens: rest, ctx: ctx, receiver: lhs, span: loop_span)
+                  let r = parse_pipe_rhs(tokens: rest, ctx: ctx, receiver: lhs, receiver_from: lhs_from, receiver_to: tokens, span: loop_span)
                   if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-                  parse_expr_loop_no_brace(tokens: r.tokens, ctx: r.ctx, lhs: r.expr, min_bp: min_bp)
+                  parse_expr_loop_no_brace(tokens: r.tokens, ctx: r.ctx, lhs: r.expr, lhs_from: lhs_from, min_bp: min_bp)
                 } else {
                   let tokens = skip_newlines(tokens: rest)
                   let r = parse_expr_bp_no_brace(tokens: tokens, ctx: ctx, min_bp: bps.right)
@@ -5779,9 +6070,9 @@ fn parse_expr_loop_no_brace(tokens: TokenStream, ctx: ParseContext, lhs: Node, m
                   let binop_opt = find_operator_binop(ops: ctx.env.syntax_spec.operators, symbol: op_tok.text)
                   match binop_opt {
                     Present { value: binop } => {
-                      let minted = mint_parsed_node_identity(ctx: r.ctx)
+                      let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: lhs_from, to: r.tokens })
                       let new_lhs = make_expr_node(occurrence_identity: minted.identity, expr_data: ExprBinOp { op: binop, algebra_field: none, operand: none }, children: [lhs, r.expr], inferred: none, span: loop_span)
-                      parse_expr_loop_no_brace(tokens: r.tokens, ctx: minted.ctx, lhs: new_lhs, min_bp: min_bp)
+                      parse_expr_loop_no_brace(tokens: r.tokens, ctx: minted.ctx, lhs: new_lhs, lhs_from: lhs_from, min_bp: min_bp)
                     }
                     Absent => ExprResult { expr: lhs, tokens: r.tokens, ctx: r.ctx, err: Present { value: parse_error(msg: concat("unknown binary operator: ", op_tok.text), span: loop_span) } }
                   }
@@ -5814,6 +6105,7 @@ fn parse_match_arms_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>)
 }
 
 fn parse_match_arm(tokens: TokenStream, ctx: ParseContext) -> ArmResult {
+  let entry = tokens
   let arm_span = token_span(tok: token_stream_first(stream: tokens))
   let dummy_arm = make_arm_node(occurrence_identity: OccurrenceSynthetic, pattern: Wildcard, guard: none, body: parse_recovery_placeholder(), span: no_span())
   let r = parse_pattern(tokens: tokens, ctx: ctx)
@@ -5839,12 +6131,13 @@ fn parse_match_arm(tokens: TokenStream, ctx: ParseContext) -> ArmResult {
   }
   if has_err(err: r.err) { return ArmResult { arm: dummy_arm, tokens: r.tokens, ctx: r.ctx, err: r.err } }
 
-  let minted = mint_parsed_node_identity(ctx: r.ctx)
+  let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: entry, to: r.tokens })
   let arm = make_arm_node(occurrence_identity: minted.identity, pattern: pat, guard: guard, body: r.expr, span: arm_span)
   ArmResult { arm: arm, tokens: r.tokens, ctx: minted.ctx, err: none }
 }
 
 fn parse_match_arm_body(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
+  let entry = tokens
   let tok = token_stream_first(stream: tokens)
   let is_block = tok_is_keyword(tok: tok, kw: "let") || tok_is_keyword(tok: tok, kw: "return")
   if is_block {
@@ -5854,7 +6147,7 @@ fn parse_match_arm_body(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
     if count(r.stmts) == 1 {
       ExprResult { expr: first(r.stmts).value, tokens: r.tokens, ctx: r.ctx, err: none }
     } else {
-      parsed_expr_result(tokens: r.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprBlock, children: r.stmts, inferred: none, span: span))
+      parsed_expr_result(from: entry, tokens: r.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprBlock, children: r.stmts, inferred: none, span: span))
     }
   } else {
     parse_expr(tokens: tokens, ctx: ctx)
@@ -6003,7 +6296,7 @@ fn parse_pattern(tokens: TokenStream, ctx: ParseContext) -> PatternResult {
       } else if is_variant_pattern_start(name: n) {
         parse_variant_pattern(tokens: r.tokens, ctx: ctx, name: n)
       } else {
-        let minted = mint_parsed_node_identity(ctx: ctx)
+        let minted = mint_parsed_node_identity(ctx: ctx, at: ConsumedWindow { from: tokens, to: r.tokens })
         PatternResult {
           pattern: Bind {
             declaration: make_pattern_binder_declaration_node(occurrence_identity: minted.identity, name: n, span: r.span)
@@ -6050,7 +6343,7 @@ fn parse_variant_pattern(tokens: TokenStream, ctx: ParseContext, name: String) -
     if has_err(err: r.err) { return PatternResult { pattern: Wildcard, tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let r2 = expect(tokens: r.tokens, expected: ExpectRParen)
     if has_err(err: r2.err) { return PatternResult { pattern: Wildcard, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
-    let minted = mint_parsed_node_identity(ctx: r.ctx)
+    let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: token_stream_advance(stream: tokens, n: 1), to: r.tokens })
     let fb = make_field_binding_node(occurrence_identity: minted.identity, field_name: "0", binding: r.pattern, span: span, name_span: kernel_span(name: "0"))
     PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: [fb], parent_identity: VariantParentBeforeInference }, tokens: r2.tokens, ctx: minted.ctx, err: none }
   } else {
@@ -6067,6 +6360,7 @@ fn parse_variant_bindings_brace_acc(tokens: TokenStream, ctx: ParseContext, acc:
   if tok_is_rbrace(tok: token_stream_first(stream: tokens)) || tok_is_eof(tok: token_stream_first(stream: tokens)) {
     BindingsResult { field_bindings: acc, tokens: tokens, ctx: ctx, err: none }
   } else {
+    let binding_from = tokens
     let bind_span = token_span(tok: token_stream_first(stream: tokens))
     let r = expect_name(tokens: tokens, env: ctx.env)
     if has_err(err: r.err) { return BindingsResult { field_bindings: [], tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -6080,14 +6374,14 @@ fn parse_variant_bindings_brace_acc(tokens: TokenStream, ctx: ParseContext, acc:
       if has_err(err: r2.err) { return BindingsResult { field_bindings: [], tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
       let e2 = eat(tokens: r2.tokens, expected: ExpectComma)
       let tokens = skip_newlines(tokens: match e2 { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r2.tokens })
-      let minted = mint_parsed_node_identity(ctx: r2.ctx)
+      let minted = mint_parsed_node_identity(ctx: r2.ctx, at: ConsumedWindow { from: binding_from, to: r2.tokens })
       let fb = make_field_binding_node(occurrence_identity: minted.identity, field_name: field_name, binding: r2.pattern, span: bind_span, name_span: field_name_span)
       parse_variant_bindings_brace_acc(tokens: tokens, ctx: minted.ctx, acc: list_push(acc, fb))
     EatUnchanged { tokens: __eu } =>
       let e2 = eat(tokens: tokens, expected: ExpectComma)
       let tokens = skip_newlines(tokens: match e2 { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => tokens })
-      let declaration_mint = mint_parsed_node_identity(ctx: ctx)
-      let field_mint = mint_parsed_node_identity(ctx: declaration_mint.ctx)
+      let declaration_mint = mint_parsed_node_identity(ctx: ctx, at: AtToken { span: field_name_span })
+      let field_mint = mint_parsed_node_identity(ctx: declaration_mint.ctx, at: AtToken { span: field_name_span })
       let fb = make_field_binding_node(occurrence_identity: field_mint.identity,
         field_name: field_name,
         binding: Bind {
@@ -6105,6 +6399,7 @@ fn parse_variant_bindings_brace_acc(tokens: TokenStream, ctx: ParseContext, acc:
 }
 
 fn parse_if(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
+  let entry = tokens
   let span = token_span(tok: token_stream_first(stream: tokens))
   let dummy_expr = parse_recovery_placeholder()
   let r = expect(tokens: tokens, expected: ExpectKeyword { text: "if" })
@@ -6126,14 +6421,14 @@ fn parse_if(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
     if tok_is_keyword(tok: token_stream_first(stream: tokens), kw: "if") {
       let r2 = parse_if(tokens: tokens, ctx: ctx)
       if has_err(err: r2.err) { return ExprResult { expr: r2.expr, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
-      parsed_expr_result(tokens: r2.tokens, ctx: parse_context_after_node(ctx: r2.ctx, node: r2.expr), build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprIf, children: [condition, then_branch, r2.expr], inferred: none, span: span))
+      parsed_expr_result(from: entry, tokens: r2.tokens, ctx: parse_context_after_node(ctx: r2.ctx, node: r2.expr), build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprIf, children: [condition, then_branch, r2.expr], inferred: none, span: span))
     } else {
       let r2 = parse_block(tokens: tokens, ctx: ctx)
       if has_err(err: r2.err) { return ExprResult { expr: r2.expr, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
-      parsed_expr_result(tokens: r2.tokens, ctx: parse_context_after_node(ctx: r2.ctx, node: r2.expr), build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprIf, children: [condition, then_branch, r2.expr], inferred: none, span: span))
+      parsed_expr_result(from: entry, tokens: r2.tokens, ctx: parse_context_after_node(ctx: r2.ctx, node: r2.expr), build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprIf, children: [condition, then_branch, r2.expr], inferred: none, span: span))
     }
   EatUnchanged { tokens: __eu } =>
-    parsed_expr_result(tokens: tokens, ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprIf, children: [condition, then_branch], inferred: none, span: span))
+    parsed_expr_result(from: entry, tokens: tokens, ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprIf, children: [condition, then_branch], inferred: none, span: span))
   }
 }
 
@@ -6170,7 +6465,7 @@ fn parse_let(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
     if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: tr.ctx, err: r2.err } }
     let r3 = parse_required_expression_after_separator(tokens: r2.tokens, ctx: tr.ctx)
     if has_err(err: r3.err) { return r3 }
-    let minted = mint_parsed_node_identity(ctx: r3.ctx)
+    let minted = mint_parsed_node_identity(ctx: r3.ctx, at: ConsumedWindow { from: tokens, to: r3.tokens })
     let node = Node { occurrence_identity: minted.identity,
       name: name, span: span, ident_span: Present { value: name_span }, children: [r3.expr],
       connective: NoConnective, params: [], inferred: none, return_cardinality: Required,
@@ -6184,11 +6479,12 @@ fn parse_let(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
     if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: ctx, err: r2.err } }
     let r3 = parse_required_expression_after_separator(tokens: r2.tokens, ctx: ctx)
     if has_err(err: r3.err) { return r3 }
-    parsed_expr_result(tokens: r3.tokens, ctx: r3.ctx, build: identity => make_named_expr_node(occurrence_identity: identity, name: name, expr_data: ExprLet, children: [r3.expr], inferred: none, span: span, name_span: name_span))
+    parsed_expr_result(from: tokens, tokens: r3.tokens, ctx: r3.ctx, build: identity => make_named_expr_node(occurrence_identity: identity, name: name, expr_data: ExprLet, children: [r3.expr], inferred: none, span: span, name_span: name_span))
   }
 }
 
 fn parse_return(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
+  let entry = tokens
   let span = token_span(tok: token_stream_first(stream: tokens))
   let dummy_expr = parse_recovery_placeholder()
   let r = expect(tokens: tokens, expected: ExpectKeyword { text: "return" })
@@ -6196,7 +6492,7 @@ fn parse_return(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
 
   let r = parse_required_expression_after_separator(tokens: r.tokens, ctx: ctx)
   if has_err(err: r.err) { return r }
-  parsed_expr_result(tokens: r.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprReturn, children: [r.expr], inferred: none, span: span))
+  parsed_expr_result(from: entry, tokens: r.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprReturn, children: [r.expr], inferred: none, span: span))
 }
 
 fn parse_for(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
@@ -6221,7 +6517,7 @@ fn parse_for(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let body = r.expr
 
-  let minted = mint_parsed_node_identity(ctx: r.ctx)
+  let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: tokens, to: r.tokens })
   let for_expr = make_named_expr_node(occurrence_identity: minted.identity, name: var_name, expr_data: ExprForEach, children: [collection, body], inferred: none, span: span, name_span: var_name_span)
   ExprResult { expr: for_expr, tokens: r.tokens, ctx: minted.ctx, err: none }
 }
@@ -6236,11 +6532,12 @@ fn field_access_chain_span(texpr: Node) -> SourceSpan {
   }
 }
 
-fn parse_record_literal(tokens: TokenStream, ctx: ParseContext, name: String, span: SourceSpan) -> ExprResult {
-  parse_record_literal_named(tokens: tokens, ctx: ctx, name: name, span: span, name_span: span)
+// `from` is the record's type name, which the caller consumed before this reads the brace.
+fn parse_record_literal(tokens: TokenStream, ctx: ParseContext, name: String, span: SourceSpan, from: TokenStream) -> ExprResult {
+  parse_record_literal_named(tokens: tokens, ctx: ctx, name: name, span: span, name_span: span, from: from)
 }
 
-fn parse_record_literal_named(tokens: TokenStream, ctx: ParseContext, name: String, span: SourceSpan, name_span: SourceSpan) -> ExprResult {
+fn parse_record_literal_named(tokens: TokenStream, ctx: ParseContext, name: String, span: SourceSpan, name_span: SourceSpan, from: TokenStream) -> ExprResult {
   let dummy_expr = parse_recovery_placeholder()
   let r = expect(tokens: tokens, expected: ExpectLBrace)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -6253,7 +6550,7 @@ fn parse_record_literal_named(tokens: TokenStream, ctx: ParseContext, name: Stri
   let r2 = expect(tokens: tokens, expected: ExpectRBrace)
   if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
 
-  parsed_expr_result(tokens: r2.tokens, ctx: r.ctx, build: identity => make_named_expr_node(occurrence_identity: identity, name: name, expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span, name_span: name_span))
+  parsed_expr_result(from: from, tokens: r2.tokens, ctx: r.ctx, build: identity => make_named_expr_node(occurrence_identity: identity, name: name, expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span, name_span: name_span))
 }
 
 fn parse_field_init_list(tokens: TokenStream, ctx: ParseContext) -> FieldInitsResult {
@@ -6318,13 +6615,13 @@ fn parse_field_init(tokens: TokenStream, ctx: ParseContext) -> FieldInitResult {
     if tok_is_colon(tok: token_stream_first(stream: name_r.tokens)) {
       let r = parse_expr(tokens: token_stream_advance(stream: name_r.tokens, n: 1), ctx: ctx)
       if has_err(err: r.err) { return FieldInitResult { field: dummy_fi, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-      let minted = mint_parsed_node_identity(ctx: r.ctx)
+      let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: tokens, to: r.tokens })
       let fi = make_field_init_node(occurrence_identity: minted.identity, name: n, value: r.expr, span: span, name_span: name_r.span)
       FieldInitResult { field: fi, tokens: r.tokens, ctx: minted.ctx, err: none }
     } else {
-      let value_mint = mint_parsed_node_identity(ctx: ctx)
+      let value_mint = mint_parsed_node_identity(ctx: ctx, at: ConsumedWindow { from: tokens, to: name_r.tokens })
       let value = make_named_expr_node(occurrence_identity: value_mint.identity, name: n, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: span, name_span: name_r.span)
-      let field_mint = mint_parsed_node_identity(ctx: value_mint.ctx)
+      let field_mint = mint_parsed_node_identity(ctx: value_mint.ctx, at: ConsumedWindow { from: tokens, to: name_r.tokens })
       let fi = make_field_init_node(occurrence_identity: field_mint.identity, name: n, value: value, span: span, name_span: name_r.span)
       FieldInitResult { field: fi, tokens: name_r.tokens, ctx: field_mint.ctx, err: none }
     }
@@ -6335,19 +6632,20 @@ fn parse_field_init(tokens: TokenStream, ctx: ParseContext) -> FieldInitResult {
     }
     let r = parse_expr(tokens: token_stream_advance(stream: tokens, n: 2), ctx: ctx)
     if has_err(err: r.err) { return FieldInitResult { field: dummy_fi, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-    let minted = mint_parsed_node_identity(ctx: r.ctx)
+    let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: tokens, to: r.tokens })
     let fi = make_field_init_node(occurrence_identity: minted.identity, name: str_name, value: r.expr, span: span, name_span: no_span())
     FieldInitResult { field: fi, tokens: r.tokens, ctx: minted.ctx, err: none }
   } else {
     let r = parse_expr(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) { return FieldInitResult { field: dummy_fi, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-    let minted = mint_parsed_node_identity(ctx: r.ctx)
+    let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: tokens, to: r.tokens })
     let fi = make_field_init_node(occurrence_identity: minted.identity, name: "_", value: r.expr, span: span, name_span: no_span())
     FieldInitResult { field: fi, tokens: r.tokens, ctx: minted.ctx, err: none }
   }
 }
 
 fn parse_list_literal(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
+  let entry = tokens
   let span = token_span(tok: token_stream_first(stream: tokens))
   let dummy_expr = parse_recovery_placeholder()
   let r = expect(tokens: tokens, expected: ExpectLBracket)
@@ -6359,7 +6657,7 @@ fn parse_list_literal(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let r2 = expect(tokens: skip_newlines(tokens: r.tokens), expected: ExpectRBracket)
   if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
 
-  parsed_expr_result(tokens: r2.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprListLit, children: r.exprs, inferred: none, span: span))
+  parsed_expr_result(from: entry, tokens: r2.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprListLit, children: r.exprs, inferred: none, span: span))
 }
 
 fn parse_expr_list_until(tokens: TokenStream, ctx: ParseContext, end_expected: ExpectedToken) -> ExprsResult {
@@ -6383,7 +6681,10 @@ fn parse_expr_list_until_acc(tokens: TokenStream, ctx: ParseContext, end_expecte
   }
 }
 
+// `(x)` is `x`: the parentheses leave no semantic node, so their source scope is kept as an erased
+// scope enclosing it.
 fn parse_paren_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
+  let entry = tokens
   let span = token_span(tok: token_stream_first(stream: tokens))
   let dummy_expr = parse_recovery_placeholder()
   let r = expect(tokens: tokens, expected: ExpectLParen)
@@ -6391,25 +6692,26 @@ fn parse_paren_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let tokens = skip_newlines(tokens: r.tokens)
 
   if tok_is_rparen(tok: token_stream_first(stream: tokens)) {
-    parsed_expr_result(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none }, children: [], inferred: none, span: span))
+    parsed_expr_result(from: entry, tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none }, children: [], inferred: none, span: span))
   } else {
     let lambda_r = try_lambda_params(tokens: tokens, ctx: ctx)
     if lambda_r.is_lambda {
       let r = parse_lambda_body(tokens: lambda_r.tokens, ctx: lambda_r.ctx)
       if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-      parsed_expr_result(tokens: r.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLambda, children: concat([r.expr], lambda_r.params |> map(p => parsed_name_leaf(occurrence_identity: p.occurrence_identity, name: p.name, span: p.span))), inferred: none, span: span))
+      parsed_expr_result(from: entry, tokens: r.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLambda, children: concat([r.expr], lambda_r.params |> map(p => parsed_name_leaf(occurrence_identity: p.occurrence_identity, name: p.name, span: p.span))), inferred: none, span: span))
     } else {
       let r = parse_expr(tokens: lambda_r.tokens, ctx: lambda_r.ctx)
       if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
       let tokens = skip_newlines(tokens: r.tokens)
       let r2 = expect(tokens: tokens, expected: ExpectRParen)
       if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
-      ExprResult { expr: r.expr, tokens: r2.tokens, ctx: r.ctx, err: none }
+      ExprResult { expr: r.expr, tokens: r2.tokens, ctx: parse_context_record_erased_scope(ctx: r.ctx, kind: ErasedParenScope, enclosed: r.expr, from: entry, to: r2.tokens), err: none }
     }
   }
 }
 
 fn parse_fn_lambda(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
+  let entry = tokens
   let span = token_span(tok: token_stream_first(stream: tokens))
   let dummy = parse_recovery_placeholder()
   let r1 = expect(tokens: tokens, expected: ExpectKeyword { text: "fn" })
@@ -6422,7 +6724,7 @@ fn parse_fn_lambda(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let tokens = skip_newlines(tokens: r3.tokens)
   let body_r = parse_brace_expr(tokens: tokens, ctx: params_r.ctx)
   if has_err(err: body_r.err) { return body_r }
-  parsed_expr_result(tokens: body_r.tokens, ctx: body_r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLambda, children: concat([body_r.expr], params_r.params |> map(p => parsed_name_leaf(occurrence_identity: p.occurrence_identity, name: p.name, span: p.span))), inferred: none, span: span))
+  parsed_expr_result(from: entry, tokens: body_r.tokens, ctx: body_r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLambda, children: concat([body_r.expr], params_r.params |> map(p => parsed_name_leaf(occurrence_identity: p.occurrence_identity, name: p.name, span: p.span))), inferred: none, span: span))
 }
 
 fn collect_fn_lambda_params(tokens: TokenStream, ctx: ParseContext, acc: List<ParserParam>) -> IdentCollectResult {
@@ -6436,10 +6738,10 @@ fn collect_fn_lambda_params(tokens: TokenStream, ctx: ParseContext, acc: List<Pa
     } else {
       let tokens = skip_newlines(tokens: name_r.tokens)
       if tok_is_comma(tok: token_stream_first(stream: tokens)) {
-        let minted = mint_parsed_node_identity(ctx: ctx)
+        let minted = mint_parsed_node_identity(ctx: ctx, at: AtToken { span: name_r.span })
         collect_fn_lambda_params(tokens: token_stream_advance(stream: tokens, n: 1), ctx: minted.ctx, acc: list_push(acc, ParserParam { occurrence_identity: minted.identity, name: name_r.name, span: name_r.span }))
       } else {
-        let minted = mint_parsed_node_identity(ctx: ctx)
+        let minted = mint_parsed_node_identity(ctx: ctx, at: AtToken { span: name_r.span })
         IdentCollectResult { success: true, params: list_push(acc, ParserParam { occurrence_identity: minted.identity, name: name_r.name, span: name_r.span }), tokens: tokens, ctx: minted.ctx, err: none }
       }
     }
@@ -6467,7 +6769,7 @@ fn try_lambda_params(tokens: TokenStream, ctx: ParseContext) -> LambdaCheckResul
 fn collect_lambda_idents(tokens: TokenStream, ctx: ParseContext, acc: List<ParserParam>) -> IdentCollectResult {
   if tok_is_ident(tok: token_stream_first(stream: tokens)) {
     let tok = token_stream_first(stream: tokens)
-    let minted = mint_parsed_node_identity(ctx: ctx)
+    let minted = mint_parsed_node_identity(ctx: ctx, at: AtToken { span: tok.value.span })
     let param = ParserParam { occurrence_identity: minted.identity, name: tok.value.text, span: tok.value.span }
     let new_acc = list_push(acc, param)
     match eat(tokens: token_stream_advance(stream: tokens, n: 1), expected: ExpectComma) {
@@ -6500,11 +6802,11 @@ fn parse_string_interp(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
     Present { value: ShStrBegin } => {
       let prefix = tok.value.text
       let parts_init = if string_length(s: prefix) > 0 {
-        [Text { value: prefix }]
+        [ParsedStringPart { part: Text { value: prefix }, at: AtToken { span: span } }]
       } else {
         []
       }
-      parse_interp_parts(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, parts: parts_init, span: span)
+      parse_interp_parts(from: tokens, tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, parts: parts_init, span: span)
     }
     _ => ExprResult {
       expr: parse_recovery_expr(span: span, message: "expected string interpolation"),
@@ -6515,12 +6817,13 @@ fn parse_string_interp(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   }
 }
 
-fn parse_interp_parts(tokens: TokenStream, ctx: ParseContext, parts: List<StringPart>, span: SourceSpan) -> ExprResult {
+// `from` is the opening string token, where the whole interpolated literal begins.
+fn parse_interp_parts(from: TokenStream, tokens: TokenStream, ctx: ParseContext, parts: List<ParsedStringPart>, span: SourceSpan) -> ExprResult {
   let r = parse_expr(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) {
     return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: Present { value: parse_error(msg: interp_body_error_message(err: r.err), span: span) } }
   }
-  let new_parts = list_push(parts, Interpolation { expr: r.expr })
+  let new_parts = list_push(parts, ParsedStringPart { part: Interpolation { expr: r.expr }, at: ConsumedWindow { from: tokens, to: r.tokens } })
   let tokens = r.tokens
   let ctx = r.ctx
 
@@ -6530,35 +6833,36 @@ fn parse_interp_parts(tokens: TokenStream, ctx: ParseContext, parts: List<String
     Present { value: ShStrMid } => {
       let mid = interp_tok.value.text
       let mid_parts = if string_length(s: mid) > 0 {
-        list_push(new_parts, Text { value: mid })
+        list_push(new_parts, ParsedStringPart { part: Text { value: mid }, at: AtToken { span: interp_tok.value.span } })
       } else {
         new_parts
       }
-      parse_interp_parts(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, parts: mid_parts, span: span)
+      parse_interp_parts(from: from, tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, parts: mid_parts, span: span)
     }
     Present { value: ShStrEnd } => {
       let suffix = interp_tok.value.text
       let final_parts = if string_length(s: suffix) > 0 {
-        list_push(new_parts, Text { value: suffix })
+        list_push(new_parts, ParsedStringPart { part: Text { value: suffix }, at: AtToken { span: interp_tok.value.span } })
       } else {
         new_parts
       }
       let children = mint_parsed_string_part_nodes(parts: final_parts, ctx: ctx, span: span, acc: [])
-      parsed_expr_result(tokens: token_stream_advance(stream: tokens, n: 1), ctx: children.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprStringInterp, children: children.nodes, inferred: none, span: span))
+      parsed_expr_result(from: from, tokens: token_stream_advance(stream: tokens, n: 1), ctx: children.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprStringInterp, children: children.nodes, inferred: none, span: span))
     }
     _ =>
-      ExprResult { expr: make_expr_node(occurrence_identity: OccurrenceSynthetic, expr_data: ExprStringInterp, children: new_parts |> map(p => match p { Text { value: v } => make_text_part_node(occurrence_identity: OccurrenceSynthetic, text: v, span: span)  Interpolation { expr: e } => make_interp_part_node(occurrence_identity: OccurrenceSynthetic, expr: e, span: span) }), inferred: none, span: span), tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: interp_body_error_message(err: none), span: span) } }
+      ExprResult { expr: make_expr_node(occurrence_identity: OccurrenceSynthetic, expr_data: ExprStringInterp, children: new_parts |> map(p => match p.part { Text { value: v } => make_text_part_node(occurrence_identity: OccurrenceSynthetic, text: v, span: span)  Interpolation { expr: e } => make_interp_part_node(occurrence_identity: OccurrenceSynthetic, expr: e, span: span) }), inferred: none, span: span), tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: interp_body_error_message(err: none), span: span) } }
   }
 }
 
 fn parse_brace_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
+  let entry = tokens
   let span = token_span(tok: token_stream_first(stream: tokens))
   let dummy_expr = parse_recovery_placeholder()
   let tokens = skip_newlines(tokens: token_stream_advance(stream: tokens, n: 1))
 
   let tok = token_stream_first(stream: tokens)
   if tok_is_rbrace(tok: tok) {
-    parsed_expr_result(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none }, children: [], inferred: none, span: span))
+    parsed_expr_result(from: entry, tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none }, children: [], inferred: none, span: span))
   } else {
     let sh = match tok { Present { value: t } => Present { value: t.shape }  Absent => none }
     match sh {
@@ -6573,7 +6877,7 @@ fn parse_brace_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
           if count(r.stmts) == 1 {
             ExprResult { expr: first(r.stmts).value, tokens: r2.tokens, ctx: r.ctx, err: none }
           } else {
-            parsed_expr_result(tokens: r2.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprBlock, children: r.stmts, inferred: none, span: span))
+            parsed_expr_result(from: entry, tokens: r2.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprBlock, children: r.stmts, inferred: none, span: span))
           }
         } else {
           if tok_is_keyword_name(tok: tok, env: ctx.env) && peek_is_colon_after_ident(tokens: tokens) {
@@ -6582,7 +6886,7 @@ fn parse_brace_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
             let tokens = skip_newlines(tokens: r.tokens)
             let r2 = expect(tokens: tokens, expected: ExpectRBrace)
             if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
-            parsed_expr_result(tokens: r2.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span))
+            parsed_expr_result(from: entry, tokens: r2.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span))
           } else {
             let r = parse_expr(tokens: tokens, ctx: ctx)
             if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
@@ -6601,14 +6905,14 @@ fn parse_brace_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
           let tokens = skip_newlines(tokens: r.tokens)
           let r2 = expect(tokens: tokens, expected: ExpectRBrace)
           if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
-          parsed_expr_result(tokens: r2.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span))
+          parsed_expr_result(from: entry, tokens: r2.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span))
         } else if tok_is_lit_str(tok: tok) && peek_is_colon_after_ident(tokens: tokens) {
           let r = parse_field_init_list(tokens: tokens, ctx: ctx)
           if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
           let tokens = skip_newlines(tokens: r.tokens)
           let r2 = expect(tokens: tokens, expected: ExpectRBrace)
           if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
-          parsed_expr_result(tokens: r2.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span))
+          parsed_expr_result(from: entry, tokens: r2.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span))
         } else {
           let r = parse_stmts(tokens: tokens, ctx: ctx)
           if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
@@ -6618,7 +6922,7 @@ fn parse_brace_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
           if count(r.stmts) == 1 {
             ExprResult { expr: first(r.stmts).value, tokens: r2.tokens, ctx: r.ctx, err: none }
           } else {
-            parsed_expr_result(tokens: r2.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprBlock, children: r.stmts, inferred: none, span: span))
+            parsed_expr_result(from: entry, tokens: r2.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprBlock, children: r.stmts, inferred: none, span: span))
           }
         }
       }

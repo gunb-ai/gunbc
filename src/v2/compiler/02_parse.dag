@@ -946,10 +946,9 @@ fn parse_wrap_production_captured(
 
 // A COMPOSED NODE PUBLISHES ITS EXTENT WHEN IT IS BUILT, from its direct children's extents, which
 // were themselves published when THEY were built: it starts where its first child with an extent
-// starts and ends where its last one ends. That is exact because every token a composite consumes
-// sits under a minted direct child -- a terminal (FromSource) or a composite recorded here; the only
-// unminted nodes the parse builds are the empty node and the repeat spine, and neither consumed a
-// token. It reads direct children only, never descendants. A composite none of whose children has
+// starts and ends where its last one ends. That is exact because every accepted parse result that
+// consumed input keeps a capture whose extent is recorded -- a terminal (FromSource) or a composite
+// recorded here -- so no consumed token sits only under a child without one. It reads direct children only, never descendants. A composite none of whose children has
 // an extent consumed nothing and records nothing, rather than a zero-width range at a guessed place.
 fn parse_composite_extent(index: SpanIndex, id: OccurrenceId, children: List<Node>) -> SpanIndex {
   let span = fold_list(
