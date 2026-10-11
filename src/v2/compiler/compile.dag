@@ -3914,8 +3914,8 @@ fn native_census_closure_index(
   }
 }
 
-// THE SAME REACHABILITY WALK THE LANE'S CLOSURE USES (native_lane_module_reachable), run over the
-// reverse graph from the root: one walk, two directions, no second closure fold. Its budget is the
+// THE KEYED REACHABILITY WALK (native_lane_module_reachable), run over the reverse graph from the
+// root: one walk, two directions (native_census_subject_closure runs it forward), no second closure fold. Its budget is the
 // roster size plus one, which bounds the rounds of any walk over that roster; exhaustion refuses.
 fn native_census_closure_fan_out(index: NativeCensusClosureIndex, root: NativeTestFileRefusal) -> NativeCensusClosureFanOut {
   native_census_closure_fan_out_of(index: index, root: root.module)

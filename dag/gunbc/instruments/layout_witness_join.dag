@@ -437,7 +437,7 @@ fn join_summary_lines(old: Observation, new: Observation, findings: List<JoinFin
     concat("old rows: ", count(old.rows) as String),
     concat("new rows: ", count(new.rows) as String),
     concat("unread files: ", count(new.unread) as String),
-    concat("preserved: ", count(findings |> filter(f => match f { RowPreserved => true _ => false })) as String),
+    concat("preserved dispositions (old and new side, rows and files): ", count(findings |> filter(f => match f { RowPreserved => true _ => false })) as String),
     concat("red findings: ", count(red_findings(findings: findings)) as String),
     if count(red_findings(findings: findings)) == 0 { "RESULT\tEQUAL" } else { "RESULT\tNOT_EQUAL" }
   ]
