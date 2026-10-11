@@ -143,7 +143,7 @@ data claim_arrow_two_conj_compiles: TestClaim = CompilesClaim {
 }
 
 data claim_cardinality_empty_rejected: TestClaim = arity_rejection_claim(
-  label: "manual/connective: empty Cardinality type-node fails well-formedness (A1 arity)",
+  label: "manual/connective: empty Occupancy type-node fails well-formedness (A1 arity)",
   input: stub_empty_cardinality,
   anchor: ManualTcCardinalityEmpty
 )
