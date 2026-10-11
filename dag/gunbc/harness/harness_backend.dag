@@ -14,7 +14,7 @@ import gunbc.serving.serving_availability {
   serving_availability_bracketing_read,
 }
 import extdeps.vllm.metrics {
-  VllmServingMetric, NumRequestsWaiting, NumRequestsRunning, NumRequestsWaitingByReason, GenerationTokensTotal, PrefixCacheQueries, PrefixCacheHits,
+  VllmServingMetric, NumRequestsWaiting, NumRequestsRunning, NumRequestsWaitingByReason, GenerationTokensTotal,
   HistogramStatistic, vllm_metric_name, vllm_histogram_series_name,
   vllm_waiting_reason_label, vllm_waiting_reason_capacity,
 }
@@ -26,7 +26,6 @@ import gunbc.spark.vllm_endpoint_process_launch {
 import gunbc.serving.turn_admission {
   ServingQueueReading, QueueDepthRead, QueueDepthUnread,
   ServingCapacityPressure, RouteAdmittingMore, RouteHoldingForCapacity, CapacityPressureUnread,
-  ServingPrefixFields, PrefixFieldsRead, PrefixFieldsUnread,
 }
 import gunbc.serving.serving_enrollment {
   ServingRoute, ServingRouteResolved, ServingRouteUnresolved, ServingRouteEndpoint,
@@ -573,24 +572,10 @@ fn harness_progress_sample(body: String, at: EpochSecs) -> EngineProgressSample?
   }
 }
 
-// BOTH COUNTERS OR NEITHER: a hit counter without its query counter cannot say a lookup happened.
-// extdeps.vllm.metrics PrefixCacheQueries / PrefixCacheHits are the cumulative counters of ONE launch.
-fn harness_prefix_fields_from_body(body: String) -> ServingPrefixFields {
-  match harness_counter_field(body: body, metric: PrefixCacheQueries) {
-    Absent => PrefixFieldsUnread { obligation: "the served metrics carried no prefix-cache queries counter" as NonEmptyStr }
-    Present { value: q } =>
-      match harness_counter_field(body: body, metric: PrefixCacheHits) {
-        Absent => PrefixFieldsUnread { obligation: "the served metrics carried no prefix-cache hits counter" as NonEmptyStr }
-        Present { value: h } => PrefixFieldsRead { queries_field: q, hits_field: h }
-      }
-  }
-}
-
 type HarnessEngineReading {
   queue: ServingQueueReading
   launch: VllmEndpointProcessLaunchObservation
   progress: EngineProgressSample?
-  prefix: ServingPrefixFields
 }
 
 fn harness_observe_engine_at(endpoint: ServingRouteEndpoint, at: EpochSecs) -> HarnessEngineReading {
@@ -602,14 +587,12 @@ fn harness_observe_engine_at(endpoint: ServingRouteEndpoint, at: EpochSecs) -> H
       queue: QueueDepthUnread { obligation: join(["the metrics endpoint at ", url, " did not answer"], "") as NonEmptyStr },
       launch: LaunchUnobserved { group: group, obligation: join(["the metrics endpoint at ", url, " did not answer, so which launch is serving is unknown"], "") as NonEmptyStr },
       progress: none,
-      prefix: PrefixFieldsUnread { obligation: join(["the metrics endpoint at ", url, " did not answer, so no prefix-cache counter was read"], "") as NonEmptyStr },
     }
   } else {
     HarnessEngineReading {
       queue: harness_queue_from_body(body: read.body),
       launch: harness_launch_from_body(group: group, address: serving_route_endpoint_wire(e: endpoint) as String, body: read.body),
       progress: harness_progress_sample(body: read.body, at: at),
-      prefix: harness_prefix_fields_from_body(body: read.body),
     }
   }
 }

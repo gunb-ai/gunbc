@@ -275,7 +275,7 @@ fn serving_admission_on_counts(
 // They therefore never constitute a session's standing here. The evidence a session may stand on is
 // the engine's PER-REQUEST count returned with that session's own previous response (OpenAI-compatible
 // usage.prompt_tokens_details.cached_tokens; vLLM reports it only when the server is launched with
-// --enable-prompt-tokens-details, and an absent field is TurnReuseUnread, never zero).
+// --enable-prompt-tokens-details (modelled in extdeps.vllm.engine_args), and an absent field is TurnReuseUnread, never zero).
 //
 // EVEN AN ATTRIBUTED HIT IS REUSE AT THAT TURN, NOT CURRENT RESIDENCY: nothing guarantees retention
 // after the response, so the standing is a typed bet (DESIGN.md 4d) carrying its evidence --
@@ -284,13 +284,6 @@ fn serving_admission_on_counts(
 type ServingTurnReuse
   = TurnReuseRead { cached_tokens: Nat, launch: NonEmptyStr, turn: NonEmptyStr }
   | TurnReuseUnread { obligation: NonEmptyStr }
-
-// The cumulative engine-wide prefix-cache counters of ONE reading of the candidate launch. WORKLOAD
-// CORROBORATION ONLY: the harness carries them on the engine reading; nothing here derives a session
-// standing from them (DECLARED FRONTIER: the capacity/workload reader is their consumer).
-type ServingPrefixFields
-  = PrefixFieldsRead { queries_field: NonEmptyStr, hits_field: NonEmptyStr }
-  | PrefixFieldsUnread { obligation: NonEmptyStr }
 
 // What the caller remembers about a session between turns. No store of these exists yet, so the
 // production caller supplies NoSessionRecord and every session reads unread -- warmth is never

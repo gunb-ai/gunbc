@@ -1101,7 +1101,7 @@ fn harness_placement_is_free(standing: ServingSessionResidency, session: Serving
 }
 
 // THE OWNER'S STANDING IS READ WHERE THE OWNER IS PROBED: only a candidate whose launch IS the recorded
-// owner contributes a standing, from its own prefix counters, whatever order the routes are folded in.
+// owner contributes a standing, from the session record's own attributed reuse reading, whatever order the routes are folded in.
 fn harness_note_owner_standing(acc: HarnessCandidates, session: ServingSessionRecord, launch: VllmEndpointProcessLaunch, engine: HarnessEngineReading) -> HarnessCandidates {
   match session {
     NoSessionRecord => acc

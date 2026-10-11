@@ -24,12 +24,12 @@ import gunbc.serving.turn_admission {
   HostTierEmpty, HostTierUnread, ServingSessionResidency, ReusedAtTurn, HostRestorable, MustReconstruct,
   ResidencyUnread, TokenPrefixBroken, LaunchReplaced, PrefixMissedAndNotRetained,
   serving_session_residency, serving_session_placement, ServingSessionRecord, NoSessionRecord, SessionRecord,
-  ServingPrefixFields, PrefixFieldsRead, PrefixFieldsUnread, serving_session_standing,
+  serving_session_standing,
   ServingSessionPlacement, PlacementFree, OwnedByAnotherReplica,
 }
 import gunbc.harness.harness_backend {
   harness_gauge_count, harness_queue_from_body, harness_launch_from_body,
-  harness_capacity_pressure_from_body, harness_prefix_fields_from_body,
+  harness_capacity_pressure_from_body,
 }
 
 data probe_receipt: ObservationReceiptRef = "test.claim.serving.turn_admission_witness" as ObservationReceiptRef
@@ -348,8 +348,8 @@ test fn an_attributed_hit_on_the_owning_launch_reads_reused_at_turn() -> Bool {
 
 // THE DISCRIMINATING RED (A-evicted / B-hit): session A's own last response reported zero cached tokens
 // (its prefix was evicted) while session B hit on the same launch, advancing the engine-wide counters.
-// The counters are not an input to residency at all, so A cannot read reused; the engine reading B
-// advanced is exercised on the production fold in serving_availability_bind_wet_witness_test.
+// Engine counters are not read anywhere, so A cannot read reused; the same red runs on the
+// production fold in serving_availability_bind_wet_witness_test.
 test fn an_evicted_session_does_not_inherit_a_neighbours_hit() -> Bool {
   (match residency_on(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierUnread) {
      ResidencyUnread { obligation: _ } => true
@@ -435,20 +435,4 @@ test fn an_unrecorded_session_reads_unread_never_warm() -> Bool {
     ResidencyUnread { obligation: _ } => true
     _ => false
   }
-}
-
-// INHABITANCE: the real producer emits the interval's field shape from a served body, both counters or
-// neither, and the fields travel verbatim (an exponent rendering stays readable).
-test fn the_producer_emits_prefix_fields_verbatim_and_refuses_a_half_reading() -> Bool {
-  (match harness_prefix_fields_from_body(body: join([
-     "vllm:prefix_cache_queries_total\{model_name=\"m\"} 9.7885348e+07\n",
-     "vllm:prefix_cache_hits_total\{model_name=\"m\"} 1.5e+06\n",
-   ], "")) {
-     PrefixFieldsRead { queries_field: q, hits_field: h } => (q as String) == "9.7885348e+07" && (h as String) == "1.5e+06"
-     _ => false
-   })
-    && (match harness_prefix_fields_from_body(body: "vllm:prefix_cache_queries_total\{model_name=\"m\"} 3.0\n") {
-          PrefixFieldsUnread { obligation: _ } => true
-          _ => false
-        })
 }

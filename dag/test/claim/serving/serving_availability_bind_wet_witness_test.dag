@@ -9,7 +9,7 @@ import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
 import gunbc.serving.turn_admission {
   BatchQualityTolerant, QueueDepthRead, RouteAdmittingMore, SeatStandingRead,
   ServingSessionResidency, ReusedAtTurn, TurnReuseRead, TurnReuseUnread, MustReconstruct, TokenPrefixBroken,
-  PrefixFieldsUnread, PrefixFieldsRead, ServingPrefixFields, ServingSessionRecord, NoSessionRecord, SessionRecord,
+  ServingSessionRecord, NoSessionRecord, SessionRecord,
 }
 import gunbc.spark.vllm_endpoint_process_launch {
   VllmEndpointProcessLaunch, VllmEndpointProcessLaunchObservation, vllm_endpoint_process_launch, LaunchObserved,
@@ -59,15 +59,14 @@ fn w_seen(field: String) -> VllmEndpointProcessLaunchObservation {
 // An idle engine: nothing waiting, nothing running, the route admitting more. Supplied, because the
 // claim is about what the placement fold does with a roster, not about reading a metrics endpoint.
 fn w_idle_engine(field: String) -> HarnessEngineReading {
-  w_engine_with(field: field, prefix: PrefixFieldsUnread { obligation: "fixture: no prefix counters" as NonEmptyStr })
+  w_engine_with(field: field)
 }
 
-fn w_engine_with(field: String, prefix: ServingPrefixFields) -> HarnessEngineReading {
+fn w_engine_with(field: String) -> HarnessEngineReading {
   HarnessEngineReading {
     queue: QueueDepthRead { waiting: 0, running: 0, pressure: RouteAdmittingMore },
     launch: w_seen(field: field),
     progress: none,
-    prefix: prefix,
   }
 }
 
@@ -76,10 +75,10 @@ fn w_engine_with(field: String, prefix: ServingPrefixFields) -> HarnessEngineRea
 // per bind at harness_bind_seat, this fold no longer reaches for it, and the roster is a parameter
 // like every other reading. The two rows below therefore differ ONLY in the roster they are handed.
 fn w_place(declared_units: HarnessDeclaredUnitRoster) -> HarnessCandidates {
-  w_place_session(declared_units: declared_units, session: NoSessionRecord, prefix: PrefixFieldsUnread { obligation: "fixture: no prefix counters" as NonEmptyStr })
+  w_place_session(declared_units: declared_units, session: NoSessionRecord)
 }
 
-fn w_place_session(declared_units: HarnessDeclaredUnitRoster, session: ServingSessionRecord, prefix: ServingPrefixFields) -> HarnessCandidates {
+fn w_place_session(declared_units: HarnessDeclaredUnitRoster, session: ServingSessionRecord) -> HarnessCandidates {
   let field = "1789300000.12"
   harness_add_serving_candidate(
     acc_in: HarnessCandidates { candidates: [], notes: [], retryable: false, incarnations: [], owner_standing: none },
@@ -89,7 +88,7 @@ fn w_place_session(declared_units: HarnessDeclaredUnitRoster, session: ServingSe
     subject: harness_turn_subject(request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness"]), attempt: "witness-attempt" as NonEmptyStr),
     availability: harness_route_availability(endpoint: w_endpoint, before: w_seen(field: field), standing: w_serving_standing(), after: w_seen(field: field), now: w_now),
     launch: w_launch(field: field),
-    engine: w_engine_with(field: field, prefix: prefix),
+    engine: w_engine_with(field: field),
     readback: w_readback(),
     model: w_model,
     unit: DeepseekV4FlashOnVllm,
@@ -177,7 +176,7 @@ test fn a_ready_route_reaches_the_existing_incarnation_frontier_in_the_product_p
     && any(bound.notes, n => n.contains(spark_serving_incarnation_unobserved_obligation as String))
 }
 
-// THE ROUTE, NOT ONLY THE ANSWER. The owner's standing is read from the OWNER launch's own counters
+// THE ROUTE, NOT ONLY THE ANSWER. The owner's standing is read from the session record's own reuse reading on the OWNER launch
 // inside the production fold, whatever order routes arrive in; a non-owner's engine contributes none.
 // Deleting harness_note_owner_standing fails the first claim; reading the standing from the candidate
 // being probed (the earlier defect) fails the second.
@@ -185,14 +184,12 @@ fn w_record(owner: String, intact: Bool) -> ServingSessionRecord {
   SessionRecord { owner_launch: owner as NonEmptyStr, prefix_intact: intact, last_turn: TurnReuseRead { cached_tokens: 512, launch: owner as NonEmptyStr, turn: "t7" as NonEmptyStr } }
 }
 
-data w_hit_prefix: ServingPrefixFields = PrefixFieldsRead { queries_field: "20.0" as NonEmptyStr, hits_field: "9.0" as NonEmptyStr }
-
 fn w_own_key() -> String {
   vllm_endpoint_process_launch_key(launch: w_launch(field: "1789300000.12")) as String
 }
 
 test fn the_owner_launch_contributes_a_reused_at_turn_standing_from_its_own_attributed_reading() -> Bool {
-  match w_place_session(declared_units: harness_declared_unit_roster(), session: w_record(owner: w_own_key(), intact: true), prefix: w_hit_prefix).owner_standing {
+  match w_place_session(declared_units: harness_declared_unit_roster(), session: w_record(owner: w_own_key(), intact: true)).owner_standing {
     Present { value: ReusedAtTurn { cached_tokens: _, launch: _, turn: _ } } => true
     _ => false
   }
@@ -202,11 +199,11 @@ fn w_evicted_record() -> ServingSessionRecord {
   SessionRecord { owner_launch: w_own_key() as NonEmptyStr, prefix_intact: true, last_turn: TurnReuseRead { cached_tokens: 0, launch: w_own_key() as NonEmptyStr, turn: "t7" as NonEmptyStr } }
 }
 
-// THE A-EVICTED / B-HIT RED ON THE PRODUCTION FOLD: the engine-wide counters advanced (w_hit_prefix, as
-// another session's hit would advance them) but this session's own last response reported zero cached
-// tokens, so it must not read reused.
+// THE A-EVICTED / B-HIT RED ON THE PRODUCTION FOLD: engine-wide counters no longer exist on the
+// engine reading, so a neighbour's hit has no channel into this session; its own last response reported
+// zero cached tokens, so it must not read reused.
 test fn a_neighbours_hit_advancing_engine_counters_does_not_warm_an_evicted_session() -> Bool {
-  match w_place_session(declared_units: harness_declared_unit_roster(), session: w_evicted_record(), prefix: w_hit_prefix).owner_standing {
+  match w_place_session(declared_units: harness_declared_unit_roster(), session: w_evicted_record()).owner_standing {
     Present { value: ReusedAtTurn { cached_tokens: _, launch: _, turn: _ } } => false
     Present { value: _ } => true
     Absent => false
@@ -214,11 +211,11 @@ test fn a_neighbours_hit_advancing_engine_counters_does_not_warm_an_evicted_sess
 }
 
 test fn a_non_owner_engine_contributes_no_standing_and_a_broken_prefix_reads_reconstruct() -> Bool {
-  (match w_place_session(declared_units: harness_declared_unit_roster(), session: w_record(owner: "some-other-launch", intact: true), prefix: w_hit_prefix).owner_standing {
+  (match w_place_session(declared_units: harness_declared_unit_roster(), session: w_record(owner: "some-other-launch", intact: true)).owner_standing {
      Absent => true
      _ => false
    })
-    && (match w_place_session(declared_units: harness_declared_unit_roster(), session: w_record(owner: w_own_key(), intact: false), prefix: w_hit_prefix).owner_standing {
+    && (match w_place_session(declared_units: harness_declared_unit_roster(), session: w_record(owner: w_own_key(), intact: false)).owner_standing {
           Present { value: MustReconstruct { cause: _ } } => true
           _ => false
         })
