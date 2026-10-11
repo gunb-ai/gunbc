@@ -961,6 +961,25 @@ fn dag_grammar_comma_list_expr(item: GrammarExpr) -> GrammarExpr {
   )
 }
 
+// A COMMA-REQUIRED LIST: `item (',' item)*`, no trailing comma. dag_grammar_comma_list_expr makes every
+// comma optional, which is right where the list is bracketed by a closer but wrong where it ends at
+// an unbracketed entry boundary: `requires Network` then `transport shell { .. }` read `transport`
+// and `shell` as two more members, and the record `{ argv: .. }` as a third that failed. v1's
+// parse_op_requires_members requires the comma and a member after it, so this is that shape. A member
+// can only continue the list across a comma, so the next entry keyword (transport, exit, input, ...)
+// is never a member, and the grammar stays unambiguous with no lookahead predicate.
+fn dag_grammar_required_comma_list_expr(item: GrammarExpr) -> GrammarExpr {
+  dag_grammar_sequence(
+    left: item,
+    right: dag_grammar_repeat(
+      element: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: ^dag_token_comma),
+        right: item
+      )
+    )
+  )
+}
+
 fn dag_grammar_module_header_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_module),
@@ -2844,7 +2863,7 @@ fn dag_grammar_op_requires_expr() -> GrammarExpr {
               right: dag_grammar_keyword_expr(lexeme: "opaque")
             )
           ),
-          right: dag_grammar_comma_list_expr(item: dag_grammar_nonterminal(production: ^dag_production_type_expr))
+          right: dag_grammar_required_comma_list_expr(item: dag_grammar_nonterminal(production: ^dag_production_type_expr))
         )
       )
     )
