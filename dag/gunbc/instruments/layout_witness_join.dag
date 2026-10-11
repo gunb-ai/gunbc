@@ -71,10 +71,22 @@ import v2.workflow.floor_discovery_source_authority {
 // time is red again, and a declaration that excuses no changed row is red (ROW_BODY_PIN_UNUSED): the
 // list can only shrink.
 //
+// EVERY EXPLANATION IS EXACT IN BOTH DIRECTIONS. A finding is excused only by a declaration that names it (a
+// path, an (entry, function) key, a pair of digests, a refusal's file under its exact cause), never by a
+// pattern, a directory, a count or a reason, so no declaration reaches a row or a file it does not name. The
+// converse holds as well: a declaration no finding used (it names a file still present, a file that held no
+// enrolled row, a row that was neither lost nor gained, a file the channel read) is red
+// (DECLARATION_UNUSED), as is one stated twice (DECLARATION_DUPLICATED). Every old row therefore ends
+// preserved, red, or attached to exactly one declared mechanism, and every declared mechanism is attached to
+// something the two trees actually show. The per-mechanism tallies a report quotes are the DISPOSITION lines
+// this instrument prints, counted from the findings and never typed beside them.
+//
 // WHAT IS NOT OBSERVED. The producer is given no owned-data records here, exactly as
 // v2.compiler.effect_demand_floor_join effect_demand_floor_join_live gives it none: a Bool-valued owned
 // data witness is enrolled by the host's own scan, which has no substrate producer yet. The join
-// therefore establishes the set of test-marked declarations and nothing over a data witness.
+// therefore establishes the set of test-marked declarations and nothing over a data witness. What it
+// establishes is that the set the channel reports is unchanged across the sweep, both trees read through
+// that one channel; it is not a second, independent reading of what a person would mark.
 //
 // A FILE THE MARKER CHANNEL CANNOT READ IS A LOCATED OBSERVATION, NOT AN ABORT AND NOT AN EMPTY LIST. A
 // governed file the v2 grammar refuses has no marker fact, so the producer is not asked about it and the
@@ -301,6 +313,8 @@ type JoinFinding
   | PlanStale { old_path: String }
   | PlanCollision { paths: String }
   | InputMalformed { source: String, line: String }
+  | DeclarationUnused { kind: String, key: String }
+  | DeclarationDuplicated { kind: String, key: String }
 
 fn finding_is_red(finding: JoinFinding) -> Bool {
   match finding {
@@ -318,30 +332,60 @@ fn finding_is_red(finding: JoinFinding) -> Bool {
     PlanStale { old_path: _ } => true
     PlanCollision { paths: _ } => true
     InputMalformed { source: _, line: _ } => true
+    DeclarationUnused { kind: _, key: _ } => true
+    DeclarationDuplicated { kind: _, key: _ } => true
+  }
+}
+
+// The disposition a finding carries, as its report names it. One function, read by the rendered line and by
+// the disposition table, so the table counts what the report prints and not a second reading of it.
+fn finding_kind(finding: JoinFinding) -> String {
+  match finding {
+    RowPreserved => "PRESERVED"
+    RowLost { entry: _, function: _, declared: d } => if d { "ROW_LOST_DECLARED" } else { "ROW_LOST" }
+    RowGained { entry: _, function: _, declared: d } => if d { "ROW_GAINED_DECLARED" } else { "ROW_GAINED" }
+    RowAltered { entry: _, function: _, was: _, now: _ } => "ROW_ALTERED"
+    RowBodyChanged { entry: _, function: _, was: _, now: _, declared: d } => if d { "ROW_BODY_CHANGED_DECLARED" } else { "ROW_BODY_CHANGED" }
+    RowBodyPinUnused { entry: _, function: _ } => "ROW_BODY_PIN_UNUSED"
+    RowUnread { entry: _, function: _, declared: d } => if d { "ROW_UNREAD_DECLARED" } else { "ROW_UNREAD" }
+    RowIntroduced { entry: _, function: _ } => "ROW_INTRODUCED"
+    RowInRemovedFile { entry: _, function: _, declared: d } => if d { "ROW_IN_REMOVED_FILE_DECLARED" } else { "ROW_IN_REMOVED_FILE" }
+    FileRemoved { path: _ } => "FILE_REMOVED"
+    FileAdded { path: _ } => "FILE_ADDED"
+    PlanStale { old_path: _ } => "PLAN_STALE"
+    PlanCollision { paths: _ } => "PLAN_COLLISION"
+    InputMalformed { source: _, line: _ } => "INPUT_MALFORMED"
+    DeclarationUnused { kind: _, key: _ } => "DECLARATION_UNUSED"
+    DeclarationDuplicated { kind: _, key: _ } => "DECLARATION_DUPLICATED"
+  }
+}
+
+// The fields a finding names after its disposition.
+fn finding_subject(finding: JoinFinding) -> List<String> {
+  match finding {
+    RowPreserved => []
+    RowLost { entry: e, function: f, declared: _ } => [e, f]
+    RowGained { entry: e, function: f, declared: _ } => [e, f]
+    RowAltered { entry: e, function: f, was: w, now: n } => [e, f, w, n]
+    RowBodyChanged { entry: e, function: f, was: w, now: n, declared: _ } => [e, f, w, n]
+    RowBodyPinUnused { entry: e, function: f } => [e, f]
+    RowUnread { entry: e, function: f, declared: _ } => [e, f]
+    RowIntroduced { entry: e, function: f } => [e, f]
+    RowInRemovedFile { entry: e, function: f, declared: _ } => [e, f]
+    FileRemoved { path: p } => [p]
+    FileAdded { path: p } => [p]
+    PlanStale { old_path: p } => [p]
+    PlanCollision { paths: p } => [p]
+    InputMalformed { source: s, line: l } => [s, l]
+    DeclarationUnused { kind: k, key: key } => [k, key]
+    DeclarationDuplicated { kind: k, key: key } => [k, key]
   }
 }
 
 fn finding_line(finding: JoinFinding) -> String {
   match finding {
     RowPreserved => "PRESERVED"
-    RowLost { entry: e, function: f, declared: d } =>
-      join([if d { "INFO" } else { "RED" }, if d { "ROW_LOST_DECLARED" } else { "ROW_LOST" }, e, f], "\t")
-    RowGained { entry: e, function: f, declared: d } =>
-      join([if d { "INFO" } else { "RED" }, if d { "ROW_GAINED_DECLARED" } else { "ROW_GAINED" }, e, f], "\t")
-    RowAltered { entry: e, function: f, was: w, now: n } => join(["RED", "ROW_ALTERED", e, f, w, n], "\t")
-    RowBodyChanged { entry: e, function: f, was: w, now: n, declared: d } =>
-      join([if d { "INFO" } else { "RED" }, if d { "ROW_BODY_CHANGED_DECLARED" } else { "ROW_BODY_CHANGED" }, e, f, w, n], "\t")
-    RowBodyPinUnused { entry: e, function: f } => join(["RED", "ROW_BODY_PIN_UNUSED", e, f], "\t")
-    RowUnread { entry: e, function: f, declared: d } =>
-      join([if d { "INFO" } else { "RED" }, if d { "ROW_UNREAD_DECLARED" } else { "ROW_UNREAD" }, e, f], "\t")
-    RowIntroduced { entry: e, function: f } => join(["INFO", "ROW_INTRODUCED", e, f], "\t")
-    RowInRemovedFile { entry: e, function: f, declared: d } =>
-      join([if d { "INFO" } else { "RED" }, if d { "ROW_IN_REMOVED_FILE_DECLARED" } else { "ROW_IN_REMOVED_FILE" }, e, f], "\t")
-    FileRemoved { path: p } => join(["INFO", "FILE_REMOVED", p], "\t")
-    FileAdded { path: p } => join(["INFO", "FILE_ADDED", p], "\t")
-    PlanStale { old_path: p } => join(["RED", "PLAN_STALE", p], "\t")
-    PlanCollision { paths: p } => join(["RED", "PLAN_COLLISION", p], "\t")
-    InputMalformed { source: s, line: l } => join(["RED", "INPUT_MALFORMED", s, l], "\t")
+    _ => join(concat([if finding_is_red(finding: finding) { "RED" } else { "INFO" }, finding_kind(finding: finding)], finding_subject(finding: finding)), "\t")
   }
 }
 
@@ -476,8 +520,9 @@ fn new_file_finding(preimage: Map<String, String>, path: String) -> JoinFinding 
 // path) the change deletes with the declaration, and `declared_row_additions` are new-side rows the change
 // writes (entry the new tree's path). A declaration excuses a row only when the row is actually lost or
 // gained, and it is reported beside the row (ROW_LOST_DECLARED, ROW_GAINED_DECLARED), never absorbed; a
-// declaration that matches no such row excuses nothing, and a function the new file still declares
-// without its marker is a lost marker, which the caller does not declare. `declared_unread` are new-tree paths whose channel refusal the caller has found declared
+// declaration that matches no such row is itself red (DECLARATION_UNUSED), as is one given twice
+// (DECLARATION_DUPLICATED), and a function the new file still declares without its marker is a lost marker,
+// which the caller does not declare. `declared_unread` are new-tree paths whose channel refusal the caller has found declared
 // (a supplied value, so the join judges the shape of the declaration and never reads the live one);
 // `plan` is the sweep's own digest of the old tree.
 fn witness_set_join(
@@ -536,7 +581,97 @@ fn witness_set_join(
         |> map(l => RowBodyPinUnused { entry: field_of(fields: split(s: l, delimiter: "\t"), index: 0), function: field_of(fields: split(s: l, delimiter: "\t"), index: 1) })
     )
   )
-  concat(concat(row_findings, file_findings), concat(input_findings, declaration_findings))
+  concat(concat(row_findings, file_findings), concat(concat(input_findings, declaration_findings), exactness_findings(
+    findings: row_findings,
+    declared_removals: declared_removals,
+    declared_row_removals: declared_row_removals,
+    declared_row_additions: declared_row_additions,
+    declared_row_changes: declared_row_changes,
+    declared_unread: declared_unread,
+    unread_paths: new.unread |> map(u => u.path)
+  )))
+}
+
+// ---- every explanation is exact in both directions ---------------------------------------------------
+// A finding is excused only by a declaration that names it exactly (a path, an (entry, function) row key, a
+// content pair), and a declaration is accepted only if some finding used it. No explanation is a pattern, a
+// directory, a count or a reason: the lists hold keys, so a declaration cannot reach a row it does not name.
+// The other direction is here: a declaration that excused nothing (it names a file that was not removed or
+// held no enrolled row, a row that was neither lost nor gained, a name given twice) is red, so the lists can
+// only shrink and a stale line cannot stand as an explanation for a change that no longer happens.
+// An unread declaration is accepted only for a path the new observation itself lists as unread; a roster
+// entry whose file the channel reads is therefore red here as well as at the population parse.
+fn used_keys(findings: List<JoinFinding>, kind: String) -> Map<String, Bool> {
+  fold(findings, init: empty_map(), f: fn(index, f) {
+    match f {
+      RowInRemovedFile { entry: e, function: _, declared: declared } =>
+        if declared && kind == "file_removals" { map_insert(m: index, key: e, value: true) } else { index }
+      RowLost { entry: e, function: fn_name, declared: declared } =>
+        if declared && kind == "row_removals" { map_insert(m: index, key: row_key(entry: e, function: fn_name), value: true) } else { index }
+      RowGained { entry: e, function: fn_name, declared: declared } =>
+        if declared && kind == "row_additions" { map_insert(m: index, key: row_key(entry: e, function: fn_name), value: true) } else { index }
+      _ => index
+    }
+  })
+}
+
+type DuplicateScan {
+  seen: Map<String, Bool>
+  reported: Map<String, Bool>
+  found: List<String>
+}
+
+// The lines a list names more than once, each reported once.
+fn duplicated_lines(lines: List<String>) -> List<String> {
+  let scanned = fold(lines, init: DuplicateScan { seen: empty_map(), reported: empty_map(), found: [] }, f: fn(acc, l) {
+    if path_present(index: acc.seen, path: l) && !path_present(index: acc.reported, path: l) {
+      DuplicateScan { seen: acc.seen, reported: map_insert(m: acc.reported, key: l, value: true), found: concat(acc.found, [l]) }
+    } else {
+      DuplicateScan { seen: map_insert(m: acc.seen, key: l, value: true), reported: acc.reported, found: acc.found }
+    }
+  })
+  scanned.found
+}
+
+fn unused_declarations(kind: String, lines: List<String>, used: Map<String, Bool>) -> List<JoinFinding> {
+  lines |> filter(l => !path_present(index: used, path: l)) |> map(l => DeclarationUnused { kind: kind, key: l })
+}
+
+fn duplicated_declarations(kind: String, lines: List<String>) -> List<JoinFinding> {
+  duplicated_lines(lines: lines) |> map(l => DeclarationDuplicated { kind: kind, key: l })
+}
+
+fn exactness_findings(
+  findings: List<JoinFinding>,
+  declared_removals: List<String>,
+  declared_row_removals: List<String>,
+  declared_row_additions: List<String>,
+  declared_row_changes: List<String>,
+  declared_unread: List<String>,
+  unread_paths: List<String>
+) -> List<JoinFinding> {
+  let well_formed_removals = declared_row_removals |> filter(l => line_is_row_key(line: l))
+  let well_formed_additions = declared_row_additions |> filter(l => line_is_row_key(line: l))
+  let well_formed_pins = declared_row_changes |> filter(l => line_is_body_pin(line: l))
+  concat(
+    concat(
+      unused_declarations(kind: "file_removals", lines: declared_removals, used: used_keys(findings: findings, kind: "file_removals")),
+      concat(
+        unused_declarations(kind: "row_removals", lines: well_formed_removals, used: used_keys(findings: findings, kind: "row_removals")),
+        unused_declarations(kind: "unread", lines: declared_unread, used: path_index(paths: unread_paths))
+      )
+    ),
+    concat(
+      unused_declarations(kind: "row_additions", lines: well_formed_additions, used: used_keys(findings: findings, kind: "row_additions")),
+      concat(
+        concat(duplicated_declarations(kind: "file_removals", lines: declared_removals), duplicated_declarations(kind: "row_removals", lines: well_formed_removals)),
+        concat(
+          concat(duplicated_declarations(kind: "row_additions", lines: well_formed_additions), duplicated_declarations(kind: "unread", lines: declared_unread)),
+          duplicated_declarations(kind: "row_changes", lines: well_formed_pins |> map(l => body_pin_key(line: l)))
+        )
+      )
+    )
+  )
 }
 
 fn reported_findings(findings: List<JoinFinding>) -> List<JoinFinding> {
@@ -553,9 +688,33 @@ fn join_summary_lines(old: Observation, new: Observation, findings: List<JoinFin
     concat("new rows: ", count(new.rows) as String),
     concat("unread files: ", count(new.unread) as String),
     concat("preserved dispositions (old and new side, rows and files): ", count(findings |> filter(f => match f { RowPreserved => true _ => false })) as String),
-    concat("red findings: ", count(red_findings(findings: findings)) as String),
-    if count(red_findings(findings: findings)) == 0 { "RESULT\tEQUAL" } else { "RESULT\tNOT_EQUAL" }
+    concat("red findings: ", count(red_findings(findings: findings)) as String)
   ]
+}
+
+// THE DISPOSITION TABLE, DERIVED. One line per disposition a finding can carry that is not a preservation,
+// counted from the findings themselves: the figures a report quotes for what the change deleted, wrote,
+// rewrote or could not read are these, never a count typed beside the report. A disposition class with a
+// zero count still prints, so a class a reader expects and does not see is a printed zero.
+fn disposition_kinds() -> List<String> {
+  [
+    "ROW_LOST_DECLARED",
+    "ROW_GAINED_DECLARED",
+    "ROW_IN_REMOVED_FILE_DECLARED",
+    "ROW_BODY_CHANGED_DECLARED",
+    "ROW_UNREAD_DECLARED",
+    "ROW_INTRODUCED",
+    "FILE_REMOVED",
+    "FILE_ADDED"
+  ]
+}
+
+fn disposition_table_lines(findings: List<JoinFinding>) -> List<String> {
+  disposition_kinds() |> map(k => join(["DISPOSITION", k, count(findings |> filter(f => finding_kind(finding: f) == k)) as String], "\t"))
+}
+
+fn join_result_line(findings: List<JoinFinding>) -> String {
+  if count(red_findings(findings: findings)) == 0 { "RESULT\tEQUAL" } else { "RESULT\tNOT_EQUAL" }
 }
 
 // ---- effects ---------------------------------------------------------------------------------------
@@ -830,7 +989,13 @@ fn joined_report(old: Observation, new: Observation, plan: PlanEdges, declaratio
   )
   let written = write_text(
     path: report,
-    content: join(concat(join_summary_lines(old: old, new: new, findings: findings), reported_findings(findings: findings) |> map(f => finding_line(finding: f))), "\n")
+    content: join(
+      concat(
+        concat(join_summary_lines(old: old, new: new, findings: findings), disposition_table_lines(findings: findings)),
+        concat([join_result_line(findings: findings)], reported_findings(findings: findings) |> map(f => finding_line(finding: f)))
+      ),
+      "\n"
+    )
   )
   if count(red_findings(findings: findings)) == 0 { written }
   else { exit_failure(reason: concat("layout witness join: ", count(red_findings(findings: findings)) as String, " red findings; see ", report)) }
