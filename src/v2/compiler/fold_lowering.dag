@@ -250,11 +250,13 @@ fn collection_roster_row(t: AlgebraFieldTemplate, decl_name: String, form: Colle
 // classifying a head is a symbol comparison. fold_family_realization runs at every call site body
 // lowering meets, and building templates and comparing lexemes there was a per-call-site cost on the
 // native route's context phase (gunbc#12550 census).
+data collection_concat_shape_roster_row: CollectionRosterRow = collection_roster_row(t: collection_concat_shape(), decl_name: "collection_concat_shape", form: RosterFreeMonoidPrimitiveCall)
+
 data collection_roster_rows: List<CollectionRosterRow> = [
   collection_roster_row(t: collection_fold_shape(), decl_name: "collection_fold_shape", form: RosterAuthoredStep),
   collection_roster_row(t: collection_map_shape(), decl_name: "collection_map_shape", form: RosterCallbackStep { realization: CallbackMapsToCons }),
   collection_roster_row(t: collection_all_shape(), decl_name: "collection_all_shape", form: RosterCallbackStep { realization: CallbackAllByAnd }),
-  collection_roster_row(t: collection_concat_shape(), decl_name: "collection_concat_shape", form: RosterFreeMonoidPrimitiveCall),
+  collection_concat_shape_roster_row,
   collection_roster_row(t: collection_count_shape(), decl_name: "collection_count_shape", form: RosterFreeMonoidPrimitiveCall)
 ]
 
@@ -269,17 +271,13 @@ fn collection_roster_row_optional(head: Symbol) -> Optional<CollectionRosterRow>
   })
 }
 
-// THE CONCAT ROW'S DECLARING PATH, derived from the roster entry. A generated operator carries this
-// identity as a marked declaration_reference_node; it is never a bare atom of the declaration name.
+// THE CONCAT ROW'S DECLARING PATH, derived from that named roster row. A generated operator carries
+// this identity as a marked declaration_reference_node; it is never a bare atom of the declaration name.
 fn collection_concat_shape_declaration_path() -> QualifiedName {
-  match collection_roster_row_optional(head: symbol_intern_lexeme(lexeme: collection_concat_shape().name)) {
-    Present { value: r } =>
-      qualified_name_snoc(
-        qn: qualified_name_from_dotted_string(dotted: r.row.module_path),
-        segment: symbol_intern_lexeme(lexeme: r.row.decl_name)
-      )
-    Absent => qualified_name_from_dotted_string(dotted: "std.algebra.collection_concat_shape")
-  }
+  qualified_name_snoc(
+    qn: qualified_name_from_dotted_string(dotted: collection_concat_shape_roster_row.row.module_path),
+    segment: symbol_intern_lexeme(lexeme: collection_concat_shape_roster_row.row.decl_name)
+  )
 }
 
 // The roster rows lowering realizes as a fold Loop; a primitive-call row is never one.
