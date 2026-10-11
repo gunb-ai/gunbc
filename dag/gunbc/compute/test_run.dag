@@ -135,9 +135,13 @@ fn standing_json(s: WitnessStanding) -> JsonValue {
   }
 }
 
+// THE MODULE'S STORED OUTCOME RIDES IN ITS ROW, because the row is all a worker reads. The row kept
+// the ending word and dropped the document beside it, so twelve modules refused by infrastructure in a
+// package run reached the worker as twelve bare 'refused_by_infrastructure' with no cause (srv1 lab,
+// 2026-10-11); the document is the outcome a later caller would attach to, carried verbatim.
 fn module_run_json(r: ModuleRun) -> JsonValue {
   match r {
-    ModuleRan { label, module_path, planned, declined, ending, identity, document: _, host_record: record } =>
+    ModuleRan { label, module_path, planned, declined, ending, identity, document, host_record: record } =>
       json_object(members: [
         json_kv(key: "label", value: json_string(s: label)),
         json_kv(key: "module", value: json_string(s: module_path)),
@@ -145,6 +149,7 @@ fn module_run_json(r: ModuleRun) -> JsonValue {
         json_kv(key: "declined", value: json_array(elements: map(declined, standing_json))),
         json_kv(key: "ending", value: json_string(s: ending)),
         json_kv(key: "identity", value: json_string(s: identity)),
+        json_kv(key: "outcome", value: json_string(s: document)),
         json_kv(key: "host_record", value: json_string(s: record)),
       ])
     ModuleAllDeclined { label, module_path, declined } =>

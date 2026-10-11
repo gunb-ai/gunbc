@@ -1,0 +1,22 @@
+module test.claim.compute.test_run_receipt_witness_test
+
+import std.types { String, Bool }
+import extdeps.languages.json.emit { serialize_json }
+import gunbc.compute.test_run { ModuleRan, module_run_json }
+
+// A REFUSED MODULE'S ROW NAMES ITS CAUSE. RED against the row that carried the ending word and dropped
+// the outcome document, which left a package run of twelve refused modules with no cause to read.
+test fn a_refused_module_row_carries_its_outcome_cause() -> Bool {
+  let row = serialize_json(v: module_run_json(r: ModuleRan {
+    label: "//dag/test/claim/shell:x_witness_test",
+    module_path: "test.claim.shell.x_witness_test",
+    planned: ["a"],
+    declined: [],
+    ending: "refused_by_infrastructure",
+    identity: "c1",
+    document: "\{\"ending\": \"refused_by_infrastructure\", \"cause\": \"store unavailable: could not create the compute directories\"}",
+    host_record: "",
+  }))
+  string_contains(s: row, pattern: "refused_by_infrastructure")
+    && string_contains(s: row, pattern: "store unavailable: could not create the compute directories")
+}
