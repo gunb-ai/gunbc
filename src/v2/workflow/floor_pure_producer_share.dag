@@ -1550,8 +1550,8 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   SingleClaimFillDebtModule {
     module: "v2.test.claim.self_host.closure_emission",
     claims: [
-      SingleClaimFillDebtClaim { claim: "a_closure_member_whose_body_does_not_lower_refuses_the_emission_at_its_cause_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "two_files_declaring_one_module_refuse_the_emission_at_the_census_holds", standing: ActiveFillDebt }
+      SingleClaimFillDebtClaim { claim: "a_closure_member_whose_body_does_not_lower_refuses_the_emission_at_its_cause_holds", standing: RetiredFillDebt { disposition: ClaimDeleted } },
+      SingleClaimFillDebtClaim { claim: "two_files_declaring_one_module_refuse_the_emission_at_the_census_holds", standing: RetiredFillDebt { disposition: ClaimDeleted } }
     ]
   },
   SingleClaimFillDebtModule {
