@@ -42676,7 +42676,8 @@ mod required_floor_disposition_and_storage_agreement_law {
     /// a stand-in for it.
     #[test]
     fn qualified_declaration_reference_specimen_is_long_path_but_executing_module() {
-        let path = "dag/test/claim/long/qualified_declaration_reference_emit_cross_module_witness.dag";
+        let path =
+            "dag/test/claim/long/qualified_declaration_reference_emit_cross_module_witness.dag";
         let module = "test.claim.long.qualified_declaration_reference_emit_cross_module_witness";
 
         let path_is_long = is_long_home_path(path);

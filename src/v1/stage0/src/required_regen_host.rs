@@ -876,11 +876,12 @@ fn compile_stage0_admitted(
     // `gunbc.stage0.stage0_emitted_edge_admission` maps both ends through the supplied partition rows
     // and package graph; a module in neither the rows nor the shell refuses as not covered rather
     // than passing.
-    let admission = crate::gunbc_stage0_stage0_emitted_edge_admission::stage0_emitted_edge_admission(
-        result.emitted_edges.clone(),
-        host_shell_modules,
-        packages,
-    );
+    let admission =
+        crate::gunbc_stage0_stage0_emitted_edge_admission::stage0_emitted_edge_admission(
+            result.emitted_edges.clone(),
+            host_shell_modules,
+            packages,
+        );
     if let crate::gunbc_stage0_stage0_emitted_edge_admission::Stage0EmittedEdgeAdmission::Stage0EmittedEdgesAdmitted {
         edge_count,
     } = &*admission
@@ -888,7 +889,9 @@ fn compile_stage0_admitted(
         eprintln!("required-regen: emitted-edge admission admitted edges={edge_count}");
     }
     if let Some(message) =
-        crate::gunbc_stage0_stage0_emitted_edge_admission::stage0_emitted_edge_admission_refusal(admission)
+        crate::gunbc_stage0_stage0_emitted_edge_admission::stage0_emitted_edge_admission_refusal(
+            admission,
+        )
     {
         return Err(message);
     }
@@ -913,7 +916,8 @@ fn compile_stage0_admitted(
 /// ill-shaped row set refuses; it never falls back to the compiled rows.
 fn emitted_tree_packages(
     workspace: &Path,
-) -> Result<Rc<crate::gunbc_stage0_stage0_emitted_edge_admission::Stage0EmittedTreePackages>, String> {
+) -> Result<Rc<crate::gunbc_stage0_stage0_emitted_edge_admission::Stage0EmittedTreePackages>, String>
+{
     use crate::gunbc_stage0_stage0_crate_partition_generated::GeneratedPartitionCrateRow;
     use crate::gunbc_stage0_stage0_emitted_edge_admission::Stage0EmittedTreePackages;
     use crate::v1_interpreter::{self, ExecutionMode};
@@ -6474,7 +6478,8 @@ mod regen_round_cost_tests {
         .expect("the executable assembly manifest resolves")
         .into_iter()
         .collect::<BTreeSet<_>>();
-        let rows = crate::gunbc_stage0_stage0_crate_partition_generated::generated_partition_crate_rows();
+        let rows =
+            crate::gunbc_stage0_stage0_crate_partition_generated::generated_partition_crate_rows();
         let assembled = assembled_seed_modules(host_shell_modules, rows.as_ref());
         assert!(assembled.contains("v1_rt"));
         assert!(assembled.contains("std_content_hash"));

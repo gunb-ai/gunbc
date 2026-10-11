@@ -6,10 +6,10 @@ use self::CargoEnvironmentVariable::*;
 use self::CargoTarget::*;
 use self::RustEdition::*;
 use self::TestHarness::*;
+pub use crate::extdeps_external_authority::ExternalAuthority;
 pub use crate::extdeps_rust_version::{
     CargoPackageVersion, CargoToolVersionFloor, CargoVersionRequirement,
 };
-pub use crate::extdeps_external_authority::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_types::{Bool, FilePathParts, List, NonEmptyStr};

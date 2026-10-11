@@ -4689,7 +4689,8 @@ pub(crate) struct LocalRepoWetScheduledRow {
 }
 
 /// The module whose `local_repo_wet_premise_readings_wet` answers every declared premise once.
-pub(crate) const LOCAL_REPO_WET_PREMISE_READBACK_MODULE: &str = "gunbc.runner.wet_host_premise_readback";
+pub(crate) const LOCAL_REPO_WET_PREMISE_READBACK_MODULE: &str =
+    "gunbc.runner.wet_host_premise_readback";
 
 /// WHAT ONE MEMBER ACTUALLY REACHED, at the width of the `.dag` authority's observed side.
 ///
@@ -18375,7 +18376,10 @@ mod pure_producer_share_refused_carrier_overlap_tests {
         // withdrawn computation recurring, not a neighbour sharing a module, and it is the only
         // thing this wall is entitled to charge. The admitted spelling is reached from the
         // roster rather than named by it, which is why the static fold cannot see it.
-        fill_from("v2.test.claim.emit.produced_decl_two_target", "rust_target_model");
+        fill_from(
+            "v2.test.claim.emit.produced_decl_two_target",
+            "rust_target_model",
+        );
         let why = refuse_pure_producer_share_refused_carrier_overlap()
             .expect_err("a refused producer's own key recurring over its carriers must refuse");
         // The three things the diagnostic owes: the admitted subject, the row it inherited the
@@ -18540,7 +18544,10 @@ mod pure_producer_share_refused_carrier_overlap_tests {
         // The refused producer's own key recurs over its own carriers, so the identity trigger
         // fires — and then the bare key is claimed by two admitted spellings, so naming either
         // one would be a fabricated subject.
-        fill_from("v2.test.claim.emit.produced_decl_two_target", "shared_spelling");
+        fill_from(
+            "v2.test.claim.emit.produced_decl_two_target",
+            "shared_spelling",
+        );
         let why = refuse_pure_producer_share_refused_carrier_overlap()
             .expect_err("an unattributable overlap must refuse");
         assert!(

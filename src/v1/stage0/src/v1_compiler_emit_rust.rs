@@ -9,8 +9,6 @@ use self::HostOptionArmReading::*;
 use self::IterOwnedReceiverCloneDisposition::*;
 use self::SealReading::*;
 use self::WitnessCtorPathVerdict::*;
-pub use crate::extdeps_rust_cargo::CargoFeature;
-pub use crate::extdeps_rust_version::render_cargo_package_header_prefix;
 pub use crate::extdeps_languages_rust_capabilities::phantom_opaque_carrier_derive_traits;
 pub use crate::extdeps_languages_rust_emit::HigherOrderMethodSpec;
 pub use crate::extdeps_languages_rust_emit::{
@@ -22,6 +20,8 @@ pub use crate::extdeps_languages_rust_emit::{
     rust_value_binding_candidate,
 };
 pub use crate::extdeps_languages_rust_representation::rust_exact_type_checkpoint;
+pub use crate::extdeps_rust_cargo::CargoFeature;
+pub use crate::extdeps_rust_version::render_cargo_package_header_prefix;
 use crate::gunbc_cli_dispatch_surface::CliArmRealization::{
     CliDelegatesToHostFn, CliInvokesBootstrapDagOperation, CliInvokesBoundTargetProducer,
     CliKnownOperationNoRealization, CliRefusesUnwired, CliRetainedHostKernel,
