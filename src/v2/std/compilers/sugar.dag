@@ -20,11 +20,7 @@ import v2.std.diagnostic {
 }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.node_query { find_named_child, variant_declaration_edge_optional }
-import v2.extdeps.languages.dag {
-  dag_lex_token_symbol,
-  parse_production_captured_child_optional,
-  parse_production_emitted_identity_optional
-}
+import v2.extdeps.languages.dag { dag_lex_token_symbol }
 import v2.std.node {
   Atom,
   Conj,
