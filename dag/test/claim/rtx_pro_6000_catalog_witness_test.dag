@@ -71,9 +71,8 @@ fn a_read_region() -> ProviderRegionObservation {
 
 fn vast_offer_arch(gpus: Int, arch: String?) -> VastAiOffer {
   VastAiOffer {
-    id: 1, machine_id: 2, gpu_name: "RTX PRO 6000 S", num_gpus: gpus, gpu_ram: 97887.0,
-    gpu_total_ram: 195774.0, gpu_mem_bw: 1597.0, compute_cap: 1200, gpu_arch: arch, cpu_cores_effective: 16.0,
-    cpu_ram: 128000.0, disk_space: 500.0, dph_total: 3.2, reliability: 0.99,
+    id: 1, machine_id: 2, gpu_name: "RTX PRO 6000 S", num_gpus: gpus,
+    compute_cap: 1200, gpu_arch: arch,
     verification: "verified", geolocation: "US", rentable: true, rented: false, is_bid: Present { value: false },
   }
 }
@@ -84,9 +83,8 @@ fn vast_offer(gpus: Int) -> VastAiOffer {
 
 fn vast_offer_bid(bid: Bool?) -> VastAiOffer {
   VastAiOffer {
-    id: 1, machine_id: 2, gpu_name: "RTX PRO 6000 S", num_gpus: 2, gpu_ram: 97887.0,
-    gpu_total_ram: 195774.0, gpu_mem_bw: 1597.0, compute_cap: 1200, gpu_arch: Present { value: "nvidia" },
-    cpu_cores_effective: 16.0, cpu_ram: 128000.0, disk_space: 500.0, dph_total: 3.2, reliability: 0.99,
+    id: 1, machine_id: 2, gpu_name: "RTX PRO 6000 S", num_gpus: 2,
+    compute_cap: 1200, gpu_arch: Present { value: "nvidia" },
     verification: "verified", geolocation: "US", rentable: true, rented: false, is_bid: bid,
   }
 }
@@ -165,7 +163,7 @@ test fn w_vast_nvidia_arch_binds_with_cuda() -> Bool {
 
 fn packet_pool(region: PacketAiRegion?) -> PacketAiPool {
   PacketAiPool {
-    id: "pool-1", name: "pool", gpu_model: "RTX 6000 Pro", available_gpus: 8, price_per_hour: 1.89,
+    id: "pool-1", name: "pool", gpu_model: "RTX 6000 Pro", available_gpus: 8,
     region: region,
   }
 }

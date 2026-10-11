@@ -20,9 +20,10 @@ import extdeps.uri { Uri, Https }
 // bid "may be interrupted if outbid", so an interruptible offer is a different availability fact from an
 // on-demand one. Absence is an unread fact.
 //
-// NUMBER-SHAPED FIELDS ARE JSON NUMBERS: dph_total (dollars per hour), gpu_ram (MB per GPU) and
-// gpu_mem_bw (GB/s) arrive as floats. std has no Float-to-Int route, so a consumer cannot mint money
-// from dph_total by coercion; it must receive the rate as an explicit parameter (see the supplier).
+// FLOAT WIRE FIELDS ARE NOT MODELED: dph_total (dollars per hour, a total per machine), gpu_ram, gpu_mem_bw
+// and the rest arrive as JSON numbers, and nothing reads them: the supplier receives the rate as an
+// explicit parameter. Dissolve-on: a declared lossy Float->MoneyPerHour / Float->HardwareThreadCount
+// conversion plan in std (DESIGN section 4: not a coercion); only then may a consumed float be added.
 // num_gpus is an Int and IS a request axis: an offer is a machine with that many GPUs, rented whole.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "docs.vast.ai/api-reference/search/search-offers" }
@@ -58,16 +59,8 @@ type VastAiOffer {
   machine_id: Int
   gpu_name: String
   num_gpus: Int
-  gpu_ram: Float
-  gpu_total_ram: Float
-  gpu_mem_bw: Float
   compute_cap: Int
   gpu_arch: String?
-  cpu_cores_effective: Float
-  cpu_ram: Float
-  disk_space: Float
-  dph_total: Float
-  reliability: Float
   verification: String
   geolocation: String
   rentable: Bool

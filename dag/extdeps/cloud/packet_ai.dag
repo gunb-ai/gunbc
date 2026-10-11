@@ -67,14 +67,14 @@ type PacketAiRegion {
 
 // region IS OPTIONAL UPSTREAM: the OpenAPI describes it as "Where this pool physically sits ... omitted when
 // the platform reports none for it", so an absent region is an unread location, never a default.
-// A POOL IS THE UNIT A LAUNCH NAMES (pool_id). price_per_hour is the vendor's JSON number; the
-// integer-cents figure lives on the product row below and is the one a price is read from.
+// A POOL IS THE UNIT A LAUNCH NAMES (pool_id). the pool's
+// Float price_per_hour is not modeled (nothing reads it); the integer-cents figure on the product row below
+// is the one a price is read from.
 type PacketAiPool {
   id: String
   name: String
   gpu_model: String
   available_gpus: Int
-  price_per_hour: Float
   region: PacketAiRegion?
 }
 
