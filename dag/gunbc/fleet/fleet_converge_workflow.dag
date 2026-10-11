@@ -542,7 +542,7 @@ fn fleet_converge_compiler_pair_mode_wires() -> List<String> {
 // residue. Deleting it here would remove the carrier C4 needs.
 //
 // THIS FUNCTION HAS NO PRODUCTION CALLER TODAY. Production dashboard_deploy reaches
-// live_deploy_apply_srv1_transaction_wet, not this mapping and not observe_fleet_converge_request_wet.
+// live_deploy_apply_prod_role_transaction_wet, not this mapping and not observe_fleet_converge_request_wet.
 // Wet observe still cannot mint LiveDeployConverge from a hostname; that arm is constructed
 // from DesiredDeployment.selected_identity plus LiveDeployMemberBasis.
 fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeScope? {
@@ -3356,7 +3356,7 @@ fn fleet_converge_apply_receipt_upload_step() -> Step {
 // preflight rather than deploying somewhere unintended.
 fn fleet_converge_dashboard_deploy_step() -> Step {
   RunStep {
-    name: Present { value: "Deploy dashboard to srv1 (live_deploy_apply_srv1_transaction_wet, receipted)" },
+    name: Present { value: "Deploy dashboard to srv1 (live_deploy_apply_prod_role_transaction_wet, receipted)" },
     id: Present { value: "dashboard_deploy" },
     run: gunbc_ci_live_deploy_transaction_invoke(),
     shell: none,
@@ -3440,7 +3440,7 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
 }
 
 // ── THE APPROVAL BROKER'S DARK INSTALL (cutover stage 1) ────────────────────────────────────
-// WHY THIS MODE EXISTS AT ALL: gunbc.live_deploy.apply approval_broker_dark_install_srv1_wet binds
+// WHY THIS MODE EXISTS AT ALL: gunbc.live_deploy.apply approval_broker_dark_install_wet binds
 // ci_deploy_srv1_access, whose expected principal is ghrunner. An operator invoking the same fold
 // from a session refuses BEFORE any mutation -- `deploy_access: principal mismatch
 // expected=ghrunner actual=briansrls` -- which is the access model doing its job. The install

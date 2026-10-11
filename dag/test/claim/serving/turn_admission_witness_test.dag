@@ -10,7 +10,7 @@ import gunbc.spark.vllm_endpoint_process_launch {
   LaunchObserved, LaunchUnobserved,
 }
 import gunbc.serving.turn_admission {
-  ServingQueueReading, QueueDepthRead, QueueDepthUnread, GroupIdle, serving_co_tenancy,
+  ServingQueueReading, QueueDepthRead, GroupOccupied, QueueDepthUnread, GroupIdle, serving_co_tenancy,
   serving_capacity_pressure, ServingCapacityPressure, RouteAdmittingMore, RouteHoldingForCapacity,
   CapacityPressureUnread,
   ServingSeatStanding, SeatStandingRead, SeatStandingUnread, ServingGroupAdmission,
@@ -20,6 +20,13 @@ import gunbc.serving.turn_admission {
   AdmissibilityUnread,
   serving_group_admission, serving_admission_detail, serving_availability, serving_transition_cost,
   serving_opportunity_cost,
+  ServingTurnReuse, TurnReuseRead, TurnReuseUnread, ServingHostTierStanding, HostTierRetains,
+  HostTierEmpty, HostTierUnread, ServingSessionResidency, ReusedAtTurn, HostRestorable, MustReconstruct,
+  ResidencyUnread, TokenPrefixBroken, LaunchReplaced, PrefixMissedAndNotRetained,
+  serving_session_residency, serving_session_placement, ServingSessionRecord, NoSessionRecord, SessionRecord,
+  serving_session_standing, serving_unread_when_owner_unprobed,
+  ServingGpuPrefixStanding, GpuPrefixUnread, GpuPrefixCurrentlyEvicted,
+  ServingSessionPlacement, PlacementFree, OwnedByAnotherReplica,
 }
 import gunbc.harness.harness_backend {
   harness_gauge_count, harness_queue_from_body, harness_launch_from_body,
@@ -319,6 +326,154 @@ test fn a_route_holding_for_capacity_refuses_a_tolerant_turn_with_ceiling_to_spa
     receipt: probe_receipt,
   ) {
     InadmissibleRouteHoldingForCapacity { held: h } => h == 1
+    _ => false
+  }
+}
+
+// ── WARM SESSION RESIDENCY ────────────────────────────────────────────────────────────────────
+fn residency_on(owner: String, current: String, intact: Bool, turn: ServingTurnReuse, host: ServingHostTierStanding) -> ServingSessionResidency {
+  residency_on_gpu(owner: owner, current: current, intact: intact, turn: turn, host: host, gpu: GpuPrefixUnread)
+}
+
+fn residency_on_gpu(owner: String, current: String, intact: Bool, turn: ServingTurnReuse, host: ServingHostTierStanding, gpu: ServingGpuPrefixStanding) -> ServingSessionResidency {
+  serving_session_residency(owner_launch: owner as NonEmptyStr, current_launch: current as NonEmptyStr, prefix_intact: intact, last_turn: turn, host: host, gpu: gpu)
+}
+
+fn reuse(cached: Nat, launch: String) -> ServingTurnReuse {
+  TurnReuseRead { cached_tokens: cached, launch: launch as NonEmptyStr, turn: "t7" as NonEmptyStr }
+}
+
+// An attributed hit is reuse AT THAT TURN, carrying its evidence -- not residency now.
+test fn an_attributed_hit_on_the_owning_launch_reads_reused_at_turn() -> Bool {
+  match residency_on(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 512, launch: "L1"), host: HostTierUnread) {
+    ReusedAtTurn { cached_tokens: n, launch: l, turn: t } => n == 512 && (l as String) == "L1" && (t as String) == "t7"
+    _ => false
+  }
+}
+
+// THE DISCRIMINATING RED (A-evicted / B-hit): session A's own last response reported zero cached tokens
+// (its prefix was evicted) while session B hit on the same launch, advancing the engine-wide counters.
+// Engine counters are not read anywhere, so A cannot read reused; the same red runs on the
+// production fold in serving_availability_bind_wet_witness_test.
+test fn an_evicted_session_does_not_inherit_a_neighbours_hit() -> Bool {
+  (match residency_on(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierUnread) {
+     ResidencyUnread { obligation: _ } => true
+     _ => false
+   })
+    && (match residency_on(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierEmpty) {
+          ResidencyUnread { obligation: _ } => true
+          _ => false
+        })
+}
+
+// A reading attributed to another launch is not evidence about the owner.
+test fn a_reading_from_a_different_launch_is_unread() -> Bool {
+  match residency_on(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 512, launch: "L2"), host: HostTierRetains) {
+    ResidencyUnread { obligation: _ } => true
+    _ => false
+  }
+}
+
+test fn a_broken_token_prefix_reads_must_reconstruct_even_with_hits() -> Bool {
+  match residency_on(owner: "L1", current: "L1", intact: false, turn: reuse(cached: 512, launch: "L1"), host: HostTierRetains) {
+    MustReconstruct { cause: TokenPrefixBroken } => true
+    _ => false
+  }
+}
+
+test fn a_replaced_launch_reads_must_reconstruct() -> Bool {
+  match residency_on(owner: "L1", current: "L2", intact: true, turn: reuse(cached: 512, launch: "L1"), host: HostTierRetains) {
+    MustReconstruct { cause: LaunchReplaced } => true
+    _ => false
+  }
+}
+
+// Absent usage details (server not launched with them) is unread, never a miss or a hit.
+test fn an_unreported_turn_is_never_warm() -> Bool {
+  match residency_on(owner: "L1", current: "L1", intact: true, turn: TurnReuseUnread { obligation: "no prompt_tokens_details" as NonEmptyStr }, host: HostTierRetains) {
+    ResidencyUnread { obligation: _ } => true
+    _ => false
+  }
+}
+
+fn placed_on_l2(standing: ServingSessionResidency) -> ServingSessionPlacement {
+  serving_session_placement(residency: standing, record: rec(owner: "L1"), candidate_launch: "L2" as NonEmptyStr)
+}
+
+test fn a_gpu_miss_is_host_restorable_only_when_the_host_tier_retains() -> Bool {
+  let unread_gpu_retains = residency_on(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierRetains)
+  let unread_gpu_empty = residency_on(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierEmpty)
+  let evicted_retains = residency_on_gpu(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierRetains, gpu: GpuPrefixCurrentlyEvicted)
+  let evicted_unread = residency_on_gpu(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierUnread, gpu: GpuPrefixCurrentlyEvicted)
+  let evicted_empty = residency_on_gpu(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierEmpty, gpu: GpuPrefixCurrentlyEvicted)
+  (match unread_gpu_retains { HostRestorable => match placed_on_l2(standing: unread_gpu_retains) { OwnedByAnotherReplica { owner: o } => (o as String) == "L1"  _ => false }  _ => false })
+    && (match unread_gpu_empty { ResidencyUnread { obligation: _ } => match placed_on_l2(standing: unread_gpu_empty) { OwnedByAnotherReplica { owner: _ } => true  _ => false }  _ => false })
+    && (match evicted_retains { HostRestorable => match placed_on_l2(standing: evicted_retains) { OwnedByAnotherReplica { owner: o } => (o as String) == "L1"  _ => false }  _ => false })
+    && (match evicted_unread { ResidencyUnread { obligation: _ } => match placed_on_l2(standing: evicted_unread) { OwnedByAnotherReplica { owner: _ } => true  _ => false }  _ => false })
+    && (match evicted_empty { MustReconstruct { cause: PrefixMissedAndNotRetained } => match placed_on_l2(standing: evicted_empty) { PlacementFree => true  _ => false }  _ => false })
+}
+
+fn idle_admission() -> ServingGroupAdmission {
+  AdmissibleForClass { class: BatchQualityTolerant, receipt: probe_receipt }
+}
+
+fn rec(owner: String) -> ServingSessionRecord {
+  SessionRecord { owner_launch: owner as NonEmptyStr, prefix_intact: true, last_turn: reuse(cached: 512, launch: owner) }
+}
+
+test fn a_warm_session_is_pinned_and_an_established_reconstruct_is_free() -> Bool {
+  (match serving_session_placement(residency: ReusedAtTurn { cached_tokens: 512, launch: "L1" as NonEmptyStr, turn: "t7" as NonEmptyStr }, record: rec(owner: "L1"), candidate_launch: "L2" as NonEmptyStr) {
+     OwnedByAnotherReplica { owner: o } => (o as String) == "L1"
+     _ => false
+   })
+    && (match serving_session_placement(residency: HostRestorable, record: rec(owner: "L1"), candidate_launch: "L1" as NonEmptyStr) {
+          PlacementFree => true
+          _ => false
+        })
+    && (match serving_session_placement(residency: ResidencyUnread { obligation: "no reuse evidence" as NonEmptyStr }, record: rec(owner: "L1"), candidate_launch: "L2" as NonEmptyStr) {
+          OwnedByAnotherReplica { owner: _ } => true
+          _ => false
+        })
+    && (match serving_session_placement(residency: MustReconstruct { cause: TokenPrefixBroken }, record: rec(owner: "L1"), candidate_launch: "L2" as NonEmptyStr) {
+          PlacementFree => true
+          _ => false
+        })
+    && (match serving_session_placement(residency: MustReconstruct { cause: LaunchReplaced }, record: rec(owner: "L1"), candidate_launch: "L2" as NonEmptyStr) {
+          PlacementFree => true
+          _ => false
+        })
+}
+
+// THE DISCRIMINATING RED (review 5483778652): a completed cold turn (cached_tokens == 0) plus
+// HostTierEmpty is not current GPU eviction. vLLM retains cold-request cache blocks after completion.
+// Without GpuPrefixCurrentlyEvicted the standing is unread and the session stays pinned to L1.
+test fn a_completed_cold_turn_with_empty_host_is_unread_and_pinned() -> Bool {
+  match residency_on(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierEmpty) {
+    ResidencyUnread { obligation: _ } =>
+      match serving_session_placement(residency: ResidencyUnread { obligation: "completed cold turn" as NonEmptyStr }, record: rec(owner: "L1"), candidate_launch: "L2" as NonEmptyStr) {
+        OwnedByAnotherReplica { owner: o } => (o as String) == "L1"
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// Missing owner standing is unread, which pins: L2 is not free. NoSessionRecord is the control.
+test fn owner_unprobed_is_unread_and_pins_to_the_recorded_owner() -> Bool {
+  (match serving_session_placement(residency: serving_unread_when_owner_unprobed(), record: rec(owner: "L1"), candidate_launch: "L2" as NonEmptyStr) {
+     OwnedByAnotherReplica { owner: o } => (o as String) == "L1"
+     _ => false
+   })
+    && (match serving_session_placement(residency: serving_unread_when_owner_unprobed(), record: NoSessionRecord, candidate_launch: "L2" as NonEmptyStr) {
+          PlacementFree => true
+          _ => false
+        })
+}
+
+// No record, no standing: nothing was placed whose residency could be read.
+test fn an_unrecorded_session_reads_unread_never_warm() -> Bool {
+  match serving_session_standing(record: NoSessionRecord, current_launch: "L1" as NonEmptyStr, host: HostTierRetains, gpu: GpuPrefixUnread) {
+    ResidencyUnread { obligation: _ } => true
     _ => false
   }
 }
