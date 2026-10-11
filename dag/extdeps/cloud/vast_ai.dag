@@ -1,0 +1,99 @@
+module extdeps.cloud.vast_ai
+
+import std.resources { Network }
+import std.types { Int, Bool, NonEmptyStr, String, Secret, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// VAST.AI, THE GPU MARKETPLACE INTERFACE: what its REST API returns for rentable offers. Read
+// 2026-10-11 from docs.vast.ai (search-offers, create-instance). Vast is a marketplace of
+// independently operated hosts, so an offer is a host's ask, not a catalog SKU: price, reliability
+// and verification vary per machine. This module owns the wire SHAPE only. Which offers this
+// repository will rent, and for what role, is supplier policy in product.supplier.vast_ai.
+//
+// NUMBER-SHAPED FIELDS ARE JSON NUMBERS: dph_total (dollars per hour), gpu_ram (MB per GPU) and
+// gpu_mem_bw (GB/s) arrive as floats. std has no Float-to-Int route, so a consumer cannot mint money
+// from dph_total by coercion; it must receive the rate as an explicit parameter (see the supplier).
+// num_gpus is an Int and IS a request axis: an offer is a machine with that many GPUs, rented whole.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.vast.ai/api-reference/search/search-offers" }
+}
+
+data vast_ai_create_instance_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.vast.ai/api-reference/instances/create-instance" }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cloud.vast_ai",
+      decl_name: "vast_ai_api_base",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [vast_ai_create_instance_page]
+}
+
+data vast_ai_api_base: NonEmptyStr = "https://console.vast.ai/api/v0"
+
+type VastAiApiError {
+  success: Bool
+  error: String
+  msg: String
+}
+
+// ONE OFFER from POST /bundles: id is the ask contract a rental names (PUT /asks/{id}).
+type VastAiOffer {
+  id: Int
+  machine_id: Int
+  gpu_name: String
+  num_gpus: Int
+  gpu_ram: Float
+  gpu_total_ram: Float
+  gpu_mem_bw: Float
+  compute_cap: Int
+  cpu_cores_effective: Float
+  cpu_ram: Float
+  disk_space: Float
+  dph_total: Float
+  reliability: Float
+  verification: String
+  geolocation: String
+  rentable: Bool
+  rented: Bool
+}
+
+type VastAiOffers {
+  offers: List<VastAiOffer>
+}
+
+service vast_ai.SearchOffers {
+  config {
+    endpoint: vast_ai_api_base
+    auth: Bearer
+    auth_input: api_key
+  }
+
+  operation Search {
+    requires Network
+    input {
+      api_key: Secret
+    }
+    output {
+      offers: List<VastAiOffer> from "offers"
+    }
+    readonly
+    transport rest {
+      method: POST,
+      path: "/bundles/"
+    }
+    response {
+      200 => VastAiOffers
+      401 => VastAiApiError
+      429 => VastAiApiError
+      5xx => VastAiApiError
+    }
+  }
+}

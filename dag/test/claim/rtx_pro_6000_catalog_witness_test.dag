@@ -1,0 +1,58 @@
+module test.claim.rtx_pro_6000_catalog_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.measure { bandwidth_count }
+import extdeps.gpu.nvidia {
+  nvidia_rtx_pro_6000_workstation_catalog,
+  nvidia_rtx_pro_6000_max_q_catalog,
+  nvidia_rtx_pro_6000_server_catalog,
+}
+import extdeps.pricing.hetzner_dedicated { hetzner_gex131_listed }
+import product.supplier.vast_ai { vast_ai_rental_role, vast_ai_unexpressed }
+import extdeps.cloud.vast_ai { VastAiOffer }
+import product.supplier.packet_ai { packet_ai_rental_role }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// NVIDIA publishes 1792 GB/s for Workstation and Max-Q and 1597 GB/s for Server Edition: two
+// correct figures for three editions, not a disagreement about one card.
+test fn w_workstation_bandwidth_is_1792() -> Bool {
+  bandwidth_count(b: nvidia_rtx_pro_6000_workstation_catalog.memory_bandwidth) == 1792000000000
+}
+
+test fn w_max_q_bandwidth_is_1792() -> Bool {
+  bandwidth_count(b: nvidia_rtx_pro_6000_max_q_catalog.memory_bandwidth) == 1792000000000
+}
+
+test fn w_server_bandwidth_is_1597() -> Bool {
+  bandwidth_count(b: nvidia_rtx_pro_6000_server_catalog.memory_bandwidth) == 1597000000000
+}
+
+// The Hetzner listing names the card as a string; it must resolve to exactly one catalog row.
+test fn w_hetzner_max_q_string_resolves_to_row() -> Bool {
+  match hetzner_gex131_listed.workload {
+    CpuWithGpu { gpu_description } =>
+      gpu_description == "NVIDIA " + nvidia_rtx_pro_6000_max_q_catalog.model
+    CpuOnly => false
+  }
+}
+
+// Role split is supplier policy: Packet serves, Vast only qualifies.
+test fn w_roles_are_disjoint() -> Bool {
+  packet_ai_rental_role.serving_seat
+    && !packet_ai_rental_role.benchmark_qualification
+    && vast_ai_rental_role.benchmark_qualification
+    && !vast_ai_rental_role.serving_seat
+}
+
+test fn w_vast_two_gpu_offer_count_is_carried_not_dropped() -> Bool {
+  let offer = VastAiOffer {
+    id: 1, machine_id: 2, gpu_name: "RTX PRO 6000 S", num_gpus: 2, gpu_ram: 97887.0,
+    gpu_total_ram: 195774.0, gpu_mem_bw: 1597.0, compute_cap: 1200, cpu_cores_effective: 16.0,
+    cpu_ram: 128000.0, disk_space: 500.0, dph_total: 3.2, reliability: 0.99,
+    verification: "verified", geolocation: "US", rentable: true, rented: false,
+  }
+  match vast_ai_unexpressed(offer: offer) {
+    GpuCountNotExpressibleInShape { num_gpus } => num_gpus == 2
+  }
+}

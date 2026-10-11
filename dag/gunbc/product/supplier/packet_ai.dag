@@ -1,0 +1,54 @@
+module product.supplier.packet_ai
+
+import std.types { List, Bool, Int }
+import std.measure { ByteSize, HardwareThreadCount, MoneyPerHour, money_amount_micro }
+import product.fabric.work { Shape, HardRequirements }
+import product.fabric.envelope { ResourceEnvelope, GpuRequirement }
+import product.fabric.supply { OfferQuote, QuotedPerHour }
+import extdeps.gpu.types { Cuda }
+import extdeps.currency.currency { Usd }
+import extdeps.cloud.packet_ai { PacketAiProduct }
+
+// PACKET.AI AS A SUPPLIER: POLICY OVER extdeps.cloud.packet_ai, NOTHING RESTATED.
+//
+// ROLE: Packet is the SERVING supplier; Vast (product.supplier.vast_ai) is qualification only. That
+// split is this repository's decision, so it lives here and not in either interface module.
+type PacketAiRentalRole {
+  serving_seat: Bool
+  benchmark_qualification: Bool
+}
+
+data packet_ai_rental_role: PacketAiRentalRole = PacketAiRentalRole {
+  serving_seat: true,
+  benchmark_qualification: false,
+}
+
+// WHAT THE FABRIC CANNOT SAY ABOUT A PACKET POOL, AND WHAT THE UPSTREAM DOES NOT SAY EITHER.
+// GpuCountNotExpressibleInShape: ResourceEnvelope has no GPU-count axis, and Packet's create body has
+// no count field either. TierNotEstablished: the RTX 6000 Pro pool is sold as shared "Dynamic"
+// infrastructure; until a pool is established as a whole card, it is not a quality-conditioned seat
+// (DESIGN §4b), and this projection must not claim it is.
+type PacketAiUnexpressedFact
+  = GpuCountNotExpressibleInShape
+  | TierNotEstablished
+
+fn packet_ai_shape(threads: HardwareThreadCount, min_vram: ByteSize) -> Shape {
+  Shape {
+    hard: HardRequirements { threads: threads },
+    envelope: ResourceEnvelope {
+      cpu: none,
+      gpu: Present { value: GpuRequirement { min_vram: min_vram, runtimes: [Cuda] } },
+      memory: none,
+      storage: none,
+      network: none,
+    },
+  }
+}
+
+// pricePerHourCents is an integer; one cent is 10_000 micro-dollars, so the conversion is exact.
+fn packet_ai_quote(product: PacketAiProduct) -> OfferQuote {
+  QuotedPerHour(MoneyPerHour {
+    amount: money_amount_micro(count: product.pricePerHourCents * 10000),
+    currency: Usd,
+  })
+}

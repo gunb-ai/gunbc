@@ -1,0 +1,57 @@
+module product.supplier.vast_ai
+
+import std.types { List, Bool, Int }
+import std.measure { ByteSize, HardwareThreadCount, MoneyPerHour }
+import product.fabric.work { Shape, HardRequirements }
+import product.fabric.envelope { ResourceEnvelope, GpuRequirement }
+import product.fabric.supply { OfferQuote, QuotedPerHour }
+import extdeps.gpu.types { Cuda }
+import extdeps.cloud.vast_ai { VastAiOffer }
+
+// VAST.AI AS A SUPPLIER: POLICY OVER extdeps.cloud.vast_ai, NOTHING RESTATED.
+//
+// ROLE: Vast is used for BENCHMARK / QUALIFICATION rentals, and never to host a serving seat. The
+// reason is the marketplace's own shape: an offer is an independent host's ask whose reliability and
+// verification vary per machine, which is acceptable for a measurement run that can be repeated and
+// is not acceptable as the floor under a warm agent session. That is this repository's decision, so
+// it lives here and not in the interface module (DESIGN §3).
+type VastAiRentalRole {
+  benchmark_qualification: Bool
+  serving_seat: Bool
+}
+
+data vast_ai_rental_role: VastAiRentalRole = VastAiRentalRole {
+  benchmark_qualification: true,
+  serving_seat: false,
+}
+
+// WHAT THE FABRIC'S SHAPE CANNOT SAY. A Vast offer is a machine with num_gpus GPUs rented whole, and
+// ResourceEnvelope has no GPU-count axis, so a 2-GPU offer and a 1-GPU offer of one card project to
+// the same shape. Carried beside the offer so a selection fold cannot read the count as checked.
+type VastAiUnexpressedFact = GpuCountNotExpressibleInShape { num_gpus: Int }
+
+// Per-GPU memory floor and CUDA runtime; the thread floor is a parameter because the offer publishes
+// effective cores as a float and std has no Float-to-Int route.
+fn vast_ai_shape(threads: HardwareThreadCount, min_vram: ByteSize) -> Shape {
+  Shape {
+    hard: HardRequirements { threads: threads },
+    envelope: ResourceEnvelope {
+      cpu: none,
+      gpu: Present { value: GpuRequirement { min_vram: min_vram, runtimes: [Cuda] } },
+      memory: none,
+      storage: none,
+      network: none,
+    },
+  }
+}
+
+// dph_total is a JSON float and cannot be coerced to money, so the rate is received already
+// converted by whoever read the offer; the quote preserves Vast's per-hour billing.
+fn vast_ai_quote(rate: MoneyPerHour) -> OfferQuote {
+  QuotedPerHour(rate)
+}
+
+// The count an offer rents is carried beside the shape, never inside it.
+fn vast_ai_unexpressed(offer: VastAiOffer) -> VastAiUnexpressedFact {
+  GpuCountNotExpressibleInShape { num_gpus: offer.num_gpus }
+}
