@@ -30,6 +30,7 @@ import gunbc.live_deploy.spec {
   FleetConvergeTimerUnit,
   TailscaleServeMapping,
   DeployedTreeRemoteUnit,
+  OidcConfigArtifact,
   DeploymentArtifactStep,
   deployment_owned_steps,
   srv1_live_deployment_names,
@@ -244,6 +245,7 @@ fn ordering_tag(kind: OwnedArtifactKind) -> String {
     TailscaleServeMapping => "route"
     SystemdUnit => ""
     FleetConvergeTimerUnit => ""
+    OidcConfigArtifact => ""
   }
 }
 

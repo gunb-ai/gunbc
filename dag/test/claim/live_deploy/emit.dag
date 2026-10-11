@@ -7,7 +7,7 @@ import gunbc.live_deploy.member_identity {
 }
 import gunbc.live_deploy.member_observe { deployment_member_roster }
 import gunbc.owned_directory { owned_directory_path, owned_directory_demand_at }
-import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, apply_emitted_steps_text, apply_empty_host_effects }
+import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, apply_emitted_steps_text, apply_empty_host_effects, claim_oidc_now }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable_digest, deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan, deploy_witness_release_target, deploy_witness_spec_with_only_directory }
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.os.types { Apt }
@@ -17,7 +17,7 @@ import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import v2.std.collection { Present, Absent }
 import gunbc.live_deploy.spec {
-  RoleSingletonHolding, HoldsNoRoleSingleton, HoldsProdRoleSingletons, role_singleton_holding_under,
+  HoldsNoRoleSingleton,
   DeploymentArtifactStep,
   gunbc_approval_broker_unit_name, gunbc_approval_broker_slice_unit_name,
   gunbc_repository_convergence_slice_unit_name, gunbc_repository_convergence_slice_unit_path,
@@ -28,6 +28,7 @@ import gunbc.live_deploy.spec {
   deployment_fabric_storage_steps,
   deployment_tailnet_door_steps,
   deployment_approval_broker_front_door_steps,
+  deployment_oidc_config_steps,
   deployment_fabric_storage_serve_endpoint,
   EnsuredPackage,
   TailscalePackage,
@@ -38,7 +39,6 @@ import gunbc.live_deploy.spec {
   deployment_owned_steps_retract_order,
   deployment_steps_apply_order,
   deployment_spec_for,
-  derived_deployment_names,
   deployment_srv1_target,
   DeploymentHostTarget,
   srv1_live_deployment_names,
@@ -220,7 +220,7 @@ data witness_cap_authorization: CapConvergeDecision = cap_converge_decision(
   observation: SurplusSlotsObserved { retired: [], still_present: [] },
 )
 
-data witness_apply_script_text: String = live_deploy_apply_script_for(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()), cap_authorization: witness_cap_authorization)
+data witness_apply_script_text: String = live_deploy_apply_script_for(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()), cap_authorization: witness_cap_authorization, oidc_now: claim_oidc_now())
 
 data witness_retract_script_text: String = live_deploy_retract_script_for(spec: deployment_spec_srv1())
 
@@ -430,6 +430,7 @@ test fn witness_apply_pipeline_carries_the_preamble_after_its_frame() -> Bool {
         access: a,
         plan: deploy_witness_full_install_plan(spec: spec),
         cap_authorization: CapConvergeWithheld { cause: "the route claim is not about the cap step" },
+        oidc_now: claim_oidc_now(),
       )
       pipeline_steps_text(steps: p.steps.skip(n: deploy_apply_frame_steps(spec: spec).length()).take(n: pre.length())) == pipeline_steps_text(steps: pre)
     DeployAccessJobPrincipalRefused { refusal: _ } => false
@@ -757,6 +758,7 @@ test fn witness_execstart_carries_exactly_the_admitted_revision() -> Bool {
   let unit = live_deploy_systemd_unit_for(
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+    now_epoch: claim_oidc_now(),
   )
   let expected = join([
     "ExecStart=/opt/gunbc/bin/gunbc serve --source-root dag --source-root src/v2",
@@ -776,6 +778,7 @@ test fn witness_execstart_omitting_the_revision_is_not_the_emitted_line() -> Boo
   let unit = live_deploy_systemd_unit_for(
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+    now_epoch: claim_oidc_now(),
   )
   !string_contains(s: unit, pattern: "--port 8080\nRestart=")
     && !string_contains(s: unit, pattern: "--release-revision \n")
@@ -786,10 +789,12 @@ test fn witness_execstart_at_another_candidate_differs() -> Bool {
   let a = live_deploy_systemd_unit_for(
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+    now_epoch: claim_oidc_now(),
   )
   let b = live_deploy_systemd_unit_for(
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_other_release_revision },
+    now_epoch: claim_oidc_now(),
   )
   a != b
     && string_contains(s: b, pattern: deploy_witness_other_release_revision as String)
@@ -797,7 +802,7 @@ test fn witness_execstart_at_another_candidate_differs() -> Bool {
 }
 
 test fn witness_systemd_unit_emitted() -> Bool {
-  let unit = live_deploy_systemd_unit_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  let unit = live_deploy_systemd_unit_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }, now_epoch: claim_oidc_now())
   string_contains(s: unit, pattern: "ExecStart=/opt/gunbc/bin/gunbc serve --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_serve.dag --function roadmap_serve_handle --host 127.0.0.1 --port 8080")
     && string_contains(s: unit, pattern: "User=briansrls")
     && string_contains(s: unit, pattern: "Group=briansrls")
@@ -885,20 +890,24 @@ fn spec_owned_paths(spec: DeploymentSpec) -> List<String> {
 }
 
 
-// THE TWIN MIRRORS PRODUCTION AS AN IDENTITY JOIN ON ARTIFACT KIND, NOT A COUNT. The host-singleton
-// members -- the fabric storage placement's two and, since #12747, the approval broker's front door --
-// are named by the functions that decide them and subtracted from production by path; every other
-// production member must have a twin member of the same kind and vice versa, and the twin must own
-// no host singleton at all. The count form this replaces (`twin + fabric == live`) went red the day
-// #12747 added a second host-scoped member, though nothing about the twin was wrong. Production's
-// tailnet door unit is subtracted the same way: it exists because production's serve route targets
-// a socket, which the twin's derived route does not, and the twin must own none.
-fn live_host_singleton_paths(live: DeploymentSpec) -> List<String> {
+// THE TWIN MIRRORS PRODUCTION AS AN IDENTITY JOIN ON ARTIFACT KIND, NOT A COUNT. Placement-scoped
+// members are named by the functions that decide them and subtracted from each roster by path;
+// every other production member must have a twin member of the same kind and vice versa. The count
+// form this replaces (`twin + fabric == live`) went red the day #12747 added a second host-scoped
+// member, though nothing about the twin was wrong. Production's extras are the fabric storage
+// placement's two, the approval broker's front door, and the tailnet door (production's serve route
+// targets a socket; the twin's does not). The twin's extra is the OIDC config file, present only
+// where tracker_web_oidc_serve_placement is ServeReady. Each side must own none of the other's
+// placement-scoped members.
+fn placement_scoped_paths(spec: DeploymentSpec, instance: HostDashboardInstance) -> List<String> {
   concat(
-    deployment_fabric_storage_steps(holding: srv1_live_holding(), names: live.names),
+    deployment_fabric_storage_steps(holding: spec.role_singletons, names: spec.names),
     concat(
-      deployment_approval_broker_front_door_steps(holding: srv1_live_holding()),
-      deployment_tailnet_door_steps(names: live.names),
+      deployment_approval_broker_front_door_steps(holding: spec.role_singletons),
+      concat(
+        deployment_tailnet_door_steps(names: spec.names),
+        deployment_oidc_config_steps(instance: instance),
+      ),
     ),
   ) |> map(s => s.path as String)
 }
@@ -906,27 +915,33 @@ fn live_host_singleton_paths(live: DeploymentSpec) -> List<String> {
 test fn a_twin_deployment_on_one_host_collides_with_nothing() -> Bool {
   let live = deployment_spec_srv1()
   let twin = srv1_twin_spec()
+  let live_instance = srv1_live_dashboard_instance()
+  let lab_instance = srv1_lab_dashboard_instance()
   let live_paths = spec_owned_paths(spec: live)
   let twin_paths = spec_owned_paths(spec: twin)
-  let singletons = live_host_singleton_paths(live: live)
-  let live_instance_scoped = filter(deployment_owned_steps_retract_order(spec: live), l => !any(singletons, h => h == (l.path as String)))
-  let twin_steps = deployment_owned_steps_retract_order(spec: twin)
+  let live_scoped_paths = placement_scoped_paths(spec: live, instance: live_instance)
+  let twin_scoped_paths = placement_scoped_paths(spec: twin, instance: lab_instance)
+  let live_instance_scoped = filter(deployment_owned_steps_retract_order(spec: live), l => !any(live_scoped_paths, h => h == (l.path as String)))
+  let twin_instance_scoped = filter(deployment_owned_steps_retract_order(spec: twin), t => !any(twin_scoped_paths, h => h == (t.path as String)))
   deployment_plan_host_identity(spec: live) == deployment_plan_host_identity(spec: twin)
     && !(deployment_plan_listen_port(spec: live) == deployment_plan_listen_port(spec: twin))
     && !(live.service.unit_name == twin.service.unit_name)
     && !(live.service.repo_root == twin.service.repo_root)
     && !(live.service.serve_binary == twin.service.serve_binary)
     && count(live_instance_scoped) > 0
-    && all(singletons, h => any(live_paths, l => l == h))
-    && all(live_instance_scoped, l => any(twin_steps, t => t.kind == l.kind))
-    && all(twin_steps, t => any(live_instance_scoped, l => l.kind == t.kind))
+    && all(live_scoped_paths, h => any(live_paths, l => l == h))
+    && all(twin_scoped_paths, h => any(twin_paths, t => t == h))
+    && all(live_instance_scoped, l => any(twin_instance_scoped, t => t.kind == l.kind))
+    && all(twin_instance_scoped, t => any(live_instance_scoped, l => l.kind == t.kind))
     && count(deployment_fabric_storage_steps(holding: HoldsNoRoleSingleton, names: twin.names)) == 0
     && count(deployment_approval_broker_front_door_steps(holding: HoldsNoRoleSingleton)) == 0
     && count(deployment_tailnet_door_steps(names: twin.names)) == 0
+    && count(deployment_oidc_config_steps(instance: live_instance)) == 0
+    && count(deployment_oidc_config_steps(instance: lab_instance)) > 0
     && all(twin_paths, t => !any(live_paths, l => l == t))
 }
 
-data placement_scoped_members_note: String = "THE TWIN MIRRORS PRODUCTION ONE-FOR-ONE EXCEPT FOR THE PLACEMENT'S OWN MEMBERS. The fabric DB endpoint -- its serve unit and its tailscale route -- is a host singleton owned by the one instance that holds the fabric DB placement (gunbc.fabric.fabric_storage_placement fabric_storage_placed_on), so production carries exactly those members more than the twin, and the twin none. The relation stays between two live rosters: the difference is named by the function that decides it, not typed as a number."
+data placement_scoped_members_note: String = "THE TWIN MIRRORS PRODUCTION ONE-FOR-ONE EXCEPT FOR THE PLACEMENT'S OWN MEMBERS. The fabric DB endpoint -- its serve unit and its tailscale route -- is a host singleton owned by the one instance that holds the fabric DB placement (gunbc.fabric.fabric_storage_placement fabric_storage_placed_on), so production carries exactly those members more than the twin, and the twin none. Production's tailnet door is the same: it exists because production's serve route targets a socket. The OIDC config file is the converse: tracker_web_oidc_serve_placement is ServeReady only for the lab instance assigned the realized TEST environment, so the twin carries that member and production none. The relation stays between two live rosters: the difference is named by the function that decides it, not typed as a number."
 
 data non_degeneracy_without_transcription_note: String = "THE COUNTS ABOVE STOPPED BEING LITERALS (review, 2026-07-30 — the live-state count-transcription class ruled against on 2026-07-29 and swept in #7464). Five was read off the live owned roster, so authoring a correct sixth member reds a claim that has nothing to say about members, and the reviewer's habit becomes editing the number until the day the number is wrong for a real reason. #7478 adds exactly such a member.\\n\\nDeleting the conjunct outright would have been the wrong fix, which is why this is a replacement rather than a removal: `all` over an empty list is vacuously true, so without a non-degeneracy guard a twin whose owned set collapsed to nothing would satisfy the disjointness claim perfectly. The literal was doing real work in a way its shape disguised.\\n\\nWhat replaces it says the same thing without reading the roster's size into the test: the production set is non-empty, and the twin mirrors it one-for-one. Both survive a member being added — the relation is between two live rosters rather than between one roster and a number a human typed — and the second is strictly stronger than the literal pair, since it would also catch a twin that gained or lost a member production did not."
 
@@ -945,9 +960,9 @@ test fn retract_is_the_reverse_of_what_this_spec_applies() -> Bool {
   let twin = srv1_twin_spec()
   let applied = deployment_steps_apply_order(
     instance: srv1_lab_dashboard_instance(),
-    holding: HoldsNoRoleSingleton,
-    target: deployment_srv1_target(),
-    names: derived_deployment_names(instance: srv1_lab_dashboard_instance()),
+    holding: twin.role_singletons,
+    target: twin.target,
+    names: twin.names,
   )
   let applied_paths = applied |> flat_map(s => match s {
     ArtifactStep { step } => [step.path as String]
@@ -1082,6 +1097,7 @@ test fn production_apply_serves_its_own_endpoint_and_scopes_no_path() -> Bool {
     },
     spec: spec,
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+    oidc_now: Absent,
   ))
   let route = deployment_serve_route_script(endpoint: spec.names.tailscale_serve_endpoint, enabled: true)
   !string_contains(s: own, pattern: "tailscale")
@@ -1298,7 +1314,7 @@ test fn the_preamble_ensures_the_publication_principal_as_a_nologin_system_accou
 fn member_fragment_text(member: ConvergedMember, plan: ReleaseEffectPlan) -> String {
   join(
     map(
-      emit_release_member_effects(member: member, plan: plan, spec: deployment_spec_srv1()),
+      emit_release_member_effects(member: member, plan: plan, spec: deployment_spec_srv1(), oidc_now: claim_oidc_now()),
       st => match st {
         Do { run } => run.command
         Comment { text: _ } => ""
@@ -1897,6 +1913,3 @@ test fn apply_retires_leftover_belt_and_publication_timers_and_installs_publicat
 
 
 
-fn srv1_live_holding() -> RoleSingletonHolding {
-  role_singleton_holding_under(realization: prod_role_actuated_realization(), instance: srv1_live_dashboard_instance())
-}
