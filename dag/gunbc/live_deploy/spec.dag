@@ -34,6 +34,7 @@ import gunbc.fleet_intent_network {
 }
 import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.codex_runtime_paths { srv1_codex_runtime_release_root }
+import std.materialization_store_grant { materialization_store_durable_root_path }
 import gunbc.host_layout {
   srv1_gunbc_repo_root,
   srv1_gunbc_approval_broker_root,
@@ -1173,6 +1174,12 @@ fn deployment_srv1_host_directories() -> List<OwnedDirectoryTarget> {
     OwnedDirectoryDeclared {
       member: "codex-runtime-release" as NonEmptyStr,
       path: srv1_codex_runtime_release_root,
+      owner: owner,
+      mode: DirectoryOwnerAllEveryoneTraverse,
+    },
+    OwnedDirectoryDeclared {
+      member: "materialization-store" as NonEmptyStr,
+      path: materialization_store_durable_root_path as NonEmptyStr,
       owner: owner,
       mode: DirectoryOwnerAllEveryoneTraverse,
     },
