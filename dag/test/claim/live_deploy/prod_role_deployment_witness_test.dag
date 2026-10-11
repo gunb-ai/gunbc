@@ -1,7 +1,7 @@
 module test.claim.live_deploy.prod_role_deployment_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, String }
+import std.types { Bool, String, Int }
 import gunbc.deployment_risk {
   NoProdRole,
   ProdRoleSelection,
@@ -35,6 +35,10 @@ import gunbc.live_deploy.desired {
   srv1_production_desired_deployment,
   selected_deployment_spec,
 }
+import gunbc.fleet_host_identity { operator_host_srv1 }
+import gunbc.runner_host_deploy { admitted_deploy_for }
+import gunbc.runner_host_grants { dashboard_directory_observation_operations_for }
+import v2.std.collection { Present, Absent }
 import gunbc.live_deploy.apply {
   live_deploy_prod_role_apply_selection_under,
   DesiredApplySelected,
@@ -162,6 +166,25 @@ test fn a_row_naming_another_deployment_is_a_holder_mismatch_never_selected() ->
         })
     _ => false
   }
+}
+
+// The runner's directory-observation grants follow the SAME selection as the apply entries: a holder
+// on srv1 grants srv1's directories, a holder on srv2 grants srv1 nothing, and every refusal arm
+// (unheld, unactuatable, a roster polluted elsewhere) grants nothing.
+fn srv1_grant_count(selected: ProdRoleDeployment) -> Int {
+  match admitted_deploy_for(host: operator_host_srv1) {
+    Present { value: d } => count(dashboard_directory_observation_operations_for(deploy: d, selected: selected))
+    Absent => -1
+  }
+}
+
+test fn the_runner_directory_grants_follow_the_holder_and_every_refusal_grants_nothing() -> Bool {
+  let polluted = list_append(desired_deployment_roster(), [srv1_lab_desired_deployment()])
+  srv1_grant_count(selected: projected(selection: ProdRoleHeldBy { deployment: srv1_daily_workspace_deployment })) > 0
+    && srv1_grant_count(selected: projected(selection: ProdRoleHeldBy { deployment: srv2_deploy_deployment })) == 0
+    && srv1_grant_count(selected: projected(selection: NoProdRole)) == 0
+    && srv1_grant_count(selected: projected(selection: ProdRoleHeldBy { deployment: srv2_preview_codex_feedback_deployment })) == 0
+    && srv1_grant_count(selected: prod_role_desired_deployment_over(realization: prod_role_actuated_realization_in(selection: ProdRoleHeldBy { deployment: srv1_daily_workspace_deployment }), rows: polluted)) == 0
 }
 
 // ── THE INHABITANCE CLAIM: the real switch, the real desired_deployment_roster() ────────────────

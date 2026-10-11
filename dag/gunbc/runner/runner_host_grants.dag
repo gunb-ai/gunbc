@@ -12,8 +12,8 @@ import gunbc.workspace_allocation_operations { workspace_launch_operations }
 import gunbc.runner_slot_allocation { workspace_execution_slot_identities }
 import gunbc.fleet_bootstrap_principal { ExecutorBootstrapPrincipal, executor_bootstrap_principal }
 import std.types { String, NonEmptyStr, List, FilePath, list_length }
-import gunbc.live_deploy.desired { deployment_spec_srv1 }
-import gunbc.live_deploy.spec { deployment_directory_demands }
+import gunbc.live_deploy.desired { ProdRoleDeployment, prod_role_desired_deployment, ProdRoleDeploymentSelected, ProdRoleDeploymentRefused, ProdRoleDeploymentRosterRefused, ProdRoleDeploymentHolderRowMismatch, selected_deployment_spec }
+import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands }
 import gunbc.owned_directory { owned_directory_path, owned_directory_listed_ancestors }
 import extdeps.virtualization.firecracker { kvm_device_group }
 import extdeps.github.actions_runner { actions_runner_base_dir, actions_runner_cache_dir }
@@ -513,7 +513,24 @@ fn bootstrap_principal_is_not_the_job_user(
 // (its parent and ancestors, gunbc.owned_directory owned_directory_listed_ancestors). Every path is named
 // in full; nothing here mutates. Empty on every host that does not run the dashboard deployment.
 fn dashboard_directory_observation_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
-  let spec = deployment_spec_srv1()
+  dashboard_directory_observation_operations_for(deploy: deploy, selected: prod_role_desired_deployment())
+}
+
+// The grants FOLLOW THE PROD-ROLE HOLDER (gunbc.live_deploy.desired prod_role_desired_deployment), the
+// same selection every apply entry reads, so a moved holder moves the grants with the deploy. A refused
+// selection grants NOTHING: least privilege is the safe empty, and the deploy's own entries refuse
+// loudly on the same cause before they would need a grant.
+fn dashboard_directory_observation_operations_for(deploy: RunnerHostDeploy, selected: ProdRoleDeployment) -> List<ExecutorPrivilegedOperation> {
+  match selected {
+    ProdRoleDeploymentRefused { cause: _ } => []
+    ProdRoleDeploymentRosterRefused { refusal: _ } => []
+    ProdRoleDeploymentHolderRowMismatch { holder: _, rostered: _ } => []
+    ProdRoleDeploymentSelected { deployment } =>
+      dashboard_directory_observation_operations_of(deploy: deploy, spec: selected_deployment_spec(row: deployment))
+  }
+}
+
+fn dashboard_directory_observation_operations_of(deploy: RunnerHostDeploy, spec: DeploymentSpec) -> List<ExecutorPrivilegedOperation> {
   if (deploy.host_label as String) != (spec.target.host.identity as String) {
     []
   } else {
