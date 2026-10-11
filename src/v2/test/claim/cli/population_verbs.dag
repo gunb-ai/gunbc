@@ -1,0 +1,122 @@
+module v2.test.claim.cli.population_verbs
+
+import std.types { Bool, List }
+import gunbc.parse_population_refusals { RefusalClass }
+import v2.cli.population_verbs {
+  PopulationParse,
+  declared_file_names,
+  declared_refusal_names,
+  declared_total,
+  population_parse_accepted,
+  population_parse_refused,
+  population_parse_report
+}
+import v2.std.algebra { HeadAbsent, HeadFound, length, list_head }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE POPULATION PARSE'S DECLARED-REFUSAL JUDGMENT, DISCRIMINATED AT THE INTERFACE IT ANSWERS FOR.
+//
+// THE SUBJECT is the per-member fold of v2.cli.population_verbs: given the classes
+// (gunbc.parse_population_refusals RefusalClass: drop, parse cause, exact module file keys), is one
+// refusal covered, and is a member that parses still listed. Its inputs are SUPPLIED classes, so
+// these claims never read the live declaration and cannot go stale when it shrinks. The route is
+// paired with the walked live-root controls of `gunbc test //gunbc/instruments:v2-native-cli`
+// (src/v1/stage0/src/cli_run/native_lane_runner.rs walk_population_controls), which run the real
+// `parse-population` verb over the repository: deleting that verb makes those controls fail.
+//
+// THE FOUR WAYS A REFUSAL IS NOT COVERED, each a RED here: a module no class names; a named module
+// that now fails for ANOTHER cause (a changed refusal is a new defect, not the declared one); a
+// module named by one class but refused with the cause of a different class (a class binds its own
+// members to its own cause); and the converse direction, a listed module that parses, which is how
+// a list can only shrink.
+
+data fixture_classes: List<RefusalClass> = [
+  RefusalClass { drop: "fixture_drop_a", cause: "parse_g0_tokens_remain", keys: ["dag:a/one.dag", "dag:a/two.dag"] },
+  RefusalClass { drop: "fixture_drop_b", cause: "parse_declaration_marker_not_test", keys: ["src/v2:b/three.dag"] }
+]
+
+data fixture_empty_tally: PopulationParse = PopulationParse { parsed: 0, declared: 0, refusals: [] }
+
+test fn a_listed_module_refused_for_its_class_cause_is_covered() -> Bool {
+  declared_refusal_names(classes: fixture_classes, key: "dag:a/two.dag", cause: "parse_g0_tokens_remain")
+    && declared_refusal_names(classes: fixture_classes, key: "src/v2:b/three.dag", cause: "parse_declaration_marker_not_test")
+}
+
+test fn a_listed_module_refused_for_another_cause_is_not_covered() -> Bool {
+  !declared_refusal_names(classes: fixture_classes, key: "dag:a/one.dag", cause: "parse_declaration_marker_not_test")
+    && !declared_refusal_names(classes: fixture_classes, key: "dag:a/one.dag", cause: "parse_keyword_as_path_segment")
+}
+
+test fn a_module_no_class_names_is_not_covered() -> Bool {
+  !declared_refusal_names(classes: fixture_classes, key: "dag:a/four.dag", cause: "parse_g0_tokens_remain")
+}
+
+test fn a_module_is_named_by_a_class_only_under_that_class_cause() -> Bool {
+  !declared_refusal_names(classes: fixture_classes, key: "src/v2:b/three.dag", cause: "parse_g0_tokens_remain")
+}
+
+test fn the_file_judgment_names_every_listed_module_and_no_other() -> Bool {
+  declared_file_names(classes: fixture_classes, key: "dag:a/one.dag")
+    && declared_file_names(classes: fixture_classes, key: "src/v2:b/three.dag")
+    && !declared_file_names(classes: fixture_classes, key: "dag:a/four.dag")
+    && !declared_file_names(classes: fixture_classes, key: "dag:b/three.dag")
+}
+
+test fn the_declared_total_counts_every_class_member() -> Bool {
+  declared_total(classes: fixture_classes, total: 0) == 3
+}
+
+test fn the_declared_total_of_no_class_is_zero() -> Bool {
+  let none_declared: List<RefusalClass> = []
+  declared_total(classes: none_declared, total: 0) == 0
+}
+
+test fn a_covered_refusal_is_tallied_declared_and_reports_nothing() -> Bool {
+  let tally = population_parse_refused(classes: fixture_classes, tally: fixture_empty_tally, key: "dag:a/one.dag", cause: "parse_g0_tokens_remain")
+  (tally.declared == 1) && (tally.parsed == 0) && (length(xs: tally.refusals) == 0)
+}
+
+test fn an_uncovered_refusal_is_reported_with_its_key_and_cause() -> Bool {
+  let tally = population_parse_refused(classes: fixture_classes, tally: fixture_empty_tally, key: "dag:a/four.dag", cause: "parse_g0_tokens_remain")
+  (tally.declared == 0) && (tally.parsed == 0) && (first_refusal(tally: tally) == "dag:a/four.dag: parse_g0_tokens_remain")
+}
+
+test fn a_refusal_for_another_cause_than_the_class_is_reported() -> Bool {
+  let tally = population_parse_refused(classes: fixture_classes, tally: fixture_empty_tally, key: "dag:a/one.dag", cause: "parse_declaration_marker_not_test")
+  (tally.declared == 0) && (first_refusal(tally: tally) == "dag:a/one.dag: parse_declaration_marker_not_test")
+}
+
+test fn an_unlisted_module_that_parses_is_counted_parsed() -> Bool {
+  let tally = population_parse_accepted(classes: fixture_classes, tally: fixture_empty_tally, key: "dag:a/four.dag")
+  (tally.parsed == 1) && (tally.declared == 0) && (length(xs: tally.refusals) == 0)
+}
+
+test fn a_listed_module_that_parses_is_reported_and_not_counted() -> Bool {
+  let tally = population_parse_accepted(classes: fixture_classes, tally: fixture_empty_tally, key: "dag:a/two.dag")
+  (tally.parsed == 0) && (length(xs: tally.refusals) == 1) && first_refusal(tally: tally).starts_with(prefix: "dag:a/two.dag: parses, but")
+}
+
+test fn a_walk_with_a_reported_member_does_not_hold() -> Bool {
+  let report = population_parse_report(tally: PopulationParse { parsed: 5, declared: 0, refusals: ["dag:a/four.dag: parse_g0_tokens_remain"] })
+  !report.held
+}
+
+test fn a_walk_that_parsed_nothing_does_not_hold() -> Bool {
+  let report = population_parse_report(tally: fixture_empty_tally)
+  !report.held
+}
+
+test fn a_walk_that_parsed_something_and_reports_nothing_holds() -> Bool {
+  let report = population_parse_report(tally: PopulationParse { parsed: 2, declared: 0, refusals: [] })
+  report.held
+}
+
+fn first_refusal(tally: PopulationParse) -> String {
+  match list_head(xs: tally.refusals) {
+    HeadAbsent => ""
+    HeadFound { value: line } => line
+  }
+}

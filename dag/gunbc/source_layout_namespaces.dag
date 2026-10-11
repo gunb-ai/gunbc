@@ -257,7 +257,7 @@ fn layout_namespaces() -> List<String> {
     "gunbc.machine_intake",
     "gunbc.model",
     "gunbc.namecheap",
-    "gunbc.namespace",
+    "gunbc.namespace_cut",
     "gunbc.oracle_oci",
     "gunbc.payroll",
     "gunbc.physics",

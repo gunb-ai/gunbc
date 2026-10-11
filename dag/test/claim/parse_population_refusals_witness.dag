@@ -1,0 +1,77 @@
+module test.claim.parse_population_refusals_witness
+
+import std.types { String, Bool, List }
+import gunbc.parse_population_refusals { RefusalClass, parse_population_declared_refusal_classes }
+import gunbc.rung_drop.standing { standing_rung_drops }
+
+// THE DECLARED PARSE REFUSALS AND THE RUNG DROPS THAT HOLD THEM ARE ONE JOIN, NOT TWO LISTS
+// (DESIGN 4b(3): a drop is retired by its trigger and nothing else). gunbc.parse_population_refusals
+// is the exact set of modules `parse-population` may refuse, one class per standing drop; the drop is
+// the declaration (previous rung, reason, trigger) and the class is its population. A class whose
+// drop is retired or absent would let the verb keep excusing refusals nothing declares; a standing
+// population-parse drop with no class would declare a population no check judges. Both are RED here,
+// on identity, so neither can drift.
+//
+// THE JOIN IS DISCRIMINATED ON BOTH SIDES. The control class names a drop that is not on the roster,
+// and the control identity names no class; a predicate that agreed with them would pass the live
+// declaration for the wrong reason.
+
+data control_class_naming_no_drop: RefusalClass = RefusalClass {
+  drop: "control.no.such.drop",
+  cause: "parse_g0_tokens_remain",
+  keys: ["dag:control/one.dag"]
+}
+
+data control_class_without_members: RefusalClass = RefusalClass {
+  drop: "control.empty.class",
+  cause: "parse_g0_tokens_remain",
+  keys: []
+}
+
+fn standing_drop_identities() -> List<String> {
+  map(standing_rung_drops(), d => (d.identity as String))
+}
+
+fn class_names_a_standing_drop(group: RefusalClass, standing: List<String>) -> Bool {
+  any(standing, identity => identity == group.drop)
+}
+
+fn drop_has_a_class(identity: String, classes: List<RefusalClass>) -> Bool {
+  any(classes, group => group.drop == identity)
+}
+
+fn is_population_parse_drop(identity: String) -> Bool {
+  identity.starts_with(prefix: "population_parse_")
+}
+
+fn class_has_members(group: RefusalClass) -> Bool {
+  length(xs: group.keys) > 0
+}
+
+test fn every_declared_class_names_a_standing_rung_drop() -> Bool {
+  all(parse_population_declared_refusal_classes(), group => class_names_a_standing_drop(group: group, standing: standing_drop_identities()))
+}
+
+test fn a_class_naming_no_rostered_drop_is_not_accepted() -> Bool {
+  class_names_a_standing_drop(group: control_class_naming_no_drop, standing: standing_drop_identities()) == false
+}
+
+test fn every_standing_population_parse_drop_has_a_class() -> Bool {
+  all(
+    filter(standing_drop_identities(), identity => is_population_parse_drop(identity: identity)),
+    identity => drop_has_a_class(identity: identity, classes: parse_population_declared_refusal_classes())
+  )
+}
+
+test fn a_standing_population_parse_drop_without_a_class_is_not_accepted() -> Bool {
+  let no_classes: List<RefusalClass> = []
+  drop_has_a_class(identity: "population_parse_control", classes: no_classes) == false
+}
+
+test fn every_declared_class_has_members() -> Bool {
+  all(parse_population_declared_refusal_classes(), group => class_has_members(group: group))
+}
+
+test fn a_class_without_members_is_not_accepted() -> Bool {
+  class_has_members(group: control_class_without_members) == false
+}
