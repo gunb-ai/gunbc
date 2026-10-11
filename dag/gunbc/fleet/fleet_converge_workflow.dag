@@ -4617,7 +4617,7 @@ fn fleet_converge_gcp_iam_apply_step() -> Step {
 }
 
 // THE JOB RUNS WHERE THE APPROVAL BROKER RUNS, which follows the prod role
-// (gunbc.auth.approval_broker_endpoint approval_broker_host_under). Under a refused realization it is
+// (gunbc.auth.approval_broker_placement approval_broker_host_under). Under a refused realization it is
 // still EMITTED, so a dispatch of this mode is not silently absent, but as a refused job whose only
 // step fails with the typed cause: no federation, no approval filing, no host it could be pinned to.
 fn fleet_converge_gcp_iam_converge_job() -> Job {
