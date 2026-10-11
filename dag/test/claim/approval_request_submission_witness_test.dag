@@ -1,5 +1,6 @@
 module test.claim.approval_request_submission_witness_test
 
+import gunbc.auth.approval_broker_endpoint { ApprovalBrokerAddressResolved }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String, Secret }
 import std.scoped_authorization { AttemptIdentity }
@@ -181,11 +182,11 @@ test fn status_text_reports_not_filed_for_an_absent_slot_and_unreadable_off_the_
 // the fixture message id; deleting the publish call, or the token arm, fails this control. The
 // token-unavailable arm is the same fold one input earlier, so both are read from one route.
 test fn a_filed_request_with_a_publisher_token_is_published_and_without_one_is_reported() -> Bool {
-  match notify_filed(capability_keyring: ApprovalKeyLoaded { key: capability_key() }, publisher: PublisherTokenLoaded { token: "hermetic-publisher-token" as Secret }, request: request()) {
+  match notify_filed(capability_keyring: ApprovalKeyLoaded { key: capability_key() }, publisher: PublisherTokenLoaded { token: "hermetic-publisher-token" as Secret }, request: request(), broker: ApprovalBrokerAddressResolved { value: "https://srv1.example.ts.net" as NonEmptyStr }) {
     SubmissionFiledAndNotified { escalation_id: e, message_id: m } => e == "esc-mtc1-boot-1" && (m as String) == hermetic_ntfy_publish_message_id
     _ => false
   }
-    && match notify_filed(capability_keyring: ApprovalKeyLoaded { key: capability_key() }, publisher: PublisherTokenUnavailable { path: "/etc/gunbc-ntfy/publisher-token", detail: "absent" }, request: request()) {
+    && match notify_filed(capability_keyring: ApprovalKeyLoaded { key: capability_key() }, publisher: PublisherTokenUnavailable { path: "/etc/gunbc-ntfy/publisher-token", detail: "absent" }, request: request(), broker: ApprovalBrokerAddressResolved { value: "https://srv1.example.ts.net" as NonEmptyStr }) {
       SubmissionFiledPublisherTokenUnavailable { escalation_id: _, detail: d } => d == "absent"
       _ => false
     }
@@ -218,7 +219,7 @@ test fn an_occupied_slot_is_renotifiable_only_while_pending_with_the_same_bytes(
 // A CAPABILITY-KEY REFUSAL AFTER THE WRITE STILL SAYS WHICH ESCALATION WAS FILED, like every other
 // post-write arm, so the filer retries the same bytes instead of minting a new id (review 67295).
 test fn a_capability_key_refusal_after_filing_names_the_filed_escalation() -> Bool {
-  match notify_filed(capability_keyring: ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: "/etc/gunbc-roadmap/approval-mac-key" } }, publisher: PublisherTokenLoaded { token: "hermetic-publisher-token" as Secret }, request: request()) {
+  match notify_filed(capability_keyring: ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: "/etc/gunbc-roadmap/approval-mac-key" } }, publisher: PublisherTokenLoaded { token: "hermetic-publisher-token" as Secret }, request: request(), broker: ApprovalBrokerAddressResolved { value: "https://srv1.example.ts.net" as NonEmptyStr }) {
     SubmissionFiledCapabilityKeyUnavailable { escalation_id: e, cause: _ } => e == "esc-mtc1-boot-1"
     _ => false
   }

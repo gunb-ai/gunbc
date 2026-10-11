@@ -5,8 +5,10 @@ import gunbc.fabric_storage_address { fabric_storage_route_prefix, fabric_storag
 import std.types { String, NonEmptyStr, FilePath, Int, Bool, Port, List }
 import product.host_identity { HostIdentity }
 import gunbc.fleet_intent_network { fleet_intent_network }
-import gunbc.fleet_host_identity { operator_host_srv1 }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, srv1_live_dashboard_instance, dashboard_instance_child }
+import gunbc.roadmap_dashboard_instance {
+  HostDashboardInstance, dashboard_instance_child,
+  ProdRoleRealization, ProdRoleRealizedBy, ProdRoleRealizationRefused, ProdRoleRealizationRefusal,
+}
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryManaged }
 import std.effect_grant { Read, Write, Execute }
 import extdeps.tailscale.serve { tailscale_serve_unix_proxy_peer }
@@ -30,7 +32,8 @@ import extdeps.access.posix { FileMode, file_mode_bits }
 
 type FabricStoragePlacement
   = FabricStorageUnplaced
-  | FabricStoragePlaced { host: HostIdentity, store_root: NonEmptyStr, endpoint: NonEmptyStr }
+  | FabricStoragePlacementRefused { cause: ProdRoleRealizationRefusal }
+  | FabricStoragePlaced { host: HostIdentity, store_root: NonEmptyStr, endpoint: NonEmptyStr, door_socket: NonEmptyStr }
 
 // The endpoint is the placed host's tailnet name on the store's own HTTPS listener, derived from the
 // fleet network's tailnet domain rather than spelled: an unset domain leaves the store unplaced
@@ -52,12 +55,12 @@ data fabric_storage_https_port: Port = 10000
 // admits exactly the writers declared below. tailscale serve proxies to it as root
 // (extdeps.tailscale.serve tailscale_serve_unix_target), so a proxied request's peer is root and a
 // local writer's peer is itself -- the two populations the door tells apart.
-fn fabric_storage_door_directory_path() -> NonEmptyStr {
-  dashboard_instance_child(root: fabric_storage_placed_instance().instance_root, child: "fabric-storage-door") as String as NonEmptyStr
+fn fabric_storage_door_directory_path(instance: HostDashboardInstance) -> NonEmptyStr {
+  dashboard_instance_child(root: instance.instance_root, child: "fabric-storage-door") as String as NonEmptyStr
 }
 
-fn fabric_storage_door_socket() -> NonEmptyStr {
-  join([fabric_storage_door_directory_path() as String, "/door.sock"], "") as NonEmptyStr
+fn fabric_storage_door_socket(instance: HostDashboardInstance) -> NonEmptyStr {
+  join([fabric_storage_door_directory_path(instance: instance) as String, "/door.sock"], "") as NonEmptyStr
 }
 
 // The peer the tailscale proxy connects as. tailscaled runs as root, and since v1.98.9 only root may
@@ -72,22 +75,24 @@ data fabric_storage_door_proxy_peer: NonEmptyStr = tailscale_serve_unix_proxy_pe
 // is -- and the deployment creates exactly the directories fabric_storage_directory_demands declares
 // from it. It replaced the per-instance event-log mirror root: no executor keeps a copy of the log any
 // more, so only the placement's host holds a root at all.
-fn fabric_storage_placed_instance() -> HostDashboardInstance {
-  srv1_live_dashboard_instance()
-}
-
 fn fabric_storage_root_of(instance: HostDashboardInstance) -> FilePath {
   dashboard_instance_child(root: instance.instance_root, child: "fabric-storage")
 }
 
-fn fabric_storage_store_root() -> NonEmptyStr {
-  fabric_storage_root_of(instance: fabric_storage_placed_instance()) as String as NonEmptyStr
+fn fabric_storage_store_root(instance: HostDashboardInstance) -> NonEmptyStr {
+  fabric_storage_root_of(instance: instance) as String as NonEmptyStr
 }
 
-// WHETHER AN INSTANCE HOLDS THE PLACEMENT: the deployment owns the store root and the endpoint only
-// there. Identity is the instance's own id, not a path comparison.
-fn fabric_storage_placed_on(instance: HostDashboardInstance) -> Bool {
-  (instance.instance_id as String) == (fabric_storage_placed_instance().instance_id as String)
+// WHETHER AN INSTANCE HOLDS THE PLACEMENT: the store is the prod deployment's state, so the placement
+// FOLLOWS gunbc.deployment_risk prod_role_selection through the realization (gunbc.roadmap_dashboard_instance
+// prod_role_realization): the instance whose deployment the holder token names holds it, every other
+// instance -- and every instance under a refused realization -- does not. Moving prod is an edit to
+// the selection row; nothing here names srv1.
+fn fabric_storage_placed_on(realization: ProdRoleRealization, instance: HostDashboardInstance) -> Bool {
+  match realization {
+    ProdRoleRealizedBy { holder } => holder.instance.deployment == instance.deployment
+    ProdRoleRealizationRefused { cause: _ } => false
+  }
 }
 
 fn fabric_storage_endpoint_for(host: HostIdentity) -> NonEmptyStr? {
@@ -97,10 +102,26 @@ fn fabric_storage_endpoint_for(host: HostIdentity) -> NonEmptyStr? {
   }
 }
 
-fn fabric_storage_placement() -> FabricStoragePlacement {
-  match fabric_storage_endpoint_for(host: operator_host_srv1) {
-    Absent => FabricStorageUnplaced
-    Present { value: e } => FabricStoragePlaced { host: operator_host_srv1, store_root: fabric_storage_store_root(), endpoint: e }
+// UNDER A REFUSED REALIZATION THE PLACEMENT REFUSES with the realization's typed cause; it never falls
+// back to srv1 (DESIGN 5). The runtime placement over the ACTUATED realization is
+// gunbc.fabric_storage_binding fabric_storage_placement: this module is imported by
+// gunbc.live_deploy.spec, which cannot see the desired roster that decides actuatability.
+fn fabric_storage_placement_under(realization: ProdRoleRealization) -> FabricStoragePlacement {
+  match realization {
+    ProdRoleRealizationRefused { cause } => FabricStoragePlacementRefused { cause: cause }
+    ProdRoleRealizedBy { holder } => {
+      let instance = holder.instance
+      let host = instance.host_identity as String as HostIdentity
+      match fabric_storage_endpoint_for(host: host) {
+        Absent => FabricStorageUnplaced
+        Present { value: e } => FabricStoragePlaced {
+          host: host,
+          store_root: fabric_storage_store_root(instance: instance),
+          endpoint: e,
+          door_socket: fabric_storage_door_socket(instance: instance),
+        }
+      }
+    }
   }
 }
 
@@ -152,24 +173,28 @@ fn fabric_storage_directory(member: NonEmptyStr, path: NonEmptyStr, writes: Bool
 // twice, by the kernel and by the handler. The service owns it; the CI runner (fleet-converge jobs on
 // the placed host) is its group and needs only to traverse to connect: the socket itself is opened
 // to every class by `gunbc serve --unix-socket`, so its directory is the whole filesystem wall.
-fn fabric_storage_door_directory() -> ManagedDirectory {
+fn fabric_storage_door_dependents() -> List<DirectoryDependent> {
   let service = srv1_dashboard_service_principal()
+  [
+    DirectoryDependent { who: service, needs: [Read, Write, Execute] },
+    DirectoryDependent { who: fleet_posix_ci_runner_user, needs: [Execute] },
+  ]
+}
+
+fn fabric_storage_door_directory(instance: HostDashboardInstance) -> ManagedDirectory {
   ManagedDirectory {
     member: "fabric-storage-door",
-    path: fabric_storage_door_directory_path() as String as FilePath,
-    owner: service,
+    path: fabric_storage_door_directory_path(instance: instance) as String as FilePath,
+    owner: srv1_dashboard_service_principal(),
     group_principal: fleet_posix_ci_runner_user,
-    dependents: [
-      DirectoryDependent { who: service, needs: [Read, Write, Execute] },
-      DirectoryDependent { who: fleet_posix_ci_runner_user, needs: [Execute] },
-    ],
+    dependents: fabric_storage_door_dependents(),
     ownership: Ensured,
     entries: EntriesUnmanaged,
   }
 }
 
 fn fabric_storage_door_local_writers() -> List<NonEmptyStr> {
-  map(fabric_storage_door_directory().dependents, d => d.who.name)
+  map(fabric_storage_door_dependents(), d => d.who.name)
 }
 
 // ONE ENTRY MODE FOR THE STORE, OR A REFUSAL. Both writable areas derive it from their own
@@ -193,8 +218,8 @@ fn fabric_storage_entry_mode_of(objects: ManagedDirectory, heads: ManagedDirecto
   }
 }
 
-fn fabric_storage_entry_mode() -> FabricStorageEntryMode {
-  let areas = fabric_storage_file_root(root: fabric_storage_store_root())
+fn fabric_storage_entry_mode(store_root: NonEmptyStr) -> FabricStorageEntryMode {
+  let areas = fabric_storage_file_root(root: store_root)
   fabric_storage_entry_mode_of(
     objects: fabric_storage_directory(member: "fabric-storage-objects", path: areas.objects, writes: true),
     heads: fabric_storage_directory(member: "fabric-storage-heads", path: areas.heads, writes: true),
@@ -209,14 +234,14 @@ type FabricStoragePlacedRoot
   | FabricStoragePlacedRootRefused { detail: NonEmptyStr }
 
 fn fabric_storage_placed_file_root(store_root: NonEmptyStr) -> FabricStoragePlacedRoot {
-  match fabric_storage_entry_mode() {
+  match fabric_storage_entry_mode(store_root: store_root) {
     FabricStorageEntryModeRefused { detail } => FabricStoragePlacedRootRefused { detail: detail }
     FabricStorageEntryModeDerived { mode } => FabricStoragePlacedRootReady { root: fabric_storage_file_root_with(root: store_root, entry_mode: Present { value: mode }) }
   }
 }
 
-fn fabric_storage_store_directories() -> List<ManagedDirectory> {
-  let root = fabric_storage_store_root()
+fn fabric_storage_store_directories(instance: HostDashboardInstance) -> List<ManagedDirectory> {
+  let root = fabric_storage_store_root(instance: instance)
   let areas = fabric_storage_file_root(root: root)
   [
     fabric_storage_directory(member: "fabric-storage-root", path: root, writes: false),
@@ -225,7 +250,7 @@ fn fabric_storage_store_directories() -> List<ManagedDirectory> {
     fabric_storage_state_directory(member: "fabric-state-root", path: fabric_storage_state_root(store_root: root)),
     fabric_storage_state_directory(member: "fabric-state-objects", path: fabric_storage_state_file_root(store_root: root).objects),
     fabric_storage_state_directory(member: "fabric-state-heads", path: fabric_storage_state_file_root(store_root: root).heads),
-    fabric_storage_door_directory(),
+    fabric_storage_door_directory(instance: instance),
   ]
 }
 
@@ -236,9 +261,9 @@ fn fabric_storage_store_directories() -> List<ManagedDirectory> {
 // (gunbc.owned_directory owned_directory_mode) rather than widening. Every other instance demands
 // nothing, so a lab twin never creates srv1's store. The store is durable history: nothing the
 // deployment does removes it.
-fn fabric_storage_directory_demands(instance: HostDashboardInstance) -> List<OwnedDirectoryTarget> {
-  if fabric_storage_placed_on(instance: instance) {
-    map(fabric_storage_store_directories(), d => OwnedDirectoryManaged { directory: d })
+fn fabric_storage_directory_demands(realization: ProdRoleRealization, instance: HostDashboardInstance) -> List<OwnedDirectoryTarget> {
+  if fabric_storage_placed_on(realization: realization, instance: instance) {
+    map(fabric_storage_store_directories(instance: instance), d => OwnedDirectoryManaged { directory: d })
   } else {
     []
   }
