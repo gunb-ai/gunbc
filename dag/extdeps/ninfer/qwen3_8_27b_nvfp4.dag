@@ -32,8 +32,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [],
 }
 
-type NinferModelQuantization
-  = NinferNvfp4
+type NinferModelQuantization = NinferNvfp4
 
 type NinferArtifactSource {
   repo: HubRepoId
