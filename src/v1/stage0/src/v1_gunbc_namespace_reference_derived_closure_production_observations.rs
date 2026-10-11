@@ -2,9 +2,9 @@
 // Source module: v1.gunbc.namespace_reference_derived_closure_production_observations
 
 use self::NrdfcParsed::*;
-pub use crate::gunbc_namespace_reference_derived_closure_admission::assess_reference_binding_observation;
-pub use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission;
-use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission::*;
+pub use crate::gunbc_namespace_namespace_reference_derived_closure_admission::assess_reference_binding_observation;
+pub use crate::gunbc_namespace_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission;
+use crate::gunbc_namespace_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission::*;
 use crate::std_occurrence_binding_candidates::DeclarationExposureGrounding::ModuleLocalMemberExposure;
 pub use crate::std_occurrence_binding_candidates::{
     DeclarationExposureGrounding, OccurrenceBindingCandidateInputs,
@@ -317,7 +317,7 @@ pub fn namespace_structural_observation_admissions(
         .iter()
         .cloned()
         {
-            __result.push(crate::gunbc_namespace_reference_derived_closure_admission::assess_reference_binding_observation(observation.clone()));
+            __result.push(crate::gunbc_namespace_namespace_reference_derived_closure_admission::assess_reference_binding_observation(observation.clone()));
         }
         __result
     })

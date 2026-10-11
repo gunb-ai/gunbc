@@ -6,7 +6,7 @@ use sha2::Digest;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use v1_compiler::gunbc_stage0_emitted_population_manifest::{
+use v1_compiler::gunbc_stage0_stage0_emitted_population_manifest::{
     emitted_population_manifest_basename, emitted_population_manifest_line_prefix,
     emitted_population_manifest_line_separator,
 };

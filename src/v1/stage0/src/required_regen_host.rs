@@ -32,7 +32,7 @@ mod bootstrap_seed_retention_frontier_generated;
 #[path = "bootstrap_stage0_crate_layout_generated.rs"]
 mod bootstrap_stage0_crate_layout_generated;
 use super::workspace_root;
-use crate::gunbc_stage0_emitted_population_manifest::{
+use crate::gunbc_stage0_stage0_emitted_population_manifest::{
     emitted_population_manifest_basename, emitted_population_manifest_line_prefix,
     emitted_population_manifest_line_separator,
 };
@@ -850,7 +850,7 @@ fn compile_stage0_admitted(
     sources: &[(String, String)],
     selection: &Rc<RustModuleRenderSelection>,
     host_shell_modules: Rc<im::Vector<String>>,
-    packages: Rc<crate::gunbc_stage0_emitted_edge_admission::Stage0EmittedTreePackages>,
+    packages: Rc<crate::gunbc_stage0_stage0_emitted_edge_admission::Stage0EmittedTreePackages>,
 ) -> Result<HashMap<String, String>, String> {
     let source_files: Vec<Rc<SourceFile>> = sources
         .iter()
@@ -876,19 +876,19 @@ fn compile_stage0_admitted(
     // `gunbc.stage0.stage0_emitted_edge_admission` maps both ends through the supplied partition rows
     // and package graph; a module in neither the rows nor the shell refuses as not covered rather
     // than passing.
-    let admission = crate::gunbc_stage0_emitted_edge_admission::stage0_emitted_edge_admission(
+    let admission = crate::gunbc_stage0_stage0_emitted_edge_admission::stage0_emitted_edge_admission(
         result.emitted_edges.clone(),
         host_shell_modules,
         packages,
     );
-    if let crate::gunbc_stage0_emitted_edge_admission::Stage0EmittedEdgeAdmission::Stage0EmittedEdgesAdmitted {
+    if let crate::gunbc_stage0_stage0_emitted_edge_admission::Stage0EmittedEdgeAdmission::Stage0EmittedEdgesAdmitted {
         edge_count,
     } = &*admission
     {
         eprintln!("required-regen: emitted-edge admission admitted edges={edge_count}");
     }
     if let Some(message) =
-        crate::gunbc_stage0_emitted_edge_admission::stage0_emitted_edge_admission_refusal(admission)
+        crate::gunbc_stage0_stage0_emitted_edge_admission::stage0_emitted_edge_admission_refusal(admission)
     {
         return Err(message);
     }
@@ -913,9 +913,9 @@ fn compile_stage0_admitted(
 /// ill-shaped row set refuses; it never falls back to the compiled rows.
 fn emitted_tree_packages(
     workspace: &Path,
-) -> Result<Rc<crate::gunbc_stage0_emitted_edge_admission::Stage0EmittedTreePackages>, String> {
-    use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateRow;
-    use crate::gunbc_stage0_emitted_edge_admission::Stage0EmittedTreePackages;
+) -> Result<Rc<crate::gunbc_stage0_stage0_emitted_edge_admission::Stage0EmittedTreePackages>, String> {
+    use crate::gunbc_stage0_stage0_crate_partition_generated::GeneratedPartitionCrateRow;
+    use crate::gunbc_stage0_stage0_emitted_edge_admission::Stage0EmittedTreePackages;
     use crate::v1_interpreter::{self, ExecutionMode};
     let roots: Vec<String> = super::regen_source_roots()
         .all()
@@ -2466,8 +2466,8 @@ mod tests {
     /// three fixture modules in a layered core crate that re-exports it, so each prelude edge is
     /// admitted by the partition's own layering rule rather than by a hand-written edge.
     fn selection_fixture_packages(
-    ) -> Rc<crate::gunbc_stage0_emitted_edge_admission::Stage0EmittedTreePackages> {
-        use crate::gunbc_stage0_crate_partition_generated::{
+    ) -> Rc<crate::gunbc_stage0_stage0_emitted_edge_admission::Stage0EmittedTreePackages> {
+        use crate::gunbc_stage0_stage0_crate_partition_generated::{
             GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
         };
         let row = |package: &str,
@@ -2484,7 +2484,7 @@ mod tests {
             })
         };
         Rc::new(
-            crate::gunbc_stage0_emitted_edge_admission::Stage0EmittedTreePackages {
+            crate::gunbc_stage0_stage0_emitted_edge_admission::Stage0EmittedTreePackages {
                 rows: Rc::new(im::vector![
                     row(
                         "fx-runtime",
@@ -2545,7 +2545,7 @@ mod tests {
             .stack_size(16 * 1024 * 1024)
             .spawn(|| {
                 let bare = Rc::new(
-                    crate::gunbc_stage0_emitted_edge_admission::Stage0EmittedTreePackages {
+                    crate::gunbc_stage0_stage0_emitted_edge_admission::Stage0EmittedTreePackages {
                         rows: Rc::new(im::Vector::new()),
                         ..(*selection_fixture_packages()).clone()
                     },
@@ -4644,7 +4644,7 @@ fn convergence_surface_roles(
     .into_iter()
     .collect::<BTreeSet<_>>();
     let partition_rows =
-        crate::gunbc_stage0_crate_partition_generated::generated_partition_crate_rows();
+        crate::gunbc_stage0_stage0_crate_partition_generated::generated_partition_crate_rows();
     let seed_modules = assembled_seed_modules(host_shell_modules, partition_rows.as_ref());
     let seed_embedded_basenames = seed_modules
         .into_iter()
@@ -4663,10 +4663,10 @@ fn convergence_surface_roles(
 fn assembled_seed_modules(
     mut host_shell_modules: BTreeSet<String>,
     partition_rows: &crate::std_types::List<
-        Rc<crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateRow>,
+        Rc<crate::gunbc_stage0_stage0_crate_partition_generated::GeneratedPartitionCrateRow>,
     >,
 ) -> BTreeSet<String> {
-    use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateKind::*;
+    use crate::gunbc_stage0_stage0_crate_partition_generated::GeneratedPartitionCrateKind::*;
     for row in partition_rows.iter() {
         match row.kind {
             GeneratedFoundationCrate | GeneratedLayeredCoreCrate => {
@@ -6474,7 +6474,7 @@ mod regen_round_cost_tests {
         .expect("the executable assembly manifest resolves")
         .into_iter()
         .collect::<BTreeSet<_>>();
-        let rows = crate::gunbc_stage0_crate_partition_generated::generated_partition_crate_rows();
+        let rows = crate::gunbc_stage0_stage0_crate_partition_generated::generated_partition_crate_rows();
         let assembled = assembled_seed_modules(host_shell_modules, rows.as_ref());
         assert!(assembled.contains("v1_rt"));
         assert!(assembled.contains("std_content_hash"));

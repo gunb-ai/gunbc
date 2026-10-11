@@ -138,7 +138,7 @@ test fn witness_leaf_closure_is_narrower_than_foundation_holds() -> Bool {
 
 // CONTROL 3 -- whole-build inputs, one arm per positively modeled class.
 test fn witness_partition_generation_edit_requires_whole_rebuild_holds() -> Bool {
-  match witness_decide(changed: ["gunbc_stage0_crate_partition_generated.rs"]) {
+  match witness_decide(changed: ["gunbc_stage0_stage0_crate_partition_generated.rs"]) {
     WholeCompilerRebuildRequired { cause: PartitionGenerationAuthorityChanged { mirrors: ms } } => count(ms) == 1
     WholeCompilerRebuildRequired { cause: SharedCompilerBuildInputChanged { mirrors: _ } } => false
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false

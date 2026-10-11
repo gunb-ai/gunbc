@@ -11,8 +11,8 @@ use crate::gunbc_rust_emitted_edge::EmittedEdgeTarget::{
     EmittedCrateRootTarget, EmittedModuleTarget,
 };
 pub use crate::gunbc_rust_emitted_edge::{EmittedEdge, EmittedEdgeProvenance, EmittedEdgeTarget};
-pub use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateRow;
-pub use crate::gunbc_stage0_partition_package_graph::{
+pub use crate::gunbc_stage0_stage0_crate_partition_generated::GeneratedPartitionCrateRow;
+pub use crate::gunbc_stage0_stage0_partition_package_graph::{
     partition_package_dependency_names_over, stage0_partition_row_is_module_bearing_package,
 };
 pub use crate::std_types::{Bool, List};
@@ -86,7 +86,7 @@ pub fn partition_module_owner_packages_over(
 ) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for row in Rc::new({ let mut __result = Vec::new(); for row in rows.iter().cloned() { if (crate::gunbc_stage0_partition_package_graph::stage0_partition_row_is_module_bearing_package(row.clone()) && { let mut __found = false; for m in row.modules.clone().iter().cloned() { if (m.clone() == module_basename.clone()) { __found = true; break; } } __found }) { __result.push(row); } } __result }).iter().cloned() { __result.push(row.package_name.clone()); }
+        for row in Rc::new({ let mut __result = Vec::new(); for row in rows.iter().cloned() { if (crate::gunbc_stage0_stage0_partition_package_graph::stage0_partition_row_is_module_bearing_package(row.clone()) && { let mut __found = false; for m in row.modules.clone().iter().cloned() { if (m.clone() == module_basename.clone()) { __found = true; break; } } __found }) { __result.push(row); } } __result }).iter().cloned() { __result.push(row.package_name.clone()); }
         __result
     })
 }
@@ -145,7 +145,7 @@ pub fn stage0_package_direct_dependencies(
             .iter()
             .cloned()
             {
-                __result.extend((*crate::gunbc_stage0_partition_package_graph::partition_package_dependency_names_over(row.clone(), packages.rows.clone())).iter().cloned());
+                __result.extend((*crate::gunbc_stage0_stage0_partition_package_graph::partition_package_dependency_names_over(row.clone(), packages.rows.clone())).iter().cloned());
             }
             __result
         })

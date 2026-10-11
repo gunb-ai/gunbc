@@ -72,7 +72,7 @@ use super::{
     ci_layer_roots_authority_content, compile_entry_emission, process_workspace_root,
     string_list_data_from_ci_layer_roots_source, CompileDisposition, CompileRun,
 };
-use crate::extdeps_cargo::{cargo_environment_variable_name, CargoEnvironmentVariable};
+use crate::extdeps_rust_cargo::{cargo_environment_variable_name, CargoEnvironmentVariable};
 
 const REQUIRED_EMIT_COMPILE_ENTRIES_DATA_NAME: &str = "required_emit_compile_entries";
 const PROBE_ROOT_DIR_NAME: &str = "gunbc-emit-compile";

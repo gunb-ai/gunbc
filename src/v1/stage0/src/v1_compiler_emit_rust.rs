@@ -9,8 +9,8 @@ use self::HostOptionArmReading::*;
 use self::IterOwnedReceiverCloneDisposition::*;
 use self::SealReading::*;
 use self::WitnessCtorPathVerdict::*;
-pub use crate::extdeps_cargo::CargoFeature;
-pub use crate::extdeps_cargo_version::render_cargo_package_header_prefix;
+pub use crate::extdeps_rust_cargo::CargoFeature;
+pub use crate::extdeps_rust_version::render_cargo_package_header_prefix;
 pub use crate::extdeps_languages_rust_capabilities::phantom_opaque_carrier_derive_traits;
 pub use crate::extdeps_languages_rust_emit::HigherOrderMethodSpec;
 pub use crate::extdeps_languages_rust_emit::{
@@ -41,12 +41,12 @@ pub use crate::gunbc_cli_dispatch_surface::{
     CliArmRealization, CliBootstrapDagOperationBinding, CliBootstrapExecutionClass, CliOperandRow,
     CliOptionArity, CliOptionRow, CliOptionValue, CliSubcommandRow,
 };
-use crate::gunbc_reference_derived_candidate::ReferenceDerivedCandidateDisposition::{
+use crate::gunbc_namespace_reference_derived_candidate::ReferenceDerivedCandidateDisposition::{
     CandidateExportProofFailed, CandidateLeafAmbiguous, CandidateOwnModule,
     CandidateRegistryAbsent, CandidateSurvived, CandidateVariantDelegatedToParent,
     CandidateVariantParentUnresolved,
 };
-pub use crate::gunbc_reference_derived_candidate::{
+pub use crate::gunbc_namespace_reference_derived_candidate::{
     ReferenceDerivedCandidateDisposition, ReferenceDerivedCandidateRow,
 };
 pub use crate::gunbc_rust_decl_type_overlay::rust_decl_type_container_overlay_is_admitted;
@@ -59,15 +59,15 @@ pub use crate::gunbc_rust_emitted_edge::{
 };
 pub use crate::gunbc_rust_emitted_edge::{EmittedEdge, EmittedEdgeProvenance};
 pub use crate::gunbc_rust_source_type_bindings::rust_host_option_carrier_declarations;
-pub use crate::gunbc_stage0_crate_layout_generated::generated_pub_mod_block;
-pub use crate::gunbc_stage0_crate_partition_generated::generated_partition_crate_rows;
-pub use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateRow;
-pub use crate::gunbc_stage0_emitted_population_manifest::{
+pub use crate::gunbc_stage0_stage0_crate_layout_generated::generated_pub_mod_block;
+pub use crate::gunbc_stage0_stage0_crate_partition_generated::generated_partition_crate_rows;
+pub use crate::gunbc_stage0_stage0_crate_partition_generated::GeneratedPartitionCrateRow;
+pub use crate::gunbc_stage0_stage0_emitted_population_manifest::{
     emitted_population_manifest_basename, emitted_population_manifest_line_prefix,
     emitted_population_manifest_line_separator,
 };
-pub use crate::gunbc_stage0_executable_assembly_generated::generated_host_shell_partition_dependencies;
-pub use crate::gunbc_stage0_partition_package_graph::stage0_partition_row_is_module_bearing_package;
+pub use crate::gunbc_stage0_stage0_executable_assembly_generated::generated_host_shell_partition_dependencies;
+pub use crate::gunbc_stage0_stage0_partition_package_graph::stage0_partition_row_is_module_bearing_package;
 pub use crate::gunbc_structural_realization_bindings::{
     kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name,
     structural_ordering_rows,
@@ -8130,7 +8130,7 @@ pub fn lib_rs_module_is_partition_owned(mod_name: String) -> bool {
     {
         let mut __found = false;
         for row in generated_partition_crate_rows().iter().cloned() {
-            if (crate::gunbc_stage0_partition_package_graph::stage0_partition_row_is_module_bearing_package(row.clone()) && { let mut __found = false; for m in row.modules.clone().iter().cloned() { if (m.clone() == mod_name.clone()) { __found = true; break; } } __found }) { __found = true; break; }
+            if (crate::gunbc_stage0_stage0_partition_package_graph::stage0_partition_row_is_module_bearing_package(row.clone()) && { let mut __found = false; for m in row.modules.clone().iter().cloned() { if (m.clone() == mod_name.clone()) { __found = true; break; } } __found }) { __found = true; break; }
         }
         __found
     }

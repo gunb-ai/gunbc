@@ -6,7 +6,7 @@ use self::CargoEnvironmentVariable::*;
 use self::CargoTarget::*;
 use self::RustEdition::*;
 use self::TestHarness::*;
-pub use crate::extdeps_cargo_version::{
+pub use crate::extdeps_rust_version::{
     CargoPackageVersion, CargoToolVersionFloor, CargoVersionRequirement,
 };
 pub use crate::extdeps_external_authority::ExternalAuthority;

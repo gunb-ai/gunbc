@@ -15750,10 +15750,10 @@ fn operation_ref_value(path: &str, service: &str, operation: &str, ctx: &InterpC
 /// which the `.dag` producer calls; nothing here decides, reclassifies, or defaults. The
 /// three payload vocabularies are nullary coproducts, carried by name.
 fn reference_derived_closure_admission_value(
-    admission: &crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission,
+    admission: &crate::gunbc_namespace_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission,
     ctx: &InterpContext,
 ) -> Value {
-    use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission as A;
+    use crate::gunbc_namespace_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission as A;
     let nullary = |type_name: &str, variant_name: String| Value::Variant {
         type_name: ctx.sym(type_name),
         variant_name: ctx.sym(&variant_name),
@@ -15765,8 +15765,8 @@ fn reference_derived_closure_admission_value(
     // but at RUNTIME; a total match makes it a COMPILE error (construction over validation,
     // DESIGN 5) and stops the Rust identifier being a second representation of the variant's
     // identity (DESIGN 3).
-    let capability = |c: &crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureCapability| {
-        use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureCapability as C;
+    let capability = |c: &crate::gunbc_namespace_namespace_reference_derived_closure_admission::ReferenceDerivedClosureCapability| {
+        use crate::gunbc_namespace_namespace_reference_derived_closure_admission::ReferenceDerivedClosureCapability as C;
         let name = match c {
             C::SameFileEarlierNeighbourVisible => "SameFileEarlierNeighbourVisible",
             C::SiblingDecisionBranchExcluded => "SiblingDecisionBranchExcluded",
@@ -15777,8 +15777,8 @@ fn reference_derived_closure_admission_value(
         };
         nullary("ReferenceDerivedClosureCapability", name.to_string())
     };
-    let trigger_value = |t: &crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureTrigger| {
-        use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureTrigger as T;
+    let trigger_value = |t: &crate::gunbc_namespace_namespace_reference_derived_closure_admission::ReferenceDerivedClosureTrigger| {
+        use crate::gunbc_namespace_namespace_reference_derived_closure_admission::ReferenceDerivedClosureTrigger as T;
         let name = match t {
             T::P2aStructuralCandidateProducer7515 => "P2aStructuralCandidateProducer7515",
             T::P2aReferenceDependencyProjection7515 => "P2aReferenceDependencyProjection7515",
@@ -15786,8 +15786,8 @@ fn reference_derived_closure_admission_value(
         };
         nullary("ReferenceDerivedClosureTrigger", name.to_string())
     };
-    let scenario_failure = |f: &crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureScenarioFailure| {
-        use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureScenarioFailure as F;
+    let scenario_failure = |f: &crate::gunbc_namespace_namespace_reference_derived_closure_admission::ReferenceDerivedClosureScenarioFailure| {
+        use crate::gunbc_namespace_namespace_reference_derived_closure_admission::ReferenceDerivedClosureScenarioFailure as F;
         let name = match f {
             F::SameFileNeighbourMissing => "SameFileNeighbourMissing",
             F::SiblingBranchLeaked => "SiblingBranchLeaked",
@@ -16064,7 +16064,7 @@ fn import_statement_parse_cause_value(
 
 fn namespace_structural_observation_admissions_value(
     compiled_module: &crate::std_reference_binding_observation::StructuralObservationSubjectModule,
-    admissions: &[Rc<crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission>],
+    admissions: &[Rc<crate::gunbc_namespace_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission>],
     ctx: &InterpContext,
 ) -> Value {
     list_value(

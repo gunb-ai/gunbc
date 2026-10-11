@@ -58,7 +58,7 @@ type SeedRetainedSupportDirRegistration {
 // WHAT THIS DOES NOT CLAIM. Declaring the modules is necessary, not sufficient, and it is not a
 // receipt: nothing here has executed a behavioral transport. It is also a TWO-GENERATION change --
 // the emitted lib.rs takes its pub-mod block from the committed
-// `gunbc_stage0_crate_layout_generated.rs`, which is itself one of the files
+// `gunbc_stage0_stage0_crate_layout_generated.rs`, which is itself one of the files
 // `--required-regen` reports as drifted -- so these declarations reach the built crate when the
 // seed is regenerated, not when this row merges.
 //
@@ -77,7 +77,7 @@ type SeedRetainedSupportDirRegistration {
 // emitted and seed-retained: the emitted lib.rs declares the file-derived set AND splices this
 // hand-maintained block, so the basename appeared twice. The failure is two-generation and neither
 // generation names the cause: generation 1 emits the block from the STALE committed
-// `gunbc_stage0_crate_layout_generated.rs` carrying the pre-#8527 bare `expected_red_roster_join`,
+// `gunbc_stage0_stage0_crate_layout_generated.rs` carrying the pre-#8527 bare `expected_red_roster_join`,
 // giving `E0583 file not found for module`; generation 2 emits the current basename and gives
 // `E0428 defined multiple times`. Measured, not predicted -- an earlier reading of this file
 // concluded the class self-heals in generation 2, which the E0428 refutes.
