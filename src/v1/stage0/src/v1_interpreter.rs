@@ -15990,10 +15990,10 @@ fn acquired_source_tokens_value(
 /// Encode the parser's import extents or its typed refusal without conflating a refused parse
 /// with a successful parse that found no imports.
 fn parsed_import_statements_value(
-    outcome: &crate::std_import::ParsedImportStatements,
+    outcome: &crate::std_import_statement::ParsedImportStatements,
     ctx: &InterpContext,
 ) -> Value {
-    use crate::std_import::ParsedImportStatements as P;
+    use crate::std_import_statement::ParsedImportStatements as P;
     match outcome {
         P::ImportStatementsParsed { statements } => Value::Variant {
             type_name: ctx.sym("ParsedImportStatements"),
@@ -16042,10 +16042,10 @@ fn parsed_import_statements_value(
 }
 
 fn import_statement_parse_cause_value(
-    cause: Rc<crate::std_import::ImportStatementParseCause>,
+    cause: Rc<crate::std_import_statement::ImportStatementParseCause>,
     ctx: &InterpContext,
 ) -> Value {
-    use crate::std_import::ImportStatementParseCause as C;
+    use crate::std_import_statement::ImportStatementParseCause as C;
     let (variant, fields) = match &*cause {
         C::SourceHasNoModuleDeclaration => ("SourceHasNoModuleDeclaration", vec![]),
         C::ModuleDeclarationPathMalformed => ("ModuleDeclarationPathMalformed", vec![]),

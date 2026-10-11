@@ -87,22 +87,6 @@ fn for_loop_keys() -> List<String> {
   ]
 }
 
-// Module paths with a keyword segment, and their importers (gunbc.rung_drop population_parse_keyword_path_segment).
-fn keyword_path_segment_keys() -> List<String> {
-  [
-    "dag:extdeps/languages/go/module.dag",
-    "dag:gunbc/instruments/cause_assertion_census.dag",
-    "dag:gunbc/namespace_cut/namespace_step0_candidate_run.dag",
-    "dag:gunbc/namespace_cut/namespace_step0_strip_producer.dag",
-    "dag:gunbc/namespace_cut/namespace_xl2_rehearsal_census.dag",
-    "dag:gunbc/namespace_cut/parsed_import_statement_production.dag",
-    "dag:std/import.dag",
-    "dag:test/claim/cause_assertion_census_witness.dag",
-    "dag:test/claim/go_module_versioning_witness.dag",
-    "dag:test/claim/namespace_step0_strip_producer_witness.dag"
-  ]
-}
-
 fn parse_population_declared_refusal_classes() -> List<RefusalClass> {
   [
     RefusalClass {
@@ -149,11 +133,6 @@ fn parse_population_declared_refusal_classes() -> List<RefusalClass> {
       drop: "population_parse_for_loop",
       cause: "parse_g0_tokens_remain",
       keys: for_loop_keys()
-    },
-    RefusalClass {
-      drop: "population_parse_keyword_path_segment",
-      cause: "parse_keyword_as_path_segment",
-      keys: keyword_path_segment_keys()
     }
   ]
 }

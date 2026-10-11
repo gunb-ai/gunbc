@@ -85,7 +85,7 @@ import std.occurrence_identity {
   node_occurrence_identity_minted,
 }
 import std.algebra { FreeMonoid, Empty, Cons }
-import std.import {
+import std.import_statement {
   ParsedImportStatement,
   ParsedImportStatements,
   ImportStatementsParsed,
@@ -2209,7 +2209,7 @@ fn parse_imports_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>) ->
 // THE EXTENT OF AN IMPORT STATEMENT IS A FACT ABOUT ITS PARSE, and this is the only production
 // that can state it. An import node carries the `import` keyword as its span and the module path as
 // its ident_span, so where the statement STOPS is known only while its tokens are being consumed --
-// and a consumer that needs to remove one (std.import) must be handed a delimited region rather
+// and a consumer that needs to remove one (std.import_statement) must be handed a delimited region rather
 // than left to recognise `import` in the text, which a member list running over several lines and a
 // string containing the word both defeat.
 //
