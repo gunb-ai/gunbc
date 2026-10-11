@@ -25,7 +25,7 @@ fn google_workspace_issuer() -> JwtStringOrUri {
 }
 
 // THE ADMITTED AUDIENCE for one login is the OAuth client the flow ran for. Clients are separate
-// per app x environment (tracker web dev/prod, approvals web dev/prod, native apps later), and
+// per app × environment (tracker-web × {test, stage, prod}; approvals-web later), and
 // the verdict policy admits EXACTLY the caller's own audience — a token minted for another app
 // or another environment refuses at the audience arm rather than being silently accepted.
 type GoogleLoginClient
@@ -33,7 +33,8 @@ type GoogleLoginClient
   | GoogleLoginClientApprovalsWeb
 
 type GoogleLoginEnvironment
-  = GoogleLoginEnvironmentDev
+  = GoogleLoginEnvironmentTest
+  | GoogleLoginEnvironmentStage
   | GoogleLoginEnvironmentProd
 
 fn google_login_client_label(client: GoogleLoginClient) -> NonEmptyStr {
