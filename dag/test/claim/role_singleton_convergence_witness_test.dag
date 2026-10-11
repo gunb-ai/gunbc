@@ -8,7 +8,7 @@ import gunbc.live_deploy.role_singleton_convergence {
   BrokerUnitMember, FabricUnitMember, StoreMarkerMember,
   RoleSingletonSighting, SightedDeploymentMember, SightedBroker,
   HostRoleSingletonReading, HostRoleSingletonsRead,
-  RoleSingletonRemovalUnimplemented, RoleSingletonRealizedOnTwoHosts, RoleSingletonUnmarked, RoleSingletonStaleSpec,
+  RoleSingletonRemovalUnimplemented, RoleSingletonRealizedOnTwoHosts, RoleSingletonStaleSpec,
   RoleSingletonConvergence, RoleSingletonNoop, RoleSingletonInstall, RoleSingletonRefused,
   RoleSingletonAdmissible, RoleSingletonInadmissible,
   role_singleton_observation_of, role_singleton_convergence, classify_role_singleton_admission,
@@ -62,7 +62,7 @@ test fn the_same_deployment_on_two_hosts_refuses() -> Bool {
   }
 }
 
-test fn an_unmarked_legacy_store_refuses_naming_the_operators_disposition() -> Bool {
+test fn a_holder_with_its_units_and_no_marker_noops() -> Bool {
   let units = [
     SightedBroker { host: "srv1" as NonEmptyStr },
     SightedDeploymentMember { host: "srv1" as NonEmptyStr, deployment: srv1_daily_workspace_deployment, member: FabricUnitMember },
@@ -71,8 +71,7 @@ test fn an_unmarked_legacy_store_refuses_naming_the_operators_disposition() -> B
     read_on(host: "srv1", sightings: units),
     read_on(host: "srv2", sightings: []),
   ]) {
-    RoleSingletonRefused { cause: RoleSingletonUnmarked { deployment: _, host: _, marker: m } } =>
-      string_contains(s: role_singleton_refusal_detail(cause: RoleSingletonUnmarked { deployment: srv1_daily_workspace_deployment, host: "srv1" as NonEmptyStr, marker: m }), pattern: m.path as String)
+    RoleSingletonNoop => true
     _ => false
   }
 }

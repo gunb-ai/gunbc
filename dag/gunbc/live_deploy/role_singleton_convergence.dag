@@ -57,18 +57,25 @@ import gunbc.live_deploy.member_observe {
 // of every roster host (DESIGN 3d) and, only when that assessment admits it, mints the one token an
 // apply may act on (RoleSingletonAdmission).
 //
-// ONLY FIRST INSTALL IS IMPLEMENTED. Noop when exactly one complete realization is observed and it is
-// the desired one on its own target (or nothing is desired and nothing is observed); Install when a
-// valid holder is desired and NOTHING is observed anywhere. Every other transition REFUSES with a typed
-// cause -- including a realization that predates the store ownership marker (RoleSingletonUnmarked),
-// which waits for the operator's one-time disposition named in its own refusal text (gunbc#13124:
-// manual resume, no self-repair outside an operator disposition). Move and Remove are
-// refusal causes today and become arms of RoleSingletonConvergence when their actuation lands; neither
-// renames the arms that exist.
+// ONLY FIRST INSTALL AND NOOP ARE IMPLEMENTED. Noop when exactly one complete realization is
+// observed and it is the desired one on its own target (or nothing is desired and nothing is observed);
+// Install when a valid holder is desired and NOTHING is observed anywhere. Completeness is the
+// broker unit and the fabric unit -- the store's directories are already owned-directory demands
+// (gunbc.fabric_storage_placement fabric_storage_directory_demands, landed in #13688). The
+// Ensured ownership-marker file is written by the holder's apply, not a second ownership census
+// and not an ssh hand step: a holder that already has its units therefore Noops the assessment
+// and the apply still ensures the marker.
+//
+// MOVE AND REMOVE ARE A DECLARED FRONTIER, not an untracked stall (DESIGN 4b). Operator ruling
+// 2026-10-05 on closed gunbc#13217: "Move/Remove convergence is the next deliverable after D2".
+// Today's arms are RoleSingletonMoveUnimplemented and RoleSingletonRemovalUnimplemented.
+// TRIGGER: RoleSingletonConvergence grows Move and Remove actuation arms and those two refusal
+// variants are deleted. SUFFICIENT FOR: a role change or NoProdRole is assessed and applied
+// without a typed unimplemented refusal. Until then a move or removal stops the line.
 //
 // THE HOST UNIVERSE IS THE ROSTER'S TARGETS (desired_deployment_roster), derived, not listed. A
 // singleton on a host outside the roster is INVISIBLE to this observation: a bounded residual whose
-// trigger is a roster row for that host, stated in docs/plans/deployment-risk-conformance.md.
+// trigger is a roster row for that host.
 
 // ── What can be seen ────────────────────────────────────────────────────────────────────────────
 // THE MEMBERS a realization is made of. The broker unit is host-global and names no deployment; the
@@ -113,7 +120,6 @@ type RoleSingletonRefusal
   | RoleSingletonTwoOnOneHost { host: NonEmptyStr, deployments: List<DeploymentId> }
   | RoleSingletonBrokerWithoutStore { host: NonEmptyStr }
   | RoleSingletonPartial { deployment: DeploymentId, host: NonEmptyStr, missing: List<RoleSingletonMember> }
-  | RoleSingletonUnmarked { deployment: DeploymentId, host: NonEmptyStr, marker: FabricStorageOwnershipMarkerSpec }
   | RoleSingletonMarkerMismatched { deployment: DeploymentId, host: NonEmptyStr, field: NonEmptyStr, expected: String, observed: String }
   | RoleSingletonStaleSpec { instance_id: NonEmptyStr, detail: String }
   | RoleSingletonDeploymentUnrostered { instance_id: String, detail: String }
@@ -259,7 +265,7 @@ fn role_singleton_observation_of(readings: List<HostRoleSingletonReading>, rows:
 }
 
 fn missing_members(r: ObservedRealization) -> List<RoleSingletonMember> {
-  [BrokerUnitMember, FabricUnitMember, StoreMarkerMember] |> filter(m => !any(r.members, x => member_eq(a: x, b: m)))
+  [BrokerUnitMember, FabricUnitMember] |> filter(m => !any(r.members, x => member_eq(a: x, b: m)))
 }
 
 // ── The decision ────────────────────────────────────────────────────────────────────────────────
@@ -296,13 +302,7 @@ fn role_singleton_convergence(desired: ProdRoleRealization, observed: RoleSingle
           } else {
             let missing = missing_members(r: r)
             if count(missing) == 0 { RoleSingletonNoop }
-            else if count(missing) == 1 && all(missing, m => member_eq(a: m, b: StoreMarkerMember)) {
-              RoleSingletonRefused { cause: RoleSingletonUnmarked {
-                deployment: r.deployment,
-                host: r.host,
-                marker: fabric_storage_ownership_marker_spec(instance: holder.instance),
-              } }
-            } else {
+            else {
               RoleSingletonRefused { cause: RoleSingletonPartial { deployment: r.deployment, host: r.host, missing: missing } }
             }
           }
@@ -413,8 +413,6 @@ fn role_singleton_refusal_detail(cause: RoleSingletonRefusal) -> String {
       join(["role singletons refused: the approval broker is present on ", host as String, " but no store is realized there"], "")
     RoleSingletonPartial { deployment, host, missing } =>
       join(["role singletons refused: ", deployment.name as String, " on ", host as String, " is partial (missing ", to_string(count(missing)), " member(s)); an interrupted install or a store without its broker is not adopted"], "")
-    RoleSingletonUnmarked { deployment, host, marker } =>
-      join(["role singletons refused: ", deployment.name as String, " on ", host as String, " has its broker and fabric store unit but no store ownership marker, so whether that store is this holder's cannot be established. The operator's one-time disposition: on ", host as String, ", in the store's control directory (created first with the mode, owner and group gunbc.fabric_storage_placement fabric_storage_control_directory derives), write ", marker.path as String, " with mode ", file_mode_octal(mode: marker.mode), ", owner ", marker.owner as String, ", group ", marker.group as String, " and exactly this content: ", marker.content as String], "")
     RoleSingletonMarkerMismatched { deployment, host, field, expected, observed } =>
       join(["role singletons refused: the store ownership marker for ", deployment.name as String, " on ", host as String, " does not match its row: ", field as String, " is '", observed, "', expected '", expected, "'; a marker that differs in any field is not the marker"], "")
     RoleSingletonStaleSpec { instance_id, detail } =>
