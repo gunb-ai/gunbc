@@ -2,7 +2,8 @@ module gunbc.roadmap.roadmap_readiness
 
 import std.types { String, Int, Bool, List }
 import gunbc.roadmap_model { RoadmapNode, NotDispatchable, Dispatchable }
-import gunbc.roadmap_status { item_superseded_by, signoff_accepts, item_is_done }
+import gunbc.roadmap_status { item_superseded_by, signoff_accepts, item_is_done, line_ticket }
+import std.algebra { trim }
 import gunbc.roadmap_execution_contract {
   NonAgentWorkMode,
   contract_closure,
@@ -39,6 +40,7 @@ type ReadinessGap
   | GapParent
   | GapRoot { detail: String }
   | GapCentering
+  | GapDesign { missing: List<String> }
   | GapDispatch
   | GapContract { detail: String }
   | GapNotAgentWork { mode: NonAgentWorkMode }
@@ -81,6 +83,32 @@ fn readiness_centering_gaps(node: RoadmapNode) -> List<ReadinessGap> {
   }
 }
 
+// THE TASK IS DESIGNED BEFORE IT IS DISPATCHED (operator ruling 2026-10-11). Its ticket names every
+// part of the design: what the worker is given -- the headline, the boundary, the displaced cost, the
+// first slice, what is out of scope, and the handback -- and what only the reviewer is given, the red
+// control, the falsification question the reviewer judges with and steers by. The acceptance check
+// and the plan are gated beside this (contract, centering). A field present but blank is missing: an
+// empty string is not a design.
+fn readiness_design_field(name: String, text: String) -> List<String> {
+  if trim(s: text) == "" { [name] } else { [] }
+}
+
+fn readiness_design_gaps(node: RoadmapNode) -> List<ReadinessGap> {
+  match line_ticket(item: node.line) {
+    Absent => [GapDesign { missing: ["ticket"] }]
+    Present { value: t } => {
+      let missing = concat(readiness_design_field(name: "headline", text: t.headline),
+        concat(readiness_design_field(name: "boundary", text: t.brief),
+          concat(readiness_design_field(name: "displaced cost", text: t.displaced_cost),
+            concat(readiness_design_field(name: "first slice", text: t.first_slice),
+              concat(readiness_design_field(name: "out of scope", text: t.out_of_scope),
+                concat(readiness_design_field(name: "handback", text: t.handback),
+                  readiness_design_field(name: "red control", text: t.red_control)))))))
+      if count(missing) == 0 { [] } else { [GapDesign { missing: missing }] }
+    }
+  }
+}
+
 fn readiness_dispatch_gaps(node: RoadmapNode) -> List<ReadinessGap> {
   match node.dispatch {
     NotDispatchable => [GapDispatch]
@@ -105,9 +133,10 @@ fn node_readiness_gaps(node: RoadmapNode, lineage: LineageWalk, unmet_parents: L
   concat(readiness_state_gaps(node: node, merged: merged),
     concat(readiness_lineage_gaps(node: node, lineage: lineage),
       concat(readiness_centering_gaps(node: node),
-        concat(readiness_dispatch_gaps(node: node),
-          concat(readiness_contract_gaps(node: node),
-            readiness_dependency_gaps(unmet_parents: unmet_parents))))))
+        concat(readiness_design_gaps(node: node),
+          concat(readiness_dispatch_gaps(node: node),
+            concat(readiness_contract_gaps(node: node),
+              readiness_dependency_gaps(unmet_parents: unmet_parents)))))))
 }
 
 fn node_readiness(node: RoadmapNode, lineage: LineageWalk, unmet_parents: List<String>, merged: List<Int>) -> NodeReadiness {
@@ -131,6 +160,7 @@ fn readiness_gap_is_contract(g: ReadinessGap) -> Bool {
     GapParent => false
     GapRoot { detail: _ } => false
     GapCentering => false
+    GapDesign { missing: _ } => false
     GapDispatch => false
     GapNotAgentWork { mode: _ } => false
     GapDependencies { blockers: _ } => false
@@ -148,7 +178,7 @@ fn readiness_only_contract_missing(r: NodeReadiness) -> Bool {
 }
 
 // THE MINTING RULE'S NODE-LOCAL NECESSARY CONDITION. Every gap readiness_only_contract_missing
-// can count is either node-local (state, centering, dispatch, contract) or read from the caller's
+// can count is either node-local (state, centering, design, dispatch, contract) or read from the caller's
 // graph (lineage, dependencies), and a node whose only gap is its contract has, in particular, only
 // its contract among the node-local ones. So a caller asking the minting question over a population
 // may skip the lineage walk and the dependency read for a node this rules out; it does not decide
@@ -156,7 +186,8 @@ fn readiness_only_contract_missing(r: NodeReadiness) -> Bool {
 fn readiness_node_local_gaps(node: RoadmapNode, merged: List<Int>) -> List<ReadinessGap> {
   concat(readiness_state_gaps(node: node, merged: merged),
     concat(readiness_centering_gaps(node: node),
-      concat(readiness_dispatch_gaps(node: node), readiness_contract_gaps(node: node))))
+      concat(readiness_design_gaps(node: node),
+        concat(readiness_dispatch_gaps(node: node), readiness_contract_gaps(node: node)))))
 }
 
 fn readiness_may_be_only_contract_missing(node: RoadmapNode, merged: List<Int>) -> Bool {
@@ -172,6 +203,7 @@ fn readiness_gap_label(g: ReadinessGap) -> String {
     GapParent => "parent"
     GapRoot { detail: _ } => "root"
     GapCentering => "centering"
+    GapDesign { missing: _ } => "design"
     GapDispatch => "dispatch binding"
     GapContract { detail: _ } => "contract"
     GapNotAgentWork { mode } => join(["not agent work (", non_agent_work_mode_label(mode: mode), ")"], "")
@@ -187,6 +219,7 @@ fn readiness_gap_reason(g: ReadinessGap) -> String {
     GapParent => "no parent: the row declares no place in the decomposition"
     GapRoot { detail } => detail
     GapCentering => "no centering plan: the row supplies no plan for a worker"
+    GapDesign { missing } => join(["the task design is incomplete; missing: ", join(missing, ", ")], "")
     GapDispatch => "no dispatch binding: a launch needs the repository the work happens in and the acceptance evidence it must return"
     GapContract { detail } => detail
     GapNotAgentWork { mode } => join([non_agent_work_mode_label(mode: mode), ": this work is not for an agent"], "")
@@ -206,6 +239,7 @@ fn readiness_gap_blockers(g: ReadinessGap) -> List<String> {
     GapParent => []
     GapRoot { detail: _ } => []
     GapCentering => []
+    GapDesign { missing: _ } => []
     GapDispatch => []
     GapContract { detail: _ } => []
     GapNotAgentWork { mode: _ } => []
@@ -230,6 +264,7 @@ fn readiness_gap_display(g: ReadinessGap) -> String {
     GapParent => readiness_gap_label(g: g)
     GapRoot { detail: _ } => readiness_gap_label(g: g)
     GapCentering => readiness_gap_label(g: g)
+    GapDesign { missing } => join(["design (", join(missing, ", "), ")"], "")
     GapDispatch => readiness_gap_label(g: g)
     GapContract { detail: _ } => readiness_gap_label(g: g)
     GapNotAgentWork { mode: _ } => readiness_gap_label(g: g)
