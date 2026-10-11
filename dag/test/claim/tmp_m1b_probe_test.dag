@@ -1,0 +1,41 @@
+module test.claim.tmp_m1b_probe
+
+import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.content_hash { ContentHash, content_hash_atom, sha256_hex_digest, as_content_hash_cryptographic, as_content_hash_structural }
+import std.measure { measure_count }
+import std.materialization_provider {
+  ArtifactRequest, NativeModuleVerdictBundleRequest, NativeModuleVerdictBundleSubject,
+  output_module_test_verdicts, output_module_preparation_diagnostics,
+}
+import std.materialization_object { ArtifactPayload, StoreCommitPrepared, StoreCommitNotPrepared, store_commit_prepare }
+import extdeps.realization.materialization_store_local { local_store_object_bytes }
+
+fn probe_fixture_digest(v: String) -> ContentHash {
+  let seed = content_hash_atom(value: v as NonEmptyStr)
+  let quad = join([seed.digest as String, seed.digest as String, seed.digest as String, seed.digest as String], "")
+  match sha256_hex_digest(hex: quad) {
+    Present { value: digest } => as_content_hash_cryptographic(digest: digest)
+    Absent => as_content_hash_structural(structural: seed)
+  }
+}
+
+fn probe_bundle_req(module: String) -> ArtifactRequest {
+  NativeModuleVerdictBundleRequest(NativeModuleVerdictBundleSubject {
+    route_binary_identity: probe_fixture_digest(v: "route-binary-1"),
+    module_identity: probe_fixture_digest(v: module),
+    canonical_module_import_closure_identity: probe_fixture_digest(v: "closure-1"),
+    ordered_test_identity_population: probe_fixture_digest(v: "t1,t2"),
+    eval_interpretation_identity: probe_fixture_digest(v: "eval-1")
+  })
+}
+
+fn probe_object_bytes() -> Int {
+  let payloads = [
+    ArtifactPayload { id: output_module_test_verdicts, content: "s pass" },
+    ArtifactPayload { id: output_module_preparation_diagnostics, content: "" },
+  ]
+  match store_commit_prepare(req: probe_bundle_req(module: "s1"), payloads: payloads, blobs: []) {
+    StoreCommitPrepared { key: _, object_name: _, object: o, offered_digest: _, offered_result: _ } => measure_count(m: local_store_object_bytes(object: o))
+    StoreCommitNotPrepared { commit: _ } => 0 - 1
+  }
+}
