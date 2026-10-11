@@ -41,7 +41,7 @@ import gunbc.roadmap_launch_admission {
   LaunchHostStanding, LaunchHostObserved, LaunchHostObserveOnly, LaunchHostHalted, LaunchHostUnobserved,
   launch_identity_of_json, LaunchIdentityDecoded, LaunchIdentityUnreadable, launch_identity_revision_hex,
 }
-import gunbc.fleet_desired_observe { LocalTreeRevisionObserved, LocalTreeRevisionUnobserved }
+import gunbc.origin_main_revision_observe { LocalTreeRevisionObserved, LocalTreeRevisionUnobserved }
 import extdeps.git.object_store { git_object_id_wire_hex }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
