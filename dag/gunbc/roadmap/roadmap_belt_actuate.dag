@@ -10620,16 +10620,21 @@ data belt_dispatch_env_var: NonEmptyStr = "GUNBC_BELT_NODE_ID" as NonEmptyStr
 // with the JSON receipt on stderr, so the server relays the exact cause.
 // THE INSTANCE SELECTION (owner ruling 2026-09-28: sessions are pressured toward latest — a fresh
 // dispatch binds the CURRENT deployment line, never a stale recorded pin): GUNBC_BELT_INSTANCE_ID
-// names the admitted instance ("srv2-deploy" or "srv1-live"); absent/empty defaults to srv1-live,
-// the historical behavior; any other spelling refuses before anything stages. The default stays
-// srv1-live only until the CLI's callers move; the dispatch surface on the dashboard already serves
-// its own instance.
+// names the admitted instance ("srv2-deploy" or "srv1-live"); absent, empty or any other spelling
+// REFUSES before anything stages. There is no default instance: a missing selection that quietly
+// meant srv1-live was a fabricated default (DESIGN 5), and which instance a process IS belongs to
+// the deployment that names it, not to this entry (declared frontier, D2 layer 4 PR body).
 fn belt_dispatch_instance_cli() -> HostDashboardInstance? {
-  match shell.Env.Get(name: belt_dispatch_instance_env_var).value {
-    Absent => Present { value: srv1_live_dashboard_instance() }
+  belt_dispatch_instance_selected(raw: shell.Env.Get(name: belt_dispatch_instance_env_var).value)
+}
+
+// The pure decision over what the environment read returned, so a claim can supply the raw value.
+fn belt_dispatch_instance_selected(raw: String?) -> HostDashboardInstance? {
+  match raw {
+    Absent => none
     Present { value: v } =>
-      if string_length(s: v) == 0 {
-        Present { value: srv1_live_dashboard_instance() }
+      if string_length(s: trim(s: v)) == 0 {
+        none
       } else {
         belt_dispatch_instance_named(id: trim(s: v))
       }
@@ -10658,7 +10663,7 @@ fn belt_dispatch_node_cli() -> ProcessExit {
       } else {
         match belt_dispatch_instance_cli() {
           Absent =>
-            exit_failure(reason: "belt_dispatch_node_cli: GUNBC_BELT_INSTANCE_ID names no admitted instance (srv1-live or srv2-deploy) — refusing before anything stages")
+            exit_failure(reason: "belt_dispatch_node_cli: GUNBC_BELT_INSTANCE_ID is unset, empty or names no admitted instance (srv1-live or srv2-deploy) — refusing before anything stages")
           Present { value: instance } =>
             let r = belt_dispatch_node_for_instance(instance: instance, node_id: v)
             if belt_dispatch_result_ok(r: r) {
