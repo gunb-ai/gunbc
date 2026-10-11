@@ -1,12 +1,10 @@
 module gunbc.roadmap_launch_deployment_cli
 
 import std.types { String, Bool, NonEmptyStr, Int, List, FilePath, CommitSha }
-import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.measure { second, second_count }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.git
-import extdeps.git.object_store { git_object_id_from_untagged_hex, git_object_id_wire_hex }
+import extdeps.git.object_store { git_object_id_wire_hex }
 import extdeps.exec.command { LocalExec }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
@@ -40,9 +38,12 @@ import gunbc.live_deploy.apply_receipt {
   rlm_plan_run_id_env_name, rlm_apply_run_id_env_name,
   observe_candidate_root_tree_oid, CandidateTreeOidObserved, CandidateTreeOidUnobservable,
 }
-import gunbc.fleet_desired_observe {
-  observe_fleet_desired_revision, FleetDesiredAdmitted, FleetDesiredAbsent, FleetDesiredUndecodable, FleetDesiredUnobserved,
+import gunbc.origin_main_revision_observe {
   LocalTreeRevisionObserved, LocalTreeRevisionUnobserved,
+  observe_origin_main_revision,
+}
+import gunbc.fleet_main_revision {
+  RemoteRevisionPresent, RemoteRevisionAbsent, RemoteRevisionUndecodable, RemoteRevisionUnobserved,
 }
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused, fleet_locus_ssh_target }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
@@ -175,31 +176,12 @@ type RemoteRefRead
   = RemoteRefHex { hex: String }
   | RemoteRefUnreadable { detail: String }
 
-data main_ref_name: String = "refs/heads/main"
-
 fn read_remote_main_hex() -> RemoteRefRead {
-  let read = git.Core.LsRemoteRefInRepo(repo: rlm_receipt_vantage as FilePath, remote: "origin", ref_name: main_ref_name)
-  if read.exit_code != 0 {
-    RemoteRefUnreadable { detail: join(["git ls-remote origin ", main_ref_name, " exited ", to_string(read.exit_code), ": ", read.stderr], "") }
-  } else {
-    let line = trim(s: read.advertised)
-    if line == "" {
-      RemoteRefUnreadable { detail: join(["origin advertises no ", main_ref_name], "") }
-    } else {
-      match (match split(s: line, delimiter: "\t").first() { Absent => none  Present { value: wire_field } => git_object_id_from_untagged_hex(hex: wire_field) }) {
-        Present { value: oid } => RemoteRefHex { hex: git_object_id_wire_hex(oid: oid) as String }
-        Absent => RemoteRefUnreadable { detail: join(["origin advertises an undecodable ", main_ref_name, ": ", line], "") }
-      }
-    }
-  }
-}
-
-fn read_desired_hex() -> RemoteRefRead {
-  match observe_fleet_desired_revision(repo: rlm_receipt_vantage as FilePath) {
-    FleetDesiredAdmitted { revision: r } => RemoteRefHex { hex: git_object_id_wire_hex(oid: r) as String }
-    FleetDesiredAbsent => RemoteRefUnreadable { detail: "origin advertises no refs/fleet/desired" }
-    FleetDesiredUndecodable { advertised: a } => RemoteRefUnreadable { detail: join(["refs/fleet/desired undecodable: ", a], "") }
-    FleetDesiredUnobserved { cause: c } => RemoteRefUnreadable { detail: join(["refs/fleet/desired unobserved: ", c], "") }
+  match observe_origin_main_revision(repo: rlm_receipt_vantage as FilePath) {
+    RemoteRevisionPresent { revision: r } => RemoteRefHex { hex: git_object_id_wire_hex(oid: r) as String }
+    RemoteRevisionAbsent => RemoteRefUnreadable { detail: "origin advertises no refs/heads/main" }
+    RemoteRevisionUndecodable { advertised: a } => RemoteRefUnreadable { detail: join(["refs/heads/main undecodable: ", a], "") }
+    RemoteRevisionUnobserved { cause: c } => RemoteRefUnreadable { detail: c }
   }
 }
 
@@ -267,8 +249,7 @@ fn window_snapshot(context: FleetSshExecutionContext, instance: HostDashboardIns
     repo: srv1_gunbc_repo_root as String as NonEmptyStr,
   ))
   WindowSnapshot {
-    main_hex: remote_ref_text(r: read_remote_main_hex()),
-    desired_hex: remote_ref_text(r: read_desired_hex()),
+    origin_main_hex: remote_ref_text(r: read_remote_main_hex()),
     deployed_revision_hex: deployed_revision_hex_text(o: tree),
     deployed_tree_hex: deployed_tree_hex_text(o: tree),
     running_release_hex: running_release_hex_routed(base: routed_base),
@@ -575,8 +556,7 @@ fn rlm_launch_deployment_receipt_bound(
   }
   let routed_base = rlm_routed_base_url()
   let opened = window_snapshot(context: context, instance: instance, routed_base: routed_base)
-  let main_hex = read_remote_main_hex()
-  let desired_hex = read_desired_hex()
+  let origin_main = read_remote_main_hex()
   let plan = match read_fleet_converge_plan_receipt_at(path: fleet_converge_plan_receipt_path) {
     FleetConvergePlanReceiptDecoded { receipt: p } => PlanReceiptRead { receipt: p }
     FleetConvergePlanReceiptUnreadable { reason: why } => PlanReceiptUnreadable { reason: why }
@@ -638,13 +618,9 @@ fn rlm_launch_deployment_receipt_bound(
   let observation_window_closed = window_snapshot(context: context, instance: instance, routed_base: routed_base)
   let run_provenance = rlm_run_provenance_fact(run: run, plan_run_id: plan_run_id, apply_run_id: apply_run_id, dashboard_run_id: dashboard_run_id)
   let facts = RoadmapLaunchDeploymentFacts {
-    desired_revision: (match main_hex {
-      RemoteRefUnreadable { detail: d } => DesiredRevisionUnobserved { detail: join(["main: ", d], "") }
-      RemoteRefHex { hex: m } =>
-        match desired_hex {
-          RemoteRefUnreadable { detail: d } => DesiredRevisionUnobserved { detail: join(["refs/fleet/desired: ", d], "") }
-          RemoteRefHex { hex: d } => DesiredRevisionObserved { main_hex: m, desired_hex: d }
-        }
+    desired_revision: (match origin_main {
+      RemoteRefUnreadable { detail: d } => DesiredRevisionUnobserved { detail: join(["origin/main: ", d], "") }
+      RemoteRefHex { hex: h } => DesiredRevisionObserved { revision_hex: h }
     }),
     plan_receipt: plan,
     apply_receipt: apply,

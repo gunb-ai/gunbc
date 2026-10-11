@@ -1,0 +1,46 @@
+{
+  "operation": "git.Core.LsRemoteRefInRepo",
+  "input_hash": "c0347b5781c70c22",
+  "inputs": [
+    {
+      "name": "repo",
+      "value": {
+        "__tag": "Str",
+        "value": "target/test-fixtures/fleet-revision-relation"
+      }
+    },
+    {
+      "name": "remote",
+      "value": {
+        "__tag": "Str",
+        "value": "."
+      }
+    },
+    {
+      "name": "ref_name",
+      "value": {
+        "__tag": "Str",
+        "value": "refs/heads/main"
+      }
+    }
+  ],
+  "response": {
+    "__tag": "Record",
+    "__type": "LsRemoteRefInRepo",
+    "fields": {
+      "advertised": {
+        "__tag": "Str",
+        "value": "3ad80d79bd1f64a7f75e121d7323aed053a81f0b\trefs/heads/main"
+      },
+      "exit_code": {
+        "__tag": "Int",
+        "value": 0
+      },
+      "stderr": {
+        "__tag": "Str",
+        "value": ""
+      }
+    }
+  },
+  "recorded_at": 1791686830
+}
