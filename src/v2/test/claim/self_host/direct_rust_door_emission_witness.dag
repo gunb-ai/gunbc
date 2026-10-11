@@ -13,7 +13,7 @@ import v2.std.text { String }
 // src/v2/test/claim/long/direct_rust_door_emission_witness_test.dag was one of four duplicate
 // production walks consolidated into the single canonical root
 // src/v2/test/claim/long/direct_rust_door_production_group.dag, whose leaf semantics are
-// discriminated at sub-millisecond cost in direct_rust_door_group_algebra_test.dag.
+// discriminated at sub-millisecond cost in direct_rust_door_group_algebra.dag.
 
 test fn witness_seed_closure_poison_refuses_v2_producer_reds() -> Bool {
   mint_v2_interpreted_receipt_with_seed_closure_refuses(

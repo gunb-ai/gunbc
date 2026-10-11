@@ -620,7 +620,7 @@ import v2.std.algebra { Cons, Empty, list_flat_map, any }
 // AN EARLIER REVISION SAID THAT MODULE HAS EIGHT MEMBERS AND WAS WRONG -- IT HAS TWELVE. The error
 // was in the METHOD, not the arithmetic: the count came from the identities two floor LOGS happened
 // to mention, and a log names the claims that RAN AND REPORTED, never a module's membership. The
-// authority is the module's own source; `grep -c 'test fn'` on `rest_path_reaches_no_cli_test.dag`
+// authority is the module's own source; `grep -c 'test fn'` on `rest_path_reaches_no_cli.dag`
 // returns 12. Enrolling to eight was then claimed as CLOSURE, which was a coincidence of what two
 // runs printed.
 //

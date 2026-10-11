@@ -1,6 +1,6 @@
 module test.claim.method_arg_declared_contract_cross_module_alias_witness
 
-// PERMANENT REGRESSION CONTROL, companion to method_arg_declared_contract_witness_test.dag (#8592).
+// PERMANENT REGRESSION CONTROL, companion to method_arg_declared_contract_witness.dag (#8592).
 // Landed per dashboard node adhoc-28a6f804-3cd, reconciling #8572 and #8579, handoff repair from
 // deep-ant-102.
 //

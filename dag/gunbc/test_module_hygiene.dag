@@ -6,6 +6,12 @@ import std.types { String, Bool, List }
 // claim_executor invokes. Host realizes the interpreter transport
 // (cli_run/test_module_hygiene_bridge.rs).
 //
+// WHICH NAMES ARE TESTS IS SUPPLIED, NOT SCANNED. A test is a declaration carrying the authored
+// `test` marker, and the file-grain expansion below receives the marked names of each entry as a
+// value (ExplicitExpandInput `marked`, taken by the host from the canonical parse's marker capture).
+// This module neither reads file text nor decides what a test is: it holds no text scan, and an entry
+// with no marked name refuses rather than expanding to nothing.
+//
 // WHAT THIS MODULE NO LONGER DOES (gunbc#8155): the U2 orphan enroll-or-refuse census is DELETED.
 // It walked every module in the corpus carrying a test, parsed each one, projected DeclSurface/ModuleSurface
 // values, resolved a second interpreter context, and ran a fuelled reachability fixpoint with a

@@ -25,7 +25,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // dag/test/claim/filesystem_read_hermetic_witness.dag already exercises directly) rather than a
 // fabricated InterpretationAlgebra oracle, and the comparison is a direct byte-equality check
 // against the native run's octet output (the same shape family_crate_member_run in
-// emit_on_demand_family_crate_witness_test.dag uses for its per-member receipts) rather than the
+// emit_on_demand_family_crate_witness.dag uses for its per-member receipts) rather than the
 // TestClaimRun/Verdict machinery, which exists specifically to score a translated-arrow's fidelity
 // and has nothing to translate-fidelity-check here. Both legs read the identical real repo file
 // dag/extdeps/shell/exec.dag; see rust_filesystem_read_family_note in rust_test.dag for why the

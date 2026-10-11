@@ -1424,20 +1424,20 @@ test fn a_discovery_row_whose_source_declares_no_module_refuses_the_derivation()
   let enrolled = FloorDiscoveryWalkState {
     rows: [FloorDiscoveryRow {
       label: "t",
-      entry: "src/v2/test/headerless_test.dag",
+      entry: "src/v2/test/headerless.dag",
       function: "t",
       reads_live_tree: SubstrateInputsOnly
     }],
     walk_failures: 0,
     walk_failure_path: Absent,
-    sidecar_violations: [],
+    wire_contract_misplaced_paths: [],
     disposition_refusal: Absent
   }
   let empty = FloorDiscoveryWalkState {
     rows: [],
     walk_failures: 0,
     walk_failure_path: Absent,
-    sidecar_violations: [],
+    wire_contract_misplaced_paths: [],
     disposition_refusal: Absent
   }
   match native_lane_unowned_row_path(facts: [
@@ -1450,13 +1450,13 @@ test fn a_discovery_row_whose_source_declares_no_module_refuses_the_derivation()
     },
     NativeLaneSourceFacts {
       module: Absent,
-      path: ^headerless_test_path,
+      path: ^headerless_source_path,
       imports: [],
       discovery: enrolled,
       malformed_import: Absent
     }
   ]) {
-    Present { value: unowned } => unowned == ^headerless_test_path
+    Present { value: unowned } => unowned == ^headerless_source_path
     Absent => false
   }
 }
@@ -1526,7 +1526,7 @@ fn closure_fact(module: String, path: Symbol, imports: List<String>) -> NativeLa
       rows: [],
       walk_failures: 0,
       walk_failure_path: Absent,
-      sidecar_violations: [],
+      wire_contract_misplaced_paths: [],
       disposition_refusal: Absent
     },
     malformed_import: Absent

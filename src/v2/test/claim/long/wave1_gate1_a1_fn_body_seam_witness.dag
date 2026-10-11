@@ -14,7 +14,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // paths exceed per-PR 5s fast-lane eval budget (gunbc_ci_fast_lane_rule_note). Proves
 // body_lower_fn_body_shell lowers census add fn_body to Transform, fn_decl→Arrow ordering (x/y
 // bindings), normalize→Arrow+Transform, and premature-shell RED control. Fast RED (invalid shell
-// wrapper-retained) lives in self_host/wave1_gate1_a1_fn_body_seam_witness_test.dag. Local recipe:
+// wrapper-retained) lives in self_host/wave1_gate1_a1_fn_body_seam_witness.dag. Local recipe:
 // claim_batch --source-root dag --source-root src/v2 --entry
 // src/v2/test/claim/long/wave1_gate1_a1_fn_body_seam_witness.dag --functions <csv>.
 

@@ -182,7 +182,7 @@ test fn imported_generic_call_charges_no_unlisted_import_use_on_the_formal() -> 
 data ubtr_alias_definer_source: String = "module ubtr.adef\n\ntype UbtrKey {\n  raw: Int\n}\n\ntype UbtrSel {\n  picked: Int\n}\n\ntype UbtrPackNode<K, S> {\n  key: K\n  sel: S\n}\n\ntype UbtrAliasedNode = UbtrPackNode<UbtrKey, UbtrSel>\n"
 
 // THE CONSTRUCTION THROUGH THE ALIAS IS LOAD-BEARING, as it was at
-// codex_package_lock_parse_witness_test.dag:142: a bare annotation (n: UbtrAliasedNode) resolves
+// codex_package_lock_parse_witness.dag:142: a bare annotation (n: UbtrAliasedNode) resolves
 // the alias as a leaf and stops at the nominal brand, but CONSTRUCTING the record forces the
 // expansion to resolve so its fields can be checked -- and that expansion is the definer's tree.
 // The user's text names only UbtrAliasedNode, which it lists; UbtrKey and UbtrSel never appear.

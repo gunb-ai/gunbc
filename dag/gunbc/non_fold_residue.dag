@@ -71,7 +71,7 @@ data nfr_dissolve_native_agreement_octet: DissolutionCondition = unbound_dissolu
 
 data nfr_reason_observation_hold_cause: String = "the CI-log renderer names the two memory-pressure holds (PsiPressure, CurrentHighWater — the crawl-window narrative) with a specific cause and gives the other five SchedulerHold variants a generic 'blocked on scheduler admission'; landed with the progress-and-observation stack (session/sleek-ibex-634, #7168) and surfaced by the whole-corpus nfr receipt after per-PR affected-set selection predict-skipped the corpus-read nfr witness at merge time (the masking class); declared so the ratchet re-arms"
 
-data nfr_reason_resolve_realization_predicate: String = "discriminating subset predicate over ResolveRealization (param scrutinee, off-variant wildcard arm returning false) — each arms an independent RED control in floor_resolve_realization_witness_test.dag; landed with #7810 resolve-realization 0B obligation model and surfaced by the whole-corpus nfr receipt; declared so the ratchet re-arms"
+data nfr_reason_resolve_realization_predicate: String = "discriminating subset predicate over ResolveRealization (param scrutinee, off-variant wildcard arm returning false) — each arms an independent RED control in floor_resolve_realization_witness.dag; landed with #7810 resolve-realization 0B obligation model and surfaced by the whole-corpus nfr receipt; declared so the ratchet re-arms"
 
 data nfr_reason_cost_loop_zero_body_fold: String = "C1 zero-body summation fold over CostExpr (zero-valued CostConst collapses before binder-carrying CostSum construction; the wildcard arm is the non-degenerate summation path, not anonymous recursion) — landed with v2.lens.cost.expr carrier; surfaced by whole-corpus nfr receipt on first CI run"
 

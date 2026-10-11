@@ -18,7 +18,7 @@ fn input_envelope_roadmap_body() -> List<MarkdownBlock> {
       li(text: "input_admitted function: EnvelopeUnknown => RefusedUndeclared; per-axis ceiling check"),
       li(text: "WorkDemand.input_envelope required field added; existing demands carry EnvelopeUnknown (honest: ceiling not yet declared)"),
       li(text: "gunbc_ci_corpus_envelope: the CI corpus as the first BoundedInput instance — ceiling values are operator-set operating-point ceilings, NOT derived quantities (P2 derives them; P1 scaffolds with explicit Scaffold-disposition values)"),
-      li(text: "input_envelope_admission_test.dag: 5 test fns covering at-limit, over-limit, undeclared-axis, EnvelopeUnknown, and a red-on-revert discriminating assertion"),
+      li(text: "input_envelope_admission.dag: 5 test fns covering at-limit, over-limit, undeclared-axis, EnvelopeUnknown, and a red-on-revert discriminating assertion"),
     ]),
     h2(text: "P2 (follow-on, operator sign-off before landing) — ceiling derivation"),
     ul(items: [

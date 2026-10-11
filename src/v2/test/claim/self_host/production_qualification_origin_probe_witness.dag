@@ -31,7 +31,7 @@ import v2.std.text { String }
 // Production-qualification origin PROBE witnesses (wise-ram-22 recut): per-PR discovery carries
 // planted closed-subject checks only (DESIGN §5). Live fn_arrow_decl_facts_live() walks (admission,
 // policy-oracle count, frontier RED probes) are long-lane in
-// test/claim/long/production_qualification_origin_probe_witness_test.dag.
+// test/claim/long/production_qualification_origin_probe_witness.dag.
 
 // Genuine module-graph edge into
 // v2.test.claim.self_host.production_qualification_origin_probe_structural_fixture (inert-lens

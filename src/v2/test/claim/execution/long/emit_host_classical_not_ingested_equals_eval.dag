@@ -725,7 +725,7 @@ test fn ingested_classical_not_match_only_param_scrutinee_infer_refuses_holds() 
 // ingested_classical_not_staging_emit_accepts_holds now witness that emit ACCEPTS the canonical
 // and staging trees and pins the emitted text's shape (the same shape the frontier-path witnesses
 // pin). The translate-refuses-underived behavior stays enrolled on hand-staged frontier fixtures
-// in translate_underived_refusal_test.dag. Wet/nightly emit-vs-eval legs use
+// in translate_underived_refusal.dag. Wet/nightly emit-vs-eval legs use
 // ingested_wet_emit_eval_composed_tree_from_source (composed facts on every lookup — emit accepts,
 // eval admits); shape-frontier stays emit-only. Deliberately excludes wet legs from per-PR
 // CommitCheckEnrollment.

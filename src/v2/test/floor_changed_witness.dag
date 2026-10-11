@@ -983,9 +983,9 @@ test fn a_selected_declared_bin_wet_row_is_declined_no_ci_wet_lane() -> Bool {
   match required_floor_disposition_with_changed_selection(
     ordinary: Planned {},
     selected_as_changed_witness: true,
-    declared_wet_pattern: Present { value: "bootstrap_test.dag" },
+    declared_wet_pattern: Present { value: "bootstrap.dag" },
   ) {
-    DeclinedNoCiWetLane { pattern: p } => p == "bootstrap_test.dag"
+    DeclinedNoCiWetLane { pattern: p } => p == "bootstrap.dag"
     DeclinedChangedWitnessOutsideDiscovery { module_path: _ } => false
     Planned => false
     PlannedAsChangedWitness => false
@@ -1003,7 +1003,7 @@ test fn a_selected_declared_bin_wet_row_is_declined_no_ci_wet_lane() -> Bool {
 // of a changed witness still blocks, except a selection outside discovery whose home is declared
 // non-executing (the claim below).
 test fn the_no_ci_wet_lane_decline_does_not_block_and_other_declines_do() -> Bool {
-  !changed_witness_decline_blocks(disposition: DeclinedNoCiWetLane { pattern: "bootstrap_test.dag" })
+  !changed_witness_decline_blocks(disposition: DeclinedNoCiWetLane { pattern: "bootstrap.dag" })
     && changed_witness_decline_blocks(disposition: DeclinedDiscoveryExcluded { matched_substring: "x" })
     && changed_witness_decline_blocks(disposition: DeclinedOutsideGateClosure {})
 }

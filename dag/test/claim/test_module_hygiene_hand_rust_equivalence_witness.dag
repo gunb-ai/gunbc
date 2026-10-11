@@ -44,19 +44,43 @@ test fn test_module_hygiene_file_grain_expand_refuses_empty_test_decls() -> Bool
   }
 }
 
-test fn test_module_hygiene_file_grain_expand_enumerates_the_supplied_marked_names() -> Bool {
+// The positive control that keeps the real route: a file-grain entry expands to exactly the SUPPLIED
+// marked names, in order, and an explicit function passes through untouched. No file text reaches
+// this fold -- the entry is a path that does not exist -- so the names can only have come from the
+// supply, and the pairing the claim executor consumes is the supply's.
+test fn test_module_hygiene_file_grain_expand_yields_supplied_marked_names() -> Bool {
   match expand_explicit_pairs_or_refuse(inputs: [
     ExplicitExpandInput {
-      entry: "expand_grain.dag",
+      entry: "__gunbc_supplied_only__.dag",
       function: "",
-      marked: ["alpha_holds", "beta_fixture"]
+      marked: ["alpha", "beta"]
+    },
+    ExplicitExpandInput {
+      entry: "__gunbc_supplied_only__.dag",
+      function: "gamma",
+      marked: []
     }
   ]) {
     Expanded { pairs: pairs } =>
-      length(xs: pairs) == 2
-        && any(xs: pairs, predicate: fn(p) { p.entry == "expand_grain.dag" && p.function == "alpha_holds" })
-        && any(xs: pairs, predicate: fn(p) { p.entry == "expand_grain.dag" && p.function == "beta_fixture" })
-    _ => false
+      length(xs: pairs) == 3
+        && any(xs: pairs, predicate: fn(p) { p.function == "alpha" })
+        && any(xs: pairs, predicate: fn(p) { p.function == "beta" })
+        && any(xs: pairs, predicate: fn(p) { p.function == "gamma" })
+    Refused { reason: _ } => false
+  }
+}
+
+// A pairing is a set: a supplier naming one declaration twice yields one pair, not two.
+test fn test_module_hygiene_file_grain_expand_dedupes_repeated_pairs() -> Bool {
+  match expand_explicit_pairs_or_refuse(inputs: [
+    ExplicitExpandInput {
+      entry: "__gunbc_supplied_only__.dag",
+      function: "",
+      marked: ["alpha", "alpha"]
+    }
+  ]) {
+    Expanded { pairs: pairs } => length(xs: pairs) == 1
+    Refused { reason: _ } => false
   }
 }
 

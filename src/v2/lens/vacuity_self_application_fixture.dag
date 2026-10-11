@@ -20,7 +20,7 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
 // exercising the classifier end to end.
 
 // Vacuity-owned self-application fixture (mandate item 7 + the consumer-witness roster, item 5).
-// vacuity_test.dag's own test fn declarations cannot serve this role directly:
+// vacuity.dag's own test fn declarations cannot serve this role directly:
 // v2.extdeps.languages.dag's dag_language_model() grammar has no lexer keyword or grammar
 // production for `test` at all (confirmed by direct execution, see
 // vacuity_bool_witness_real_corpus_note in v2.lens.vacuity), so every real `test fn` in the corpus

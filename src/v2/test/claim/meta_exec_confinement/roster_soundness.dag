@@ -18,7 +18,7 @@ data empty_live_leak_paths: List<String> = []
 
 // WHY THIS FILE EXISTS. meta_exec_roster_sound_live already existed in the lens but ran on NO
 // per-PR cadence — the only enrolled roster RED was the synthetic roster_stale_entry_red_holds in
-// lens_unit/discriminators_test.dag, which feeds hand-written fact rows and therefore cannot see
+// lens_unit/discriminators.dag, which feeds hand-written fact rows and therefore cannot see
 // the live roster at all. That is exactly how two rows (dag/gunbc/tools/review.dag,
 // dag/gunbc/ci/ci_deploy_target_host.dag) stayed on the roster for several merges after their sites
 // stopped importing extdeps.shell.exec: nothing per-PR ever compared the roster against the tree.

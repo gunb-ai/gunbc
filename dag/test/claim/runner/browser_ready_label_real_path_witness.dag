@@ -17,7 +17,7 @@ import extdeps.tools.gnu_coreutils { cat_command }
 // THE READINESS-LABEL CONVERGE EXECUTES FOR REAL HERE. This file is enrolled in three channels,
 // as for chunk_30's precedent: the two WetScheduledClaim rows in v2.workflow.local_repo_wet_terminal
 // local_repo_wet_schedule, the gunbc.ci.ci_layer_roots LocalRepoWetLane row for
-// browser_ready_label_real_path_witness_test.dag, and the floor_route_gap chunk expectation. What
+// browser_ready_label_real_path_witness.dag, and the floor_route_gap chunk expectation. What
 // the receipts execute is the PRODUCTION converge (gunbc.runner.runner_browser_toolchain
 // browser_ready_labels_converge_wet) over LocalShell with the UNPRIVILEGED posture parameterization
 // against a mktemp scratch root: the same plan functions, the same write-then-proceed and

@@ -12,7 +12,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // has no mock_response, so the hermetic discovery corpus refuses this file by construction; it is
 // excluded from discovery (gunbc.ci.ci_layer_roots witness_exclusion_frontier) and enrolled in
 // bin_witness_wet_entries, same lane as
-// self_host_artifact_materialization_real_execution_witness_test.dag.
+// self_host_artifact_materialization_real_execution_witness.dag.
 
 // One invocation, `cargo run -p v1-compiler --bin regen_stage0 -- --verify`, crosses BOTH
 // root-cause boundaries this drift fix closed, because of the crate topology (measured, not

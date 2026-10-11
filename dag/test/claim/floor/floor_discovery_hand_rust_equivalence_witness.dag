@@ -6,7 +6,7 @@ import gunbc.floor.floor_discovery_scaffold {
   floor_discovery_hand_rust_scaffold,
   floor_discovery_dissolve_trigger,
   floor_discovery_producer_entry,
-  floor_discovery_equivalence_test_sidecar_misplaced,
+  floor_discovery_equivalence_wire_contract_misplaced,
   floor_discovery_equivalence_test_scan_wire_contract,
   floor_discovery_equivalence_test_narrowed_corpus_control,
   floor_entry_resolution_host_boundary_note,
@@ -16,25 +16,18 @@ import v2.compiler.discovery_enumeration {
   OwnedBoolWitnessClaimInit,
   OwnedDataDeclRecord
 }
-import v2.workflow.floor_discovery_row { BarrenTestSidecar, FloorDiscoveryRow, FloorDiscoverySidecarViolation, TestMarkedDecl, WireContractDecl, floor_discovery_test_decl_sidecar_violation }
+import v2.workflow.floor_discovery_row { FloorDiscoveryRow, FloorMarkedSource }
 import v2.workflow.floor_discovery_producer { discover_floor_corpus_rows_from_host_facts }
 import v2.workflow.floor_discovery_source_authority {
   FloorDiscoveryAccepted,
+  FloorDiscoveryProducerResult,
   FloorDiscoveryRefused,
-  floor_discovery_barren_test_sidecar_refusal_for_content,
   floor_discovery_content_has_wire_contract_decl,
   floor_discovery_entry_live_tree_disposition_refusal_for_content,
-  floor_discovery_sidecar_refusal_reason,
   floor_discovery_surface_text_scan_scaffold,
   floor_discovery_wire_contract_sidecar_refusal_for_content
 }
-import v2.workflow.floor_naming_hygiene {
-  floor_discovery_scan_test_decl_names,
-  floor_test_sidecar_suffix,
-  floor_wire_contract_sidecar_suffix
-}
 import v2.std.algebra { length, list_head, HeadFound, HeadAbsent }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.collection {
   fold_list
@@ -44,18 +37,23 @@ import std.optional {
   Optional,
   Present
 }
-import std.types { Bool, String, List }
+import std.types { Bool, Int, String, List }
 import std.disposition { Scaffold, SingleAuthority }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Executes floor_discovery_producer.dag on fixtures (owned-data transport projection, filename
-// hygiene, test-decl scan, wire-contract scan/sidecar, sidecar placement) with RED perturbation
-// controls. Producer authority is exercised here; Rust bridge cross-checks
-// (discover_floor_witness_roster, scan_wire_contract_decl_names) are named in
-// gunbc.floor.floor_discovery_scaffold and proven by cargo test sidecar_placement_hygiene_tests in
-// cli_run.rs on the same fixture spellings.
+// Executes floor_discovery_producer.dag on fixtures: the owned-data transport projection, the
+// marker supply through a real directory walk, and the file-versus-directory admission of the host's
+// failure kind, plus the per-file text scans the producer still owns (wire-contract placement and
+// the live-tree disposition row) with RED perturbation controls. Producer authority is exercised
+// here; the Rust bridge cross-checks (discover_floor_witness_roster, scan_wire_contract_decl_names)
+// are named in gunbc.floor.floor_discovery_scaffold and proven by cargo test sidecar_placement_hygiene_tests
+// in cli_run.rs on the same fixture spellings.
+//
+// A test is a declaration carrying the authored `test` marker, and nothing else, so no fixture here
+// can make a file a test by its name: the marked names are the SUPPLIED value, and each rule is
+// exercised by changing what is supplied.
 
 test fn floor_entry_resolution_host_boundary_is_declared() -> Bool {
   floor_entry_resolution_host_boundary_discriminator == "resolve_workspace_entry"
@@ -75,13 +73,16 @@ test fn floor_entry_resolution_host_boundary_is_declared() -> Bool {
 
 data fixture_witness_entry: String = "dag/test/claim/floor/floor_discovery_roster_fixture.dag"
 data fixture_witness_function: String = "floor_discovery_roster_fixture_witness"
-data fixture_test_fn_content: String = "test fn floor_discovery_roster_fixture_witness() -> Bool { true }\n"
-data fixture_test_data_content: String = "test data floor_discovery_data_fixture: Bool = true\n"
-data fixture_misplaced_entry: String = "src/v2/lens/example.dag"
-data fixture_barren_test_entry: String = "dag/test/claim/floor_discovery_barren_fixture_test.dag"
-data fixture_barren_test_content: String = "module test.claim.floor_discovery_barren_fixture_test\n\nfn floor_discovery_barren_helper() -> Bool { true }\n"
 data fixture_misplaced_wire_contract_entry: String = "dag/test/fixture/floor_discovery/misplaced_wire_contract.dag"
 data fixture_live_tree_entry: String = "dag/test/claim/floor/floor_discovery_roster_fixture.dag"
+// A real directory holding exactly one `.dag` module (the leaf declares no test; the fact is supplied).
+data fixture_walk_root: String = "dag/test/fixture/floor_discovery_walk"
+data fixture_walk_leaf_path: String = "dag/test/fixture/floor_discovery_walk/leaf.dag"
+data fixture_walk_leaf_function: String = "floor_discovery_walk_leaf"
+// A directory holding one regular file that is not a `.dag` module: listing it fails with the host's
+// NotADirectory kind, which is the one failure the walk reads as "a file".
+data fixture_walk_non_module_root: String = "fixtures/native_lane_malformed"
+data fixture_walk_absent_root: String = "dag/test/fixture/floor_discovery_walk_absent"
 
 fn fixture_wire_contract_coproduct_content() -> String {
   concat(
@@ -120,11 +121,15 @@ fn fixture_live_tree_trailing_comment_content() -> String {
   )
 }
 
+// The label of an owned-data row is its declaration name, so this name must come back whole: a
+// producer that strips any prefix of it to make a label changes the row this fixture expects.
+data fixture_bool_witness_decl_name: String = "unified_claim_floor_discovery_fixture"
+
 fn fixture_bool_witness_record() -> OwnedDataDeclRecord {
   OwnedDataDeclRecord {
     entry: "dag/gunbc/floor/floor_discovery_scaffold.dag",
     module: "gunbc.floor.floor_discovery_scaffold",
-    decl_name: "unified_claim_floor_discovery_fixture",
+    decl_name: fixture_bool_witness_decl_name,
     initializer: OwnedBoolWitnessClaimInit {
       witness_entry: fixture_witness_entry,
       witness_function: fixture_witness_function
@@ -144,18 +149,8 @@ fn fixture_bool_witness_record_empty_transport() -> OwnedDataDeclRecord {
   }
 }
 
-fn list_contains_string(xs: List<String>, needle: String) -> Bool {
-  fold_list(
-    xs: xs,
-    empty: false,
-    cons: fn(found, x) {
-      if found {
-        true
-      } else {
-        x == needle
-      }
-    }
-  )
+fn fixture_walk_leaf_fact(marked: List<String>) -> FloorMarkedSource {
+  FloorMarkedSource { repo_path: fixture_walk_leaf_path, marked: marked }
 }
 
 fn floor_discovery_rows_contain_entry_function(
@@ -190,6 +185,21 @@ fn floor_discovery_first_row_reads_substrate_only(rows: List<FloorDiscoveryRow>)
   }
 }
 
+// The refusal reason of a result, or "" for an accepted one: the red tests below assert on words.
+fn floor_discovery_refusal_reason_or_empty(result: FloorDiscoveryProducerResult) -> String {
+  match result {
+    FloorDiscoveryAccepted { rows: _ } => ""
+    FloorDiscoveryRefused { reason: reason } => reason
+  }
+}
+
+fn floor_discovery_accepted_with_row_count(result: FloorDiscoveryProducerResult, count: Int) -> Bool {
+  match result {
+    FloorDiscoveryAccepted { rows: rows } => length(xs: rows) == count
+    FloorDiscoveryRefused { reason: _ } => false
+  }
+}
+
 test fn floor_discovery_hand_rust_scaffold_binds_producer_authority() -> Bool {
   match floor_discovery_hand_rust_scaffold {
     Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
@@ -207,8 +217,8 @@ test fn floor_discovery_surface_text_scan_scaffold_on_carrier() -> Bool {
     Scaffold {
       dissolves_to: SingleAuthority,
       bind: DeclarationRef {
-        module_path: "v2.workflow.floor_naming_hygiene",
-        decl_name: "floor_discovery_scan_test_decl_names",
+        module_path: "v2.workflow.floor_discovery_source_authority",
+        decl_name: "floor_discovery_content_has_wire_contract_decl",
         field: WholeDeclaration
       }
     } => true
@@ -224,7 +234,8 @@ test fn floor_discovery_producer_owned_data_row_holds() -> Bool {
   match discover_floor_corpus_rows_from_host_facts(
     source_roots: [],
     exclude_substrings: [],
-    owned_data_records: [fixture_bool_witness_record()]
+    owned_data_records: [fixture_bool_witness_record()],
+    marked_sources: []
   ) {
     FloorDiscoveryAccepted { rows: rows } =>
       (length(xs: rows) == 1)
@@ -233,7 +244,7 @@ test fn floor_discovery_producer_owned_data_row_holds() -> Bool {
           entry: fixture_witness_entry,
           function: fixture_witness_function
         )
-        && (floor_discovery_first_row_label(rows: rows) == "floor_discovery_fixture")
+        && (floor_discovery_first_row_label(rows: rows) == fixture_bool_witness_decl_name)
         && floor_discovery_first_row_reads_substrate_only(rows: rows)
     FloorDiscoveryRefused { reason: _ } => false
   }
@@ -243,7 +254,8 @@ test fn floor_discovery_producer_empty_transport_red_control() -> Bool {
   match discover_floor_corpus_rows_from_host_facts(
     source_roots: [],
     exclude_substrings: [],
-    owned_data_records: [fixture_bool_witness_record_empty_transport()]
+    owned_data_records: [fixture_bool_witness_record_empty_transport()],
+    marked_sources: []
   ) {
     FloorDiscoveryAccepted { rows: _ } => false
     FloorDiscoveryRefused { reason: msg } =>
@@ -251,36 +263,116 @@ test fn floor_discovery_producer_empty_transport_red_control() -> Bool {
   }
 }
 
-test fn floor_discovery_scan_test_fn_decl_holds() -> Bool {
-  list_contains_string(
-    xs: floor_discovery_scan_test_decl_names(content: fixture_test_fn_content),
-    needle: fixture_witness_function
-  )
-}
-
-test fn floor_discovery_scan_test_data_decl_holds() -> Bool {
-  list_contains_string(
-    xs: floor_discovery_scan_test_decl_names(content: fixture_test_data_content),
-    needle: "floor_discovery_data_fixture"
-  )
-}
-
-test fn floor_discovery_sidecar_test_decl_misplaced_red_control() -> Bool {
-  match floor_discovery_test_decl_sidecar_violation(entry_path: fixture_misplaced_entry) {
-    Present { value: v } =>
-      (v.entry_path == fixture_misplaced_entry)
-        && string_contains(s: v.required_suffix, pattern: "_test.dag")
-    Absent => false
-  }
-}
-
-test fn floor_discovery_sidecar_test_decl_allowed_holds() -> Bool {
-  match floor_discovery_test_decl_sidecar_violation(
-    entry_path: "dag/test/claim/floor/floor_discovery_roster_fixture.dag"
+// MARKER SUPPLY, POSITIVE CONTROL: the walk reads the real directory, finds the real `.dag` file,
+// takes the supplied marked name for it and enrols exactly that declaration. The leaf's bytes
+// declare no test, so the row exists only because the fact was supplied.
+test fn floor_discovery_producer_walk_enrols_the_supplied_marked_name() -> Bool {
+  match discover_floor_corpus_rows_from_host_facts(
+    source_roots: [fixture_walk_root],
+    exclude_substrings: [],
+    owned_data_records: [],
+    marked_sources: [fixture_walk_leaf_fact(marked: [fixture_walk_leaf_function])]
   ) {
-    Absent => true
-    Present { value: _ } => false
+    FloorDiscoveryAccepted { rows: rows } =>
+      (length(xs: rows) == 1)
+        && floor_discovery_rows_contain_entry_function(
+          rows: rows,
+          entry: fixture_walk_leaf_path,
+          function: fixture_walk_leaf_function
+        )
+    FloorDiscoveryRefused { reason: _ } => false
   }
+}
+
+// ...and a supplied EMPTY list is an answer too: a file the parse found no test in enrols nothing and
+// refuses nothing, which is what separates it from the absent fact below.
+test fn floor_discovery_producer_walk_supplied_empty_fact_enrols_nothing() -> Bool {
+  floor_discovery_accepted_with_row_count(
+    result: discover_floor_corpus_rows_from_host_facts(
+      source_roots: [fixture_walk_root],
+      exclude_substrings: [],
+      owned_data_records: [],
+      marked_sources: [fixture_walk_leaf_fact(marked: [])]
+    ),
+    count: 0
+  )
+}
+
+// MARKER SUPPLY, RED: the same walk with NO fact for the file it reaches refuses, located at that
+// file, instead of reading the absence as an empty list of tests.
+test fn floor_discovery_producer_walk_absent_marker_fact_refuses_red_control() -> Bool {
+  let reason = floor_discovery_refusal_reason_or_empty(
+    result: discover_floor_corpus_rows_from_host_facts(
+      source_roots: [fixture_walk_root],
+      exclude_substrings: [],
+      owned_data_records: [],
+      marked_sources: []
+    )
+  )
+  string_contains(s: reason, pattern: "no marker fact was supplied")
+    && string_contains(s: reason, pattern: fixture_walk_leaf_path)
+}
+
+// MARKER SUPPLY, RED: two facts for one file is a supplier that disagrees with itself; the walk does
+// not pick one.
+test fn floor_discovery_producer_walk_duplicated_marker_fact_refuses_red_control() -> Bool {
+  let reason = floor_discovery_refusal_reason_or_empty(
+    result: discover_floor_corpus_rows_from_host_facts(
+      source_roots: [fixture_walk_root],
+      exclude_substrings: [],
+      owned_data_records: [],
+      marked_sources: [
+        fixture_walk_leaf_fact(marked: [fixture_walk_leaf_function]),
+        fixture_walk_leaf_fact(marked: [])
+      ]
+    )
+  )
+  string_contains(s: reason, pattern: "more than one marker fact was supplied")
+    && string_contains(s: reason, pattern: fixture_walk_leaf_path)
+}
+
+// MARKER SUPPLY, CONTROL: an excluded path needs no fact. The red above is therefore the absence of
+// the fact for a file the walk judges, not a blanket refusal of an empty supply.
+test fn floor_discovery_producer_walk_excluded_path_needs_no_marker_fact() -> Bool {
+  floor_discovery_accepted_with_row_count(
+    result: discover_floor_corpus_rows_from_host_facts(
+      source_roots: [fixture_walk_root],
+      exclude_substrings: ["floor_discovery_walk/leaf"],
+      owned_data_records: [],
+      marked_sources: []
+    ),
+    count: 0
+  )
+}
+
+// FILE-OR-DIRECTORY, RED: a path the host cannot list for any reason other than NotADirectory is a
+// located walk failure; a vanished root is never an empty directory.
+test fn floor_discovery_producer_walk_missing_root_refuses_red_control() -> Bool {
+  string_contains(
+    s: floor_discovery_refusal_reason_or_empty(
+      result: discover_floor_corpus_rows_from_host_facts(
+        source_roots: [fixture_walk_absent_root],
+        exclude_substrings: [],
+        owned_data_records: [],
+        marked_sources: []
+      )
+    ),
+    pattern: fixture_walk_absent_root
+  )
+}
+
+// FILE-OR-DIRECTORY, CONTROL: a regular file that is not a `.dag` module, reached through a real
+// directory, is listed, fails with NotADirectory, and is admitted as a file. No name says so.
+test fn floor_discovery_producer_walk_admits_a_non_module_file_by_the_host_kind() -> Bool {
+  floor_discovery_accepted_with_row_count(
+    result: discover_floor_corpus_rows_from_host_facts(
+      source_roots: [fixture_walk_non_module_root],
+      exclude_substrings: [],
+      owned_data_records: [],
+      marked_sources: []
+    ),
+    count: 0
+  )
 }
 
 test fn floor_discovery_equivalence_wire_contract_coproduct_scan_holds() -> Bool {
@@ -304,78 +396,6 @@ test fn floor_discovery_equivalence_misplaced_wire_contract_refuses_holds() -> B
         && string_contains(s: msg, pattern: fixture_misplaced_wire_contract_entry)
     Absent => false
   }
-}
-
-// The `*_test.dag` suffix is one half of a two-sided rule: a `test`-marked decl may live
-// ONLY in such a file (the misplaced-decl control above), and such a file must declare at
-// least ONE. Without this second half a witness file enrolls nothing and the floor reports
-// nothing missing -- discovery cannot distinguish "no witnesses here" from "no witnesses
-// authored yet", so the file is silently uncovered. Nine such files stood in tree.
-test fn floor_discovery_barren_test_sidecar_refuses_red_control() -> Bool {
-  match floor_discovery_barren_test_sidecar_refusal_for_content(
-    repo_path: fixture_barren_test_entry,
-    content: fixture_barren_test_content
-  ) {
-    Present { value: msg } =>
-      string_contains(s: msg, pattern: "test fn")
-        && string_contains(s: msg, pattern: fixture_barren_test_entry)
-    Absent => false
-  }
-}
-
-// The positive control: the SAME path with one authored test decl must be admitted, so the
-// row above discriminates on the decl scan rather than on the filename.
-test fn floor_discovery_populated_test_sidecar_admitted_holds() -> Bool {
-  match floor_discovery_barren_test_sidecar_refusal_for_content(
-    repo_path: fixture_barren_test_entry,
-    content: fixture_test_fn_content
-  ) {
-    Absent => true
-    Present { value: _ } => false
-  }
-}
-
-// The other direction: an ordinary module declaring no test decls is not barren -- the rule
-// is scoped to entries the sidecar suffix claims, never to the corpus at large.
-test fn floor_discovery_non_test_entry_is_never_barren_holds() -> Bool {
-  match floor_discovery_barren_test_sidecar_refusal_for_content(
-    repo_path: fixture_misplaced_entry,
-    content: fixture_barren_test_content
-  ) {
-    Absent => true
-    Present { value: _ } => false
-  }
-}
-
-test fn floor_discovery_barren_refusal_reason_carries_its_path_holds() -> Bool {
-  let msg = floor_discovery_sidecar_refusal_reason(violations: [
-    FloorDiscoverySidecarViolation {
-      entry_path: fixture_barren_test_entry,
-      kind: BarrenTestSidecar,
-      required_suffix: floor_test_sidecar_suffix
-    }
-  ])
-  string_contains(s: msg, pattern: fixture_barren_test_entry)
-    && string_contains(s: msg, pattern: "at least one")
-}
-
-test fn floor_discovery_sidecar_combined_refusal_reports_both_holds() -> Bool {
-  let msg = floor_discovery_sidecar_refusal_reason(violations: [
-    FloorDiscoverySidecarViolation {
-      entry_path: fixture_misplaced_entry,
-      kind: TestMarkedDecl,
-      required_suffix: floor_test_sidecar_suffix
-    },
-    FloorDiscoverySidecarViolation {
-      entry_path: fixture_misplaced_wire_contract_entry,
-      kind: WireContractDecl,
-      required_suffix: floor_wire_contract_sidecar_suffix
-    }
-  ])
-  string_contains(s: msg, pattern: "`test`-marked")
-    && string_contains(s: msg, pattern: fixture_misplaced_entry)
-    && string_contains(s: msg, pattern: "wire-contract decls")
-    && string_contains(s: msg, pattern: fixture_misplaced_wire_contract_entry)
 }
 
 test fn floor_discovery_live_tree_malformed_variant_refuses_red_control() -> Bool {
@@ -420,7 +440,7 @@ test fn floor_discovery_live_tree_disposition_note_sibling_not_declaration_holds
 
 test fn floor_discovery_equivalence_rust_tests_named() -> Bool {
   string_contains(
-    s: floor_discovery_equivalence_test_sidecar_misplaced,
+    s: floor_discovery_equivalence_wire_contract_misplaced,
     pattern: "misplaced_wire_contract_decl_drives_discover_to_err"
   ) && string_contains(
     s: floor_discovery_equivalence_test_scan_wire_contract,

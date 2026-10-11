@@ -8,6 +8,7 @@ import v2.workflow.floor_discovery_source_authority {
   floor_discovery_resolve_entry_live_tree,
   floor_discovery_walk_state_zero
 }
+import v2.workflow.floor_discovery_row { FloorMarkedSource }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.ci.ci_layer_roots { witness_discovery_scan_dirs }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -64,22 +65,33 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // joins, never tree-copied count literals (DESIGN §5 oracle rule): partition exactness,
 // exactly-once at identity grain, and every enrolled plan member joining exactly one row whose
 // class is a carried class (NativeRequired or NativeLiveObservation — a carried member never
-// classifies as blocked). Residue, declared: the floor also walks source-root *_test.dag files
-// outside these dirs; classifying that wider universe from .dag awaits the module-identity walk
-// (the same wider-universe residue the discovery flip note carries).
+// classifies as blocked). Residue, declared: the floor also walks test declarations in
+// source-root files outside these dirs; classifying that wider universe from .dag awaits the
+// module-identity walk (the same wider-universe residue the discovery flip note carries).
+//
+// THE MARKER SUPPLY IS UNDECIDED, AND THIS WITNESS IS RED BECAUSE OF IT. The walk enrols a test
+// declaration only from a SUPPLIED marker fact for its file (FloorMarkedSource), and nothing in the
+// interpreter supplies one for the files this census walks: a text scan would be the retired second
+// parser, and parsing ~1k files through v2's front end here is the cost the walk already declares
+// irreducible. With no supply the walk refuses at the first `.dag` file, typed and located,
+// `walk_loud` is false and the census fails -- never an empty roster read as green.
 
-// The bundle entry lives outside witness_discovery_scan_dirs and its home dir is not a test-row
-// home (floor_test_marked_decl_allowed_in_entry restricts row production to the enrolled discovery
-// dirs), so its file-grain disposition is derived by applying the walk's OWN resolution authority —
+// The bundle entry lives outside witness_discovery_scan_dirs and its home dir is not walked here
+// (the walk covers only the enrolled discovery dirs), so its file-grain disposition is derived by
+// applying the walk's OWN resolution authority —
 // floor_discovery_resolve_entry_live_tree over a real Filesystem.Read of the entry — never a
 // hand-supplied constant (review 50716) and never a second disposition parser.
+
+fn no_marked_sources() -> List<FloorMarkedSource> {
+  []
+}
 
 fn live_discovery_state() -> FloorDiscoveryWalkState {
   fold_list(
     xs: witness_discovery_scan_dirs,
     empty: floor_discovery_walk_state_zero(),
     cons: fn(acc, dir) {
-      floor_discovery_walk_dir(state: acc, dir_path: dir, exclude_substrings: [])
+      floor_discovery_walk_dir(state: acc, dir_path: dir, marked_sources: no_marked_sources(), exclude_substrings: [])
     }
   )
 }

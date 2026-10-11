@@ -20,7 +20,7 @@ import std.types { String, List }
 // class_b_declared_import_pool_roots (class_b_import_closure_transport_note already says so).
 // Because a witness entry's resolve context is driven by its ENTRY MODULE's whole transitive import
 // closure, not by which functions its test bodies actually call,
-// rust_test_fixtures_import_closure_witness_test.dag inherited git/git.inspect/ci_layer_roots's
+// rust_test_fixtures_import_closure_witness.dag inherited git/git.inspect/ci_layer_roots's
 // closures for free every time it imported the transport module to reach these two functions -- the
 // same signature as extdeps_scope_placement_gate_loudness_witness's 718-to-62-module repair.
 // class_b_import_closure_transport imports this module back for rows 1-2's own use (the relocated

@@ -12,7 +12,12 @@ import extdeps.github.action.download_artifact { download_artifact_v6_0_0, downl
 import extdeps.github.action.checkout { checkout_v4_4_0 }
 import extdeps.github.action.setup_rust_toolchain { setup_rust_toolchain_v1_16_0 }
 import extdeps.github.action.rust_cache { rust_cache_v2_9_1 }
-import v2.workflow.floor_naming_hygiene { floor_discovery_scan_test_decl_names }
+import v2.compiler.parse { parse_module }
+import v2.compiler.test_marker_capture { test_marker_capture }
+import v2.compiler.tokenize { prepare_lex_rules, tokenize_prepared }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { symbol_lexeme }
 import gunbc.action_use_admission {
   ActionUseAdmission, AdmittedExact, RefusedForcedSubstitution, RefusedByPlatform,
   RefusedUnmodeledPlatformDisposition, RefusedUnobservedDeclaration, RefusedConflictingDeclarations,
@@ -297,22 +302,55 @@ fn listed_workflow_files() -> List<String> {
 // close (review 69151): a lane adds a workflow, this claim reds, the author adds the NAME to the
 // roster, this claim greens -- and that file's `uses:` are admitted by nobody while a claim called
 // "has a census claim" reports success. That is a silent widen, so the third join below reads this
-// module's own test declarations through the floor's own scanner and requires the per-file claim to
-// exist, by the name the file derives. Adding a roster row without its claim now reds here.
+// module's own test-marked declarations and requires the per-file claim to exist, by the name the
+// file derives. Adding a roster row without its claim now reds here. The marked names come from the
+// canonical parse of this module's bytes and the marker channel (`v2.compiler.test_marker_capture`),
+// the same definition of a test the floor enrols by; no text is scanned for the word `test`.
 fn census_claim_name_for(file: String) -> String {
   join(["census_", replace(replace(replace(file, ".yaml", ""), ".yml", ""), "-", "_"), "_uses_are_modeled_and_executed_exactly"], "")
 }
 
 data census_claim_module_path: String = "dag/test/claim/action_use_admission_witness.dag"
 
+type CensusClaimDeclared
+  = CensusClaimDeclaredNames { names: List<String> }
+  | CensusClaimDeclaredRefused
+
+// Tokenize, parse and capture the marker channel of one module's source. Every stage that refuses
+// is a refusal here; there is no arm that reads an unparsed module as declaring no tests.
+fn census_claim_declared(source: String) -> CensusClaimDeclared {
+  let lm = dag_language_model()
+  match tokenize_prepared(text: source, file: ^action_use_admission_witness, prepared: prepare_lex_rules(rules: lm.lex)) {
+    Rejected { diagnostics: _ } => CensusClaimDeclaredRefused
+    Accepted { value: tokens, diagnostics: _ } =>
+      match parse_module(tokens: tokens, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => CensusClaimDeclaredRefused
+        Accepted { value: artifact, diagnostics: _ } =>
+          match test_marker_capture(tree: artifact.tree) {
+            Rejected { diagnostics: _ } => CensusClaimDeclaredRefused
+            Accepted { value: channel, diagnostics: _ } =>
+              CensusClaimDeclaredNames { names: map(channel.marked, m => symbol_lexeme(sym: m.name)) }
+          }
+      }
+  }
+}
+
+fn census_claim_declared_holds(declared: CensusClaimDeclared, files: List<String>) -> Bool {
+  match declared {
+    CensusClaimDeclaredRefused => false
+    CensusClaimDeclaredNames { names: names } =>
+      all(files, f => any(names, n => n == census_claim_name_for(file: f)))
+  }
+}
+
 test fn every_executed_workflow_file_has_a_census_claim_and_no_claim_names_a_missing_file() -> Bool {
   let listed = listed_workflow_files()
   let own_source = Filesystem.Read(path: census_claim_module_path, expect: ExpectSuccess)
-  let declared = floor_discovery_scan_test_decl_names(content: own_source.content)
+  let declared = census_claim_declared(source: own_source.content)
   ((listed |> count) == (realized_workflow_files |> count))
     && all(listed, name => any(realized_workflow_files, f => f == name))
     && all(realized_workflow_files, f => any(listed, name => name == f))
-    && all(realized_workflow_files, f => any(declared, n => n == census_claim_name_for(file: f)))
+    && census_claim_declared_holds(declared: declared, files: realized_workflow_files)
 }
 
 // THE COST STANDING NAMES THE FILE THIS CLAIM READS. gunbc.action_use_admission

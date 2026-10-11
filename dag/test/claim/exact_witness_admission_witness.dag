@@ -85,7 +85,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // live-anchored assertion cannot satisfy that clause because the machinery and the subject are the
 // same rows. THE HISTORICAL RECEIPT, past tense and no longer load-bearing: when this lane opened,
 // the bad state had exactly one live instance, measured on the pre-change tree -
-// seed_honesty_discharge_unavailable_test.dag, 8 of whose 9 functions had no probe row while the
+// seed_honesty_discharge_unavailable.dag, 8 of whose 9 functions had no probe row while the
 // file's classification named the whole file QuarantineProbeExpectRed, absorbed as
 // OfflineLocalRecipe by the test/claim/execution/ path policy so the Phase 0(b) orphan refusal
 // never saw them. Everywhere else the file-grain roster form or that refusal already covered it.

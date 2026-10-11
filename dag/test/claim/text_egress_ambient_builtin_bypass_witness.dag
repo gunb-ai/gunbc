@@ -21,7 +21,7 @@ import v2.std.text { String, string_eq }
 
 data no_pool_roots: List<String> = []
 data switched_module_files: List<String> = ["src/v2/compiler/emit_orchestration.dag"]
-data unswitched_module_files: List<String> = ["src/v2/workflow/floor_naming_hygiene.dag"]
+data unswitched_module_files: List<String> = ["src/v2/std/qualified_name.dag"]
 
 data ambient_text_builtins: List<String> = ["char_at", "string_length", "string_contains"]
 

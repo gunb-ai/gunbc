@@ -11,7 +11,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // The per-PR half of the lifecycle-carrier census: the selection MECHANISM, exercised on
 // synthetic rows, at zero corpus cost. The corpus half -- whose subject is the live tree's
-// breadth and which measures 18.4s -- is lifecycle_survivor_corpus_census_test.dag on the
+// breadth and which measures 18.4s -- is lifecycle_survivor_corpus_census.dag on the
 // falsifier long lane.
 //
 // This half is what keeps the corpus gate from being vacuous. That gate reports zero

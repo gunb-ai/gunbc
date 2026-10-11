@@ -4,7 +4,7 @@ import std.logic { Bool }
 import std.types { List, String }
 import std.materialization_ladder { string_list_contains }
 import gunbc.ci.ci_diff_policy { DiffMergeBase }
-import v2.std.collection { empty_map, map_insert }
+import v2.workflow.floor_discovery_row { FloorMarkedSource }
 import v2.workflow.floor_diff_observe {
   FloorUnifiedDiffResult,
   UnifiedDiffOk,
@@ -15,7 +15,6 @@ import v2.workflow.floor_diff_observe {
   FloorBaseTestDeclCensus,
   BaseTestDeclCensus,
   BaseTestDeclCensusRefused,
-  FloorShowObservation,
   floor_run_git_diff_unified,
   floor_run_git_diff_name_status,
   floor_observe_git_diff_unified_for_ci,
@@ -59,13 +58,18 @@ data base_census_present_path: String = "src/v2/test/claim/execution/floor_diff_
 data base_census_absent_path: String = "__gunbc_absent_declaration_census__.dag"
 data base_census_known_test_fn: String = "witness_present_path_yields_declared_test_fn_names"
 data base_census_unknown_test_fn: String = "witness_this_name_is_not_declared_in_this_file"
-data base_census_present_path_content: String = "test fn witness_present_path_yields_declared_test_fn_names() -> Bool {"
 
-// The three census controls exercise `floor_base_test_decl_census_from_listing`, the same
-// fold production uses after git returns. They do not call `ListTreePathsAtRevision` or
-// `Show` — those operations declare no hermetic `mock_response`, and a changed witness
-// that stops there never reaches a verdict. Production (`floor_run_base_test_decl_census`)
-// remains the git caller.
+fn base_census_fact(path: String, marked: List<String>) -> FloorMarkedSource {
+  FloorMarkedSource { repo_path: path, marked: marked }
+}
+
+// The census controls exercise `floor_base_test_decl_census_from_listing`, the same fold
+// production uses after the base tree listing returns. They do not call
+// `ListTreePathsAtRevision` -- that operation declares no hermetic `mock_response`, and a
+// changed witness that stops there never reaches a verdict. Production
+// (`floor_run_base_test_decl_census`) remains the listing caller. The marked names are SUPPLIED
+// values here exactly as they are in production: no content is shown and no text is scanned, so
+// a perturbation changes what is supplied and never bytes a scan would have to find.
 
 test fn witness_invalid_base_declaration_census_fails_closed() -> Bool {
   match floor_base_test_decl_census_from_listing(
@@ -74,7 +78,7 @@ test fn witness_invalid_base_declaration_census_fails_closed() -> Bool {
     listing_success: false,
     listing_stderr: "fatal: invalid object",
     paths_nul: "",
-    shows: empty_map()
+    base_marked: []
   ) {
     BaseTestDeclCensusRefused { reason: _ } => true
     BaseTestDeclCensus { rows: _ } => false
@@ -88,7 +92,7 @@ test fn witness_absent_path_at_valid_base_is_empty_not_refused() -> Bool {
     listing_success: true,
     listing_stderr: "",
     paths_nul: "",
-    shows: empty_map()
+    base_marked: []
   )
   match census {
     BaseTestDeclCensusRefused { reason: _ } => false
@@ -100,22 +104,35 @@ test fn witness_absent_path_at_valid_base_is_empty_not_refused() -> Bool {
   }
 }
 
-test fn witness_present_path_yields_declared_test_fn_names() -> Bool {
+// The listing decides presence: a fact supplied for a path the base tree does not list is not
+// evidence the path was declared there, so the answer stays empty names.
+test fn witness_listing_not_a_supplied_fact_decides_presence() -> Bool {
+  let census = floor_base_test_decl_census_from_listing(
+    base: "HEAD",
+    paths: [base_census_absent_path],
+    listing_success: true,
+    listing_stderr: "",
+    paths_nul: "",
+    base_marked: [base_census_fact(path: base_census_absent_path, marked: [base_census_known_test_fn])]
+  )
+  match census {
+    BaseTestDeclCensusRefused { reason: _ } => false
+    BaseTestDeclCensus { rows: _ } =>
+      count(floor_base_test_decl_names_for_path(
+        census: census,
+        path: base_census_absent_path
+      )) == 0
+  }
+}
+
+test fn witness_present_path_yields_supplied_marked_names() -> Bool {
   let census = floor_base_test_decl_census_from_listing(
     base: "HEAD",
     paths: [base_census_present_path],
     listing_success: true,
     listing_stderr: "",
     paths_nul: base_census_present_path,
-    shows: map_insert(
-      m: empty_map(),
-      key: base_census_present_path,
-      value: FloorShowObservation {
-        success: true,
-        content: base_census_present_path_content,
-        stderr: ""
-      }
-    )
+    base_marked: [base_census_fact(path: base_census_present_path, marked: [base_census_known_test_fn])]
   )
   match census {
     BaseTestDeclCensusRefused { reason: _ } => false
@@ -136,3 +153,39 @@ test fn witness_present_path_yields_declared_test_fn_names() -> Bool {
   }
 }
 
+// RED: a path the base tree lists with NO supplied fact refuses. The old shape read the file and
+// scanned it; an unobserved base is not an empty list of tests, so there is no arm that absorbs it.
+test fn witness_listed_path_without_a_marker_fact_refuses() -> Bool {
+  match floor_base_test_decl_census_from_listing(
+    base: "HEAD",
+    paths: [base_census_present_path],
+    listing_success: true,
+    listing_stderr: "",
+    paths_nul: base_census_present_path,
+    base_marked: []
+  ) {
+    BaseTestDeclCensusRefused { reason: reason } =>
+      string_contains(s: reason, pattern: "no marker fact was supplied")
+        && string_contains(s: reason, pattern: base_census_present_path)
+    BaseTestDeclCensus { rows: _ } => false
+  }
+}
+
+// RED: a supplier that names one path twice has no answer for it.
+test fn witness_listed_path_with_two_marker_facts_refuses() -> Bool {
+  match floor_base_test_decl_census_from_listing(
+    base: "HEAD",
+    paths: [base_census_present_path],
+    listing_success: true,
+    listing_stderr: "",
+    paths_nul: base_census_present_path,
+    base_marked: [
+      base_census_fact(path: base_census_present_path, marked: [base_census_known_test_fn]),
+      base_census_fact(path: base_census_present_path, marked: [])
+    ]
+  ) {
+    BaseTestDeclCensusRefused { reason: reason } =>
+      string_contains(s: reason, pattern: "more than one marker fact was supplied")
+    BaseTestDeclCensus { rows: _ } => false
+  }
+}

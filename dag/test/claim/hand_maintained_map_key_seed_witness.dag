@@ -9,7 +9,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // hand_maintained_map_key_required_type_names, fed as extra_seed_names into
 // v1.compiler.trait_derive_emit v1_map_key_required_type_names). This is the
 // declared complement to the USAGE-DERIVED half already covered by
-// map_key_derive_requirement_witness_test.dag: that witness proves a type
+// map_key_derive_requirement_witness.dag: that witness proves a type
 // reaching a Map<K,_> key position INSIDE the compiled .dag fixture earns
 // Eq+Hash; this one proves a type reaches the SAME requirement with NO map-key
 // usage anywhere in the fixture, purely because its declared name is on the

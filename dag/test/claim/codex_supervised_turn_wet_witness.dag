@@ -68,7 +68,7 @@ import extdeps.shell
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data witness_note: String = "WET BISECT REPRODUCTION (NOT ENROLLED WITNESSES). Bisect entrypoints are plain fn, not test fn — they cannot execute anywhere today (materialize leak on main) so enrolled-and-unrunnable would be false coverage (Phase 0(b) admission). Operator runs via gunbc run --function under MemoryMax caps on srv1 only. Hermetic coverage lives in codex_supervised_turn_witness_test.dag. Re-enroll through gunbc.explicit_witness_admission after materialize_codex_runtime_bundle is fixed."
+data witness_note: String = "WET BISECT REPRODUCTION (NOT ENROLLED WITNESSES). Bisect entrypoints are plain fn, not test fn — they cannot execute anywhere today (materialize leak on main) so enrolled-and-unrunnable would be false coverage (Phase 0(b) admission). Operator runs via gunbc run --function under MemoryMax caps on srv1 only. Hermetic coverage lives in codex_supervised_turn_witness.dag. Re-enroll through gunbc.explicit_witness_admission after materialize_codex_runtime_bundle is fixed."
 
 // Admission gate 2026-08-14: OfflineLocalRecipe exclusion + enrolled test fn produced
 // UnclassifiedPathDeferral (five rows, zero executing consumers). Fix: bisect arms are fn not test

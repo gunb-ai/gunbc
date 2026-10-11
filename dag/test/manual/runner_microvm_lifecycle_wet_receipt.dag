@@ -47,7 +47,7 @@ import gunbc.runner.runner_microvm_lifecycle_realize {
 //
 // WHERE IT RAN: srv1, over ssh, as root, with a locally built arm64 claim_batch. It needs root
 // because systemctl kill and the transient system units do; it is invoked by hand and is excluded
-// from the floor, exactly as test/manual/command_runner_local_argv_receipt_test.dag is and for the
+// from the floor, exactly as test/manual/command_runner_local_argv_receipt.dag is and for the
 // same reason.
 //
 // THE SHELL PAYLOADS ARE FIXTURES, NOT MODELLED SEMANTICS. `/bin/sh -c "trap '' TERM; sleep 600"`

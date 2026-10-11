@@ -118,9 +118,9 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 //
 // WHAT DOES EXECUTE ON EVERY PUSH IS THEREFORE NARROWER THAN THIS FILE ONCE CLAIMED, and the
 // correction matters more than the claim did. It is the evidence that does not touch ingest: the
-// coverage join in claim/complexity/accumulator_copy_corpus_path_test.dag, whose subject is the
+// coverage join in claim/complexity/accumulator_copy_corpus_path.dag, whose subject is the
 // join and whose inputs are rows, and the typed-read pair in
-// claim/complexity/accumulator_copy_unreadable_subject_test.dag, whose subject is the read arm.
+// claim/complexity/accumulator_copy_unreadable_subject.dag, whose subject is the read arm.
 // The ingest-priced predicates -- a planted copied accumulator caught through corpus_gate, a clean
 // fold that stays clean, a readable subject reaching the lens -- pass by execution under
 // claim_batch and are enrolled in nothing. That is the honest scope of this lane's claim.
@@ -191,7 +191,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // artifact that delivers only one half CONTRIBUTES to this trigger and does not retire it.
 //
 // UNTIL THEN the claim this lane makes is the cheap pair in
-// claim/complexity/accumulator_copy_corpus_path_test.dag, and it is stated at that grain: the lens
+// claim/complexity/accumulator_copy_corpus_path.dag, and it is stated at that grain: the lens
 // catches a planted copied accumulator and leaves a clean fold alone, over a population corpus_gate
 // discovers. What is NOT claimed is that the tracked corpus is free of copied accumulators. Reading
 // the absence of a red here as that verdict is the specific misreading this row exists to refuse.

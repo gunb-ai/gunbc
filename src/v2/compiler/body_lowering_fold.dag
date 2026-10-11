@@ -4232,15 +4232,13 @@ fn body_lower_fn_decl_named_member_wrap(arrow: Node, fn_name: Symbol, source: No
 // v2.compiler.test_marker_capture over the same parse tree, so the semantic member stays identical
 // to a plain fn's.
 //
-// TWO PRODUCERS OF TEST-NESS STAND TODAY, AND THIS NAMES BOTH RATHER THAN DROPPING ONE.
-// (1) The capture above, the compiler's. (2) The floor's witness universe, derived by
-// v2.workflow.floor_discovery_source_authority discover_floor_rows_for_source, a line scan for
-// `test fn ` / `test data ` over source text that deliberately neither parses nor resolves
-// (v2.workflow.floor_naming_hygiene names it a second parser). TRIGGER for converging it onto this
-// channel: the floor preparing a parse artifact for each discovered source, at which point discovery
-// reads the marks from that parse instead of rescanning the bytes. A third producer,
-// v2.workflow.realization_attempt's line-rewriting capture, was deleted in the change that added
-// this channel: its only reason was a grammar that could not parse the marker.
+// WHICH DECLARATIONS ARE TESTS IS ONE FACT, AND THE MARKER IS ITS ONLY SOURCE. The capture above is
+// the compiler's reading of it. The floor's witness universe
+// (v2.workflow.floor_discovery_source_authority discover_floor_rows_for_source) no longer rescans
+// source text for `test fn ` / `test data `: it takes each file's marked names as a SUPPLIED value
+// (v2.workflow.floor_discovery_row FloorMarkedSource), so no second reading of the text decides what
+// a test is. A line-rewriting capture, v2.workflow.realization_attempt's, was deleted in the change
+// that added this channel: its only reason was a grammar that could not parse the marker.
 fn body_lower_test_fn_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent => body_lower_wrapper_retained_shell(shell: shell)

@@ -46,7 +46,7 @@ fn value_null_split_body() -> List<MarkdownBlock> {
     ]),
     h2(text: "4. Phased landing (construction-first)"),
     tasks(items: [
-      task(state: Unchecked, text: "**Phase A (this lane):** plan + discriminating witnesses pinning carrier invariants (`value_null_split_witness_test.dag`); emitter row table above is authority for S2 emit."),
+      task(state: Unchecked, text: "**Phase A (this lane):** plan + discriminating witnesses pinning carrier invariants (`value_null_split_witness.dag`); emitter row table above is authority for S2 emit."),
       task(state: Unchecked, text: "**Phase B:** stop *producing* `Null` where the return type is `Optional<T>` — route `map_get`/`get`+Optional context through `map_lookup_as_optional` (keep raw `get` returning bare value + `Null` miss for `map_lookup_dual_dispatch` until typed overload lands)."),
       task(state: Unchecked, text: "**Phase C:** delete `match_pattern` `Null` bridges (`:2808–2834`) once no producer emits `Null` for Optional/Witness arms."),
       task(state: Unchecked, text: "**Phase D:** type-directed `None` literal → `optional_absent()` where inhabiting `Optional<_>`; migrate `== None` sites (~218) to `match Absent` or `optional_is_absent` helper."),
