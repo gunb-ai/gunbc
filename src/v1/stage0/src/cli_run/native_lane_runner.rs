@@ -2778,7 +2778,13 @@ const POPULATION_NOTHING_DETAIL: &str = "a parse over nothing is not a parse of 
 /// The lines of a population report worth quoting in a refusal: the report of a refused layout
 /// lists one line per refusal, so the whole of it would bury the control that failed.
 fn population_excerpt(text: &str) -> String {
-    let lines: Vec<&str> = text.lines().take(12).collect();
+    population_excerpt_lines(text, 12)
+}
+
+// A refused population is reported by the list of its members, so the excerpt of that verdict
+// carries every line (bounded only so a runaway report cannot flood a log).
+fn population_excerpt_lines(text: &str, limit: usize) -> String {
+    let lines: Vec<&str> = text.lines().take(limit).collect();
     format!(
         "{} (first {} line(s) of {} byte(s))",
         lines.join(" // "),
@@ -2879,9 +2885,11 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
     }
     let parse_live = run_cli_door(binary, &population_argv("parse-population", &live))?;
     if parse_live.status != Some(0) || !parse_live.stdout.starts_with(POPULATION_PARSES_HEAD) {
-        return Err(fail(
-            "NativePopulationParseDoesNotHoldOverTheLiveRoots",
-            &parse_live,
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativePopulationParseDoesNotHoldOverTheLiveRoots — status={:?} stdout={} stderr={}",
+            parse_live.status,
+            population_excerpt_lines(&parse_live.stdout, 2000),
+            population_excerpt(&parse_live.stderr)
         ));
     }
     eprintln!(
