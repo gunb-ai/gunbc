@@ -1105,14 +1105,14 @@ fn harness_placement_is_free(standing: ServingSessionResidency, session: Serving
 fn harness_note_owner_standing(acc: HarnessCandidates, session: ServingSessionRecord, launch: VllmEndpointProcessLaunch, engine: HarnessEngineReading) -> HarnessCandidates {
   match session {
     NoSessionRecord => acc
-    SessionRecord { owner_launch: owner, prefix_intact: _, prior_queries_field: _, prior_hits_field: _ } => {
+    SessionRecord { owner_launch: owner, prefix_intact: _, last_turn: _ } => {
       let key = vllm_endpoint_process_launch_key(launch: launch)
       if (owner as String) != (key as String) {
         acc
       } else {
         HarnessCandidates {
           candidates: acc.candidates, notes: acc.notes, retryable: acc.retryable, incarnations: acc.incarnations,
-          owner_standing: Present { value: serving_session_standing(record: session, current_launch: key, now: engine.prefix, host: HostTierUnread) },
+          owner_standing: Present { value: serving_session_standing(record: session, current_launch: key, host: HostTierUnread) },
         }
       }
     }

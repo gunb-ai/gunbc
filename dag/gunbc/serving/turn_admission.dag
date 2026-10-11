@@ -267,24 +267,27 @@ fn serving_admission_on_counts(
   }
 }
 
-// ── WARM SESSIONS: RESIDENCY IS OBSERVED ON A NAMED LAUNCH, NEVER READ FROM CONFIGURATION ─────
+// ── WARM SESSIONS: REUSE IS ATTRIBUTED TO A TURN, NEVER READ FROM ENGINE-WIDE COUNTERS ────────
 //
-// Prefix caching being ENABLED is a launch argument; a prefix being RESIDENT is a fact about one
-// running engine's cache, and only the engine's own counters (extdeps.vllm.metrics PrefixCacheQueries
-// and PrefixCacheHits, read as an interval -- prefix_cache_verdict refuses the lifetime ratio) say so.
-// So the standing is built only from an observation taken on the launch that owns the session, and an
-// interval with no lookups is UNREAD, not a miss and never a hit.
+// Prefix caching being ENABLED is a launch argument. Engine-wide counters (extdeps.vllm.metrics
+// PrefixCacheQueries and PrefixCacheHits) aggregate EVERY session on the launch, so an advance cannot
+// say whose prefix hit: session A's prefix evicted while session B hits advances the same counters.
+// They therefore never constitute a session's standing here. The evidence a session may stand on is
+// the engine's PER-REQUEST count returned with that session's own previous response (OpenAI-compatible
+// usage.prompt_tokens_details.cached_tokens; vLLM reports it only when the server is launched with
+// --enable-prompt-tokens-details, and an absent field is TurnReuseUnread, never zero).
 //
-// The five facts the earlier incumbency arm conflated are the inputs: last placement (owner), exact
-// current launch, prefix hit observed, prefix miss observed, prefix standing unread.
-// The counters travel as their exported fields and are compared for EQUALITY, never parsed (prometheus
-// switches to an exponent rendering past seven integer digits, which a parsed reader cannot read). A
-// counter is monotonic within one launch, so "advanced" is "the field differs from the prior reading".
-type ServingPrefixInterval
-  = PrefixIntervalRead { lookups_advanced: Bool, hits_advanced: Bool }
-  | PrefixIntervalUnread { obligation: NonEmptyStr }
+// EVEN AN ATTRIBUTED HIT IS REUSE AT THAT TURN, NOT CURRENT RESIDENCY: nothing guarantees retention
+// after the response, so the standing is a typed bet (DESIGN.md 4d) carrying its evidence --
+// ReusedAtTurn names cached_tokens, the launch it was observed on and the turn -- and no arm claims
+// the prefix is resident now. A lifetime-counter ratio is likewise refused (prefix_cache_verdict).
+type ServingTurnReuse
+  = TurnReuseRead { cached_tokens: Nat, launch: NonEmptyStr, turn: NonEmptyStr }
+  | TurnReuseUnread { obligation: NonEmptyStr }
 
-// The cumulative prefix-cache counters of ONE reading of the candidate launch.
+// The cumulative engine-wide prefix-cache counters of ONE reading of the candidate launch. WORKLOAD
+// CORROBORATION ONLY: the harness carries them on the engine reading; nothing here derives a session
+// standing from them (DECLARED FRONTIER: the capacity/workload reader is their consumer).
 type ServingPrefixFields
   = PrefixFieldsRead { queries_field: NonEmptyStr, hits_field: NonEmptyStr }
   | PrefixFieldsUnread { obligation: NonEmptyStr }
@@ -294,29 +297,23 @@ type ServingPrefixFields
 // assumed for a session nobody recorded.
 //
 // DECLARED FRONTIER (DESIGN.md 3c): the consumer of SessionRecord is the harness session store, which
-// records, per session, the owner launch key, the prior prefix-counter fields (this module's
-// ServingPrefixFields as read by harness_observe_engine_at) and prefix_intact (whether the next turn's
-// token prefix extends the last). Trigger: the first harness path that persists a session identity
-// across turns (the multi-turn agent-session seat). Until then the placement and residency arms are
-// exercised by the claims and by harness_collect_candidates' owner filter, and read Unread in production.
+// records, per session, the owner launch key, the usage.prompt_tokens_details.cached_tokens of the
+// session's own last response with the launch and turn it was served on (last_turn), and prefix_intact
+// (whether the next turn's token prefix extends the last). Trigger: the first harness path that
+// persists a session identity across turns (the multi-turn agent-session seat). Until then the
+// placement and residency arms are exercised by the claims and by harness_collect_candidates' owner
+// filter, and read Unread in production.
 type ServingSessionRecord
   = NoSessionRecord
-  | SessionRecord { owner_launch: NonEmptyStr, prefix_intact: Bool, prior_queries_field: NonEmptyStr, prior_hits_field: NonEmptyStr }
+  | SessionRecord { owner_launch: NonEmptyStr, prefix_intact: Bool, last_turn: ServingTurnReuse }
 
-fn serving_prefix_interval(prior_queries: NonEmptyStr, prior_hits: NonEmptyStr, now: ServingPrefixFields) -> ServingPrefixInterval {
-  match now {
-    PrefixFieldsUnread { obligation: o } => PrefixIntervalUnread { obligation: o }
-    PrefixFieldsRead { queries_field: q, hits_field: h } =>
-      PrefixIntervalRead { lookups_advanced: (q as String) != (prior_queries as String), hits_advanced: (h as String) != (prior_hits as String) }
-  }
-}
-
-// The production route: a record, the launch now answering, and one fresh counter reading.
-fn serving_session_standing(record: ServingSessionRecord, current_launch: NonEmptyStr, now: ServingPrefixFields, host: ServingHostTierStanding) -> ServingSessionResidency {
+// The production route: a record and the launch now answering. The record's own attributed evidence is
+// the only observation consulted.
+fn serving_session_standing(record: ServingSessionRecord, current_launch: NonEmptyStr, host: ServingHostTierStanding) -> ServingSessionResidency {
   match record {
     NoSessionRecord => ResidencyUnread { obligation: "no session record exists for this turn, so no prefix was ever placed whose residency could be read" as NonEmptyStr }
-    SessionRecord { owner_launch: o, prefix_intact: i, prior_queries_field: pq, prior_hits_field: ph } =>
-      serving_session_residency(owner_launch: o, current_launch: current_launch, prefix_intact: i, interval: serving_prefix_interval(prior_queries: pq, prior_hits: ph, now: now), host: host)
+    SessionRecord { owner_launch: o, prefix_intact: i, last_turn: t } =>
+      serving_session_residency(owner_launch: o, current_launch: current_launch, prefix_intact: i, last_turn: t, host: host)
   }
 }
 
@@ -332,19 +329,20 @@ type ServingMustReconstructCause
   | PrefixMissedAndNotRetained
 
 type ServingSessionResidency
-  = ResidentOnGpu
+  = ReusedAtTurn { cached_tokens: Nat, launch: NonEmptyStr, turn: NonEmptyStr }
   | HostRestorable
   | MustReconstruct { cause: ServingMustReconstructCause }
   | ResidencyUnread { obligation: NonEmptyStr }
 
-// ORDER IS THE LAW. A launch replacement or a broken token prefix voids every counter, because the
-// counters describe a cache that no longer holds this session's tokens -- so both are decided before
-// any hit is looked at, and a hit on a broken prefix cannot read warm.
+// ORDER IS THE LAW. A launch replacement or a broken token prefix voids the evidence, because it
+// describes a cache that no longer holds this session's tokens -- so both are decided before the
+// reuse reading is looked at. The reading must also have been taken on the owner launch itself: a
+// reading attributed to another launch is unread, not a hit.
 fn serving_session_residency(
   owner_launch: NonEmptyStr,
   current_launch: NonEmptyStr,
   prefix_intact: Bool,
-  interval: ServingPrefixInterval,
+  last_turn: ServingTurnReuse,
   host: ServingHostTierStanding,
 ) -> ServingSessionResidency {
   if owner_launch != current_launch {
@@ -352,18 +350,18 @@ fn serving_session_residency(
   } else if !prefix_intact {
     MustReconstruct { cause: TokenPrefixBroken }
   } else {
-    match interval {
-      PrefixIntervalUnread { obligation: o } => ResidencyUnread { obligation: o }
-      PrefixIntervalRead { lookups_advanced: q, hits_advanced: h } =>
-        if !q {
-          ResidencyUnread { obligation: "no prefix-cache lookups in the interval, so neither a hit nor a miss was observed" as NonEmptyStr }
-        } else if h {
-          ResidentOnGpu
+    match last_turn {
+      TurnReuseUnread { obligation: o } => ResidencyUnread { obligation: o }
+      TurnReuseRead { cached_tokens: n, launch: l, turn: t } =>
+        if l != owner_launch {
+          ResidencyUnread { obligation: "the reuse reading was attributed to a different launch than the session's owner" as NonEmptyStr }
+        } else if n > 0 {
+          ReusedAtTurn { cached_tokens: n, launch: l, turn: t }
         } else {
           match host {
             HostTierRetains => HostRestorable
             HostTierEmpty => MustReconstruct { cause: PrefixMissedAndNotRetained }
-            HostTierUnread => ResidencyUnread { obligation: "prefix missed on GPU and the host tier was not read" as NonEmptyStr }
+            HostTierUnread => ResidencyUnread { obligation: "prefix missed on GPU at its last turn and the host tier was not read" as NonEmptyStr }
           }
         }
     }
@@ -388,9 +386,9 @@ fn serving_session_placement(
 ) -> ServingSessionPlacement {
   match record {
     NoSessionRecord => PlacementFree
-    SessionRecord { owner_launch: owner, prefix_intact: _, prior_queries_field: _, prior_hits_field: _ } =>
+    SessionRecord { owner_launch: owner, prefix_intact: _, last_turn: _ } =>
       match residency {
-        ResidentOnGpu => serving_pin_to_owner(owner: owner, candidate: candidate_launch)
+        ReusedAtTurn { cached_tokens: _, launch: _, turn: _ } => serving_pin_to_owner(owner: owner, candidate: candidate_launch)
         HostRestorable => serving_pin_to_owner(owner: owner, candidate: candidate_launch)
         MustReconstruct { cause: _ } => PlacementFree
         ResidencyUnread { obligation: _ } => PlacementFree

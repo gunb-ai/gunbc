@@ -20,11 +20,11 @@ import gunbc.serving.turn_admission {
   AdmissibilityUnread,
   serving_group_admission, serving_admission_detail, serving_availability, serving_transition_cost,
   serving_opportunity_cost,
-  ServingPrefixInterval, PrefixIntervalRead, PrefixIntervalUnread, ServingHostTierStanding, HostTierRetains,
-  HostTierEmpty, HostTierUnread, ServingSessionResidency, ResidentOnGpu, HostRestorable, MustReconstruct,
+  ServingTurnReuse, TurnReuseRead, TurnReuseUnread, ServingHostTierStanding, HostTierRetains,
+  HostTierEmpty, HostTierUnread, ServingSessionResidency, ReusedAtTurn, HostRestorable, MustReconstruct,
   ResidencyUnread, TokenPrefixBroken, LaunchReplaced, PrefixMissedAndNotRetained,
   serving_session_residency, serving_session_placement, ServingSessionRecord, NoSessionRecord, SessionRecord,
-  ServingPrefixFields, PrefixFieldsRead, PrefixFieldsUnread, serving_prefix_interval, serving_session_standing,
+  ServingPrefixFields, PrefixFieldsRead, PrefixFieldsUnread, serving_session_standing,
   ServingSessionPlacement, PlacementFree, OwnedByAnotherReplica,
 }
 import gunbc.harness.harness_backend {
@@ -330,55 +330,74 @@ test fn a_route_holding_for_capacity_refuses_a_tolerant_turn_with_ceiling_to_spa
 }
 
 // ── WARM SESSION RESIDENCY ────────────────────────────────────────────────────────────────────
-fn residency_on(owner: String, current: String, intact: Bool, interval: ServingPrefixInterval, host: ServingHostTierStanding) -> ServingSessionResidency {
-  serving_session_residency(owner_launch: owner as NonEmptyStr, current_launch: current as NonEmptyStr, prefix_intact: intact, interval: interval, host: host)
+fn residency_on(owner: String, current: String, intact: Bool, turn: ServingTurnReuse, host: ServingHostTierStanding) -> ServingSessionResidency {
+  serving_session_residency(owner_launch: owner as NonEmptyStr, current_launch: current as NonEmptyStr, prefix_intact: intact, last_turn: turn, host: host)
 }
 
-test fn an_observed_hit_on_the_owning_launch_reads_resident() -> Bool {
-  match residency_on(owner: "L1", current: "L1", intact: true, interval: PrefixIntervalRead { lookups_advanced: true, hits_advanced: true }, host: HostTierUnread) {
-    ResidentOnGpu => true
+fn reuse(cached: Nat, launch: String) -> ServingTurnReuse {
+  TurnReuseRead { cached_tokens: cached, launch: launch as NonEmptyStr, turn: "t7" as NonEmptyStr }
+}
+
+// An attributed hit is reuse AT THAT TURN, carrying its evidence -- not residency now.
+test fn an_attributed_hit_on_the_owning_launch_reads_reused_at_turn() -> Bool {
+  match residency_on(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 512, launch: "L1"), host: HostTierUnread) {
+    ReusedAtTurn { cached_tokens: n, launch: l, turn: t } => n == 512 && (l as String) == "L1" && (t as String) == "t7"
     _ => false
   }
 }
 
-// THE DISCRIMINATING RED: hits were observed, and the token prefix is broken. It must reconstruct.
+// THE DISCRIMINATING RED (A-evicted / B-hit): session A's own last response reported zero cached tokens
+// (its prefix was evicted) while session B hit on the same launch, advancing the engine-wide counters.
+// The counters are not an input to residency at all, so A cannot read reused; the engine reading B
+// advanced is exercised on the production fold in serving_availability_bind_wet_witness_test.
+test fn an_evicted_session_does_not_inherit_a_neighbours_hit() -> Bool {
+  (match residency_on(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierUnread) {
+     ResidencyUnread { obligation: _ } => true
+     _ => false
+   })
+    && (match residency_on(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierEmpty) {
+          MustReconstruct { cause: PrefixMissedAndNotRetained } => true
+          _ => false
+        })
+}
+
+// A reading attributed to another launch is not evidence about the owner.
+test fn a_reading_from_a_different_launch_is_unread() -> Bool {
+  match residency_on(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 512, launch: "L2"), host: HostTierRetains) {
+    ResidencyUnread { obligation: _ } => true
+    _ => false
+  }
+}
+
 test fn a_broken_token_prefix_reads_must_reconstruct_even_with_hits() -> Bool {
-  match residency_on(owner: "L1", current: "L1", intact: false, interval: PrefixIntervalRead { lookups_advanced: true, hits_advanced: true }, host: HostTierRetains) {
+  match residency_on(owner: "L1", current: "L1", intact: false, turn: reuse(cached: 512, launch: "L1"), host: HostTierRetains) {
     MustReconstruct { cause: TokenPrefixBroken } => true
     _ => false
   }
 }
 
 test fn a_replaced_launch_reads_must_reconstruct() -> Bool {
-  match residency_on(owner: "L1", current: "L2", intact: true, interval: PrefixIntervalRead { lookups_advanced: true, hits_advanced: true }, host: HostTierRetains) {
+  match residency_on(owner: "L1", current: "L2", intact: true, turn: reuse(cached: 512, launch: "L1"), host: HostTierRetains) {
     MustReconstruct { cause: LaunchReplaced } => true
     _ => false
   }
 }
 
-// Configuration is not an observation: no lookups in the interval is unread, never warm.
-test fn an_interval_without_lookups_or_unread_counters_is_never_warm() -> Bool {
-  (match residency_on(owner: "L1", current: "L1", intact: true, interval: PrefixIntervalRead { lookups_advanced: false, hits_advanced: false }, host: HostTierRetains) {
-     ResidencyUnread { obligation: _ } => true
-     _ => false
-   })
-    && (match residency_on(owner: "L1", current: "L1", intact: true, interval: PrefixIntervalUnread { obligation: "no scrape" as NonEmptyStr }, host: HostTierRetains) {
-          ResidencyUnread { obligation: _ } => true
-          _ => false
-        })
+// Absent usage details (server not launched with them) is unread, never a miss or a hit.
+test fn an_unreported_turn_is_never_warm() -> Bool {
+  match residency_on(owner: "L1", current: "L1", intact: true, turn: TurnReuseUnread { obligation: "no prompt_tokens_details" as NonEmptyStr }, host: HostTierRetains) {
+    ResidencyUnread { obligation: _ } => true
+    _ => false
+  }
 }
 
 test fn a_gpu_miss_is_host_restorable_only_when_the_host_tier_retains() -> Bool {
-  (match residency_on(owner: "L1", current: "L1", intact: true, interval: PrefixIntervalRead { lookups_advanced: true, hits_advanced: false }, host: HostTierRetains) {
+  (match residency_on(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierRetains) {
      HostRestorable => true
      _ => false
    })
-    && (match residency_on(owner: "L1", current: "L1", intact: true, interval: PrefixIntervalRead { lookups_advanced: true, hits_advanced: false }, host: HostTierEmpty) {
+    && (match residency_on(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierEmpty) {
           MustReconstruct { cause: PrefixMissedAndNotRetained } => true
-          _ => false
-        })
-    && (match residency_on(owner: "L1", current: "L1", intact: true, interval: PrefixIntervalRead { lookups_advanced: true, hits_advanced: false }, host: HostTierUnread) {
-          ResidencyUnread { obligation: _ } => true
           _ => false
         })
 }
@@ -388,11 +407,11 @@ fn idle_admission() -> ServingGroupAdmission {
 }
 
 fn rec(owner: String) -> ServingSessionRecord {
-  SessionRecord { owner_launch: owner as NonEmptyStr, prefix_intact: true, prior_queries_field: "1.0" as NonEmptyStr, prior_hits_field: "1.0" as NonEmptyStr }
+  SessionRecord { owner_launch: owner as NonEmptyStr, prefix_intact: true, last_turn: reuse(cached: 512, launch: owner) }
 }
 
 test fn a_warm_session_is_pinned_to_its_owner_and_a_cold_one_is_not() -> Bool {
-  (match serving_session_placement(residency: ResidentOnGpu, record: rec(owner: "L1"), candidate_launch: "L2" as NonEmptyStr) {
+  (match serving_session_placement(residency: ReusedAtTurn { cached_tokens: 512, launch: "L1" as NonEmptyStr, turn: "t7" as NonEmptyStr }, record: rec(owner: "L1"), candidate_launch: "L2" as NonEmptyStr) {
      OwnedByAnotherReplica { owner: o } => (o as String) == "L1"
      _ => false
    })
@@ -408,22 +427,10 @@ test fn a_warm_session_is_pinned_to_its_owner_and_a_cold_one_is_not() -> Bool {
 
 // No record, no standing: nothing was placed whose residency could be read.
 test fn an_unrecorded_session_reads_unread_never_warm() -> Bool {
-  match serving_session_standing(record: NoSessionRecord, current_launch: "L1" as NonEmptyStr, now: PrefixFieldsRead { queries_field: "2.0" as NonEmptyStr, hits_field: "2.0" as NonEmptyStr }, host: HostTierRetains) {
+  match serving_session_standing(record: NoSessionRecord, current_launch: "L1" as NonEmptyStr, host: HostTierRetains) {
     ResidencyUnread { obligation: _ } => true
     _ => false
   }
-}
-
-// Counter FIELDS advance by inequality: equal queries is no lookup, unequal hits is a hit.
-test fn the_interval_is_read_from_counter_fields_by_equality() -> Bool {
-  (match serving_prefix_interval(prior_queries: "5.0" as NonEmptyStr, prior_hits: "2.0" as NonEmptyStr, now: PrefixFieldsRead { queries_field: "9.0" as NonEmptyStr, hits_field: "2.0" as NonEmptyStr }) {
-     PrefixIntervalRead { lookups_advanced: l, hits_advanced: h } => l && !h
-     _ => false
-   })
-    && (match serving_prefix_interval(prior_queries: "5.0" as NonEmptyStr, prior_hits: "2.0" as NonEmptyStr, now: PrefixFieldsUnread { obligation: "x" as NonEmptyStr }) {
-          PrefixIntervalUnread { obligation: _ } => true
-          _ => false
-        })
 }
 
 // INHABITANCE: the real producer emits the interval's field shape from a served body, both counters or
