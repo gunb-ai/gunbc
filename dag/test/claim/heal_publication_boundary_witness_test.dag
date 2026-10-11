@@ -99,7 +99,7 @@ fn observations_with(
   PublisherObservations {
     repository_full_name: "gunb-ai/gunbc",
     default_branch: "main",
-    candidate_producer_workflow_path: ".github/workflows/witnesses.yml",
+    candidate_producer_workflow_path: ".github/workflows/heal.yml",
     run: run,
     pull_request: pull,
     branch_head_sha: branch_head,
@@ -221,9 +221,31 @@ test fn witness_a_registered_workflow_projection_requires_an_author_commit() -> 
 // THE DECISIVE ARM FOR THE PERMIT RULE. The policy is main's registry; a path the branch might call
 // generated is refused when main's registry does not contain it.
 test fn witness_a_path_outside_mains_registry_is_refused() -> Bool {
-  match publisher_path_admission(policy: main_policy(), path: RepositoryPath { value: "src/v1/stage0/src/main.rs" }) {
+  match publisher_path_admission(policy: main_policy(), path: RepositoryPath { value: "src/v1/lib.rs" }) {
     PathAdmitted => false
     PathAdmissionRefused { refusal } => heal_publication_refusal_token(r: refusal) == "PathNotPublisherAdmitted"
+  }
+}
+
+// A STAGE0 MIRROR IS ADMITTED BY ITS DIRECTORY, because the seed's own regeneration round decides which
+// files there drift and the registry roster does not name the ~168 of them. Only a `.rs` DIRECTLY in the
+// directory: a nested path and another suffix stay refused.
+test fn witness_a_stage0_mirror_is_admitted_by_its_directory() -> Bool {
+  match publisher_path_admission(policy: main_policy(), path: RepositoryPath { value: "src/v1/stage0/src/main.rs" }) {
+    PathAdmitted => true
+    PathAdmissionRefused { refusal: _ } => false
+  }
+}
+
+test fn witness_a_nested_or_non_rust_path_under_the_mirror_directory_is_refused() -> Bool {
+  match publisher_path_admission(policy: main_policy(), path: RepositoryPath { value: "src/v1/stage0/src/bin/x.rs" }) {
+    PathAdmitted => false
+    PathAdmissionRefused { refusal: r1 } =>
+      match publisher_path_admission(policy: main_policy(), path: RepositoryPath { value: "src/v1/stage0/src/x.txt" }) {
+        PathAdmitted => false
+        PathAdmissionRefused { refusal: r2 } =>
+          heal_publication_refusal_token(r: r1) == "PathNotPublisherAdmitted" && heal_publication_refusal_token(r: r2) == "PathNotPublisherAdmitted"
+      }
   }
 }
 
