@@ -38,7 +38,7 @@ import extdeps.languages.json.emit {
 }
 import v2.std.collection { Present, Absent }
 import extdeps.units.iso8601_calendar {
-  iso8601_days_from_civil, iso8601_seconds_per_day, iso8601_seconds_per_hour,
+  Iso8601CivilDate, iso8601_days_from_civil, iso8601_seconds_per_day,
 }
 
 // REDIRECT URIS BELONG TO AN ENVIRONMENT, NOT A HOST (operator 2026-10-11). The binding is
@@ -200,35 +200,28 @@ data tracker_web_test_console_observed_redirect_uris: List<NonEmptyStr> = [
   "https://srv2.tailecbe08.ts.net:18082/auth/google/callback" as NonEmptyStr,
 ]
 
-type TrackerWebConsoleCivilClock {
-  year: Int
-  month: Int
-  day: Int
-  hour: Int
+type TrackerWebConsoleUtcInstant {
+  date: Iso8601CivilDate
+  since_midnight: Second
 }
 
-data tracker_web_test_console_readback_observed_at: TrackerWebConsoleCivilClock = TrackerWebConsoleCivilClock {
-  year: 2026,
-  month: 10,
-  day: 11,
-  hour: 4,
+data tracker_web_test_console_readback_observed_at: TrackerWebConsoleUtcInstant = TrackerWebConsoleUtcInstant {
+  date: Iso8601CivilDate { year: 2026, month: 10, day: 11 },
+  since_midnight: second(count: 4 * 60 * 60),
 }
 
-data tracker_web_test_console_readback_valid_until: TrackerWebConsoleCivilClock = TrackerWebConsoleCivilClock {
-  year: 2026,
-  month: 11,
-  day: 10,
-  hour: 4,
+data tracker_web_test_console_readback_valid_until: TrackerWebConsoleUtcInstant = TrackerWebConsoleUtcInstant {
+  date: Iso8601CivilDate { year: 2026, month: 11, day: 10 },
+  since_midnight: second(count: 4 * 60 * 60),
 }
 
-// Unix seconds at a UTC civil clock, via the ISO-8601 calendar (Hinnant days_from_civil),
-// not a transcribed epoch integer. The console receipt date is the civil triple; the
-// instrument is iso8601_days_from_civil. Inverse: iso8601_utc_text.
-fn tracker_web_test_console_readback_unix_int(at: TrackerWebConsoleCivilClock) -> Int {
-  iso8601_days_from_civil(y: at.year, m: at.month, d: at.day) * iso8601_seconds_per_day() + at.hour * iso8601_seconds_per_hour()
+// Unix seconds at a UTC civil date plus a duration since midnight, via the ISO-8601
+// calendar (Hinnant days_from_civil), not a transcribed epoch integer. Inverse: iso8601_utc_text.
+fn tracker_web_test_console_readback_unix_int(at: TrackerWebConsoleUtcInstant) -> Int {
+  iso8601_days_from_civil(y: at.date.year, m: at.date.month, d: at.date.day) * iso8601_seconds_per_day() + (second_count(s: at.since_midnight) as Int)
 }
 
-fn tracker_web_test_console_readback_unix_at(at: TrackerWebConsoleCivilClock) -> Second? {
+fn tracker_web_test_console_readback_unix_at(at: TrackerWebConsoleUtcInstant) -> Second? {
   match checked_int_to_nat(n: tracker_web_test_console_readback_unix_int(at: at)) {
     Present { value: n } => Present { value: second(count: n) }
     Absent => none
