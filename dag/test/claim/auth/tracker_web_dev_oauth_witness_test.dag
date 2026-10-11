@@ -1,6 +1,6 @@
 module test.claim.auth.tracker_web_dev_oauth_witness_test
 
-import std.types { Bool, String, CommitSha }
+import std.types { Bool, String, CommitSha, List }
 import v2.std.algebra { any }
 import std.goal_assessment { GoalSatisfied, GoalAssessmentRefused }
 import std.keyed_roster { KeyedRosterBuilt }
@@ -22,6 +22,7 @@ import gunbc.auth.tracker_web_oauth_client {
   TrackerWebOidcServeConfigured, TrackerWebOidcConsoleReadbackUnsatisfied,
   tracker_web_oidc_config_document,
   tracker_web_test_lab_redirect_uri, tracker_web_dev_oauth_client_secret_host_path,
+  tracker_web_dev_oidc_config_host_path,
   tracker_web_oauth_standing_for_environment,
   tracker_web_instance_environment, tracker_web_test_target_owned_domain,
   tracker_web_dev_oauth_client_secret_ref,
@@ -34,8 +35,11 @@ import gunbc.auth.tracker_web_oauth_client {
   tracker_web_oauth_frontier_rows,
 }
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
-import gunbc.live_deploy.emit { live_deploy_serve_unit_file }
+import gunbc.live_deploy.emit { live_deploy_serve_unit_file, apply_step_effects }
 import gunbc.live_deploy.desired { srv1_lab_desired_deployment, srv1_production_desired_deployment, selected_deployment_spec }
+import gunbc.live_deploy.spec { ArtifactStep, Dependency, OidcConfigArtifact }
+import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, apply_empty_host_effects }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan }
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
 import gunbc.roadmap_dashboard_instance { srv1_dashboard_lab_id, srv1_dashboard_live_id, srv2_deploy_dashboard_id }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
@@ -164,4 +168,34 @@ test fn console_readback_is_independent_and_expires() -> Bool {
       PathSubject { path: p } => p == (tracker_web_test_target_owned_domain as String)
       _ => false
     })
+}
+
+test fn lab_apply_identity_route_writes_oidc_config_file() -> Bool {
+  let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  let plan = deploy_witness_full_install_plan(spec: spec)
+  let effects = apply_empty_host_effects(spec: spec)
+  match filter(spec.steps, st => match st {
+    ArtifactStep { step: art } => match art.kind {
+      OidcConfigArtifact => true
+      _ => false
+    }
+    Dependency { step: _ } => false
+  }).first() {
+    Absent => false
+    Present { value: step } =>
+      let sh = pipeline_steps_text(steps: apply_step_effects(step: step, effects: effects, spec: spec, plan: plan))
+      string_contains(s: sh, pattern: tracker_web_dev_oidc_config_host_path as String)
+        && string_contains(s: sh, pattern: "0600")
+        && string_contains(s: sh, pattern: "gunbc-oidc-config.json")
+  }
+}
+
+test fn production_spec_has_no_oidc_config_artifact() -> Bool {
+  !any(selected_deployment_spec(row: srv1_production_desired_deployment()).steps, st => match st {
+    ArtifactStep { step: art } => match art.kind {
+      OidcConfigArtifact => true
+      _ => false
+    }
+    Dependency { step: _ } => false
+  })
 }

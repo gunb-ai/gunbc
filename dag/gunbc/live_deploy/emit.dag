@@ -114,8 +114,8 @@ import extdeps.systemd.unit_file {
 }
 import gunbc.live_deploy.member_identity {
   ReleaseEffectPlan, ConvergedMember, TreePublication, Executable, UnitFile, UnitManager, ServiceProcess,
-  DirectoryRoot, plan_mutation_of, mutation_is_keep, PlanMutationLookup, MutationInPlan, MemberNotInPlan,
-  plan_installs_executable, plan_publishes_tree, plan_writes_unit, plan_reloads_manager, plan_restarts_process,
+  DirectoryRoot, OidcConfigFile, plan_mutation_of, mutation_is_keep, PlanMutationLookup, MutationInPlan, MemberNotInPlan,
+  plan_installs_executable, plan_publishes_tree, plan_writes_unit, plan_writes_oidc_config, plan_reloads_manager, plan_restarts_process,
 }
 import extdeps.crypto.hash { digest_shell_verify_line, sha256sum_program, sha256_digest }
 import extdeps.virtualization.firecracker {
@@ -167,7 +167,7 @@ import gunbc.live_deploy.spec {
   EnsuredSubject, EnsuredPackage, EnsuredOwnershipMarker, ensured_subject_identity,
   deployment_directory_demands,
   DeploymentArtifactStep,
-  ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit,
+  ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit, OidcConfigArtifact,
   deployment_tailnet_door_socket, deployment_tailnet_door_unit_name, deployment_tailnet_door_function_suffix,
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
@@ -1272,6 +1272,7 @@ fn identity_member_of_step(step: DeploymentStep) -> ConvergedMember? {
       FabricStorageServeMapping => none
       ApprovalBrokerFrontDoor => none
       TailnetDoorServeUnit => none
+      OidcConfigArtifact => Present { value: OidcConfigFile }
     }
     Dependency { step: _ } => none
   }
@@ -1301,6 +1302,7 @@ fn step_renders_its_own_member_commands(step: DeploymentStep) -> Bool {
       UnitFile => true
       UnitManager => true
       ServiceProcess => true
+      OidcConfigFile => true
     }
   }
 }
@@ -1347,6 +1349,11 @@ fn apply_systemd_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevision
 fn apply_oidc_config_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   match tracker_web_oidc_serve_placement(instance_id: spec.instance_id) {
     TrackerWebOidcServeReady { config: cfg } => [
+      deploy_raw(command: install_directory_command(
+        mode: install_d_shared_mode,
+        path: path_parent_dir(path: cfg.config_path as String),
+        privileged: true,
+      )),
       deploy_raw(command: deploy_stage_write_command(
         stage_name: "gunbc-oidc-config.json",
         content: tracker_web_oidc_config_document(cfg: cfg),
@@ -2920,6 +2927,7 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
     UnitManager => []
     ServiceProcess => []
     DirectoryRoot { path: _ } => []
+    OidcConfigFile => if !plan_writes_oidc_config(plan: plan) { [] } else { apply_oidc_config_steps(spec: spec) }
   }
 }
 
@@ -2989,7 +2997,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         mode: install_file_shared_mode,
         dest: art.path as String,
       )),
-    ], concat(apply_oidc_config_steps(spec: spec), apply_approval_broker_unit_write_steps(spec: spec, revision: revision))), concat([
+    ], apply_approval_broker_unit_write_steps(spec: spec, revision: revision)), concat([
       deploy_effect(inv: systemctl_daemon_reload_effect()),
       deploy_effect(inv: systemctl_enable_effect(unit: spec.service.unit_name)),
       deploy_effect(inv: systemctl_restart_effect(unit: spec.service.unit_name)),
@@ -3102,6 +3110,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
       deployment_approval_broker_front_door_endpoints(),
       e => deploy_raw(command: shell_privileged_command_text_of_argv(argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: e)))),
     )
+    OidcConfigArtifact => apply_oidc_config_steps(spec: spec)
     DeployedTreeRemoteUnit => [
       apply_tree_remote_unit_write_step(spec: spec),
       deploy_raw(command: deploy_stage_install_command(
@@ -3236,6 +3245,9 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
     ServeBinary => [
       deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
     ]
+    OidcConfigArtifact => [
+      deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
+    ]
     GunbcSourceTree => concat(
       map(dispatch_root_refusal_paths(spec: spec), p => deploy_raw(command: rm_empty_directory_command(path: p))),
       [
@@ -3347,6 +3359,7 @@ fn apply_step_effects(
       UnitFile => emit_release_member_effects(member: member, plan: plan, spec: spec)
       UnitManager => emit_release_member_effects(member: member, plan: plan, spec: spec)
       ServiceProcess => emit_release_member_effects(member: member, plan: plan, spec: spec)
+      OidcConfigFile => emit_release_member_effects(member: member, plan: plan, spec: spec)
     }
     Absent => step_membership_effects(step: step, effects: effects, spec: spec, plan: plan)
   }

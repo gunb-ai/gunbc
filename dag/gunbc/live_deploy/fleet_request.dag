@@ -43,6 +43,8 @@ import gunbc.live_deploy.member_identity {
   UnitFileAt,
   UnitFileIdentity,
   RootAt,
+  OidcConfigFile,
+  OidcConfigAt,
   member_identity_member,
   decide_release_members,
   decision_label,
@@ -138,6 +140,7 @@ fn root_path_in_roster(roster: List<ConvergedMember>, path: NonEmptyStr) -> Bool
         UnitFile => false
         UnitManager => false
         ServiceProcess => false
+        OidcConfigFile => false
       }
     })
 }
@@ -152,6 +155,7 @@ fn replacement_is_foreign(target: ReleaseTarget, roster: List<ConvergedMember>, 
         ExecutableIdentity { digest: _ } => false
         UnitManagerAt { standing: _ } => false
         ProcessAt { process: _ } => false
+        OidcConfigAt { file: _ } => false
       }
     AlreadyConverged { member: _ } => false
     Create { member: _, to: _ } => false

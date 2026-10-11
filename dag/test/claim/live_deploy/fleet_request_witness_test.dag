@@ -18,6 +18,7 @@ import gunbc.live_deploy.member_identity {
   UnitFile,
   UnitManager,
   ServiceProcess,
+  OidcConfigFile,
   TreePublicationIdentity, UnitFileIdentity, ManagerLoadedCurrent,
   ProcessRunningRelease,
   DirectoryRootIdentity, DirectoryRootStanding, RootConverged, RootModeRepairable,
@@ -114,6 +115,7 @@ fn desired_for(m: ConvergedMember) -> MemberIdentity {
     UnitManager => desired_manager()
     ServiceProcess => desired_process()
     DirectoryRoot { path: _ } => desired_bin()
+    OidcConfigFile => desired_bin()
   }
 }
 
@@ -125,6 +127,7 @@ fn desired_for_unit(unit: NonEmptyStr, m: ConvergedMember) -> MemberIdentity {
     UnitManager => desired_manager()
     ServiceProcess => desired_process()
     DirectoryRoot { path: _ } => desired_bin()
+    OidcConfigFile => desired_bin()
   }
 }
 

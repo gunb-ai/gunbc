@@ -37,6 +37,11 @@ import gunbc.owned_directory {
   ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverNotSpawned, ObserverTransportRefused, ObserverExited,
 }
 import gunbc.live_deploy.emit { live_deploy_systemd_unit_for }
+import gunbc.auth.tracker_web_oauth_client {
+  tracker_web_oidc_serve_placement, tracker_web_oidc_config_document,
+  TrackerWebOidcServeReady, TrackerWebOidcPlacementUnassigned, TrackerWebOidcPlacementUnbound,
+  TrackerWebOidcPlacementMissingRealization,
+}
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
 import gunbc.live_deploy.readiness { live_deploy_healthz_get_for_port, healthz_release_identity_refusal, healthz_refusal_reason }
 import gunbc.roadmap_site_surface_types { HealthzEffectiveRead, HealthzBodyRead, HealthzProbeRefused }
@@ -47,10 +52,10 @@ import gunbc.live_deploy.deployed_tree_observation {
   DeployedScopeMatchesCommit, DeployedScopeDiverged,
 }
 import gunbc.live_deploy.member_identity {
-  ConvergedMember, TreePublication, Executable, UnitFile, UnitManager, ServiceProcess,
+  ConvergedMember, TreePublication, Executable, UnitFile, UnitManager, ServiceProcess, OidcConfigFile,
   TreePublicationIdentity, UnitFileIdentity, UnitManagerStanding, ManagerLoadedCurrent, ManagerNeedsReload,
   ServiceProcessIdentity, ProcessRunningRelease, ProcessNotRunning,
-  MemberIdentity, TreeIdentity, ExecutableIdentity, UnitFileAt, UnitManagerAt, ProcessAt,
+  MemberIdentity, TreeIdentity, ExecutableIdentity, UnitFileAt, UnitManagerAt, ProcessAt, OidcConfigAt, OidcConfigFileIdentity,
   ObservedMember, MemberObserved, MemberAbsentOnHost, MemberUnobservable,
   MemberDecision, MemberRefused, DesiredExecutableUnreadable, DesiredExecutableAbsent, DesiredIdentityIsForAnotherMember,
   decide_member, release_member_roster, MemberDecision, ConvergedMember, ReleaseTarget,
@@ -274,6 +279,45 @@ fn desired_unit_file(spec: DeploymentSpec, candidate: CandidateRelease) -> Membe
     unit: spec.service.unit_name,
     document: content_hash_atom(value: live_deploy_systemd_unit_for(spec: spec, revision: RevisionBoundAtEmission { revision: candidate.revision }) as NonEmptyStr),
   } }
+}
+
+fn observe_oidc_config_file(arm: ObservationArm, spec: DeploymentSpec) -> ObservedMember {
+  match tracker_web_oidc_serve_placement(instance_id: spec.instance_id) {
+    TrackerWebOidcPlacementUnassigned { instance_id: _ } => MemberAbsentOnHost { member: OidcConfigFile }
+    TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } => MemberAbsentOnHost { member: OidcConfigFile }
+    TrackerWebOidcPlacementMissingRealization { instance_id: _, environment: _ } => MemberAbsentOnHost { member: OidcConfigFile }
+    TrackerWebOidcServeReady { config: cfg } => {
+      let path = cfg.config_path as String
+      match entry_presence(arm: arm, path: path) {
+        EntryPresenceIndeterminate { cause } => MemberUnobservable { member: OidcConfigFile, cause: cause }
+        EntryAbsent => MemberAbsentOnHost { member: OidcConfigFile }
+        EntryPresent => match unit_document_leg(arm: arm, path: path) {
+          LegRefused { cause } => MemberUnobservable { member: OidcConfigFile, cause: cause }
+          LegOut { stdout: document } =>
+            MemberObserved { identity: OidcConfigAt { file: OidcConfigFileIdentity {
+              path: cfg.config_path,
+              document: content_hash_atom(value: document as NonEmptyStr),
+            } } }
+        }
+      }
+    }
+  }
+}
+
+fn desired_oidc_config_file(spec: DeploymentSpec) -> MemberIdentity {
+  match tracker_web_oidc_serve_placement(instance_id: spec.instance_id) {
+    TrackerWebOidcServeReady { config: cfg } =>
+      OidcConfigAt { file: OidcConfigFileIdentity {
+        path: cfg.config_path,
+        document: content_hash_atom(value: tracker_web_oidc_config_document(cfg: cfg) as NonEmptyStr),
+      } }
+    TrackerWebOidcPlacementUnassigned { instance_id: _ } =>
+      OidcConfigAt { file: OidcConfigFileIdentity { path: "/" as NonEmptyStr, document: content_hash_atom(value: "unassigned" as NonEmptyStr) } }
+    TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } =>
+      OidcConfigAt { file: OidcConfigFileIdentity { path: "/" as NonEmptyStr, document: content_hash_atom(value: "unbound" as NonEmptyStr) } }
+    TrackerWebOidcPlacementMissingRealization { instance_id: _, environment: _ } =>
+      OidcConfigAt { file: OidcConfigFileIdentity { path: "/" as NonEmptyStr, document: content_hash_atom(value: "missing-realization" as NonEmptyStr) } }
+  }
 }
 
 // THE MANAGER: systemd's own answer to whether the loaded unit matches the file on disk. The wire
@@ -520,9 +564,21 @@ fn desired_tree(candidate: CandidateRelease) -> MemberIdentity {
 // neither created nor read them back.
 fn deployment_member_roster(spec: DeploymentSpec) -> List<ConvergedMember> {
   concat(
-    release_member_roster(),
-    map(deployment_directory_demands(spec: spec), t => DirectoryRoot { path: owned_directory_path(t: t) as String as NonEmptyStr }),
+    concat(
+      release_member_roster(),
+      map(deployment_directory_demands(spec: spec), t => DirectoryRoot { path: owned_directory_path(t: t) as String as NonEmptyStr }),
+    ),
+    deployment_oidc_config_members(spec: spec),
   )
+}
+
+fn deployment_oidc_config_members(spec: DeploymentSpec) -> List<ConvergedMember> {
+  match tracker_web_oidc_serve_placement(instance_id: spec.instance_id) {
+    TrackerWebOidcServeReady { config: _ } => [OidcConfigFile]
+    TrackerWebOidcPlacementUnassigned { instance_id: _ } => []
+    TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } => []
+    TrackerWebOidcPlacementMissingRealization { instance_id: _, environment: _ } => []
+  }
 }
 
 // THE DIRECTORY'S METADATA, READ UNDER THE DEPLOY PRINCIPAL'S PINNED READ-ONLY GRANTS. A managed
@@ -628,6 +684,7 @@ fn desired_member_identity(
     UnitManager => desired_unit_manager()
     ServiceProcess => desired_service_process(candidate: candidate)
     DirectoryRoot { path } => RootAt { root: DirectoryRootIdentity { path: path, standing: RootConverged } }
+    OidcConfigFile => desired_oidc_config_file(spec: spec)
   }
 }
 
@@ -645,6 +702,7 @@ fn observed_member_on_host(
     UnitManager => observe_unit_manager(arm: arm, unit: spec.service.unit_name)
     ServiceProcess => observe_service_process(spec: spec, transport: transport)
     DirectoryRoot { path } => observe_owned_directory(arm: arm, spec: spec, path: path)
+    OidcConfigFile => observe_oidc_config_file(arm: arm, spec: spec)
   }
 }
 
