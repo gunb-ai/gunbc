@@ -82,14 +82,14 @@ test fn todays_slots_still_satisfy_our_own_floor() -> Bool {
 // The discriminating half: a label function collapsing two members would still render a plausible
 // refusal, surfacing only as an operator provisioning the wrong thing. Asserted as distinctness
 // across the whole closed set rather than by spot-checking one.
-test fn the_seven_guarantees_do_not_share_a_wire_word() -> Bool {
+test fn the_eight_guarantees_do_not_share_a_wire_word() -> Bool {
   let all = [
     FreshWritableRoot, PrivateProcessNamespace, PrivateNetworkNamespace,
-    PrivateUserNamespace, AttemptScopedSecrets, DefaultDenyEgress, DedicatedKernel,
+    PrivateUserNamespace, AttemptScopedSecrets, DefaultDenyEgress, DedicatedKernel, DedicatedDevice,
   ]
   let labels = map(all, g => isolation_guarantee_label(g: g))
-  (all |> count) == 7
-    && (labels |> count) == 7
+  (all |> count) == 8
+    && (labels |> count) == 8
     && !any(labels, a => (filter(labels, b => b == a) |> count) > 1)
 }
 

@@ -7,7 +7,7 @@ import product.fabric.identity { FabricIdentity }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef }
 import product.fabric.envelope { ResourceEnvelope, GpuRequirement }
-import product.fabric.isolation { IsolationProfile }
+import product.fabric.isolation { IsolationProfile, DedicatedDevice }
 import product.fabric.supply { SupplierOffer, OfferQuote, QuotedPerHour, QuotedSupply }
 import product.fabric.provider_route {
   ProviderRegionObservation, ProviderRouteStanding, ProviderRouteObserved, ProviderRouteRegionUnobserved,
@@ -21,23 +21,11 @@ import extdeps.gpu.types { Cuda }
 import extdeps.cloud.vast_ai { VastAiOffer }
 import extdeps.gpu.types { GpuRuntime }
 
-// VAST.AI AS A SUPPLIER: POLICY OVER extdeps.cloud.vast_ai, NOTHING RESTATED. The generic carriers
-// (SupplierOfferProjection, OfferBinding, ReadinessObservation) are consumed from the first supplier
-// binding rather than re-minted: they carry no Ubicloud fact.
-//
-// ROLE: Vast is used for BENCHMARK / QUALIFICATION rentals, and never to host a serving seat. An offer
-// is an independent host's ask whose reliability and verification vary per machine, which a repeatable
-// measurement run tolerates and a warm agent session does not. That is this repository's decision, so
-// it is here and not in the interface module (DESIGN §3).
-type VastAiRentalRole {
-  benchmark_qualification: Bool
-  serving_seat: Bool
-}
-
-data vast_ai_rental_role: VastAiRentalRole = VastAiRentalRole {
-  benchmark_qualification: true,
-  serving_seat: false,
-}
+// VAST.AI AS A SUPPLIER: BINDING OVER extdeps.cloud.vast_ai, NOTHING RESTATED AND NO POLICY. The generic
+// carriers (SupplierOfferProjection, OfferBinding, ReadinessObservation) are consumed from the first
+// supplier binding rather than re-minted: they carry no Ubicloud fact. An offer is an independent
+// host's ask whose reliability and verification vary per machine; a demand that cares says so on
+// its requirement, and the fabric screens and ranks on the offer's properties.
 
 // THE GPU COUNT IS THE OFFER'S num_gpus, CARRIED ON THE SHAPE (GpuRequirement.count): a Vast offer
 // is a whole machine rented whole, so 1x and 2x offers of one card are different shapes.
@@ -139,7 +127,8 @@ fn bind_vast_ai_offer<P>(
               shape: vast_ai_shape(offer: offer, runtime: runtime, threads: threads, min_vram: min_vram),
               capabilities: capabilities,
               trust_domain: trust_domain,
-              isolation: IsolationProfile { guarantees: [] },
+              // An offer is a rental of its num_gpus whole devices (docs.vast.ai search-offers), not a share of one.
+              isolation: IsolationProfile { guarantees: [DedicatedDevice] },
               quantity_bound: vast_ai_offer_quantity_bound,
               ready_at: ready_at,
               quote: vast_ai_quote(rate: rate),

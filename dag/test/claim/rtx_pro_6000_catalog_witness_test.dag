@@ -8,7 +8,7 @@ import extdeps.gpu.nvidia {
   nvidia_rtx_pro_6000_server_catalog,
 }
 import extdeps.pricing.hetzner_dedicated { hetzner_gex131_listed }
-import std.types { NonEmptyStr, String }
+import std.types { NonEmptyStr, String, List }
 import std.decl_ref { decl_ref, DeclarationRef }
 import std.measure { hardware_thread_count, byte_size, second, money_amount_micro, MoneyPerHour }
 import extdeps.currency.currency { Usd }
@@ -20,17 +20,21 @@ import extdeps.gpu.nvidia {
   rtx_pro_6000_server_cuda_core_standing, rtx_pro_6000_workstation_figure_citations,
   rtx_pro_6000_max_q_figure_citations, rtx_pro_6000_server_figure_citations,
 }
-import product.fabric.supply { unmet_shape_axes, OfferQuote, QuotedPerHour }
+import product.fabric.supply { unmet_shape_axes, OfferQuote, QuotedPerHour, SupplierOffer }
+import product.fabric.isolation { IsolationProfile, DedicatedDevice }
+import product.fabric.work { ExecutionRequirements, ControlPlaneCapacity }
+import product.fabric.selection { CandidateOffer }
+import test.claim.fabric.provider_use_fixture { fixture_admitted_for_offer, fixture_demand_for, fixture_work_for }
+import test.claim.fabric.selected_offer_fixture { bound, ranked }
 import product.supplier.ubicloud { ReadinessMeasured, OfferBound, OfferBindingRefused }
-import product.supplier.vast_ai { vast_ai_rental_role, bind_vast_ai_offer }
+import product.supplier.vast_ai { bind_vast_ai_offer }
 import product.supplier.packet_ai {
   bind_packet_ai_offer, PacketAiPoolGpuCount, CountFixedByPool, CountUnestablished,
-  packet_ai_tier_standing, PacketAiTierFact, TierNotEstablished, TierShared, TierWholeCard,
+  PacketAiTierFact, TierNotEstablished, TierShared, TierWholeCard,
   packet_ai_vram_unstated_obligation, packet_ai_pool_region,
 }
 import extdeps.cloud.packet_ai { PacketAiProduct, PacketAiRegion, PacketAiPool }
 import extdeps.cloud.vast_ai { VastAiOffer }
-import product.supplier.packet_ai { packet_ai_rental_role }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -55,14 +59,6 @@ test fn w_hetzner_max_q_string_resolves_to_row() -> Bool {
       gpu_description == "NVIDIA " + nvidia_rtx_pro_6000_max_q_catalog.model
     CpuOnly => false
   }
-}
-
-// Role split is supplier policy: Packet serves, Vast only qualifies.
-test fn w_roles_are_disjoint() -> Bool {
-  packet_ai_rental_role.serving_seat
-    && !packet_ai_rental_role.benchmark_qualification
-    && vast_ai_rental_role.benchmark_qualification
-    && !vast_ai_rental_role.serving_seat
 }
 
 data observed_region: NonEmptyStr = "observed-region-for-this-witness"
@@ -167,6 +163,7 @@ fn packet_pool(region: PacketAiRegion?) -> PacketAiPool {
 
 fn packet_binds_in(region: ProviderRegionObservation) -> String {
   match bind_packet_ai_offer(
+    tier: TierWholeCard,
     principal: "gunbc", executor: "gunbc", product: packet_product(vram: Present { value: 96 }),
     gpu_count: CountFixedByPool { gpus_per_instance: 2 },
     threads: hardware_thread_count(count: 16), billing_quantum: second(count: 3600),
@@ -204,6 +201,7 @@ fn packet_product(vram: Int?) -> PacketAiProduct {
 
 fn packet_quote(count: PacketAiPoolGpuCount) -> OfferQuote {
   match bind_packet_ai_offer(
+    tier: TierWholeCard,
     principal: "gunbc", executor: "gunbc", product: packet_product(vram: Present { value: 96 }), gpu_count: count,
     threads: hardware_thread_count(count: 16), billing_quantum: second(count: 3600),
     capabilities: "cap-1", trust_domain: "trust-1",
@@ -228,6 +226,7 @@ test fn w_packet_offer_price_scales_with_gpus_per_instance() -> Bool {
 
 fn packet_binds(count: PacketAiPoolGpuCount, vram: Int?) -> String {
   match bind_packet_ai_offer(
+    tier: TierWholeCard,
     principal: "gunbc", executor: "gunbc", product: packet_product(vram: vram), gpu_count: count,
     threads: hardware_thread_count(count: 16), billing_quantum: second(count: 3600),
     capabilities: "cap-1", trust_domain: "trust-1",
@@ -258,14 +257,6 @@ test fn w_packet_product_without_vram_refuses() -> Bool {
   packet_binds(count: CountFixedByPool { gpus_per_instance: 2 }, vram: none) == "refused"
 }
 
-test fn w_packet_tier_is_recorded_not_assumed() -> Bool {
-  match packet_ai_tier_standing() {
-    TierNotEstablished => true
-    TierShared => false
-    TierWholeCard => false
-  }
-}
-
 // Only the Server Edition page states the CUDA core count; the other two are an honest bet.
 test fn w_cuda_core_standing_is_cited_only_for_server() -> Bool {
   (match rtx_pro_6000_server_cuda_core_standing {
@@ -290,4 +281,111 @@ test fn w_figure_citation_lists_cover_the_cited_fields() -> Bool {
   count(rtx_pro_6000_workstation_figure_citations) == 3
     && count(rtx_pro_6000_max_q_figure_citations) == 3
     && count(rtx_pro_6000_server_figure_citations) == 4
+}
+
+
+// SUPPLIER-NEUTRAL TENANCY NEGOTIATION. Both offers are bound by their own supplier module with no
+// role and no policy (one-second billing quantum on both so the ranking compares rates, not rounding); what separates them is the isolation each OFFER states (Packet from its tier
+// fact, Vast as a whole-device rental) and the price. The requirement, not the supplier, decides.
+fn packet_offer(tier: PacketAiTierFact) -> SupplierOffer<NonEmptyStr>? {
+  match bind_packet_ai_offer(
+    tier: tier,
+    principal: "gunbc", executor: "gunbc", product: packet_product(vram: Present { value: 96 }),
+    gpu_count: CountFixedByPool { gpus_per_instance: 2 },
+    threads: hardware_thread_count(count: 16), billing_quantum: second(count: 1),
+    capabilities: "cap-1", trust_domain: "trust-1",
+    readiness: ReadinessMeasured { ready_at: "2026-10-11T00:00:00Z", receipt: "r1" },
+    region: a_read_region(), quoted_at: "2026-10-11T00:00:00Z",
+    valid_until: "2026-10-12T00:00:00Z", receipt: "r2",
+  ) {
+    OfferBound { bound: b } => Present { value: b.offer }
+    OfferBindingRefused { runs_on_label: _, cause: _ } => none
+  }
+}
+
+fn vast_offer_bound(rate_micro: Int) -> SupplierOffer<NonEmptyStr>? {
+  match bind_vast_ai_offer(
+    principal: "gunbc", executor: "gunbc", offer: vast_offer(gpus: 2),
+    threads: hardware_thread_count(count: 16), min_vram: byte_size(103079215104),
+    rate: MoneyPerHour { amount: money_amount_micro(count: rate_micro), currency: Usd },
+    billing_quantum: second(count: 1), capabilities: "cap-1", trust_domain: "trust-1",
+    readiness: ReadinessMeasured { ready_at: "2026-10-11T00:00:00Z", receipt: "r1" },
+    region: a_read_region(), quoted_at: "2026-10-11T00:00:00Z", valid_until: "2026-10-12T00:00:00Z",
+    receipt: "r2", key: "vast-offer-1",
+  ) {
+    OfferBound { bound: b } => Present { value: b.offer }
+    OfferBindingRefused { runs_on_label: _, cause: _ } => none
+  }
+}
+
+fn requirement_with(offer: SupplierOffer<NonEmptyStr>, isolation: IsolationProfile) -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: ControlPlaneCapacity,
+    shape: offer.shape,
+    capabilities: offer.capabilities,
+    trust_domain: offer.trust_domain,
+    isolation: isolation,
+  }
+}
+
+fn candidate_of(offer: SupplierOffer<NonEmptyStr>) -> List<CandidateOffer<NonEmptyStr>> {
+  bound(
+    offer: offer,
+    admission: fixture_admitted_for_offer(route: offer.route, offer: offer.id),
+    demand: fixture_demand_for(offer: offer.id),
+    work: fixture_work_for(offer: offer.id),
+  )
+}
+
+// The winner's offer key under the requirement, or "none".
+fn winner_key(packet: SupplierOffer<NonEmptyStr>, vast: SupplierOffer<NonEmptyStr>, isolation: IsolationProfile) -> String {
+  match first(ranked(
+    requirements: requirement_with(offer: vast, isolation: isolation),
+    candidates: concat(candidate_of(offer: packet), candidate_of(offer: vast)),
+  )) {
+    Absent => "none"
+    Present { value: w } => w.candidate.offer.id.key
+  }
+}
+
+fn tenancy_winner(packet_tier: PacketAiTierFact, vast_rate_micro: Int, isolation: IsolationProfile) -> String {
+  match packet_offer(tier: packet_tier) {
+    Absent => "unbound"
+    Present { value: packet } =>
+      match vast_offer_bound(rate_micro: vast_rate_micro) {
+        Absent => "unbound"
+        Present { value: vast } => winner_key(packet: packet, vast: vast, isolation: isolation)
+      }
+  }
+}
+
+fn dedicated_tenancy() -> IsolationProfile {
+  IsolationProfile { guarantees: [DedicatedDevice] }
+}
+
+fn sharing_tolerated() -> IsolationProfile {
+  IsolationProfile { guarantees: [] }
+}
+
+// RED: a qualification-shaped requirement (dedicated device) excludes the shared Packet offer BEFORE
+// ranking even though it is the CHEAPER one (378c vs 4.00 USD/h), so the dearer dedicated Vast offer wins.
+test fn w_dedicated_requirement_excludes_shared_packet_before_cost() -> Bool {
+  tenancy_winner(packet_tier: TierShared, vast_rate_micro: 4000000, isolation: dedicated_tenancy()) == "vast-offer-1"
+}
+
+// A pool whose tier nobody established does not provide dedicated tenancy either.
+test fn w_dedicated_requirement_excludes_unestablished_tier() -> Bool {
+  tenancy_winner(packet_tier: TierNotEstablished, vast_rate_micro: 4000000, isolation: dedicated_tenancy()) == "vast-offer-1"
+}
+
+// CONTROL: a whole-card Packet pool provides DedicatedDevice, so both are admitted and cost ranks.
+test fn w_dedicated_requirement_admits_whole_card_packet_and_ranks_by_cost() -> Bool {
+  tenancy_winner(packet_tier: TierWholeCard, vast_rate_micro: 4000000, isolation: dedicated_tenancy()) == "RTX 6000 Pro 96GB"
+}
+
+// CONTROL: a requirement that tolerates sharing admits both and ranks by cost: cheaper Packet wins,
+// and when Vast is the cheaper one it wins instead.
+test fn w_sharing_tolerant_requirement_ranks_both_by_cost() -> Bool {
+  tenancy_winner(packet_tier: TierShared, vast_rate_micro: 4000000, isolation: sharing_tolerated()) == "RTX 6000 Pro 96GB"
+    && tenancy_winner(packet_tier: TierShared, vast_rate_micro: 1000000, isolation: sharing_tolerated()) == "vast-offer-1"
 }
