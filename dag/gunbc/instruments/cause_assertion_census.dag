@@ -42,7 +42,7 @@ fn cause_source_observation(path: String) -> CauseSourceObservation {
 
 fn cause_source_observation_from_content(path: String, source: String) -> CauseSourceObservation {
   let observation = parsed_import_observation_live(file: path, source: source)
-  if any(observation.tokens, token => token.class == ^ShUnknown) {
+  if observation.tokens |> any(token => token.class == ^ShUnknown) {
     CauseSourceLexicalRefused { path: path }
   } else { match observation.imports {
     ImportStatementParseRefused { cause: cause } =>
@@ -248,7 +248,7 @@ fn cause_join_declaration(
     Present { value: rows } => rows
     Absent => []
   }
-  let scoped = filter(candidates, d => d.module_path == source.module
+  let scoped = candidates |> filter(d => d.module_path == source.module
     || cause_name_is_known(names: source.import_modules, spelling: d.module_path)
     || cause_name_is_known(names: source.import_members, spelling: cause_declaration_key(declaration: d)))
   let selected = if count(scoped) == 0 { candidates } else { scoped }
