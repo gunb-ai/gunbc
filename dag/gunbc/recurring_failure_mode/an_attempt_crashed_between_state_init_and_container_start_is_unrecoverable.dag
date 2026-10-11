@@ -18,7 +18,7 @@ data an_attempt_crashed_between_state_init_and_container_start_is_unrecoverable:
   ],
 
   evidence: [
-    DeclarationRef { module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_session_container_create", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_created_session_cleanup_detail", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_session_container_create", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_created_session_cleanup_detail", field: WholeDeclaration },
   ],
 }

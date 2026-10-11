@@ -12,7 +12,7 @@ data a_dispatch_is_gated_on_main_not_its_admitted_candidate: RecurringFailureMod
   receipts: [
     "INVALID STATE: a lab or development dispatch is admitted or refused against origin/main (or refs/heads/main) rather than against the instance's own admitted candidate identity. HARM: a lab cannot run the revision it was admitted to serve, or it mutates from a trunk it did not select; restoring universal main-only does not discharge the declared restoration (gunbc.rung_drop fleet_converge_named_revision_and_branch). DESIGN section 3d: selection of the candidate must be consumed at use.",
 
-    "OCCURRENCE, 2026-10-11, srv1 workspace bring-up findings ledger F63 (ledger v3 numbering; later additions are F60+), review cause F, live, operator review of source pinned to main at acc218340ed6e24a9ad06c550a5494307d0320bb. isolated_dashboard_instance (gunbc.roadmap.roadmap_dashboard_instance) takes source_anchor_ref as a parameter but hardcodes dispatch_base_ref to origin/main, so srv1_lab_dashboard_instance dispatches against origin/main while its served anchor is a different ref. Fixed on lab-dev with refs/gunbc/srv1-lab-admitted; that repair is not on this pin. Companion of F04: the operator allowed branch development operations; binding revision and branch to an admitted identity is the restoration. Roadmap leaf cc-selection-to-use.",
+    "OCCURRENCE, 2026-10-11, srv1 workspace bring-up findings ledger F63 (ledger v3 numbering; later additions are F60+), review cause F, live, operator review of source pinned to main at acc218340ed6e24a9ad06c550a5494307d0320bb. isolated_dashboard_instance (gunbc.roadmap_dashboard_instance) takes source_anchor_ref as a parameter but hardcodes dispatch_base_ref to origin/main, so srv1_lab_dashboard_instance dispatches against origin/main while its served anchor is a different ref. Fixed on lab-dev with refs/gunbc/srv1-lab-admitted; that repair is not on this pin. Companion of F04: the operator allowed branch development operations; binding revision and branch to an admitted identity is the restoration. Roadmap leaf cc-selection-to-use.",
 
     "DISTINGUISHING FACTS: this is not privileged WIF remaining equality-pinned at reviewed main (explicitly not the rung-drop population). It is not a FreshFromBase continuation. The class is lab/dev dispatch keyed to trunk instead of the instance's admitted ref. RUNG FOUND AT: mitigatable (dispatch refuses or runs the wrong tree, loudly if noticed). CEILING: structurally guaranteed -- dispatch_base_ref vs admitted ref is a modeled pair. NEXT TRIGGER: a lab instance whose admitted candidate is not main dispatches against that candidate, and a red is a lab whose dispatch_base_ref is still origin/main while its admitted ref is not.",
 
@@ -20,7 +20,7 @@ data a_dispatch_is_gated_on_main_not_its_admitted_candidate: RecurringFailureMod
   ],
 
   evidence: [
-    DeclarationRef { module_path: "gunbc.roadmap.roadmap_dashboard_instance", decl_name: "isolated_dashboard_instance", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.roadmap.roadmap_dashboard_instance", decl_name: "srv1_lab_dashboard_instance", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.roadmap_dashboard_instance", decl_name: "isolated_dashboard_instance", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.roadmap_dashboard_instance", decl_name: "srv1_lab_dashboard_instance", field: WholeDeclaration },
   ],
 }
