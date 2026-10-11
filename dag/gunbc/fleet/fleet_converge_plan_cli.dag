@@ -206,7 +206,8 @@ import gunbc.fleet_converge_plan {
 import extdeps.git
 import gunbc.live_deploy.apply { live_deploy_apply_prod_role_operator_local_wet }
 import gunbc.live_deploy.spec { deployment_plan_host_identity }
-import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.desired { prod_role_desired_deployment, ProdRoleDeploymentSelected, ProdRoleDeploymentRefused, selected_deployment_spec }
+import gunbc.roadmap_dashboard_instance { prod_role_realization_refusal_detail }
 import gunbc.output_policy { ExpectSuccess }
 import gunbc.repository { gunbc_repository }
 import gunbc.running_release_identity { release_revision_text_valid }
@@ -1393,16 +1394,21 @@ fn fleet_converge_operator_cli_dispatch(
       } else if mode == fleet_converge_operator_mode_plan {
         fleet_converge_local_plan_wet(scope: scope)
       } else if mode == fleet_converge_operator_mode_deploy {
-        let deploy_host = deployment_plan_host_identity(spec: deployment_spec_srv1())
-        if trim(s: host) != deploy_host {
-          exit_failure(reason: join(["gunbc converge: DeployHostMismatch — the dashboard deployment is homed on ", deploy_host, " and this process runs on ", trim(s: host), "; run the deploy there"], ""))
-        } else {
-          let branch = trim(s: git.Core.CurrentBranch().branch)
-          if !fleet_converge_deploy_branch_admits(observed: branch, required: candidate_branch) {
-            exit_failure(reason: join(["gunbc converge: DeployBranchRefused — the checkout is on '", branch, "' and --candidate-branch requires '", trim(s: candidate_branch), "'; the candidate is HEAD of this checkout, so switch branches or name this one explicitly"], ""))
-          } else {
-            live_deploy_apply_prod_role_operator_local_wet()
-          }
+        match prod_role_desired_deployment() {
+          ProdRoleDeploymentRefused { cause: cause } =>
+            exit_failure(reason: join(["gunbc converge: DeployHolderRefused — ", prod_role_realization_refusal_detail(cause: cause)], ""))
+          ProdRoleDeploymentSelected { deployment: deployment } =>
+            let deploy_host = deployment_plan_host_identity(spec: selected_deployment_spec(row: deployment))
+            if trim(s: host) != deploy_host {
+              exit_failure(reason: join(["gunbc converge: DeployHostMismatch — the dashboard deployment is homed on ", deploy_host, " and this process runs on ", trim(s: host), "; run the deploy there"], ""))
+            } else {
+              let branch = trim(s: git.Core.CurrentBranch().branch)
+              if !fleet_converge_deploy_branch_admits(observed: branch, required: candidate_branch) {
+                exit_failure(reason: join(["gunbc converge: DeployBranchRefused — the checkout is on '", branch, "' and --candidate-branch requires '", trim(s: candidate_branch), "'; the candidate is HEAD of this checkout, so switch branches or name this one explicitly"], ""))
+              } else {
+                live_deploy_apply_prod_role_operator_local_wet()
+              }
+            }
         }
       } else if mode == fleet_converge_operator_mode_apply {
         if trim(s: plan_run_id) == "" || trim(s: plan_hash) == "" {
