@@ -1,10 +1,10 @@
 module test.claim.materialization_store_local_wet_witness
 
-import std.judgment_contract { identity_structural_component }
+import std.judgment_contract { identity_structural_component, identity_digest_component }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Bool, Int, List, String, NonEmptyStr }
-import std.content_hash { ContentHash, Fnv1a64Structural, content_hash_atom }
+import std.content_hash { ContentHash, Fnv1a64Structural, content_hash_atom, sha256_hex_digest, as_content_hash_cryptographic, as_content_hash_structural }
 import std.materialization_provider {
   DeclaredInput, ArtifactRequest, ArtifactManifest,
   UniverseArtifactRequest, NativeModuleVerdictBundleRequest, NativeModuleVerdictBundleSubject,
@@ -90,20 +90,33 @@ fn h(v: String) -> Fnv1a64Structural {
   content_hash_atom(value: v as NonEmptyStr)
 }
 
+// A FIXTURE DIGEST OF THE ADMITTED FAMILY, SUPPLIED RATHER THAN COMPUTED: the label's structural
+// fingerprint written four times. Distinct labels give distinct digests, which is all a fixture
+// input needs, and the value is never offered as the SHA-256 of anything. The store ADDRESS of a
+// request built from these is still derived for real by every operation in this file.
+fn fixture_digest(v: String) -> ContentHash {
+  let seed = content_hash_atom(value: v as NonEmptyStr)
+  let quad = join([seed.digest as String, seed.digest as String, seed.digest as String, seed.digest as String], "")
+  match sha256_hex_digest(hex: quad) {
+    Present { value: digest } => as_content_hash_cryptographic(digest: digest)
+    Absent => as_content_hash_structural(structural: seed)
+  }
+}
+
 fn bundle_req(module: String) -> ArtifactRequest {
   NativeModuleVerdictBundleRequest(NativeModuleVerdictBundleSubject {
-    route_binary_identity: h(v: "route-binary-1"),
-    module_identity: h(v: module),
-    canonical_module_import_closure_identity: h(v: "closure-1"),
-    ordered_test_identity_population: h(v: "t1,t2"),
-    eval_interpretation_identity: h(v: "eval-1")
+    route_binary_identity: fixture_digest(v: "route-binary-1"),
+    module_identity: fixture_digest(v: module),
+    canonical_module_import_closure_identity: fixture_digest(v: "closure-1"),
+    ordered_test_identity_population: fixture_digest(v: "t1,t2"),
+    eval_interpretation_identity: fixture_digest(v: "eval-1")
   })
 }
 
 fn universe_req() -> ArtifactRequest {
   UniverseArtifactRequest {
-    tested_tree_identity: h(v: "tree-1"),
-    route_binary: DeclaredInput { ref: "route_binary_identity", component: identity_structural_component(digest: h(v: "route-binary-1")) }
+    tested_tree_identity: fixture_digest(v: "tree-1"),
+    route_binary: DeclaredInput { ref: "route_binary_identity", component: identity_digest_component(hash: fixture_digest(v: "route-binary-1")) }
   }
 }
 
