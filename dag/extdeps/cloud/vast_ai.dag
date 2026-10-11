@@ -16,6 +16,10 @@ import extdeps.uri { Uri, Https }
 // GPU architecture (e.g. nvidia, amd)"). It is optional here because an offer that omits it states no
 // architecture; absence is an unread fact, not NVIDIA.
 //
+// is_bid marks an interruptible (bid-priced) offer: search-offers `type` is ondemand | bid | reserved and
+// bid "may be interrupted if outbid", so an interruptible offer is a different availability fact from an
+// on-demand one. Absence is an unread fact.
+//
 // NUMBER-SHAPED FIELDS ARE JSON NUMBERS: dph_total (dollars per hour), gpu_ram (MB per GPU) and
 // gpu_mem_bw (GB/s) arrive as floats. std has no Float-to-Int route, so a consumer cannot mint money
 // from dph_total by coercion; it must receive the rate as an explicit parameter (see the supplier).
@@ -68,6 +72,7 @@ type VastAiOffer {
   geolocation: String
   rentable: Bool
   rented: Bool
+  is_bid: Bool?
 }
 
 type VastAiOffers {

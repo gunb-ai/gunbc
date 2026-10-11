@@ -50,6 +50,18 @@ fn vast_ai_runtime_refusal(offer: VastAiOffer) -> DeclarationRef {
   }
 }
 
+// DedicatedDevice is stated only for an offer OBSERVED on-demand (is_bid false): an offer lists num_gpus
+// devices rented to one tenant (docs.vast.ai search-offers; gpu_frac is the fraction of the machine
+// offered, not a share of a device). A bid offer "may be interrupted if outbid" and an unread is_bid
+// states nothing; both provide no tenancy guarantee, and interruption stays a separate availability fact.
+fn vast_ai_isolation(offer: VastAiOffer) -> IsolationProfile {
+  match offer.is_bid {
+    Present { value: bid } =>
+      if bid { IsolationProfile { guarantees: [] } } else { IsolationProfile { guarantees: [DedicatedDevice] } }
+    Absent => IsolationProfile { guarantees: [] }
+  }
+}
+
 fn vast_ai_shape(offer: VastAiOffer, runtime: GpuRuntime, threads: HardwareThreadCount, min_vram: ByteSize) -> Shape {
   Shape {
     hard: HardRequirements { threads: threads },
@@ -127,8 +139,7 @@ fn bind_vast_ai_offer<P>(
               shape: vast_ai_shape(offer: offer, runtime: runtime, threads: threads, min_vram: min_vram),
               capabilities: capabilities,
               trust_domain: trust_domain,
-              // An offer is a rental of its num_gpus whole devices (docs.vast.ai search-offers), not a share of one.
-              isolation: IsolationProfile { guarantees: [DedicatedDevice] },
+              isolation: vast_ai_isolation(offer: offer),
               quantity_bound: vast_ai_offer_quantity_bound,
               ready_at: ready_at,
               quote: vast_ai_quote(rate: rate),

@@ -21,7 +21,7 @@ import extdeps.gpu.nvidia {
   rtx_pro_6000_max_q_figure_citations, rtx_pro_6000_server_figure_citations,
 }
 import product.fabric.supply { unmet_shape_axes, OfferQuote, QuotedPerHour, SupplierOffer }
-import product.fabric.isolation { IsolationProfile, DedicatedDevice }
+import product.fabric.isolation { IsolationProfile, DedicatedDevice, unsatisfied_isolation_guarantees }
 import product.fabric.work { ExecutionRequirements, ControlPlaneCapacity }
 import product.fabric.selection { CandidateOffer }
 import test.claim.fabric.provider_use_fixture { fixture_admitted_for_offer, fixture_demand_for, fixture_work_for }
@@ -30,10 +30,10 @@ import product.supplier.ubicloud { ReadinessMeasured, OfferBound, OfferBindingRe
 import product.supplier.vast_ai { bind_vast_ai_offer }
 import product.supplier.packet_ai {
   bind_packet_ai_offer, PacketAiPoolGpuCount, CountFixedByPool, CountUnestablished,
-  PacketAiTierFact, TierNotEstablished, TierShared, TierWholeCard,
+  PacketAiTierFact, packet_ai_tier, TierNotEstablished, TierShared, TierWholeCard,
   packet_ai_vram_unstated_obligation, packet_ai_pool_region,
 }
-import extdeps.cloud.packet_ai { PacketAiProduct, PacketAiRegion, PacketAiPool }
+import extdeps.cloud.packet_ai { PacketAiProduct, PacketAiRegion, PacketAiPool, PacketAiStorefrontProduct }
 import extdeps.cloud.vast_ai { VastAiOffer }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -74,12 +74,21 @@ fn vast_offer_arch(gpus: Int, arch: String?) -> VastAiOffer {
     id: 1, machine_id: 2, gpu_name: "RTX PRO 6000 S", num_gpus: gpus, gpu_ram: 97887.0,
     gpu_total_ram: 195774.0, gpu_mem_bw: 1597.0, compute_cap: 1200, gpu_arch: arch, cpu_cores_effective: 16.0,
     cpu_ram: 128000.0, disk_space: 500.0, dph_total: 3.2, reliability: 0.99,
-    verification: "verified", geolocation: "US", rentable: true, rented: false,
+    verification: "verified", geolocation: "US", rentable: true, rented: false, is_bid: Present { value: false },
   }
 }
 
 fn vast_offer(gpus: Int) -> VastAiOffer {
   vast_offer_arch(gpus: gpus, arch: Present { value: "nvidia" })
+}
+
+fn vast_offer_bid(bid: Bool?) -> VastAiOffer {
+  VastAiOffer {
+    id: 1, machine_id: 2, gpu_name: "RTX PRO 6000 S", num_gpus: 2, gpu_ram: 97887.0,
+    gpu_total_ram: 195774.0, gpu_mem_bw: 1597.0, compute_cap: 1200, gpu_arch: Present { value: "nvidia" },
+    cpu_cores_effective: 16.0, cpu_ram: 128000.0, disk_space: 500.0, dph_total: 3.2, reliability: 0.99,
+    verification: "verified", geolocation: "US", rentable: true, rented: false, is_bid: bid,
+  }
 }
 
 fn hourly() -> MoneyPerHour {
@@ -163,7 +172,7 @@ fn packet_pool(region: PacketAiRegion?) -> PacketAiPool {
 
 fn packet_binds_in(region: ProviderRegionObservation) -> String {
   match bind_packet_ai_offer(
-    tier: TierWholeCard,
+    storefront: storefront_for(tier: TierWholeCard),
     principal: "gunbc", executor: "gunbc", product: packet_product(vram: Present { value: 96 }),
     gpu_count: CountFixedByPool { gpus_per_instance: 2 },
     threads: hardware_thread_count(count: 16), billing_quantum: second(count: 3600),
@@ -191,6 +200,15 @@ test fn w_packet_pool_without_region_refuses() -> Bool {
     )) == "bound"
 }
 
+// The vendor's storefront row for the product; the tier is what its `allocation` string says.
+fn storefront_for(tier: PacketAiTierFact) -> PacketAiStorefrontProduct? {
+  match tier {
+    TierWholeCard => Present { value: PacketAiStorefrontProduct { id: "p1", name: "RTX 6000 Pro 96GB", allocation: "dedicated", gpuCount: 2 } }
+    TierShared => Present { value: PacketAiStorefrontProduct { id: "p1", name: "RTX 6000 Pro 96GB", allocation: "dynamic", gpuCount: 2 } }
+    TierNotEstablished => none
+  }
+}
+
 fn packet_product(vram: Int?) -> PacketAiProduct {
   PacketAiProduct {
     id: "p1", name: "RTX 6000 Pro 96GB", featured: true, poolIds: [1], pricePerHourCents: 189,
@@ -201,7 +219,7 @@ fn packet_product(vram: Int?) -> PacketAiProduct {
 
 fn packet_quote(count: PacketAiPoolGpuCount) -> OfferQuote {
   match bind_packet_ai_offer(
-    tier: TierWholeCard,
+    storefront: storefront_for(tier: TierWholeCard),
     principal: "gunbc", executor: "gunbc", product: packet_product(vram: Present { value: 96 }), gpu_count: count,
     threads: hardware_thread_count(count: 16), billing_quantum: second(count: 3600),
     capabilities: "cap-1", trust_domain: "trust-1",
@@ -226,7 +244,7 @@ test fn w_packet_offer_price_scales_with_gpus_per_instance() -> Bool {
 
 fn packet_binds(count: PacketAiPoolGpuCount, vram: Int?) -> String {
   match bind_packet_ai_offer(
-    tier: TierWholeCard,
+    storefront: storefront_for(tier: TierWholeCard),
     principal: "gunbc", executor: "gunbc", product: packet_product(vram: vram), gpu_count: count,
     threads: hardware_thread_count(count: 16), billing_quantum: second(count: 3600),
     capabilities: "cap-1", trust_domain: "trust-1",
@@ -289,7 +307,7 @@ test fn w_figure_citation_lists_cover_the_cited_fields() -> Bool {
 // fact, Vast as a whole-device rental) and the price. The requirement, not the supplier, decides.
 fn packet_offer(tier: PacketAiTierFact) -> SupplierOffer<NonEmptyStr>? {
   match bind_packet_ai_offer(
-    tier: tier,
+    storefront: storefront_for(tier: tier),
     principal: "gunbc", executor: "gunbc", product: packet_product(vram: Present { value: 96 }),
     gpu_count: CountFixedByPool { gpus_per_instance: 2 },
     threads: hardware_thread_count(count: 16), billing_quantum: second(count: 1),
@@ -388,4 +406,36 @@ test fn w_dedicated_requirement_admits_whole_card_packet_and_ranks_by_cost() -> 
 test fn w_sharing_tolerant_requirement_ranks_both_by_cost() -> Bool {
   tenancy_winner(packet_tier: TierShared, vast_rate_micro: 4000000, isolation: sharing_tolerated()) == "RTX 6000 Pro 96GB"
     && tenancy_winner(packet_tier: TierShared, vast_rate_micro: 1000000, isolation: sharing_tolerated()) == "vast-offer-1"
+}
+
+fn vast_provides_dedicated(bid: Bool?) -> Bool {
+  match bind_vast_ai_offer(
+    principal: "gunbc", executor: "gunbc", offer: vast_offer_bid(bid: bid),
+    threads: hardware_thread_count(count: 16), min_vram: byte_size(103079215104), rate: hourly(),
+    billing_quantum: second(count: 1), capabilities: "cap-1", trust_domain: "trust-1",
+    readiness: ReadinessMeasured { ready_at: "2026-10-11T00:00:00Z", receipt: "r1" },
+    region: a_read_region(), quoted_at: "2026-10-11T00:00:00Z", valid_until: "2026-10-12T00:00:00Z",
+    receipt: "r2", key: "vast-offer-1",
+  ) {
+    OfferBound { bound: b } =>
+      (unsatisfied_isolation_guarantees(required: dedicated_tenancy(), provided: b.offer.isolation) |> count) == 0
+    OfferBindingRefused { runs_on_label: _, cause: _ } => false
+  }
+}
+
+// RED: an interruptible (bid) or unread-is_bid Vast offer provides no dedicated tenancy; on-demand does.
+test fn w_vast_dedicated_only_when_observed_on_demand() -> Bool {
+  vast_provides_dedicated(bid: Present { value: false })
+    && !vast_provides_dedicated(bid: Present { value: true })
+    && !vast_provides_dedicated(bid: none)
+}
+
+// RED: a storefront row naming another product, or an unrecognised allocation, is not an established tier.
+test fn w_packet_tier_is_read_from_the_wire_or_unestablished() -> Bool {
+  let product = packet_product(vram: Present { value: 96 })
+  let other = PacketAiStorefrontProduct { id: "p2", name: "other", allocation: "dedicated", gpuCount: 2 }
+  let odd = PacketAiStorefrontProduct { id: "p1", name: "RTX 6000 Pro 96GB", allocation: "weird", gpuCount: 2 }
+  (match packet_ai_tier(product: product, storefront: Present { value: other }) { TierNotEstablished => true TierShared => false TierWholeCard => false })
+    && (match packet_ai_tier(product: product, storefront: Present { value: odd }) { TierNotEstablished => true TierShared => false TierWholeCard => false })
+    && (match packet_ai_tier(product: product, storefront: none) { TierNotEstablished => true TierShared => false TierWholeCard => false })
 }

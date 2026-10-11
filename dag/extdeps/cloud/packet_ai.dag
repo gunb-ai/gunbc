@@ -92,6 +92,18 @@ type PacketAiProduct {
   regions: List<PacketAiRegion>
 }
 
+// THE STOREFRONT ROW (GET /api/products, NOT launch-options) IS WHERE THE VENDOR STATES TENANCY: its
+// `allocation` is "dedicated or dynamic. Read off the product's pools where the platform reports them:
+// dynamic when every pool shares its GPUs, dedicated when none does; otherwise the stored value."
+// launch-options products carry no allocation, so a consumer joins the two by product name. gpuCount
+// is the storefront's per-product GPU count.
+type PacketAiStorefrontProduct {
+  id: String
+  name: String
+  allocation: String
+  gpuCount: Int
+}
+
 service packet_ai.LaunchOptions {
   config {
     endpoint: packet_ai_api_base
