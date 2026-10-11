@@ -76,3 +76,26 @@ fn repository_module_file_of_path(path: String) -> Optional<ModuleFileRef> {
     HeadAbsent => optional_absent()
   }
 }
+
+// The governed tree a command-line source-root argument denotes: the argument is the tree's own
+// directory, spelled relative to the repository root or under any parent, with or without a trailing
+// separator. The trees are the policy's (gunbc.source_layout), so the directory names are read from
+// it and are not spelled again here. An argument that denotes no governed tree is Absent and the door
+// refuses it; a directory is never guessed to be a tree by what it contains.
+fn repository_root_argument_names_tree(tree: SourceRootRef, argument: String) -> Bool {
+  let directory = repository_tree_directory(tree: tree)
+  let trimmed =
+    if argument.ends_with(suffix: "/") {
+      substring(s: argument, start: 0, end: string_length(s: argument) - 1)
+    } else {
+      argument
+    }
+  (trimmed == directory) || trimmed.ends_with(suffix: concat("/", directory))
+}
+
+fn repository_tree_of_root_argument(argument: String) -> Optional<SourceRootRef> {
+  match list_head(xs: filter(xs: [V2Tree, DagTree], predicate: fn(tree) { repository_root_argument_names_tree(tree: tree, argument: argument) })) {
+    HeadFound { value: tree } => optional_present(value: tree)
+    HeadAbsent => optional_absent()
+  }
+}

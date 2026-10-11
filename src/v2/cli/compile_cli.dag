@@ -5,18 +5,25 @@ import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
 import extdeps.process.gnu_bash_exit { exit_code_misuse }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.self_host.closure_emission {
-  closure_census_refusals_json,
   closure_emission_first_refusal,
   closure_emission_json,
   closure_emission_refused_count,
   emit_closure_from_ingest_located
 }
-import v2.compiler.source_authority {
-  SourceRootIngest,
-  SourceRootIngestFromFilesBuilt,
-  SourceRootIngestFromFilesUnrecognizedRoot,
-  source_root_ingest_from_files
+import v2.compiler.source_authority { SourceRootIngest }
+import v2.compiler.module_acquisition {
+  AcquisitionNotVerified,
+  AcquisitionVerified,
+  BoundModulesListed,
+  BoundModulesRefused,
+  SourceRootBinding,
+  VerifiedAcquisition,
+  acquire_verified,
+  acquisition_host_directory,
+  acquisition_ingest,
+  enumerate_bound_modules
 }
+import v2.cli.repository_layout { repository_storage_layout, repository_tree_of_root_argument }
 import v2.cli.if_arm_reader_differential {
   IardCensus,
   IardCensusTaken,
@@ -24,12 +31,12 @@ import v2.cli.if_arm_reader_differential {
   if_arm_reader_differential,
   if_arm_reader_differential_text
 }
-import gunbc.source_root_read { source_root_read, SourceRootFilesRead, SourceRootFilesRefused }
 import v2.extdeps.languages.c { c_target_model }
 import v2.extdeps.languages.rust { rust_target_model }
 import v2.extdeps.languages.swift { swift_target_model }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.algebra { fold_list, length, list_reverse }
+import v2.std.cross_tree.import_model { SourceRootRef }
 
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected, diagnostics_fatal, diagnostics_fatal_reason }
 import v2.std.lens_verdict {
@@ -72,14 +79,17 @@ import v2.std.text { String }
 // population is something this entry does rather than a side effect of being bigger.
 //
 // The native entry binds extdeps.filesystem.filesystem_io Filesystem, whose operations already
-// emit through v1.compiler.emit_rust emit_file_call. gunbc.source_root_read owns the traversal,
-// sorts the observed paths, and reads them through FilesystemExactRead. Neither an unsuccessful
-// listing nor a failed read can become an empty ingest. The legacy free filesystem_read helper
-// is not this door's transport: its content-only contract cannot carry a typed read refusal.
+// emit through v1.compiler.emit_rust emit_file_call. v2.compiler.module_acquisition owns the
+// acquisition: it reads the entry module at the file the storage layout stores it, parses it,
+// reads each module that file requests, and repeats, so the closure is the requested modules and
+// no directory is walked. Every read is an exact read through FilesystemExactRead, and neither an
+// absent file nor a failed read can become a smaller closure. The legacy free filesystem_read
+// helper is not this door's transport: its content-only contract cannot carry a typed read refusal.
 //
-// v2_cli_main is the one entry fold: parse before acquisition, acquire exactly the plan's roots,
-// then compile. The rendered main binds the handler, supplies argv, writes the returned text,
-// and realizes ProcessExit. Pure parse/run witnesses remain useful, and walk_cli_door executes
+// v2_cli_main is the one entry fold: parse before acquisition, bind the plan's roots to the
+// governed trees they are, acquire the entry's closure through them, verify that the read set is
+// exactly that closure, then compile. The rendered main binds the handler, supplies argv, writes
+// the returned text, and realizes ProcessExit. Pure parse/run witnesses remain useful, and walk_cli_door executes
 // the built CLI with accepting, parse-refusal, missing-root and unreadable-source controls.
 // That instrument is operator-invoked; it is not a required CI phase.
 //
@@ -364,7 +374,6 @@ fn v2_cli_plan_source_roots(plan: CliPlan) -> FreeMonoid<String> {
 type CliRunOutcome
   = CliEmitted { text: String, closure_size: Int, refused_count: Int, refusal_detail: String }
   | CliRunRefused { reason: Symbol, detail: String }
-  | CliCensusRefused { reason: Symbol, detail: String, text: String }
   | CliUsageRefused { reason: Symbol, detail: String }
   | CliDifferentialReported { text: String, observed: Bool, detail: String }
 
@@ -440,18 +449,9 @@ fn v2_cli_run(plan: CliPlan, ingest: SourceRootIngest) -> CliRunOutcome {
                   }
                 }
               Rejected { diagnostics: d } =>
-                match emitted.census_refusals {
-                  Empty =>
-                    CliRunRefused {
-                      reason: diagnostics_fatal_reason(d: d),
-                      detail: v2_cli_refusal_detail(d: d, spans: emitted.spans)
-                    }
-                  Cons { head: _, tail: _ } =>
-                    CliCensusRefused {
-                      reason: diagnostics_fatal_reason(d: d),
-                      detail: v2_cli_refusal_detail(d: d, spans: emitted.spans),
-                      text: closure_census_refusals_json(refusals: emitted.census_refusals, spans: emitted.spans)
-                    }
+                CliRunRefused {
+                  reason: diagnostics_fatal_reason(d: d),
+                  detail: v2_cli_refusal_detail(d: d, spans: emitted.spans)
                 }
             }
           }
@@ -521,7 +521,6 @@ fn v2_cli_exit(outcome: CliRunOutcome) -> ProcessExit {
         exit_failure(reason: detail)
       }
     CliRunRefused { reason: _, detail: detail } => exit_failure(reason: detail)
-    CliCensusRefused { reason: _, detail: detail, text: _ } => exit_failure(reason: detail)
     CliUsageRefused { reason: _, detail: detail } =>
       ExitFailure { code: exit_code_misuse, reason: detail }
     CliDifferentialReported { text: _, observed: observed, detail: detail } =>
@@ -533,9 +532,84 @@ fn v2_cli_outcome_text(outcome: CliRunOutcome) -> String {
   match outcome {
     CliEmitted { text: text, closure_size: _, refused_count: _, refusal_detail: _ } => text
     CliRunRefused { reason: _, detail: _ } => ""
-    CliCensusRefused { reason: _, detail: _, text: text } => text
     CliUsageRefused { reason: _, detail: _ } => ""
     CliDifferentialReported { text: text, observed: _, detail: _ } => text
+  }
+}
+
+// THE ROOTS THE PLAN NAMED, BOUND TO THE TREES THEY ARE. A source-root argument is a governed tree's
+// directory (v2.cli.repository_layout repository_tree_of_root_argument); an argument that is no
+// governed tree is refused where it was typed, and so is a second directory for a tree already
+// bound, because a module's file is decided by its name and its tree alone -- two directories for one
+// tree would make which of them holds a module a fact of read order.
+type CliRootBindings
+  = CliRootsBound { bindings: List<SourceRootBinding> }
+  | CliRootsUnrecognized { argument: String }
+  | CliRootsDuplicated { argument: String }
+
+fn cli_root_bound(tree: SourceRootRef, argument: String, bindings: List<SourceRootBinding>) -> CliRootBindings {
+  match acquisition_host_directory(bindings: bindings, tree: tree) {
+    Present { value: _ } => CliRootsDuplicated { argument: argument }
+    Absent =>
+      CliRootsBound { bindings: Cons { head: SourceRootBinding { tree: tree, host_directory: argument }, tail: bindings } }
+  }
+}
+
+fn cli_root_bindings_step(acc: CliRootBindings, argument: String) -> CliRootBindings {
+  match acc {
+    CliRootsUnrecognized { argument: _ } => acc
+    CliRootsDuplicated { argument: _ } => acc
+    CliRootsBound { bindings: bindings } =>
+      match repository_tree_of_root_argument(argument: argument) {
+        Absent => CliRootsUnrecognized { argument: argument }
+        Present { value: tree } => cli_root_bound(tree: tree, argument: argument, bindings: bindings)
+      }
+  }
+}
+
+fn cli_root_bindings(roots: FreeMonoid<String>) -> CliRootBindings {
+  fold_list(xs: roots, empty: CliRootsBound { bindings: Empty }, cons: cli_root_bindings_step)
+}
+
+// WHAT THE VERB ACQUIRES. `emit` acquires the closure of its entry. The differential's subject is a
+// population, so it names the population explicitly -- every module the layout stores in the bound
+// trees -- and acquires the closure of that list; nothing is walked as a side effect of compiling.
+type CliAcquisitionEntries
+  = CliEntriesListed { entries: List<String> }
+  | CliEntriesRefused { cause: String }
+
+fn cli_acquisition_entries(verb: CliVerb, bindings: List<SourceRootBinding>) -> CliAcquisitionEntries {
+  match verb {
+    CliEmitClosure { entry: entry, source_roots: _, target: _ } => CliEntriesListed { entries: [entry] }
+    CliIfArmReaderDifferential { source_roots: _ } =>
+      match enumerate_bound_modules(layout: repository_storage_layout(), bindings: bindings) {
+        BoundModulesListed { modules: modules } => CliEntriesListed { entries: modules }
+        BoundModulesRefused { namespace: namespace, cause: cause } =>
+          CliEntriesRefused { cause: concat("could not list the modules of namespace ", namespace, ": ", cause) }
+      }
+  }
+}
+
+// THE ACQUISITION IS VERIFIED BEFORE ANYTHING READS IT: a closure whose read set is not exactly the
+// requested closure (v2.compiler.module_acquisition acquire_verified) is a refusal, never a smaller or
+// larger program. The pure fold below sees the ingest of the verified members and nothing else.
+fn cli_run_verified(plan: CliPlan, verified: VerifiedAcquisition) -> CliRunOutcome {
+  match verified {
+    AcquisitionNotVerified { reason: reason, cause: cause } =>
+      CliRunRefused { reason: reason, detail: concat("the source roots did not yield an exact closure: ", cause) }
+    AcquisitionVerified { modules: modules, reads: _, absent_probes: _ } =>
+      v2_cli_run(plan: plan, ingest: acquisition_ingest(modules: modules))
+  }
+}
+
+fn cli_run_bound(plan: CliPlan, verb: CliVerb, bindings: List<SourceRootBinding>) -> CliRunOutcome {
+  match cli_acquisition_entries(verb: verb, bindings: bindings) {
+    CliEntriesRefused { cause: cause } => CliRunRefused { reason: ^cli_population_unlisted, detail: cause }
+    CliEntriesListed { entries: entries } =>
+      cli_run_verified(
+        plan: plan,
+        verified: acquire_verified(layout: repository_storage_layout(), bindings: bindings, entries: entries)
+      )
   }
 }
 
@@ -545,26 +619,19 @@ fn v2_cli_main(argv: FreeMonoid<String>) -> CliRunOutcome {
   let plan = v2_cli_parse(argv: argv)
   match plan {
     CliPlanRefused { reason: reason, detail: detail } => CliUsageRefused { reason: reason, detail: detail }
-    CliPlanParsed { verb: _ } => match source_root_read(roots: v2_cli_plan_source_roots(plan: plan)) {
-      SourceRootFilesRead { files: files } =>
-        match source_root_ingest_from_files(files: files) {
-          SourceRootIngestFromFilesBuilt { ingest: ingest } =>
-            v2_cli_run(plan: plan, ingest: ingest)
-          SourceRootIngestFromFilesUnrecognizedRoot { argument: argument, path: path } =>
-            CliUsageRefused {
-              reason: ^cli_source_root_unrecognized,
-              detail: concat(
-                "source root is not a dag or src/v2 tree: ",
-                argument,
-                " (file ",
-                path,
-                ")"
-              )
-            }
-        }
-      SourceRootFilesRefused { path: path, kind: kind, cause: cause } =>
-        CliUsageRefused { reason: ^cli_source_root_read_refused,
-          detail: concat("could not read source root at ", path, " [", kind, "]: ", cause) }
-    }
+    CliPlanParsed { verb: verb } =>
+      match cli_root_bindings(roots: v2_cli_plan_source_roots(plan: plan)) {
+        CliRootsUnrecognized { argument: argument } =>
+          CliUsageRefused {
+            reason: ^cli_source_root_unrecognized,
+            detail: concat("source root is not a governed tree directory: ", argument)
+          }
+        CliRootsDuplicated { argument: argument } =>
+          CliUsageRefused {
+            reason: ^cli_source_root_duplicated,
+            detail: concat("source root names a tree another --source-root already binds: ", argument)
+          }
+        CliRootsBound { bindings: bindings } => cli_run_bound(plan: plan, verb: verb, bindings: bindings)
+      }
   }
 }

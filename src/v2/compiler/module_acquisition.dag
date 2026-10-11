@@ -47,6 +47,7 @@ import v2.compiler.source_authority {
   ReferenceUnknownModule,
   SourceRootIngest,
   SourceStorageLayout,
+  StorageNamespaceRoot,
   module_file,
   module_file_key,
   reference_after_probe,
@@ -72,9 +73,9 @@ import v2.std.algebra {
 }
 import v2.std.collection { Map, empty_map, map_insert }
 import v2.std.cross_tree.import_model { SourceRootRef }
-import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, bind_outcome, outcome_accepted }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason, outcome_accepted }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.node { Node, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.qualified_name { qualified_name_init, qualified_name_to_dotted_string }
 import v2.std.text { String }
 import extdeps.communication.medium { Lossless, Medium }
@@ -660,8 +661,8 @@ fn acquisition_witness(module: AcquiredModule) -> DagSourceReadWitness {
 fn acquisition_ingest_go(pending: List<AcquiredModule>, acc: SourceRootIngest) -> SourceRootIngest {
   match list_head(xs: pending) {
     HeadAbsent => acc
-    HeadFound { value: module } =>
-      acquisition_ingest_go(pending: skip(xs: pending, n: 1), acc: Cons { head: acquisition_witness(module: module), tail: acc })
+    HeadFound { value: acquired } =>
+      acquisition_ingest_go(pending: skip(xs: pending, n: 1), acc: Cons { head: acquisition_witness(module: acquired), tail: acc })
   }
 }
 
@@ -717,8 +718,8 @@ fn acquisition_first_duplicate(pending: List<String>, seen: Map<String, Bool>) -
 fn acquisition_first_unmet_exact(pending: List<AcquiredModule>, names: Map<String, Bool>) -> Optional<AcquisitionRequest> {
   match list_head(xs: pending) {
     HeadAbsent => optional_absent()
-    HeadFound { value: module } =>
-      match list_find_first(xs: module.requests, predicate: fn(request) {
+    HeadFound { value: acquired } =>
+      match list_find_first(xs: acquired.requests, predicate: fn(request) {
         acquisition_request_exact(request: request) && !text_set_has(set: names, name: request.spelling)
       }) {
         Present { value: request } => optional_present(value: request)
@@ -741,7 +742,7 @@ fn acquisition_exactness_requests(entries: List<String>, modules: List<AcquiredM
 fn acquisition_exactness_named(entries: List<String>, modules: List<AcquiredModule>) -> AcquisitionExactness {
   let requested = acquisition_requested_names(entries: entries, modules: modules)
   match list_find_first(xs: modules, predicate: fn(member) { !text_set_has(set: requested, name: member.name) }) {
-    Present { value: module } => AcquisitionReadNotRequested { module: module.name }
+    Present { value: unrequested } => AcquisitionReadNotRequested { module: unrequested.name }
     Absent =>
       acquisition_exactness_requests(entries: entries, modules: modules, names: text_set_of(names: list_map(xs: modules, f: fn(m) { m.name })))
   }
@@ -750,7 +751,7 @@ fn acquisition_exactness_named(entries: List<String>, modules: List<AcquiredModu
 fn acquisition_exactness_reads(entries: List<String>, modules: List<AcquiredModule>, reads: List<String>) -> AcquisitionExactness {
   let read_set = text_set_of(names: reads)
   match list_find_first(xs: modules, predicate: fn(member) { !text_set_has(set: read_set, name: module_file_key(file: member.file)) }) {
-    Present { value: module } => AcquisitionMemberNotRead { key: module_file_key(file: module.file) }
+    Present { value: unread } => AcquisitionMemberNotRead { key: module_file_key(file: unread.file) }
     Absent => acquisition_exactness_named(entries: entries, modules: modules)
   }
 }
@@ -768,6 +769,105 @@ fn acquisition_exactness(entries: List<String>, modules: List<AcquiredModule>, r
     Present { value: key } => AcquisitionReadWithoutMember { key: key }
     Absent => acquisition_exactness_unique(entries: entries, modules: modules, reads: reads)
   }
+}
+
+// ---- the acquisition as a verified set, and as text ---------------------------------------------------
+//
+// A door that consumes an acquisition owes two things beyond the modules: the exactness verdict (R9's
+// check that the read set IS the requested closure) and a located statement of why it did not hold.
+// Both are decided here, once, so a consumer is handed either a verified set or a refusal and never
+// reads `Acquisition` and `AcquisitionExactness` separately -- two consumers that each chose which of
+// the two to trust would be the fork this door exists to prevent.
+type VerifiedAcquisition
+  = AcquisitionVerified { modules: List<AcquiredModule>, reads: List<String>, absent_probes: Int }
+  | AcquisitionNotVerified { reason: Symbol, cause: String }
+
+fn acquisition_request_origin_text(request: AcquisitionRequest) -> String {
+  if request.from_module == "" { "the entry list" } else { request.from_module }
+}
+
+fn acquisition_request_text(request: AcquisitionRequest) -> String {
+  concat(request.spelling, " (requested by ", acquisition_request_origin_text(request: request), ")")
+}
+
+fn acquisition_lookup_text(lookup: ReferenceLookup) -> String {
+  match lookup {
+    ReferenceResolved { module: name, member: _, file: _, content: _ } => concat("resolved to ", name)
+    ReferenceUnknownModule { reference: reference } => concat("no module is stored for ", reference)
+    ReferenceRefused { module: name, file: file, cause: cause } =>
+      concat("module ", name, " at ", module_file_key(file: file), " could not be read: ", cause)
+    ReferenceModuleLineMissing { module: name, file: file } =>
+      concat("the file at ", module_file_key(file: file), " holds no module line, so it is not module ", name)
+    ReferenceModuleLineDisagrees { module: name, declared: declared, file: file } =>
+      concat("the file at ", module_file_key(file: file), " declares module ", declared, " where the layout stores ", name)
+    ReferenceCrossTreeDenied { module: name, file: file, reason: _ } =>
+      concat("module ", name, " at ", module_file_key(file: file), " lies in a tree the requesting tree may not import")
+  }
+}
+
+fn acquisition_refusal_text(refusal: AcquisitionRefusal) -> String {
+  match refusal {
+    AcquisitionGrammarUnprepared { diagnostics: _ } => "the dag grammar did not prepare"
+    AcquisitionEntryUnderivable { entry: entry, cause: cause } =>
+      concat("entry ", entry, " names no storable module: ", cause)
+    AcquisitionTreeUnbound { tree: tree, request: request } =>
+      concat("no source root is bound to the ", tree, " tree, which holds ", acquisition_request_text(request: request))
+    AcquisitionUnknownModule { request: request } =>
+      concat("no module is stored for ", acquisition_request_text(request: request))
+    AcquisitionLookupRefused { request: request, lookup: lookup } =>
+      concat(acquisition_request_text(request: request), ": ", acquisition_lookup_text(lookup: lookup))
+    AcquisitionMemberRefused { module: name, file: file, diagnostics: d } =>
+      concat("module ", name, " at ", module_file_key(file: file), " did not front-end: ", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
+    AcquisitionMemberSitesUnreadable { module: name, file: file } =>
+      concat("module ", name, " at ", module_file_key(file: file), " lowered but its reference sites are not all readable")
+  }
+}
+
+fn acquisition_exactness_text(verdict: AcquisitionExactness) -> String {
+  match verdict {
+    AcquisitionExact => "exact"
+    AcquisitionReadWithoutMember { key: key } => concat("file ", key, " was read and is not a member of the closure")
+    AcquisitionReadTwice { key: key } => concat("file ", key, " was read twice")
+    AcquisitionMemberNotRead { key: key } => concat("closure member ", key, " was never read")
+    AcquisitionReadNotRequested { module: name } => concat("module ", name, " was read and no entry or request names it")
+    AcquisitionRequestedNotRead { spelling: spelling, from_module: from } =>
+      concat(spelling, " (requested by ", from, ") names a module that was never read")
+  }
+}
+
+fn acquisition_exactness_holds(verdict: AcquisitionExactness) -> Bool {
+  match verdict {
+    AcquisitionExact => true
+    AcquisitionReadWithoutMember { key: _ } => false
+    AcquisitionReadTwice { key: _ } => false
+    AcquisitionMemberNotRead { key: _ } => false
+    AcquisitionReadNotRequested { module: _ } => false
+    AcquisitionRequestedNotRead { spelling: _, from_module: _ } => false
+  }
+}
+
+fn acquisition_complete_verified(entries: List<String>, modules: List<AcquiredModule>, reads: List<String>, absent_probes: Int) -> VerifiedAcquisition {
+  let verdict = acquisition_exactness(entries: entries, modules: modules, reads: reads)
+  if acquisition_exactness_holds(verdict: verdict) {
+    AcquisitionVerified { modules: modules, reads: reads, absent_probes: absent_probes }
+  } else {
+    AcquisitionNotVerified { reason: ^acquisition_inexact, cause: acquisition_exactness_text(verdict: verdict) }
+  }
+}
+
+fn acquisition_verified(acquisition: Acquisition) -> VerifiedAcquisition {
+  match acquisition {
+    AcquisitionRefused { refusal: refusal, reads: _ } =>
+      AcquisitionNotVerified { reason: ^acquisition_refused, cause: acquisition_refusal_text(refusal: refusal) }
+    AcquisitionComplete { entries: entries, modules: modules, reads: reads, absent_probes: absent } =>
+      acquisition_complete_verified(entries: entries, modules: modules, reads: reads, absent_probes: absent)
+  }
+}
+
+// THE ONE DOOR A CONSUMER USES: acquire the closure of `entries` and hand back either the verified
+// set or the located reason it is not one.
+fn acquire_verified(layout: SourceStorageLayout, bindings: List<SourceRootBinding>, entries: List<String>) -> VerifiedAcquisition {
+  acquisition_verified(acquisition: acquire_closure_of(layout: layout, bindings: bindings, entries: entries))
 }
 
 // ---- enumerating a namespace (a population job's explicit input) ------------------------------------------
@@ -826,4 +926,46 @@ fn enumerate_namespace_modules(layout: SourceStorageLayout, bindings: List<Sourc
         Present { value: root } => namespace_walk_under(namespace: namespace, root: root, relative: namespace_relative_directory(probe_relative_path: file.relative_path))
       }
   }
+}
+
+// THE MODULES OF EVERY BOUND TREE: a population job's input when the population is the repository
+// under the bindings it was handed. A layout namespace whose tree is not bound contributes nothing
+// (the caller bound the trees it wants); a bound namespace that cannot be listed refuses the whole
+// enumeration, never a partial population.
+type BoundModules
+  = BoundModulesListed { modules: List<String> }
+  | BoundModulesRefused { namespace: String, cause: String }
+
+fn bound_modules_prepended(listed: List<String>, acc: List<String>) -> List<String> {
+  fold_list(xs: list_reverse(xs: listed), empty: acc, cons: fn(rest, name) { Cons { head: name, tail: rest } })
+}
+
+fn enumerate_bound_modules_go(
+  layout: SourceStorageLayout,
+  bindings: List<SourceRootBinding>,
+  pending: List<StorageNamespaceRoot>,
+  acc: List<String>
+) -> BoundModules {
+  match list_head(xs: pending) {
+    HeadAbsent => BoundModulesListed { modules: acc }
+    HeadFound { value: root } =>
+      match acquisition_host_directory(bindings: bindings, tree: root.tree) {
+        Absent => enumerate_bound_modules_go(layout: layout, bindings: bindings, pending: skip(xs: pending, n: 1), acc: acc)
+        Present { value: _ } =>
+          match enumerate_namespace_modules(layout: layout, bindings: bindings, namespace: root.namespace) {
+            NamespaceModulesRefused { namespace: namespace, cause: cause } => BoundModulesRefused { namespace: namespace, cause: cause }
+            NamespaceModulesListed { namespace: _, modules: listed } =>
+              enumerate_bound_modules_go(
+                layout: layout,
+                bindings: bindings,
+                pending: skip(xs: pending, n: 1),
+                acc: bound_modules_prepended(listed: listed, acc: acc)
+              )
+          }
+      }
+  }
+}
+
+fn enumerate_bound_modules(layout: SourceStorageLayout, bindings: List<SourceRootBinding>) -> BoundModules {
+  enumerate_bound_modules_go(layout: layout, bindings: bindings, pending: layout.namespace_roots, acc: [])
 }
