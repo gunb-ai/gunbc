@@ -3,9 +3,8 @@ module gunbc.srv3.srv3_os_install_actuate
 // This module used to resolve every cross-module name through the bare channel. Pinning
 // `Filesystem` (the login-body write below) declares an import, and a module that declares
 // imports has its bare channel off -- so every provider name it reads is imported here
-// explicitly, each from the module the floor's UnimportedBareProvider refusals named as its
-// declarer. Filesystem itself is filesystem_io's service Write (input {path, content}, output
-// success/error), which is the operation the login-body write means; std.resources also declares
+// explicitly, each from the module that declares it. Filesystem itself is filesystem_io's service
+// Write (input {path, content}, output success/error), which is the operation the login-body write means; std.resources also declares
 // a Filesystem (a capability resource whose write returns {written}) and is transitively in
 // reach, so the bare read would have picked a declarer by scope precedence, which nothing in
 // this source authorizes.

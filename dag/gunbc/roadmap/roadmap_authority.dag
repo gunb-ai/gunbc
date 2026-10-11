@@ -2200,7 +2200,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/extdeps_scope_frontier.dag"),
       line: ticket(t: level_fields(
           headline: "DP-M3: extdeps-scope closure halved",
-          boundary: "The legacy extdeps scope manifest (dag/gunbc/legacy_extdeps_scope_frontier.tsv via gunbc.extdeps_scope_frontier) halved, and gunbc.instruments.extdeps_scope_placement_gate enrolled on an executing route before anything is counted. The unimported-bare-provider roster the census pairs with this is not on this line (v2.workflow.floor_unimported_bare_provider_debt_roster exists on main only).",
+          boundary: "The legacy extdeps scope manifest (dag/gunbc/legacy_extdeps_scope_frontier.tsv via gunbc.extdeps_scope_frontier) halved, and gunbc.instruments.extdeps_scope_placement_gate enrolled on an executing route before anything is counted.",
           approach: "Enrol the gate first (a gate that runs nowhere is an inert lens, §6), then drain one extdeps file per change: add its ExternalModelScope and delete its manifest line together.",
           red_control: "A manifest line deleted without its file declaring its scope, or a count taken while the gate runs nowhere, keeps this open.",
           displaced_cost: "An undeclared external-authority placement is a §3 citation nobody can check.",
