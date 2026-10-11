@@ -6047,7 +6047,7 @@ impl UnlistedImportBindingSource {
 /// One attributed row of the UnlistedImportUse census. `position` is the diagnostic's own span
 /// start within `file` — the occurrence grain the burndown worklist groups and counts at. It is
 /// NOT the occurrence identity the Step 0 binding-provenance census
-/// (gunbc.namespace.namespace_step0_binding_provenance_contract) requires before this worklist may actuate
+/// (gunbc.namespace_cut.namespace_step0_binding_provenance_contract) requires before this worklist may actuate
 /// edits: (file, position) locates the charge, but does not name the selected declaration, the
 /// producing rule, or the pre/post-edit targets.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -6802,7 +6802,7 @@ const LIVE_READ_CARRIER_HOME_MODULES_V0: &[&str] = &[
     "v2.lens.module_graph",
     "gunbc.instruments.dag_compile_clean_shard_roster",
     "gunbc.instruments.dag_compile_clean_scope",
-    "gunbc.namespace.namespace_cut_subject_observation",
+    "gunbc.namespace_cut.namespace_cut_subject_observation",
 ];
 
 fn runtime_data_dependency_touched_via_carrier_closure(

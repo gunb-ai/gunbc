@@ -260,7 +260,7 @@ fn v1_rust_source_observation_execution_contract() -> WorkItemExecutionContract 
   )
 }
 
-data namespace_structural_observations_execution_contract_note: String = "BOUND (this change). The retracted interim below is answered rather than merely quoted: the closing validation now consumes admissions PRODUCED BY AN ORDINARY COMPILE OF ONE FILE and reaches its verdict through assess_reference_binding_observation, never through variant counting. Four StructuralBindingProductionRefused observations green nothing -- a production refusal assesses to ReferenceDerivedClosureRefused, which the set difference keeps in the frontier.\n\nWHAT THE BINDING ADDS BEYOND THE FOUR CAPABILITIES, and it is the half the retraction named as missing: SUBJECT PROVENANCE. Every admission carries the module path the parse itself declared, and the check refuses unless all of them name the one declared subject. Four admissions from four hand-built sources satisfy the capabilities and fail this check, which is exactly the difference between the row as written and the fixture suite that preceded it.\n\nWHAT THE VALIDATION EXECUTES: gunbc.namespace.namespace_structural_observations_production reaches the v1 parser walk through one hermetic host bridge (declared and enrolled seed growth, gunbc.namespace.namespace_structural_observation_bridge_seed_growth), so the witness declares SubstrateInputsOnly truthfully, runs in the required floor, and is not a member of the DeclinedLiveTree arm. Its four red controls are single-edit mutants of the one subject, each refusing exactly the capability whose rule the edit broke.\n\nRETRACTED INTERIM (2026-08-04, operator ruling via loyal-ram-550), kept because it is what this binding had to satisfy: the prior ordinary_compile_structural_closing_contract_holds predicate checked only scenario-variant presence and could green four StructuralBindingProductionRefused observations -- worse than no binding. STALE CITATION CORRECTED (2026-08-18, dead-witness-tree triage): the fixture it cited had no executing consumer since v1_claim_scoped_witness_batch was deleted 2026-08-15 and did not survive the triage; receipt at gunbc.ci.ci_layer_roots v1_dead_witness_tree_triage_receipt."
+data namespace_structural_observations_execution_contract_note: String = "BOUND (this change). The retracted interim below is answered rather than merely quoted: the closing validation now consumes admissions PRODUCED BY AN ORDINARY COMPILE OF ONE FILE and reaches its verdict through assess_reference_binding_observation, never through variant counting. Four StructuralBindingProductionRefused observations green nothing -- a production refusal assesses to ReferenceDerivedClosureRefused, which the set difference keeps in the frontier.\n\nWHAT THE BINDING ADDS BEYOND THE FOUR CAPABILITIES, and it is the half the retraction named as missing: SUBJECT PROVENANCE. Every admission carries the module path the parse itself declared, and the check refuses unless all of them name the one declared subject. Four admissions from four hand-built sources satisfy the capabilities and fail this check, which is exactly the difference between the row as written and the fixture suite that preceded it.\n\nWHAT THE VALIDATION EXECUTES: gunbc.namespace_cut.namespace_structural_observations_production reaches the v1 parser walk through one hermetic host bridge (declared and enrolled seed growth, gunbc.namespace_cut.namespace_structural_observation_bridge_seed_growth), so the witness declares SubstrateInputsOnly truthfully, runs in the required floor, and is not a member of the DeclinedLiveTree arm. Its four red controls are single-edit mutants of the one subject, each refusing exactly the capability whose rule the edit broke.\n\nRETRACTED INTERIM (2026-08-04, operator ruling via loyal-ram-550), kept because it is what this binding had to satisfy: the prior ordinary_compile_structural_closing_contract_holds predicate checked only scenario-variant presence and could green four StructuralBindingProductionRefused observations -- worse than no binding. STALE CITATION CORRECTED (2026-08-18, dead-witness-tree triage): the fixture it cited had no executing consumer since v1_claim_scoped_witness_batch was deleted 2026-08-15 and did not survive the triage; receipt at gunbc.ci.ci_layer_roots v1_dead_witness_tree_triage_receipt."
 
 fn namespace_structural_observations_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
@@ -1021,7 +1021,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md"),
       line: ticket(t: updated(t: fields(
           headline: "Derive each file's dependencies from what its names resolve to",
-          boundary: "XL-4 of gunbc.namespace.namespace_cut_stage. For every reference, record which declaration answered it. Derive each file's dependency set from those answers alone, identical whichever unrelated files are loaded. This absorbs cross-file provenance (clause e) and pool independence (clause f).",
+          boundary: "XL-4 of gunbc.namespace_cut.namespace_cut_stage. For every reference, record which declaration answered it. Derive each file's dependency set from those answers alone, identical whichever unrelated files are loaded. This absorbs cross-file provenance (clause e) and pool independence (clause f).",
           displaced_cost: "Hand-written dependency statements can disagree with what files actually reference, and hundreds were patched by hand to keep them in step.",
           first_slice: "Replace one typed-unavailable row in the six-arm witness's admission seam with a production observation from the ordinary compile route (XL-4 producer #11461/#12186/#12048), starting with clause (e).",
           red_control: "The six-arm witness (dag/test/claim/namespace_reference_derived_closure_acceptance.dag) stays red until all six clauses come from production observations. A pool perturbation that changes an answer while the file set stays the same is caught.",
@@ -1090,7 +1090,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md"),
       line: ticket(t: updated(t: fields(
           headline: "Delete the import grammar, last",
-          boundary: "XL-7. After XL-6, import becomes a typed, located parse error (gunbc.namespace.namespace_cut_landing_order namespace_cut_grammar_last_ruling). Every import line is gone from the corpus.",
+          boundary: "XL-7. After XL-6, import becomes a typed, located parse error (gunbc.namespace_cut.namespace_cut_landing_order namespace_cut_grammar_last_ruling). Every import line is gone from the corpus.",
           displaced_cost: "While import parses, a file can declare dependencies its references do not need, which is a second source of truth.",
           first_slice: "Show that one subtree with no import lines compiles from its references alone, on the native route.",
           red_control: "An authored import fails to parse. A file that still needs an import is named and refused.",
@@ -2061,7 +2061,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md"),
       line: ticket(t: level_fields(
           headline: "Decide every name one canonical way",
-          boundary: "The namespace cut as gunbc.namespace.namespace_cut_stage stages it: F-0, XL-0 to XL-4 (evidence and the reference-derived graph), ACT-0 and XL-5 (waves), XL-6 (atomic cutover), XL-7 (grammar deletion). Rows are the stages that still have open work. The stage chain itself stays in the module.",
+          boundary: "The namespace cut as gunbc.namespace_cut.namespace_cut_stage stages it: F-0, XL-0 to XL-4 (evidence and the reference-derived graph), ACT-0 and XL-5 (waves), XL-6 (atomic cutover), XL-7 (grammar deletion). Rows are the stages that still have open work. The stage chain itself stays in the module.",
           approach: "XL-2 and XL-3 wait on frontend prerequisites (LoweringOccurrenceProjection, ServiceModuleLowering, ResolverBoundDeclaringIdentity). The declaration-identity switch-over is the XL-6 construction, built in shadow now. Per the 2026-09-12 interlock edge, XL-6 and XL-7 run after seed retirement.",
           red_control: "ACT-0 release stays blocked while gunbc.rung_drop namespace_wave_admission_wall_removed stands or any act0_release_milestones entry is OUTSTANDING. A name answered two ways after XL-6 is a defect of this project.",
           displaced_cost: "Several mechanisms decide one name differently, so a proof about a program can be a proof about a program other than the one written.",
@@ -2557,7 +2557,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_1ZM59ZX3RGYJX81YEJ6Z22Z2QG",
       id: "declaration-identity-switchover",
       owner: "namespace",
-      carriers: carrier(path: "dag/gunbc/namespace/namespace_cut_stage.dag"),
+      carriers: carrier(path: "dag/gunbc/namespace_cut/namespace_cut_stage.dag"),
       line: ticket(t: updated(t: fields(
           headline: "Every name reference carries its declaration",
           boundary: "Resolve records a declaration identity on every reference (v1 Node.declaration #12612; recursive types #12635; type parameters #12690; census #12592). All consumers read that identity and not the leaf name (#12506, #12766), under one declared-scope definition (gunbc.recurring_failure_mode name_canonicalisation_depends_on_the_co_compiled_graph). Absorbs namespace-canonical-binding and namespace-bound-only-consumers. Built in shadow now; its root cut is XL-6.",
@@ -2573,7 +2573,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_7XP9Y56FDB4RNEBYGJEQ71H2RY",
       id: "namespace-semantic-waves",
       owner: "namespace",
-      carriers: carrier(path: "dag/gunbc/namespace/namespace_cut_stage.dag"),
+      carriers: carrier(path: "dag/gunbc/namespace_cut/namespace_cut_stage.dag"),
       line: ticket(t: updated(t: fields(
           headline: "Release the namespace rewrite waves under a wall that works",
           boundary: "ACT-0 collects the four activation receipts over base B. XL-5 lands the occurrence and import rewrites. Release needs act0_release_milestones CLEAR.",

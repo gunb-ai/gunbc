@@ -1,4 +1,4 @@
-module gunbc.namespace.namespace_step0_census_calibration
+module gunbc.namespace_cut.namespace_step0_census_calibration
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.occurrence_identity {
@@ -11,7 +11,7 @@ import std.occurrence_identity {
   FieldOccurrence,
   MethodOccurrence
 }
-import gunbc.namespace.namespace_step0_binding_provenance_contract {
+import gunbc.namespace_cut.namespace_step0_binding_provenance_contract {
   Step0ReferenceFamily,
   TypeAnnotationReference,
   GenericTypeArgumentReference,

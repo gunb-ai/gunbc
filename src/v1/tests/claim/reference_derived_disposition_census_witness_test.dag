@@ -10,7 +10,7 @@ import v1.compiler.emit_rust {
   emit_rust_reference_derived_census,
   build_module_index
 }
-import gunbc.namespace.reference_derived_candidate {
+import gunbc.namespace_cut.reference_derived_candidate {
   ReferenceDerivedCandidateDisposition,
   CandidateSurvived,
   CandidateOwnModule,

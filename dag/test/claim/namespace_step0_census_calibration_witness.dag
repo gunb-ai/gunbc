@@ -33,12 +33,12 @@ import gunbc.compile_clean_diagnostic_policy {
   DefinerResolvable,
   AmbiguousLeaf
 }
-import gunbc.namespace.namespace_step0_binding_provenance_contract {
+import gunbc.namespace_cut.namespace_step0_binding_provenance_contract {
   Step0ReferenceFamily,
   TypeAnnotationReference,
   QualifiedContainmentReference
 }
-import gunbc.namespace.namespace_step0_census_calibration {
+import gunbc.namespace_cut.namespace_step0_census_calibration {
   Step0CalibrationStanding,
   CalibrationRosterIncomplete,
   CalibrationBlindToFamilies,

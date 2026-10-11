@@ -1,6 +1,6 @@
 module test.claim.namespace_pool_independence_witness
 
-import gunbc.namespace.namespace_pool_independence {
+import gunbc.namespace_cut.namespace_pool_independence {
   assess_pool_independent_projection_equality,
   assess_file_dependencies_only_equality,
   PoolIndependenceEstablished,
@@ -41,7 +41,7 @@ import test.fixture.cross_file_clause_e_fixture {
   cross_file_clause_e_fixture_provider_file,
 }
 
-// N3-C witnesses for gunbc.namespace.namespace_pool_independence. Pool independence proper:
+// N3-C witnesses for gunbc.namespace_cut.namespace_pool_independence. Pool independence proper:
 // unrelated_loaded_unrelated_spellings_preserves_full_carrier_holds assembles baseline vs perturbed
 // (+unrelated loaded file, different spelling) via B0+B1 and compares full carriers. Class B
 // silent-reselection discriminator: colliding_root_exported_homonym_refuses_ambiguity_holds —

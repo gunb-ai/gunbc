@@ -1,6 +1,6 @@
 module test.claim.namespace_reference_derived_residency_qualification_witness
 
-import gunbc.namespace.namespace_reference_derived_residency_qualification {
+import gunbc.namespace_cut.namespace_reference_derived_residency_qualification {
   ProducerCarrierReading,
   ProductionLifecycleReading,
   SyntaxNodePerKey,

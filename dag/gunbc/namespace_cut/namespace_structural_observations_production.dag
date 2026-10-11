@@ -1,6 +1,6 @@
-module gunbc.namespace.namespace_structural_observations_production
+module gunbc.namespace_cut.namespace_structural_observations_production
 
-import gunbc.namespace.namespace_structural_observations_contract {
+import gunbc.namespace_cut.namespace_structural_observations_contract {
   OrdinaryCompileStructuralAdmission,
   StructuralObservationSubject,
 }
@@ -16,8 +16,8 @@ import std.types { List, String }
 // repository file, and returns exactly what
 // `v1.gunbc.namespace_reference_derived_closure_production_observations` computed. It decides
 // nothing: the four observations are composed in that .dag producer and the capability judgement is
-// made by gunbc.namespace.namespace_reference_derived_closure_admission, which the producer calls. Declared
-// and enrolled as seed growth at gunbc.namespace.namespace_structural_observation_bridge_seed_growth.
+// made by gunbc.namespace_cut.namespace_reference_derived_closure_admission, which the producer calls. Declared
+// and enrolled as seed growth at gunbc.namespace_cut.namespace_structural_observation_bridge_seed_growth.
 //
 // WHY THIS IS NOT IN THE CONTRACT MODULE: the v1 producer imports the contract module for the
 // subject and row types, so a builtin call there would close a cycle through the seed's emit

@@ -1,6 +1,6 @@
-module gunbc.namespace.namespace_structural_observations_contract
+module gunbc.namespace_cut.namespace_structural_observations_contract
 
-import gunbc.namespace.namespace_reference_derived_closure_admission {
+import gunbc.namespace_cut.namespace_reference_derived_closure_admission {
   ReferenceDerivedClosureAdmission,
   ReferenceDerivedClosureCapability,
   SameFileEarlierNeighbourVisible,
@@ -8,7 +8,7 @@ import gunbc.namespace.namespace_reference_derived_closure_admission {
   LaterDeclarationExcluded,
   DistinctSameSpelledDeclarationsPreserved,
 }
-import gunbc.namespace.namespace_reference_derived_closure_contract {
+import gunbc.namespace_cut.namespace_reference_derived_closure_contract {
   closure_missing_capabilities,
 }
 import std.reference_binding_observation {
@@ -24,7 +24,7 @@ import std.types { Bool, Int, List, String }
 //
 // WHAT IT ASKS. Four in-file visibility rules, each established only by ASSESSING a typed
 // production observation through the one authority that already owns that judgement
-// (gunbc.namespace.namespace_reference_derived_closure_admission assess_reference_binding_observation):
+// (gunbc.namespace_cut.namespace_reference_derived_closure_admission assess_reference_binding_observation):
 // an earlier neighbour in the same file is in view; a declaration in the other branch of a
 // decision is not; a declaration written further down is not; and two same-spelled declarations
 // at genuinely different positions both survive rather than merging. The set difference is

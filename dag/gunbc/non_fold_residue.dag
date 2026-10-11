@@ -234,17 +234,17 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_provider_standing_limit_draw,
   },
   FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/namespace/namespace_reference_derived_closure_admission.dag::binding_outcome_from_resolution" },
+    subject: PathSubject { path: "dag/gunbc/namespace_cut/namespace_reference_derived_closure_admission.dag::binding_outcome_from_resolution" },
     reason: nfr_reason_binding_outcome_resolution_wildcard,
     dissolution: nfr_dissolve_binding_outcome_resolution_wildcard,
   },
   FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/namespace/namespace_pool_independence.dag::assess_file_dependencies_only_equality" },
+    subject: PathSubject { path: "dag/gunbc/namespace_cut/namespace_pool_independence.dag::assess_file_dependencies_only_equality" },
     reason: nfr_reason_pool_independence_projection,
     dissolution: nfr_dissolve_pool_independence_projection,
   },
   FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/namespace/namespace_pool_independence.dag::assess_pool_independent_projection_equality" },
+    subject: PathSubject { path: "dag/gunbc/namespace_cut/namespace_pool_independence.dag::assess_pool_independent_projection_equality" },
     reason: nfr_reason_pool_independence_projection,
     dissolution: nfr_dissolve_pool_independence_projection,
   },

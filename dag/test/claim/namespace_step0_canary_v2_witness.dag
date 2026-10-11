@@ -10,8 +10,8 @@ import std.content_hash {
 import std.decl_ref { DeclarationRef }
 import extdeps.git.object_store { GitObjectId, git_sha1_object_id }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.namespace.namespace_step0_subject_collector { Step0PopulationIdentity, Step0SubjectMember }
-import gunbc.namespace.namespace_step0_candidate_run {
+import gunbc.namespace_cut.namespace_step0_subject_collector { Step0PopulationIdentity, Step0SubjectMember }
+import gunbc.namespace_cut.namespace_step0_candidate_run {
   Step0SubjectPartition,
   Step0SubjectPartitionOutcome,
   Step0SubjectPartitioned,
@@ -24,7 +24,7 @@ import gunbc.namespace.namespace_step0_candidate_run {
   step0_partition_step
 }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
-import gunbc.namespace.namespace_step0_binding_provenance_contract {
+import gunbc.namespace_cut.namespace_step0_binding_provenance_contract {
   BindingProvenanceObservable,
   BindingProvenanceUnobservable,
   Step0ReferenceFamily,
@@ -60,7 +60,7 @@ import gunbc.namespace.namespace_step0_binding_provenance_contract {
   step0_binding_provenance_consequence,
   step0_binding_provenance_receipt_contract
 }
-import gunbc.namespace.namespace_step0_canary_v2 {
+import gunbc.namespace_cut.namespace_step0_canary_v2 {
   NamespaceStep0V2Receipt,
   NamespaceStep0V2Admission,
   NamespaceStep0V2ReceiptAdmitted,
@@ -753,7 +753,7 @@ test fn import_dependence_is_unjudged_because_the_contract_says_no_producer_inha
       ImportDependenceCensusObserved { receipt_identity: _, subject_population_identity: _, completeness: _ } => false
       ImportDependenceNotJudged { cause: cause, required_capability: required_capability } =>
         (cause as String) == (detail as String)
-          && required_capability.module_path == "gunbc.namespace.namespace_step0_binding_provenance_contract"
+          && required_capability.module_path == "gunbc.namespace_cut.namespace_step0_binding_provenance_contract"
           && required_capability.decl_name == "step0_binding_provenance_receipt_contract"
     }
   }

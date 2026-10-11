@@ -1,4 +1,4 @@
-module gunbc.namespace.namespace_reference_derived_residency_qualification
+module gunbc.namespace_cut.namespace_reference_derived_residency_qualification
 
 import std.types { Bool, List }
 import v2.std.node { Symbol }
@@ -12,7 +12,7 @@ import std.optional { Absent, Optional, Present, optional_absent, optional_prese
 // semantic delivery, and it deliberately does not touch what ReferenceGraphInstrumentDelivered means.
 // So this module adds no arm to the semantic receipt: it declares the SECOND evidence such a claim
 // needs, and `admit_bounded_realization` has no arm that mints an admission from semantic delivery
-// alone. The answer-scope verdict (gunbc.namespace.namespace_pool_independence PoolIndependenceVerdict) is a
+// alone. The answer-scope verdict (gunbc.namespace_cut.namespace_pool_independence PoolIndependenceVerdict) is a
 // different TYPE and cannot reach this admission at all.
 //
 // CONSUMPTION STATE, DECLARED HONESTLY BECAUSE IT IS NOT YET PLACED (DESIGN section 3c, and review
@@ -28,7 +28,7 @@ import std.optional { Absent, Optional, Present, optional_absent, optional_prese
 //   than papered over, and it is why no row in this module names a live reading.
 //   THE ADMISSION has no production consumer yet. Its named later consumer is the namespace memory
 //   program's first bounded-realization claim, and its trigger is the XL-6 production edge-source
-//   transition in gunbc.namespace.namespace_cut_stage -- the point at which a replacement stands where the
+//   transition in gunbc.namespace_cut.namespace_cut_stage -- the point at which a replacement stands where the
 //   whole-corpus pool parse used to, and someone must say whether it is bounded.
 // Until that consumer exists this module is evidence machinery with its frontier named, which is the
 // admissible middle state, not the claim that the class is already repaired in production.

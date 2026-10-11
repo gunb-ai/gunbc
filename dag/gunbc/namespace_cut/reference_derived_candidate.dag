@@ -1,4 +1,4 @@
-module gunbc.namespace.reference_derived_candidate
+module gunbc.namespace_cut.reference_derived_candidate
 
 import std.types { String }
 

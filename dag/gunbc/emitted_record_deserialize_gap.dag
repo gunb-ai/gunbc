@@ -59,11 +59,11 @@ data e0616_on_the_carried_field: EmittedRecordDeserializeEvidence = RustcRefusal
 // is this shape before building it, rather than recognising it from a rustc code after the fact.
 data minimal_reproducing_shape: EmittedRecordDeserializeEvidence = AuthoredShape {
   outer_record_field_type: decl_ref(
-    module_path: "gunbc.namespace.namespace_reference_derived_closure_admission",
+    module_path: "gunbc.namespace_cut.namespace_reference_derived_closure_admission",
     decl_name: "ReferenceDerivedClosureAdmission",
   ),
   unforgeable_carrier: decl_ref(
-    module_path: "gunbc.namespace.namespace_reference_derived_closure_admission",
+    module_path: "gunbc.namespace_cut.namespace_reference_derived_closure_admission",
     decl_name: "ReferenceDerivedClosureAcceptanceReceipt",
   ),
   why_unrepresentable: "an ordinary record with a field of the coproduct type -- for example { compiled_module: String, admission: ReferenceDerivedClosureAdmission } -- is accepted as .dag and refuses in emitted Rust",

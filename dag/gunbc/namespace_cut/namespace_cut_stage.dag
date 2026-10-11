@@ -1,4 +1,4 @@
-module gunbc.namespace.namespace_cut_stage
+module gunbc.namespace_cut.namespace_cut_stage
 
 import std.types { String, NonEmptyStr, Bool, List }
 import gunbc.compiler_frontend_program_interlock {
@@ -48,7 +48,7 @@ fn namespace_cut_stage_label(s: NamespaceCutStage) -> NonEmptyStr {
     StageAct0ActivationGate => "ACT-0: activation gate -- collecting activation evidence may BEGIN once XL-4 delivers; RELEASING the waves additionally requires the interlock triple and every digest re-executed against the pinned base B" as NonEmptyStr
     StageXL5Waves => "XL-5: the semantic waves -- exact occurrence and import-declaration rewrites under the wave-admission wall, while the legacy semantic root still stands" as NonEmptyStr
     StageXL6AtomicCutover => "XL-6: atomic cutover -- every root authority deleted in ONE motion, the whole semantic transition" as NonEmptyStr
-    StageXL7GrammarDeletion => "XL-7: grammar deletion, LAST -- import becomes a typed, located parse error (gunbc.namespace.namespace_cut_landing_order namespace_cut_grammar_last_ruling)" as NonEmptyStr
+    StageXL7GrammarDeletion => "XL-7: grammar deletion, LAST -- import becomes a typed, located parse error (gunbc.namespace_cut.namespace_cut_landing_order namespace_cut_grammar_last_ruling)" as NonEmptyStr
   }
 }
 
@@ -289,7 +289,7 @@ data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
 // its cut, which the label does not own:
 //
 //   THE STRIP HALF EXISTS AND IS TYPED: std.import strip_import_statements, applied per source by
-//   gunbc.namespace.namespace_step0_strip_producer. The census half is the v2 production route over the
+//   gunbc.namespace_cut.namespace_step0_strip_producer. The census half is the v2 production route over the
 //   stripped tree; the instrument is the strip fold composed with a route that carries the
 //   prerequisites the label names and answers its completeness obligation, and its FIRST
 //   discriminated run on the production route is the receipt this row holds.

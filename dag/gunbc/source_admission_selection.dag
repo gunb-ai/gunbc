@@ -23,7 +23,7 @@ import extdeps.git.object_store {
   GitSha1ObjectId,
   git_object_id_eq,
 }
-import gunbc.namespace.namespace_reference_derived_closure_admission {
+import gunbc.namespace_cut.namespace_reference_derived_closure_admission {
   ReferenceDerivedClosureTrigger,
   P2aStructuralCandidateProducer7515,
 }

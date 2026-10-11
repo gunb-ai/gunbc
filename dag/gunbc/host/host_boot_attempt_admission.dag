@@ -18,7 +18,7 @@ import gunbc.durable_cas_file_store {
 import extdeps.git.inspect
 import extdeps.git
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_stdin_digest_via_shell }
-import gunbc.namespace.namespace_step0_subject_collector { Step0TreeEntryDecoded, Step0TreeEntryUndecodable, step0_decode_tree_entry, step0_entry_is_regular_blob, step0_subject_entries_at }
+import gunbc.namespace_cut.namespace_step0_subject_collector { Step0TreeEntryDecoded, Step0TreeEntryUndecodable, step0_decode_tree_entry, step0_entry_is_regular_blob, step0_subject_entries_at }
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
 import extdeps.languages.json.parse {
   JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text,

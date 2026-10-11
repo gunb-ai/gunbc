@@ -214,7 +214,7 @@ fn sites_mention(sites: FreeMonoid<ReferenceSite>, spelling: String) -> Bool {
 // is the section 4b(3) grain mismatch stated in DESIGN's own words -- a plural loss under a
 // singular trigger -- and it contradicted the carriers that cite THIS MODULE as the instrument to
 // re-run: gunbc.compiler_frontend_program_status StageXL0Denominator and
-// gunbc.namespace.namespace_cut_stage both say body-lowering is NOT XL-0's trigger precisely because the
+// gunbc.namespace_cut.namespace_cut_stage both say body-lowering is NOT XL-0's trigger precisely because the
 // cross-module class would still be missing after it lands.
 //
 // THE LOSSES BELOW ARE THREE CAPABILITIES, NOT ONE, AND NOTHING THAT RESTORES ONE RESTORES ANOTHER:

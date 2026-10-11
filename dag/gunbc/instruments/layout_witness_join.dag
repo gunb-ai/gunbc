@@ -100,7 +100,8 @@ fn observed_file_line(path: String) -> String {
 }
 
 fn field_of(fields: List<String>, index: Int) -> String {
-  match fields[index] {
+  let element = fields[index]
+  match element {
     Present { value: v } => v
     Absent => ""
   }

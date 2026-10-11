@@ -1,4 +1,4 @@
-module gunbc.namespace.namespace_reference_derived_closure_admission
+module gunbc.namespace_cut.namespace_reference_derived_closure_admission
 
 import std.algebra { Empty }
 import std.occurrence_binding {

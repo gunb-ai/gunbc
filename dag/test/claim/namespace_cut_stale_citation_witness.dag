@@ -14,8 +14,8 @@ module test.claim.namespace_cut_stale_citation_witness
 
 import std.types { Bool, List, String }
 import gunbc.rust_item_identity { RustFunction, RustItemIdentity }
-import gunbc.namespace.namespace_cut_subject_roster { HostRustItemProbe, NamespaceCutSubjectProbe }
-import gunbc.namespace.namespace_cut_subject_observation {
+import gunbc.namespace_cut.namespace_cut_subject_roster { HostRustItemProbe, NamespaceCutSubjectProbe }
+import gunbc.namespace_cut.namespace_cut_subject_observation {
   SubjectProbeObservation,
   SubjectProbeUnobservable,
   host_probe_over_items,

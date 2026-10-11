@@ -10,7 +10,7 @@ import std.reference_binding_observation {
   RepeatedMentionDependencyObservation,
   UnrelatedLoadedFileObservation,
 }
-import gunbc.namespace.namespace_reference_derived_closure_admission {
+import gunbc.namespace_cut.namespace_reference_derived_closure_admission {
   ReferenceDerivedClosureAdmission,
   ReferenceDerivedClosureEstablished,
   ReferenceDerivedClosureRefused,
@@ -31,7 +31,7 @@ import gunbc.namespace.namespace_reference_derived_closure_admission {
   P2aPoolIndependentDependencyProjection7515,
   assess_reference_binding_observation,
 }
-import gunbc.namespace.namespace_reference_derived_closure_contract {
+import gunbc.namespace_cut.namespace_reference_derived_closure_contract {
   reference_derived_closure_required_capabilities,
   reference_derived_closure_closing_frontier_count,
   reference_derived_closure_closing_contract_holds,

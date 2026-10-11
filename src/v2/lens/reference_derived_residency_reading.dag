@@ -3,7 +3,7 @@ module v2.lens.reference_derived_residency_reading
 import std.types { List }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
-import gunbc.namespace.namespace_reference_derived_residency_qualification {
+import gunbc.namespace_cut.namespace_reference_derived_residency_qualification {
   CarrierKeyPopulation,
   CarrierReadability,
   CarrierTypeRecognized,

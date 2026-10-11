@@ -1,0 +1,60 @@
+module gunbc.rung_drop.population_parse_service_requires_transport_members
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// ============================================================================================
+// THE DECLARED RUNG DROP for the modules v2's grammar cannot parse because an operation declares
+// `requires <TypeList>` together with transport, exit or mock_response members (DESIGN 4b(3) no
+// silent regression; source layout cutover, check 2: the explicit population parse).
+// ============================================================================================
+//
+// WHAT THE CUTOVER ASKS OF THIS PARSE. `gunbc test //gunbc/instruments:v2-native-cli` runs the
+// `parse-population` verb over the governed roots: every module the layout authority enumerates
+// is read and parsed by v2, one at a time, verdict only. It holds only when every module parses.
+// It does not hold on current main: a fixed set of service modules fails with
+// `parse_g0_tokens_remain`. This is a v2 grammar gap that predates the layout cutover, outside
+// every compile closure and therefore invisible to the required job until the population parse
+// ran; nothing the sweep wrote causes it.
+//
+// THE BISECT, FOR WHOEVER RESTORES THE CAPABILITY. The minimal failing form is one operation
+// whose `requires` names a type list and which is followed by any of `transport`, `exit` or
+// `mock_response`; `requires none` before the same members parses. The grammar rows are
+// `dag_grammar_op_requires_expr` (`requires none | requires opaque | requires <type list>`, guarded
+// by a not-predicate) and `dag_grammar_operation_body_entry_expr` (the choice of input, output,
+// op_modifier, requires, transport, exit, response, mock_response) in
+// `v2.extdeps.languages.dag`. The type list's optional separator commas consume the token that
+// introduces the next member, so the member choice never sees `transport`; the parse stops there
+// and the rest of the module is left over. The restoring change is tidy-raven-810's.
+//
+// WHY A DECLARED DROP AND NOT A GRAMMAR EDIT HERE. The cutover moves where modules are stored
+// and how they are demanded; a v2 grammar change is a separate capability with its own
+// differential, and landing it inside the cutover would make a layout change carry a language
+// change nothing in the layout reads.
+//
+// THE DROP IS TWO-SIDED, so it can only shrink. A module outside the list that fails to parse
+// is red, and a listed module that starts parsing is also red: `parse-population` reports both,
+// and the walked control additionally requires that the number of declared refusals it saw
+// equals the length of the list. The population is the exact list of modules, by identity, in
+// `gunbc.parse_population_refusals` `requires_transport_members_keys`.
+
+data population_parse_service_requires_transport_members: RungDrop = RungDrop {
+  identity: "population_parse_service_requires_transport_members" as NonEmptyStr,
+
+  subject: "the v2 parse of each service module whose operation declares `requires <TypeList>` together with transport, exit or mock_response members: the population parse that the source layout cutover makes a required step cannot judge these modules, so a defect in them would not be refused by it",
+
+  declared: "2026-10-11",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged { replacement: "the explicit population parse (`parse-population` on v2.cli.compile_cli), which parses every governed module and holds only when each parses or is declared here; the whole-repository ingest gate it replaces parsed these modules with the seed's parser" },
+    population: [
+      "every module named by `gunbc.parse_population_refusals` `requires_transport_members_keys`, identified by tree and path (the list is the single authority; the verb refuses a listed module that parses)",
+    ],
+    restoration_trigger: "v2's grammar parses a requires-R operation carrying transport/exit/mock members, unambiguously, sufficient that `parse-population` over the live roots refuses none of the modules in `gunbc.parse_population_refusals` `requires_transport_members_keys`; restoring it deletes that function and this drop together (tidy-raven-810, PR 13731)"
+  }
+}

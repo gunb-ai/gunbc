@@ -1,15 +1,15 @@
-module gunbc.namespace.namespace_step0_canary_v2
+module gunbc.namespace_cut.namespace_step0_canary_v2
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.content_hash { Sha256Digest }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import extdeps.git.object_store { GitObjectId, git_object_id_eq }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
-import gunbc.namespace.namespace_step0_subject_collector {
+import gunbc.namespace_cut.namespace_step0_subject_collector {
   Step0PopulationIdentity,
   step0_population_identity_eq
 }
-import gunbc.namespace.namespace_step0_binding_provenance_contract {
+import gunbc.namespace_cut.namespace_step0_binding_provenance_contract {
   Step0BindingProvenanceConsequence,
   BindingProvenanceObservable,
   BindingProvenanceUnobservable,
@@ -29,7 +29,7 @@ import gunbc.namespace.namespace_step0_binding_provenance_contract {
 // Editing a receipt literal after reading some other command's output is not movement.
 //
 // V1 RECEIPT ZERO IS NOT MUTATED OR REINTERPRETED BY THIS CONTRACT. The retired authority was
-// deleted; gunbc.namespace.namespace_step0_canary_v1_history namespace_step0_canary_v1_historical_receipt
+// deleted; gunbc.namespace_cut.namespace_step0_canary_v1_history namespace_step0_canary_v1_historical_receipt
 // retains only its historical observation, whose truthful standing was Step0SubjectNotEntered. This contract
 // ESTABLISHES its own zero, under its own identity, from its own first live run -- and that zero may
 // immediately read SubjectEntered with a completed containment compile, because a newly established
@@ -58,7 +58,7 @@ type NamespaceStep0V2Contract {
 // smaller answer.
 data namespace_step0_canary_v2_contract: NamespaceStep0V2Contract = NamespaceStep0V2Contract {
   identity: "namespace-step0-strip-entry-canary-v2" as NonEmptyStr,
-  command: "target/release/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/namespace/namespace_step0_candidate_run.dag --function current_step0_candidate_receipt_line" as NonEmptyStr,
+  command: "target/release/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/namespace_cut/namespace_step0_candidate_run.dag --function current_step0_candidate_receipt_line" as NonEmptyStr,
   source_roots: ["dag" as NonEmptyStr, "src/v2" as NonEmptyStr, "src/v1" as NonEmptyStr],
   subject: "every .dag source at the pinned revision under the declared roots THAT PARSES AS A MODULE, its parsed import statements removed by a typed source rewrite before containment resolution is compiled; a .dag source the parse declines to give a module is out of subject and is named in the receipt's excluded population" as NonEmptyStr,
   one_dispatch_rule: "the candidate receipt is produced in ONE dispatch: the same run observes the revision, its tree and the compiler executable, collects the subject population from that revision, applies the strip, observes the containment compile, constructs the receipt and classifies it. No field may be supplied from a prior run, a different dispatch, or an authored literal; a command assembled from pieces across two invocations is validating a receipt again rather than observing a frontier, which is the defect this contract supersedes" as NonEmptyStr
@@ -178,14 +178,14 @@ fn step0_import_dependence_not_judged() -> Step0ImportDependenceStanding {
     BindingProvenanceUnobservable { detail: detail } => ImportDependenceNotJudged {
       cause: detail,
       required_capability: decl_ref(
-        module_path: "gunbc.namespace.namespace_step0_binding_provenance_contract",
+        module_path: "gunbc.namespace_cut.namespace_step0_binding_provenance_contract",
         decl_name: "step0_binding_provenance_receipt_contract"
       )
     }
     BindingProvenanceObservable { producer: _ } => ImportDependenceNotJudged {
       cause: "a binding-provenance producer now inhabits the contract; this receipt did not run it, so import dependence is still unjudged BY THIS RUN" as NonEmptyStr,
       required_capability: decl_ref(
-        module_path: "gunbc.namespace.namespace_step0_binding_provenance_contract",
+        module_path: "gunbc.namespace_cut.namespace_step0_binding_provenance_contract",
         decl_name: "step0_binding_provenance_receipt_contract"
       )
     }
@@ -337,7 +337,7 @@ fn namespace_step0_v2_candidate_receipt(
   frontier: Step0V2Frontier
 ) -> NamespaceStep0V2Receipt
   admit_callers: [
-    decl_ref(module_path: "gunbc.namespace.namespace_step0_candidate_run", decl_name: "step0_candidate_receipt_of_run")
+    decl_ref(module_path: "gunbc.namespace_cut.namespace_step0_candidate_run", decl_name: "step0_candidate_receipt_of_run")
   ]
   = NamespaceStep0V2Receipt {
     contract_identity: namespace_step0_canary_v2_contract.identity,

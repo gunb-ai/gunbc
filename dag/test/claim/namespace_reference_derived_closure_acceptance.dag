@@ -1,6 +1,6 @@
 module test.claim.namespace_reference_derived_closure_acceptance
 
-import gunbc.namespace.namespace_reference_derived_closure_contract {
+import gunbc.namespace_cut.namespace_reference_derived_closure_contract {
   namespace_reference_derived_closure_acceptance_admissions,
   reference_derived_closure_closing_contract_holds,
 }

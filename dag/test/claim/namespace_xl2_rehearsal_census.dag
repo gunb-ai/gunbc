@@ -2,9 +2,9 @@ module test.claim.namespace_xl2_rehearsal_census
 
 import std.types { Bool, List, NonEmptyStr, String }
 import extdeps.git.object_store { git_sha1_object_id }
-import gunbc.namespace.namespace_step0_subject_collector { Step0CommitIdentityUnreadable }
+import gunbc.namespace_cut.namespace_step0_subject_collector { Step0CommitIdentityUnreadable }
 import gunbc.instruments.multi_module_compile_fixture { FixtureSource }
-import gunbc.namespace.namespace_xl2_rehearsal_census {
+import gunbc.namespace_cut.namespace_xl2_rehearsal_census {
   Xl2PrerequisiteOutstanding,
   Xl2ScopeUnobserved,
   Xl2CompleteArmNotAdmitted,
@@ -30,7 +30,7 @@ import v2.std.diagnostic { None, Some, diagnostics_eq }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE CONTROLS THE BRIEF OWES, RUN THROUGH THE REHEARSAL'S OWN COMPOSITION: the typed strip
-// (gunbc.namespace.namespace_step0_strip_producer), path admission, the path-faithful ingest, and
+// (gunbc.namespace_cut.namespace_step0_strip_producer), path admission, the path-faithful ingest, and
 // v2.compiler.compile's census-resolve. Only the exact-base collector is replaced by supplied
 // sources, because it reads the repository's object store and the hermetic floor cannot reach that
 // (the collector's own note states the route deficit); every stage downstream of the vector is the

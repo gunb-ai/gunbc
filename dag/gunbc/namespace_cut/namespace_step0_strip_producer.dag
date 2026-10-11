@@ -1,4 +1,4 @@
-module gunbc.namespace.namespace_step0_strip_producer
+module gunbc.namespace_cut.namespace_step0_strip_producer
 
 import std.types { List, NonEmptyStr, String }
 import std.import {
@@ -15,7 +15,7 @@ import std.import {
   import_statement_parse_cause_label,
   strip_import_statements,
 }
-import gunbc.namespace.parsed_import_statement_production { parsed_import_statements_live }
+import gunbc.namespace_cut.parsed_import_statement_production { parsed_import_statements_live }
 import gunbc.instruments.multi_module_compile_fixture { FixtureSource }
 
 // The v1 canary and its receipt producer were deleted at the Step-0-proper cut.  This module now

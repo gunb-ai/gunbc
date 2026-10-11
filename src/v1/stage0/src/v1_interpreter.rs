@@ -15746,7 +15746,7 @@ fn operation_ref_value(path: &str, service: &str, operation: &str, ctx: &InterpC
 /// Encode one `ReferenceDerivedClosureAdmission` as an interpreter value.
 ///
 /// Pure encoding. The judgement was made by
-/// `gunbc.namespace.namespace_reference_derived_closure_admission assess_reference_binding_observation`,
+/// `gunbc.namespace_cut.namespace_reference_derived_closure_admission assess_reference_binding_observation`,
 /// which the `.dag` producer calls; nothing here decides, reclassifies, or defaults. The
 /// three payload vocabularies are nullary coproducts, carried by name.
 fn reference_derived_closure_admission_value(

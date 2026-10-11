@@ -11,7 +11,7 @@ import v2.std.decl_ref_resolution {
   DeclarationRefDeclarationAbsent,
   DeclarationRefAmbiguous,
 }
-import gunbc.namespace.namespace_cut_subject_roster {
+import gunbc.namespace_cut.namespace_cut_subject_roster {
   NamespaceCutSubjectProbe,
   DagDeclarationProbe,
   HostRustItemProbe,
@@ -21,7 +21,7 @@ import gunbc.namespace.namespace_cut_subject_roster {
 }
 import gunbc.rust_item_identity { RustItemIdentity, RustFunction }
 import gunbc.rust_item_host_observation { LiveHandRustObserved, LiveHandRustHostRefused }
-import gunbc.namespace.namespace_cut_subject_observation {
+import gunbc.namespace_cut.namespace_cut_subject_observation {
   SubjectProbeObservation,
   SubjectProbePresent,
   SubjectProbeAbsent,

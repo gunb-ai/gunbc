@@ -17,7 +17,7 @@ import std.primitive_projection {
 }
 import gunbc.rust_emitted_crate { EmittedRustCrate, EmittedCrateDependencyDemand }
 import gunbc.rust_emitted_edge { EmittedEdge, rust_module_emit_filename, rust_prelude_emitted_edges, emitted_edge_target_module, semantic_source_reference_edge, declared_import_edge, inline_path_reference_edge, service_runtime_surface_edge, RuntimePrelude, ReexportFacade }
-import gunbc.namespace.reference_derived_candidate {
+import gunbc.namespace_cut.reference_derived_candidate {
   ReferenceDerivedCandidateDisposition,
   CandidateSurvived,
   CandidateOwnModule,

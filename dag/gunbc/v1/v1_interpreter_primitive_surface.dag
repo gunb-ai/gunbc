@@ -327,7 +327,7 @@ data arm_accepted_shape_gap_note: String = "ARITY IS NOT DERIVABLE FROM THIS DIS
 // live interpreter macro census on 2026-08-02; ongoing edits are manual at this carrier, not
 // regenerated from Rust.
 
-// Deletion obligation: gunbc.namespace.parsed_import_statement_bridge_seed_growth
+// Deletion obligation: gunbc.namespace_cut.parsed_import_statement_bridge_seed_growth
 // parsed_import_statement_bridge_seed_growth_justification, enrolled by
 // gunbc.seed_growth_admission. This exception-only arm is deleted, never migrated,
 // when the native context fold supplies the acquired inventory to the census.

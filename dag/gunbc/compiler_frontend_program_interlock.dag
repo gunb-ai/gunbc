@@ -42,7 +42,7 @@ type ProgramMilestone
 // changes what live resolution and closure answer, which is the atomic transition DESIGN
 // section 3 requires to land in one motion. A milestone whose label schedules a root deletion
 // "first" invites exactly the leaves-upward migration the doctrine forbids, and
-// gunbc.namespace.namespace_cut_subject_roster was assigning five root authorities to the waves on the
+// gunbc.namespace_cut.namespace_cut_subject_roster was assigning five root authorities to the waves on the
 // strength of it.
 //
 // The wave is redefined at the grain a wave can actually hold: an EXACT CORPUS REWRITE performed

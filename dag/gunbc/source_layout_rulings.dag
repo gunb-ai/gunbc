@@ -13,7 +13,7 @@ data source_layout_decider: NonEmptyStr = "operator" as NonEmptyStr
 data source_layout_ruled_on: NonEmptyStr = "2026-10-10" as NonEmptyStr
 
 // THE RULING'S IDENTITY IS A CLOSED VARIANT, NOT A SPELLING (the lesson of
-// gunbc.namespace.namespace_cut_landing_order RulingIdentity): a reference to a ruling nobody declared has no
+// gunbc.namespace_cut.namespace_cut_landing_order RulingIdentity): a reference to a ruling nobody declared has no
 // constructor. The label is derived from the identity below, so the two cannot disagree.
 type SourceLayoutRulingId
   = LayoutR1

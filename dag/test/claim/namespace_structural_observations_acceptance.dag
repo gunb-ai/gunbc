@@ -1,13 +1,13 @@
 module test.claim.namespace_structural_observations_acceptance
 
-import gunbc.namespace.namespace_reference_derived_closure_admission {
+import gunbc.namespace_cut.namespace_reference_derived_closure_admission {
   ReferenceDerivedClosureCapability,
   SameFileEarlierNeighbourVisible,
   SiblingDecisionBranchExcluded,
   LaterDeclarationExcluded,
   DistinctSameSpelledDeclarationsPreserved,
 }
-import gunbc.namespace.namespace_structural_observations_contract {
+import gunbc.namespace_cut.namespace_structural_observations_contract {
   OrdinaryCompileStructuralAdmission,
   StructuralObservationSubject,
   namespace_structural_observations_subject,
@@ -18,7 +18,7 @@ import gunbc.namespace.namespace_structural_observations_contract {
   namespace_structural_observations_missing_capabilities,
   structural_admission_off_subject_modules,
 }
-import gunbc.namespace.namespace_structural_observations_production {
+import gunbc.namespace_cut.namespace_structural_observations_production {
   namespace_structural_observations_production_admissions,
 }
 import std.reference_binding_observation {

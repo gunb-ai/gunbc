@@ -1162,22 +1162,22 @@ fn v1_dag_argv_consumers() -> List<V1ConsumerRow> {
       disposition: retained_open(justification: "the DEPLOYED PRODUCT: the live-deploy pipeline installs the gunbc source tree and binary onto a served host, so v1 is not only a build-time dependency of this repository but a shipped artifact on srv1. This is the relation that makes ProductsV1Free a separate finish line from InterpreterDeleted -- deleting the crate does not by itself remove it from a machine that already runs it. Closes on: the deployment artifact naming a native binary AND the deployed hosts having converged onto it, which is a fleet condition rather than a repository one")
     ),
     v1_dag_argv_consumer(
-      module_path: "gunbc.namespace.namespace_step0_candidate_run", decl_name: "run_current_step0_candidate",
+      module_path: "gunbc.namespace_cut.namespace_step0_candidate_run", decl_name: "run_current_step0_candidate",
       authority: gunbc_cli_bin, subject: V1Cli,
       disposition: retained_open(justification: "the namespace cut's step-0 candidate is EVALUATED by running the v1 CLI over the candidate tree, so the migration that is supposed to remove a v1-era representation is itself measured by v1. Closes on: the candidate run executing through a native evaluator; until then the namespace lane's own receipts are seed-produced, which is a fact about their evidence rather than about their conclusions")
     ),
     v1_dag_argv_consumer(
-      module_path: "gunbc.namespace.namespace_step0_candidate_run", decl_name: "step0_candidate_receipt_of_run",
+      module_path: "gunbc.namespace_cut.namespace_step0_candidate_run", decl_name: "step0_candidate_receipt_of_run",
       authority: gunbc_cli_bin, subject: V1Cli,
       disposition: retained_open(justification: "the receipt projection reads the run above. A separate relation because a cutover could move the RUN to a native evaluator and leave the receipt shape assuming the seed's output, which is the adjudication-lags-execution split the required-lane measurement rows already carry")
     ),
     v1_dag_argv_consumer(
-      module_path: "gunbc.namespace.namespace_step0_canary_v2", decl_name: "admit_namespace_step0_v2_receipt",
+      module_path: "gunbc.namespace_cut.namespace_step0_canary_v2", decl_name: "admit_namespace_step0_v2_receipt",
       authority: gunbc_cli_bin, subject: V1Cli,
       disposition: retained_open(justification: "the v2 canary's admission reads a receipt produced by a v1 CLI run. Closes with the candidate-run rows above and by the same capability")
     ),
     v1_dag_argv_consumer(
-      module_path: "gunbc.namespace.namespace_step0_canary_v1_history", decl_name: "namespace_step0_canary_v1_historical_receipt",
+      module_path: "gunbc.namespace_cut.namespace_step0_canary_v1_history", decl_name: "namespace_step0_canary_v1_historical_receipt",
       authority: gunbc_cli_bin, subject: V1Cli,
       disposition: retired(reason: "a HISTORICAL receipt: the row records what a v1 canary run answered at a past revision, and the doctrine explicitly admits X serving from history as an offline differential oracle. A recorded observation of a run that already happened is not a live consumer, so it retires as a citation rather than as a dependency -- and it is filed rather than dropped because a reader who found the literal and no row would have to re-establish that distinction")
     ),

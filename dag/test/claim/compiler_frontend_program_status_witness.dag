@@ -22,7 +22,7 @@ import gunbc.compiler_frontend_program_interlock {
   NamespaceFirstSemanticWave,
   milestone_label,
 }
-import gunbc.namespace.namespace_cut_stage {
+import gunbc.namespace_cut.namespace_cut_stage {
   NamespaceCutStage,
   StageF0,
   StageXL5Waves,
@@ -53,7 +53,7 @@ import gunbc.namespace.namespace_cut_stage {
   StageAct0ActivationGate,
   stage_prerequisites,
 }
-import gunbc.namespace.namespace_cut_subject_roster {
+import gunbc.namespace_cut.namespace_cut_subject_roster {
   subjects_deleted_at,
   subject_probe_list,
   probe_render,
@@ -607,7 +607,7 @@ test fn no_subject_is_scheduled_for_the_waves_and_xl5_is_not_derivable_from_the_
 // WHOSE DECLARING IDENTITIES ARE SPELLED RATHER THAN BOUND.
 //
 // THIS PROBE HAS BEEN FALSIFIED THREE TIMES AND ALL THREE ARE ONE RULE. The original arm read
-// gunbc.namespace.namespace_cut_subject_roster's unobservable host probes; a later arm read a STAGE DELIVERY
+// gunbc.namespace_cut.namespace_cut_subject_roster's unobservable host probes; a later arm read a STAGE DELIVERY
 // RECEIPT earned against hand-built Node trees while the producer returned NO sites over the tree
 // production actually yields; and on gunbc#11582 one head read a delivery receipt discriminated on
 // the production route whose RepairInputDeclared arm was derived from the authored SPELLING while

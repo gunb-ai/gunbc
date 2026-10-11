@@ -2774,6 +2774,23 @@ const POPULATION_LAYOUT_HOLDS_HEAD: &str = "layout holds";
 const POPULATION_PARSES_HEAD: &str = "population parses: ";
 const POPULATION_PARSES_ONE: &str = "population parses: 1 module(s)";
 const POPULATION_NOTHING_DETAIL: &str = "a parse over nothing is not a parse of zero";
+/// What follows `D of K` in the tally a held parse report carries whenever any refusal is declared
+/// (`v2.cli.population_verbs` `population_parse_declared_suffix`): D declared modules met refused exactly
+/// as declared, of K declared by `gunbc.parse_population_refusals`.
+const POPULATION_DECLARED_TALLY_TAIL: &str =
+    " refusals declared by gunbc.parse_population_refusals";
+
+/// The `(met, declared)` tally of a held parse report, or `None` when it carries none, which the verb
+/// prints exactly when nothing is declared.
+fn population_declared_tally(report: &str) -> Option<(usize, usize)> {
+    let tally = report
+        .trim()
+        .strip_suffix(POPULATION_DECLARED_TALLY_TAIL)?
+        .rsplit("; ")
+        .next()?;
+    let (met, declared) = tally.split_once(" of ")?;
+    Some((met.parse().ok()?, declared.parse().ok()?))
+}
 
 /// The lines of a population report worth quoting in a refusal: the report of a refused layout
 /// lists one line per refusal, so the whole of it would bury the control that failed.
@@ -2884,7 +2901,17 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
         ));
     }
     let parse_live = run_cli_door(binary, &population_argv("parse-population", &live))?;
-    if parse_live.status != Some(0) || !parse_live.stdout.starts_with(POPULATION_PARSES_HEAD) {
+    // THE LIST MAY NOT OUTLIVE ITS FILES: a declared refusal the walk did not meet is a module that was
+    // deleted, renamed or now fails for another cause, and the declaration then names a population the
+    // repository no longer has.
+    let declared_unmet = match population_declared_tally(&parse_live.stdout) {
+        Some((met, declared)) => met != declared,
+        None => parse_live.stdout.contains(POPULATION_DECLARED_TALLY_TAIL),
+    };
+    if parse_live.status != Some(0)
+        || !parse_live.stdout.starts_with(POPULATION_PARSES_HEAD)
+        || declared_unmet
+    {
         return Err(format!(
             "V2-NATIVE REFUSAL cause=NativePopulationParseDoesNotHoldOverTheLiveRoots — status={:?} stdout={} stderr={}",
             parse_live.status,
@@ -2902,7 +2929,13 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
         binary,
         &population_argv("parse-population", &[door_root.as_path()]),
     )?;
-    if door.status != Some(0) || door.stdout.trim() != POPULATION_PARSES_ONE {
+    // The fixture holds one module, none of them declared: its tally, when the verb prints one, is zero met.
+    let door_text = door.stdout.trim();
+    let door_is_one_module = door_text == POPULATION_PARSES_ONE
+        || (door_text.starts_with(POPULATION_PARSES_ONE)
+            && population_declared_tally(door_text).is_some_and(|(met, _)| met == 0)
+            && door_text[POPULATION_PARSES_ONE.len()..].starts_with("; 0 of "));
+    if door.status != Some(0) || !door_is_one_module {
         return Err(fail("NativePopulationParseDoorRootNotOneModule", &door));
     }
     let malformed = run_cli_door(

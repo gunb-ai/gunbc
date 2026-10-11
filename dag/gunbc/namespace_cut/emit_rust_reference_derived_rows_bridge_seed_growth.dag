@@ -1,4 +1,4 @@
-module gunbc.namespace.emit_rust_reference_derived_rows_bridge_seed_growth
+module gunbc.namespace_cut.emit_rust_reference_derived_rows_bridge_seed_growth
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { String }

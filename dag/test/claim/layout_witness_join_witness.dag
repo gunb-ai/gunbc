@@ -113,7 +113,8 @@ test fn a_carried_set_reports_nothing_beyond_preservation() -> Bool {
 // An element read at an index is an Optional, and it is READ by matching it: comparing it with a
 // constructed `Present` is not the same question and answers false on a present element.
 fn line_at_is(lines: List<String>, index: Int, want: String) -> Bool {
-  match lines[index] {
+  let element = lines[index]
+  match element {
     Present { value: line } => line == want
     Absent => false
   }
@@ -271,7 +272,8 @@ test fn the_line_the_observer_writes_for_a_discovery_row_is_the_row_the_join_rea
 }
 
 fn first_row_is(rows: List<ObservedRow>, want: ObservedRow) -> Bool {
-  match rows[0] {
+  let element = rows[0]
+  match element {
     Present { value: row } => row == want
     Absent => false
   }

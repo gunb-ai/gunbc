@@ -19,7 +19,7 @@ import gunbc.instruments.multi_module_compile_fixture {
   FixtureCompileCompleted,
   compile_fixture
 }
-import gunbc.namespace.namespace_step0_subject_collector {
+import gunbc.namespace_cut.namespace_step0_subject_collector {
   Step0SubjectVector,
   Step0SubjectMember,
   Step0TreeEntryDecoded,
@@ -279,7 +279,7 @@ test fn only_a_regular_file_blob_is_a_source_a_symlink_and_a_gitlink_are_not() -
 // THE DESTRUCTION CONTROL, ON THE SOURCE-POPULATION AXIS RATHER THAN THE IMPORT-EDGE AXIS. Proving
 // a collector "complete" by showing that removing an IMPORT reds is now known to prove nothing:
 // bare-name resolution across the supplied pool recovers the callee, so the import-edge axis is
-// fail-open by measurement (gunbc.namespace.namespace_step0_strip_producer's own kernel-typed subject
+// fail-open by measurement (gunbc.namespace_cut.namespace_step0_strip_producer's own kernel-typed subject
 // compiles with every import removed). What global resolution CANNOT recover is a declaration whose
 // SOURCE was never supplied. So the falsifier for a dropped member is: compile the pair, then
 // compile it with one whole module omitted, and require the second to refuse.
@@ -355,13 +355,13 @@ fn seal_violation_count(source: String, wanted: String) -> Int {
   }
 }
 
-data outside_caller_of_the_mint_source: String = "module probe_step0_mint_outside_caller\nimport gunbc.namespace.namespace_step0_subject_collector { Step0SubjectVector, Step0SubjectMember, step0_mint_subject_vector }\nimport extdeps.git.object_store { GitObjectId }\nfn probe_forge(commit: GitObjectId, tree: GitObjectId, members: List<Step0SubjectMember>) -> Step0SubjectVector {\n  step0_mint_subject_vector(source_commit: commit, source_tree: tree, members: members)\n}\n"
+data outside_caller_of_the_mint_source: String = "module probe_step0_mint_outside_caller\nimport gunbc.namespace_cut.namespace_step0_subject_collector { Step0SubjectVector, Step0SubjectMember, step0_mint_subject_vector }\nimport extdeps.git.object_store { GitObjectId }\nfn probe_forge(commit: GitObjectId, tree: GitObjectId, members: List<Step0SubjectMember>) -> Step0SubjectVector {\n  step0_mint_subject_vector(source_commit: commit, source_tree: tree, members: members)\n}\n"
 
 // THE GREEN CONTROL FOR THE SAME PROBE SHAPE, and it is what makes the red above attributable. An
 // outside module that imports this collector and calls a PUBLIC function of it compiles with no
 // admission refusal -- so the red arm is the SEAL firing, not the import failing, the module being
 // unreachable, or the census refusing to run.
-data outside_caller_of_a_public_fn_source: String = "module probe_step0_public_outside_caller\nimport gunbc.namespace.namespace_step0_subject_collector { step0_subject_paths_at }\nimport std.types { List, String }\nfn probe_paths(blob: String) -> List<String> {\n  step0_subject_paths_at(paths_nul: blob)\n}\n"
+data outside_caller_of_a_public_fn_source: String = "module probe_step0_public_outside_caller\nimport gunbc.namespace_cut.namespace_step0_subject_collector { step0_subject_paths_at }\nimport std.types { List, String }\nfn probe_paths(blob: String) -> List<String> {\n  step0_subject_paths_at(paths_nul: blob)\n}\n"
 
 test fn an_outside_module_has_no_admitted_call_path_to_the_vector_mint() -> Bool {
   seal_violation_count(source: outside_caller_of_the_mint_source, wanted: "ConstructorCallAdmissionRefused") >= 1

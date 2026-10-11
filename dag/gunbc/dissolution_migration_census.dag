@@ -80,7 +80,7 @@ fn dissolves_by_greening_rows() -> List<LifecycleResidueRow> {
   [
     residue_row(module_path: "test.claim.legacy_test_behavior_disposition_acceptance", decl_name: "legacy_test_behavior_acceptance_dissolution_note", class: DissolvesByGreening, rationale: "greens when the last discovered legacy behavior receives an admitted disposition"),
     residue_row(module_path: "test.claim.observation_raw_print_retirement_acceptance", decl_name: "acceptance_dissolution_note", class: DissolvesByGreening, rationale: "greens when the frontier reaches zero; its expect-red row becomes wrong at the same moment"),
-    residue_row(module_path: "gunbc.namespace.namespace_reference_derived_closure_contract", decl_name: "namespace_reference_derived_closure_contract_dissolution_note", class: DissolvesByGreening, rationale: "greens as each of six clauses becomes executable; the contract text is unchanged by that"),
+    residue_row(module_path: "gunbc.namespace_cut.namespace_reference_derived_closure_contract", decl_name: "namespace_reference_derived_closure_contract_dissolution_note", class: DissolvesByGreening, rationale: "greens as each of six clauses becomes executable; the contract text is unchanged by that"),
   ]
 }
 

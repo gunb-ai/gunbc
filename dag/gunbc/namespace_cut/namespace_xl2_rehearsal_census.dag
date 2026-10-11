@@ -1,11 +1,11 @@
-module gunbc.namespace.namespace_xl2_rehearsal_census
+module gunbc.namespace_cut.namespace_xl2_rehearsal_census
 
 import std.types { Int, List, String }
 import std.import { ImportStripCoordinateSegment }
 import extdeps.git.object_store { GitObjectId }
 import extdeps.communication.medium { Lossless, Medium }
 import gunbc.instruments.multi_module_compile_fixture { FixtureSource }
-import gunbc.namespace.namespace_step0_subject_collector {
+import gunbc.namespace_cut.namespace_step0_subject_collector {
   Step0SubjectCollected,
   Step0SubjectCollectionRefused,
   Step0SubjectMember,
@@ -13,7 +13,7 @@ import gunbc.namespace.namespace_step0_subject_collector {
   Step0SubjectVector,
   collect_step0_subject_vector_at
 }
-import gunbc.namespace.namespace_step0_strip_producer {
+import gunbc.namespace_cut.namespace_step0_strip_producer {
   Step0SourceStripped,
   Step0SourceStripRefused,
   Step0StripProductionRefusalCause,
@@ -45,9 +45,9 @@ import gunbc.compiler_frontend_program_status { Xl2Prerequisite, xl2_prerequisit
 
 // XL-2'S REHEARSAL INSTRUMENT: THE CUT EXECUTED IN A THROWAWAY TREE, ITS RESIDUAL OBSERVED ON THE
 // PRODUCTION ROUTE. Every stage is an existing authority composed, not restated: the exact base is
-// gunbc.namespace.namespace_step0_subject_collector (every byte read out of the git object store at one pinned
+// gunbc.namespace_cut.namespace_step0_subject_collector (every byte read out of the git object store at one pinned
 // revision, a failed read refusing the collection), the cut is the typed import strip through
-// gunbc.namespace.namespace_step0_strip_producer, and the observation is v2.compiler.compile's whole-tree
+// gunbc.namespace_cut.namespace_step0_strip_producer, and the observation is v2.compiler.compile's whole-tree
 // census-resolve (gunbc#11738) over the stripped sources. THE THROWAWAY TREE IS AN INGEST, NOT A
 // DIRECTORY: each stripped member keeps its base path as its artifact path and compilation unit, so
 // the tree is path-faithful without a single write, and the live source tree cannot be touched
@@ -400,7 +400,7 @@ fn xl2_rehearse_stripped(source_commit: GitObjectId, source_tree: GitObjectId, s
 // change. Until then the stages below the collector execute in test.claim.namespace_xl2_rehearsal_census,
 // and the collector's live half carries the route deficit its own module states.
 // NO INHABITANCE CLAIM OVER A PINNED FIXTURE, AND WHY: the collector's subject IS the repository's
-// tree at the ref, and gunbc.namespace.namespace_step0_subject_collector states that a mocked revision would let
+// tree at the ref, and gunbc.namespace_cut.namespace_step0_subject_collector states that a mocked revision would let
 // a collector reading the WRONG tree pass -- the one defect it exists to make unrepresentable. So
 // the collector-to-census link executes for the first time in the one-shot run above, whose trigger
 // is the same state, and that run's receipt is the link's executing evidence (DESIGN section 3c: a

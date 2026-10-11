@@ -1,0 +1,96 @@
+module gunbc.parse_population_refusals
+
+import std.types { List, String }
+
+// THE POPULATION PARSE'S DECLARED REFUSALS (rung drops, DESIGN section 4b(3)). `gunbc test //gunbc/instruments:v2-native-cli` walks
+// `parse-population` over the live trees; this module is the exact set of modules that verb is permitted to refuse, by module file key
+// (`<tree>:<path>`) and parse cause, one class per standing drop. The rule is two-sided: a module outside the list that fails to
+// parse (or fails for another cause) is red, and a listed module that parses is red, so a list can only shrink; the walked control
+// additionally requires that the verb met every listed module, so an entry cannot outlive its file. A class is retired by the
+// capability its drop's restoration trigger names, never by editing a list.
+type RefusalClass {
+  drop: String
+  cause: String
+  keys: List<String>
+}
+
+// Operations declaring `requires <TypeList>` together with transport, exit or mock_response members: v2's grammar stops at the first
+// member after the requires list (gunbc.rung_drop population_parse_service_requires_transport_members).
+fn requires_transport_members_keys() -> List<String> {
+  [
+    "dag:extdeps/bmc/http.dag",
+    "dag:extdeps/bmc/ipmi.dag",
+    "dag:extdeps/bmc/megarac.dag",
+    "dag:extdeps/bmc/openbmc_password_ssh_transport.dag",
+    "dag:extdeps/browser.dag",
+    "dag:extdeps/cloud/gcp/gcp.dag",
+    "dag:extdeps/cloud/gcp/iam.dag",
+    "dag:extdeps/cloud/gcp/iam_admin.dag",
+    "dag:extdeps/cloud/gcp/iam_deny.dag",
+    "dag:extdeps/cloud/gcp/secret_manager.dag",
+    "dag:extdeps/cloud/gcp/serviceusage.dag",
+    "dag:extdeps/cloud/gcp/sts.dag",
+    "dag:extdeps/cloud/hetzner_cloud_api.dag",
+    "dag:extdeps/cloudflare/account_api_tokens.dag",
+    "dag:extdeps/cloudflare/r2_buckets.dag",
+    "dag:extdeps/cloudflare/r2_lifecycle.dag",
+    "dag:extdeps/ebay/browse.dag",
+    "dag:extdeps/ebay/inventory.dag",
+    "dag:extdeps/ebay/oauth.dag",
+    "dag:extdeps/git.dag",
+    "dag:extdeps/github/actions_artifacts.dag",
+    "dag:extdeps/github/actions_jit_runner.dag",
+    "dag:extdeps/github/actions_runs.dag",
+    "dag:extdeps/github/actions_self_hosted_runners.dag",
+    "dag:extdeps/github/app.dag",
+    "dag:extdeps/github/checks.dag",
+    "dag:extdeps/github/ci_runner.dag",
+    "dag:extdeps/github/code_search.dag",
+    "dag:extdeps/github/commits.dag",
+    "dag:extdeps/github/gists.dag",
+    "dag:extdeps/github/git_database.dag",
+    "dag:extdeps/github/issues.dag",
+    "dag:extdeps/github/org_actions.dag",
+    "dag:extdeps/github/organizations.dag",
+    "dag:extdeps/github/pulls.dag",
+    "dag:extdeps/github/repository_contents.dag",
+    "dag:extdeps/github/rulesets.dag",
+    "dag:extdeps/github/users.dag",
+    "dag:extdeps/github/workflow_runs.dag",
+    "dag:extdeps/github/workflows.dag",
+    "dag:extdeps/google/drive.dag",
+    "dag:extdeps/google/sheets.dag",
+    "dag:extdeps/google/userinfo.dag",
+    "dag:extdeps/http/client.dag",
+    "dag:extdeps/iputils/arping.dag",
+    "dag:extdeps/llm/anthropic_rest.dag",
+    "dag:extdeps/llm/cli.dag",
+    "dag:extdeps/llm/openai_rest.dag",
+    "dag:extdeps/package_managers/apt.dag",
+    "dag:extdeps/sec/edgar_rest.dag",
+    "dag:extdeps/shell.dag",
+    "dag:extdeps/ssh/password_session.dag",
+    "dag:extdeps/ssh/session.dag",
+    "dag:extdeps/systemd/systemctl.dag",
+    "dag:extdeps/tailscale/acl_api.dag",
+    "dag:extdeps/tcgplayer/catalog.dag",
+    "dag:extdeps/tcgplayer/pricing.dag",
+    "dag:extdeps/tcgplayer/store.dag",
+    "dag:extdeps/tcgplayer/tcgplayer.dag",
+    "dag:extdeps/test/http_pilot.dag",
+    "dag:extdeps/tools/curl.dag",
+    "dag:extdeps/tools/hostname.dag",
+    "dag:gunbc/auth/approval_ntfy_publish.dag",
+    "dag:gunbc/instruments/native_serve_fixture.dag"
+  ]
+}
+
+fn parse_population_declared_refusal_classes() -> List<RefusalClass> {
+  [
+    RefusalClass {
+      drop: "population_parse_service_requires_transport_members",
+      cause: "parse_g0_tokens_remain",
+      keys: requires_transport_members_keys()
+    }
+  ]
+}

@@ -34,7 +34,7 @@ import v2.workflow.legacy_baseline_persisted_observation {
   PersistRefusedNotCaptured,
   persisted_against_requested
 }
-import gunbc.namespace.reference_derived_candidate {
+import gunbc.namespace_cut.reference_derived_candidate {
   ReferenceDerivedCandidateRow,
   CandidateOwnModule,
   CandidateRegistryAbsent

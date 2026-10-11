@@ -1,7 +1,7 @@
 module v2.test.claim.reference_derived_residency_reading
 
 import std.types { List }
-import gunbc.namespace.namespace_reference_derived_residency_qualification {
+import gunbc.namespace_cut.namespace_reference_derived_residency_qualification {
   BoundedRealizationQualified,
   BoundedRealizationRefused,
   CarrierKeyPopulation,

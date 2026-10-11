@@ -1,7 +1,7 @@
-module gunbc.namespace.namespace_cut_subject_roster
+module gunbc.namespace_cut.namespace_cut_subject_roster
 
 import std.types { String, NonEmptyStr, Bool, List }
-import gunbc.namespace.namespace_cut_stage {
+import gunbc.namespace_cut.namespace_cut_stage {
   NamespaceCutStage,
   StageXL6AtomicCutover,
   StageXL7GrammarDeletion,
@@ -23,7 +23,7 @@ import gunbc.namespace.namespace_cut_stage {
 // carries its identity as data strings, the DeclarationRef is CONSTRUCTED at observation time
 // from non-literal arguments (which the wall deliberately does not capture -- its own fail-open
 // arm), and resolution happens at runtime through v2.std.decl_ref_resolution -- in the live
-// sibling module gunbc.namespace.namespace_cut_subject_observation, split off so importing THIS module
+// sibling module gunbc.namespace_cut.namespace_cut_subject_observation, split off so importing THIS module
 // never pulls live-read code into a consumer's closure -- where ABSENT is an answer rather than
 // a refusal. Absence-as-answer is the whole requirement: after the cut, SubjectProbeAbsent is
 // this roster's success state.
@@ -195,7 +195,7 @@ fn subject_probe_list(s: NamespaceCutSubjectIdentity) -> List<NamespaceCutSubjec
 // no-subject-at-XL-5 rule so a reassignment reds rather than being noticed in review.
 //
 // XL-7 keeps grammar, parse surface and AST carriers, structurally, by the grammar-last ruling
-// (gunbc.namespace.namespace_cut_landing_order namespace_cut_grammar_last_ruling).
+// (gunbc.namespace_cut.namespace_cut_landing_order namespace_cut_grammar_last_ruling).
 fn subject_deleted_at_stage(s: NamespaceCutSubjectIdentity) -> NamespaceCutStage {
   match s {
     ImportGrammarProductions => StageXL7GrammarDeletion

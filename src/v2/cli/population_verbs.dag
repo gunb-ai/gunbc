@@ -3,6 +3,7 @@ module v2.cli.population_verbs
 import std.types { Bool, Int, List }
 import std.algebra { Cons }
 import std.integer { int_to_decimal_string }
+import gunbc.parse_population_refusals { RefusalClass, parse_population_declared_refusal_classes }
 import gunbc.source_layout_namespaces { layout_namespaces }
 import gunbc.source_root_read {
   SourceRootPathsRead,
@@ -44,7 +45,7 @@ import v2.compiler.source_authority {
   module_file_key,
   module_header_declared_name
 }
-import v2.std.algebra { HeadAbsent, HeadFound, length, list_head, list_map, list_reverse, skip }
+import v2.std.algebra { HeadAbsent, HeadFound, any, length, list_head, list_map, list_reverse, skip }
 import v2.std.text { String }
 
 // THE WHOLE-POPULATION VERBS. Compiling an entry reads the modules that entry requests and nothing
@@ -162,31 +163,92 @@ fn check_layout(bindings: List<SourceRootBinding>) -> PopulationReport {
 
 // ---- parse-population --------------------------------------------------------------------------------
 
-// What a streaming parse keeps: how many parsed, and one located line per module that did not (newest
-// first). No tree, no content and no module list survives the member that produced it.
+// What a streaming parse keeps: how many parsed, how many members the declared drops
+// (gunbc.parse_population_refusals) name and refused exactly as declared, and one located line per
+// module that the population parse must report (newest first). No tree, no content and no module list
+// survives the member that produced it.
 type PopulationParse {
   parsed: Int
+  declared: Int
   refusals: List<String>
 }
 
-fn population_parse_member(env: AcquisitionEnv, name: String, tally: PopulationParse) -> PopulationParse {
+// A DECLARED REFUSAL IS A MODULE FILE KEY AND A PARSE CAUSE, EXACTLY (gunbc.parse_population_refusals): a
+// module the declared classes do not name, or a named module that now fails for another cause, is not
+// covered by them.
+fn declared_refusal_names(classes: List<RefusalClass>, key: String, cause: String) -> Bool {
+  any(xs: classes, predicate: fn(group) { group.cause == cause && any(xs: group.keys, predicate: fn(listed) { listed == key }) })
+}
+
+fn declared_file_names(classes: List<RefusalClass>, key: String) -> Bool {
+  any(xs: classes, predicate: fn(group) { any(xs: group.keys, predicate: fn(listed) { listed == key }) })
+}
+
+fn declared_total(classes: List<RefusalClass>, total: Int) -> Int {
+  match list_head(xs: classes) {
+    HeadAbsent => total
+    HeadFound { value: group } => declared_total(classes: skip(xs: classes, n: 1), total: total + length(xs: group.keys))
+  }
+}
+
+fn population_parse_refused(classes: List<RefusalClass>, tally: PopulationParse, key: String, cause: String) -> PopulationParse {
+  if declared_refusal_names(classes: classes, key: key, cause: cause) {
+    PopulationParse { parsed: tally.parsed, declared: tally.declared + 1, refusals: tally.refusals }
+  } else {
+    PopulationParse { parsed: tally.parsed, declared: tally.declared, refusals: Cons { head: concat(key, ": ", cause), tail: tally.refusals } }
+  }
+}
+
+// THE OTHER DIRECTION OF THE SAME EXACTNESS: a module the declared classes name that parses is not an
+// unchanged state, so the list can only shrink -- a class is retired by the capability, never carried
+// past it.
+fn population_parse_accepted(classes: List<RefusalClass>, tally: PopulationParse, key: String) -> PopulationParse {
+  if declared_file_names(classes: classes, key: key) {
+    PopulationParse {
+      parsed: tally.parsed,
+      declared: tally.declared,
+      refusals: Cons { head: concat(key, ": parses, but gunbc.parse_population_refusals declares it refused; remove it from its class"), tail: tally.refusals }
+    }
+  } else {
+    PopulationParse { parsed: tally.parsed + 1, declared: tally.declared, refusals: tally.refusals }
+  }
+}
+
+fn population_parse_member(env: AcquisitionEnv, classes: List<RefusalClass>, name: String, tally: PopulationParse) -> PopulationParse {
   match population_member(layout: env.layout, bindings: env.bindings, name: name) {
     PopulationMemberRefused { cause: cause } =>
-      PopulationParse { parsed: tally.parsed, refusals: Cons { head: concat(name, ": ", cause), tail: tally.refusals } }
+      PopulationParse { parsed: tally.parsed, declared: tally.declared, refusals: Cons { head: concat(name, ": ", cause), tail: tally.refusals } }
     PopulationMemberRead { member: member } =>
       match acquisition_parse(env: env, file: member.file, content: member.content) {
-        MemberParses => PopulationParse { parsed: tally.parsed + 1, refusals: tally.refusals }
+        MemberParses => population_parse_accepted(classes: classes, tally: tally, key: module_file_key(file: member.file))
         MemberParseRefused { cause: cause } =>
-          PopulationParse { parsed: tally.parsed, refusals: Cons { head: concat(module_file_key(file: member.file), ": ", cause), tail: tally.refusals } }
+          population_parse_refused(classes: classes, tally: tally, key: module_file_key(file: member.file), cause: cause)
       }
   }
 }
 
-fn population_parse_go(env: AcquisitionEnv, pending: List<String>, tally: PopulationParse) -> PopulationParse {
+fn population_parse_go(env: AcquisitionEnv, classes: List<RefusalClass>, pending: List<String>, tally: PopulationParse) -> PopulationParse {
   match list_head(xs: pending) {
     HeadAbsent => tally
     HeadFound { value: name } =>
-      population_parse_go(env: env, pending: skip(xs: pending, n: 1), tally: population_parse_member(env: env, name: name, tally: tally))
+      population_parse_go(
+        env: env,
+        classes: classes,
+        pending: skip(xs: pending, n: 1),
+        tally: population_parse_member(env: env, classes: classes, name: name, tally: tally)
+      )
+  }
+}
+
+// The tally is printed whenever anything is declared, even when none was met: a walk that met none of the
+// declared modules is the walk the live-root control must be able to refuse (the list may not outlive its
+// files), and a report with no tally says that nothing is declared.
+fn population_parse_declared_suffix(tally: PopulationParse) -> String {
+  let total = declared_total(classes: parse_population_declared_refusal_classes(), total: 0)
+  if total > 0 {
+    concat("; ", int_to_decimal_string(value: tally.declared), " of ", int_to_decimal_string(value: total), " refusals declared by gunbc.parse_population_refusals")
+  } else {
+    ""
   }
 }
 
@@ -195,7 +257,7 @@ fn population_parse_report(tally: PopulationParse) -> PopulationReport {
     PopulationReport {
       text: join(list_reverse(xs: tally.refusals), "\n"),
       held: false,
-      detail: concat(int_to_decimal_string(value: length(xs: tally.refusals)), " module(s) did not parse or could not be read, each on its own line of the report")
+      detail: concat(int_to_decimal_string(value: length(xs: tally.refusals)), " module(s) did not parse, could not be read, or contradict the declared refusals, each on its own line of the report")
     }
   } else if tally.parsed == 0 {
     PopulationReport {
@@ -205,15 +267,17 @@ fn population_parse_report(tally: PopulationParse) -> PopulationReport {
     }
   } else {
     PopulationReport {
-      text: concat("population parses: ", int_to_decimal_string(value: tally.parsed), " module(s)"),
+      text: concat("population parses: ", int_to_decimal_string(value: tally.parsed), " module(s)", population_parse_declared_suffix(tally: tally)),
       held: true,
-      detail: "every enumerated module parsed"
+      detail: "every enumerated module parsed or is refused exactly as declared"
     }
   }
 }
 
 fn parse_population_listed(env: AcquisitionEnv, modules: List<String>) -> PopulationReport {
-  population_parse_report(tally: population_parse_go(env: env, pending: modules, tally: PopulationParse { parsed: 0, refusals: [] }))
+  population_parse_report(
+    tally: population_parse_go(env: env, classes: parse_population_declared_refusal_classes(), pending: modules, tally: PopulationParse { parsed: 0, declared: 0, refusals: [] })
+  )
 }
 
 fn parse_population_prepared(env: AcquisitionEnv) -> PopulationReport {
