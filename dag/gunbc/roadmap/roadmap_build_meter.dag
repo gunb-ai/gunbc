@@ -105,6 +105,7 @@ fn failure_kind_of_provider(provider: ProviderExecutionState) -> FailureKind? {
     ProviderNotStarted => none
     ProviderStarting { activity: _ } => none
     ProviderAwaitingSeat { detail: _ } => none
+    ProviderAwaitingAcceptance { handin: _ } => none
     ProviderRunning { activity: _ } => none
     ProviderCompleted { activity: _ } => none
   }
@@ -118,6 +119,7 @@ fn provider_failure_detail(provider: ProviderExecutionState) -> String {
     ProviderNotStarted => ""
     ProviderStarting { activity: _ } => ""
     ProviderAwaitingSeat { detail: _ } => ""
+    ProviderAwaitingAcceptance { handin: _ } => ""
     ProviderRunning { activity: _ } => ""
     ProviderCompleted { activity: _ } => ""
   }
@@ -314,6 +316,7 @@ fn build_meter_pose(failed: Bool, provider: ProviderExecutionState, handoff: Can
       ProviderRunning { activity: _ } => BuildMeterWorking
       ProviderStarting { activity: _ } => BuildMeterWorking
       ProviderAwaitingSeat { detail: _ } => BuildMeterWaitingForSeat
+      ProviderAwaitingAcceptance { handin: _ } => BuildMeterIdle
       ProviderNotStarted => BuildMeterIdle
       ProviderCompleted { activity: _ } => BuildMeterIdle
       ProviderFailed { activity: _, detail: _ } => BuildMeterStopped

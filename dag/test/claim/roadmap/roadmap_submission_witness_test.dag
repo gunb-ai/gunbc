@@ -78,6 +78,7 @@ fn capture_at(head: String, submission: WorkerSubmission) -> SubmissionCapture {
     scm_root_locator: SubmissionCaptureRootBound { locator: "0123456789abcdef" },
     digest: submission_digest(submission: submission),
     submission: submission,
+    handin: none,
   }
 }
 
@@ -713,6 +714,7 @@ fn capture_with_root(ordinal: Int, root: SubmissionCaptureRoot) -> SubmissionCap
     scm_root_locator: root,
     digest: submission_digest(submission: ready_submission()),
     submission: ready_submission(),
+    handin: none,
   }
 }
 

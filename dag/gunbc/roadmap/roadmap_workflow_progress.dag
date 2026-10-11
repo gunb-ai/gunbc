@@ -466,6 +466,12 @@ fn provider_workflow_segment(
         state: WorkflowSegmentActive,
         detail: join(["waiting for a serving seat -- ", detail], ""),
       }
+    ProviderAwaitingAcceptance { handin } =>
+      WorkflowSegment {
+        kind: AgentWorkflowSegment,
+        state: WorkflowSegmentActive,
+        detail: join(["handed in ", handin, " -- the worker waits while acceptance runs"], ""),
+      }
     ProviderRunning { activity } =>
       WorkflowSegment {
         kind: AgentWorkflowSegment,

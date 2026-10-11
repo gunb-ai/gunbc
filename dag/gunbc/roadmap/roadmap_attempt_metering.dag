@@ -264,6 +264,7 @@ fn metering_role_terminal(body: String) -> Bool {
     ProviderNotStarted => false
     ProviderStarting { activity: _ } => false
     ProviderAwaitingSeat { detail: _ } => false
+    ProviderAwaitingAcceptance { handin: _ } => false
     ProviderRunning { activity: _ } => false
     ProviderEventsRefused { activity: _, detail: _ } => false
   }

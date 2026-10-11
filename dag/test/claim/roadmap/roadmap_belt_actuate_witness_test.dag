@@ -2806,6 +2806,7 @@ fn candidacy_capture(readiness: SubmissionReadiness) -> SubmissionCaptureObserva
     scm_root_locator: SubmissionCaptureRootBound { locator: "0123456789abcdef" },
     digest: submission_digest(submission: submission),
     submission: submission,
+    handin: none,
   } }
 }
 

@@ -1,0 +1,223 @@
+module gunbc.roadmap.roadmap_acceptance_outcome
+
+import std.types { String, List, Bool, NonEmptyStr }
+import std.optional { Present, Absent }
+import extdeps.languages.json.emit {
+  JsonValue, JsonKeyValue, JsonNull, JsonBool, JsonString, JsonNumber, JsonArray, JsonObject,
+  json_string, json_object, json_kv, serialize_json,
+}
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+}
+import gunbc.roadmap_workflow_stage {
+  WorkflowSegment, WorkflowSegmentState,
+  WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
+  WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentStopped,
+}
+
+// WHAT ACCEPTANCE DECIDED ABOUT ONE HAND-IN (gunbc.plans.harness_session_lifecycle, slice S2). A worker
+// that hands in a ready candidate keeps its session and waits; the acceptance controller runs
+// verification, review and the goal audit on the captured candidate and writes ONE outcome for it,
+// and the session acts on that outcome and nothing else. The controller owns how the stages combine;
+// the session never reads the stage records itself, so acceptance policy lives in one place.
+type AcceptanceOutcome
+  = AcceptanceAccepted
+  | AcceptanceChangesRequested { stage: String, findings: String }
+  | AcceptanceUnavailable { cause: String }
+
+// THE OUTCOME NAMES THE HAND-IN IT DECIDES AND THE CODE IT JUDGED. The hand-in id is minted fresh by
+// the session for every hand-in (the submission's digest hashes only its wording, so a revision that
+// keeps the wording would otherwise collide with the candidate it revises), and the head is the
+// captured commit the stages ran against. A session acts only on an outcome naming its current
+// hand-in: a stale outcome can neither steer nor finish a later one.
+type AcceptanceOutcomeRecord {
+  handin: String
+  head: String
+  outcome: AcceptanceOutcome
+}
+
+data acceptance_outcome_schema: NonEmptyStr = "roadmap-acceptance-outcome/v1" as NonEmptyStr
+
+data acceptance_outcome_basename: NonEmptyStr = "acceptance-outcome.json" as NonEmptyStr
+
+fn acceptance_outcome_key(o: AcceptanceOutcome) -> String {
+  match o {
+    AcceptanceAccepted => "accepted"
+    AcceptanceChangesRequested { stage: _, findings: _ } => "changes-requested"
+    AcceptanceUnavailable { cause: _ } => "unavailable"
+  }
+}
+
+fn acceptance_outcome_detail_members(o: AcceptanceOutcome) -> List<JsonKeyValue> {
+  match o {
+    AcceptanceAccepted => [] as List<JsonKeyValue>
+    AcceptanceChangesRequested { stage, findings } => [
+      json_kv(key: "stage", value: json_string(s: stage)),
+      json_kv(key: "findings", value: json_string(s: findings)),
+    ]
+    AcceptanceUnavailable { cause } => [json_kv(key: "cause", value: json_string(s: cause))]
+  }
+}
+
+fn acceptance_outcome_record_text(r: AcceptanceOutcomeRecord) -> String {
+  serialize_json(v: json_object(members: concat([
+    json_kv(key: "schema", value: json_string(s: acceptance_outcome_schema as String)),
+    json_kv(key: "handin", value: json_string(s: r.handin)),
+    json_kv(key: "head", value: json_string(s: r.head)),
+    json_kv(key: "outcome", value: json_string(s: acceptance_outcome_key(o: r.outcome))),
+  ], acceptance_outcome_detail_members(o: r.outcome))))
+}
+
+type AcceptanceOutcomeRead
+  = AcceptanceOutcomeDecoded { record: AcceptanceOutcomeRecord }
+  | AcceptanceOutcomeUndecodable { reason: String }
+
+fn acceptance_member_text(doc: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: JsonString { value: s } } => Present { value: s }
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+    JsonMemberFound { value: JsonArray { elements: _ } } => none
+    JsonMemberFound { value: JsonObject { members: _ } } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+  }
+}
+
+fn acceptance_outcome_of_key(doc: JsonValue, key: String) -> AcceptanceOutcome? {
+  if key == "accepted" {
+    Present { value: AcceptanceAccepted }
+  } else if key == "changes-requested" {
+    match acceptance_member_text(doc: doc, key: "stage") {
+      Absent => none
+      Present { value: stage } =>
+        match acceptance_member_text(doc: doc, key: "findings") {
+          Absent => none
+          Present { value: findings } => Present { value: AcceptanceChangesRequested { stage: stage, findings: findings } }
+        }
+    }
+  } else if key == "unavailable" {
+    match acceptance_member_text(doc: doc, key: "cause") {
+      Absent => none
+      Present { value: cause } => Present { value: AcceptanceUnavailable { cause: cause } }
+    }
+  } else {
+    none
+  }
+}
+
+fn acceptance_outcome_decode(text: String) -> AcceptanceOutcomeRead {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap } => AcceptanceOutcomeUndecodable { reason: join(["the acceptance outcome is ", json_document_gap_text(gap: gap)], "") }
+    JsonDocumentParsed { value: doc } =>
+      match acceptance_member_text(doc: doc, key: "schema") {
+        Absent => AcceptanceOutcomeUndecodable { reason: "the acceptance outcome names no schema" }
+        Present { value: schema } =>
+          if schema != (acceptance_outcome_schema as String) {
+            AcceptanceOutcomeUndecodable { reason: join(["the acceptance outcome schema is ", schema, ", not ", acceptance_outcome_schema as String], "") }
+          } else {
+            match acceptance_member_text(doc: doc, key: "handin") {
+              Absent => AcceptanceOutcomeUndecodable { reason: "the acceptance outcome names no hand-in" }
+              Present { value: handin } =>
+                match acceptance_member_text(doc: doc, key: "head") {
+                  Absent => AcceptanceOutcomeUndecodable { reason: "the acceptance outcome names no head" }
+                  Present { value: head } =>
+                    match acceptance_member_text(doc: doc, key: "outcome") {
+                      Absent => AcceptanceOutcomeUndecodable { reason: "the acceptance outcome names no outcome" }
+                      Present { value: key } =>
+                        match acceptance_outcome_of_key(doc: doc, key: key) {
+                          Absent => AcceptanceOutcomeUndecodable { reason: join(["the acceptance outcome ", key, " is not accepted, changes-requested or unavailable, or omits what its kind requires"], "") }
+                          Present { value: outcome } => AcceptanceOutcomeDecoded { record: AcceptanceOutcomeRecord { handin: handin, head: head, outcome: outcome } }
+                        }
+                    }
+                }
+            }
+          }
+      }
+  }
+}
+
+// ── THE REDUCTION: stage results for one captured candidate to its outcome, or none yet ──────────
+//
+// Verification gates review and the goal audit -- they start only after it completes -- so an outcome
+// cannot wait for all three when verification has failed or cannot run: a failed verification is a
+// change the worker owes, and one that cannot run (refused by its environment, or a record in a state
+// verification does not inhabit) is acceptance unavailable. After verification passes, the outcome
+// waits until review AND audit have both settled, so a worker never resumes editing while a reader
+// of its worktree is still at work; then any requested change wins, any stage that could not run
+// makes acceptance unavailable, and both approving accepts.
+fn acceptance_segment_settled(s: WorkflowSegment?) -> Bool {
+  match s {
+    Absent => false
+    Present { value: seg } =>
+      match seg.state {
+        WorkflowSegmentPending => false
+        WorkflowSegmentActive => false
+        WorkflowSegmentComplete => true
+        WorkflowSegmentFailed => true
+        WorkflowSegmentRefused => true
+        WorkflowSegmentStopped => true
+      }
+  }
+}
+
+fn acceptance_segment_state_is(s: WorkflowSegment?, failed: Bool) -> String? {
+  match s {
+    Absent => none
+    Present { value: seg } =>
+      match seg.state {
+        WorkflowSegmentFailed => if failed { Present { value: seg.detail } } else { none }
+        WorkflowSegmentRefused => if failed { none } else { Present { value: seg.detail } }
+        WorkflowSegmentStopped => if failed { none } else { Present { value: "the stage's record is in a state it does not inhabit" } }
+        WorkflowSegmentComplete => none
+        WorkflowSegmentPending => none
+        WorkflowSegmentActive => none
+      }
+  }
+}
+
+fn acceptance_outcome_of_stages(verification: WorkflowSegment?, review: WorkflowSegment?, goal_audit: WorkflowSegment?) -> AcceptanceOutcome? {
+  match verification {
+    Absent => none
+    Present { value: v } =>
+      match v.state {
+        WorkflowSegmentPending => none
+        WorkflowSegmentActive => none
+        WorkflowSegmentFailed => Present { value: AcceptanceChangesRequested { stage: "verification", findings: v.detail } }
+        WorkflowSegmentRefused => Present { value: AcceptanceUnavailable { cause: join(["verification could not run: ", v.detail], "") } }
+        WorkflowSegmentStopped => Present { value: AcceptanceUnavailable { cause: "the verification record is in a state verification does not inhabit" } }
+        WorkflowSegmentComplete =>
+          if !acceptance_segment_settled(s: review) || !acceptance_segment_settled(s: goal_audit) {
+            none
+          } else {
+            let review_change = acceptance_segment_state_is(s: review, failed: true)
+            let audit_change = acceptance_segment_state_is(s: goal_audit, failed: true)
+            let review_unrun = acceptance_segment_state_is(s: review, failed: false)
+            let audit_unrun = acceptance_segment_state_is(s: goal_audit, failed: false)
+            match review_change {
+              Present { value: r } =>
+                match audit_change {
+                  Present { value: a } => Present { value: AcceptanceChangesRequested { stage: "review and goal audit", findings: join(["Review: ", r, "\nGoal audit: ", a], "") } }
+                  Absent => Present { value: AcceptanceChangesRequested { stage: "review", findings: r } }
+                }
+              Absent =>
+                match audit_change {
+                  Present { value: a } => Present { value: AcceptanceChangesRequested { stage: "goal audit", findings: a } }
+                  Absent =>
+                    match review_unrun {
+                      Present { value: r } => Present { value: AcceptanceUnavailable { cause: join(["review could not run: ", r], "") } }
+                      Absent =>
+                        match audit_unrun {
+                          Present { value: a } => Present { value: AcceptanceUnavailable { cause: join(["the goal audit could not run: ", a], "") } }
+                          Absent => Present { value: AcceptanceAccepted }
+                        }
+                    }
+                }
+            }
+          }
+      }
+  }
+}

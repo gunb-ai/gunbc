@@ -83,6 +83,8 @@ type ProviderEventKind
   | HarnessTransportRetry
   | HarnessBudgetExhausted
   | HarnessSupervisionVerdict
+  | HarnessHandedIn
+  | HarnessRevisionStarted
   | HarnessStoppedBySupervision
   | HarnessSupervisionUnavailable
   | HarnessWireLogUnwritable
@@ -136,6 +138,7 @@ type ProviderExecutionState
   = ProviderNotStarted
   | ProviderStarting { activity: String }
   | ProviderAwaitingSeat { detail: String }
+  | ProviderAwaitingAcceptance { handin: String }
   | ProviderRunning { activity: String }
   | ProviderCompleted { activity: String }
   | ProviderFailed { activity: String, detail: String }
@@ -483,6 +486,10 @@ fn classify_provider_event_line(raw: String) -> ProviderEventLineDisposition {
     ProviderEventObserved { kind: HarnessRoundUsage }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "round.transport_retry") {
     ProviderEventObserved { kind: HarnessTransportRetry }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "session.handed_in") {
+    ProviderEventObserved { kind: HarnessHandedIn }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "session.revision_started") {
+    ProviderEventObserved { kind: HarnessRevisionStarted }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "supervision.verdict") {
     ProviderEventObserved { kind: HarnessSupervisionVerdict }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.stopped_by_supervision") {
@@ -656,6 +663,21 @@ fn parse_codex_jsonl(text: String) -> ProviderEventParse {
   )
 }
 
+// THE HAND-IN'S ID, READ FROM ITS OWN LINE (gunbc.plans.harness_session_lifecycle, slice S2). An id
+// that cannot be read is the empty string, which the acceptance-outcome writer refuses to answer:
+// an outcome addressed to no hand-in could finish or steer whichever came next.
+fn harness_handed_in_id(raw: String) -> String {
+  match parse_json_document(s: raw) {
+    JsonDocumentUnreadable { gap: _ } => ""
+    JsonDocumentParsed { value: v } =>
+      match json_field_string(obj: v, key: "handin") {
+        FieldRead { value: h } => h
+        FieldAbsent => ""
+        FieldMalformed { cause: _ } => ""
+      }
+  }
+}
+
 // THE WAIT'S REASON, READ FROM ITS OWN LINE. The line is the harness's own construction, so a
 // line that does not decode is shown as itself rather than guessed at.
 fn harness_placement_waiting_detail(raw: String) -> String {
@@ -700,6 +722,8 @@ fn provider_execution_fold_event(
         HarnessWireLogUnwritable => state
         HarnessPlacementWaiting => ProviderAwaitingSeat { detail: harness_placement_waiting_detail(raw: event.raw) }
         HarnessSupervisionVerdict => state
+        HarnessHandedIn => ProviderAwaitingAcceptance { handin: harness_handed_in_id(raw: event.raw) }
+        HarnessRevisionStarted => ProviderRunning { activity: "Agent revising · acceptance requested changes" }
         HarnessStoppedBySupervision =>
           ProviderFailed { activity: "stopped by supervision", detail: event.raw }
         HarnessSupervisionUnavailable =>
@@ -764,6 +788,8 @@ fn provider_execution_state(parsed: ProviderEventParse) -> ProviderExecutionStat
             join(["last observed · ", activity], "")
           ProviderAwaitingSeat { detail: _ } =>
             "last observed · waiting for a serving seat"
+          ProviderAwaitingAcceptance { handin: _ } =>
+            "last observed · handed in, awaiting acceptance"
           ProviderRunning { activity } =>
             join(["last observed · ", activity], "")
           ProviderCompleted { activity } =>
@@ -787,6 +813,7 @@ fn provider_execution_state_label(state: ProviderExecutionState) -> String {
     ProviderNotStarted => "not_started"
     ProviderStarting { activity: _ } => "starting"
     ProviderAwaitingSeat { detail: _ } => "awaiting_seat"
+    ProviderAwaitingAcceptance { handin: _ } => "awaiting_acceptance"
     ProviderRunning { activity: _ } => "running"
     ProviderCompleted { activity: _ } => "completed"
     ProviderFailed { activity: _, detail: _ } => "failed"
@@ -800,6 +827,7 @@ fn provider_execution_activity(state: ProviderExecutionState) -> String {
     ProviderNotStarted => "Agent waiting"
     ProviderStarting { activity: _ } => "Agent working"
     ProviderAwaitingSeat { detail: _ } => "Agent waiting for a serving seat"
+    ProviderAwaitingAcceptance { handin: _ } => "Handed in · awaiting acceptance"
     ProviderRunning { activity } => activity
     ProviderCompleted { activity: _ } => "Agent complete"
     ProviderFailed { activity: _, detail: _ } => "Agent failed"

@@ -7180,6 +7180,7 @@ fn belt_commit_capture_candidate(
                   scm_root_locator: SubmissionCaptureRootBound { locator: commit_root_locator },
                   digest: digest,
                   submission: submission,
+                  handin: none,
                 }),
               )
               if write.success {
@@ -8353,6 +8354,7 @@ fn belt_attempt_unrecoverable(provider: ProviderExecutionState, evidence: Worker
     ProviderNotStarted => false
     ProviderStarting { activity: _ } => false
     ProviderAwaitingSeat { detail: _ } => false
+    ProviderAwaitingAcceptance { handin: _ } => false
     ProviderRunning { activity: _ } => false
     ProviderCompleted { activity: _ } => false
     ProviderFailed { activity: _, detail: _ } => false
@@ -8383,6 +8385,7 @@ fn belt_provider_is_terminal(provider: ProviderExecutionState) -> Bool {
     ProviderNotStarted => false
     ProviderStarting { activity: _ } => false
     ProviderAwaitingSeat { detail: _ } => false
+    ProviderAwaitingAcceptance { handin: _ } => false
     ProviderRunning { activity: _ } => false
     ProviderCompleted { activity: _ } => true
     ProviderFailed { activity: _, detail: _ } => true

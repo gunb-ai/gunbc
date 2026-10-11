@@ -1038,6 +1038,13 @@ fn activity_view_from_progress(progress: WorkflowAttemptProgress) -> ActivityVie
         process: progress.process,
         throughput: harness_throughput_from_ledger(ledger: progress.rounds),
         current_activity: provider_execution_activity(state: progress.provider),
+      )    ProviderAwaitingAcceptance { handin: _ } =>
+      activity_view_from_parts(
+        segments: progress.segments,
+        remaining: progress.reconciliation.remaining_count,
+        process: progress.process,
+        throughput: harness_throughput_from_ledger(ledger: progress.rounds),
+        current_activity: provider_execution_activity(state: progress.provider),
       )
     ProviderRunning { activity: _ } =>
       activity_view_from_parts(
