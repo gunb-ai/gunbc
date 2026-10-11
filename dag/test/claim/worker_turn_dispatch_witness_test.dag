@@ -189,5 +189,8 @@ test fn a_harness_worker_on_srv1_carries_its_supervision() -> Bool {
              "supervision_dir=",
              dispatch_attempt_state_path_for_instance(instance: instance, node_id: "node-worker-turn" as NonEmptyStr as RoadmapNodeId, attempt_key: "0123456789abcdef"),
            ], ""))
+        && has_pair(argv: argv, flag: "--arg", value: "node_id=node-worker-turn")
+        && has_pair(argv: argv, flag: "--arg", value: "attempt_key=0123456789abcdef")
+        && string_contains(s: join(argv, separator: "\0"), pattern: "\0handin_inbox=")
   }
 }

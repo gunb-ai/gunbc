@@ -13,7 +13,7 @@ import std.measure { TokenCount, token_count, token_count_value, Second, second,
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.harness.harness_tool { HarnessToolEnvironment }
 import gunbc.harness.harness_turn {
-  HarnessTurnConfig, HarnessTurnOutcome, TurnProviderStopped, TurnCompletedByArtifact, TurnStoppedBySupervision, TurnSupervisionUnavailable, HarnessSupervision, Unsupervised, SupervisedRounds, harness_tool_contract_wire,
+  HarnessTurnConfig, HarnessTurnOutcome, TurnProviderStopped, TurnCompletedByArtifact, TurnStoppedBySupervision, TurnSupervisionUnavailable, TurnAcceptanceUnavailable, HarnessSupervision, Unsupervised, SupervisedRounds, HarnessAcceptanceRoute, harness_tool_contract_wire,
   CompletesOnProviderStop, CompletesWhenEntryPresent, harness_run_turn, harness_outcome_label, TurnHostedQuotaFull, TurnHostedQuotaUnleasable, TurnHostedFailure,
   harness_outcome_detail, harness_event_placement_waiting,
 }
@@ -300,6 +300,7 @@ fn harness_turn_exit(outcome: HarnessTurnOutcome) -> ProcessExit {
     TurnHostedFailure { failure: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnStoppedBySupervision { verdict: _, detail: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnSupervisionUnavailable { cause: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnAcceptanceUnavailable { cause: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
   }
 }
 
@@ -745,8 +746,10 @@ fn harness_seat_pointer_refused_exit(binding: HarnessSeatBinding, detail: String
 
 // A WORKER IS SUPERVISED WHEN IT CARRIES A CHAIN. The alignment check needs the rendered chain to ask
 // its question and a directory under the attempt's own state to leave its verdict in; a worker spawned
-// without a chain (a local probe) is unsupervised and keeps the hard round budget.
-fn harness_worker_supervision(chain_fingerprint: String, check_prompt: String, check_directory: String) -> HarnessSupervision {
+// without a chain (a local probe) is unsupervised and keeps the hard round budget. A supervised worker
+// also hands in (slice S2): the route names the event spool's inbox and the node and attempt its
+// hand-in entry carries, and the outcome comes back in the same state directory.
+fn harness_worker_supervision(chain_fingerprint: String, check_prompt: String, check_directory: String, acceptance: HarnessAcceptanceRoute) -> HarnessSupervision {
   if chain_fingerprint == "" {
     Unsupervised
   } else {
@@ -755,6 +758,7 @@ fn harness_worker_supervision(chain_fingerprint: String, check_prompt: String, c
       check_prompt: check_prompt,
       check_directory: check_directory,
       round_steps: harness_worker_step_budget,
+      acceptance: acceptance,
     }
   }
 }
@@ -781,6 +785,9 @@ fn harness_worker_cli(
   alignment_chain_fingerprint: String,
   supervision_prompt: String,
   supervision_dir: String,
+  handin_inbox: String,
+  node_id: String,
+  attempt_key: String,
 ) -> ProcessExit {
   let system_prompt = harness_worker_system_prompt_at(worktree: worktree, repo_root: repo_root, gunbc_program: gunbc_program)
   let binding = harness_bind_seat_waiting(role: "worker", system_prompt: system_prompt, brief: brief, actor: join(["worker:", worktree], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, events_path: events_path)
@@ -803,6 +810,7 @@ fn harness_worker_cli(
                 chain_fingerprint: alignment_chain_fingerprint,
                 check_prompt: supervision_prompt,
                 check_directory: supervision_dir,
+                acceptance: HarnessAcceptanceRoute { inbox: handin_inbox, node_id: node_id, attempt_key: attempt_key },
               ),
             ),
             prompt: brief,

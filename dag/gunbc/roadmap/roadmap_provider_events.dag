@@ -85,6 +85,8 @@ type ProviderEventKind
   | HarnessSupervisionVerdict
   | HarnessHandedIn
   | HarnessRevisionStarted
+  | HarnessAccepted
+  | HarnessAcceptanceUnavailable
   | HarnessStoppedBySupervision
   | HarnessSupervisionUnavailable
   | HarnessWireLogUnwritable
@@ -490,6 +492,10 @@ fn classify_provider_event_line(raw: String) -> ProviderEventLineDisposition {
     ProviderEventObserved { kind: HarnessHandedIn }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "session.revision_started") {
     ProviderEventObserved { kind: HarnessRevisionStarted }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "session.accepted") {
+    ProviderEventObserved { kind: HarnessAccepted }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.acceptance_unavailable") {
+    ProviderEventObserved { kind: HarnessAcceptanceUnavailable }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "supervision.verdict") {
     ProviderEventObserved { kind: HarnessSupervisionVerdict }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.stopped_by_supervision") {
@@ -724,6 +730,8 @@ fn provider_execution_fold_event(
         HarnessSupervisionVerdict => state
         HarnessHandedIn => ProviderAwaitingAcceptance { handin: harness_handed_in_id(raw: event.raw) }
         HarnessRevisionStarted => ProviderRunning { activity: "Agent revising · acceptance requested changes" }
+        HarnessAccepted => state
+        HarnessAcceptanceUnavailable => ProviderFailed { activity: "acceptance unavailable", detail: event.raw }
         HarnessStoppedBySupervision =>
           ProviderFailed { activity: "stopped by supervision", detail: event.raw }
         HarnessSupervisionUnavailable =>

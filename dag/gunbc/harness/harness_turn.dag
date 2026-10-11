@@ -60,7 +60,14 @@ import extdeps.filesystem.filesystem_io { Filesystem,
 }
 import gunbc.roadmap.roadmap_submission {
   submission_artifact_name, submission_decode, SubmissionDecoded, SubmissionNotDecodable,
+  SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
 }
+import gunbc.roadmap.roadmap_acceptance_outcome {
+  AcceptanceOutcome, AcceptanceAccepted, AcceptanceChangesRequested, AcceptanceUnavailable,
+  AcceptanceOutcomeRead, AcceptanceOutcomeDecoded, AcceptanceOutcomeUndecodable,
+  acceptance_outcome_decode, acceptance_outcome_basename, acceptance_outcome_key,
+}
+import gunbc.roadmap.roadmap_attempt_exit_spool { attempt_handin_entry_name }
 import gunbc.harness.harness_guidance {
   HarnessPremise, RoundsRemaining, EarlierRoundsDropped, harness_premise_text,
   HarnessConclusion, ActBeforeTheRoundsRun, ReRunForDroppedOutput, harness_conclusion_text,
@@ -154,7 +161,7 @@ fn harness_event_turn_completed_by_artifact(path: String) -> String {
 // ends failed with the decode failure named in the terminal event.
 type SubmissionGateObservation
   = GateArtifactAbsent
-  | GateArtifactDeclared
+  | GateArtifactDeclared { ready: Bool }
   | GateArtifactUndecodable { reason: String }
   | GateArtifactUnobservable { cause: String }
 
@@ -178,7 +185,7 @@ fn harness_submission_gate_read(artifact: String?) -> SubmissionGateObservation 
     Absent => GateArtifactAbsent
     Present { value: content } =>
       match submission_decode(text: content) {
-        SubmissionDecoded { submission: _ } => GateArtifactDeclared
+        SubmissionDecoded { submission } => GateArtifactDeclared { ready: match submission.readiness { SubmissionReady => true  SubmissionBlocked => false  SubmissionNeedsContext => false } }
         SubmissionNotDecodable { reason } => GateArtifactUndecodable { reason: reason }
       }
   }
@@ -211,7 +218,7 @@ fn harness_submission_gate_observe(environment: HarnessToolEnvironment) -> Submi
 fn harness_submission_gate_judge(observation: SubmissionGateObservation, repairs_used: Int) -> SubmissionGateVerdict {
   match observation {
     GateArtifactAbsent => GateProceed
-    GateArtifactDeclared => GateProceed
+    GateArtifactDeclared { ready: _ } => GateProceed
     GateArtifactUnobservable { cause } => GateRefuse { reason: cause }
     GateArtifactUndecodable { reason } =>
       if repairs_used >= harness_submission_repair_bound {
@@ -260,9 +267,18 @@ fn harness_submission_terminal_cause(reason: String) -> String {
 // rounds run out, and its notices say so. A supervised session pauses at each boundary, synchronously
 // and invisibly, while a bounded alignment check reads its work; the verdict decides the next turn,
 // and nothing about the boundary is said to the worker unless the verdict is a steer.
+// WHERE A SUPERVISED SESSION HANDS IN (slice S2): the event spool's inbox that wakes acceptance, and the
+// node and attempt its hand-in entry names. The outcome comes back beside the session's own state, in
+// the check directory.
+type HarnessAcceptanceRoute {
+  inbox: String
+  node_id: String
+  attempt_key: String
+}
+
 type HarnessSupervision
   = Unsupervised
-  | SupervisedRounds { chain_fingerprint: String, check_prompt: String, check_directory: String, round_steps: Int }
+  | SupervisedRounds { chain_fingerprint: String, check_prompt: String, check_directory: String, round_steps: Int, acceptance: HarnessAcceptanceRoute }
 
 type HarnessTurnConfig {
   backend_url: String
@@ -576,6 +592,7 @@ type HarnessTurnOutcome
   | TurnSubmissionUndecodable { reason: String, steps_taken: Int }
   | TurnStoppedBySupervision { verdict: String, detail: String, steps_taken: Int }
   | TurnSupervisionUnavailable { cause: String, steps_taken: Int }
+  | TurnAcceptanceUnavailable { cause: String, steps_taken: Int }
   | TurnHostedQuotaFull { wire: String, steps_taken: Int }
   | TurnHostedQuotaUnleasable { detail: String, steps_taken: Int }
   | TurnHostedFailure { failure: HostedHttpFailure, steps_taken: Int }
@@ -598,6 +615,7 @@ fn harness_outcome_label(outcome: HarnessTurnOutcome) -> String {
     TurnSubmissionUndecodable { reason: _, steps_taken: _ } => "submission-undecodable"
     TurnStoppedBySupervision { verdict: _, detail: _, steps_taken: _ } => "stopped-by-supervision"
     TurnSupervisionUnavailable { cause: _, steps_taken: _ } => "supervision-unavailable"
+    TurnAcceptanceUnavailable { cause: _, steps_taken: _ } => "acceptance-unavailable"
     TurnHostedQuotaFull { wire: _, steps_taken: _ } => "hosted-quota-full"
     TurnHostedQuotaUnleasable { detail: _, steps_taken: _ } => "hosted-quota-unleasable"
     TurnHostedFailure { failure: f, steps_taken: _ } => hosted_http_failure_label(f: f)
@@ -652,6 +670,8 @@ fn harness_outcome_detail(outcome: HarnessTurnOutcome) -> String {
       ], "")
     TurnStoppedBySupervision { verdict: v, detail: d, steps_taken: n } =>
       join(["after ", to_string(value: n), " tool rounds the alignment check returned ", v, " and the session stopped: ", d], "")
+    TurnAcceptanceUnavailable { cause: c, steps_taken: n } =>
+      join(["after ", to_string(value: n), " tool rounds the worker handed in, and acceptance could not decide: ", c], "")
     TurnSupervisionUnavailable { cause: c, steps_taken: n } =>
       join(["after ", to_string(value: n), " tool rounds the alignment check could not decide, so the session stopped rather than continue unsupervised: ", c], "")
     TurnHostedQuotaFull { wire: w, steps_taken: n } =>
@@ -915,7 +935,7 @@ fn harness_budget_notice_block(steps_remaining: Int) -> JsonValue {
 fn harness_supervision_counts_down(s: HarnessSupervision) -> Bool {
   match s {
     Unsupervised => true
-    SupervisedRounds { chain_fingerprint: _, check_prompt: _, check_directory: _, round_steps: _ } => false
+    SupervisedRounds { chain_fingerprint: _, check_prompt: _, check_directory: _, round_steps: _, acceptance: _ } => false
   }
 }
 
@@ -1558,7 +1578,7 @@ fn harness_turn_loop(
           HarnessEventsWritten => TurnStepBudgetExhausted { steps_taken: steps_taken }
         }
       }
-      SupervisedRounds { chain_fingerprint: _, check_prompt, check_directory, round_steps } =>
+      SupervisedRounds { chain_fingerprint: _, check_prompt, check_directory, round_steps, acceptance: _ } =>
         harness_turn_supervise(
           config: config,
           check_prompt: check_prompt,
@@ -1759,16 +1779,32 @@ fn harness_turn_round(
                 config: config, events: events, usage: usage, text: text, stop_reason: stop_reason,
                 input_tokens: input_tokens, output_tokens: output_tokens, steps_taken: steps_taken,
               )
-            CompletesOnProviderStop =>
+            CompletesOnProviderStop => {
+              let observed = harness_submission_gate_observe(environment: config.environment)
               match harness_submission_gate_judge(
-                observation: harness_submission_gate_observe(environment: config.environment),
+                observation: observed,
                 repairs_used: repairs_used,
               ) {
                 GateProceed =>
-                  harness_turn_provider_stopped(
-                    config: config, events: events, usage: usage, text: text, stop_reason: stop_reason,
-                    input_tokens: input_tokens, output_tokens: output_tokens, steps_taken: steps_taken,
-                  )
+                  match harness_handin_route(supervision: config.supervision, observed: observed) {
+                    Absent =>
+                      harness_turn_provider_stopped(
+                        config: config, events: events, usage: usage, text: text, stop_reason: stop_reason,
+                        input_tokens: input_tokens, output_tokens: output_tokens, steps_taken: steps_taken,
+                      )
+                    Present { value: route } =>
+                      harness_turn_hand_in(
+                        config: config,
+                        route: route,
+                        messages: concat(messages, [harness_assistant_message_json(unit: config.serving_unit, shape: config.wire_shape, blocks: blocks)]),
+                        events: concat(events, [usage, harness_event_agent_message(message: text)]),
+                        steps_taken: steps_taken + 1,
+                        text: text,
+                        stop_reason: stop_reason,
+                        input_tokens: input_tokens,
+                        output_tokens: output_tokens,
+                      )
+                  }
                 GateRepair { reason } => {
                   let noticed = concat(events, [
                     usage,
@@ -1812,6 +1848,7 @@ fn harness_turn_round(
                   }
                 }
               }
+            }
           }
         } else if harness_context_exhausted(
           input_tokens: input_tokens,
@@ -2111,6 +2148,7 @@ fn harness_outcome_artifact_path(outcome: HarnessTurnOutcome) -> String? {
     TurnSubmissionUndecodable { reason: _, steps_taken: _ } => none
     TurnStoppedBySupervision { verdict: _, detail: _, steps_taken: _ } => none
     TurnSupervisionUnavailable { cause: _, steps_taken: _ } => none
+    TurnAcceptanceUnavailable { cause: _, steps_taken: _ } => none
     TurnHostedQuotaFull { wire: _, steps_taken: _ } => none
     TurnHostedQuotaUnleasable { detail: _, steps_taken: _ } => none
     TurnHostedFailure { failure: _, steps_taken: _ } => none
@@ -2418,6 +2456,221 @@ fn harness_turn_supervise(
             harness_turn_supervision_unavailable(config: config, cause: cause, steps_taken: steps_taken, events: concat(events, carried))
           SupervisionVerdictDecoded { verdict } => harness_pause_apply(pause: pause, verdict: verdict, events: concat(events, carried))
         }
+    }
+  }
+}
+
+// ── HAND-IN: THE SESSION WAITS FOR ITS ACCEPTANCE OUTCOME (gunbc.plans.harness_session_lifecycle, S2) ───
+//
+// A supervised worker that stops with a READY submission has handed in a candidate. It does not end:
+// it records the hand-in under a fresh id, wakes acceptance through the event spool, and waits --
+// making no model calls and running no tools -- for the one outcome addressed to that hand-in. Accepted
+// ends the session at the delivery handoff; a requested change comes back into this conversation as
+// one message and the round renews; acceptance that cannot decide, or does not answer within the
+// deadline, stops the session typed. A worker that stops blocked, needing context, or with nothing
+// handed in ends as before.
+
+data harness_acceptance_poll_seconds: Int = 30
+
+// THREE HOURS: verification, review and the goal audit run in sequence on a shared host, and a review
+// alone has taken over half an hour on the srv1 lab. Past this the session stops and says why.
+data harness_acceptance_deadline_polls: Int = 360
+
+type HarnessHandInRoute {
+  route: HarnessAcceptanceRoute
+  check_directory: String
+  round_steps: Int
+}
+
+fn harness_handin_route(supervision: HarnessSupervision, observed: SubmissionGateObservation) -> HarnessHandInRoute? {
+  match supervision {
+    Unsupervised => none
+    SupervisedRounds { chain_fingerprint: _, check_prompt: _, check_directory, round_steps, acceptance } =>
+      match observed {
+        GateArtifactDeclared { ready } =>
+          if ready { Present { value: HarnessHandInRoute { route: acceptance, check_directory: check_directory, round_steps: round_steps } } } else { none }
+        GateArtifactAbsent => none
+        GateArtifactUndecodable { reason: _ } => none
+        GateArtifactUnobservable { cause: _ } => none
+      }
+  }
+}
+
+// THE HAND-IN ID IS FRESH PER HAND-IN: h1, h2, ... counted from this session's own record of them, so
+// a revision handed in with unchanged wording is still a new hand-in with its own outcome.
+fn harness_next_handin_id(events: List<String>) -> String {
+  join(["h", to_string(value: 1 + list_length(items: events |> filter(e => e.contains("\"session.handed_in\""))))], "")
+}
+
+fn harness_event_handed_in(handin: String) -> String {
+  serialize_json(v: json_object([
+    json_kv(key: "type", value: json_string(s: "session.handed_in")),
+    json_kv(key: "handin", value: json_string(s: handin)),
+  ]))
+}
+
+fn harness_event_session_outcome(event_type: String, handin: String, detail: String) -> String {
+  serialize_json(v: json_object([
+    json_kv(key: "type", value: json_string(s: event_type)),
+    json_kv(key: "handin", value: json_string(s: handin)),
+    json_kv(key: "detail", value: json_string(s: detail)),
+  ]))
+}
+
+fn harness_turn_acceptance_unavailable(config: HarnessTurnConfig, handin: String, cause: String, steps_taken: Int, events: List<String>) -> HarnessTurnOutcome {
+  match harness_write_events(config: config, events: concat(events, [harness_event_session_outcome(event_type: "turn.acceptance_unavailable", handin: handin, detail: cause)])) {
+    HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+    HarnessEventsWritten => TurnAcceptanceUnavailable { cause: cause, steps_taken: steps_taken }
+  }
+}
+
+fn harness_turn_hand_in(
+  config: HarnessTurnConfig,
+  route: HarnessHandInRoute,
+  messages: List<JsonValue>,
+  events: List<String>,
+  steps_taken: Int,
+  text: String,
+  stop_reason: AnthropicStopReason,
+  input_tokens: TokenCount,
+  output_tokens: TokenCount,
+) -> HarnessTurnOutcome {
+  let handin = harness_next_handin_id(events: events)
+  let recorded = concat(events, [harness_event_handed_in(handin: handin)])
+  match harness_write_events(config: config, events: recorded) {
+    HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+    HarnessEventsWritten => {
+      let entry = join([route.route.inbox, "/", attempt_handin_entry_name(node_id: route.route.node_id, attempt_key: route.route.attempt_key, handin: handin)], "")
+      let woke = Filesystem.Write(path: entry, content: "")
+      if !woke.success {
+        harness_turn_acceptance_unavailable(config: config, handin: handin, cause: join(["the hand-in could not be recorded in the event spool at ", entry, ": ", woke.error], ""), steps_taken: steps_taken, events: recorded)
+      } else {
+        harness_await_acceptance(
+          config: config, route: route, handin: handin, polls_left: harness_acceptance_deadline_polls,
+          messages: messages, events: recorded, steps_taken: steps_taken,
+          text: text, stop_reason: stop_reason, input_tokens: input_tokens, output_tokens: output_tokens,
+        )
+      }
+    }
+  }
+}
+
+// PURE: the outcome file's text to the outcome for THIS hand-in, or none -- an absent, undecodable or
+// other hand-in's outcome all mean "still waiting", so a stale outcome can neither steer nor finish.
+fn harness_acceptance_outcome_for(text: String?, handin: String) -> AcceptanceOutcome? {
+  match text {
+    Absent => none
+    Present { value: t } =>
+      match acceptance_outcome_decode(text: t) {
+        AcceptanceOutcomeUndecodable { reason: _ } => none
+        AcceptanceOutcomeDecoded { record } => if record.handin == handin { Present { value: record.outcome } } else { none }
+      }
+  }
+}
+
+fn harness_await_acceptance(
+  config: HarnessTurnConfig,
+  route: HarnessHandInRoute,
+  handin: String,
+  polls_left: Int,
+  messages: List<JsonValue>,
+  events: List<String>,
+  steps_taken: Int,
+  text: String,
+  stop_reason: AnthropicStopReason,
+  input_tokens: TokenCount,
+  output_tokens: TokenCount,
+) -> HarnessTurnOutcome {
+  let read = Filesystem.Read(path: join([route.check_directory, "/", acceptance_outcome_basename as String], ""))
+  match harness_acceptance_outcome_for(text: if read.success { Present { value: read.content } } else { none }, handin: handin) {
+    Present { value: outcome } =>
+      harness_apply_acceptance(
+        config: config, route: route, handin: handin, outcome: outcome, messages: messages, events: events,
+        steps_taken: steps_taken, text: text, stop_reason: stop_reason, input_tokens: input_tokens, output_tokens: output_tokens,
+      )
+    Absent =>
+      if polls_left <= 0 {
+        harness_turn_acceptance_unavailable(
+          config: config, handin: handin,
+          cause: join(["no acceptance outcome named hand-in ", handin, " within ", to_string(value: harness_acceptance_deadline_polls * harness_acceptance_poll_seconds), " s"], ""),
+          steps_taken: steps_taken, events: events,
+        )
+      } else {
+        let waited = sleep_delay_seconds_second_carrier_projection(duration: second(count: harness_acceptance_poll_seconds))
+        harness_await_acceptance(
+          config: config, route: route, handin: handin, polls_left: polls_left - 1,
+          messages: messages, events: events, steps_taken: steps_taken,
+          text: text, stop_reason: stop_reason, input_tokens: input_tokens, output_tokens: output_tokens,
+        )
+      }
+  }
+}
+
+// A REQUESTED CHANGE IS ONE MESSAGE, naming the stage and carrying its findings, and the handed-in
+// submission is kept beside the worktree under its hand-in id so the next hand-in is the worker's own
+// new declaration, never this one swept again.
+fn harness_revision_text(handin: String, stage: String, findings: String) -> String {
+  join([
+    "Acceptance of your hand-in ", handin, " requested changes (", stage, "):\n", findings,
+    "\nMake the changes, then hand in again: write a new ", submission_artifact_name as String, " and stop.",
+  ], "")
+}
+
+fn harness_apply_acceptance(
+  config: HarnessTurnConfig,
+  route: HarnessHandInRoute,
+  handin: String,
+  outcome: AcceptanceOutcome,
+  messages: List<JsonValue>,
+  events: List<String>,
+  steps_taken: Int,
+  text: String,
+  stop_reason: AnthropicStopReason,
+  input_tokens: TokenCount,
+  output_tokens: TokenCount,
+) -> HarnessTurnOutcome {
+  match outcome {
+    AcceptanceAccepted => {
+      let accepted = concat(events, [
+        harness_event_session_outcome(event_type: "session.accepted", handin: handin, detail: "verification passed and review and the goal audit approved"),
+        harness_event_type_only(event_type: "turn.completed"),
+      ])
+      match harness_write_events(config: config, events: accepted) {
+        HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+        HarnessEventsWritten =>
+          TurnProviderStopped {
+            wire_stop_reason: harness_stop_reason_wire(reason: stop_reason),
+            assistant_text: text,
+            steps_taken: steps_taken,
+            input_tokens: token_count_value(t: input_tokens),
+            output_tokens: token_count_value(t: output_tokens),
+          }
+      }
+    }
+    AcceptanceUnavailable { cause } =>
+      harness_turn_acceptance_unavailable(config: config, handin: handin, cause: cause, steps_taken: steps_taken, events: events)
+    AcceptanceChangesRequested { stage, findings } => {
+      let dir = config.environment.working_directory as String
+      let submitted = join([dir, "/", submission_artifact_name as String], "")
+      let kept = join([dir, "/.gunbc-submission.", handin, ".json"], "")
+      let moved = shell.Move.File(source: submitted as FilePath, destination: kept as FilePath)
+      if !moved.success {
+        harness_turn_acceptance_unavailable(config: config, handin: handin, cause: join(["changes were requested, but the handed-in submission could not be moved aside to ", kept], ""), steps_taken: steps_taken, events: events)
+      } else {
+        let revising = concat(events, [harness_event_session_outcome(event_type: "session.revision_started", handin: handin, detail: stage)])
+        match harness_write_events(config: config, events: revising) {
+          HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+          HarnessEventsWritten =>
+            harness_turn_loop(
+              config: config,
+              messages: harness_messages_with_steer(shape: config.wire_shape, messages: messages, steer: harness_revision_text(handin: handin, stage: stage, findings: findings)),
+              steps_remaining: route.round_steps,
+              steps_taken: steps_taken,
+              events: revising,
+              repairs_used: 0,
+            )
+        }
+      }
     }
   }
 }

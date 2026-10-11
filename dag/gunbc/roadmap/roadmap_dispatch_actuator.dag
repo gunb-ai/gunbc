@@ -182,7 +182,7 @@ import gunbc.worker_lifecycle {
 }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.host_layout { srv1_dispatch_worktree_root, srv1_roadmap_codex_home }
+import gunbc.host_layout { srv1_dispatch_worktree_root, srv1_roadmap_codex_home, attempt_exit_inbox_dir }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   srv1_live_dashboard_instance,
@@ -2334,6 +2334,9 @@ fn gunbc_harness_spawn_argv(
   alignment_chain_fingerprint: String,
   supervision_prompt: String,
   supervision_dir: String,
+  handin_inbox: String,
+  node_id: String,
+  attempt_key: String,
 ) -> List<String> {
   [
     gunbc_program,
@@ -2353,6 +2356,9 @@ fn gunbc_harness_spawn_argv(
     "--arg", join(["alignment_chain_fingerprint=", alignment_chain_fingerprint], ""),
     "--arg", join(["supervision_prompt=", supervision_prompt], ""),
     "--arg", join(["supervision_dir=", supervision_dir], ""),
+    "--arg", join(["handin_inbox=", handin_inbox], ""),
+    "--arg", join(["node_id=", node_id], ""),
+    "--arg", join(["attempt_key=", attempt_key], ""),
   ]
 }
 
@@ -2533,6 +2539,9 @@ fn dispatch_provider_inner_argv_for_instance(
           alignment_chain_fingerprint: alignment_chain_fingerprint,
           supervision_prompt: supervision_prompt,
           supervision_dir: dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+          handin_inbox: attempt_exit_inbox_dir(instance_root: instance.instance_root as String),
+          node_id: node_id as String,
+          attempt_key: attempt_key,
         ),
       }
   }

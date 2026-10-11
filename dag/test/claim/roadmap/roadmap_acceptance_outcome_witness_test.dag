@@ -1,0 +1,93 @@
+module test.claim.roadmap.roadmap_acceptance_outcome_witness_test
+
+import std.types { Bool, String, List }
+import std.optional { Present, Absent }
+import gunbc.roadmap_workflow_stage {
+  WorkflowSegment, WorkflowSegmentKind, WorkflowSegmentState,
+  VerificationWorkflowSegment, ReviewWorkflowSegment, GoalAuditWorkflowSegment,
+  WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
+  WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentStopped,
+}
+import gunbc.roadmap.roadmap_acceptance_outcome {
+  AcceptanceOutcome, AcceptanceAccepted, AcceptanceChangesRequested, AcceptanceUnavailable,
+  AcceptanceOutcomeRecord, AcceptanceOutcomeDecoded, AcceptanceOutcomeUndecodable,
+  acceptance_outcome_of_stages, acceptance_outcome_record_text, acceptance_outcome_decode, acceptance_outcome_key,
+}
+import gunbc.roadmap_provider_events {
+  ProviderAwaitingAcceptance, ProviderCompleted, ProviderRunning,
+}
+import gunbc.roadmap.roadmap_belt_obligation {
+  belt_attempt_obligation_outstanding, CaptureObligation, AcceptanceOutcomeObligation,
+  belt_provider_candidate_ready, belt_provider_handed_in,
+}
+
+fn seg(kind: WorkflowSegmentKind, state: WorkflowSegmentState, detail: String) -> WorkflowSegment? {
+  Present { value: WorkflowSegment { kind: kind, state: state, detail: detail } }
+}
+
+fn key_of(o: AcceptanceOutcome?) -> String {
+  match o {
+    Absent => "waiting"
+    Present { value: v } => acceptance_outcome_key(o: v)
+  }
+}
+
+// VERIFICATION DECIDES ALONE WHEN IT FAILS OR CANNOT RUN: review and the goal audit start only after it
+// passes, so an outcome that waited for all three would wait forever. A failed verification is a change
+// the worker owes, with the failure as its findings; one that cannot run is acceptance unavailable.
+test fn verification_that_fails_or_cannot_run_decides_without_review() -> Bool {
+  let failed = acceptance_outcome_of_stages(verification: seg(kind: VerificationWorkflowSegment, state: WorkflowSegmentFailed, detail: "witness red: missing arm"), review: none, goal_audit: none)
+  let refused = acceptance_outcome_of_stages(verification: seg(kind: VerificationWorkflowSegment, state: WorkflowSegmentRefused, detail: "toolchain missing"), review: none, goal_audit: none)
+  let running = acceptance_outcome_of_stages(verification: seg(kind: VerificationWorkflowSegment, state: WorkflowSegmentActive, detail: "running"), review: none, goal_audit: none)
+  (match failed { Present { value: AcceptanceChangesRequested { stage, findings } } => stage == "verification" && findings == "witness red: missing arm"  _ => false })
+    && (match refused { Present { value: AcceptanceUnavailable { cause } } => cause.contains("toolchain missing")  _ => false })
+    && key_of(o: running) == "waiting"
+    && key_of(o: acceptance_outcome_of_stages(verification: none, review: none, goal_audit: none)) == "waiting"
+}
+
+// AFTER VERIFICATION PASSES THE OUTCOME WAITS FOR BOTH REVIEW AND THE AUDIT, so the worker never resumes
+// editing while a reader of its worktree is still at work; then a requested change wins, a stage that
+// could not run makes acceptance unavailable, and both approving accepts.
+test fn after_verification_both_readers_settle_before_an_outcome() -> Bool {
+  let verified = seg(kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "2 validations")
+  let approved_review = seg(kind: ReviewWorkflowSegment, state: WorkflowSegmentComplete, detail: "approved")
+  let changes_review = seg(kind: ReviewWorkflowSegment, state: WorkflowSegmentFailed, detail: "dag/a.dag: the arm is missing")
+  let pending_audit = seg(kind: GoalAuditWorkflowSegment, state: WorkflowSegmentActive, detail: "auditing")
+  let approved_audit = seg(kind: GoalAuditWorkflowSegment, state: WorkflowSegmentComplete, detail: "approved")
+  let refused_audit = seg(kind: GoalAuditWorkflowSegment, state: WorkflowSegmentRefused, detail: "no seat")
+  key_of(o: acceptance_outcome_of_stages(verification: verified, review: changes_review, goal_audit: pending_audit)) == "waiting"
+    && (match acceptance_outcome_of_stages(verification: verified, review: changes_review, goal_audit: approved_audit) {
+      Present { value: AcceptanceChangesRequested { stage, findings } } => stage == "review" && findings.contains("the arm is missing")
+      _ => false
+    })
+    && key_of(o: acceptance_outcome_of_stages(verification: verified, review: approved_review, goal_audit: refused_audit)) == "unavailable"
+    && key_of(o: acceptance_outcome_of_stages(verification: verified, review: approved_review, goal_audit: approved_audit)) == "accepted"
+}
+
+// THE RECORD ROUND-TRIPS WITH ITS HAND-IN AND HEAD, and the schema wall refuses anything else.
+test fn the_outcome_record_round_trips_and_refuses_another_schema() -> Bool {
+  let r = AcceptanceOutcomeRecord { handin: "h2", head: "abc123", outcome: AcceptanceChangesRequested { stage: "review", findings: "fix the arm" } }
+  (match acceptance_outcome_decode(text: acceptance_outcome_record_text(r: r)) {
+    AcceptanceOutcomeDecoded { record } =>
+      record.handin == "h2" && record.head == "abc123"
+        && (match record.outcome { AcceptanceChangesRequested { stage, findings } => stage == "review" && findings == "fix the arm"  _ => false })
+    AcceptanceOutcomeUndecodable { reason: _ } => false
+  })
+    && (match acceptance_outcome_decode(text: "\{\"schema\": \"roadmap-acceptance-outcome/v0\", \"handin\": \"h1\", \"head\": \"x\", \"outcome\": \"accepted\"}") {
+      AcceptanceOutcomeUndecodable { reason } => reason.contains("v0")
+      AcceptanceOutcomeDecoded { record: _ } => false
+    })
+}
+
+// A HANDED-IN WORKER IS READY FOR CAPTURE AND OWED AN OUTCOME, but it has not ended: the obligation
+// gates read "ended or handed in", and only a handed-in worker is owed an outcome.
+test fn a_handed_in_worker_is_captured_and_owed_an_outcome() -> Bool {
+  let handed = ProviderAwaitingAcceptance { handin: "h1" }
+  let ended = ProviderCompleted { activity: "Agent complete" }
+  let running = ProviderRunning { activity: "Agent working" }
+  belt_provider_candidate_ready(provider: handed) && belt_provider_candidate_ready(provider: ended) && !belt_provider_candidate_ready(provider: running)
+    && belt_provider_handed_in(provider: handed) == "h1" && belt_provider_handed_in(provider: ended) == ""
+    && belt_attempt_obligation_outstanding(kind: CaptureObligation, provider: handed, segments: [])
+    && belt_attempt_obligation_outstanding(kind: AcceptanceOutcomeObligation, provider: handed, segments: [])
+    && !belt_attempt_obligation_outstanding(kind: AcceptanceOutcomeObligation, provider: ended, segments: [])
+}

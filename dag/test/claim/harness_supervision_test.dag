@@ -7,7 +7,7 @@ import extdeps.languages.json.emit { serialize_json }
 import gunbc.harness.harness_wire { AnthropicMessagesShape, OpenAiChatCompletionsShape }
 import gunbc.roadmap.roadmap_alignment_verdict { Aligned, Misaligned, ExtremelyMisaligned, CatastrophicallyMisaligned, RoutedConflict }
 import gunbc.harness.harness_turn {
-  HarnessToolResult, HarnessSupervision, Unsupervised, SupervisedRounds,
+  HarnessToolResult, HarnessSupervision, Unsupervised, SupervisedRounds, HarnessAcceptanceRoute,
   HarnessSupervisionVerdictRead, SupervisionVerdictDecoded, SupervisionVerdictUnreadable,
   TurnStoppedBySupervision, TurnSupervisionUnavailable, TurnStepBudgetExhausted,
   harness_supervision_verdict_decode, harness_supervision_counts_down, harness_messages_with_steer,
@@ -16,10 +16,17 @@ import gunbc.harness.harness_turn {
   harness_supervisor_receipt_decode, HarnessSupervisorRead, SupervisorReadDecoded, SupervisorReadUnreadable,
   harness_nested_usage_lines, harness_supervision_observation_text, harness_supervision_message_bound,
   harness_supervision_observed_message_cap,
+  GateArtifactDeclared, GateArtifactAbsent, harness_handin_route, harness_next_handin_id, harness_event_handed_in,
+  harness_acceptance_outcome_for, harness_revision_text,
 }
+import gunbc.roadmap.roadmap_acceptance_outcome { AcceptanceOutcomeRecord, AcceptanceAccepted, acceptance_outcome_record_text }
 import gunbc.roadmap.roadmap_supervisor { SupervisorVerdictReceipt, VerdictSteer, VerdictStuck, supervisor_verdict_text }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string }
 import gunbc.harness.harness_cli { harness_turn_exit, harness_worker_supervision, harness_worker_step_budget }
+
+fn route() -> HarnessAcceptanceRoute {
+  HarnessAcceptanceRoute { inbox: "/i/attempt-exit-spool/inbox", node_id: "n", attempt_key: "k" }
+}
 
 fn decodes_to_kind(text: String, kind: String) -> Bool {
   match harness_supervision_verdict_decode(text: text) {
@@ -59,7 +66,7 @@ test fn the_verdict_file_decodes_each_kind_and_refuses_the_rest() -> Bool {
 // A SUPERVISED SESSION HEARS NOTHING ABOUT ITS ROUNDS. Only an unsupervised turn, which really ends
 // at zero, gets the countdown after its tool results; a supervised worker's tool results arrive bare.
 test fn only_an_unsupervised_turn_counts_down() -> Bool {
-  let supervised = SupervisedRounds { chain_fingerprint: "fp", check_prompt: "chain", check_directory: "/state", round_steps: 40 }
+  let supervised = SupervisedRounds { chain_fingerprint: "fp", check_prompt: "chain", check_directory: "/state", round_steps: 40, acceptance: route() }
   let results = [HarnessToolResult { tool_use_id: "call-1", text: "ok\n[exit 0]", is_error: false }]
   let bare = harness_tool_result_messages_json(shape: OpenAiChatCompletionsShape, results: results, steps_remaining: 2, countdown: harness_supervision_counts_down(s: supervised))
   let counted = harness_tool_result_messages_json(shape: OpenAiChatCompletionsShape, results: results, steps_remaining: 2, countdown: harness_supervision_counts_down(s: Unsupervised))
@@ -101,14 +108,14 @@ test fn a_supervision_stop_is_a_named_refusal() -> Bool {
 
 // A WORKER IS SUPERVISED EXACTLY WHEN IT CARRIES A CHAIN, and its round is the worker step budget.
 test fn a_worker_is_supervised_exactly_when_it_carries_a_chain() -> Bool {
-  let chained = match harness_worker_supervision(chain_fingerprint: "fp", check_prompt: "chain", check_directory: "/state") {
+  let chained = match harness_worker_supervision(chain_fingerprint: "fp", check_prompt: "chain", check_directory: "/state", acceptance: route()) {
     Unsupervised => false
-    SupervisedRounds { chain_fingerprint: f, check_prompt: p, check_directory: d, round_steps: n } =>
+    SupervisedRounds { chain_fingerprint: f, check_prompt: p, check_directory: d, round_steps: n, acceptance: _ } =>
       f == "fp" && p == "chain" && d == "/state" && n == harness_worker_step_budget
   }
-  let chainless = match harness_worker_supervision(chain_fingerprint: "", check_prompt: "chain", check_directory: "/state") {
+  let chainless = match harness_worker_supervision(chain_fingerprint: "", check_prompt: "chain", check_directory: "/state", acceptance: route()) {
     Unsupervised => true
-    SupervisedRounds { chain_fingerprint: _, check_prompt: _, check_directory: _, round_steps: _ } => false
+    SupervisedRounds { chain_fingerprint: _, check_prompt: _, check_directory: _, round_steps: _, acceptance: _ } => false
   }
   chained && chainless
 }
@@ -190,3 +197,40 @@ test fn a_long_round_is_observed_by_its_capped_tail() -> Bool {
     && !observed.contains("\"m79\"")
 }
 
+
+// ── HAND-IN (slice S2) ────────────────────────────────────────────────────────────────────────
+
+// ONLY A SUPERVISED WORKER'S READY DECLARATION HANDS IN: blocked, needs-context, an absent artifact and
+// an unsupervised turn all end as before.
+test fn only_a_supervised_ready_stop_hands_in() -> Bool {
+  let supervised = SupervisedRounds { chain_fingerprint: "fp", check_prompt: "chain", check_directory: "/state", round_steps: 100, acceptance: route() }
+  (match harness_handin_route(supervision: supervised, observed: GateArtifactDeclared { ready: true }) {
+    Present { value: r } => r.check_directory == "/state" && r.round_steps == 100 && r.route.node_id == "n"
+    Absent => false
+  })
+    && (match harness_handin_route(supervision: supervised, observed: GateArtifactDeclared { ready: false }) { Present { value: _ } => false  Absent => true })
+    && (match harness_handin_route(supervision: supervised, observed: GateArtifactAbsent) { Present { value: _ } => false  Absent => true })
+    && (match harness_handin_route(supervision: Unsupervised, observed: GateArtifactDeclared { ready: true }) { Present { value: _ } => false  Absent => true })
+}
+
+// THE HAND-IN ID IS FRESH PER HAND-IN, counted from the session's own record of them.
+test fn each_hand_in_gets_a_fresh_id() -> Bool {
+  harness_next_handin_id(events: ["\{\"type\": \"turn.started\"}"]) == "h1"
+    && harness_next_handin_id(events: [harness_event_handed_in(handin: "h1"), harness_event_handed_in(handin: "h2")]) == "h3"
+}
+
+// ONLY THIS HAND-IN'S OUTCOME IS ACTED ON: an absent file, an undecodable one, and an outcome naming an
+// earlier hand-in all mean "still waiting", so a stale outcome can neither steer nor finish a later one.
+test fn only_this_hand_ins_outcome_is_acted_on() -> Bool {
+  let for_h1 = acceptance_outcome_record_text(r: AcceptanceOutcomeRecord { handin: "h1", head: "aaa", outcome: AcceptanceAccepted })
+  (match harness_acceptance_outcome_for(text: Present { value: for_h1 }, handin: "h1") { Present { value: AcceptanceAccepted } => true  _ => false })
+    && (match harness_acceptance_outcome_for(text: Present { value: for_h1 }, handin: "h2") { Present { value: _ } => false  Absent => true })
+    && (match harness_acceptance_outcome_for(text: Present { value: "\{not json" }, handin: "h1") { Present { value: _ } => false  Absent => true })
+    && (match harness_acceptance_outcome_for(text: Absent, handin: "h1") { Present { value: _ } => false  Absent => true })
+}
+
+// A REQUESTED CHANGE IS ONE MESSAGE naming the hand-in, the stage and its findings, and how to hand in again.
+test fn a_revision_message_carries_the_findings_once() -> Bool {
+  let t = harness_revision_text(handin: "h1", stage: "review", findings: "dag/a.dag: the arm is missing")
+  t.contains("h1") && t.contains("(review)") && t.contains("dag/a.dag: the arm is missing") && t.contains(".gunbc-submission.json")
+}

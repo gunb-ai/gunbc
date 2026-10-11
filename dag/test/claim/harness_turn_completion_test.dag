@@ -47,7 +47,7 @@ data habit_text: String = "{\"readiness\": \"ready\", \"explanation\": \"did the
 
 test fn a_present_but_undecodable_artifact_is_not_a_declaration() -> Bool {
   match harness_submission_gate_read(artifact: Present { value: habit_text }) {
-    GateArtifactDeclared => false
+    GateArtifactDeclared { ready: _ } => false
     GateArtifactAbsent => false
     GateArtifactUnobservable { cause: _ } => false
     GateArtifactUndecodable { reason } =>
@@ -87,8 +87,8 @@ test fn an_absent_artifact_and_a_decodable_blocked_one_both_proceed() -> Bool {
   })
   gate_proceeds(v: harness_submission_gate_judge(observation: harness_submission_gate_read(artifact: none), repairs_used: 0))
     && match harness_submission_gate_read(artifact: Present { value: blocked }) {
-      GateArtifactDeclared =>
-        gate_proceeds(v: harness_submission_gate_judge(observation: GateArtifactDeclared, repairs_used: 0))
+      GateArtifactDeclared { ready: _ } =>
+        gate_proceeds(v: harness_submission_gate_judge(observation: GateArtifactDeclared { ready: false }, repairs_used: 0))
       _ => false
     }
 }
