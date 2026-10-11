@@ -2,8 +2,9 @@ module v2.test.claim.source_layout_lookup
 
 import std.types { Bool, List }
 import std.optional { Absent, optional_present }
+import std.coercion { unicode_scalar_fold }
 import v2.std.text { String }
-import v2.std.algebra { any, list_map }
+import v2.std.algebra { any, filter, for_all, length, list_map }
 import v2.std.cross_tree.import_model { DagTree, V2Tree }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.compiler.source_authority {
@@ -15,10 +16,12 @@ import v2.compiler.source_authority {
   DuplicateModule,
   FileNotNamed,
   ModuleFileAbsent,
+  ModuleFileDerived,
   ModuleFilePresent,
   ModuleFileRef,
   ModuleFileRefused,
   ModuleLineMissing,
+  ModuleNameUnderivable,
   NamespaceRowWithoutModules,
   NotAtRulePosition,
   ReferenceCrossTreeDenied,
@@ -34,6 +37,7 @@ import v2.compiler.source_authority {
   layout_refusal_text,
   layout_verdict_holds,
   layout_verdict_text,
+  module_file,
   module_file_key,
   reference_prefixes,
   resolve_reference_over
@@ -397,4 +401,110 @@ test fn a_refused_layout_is_reported_one_line_per_refusal() -> Bool {
 
 test fn a_layout_that_holds_says_so_and_a_refused_one_does_not() -> Bool {
   layout_verdict_holds(verdict: LayoutHolds {}) && layout_verdict_holds(verdict: LayoutRefused { refusals: [ModuleLineMissing { file: dag_file(path: "a/b/c.dag") }] }) == false
+}
+
+// ---- the name-to-path map is injective over the names it accepts, and confined --------------------------
+//
+// A module name is stored at the file it derives, so two accepted names deriving one file would make a
+// file the key of two modules. The path rule joins segments with `/`, so a segment admitted with a
+// separator in it is the way that happens: `v2.a/b` has no empty dot segment and would derive a/b.dag,
+// the file of `v2.a.b`. The storage authority therefore accepts only identifier segments (the tokenizer's
+// own alphabet), and these controls state the property over a supplied population that includes the
+// colliding forms rather than over one example: every name the rule accepts derives a path no other
+// accepted name derives, every derived path stays beneath its tree, and each path-syntax form is refused
+// before any path exists.
+
+data adversarial_names: List<String> = [
+  "a.b",
+  "a.b.c",
+  "a.b_c",
+  "a.b2",
+  "v2.a.b",
+  "v2.a/b",
+  "a/b",
+  "a.b/c",
+  "/a",
+  "v2./a",
+  "..",
+  "a..b",
+  "a.",
+  ".a",
+  "v2..a",
+  "a.b ",
+  " a.b",
+  "a-b",
+  "a.9b",
+  "9a.b",
+  "",
+  "v2",
+  "v2.a%2Fb"
+]
+
+fn derived_key(name: String) -> String {
+  match module_file(layout: layout(), name: name) {
+    ModuleFileDerived { file: file } => module_file_key(file: file)
+    ModuleNameUnderivable { name: _, cause: _ } => ""
+  }
+}
+
+fn derived_relative_path(name: String) -> String {
+  match module_file(layout: layout(), name: name) {
+    ModuleFileDerived { file: file } => file.relative_path
+    ModuleNameUnderivable { name: _, cause: _ } => ""
+  }
+}
+
+fn accepted_names() -> List<String> {
+  filter(xs: adversarial_names, predicate: fn(name) { derived_key(name: name) != "" })
+}
+
+fn is_underivable(name: String) -> Bool {
+  derived_key(name: name) == ""
+}
+
+test fn distinct_accepted_module_names_derive_distinct_files() -> Bool {
+  let keys = list_map(xs: accepted_names(), f: fn(name) { derived_key(name: name) })
+  length(xs: keys) > 4 && for_all(xs: keys, predicate: fn(key) { length(xs: filter(xs: keys, predicate: fn(other) { other == key })) == 1 })
+}
+
+// Every derived path is a chain of nonempty components under the tree, ending at the `.dag` file:
+// nothing climbs out of the bound source root and nothing is absolute.
+fn path_is_confined(path: String) -> Bool {
+  path != "" && path.ends_with(suffix: ".dag") && for_all(
+    xs: split(s: path, delimiter: "/"),
+    predicate: fn(part) { part != "" && part != "." && part != ".." && part != ".dag" }
+  )
+}
+
+test fn every_derived_relative_path_is_confined_beneath_its_source_root() -> Bool {
+  length(xs: accepted_names()) > 4
+    && for_all(xs: accepted_names(), predicate: fn(name) { path_is_confined(path: derived_relative_path(name: name)) })
+}
+
+test fn the_colliding_forms_are_split_one_accepted_and_one_refused() -> Bool {
+  derived_relative_path(name: "v2.a.b") == "a/b.dag" && is_underivable(name: "v2.a/b") && is_underivable(name: "a/b")
+}
+
+test fn a_name_carrying_path_syntax_is_refused_before_any_path_is_derived() -> Bool {
+  is_underivable(name: "v2.a/b")
+    && is_underivable(name: "/a")
+    && is_underivable(name: "v2./a")
+    && is_underivable(name: "..")
+    && is_underivable(name: "a..b")
+    && is_underivable(name: ".a")
+    && is_underivable(name: "a.")
+    && is_underivable(name: "a.b ")
+    && is_underivable(name: "a-b")
+    && is_underivable(name: "9a.b")
+    && is_underivable(name: "v2.a%2Fb")
+}
+
+// The backslash is a path separator on a host that takes one; its code point is written as a code point
+// so no string-escape reading can turn the control into a different name.
+test fn a_name_carrying_a_backslash_is_refused() -> Bool {
+  is_underivable(name: concat("a", unicode_scalar_fold(xs: [92]), "b"))
+}
+
+test fn a_name_of_identifier_segments_is_still_derived() -> Bool {
+  derived_relative_path(name: "a.b_c") == "a/b_c.dag" && derived_relative_path(name: "a.b2") == "a/b2.dag" && derived_relative_path(name: "v2.a.b") == "a/b.dag"
 }

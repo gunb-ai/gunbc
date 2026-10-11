@@ -15,12 +15,13 @@ import v2.compiler.parse {
   prepare_grammar,
 }
 import v2.compiler.resolve { resolve, ResolvedTree }
-import v2.compiler.tokenize { tokenize }
+import std.coercion { unicode_scalar_unfold }
+import v2.compiler.tokenize { char_in_class, tokenize }
 import v2.extdeps.languages.dag {
   dag_language_model,
   qualified_name_from_module_node
 }
-import v2.std.compilers.lexing { TokenStream }
+import v2.std.compilers.lexing { IdentContinueChar, IdentStartChar, TokenStream }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, trim }
 import v2.std.algebra {
   HeadAbsent,
@@ -94,7 +95,7 @@ import std.content_hash {
   Fnv1a64
 }
 import v2.compiler.target_serialize { target_serialize_source_from_model }
-import v2.std.text { String, string_is_empty }
+import v2.std.text { CharAbsent, CharFound, String, string_head, string_is_empty }
 import v2.std.witness { Holds, Violates, Witness }
 
 data source_authority_module_note: String = "Wave 2 Gate-A flip lane: v2.compiler.source_authority is the cross-tree ingest and round-trip authority (parse→normalize→resolve→serialize laws over DagSourceReadWitness / SourceRootIngest). Curated seed-linked scaffold defers full tree behavioral oracle until emitter Rc/Optional coherence (#6775) greens rustc on the closure."
@@ -1502,8 +1503,24 @@ fn module_file_relative_path(segments: List<String>) -> String {
   concat(join(segments, "/"), ".dag")
 }
 
-fn module_name_has_empty_segment(segments: List<String>) -> Bool {
-  fold_list(xs: segments, empty: false, cons: fn(found, segment) { found || segment == "" })
+// A SEGMENT IS A MODULE-SYNTAX IDENTIFIER, decided by the alphabet the tokenizer lexes an identifier
+// with (v2.compiler.tokenize char_in_class), never by a second list here. The path rule joins segments
+// with `/`, so a segment admitted with a separator in it would derive the file of a different name
+// (`a/b` and `a.b` would both be stored at a/b.dag) and a name would stop being the key of its file.
+// Refusing every non-identifier segment before any path is derived makes the name-to-path map
+// injective over the names it accepts, and a derived path stays beneath its tree.
+fn module_name_segment_is_identifier(segment: String) -> Bool {
+  let scalars = unicode_scalar_unfold(s: segment)
+  match string_head(s: scalars) {
+    CharAbsent => false
+    CharFound { value: first } =>
+      char_in_class(c: first, class: IdentStartChar)
+        && fold_list(xs: scalars, empty: true, cons: fn(ok, c) { ok && char_in_class(c: c, class: IdentContinueChar) })
+  }
+}
+
+fn module_name_has_non_identifier_segment(segments: List<String>) -> Bool {
+  fold_list(xs: segments, empty: false, cons: fn(found, segment) { found || !module_name_segment_is_identifier(segment: segment) })
 }
 
 fn segment_or_empty(segments: List<String>, at: Int) -> String {
@@ -1517,13 +1534,13 @@ fn segment_count(segments: List<String>) -> Int {
   fold_list(xs: segments, empty: 0, cons: fn(n, segment) { n + 1 })
 }
 
-// The file a module name is stored at. A name is a nonempty dotted sequence of nonempty segments;
-// anything else is refused with its cause. The namespace a layout elides is a directory that does
+// The file a module name is stored at. A name is a nonempty dotted sequence of identifier segments;
+// anything else is refused with its cause, before any path is derived. The namespace a layout elides is a directory that does
 // not exist, so a name made of only that namespace has no file.
 fn module_file(layout: SourceStorageLayout, name: String) -> ModuleFileDerivation {
   let segments = split(s: name, delimiter: ".")
-  if name == "" || module_name_has_empty_segment(segments: segments) {
-    ModuleNameUnderivable { name: name, cause: "a module name is a nonempty dotted sequence of nonempty segments" }
+  if name == "" || module_name_has_non_identifier_segment(segments: segments) {
+    ModuleNameUnderivable { name: name, cause: "a module name is a nonempty dotted sequence of identifier segments (letters, digits and underscore, not starting with a digit)" }
   } else {
     match storage_namespace_root_for(layout: layout, namespace: segment_or_empty(segments: segments, at: 0)) {
       Present { value: root } =>
