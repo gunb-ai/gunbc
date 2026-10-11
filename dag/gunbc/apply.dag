@@ -2,7 +2,7 @@ module gunbc.apply
 
 import std.types { String, Bool, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.live_deploy.apply { live_deploy_apply_srv1_wet, approval_broker_dark_install_srv1_wet }
+import gunbc.live_deploy.apply { live_deploy_apply_prod_role_wet, approval_broker_dark_install_wet }
 import gunbc.runner_capacity_plan {
   RunnerCapacityPlan,
   PlanReady,
@@ -114,13 +114,13 @@ fn apply_dispatch(
     WorkflowParseRefused { reason: r } => exit_failure(reason: r)
     WorkflowParsed { workflow: DashboardSrv1 } =>
       if mode == "apply" {
-        live_deploy_apply_srv1_wet()
+        live_deploy_apply_prod_role_wet()
       } else {
         exit_failure(reason: "dashboard-srv1 supports mode=apply only in this increment")
       }
     WorkflowParsed { workflow: ApprovalBrokerDark } =>
       if mode == "apply" {
-        approval_broker_dark_install_srv1_wet()
+        approval_broker_dark_install_wet()
       } else {
         exit_failure(reason: "approval-broker-dark supports mode=apply only: there is no plan pole for an additive unit install, and a plan arm that printed the script without a preflight would be a second, ungated path to the same mutation")
       }
