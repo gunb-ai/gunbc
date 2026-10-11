@@ -9,11 +9,11 @@ import gunbc.live_deploy.role_singleton_convergence {
   RoleSingletonSighting, SightedDeploymentMember, SightedBroker,
   HostRoleSingletonReading, HostRoleSingletonsRead, HostRoleSingletonsUnobservable,
   RoleSingletonRemovalUnimplemented, RoleSingletonRealizedOnTwoHosts, RoleSingletonStaleSpec,
-  RoleSingletonHostUnobservable,
+  RoleSingletonHostUnobservable, RoleSingletonDesiredRealizationRefused,
   RoleSingletonConvergence, RoleSingletonNoop, RoleSingletonInPlace, RoleSingletonInstall, RoleSingletonRefused,
   RoleSingletonAdmissible, RoleSingletonInadmissible,
   RoleSingletonReadingSource,
-  assess_over_roster, assess_spec_over_roster, fetch_self_report, SelfReportUnserved, SelfReportServed,
+  assess_over_roster, assess_spec_over_roster, assess_spec_over_roster_in, fetch_self_report, SelfReportUnserved, SelfReportServed,
   role_singleton_observation_of, role_singleton_convergence, classify_role_singleton_admission,
   role_singleton_self_report_member,
   role_singleton_refusal_detail, marker_sighting_of, MarkerSightingOf, MarkerSightingAbsent, MarkerSightingUnobservable,
@@ -26,12 +26,12 @@ import gunbc.live_deploy.desired {
 }
 import gunbc.live_deploy.spec {
   HoldsProdRoleSingletons, HoldsNoRoleSingleton,
-  deployment_owns_the_host_approval_broker, deployment_fabric_storage_steps,
+  deployment_owns_the_host_approval_broker, deployment_fabric_storage_steps, deployment_spec_for,
 }
 import gunbc.roadmap_dashboard_instance {
-  ProdRoleRealization, ProdRoleRealizedBy, ProdRoleRealizationRefused, srv1_live_dashboard_instance,
+  ProdRoleRealization, ProdRoleRealizedBy, ProdRoleRealizationRefused, ProdRoleHolderUnactuatable, srv1_live_dashboard_instance,
 }
-import gunbc.deployment_risk { NoProdRole, srv1_daily_workspace_deployment, DeploymentId }
+import gunbc.deployment_risk { NoProdRole, ProdRoleHeldBy, srv1_daily_workspace_deployment, srv2_preview_codex_feedback_deployment, DeploymentId }
 import gunbc.fabric_storage_placement {
   fabric_storage_ownership_marker_spec, fabric_storage_marker_verdict, FabricStorageMarkerExact, FabricStorageMarkerMismatched, FabricStorageMarkerReading,
 }
@@ -217,6 +217,34 @@ test fn local_empty_srv1_and_unobservable_srv2_is_refused_as_install() -> Bool {
   }
 }
 
+fn srv2_leftover_unobservable_srv1_source() -> RoleSingletonReadingSource {
+  let srv1 = srv1_production_desired_deployment()
+  let srv2_row = srv2_deploy_desired_deployment()
+  RoleSingletonReadingSource {
+    read: (host, rows) =>
+      if (host as String) == (srv2_row.target.ssh_host as String) {
+        HostRoleSingletonsRead { host: host, sightings: complete_on(host: srv2_row.target.ssh_host as String, d: srv2_row.instance.deployment) }
+      } else if (host as String) == (srv1.target.ssh_host as String) {
+        HostRoleSingletonsUnobservable { host: host, cause: "required control: leftover on a non-holder while srv1 is unobservable" }
+      } else {
+        HostRoleSingletonsRead { host: host, sightings: [] }
+      },
+  }
+}
+
+test fn leftover_singletons_on_a_non_holder_need_the_global_gate() -> Bool {
+  let spec = selected_deployment_spec(row: srv2_deploy_desired_deployment())
+  match spec.role_singletons {
+    HoldsProdRoleSingletons { holder: _ } => false
+    HoldsNoRoleSingleton =>
+      match assess_spec_over_roster(spec: spec, source: srv2_leftover_unobservable_srv1_source()) {
+        RoleSingletonInadmissible { cause: RoleSingletonHostUnobservable { host, cause: _ } } =>
+          (host as String) == (srv1_production_desired_deployment().target.ssh_host as String)
+        _ => false
+      }
+  }
+}
+
 test fn srv2_enroll_with_no_role_singleton_is_admitted_emitting_no_broker_or_fabric() -> Bool {
   let spec = selected_deployment_spec(row: srv2_deploy_desired_deployment())
   match spec.role_singletons {
@@ -237,6 +265,28 @@ test fn unobservable_srv2_and_desired_install_is_host_unobservable() -> Bool {
     RoleSingletonInadmissible { cause: RoleSingletonHostUnobservable { host, cause: _ } } =>
       (host as String) == (srv2_deploy_desired_deployment().target.ssh_host as String)
     _ => false
+  }
+}
+
+fn row_plans_broker_or_fabric(row: DesiredDeployment, desired: ProdRoleRealization) -> Bool {
+  let spec = deployment_spec_for(realization: desired, instance: row.instance, target: row.target, names: row.names)
+  deployment_owns_the_host_approval_broker(spec: spec) || count(deployment_fabric_storage_steps(holding: spec.role_singletons, names: spec.names)) > 0
+}
+
+test fn an_unactuatable_preview_holder_is_refused_and_plans_no_broker_or_fabric() -> Bool {
+  let selection = ProdRoleHeldBy { deployment: srv2_preview_codex_feedback_deployment }
+  let desired = prod_role_actuated_realization_in(selection: selection)
+  match desired {
+    ProdRoleRealizedBy { holder: _ } => false
+    ProdRoleRealizationRefused { cause: ProdRoleHolderUnactuatable { deployment: d } } =>
+      d == srv2_preview_codex_feedback_deployment
+        && !any(desired_deployment_roster(), r => row_plans_broker_or_fabric(row: r, desired: desired))
+        && match assess_spec_over_roster_in(spec: selected_deployment_spec(row: srv1_production_desired_deployment()), source: complete_srv1_empty_peers_source(), selection: selection) {
+          RoleSingletonInadmissible { cause: RoleSingletonDesiredRealizationRefused { cause: ProdRoleHolderUnactuatable { deployment: refused } } } =>
+            refused == srv2_preview_codex_feedback_deployment
+          _ => false
+        }
+    ProdRoleRealizationRefused { cause: _ } => false
   }
 }
 

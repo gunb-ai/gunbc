@@ -2,7 +2,7 @@ module gunbc.live_deploy.role_singleton_convergence
 
 import std.types { String, NonEmptyStr, List, Bool, Int, EpochMs, FilePath }
 import v2.std.collection { Present, Absent }
-import gunbc.deployment_risk { DeploymentId, deployment_id }
+import gunbc.deployment_risk { DeploymentId, deployment_id, ProdRoleSelection, prod_role_selection }
 import std.decl_ref { decl_ref }
 import gunbc.roadmap_dashboard_instance {
   ProdRoleHolder,
@@ -59,7 +59,7 @@ import extdeps.languages.json.parse {
   FieldMalformed,
   FieldRead,
 }
-import gunbc.live_deploy.desired { DesiredDeployment, desired_deployment_roster, prod_role_actuated_realization, selected_deployment_spec, bind_desired_selected_identity, DesiredSelectedIdentityBound, DesiredSelectedIdentityUnknownInstance, DesiredSelectedIdentityRosterRefused, DesiredSelectedIdentityMismatch, instance_id_text }
+import gunbc.live_deploy.desired { DesiredDeployment, desired_deployment_roster, prod_role_actuated_realization, prod_role_actuated_realization_in, selected_deployment_spec, bind_desired_selected_identity, DesiredSelectedIdentityBound, DesiredSelectedIdentityUnknownInstance, DesiredSelectedIdentityRosterRefused, DesiredSelectedIdentityMismatch, instance_id_text }
 import v2.std.operation_argv {
   ArgvMaterialized,
   ArgvMaterializationRefused,
@@ -1081,7 +1081,10 @@ fn first_unobservable_refusal(readings: List<HostRoleSingletonReading>) -> RoleS
 
 fn local_placement_change(spec: DeploymentSpec, realizations: List<ObservedRealization>, desired: ProdRoleRealization) -> Bool {
   match spec.role_singletons {
-    HoldsNoRoleSingleton => false
+    HoldsNoRoleSingleton => match realizations |> first {
+      Absent => false
+      Present { value: _ } => true
+    }
     HoldsProdRoleSingletons { holder } => match desired {
       ProdRoleRealizationRefused { cause: _ } => true
       ProdRoleRealizedBy { holder: desired_holder } =>
@@ -1112,8 +1115,12 @@ fn production_reading_source(applying_host: NonEmptyStr) -> RoleSingletonReading
 }
 
 fn assess_spec_over_roster(spec: DeploymentSpec, source: RoleSingletonReadingSource) -> RoleSingletonAdmissionStanding {
+  assess_spec_over_roster_in(spec: spec, source: source, selection: prod_role_selection)
+}
+
+fn assess_spec_over_roster_in(spec: DeploymentSpec, source: RoleSingletonReadingSource, selection: ProdRoleSelection) -> RoleSingletonAdmissionStanding {
   let rows = desired_deployment_roster()
-  let desired = prod_role_actuated_realization()
+  let desired = prod_role_actuated_realization_in(selection: selection)
   let read = source.read
   let readings = map(roster_hosts(rows: rows), h => read(h, rows))
   match read(spec.target.ssh_host, rows) {
