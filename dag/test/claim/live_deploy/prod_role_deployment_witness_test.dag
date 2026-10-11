@@ -32,7 +32,7 @@ import gunbc.live_deploy.apply {
   DesiredApplySelected,
   DesiredApplyRefused,
 }
-import gunbc.roadmap.roadmap_launch_deployment_cli {
+import gunbc.roadmap_launch_deployment_cli {
   rlm_receipt_holder_admission,
   RlmReceiptHolderAdmitted,
   RlmReceiptHolderRefused,
