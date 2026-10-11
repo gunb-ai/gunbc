@@ -85,7 +85,7 @@ test fn a_row_on_another_host_refuses_under_srv1_access() -> Bool {
 // step kinds: the lab row demands none of the fabric store's directories; production's does.
 fn is_fabric_store_demand(t: OwnedDirectoryTarget) -> Bool {
   let m = owned_directory_member(t: t)
-  count(filter(xs: fabric_storage_store_directories(), predicate: d => d.member == m)) > 0
+  count(filter(xs: fabric_storage_store_directories(instance: srv1_production_desired_deployment().instance), predicate: d => d.member == m)) > 0
 }
 
 fn fabric_store_step_count(spec: DeploymentSpec) -> Int {
