@@ -64,13 +64,14 @@ import gunbc.roadmap_belt {
 import gunbc.roadmap_launch_admission {
   LaunchCause, Operator, Timer,
   LaunchRefusal,
-  LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
+  LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved, LaunchRevisionNotLanded,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNotReady, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated, LaunchNoPlacementGrant,
   LaunchAdmission, LaunchAdmitted, LaunchRefused,
   LaunchHostStanding, LaunchHostObserved, LaunchHostObserveOnly, LaunchHostHalted, LaunchHostUnobserved,
-  launch_host_halt_transition, launch_host_stage_revision, LaunchHostRevisionStage, HostRevisionObserved, HostRevisionHalted,
+  launch_host_halt_transition, launch_host_stage_revision, launch_gate_landed, LaunchHostRevisionStage, HostRevisionObserved, HostRevisionHalted, HostRevisionGate,
+  LaunchGateVerdict, GatePassed, GateRefused, GateNotReached,
   launch_host_refusal,
   LaunchSessionsStanding, LaunchSessionsObserved, LaunchSessionsUnobserved, LaunchSessionsPending,
   launch_host_with_sessions, LaunchStagedAdmission, LaunchStageDecided, LaunchStageNeedsSessions, launch_admission_staged,
@@ -419,8 +420,9 @@ import gunbc.git_diff_change_window {
   git_diff_window_absent_identity,
 }
 import extdeps.git.object_store { git_object_id_from_untagged_hex, git_object_id_wire_hex }
-import gunbc.fleet_desired_observe {
+import gunbc.origin_main_revision_observe {
   local_tree_revision,
+  landed_on_admitted_standing,
   FleetRevisionStanding,
   LocalTreeRevisionObserved, LocalTreeRevisionUnobserved,
 }
@@ -4553,6 +4555,8 @@ fn belt_spawn_tally(outcomes: List<BeltSpawnOutcome>) -> BeltSpawnTally {
         LaunchTransitionInhibited { reason: _ } =>
           BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
         LaunchRevisionUnobserved { cause: _ } =>
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+        LaunchRevisionNotLanded { local: _, admitted: _ } =>
           BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
         LaunchAuthorityUnobserved { detail: _ } =>
           BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
@@ -9892,17 +9896,13 @@ data belt_dispatch_wire_contract_exemplar_provider: String = "codex"
 
 // DISPATCH READS BACK THE DEPLOYED REVISION BEFORE IT ACTS, and binds it into the launch identity:
 // every fact this path consumes -- node roster, signoff, contract, the command it runs -- comes from
-// the deployed tree, so an attempt must name the code that produced it. What it does NOT do, as of
-// the 2026-09-05 operator ruling, is refuse when that revision differs from the admitted fleet ref.
-// It did: `fleet_revision_standing` was consulted first and both non-converged arms refused, on the
-// argument that a roster from an unadmitted tree cannot be trusted to name the right node. The
-// argument priced the wrong side. The worker checks out origin/main itself, the belt verifies
-// against main, publication opens a PR against main -- convergence decides only which version of
-// the CONTROL software runs, and desired advances on every green merge while a deploy takes
-// minutes, so equality held only in the gap between two merges. Because the tick shared the gate,
-// a host one merge behind stopped verifying, reviewing and publishing as well: convergence lag
-// became a pipeline outage. Drift is a host fact for the deployed-tree report and the deploy path;
-// here only an UNREADABLE revision refuses, because an attempt with no code to name has no identity.
+// the deployed tree, so an attempt must name the code that produced it. After fleet-desired
+// retirement the gate is `launch_gate_landed`: the named tree must be origin/main or an ancestor of
+// it. A tree that has not landed (candidate-is-ancestor, unrelated, diverged, unverifiable) is
+// `LaunchRevisionNotLanded`. Unreadable local HEAD still refuses because an attempt with no code to
+// name has no identity. Equality to origin/main tip is not required -- a host one merge behind
+// remains landed -- so convergence lag does not become a dispatch outage. Tip equality stays a
+// host fact for the deployed-tree report and the deploy path.
 //
 // The repo path is `instance.repo_root`, not the `srv1_gunbc_repo_root` constant
 // `fleet_converge_cli` uses: the read is a fact about the instance dispatched, and hardcoding srv1
@@ -9953,14 +9953,37 @@ fn belt_launch_host_standing_for_instance_with_capacity(
           ) {
             HostRevisionHalted { standing } => standing
             HostRevisionObserved { revision } =>
-              LaunchHostObserved {
-                instance_id: instance.instance_id,
-                actuation: DashboardActuating,
-                transition: ActuationAdmitted,
-                revision: revision,
-                sessions: LaunchSessionsPending,
-                capacity: capacity,
-                mode: mode,
+              match revision {
+                LocalTreeRevisionUnobserved { cause } =>
+                  LaunchHostHalted {
+                    instance_id: instance_id,
+                    gate: HostRevisionGate,
+                    refusal: LaunchRevisionUnobserved { cause: cause },
+                  }
+                LocalTreeRevisionObserved { revision: oid } =>
+                  match launch_gate_landed(
+                    standing: landed_on_admitted_standing(
+                      repo: instance.repo_root,
+                      remote: instance.admitted_revision.remote,
+                      ref_name: instance.admitted_revision.ref_name,
+                      local: oid,
+                    ),
+                  ) {
+                    GatePassed =>
+                      LaunchHostObserved {
+                        instance_id: instance.instance_id,
+                        actuation: DashboardActuating,
+                        transition: ActuationAdmitted,
+                        revision: revision,
+                        sessions: LaunchSessionsPending,
+                        capacity: capacity,
+                        mode: mode,
+                      }
+                    GateRefused { refusal } =>
+                      LaunchHostHalted { instance_id: instance_id, gate: HostRevisionGate, refusal: refusal }
+                    GateNotReached =>
+                      LaunchHostUnobserved { reason: "landed-on-main gate answered not-reached; refused fail-closed" }
+                  }
               }
           }
       }
@@ -10237,6 +10260,7 @@ fn launch_refusal_band(r: LaunchRefusal) -> DispatchBand {
     LaunchCauseNotPermitted { cause: _, mode: _ } => BandFail
     LaunchTransitionInhibited { reason: _ } => BandLoud
     LaunchRevisionUnobserved { cause: _ } => BandLoud
+    LaunchRevisionNotLanded { local: _, admitted: _ } => BandLoud
     LaunchAuthorityUnobserved { detail: _ } => BandLoud
     LaunchSessionsUnobservable { reason: _ } => BandLoud
     LaunchStaleSession { session_name: _, detail: _ } => BandLoud

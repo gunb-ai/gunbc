@@ -242,14 +242,14 @@ import v2.std.node_reflection { coproduct_arm_keys }
 import v2.std.diagnostic { Accepted, Rejected }
 import gunbc.roadmap_launch_admission {
   LaunchRefusal,
-  LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
+  LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved, LaunchRevisionNotLanded,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNotReady, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
   LaunchSessionsObserved,
   LaunchCensusRow,
   LaunchGateVerdict, GatePassed, GateRefused, GateNotReached,
-  launch_gate_live, launch_gate_revision,
+  launch_gate_live, launch_gate_revision, launch_gate_landed,
   launch_identity_exemplar,
   LaunchHostStanding, LaunchGraphStanding, launch_graph_of_document,
 }
@@ -268,8 +268,9 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_for_repo_root,
 }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
-import gunbc.fleet_desired_observe {
+import gunbc.origin_main_revision_observe {
   LocalTreeRevisionObserved, LocalTreeRevisionUnobserved,
+  TreeLandedOnAdmitted, TreeNotLandedOnAdmitted, TreeLandedUnobserved,
 }
 import extdeps.languages.json.emit { serialize_json }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -2116,6 +2117,7 @@ test fn witness_revision_refusal_is_never_ok() -> Bool {
 
 test fn witness_revision_refusal_label_pins_wire_contract() -> Bool {
   belt_dispatch_status_label(r: not_admitted(r: LaunchRevisionUnobserved { cause: "no git" })) == "deployed_revision_unobserved"
+    && belt_dispatch_status_label(r: not_admitted(r: LaunchRevisionNotLanded { local: "l", admitted: "a" })) == "revision_not_landed_on_main"
     && status_label_glued_to_ok(r: not_admitted(r: LaunchRevisionUnobserved { cause: "no git" }))
 }
 
@@ -2183,6 +2185,25 @@ test fn witness_revision_admission_fold_drives_both_arms() -> Bool {
       (match observed { GatePassed => true _ => false })
         && (match unobserved {
           GateRefused { refusal } => match refusal { LaunchRevisionUnobserved { cause: c } => c == "HEAD undecodable" _ => false }
+          _ => false
+        })
+    }
+    Absent => false
+  }
+}
+
+test fn witness_landed_gate_refuses_a_tree_not_on_main_and_passes_a_landed_tree() -> Bool {
+  match witness_oid_or_refuse(hex: witness_desired_hex) {
+    Present { value: oid } => {
+      let landed = launch_gate_landed(standing: TreeLandedOnAdmitted { local: oid, admitted: oid })
+      let ahead = launch_gate_landed(standing: TreeNotLandedOnAdmitted { local: oid, admitted: oid })
+      (match landed { GatePassed => true  _ => false })
+        && (match ahead {
+          GateRefused { refusal } =>
+            match refusal {
+              LaunchRevisionNotLanded { local: _, admitted: _ } => true
+              _ => false
+            }
           _ => false
         })
     }

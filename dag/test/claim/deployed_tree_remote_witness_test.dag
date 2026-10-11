@@ -199,7 +199,7 @@ test fn only_an_exact_read_back_reports_success() -> Bool {
 // ── The prerequisite is ordered before its consumer ─────────────────────────────────────────────
 //
 // Apply walks deployment_owned_steps in order, so member POSITION IS EXECUTION ORDER. The remote
-// is a prerequisite of every belt tick: with no origin, fleet_desired_observe's ls-remote refuses
+// is a prerequisite of every belt tick: with no origin, origin_main_revision_observe's ls-remote refuses
 // and the tick faults. An earlier cut of this change appended the member LAST, after the belt
 // timer, so a candidate belt could fire against the known-broken observation state before the
 // correction ran — a self-inflicted refusal on every fresh deploy, and an inversion of

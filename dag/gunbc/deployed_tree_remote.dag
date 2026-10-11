@@ -19,7 +19,7 @@ import gunbc.repository { gunbc_repository }
 
 // WHY A DEPLOYED TREE NEEDS A REMOTE AT ALL, since it never fetches.
 //
-// `gunbc.fleet_desired_observe` reads refs/fleet/desired with `git ls-remote origin`, a network
+// `gunbc.origin_main_revision_observe` reads origin/main with `git ls-remote origin`, a network
 // call THROUGH A CONFIGURED REMOTE. The belt makes that observation every tick, so a deployed tree
 // with no remote cannot answer it and the belt refuses -- spawn and reap withheld, every roadmap
 // node rendering a fault. Measured on srv1 2026-08-18: `/opt/gunbc-green/gunbc` carried no

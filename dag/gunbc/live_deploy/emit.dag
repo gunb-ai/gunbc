@@ -1008,7 +1008,7 @@ fn emit_belt_unit_file_doc(file: SystemdUnitFile) -> Doc {
 
 // THE DEPLOYED TREE'S REMOTE, CONVERGED BY ITS OWNER.
 //
-// `gunbc.fleet_desired_observe` reads refs/fleet/desired with `git ls-remote origin`, a network
+// `gunbc.origin_main_revision_observe` reads origin/main with `git ls-remote origin`, a network
 // call through a CONFIGURED remote, and `tree_sync_git_whitelist_note` excludes .git/config from
 // the sync because a blanket sync once carried a live Actions token into the service tree. Both are
 // correct and neither was checked against the other, so the deploy produced a tree that could not
@@ -1067,7 +1067,7 @@ fn apply_belt_service_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
 }
 
 // b1 fix (CONVERGE close): the fleet-converge unit runs `gunbc converge --host self`, whose
-// first act is `git ls-remote origin refs/fleet/desired` inside WorkingDirectory=svc.repo_root
+// first act is `git ls-remote origin refs/heads/main` inside WorkingDirectory=svc.repo_root
 // (/opt/gunbc/gunbc on srv1). That tree is owned by svc.service_user (briansrls), and the
 // private-remote credential exists ONLY under that principal on srv1 (live_deploy_serve_unit_file's
 // annotation: "claude auth exists only under briansrls"). A root run therefore hits git dubious-ownership

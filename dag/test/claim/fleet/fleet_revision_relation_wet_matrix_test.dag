@@ -12,7 +12,7 @@ import gunbc.live_deploy.revision {
   RelationUnverifiable,
 }
 import gunbc.fleet_main_revision { FleetRevisionRelationObservation }
-import gunbc.fleet_desired_observe { observe_fleet_revision_relation_in }
+import gunbc.origin_main_revision_observe { observe_fleet_revision_relation_in }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree

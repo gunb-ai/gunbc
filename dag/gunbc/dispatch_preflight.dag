@@ -22,7 +22,7 @@ import gunbc.roadmap_dispatch_environment {
   capability_ensure_observe,
   capability_ensure_receipt_json,
 }
-import gunbc.fleet_desired_observe {
+import gunbc.origin_main_revision_observe {
   LocalTreeRevision,
   LocalTreeRevisionObserved,
   LocalTreeRevisionUnobserved,
@@ -44,8 +44,8 @@ import extdeps.shell
 // THE CAPABILITY ADMISSION ONLY RUNS INSIDE A SPAWN, AND WHILE THE BELT REFUSES THERE IS NO SPAWN.
 // gunbc.roadmap_dispatch_environment observes every declared CapabilityRealization and grounds it,
 // but its only production caller is the per-attempt spawn path in gunbc.roadmap_belt_actuate.
-// belt_tick_for_instance evaluates the fleet revision standing BEFORE it reaches any spawn, so a
-// host whose deployed tree has drifted from refs/fleet/desired refuses spawn and reap and never
+// belt_tick_for_instance evaluates landed-on-main standing BEFORE it reaches any spawn, so a
+// host whose deployed tree is not on origin/main refuses spawn and reap and never
 // once probes an executable. Measured on srv1 2026-08-28: the belt had been answering that refusal
 // on every tick since 2026-08-20 with the deployed tree 664 commits behind main, and the capability
 // roster had therefore not been exercised on the host for eight days. Whether git, tmux, the pipe
