@@ -59,9 +59,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // record (infer_projected_field_type).
 //
 // WITNESS SHAPE (DESIGN section 3, a witness discriminates at one interface): supplied claims judge
-// infer_application_result_type at its own interface. TWO claims run the production assembly route:
-// drr_the_real_route_judges_a_projected_generic_call_result (Box<Int>.item at Bool) and
-// drr_declared_return_call_results_are_judged (the RFM Nat/generic-Nat/Out<Int> specimens).
+// infer_application_result_type at its own interface. ONE inhabitance claim runs the production
+// assembly route: drr_the_real_route_judges_a_projected_generic_call_result (Box<Int>.item at Bool,
+// plus the RFM Nat / generic-Nat / Out<Int> / Int consuming-position specimens).
 
 fn drr_atom(sym: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: sym } }, children: [])
@@ -197,13 +197,15 @@ test fn drr_a_wrong_type_argument_count_at_a_generic_record_projection_refuses()
 
 // THE ONE REAL-PATH CLAIM, ASSERTING THE ROUTE. `boxed(1).item` at a Bool parameter refuses as an
 // argument mismatch only if the call's generic declared return is derived (Box<Int>), the field is
-// projected at that instantiation (Int), and the projection is judged at the declared Bool. Before
-// this change the call stayed underived and the program was ACCEPTED.
+// projected at that instantiation (Int), and the projection is judged at the declared Bool. The same
+// claim also infers the RFM consuming-position specimens (Nat / generic Nat / Out<Int> / Int at Bool,
+// Nat at Nat, wants_bool(mk())). Before infer_application_result_type landed, the call stayed underived
+// and the program was ACCEPTED.
 data drr_route_source: String = "module p\n\ntype Box<T> {\n  item: T\n}\n\nfn boxed<T>(x: T) -> Box<T> {\n  Box { item: x }\n}\n\nfn wants_bool(b: Bool) -> Int {\n  0\n}\n\nfn k() -> Int {\n  wants_bool(boxed(1).item)\n}\n"
 
-// The route's verdict is one nullary producer, assembled AND inferred once, so the floor fills the
-// whole real path as this claim's shared fill (its single-claim fill debt) and the claim itself only
-// compares the reason.
+// The route's verdicts are nullary producers (the Box projection plus the RFM specimens), so the
+// floor fills the real path as this claim's shared fill (its single-claim fill debt) and the claim
+// itself only compares the reasons.
 fn drr_route_reason() -> Symbol {
   match fmi_assemble(src: drr_route_source) {
     Rejected { diagnostics: _ } => ^drr_assembly_refused
@@ -211,18 +213,15 @@ fn drr_route_reason() -> Symbol {
   }
 }
 
-test fn drr_the_real_route_judges_a_projected_generic_call_result() -> Bool {
-  drr_route_reason() == ^application_argument_does_not_inhabit
-}
-
-// RFM inhabitance (gunbc.recurring_failure_mode call_result_of_a_declared_return_type_unjudged_in_v2_infer).
-// Production assembly with a std.nat peer, then infer. Measured on this branch against main
-// 1f25232cdc: a callee declared to return Nat (plain or generic), Out<Int>, or kernel Int, used where
-// Bool is declared, refuses -- declared return as arrow_body_does_not_inhabit_declared_return, argument
-// as application_argument_does_not_inhabit. The honest Nat-at-Nat control is accepted. The RFM
-// specimen used Zero as the body; a nullary `fn mk() -> Nat { Zero }` alone is accepted, so the
-// refusal is the CALL result at the consuming position, not construct typing of Zero. Integer
-// literals at Nat (0) are used here so the body is admitted by kernel grounding.
+// RFM inhabitance folded into the one real-path claim below
+// (gunbc.recurring_failure_mode call_result_of_a_declared_return_type_unjudged_in_v2_infer).
+// Production assembly with a std.nat peer, then infer. Measured against main 1f25232cdc: a callee
+// declared to return Nat (plain or generic), Out<Int>, or kernel Int, used where Bool is declared,
+// refuses -- declared return as arrow_body_does_not_inhabit_declared_return, argument as
+// application_argument_does_not_inhabit. The honest Nat-at-Nat control is accepted. Integer literals
+// at Nat (0) so the body is admitted by kernel grounding; the refusal is the CALL result at the
+// consuming position. These cannot be supplied arrows at infer_application_result_type: that fold
+// answers the result type, not inhabitance of the call at a Bool (or Nat) position.
 data drr_nat_peer_artifact: Artifact = Artifact { kind: SourceFile, id: ^drr_nat_peer_artifact, file_path: "src/v2/pilot/drr_nat_peer.dag" }
 
 data drr_nat_peer_source: String = "module std.nat\n\ntype Nat\n  = Zero\n  | Succ { prev: Nat }\n"
@@ -265,11 +264,13 @@ data drr_nat_at_bool_arg_source: String = "module p\n\nimport std.nat { Nat }\n\
 
 data drr_out_at_bool_source: String = "module p\n\ntype Out<T> = Present { value: T } | Absent\n\nfn mk() -> Out<Int> {\n  Present { value: 1 }\n}\n\nfn f() -> Bool {\n  mk()\n}\n"
 
-test fn drr_declared_return_call_results_are_judged() -> Bool {
-  drr_reason_is(src: drr_nat_at_bool_source, wanted: ^arrow_body_does_not_inhabit_declared_return)
+test fn drr_the_real_route_judges_a_projected_generic_call_result() -> Bool {
+  drr_route_reason() == ^application_argument_does_not_inhabit
+    && drr_reason_is(src: drr_nat_at_bool_source, wanted: ^arrow_body_does_not_inhabit_declared_return)
     && drr_reason_is(src: drr_generic_nat_at_bool_source, wanted: ^arrow_body_does_not_inhabit_declared_return)
     && drr_reason_is(src: drr_int_at_bool_source, wanted: ^arrow_body_does_not_inhabit_declared_return)
     && drr_reason_is(src: drr_nat_at_bool_arg_source, wanted: ^application_argument_does_not_inhabit)
     && drr_reason_is(src: drr_nat_at_nat_source, wanted: ^accepted)
     && drr_reason_is(src: drr_out_at_bool_source, wanted: ^arrow_body_does_not_inhabit_declared_return)
 }
+
