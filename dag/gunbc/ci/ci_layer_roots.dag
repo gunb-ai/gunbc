@@ -801,7 +801,7 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_substrate_long_lane_reason,
     dissolution: excl_substrate_long_lane_dissolve},
   WitnessExclusionRow {
-    pattern: "synthetic_orphan_admission_witness_test.dag",
+    pattern: "synthetic_orphan_admission_witness.dag",
     classification: NoConsumer,
     reason: "deliberate no-consumer synthetic path: the admission RED control keys on this reserved (nonexistent) entry to prove enrolled-with-zero-consumers refuses (witness_admission_test, cli_run admission tests)",
     dissolution: unbound_dissolution(description: "the admission RED control keys on a typed fixture instead of a reserved path substring; row deletes")

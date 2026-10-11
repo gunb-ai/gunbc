@@ -2,7 +2,7 @@ module gunbc.source_layout
 
 import std.types { Bool, List, String }
 
-// THE REPOSITORY'S STORAGE POLICY (docs/plans/source-layout-authority.md, R5). Module `a.b.c` lives
+// THE REPOSITORY'S STORAGE POLICY (gunbc.plans.source_layout_authority, R5). Module `a.b.c` lives
 // at `<root(a)>/b/c.dag`: the namespace root decides which tree holds a module and whether the
 // namespace is itself a directory of that tree. The generic rule, the lookup and the check are
 // v2.compiler.source_authority; this module is the POLICY they are handed at the entry boundary

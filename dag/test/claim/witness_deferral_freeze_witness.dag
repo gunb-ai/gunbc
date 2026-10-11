@@ -181,7 +181,7 @@ test fn witness_deferral_freeze_fixture_path_is_unaffected() -> Bool {
 test fn witness_deferral_freeze_unclaimed_path_stays_unexecuted_deferred() -> Bool {
   standing_is_unexecuted_deferred(
     r: probe_standing(
-      entry: "dag/test/claim/synthetic_orphan_admission_witness_test.dag",
+      entry: "dag/test/claim/synthetic_orphan_admission_witness.dag",
       function: "synthetic_orphan_no_consumer_holds",
       frozen: []
     )

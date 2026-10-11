@@ -475,7 +475,7 @@ fn string_eq(a: String, b: String) -> Bool {
   a == b
 }
 
-data witness_exclusion_no_consumer_control_pattern: String = "synthetic_orphan_admission_witness_test.dag"
+data witness_exclusion_no_consumer_control_pattern: String = "synthetic_orphan_admission_witness.dag"
 
 // THE SEPARATION WALL. witness_exclusion_frontier is a PATH POLICY carrier, so a
 // QuarantineProbeExpectRed row is malformed IN IT — not reconciled against a roster, refused. That

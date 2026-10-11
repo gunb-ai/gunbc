@@ -18,7 +18,7 @@ import v2.cli.repository_layout {
   repository_path_of_module_file
 }
 
-// THE MOVE-AND-RENAME MAP (docs/plans/source-layout-authority.md, Appendix B), COMPUTED. Given each
+// THE MOVE-AND-RENAME MAP (gunbc.plans.source_layout_authority, Appendix B), COMPUTED. Given each
 // governed module's file and the `module` line it carries, derive where the storage rule puts it
 // and what to do about every file that is elsewhere. The rule itself is source_authority
 // module_file and the path-to-name inverse is module_name_for_file; this module owns only the

@@ -40,7 +40,7 @@ data unimported_bare_provider_gate_admits_kernel_method_names_untyped: RungDrop 
   declared: "2026-10-03",
 
   standing: Superseded {
-    ruling: "the plan docs/plans/source-layout-authority.md, section 5 epoch C2 (operator-approved rulings R1-R11): delete the inert debt roster, its gate and the seed's unimported_bare_provider_gate once the required native steps enforce R1. The restoration trigger did NOT fire -- the gate had no executing route and was deleted. Superseding authority: the v2 resolver's refusal of an unbound name on every cut-over compile route, reached through the acquirer's request-only reading; the per-subject coverage is in the annotation above" as NonEmptyStr,
+    ruling: "the plan gunbc.plans.source_layout_authority, section 5 epoch C2 (operator-approved rulings R1-R11): delete the inert debt roster, its gate and the seed's unimported_bare_provider_gate once the required native steps enforce R1. The restoration trigger did NOT fire -- the gate had no executing route and was deleted. Superseding authority: the v2 resolver's refusal of an unbound name on every cut-over compile route, reached through the acquirer's request-only reading; the per-subject coverage is in the annotation above" as NonEmptyStr,
     decision_record: "the operator's answer of 2026-10-11 to session still-dove-186 (name the cutover's own required steps as the superseding authority, and send only a subject none of them covers to the standing holder), carried by the change that lands gunbc.plans.source_layout_authority" as NonEmptyStr,
     loss_holder: "v1_required_lanes_withdrawn" as NonEmptyStr
   },

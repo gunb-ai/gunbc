@@ -700,7 +700,7 @@ fn ncr_verdict_reason_count(v: NcrVerdict) -> Int {
 // the whole answer. `v2.ncr_missing_import` names `NcrDisp`, which exactly one other module declares,
 // and imports it from nowhere: a lookup that reached past the chain to say where the spelling is
 // declared would need an index of modules the compile was never asked to read (R9 of
-// docs/plans/source-layout-authority.md), and the corpus-wide spelling search this package deleted
+// gunbc.plans.source_layout_authority), and the corpus-wide spelling search this package deleted
 // would be readmitted as a diagnostic. The chain carries ONE reason, counted rather than named, so an
 // advisory under any name is red.
 test fn a_missing_binding_refuses_with_the_unbound_symbol_alone_holds() -> Bool {

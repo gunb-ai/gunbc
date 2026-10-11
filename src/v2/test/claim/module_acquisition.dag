@@ -59,7 +59,7 @@ import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// WITNESSES FOR THE ACQUIRER'S EXACTNESS VERDICT (docs/plans/source-layout-authority.md R9: the read set
+// WITNESSES FOR THE ACQUIRER'S EXACTNESS VERDICT (gunbc.plans.source_layout_authority R9: the read set
 // of a compile is checked against the requested closure, exactly). The verdict is a pure fold over a
 // completed acquisition's receipt -- the entries, the members with the requests each one's own text made,
 // and the keys of the files that were read -- so every control here states the receipt a host would hand

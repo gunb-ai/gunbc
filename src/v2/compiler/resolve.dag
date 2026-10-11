@@ -1295,7 +1295,7 @@ fn unbound_symbol_diagnostics(ctx: ResolveContext, n: Node, name: Symbol) -> Non
 // chain that binds a reference -- scope, imports, the module's own declarations -- and an absence there
 // is the whole answer: a lookup that reached past the chain to say where else the spelling is declared
 // would need an index of modules the compile was never asked to read (R9 of
-// docs/plans/source-layout-authority.md: a compile reads the requested closure and builds no whole-tree
+// gunbc.plans.source_layout_authority: a compile reads the requested closure and builds no whole-tree
 // index on any path, success or refusal), so the explanation would exist on the failing path only.
 fn unbound_symbol_diagnostics_of_value_name(n: Node) -> NonEmptyDiagnostics {
   NonEmptyDiagnostics { head: unbound_symbol_diagnostic(n: n), tail: [] }

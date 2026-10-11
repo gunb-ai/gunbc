@@ -5,7 +5,7 @@ import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.algebra { skip }
 
-// THE REFERENCE REWRITE ENGINE OF THE LAYOUT MIGRATION (docs/plans/source-layout-authority.md, C1).
+// THE REFERENCE REWRITE ENGINE OF THE LAYOUT MIGRATION (gunbc.plans.source_layout_authority, C1).
 // Given the old and new name of every module and the old and new path of every file, it rewrites
 // the three forms a reference takes -- a dotted module name, a `//package:target` label, a
 // repository path -- and reports, instead of guessing, every occurrence it cannot decide. It is
