@@ -23,7 +23,7 @@ import v2.std.collection { list_at_optional }
 // CONSUMERS (DESIGN §3c): type_node_cardinality_read / wrap_type_node_cardinality; production
 // v2.compiler.infer infer_match_generic_formal peels with peel_optional_layer;
 // v2.std.inhabitance refuses two positive depths that Nat equality denies. Claims:
-// test.claim.optional_layers_witness_test and v2.test.claim.compiler.optional_layers_test.
+// test.claim.optional_layers_witness_test and v2.test.claim.compiler.optional_layers.
 type TypeNodeCardinalityRead
   = TypeNodeCardinality { card: Nat, base: Node }
   | CardinalityWrapperMalformed { wrapper: Node }

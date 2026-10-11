@@ -11,7 +11,7 @@ import v2.std.optional_layers {
 
 // SUBJECT: optional-layer depth as std.nat Nat (Zero = required). Inputs are supplied Nat values
 // (DESIGN §3). Production inhabitance of the Node reading is
-// v2.test.claim.compiler.optional_layers_test.
+// v2.test.claim.compiler.optional_layers.
 
 test fn required_composed_with_one_layer_is_one_layer() -> Bool {
   nat_add(a: Zero, b: one_optional_layer()) == one_optional_layer()
