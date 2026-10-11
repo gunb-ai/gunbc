@@ -2326,7 +2326,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/compiler_frontend_program_interlock.dag"),
       line: ticket(t: level_fields(
           headline: "The new compiler is the one that runs",
-          boundary: "v2 reads, names, types and emits the whole corpus. It builds itself, then rebuilds itself. It is the required native route, admitted for production, and the v1 seed is retired. No work sits on this node; the work lives in its eight member projects.",
+          boundary: "v2 reads, names, types and emits the whole corpus. It builds itself, then rebuilds itself. It is the required native route, admitted for production, and the v1 seed is retired. No work sits on this node; the work lives in its seven member projects.",
           approach: "Order: frontend first (the native seven, then the whole corpus), then generations (a second build made by the built CLI), then the native route made required and admitted (D10), then the seed retired. The namespace cutover (XL-6/XL-7) comes after seed retirement. gunbc.compiler_frontend_program_interlock owns this order, and this node does not restate it.",
           red_control: "Seed retirement stays unreachable while any SelfHostSeedRetirement prerequisite in gunbc.compiler_frontend_program_status reads OUTSTANDING. A v2 task whose membership walk does not reach this node refuses as unrooted.",
           displaced_cost: "v2 work is spread over about 12 disconnected roadmap components, and the page's focus filter hid most of them. So nobody can tell whether a v2 PR moves the compiler closer to running.",
@@ -2397,17 +2397,17 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     roadmap_node(
       identity: "rn_CFZ5DNH7FEND59ZAXKRZS55XAR",
       id: "convergence-coverage",
-      owner: "self-host",
+      owner: "debt",
       carriers: carrier(path: "docs/plans/convergence-coverage-program.md"),
       line: ticket(t: level_fields(
           headline: "Cover every production convergence path until the ensure chain reaches the execution boundary",
-          boundary: "Own scope: the compiler-enforced ensure chain D14 intended (qualified operands, restricted construction, completion from root bindings) applied to production observe/decide/apply/readback/mint paths. An operation cannot be admitted without its complete prerequisite chain, and cannot consume success until that chain has established the required facts. Continues gunbc.plans.ensure_closure_design and gunbc.plans.v2_compiler_architecture; it does not redesign them. Relevant to debt payoff because several leaves retire named recurring-failure-mode and rung-drop classes, but those classes stay members of this program, not of debt-payoff.",
-          approach: "Census production paths first (cc-path-census). Then one leaf per deepest cause: ordinary compiler floor (A), generic structural carriers (B), environmental facts as required operands (C), observation distinctions that decide repair (D), lifecycle ownership including failure and retirement (E), selection-to-use of scope and policy (F), evidence that reaches its consumers at subject identity (G).",
+          boundary: "Own scope: the compiler-enforced ensure chain D14 intended (qualified operands, restricted construction, completion from root bindings) applied to production observe/decide/apply/readback/mint paths. An operation cannot be admitted without its complete prerequisite chain, and cannot consume success until that chain has established the required facts. Continues gunbc.plans.ensure_closure_design and gunbc.plans.v2_compiler_architecture; it does not redesign them. Member of debt-payoff (operator 2026-10-11): known gaps and RFMs retired against their triggers. Dual membership is refused. Daily-workspace (factory) value is named on the contribution, not a second parent.",
+          approach: "Census production paths first (cc-path-census). Then one leaf per deepest cause: ordinary compiler floor (A), generic structural carriers (B), environmental facts as required operands (C), observation distinctions that decide repair (D), lifecycle ownership including failure and retirement (E), selection-to-use of scope and policy (F), evidence that reaches its consumers at subject identity (G), guaranteed cleanup of held resources once the owner is proven ended.",
           red_control: "A production path in the census whose consumer still type-checks after its prerequisite-producing ensure is deleted keeps this open. A leaf that restates D14 or mints a second ensure syntax is refused in review.",
           displaced_cost: "Useful convergence procedures exist, but forgetting a prerequisite still compiles and runs. Harm is paid later as silent wrong actuation, unrepairable members, and green CI over an unestablished serving or sudoers closure.",
           handback: "Every census path either consumes a qualified operand minted on the D14 effectful route or carries a named DESIGN section 3b exclusion, and each member leaf's handback is met."
         )),
-      parent: in_project(project: "v2-compiler-live", contribution: "Compiler floor: a live compiler that accepts an operation without its complete prerequisite chain makes incomplete convergence cheaper to ship (DESIGN section 4b ordinary floor first). Debt payoff: the same gaps are named recurring-failure-mode and rung-drop classes paid on every run until retired; covering the ensure chain to the execution boundary retires that debt rather than adding a parallel lane. Placement of this project is held for the operator (v2-compiler-live, debt-payoff, or a fifth top-level); the contribution names both values whichever parent lands."),
+      parent: in_project(project: "debt-payoff", contribution: "Debt payoff: known gaps and recurring failure modes retired against their rostered triggers -- covering the ensure chain to the execution boundary, including guaranteed cleanup of held resources, is that retirement rather than a parallel lane. Daily-workspace (factory) value: a lab or live dashboard that cannot release seats, units, attempts or lease files after the owner ended keeps charging the host that lands work. Compiler floor: a live compiler that accepts an operation without its complete prerequisite chain makes incomplete convergence cheaper to ship (DESIGN section 4b ordinary floor first)."),
     ),
     roadmap_node(
       identity: "rn_K6TBWN5T4J6FV5B2X0HN3VHCW4",
@@ -2552,6 +2552,24 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       dispatch: dispatchable(),
       parent: in_project(project: "convergence-coverage", contribution: "A chain that stops at an unused result has not reached the consumer that needed the established fact."),
       centering: plan(text: "Target: one census path (sudoers projection or serving/deployment closure) and gunbc.rung_drop v1_required_lanes_withdrawn. (1) Qualify evidence by candidate identity. (2) Do not reopen the job roster. (3) Pairing obligation: the last real-path execution stays. (4) Remaining paths rostered, not counted from the tree."),
+    ),
+    roadmap_node(
+      identity: "rn_QFTG2N0RXM7R70HPJ8BDDHH045",
+      id: "cc-guaranteed-cleanup",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/recurring_failure_mode/a_held_compute_seat_has_no_in_corpus_discharge.dag"),
+      line: ticket(t: fields(
+        headline: "Every held resource converges to released once its owner is proven ended",
+        boundary: "Modeled as an ensure over std.upsert_decision, not a new decision algebra. Converged = held by a live owner (Noop). Drifted = owner proven ended, still held (Apply). Inaccessible or UnknownRefused = Refuse and keep the charge. Independent readback; a named driver. Instances (ledger 2026-10-11, https://claude.ai/artifact/7AMGHuyVXu1U7bFXDnbG1M): compute seat (F75; Apply = existing gunbc.compute.work_provider_local compute_recover_attempt; class gunbc.recurring_failure_mode a_held_compute_seat_has_no_in_corpus_discharge), failed checkpoint unit (F68), spent supervisor unit (F72), half-spawned attempt (F20/F21), lease file the recovery leaves behind. First slice: compute seats. Do not free on doubt (the class already forbids over-admission).",
+        displaced_cost: "A host that lands daily-workspace work keeps charging seats, units and lease files after the owner ended; at compute_pool_slots = 2, two orphans consume the appropriation.",
+        first_slice: "Drive compute seats through the existing compute_recover_attempt door as the Apply of this ensure, with independent readback that the seat is released only when the owner is proven ended.",
+        red_control: "A seat whose owner is proven ended that stays Held with no Apply keeps this red. An Apply that reports success while RecoverySettledButHeld (seat still charged) keeps this red. Freeing on Inaccessible or UnknownRefused keeps this red.",
+        out_of_scope: "Not a second recovery door beside compute_recover_attempt, not discharging on doubt, not finishing checkpoint/supervisor/half-spawn/lease-file instances in the first slice, not minting a new ensure syntax.",
+        handback: "The compute-seat ensure (observe/decide/apply/readback) with compute_recover_attempt as Apply, the class RED still enrolled, and remaining instances rostered by identity."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "convergence-coverage", contribution: "An ensure chain that never releases a held resource after the owner ended leaves the daily workspace charging the host forever."),
+      centering: plan(text: "Target: gunbc.recurring_failure_mode a_held_compute_seat_has_no_in_corpus_discharge and gunbc.compute.work_provider_local compute_recover_attempt. (1) Ensure over std.upsert_decision: Converged=Noop, Drifted=Apply the existing door, Inaccessible/UnknownRefused=Refuse keep the charge. (2) Independent readback. Named driver. (3) Do not mint a second door. (4) Do not free on doubt. (5) Remaining instances (F68, F72, F20/F21, leftover lease file) rostered, not repaired in this slice."),
     ),
     roadmap_node(
       identity: "rn_AXXFPYZ1SDMHS62PGYAWH6Z2V2",
@@ -4391,6 +4409,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "cc-lifecycle-ownership", parent: "cc-path-census"),
     edge(child: "cc-selection-to-use", parent: "cc-path-census"),
     edge(child: "cc-evidence-to-consumers", parent: "cc-path-census"),
+    edge(child: "cc-guaranteed-cleanup", parent: "cc-path-census"),
     edge(child: "v1-checker-gaps", parent: "guarantee-baseline-prevalence"),
     edge(child: "serve-held-open-response", parent: "fabric-worker-event-log"),
   ], guarantee_ladder_edges())
