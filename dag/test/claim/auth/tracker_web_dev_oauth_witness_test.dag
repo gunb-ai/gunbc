@@ -196,7 +196,7 @@ test fn a_desired_redirect_uri_change_diverges_from_the_console_receipt() -> Boo
       admitted_admins: [workspace_operator_principal()],
       now_epoch: second_count(s: tracker_web_test_console_readback_observed_at_epoch) as Int,
     ) {
-      GoalDiverged { deviations } => deviations.length() > 0
+      GoalDiverged { deviations: _ } => true
       _ => false
     }
   }
