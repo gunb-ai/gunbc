@@ -5260,7 +5260,7 @@ pub fn floor_prepared_subject_exclusions() -> Vec<String> {
         // subject prepared it and it refused. Its designed refusal is asserted by class and subject
         // in test.claim.fleet.health_read_only_fixture_refusal_witness.
         "test/fixture/health_read_only/".to_string(),
-        "test/manual/ownership_movable_test.dag".to_string(),
+        "test/manual/ownership_movable.dag".to_string(),
         // WET RECEIPT, AND IT HAS NO CI CONSUMER TODAY — stated plainly rather than dressed up
         // as an enrollment. case4_expansion_carrier_splices dispatches a real jq through
         // jq.Process.RunWithStdin, which carries no mock_response, so the hermetic floor refuses
@@ -5279,14 +5279,14 @@ pub fn floor_prepared_subject_exclusions() -> Vec<String> {
         // sits at UNEXECUTED-IN-CI with a local recipe recorded in the design note (§15), and
         // re-enrolls when a wet lane exists again — which required_floor.dag deliberately defers
         // until it can be "asked against a live consumer".
-        "test/manual/process_argv_expansion_receipt_test.dag".to_string(),
+        "test/manual/process_argv_expansion_receipt.dag".to_string(),
         // Wet receipt for command_runner's transport-agnostic run site (the LocalExec/SshExec
         // match collapsed onto command_over_transport). Excluded for the same reason as the line
         // above and not a new class: hermetic evaluation replays an operation's declared
         // mock_response and never constructs an argv, so "the words reached the process unsplit"
         // is not observable hermetically. Enrolling it would assert the mock rather than the
         // behaviour -- specification without execution.
-        "test/manual/command_runner_local_argv_receipt_test.dag".to_string(),
+        "test/manual/command_runner_local_argv_receipt.dag".to_string(),
         // A ROW HERE MAY NOT NAME A MODULE ANYTHING IMPORTS. An exclusion is not "skip this
         // witness": prepare_repository_closure drops the path from the prepared graph, so an
         // importer cannot resolve and the whole subject refuses. That constraint is enforced --
