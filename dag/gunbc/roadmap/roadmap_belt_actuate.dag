@@ -43,7 +43,7 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_attempt_supervisor_dir_for_instance, dispatch_supervisor_unit_name, dispatch_supervisor_unit_command,
   dispatch_supervisor_attempt_identity, dispatch_unit_exec_argv,
 }
-import extdeps.systemd.systemd_run { systemd_run_option_words_refused_cause_detail }
+import extdeps.systemd.systemd_run { systemd_run_option_words_refused_cause_detail, systemd_run_property_assignment }
 import extdeps.git { shape_git_merge_base_args }
 import gunbc.roadmap_authority {
   RoadmapAuthorityProjection,
@@ -1434,7 +1434,7 @@ fn belt_session_container_create(
           }
         Present { value: held } => {
           let properties = dispatch_worker_unit_properties_for_plan(instance: instance, plan: plan, granted: held.grant.amount, process_bounds: session_process_bounds)
-          match session_placement_record_write(stores: held.stores, host: instance.host_identity as String, grant: held.grant, unit_properties: properties) {
+          match session_placement_record_write(stores: held.stores, host: instance.host_identity as String, grant: held.grant, unit_properties: map(properties, p => systemd_run_property_assignment(property: p))) {
             SessionPlacementWriteFailed { path, error } =>
               ExecStepFailed { step: "session-placement-record", detail: join(["the placement record could not be written at ", path, ": ", error], "") }
             SessionPlacementWritten { path: _ } =>
