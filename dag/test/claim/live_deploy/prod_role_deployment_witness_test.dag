@@ -1,0 +1,138 @@
+module test.claim.live_deploy.prod_role_deployment_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String }
+import gunbc.deployment_risk {
+  NoProdRole,
+  ProdRoleSelection,
+  ProdRoleHeldBy,
+  srv1_daily_workspace_deployment,
+  srv2_deploy_deployment,
+  srv2_preview_codex_feedback_deployment,
+  macbook_local_deployment,
+}
+import gunbc.roadmap_dashboard_instance {
+  ProdRoleUnheld,
+  ProdRoleHolderUnactuatable,
+  prod_role_realization,
+}
+import gunbc.live_deploy.desired {
+  ProdRoleDeployment,
+  ProdRoleDeploymentSelected,
+  ProdRoleDeploymentRefused,
+  prod_role_desired_deployment,
+  prod_role_desired_deployment_over,
+  prod_role_actuated_realization,
+  prod_role_actuated_realization_in,
+  desired_deployment_roster,
+  selected_deployment_spec,
+}
+import gunbc.live_deploy.apply {
+  live_deploy_prod_role_apply_selection_under,
+  DesiredApplySelected,
+  DesiredApplyRefused,
+}
+import gunbc.roadmap.roadmap_launch_deployment_cli {
+  rlm_receipt_holder_admission,
+  RlmReceiptHolderAdmitted,
+  RlmReceiptHolderRefused,
+}
+import gunbc.ci_deploy_access { ci_deploy_srv1_access }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The projection takes its selection from the ACTUATED join over the real desired roster, so each
+// selection below goes through prod_role_actuated_realization_in, never the raw resolver.
+fn projected(selection: ProdRoleSelection) -> ProdRoleDeployment {
+  prod_role_desired_deployment_over(realization: prod_role_actuated_realization_in(selection: selection), rows: desired_deployment_roster())
+}
+
+fn host_of(p: ProdRoleDeployment) -> String {
+  match p {
+    ProdRoleDeploymentSelected { deployment } => deployment.target.host.identity as String
+    ProdRoleDeploymentRefused { cause: _ } => ""
+  }
+}
+
+// ── REDs: every refusal arm is the actuated realization's own ───────────────────────────────────
+test fn an_unheld_role_refuses_as_unheld_and_selects_no_row() -> Bool {
+  match projected(selection: NoProdRole) {
+    ProdRoleDeploymentRefused { cause: ProdRoleUnheld } => true
+    _ => false
+  }
+}
+
+test fn an_unactuatable_holder_refuses_the_projection() -> Bool {
+  match projected(selection: ProdRoleHeldBy { deployment: srv2_preview_codex_feedback_deployment }) {
+    ProdRoleDeploymentRefused { cause: ProdRoleHolderUnactuatable { deployment: d } } => d == srv2_preview_codex_feedback_deployment
+    _ => false
+  }
+}
+
+// ── an unactuatable holder (srv2-preview: public roster, no desired row) refuses EVERY reader ────
+test fn an_unactuatable_holder_refuses_the_apply_selection_for_every_production_entry() -> Bool {
+  match live_deploy_prod_role_apply_selection_under(
+    selected: projected(selection: ProdRoleHeldBy { deployment: srv2_preview_codex_feedback_deployment }),
+    access: ci_deploy_srv1_access,
+  ) {
+    DesiredApplyRefused { reason: _ } => true
+    DesiredApplySelected { deployment: _ } => false
+  }
+}
+
+test fn an_unactuatable_holder_refuses_the_launch_receipt_entry() -> Bool {
+  match rlm_receipt_holder_admission(selected: projected(selection: ProdRoleHeldBy { deployment: srv2_preview_codex_feedback_deployment })) {
+    RlmReceiptHolderRefused { reason: _ } => true
+    RlmReceiptHolderAdmitted { deployment: _ } => false
+  }
+}
+
+test fn a_holder_with_no_desired_row_at_all_refuses_the_apply_selection() -> Bool {
+  match live_deploy_prod_role_apply_selection_under(
+    selected: projected(selection: ProdRoleHeldBy { deployment: macbook_local_deployment }),
+    access: ci_deploy_srv1_access,
+  ) {
+    DesiredApplyRefused { reason: _ } => true
+    DesiredApplySelected { deployment: _ } => false
+  }
+}
+
+// ── the holder moved to srv2: the row follows, and the srv1 access refuses before any mutation ──
+test fn the_projection_follows_the_selection_to_another_host() -> Bool {
+  host_of(projected(selection: ProdRoleHeldBy { deployment: srv2_deploy_deployment })) == "srv2"
+    && host_of(projected(selection: ProdRoleHeldBy { deployment: srv1_daily_workspace_deployment })) == "srv1"
+}
+
+test fn a_holder_on_srv2_is_refused_by_the_srv1_access_and_the_launch_vantage() -> Bool {
+  let moved = projected(selection: ProdRoleHeldBy { deployment: srv2_deploy_deployment })
+  (match live_deploy_prod_role_apply_selection_under(selected: moved, access: ci_deploy_srv1_access) {
+    DesiredApplyRefused { reason: _ } => true
+    DesiredApplySelected { deployment: _ } => false
+  }) && (match rlm_receipt_holder_admission(selected: moved) {
+    RlmReceiptHolderRefused { reason: _ } => true
+    RlmReceiptHolderAdmitted { deployment: _ } => false
+  })
+}
+
+test fn a_holder_on_srv1_is_admitted_by_the_srv1_access_and_the_launch_vantage() -> Bool {
+  let at_srv1 = projected(selection: ProdRoleHeldBy { deployment: srv1_daily_workspace_deployment })
+  (match live_deploy_prod_role_apply_selection_under(selected: at_srv1, access: ci_deploy_srv1_access) {
+    DesiredApplySelected { deployment: _ } => true
+    DesiredApplyRefused { reason: _ } => false
+  }) && (match rlm_receipt_holder_admission(selected: at_srv1) {
+    RlmReceiptHolderAdmitted { deployment: _ } => true
+    RlmReceiptHolderRefused { reason: _ } => false
+  })
+}
+
+// ── THE INHABITANCE CLAIM: the real switch, the real desired_deployment_roster() ────────────────
+// The route is asserted: the real projection selects the row of the same holder the actuated join
+// names, and its spec is the one the production readers get.
+test fn the_real_route_selects_the_row_of_the_actuated_holder() -> Bool {
+  match prod_role_desired_deployment() {
+    ProdRoleDeploymentSelected { deployment } =>
+      host_of(prod_role_desired_deployment()) != ""
+        && (selected_deployment_spec(row: deployment).instance_id as String) == (deployment.instance.instance_id as String)
+    ProdRoleDeploymentRefused { cause: _ } => false
+  }
+}

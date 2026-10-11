@@ -3637,7 +3637,7 @@ data live_deploy_remote_mutation_service_op_realization_dissolution_trigger: Dis
 // (live_deploy_*_emit_refused_poison) so the marker reaches a consumer instead of a hand-spelled
 // fallback (DESIGN §5: refuse, never widen). THE COMMITTED GOLDEN ARTIFACTS ARE DELETED: nothing
 // executed .github/live-deploy-srv1-apply.sh or -retract.sh, and their registry rows named a
-// HostReconciler consumer that does not exist — the real deploy runs live_deploy_apply_srv1_wet
+// HostReconciler consumer that does not exist — the real deploy runs live_deploy_apply_prod_role_wet
 // through gunbc run. A committed artifact nobody reads is not coverage. The byte oracle those
 // goldens provided now lives where a fixture revision is legitimate, in test.claim.live_deploy.emit
 // against RevisionBoundAtEmission, and it is strictly stronger there: the goldens compared whole

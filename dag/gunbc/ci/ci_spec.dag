@@ -335,7 +335,7 @@ data gunbc_ci_gates: List<Gate> = gunbc_ci_floor_gates
 
 data gunbc_ci_deploy_srv1_stage: DeployStage = {
   id: "deploy_dashboard_srv1",
-  step_name: "Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)",
+  step_name: "Deploy dashboard to srv1 (live_deploy_apply_prod_role_wet)",
   entry: gunbc_ci_live_deploy_apply_srv1_target.entry,
   function: gunbc_ci_live_deploy_apply_srv1_target.function,
   needs: ["ci"],
@@ -1189,18 +1189,18 @@ data gunbc_ci_authorized_key_enroll_target: GunbcRunStepTarget = GunbcRunStepTar
 
 data gunbc_ci_live_deploy_apply_srv1_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/live_deploy/apply.dag",
-  function: "live_deploy_apply_srv1_wet",
+  function: "live_deploy_apply_prod_role_wet",
 }
 
-// THE RECEIPTED DASHBOARD DEPLOY (RLM-2a): the same fold as live_deploy_apply_srv1_wet, bound to
+// THE RECEIPTED DASHBOARD DEPLOY (RLM-2a): the same fold as live_deploy_apply_prod_role_wet, bound to
 // the expected revision and the fleet transaction, minting gunbc.live_deploy.apply_receipt.
 data gunbc_ci_live_deploy_transaction_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/live_deploy/apply.dag",
-  function: "live_deploy_apply_srv1_transaction_wet",
+  function: "live_deploy_apply_prod_role_transaction_wet",
 }
 
 // THE APPROVAL BROKER'S DARK INSTALL (cutover stage 1), AND IT NEEDS A RUNNER-EXECUTED ROUTE FOR A
-// REASON THAT IS NOT CONVENIENCE. gunbc.live_deploy.apply approval_broker_dark_install_srv1_wet
+// REASON THAT IS NOT CONVENIENCE. gunbc.live_deploy.apply approval_broker_dark_install_wet
 // binds ci_deploy_srv1_access, whose principal is ghrunner; an operator running the same fold from
 // a session refuses BEFORE any mutation with `deploy_access: principal mismatch expected=ghrunner
 // actual=briansrls`. That refusal is the access model working, not an obstacle to route around --
@@ -1214,14 +1214,14 @@ data gunbc_ci_live_deploy_transaction_target: GunbcRunStepTarget = GunbcRunStepT
 // re-deciding by string what this row decides by declaration.
 data gunbc_ci_approval_broker_dark_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/live_deploy/apply.dag",
-  function: "approval_broker_dark_install_srv1_wet",
+  function: "approval_broker_dark_install_wet",
 }
 
 // THE microVM SLOT CONTROLLER INSTALL follows the dark install's convention exactly: the wet fold
 // under ci_deploy_srv1_access, invoked on the host-pinned runner, never through apply_dispatch.
 data gunbc_ci_microvm_controller_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/live_deploy/apply.dag",
-  function: "microvm_controller_install_srv1_wet",
+  function: "microvm_controller_install_wet",
 }
 
 data gunbc_ci_rlm_launch_deployment_receipt_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1403,7 +1403,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
 }
 
 // The dashboard deploy, invoked as a fleet-converge mode rather than from a workflow of its own.
-// The operation is unchanged and already correct: live_deploy_apply_srv1_wet observes the candidate
+// The operation is unchanged and already correct: live_deploy_apply_prod_role_wet observes the candidate
 // release BEFORE any mutation and refuses when it cannot name the release it would install, so a
 // deploy that cannot identify itself stops the line with nothing touched. Only a caller was missing
 // — gunbc#8676 deleted the invocation, never the operation.

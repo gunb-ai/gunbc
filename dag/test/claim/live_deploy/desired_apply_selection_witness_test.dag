@@ -3,11 +3,10 @@ module test.claim.live_deploy.desired_apply_selection_witness_test
 import std.types { Bool, String, Int }
 import gunbc.live_deploy.apply {
   live_deploy_desired_apply_selection,
-  srv1_production_instance_id,
   DesiredApplySelected,
   DesiredApplyRefused,
 }
-import gunbc.live_deploy.desired { deployment_spec_srv1, selected_deployment_spec, srv1_lab_desired_deployment }
+import gunbc.live_deploy.desired { instance_id_text, srv1_production_desired_deployment, deployment_spec_srv1, selected_deployment_spec, srv1_lab_desired_deployment }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_member }
 import gunbc.fabric_storage_placement { fabric_storage_store_directories }
@@ -46,7 +45,7 @@ fn lab_spec_selected(spec: DeploymentSpec) -> Bool {
 // keep describing what the production entry applies.
 test fn the_production_instance_id_selects_deployment_spec_srv1() -> Bool {
   match live_deploy_desired_apply_selection(
-    instance_id: srv1_production_instance_id(),
+    instance_id: instance_id_text(id: srv1_production_desired_deployment().instance.instance_id),
     access: ci_deploy_srv1_operator_local_access,
   ) {
     DesiredApplyRefused { reason: _ } => false

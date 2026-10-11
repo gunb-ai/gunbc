@@ -204,7 +204,7 @@ import gunbc.fleet_converge_plan {
   fleet_converge_plan_content_hash_path
 }
 import extdeps.git
-import gunbc.live_deploy.apply { live_deploy_apply_srv1_operator_local_wet }
+import gunbc.live_deploy.apply { live_deploy_apply_prod_role_operator_local_wet }
 import gunbc.live_deploy.spec { deployment_plan_host_identity }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.output_policy { ExpectSuccess }
@@ -1401,7 +1401,7 @@ fn fleet_converge_operator_cli_dispatch(
           if !fleet_converge_deploy_branch_admits(observed: branch, required: candidate_branch) {
             exit_failure(reason: join(["gunbc converge: DeployBranchRefused — the checkout is on '", branch, "' and --candidate-branch requires '", trim(s: candidate_branch), "'; the candidate is HEAD of this checkout, so switch branches or name this one explicitly"], ""))
           } else {
-            live_deploy_apply_srv1_operator_local_wet()
+            live_deploy_apply_prod_role_operator_local_wet()
           }
         }
       } else if mode == fleet_converge_operator_mode_apply {

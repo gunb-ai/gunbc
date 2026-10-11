@@ -416,7 +416,7 @@ test fn fleet_converge_spark_serving_apply_prints_the_receipt_its_entry_writes()
 
 // ── THE DARK INSTALL REACHES srv1 UNDER THE RUNNER PRINCIPAL ────────────────────────────────
 // WHY THIS MODE EXISTS, and the claim is written against that reason rather than against its shape.
-// gunbc.live_deploy.apply approval_broker_dark_install_srv1_wet binds ci_deploy_srv1_access, whose
+// gunbc.live_deploy.apply approval_broker_dark_install_wet binds ci_deploy_srv1_access, whose
 // expected principal is ghrunner; the operator attempt refused before mutation with
 // `deploy_access: principal mismatch expected=ghrunner actual=briansrls`. So the install needs a
 // runner-executed route, and the first assertion is that the step really invokes THAT fold -- not
@@ -430,7 +430,7 @@ test fn fleet_converge_spark_serving_apply_prints_the_receipt_its_entry_writes()
 // on a missing one.
 //
 // A THIRD CONJUNCT WAS REMOVED HERE RATHER THAN KEPT (review 68991). It asserted the invoke does
-// not name approval_broker_dark_install_srv1_operator_local_wet -- an operator-principal twin of
+// not name approval_broker_dark_install_operator_local_wet -- an operator-principal twin of
 // the admitted fold. That fold IS NOW DELETED, so the assertion had become permanently green by
 // construction: a must-refuse probe over a spelling nothing in the corpus produces carries no
 // information and would be cited as coverage it does not provide. The door is closed by the
@@ -438,7 +438,7 @@ test fn fleet_converge_spark_serving_apply_prints_the_receipt_its_entry_writes()
 // longer exists is the weaker half of the pair, not an addition to it.
 test fn the_dark_install_step_invokes_the_runner_principal_fold() -> Bool {
   let invoke = gunbc_ci_approval_broker_dark_install_invoke()
-  string_contains(s: invoke, pattern: "--entry dag/gunbc/live_deploy/apply.dag --function approval_broker_dark_install_srv1_wet")
+  string_contains(s: invoke, pattern: "--entry dag/gunbc/live_deploy/apply.dag --function approval_broker_dark_install_wet")
     && !string_contains(s: invoke, pattern: "apply_dispatch")
 }
 

@@ -24,11 +24,11 @@ import gunbc.actions_run_binding {
   ActionsVariablePresent, ActionsVariableAbsent,
 }
 
-// THE DASHBOARD TRANSACTION'S TYPED RECEIPT. gunbc.live_deploy.apply live_deploy_apply_srv1_wet
+// THE DASHBOARD TRANSACTION'S TYPED RECEIPT. gunbc.live_deploy.apply live_deploy_apply_prod_role_wet
 // observes the candidate, decides the target, applies, gates on readiness and reads the digest back
 // -- and then flattens all of it to ProcessExit, so the workflow that dispatched it could name no
 // revision it installed, no tree it verified, no transaction it belonged to. This receipt is minted
-// by the receipted entry (live_deploy_apply_srv1_transaction_wet) around that same composition: the
+// by the receipted entry (live_deploy_apply_prod_role_transaction_wet) around that same composition: the
 // fold is reused, not re-implemented, and what is added is the expected revision the operator typed
 // (RLM_EXPECTED_REVISION), the candidate's root-tree object identity, the fleet plan/apply
 // provenance the dispatch named, and one independent readiness observation taken AFTER the apply

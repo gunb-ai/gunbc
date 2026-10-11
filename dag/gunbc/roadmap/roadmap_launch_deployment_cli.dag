@@ -55,8 +55,15 @@ import gunbc.live_deploy.release_binding { deployed_release_binding, ReleaseBind
 import gunbc.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
 import gunbc.running_release_identity { RunningReleaseIdentified, RunningReleaseUnidentified }
 import gunbc.live_deploy.readiness { running_release_unidentified_detail }
-import gunbc.live_deploy.spec { deployment_belt_service_unit_name, deployment_belt_exit_path_unit_name, deployment_belt_answer_path_unit_name, deployment_tailnet_url }
-import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.spec { DeploymentSpec, deployment_belt_service_unit_name, deployment_belt_exit_path_unit_name, deployment_belt_answer_path_unit_name, deployment_tailnet_url }
+import gunbc.live_deploy.desired {
+  DesiredDeployment,
+  selected_deployment_spec,
+  prod_role_desired_deployment,
+  ProdRoleDeploymentSelected,
+  ProdRoleDeploymentRefused,
+  ProdRoleDeployment,
+}
 import gunbc.live_deploy.emit {
   live_deploy_serve_unit_file,
   live_deploy_belt_service_unit_file,
@@ -70,7 +77,7 @@ import gunbc.live_deploy.unit_standing {
   LaunchUnitStanding, observe_dashboard_service_standing, observe_belt_event_path_standing, observe_belt_oneshot_standing,
 }
 import gunbc.deploy_transition { ActuationStanding, ActuationPermitted, ActuationInhibited, ActuationStandingUnreadable, transition_actuation_standing }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, srv1_live_dashboard_instance }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, prod_role_realization_refusal_detail }
 import gunbc.roadmap_belt_actuate {
   belt_tick_receipt_read_for_instance, BeltTickReceiptPresent, BeltTickReceiptAbsent, BeltTickReceiptUnreadable,
   belt_footprint_admission_for_instance, belt_provider_preflight_for_instance,
@@ -155,6 +162,9 @@ data rlm1_merge_commit: String = "0beef8a2c1a035f4f1f0507e77075bdeaba74cba"
 // (launch_admission_contract_text gains the gate and the centering_absent refusal arm).
 data rlm1_contract_digest_frozen: String = "7bcb9aaf9a17d274"
 data rlm_dashboard_run_id_env_name: String = "RLM_DASHBOARD_RUN_ID"
+// A HOST FACT, NOT A PROD PIN: this receipt mode runs on the srv1 runner and observes through the srv1 ssh
+// vantage and checkout. The entry refuses (RlmHolderNotOnVantage) unless the prod-role holder deploys
+// to this host, so a holder moved elsewhere refuses rather than being observed from the wrong machine.
 data rlm_receipt_host: String = "srv1"
 data rlm_receipt_vantage: String = "."
 data rlm_receipt_ssh_attempt_raw: String = "rlm-launch-deployment-receipt"
@@ -369,9 +379,8 @@ fn event_backlog_fact(instance: HostDashboardInstance, now: String) -> EventBack
   }
 }
 
-fn unit_standing_fact(revision: String) -> LaunchUnitStanding
+fn unit_standing_fact(spec: DeploymentSpec, revision: String) -> LaunchUnitStanding
 {
-  let spec = deployment_spec_srv1()
   LaunchUnitStanding {
     dashboard: observe_dashboard_service_standing(
       unit: spec.names.unit_name,
@@ -394,6 +403,32 @@ fn unit_standing_fact(revision: String) -> LaunchUnitStanding
 
 // ---------------------------------------------------------------- the entry
 fn rlm_launch_deployment_receipt_wet() -> ProcessExit
+{
+  match rlm_receipt_holder_admission(selected: prod_role_desired_deployment()) {
+    RlmReceiptHolderRefused { reason } => exit_failure(reason: reason)
+    RlmReceiptHolderAdmitted { deployment } => rlm_launch_deployment_receipt_for(deployment: deployment)
+  }
+}
+
+type RlmReceiptHolderAdmission
+  = RlmReceiptHolderAdmitted { deployment: DesiredDeployment }
+  | RlmReceiptHolderRefused { reason: String }
+
+fn rlm_receipt_holder_admission(selected: ProdRoleDeployment) -> RlmReceiptHolderAdmission
+{
+  match selected {
+    ProdRoleDeploymentRefused { cause } =>
+      RlmReceiptHolderRefused { reason: join(["rlm_launch_deployment_receipt: ", prod_role_realization_refusal_detail(cause: cause)], "") }
+    ProdRoleDeploymentSelected { deployment } =>
+      if (deployment.target.host.identity as String) != rlm_receipt_host {
+        RlmReceiptHolderRefused { reason: join(["rlm_launch_deployment_receipt: RlmHolderNotOnVantage — the prod-role holder deploys to ", deployment.target.host.identity as String, " but this receipt mode observes through the ", rlm_receipt_host, " ssh vantage and checkout"], "") }
+      } else {
+        RlmReceiptHolderAdmitted { deployment: deployment }
+      }
+  }
+}
+
+fn rlm_launch_deployment_receipt_for(deployment: DesiredDeployment) -> ProcessExit
 {
   match observe_actions_run_binding() {
     ActionsRunUnbound { variable: v, detail: d } =>
@@ -434,6 +469,7 @@ fn rlm_launch_deployment_receipt_wet() -> ProcessExit
                                     exit_failure(reason: join(["rlm_launch_deployment_receipt: FleetSshContextRefused — ", c], ""))
                                   FleetSshContextReady { context: context, receipt: _ } =>
                                     rlm_launch_deployment_receipt_bound(
+                                      deployment: deployment,
                                       run: run,
                                       revision: r,
                                       candidate_tree: candidate_tree,
@@ -456,8 +492,8 @@ fn rlm_launch_deployment_receipt_wet() -> ProcessExit
 // The routed production base URL, DERIVED from the deployment authority; Absent means the spec
 // declares no tailnet domain, and the routed endpoint facts refuse rather than fall back to
 // localhost (review 5061891290 P1-6 -- localhost stays complementary, never authoritative).
-fn rlm_routed_base_url() -> String? {
-  deployment_tailnet_url(spec: deployment_spec_srv1())
+fn rlm_routed_base_url(spec: DeploymentSpec) -> String? {
+  deployment_tailnet_url(spec: spec)
 }
 
 // One predecessor run record, read back from the workflow-runs API by run id (review 5061891290
@@ -528,6 +564,7 @@ fn rlm_run_provenance_fact(run: ActionsRunBinding, plan_run_id: String, apply_ru
 }
 
 fn rlm_launch_deployment_receipt_bound(
+  deployment: DesiredDeployment,
   run: ActionsRunBinding,
   revision: String,
   candidate_tree: String,
@@ -537,8 +574,8 @@ fn rlm_launch_deployment_receipt_bound(
   context: FleetSshExecutionContext,
 ) -> ProcessExit
 {
-  let instance = srv1_live_dashboard_instance()
-  let spec = deployment_spec_srv1()
+  let instance = deployment.instance
+  let spec = selected_deployment_spec(row: deployment)
   let subject = RoadmapLaunchDeploymentSubject {
     rlm1_merge_commit: rlm1_merge_commit,
     rlm1_contract_digest: rlm1_contract_digest_frozen,
@@ -554,7 +591,7 @@ fn rlm_launch_deployment_receipt_bound(
     dashboard_run_id: dashboard_run_id,
     receipt_run_id: run.run_id,
   }
-  let routed_base = rlm_routed_base_url()
+  let routed_base = rlm_routed_base_url(spec: spec)
   let opened = window_snapshot(context: context, instance: instance, routed_base: routed_base)
   let origin_main = read_remote_main_hex()
   let plan = match read_fleet_converge_plan_receipt_at(path: fleet_converge_plan_receipt_path) {
@@ -614,7 +651,7 @@ fn rlm_launch_deployment_receipt_bound(
     Present { value: h } => HostObserved { name: h as String }
     Absent => HostUnobserved { detail: "hostname probe did not succeed or returned empty output" }
   }
-  let unit_standing = unit_standing_fact(revision: revision)
+  let unit_standing = unit_standing_fact(spec: spec, revision: revision)
   let observation_window_closed = window_snapshot(context: context, instance: instance, routed_base: routed_base)
   let run_provenance = rlm_run_provenance_fact(run: run, plan_run_id: plan_run_id, apply_run_id: apply_run_id, dashboard_run_id: dashboard_run_id)
   let facts = RoadmapLaunchDeploymentFacts {

@@ -57,10 +57,8 @@ import gunbc.live_deploy.spec {
   deployment_plan_listen_port,
   deployment_tailnet_door_socket,
 }
-import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.ci_deploy_access {
   DeployAccess,
-  ci_deploy_srv1_access,
   deploy_access_decision_reason,
 }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
@@ -866,13 +864,18 @@ fn live_deploy_poll_until_service_ready_for_deploy(
   }
 }
 
+// The spec and the access are SUPPLIED, no longer a spelled srv1: the production entries select the
+// prod-role holder's row (gunbc.live_deploy.apply live_deploy_prod_role_apply_selection) and hand
+// both here, so the poll can never reach a host the selection did not.
 fn live_deploy_poll_until_service_ready(
+  spec: DeploymentSpec,
   candidate: CandidateRelease,
+  access: DeployAccess,
 ) -> ServiceReadiness {
   live_deploy_poll_until_service_ready_for_deploy(
-    spec: deployment_spec_srv1(),
+    spec: spec,
     candidate: candidate,
-    transport: ci_deploy_srv1_access.transport,
-    access: ci_deploy_srv1_access,
+    transport: access.transport,
+    access: access,
   )
 }

@@ -29,17 +29,20 @@ import gunbc.live_deploy.spec {
 import std.decl_ref { decl_ref }
 import gunbc.live_deploy.desired {
   DesiredDeployment,
-  deployment_spec_srv1,
   desired_deployment_for_instance_id,
   selected_deployment_spec,
-  srv1_production_desired_deployment,
   instance_id_text,
+  prod_role_desired_deployment,
+  ProdRoleDeploymentSelected,
+  ProdRoleDeploymentRefused,
+  ProdRoleDeployment,
   DesiredDeploymentFound,
   DesiredDeploymentUnknownInstanceId,
   DesiredDeploymentRosterRefused,
   DesiredRosterSameHostCollision,
   DesiredRosterDuplicateInstanceId,
 }
+import gunbc.roadmap_dashboard_instance { prod_role_realization_refusal_detail }
 import gunbc.live_deploy.role_singleton_convergence {
   assess_and_admit, role_singleton_refusal_detail, admitted_spec, admitted_decision,
   RoleSingletonAdmission, RoleSingletonAdmitted, RoleSingletonNotAdmitted,
@@ -756,17 +759,6 @@ fn live_deploy_apply_with_access(
   )
 }
 
-fn live_deploy_apply_srv1_with_access(
-  access: DeployAccess,
-  candidate: CandidateRelease,
-) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> {
-  live_deploy_apply_with_access(
-    deployment: srv1_production_desired_deployment(),
-    access: access,
-    candidate: candidate,
-  )
-}
-
 // A RETRACT OBSERVES NO CANDIDATE, WHICH IS WHY IT CANNOT FAIL FOR WANT OF ONE. It removes what
 // this deployment owns; there is no release being installed, so there is nothing whose identity a
 // retract could state and nothing for readiness to compare. While the revision rode on
@@ -784,20 +776,6 @@ fn live_deploy_retract_with_access(
     transport: access.transport,
     access: access
   )
-}
-
-fn live_deploy_retract_srv1_with_access(
-  access: DeployAccess,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  live_deploy_retract_with_access(spec: deployment_spec_srv1(), access: access)
-}
-
-fn live_deploy_apply_srv1(candidate: CandidateRelease) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> {
-  live_deploy_apply_srv1_with_access(access: ci_deploy_srv1_access, candidate: candidate)
-}
-
-fn live_deploy_retract_srv1() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  live_deploy_retract_srv1_with_access(access: ci_deploy_srv1_access)
 }
 
 fn live_deploy_reconciliation_exit<A>(r: Reconciliation<A, HostEffectEvidence>) -> ProcessExit {
@@ -1064,7 +1042,7 @@ fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: C
 }
 
 // THERE IS NO OPERATOR-LOCAL TWIN OF THE FOLD BELOW, and its absence is the point rather than an
-// omission (review 68991). One existed: approval_broker_dark_install_srv1_operator_local_wet, same
+// omission (review 68991). One existed: approval_broker_dark_install_operator_local_wet, same
 // body with ci_deploy_srv1_operator_local_access substituted. Nothing called it and nothing routed
 // it -- gunbc.apply apply_dispatch routes only the ghrunner variant -- so it was a dangling
 // declaration, and a privileged host-mutation entry at that.
@@ -1077,7 +1055,7 @@ fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: C
 // person under time pressure to reach for. Deleted rather than routed, because routing it would
 // contradict the reasoning that put the ghrunner route there in the first place.
 //
-// The roadmap's live_deploy_apply_srv1_operator_local_wet is NOT this case and stays: it has a real
+// The roadmap's live_deploy_apply_prod_role_operator_local_wet is NOT this case and stays: it has a real
 // consumer in gunbc.fleet.fleet_converge_plan_cli, so it is a routed entry rather than a dormant
 // second door.
 // ── THE microVM SLOT CONTROLLER INSTALL (the microvm_controller_install mode) ─────────────────
@@ -1095,8 +1073,12 @@ fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: C
 // receipt, and whether systemd loads the template for the shakedown slot's instance. An installer
 // asserting it installed is the control-plane acknowledgement gunbc.recurring_failure_mode
 // control_plane_acknowledgement_minted_as_effect refuses.
-fn microvm_controller_install_srv1_wet() -> ProcessExit {
-  microvm_controller_install_wet_with_access(spec: deployment_spec_srv1(), access: ci_deploy_srv1_access)
+fn microvm_controller_install_wet() -> ProcessExit {
+  match live_deploy_prod_role_apply_selection(access: ci_deploy_srv1_access) {
+    DesiredApplyRefused { reason } => exit_failure(reason: reason)
+    DesiredApplySelected { deployment } =>
+      microvm_controller_install_wet_with_access(spec: selected_deployment_spec(row: deployment), access: ci_deploy_srv1_access)
+  }
 }
 
 fn microvm_controller_install_wet_with_access(spec: DeploymentSpec, access: DeployAccess) -> ProcessExit {
@@ -1213,11 +1195,15 @@ fn microvm_unit_load_readback(unit: NonEmptyStr) -> ProcessExit {
   }
 }
 
-fn approval_broker_dark_install_srv1_wet() -> ProcessExit {
-  approval_broker_dark_install_wet_with_access(
-    spec: deployment_spec_srv1(),
-    access: ci_deploy_srv1_access,
-  )
+fn approval_broker_dark_install_wet() -> ProcessExit {
+  match live_deploy_prod_role_apply_selection(access: ci_deploy_srv1_access) {
+    DesiredApplyRefused { reason } => exit_failure(reason: reason)
+    DesiredApplySelected { deployment } =>
+      approval_broker_dark_install_wet_with_access(
+        spec: selected_deployment_spec(row: deployment),
+        access: ci_deploy_srv1_access,
+      )
+  }
 }
 
 // ONE APPLY ROUTE, SELECTED BY INSTANCE ID. The roster (gunbc.live_deploy.desired
@@ -1241,12 +1227,34 @@ fn live_deploy_desired_apply_selection(instance_id: String, access: DeployAccess
         DesiredRosterDuplicateInstanceId { instance_id: dup } =>
           DesiredApplyRefused { reason: join(["live_deploy apply: DesiredRosterDuplicateInstanceId ", dup], "") }
       }
-    DesiredDeploymentFound { row } =>
-      if (row.target.host.identity as String) != (access.host.identity as String) {
-        DesiredApplyRefused { reason: join(["live_deploy apply: DesiredApplyHostMismatch — row '", instance_id, "' targets ", row.target.host.identity as String, " but the access reaches ", access.host.identity as String], "") }
-      } else {
-        DesiredApplySelected { deployment: row }
-      }
+    DesiredDeploymentFound { row } => desired_apply_host_checked(row: row, instance_id: instance_id, access: access)
+  }
+}
+
+fn desired_apply_host_checked(row: DesiredDeployment, instance_id: String, access: DeployAccess) -> DesiredApplySelection {
+  if (row.target.host.identity as String) != (access.host.identity as String) {
+    DesiredApplyRefused { reason: join(["live_deploy apply: DesiredApplyHostMismatch — row '", instance_id, "' targets ", row.target.host.identity as String, " but the access reaches ", access.host.identity as String], "") }
+  } else {
+    DesiredApplySelected { deployment: row }
+  }
+}
+
+// THE PRODUCTION ENTRIES' ONE SELECTION: the prod-role holder's roster row (a projection of
+// prod_role_actuated_realization, gunbc.live_deploy.desired prod_role_desired_deployment), then
+// the same host check as every roster apply. The holder moving off the access's host refuses here
+// BEFORE any mutation; no srv1 row is ever the default.
+fn live_deploy_prod_role_apply_selection(access: DeployAccess) -> DesiredApplySelection {
+  live_deploy_prod_role_apply_selection_under(selected: prod_role_desired_deployment(), access: access)
+}
+
+// The fold over a supplied projection, for controls: every production entry above reads the real
+// switch through the wrapper, so a refused projection refuses all of them by this one arm.
+fn live_deploy_prod_role_apply_selection_under(selected: ProdRoleDeployment, access: DeployAccess) -> DesiredApplySelection {
+  match selected {
+    ProdRoleDeploymentRefused { cause } =>
+      DesiredApplyRefused { reason: join(["live_deploy apply: ", prod_role_realization_refusal_detail(cause: cause)], "") }
+    ProdRoleDeploymentSelected { deployment } =>
+      desired_apply_host_checked(row: deployment, instance_id: instance_id_text(id: deployment.instance.instance_id), access: access)
   }
 }
 
@@ -1263,36 +1271,47 @@ fn live_deploy_apply_desired_operator_local_wet(instance_id: String) -> ProcessE
   live_deploy_apply_desired_wet(instance_id: instance_id, access: ci_deploy_srv1_operator_local_access)
 }
 
-fn srv1_production_instance_id() -> String {
-  instance_id_text(id: srv1_production_desired_deployment().instance.instance_id)
+fn live_deploy_apply_prod_role_wet() -> ProcessExit {
+  live_deploy_prod_role_wet_with_access(access: ci_deploy_srv1_access)
 }
 
-fn live_deploy_apply_srv1_wet() -> ProcessExit {
-  live_deploy_apply_desired_wet(instance_id: srv1_production_instance_id(), access: ci_deploy_srv1_access)
+fn live_deploy_apply_prod_role_operator_wet() -> ProcessExit {
+  live_deploy_prod_role_wet_with_access(access: ci_deploy_srv1_operator_access)
 }
 
-fn live_deploy_apply_srv1_operator_wet() -> ProcessExit {
-  live_deploy_apply_desired_wet(instance_id: srv1_production_instance_id(), access: ci_deploy_srv1_operator_access)
+fn live_deploy_prod_role_wet_with_access(access: DeployAccess) -> ProcessExit {
+  match live_deploy_prod_role_apply_selection(access: access) {
+    DesiredApplyRefused { reason } => exit_failure(reason: reason)
+    DesiredApplySelected { deployment } => live_deploy_wet_with_access(deployment: deployment, access: access)
+  }
 }
 
 // The converge verb's deploy mode: the same admitted path the CI entry runs, under the operator
 // principal on the host itself. Candidate observation, preflight, mutation and the readiness
 // gate are all shared; nothing here is a second deploy.
-fn live_deploy_apply_srv1_operator_local_wet() -> ProcessExit {
-  live_deploy_apply_desired_operator_local_wet(instance_id: srv1_production_instance_id())
+fn live_deploy_apply_prod_role_operator_local_wet() -> ProcessExit {
+  live_deploy_prod_role_wet_with_access(access: ci_deploy_srv1_operator_local_access)
 }
 
-fn live_deploy_retract_srv1_wet() -> ProcessExit {
-  live_deploy_retract_wet_with_access(spec: deployment_spec_srv1(), access: ci_deploy_srv1_access)
+fn live_deploy_retract_prod_role_wet() -> ProcessExit {
+  live_deploy_prod_role_retract_wet_with_access(access: ci_deploy_srv1_access)
 }
 
-fn live_deploy_retract_srv1_operator_wet() -> ProcessExit {
-  live_deploy_retract_wet_with_access(spec: deployment_spec_srv1(), access: ci_deploy_srv1_operator_access)
+fn live_deploy_retract_prod_role_operator_wet() -> ProcessExit {
+  live_deploy_prod_role_retract_wet_with_access(access: ci_deploy_srv1_operator_access)
+}
+
+fn live_deploy_prod_role_retract_wet_with_access(access: DeployAccess) -> ProcessExit {
+  match live_deploy_prod_role_apply_selection(access: access) {
+    DesiredApplyRefused { reason } => exit_failure(reason: reason)
+    DesiredApplySelected { deployment } =>
+      live_deploy_retract_wet_with_access(spec: selected_deployment_spec(row: deployment), access: access)
+  }
 }
 
 
 // ---------------------------------------------------------------- the receipted transaction entry
-// THE DASHBOARD-DEPLOY MODE OF THE RLM-2 TRANSACTION. live_deploy_apply_srv1_wet stays as the
+// THE DASHBOARD-DEPLOY MODE OF THE RLM-2 TRANSACTION. live_deploy_apply_prod_role_wet stays as the
 // operator's plain entry; this one is what the fleet-converge workflow's dashboard_deploy mode
 // invokes, and it differs in exactly three ways, all of them additions around the SAME fold: (1) it
 // binds its run and refuses unless GITHUB_SHA equals RLM_EXPECTED_REVISION and the observed
@@ -1502,6 +1521,9 @@ fn live_deploy_transaction_wet_with_access(deployment: DesiredDeployment, access
   )
 }
 
-fn live_deploy_apply_srv1_transaction_wet() -> ProcessExit {
-  live_deploy_transaction_wet_with_access(deployment: srv1_production_desired_deployment(), access: ci_deploy_srv1_access)
+fn live_deploy_apply_prod_role_transaction_wet() -> ProcessExit {
+  match live_deploy_prod_role_apply_selection(access: ci_deploy_srv1_access) {
+    DesiredApplyRefused { reason } => exit_failure(reason: reason)
+    DesiredApplySelected { deployment } => live_deploy_transaction_wet_with_access(deployment: deployment, access: ci_deploy_srv1_access)
+  }
 }

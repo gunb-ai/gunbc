@@ -34,7 +34,7 @@ data gunbc_ci_deploy_invoke_srv1_pre_migration_golden: String = concat(
     "\"$ROOT/target/release/gunbc\" run --source-root \"$ROOT/dag\" --source-root \"$ROOT/src/v2\"",
     concat(
       " --entry dag/gunbc/live_deploy/apply.dag",
-      " --function live_deploy_apply_srv1_wet\n"
+      " --function live_deploy_apply_prod_role_wet\n"
     )
   )
 )
@@ -45,7 +45,7 @@ data gunbc_ci_deploy_invoke_srv1_wrong_entry_golden: String = concat(
     "\"$ROOT/target/release/gunbc\" run --source-root \"$ROOT/dag\" --source-root \"$ROOT/src/v2\"",
     concat(
       " --entry dag/gunbc/live_deploy/WRONG_ENTRY.dag",
-      " --function live_deploy_apply_srv1_wet\n"
+      " --function live_deploy_apply_prod_role_wet\n"
     )
   )
 )

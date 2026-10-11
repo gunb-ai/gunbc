@@ -22,6 +22,8 @@ import gunbc.roadmap_dashboard_instance {
   ProdRoleRealization,
   ProdRoleRealizedBy,
   ProdRoleRealizationRefused,
+  ProdRoleRealizationRefusal,
+  prod_role_realization_refusal_detail,
   ProdRoleHolderUnactuatable,
   prod_role_realization,
   prod_role_realization_in,
@@ -159,6 +161,29 @@ fn prod_role_actuated_realization_in(selection: ProdRoleSelection) -> ProdRoleRe
 
 fn prod_role_actuated_realization() -> ProdRoleRealization {
   prod_role_actuated_realization_over(realization: prod_role_realization(), rows: desired_deployment_roster())
+}
+
+// THE PROD ROLE AS A ROW. A PROJECTION of prod_role_actuated_realization(), not a second join: the
+// actuated realization already refuses Unheld / Unrealized / Ambiguous / Unactuatable, and this only
+// selects its holder's roster row by deployment identity. A miss is the actuated join's own
+// Unactuatable refusal, never a fallback row.
+type ProdRoleDeployment
+  = ProdRoleDeploymentSelected { deployment: DesiredDeployment }
+  | ProdRoleDeploymentRefused { cause: ProdRoleRealizationRefusal }
+
+fn prod_role_desired_deployment_over(realization: ProdRoleRealization, rows: List<DesiredDeployment>) -> ProdRoleDeployment {
+  match realization {
+    ProdRoleRealizationRefused { cause } => ProdRoleDeploymentRefused { cause: cause }
+    ProdRoleRealizedBy { holder } =>
+      match rows |> filter(r => r.instance.deployment == holder.instance.deployment) |> first {
+        Present { value: row } => ProdRoleDeploymentSelected { deployment: row }
+        Absent => ProdRoleDeploymentRefused { cause: ProdRoleHolderUnactuatable { deployment: holder.instance.deployment } }
+      }
+  }
+}
+
+fn prod_role_desired_deployment() -> ProdRoleDeployment {
+  prod_role_desired_deployment_over(realization: prod_role_actuated_realization(), rows: desired_deployment_roster())
 }
 
 fn desired_deployment_roster() -> List<DesiredDeployment> {
@@ -348,23 +373,6 @@ fn bind_desired_selected_identity(desired: DesiredDeployment) -> DesiredSelected
       }
   }
 }
-
-// PRODUCTION WRAPPERS in apply/readiness/CLI survive one migration PR as typed scaffolds.
-// Their deletion consumer is CONVERGENCE-ONE C8: the first wet action, which must select a
-// DesiredDeployment from this roster and therefore cannot keep a production-only entry as
-// the executing route. The wrappers retire by deletion; that absence is the discharge.
-// ONE ROW OVER THE POPULATION, not one DeclarationRetires on live_deploy_apply_srv1_wet:
-// apply.dag still defines ten live_deploy_{apply,retract}_srv1* wrappers. A singular
-// retirement trigger would fire (or look discharged) while nine production callers remained.
-data srv1_production_wrapper_dissolution: DissolutionCondition = unbound_dissolution(
-  description: "TRIGGER: the production wrappers retire when gunbc.live_deploy.desired deployment_spec_srv1 has no remaining production caller. The capability is that absence across the wrapper population (apply, retract, with-access, wet, operator, operator-local, transaction), not the deletion of any one wrapper name. A DeclarationRetires on live_deploy_apply_srv1_wet alone is not this trigger. SUFFICIENT FOR: every live_deploy_\{apply,retract\}_srv1* production wrapper gone, and no remaining production caller of deployment_spec_srv1." as NonEmptyStr
-)
-
-data srv1_production_wrapper_frontier: FrontierRow = frontier_row_path(
-  path: "gunbc.live_deploy.apply srv1 production wrappers",
-  reason: "production live_deploy_\{apply,retract\}_srv1* wrappers are typed scaffolds until C8 selects a DesiredDeployment; they retire together when deployment_spec_srv1 has no remaining production caller",
-  dissolution: srv1_production_wrapper_dissolution,
-)
 
 // RESIDUAL, NOT THE WHOLE PATH CLAIM. selecting_lab_changes_emitted_unit_bytes
 // discriminates every path the serve unit names (WorkingDirectory repo_root, slice,

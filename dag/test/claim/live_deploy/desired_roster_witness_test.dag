@@ -35,8 +35,6 @@ import gunbc.live_deploy.desired {
   DesiredSelectedIdentityUnknownInstance,
   DesiredSelectedIdentityRosterRefused,
   spec_owned_identities,
-  srv1_production_wrapper_dissolution,
-  srv1_production_wrapper_frontier,
   apply_script_only_path_discrimination_unproven,
   apply_script_only_path_discrimination_unproven_dissolution,
 }
@@ -189,18 +187,6 @@ test fn srv2_deploy_is_not_the_srv1_host() -> Bool {
   let srv2 = selected_deployment_spec(row: srv2_deploy_desired_deployment())
   deployment_plan_host_identity(spec: srv2) == "srv2"
     && !(deployment_plan_host_identity(spec: selected_deployment_spec(row: srv1_production_desired_deployment())) == "srv2")
-}
-
-test fn srv1_production_wrapper_dissolution_stays_unbound_until_the_wrapper_population_has_no_caller() -> Bool {
-  let desc = dissolution_description(condition: srv1_production_wrapper_dissolution)
-  match dissolution_status(condition: srv1_production_wrapper_dissolution, present_decls: []) {
-    DissolutionUnbound => true
-    DissolutionPending => false
-    DissolutionFired => false
-  }
-    && !(srv1_production_wrapper_frontier.reason as String == "")
-    && string_contains(s: desc, pattern: "SUFFICIENT FOR")
-    && string_contains(s: desc, pattern: "no remaining production caller")
 }
 
 test fn apply_script_only_path_discrimination_stays_unbound_until_a_disjoint_script_receipt() -> Bool {
