@@ -932,7 +932,7 @@ fn harness_add_candidate(acc: HarnessCandidates, session: ServingSessionRecord, 
             WithholdRouteNotProgressing { note: why } =>
               harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: why), retryable: true)
             ProgressDoesNotWithhold =>
-              harness_candidate_from_standing(acc: acc, group: group, endpoint: endpoint, route: route, class: class, requirement: requirement, subject: subject, standing: standing, availability: availability, launch: launch, engine: engine, route_ceiling: route_ceiling, store: store, now: now, access: access, declared_units: declared_units, participation_roster: participation_roster)
+              harness_candidate_from_standing(acc: acc, session: session, group: group, endpoint: endpoint, route: route, class: class, requirement: requirement, subject: subject, standing: standing, availability: availability, launch: launch, engine: engine, route_ceiling: route_ceiling, store: store, now: now, access: access, declared_units: declared_units, participation_roster: participation_roster)
           }
       }
     }
@@ -945,6 +945,7 @@ fn harness_add_candidate(acc: HarnessCandidates, session: ServingSessionRecord, 
 // wedged engine may clear and the next placement round re-observes.
 fn harness_candidate_from_standing(
   acc: HarnessCandidates,
+  session: ServingSessionRecord,
   group: FabricGroup,
   endpoint: ServingRouteEndpoint,
   route: ServingRoute,
