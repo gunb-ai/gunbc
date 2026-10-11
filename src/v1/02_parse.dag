@@ -513,17 +513,41 @@ fn parse_context_record_absorbed(ctx: ParseContext, absorbed: Node, into: NodeOc
   }
 }
 
+// The walk follows the same authored-node ownership relation as occurrence_allocator_after_node:
+// children, params, uses, properties, body, transport, type_annotation, a resolved `inferred`, and a
+// match pattern's binder or field bindings. A field the allocator walk descends is a field an
+// authored occurrence can sit under, so omitting one here drops the scopes beneath it.
 fn absorbed_subtree_into(acc: Map<OccurrenceId, OccurrenceId>, node: Node, into: OccurrenceId) -> Map<OccurrenceId, OccurrenceId> {
   let with_self = match node.occurrence_identity {
     OccurrenceMinted { id: id } => map_insert(acc, id, into)
     _ => acc
   }
-  let with_children = node.children |> fold(init: with_self, f: (m, c) => absorbed_subtree_into(acc: m, node: c, into: into))
-  let with_params = node.params |> fold(init: with_children, f: (m, c) => absorbed_subtree_into(acc: m, node: c, into: into))
-  let with_properties = node.properties |> fold(init: with_params, f: (m, c) => absorbed_subtree_into(acc: m, node: c, into: into))
-  match node.body {
-    Present { value: b } => absorbed_subtree_into(acc: with_properties, node: b, into: into)
-    Absent => with_properties
+  let with_lists = concat(node.children, node.params, node.uses, node.properties)
+    |> fold(init: with_self, f: (m, c) => absorbed_subtree_into(acc: m, node: c, into: into))
+  let with_body = absorbed_optional_node_into(acc: with_lists, node: node.body, into: into)
+  let with_transport = absorbed_optional_node_into(acc: with_body, node: node.transport, into: into)
+  let with_annotation = absorbed_optional_node_into(acc: with_transport, node: node.type_annotation, into: into)
+  let with_inferred = match node.inferred {
+    Present { value: Resolved { node: n } } => absorbed_subtree_into(acc: with_annotation, node: n, into: into)
+    Present { value: CompilerError { message: _, span: _ } } => with_annotation
+    Present { value: TypeVariable { id: _ } } => with_annotation
+    Present { value: Divergent } => with_annotation
+    Absent => with_annotation
+  }
+  match node.match_pattern {
+    Present { value: Bind { declaration: d } } => absorbed_subtree_into(acc: with_inferred, node: d, into: into)
+    Present { value: VariantPattern { name: _, parent_enum: _, field_bindings: bindings, parent_identity: _ } } =>
+      bindings |> fold(init: with_inferred, f: (m, c) => absorbed_subtree_into(acc: m, node: c, into: into))
+    Present { value: LitPattern { value: _ } } => with_inferred
+    Present { value: Wildcard } => with_inferred
+    Absent => with_inferred
+  }
+}
+
+fn absorbed_optional_node_into(acc: Map<OccurrenceId, OccurrenceId>, node: Node?, into: OccurrenceId) -> Map<OccurrenceId, OccurrenceId> {
+  match node {
+    Present { value: n } => absorbed_subtree_into(acc: acc, node: n, into: into)
+    Absent => acc
   }
 }
 
@@ -3332,7 +3356,7 @@ fn parse_type_expr(tokens: TokenStream, ctx: ParseContext) -> TypeResult {
       let tokens = skip_newlines(tokens: r.tokens)
       let r2 = expect(tokens: tokens, expected: ExpectRBrace)
       if has_err(err: r2.err) { return TypeResult { type_expr: leaf_type_node(occurrence_identity: OccurrenceSynthetic, name: "", span: span), tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
-      let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: tokens, to: r2.tokens })
+      let minted = mint_parsed_node_identity(ctx: r.ctx, at: FromToken { start: span, to: r2.tokens })
       let te = Node { occurrence_identity: minted.identity, name: "", span: span, ident_span: none, children: map(r.fields, f => field_to_child_node(field: f, source_indices: ctx.source_indices)), connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
       TypeResult { type_expr: te, tokens: r2.tokens, ctx: minted.ctx, err: none }
     }

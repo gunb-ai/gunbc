@@ -768,29 +768,68 @@ pub fn absorbed_subtree_into(
             }
             _ => acc.clone(),
         };
-        let with_children = node.children.clone().iter().cloned().fold(
+        let with_lists = v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(node.children.clone(), node.params.clone()),
+                node.uses.clone(),
+            ),
+            node.properties.clone(),
+        )
+        .iter()
+        .cloned()
+        .fold(
             with_self.clone(),
             |m: Rc<HashMap<OccurrenceId, OccurrenceId>>, c: Rc<Node>| {
                 absorbed_subtree_into(m, c.clone(), into.clone())
             },
         );
-        let with_params = node.params.clone().iter().cloned().fold(
-            with_children.clone(),
-            |m: Rc<HashMap<OccurrenceId, OccurrenceId>>, c: Rc<Node>| {
-                absorbed_subtree_into(m, c.clone(), into.clone())
-            },
+        let with_body =
+            absorbed_optional_node_into(with_lists.clone(), node.body.clone(), into.clone());
+        let with_transport =
+            absorbed_optional_node_into(with_body.clone(), node.transport.clone(), into.clone());
+        let with_annotation = absorbed_optional_node_into(
+            with_transport.clone(),
+            node.type_annotation.clone(),
+            into.clone(),
         );
-        let with_properties = node.properties.clone().iter().cloned().fold(
-            with_params.clone(),
-            |m: Rc<HashMap<OccurrenceId, OccurrenceId>>, c: Rc<Node>| {
-                absorbed_subtree_into(m, c.clone(), into.clone())
-            },
-        );
-        match node.body.clone() {
-            Some(b) => absorbed_subtree_into(with_properties.clone(), b.clone(), into.clone()),
-            std::option::Option::None => with_properties.clone(),
+        let with_inferred = match node.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: n, .. }) => {
+                absorbed_subtree_into(with_annotation.clone(), n.clone(), into.clone())
+            }
+            Some(InferredNode::CompilerError { .. }) => with_annotation.clone(),
+            Some(InferredNode::TypeVariable { id: _, .. }) => with_annotation.clone(),
+            Some(InferredNode::Divergent) => with_annotation.clone(),
+            std::option::Option::None => with_annotation.clone(),
+        };
+        match node.match_pattern.clone().as_deref().cloned() {
+            Some(MatchPattern::Bind { declaration: d, .. }) => {
+                absorbed_subtree_into(with_inferred.clone(), d.clone(), into.clone())
+            }
+            Some(MatchPattern::VariantPattern {
+                field_bindings: bindings,
+                ..
+            }) => bindings.iter().cloned().fold(
+                with_inferred.clone(),
+                |m: Rc<HashMap<OccurrenceId, OccurrenceId>>, c: Rc<Node>| {
+                    absorbed_subtree_into(m, c.clone(), into.clone())
+                },
+            ),
+            Some(MatchPattern::LitPattern { value: _, .. }) => with_inferred.clone(),
+            Some(MatchPattern::Wildcard) => with_inferred.clone(),
+            std::option::Option::None => with_inferred.clone(),
         }
     })
+}
+
+pub fn absorbed_optional_node_into(
+    acc: Rc<HashMap<OccurrenceId, OccurrenceId>>,
+    node: Option<Rc<Node>>,
+    into: OccurrenceId,
+) -> Rc<HashMap<OccurrenceId, OccurrenceId>> {
+    match node.clone() {
+        Some(n) => absorbed_subtree_into(acc.clone(), n.clone(), into.clone()),
+        std::option::Option::None => acc.clone(),
+    }
 }
 
 pub fn parse_context_with_source_extents(
@@ -7302,8 +7341,8 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                 }
                 let minted = mint_parsed_node_identity(
                     r.ctx.clone(),
-                    Rc::new(ParsedExtentAt::ConsumedWindow {
-                        from: tokens.clone(),
+                    Rc::new(ParsedExtentAt::FromToken {
+                        start: span.clone(),
                         to: r2.tokens.clone(),
                     }),
                 );
