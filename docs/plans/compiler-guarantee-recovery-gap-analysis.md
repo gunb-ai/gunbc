@@ -2346,11 +2346,11 @@ enforces end to end.
    mechanically unenrolled today, on three independent grounds, so this is a stated absence
    rather than an unverified one:** the required floor's discovery projects rows from `data`
    declarations (`v2.workflow.floor_discovery_producer`), and the two probe modules declare
-   only `module`/`import`/`service`/`func` — no `data` row to project; the test-decl naming
-   scan (`v2.workflow.floor_naming_hygiene`) enrolls decls from `*_test.dag` files, and the
-   probes are named `*_probe.dag`, outside that convention entirely; and the whole-corpus
+   only `module`/`import`/`service`/`func` — no `data` row to project; floor discovery
+   enrolls the `test`-marked declarations a module carries, and the two probe modules
+   carry none; and the whole-corpus
    census that would once have flagged a claim-less module under `dag/test/claim/` was
-   deleted in gunbc#8155 (`floor_naming_hygiene_note` records the deletion), so the probes
+   deleted in gunbc#8155 (`gunbc.test_module_hygiene` records the deletion), so the probes
    join roughly 90 other claim-less `.dag` files already present in that directory on main —
    not a novel gap. The probes are still ordinary executable `.dag` and do get typechecked by
    compile-clean whenever their import closure is touched; that is unrelated to floor

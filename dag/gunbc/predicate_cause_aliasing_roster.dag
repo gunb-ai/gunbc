@@ -158,10 +158,9 @@ data class_b_remaining_sites: List<AliasedPredicateSite> = [
 // THIS MODULE HAS A CONSUMER, AND THAT IS NOT A FORMALITY. An unimported carrier is typechecked by no
 // closure and asserted by nothing -- the orphan shape where a module is CITED as an authority while
 // nothing compiles it. A roster of outstanding obligations is exactly the kind of file that rots that
-// way, so it has a witness: test.claim.predicate_cause_aliasing_roster_witness, the `*_test.dag`
-// sidecar floor discovery requires for `test`-marked decls (v2.workflow.floor_naming_hygiene
-// floor_test_marked_decl_allowed_in_entry). The three test fns lived in this file until 2026-08-29,
-// where the producer refused them and the floor's filename-blind Rust scan ran them anyway.
+// way, so it has a witness: test.claim.predicate_cause_aliasing_roster_witness, which declares the
+// `test`-marked decls. Floor discovery takes a test from the marker alone and places no constraint
+// on the module that holds one. The three test fns lived in this file until 2026-08-29.
 //
 // The assertion is deliberately narrow: every row names a module, a symbol and a proposition, and the
 // roster is not empty. It does NOT check that the named sites still alias -- nothing does, which is
