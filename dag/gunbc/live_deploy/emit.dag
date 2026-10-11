@@ -195,11 +195,13 @@ import gunbc.live_deploy.spec {
 }
 import gunbc.ci_release_bins { gunbc_release_bin_name }
 import gunbc.auth.tracker_web_oauth_client {
-  tracker_web_oidc_serve_standing, tracker_web_oidc_config_document,
+  tracker_web_oidc_serve_standing, tracker_web_oidc_serve_placement, tracker_web_oidc_config_document,
   tracker_web_oidc_env_assignment, tracker_web_oidc_deploy_now_epoch,
   TrackerWebOidcServeStanding,
   TrackerWebOidcServeConfigured, TrackerWebOidcInstanceUnassigned, TrackerWebOidcEnvironmentUnbound,
   TrackerWebOidcRealizationMissing, TrackerWebOidcConsoleReadbackUnsatisfied,
+  TrackerWebOidcServeReady, TrackerWebOidcPlacementUnassigned, TrackerWebOidcPlacementUnbound,
+  TrackerWebOidcPlacementMissingRealization,
 }
 import gunbc.host_layout {
   belt_spawn_workdir_env_var,
@@ -559,8 +561,25 @@ fn live_deploy_oidc_unit_env(standing: TrackerWebOidcServeStanding) -> LiveDeplo
   }
 }
 
+fn live_deploy_oidc_unit_env_for(spec: DeploymentSpec, now_epoch: Int?) -> LiveDeployOidcUnitEnv {
+  match tracker_web_oidc_serve_placement(instance_id: spec.instance_id) {
+    TrackerWebOidcPlacementUnassigned { instance_id: _ } =>
+      LiveDeployOidcEnvAdmitted { directives: [] }
+    TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } =>
+      LiveDeployOidcEnvAdmitted { directives: [] }
+    TrackerWebOidcPlacementMissingRealization { instance_id: _, environment: _ } =>
+      LiveDeployOidcEnvRefused { cause: "tracker-web OIDC realization missing" as NonEmptyStr }
+    TrackerWebOidcServeReady { config: _ } =>
+      match now_epoch {
+        Absent => LiveDeployOidcEnvRefused { cause: "observer clock unreadable" as NonEmptyStr }
+        Present { value: now } =>
+          live_deploy_oidc_unit_env(standing: tracker_web_oidc_serve_standing(instance_id: spec.instance_id, now_epoch: now))
+      }
+  }
+}
+
 fn live_deploy_oidc_unit_env_at(spec: DeploymentSpec, now_epoch: Int) -> LiveDeployOidcUnitEnv {
-  live_deploy_oidc_unit_env(standing: tracker_web_oidc_serve_standing(instance_id: spec.instance_id, now_epoch: now_epoch))
+  live_deploy_oidc_unit_env_for(spec: spec, now_epoch: Present { value: now_epoch })
 }
 
 // The belt-B unit: ExecStart is `gunbc serve` (the seed binary answering every request through the
@@ -572,21 +591,18 @@ fn live_deploy_oidc_unit_env_at(spec: DeploymentSpec, now_epoch: Int) -> LiveDep
 fn live_deploy_serve_unit_emission(
   spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Int?,
 ) -> LiveDeployServeUnitEmission {
-  match now_epoch {
-    Absent => LiveDeployServeUnitOidcReadbackRefused { cause: "observer clock unreadable" as NonEmptyStr }
-    Present { value: now } => live_deploy_serve_unit_emission_at(spec: spec, revision: revision, now_epoch: now)
+  match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: now_epoch) {
+    LiveDeployOidcEnvAdmitted { directives } =>
+      LiveDeployServeUnitEmitted { file: live_deploy_serve_unit_file_over(spec: spec, revision: revision, oidc_env: directives) }
+    LiveDeployOidcEnvRefused { cause } =>
+      LiveDeployServeUnitOidcReadbackRefused { cause: cause }
   }
 }
 
 fn live_deploy_serve_unit_emission_at(
   spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Int,
 ) -> LiveDeployServeUnitEmission {
-  match live_deploy_oidc_unit_env_at(spec: spec, now_epoch: now_epoch) {
-    LiveDeployOidcEnvAdmitted { directives } =>
-      LiveDeployServeUnitEmitted { file: live_deploy_serve_unit_file_over(spec: spec, revision: revision, oidc_env: directives) }
-    LiveDeployOidcEnvRefused { cause } =>
-      LiveDeployServeUnitOidcReadbackRefused { cause: cause }
-  }
+  live_deploy_serve_unit_emission(spec: spec, revision: revision, now_epoch: Present { value: now_epoch })
 }
 
 // One unit shape for both of an instance's listeners: the principal, slice, tree, binary, user
@@ -643,16 +659,7 @@ fn live_deploy_serve_unit_file_over_listener(
 fn live_deploy_tailnet_door_unit_file(
   spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Int?,
 ) -> SystemdUnitFile? {
-  match now_epoch {
-    Absent => none
-    Present { value: now } => live_deploy_tailnet_door_unit_file_at(spec: spec, revision: revision, now_epoch: now)
-  }
-}
-
-fn live_deploy_tailnet_door_unit_file_at(
-  spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Int,
-) -> SystemdUnitFile? {
-  match live_deploy_oidc_unit_env_at(spec: spec, now_epoch: now_epoch) {
+  match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: now_epoch) {
     LiveDeployOidcEnvRefused { cause: _ } => none
     LiveDeployOidcEnvAdmitted { directives } =>
       match deployment_tailnet_door_socket(names: spec.names) {
@@ -667,22 +674,24 @@ fn live_deploy_tailnet_door_unit_file_at(
   }
 }
 
+fn live_deploy_tailnet_door_unit_file_at(
+  spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Int,
+) -> SystemdUnitFile? {
+  live_deploy_tailnet_door_unit_file(spec: spec, revision: revision, now_epoch: Present { value: now_epoch })
+}
+
 // A step of this kind exists only where the door does (deployment_tailnet_door_steps), so the
 // absent arm is a spec whose steps and names disagree: it writes a refusal marker, never a unit.
 fn apply_tailnet_door_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Int?) -> PipelineStep {
-  match oidc_now {
-    Absent => apply_oidc_readback_refuse_step(cause: "observer clock unreadable" as NonEmptyStr)
-    Present { value: now } =>
-      match live_deploy_oidc_unit_env_at(spec: spec, now_epoch: now) {
-        LiveDeployOidcEnvRefused { cause } => apply_oidc_readback_refuse_step(cause: cause)
-        LiveDeployOidcEnvAdmitted { directives: _ } =>
-          match live_deploy_tailnet_door_unit_file_at(spec: spec, revision: revision, now_epoch: now) {
-            Absent => deploy_raw(command: "__GUNBC_TAILNET_DOOR_REFUSED__ TailnetDoorServeUnit step on a deployment whose serve route targets no unix socket")
-            Present { value: unit } => deploy_raw(command: deploy_stage_write_command(
-              stage_name: deployment_tailnet_door_unit_name(names: spec.names) as String,
-              content: render(doc: doc_text(text: serialize_systemd_unit_file(file: unit)), proto: live_deploy_protocol),
-            ))
-          }
+  match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: oidc_now) {
+    LiveDeployOidcEnvRefused { cause } => apply_oidc_readback_refuse_step(cause: cause)
+    LiveDeployOidcEnvAdmitted { directives: _ } =>
+      match live_deploy_tailnet_door_unit_file(spec: spec, revision: revision, now_epoch: oidc_now) {
+        Absent => deploy_raw(command: "__GUNBC_TAILNET_DOOR_REFUSED__ TailnetDoorServeUnit step on a deployment whose serve route targets no unix socket")
+        Present { value: unit } => deploy_raw(command: deploy_stage_write_command(
+          stage_name: deployment_tailnet_door_unit_name(names: spec.names) as String,
+          content: render(doc: doc_text(text: serialize_systemd_unit_file(file: unit)), proto: live_deploy_protocol),
+        ))
       }
   }
 }
@@ -1412,17 +1421,13 @@ fn deployment_retract_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentSte
 // installer copying another — a deploy that fails on a missing file, which is at least loud, or
 // worse installs a stale unit left in the stage directory from a previous run.
 fn apply_systemd_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Int?) -> PipelineStep {
-  match oidc_now {
-    Absent => apply_oidc_readback_refuse_step(cause: "observer clock unreadable" as NonEmptyStr)
-    Present { value: now } =>
-      match live_deploy_serve_unit_emission_at(spec: spec, revision: revision, now_epoch: now) {
-        LiveDeployServeUnitEmitted { file } =>
-          deploy_raw(command: deploy_stage_write_command(
-            stage_name: spec.service.unit_name as String,
-            content: render(doc: doc_text(text: serialize_systemd_unit_file(file: file)), proto: live_deploy_protocol),
-          ))
-        LiveDeployServeUnitOidcReadbackRefused { cause } => apply_oidc_readback_refuse_step(cause: cause)
-      }
+  match live_deploy_serve_unit_emission(spec: spec, revision: revision, now_epoch: oidc_now) {
+    LiveDeployServeUnitEmitted { file } =>
+      deploy_raw(command: deploy_stage_write_command(
+        stage_name: spec.service.unit_name as String,
+        content: render(doc: doc_text(text: serialize_systemd_unit_file(file: file)), proto: live_deploy_protocol),
+      ))
+    LiveDeployServeUnitOidcReadbackRefused { cause } => apply_oidc_readback_refuse_step(cause: cause)
   }
 }
 
@@ -1431,20 +1436,23 @@ fn apply_oidc_readback_refuse_step(cause: NonEmptyStr) -> PipelineStep {
 }
 
 fn apply_oidc_line_stop_steps(spec: DeploymentSpec, oidc_now: Int?) -> List<PipelineStep> {
-  match oidc_now {
-    Absent => [apply_oidc_readback_refuse_step(cause: "observer clock unreadable" as NonEmptyStr)]
-    Present { value: now } =>
-      match live_deploy_oidc_unit_env_at(spec: spec, now_epoch: now) {
-        LiveDeployOidcEnvAdmitted { directives: _ } => []
-        LiveDeployOidcEnvRefused { cause } => [apply_oidc_readback_refuse_step(cause: cause)]
-      }
+  match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: oidc_now) {
+    LiveDeployOidcEnvAdmitted { directives: _ } => []
+    LiveDeployOidcEnvRefused { cause } => [apply_oidc_readback_refuse_step(cause: cause)]
   }
 }
 
 fn apply_oidc_config_steps(spec: DeploymentSpec, oidc_now: Int?) -> List<PipelineStep> {
-  match oidc_now {
-    Absent => [apply_oidc_readback_refuse_step(cause: "observer clock unreadable" as NonEmptyStr)]
-    Present { value: now } => apply_oidc_config_steps_at(spec: spec, now_epoch: now, should_write: true)
+  match tracker_web_oidc_serve_placement(instance_id: spec.instance_id) {
+    TrackerWebOidcPlacementUnassigned { instance_id: _ } => []
+    TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } => []
+    TrackerWebOidcPlacementMissingRealization { instance_id: _, environment: _ } =>
+      [apply_oidc_readback_refuse_step(cause: "tracker-web OIDC realization missing" as NonEmptyStr)]
+    TrackerWebOidcServeReady { config: _ } =>
+      match oidc_now {
+        Absent => [apply_oidc_readback_refuse_step(cause: "observer clock unreadable" as NonEmptyStr)]
+        Present { value: now } => apply_oidc_config_steps_at(spec: spec, now_epoch: now, should_write: true)
+      }
   }
 }
 

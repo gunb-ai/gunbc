@@ -68,6 +68,30 @@ test fn lab_rendered_oidc_config_names_lab_redirect_and_secret_path() -> Bool {
   }
 }
 
+test fn production_serve_unit_emits_without_an_observer_clock() -> Bool {
+  match live_deploy_serve_unit_emission(
+    spec: selected_deployment_spec(row: srv1_production_desired_deployment()),
+    revision: witness_revision(),
+    now_epoch: none,
+  ) {
+    LiveDeployServeUnitEmitted { file } =>
+      !string_contains(s: serialize_systemd_unit_file(file: file), pattern: oidc_config_env_var as String)
+    LiveDeployServeUnitOidcReadbackRefused { cause: _ } => false
+  }
+}
+
+test fn lab_serve_unit_refuses_without_an_observer_clock() -> Bool {
+  match live_deploy_serve_unit_emission(
+    spec: selected_deployment_spec(row: srv1_lab_desired_deployment()),
+    revision: witness_revision(),
+    now_epoch: none,
+  ) {
+    LiveDeployServeUnitOidcReadbackRefused { cause } =>
+      string_contains(s: cause as String, pattern: "observer clock unreadable")
+    LiveDeployServeUnitEmitted { file: _ } => false
+  }
+}
+
 test fn production_serve_unit_carries_no_oidc_env() -> Bool {
   match tracker_web_oidc_serve_placement(instance_id: srv1_dashboard_live_id) {
     TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } => true
