@@ -66,7 +66,7 @@
 // src/std_error_primitives.rs
 // src/std_execution_mode.rs
 // src/std_graph.rs
-// src/std_import.rs
+// src/std_import_statement.rs
 // src/std_induction.rs
 // src/std_integer.rs
 // src/std_interface_summary.rs

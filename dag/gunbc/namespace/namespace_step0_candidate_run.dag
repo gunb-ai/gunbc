@@ -2,7 +2,7 @@ module gunbc.namespace_step0_candidate_run
 
 import std.types { Bool, Int, List, Map, NonEmptyStr, String }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
-import std.import {
+import std.import_statement {
   ImportStatementsParsed,
   ImportStatementParseRefused,
   ImportStatementParseCause,
@@ -122,7 +122,7 @@ type Step0CandidateRun
 // and no other arm -- is excluded and named. EVERY OTHER ANSWER REFUSES THE RUN, and that is the
 // repair: a malformed module path is a defect in the declaration the subject is DEFINED by, a
 // malformed import statement is a defect in the thing being STRIPPED, and the two instrument
-// anomalies are the parser reporting on ITSELF. Before std.import typed its cause, all three landed
+// anomalies are the parser reporting on ITSELF. Before std.import_statement typed its cause, all three landed
 // in the excluded bucket, so a broken production module left the subject silently and the receipt's
 // partition law still balanced -- the absorbing filter rebuilt one layer down, and in the anomaly
 // case the measuring device deleting evidence when the device malfunctioned.
