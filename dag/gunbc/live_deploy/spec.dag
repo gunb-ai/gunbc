@@ -41,7 +41,7 @@ import gunbc.host_layout {
   srv1_gunbc_serve_binary,
   srv1_devboot_artifact_store_root,
 }
-import gunbc.fabric_storage_placement { fabric_storage_https_port, fabric_storage_door_socket }
+import gunbc.fabric_storage_placement { fabric_storage_https_port, fabric_storage_door_socket, FabricStorageOwnershipMarkerSpec, fabric_storage_ownership_marker_spec }
 import gunbc.managed_directory { DirectoryOwnerAllEveryoneTraverse }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared }
 import extdeps.posix.identity { PosixOwnerNames }
@@ -117,13 +117,16 @@ type OwnedArtifactKind =
 type EnsuredDependencyKind =
     TailscalePackage
   | TmuxPackage
+  | FabricStorageOwnershipMarker
 
 type EnsuredSubject
   = EnsuredPackage { package: NonEmptyStr }
+  | EnsuredOwnershipMarker { marker: FabricStorageOwnershipMarkerSpec }
 
 fn ensured_subject_identity(subject: EnsuredSubject) -> NonEmptyStr {
   match subject {
     EnsuredPackage { package } => package
+    EnsuredOwnershipMarker { marker } => marker.path
   }
 }
 
@@ -1180,6 +1183,18 @@ fn deployment_ensured_packages() -> List<DeploymentDependencyStep> {
   ]
 }
 
+fn deployment_role_singleton_ensured_steps(holding: RoleSingletonHolding) -> List<DeploymentDependencyStep> {
+  match holding {
+    HoldsNoRoleSingleton => []
+    HoldsProdRoleSingletons { holder } => [
+      DeploymentDependencyStep {
+        kind: FabricStorageOwnershipMarker,
+        subject: EnsuredOwnershipMarker { marker: fabric_storage_ownership_marker_spec(instance: holder.instance) },
+      },
+    ]
+  }
+}
+
 // THE BUILD SERVICE'S ROOTS ARE THE HOST'S DEMAND, NOT ANY INSTANCE'S. The devboot artifact store and
 // the codex runtime release root are written by host-level services, so a per-instance list would hand
 // srv2's preview slot srv1's literal paths (gunbc_host_layout_note names that defect). They are
@@ -1211,8 +1226,8 @@ fn deployment_srv1_host_directories() -> List<OwnedDirectoryTarget> {
   ]
 }
 
-fn deployment_ensured_steps(target: DeploymentHostTarget) -> List<DeploymentDependencyStep> {
-  deployment_ensured_packages()
+fn deployment_ensured_steps(target: DeploymentHostTarget, holding: RoleSingletonHolding) -> List<DeploymentDependencyStep> {
+  concat(deployment_ensured_packages(), deployment_role_singleton_ensured_steps(holding: holding))
 }
 
 // EVERY DIRECTORY THIS DEPLOYMENT CREATES AND READS BACK: the instance's demands, then the host's. The
@@ -1242,7 +1257,7 @@ fn deployment_steps_apply_order(
   holding: RoleSingletonHolding,
 ) -> List<DeploymentStep> {
   concat(
-    map(deployment_ensured_steps(target: target), s => Dependency { step: s }),
+    map(deployment_ensured_steps(target: target, holding: holding), s => Dependency { step: s }),
     map(
       deployment_owned_steps(instance: instance, names: names, holding: holding),
       s => ArtifactStep { step: s },

@@ -26,6 +26,7 @@ import gunbc.runner_lifecycle { RunnerReplacementCause }
 import gunbc.auth.github_apps { gunbai_ci_declared }
 import gunbc.live_deploy.candidate_identity { CandidateRelease }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
+import gunbc.live_deploy.apply_warrant { AdmittedLiveDeployApply }
 import std.effects {
   EffectShape,
   KeySource,
@@ -76,7 +77,8 @@ type HostEffect =
   | Srv3BootOnceReadBackSleep
   | Srv3ReceiptEmit { lines: List<String> }
   | HostIdentityShortHostnameRead
-  | LiveDeployApply { spec: DeploymentSpec, candidate: CandidateRelease, plan: ReleaseEffectPlan }
+  | LiveDeployApply { warrant: AdmittedLiveDeployApply }
+  | LiveDeployApplyReported { spec: DeploymentSpec, candidate: CandidateRelease }
   | LiveDeployRetract { spec: DeploymentSpec }
   | LiveDeployApprovalBrokerDarkInstall { spec: DeploymentSpec, candidate: CandidateRelease }
   | LiveDeployMicrovmControllerInstall { candidate: CandidateRelease }
