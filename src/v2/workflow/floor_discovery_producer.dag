@@ -10,6 +10,14 @@ import v2.compiler.discovery_enumeration {
   OwnedOtherInit
 }
 import v2.workflow.floor_discovery_row { FloorDiscoveryRow, FloorMarkedSource }
+import v2.workflow.floor_marked_fact {
+  FloorMarkedFact,
+  FloorMarkedFactDuplicated,
+  FloorMarkedFactSupplied,
+  floor_marked_fact_duplicated_reason,
+  floor_marked_fact_index,
+  floor_marked_fact_missing_reason
+}
 import v2.workflow.floor_discovery_source_authority {
   EntryLiveTreeDispositionRefused,
   EntryLiveTreeResolved,
@@ -27,16 +35,9 @@ import v2.workflow.floor_discovery_source_authority {
   floor_discovery_walk_state_zero
 }
 import v2.workflow.witness_admission { witness_row_excluded_from_discovery }
-import v2.std.collection { empty_map, map_insert, map_lookup }
-import std.optional {
-  Absent,
-  Optional,
-  Present,
-  optional_absent,
-  optional_present
-}
-import v2.std.algebra { any, length, fold_list }
-import std.types { String, Int, List, Map }
+import v2.std.collection { map_lookup }
+import std.optional { Absent, Present }
+import std.types { String, List, Map }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
 // Source ingress shared with required-floor preparation. This is the full ingress inventory,
@@ -68,51 +69,6 @@ fn floor_discovery_source_inventory_live(pool_roots: List<String>) -> FloorDisco
 // because the host's listing succeeded, and a declaration is a test because it carries the authored
 // `test` marker.
 
-// The marker facts of one walk, keyed by repo_path. The index is built ONCE per walk because the
-// corpus is thousands of files: a List scan per file is the quadratic fold DESIGN section 6 fixes
-// regardless of realized n. A path named by two facts is its own arm and not a last-write-wins
-// entry, because a supplier that disagrees with itself about one file has no answer for it.
-type FloorMarkedFact
-  = FloorMarkedFactSupplied { marked: List<String> }
-  | FloorMarkedFactDuplicated
-
-fn floor_discovery_marked_index(marked_sources: List<FloorMarkedSource>) -> Map<String, FloorMarkedFact> {
-  fold(
-    marked_sources,
-    init: empty_map(),
-    f: fn(acc, source) {
-      match map_lookup(m: acc, key: source.repo_path) {
-        Absent => map_insert(
-          m: acc,
-          key: source.repo_path,
-          value: FloorMarkedFactSupplied { marked: source.marked }
-        )
-        Present { value: _ } => map_insert(
-          m: acc,
-          key: source.repo_path,
-          value: FloorMarkedFactDuplicated
-        )
-      }
-    }
-  )
-}
-
-fn floor_discovery_marked_fact_missing_reason(repo_path: String) -> String {
-  concat(
-    "no marker fact was supplied for ",
-    repo_path,
-    " (typed refusal: an absent fact is not an empty list of tests)"
-  )
-}
-
-fn floor_discovery_marked_fact_duplicated_reason(repo_path: String) -> String {
-  concat(
-    "more than one marker fact was supplied for ",
-    repo_path,
-    " (typed refusal: the supplier disagrees with itself about this file)"
-  )
-}
-
 fn floor_discovery_process_dag_file(
   state: FloorDiscoveryWalkState,
   repo_path: String,
@@ -125,13 +81,13 @@ fn floor_discovery_process_dag_file(
     match map_lookup(m: marked_index, key: repo_path) {
       Absent => floor_discovery_record_disposition_refusal(
         state: state,
-        reason: floor_discovery_marked_fact_missing_reason(repo_path: repo_path)
+        reason: floor_marked_fact_missing_reason(repo_path: repo_path)
       )
       Present { value: fact } =>
         match fact {
           FloorMarkedFactDuplicated => floor_discovery_record_disposition_refusal(
             state: state,
-            reason: floor_discovery_marked_fact_duplicated_reason(repo_path: repo_path)
+            reason: floor_marked_fact_duplicated_reason(repo_path: repo_path)
           )
           FloorMarkedFactSupplied { marked: marked } => {
             let read_out = Filesystem.Read(path: repo_path)
@@ -245,7 +201,7 @@ fn floor_discovery_walk_dir(
     state: state,
     path: dir_path,
     is_root: true,
-    marked_index: floor_discovery_marked_index(marked_sources: marked_sources),
+    marked_index: floor_marked_fact_index(marked_sources: marked_sources),
     exclude_substrings: exclude_substrings
   )
 }
@@ -303,7 +259,7 @@ fn discover_floor_corpus_rows_from_host_facts(
   owned_data_records: List<OwnedDataDeclRecord>,
   marked_sources: List<FloorMarkedSource>
 ) -> FloorDiscoveryProducerResult {
-  let marked_index = floor_discovery_marked_index(marked_sources: marked_sources)
+  let marked_index = floor_marked_fact_index(marked_sources: marked_sources)
   floor_discovery_finalize(
     state: fold(
       owned_data_records,

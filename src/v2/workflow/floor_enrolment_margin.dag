@@ -74,7 +74,7 @@ import v2.workflow.floor_eval_step_calibration {
 // enrols nothing it already declared. A modified sibling whose name WAS at the lookup path
 // is not enrolled, which is what keeps the conjunct from refusing a PR for a witness it did
 // not author. The census REFUSES rather than answering empty when the base cannot be listed
-// or a listed path cannot be shown, so ignorance cannot enrol (or exempt) anyone. It is also
+// or a listed path has no supplied marker fact, so ignorance cannot enrol (or exempt) anyone. It is also
 // joined to what the run actually PLANNED, so an identity the runner itself withheld is
 // deferred rather than refused here.
 

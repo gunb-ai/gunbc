@@ -1,0 +1,59 @@
+module v2.workflow.floor_marked_fact
+
+import v2.std.collection { empty_map, map_insert, map_lookup }
+import v2.workflow.floor_discovery_row { FloorMarkedSource }
+import std.optional { Absent, Present }
+import std.types { List, Map, String }
+
+// THE MARKER FACTS OF ONE OBSERVATION, INDEXED ONCE. A test is a declaration carrying the authored
+// `test` marker; which declarations of a file carry it is a SUPPLIED value (FloorMarkedSource), and
+// every consumer that needs those names for a path -- discovery over a walked corpus
+// (v2.workflow.floor_discovery_producer), the census of the diff base
+// (v2.workflow.floor_diff_observe) -- asks this one module instead of holding a second copy of the
+// lookup and of what an absent or a self-contradicting supply means.
+//
+// The index is built ONCE per observation because the supply is thousands of files: a List scan per
+// file is the quadratic fold DESIGN section 6 fixes regardless of realized n. A path named by two
+// facts is its own arm and not a last-write-wins entry, because a supplier that disagrees with itself
+// about one file has no answer for it; an absent path is a Map miss the consumer refuses on, and is
+// never read as an empty list of tests.
+type FloorMarkedFact
+  = FloorMarkedFactSupplied { marked: List<String> }
+  | FloorMarkedFactDuplicated
+
+fn floor_marked_fact_index(marked_sources: List<FloorMarkedSource>) -> Map<String, FloorMarkedFact> {
+  fold(
+    marked_sources,
+    init: empty_map(),
+    f: fn(acc, source) {
+      match map_lookup(m: acc, key: source.repo_path) {
+        Absent => map_insert(
+          m: acc,
+          key: source.repo_path,
+          value: FloorMarkedFactSupplied { marked: source.marked }
+        )
+        Present { value: _ } => map_insert(
+          m: acc,
+          key: source.repo_path,
+          value: FloorMarkedFactDuplicated
+        )
+      }
+    }
+  )
+}
+
+fn floor_marked_fact_missing_reason(repo_path: String) -> String {
+  concat(
+    "no marker fact was supplied for ",
+    repo_path,
+    " (typed refusal: an absent fact is not an empty list of tests)"
+  )
+}
+
+fn floor_marked_fact_duplicated_reason(repo_path: String) -> String {
+  concat(
+    "more than one marker fact was supplied for ",
+    repo_path,
+    " (typed refusal: the supplier disagrees with itself about this file)"
+  )
+}

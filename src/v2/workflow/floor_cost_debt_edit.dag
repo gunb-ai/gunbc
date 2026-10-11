@@ -74,7 +74,7 @@ import v2.workflow.required_floor {
 // THE HOST'S SHARE IS READING THE HEAD FILE, KNOWING WHICH WITNESS SITES ARE CHANGED DEBT ROWS, AND
 // PASSING THE FLOOR'S DISCOVERED TEST-FN IDENTITIES, which it already holds.
 // The base is read here (`git.Core.Show` at the floor's resolved comparison base, the same read
-// `v2.workflow.floor_diff_observe` `floor_run_base_test_decl_census` performs), and the decision and
+// `v2.workflow.floor_diff_observe` `floor_run_base_file_read` performs), and the decision and
 // the tier are this module's.
 
 type CostDebtEditReJudgeCause =
