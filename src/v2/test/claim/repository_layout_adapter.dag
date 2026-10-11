@@ -13,8 +13,10 @@ import v2.compiler.source_authority {
 import v2.cli.repository_layout {
   repository_module_file_of_path,
   repository_path_of_module_file,
-  repository_storage_layout
+  repository_storage_layout,
+  repository_tree_of_root_argument
 }
+import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -71,4 +73,50 @@ test fn adapter_path_outside_the_governed_trees_has_no_logical_file() -> Bool {
     Absent => true
   }
   outside_is_absent && sibling_prefix_is_absent
+}
+
+fn root_argument_is_dag_tree(argument: String) -> Bool {
+  match repository_tree_of_root_argument(argument: argument) {
+    Present { value: DagTree } => true
+    Present { value: V2Tree } => false
+    Absent => false
+  }
+}
+
+fn root_argument_is_v2_tree(argument: String) -> Bool {
+  match repository_tree_of_root_argument(argument: argument) {
+    Present { value: V2Tree } => true
+    Present { value: DagTree } => false
+    Absent => false
+  }
+}
+
+fn root_argument_names_no_tree(argument: String) -> Bool {
+  match repository_tree_of_root_argument(argument: argument) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// A source-root argument is a governed tree's own directory, spelled relative to the repository root
+// or under any parent, with or without a trailing separator -- the one reading of which directory is
+// which tree, that every door which binds roots shares.
+test fn adapter_root_argument_denotes_the_tree_whose_directory_it_names() -> Bool {
+  root_argument_is_dag_tree(argument: "dag")
+    && root_argument_is_dag_tree(argument: "dag/")
+    && root_argument_is_dag_tree(argument: "./dag")
+    && root_argument_is_dag_tree(argument: "/work/repo/dag/")
+    && root_argument_is_v2_tree(argument: "src/v2")
+    && root_argument_is_v2_tree(argument: "./src/v2/")
+    && root_argument_is_v2_tree(argument: "/work/repo/src/v2")
+}
+
+// An argument that denotes no governed tree is Absent -- a copied single-root dump, a parent of both
+// trees, a sibling that shares a prefix with a tree directory -- and is never defaulted to one by what
+// the directory contains.
+test fn adapter_root_argument_naming_no_governed_tree_is_absent() -> Bool {
+  root_argument_names_no_tree(argument: "/tmp/copied-closure")
+    && root_argument_names_no_tree(argument: "src")
+    && root_argument_names_no_tree(argument: "dagger")
+    && root_argument_names_no_tree(argument: "")
 }

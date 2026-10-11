@@ -4,8 +4,7 @@ import gunbc.ci.ci_gate {
   Gate,
   EmitHostGate, CheapClaimPoolGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate,
-  ProseRowIntroductionGate,
-  SourceRootIngestGate
+  ProseRowIntroductionGate
 }
 import gunbc.generated_artifact {
   GeneratedArtifact, GithooksPrePushArtifact, artifact_path
@@ -1070,8 +1069,7 @@ type CommitWriterTransportObservation
 // POLICY, NOT A FALLBACK. observe_complete_staged_commit's caller (heal_admit / HealAutocommit)
 // never stages genuine test fixtures — it stages only generated artifacts — so it declares up front
 // that it holds no ModuleStorageBinding rows and therefore claims no TestClaimArtifact fixture
-// exemption for anything it stages. This is v2.compiler.source_authority
-// module_storage_bindings_for_source_roots's Empty ModuleStorageIndex written directly as a typed
+// exemption for anything it stages. This is an Empty ModuleStorageIndex written directly as a typed
 // declaration at this call site, never produced by a Rejected/failure arm — no path through
 // observe_complete_staged_commit can reach an empty or absent module_storage by way of a failure;
 // the only way to get one is this declaration. Per commit_writer_admission_note's absence-arm
@@ -1083,20 +1081,13 @@ type CommitWriterTransportObservation
 // with embedded begin/separator/end tokens) refuses under this policy, because the declaration
 // cannot distinguish it from ordinary content — a false refusal, not a missed defect, and
 // diagnosable in one read from this note rather than hidden behind a relaxed gate. Not chosen for
-// this callsite: real module-storage supply. module_storage_bindings_for_source_roots(source_roots:
-// ["dag", "src/v2"]) is currently an always-Rejecting scaffold with no live in-graph host dispatch
-// (source_authority.dag module_storage_bindings_for_source_roots_host_disposition /
-// module_storage_supply_unbound_body_note), and the manifest-overlay-supply mechanism used
-// elsewhere (module_binding_supply_transport.dag) does not fit here: discover_source_root_ingest
-// mints ^-edge identifiers from source-file basenames with no keyword-escaping, so scanning dag/
-// mints ^capability, ^module, ^import — all reserved .dag keywords (extdeps_languages_dag_syntax.rs
-// dag_keyword_set) — for dag/extdeps/bmc/capability.dag, dag/extdeps/languages/go/module.dag, and
-// dag/std/import.dag respectively, producing syntactically invalid overlay output for any scope
-// touching dag/. DISSOLUTION TRIGGER: this declaration dissolves in favor of a real
-// module_storage_bindings_for_source_roots binding once (a) that scaffold gains a live host
-// dispatch, or (b) the manifest-overlay identifier-minting defect is fixed and re-verified
-// end-to-end; either bounds a real fixture-exemption receipt for this writer instead of the empty
-// declaration.
+// this callsite: a supplied binding table. A module's file is decided by its name and the layout
+// rule (v2.cli.repository_layout), so the only table a writer could supply is one derived from the
+// staged paths themselves, and no consumer reads fixture status from the staged set today.
+// DISSOLUTION TRIGGER: this declaration dissolves when the commit writer reads a staged blob's
+// fixture status from the layout authority (a module acquired by v2.compiler.module_acquisition
+// whose declarations carry the test marker) instead of from a supplied index, bounding a real
+// fixture-exemption receipt for this writer in place of the empty declaration.
 
 data heal_writer_claims_no_fixture_exemptions: List<ModuleStorageBinding> = Empty
 
@@ -1396,10 +1387,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitSpecGate { gate: ProseRowIntroductionGate },
     surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitSpecGate { gate: SourceRootIngestGate },
-    surfaces: [FalsifierCadenceJob]
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
@@ -2055,7 +2042,6 @@ fn gate_eq(a: Gate, b: Gate) -> Bool {
     GeneratedArtifactDriftGate => match b { GeneratedArtifactDriftGate => true  _ => false }
     ExtdepsScopePlacementGate => match b { ExtdepsScopePlacementGate => true  _ => false }
     ProseRowIntroductionGate => match b { ProseRowIntroductionGate => true  _ => false }
-    SourceRootIngestGate => match b { SourceRootIngestGate => true  _ => false }
   }
 }
 

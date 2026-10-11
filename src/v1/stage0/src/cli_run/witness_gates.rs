@@ -48,7 +48,7 @@ use im::HashMap;
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
@@ -91,17 +91,6 @@ use crate::v1_std_core::{
     Node,
 };
 use serde::Serialize;
-
-pub(crate) fn witness_layer_root_spelling(root: &str) -> String {
-    let p = Path::new(root);
-    if p.is_absolute() {
-        repo_relative_path_normalized(p)
-    } else {
-        root.trim_start_matches("./")
-            .trim_end_matches('/')
-            .to_string()
-    }
-}
 
 /// Project the `witness_layer_roots` `List<String>` literal out of the ci_layer_roots authority.
 pub(crate) fn witness_layer_roots_from_source(content: &str) -> Vec<String> {
@@ -572,13 +561,9 @@ pub(crate) fn witness_admission_entry_function_keys_from_source(
     // `known_red_probe(` replaced `probe_red(` and the seed-emitter wet row constructor when the
     // quarantine moved to one function-grain authority (2026-08-03): both cadences now author the
     // same row shape in `gunbc.explicit_witness_admission`, so one head reads both.
-    let heads: [(&str, &str); 7] = [
+    let heads: [(&str, &str); 6] = [
         ("bin_wet(", "entry: String"),
         ("known_red_probe(", "entry: NonEmptyStr"),
-        (
-            "source_root_ingest_gate_admitted_witness(",
-            "entry: NonEmptyStr",
-        ),
         ("self_host_wet_entry(", "entry: String"),
         ("SelfHostWetReceiptBinding {", ""),
         ("RehomedBinWetRow {", ""),

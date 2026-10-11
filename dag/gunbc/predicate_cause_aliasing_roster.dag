@@ -146,12 +146,6 @@ data class_b_remaining_sites: List<AliasedPredicateSite> = [
     symbol: "run_direct_rust_door_emit_write_compile_smoke",
     proposition: "the emitted artifact writes and compiles",
     aliased_causes: "class A and class B in one function: a Rejected arm discards its diagnostics INSIDE a success conjunction"
-  },
-  AliasedPredicateSite {
-    module_path: "v2.workflow.compiler_closure_ingest_transport",
-    symbol: "run_compiler_closure_ingest_gate_ready",
-    proposition: "the closure-ingest claims hold",
-    aliased_causes: "nested guards already separate the causes in control flow, and every else-arm returns a bare false"
   }
 ]
 

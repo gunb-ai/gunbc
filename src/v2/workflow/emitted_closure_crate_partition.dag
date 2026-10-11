@@ -19,7 +19,8 @@ import gunbc.crate_partition {
 
 import std.types { List, String, Bool, Int, Map }
 import v2.std.algebra { any }
-import v2.workflow.compiler_closure_ingest_transport { closure_entry }
+import v2.cli.repository_layout { repository_path_of_module_file, repository_storage_layout }
+import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, module_file }
 import v2.lens.module_graph {
   ModuleDeclarationFact,
   ModuleDependencyEdge,
@@ -34,9 +35,8 @@ import v2.std.compilers.compilation_unit { ModuleDag }
 import v2.workflow.rust_crate_partition { resolve_partition_outcome }
 
 // THE MODULE DAG OF THE RETAINED EMITTED COMPILER CLOSURE, DERIVED -- NOT AUTHORED. The subject is
-// the closure the self-host route emits: v2.compiler.compile's, whose entry is imported from its
-// home, v2.workflow.compiler_closure_ingest_transport closure_entry. The pool is BOTH roots, a
-// stated divergence from that module's single closure_source_root:
+// the closure the self-host route emits: v2.compiler.compile's, whose entry file is the one the layout
+// rule gives that module's name (v2.compiler.source_authority module_file). The pool is BOTH roots:
 // src/v2 imports std.* and extdeps.* from dag/, so a src/v2-only pool leaves those imports
 // undeclared and drops them from the DAG rather than refusing. Nodes are the declared modules the closure reaches and edges are the resolved
 // dependency facts among them, both read from v2.lens.module_graph -- the one edge-source seam
@@ -182,13 +182,21 @@ fn module_dag_from_dependency_facts(
   }
 }
 
+data emitted_compiler_closure_entry_module: String = "v2.compiler.compile"
+
 fn emitted_compiler_closure_module_dag() -> ModuleDagDerivation {
-  let roots = emitted_compiler_closure_pool_roots
-  module_dag_from_dependency_facts(
-    entry_path: closure_entry,
-    edges: dependency_resolution_facts_live(pool_roots: roots, importer_roots: roots, exclude_substrings: []),
-    declarations: module_declaration_facts_live(pool_roots: roots)
-  )
+  match module_file(layout: repository_storage_layout(), name: emitted_compiler_closure_entry_module) {
+    ModuleNameUnderivable { name: name, cause: _ } =>
+      ModuleDagDerivationRefused { cause: ClosureEntryUndeclared { entry_path: name } }
+    ModuleFileDerived { file: file } => {
+      let roots = emitted_compiler_closure_pool_roots
+      module_dag_from_dependency_facts(
+        entry_path: repository_path_of_module_file(file: file),
+        edges: dependency_resolution_facts_live(pool_roots: roots, importer_roots: roots, exclude_substrings: []),
+        declarations: module_declaration_facts_live(pool_roots: roots)
+      )
+    }
+  }
 }
 
 // The retained emitted compiler closure, partitioned by the balanced policy at the declared core

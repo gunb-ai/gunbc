@@ -146,8 +146,7 @@ pub fn source_root_ingest_module_identities_for_ci(
 }
 pub use entry_resolve::{
     load_sources_for_entry, process_shared_index, resolve_entry_graph, resolve_entry_with_index,
-    resolve_seeded_compile_closure, resolve_stage_totals, source_root_ingest_content_hash_fnv1a64,
-    whole_tree_resolved_ctx,
+    resolve_seeded_compile_closure, resolve_stage_totals, whole_tree_resolved_ctx,
 };
 mod live_read_decode;
 pub(crate) use live_read_decode::*;
@@ -170,7 +169,6 @@ pub use emit_host::{
     compile_dag_callsite_resolved_call_edges, compile_dag_importer_resolved_call_edges,
     compile_dag_multi_module_fixture, compile_dag_operation_requires,
     compile_dag_primitive_call_edges, compile_dag_reference_occurrence_binding_census,
-    emit_module_storage_binding_manifest, emit_source_root_ingest_manifest,
 };
 pub use emit_host::{
     compile_dag_diagnostic_census_memo_counts, compile_dag_rust_emit_check_memo_counts,
@@ -3695,60 +3693,6 @@ mod workspace_root_discovery_tests {
     }
 }
 
-/// Empty ingest-manifest placeholder excluded from the module index when a later
-/// source root carries the host-emitted manifest (source-root ingest / closure gates).
-const SOURCE_ROOT_INGEST_MANIFEST_STUB_REL: &str =
-    "src/v2/test/claim/workflow/host_source_root_ingest_manifest.dag";
-
-/// Empty module-binding-manifest placeholder, superseded the same way (module-identity
-/// supply carrier). Separate carrier from the ingest manifest: module <-> path +
-/// provenance, no source text.
-const MODULE_BINDING_MANIFEST_STUB_REL: &str =
-    "src/v2/test/claim/workflow/host_module_binding_manifest.dag";
-
-/// Committed manifest stubs and the generated filenames that supersede them.
-///
-/// One table rather than a predicate pair per manifest: the stub/overlay rule is a single
-/// fact, and forking it per carrier would mean the next manifest silently misses whichever
-/// half its author forgot to extend (DESIGN.md §2/§3).
-const MANIFEST_STUB_OVERLAYS: &[(&str, &[&str])] = &[
-    (
-        SOURCE_ROOT_INGEST_MANIFEST_STUB_REL,
-        &[
-            "v2-source-root-ingest-manifest.dag",
-            "host_source_root_ingest_manifest.dag",
-        ],
-    ),
-    (
-        MODULE_BINDING_MANIFEST_STUB_REL,
-        &["host_module_binding_manifest.dag"],
-    ),
-];
-
-/// True when `rel_forward` is a committed manifest stub AND a strictly later source root
-/// carries its generated counterpart, so the stub must be excluded from the module index
-/// and the generated file becomes the sole declarer of that module. Without this the two
-/// files collide and trip `module_path_collision_panic_message`.
-fn manifest_stub_superseded_by_overlay(
-    rel_forward: &str,
-    source_roots: &[String],
-    after_root_idx: usize,
-) -> bool {
-    let normalized = rel_forward.replace('\\', "/");
-    let Some((_, overlay_names)) = MANIFEST_STUB_OVERLAYS
-        .iter()
-        .find(|(stub_rel, _)| normalized == *stub_rel)
-    else {
-        return false;
-    };
-    source_roots.iter().skip(after_root_idx + 1).any(|root| {
-        let root_path = Path::new(root);
-        overlay_names
-            .iter()
-            .any(|name| root_path.join(name).is_file())
-    })
-}
-
 fn module_path_collision_panic_message(
     declaring_module: &str,
     existing_path: &str,
@@ -3757,13 +3701,6 @@ fn module_path_collision_panic_message(
     format!(
         "module-path collision: module '{declaring_module}' is declared by both '{existing_path}' and '{candidate_path}' — one module, one authority (DESIGN §3); silent last-root-wins shadowing broke the floor (extdeps.shell, 2026-07-01) — de-fork or rename one side"
     )
-}
-
-#[derive(Clone)]
-pub(crate) struct ModuleBindingManifestRow {
-    module_path: String,
-    rel_path: String,
-    root_variant: String,
 }
 
 fn insert_module_path(index: &mut HashMap<String, String>, module_path: &str, rel: String) {
@@ -3842,53 +3779,6 @@ fn refuse_unparseable_module_sources(refusals: &[ModuleBindingRefusal]) {
         eprintln!("  {}", refusal.rendered());
     }
     std::process::exit(1);
-}
-
-fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBindingManifestRow> {
-    let root_variants: Vec<String> = source_roots
-        .iter()
-        .map(|root| {
-            let rel_root = witness_layer_root_spelling(root);
-            source_root_ref_variant_for_root(&rel_root)
-                .unwrap_or_else(|e| panic!("collect_module_binding_manifest_rows: {e}"))
-        })
-        .collect();
-    let mut rows_by_module: std::collections::HashMap<String, ModuleBindingManifestRow> =
-        std::collections::HashMap::new();
-    for_each_parsed_module_binding(source_roots, |root_idx, path, binding| {
-        let rel = module_index_path_key(path);
-        if manifest_stub_superseded_by_overlay(&rel, source_roots, root_idx) {
-            return;
-        }
-        if let Some(existing) = rows_by_module.get(&binding.module_path) {
-            if existing.rel_path != rel && !same_canonical_file(&existing.rel_path, &rel) {
-                if root_idx > 0 {
-                    return;
-                }
-                panic!(
-                    "{}",
-                    module_path_collision_panic_message(
-                        &binding.module_path,
-                        &existing.rel_path,
-                        &rel
-                    )
-                );
-            }
-            return;
-        }
-        rows_by_module.insert(
-            binding.module_path.clone(),
-            ModuleBindingManifestRow {
-                module_path: binding.module_path,
-                rel_path: rel,
-                root_variant: root_variants[root_idx].clone(),
-            },
-        );
-    });
-    let mut rows: Vec<ModuleBindingManifestRow> =
-        rows_by_module.into_iter().map(|(_, row)| row).collect();
-    rows.sort_by(|a, b| a.module_path.cmp(&b.module_path));
-    rows
 }
 
 /// Scratch index for one fixture-closure extension. Same `source_files` as the process-shared
@@ -5043,10 +4933,6 @@ fn try_build_module_index(source_roots: &[String]) -> Result<ModuleSourceIndex, 
                 .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
             if let Some(module_path) = extract_module_path(&content) {
                 let rel_path = module_index_path_key(path);
-                let rel_forward = rel_path.clone();
-                if manifest_stub_superseded_by_overlay(&rel_forward, source_roots, root_idx) {
-                    continue;
-                }
                 if let Some(existing) = index.get(&module_path) {
                     if existing.path != rel_path && !same_canonical_file(&existing.path, &rel_path)
                     {
@@ -5659,12 +5545,6 @@ pub(crate) const CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER: &
     "cli_run_compile_clean_shard_entry_paths_fast";
 
 pub const CLASS_B_ENTRY_REL: &str = "src/v2/extdeps/languages/rust_fixtures.dag";
-pub const CLASS_B_TRANSPORT_REL: &str = "src/v2/workflow/class_b_import_closure_transport.dag";
-/// Rows 1-2's shape+call, relocated out of CLASS_B_TRANSPORT_REL so a witness reaching only
-/// rows 1-2 does not inherit the transport module's extdeps.git / extdeps.git.inspect /
-/// gunbc.ci.ci_layer_roots closure (DESIGN.md §3 relocation-not-refork; the same signature
-/// extdeps_scope_placement_gate_loudness_witness's repair fixed). The transport module imports
-/// this one back for rows 1-2's own use, so it is part of the gate's input closure too.
 pub const CLASS_B_PROBE_REL: &str = "src/v2/workflow/class_b_import_closure_probe.dag";
 pub const CLASS_B_BINDING_REL: &str = "dag/gunbc/declared_import_closure_binding.dag";
 pub const CLASS_B_OVERLAY_REL: &str = "dag/gunbc/class_b_import_closure_overlay.dag";
@@ -5673,7 +5553,6 @@ const CLASS_B_DECLARED_POOL_ROOTS_DATA_NAME: &str = "class_b_declared_import_poo
 
 pub const CLASS_B_GATE_INPUT_ENTRIES: &[&str] = &[
     CLASS_B_ENTRY_REL,
-    CLASS_B_TRANSPORT_REL,
     CLASS_B_PROBE_REL,
     CLASS_B_BINDING_REL,
     CLASS_B_OVERLAY_REL,
@@ -22918,31 +22797,6 @@ mod closure_bare_disposition_tests {
     }
 }
 
-pub const MANIFEST_INLINE_LIST_MAX: usize = 64;
-
-fn dag_string_escape_core(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
-        .replace('\t', "\\t")
-}
-
-fn dag_manifest_scalar_escape(s: &str) -> Result<String, String> {
-    if s.contains('{') || s.contains('}') {
-        return Err(format!(
-            "manifest scalar field must be brace-free (got '{{' or '}}'): {s:?}"
-        ));
-    }
-    Ok(dag_string_escape_core(s))
-}
-
-fn dag_embedded_dag_source_escape(s: &str) -> String {
-    dag_string_escape_core(s)
-        .replace('{', "\\{")
-        .replace('}', "\\}")
-}
-
 #[derive(Clone)]
 pub struct DiscoveryRow {
     pub label: String,
@@ -28484,179 +28338,10 @@ mod node_frontier_plumbing_controls {
     // fail-closed semantics and was deleted as a stale, contradictory twin (2026-07-07).
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct SourceRootReadRecord {
-    pub file_path: String,
-    pub module_path: String,
-    pub source: String,
-    pub source_root: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SourceRootEntryAdmission {
-    pub subject: Vec<String>,
-    pub imports: Vec<Vec<String>>,
-}
-
-fn parse_dotted_module_path(path: &str) -> Option<Vec<String>> {
-    let trimmed = path.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    let segments: Vec<String> = trimmed
-        .split('.')
-        .filter(|seg| !seg.is_empty())
-        .map(str::to_string)
-        .collect();
-    if segments.is_empty() {
-        None
-    } else {
-        Some(segments)
-    }
-}
-
-pub fn parse_source_root_entry_admission(source: &str) -> Result<SourceRootEntryAdmission, String> {
-    let mut subject: Option<Vec<String>> = None;
-    let mut imports: Vec<Vec<String>> = Vec::new();
-    let mut seen = std::collections::BTreeSet::new();
-
-    for line in source.lines() {
-        let line = line.split("//").next().unwrap_or("").trim();
-        if let Some(rest) = line.strip_prefix("module ") {
-            subject = parse_dotted_module_path(rest);
-        } else if let Some(rest) = line.strip_prefix("import ") {
-            let module_path = rest.split_whitespace().next().unwrap_or("");
-            if let Some(segments) = parse_dotted_module_path(module_path) {
-                if seen.insert(segments.clone()) {
-                    imports.push(segments);
-                }
-            }
-        }
-    }
-
-    subject
-        .map(|subject| SourceRootEntryAdmission { subject, imports })
-        .ok_or_else(|| "entry source missing `module` declaration".to_string())
-}
-
-fn free_monoid_symbol_emit_dag(segments: &[String]) -> String {
-    if segments.is_empty() {
-        return "Empty".to_string();
-    }
-    let mut out = String::from("Empty");
-    for seg in segments.iter().rev() {
-        out = format!("Cons {{ head: ^{seg}, tail: {out} }}");
-    }
-    out
-}
-
-#[cfg(test)]
-mod manifest_emit_tests {
-    use super::{
-        dag_embedded_dag_source_escape, dag_manifest_scalar_escape, free_monoid_symbol_emit_dag,
-    };
-
-    #[test]
-    fn free_monoid_symbol_emit_dag_three_segment_path() {
-        assert_eq!(
-            free_monoid_symbol_emit_dag(&["v2".into(), "compiler".into(), "compile".into()]),
-            "Cons { head: ^v2, tail: Cons { head: ^compiler, tail: Cons { head: ^compile, tail: Empty } } }"
-        );
-    }
-
-    #[test]
-    fn free_monoid_symbol_emit_dag_empty_is_empty_variant() {
-        assert_eq!(free_monoid_symbol_emit_dag(&[]), "Empty");
-    }
-
-    #[test]
-    fn manifest_scalar_escape_rejects_braces() {
-        assert!(dag_manifest_scalar_escape("src/v2/foo.dag").is_ok());
-        assert!(dag_manifest_scalar_escape("fnv1a64:abc").is_ok());
-        assert!(dag_manifest_scalar_escape("has{brace").is_err());
-        assert!(dag_manifest_scalar_escape("has}brace").is_err());
-    }
-
-    #[test]
-    fn embedded_dag_source_escape_preserves_braces_as_escapes() {
-        assert_eq!(
-            dag_embedded_dag_source_escape("match x { A => 1 }"),
-            "match x \\{ A => 1 \\}"
-        );
-    }
-
-    use super::source_root_ref_token_for_path;
-
-    #[test]
-    fn source_root_token_grounds_in_filesystem_location() {
-        let roots = vec!["src/v2".to_string(), "dag".to_string()];
-        assert_eq!(
-            source_root_ref_token_for_path("src/v2/std/algebra.dag", &roots).unwrap(),
-            "V2Tree"
-        );
-        assert_eq!(
-            source_root_ref_token_for_path("dag/std/algebra.dag", &roots).unwrap(),
-            "DagTree"
-        );
-        assert_eq!(
-            source_root_ref_token_for_path("src/v2/extdeps/shell.dag", &roots).unwrap(),
-            "V2Tree"
-        );
-        assert!(source_root_ref_token_for_path("src/v1/stage0/x.dag", &roots).is_err());
-        assert!(source_root_ref_token_for_path("src/v20/x.dag", &roots).is_err());
-    }
-
-    #[test]
-    fn source_root_token_admits_absolute_roots() {
-        let ws = super::workspace_root();
-        let abs_roots = vec![
-            ws.join("src/v2").to_string_lossy().into_owned(),
-            ws.join("dag").to_string_lossy().into_owned(),
-        ];
-        assert_eq!(
-            source_root_ref_token_for_path(
-                ws.join("src/v2/std/algebra.dag").to_str().unwrap(),
-                &abs_roots
-            )
-            .unwrap(),
-            "V2Tree"
-        );
-        assert_eq!(
-            source_root_ref_token_for_path(
-                ws.join("dag/std/algebra.dag").to_str().unwrap(),
-                &abs_roots
-            )
-            .unwrap(),
-            "DagTree"
-        );
-        assert_eq!(
-            source_root_ref_token_for_path("dag/std/algebra.dag", &abs_roots).unwrap(),
-            "DagTree"
-        );
-        assert!(source_root_ref_token_for_path(
-            ws.join("src/v1/stage0/x.dag").to_str().unwrap(),
-            &abs_roots
-        )
-        .is_err());
-    }
-}
-
-fn emit_import_admission_list(imports: &[Vec<String>]) -> String {
-    let mut out = String::from("Empty");
-    for import in imports.iter().rev() {
-        out = format!(
-            "Cons {{\n  head: Import {{\n    target: {},\n    visibility: ImportVisible\n  }},\n  tail: {out}\n}}",
-            free_monoid_symbol_emit_dag(import)
-        );
-    }
-    out
-}
-
 /// The fnv1a64 digest of one NUL-delimited material string, rendered as `fnv1a64:<hex>`.
 ///
-/// Extracted from `source_root_ingest_content_hash_fnv1a64` rather than copied beside it: a second
-/// site spelling out the same two constants would be one concept with two authorities, and the
-/// two would then be free to disagree about a digest two carriers are expected to compare.
+/// One site spells out the two constants: a second would be one concept with two authorities, free
+/// to disagree about a digest two carriers are expected to compare.
 pub fn fnv1a64_digest_of_material(material: &str) -> String {
     let mut hash = 0xcbf29ce484222325u64;
     for byte in material.as_bytes() {
@@ -28664,286 +28349,6 @@ pub fn fnv1a64_digest_of_material(material: &str) -> String {
         hash = hash.wrapping_mul(0x100000001b3);
     }
     format!("fnv1a64:{hash:016x}")
-}
-
-fn path_matches_any_subpath(path: &str, subpaths: &[String]) -> bool {
-    subpaths
-        .iter()
-        .any(|sub| path.contains(sub) || path.ends_with(sub))
-}
-
-pub fn discover_source_root_reads(
-    source_roots: &[String],
-    scan_dir: &str,
-    exclude_subpaths: &[String],
-) -> Result<Vec<SourceRootReadRecord>, String> {
-    for root in source_roots {
-        let root_path = Path::new(root);
-        if !root_path.exists() {
-            return Err(format!(
-                "discover_source_root_ingest: source root does not exist: {}",
-                root
-            ));
-        }
-    }
-
-    let scan_path = Path::new(scan_dir);
-    if !scan_path.is_dir() {
-        return Err(format!(
-            "discover_source_root_ingest: scan dir does not exist: {}",
-            scan_dir
-        ));
-    }
-
-    let mut records: Vec<SourceRootReadRecord> = Vec::new();
-    let mut seen_modules: HashMap<String, String> = HashMap::new();
-    let mut dag_files = Vec::new();
-    collect_dag_files(scan_path, &mut dag_files);
-
-    for source in dag_files {
-        let path = source.path();
-        let rel_forward = path.to_string_lossy().replace('\\', "/");
-        if path_matches_any_subpath(&rel_forward, exclude_subpaths) {
-            continue;
-        }
-        let content = source
-            .read()
-            .map_err(|e| format!("failed to read {:?}: {}", path, e))?;
-        let module_path = extract_module_path(&content).ok_or_else(|| {
-            format!(
-                "discover_source_root_ingest: no module declaration in {}",
-                rel_forward
-            )
-        })?;
-        if let Some(prior) = seen_modules.insert(module_path.clone(), rel_forward.clone()) {
-            return Err(format!(
-                "discover_source_root_ingest: duplicate module path '{}' in {} and {}",
-                module_path, prior, rel_forward
-            ));
-        }
-        let source_root = source_root_ref_token_for_path(&rel_forward, source_roots)?;
-        records.push(SourceRootReadRecord {
-            file_path: rel_forward,
-            module_path,
-            source: content,
-            source_root,
-        });
-    }
-
-    records.sort_by(|a, b| a.file_path.cmp(&b.file_path));
-    Ok(records)
-}
-
-pub fn discover_source_root_reads_for_entry(
-    source_roots: &[String],
-    entry_path: &str,
-    exclude_subpaths: &[String],
-) -> Result<Vec<SourceRootReadRecord>, String> {
-    for root in source_roots {
-        let root_path = Path::new(root);
-        if !root_path.exists() {
-            return Err(format!(
-                "discover_source_root_ingest: source root does not exist: {}",
-                root
-            ));
-        }
-    }
-
-    let closure = load_sources_for_entry(source_roots, entry_path)
-        .map_err(|msg| format!("discover_source_root_ingest: entry closure load failed: {msg}"))?;
-
-    let mut records: Vec<SourceRootReadRecord> = Vec::new();
-    for source in closure {
-        let rel_forward = source.path.replace('\\', "/");
-        if path_matches_any_subpath(&rel_forward, exclude_subpaths) {
-            continue;
-        }
-        let module_path = extract_module_path(&source.content).ok_or_else(|| {
-            format!(
-                "discover_source_root_ingest: no module declaration in {}",
-                rel_forward
-            )
-        })?;
-        let source_root = source_root_ref_token_for_path(&rel_forward, source_roots)?;
-        records.push(SourceRootReadRecord {
-            file_path: rel_forward,
-            module_path,
-            source: source.content.clone(),
-            source_root,
-        });
-    }
-
-    records.sort_by(|a, b| a.file_path.cmp(&b.file_path));
-    Ok(records)
-}
-
-fn source_ref_identity_digest_hex(rec: &SourceRootReadRecord) -> String {
-    let path_hash = crate::v1_rt::atom_identity_hash(rec.file_path.clone());
-    let root_hash = crate::v1_rt::atom_identity_hash(rec.source_root.clone());
-    let storage = crate::v1_rt::hash_combine(path_hash, root_hash);
-    let content_hash = crate::v1_rt::atom_identity_hash(rec.source.clone());
-    crate::v1_rt::hash_combine(storage, content_hash)
-}
-
-fn source_ref_list_structural_digest_hex(records: &[SourceRootReadRecord]) -> String {
-    let mut acc = crate::v1_rt::atom_identity_hash("source-ref-closure-list".to_string());
-    for rec in records {
-        let ref_digest = source_ref_identity_digest_hex(rec);
-        acc = crate::v1_rt::hash_combine(acc, ref_digest);
-    }
-    acc
-}
-
-#[cfg(test)]
-mod source_root_ingest_manifest_tests {
-    use super::{emit_source_root_ingest_manifest, SourceRootReadRecord, MANIFEST_INLINE_LIST_MAX};
-
-    fn sr_record(i: usize) -> SourceRootReadRecord {
-        SourceRootReadRecord {
-            file_path: format!("src/v2/std/cov_fixture_{i}.dag"),
-            module_path: format!("v2.std.cov_fixture_{i}"),
-            source: format!("module v2.std.cov_fixture_{i}"),
-            source_root: "src/v2".to_string(),
-        }
-    }
-
-    /// Capless ref transport: over the inline cap, coverage reports typed elision
-    /// while produced_row_count and closure_refs carry the full population.
-    #[test]
-    fn receipt_reports_typed_elision_with_full_refs_past_inline_cap() {
-        let dir = std::env::temp_dir().join(format!(
-            "gunbc_cov_receipt_{}_{}",
-            std::process::id(),
-            line!()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("host_source_root_ingest_manifest.dag");
-
-        let over: Vec<SourceRootReadRecord> = (0..65).map(sr_record).collect();
-        emit_source_root_ingest_manifest(&path, &over, None).unwrap();
-        let emitted = std::fs::read_to_string(&path).unwrap();
-        assert!(
-            emitted.contains("coverage: SourceRootManifestElided"),
-            "past inline cap must report typed elision, got:\n{emitted}"
-        );
-        assert!(
-            emitted.contains(&format!(
-                "coverage: SourceRootManifestElided {{ read_count: 65, cap: {MANIFEST_INLINE_LIST_MAX} }}"
-            )),
-            "elision must carry read_count and cap, got:\n{emitted}"
-        );
-        assert!(
-            emitted.contains("produced_row_count: 65"),
-            "ref population must not be zero, got:\n{emitted}"
-        );
-        assert!(
-            emitted.contains("host_source_root_closure_refs"),
-            "must carry full closure refs, got:\n{emitted}"
-        );
-        assert!(
-            emitted.contains("data host_source_root_ingest: SourceRootIngest = Empty"),
-            "inline ingest stays empty past cap, got:\n{emitted}"
-        );
-
-        std::fs::remove_dir_all(&dir).ok();
-    }
-
-    /// At or below the inline cap, coverage is complete with full ref population.
-    #[test]
-    fn receipt_reports_complete_coverage_via_closure_refs_at_inline_cap() {
-        let dir = std::env::temp_dir().join(format!(
-            "gunbc_cov_receipt_{}_{}",
-            std::process::id(),
-            line!()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("host_source_root_ingest_manifest.dag");
-
-        let over: Vec<SourceRootReadRecord> =
-            (0..MANIFEST_INLINE_LIST_MAX).map(sr_record).collect();
-        emit_source_root_ingest_manifest(&path, &over, None).unwrap();
-        let emitted = std::fs::read_to_string(&path).unwrap();
-        assert!(
-            emitted.contains("coverage: SourceRootCoverageComplete"),
-            "at inline cap must report complete ref coverage, got:\n{emitted}"
-        );
-        assert!(
-            emitted.contains(&format!("produced_row_count: {}", MANIFEST_INLINE_LIST_MAX)),
-            "at inline cap produced_row_count must equal read count, got:\n{emitted}"
-        );
-        assert!(
-            emitted.contains("host_source_root_closure_refs"),
-            "at inline cap must carry closure refs, got:\n{emitted}"
-        );
-
-        let under: Vec<SourceRootReadRecord> = (0..3).map(sr_record).collect();
-        emit_source_root_ingest_manifest(&path, &under, None).unwrap();
-        let emitted = std::fs::read_to_string(&path).unwrap();
-        assert!(
-            emitted.contains("coverage: SourceRootCoverageComplete")
-                && emitted.contains("produced_row_count: 3"),
-            "small closure manifest must also report complete ref coverage, got:\n{emitted}"
-        );
-
-        std::fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
-    fn receipt_reports_manifest_absent_import_and_coverage_for_zero_reads() {
-        let dir =
-            std::env::temp_dir().join(format!("gunbc_cov_zero_{}_{}", std::process::id(), line!()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("host_source_root_ingest_manifest.dag");
-
-        emit_source_root_ingest_manifest(&path, &[], None).unwrap();
-        let emitted = std::fs::read_to_string(&path).unwrap();
-        assert!(
-            emitted.contains("SourceRootManifestAbsent"),
-            "zero-read manifest must import SourceRootManifestAbsent, got:\n{emitted}"
-        );
-        assert!(
-            emitted.contains("coverage: SourceRootManifestAbsent"),
-            "zero-read manifest must report absent coverage, got:\n{emitted}"
-        );
-        assert!(
-            emitted.contains("ingest_read_count: 0"),
-            "zero-read manifest must report zero ingest count, got:\n{emitted}"
-        );
-
-        std::fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
-    fn manifest_imports_grounded_source_root_constructors() {
-        // Each DagSourceReadWitness carries a grounded `source_root: SourceRootRef`
-        // (V2Tree/DagTree, #5473/#5486). The manifest references those constructors, so it
-        // MUST import them from v2.std.cross_tree.import_model -- otherwise every witness that
-        // imports the manifest fails to resolve with `undefined variable 'V2Tree'`, which was
-        // the source_root_ingest gate's persistent main-RED. RED CONTROL: delete the
-        // cross_tree.import_model import line in the emitter and this test fails.
-        let tmp = std::env::temp_dir().join(format!(
-            "sri_manifest_import_test_{}.dag",
-            std::process::id()
-        ));
-        let records = vec![SourceRootReadRecord {
-            file_path: "src/v2/x.dag".to_string(),
-            module_path: "x".to_string(),
-            source: "module x\n".to_string(),
-            source_root: "V2Tree".to_string(),
-        }];
-        emit_source_root_ingest_manifest(&tmp, &records, None).expect("emit manifest");
-        let out = std::fs::read_to_string(&tmp).expect("read manifest");
-        let _ = std::fs::remove_file(&tmp);
-        assert!(
-            out.contains("source_root: V2Tree"),
-            "manifest must emit the grounded source_root value"
-        );
-        assert!(
-            out.contains("import v2.std.cross_tree.import_model"),
-            "manifest referencing V2Tree/DagTree must import them or witnesses hit \
-             `undefined variable`; got:\n{out}"
-        );
-    }
 }
 
 #[cfg(test)]
@@ -34288,29 +33693,6 @@ mod module_path_index_tests {
         assert!(
             keys.contains(&"dag/test/claim/x_test.dag::x_holds".to_string()),
             "a RehomedBinWetRow must register as an executing consumer key (Phase 0(b)); got {keys:?}"
-        );
-    }
-
-    #[test]
-    fn source_root_ingest_gate_admitted_witness_rows_parse_as_executing_consumer_keys() {
-        let synthetic = "module gunbc.explicit_witness_admission\n\n\
-             data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [\n\
-               source_root_ingest_gate_admitted_witness(\n\
-                 entry: \"src/v2/test/claim/self_host/compiler_closure_emit_from_ingest.dag\",\n\
-                 f: \"compiler_closure_scoped_ingest_module_count_ok_holds\",\n\
-                 kind: CorpusWitnessKind,\n\
-                 reason: \"r\",\n\
-                 dissolution: unbound_dissolution(description: \"d\")\n\
-               ),\n\
-             ]\n";
-        let keys =
-            super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
-        assert!(
-            keys.contains(
-                &"src/v2/test/claim/self_host/compiler_closure_emit_from_ingest.dag::compiler_closure_scoped_ingest_module_count_ok_holds"
-                    .to_string()
-            ),
-            "transport gate admission rows must register as executing consumer keys; got {keys:?}"
         );
     }
 

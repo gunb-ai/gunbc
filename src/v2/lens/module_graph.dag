@@ -56,12 +56,10 @@ import v2.compiler.resolution_provenance {
 }
 import v2.compiler.source_authority {
   SourceRef,
-  SourceRootArgumentAdmitted,
-  SourceRootArgumentUnrecognized,
   SourceRootIngest,
-  admit_source_root_argument,
   source_ref_for_storage_path
 }
+import v2.cli.repository_layout { repository_tree_of_root_argument }
 import v2.compiler.source_authority_read { source_root_ingest_from_source_refs }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
 import v2.extdeps.languages.dag {
@@ -316,15 +314,15 @@ fn source_refs_from_declared(
                 }
               )
             Present { value: origin } =>
-              match admit_source_root_argument(argument: origin) {
-                SourceRootArgumentAdmitted { tree: tree } =>
+              match repository_tree_of_root_argument(argument: origin) {
+                Present { value: tree } =>
                   outcome_accepted(
                     value: list_snoc_item(
                       xs: refs,
                       item: source_ref_for_storage_path(path: fact.path, source_root: tree)
                     )
                   )
-                SourceRootArgumentUnrecognized { argument: _ } =>
+                Absent =>
                   outcome_rejected(
                     d: Diagnostic {
                       reason: ^declared_module_source_root_undetermined,

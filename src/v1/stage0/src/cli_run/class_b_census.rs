@@ -212,7 +212,7 @@ pub(crate) fn class_b_path_affects_gate(changed: &str, dag_closure: &HashSet<Str
     dag_closure.contains(&p)
 }
 
-/// CI skip label for the Class B gate inside `source_root_ingest_gate_passes`.
+/// CI skip label for the Class B gate.
 pub fn class_b_import_closure_gate_skip_label_for_ci() -> String {
     if std::env::var("GITHUB_EVENT_NAME").ok().as_deref() != Some("pull_request") {
         eprintln!("class B gate skip: not pull_request — run gate (cold control)");

@@ -890,14 +890,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
   },
   FrozenPathDeferral { entry: "src/v2/test/claim/long/compile_door_ledger.dag", functions: ["ledger_cause_histogram_over_mixed_affected_set"] },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/long/compiler_frontier_probe_entry.dag",
-    functions: [
-      "frontier_probe_entry_blocker_is_emit_surface",
-      "frontier_probe_entry_located_stage_is_emit_holds",
-      "frontier_probe_entry_overlay_present_holds"
-    ]
-  },
-  FrozenPathDeferral {
     entry: "src/v2/test/claim/long/cross_tree_real_ingest_activation.dag",
     functions: [
       "cross_tree_real_ingest_v2_to_dag_admitted_holds",
@@ -1005,13 +997,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "scanner_clean_tree_meta_exec_holds_on_rostered_corpus",
       "meta_exec_live_scan_non_degenerate_holds", "meta_exec_roster_soundness_live_holds",
       "meta_exec_roster_soundness_live_planted_stale_red_holds"
-    ]
-  },
-  FrozenPathDeferral {
-    entry: "src/v2/test/claim/long/module_binding_host_consistency.dag",
-    functions: [
-      "module_binding_host_manifest_is_populated", "module_binding_host_agrees_with_parse_oracle",
-      "module_binding_host_resolves_a_known_compiler_module"
     ]
   },
   FrozenPathDeferral {
@@ -1169,19 +1154,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     entry: "src/v2/test/claim/manual/emit_source_store.dag",
     functions: [
       "emit_source_store_provider_gate_holds"
-    ]
-  },
-  FrozenPathDeferral {
-    entry: "src/v2/test/claim/program_assembly/real_ingest.dag",
-    functions: [
-      "program_assembly_real_ingest_validate_module_roots_red_on_parsed_roots"
-    ]
-  },
-  FrozenPathDeferral {
-    entry: "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest.dag",
-    functions: [
-      "self_host_closure_witness_layer_roots_reexports_authority_holds",
-      "gap4_probe_all_ingest_reads_accept_holds", "compiler_closure_scoped_ingest_parses_holds"
     ]
   },
   FrozenPathDeferral {

@@ -621,9 +621,7 @@ data reference_conservation_stratified_sample_paths: List<String> = [
   "src/v2/test/runtimes/effect_io_host_mode.dag",
   "src/v2/workflow/bash_emit.dag",
   "src/v2/workflow/ci_release_build_emit.dag",
-  "src/v2/workflow/compiler_closure_ingest_transport.dag",
   "src/v2/workflow/floor_enrolment_dead_band.dag",
-  "src/v2/workflow/module_binding_supply_transport.dag",
   "src/v2/workflow/phase_profile_proof_plan.dag"
 ]
 

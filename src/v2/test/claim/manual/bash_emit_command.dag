@@ -20,9 +20,6 @@ import v2.extdeps.languages.bash {
   bash_bound_words_source_text,
   bash_embedded_quote_emitted_command,
   bash_embedded_quote_source_text,
-  bash_source_root_ingest_gate_emitted_command,
-  bash_source_root_ingest_gate_source_text,
-  bash_source_root_ingest_gate_target_model,
   bash_and_then_emitted,
   bash_and_then_source_text,
   bash_and_then_target_model,
@@ -229,30 +226,6 @@ test fn bash_emit_embedded_quote_holds() -> Bool {
   match bash_embedded_quote_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == bash_embedded_quote_source_text) && (d == None)
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-data bash_source_root_ingest_gate_emit_inferred_tree: InferredTree = InferredTree {
-  root: bash_source_root_ingest_gate_emitted_command,
-  facts: PartialFunction {
-    lookup: bash_facts_lookup
-  }
-}
-
-fn anchor_bash_source_root_ingest_gate_emit() -> Outcome<Medium<String>> {
-  emit(
-    tree: bash_source_root_ingest_gate_emit_inferred_tree,
-    target: bash_source_root_ingest_gate_target_model()
-  )
-}
-
-data bash_source_root_ingest_gate_emit_receipt: Outcome<Medium<String>> = anchor_bash_source_root_ingest_gate_emit()
-
-test fn bash_emit_source_root_ingest_gate_holds() -> Bool {
-  match bash_source_root_ingest_gate_emit_receipt {
-    Accepted { value: source, diagnostics: d } =>
-      (source.carried == bash_source_root_ingest_gate_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }

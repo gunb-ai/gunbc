@@ -30,8 +30,9 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // (`std.witness_admission`) since falsifier.yml was deleted at gunbc#8283, so a row there reads
 // as coverage while executing nowhere. (3) `LocalRepoWetLane` rosters host-effect witnesses whose
 // hermetic route has a gap (`v2.workflow.local_repo_wet_terminal`); a hermetic ingest witness is
-// not its subject. (4) The ingest-gate overlay (`source_root_ingest_gate_admitted_witness`) is a
-// hand-listed closure gate in `v2.workflow.compiler_closure_ingest_transport`, not a lane.
+// not its subject. (4) The ingest-gate overlay (`source_root_ingest_gate_admitted_witness`) was a
+// hand-listed closure gate in `v2.workflow.compiler_closure_ingest_transport` (deleted with the
+// whole-repository ingest-gate family in the source layout cutover C3), not a lane.
 //
 // THE REASON IS LOST-AS-PASSENGER, NOT A NEW CUT: these controls would have joined the substrate
 // long lane, whose executor left with falsifier.yml. Nothing in gunbc#11314 or gunbc#11315 deleted

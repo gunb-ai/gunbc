@@ -167,14 +167,16 @@ fn typed_waiters_cite_capability(cap: SharedCapability, ds: List<RungDrop>) -> B
 // (witness_deferral_freeze_forward_rule remainder (b); transitional_admission_exception
 // per-identity route migration) stay Standing after the category fires if that remainder is
 // unsatisfied: they are delisted in the same change as the pure waiters retiring, so the join
-// does not become a second retirement gate keyed off co-waiter standing.
+// does not become a second retirement gate keyed off co-waiter standing. The same applies to a waiter a
+// ruling SUPERSEDES: source_root_ingest_gate left this list when the source layout cutover deleted the
+// whole-repository ingest gate (the cadence it waited on was never going to run it), because a
+// Superseded waiter beside Standing ones is SplitRetirement.
 data missing_cadence_category: SharedCapability = SharedCapability {
   identity: "missing_cadence_category" as NonEmptyStr,
 
-  capability: "a scheduled or required-run cadence category that executes predict-only cold comparison, offline-homed witness admission, and source-root ingest — the category that is absent, not an invocation of a phase the required run already names",
+  capability: "a scheduled or required-run cadence category that executes predict-only cold comparison, and offline-homed witness admission — the category that is absent, not an invocation of a phase the required run already names",
 
   waiter_identities: [
-    "source_root_ingest_gate",
     "deleted_cadence_reference",
     "witness_deferral_freeze_forward_rule",
     "floor_cut_falsifier_cadence",

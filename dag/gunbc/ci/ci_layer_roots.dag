@@ -580,35 +580,6 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_probe_universe_carrier_reason,
     dissolution: excl_probe_universe_carrier_dissolve},
   WitnessExclusionRow {
-    pattern: "host_source_root_ingest_manifest.dag",
-    classification: OfflineLocalRecipe,
-    reason: excl_probe_universe_carrier_reason,
-    dissolution: excl_probe_universe_carrier_dissolve},
-  WitnessExclusionRow {
-    pattern: "program_assembly/real_ingest.dag",
-    classification: OfflineLocalRecipe,
-    reason: "transport-run witness consumed by v2.workflow.module_binding_supply_transport (same posture as crate_layout; see crate_layout_transport_exclusion_note)",
-    dissolution: unbound_dissolution(description: "the crate-layout artifact moves to host-driven generation with the index supplied at the boundary; rows delete together (crate_layout_transport_exclusion_note)")
-  },
-  WitnessExclusionRow {
-    pattern: "self_host/compiler_closure_emit_from_ingest.dag",
-    classification: OfflineLocalRecipe,
-    reason: "transport-run witness (crate_layout_transport_exclusion_note). One of its five fns is separately quarantined known-red at function grain (gunbc.explicit_witness_admission); that is a different fact about that fn, not a restatement of this file-grain transport exclusion",
-    dissolution: unbound_dissolution(description: "the crate-layout artifact moves to host-driven generation; rows delete together (crate_layout_transport_exclusion_note)")
-  },
-  WitnessExclusionRow {
-    pattern: "self_host/compiler_closure_ingest_boundary_witness.dag",
-    classification: OfflineLocalRecipe,
-    reason: "transport-run witness consumed by v2.workflow.compiler_closure_ingest_transport (07_target_carriers overlay; same posture as compiler_closure_emit_from_ingest.dag)",
-    dissolution: unbound_dissolution(description: "the crate-layout artifact moves to host-driven generation; rows delete together (crate_layout_transport_exclusion_note)")
-  },
-  WitnessExclusionRow {
-    pattern: "self_host/crate_layout_witness.dag",
-    classification: OfflineLocalRecipe,
-    reason: "transport-run witness: hermetic runs read host_module_bindings = Empty and REFUSE; do NOT give it bin_witness_wet_entries rows (see crate_layout_transport_exclusion_note)",
-    dissolution: unbound_dissolution(description: "the crate-layout artifact moves to host-driven generation with the index supplied at the boundary; the hand rows, the parity witness, and this row delete together")
-  },
-  WitnessExclusionRow {
     pattern: "ci_exclusion_proof.dag",
     classification: OfflineLocalRecipe,
     reason: excl_predates_per_row_reason,
@@ -1522,16 +1493,6 @@ fn witness_admission_fixture_exclusion_substrings() -> List<String> {
 data witness_exclusion_single_authority_reconciliation_note: String = "Single-authority reconciliation (module-identity-storage-binding Phase 0(b) follow-on; the prior note's dissolve-on FIRED 2026-07-22 via the group-of-units ruling): witness_exclusion_frontier is the ONE typed discovery-exclusion roster — every row carries pattern, consumer classification (the std.witness_admission WitnessConsumerCadence authority, no minted twin), reason, and dissolve_on. The former parallel lists witness_admission_offline_exclusion_substrings / witness_admission_fixture_exclusion_substrings are now DERIVED projections (classification filters) — the hand-kept containment alignment they needed is unwritable, so the old one-way-containment witness dissolved with them; v2.test.claim.witness_exclusion_reconciliation now witnesses row well-formedness (no DiscoverySelection row; NoConsumer only for the synthetic admission RED-control path; nonempty reason and dissolve_on per row) and explicit-roster consistency (BinWitnessWet / rehomed / substrate-long-lane rows name files the corresponding rosters actually run). As of 2026-08-03 it is a PATH POLICY roster: exact witness admission moved to gunbc.explicit_witness_admission at function grain and a QuarantineProbeExpectRed row here is refused outright, because a substring pattern can only be checked for containment against a schedule row and containment is not identity. whole_tree_resolve_exclusion_substrings stays the ONE concat(witness_exclusion_substrings(), whole_tree_strict_resolve_exclusion_substrings) pattern authority in .dag; the host projection in cli_run.rs parses the frontier rows with the real front-end and must stay list-identical (Rust unit test witness_whole_tree_resolve_exclusion_matches_concat_authority). Strict-walk probe bins consume whole_tree_probe_exclusion_substrings() — pattern rows ∪ host-derived module-path closure (census_exclude_derive) with LiveImporterExclusion receipts. The roster is enrolled in gunbc.roster_registry as a DeclaredFrontier group. Dissolves when the enforcement-intent registry absorbs the roster or floor admission consumes per-row cost and consumer declarations directly."
 
 data witness_admission_offline_note: String = "Phase 0(b) admission invariant (module-identity-storage-binding): operator-ruled OFFLINE exclusion substrings whose witness rows carry OfflineLocalRecipe consumers — documented local recipes in the paired exclusion notes (wet_integration_offline_note, enforcement_coverage_exclusion_note, accumulator_copy_roster_gate_exclusion_note, lever_a_local_receipt_witness_exclusion_note, long_lane_exclusion_note). Dissolves when each row graduates to a scheduled CI consumer or deletes. STANDING, 2026-08-25: the recipes are now typed rows in gunbc.offline_local_recipe (five of the six policies; identity_captured_navigation deliberately owns none, its exclusion being deleted rather than repaired by gunbc#9206). The GRADUATION arm of the dissolution above currently names no destination -- no scheduled cadence has existed since the floor cut -- so the arm actioned per policy is either delete, or the typed carrier plus its declared defect roster, never a graduation nobody can perform."
-
-data crate_layout_transport_exclusion_note: String = "self_host/crate_layout_witness.dag is excluded from hermetic discovery and consumed by v2.workflow.module_binding_supply_transport (run_module_binding_supply_gate, reached from source_root_ingest_gate) — the same posture as its siblings program_assembly/real_ingest.dag and self_host/compiler_closure_emit_from_ingest.dag, which are transport-run for the same reason.
-
-WHY: as of task 3 these witnesses project off the derived ModuleStorageIndex, and the live index exists only inside that transport's overlay. Run hermetically they read host_module_bindings = Empty and REFUSE — correct behaviour, wrong lane.
-
-DO NOT give this file bin_witness_wet_entries rows. That was tried and it is the wrong roster: a bin_wet row makes the fn an EXPLICIT discovery entry, which BYPASSES the exclusion above and runs it hermetically in batch 3, where it refuses and reds. The tell in that failure is diagnostic — projection_refuses_on_absent_index PASSED while the other two failed, which is precisely Empty-index behaviour rather than a broken projection.
-
-Local recipe: gunbc run --source-root src/v2 --source-root dag --entry src/v2/workflow/module_binding_supply_transport.dag --function run_module_binding_supply_gate --claim-run
-
-Dissolve-on: the crate-layout artifact moves to host-driven generation with the index supplied at the boundary — then the hand rows, the parity witness, and this exclusion delete together."
 
 // THE 2026-07-11 FIXTURE-HOME RULING, KEPT AFTER ITS LAST POPULATION WENT AWAY: a control fixture
 // whose consumer is an explicit roster is excluded from tree-wide discovery at DIR grain, never at

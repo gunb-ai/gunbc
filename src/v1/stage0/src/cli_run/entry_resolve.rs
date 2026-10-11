@@ -131,9 +131,6 @@ pub(crate) fn build_module_path_index_uncached(source_roots: &[String]) -> HashM
     let mut index: HashMap<String, String> = HashMap::new();
     for_each_parsed_module_binding(source_roots, |root_idx, path, binding| {
         let rel = module_index_path_key(path);
-        if manifest_stub_superseded_by_overlay(&rel, source_roots, root_idx) {
-            return;
-        }
         if let Some(existing) = index.get(&binding.module_path) {
             if existing == &rel || same_canonical_file(existing, &rel) {
                 return;
@@ -2801,99 +2798,6 @@ pub(crate) fn import_closure_repo_paths_for_entry(
         .into_iter()
         .map(|p| workspace_relative_repo_path(&p))
         .collect()
-}
-
-pub(crate) fn source_root_ref_variant_for_root(root: &str) -> Result<String, String> {
-    match root.trim_end_matches('/') {
-        "src/v2" => Ok("V2Tree".to_string()),
-        "dag" => Ok("DagTree".to_string()),
-        other => Err(format!(
-            "source_root tagging: unknown --source-root '{other}' \
-             (authority gunbc.ci.ci_layer_roots.witness_layer_roots = [src/v2, dag] -> \
-             SourceRootRef {{V2Tree, DagTree}})"
-        )),
-    }
-}
-
-pub(crate) fn source_root_ref_token_for_path(
-    file_path: &str,
-    source_roots: &[String],
-) -> Result<String, String> {
-    let rel_path = repo_relative_dag_path(file_path);
-    let matched: Vec<String> = source_roots
-        .iter()
-        .map(|r| repo_relative_dag_path(r))
-        .filter(|r| {
-            let r = r.trim_end_matches('/');
-            rel_path == r || rel_path.starts_with(&format!("{r}/"))
-        })
-        .collect();
-    match matched.as_slice() {
-        [] => Err(format!(
-            "source_root tagging: file '{file_path}' (repo-relative '{rel_path}') matches no \
-             --source-root {source_roots:?}"
-        )),
-        [one] => source_root_ref_variant_for_root(one),
-        _ => Err(format!(
-            "source_root tagging: file '{file_path}' matches multiple --source-root {matched:?}"
-        )),
-    }
-}
-
-pub(crate) fn source_root_ingest_symbol_from_stem(stem: &str) -> String {
-    let mut body = String::new();
-    for ch in stem.chars() {
-        if ch.is_ascii_alphanumeric() || ch == '_' {
-            body.push(ch);
-        } else {
-            body.push('_');
-        }
-    }
-    if body.is_empty() {
-        body.push_str("host_sr_empty");
-    } else if body.as_bytes()[0].is_ascii_digit()
-        || v1_compiler_tokenize::is_keyword_text(
-            body.clone(),
-            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
-        )
-    {
-        // THE THIRD ESCAPE ARM, AND THE CORPUS ALREADY CONTAINED ITS CASE.
-        //
-        // This minted `^{stem}` after escaping non-identifier characters and a leading digit,
-        // and stopped there. A stem that IS a keyword still lexes as a keyword, so `dag/std/
-        // import.dag` emitted `^import` and the manifest failed to parse -- measured, at the
-        // caret: "expected identifier or `(` after `^`, found keyword". Two stems in the tree
-        // reach it today, `dag/std/import.dag` and `dag/extdeps/languages/go/module.dag`.
-        //
-        // The mint promised a valid symbol and returned an unparseable one with no refusal,
-        // which is why nothing caught it: the emitter succeeded, the file was written, and the
-        // only executing consumer is a `long/` `ReadsLiveTree` witness the floor declines.
-        //
-        // The keyword test routes through `v1_compiler_tokenize` `is_keyword_text`, whose set is
-        // derived from the grammar. A literal list here would be a second authority for the
-        // keyword vocabulary (DESIGN §3) and would go stale the next time the grammar gains one.
-        body = format!("sr_{body}");
-    }
-    format!("^{body}")
-}
-
-pub fn source_root_ingest_artifact_id_for_path(path: &str) -> String {
-    let stem = Path::new(path)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("host_sr");
-    source_root_ingest_symbol_from_stem(stem)
-}
-
-pub fn source_root_ingest_content_hash_fnv1a64(records: &[SourceRootReadRecord]) -> String {
-    let mut material = String::new();
-    for rec in records {
-        material.push_str(&rec.file_path);
-        material.push('\0');
-        material.push_str(&rec.source);
-        material.push('\0');
-    }
-    fnv1a64_digest_of_material(&material)
 }
 
 pub(crate) fn pool_roots_abs(pool_roots: &[String]) -> Vec<String> {

@@ -591,6 +591,118 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
     identity: "v2.test.claim.native_cache_fusion_test.witness_cold_control_forces_recompute_agreement" as NonEmptyStr,
     deleted_in: "the inert-carrier deletion (roadmap native-memory-inert-carriers, census #5): v2.workflow.native_cache_fusion stated a synthetic agreement law between a modeled host warm-marker observation and std.emit_on_demand lookup; no production code read it, so the module and its own claims are deleted and the real emit-host native build cache is untouched" as NonEmptyStr,
   },
+  WitnessDeleted {
+    identity: "v2.test.claim.product_receipt_evidence_cause_swap.establishes_cannot_separate_refutation_from_absence" as NonEmptyStr,
+    deleted_in: "the product-receipt lane deletion (source layout cutover C3, gunbc.plans.source_layout_authority): v2.workflow.product_receipt and its stage and transport existed only to fold the host whole-tree manifests and the seed bin that emitted them, and no workflow consumed the receipt, so the lane and this claim go with the whole-repository ingest-gate family" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.product_receipt_evidence_cause_swap.instrument_refusal_is_distinguishable_from_subject_absence" as NonEmptyStr,
+    deleted_in: "the product-receipt lane deletion (source layout cutover C3, gunbc.plans.source_layout_authority): v2.workflow.product_receipt and its stage and transport existed only to fold the host whole-tree manifests and the seed bin that emitted them, and no workflow consumed the receipt, so the lane and this claim go with the whole-repository ingest-gate family" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.product_receipt_evidence_cause_swap.only_a_green_receipt_licenses_the_claim" as NonEmptyStr,
+    deleted_in: "the product-receipt lane deletion (source layout cutover C3, gunbc.plans.source_layout_authority): v2.workflow.product_receipt and its stage and transport existed only to fold the host whole-tree manifests and the seed bin that emitted them, and no workflow consumed the receipt, so the lane and this claim go with the whole-repository ingest-gate family" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.product_receipt_evidence_cause_swap.produced_a_verdict_separates_refutation_from_absence" as NonEmptyStr,
+    deleted_in: "the product-receipt lane deletion (source layout cutover C3, gunbc.plans.source_layout_authority): v2.workflow.product_receipt and its stage and transport existed only to fold the host whole-tree manifests and the seed bin that emitted them, and no workflow consumed the receipt, so the lane and this claim go with the whole-repository ingest-gate family" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.workflow.product_receipt.an_unexercised_boundary_is_neither_completed_nor_green" as NonEmptyStr,
+    deleted_in: "the product-receipt lane deletion (source layout cutover C3, gunbc.plans.source_layout_authority): v2.workflow.product_receipt and its stage and transport existed only to fold the host whole-tree manifests and the seed bin that emitted them, and no workflow consumed the receipt, so the lane and this claim go with the whole-repository ingest-gate family" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.workflow.product_receipt.a_receipt_missing_its_last_boundary_refuses_on_coverage" as NonEmptyStr,
+    deleted_in: "the product-receipt lane deletion (source layout cutover C3, gunbc.plans.source_layout_authority): v2.workflow.product_receipt and its stage and transport existed only to fold the host whole-tree manifests and the seed bin that emitted them, and no workflow consumed the receipt, so the lane and this claim go with the whole-repository ingest-gate family" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.workflow.product_receipt.a_refused_boundary_refuses_the_receipt_even_with_an_intact_prefix" as NonEmptyStr,
+    deleted_in: "the product-receipt lane deletion (source layout cutover C3, gunbc.plans.source_layout_authority): v2.workflow.product_receipt and its stage and transport existed only to fold the host whole-tree manifests and the seed bin that emitted them, and no workflow consumed the receipt, so the lane and this claim go with the whole-repository ingest-gate family" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.workflow.product_receipt.every_boundary_completed_yet_receipt_refuses_when_identity_is_not_carried" as NonEmptyStr,
+    deleted_in: "the product-receipt lane deletion (source layout cutover C3, gunbc.plans.source_layout_authority): v2.workflow.product_receipt and its stage and transport existed only to fold the host whole-tree manifests and the seed bin that emitted them, and no workflow consumed the receipt, so the lane and this claim go with the whole-repository ingest-gate family" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.workflow.product_receipt.identity_carriage_refuses_a_matching_digest_carried_at_a_different_shape" as NonEmptyStr,
+    deleted_in: "the product-receipt lane deletion (source layout cutover C3, gunbc.plans.source_layout_authority): v2.workflow.product_receipt and its stage and transport existed only to fold the host whole-tree manifests and the seed bin that emitted them, and no workflow consumed the receipt, so the lane and this claim go with the whole-repository ingest-gate family" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.workflow.product_receipt.product_receipt_green_on_seven_chained_completed_boundaries" as NonEmptyStr,
+    deleted_in: "the product-receipt lane deletion (source layout cutover C3, gunbc.plans.source_layout_authority): v2.workflow.product_receipt and its stage and transport existed only to fold the host whole-tree manifests and the seed bin that emitted them, and no workflow consumed the receipt, so the lane and this claim go with the whole-repository ingest-gate family" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.workflow.product_receipt.repeated_reasons_collapse_into_one_row_and_the_total_is_preserved" as NonEmptyStr,
+    deleted_in: "the product-receipt lane deletion (source layout cutover C3, gunbc.plans.source_layout_authority): v2.workflow.product_receipt and its stage and transport existed only to fold the host whole-tree manifests and the seed bin that emitted them, and no workflow consumed the receipt, so the lane and this claim go with the whole-repository ingest-gate family" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.host_language_transport_script.corpus.migrated_transports_clean.corpus_compiler_closure_ingest_transport_clean_holds" as NonEmptyStr,
+    deleted_in: "the whole-repository ingest-gate family deletion (source layout cutover C3, gunbc.plans.source_layout_authority): the host transport this claim held clean (v2.workflow.compiler_closure_ingest_transport / source_root_ingest_transport) no longer exists, because compilation acquires only the requested closure through v2.compiler.module_acquisition and no producer reads the whole tree" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.host_language_transport_script.corpus.migrated_transports_clean.corpus_source_root_ingest_transport_clean_holds" as NonEmptyStr,
+    deleted_in: "the whole-repository ingest-gate family deletion (source layout cutover C3, gunbc.plans.source_layout_authority): the host transport this claim held clean (v2.workflow.compiler_closure_ingest_transport / source_root_ingest_transport) no longer exists, because compilation acquires only the requested closure through v2.compiler.module_acquisition and no producer reads the whole tree" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.manual.bash_emit_command.bash_emit_source_root_ingest_gate_holds" as NonEmptyStr,
+    deleted_in: "the whole-repository ingest-gate family deletion (source layout cutover C3, gunbc.plans.source_layout_authority): the bash row for source-root-ingest-gate.sh was deleted with the gate it emitted, so this claim has no subject" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.program_assembly.real_ingest.program_assembly_real_ingest_host_manifest_receipt_holds" as NonEmptyStr,
+    deleted_in: "the whole-repository ingest-gate family deletion (source layout cutover C3, gunbc.plans.source_layout_authority): these claims folded the host whole-tree manifest and the seed bin that emitted it; compilation now acquires only the requested closure and its read set is checked against that closure exactly (v2.compiler.module_acquisition acquisition_exactness), so the manifest receipt, the module-roots parse and the validate-roots red have no subject" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.program_assembly.real_ingest.program_assembly_real_ingest_module_roots_parse_holds" as NonEmptyStr,
+    deleted_in: "the whole-repository ingest-gate family deletion (source layout cutover C3, gunbc.plans.source_layout_authority): these claims folded the host whole-tree manifest and the seed bin that emitted it; compilation now acquires only the requested closure and its read set is checked against that closure exactly (v2.compiler.module_acquisition acquisition_exactness), so the manifest receipt, the module-roots parse and the validate-roots red have no subject" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.program_assembly.real_ingest.program_assembly_real_ingest_validate_module_roots_red_on_parsed_roots" as NonEmptyStr,
+    deleted_in: "the whole-repository ingest-gate family deletion (source layout cutover C3, gunbc.plans.source_layout_authority): these claims folded the host whole-tree manifest and the seed bin that emitted it; compilation now acquires only the requested closure and its read set is checked against that closure exactly (v2.compiler.module_acquisition acquisition_exactness), so the manifest receipt, the module-roots parse and the validate-roots red have no subject" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.closure_emit_population_admission.closure_emit_admission_refuses_committed_manifest_stub_holds" as NonEmptyStr,
+    deleted_in: "the whole-repository ingest-gate family deletion (source layout cutover C3, gunbc.plans.source_layout_authority): closure_emit_population_admission here held the committed manifest stub, the empty/partial/incomplete-coverage populations of the whole-tree ingest, all deleted; the closure's population is the acquirer's requested closure" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.closure_emit_population_admission.closure_emit_admission_refuses_empty_population_holds" as NonEmptyStr,
+    deleted_in: "the whole-repository ingest-gate family deletion (source layout cutover C3, gunbc.plans.source_layout_authority): closure_emit_population_admission here held the committed manifest stub, the empty/partial/incomplete-coverage populations of the whole-tree ingest, all deleted; the closure's population is the acquirer's requested closure" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.closure_emit_population_admission.closure_emit_admission_refuses_incomplete_coverage_holds" as NonEmptyStr,
+    deleted_in: "the whole-repository ingest-gate family deletion (source layout cutover C3, gunbc.plans.source_layout_authority): closure_emit_population_admission here held the committed manifest stub, the empty/partial/incomplete-coverage populations of the whole-tree ingest, all deleted; the closure's population is the acquirer's requested closure" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.closure_emit_population_admission.closure_emit_admission_refuses_partial_population_holds" as NonEmptyStr,
+    deleted_in: "the whole-repository ingest-gate family deletion (source layout cutover C3, gunbc.plans.source_layout_authority): closure_emit_population_admission here held the committed manifest stub, the empty/partial/incomplete-coverage populations of the whole-tree ingest, all deleted; the closure's population is the acquirer's requested closure" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.compiler_closure_emit_from_ingest.compiler_closure_ingest_overflow_refuses_never_empty_holds" as NonEmptyStr,
+    deleted_in: "the whole-repository ingest-gate family deletion (source layout cutover C3, gunbc.plans.source_layout_authority): these claims held the whole-tree ingest carrier of the compiler closure (overflow, receipt, scoped ingest counts, the all-reads-accept probe, the layer-roots re-export); the closure is acquired by request (v2.compiler.self_host.closure_emission emit_closure_from_ingest_located) and the layer-roots authority they re-exported was deleted" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.compiler_closure_emit_from_ingest.compiler_closure_ingest_receipt_describes_carrier_holds" as NonEmptyStr,
+    deleted_in: "the whole-repository ingest-gate family deletion (source layout cutover C3, gunbc.plans.source_layout_authority): these claims held the whole-tree ingest carrier of the compiler closure (overflow, receipt, scoped ingest counts, the all-reads-accept probe, the layer-roots re-export); the closure is acquired by request (v2.compiler.self_host.closure_emission emit_closure_from_ingest_located) and the layer-roots authority they re-exported was deleted" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.compiler_closure_emit_from_ingest.compiler_closure_scoped_ingest_module_count_ok_holds" as NonEmptyStr,
+    deleted_in: "the whole-repository ingest-gate family deletion (source layout cutover C3, gunbc.plans.source_layout_authority): these claims held the whole-tree ingest carrier of the compiler closure (overflow, receipt, scoped ingest counts, the all-reads-accept probe, the layer-roots re-export); the closure is acquired by request (v2.compiler.self_host.closure_emission emit_closure_from_ingest_located) and the layer-roots authority they re-exported was deleted" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.compiler_closure_emit_from_ingest.compiler_closure_scoped_ingest_parses_holds" as NonEmptyStr,
+    deleted_in: "the whole-repository ingest-gate family deletion (source layout cutover C3, gunbc.plans.source_layout_authority): these claims held the whole-tree ingest carrier of the compiler closure (overflow, receipt, scoped ingest counts, the all-reads-accept probe, the layer-roots re-export); the closure is acquired by request (v2.compiler.self_host.closure_emission emit_closure_from_ingest_located) and the layer-roots authority they re-exported was deleted" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.compiler_closure_emit_from_ingest.gap4_probe_all_ingest_reads_accept_holds" as NonEmptyStr,
+    deleted_in: "the whole-repository ingest-gate family deletion (source layout cutover C3, gunbc.plans.source_layout_authority): these claims held the whole-tree ingest carrier of the compiler closure (overflow, receipt, scoped ingest counts, the all-reads-accept probe, the layer-roots re-export); the closure is acquired by request (v2.compiler.self_host.closure_emission emit_closure_from_ingest_located) and the layer-roots authority they re-exported was deleted" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.compiler_closure_emit_from_ingest.self_host_closure_witness_layer_roots_reexports_authority_holds" as NonEmptyStr,
+    deleted_in: "the whole-repository ingest-gate family deletion (source layout cutover C3, gunbc.plans.source_layout_authority): these claims held the whole-tree ingest carrier of the compiler closure (overflow, receipt, scoped ingest counts, the all-reads-accept probe, the layer-roots re-export); the closure is acquired by request (v2.compiler.self_host.closure_emission emit_closure_from_ingest_located) and the layer-roots authority they re-exported was deleted" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.compiler_closure_ingest_boundary_witness.compiler_closure_ingest_boundary_exact_cap_transport_holds" as NonEmptyStr,
+    deleted_in: "the whole-repository ingest-gate family deletion (source layout cutover C3, gunbc.plans.source_layout_authority): the exact-cap transport of the whole-tree ingest has no subject once no producer reads the whole tree" as NonEmptyStr
+  },
 ]
 
 fn floor_grandfathered_chunk_000() -> List<String> {

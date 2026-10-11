@@ -108,10 +108,6 @@ path = "src/bin/generic_identity_census.rs"
 name = "type_occurrence_binding_census"
 path = "src/bin/type_occurrence_binding_census.rs"
 
-# Whole-tree `.dag` source read discovery for Stage C Lane 3a SourceRootIngest.
-[[bin]]
-name = "discover_source_root_ingest"
-path = "src/bin/discover_source_root_ingest.rs"
 # Parse-only regression scanner for src/v1/*.dag (cheap half of full_dag_compiles,
 # which is #[ignore]; this lifts the v1 parse gate onto the CI floor non-ignored).
 # SCAFFOLD — dissolves when src/v1 is fully migrated to .dag substrate authority

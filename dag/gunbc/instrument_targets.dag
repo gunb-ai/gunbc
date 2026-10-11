@@ -305,9 +305,9 @@ fn type_declaration_use_census_label() -> Label {
 // an over-approximation of the direct edges, because the inline crate::<module>:: paths the
 // expression emitter writes are not returned as edges (gunbc.guarantee_stall
 // emitted_inline_crate_path_edges_unreturned_stall). And the crates carry no grounded interface
-// maps: that waits on host-effect emission of v2.compiler.source_authority
-// module_storage_bindings_for_source_roots (v2.workflow.rust_crate_partition
-// stage0_module_dag_interface_grounding). So a green says the derived partition compiles through
+// maps: that waits on the acquirer's contents supply (v2.compiler.module_acquisition
+// acquire_closure_of) reaching v2.workflow.rust_crate_partition
+// stage0_module_dag_interface_grounding. So a green says the derived partition compiles through
 // glob facades; it does not say each crate's public surface is minimal or grounded.
 fn emitted_crate_workspace_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "emitted-crate-workspace" } }

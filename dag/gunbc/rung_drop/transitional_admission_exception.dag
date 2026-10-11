@@ -33,9 +33,6 @@ data transitional_admission_exception_identities: List<String> = [
   "src/v2/test/claim/long/production_qualification_origin_probe_witness.dag::witness_live_structural_fixture_mint_site_discovered_reds",
   "src/v2/test/claim/long/production_qualification_origin_probe_witness.dag::witness_ingest_mint_surface_requires_call_occurrence_frontier_reds",
   "src/v2/test/claim/long/production_qualification_origin_probe_witness.dag::witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_reds",
-  "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest.dag::compiler_closure_scoped_ingest_module_count_ok_holds",
-  "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest.dag::compiler_closure_ingest_overflow_refuses_never_empty_holds",
-  "src/v2/test/claim/self_host/compiler_closure_ingest_boundary_witness.dag::compiler_closure_ingest_boundary_exact_cap_transport_holds",
   "src/v2/test/claim/long/infer_transform_binary_infix_witness.dag::infer_transform_add_vertical_witness_holds",
 ]
 

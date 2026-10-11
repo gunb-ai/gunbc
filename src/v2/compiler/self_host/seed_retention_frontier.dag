@@ -203,7 +203,6 @@ data seed_retention_frontier_roster: List<SeedRetentionFrontierRow> = [
   retained_host_binary(path: "src/bin/cssl_assemble.rs"),
   retained_host_binary(path: "src/bin/dag_collect_fingerprint_witness.rs"),
   retained_host_binary(path: "src/bin/diagnostics_witness.rs"),
-  retained_host_binary(path: "src/bin/discover_source_root_ingest.rs"),
   retained_host_binary(path: "src/bin/effects_rest_transport_witness.rs"),
   retained_host_binary(path: "src/bin/infer_semantics_witness.rs"),
   retained_host_binary(path: "src/bin/interp_recorded_fixture_witness.rs"),

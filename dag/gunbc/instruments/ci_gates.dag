@@ -1,12 +1,11 @@
 module gunbc.instruments.ci_gates
 
-import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.ci.ci_gate { EmitHostGate, Gate, CheapClaimPoolGate }
 import gunbc.ci.ci_spec {
   gunbc_ci_gates, CiSpec,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate,
-  ProseRowIntroductionGate,
-  SourceRootIngestGate
+  ProseRowIntroductionGate
 }
 import gunbc.instruments.emit_host_gate { run_emit_host_ci_gate }
 import gunbc.instruments.cheap_claim_pool_gate { run_cheap_claim_pool_ci_gate }
@@ -15,8 +14,6 @@ import gunbc.instruments.dag_compile_clean_gate { run_dag_compile_clean_gate }
 import gunbc.instruments.generated_artifact_gate { run_generated_artifact_drift_gate }
 import gunbc.instruments.extdeps_scope_placement_gate { run_extdeps_scope_placement_gate }
 import gunbc.instruments.prose_row_introduction_gate { run_prose_row_introduction_gate }
-import gunbc.rung_drop { rung_drop_declaration_message }
-import gunbc.rung_drop.source_root_ingest_gate_rung_drop { source_root_ingest_gate_rung_drop }
 
 fn run_spec_gate(g: Gate) -> ProcessExit {
   match g {
@@ -27,9 +24,6 @@ fn run_spec_gate(g: Gate) -> ProcessExit {
     GeneratedArtifactDriftGate => run_generated_artifact_drift_gate()
     ExtdepsScopePlacementGate => run_extdeps_scope_placement_gate()
     ProseRowIntroductionGate => run_prose_row_introduction_gate()
-    SourceRootIngestGate => exit_failure(
-      reason: rung_drop_declaration_message(d: source_root_ingest_gate_rung_drop)
-    )
   }
 }
 

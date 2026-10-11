@@ -1,9 +1,7 @@
 module v2.compiler.source_authority
 
 import std.types { Bool, Int, List, NonEmptyStr }
-import gunbc.source_root_read { SourceRootFile }
 
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 import v2.std.language_model { LanguageModel }
 
 import v2.compiler.normalize { normalize }
@@ -23,7 +21,6 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node
 }
 import v2.std.compilers.lexing { TokenStream }
-import v2.std.provenance { span_index_empty }
 import std.algebra { Empty, FreeMonoid, list_snoc_item, trim }
 import v2.std.algebra {
   HeadAbsent,
@@ -58,8 +55,6 @@ import v2.std.diagnostic {
 import v2.std.grammar { ParseTree }
 import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance, symbol_intern_lexeme }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.disposition { Disposition, RealizationDispatch, Scaffold }
 import std.optional {
   Absent,
   Optional,
@@ -506,32 +501,6 @@ fn source_ref_path(ref: SourceRef) -> String {
   ref.path
 }
 
-// Tree identity is the --source-root argument that discovered the file, never a substring of
-// the file's storage path. SourceRootRef has two inhabitants (the dag tree and the src/v2
-// tree); an argument names one of those directories or is unrecognized. A parent of both, a
-// copied single-root dump, or any other spelling refuses rather than defaulting to DagTree.
-type SourceRootArgumentAdmission
-  = SourceRootArgumentAdmitted { tree: SourceRootRef }
-  | SourceRootArgumentUnrecognized { argument: String }
-
-fn admit_source_root_argument(argument: String) -> SourceRootArgumentAdmission {
-  if (argument == "src/v2")
-    || (argument == "./src/v2")
-    || (argument == "src/v2/")
-    || argument.ends_with(suffix: "/src/v2")
-    || argument.ends_with(suffix: "/src/v2/") {
-    SourceRootArgumentAdmitted { tree: V2Tree }
-  } else if (argument == "dag")
-    || (argument == "./dag")
-    || (argument == "dag/")
-    || argument.ends_with(suffix: "/dag")
-    || argument.ends_with(suffix: "/dag/") {
-    SourceRootArgumentAdmitted { tree: DagTree }
-  } else {
-    SourceRootArgumentUnrecognized { argument: argument }
-  }
-}
-
 fn source_ref_for_storage_path(path: String, source_root: SourceRootRef) -> SourceRef {
   SourceRef {
     path: path,
@@ -586,9 +555,6 @@ type ModuleStorageProvenance
   = ParsedFromSource { artifact: Artifact, span_index: SpanIndex }
   | ProducedByBehavior { producer: Symbol }
 
-data module_storage_host_parse_note: String = "Task 4 (module-identity-storage-binding-design.md Phase 1): the host producer build_module_path_index (src/v1/stage0/src/module_path_index) routes through v1_compiler_parse::parse — the same bootstrap parse path the in-graph oracle uses at the module-name grain — so host rows are ParsedFromSource, not a parallel substring scan. DeclarationScanned was deleted with this repoint: it existed only to record honestly that extract_module_path never parsed; keeping it after the repoint would be a second way to say the same thing (§3). Bootstrap host emission records NO spans -- it emits span_index_empty(), because it allocates no occurrences; full OccurrenceId mint parity with v2.compiler.parse's stamp pipeline is a named follow-on (dissolve-on: v1 bootstrap parse stamps NodeOccurrenceIdentity the way parse_production_prepared does)."
-
-// Host manifest emission (discover_source_root_ingest --emit-module-binding-manifest) carries span_index_empty(): the bootstrap producer runs no OccurrenceIdAllocator, so it has no occurrence identity to record under. It previously minted an OccurrenceId from the module declaration's ident_span start offset -- a SourceSpan is a FORBIDDEN identity input under std.occurrence_identity's occurrence_identity_scope_law, and the derivation collided besides (offsets 0 and 1 both produced 1). The locus went with it rather than being re-keyed: SpanIndex.entries is a Map keyed BY OccurrenceId, so a producer holding a locus but no allocator identity cannot record the locus without inventing the key, and the honest state is representable only as empty. Real spans arrive with the stamp-parity follow-on named in module_storage_host_parse_note, not before.
 type ModuleStorageBinding {
   module: QualifiedName
   provenance: ModuleStorageProvenance
@@ -1056,110 +1022,18 @@ fn module_storage_binding_file_path(binding: ModuleStorageBinding) -> Optional<S
   }
 }
 
-// THE MODELED OP (docs/plans/module-identity-storage-binding-design.md §2; parent ruling
-// 2026-07-18). Inputs: source roots. Output: ModuleStorageBinding rows — module, path, provenance —
-// and deliberately NO source text: the binding never needed file CONTENTS, only module ⇄ path,
-// which is why this is a different carrier from SourceRootIngest (whose witnesses inline the full
-// Lossless source of every file and are therefore capped at corpus-protection scale). This
-// declaration is the INTERFACE; the host is ONE HANDLER of it at the effect boundary (§2
-// Realization; §3's interface/transport split — the transport is not a fact about the binding). The
-// handler carries ZERO independent policy: it records what the one parse pipeline already computed,
-// which is precisely why repointing the host producer and supplying the rows are the SAME motion
-// rather than two derivations to reconcile.
-
-// Why a host handler rather than deriving in-graph: module_storage_bindings_from_ingest re-parses
-// every module, measured at ~6.5s of eval per module. That is fine at ORACLE scale (a handful of
-// modules, off the gate path) and impossible at consumer scale — the frontier needs ~35 modules and
-// compile-clean scope thousands. The host already knows (module, path) from its own parse, so
-// re-deriving it in-graph is duplicated work (§2) as well as slow. The in-graph derivation is
-// therefore retained as the ORACLE that pins this transport to the model, never as the consumer
-// path.
-
-data module_storage_supply_unbound_body_note: String = "The body REFUSES rather than recursing. This declaration is an interface whose realization is a host handler; until host-effect emission binds it, an in-graph caller must be told so, loudly and at once.
-
-It was previously written as an unconditional self-call — fn f(x) { f(x: x) } — which is the shape a host-bound stub takes when the host is expected to intercept before the body ever runs. That is true for a stub whose spelling IS registered in the interpreter dispatch tables (v1_interpreter.rs), so its body is unreachable. It is NOT true here: this op has no dispatch registration, so the body is genuinely reachable and a caller would spin instead of stopping. A hang is the weakest possible failure arm — it is not even a stop, it just never answers, and DESIGN section 5 wants a located refusal (a bounded 'forever' is not an 'unknown' error). Flagged non-blocking by reviews 39741 and 39773; fixed here because the seam was open anyway.
-
-No in-graph caller exists today, so this changes no behavior — it changes what happens the first time one does."
-
-fn module_storage_bindings_for_source_roots(source_roots: FreeMonoid<String>) -> Outcome<ModuleStorageIndex> {
-  outcome_rejected(
-    d: source_authority_diagnostic(reason: ^module_storage_supply_host_dispatch_required)
-  )
-}
-
-data module_storage_bindings_for_source_roots_host_disposition: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "v2.compiler.source_authority",
-    decl_name: "module_storage_bindings_for_source_roots",
-    field: WholeDeclaration
-  }
-}
-
-data module_storage_supply_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: host-effect emission (witness-realization lane). The host handler for module_storage_bindings_for_source_roots is hand-written Rust at the effect boundary TODAY; when host-effect emission lands, the producer is EMITTED from this .dag model instead, and the hand handler retires. Declared here rather than left implicit so the scaffold cannot linger unmarked (§6: every scaffold lands with a named dissolution trigger). Until then the consistency witness is what keeps the handler honest to this interface, in two enrolled halves: the LIVE half (v2.test.claim.long.module_binding_host_consistency, on the module-binding supply gate's wet cadence) asserts host-emitted rows == module_storage_bindings_from_ingest over the same sources, and the DISCRIMINATING half (v2.test.claim.module_storage_binding, per-PR fast lane, zero parse cost) pins the comparator itself with perturbed rows — module_storage_agreement_reports_divergent_on_wrong_module and module_storage_agreement_reports_uncovered_on_missing_row both go RED if module_storage_host_agrees_with_oracle ever regresses to answering ModuleStorageAgrees unconditionally, which is the exact way the live half would go vacuously green (review 39735).")
+// THE BINDING TABLE'S ONLY PRODUCER IS THE IN-GRAPH DERIVATION, module_storage_bindings_from_ingest: it
+// parses each module of an ingest and records module, path and provenance -- deliberately no source
+// text, which is why this carrier differs from SourceRootIngest. The host manifest emitter that once
+// supplied the same rows from a whole-repository walk is deleted by the source layout cutover
+// (docs/plans/source-layout-authority.md): a module's file is decided by its name and the layout rule
+// (v2.cli.repository_layout), and a driver acquires only the modules it requests, so no walk exists to
+// enumerate paths and no second supply remains to be reconciled with the derivation.
 
 // Both requested directions are queries against ONE table (design §2). file → graph region: given a
 // path, the module parsed from it. module → file(s): given a module reference, its current storage
 // — needed ONLY at host boundaries; user code and tool .dag reference modules and never see paths.
 // A produced module answers Absent for storage, which is a real answer, not a miss.
-
-// After task 4 both the host transport and the in-graph oracle derive module names through parse —
-// the host via v1_compiler_parse at the bootstrap boundary, the oracle via parse_module_prepared
-// in-graph. module_storage_host_agrees_with_oracle therefore checks structural parity of the
-// binding TABLE (module identity + storage path per row), not two different extraction code paths.
-// Divergence still means a real authority disagreement; coverage gaps still mean the host index
-// lacks a row the oracle carries. The witness remains the pin that keeps the host handler a
-// transport of the modeled op rather than a rival authority (§3).
-
-type ModuleStorageAgreement
-  = ModuleStorageAgrees
-  | ModuleStorageDivergent { path: String }
-  | ModuleStorageUncovered { path: String }
-
-fn module_storage_agreement_for_binding(
-  oracle_binding: ModuleStorageBinding,
-  host: ModuleStorageIndex
-) -> ModuleStorageAgreement {
-  match module_storage_binding_file_path(binding: oracle_binding) {
-    Absent => ModuleStorageAgrees
-    Present { value: p } =>
-      match module_storage_module_for_path(index: host, file_path: p) {
-        Absent => ModuleStorageUncovered { path: p }
-        Present { value: host_module } =>
-          if host_module == module_storage_binding_module(binding: oracle_binding) {
-            ModuleStorageAgrees
-          } else {
-            ModuleStorageDivergent { path: p }
-          }
-      }
-  }
-}
-
-fn module_storage_agreement_step(
-  acc: ModuleStorageAgreement,
-  oracle_binding: ModuleStorageBinding,
-  host: ModuleStorageIndex
-) -> ModuleStorageAgreement {
-  match acc {
-    ModuleStorageAgrees =>
-      module_storage_agreement_for_binding(oracle_binding: oracle_binding, host: host)
-    ModuleStorageDivergent { path: p } => ModuleStorageDivergent { path: p }
-    ModuleStorageUncovered { path: p } => ModuleStorageUncovered { path: p }
-  }
-}
-
-fn module_storage_host_agrees_with_oracle(
-  oracle: ModuleStorageIndex,
-  host: ModuleStorageIndex
-) -> ModuleStorageAgreement {
-  fold_list(
-    xs: oracle,
-    empty: ModuleStorageAgrees,
-    cons: fn(acc, oracle_binding) {
-      module_storage_agreement_step(acc: acc, oracle_binding: oracle_binding, host: host)
-    }
-  )
-}
 
 fn module_storage_module_for_path(
   index: ModuleStorageIndex,
@@ -1586,41 +1460,6 @@ fn source_authority_round_trip(
     canonical_source_target: canonical_source_target,
     lm: dag_language_model()
   )
-}
-
-// The native filesystem fold supplies observed bytes and the discovering --source-root
-// argument on each file. Tree identity is admitted from that argument. An unrecognized
-// argument refuses; the file path is never classified.
-type SourceRootIngestFromFiles
-  = SourceRootIngestFromFilesBuilt { ingest: SourceRootIngest }
-  | SourceRootIngestFromFilesUnrecognizedRoot { argument: String, path: String }
-
-fn source_root_ingest_from_files_go(
-  pending: List<SourceRootFile>,
-  acc: SourceRootIngest
-) -> SourceRootIngestFromFiles {
-  match list_head(xs: pending) {
-    HeadAbsent => SourceRootIngestFromFilesBuilt { ingest: acc }
-    HeadFound { value: file } =>
-      match admit_source_root_argument(argument: file.origin) {
-        SourceRootArgumentAdmitted { tree: tree } =>
-          source_root_ingest_from_files_go(
-            pending: skip(xs: pending, n: 1),
-            acc: list_snoc_item(xs: acc, item: DagSourceReadWitness {
-              source: Medium { carried: file.content, fidelity: Lossless },
-              artifact: Artifact { kind: SourceFile, id: file.path, file_path: file.path },
-              compilation_unit: file.path,
-              source_root: tree
-            })
-          )
-        SourceRootArgumentUnrecognized { argument: argument } =>
-          SourceRootIngestFromFilesUnrecognizedRoot { argument: argument, path: file.path }
-      }
-  }
-}
-
-fn source_root_ingest_from_files(files: List<SourceRootFile>) -> SourceRootIngestFromFiles {
-  source_root_ingest_from_files_go(pending: files, acc: Empty)
 }
 
 // ---- the storage rule (docs/plans/source-layout-authority.md, R5) --------------------------------

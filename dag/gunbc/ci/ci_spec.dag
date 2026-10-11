@@ -101,8 +101,7 @@ import gunbc.ci.ci_gate {
   Gate,
   EmitHostGate, CheapClaimPoolGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate,
-  ProseRowIntroductionGate,
-  SourceRootIngestGate
+  ProseRowIntroductionGate
 }
 import gunbc.ci.ci_layer_roots {
   witness_layer_roots,

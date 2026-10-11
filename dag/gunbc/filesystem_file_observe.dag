@@ -23,8 +23,9 @@ type FilesystemPathDecomposition
 // refusal instead of masquerading as an established absence. This spelling was carried verbatim in
 // five wet readers (review 74161 finding 2, extended by review 74191 to the fifth) and is owned
 // here now: gunbc.codex_supervised_turn, gunbc.host.host_effect_nbd_proxy_serve,
-// gunbc.instruments.merge_admission_walk, gunbc.instruments.opaque_realization_census, and
-// v2.workflow.product_receipt_stage call it instead of re-spelling the composition. A consumer
+// gunbc.instruments.merge_admission_walk and gunbc.instruments.opaque_realization_census
+// call it (a fifth consumer, v2.workflow.product_receipt_stage, was deleted with the whole-repository
+// ingest-gate family in the source layout cutover C3) instead of re-spelling the composition. A consumer
 // whose question is not this question composes the filesystem_io folds itself rather than varying
 // a copy of this one -- in particular a consumer that already holds an admitted directory and an
 // admitted FilesystemEntryName keeps its own composition, because re-decomposing a joined path

@@ -45,7 +45,9 @@ These are the exact residue the LESSON paragraph above predicted and did not fin
 
 MEASURED CONSEQUENCE: every fleet-converge dispatch after the cutover failed at the build step with no bin target named floor_skip_discovery_witness in the v1-compiler package. The last green dispatch was 2026-08-17T19:09Z, whose tree still carried both sources; the cutover committed at 2026-08-17T22:38Z; the next dispatch was the first to refuse, and the workflow stayed unusable for two days. It went unseen because this roster feeds only fleet-converge.yml, which is dispatch-only — no per-PR run ever builds the pack, so ordinary CI could not observe the breakage no matter how green it was.
 
-The check that found it is the sweep this module already prescribes: every enrolled name against the real bin sources, rather than only the row cargo happened to name first. Both rosters were swept and these two were the entire stale set. Fix verified by execution — the build job that had been refusing packs and uploads green in run 32213195686."
+The check that found it is the sweep this module already prescribes: every enrolled name against the real bin sources, rather than only the row cargo happened to name first. Both rosters were swept and these two were the entire stale set. Fix verified by execution — the build job that had been refusing packs and uploads green in run 32213195686.
+
+FIFTH REMOVAL (source layout cutover, 2026-10-10), justified per bin: discover_source_root_ingest is removed from witness_declared_release_bins, superseding the CORRECTION paragraph's statement that it remains enrolled. That statement was true of a seed whose compile route consumed a whole-repository ingest; the layout cutover abolishes that ingest on purpose (a compile acquires the modules it requests and nothing else), so the bin's subject -- emitting the whole-tree source-root ingest manifest and the module-storage binding manifest that fed v2.workflow.source_root_ingest_gate and its transports -- has no consumer left, and the three production transports and the gate it served are deleted in the same change. The sweep this module prescribes was run for CALLERS and not only definers: the bin's invokers were the deleted transports and the fleet-converge pack lines, and the pack lines regenerate from this authority."
 
 // THE COMPILER BINARY'S NAME IS A ROW BECAUSE A SECOND CONSUMER NOW SPELLS IT. The pack membership
 // list was the only reader while the name appeared once; gunbc.live_deploy.emit now copies that
@@ -62,7 +64,6 @@ data ci_floor_invoked_bins: List<String> = [
 ]
 
 data witness_declared_release_bins: List<String> = [
-  "discover_source_root_ingest",
   "claim_batch",
   "interp_recorded_fixture_witness",
   "v1_src_dag_parse",

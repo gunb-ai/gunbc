@@ -50,8 +50,7 @@ import gunbc.ci.ci_gate {
   Gate,
   EmitHostGate, CheapClaimPoolGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate,
-  ProseRowIntroductionGate,
-  SourceRootIngestGate
+  ProseRowIntroductionGate
 }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -155,7 +154,6 @@ fn gate_content_hash_structural(g: Gate) -> Fnv1a64Structural {
     GeneratedArtifactDriftGate => content_hash_atom(value: "GeneratedArtifactDriftGate")
     ExtdepsScopePlacementGate => content_hash_atom(value: "ExtdepsScopePlacementGate")
     ProseRowIntroductionGate => content_hash_atom(value: "ProseRowIntroductionGate")
-    SourceRootIngestGate => content_hash_atom(value: "SourceRootIngestGate")
   }
 }
 

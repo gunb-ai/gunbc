@@ -1,7 +1,7 @@
 The native source-root door uses the existing `Filesystem.Read` and `Filesystem.List`
 transport, realized by `v1.compiler.emit_rust.emit_file_call`. Traversal and read
 refusal live in `gunbc.source_root_read`; witness construction lives in
-`v2.compiler.source_authority.source_root_ingest_from_files`. The native CLI calls
+`v2.compiler.module_acquisition.acquisition_ingest`. The native CLI calls
 `v2_cli_main` once, binding one emitted Filesystem service at its entry.
 
 The listing's existing error-kind channel now distinguishes NotADirectory. A child
