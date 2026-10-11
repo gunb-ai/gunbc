@@ -58,7 +58,10 @@ fn pair_files() -> List<PathPair> {
     PathPair { old_path: "dag/m/n/p.dag", new_path: "src/v2/k/p.dag" },
     PathPair { old_path: "dag/m/n/o.dag", new_path: "dag/j/o.dag" },
     PathPair { old_path: "dag/tools/docs_gate.dag", new_path: "dag/gunbc/instruments/docs_gate.dag" },
-    PathPair { old_path: "dag/tools/other.dag", new_path: "dag/gunbc/instruments/other.dag" }
+    PathPair { old_path: "dag/tools/other.dag", new_path: "dag/gunbc/instruments/other.dag" },
+    PathPair { old_path: "dag/e/f/g_test.dag", new_path: "dag/e/f/g.dag" },
+    PathPair { old_path: "dag/h/i/a_test.dag", new_path: "dag/h2/i/a.dag" },
+    PathPair { old_path: "dag/h/i/j/b_test.dag", new_path: "dag/h2/i/j/b.dag" }
   ]
 }
 
@@ -172,6 +175,13 @@ test fn rewrite_renames_file_paths_and_wholly_moved_directories() -> Bool {
 // left as written, because rewriting it would redirect the files that stayed.
 test fn rewrite_leaves_a_directory_that_is_only_partly_moved() -> Bool {
   text_of(text: "dir dag/a/b/ and file dag/a/b/c.dag") == "dir dag/a/b/ and file dag/x/y/c.dag"
+}
+
+// A file renamed inside its directory is still inside it: the new basename says nothing about where
+// the directory went, so a directory whose every file is only renamed is left as written and is no
+// note, while one whose files move and are renamed follows them to the directory they share.
+test fn rewrite_judges_a_directory_by_where_its_files_land_not_by_their_new_names() -> Bool {
+  text_of(text: "dir dag/e/f/ and file dag/e/f/g_test.dag") == "dir dag/e/f/ and file dag/e/f/g.dag" && notes_with(dispositions: standard_dispositions(), text: "dir dag/e/f/") == [] && text_of(text: "dir dag/h/i/ and dag/h/i/j/ and dag/h/ end") == "dir dag/h2/i/ and dag/h2/i/j/ and dag/h2/ end"
 }
 
 // Labels follow the same successors. A `//` that follows ':' is the scheme separator of a URL, not

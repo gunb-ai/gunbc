@@ -279,13 +279,22 @@ fn directory_candidate_after(old: DirectoryCandidate, to: String) -> DirectoryCa
   }
 }
 
-// The directory a moved file's new path puts the old directory's content under, or "" when the new
-// path does not end with the part that followed the old directory.
+fn parent_of(path: String) -> String {
+  let segments = split(s: path, delimiter: "/")
+  join(segments.take(n: count(segments) - 1), "/")
+}
+
+// The directory a moved file's new directory puts the old directory's content under, or "" when the
+// new directory does not end with the part of the old directory that followed `directory`. Only the
+// directories are compared: a file renamed inside its directory is still inside it, and its new
+// basename says nothing about where the directory went.
 fn directory_successor(old_path: String, new_path: String, directory: String) -> String {
-  let rest = substring(s: old_path, start: string_length(s: directory) + 1, end: text_end())
-  let tail = concat("/", rest)
-  if new_path.ends_with(suffix: tail) {
-    substring(s: new_path, start: 0, end: string_length(s: new_path) - string_length(s: tail))
+  let kept = substring(s: parent_of(path: old_path), start: string_length(s: directory), end: text_end())
+  let landed = parent_of(path: new_path)
+  if kept == "" {
+    landed
+  } else if landed.ends_with(suffix: kept) {
+    substring(s: landed, start: 0, end: string_length(s: landed) - string_length(s: kept))
   } else {
     ""
   }
