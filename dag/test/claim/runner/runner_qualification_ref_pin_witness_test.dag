@@ -9,7 +9,7 @@ import extdeps.github.actions {
 }
 import gunbc.fleet.org_actions_inspection { RunnerGroupListDecoded, RunnerGroupIdentity }
 import gunbc.runner_group_restriction_observation { RunnerGroupRestrictionRefused, RunnerGroupAbsent }
-import gunbc.fleet_desired_admission_workflow { fleet_desired_admission_workflow }
+import gunbc.fleet_converge_workflow { fleet_converge_workflow }
 import test.claim.github_app_registry { group_restricted_to }
 import gunbc.runner.runner_qualification_ref_pin {
   qualification_branch_name, QualificationBranchNamed, QualificationBranchNameRefused, branch_full_ref,
@@ -150,10 +150,9 @@ test fn the_branch_is_removed_only_when_a_read_finds_it_absent() -> Bool {
 }
 
 // CREATING A QUALIFICATION BRANCH FIRES NO WORKFLOW. WorkflowTrigger has no `create` variant, so no
-// generated workflow can trigger on branch creation by construction; the one generated workflow with a
-// push trigger is gunbc.fleet_desired_admission_workflow, whose branch filter must not admit
-// qualification/<attempt>. A filter containing any glob is read as possibly matching (refused here
-// rather than evaluated), so a widened filter turns this red.
+// generated workflow can trigger on branch creation by construction. Any remaining generated
+// workflow with a push trigger must not admit qualification/<attempt>. A filter containing any glob
+// is read as possibly matching (refused here rather than evaluated), so a widened filter turns this red.
 fn push_trigger_could_fire_on(trigger: WorkflowTrigger, branch: String) -> Bool {
   match trigger {
     Push { branches: bs, paths: _ } => count(bs) == 0 || (bs |> any(b => b == branch || string_contains(s: b, pattern: "*")))
@@ -167,6 +166,6 @@ fn push_trigger_could_fire_on(trigger: WorkflowTrigger, branch: String) -> Bool 
 }
 
 test fn creating_a_qualification_branch_fires_no_generated_push_workflow() -> Bool {
-  !(fleet_desired_admission_workflow.on |> any(t => push_trigger_could_fire_on(trigger: t, branch: "qualification/q-1")))
+  !(fleet_converge_workflow.on |> any(t => push_trigger_could_fire_on(trigger: t, branch: "qualification/q-1")))
     && push_trigger_could_fire_on(trigger: Push { branches: ["qualification/**"], paths: [] }, branch: "qualification/q-1")
 }

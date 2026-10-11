@@ -26,7 +26,7 @@ import gunbc.action_use_admission {
   upload_artifact_action, checkout_action, github_script_action, setup_rust_action,
   realized_use_is_a_repository_selection,
 }
-import gunbc.fleet_desired_admission_workflow { fleet_desired_admission_workflow }
+import gunbc.fleet_converge_workflow { fleet_converge_workflow }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -231,9 +231,8 @@ test fn red_modeled_workflow_with_a_substituted_release_is_refused() -> Bool {
   }
 }
 
-// The real generator input, run for real: fleet-desired is the smallest emitted workflow.
-test fn fleet_desired_workflow_action_uses_are_admitted() -> Bool {
-  match admit_workflow_action_uses(workflow: fleet_desired_admission_workflow) {
+test fn fleet_converge_workflow_action_uses_are_admitted() -> Bool {
+  match admit_workflow_action_uses(workflow: fleet_converge_workflow) {
     WorkflowActionUsesAdmitted => true
     WorkflowActionUsesRefused { refusals: _ } => false
   }
@@ -280,7 +279,7 @@ fn census_holds(c: RealizedCensus) -> Bool {
 // eval-step budget. This join is what makes the per-file claims the census: a workflow added without
 // a claim, or a claim naming a file that is gone, refuses here, by name.
 data realized_workflow_files: List<String> = [
-  "fleet-converge.yml", "fleet-desired.yml", "heal.yml", "instrument-dispatch.yml", "microvm-shakedown.yml", "mtcollins-canary.yml", "witnesses.yml"
+  "fleet-converge.yml", "heal.yml", "instrument-dispatch.yml", "microvm-shakedown.yml", "mtcollins-canary.yml", "witnesses.yml"
 ]
 
 fn listed_workflow_files() -> List<String> {
@@ -328,10 +327,6 @@ test fn the_cost_standing_names_a_file_this_census_reads() -> Bool {
 // one claim (the trigger the retired line projection waited for).
 test fn census_fleet_converge_uses_are_modeled_and_executed_exactly() -> Bool {
   census_holds(c: census_file(name: "fleet-converge.yml"))
-}
-
-test fn census_fleet_desired_uses_are_modeled_and_executed_exactly() -> Bool {
-  census_holds(c: census_file(name: "fleet-desired.yml"))
 }
 
 // The heal workflow carries the upload-artifact step the floor's receipts are published through.
