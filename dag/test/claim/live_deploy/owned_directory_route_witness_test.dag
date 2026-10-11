@@ -155,7 +155,7 @@ test fn a_protected_fabric_tree_is_converged_and_a_second_deployment_installs_no
   })
   let derivation = derive_member_plan(
     roster: roster,
-    desired: m => match m { DirectoryRoot { path } => RootAt { root: DirectoryRootIdentity { path: path, standing: RootConverged } }  _ => RootAt { root: DirectoryRootIdentity { path: "/" as NonEmptyStr, standing: RootConverged } } },
+    desired: m => Present { value: match m { DirectoryRoot { path } => RootAt { root: DirectoryRootIdentity { path: path, standing: RootConverged } }  _ => RootAt { root: DirectoryRootIdentity { path: "/" as NonEmptyStr, standing: RootConverged } } } },
     observed: m => match first(filter(xs: tree, predicate: t => converged_member_eq(a: DirectoryRoot { path: owned_directory_path(t: t) as String as NonEmptyStr }, b: m))) {
       Present { value: t } => fabric_member_as_privileged_reads_see_it(t: t)
       Absent => MemberUnobservable { member: m, cause: "not a fabric demand" }

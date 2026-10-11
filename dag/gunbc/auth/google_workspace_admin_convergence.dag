@@ -19,7 +19,7 @@ type WorkspaceIdentityBinding {
   project: NonEmptyStr
   client: NonEmptyStr
   top_org_unit: NonEmptyStr
-  redirect_uri: NonEmptyStr
+  redirect_uris: List<NonEmptyStr>
   desired_revision: NonEmptyStr
 }
 
@@ -37,7 +37,7 @@ type DirectoryDiscoveryPolicy
 fn workspace_identity_admin_obligations(binding: WorkspaceIdentityBinding, discovery: DirectoryDiscoveryPolicy) -> List<WorkspaceAdminObligation> {
   [
     WorkspaceAdminObligation { subject: AuthPlatformClient { project: binding.project, client: binding.client },
-      desired: RegisteredWebClient { redirect_uris: [binding.redirect_uri] }, desired_revision: binding.desired_revision, rationale: "Register the tracker web client; provision its secret separately through the existing secret path." },
+      desired: RegisteredWebClient { redirect_uris: binding.redirect_uris }, desired_revision: binding.desired_revision, rationale: "Register the tracker web client in the Cloud Console (no Auth Platform write API); provision its secret separately through host credential custody. Actuation is the operator's console step; standing is a console readback receipt." },
     WorkspaceAdminObligation { subject: AuthPlatformAudience { project: binding.project }, desired: InternalAudience,
       desired_revision: binding.desired_revision, rationale: "The tracker is an internal organization application." },
     WorkspaceAdminObligation { subject: WorkspaceClientAccess { customer: binding.customer, client: binding.client, org_unit: binding.top_org_unit },

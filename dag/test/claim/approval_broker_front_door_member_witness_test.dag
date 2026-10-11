@@ -19,6 +19,7 @@ import gunbc.live_deploy.spec {
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.shell_command_text { shell_privileged_command_text_of_argv }
+import v2.std.collection { Present, Absent }
 
 // THE BROKER'S TAILNET EXPOSURE IS A DEPLOYMENT MEMBER WHOSE PRESENCE IS THE ROUTING ROW. The
 // enrolment 404 (2026-09-30) was a cutover that declared its front-door argv and had no deploy
@@ -83,7 +84,7 @@ test fn the_device_enrolment_path_is_under_an_installed_mount() -> Bool {
 test fn apply_and_teardown_realize_both_mappings() -> Bool {
   let spec = deployment_spec_srv1()
   let art = DeploymentArtifactStep { kind: ApprovalBrokerFrontDoor, path: "/approve" as NonEmptyStr }
-  let up = step_commands(steps: emit_artifact_upsert(art: art, spec: spec, revision: RevisionBoundAtEmission { revision: "0000000000000000000000000000000000000000" as CommitSha }))
+  let up = step_commands(steps: emit_artifact_upsert(art: art, spec: spec, revision: RevisionBoundAtEmission { revision: "0000000000000000000000000000000000000000" as CommitSha }, oidc_now: Absent))
   let down = step_commands(steps: emit_artifact_teardown(art: art, spec: spec))
   let plan = approval_broker_front_door_endpoints(https_port: tailscale_default_https_port, backend_port: approval_broker_listen_port)
   up == map(plan, e => shell_privileged_command_text_of_argv(argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: e))))

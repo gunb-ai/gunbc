@@ -1672,6 +1672,10 @@ fn second_to_millisecond(s: Second) -> Millisecond {
   millisecond(count: second_count(s: s) * milliseconds_per_second())
 }
 
+fn millisecond_to_second_floor(m: Millisecond) -> Second {
+  second(count: millisecond_count(m: m) / milliseconds_per_second())
+}
+
 type Percent = Measure<Dimensionless, One, Nat>
 
 fn percent(count: Nat) -> Percent {
