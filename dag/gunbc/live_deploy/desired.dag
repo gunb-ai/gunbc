@@ -18,6 +18,7 @@ import gunbc.fleet_intent_network {
 }
 import gunbc.fleet_host_identity { operator_host_srv2 }
 import gunbc.roadmap_dashboard_instance {
+  DeploymentId,
   HostDashboardInstance,
   ProdRoleRealization,
   ProdRoleRealizedBy,
@@ -25,7 +26,6 @@ import gunbc.roadmap_dashboard_instance {
   ProdRoleRealizationRefusal,
   prod_role_realization_refusal_detail,
   ProdRoleHolderUnactuatable,
-  ProdRoleHolderRowsDuplicated,
   prod_role_realization,
   prod_role_realization_in,
   public_builtin_dashboard_instances,
@@ -164,28 +164,55 @@ fn prod_role_actuated_realization() -> ProdRoleRealization {
   prod_role_actuated_realization_over(realization: prod_role_realization(), rows: desired_deployment_roster())
 }
 
-// THE PROD ROLE AS A ROW. A PROJECTION of prod_role_actuated_realization(), not a second join: the
-// actuated realization already refuses Unheld / Unrealized / Ambiguous / Unactuatable, and this only
-// selects its holder's roster row by deployment identity. A miss is the actuated join's own
-// Unactuatable refusal, never a fallback row.
+// THE PROD ROLE AS A ROW. A PROJECTION of prod_role_actuated_realization(), read through the ONE
+// admitted roster: the realization, then desired_roster_standing over the rows, then the exact
+// lookup by the holder's INSTANCE id (desired_deployment_for_instance_id_over), then a check that
+// the row found names the holder's deployment. Three distinct refusals: the realization's own
+// cause, the roster's own refusal (a duplicate id or same-host collision ANYWHERE in the roster
+// stops every production entry), and an exact-holder-row mismatch. No filter by deployment id: that
+// was a second, weaker roster reader.
 type ProdRoleDeployment
   = ProdRoleDeploymentSelected { deployment: DesiredDeployment }
   | ProdRoleDeploymentRefused { cause: ProdRoleRealizationRefusal }
+  | ProdRoleDeploymentRosterRefused { refusal: DesiredRosterRefusal }
+  | ProdRoleDeploymentHolderRowMismatch { holder: DeploymentId, rostered: DeploymentId }
 
 fn prod_role_desired_deployment_over(realization: ProdRoleRealization, rows: List<DesiredDeployment>) -> ProdRoleDeployment {
   match realization {
     ProdRoleRealizationRefused { cause } => ProdRoleDeploymentRefused { cause: cause }
     ProdRoleRealizedBy { holder } =>
-      let matching = rows |> filter(r => r.instance.deployment == holder.instance.deployment)
-      if count(matching) > 1 {
-        ProdRoleDeploymentRefused { cause: ProdRoleHolderRowsDuplicated { deployment: holder.instance.deployment, count: count(matching) } }
+      prod_role_holder_row_checked(
+        holder: holder.instance.deployment,
+        lookup: desired_deployment_for_instance_id_over(rows: rows, instance_id: instance_id_text(id: holder.instance.instance_id)),
+      )
+  }
+}
+
+// The exact-row check, over a supplied lookup so a control can hand it a row naming another
+// deployment (the real lookup is keyed by instance id, so the real roster never produces one).
+fn prod_role_holder_row_checked(holder: DeploymentId, lookup: DesiredDeploymentLookup) -> ProdRoleDeployment {
+  match lookup {
+    DesiredDeploymentRosterRefused { refusal } => ProdRoleDeploymentRosterRefused { refusal: refusal }
+    DesiredDeploymentUnknownInstanceId { instance_id: _ } =>
+      ProdRoleDeploymentRefused { cause: ProdRoleHolderUnactuatable { deployment: holder } }
+    DesiredDeploymentFound { row } =>
+      if row.instance.deployment == holder {
+        ProdRoleDeploymentSelected { deployment: row }
       } else {
-        match matching |> first {
-          Present { value: row } => ProdRoleDeploymentSelected { deployment: row }
-          Absent => ProdRoleDeploymentRefused { cause: ProdRoleHolderUnactuatable { deployment: holder.instance.deployment } }
-        }
+        ProdRoleDeploymentHolderRowMismatch { holder: holder, rostered: row.instance.deployment }
       }
   }
+}
+
+fn desired_roster_refusal_detail(refusal: DesiredRosterRefusal) -> String {
+  match refusal {
+    DesiredRosterSameHostCollision { host } => join(["DesiredRosterSameHostCollision on host ", host], "")
+    DesiredRosterDuplicateInstanceId { instance_id } => join(["DesiredRosterDuplicateInstanceId ", instance_id], "")
+  }
+}
+
+fn prod_role_deployment_mismatch_detail(holder: DeploymentId, rostered: DeploymentId) -> String {
+  join(["prod role refused: the roster row for holder ", holder.name as String, "'s instance names deployment ", rostered.name as String], "")
 }
 
 fn prod_role_desired_deployment() -> ProdRoleDeployment {
@@ -337,7 +364,10 @@ fn desired_roster_standing(rows: List<DesiredDeployment>) -> DesiredRosterStandi
 }
 
 fn desired_deployment_for_instance_id(instance_id: String) -> DesiredDeploymentLookup {
-  let rows = desired_deployment_roster()
+  desired_deployment_for_instance_id_over(rows: desired_deployment_roster(), instance_id: instance_id)
+}
+
+fn desired_deployment_for_instance_id_over(rows: List<DesiredDeployment>, instance_id: String) -> DesiredDeploymentLookup {
   match desired_roster_standing(rows: rows) {
     DesiredRosterRefused { refusal } => DesiredDeploymentRosterRefused { refusal: refusal }
     DesiredRosterAdmitted { keyed } =>

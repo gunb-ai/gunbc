@@ -62,6 +62,10 @@ import gunbc.live_deploy.desired {
   prod_role_desired_deployment,
   ProdRoleDeploymentSelected,
   ProdRoleDeploymentRefused,
+  ProdRoleDeploymentRosterRefused,
+  ProdRoleDeploymentHolderRowMismatch,
+  desired_roster_refusal_detail,
+  prod_role_deployment_mismatch_detail,
   ProdRoleDeployment,
 }
 import gunbc.live_deploy.emit {
@@ -419,6 +423,10 @@ fn rlm_receipt_holder_admission(selected: ProdRoleDeployment) -> RlmReceiptHolde
   match selected {
     ProdRoleDeploymentRefused { cause } =>
       RlmReceiptHolderRefused { reason: join(["rlm_launch_deployment_receipt: ", prod_role_realization_refusal_detail(cause: cause)], "") }
+    ProdRoleDeploymentRosterRefused { refusal } =>
+      RlmReceiptHolderRefused { reason: join(["rlm_launch_deployment_receipt: ", desired_roster_refusal_detail(refusal: refusal)], "") }
+    ProdRoleDeploymentHolderRowMismatch { holder, rostered } =>
+      RlmReceiptHolderRefused { reason: join(["rlm_launch_deployment_receipt: ", prod_role_deployment_mismatch_detail(holder: holder, rostered: rostered)], "") }
     ProdRoleDeploymentSelected { deployment } =>
       if (deployment.target.host.identity as String) != rlm_receipt_host {
         RlmReceiptHolderRefused { reason: join(["rlm_launch_deployment_receipt: RlmHolderNotOnVantage — the prod-role holder deploys to ", deployment.target.host.identity as String, " but this receipt mode observes through the ", rlm_receipt_host, " ssh vantage and checkout"], "") }

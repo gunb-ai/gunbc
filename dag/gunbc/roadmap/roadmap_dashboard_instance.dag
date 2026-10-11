@@ -808,7 +808,6 @@ type ProdRoleRealizationRefusal
   | ProdRoleHolderUnrealized { deployment: DeploymentId }
   | ProdRoleHolderAmbiguous { deployment: DeploymentId, count: Int }
   | ProdRoleHolderUnactuatable { deployment: DeploymentId }
-  | ProdRoleHolderRowsDuplicated { deployment: DeploymentId, count: Int }
 
 // THE HOLDER TOKEN. sole_constructor, so only this module -- and in it only prod_role_realization_in
 // -- can mint one: a role-following singleton is built FROM a holder, and no caller can claim
@@ -856,8 +855,6 @@ fn prod_role_realization_refusal_detail(cause: ProdRoleRealizationRefusal) -> St
       join(["prod role refused: holder ", deployment.name as String, " has ", to_string(n), " instances"], "")
     ProdRoleHolderUnactuatable { deployment } =>
       join(["prod role refused: holder ", deployment.name as String, " has no desired deployment row (gunbc.live_deploy.desired desired_deployment_roster), so nothing can actuate it"], "")
-    ProdRoleHolderRowsDuplicated { deployment, count: n } =>
-      join(["prod role refused: holder ", deployment.name as String, " has ", to_string(n), " desired deployment rows (gunbc.live_deploy.desired desired_deployment_roster); the roster must list it exactly once"], "")
   }
 }
 

@@ -14,7 +14,6 @@ import gunbc.roadmap_dashboard_instance {
   ProdRoleHolderUnrealized,
   ProdRoleHolderAmbiguous,
   ProdRoleHolderUnactuatable,
-  ProdRoleHolderRowsDuplicated,
   prod_role_realization_refusal_detail,
   HostDashboardInstance,
 }
@@ -321,7 +320,6 @@ fn desired_is_no_prod(cause: ProdRoleRealizationRefusal) -> Bool {
     ProdRoleHolderUnrealized { deployment: _ } => false
     ProdRoleHolderAmbiguous { deployment: _, count: _ } => false
     ProdRoleHolderUnactuatable { deployment: _ } => false
-    ProdRoleHolderRowsDuplicated { deployment: _, count: _ } => false
   }
 }
 

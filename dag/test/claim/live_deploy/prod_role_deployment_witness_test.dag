@@ -14,13 +14,19 @@ import gunbc.deployment_risk {
 import gunbc.roadmap_dashboard_instance {
   ProdRoleUnheld,
   ProdRoleHolderUnactuatable,
-  ProdRoleHolderRowsDuplicated,
   prod_role_realization,
 }
 import gunbc.live_deploy.desired {
   ProdRoleDeployment,
   ProdRoleDeploymentSelected,
   ProdRoleDeploymentRefused,
+  ProdRoleDeploymentRosterRefused,
+  ProdRoleDeploymentHolderRowMismatch,
+  prod_role_holder_row_checked,
+  DesiredDeploymentFound,
+  DesiredRosterDuplicateInstanceId,
+  srv1_lab_desired_deployment,
+  srv2_deploy_desired_deployment,
   prod_role_desired_deployment,
   prod_role_desired_deployment_over,
   prod_role_actuated_realization,
@@ -53,6 +59,8 @@ fn host_of(p: ProdRoleDeployment) -> String {
   match p {
     ProdRoleDeploymentSelected { deployment } => deployment.target.host.identity as String
     ProdRoleDeploymentRefused { cause: _ } => ""
+    ProdRoleDeploymentRosterRefused { refusal: _ } => ""
+    ProdRoleDeploymentHolderRowMismatch { holder: _, rostered: _ } => ""
   }
 }
 
@@ -127,12 +135,31 @@ test fn a_holder_on_srv1_is_admitted_by_the_srv1_access_and_the_launch_vantage()
   })
 }
 
-// A roster that lists the holder's deployment twice is refused as ambiguous, never resolved by
-// taking the first row (DESIGN 5: no silent choice); the real roster's single row still selects.
-test fn a_duplicated_roster_row_refuses_as_rows_duplicated_and_never_picks_one() -> Bool {
-  let duplicated = list_append(desired_deployment_roster(), [srv1_production_desired_deployment()])
-  match prod_role_desired_deployment_over(realization: prod_role_actuated_realization_in(selection: ProdRoleHeldBy { deployment: srv1_daily_workspace_deployment }), rows: duplicated) {
-    ProdRoleDeploymentRefused { cause: ProdRoleHolderRowsDuplicated { deployment: d, count: n } } => d == srv1_daily_workspace_deployment && n == 2
+// The projection reads the ONE admitted roster: a duplicate instance id ANYWHERE in it refuses every
+// production selection even though the holder's own row is valid, and the refusal is the roster's.
+test fn a_duplicate_elsewhere_in_the_roster_refuses_the_projection_and_the_apply_selection() -> Bool {
+  let polluted = list_append(desired_deployment_roster(), [srv1_lab_desired_deployment()])
+  let projection = prod_role_desired_deployment_over(realization: prod_role_actuated_realization_in(selection: ProdRoleHeldBy { deployment: srv1_daily_workspace_deployment }), rows: polluted)
+  match projection {
+    ProdRoleDeploymentRosterRefused { refusal: DesiredRosterDuplicateInstanceId { instance_id: _ } } =>
+      match live_deploy_prod_role_apply_selection_under(selected: projection, access: ci_deploy_srv1_access) {
+        DesiredApplyRefused { reason: _ } => true
+        DesiredApplySelected { deployment: _ } => false
+      }
+    _ => false
+  }
+}
+
+// A row found by the holder's instance id that names ANOTHER deployment is a mismatch, never selected.
+test fn a_row_naming_another_deployment_is_a_holder_mismatch_never_selected() -> Bool {
+  let projection = prod_role_holder_row_checked(holder: srv1_daily_workspace_deployment, lookup: DesiredDeploymentFound { row: srv2_deploy_desired_deployment() })
+  match projection {
+    ProdRoleDeploymentHolderRowMismatch { holder: h, rostered: r } =>
+      h == srv1_daily_workspace_deployment && r == srv2_deploy_deployment
+        && (match live_deploy_prod_role_apply_selection_under(selected: projection, access: ci_deploy_srv1_access) {
+          DesiredApplyRefused { reason: _ } => true
+          DesiredApplySelected { deployment: _ } => false
+        })
     _ => false
   }
 }
@@ -145,6 +172,6 @@ test fn the_real_route_selects_the_row_of_the_actuated_holder() -> Bool {
     ProdRoleDeploymentSelected { deployment } =>
       host_of(prod_role_desired_deployment()) != ""
         && (selected_deployment_spec(row: deployment).instance_id as String) == (deployment.instance.instance_id as String)
-    ProdRoleDeploymentRefused { cause: _ } => false
+    _ => false
   }
 }
