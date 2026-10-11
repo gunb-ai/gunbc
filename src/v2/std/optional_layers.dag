@@ -1,0 +1,85 @@
+module v2.std.optional_layers
+
+import std.nat { Nat, NatDifference, NatSubtrahendExceedsMinuend, Succ, Zero, nat_add, nat_sub }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.node {
+  Cardinality,
+  ComputationNode,
+  Edge,
+  Node,
+  Positional,
+  TypeNode
+}
+import v2.std.node_query { node_positional_child_targets }
+import v2.std.collection { list_at_optional }
+
+// OPTIONAL-LAYER DEPTH IS std.nat Nat (Zero = required / no wrappers). A two-arm
+// Required | CardOptional sum is Zero | Succ under another name (DESIGN §2/#3). gunbc#13488's
+// concern was two zeros (Required beside CardOptional { layers: Nat }); a single Nat has one
+// (Zero). Compose is nat_add. Peel is nat_sub of one, refused at Zero. This module keeps the Node
+// Cardinality-wrapper read/write and that peel (what a bare Nat does not name).
+//
+// CONSUMERS (DESIGN §3c): type_node_cardinality_read / wrap_type_node_cardinality; production
+// v2.compiler.infer infer_match_generic_formal peels with peel_optional_layer;
+// v2.std.inhabitance refuses two positive depths that Nat equality denies. Claims:
+// test.claim.optional_layers_witness_test and v2.test.claim.compiler.optional_layers.
+type TypeNodeCardinalityRead
+  = TypeNodeCardinality { card: Nat, base: Node }
+  | CardinalityWrapperMalformed { wrapper: Node }
+
+fn one_optional_layer() -> Nat {
+  Succ { prev: Zero }
+}
+
+fn two_optional_layers() -> Nat {
+  Succ { prev: Succ { prev: Zero } }
+}
+
+fn peel_optional_layer(card: Nat) -> Optional<Nat> {
+  match nat_sub(a: card, b: one_optional_layer()) {
+    NatSubtrahendExceedsMinuend => optional_absent()
+    NatDifference { value: rest } => optional_present(value: rest)
+  }
+}
+
+fn type_node_cardinality_child(n: Node) -> Optional<Node> {
+  match n.kind {
+    TypeNode { connective: Cardinality } =>
+      match list_at_optional(xs: node_positional_child_targets(node: n), index: 0) {
+        Present { value: inner } => optional_present(value: inner)
+        Absent => optional_absent()
+      }
+    TypeNode { connective: _ } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
+  }
+}
+
+fn type_node_cardinality_read(n: Node) -> TypeNodeCardinalityRead {
+  match type_node_cardinality_child(n: n) {
+    Absent =>
+      match n.kind {
+        TypeNode { connective: Cardinality } => CardinalityWrapperMalformed { wrapper: n }
+        TypeNode { connective: _ } => TypeNodeCardinality { card: Zero, base: n }
+        ComputationNode { behavior: _ } => TypeNodeCardinality { card: Zero, base: n }
+      }
+    Present { value: inner } =>
+      match type_node_cardinality_read(n: inner) {
+        CardinalityWrapperMalformed { wrapper: w } => CardinalityWrapperMalformed { wrapper: w }
+        TypeNodeCardinality { card: inner_card, base: base } =>
+          TypeNodeCardinality { card: nat_add(a: one_optional_layer(), b: inner_card), base: base }
+      }
+  }
+}
+
+fn wrap_type_node_cardinality(base: Node, card: Nat) -> Node {
+  match card {
+    Zero => base
+    Succ { prev: rest } =>
+      Node {
+        kind: TypeNode { connective: Cardinality },
+        children: [Edge { label: Positional, target: wrap_type_node_cardinality(base: base, card: rest) }],
+        occurrence_id: OccurrenceSynthetic
+      }
+  }
+}
