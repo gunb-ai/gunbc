@@ -1483,7 +1483,7 @@ fn infer_declaration_callable_evidence(declared: Node) -> Optional<Node> {
 //
 // THE RFM SPECIMENS ARE JUDGED (sunny-wolf-624, production route): Nat, generic Nat, kernel Int and
 // Out<Int> call results at a Bool declared return or argument refuse inhabitance
-// (v2.test.claim.compiler.declared_return_result drr_declared_return_call_results_are_judged). This
+// (v2.test.claim.compiler.declared_return_result drr_the_real_route_judges_a_projected_generic_call_result). This
 // swallow remains for a Rejected grounding of a callee Arrow that is not a program error -- a missing
 // compiler capability must become a named counted frontier, never silent accept. Instantiation
 // grounding of a legitimate derived type is in-scope for that residue; do not weaken
