@@ -1015,6 +1015,9 @@ type ClosureDeclarationsFold {
   context: ResolutionContext
 }
 
+// THE DECLARED-PAYLOAD KIND RIDES THE CARRIER CAPTURED AT NORMALIZE (symbol_index_fill_module_declarations): a
+// fill handed Empty marks no record, so symbol_index_declared_payload_at answered Absent for every
+// record in resolved_declarations and v2.compiler.infer read each construct as not a record.
 fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations {
   match shared.closure_declarations {
     Present { value: closure } => ClosureDeclarations { declarations: closure.declarations, refused: closure.refused, context: shared }
@@ -1037,9 +1040,6 @@ fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations
               match walked.walk {
                 ResolveWalkAccepted { value: resolved, diagnostics: _, lexical: _ } =>
                   ClosureDeclarationsFold {
-                    // THE DECLARED-PAYLOAD KIND RIDES THE CARRIER CAPTURED AT NORMALIZE (symbol_index_fill_module_declarations): a
-                    // fill handed Empty marks no record, so symbol_index_declared_payload_at answered Absent for every
-                    // record in resolved_declarations and v2.compiler.infer read each construct as not a record.
                     index: symbol_index_fill_module_declarations(
                       index: acc.index,
                       root: resolved,
