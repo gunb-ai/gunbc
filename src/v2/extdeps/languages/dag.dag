@@ -204,7 +204,7 @@ import v2.std.compilers.target_model {
   TargetRecordConstructShape
 }
 import v2.std.logic { bool_node }
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup }
 import v2.std.algebra { any, fold_list, for_all, is_empty, length, list_init, list_map, skip }
 import v2.std.diagnostic {
   Accepted,
@@ -5518,8 +5518,9 @@ fn dag_string_template_part_value_optional(node: Node) -> Optional<String> {
 
 // THE GRAMMAR SHAPE, AS A TYPE: a template is a text, then one or more (hole, text) pairs
 // (dag_grammar_string_template_expr: head, expr, repeat(middle, expr), tail). Adjacent texts, a
-// leading hole, a trailing hole, or a hole-free list have no constructor. DESIGN section 5:
-// unwritable, not a well-formedness fold over a flat coproduct.
+// leading hole, a trailing hole, or a hole-free template have no constructor. segments is
+// std.algebra FreeSemigroup (DESIGN section 2: the nonempty carrier already exists; an empty
+// inhabitant has no representation), not a List with an Empty refusal (DESIGN section 5).
 type StringTemplateText {
   value: String
   at: Node
@@ -5532,7 +5533,7 @@ type StringTemplateSegment {
 
 type StringTemplate {
   head: StringTemplateText
-  segments: List<StringTemplateSegment>
+  segments: FreeSemigroup<StringTemplateSegment>
 }
 
 fn string_template_optional(node: Node) -> Optional<StringTemplate> {
@@ -5568,7 +5569,7 @@ fn dag_string_template_hole_node_optional(node: Node) -> Optional<Node> {
   }
 }
 
-fn dag_string_template_segments_optional(nodes: List<Node>) -> Optional<List<StringTemplateSegment>> {
+fn dag_string_template_rest_segments_optional(nodes: List<Node>) -> Optional<List<StringTemplateSegment>> {
   match nodes {
     Empty => optional_present(value: Empty)
     Cons { head: hole_node, tail: after } =>
@@ -5581,10 +5582,37 @@ fn dag_string_template_segments_optional(nodes: List<Node>) -> Optional<List<Str
               match dag_string_template_text_from_node(node: text_node) {
                 Absent => optional_absent()
                 Present { value: text } =>
-                  match dag_string_template_segments_optional(nodes: more) {
+                  match dag_string_template_rest_segments_optional(nodes: more) {
                     Absent => optional_absent()
                     Present { value: rest } =>
                       optional_present(value: Cons {
+                        head: StringTemplateSegment { hole: hole, text: text },
+                        tail: rest
+                      })
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn dag_string_template_segments_optional(nodes: List<Node>) -> Optional<FreeSemigroup<StringTemplateSegment>> {
+  match nodes {
+    Empty => optional_absent()
+    Cons { head: hole_node, tail: after } =>
+      match dag_string_template_hole_node_optional(node: hole_node) {
+        Absent => optional_absent()
+        Present { value: hole } =>
+          match after {
+            Empty => optional_absent()
+            Cons { head: text_node, tail: more } =>
+              match dag_string_template_text_from_node(node: text_node) {
+                Absent => optional_absent()
+                Present { value: text } =>
+                  match dag_string_template_rest_segments_optional(nodes: more) {
+                    Absent => optional_absent()
+                    Present { value: rest } =>
+                      optional_present(value: FreeSemigroup {
                         head: StringTemplateSegment { hole: hole, text: text },
                         tail: rest
                       })
@@ -5602,18 +5630,10 @@ fn dag_string_template_from_frontier(nodes: List<Node>) -> Optional<StringTempla
       match dag_string_template_text_from_node(node: n0) {
         Absent => optional_absent()
         Present { value: head } =>
-          match rest {
-            Empty => optional_absent()
-            Cons { head: _, tail: _ } =>
-              match dag_string_template_segments_optional(nodes: rest) {
-                Absent => optional_absent()
-                Present { value: segments } =>
-                  match segments {
-                    Empty => optional_absent()
-                    Cons { head: _, tail: _ } =>
-                      optional_present(value: StringTemplate { head: head, segments: segments })
-                  }
-              }
+          match dag_string_template_segments_optional(nodes: rest) {
+            Absent => optional_absent()
+            Present { value: segments } =>
+              optional_present(value: StringTemplate { head: head, segments: segments })
           }
       }
   }
