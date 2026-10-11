@@ -10,7 +10,7 @@ import std.materialization_provider {
   UniverseArtifactRequest, NativeModuleVerdictBundleRequest, NativeModuleVerdictBundleSubject,
   RealizationServed, RealizationCommitted, RealizationConvergedOnPriorCommit,
   request_key, request_kind, evaluation_store_address, evaluation_store_admitted_address,
-  evaluation_store_address_preimage, request_judgment_contract,
+  evaluation_store_address_preimage, evaluation_store_address_digest, request_judgment_contract,
   output_module_test_verdicts, output_module_preparation_diagnostics,
   output_universe_test_identity_population, output_universe_module_import_closures,
 }
@@ -292,7 +292,10 @@ test fn incomplete_refuses_by_real_execution() -> Bool {
       let incomplete = encode_store_object(
         manifest: ArtifactManifest {
           kind: request_kind(req: req),
-          request_key: request_key(req: req),
+          request_key: match evaluation_store_admitted_address(admission: evaluation_store_address(req: req)) {
+            Absent => request_key(req: req)
+            Present { value: a } => evaluation_store_address_digest(address: a)
+          },
           parts: [payload_part(payload: verdicts_only)]
         },
         payloads: [verdicts_only],
