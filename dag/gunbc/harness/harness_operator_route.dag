@@ -87,13 +87,13 @@ type OperatorQualityFloor {
   consequence: NonEmptyStr
 }
 
+  // DECLARED GAP (frontier): the ceiling is carried, not yet enforced by an admission step; the server's own
+  // 64-deep pending queue is the only bound. Trigger: a route-keyed occupancy pool (serving_enrollment's named
+  // growth surface) that counts open turns per route and refuses the ninth with a typed cause.
 type HarnessOperatorRoute {
   unit: HarnessServingUnit
   group_wire: NonEmptyStr
   credential_relative_path: NonEmptyStr
-  // DECLARED GAP (frontier): the ceiling is carried, not yet enforced by an admission step; the server's own
-  // 64-deep pending queue is the only bound. Trigger: a route-keyed occupancy pool (serving_enrollment's named
-  // growth surface) that counts open turns per route and refuses the ninth with a typed cause.
   concurrency_ceiling: Nat
   quality_floor: OperatorQualityFloor
 }
