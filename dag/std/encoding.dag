@@ -5,7 +5,7 @@ import std.types { Bytes }
 import std.integer { UInt8Result, UInt8Ready, UInt8OutOfRange, uint8_of_int, QualifiedOctets, QualifiedOctetsResult, QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints, qualified_octet_members }
 import std.machine_word { Word, Width8, Width32, WordResult, WordReady, WordRefused, WordValueOutOfRange, OctetsResult, OctetsReady, OctetsRefused, word_of_int, word_from_octets, word_to_octets, word_shift_left, word_shift_right, word_and, word_or }
 import extdeps.toolchain.architecture_profile { BigEndian }
-import std.bytes { pure_dag_seam_unreachable, pure_dag_seam_unreachable_string }
+import std.error_primitives { pure_dag_seam_unreachable, pure_dag_seam_unreachable_string }
 import std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.unicode.types { unicode_scalar, unicode_scalar_utf8_octet_count }
@@ -367,7 +367,7 @@ fn base64_encode_optional(octets: QualifiedOctets, variant: Base64Variant) -> St
 // none of those arms has a reachable input: the values are in [0, 255], the shifts are 18/12/6/0
 // against a Width32 word, and the packing is exactly four members. So the residual is a PACKING
 // INVARIANT of this module, not a statement about the caller's data, and the name says so. Diverging
-// through std.bytes' bare seam directly would abort with a generic divide-by-zero naming neither the
+// through std.error_primitives' bare seam directly would abort with a generic divide-by-zero naming neither the
 // operation nor the invariant; .dag has no throw-with-message, so the function name on the stack is
 // the only thing that carries identity at an abort.
 //
