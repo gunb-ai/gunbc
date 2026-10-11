@@ -3,6 +3,7 @@ module test.claim.devboot_subject_identity_witness
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { byte_size }
+import std.materialization_store_grant { materialization_store_staging_root_path, DurableHostVolumeRoot }
 import std.content_hash {
   ContentHash,
   Sha256Digest,
@@ -725,6 +726,22 @@ test fn an_interrupted_build_is_not_settled() -> Bool {
 
 fn devboot_root_count(ts: List<OwnedDirectoryTarget>) -> Int {
   count(filter(xs: ts, predicate: t => (owned_directory_path(t: t) as String) == (srv1_devboot_artifact_store_root as String)))
+}
+
+// THE MATERIALIZATION STORE'S STAGING SIBLING IS CREATED BY THE DEPLOY, not by the producer that
+// stages into it: the producer runs as the service user, which cannot create a directory under the
+// root-owned /var/lib/gunbc. RED against the spec that declared the store and not its sibling, under
+// which every srv1 build refused 'store unavailable' (srv1 lab, 2026-10-11).
+fn store_staging_count(ts: List<OwnedDirectoryTarget>) -> Int {
+  count(filter(xs: ts, predicate: t => (owned_directory_path(t: t) as String) == materialization_store_staging_root_path(root: DurableHostVolumeRoot)))
+}
+
+test fn the_store_staging_sibling_is_a_host_directory_demand() -> Bool {
+  store_staging_count(ts: deployment_srv1_host_directories()) == 1
+}
+
+test fn the_store_staging_sibling_reaches_the_deploy_apply_path() -> Bool {
+  store_staging_count(ts: deployment_directory_demands(spec: deployment_spec_srv1())) == 1
 }
 
 test fn the_devboot_store_root_is_a_host_directory_demand_projecting_the_layout_row() -> Bool {
