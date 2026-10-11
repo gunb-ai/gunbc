@@ -1,0 +1,215 @@
+module gunbc.harness.harness_operator_route
+
+import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
+import std.algebra { trim }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
+import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text }
+import extdeps.network.endpoint { SocketAddress, socket_address, render_network_host, host_by_ipv4 }
+import extdeps.network.ipv4 { ipv4_address }
+import extdeps.ssh.openssh_port_forwarding { PortForwardSpec, LocalForward }
+import extdeps.ninfer.ninfer_serve { ninfer_serve_observed_launch, ninfer_authorization_header_line, ninfer_models_path, ninfer_chat_completions_path, ninfer_health_path }
+import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, Qwen3_8_27bOnNinfer, harness_unit_model_id }
+import gunbc.serving.turn_admission { ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant, serving_co_tenancy_class_wire }
+import gunbc.spark.vllm_observed { vllm_models_advertised_ids }
+import std.list { list_member }
+
+// THE OPERATOR-RUN ENDPOINT: a serving process the OPERATOR runs on a rented GPU pod, reached from the
+// harness host through an ssh -L tunnel. It is neither a fleet seat (this repository launches no engine and
+// holds no replica) nor a hosted quota (no per-request lease; the server bounds itself), so it is its own
+// route kind rather than a FabricGroup or a hosted row (gunbc.serving.serving_enrollment names a route
+// identity that is not a FabricGroup as the trigger for exactly this).
+//
+// THE RULING THAT PUTS THE HARNESS'S DEFAULT REQUIREMENT HERE. The operator said, 2026-10-11: "could you just
+// make our harness pick this pod, and for our dispatch to pick the harness instead of the claude backend".
+// It is recorded as gunbc.design_ruling harness_default_requirement_places_on_operator_endpoint and it
+// OVERRULES the earlier rule that AnyAdmittedModel lands only on a fleet seat. The placement cites it from
+// operator_placement_ruling below.
+data operator_placement_ruling: DeclarationRef = decl_ref(
+  module_path: "gunbc.design_ruling",
+  decl_name: "harness_default_requirement_places_on_operator_endpoint",
+)
+
+// THE TUNNEL, AS THE SHAPE OPENSSH ALREADY MODELS. srv1 runs a hand-placed systemd --user unit
+// (gunbc-gpu-pod-tunnel.service, observed 2026-10-11) executing `ssh -N -L 127.0.0.1:18090:127.0.0.1:8080`
+// to the pod. The row lives HERE, in the consumer, and not in extdeps.ssh.openssh_port_forwarding: that
+// module is the agnostic OpenSSH interface and DESIGN 3 forbids it from carrying a consumer's rows or
+// coverage. The unit itself is still unmodeled (no realization starts or checks it); a dead tunnel is
+// surfaced by the roster probe as HarnessBackendUnreachable instead.
+data operator_endpoint_tunnel: PortForwardSpec = PortForwardSpec {
+  direction: LocalForward,
+  listener: socket_address(host: host_by_ipv4(addr: ipv4_address(octet1: 127, octet2: 0, octet3: 0, octet4: 1)), port: 18090),
+  target: socket_address(host: host_by_ipv4(addr: ipv4_address(octet1: 127, octet2: 0, octet3: 0, octet4: 1)), port: 8080),
+}
+
+// THE ORIGIN IS DERIVED FROM THE TUNNEL'S LISTENER, so the address a request is sent to cannot disagree with
+// the forward that was declared. Every URL below is this origin plus a path ninfer's own module declares;
+// the server's OpenAI base URL is therefore http://127.0.0.1:18090/v1 (the common prefix of the two paths).
+fn operator_endpoint_origin() -> NonEmptyStr? {
+  match render_network_host(host: operator_endpoint_tunnel.listener.host) {
+    Absent => none
+    Present { value: h } => Present { value: join(["http://", h as String, ":", to_string(operator_endpoint_tunnel.listener.port)], "") as NonEmptyStr }
+  }
+}
+
+fn operator_endpoint_url(path: NonEmptyStr) -> NonEmptyStr? {
+  match operator_endpoint_origin() {
+    Absent => none
+    Present { value: o } => Present { value: join([o as String, path as String], "") as NonEmptyStr }
+  }
+}
+
+fn operator_models_url() -> NonEmptyStr? {
+  operator_endpoint_url(path: ninfer_models_path)
+}
+
+// The URL a turn POSTs to: the existing chat-completions POST (harness_wire) is reused, only its target
+// is this route's.
+fn operator_chat_completions_url() -> NonEmptyStr? {
+  operator_endpoint_url(path: ninfer_chat_completions_path)
+}
+
+fn operator_health_url() -> NonEmptyStr? {
+  operator_endpoint_url(path: ninfer_health_path)
+}
+
+// THE QUALITY FLOOR. Swapping GLM-5.3-Flash for a 27B model is a different quality product, and it must not
+// be silent. The floor admits only the class that tolerates it; the other class REFUSES with the consequence
+// named. The declared consequence: a turn that needs the quality of the flagship fleet model is refused on
+// this route, never answered by it, and a batch turn placed here is answered by a 27B-parameter NVFP4 model.
+type OperatorQualityFloor {
+  admitted_class: ServingCoTenancyClass
+  consequence: NonEmptyStr
+}
+
+type HarnessOperatorRoute {
+  unit: HarnessServingUnit
+  group_wire: NonEmptyStr
+  credential_relative_path: NonEmptyStr
+  concurrency_ceiling: Nat
+  quality_floor: OperatorQualityFloor
+}
+
+data harness_operator_route: HarnessOperatorRoute = HarnessOperatorRoute {
+  unit: Qwen3_8_27bOnNinfer,
+  group_wire: "operator:ninfer-gpu-pod" as NonEmptyStr,
+  credential_relative_path: ".config/gunbc-gpu-pod/api-key" as NonEmptyStr,
+  concurrency_ceiling: ninfer_serve_observed_launch.max_concurrency,
+  quality_floor: OperatorQualityFloor {
+    admitted_class: BatchQualityTolerant,
+    consequence: "the operator route serves a 27B-parameter NVFP4 model, not the fleet's GLM-5.3-Flash: a quality-sensitive (interactive) turn is REFUSED here rather than answered by the smaller model, and a batch turn placed here is answered by it knowingly" as NonEmptyStr,
+  },
+}
+
+type OperatorClassAdmission
+  = OperatorClassAdmitted
+  | OperatorClassRefused { detail: String }
+
+fn operator_class_admission(route: HarnessOperatorRoute, class: ServingCoTenancyClass) -> OperatorClassAdmission {
+  let admitted = match class {
+    InteractiveQualitySensitive => match route.quality_floor.admitted_class { InteractiveQualitySensitive => true  BatchQualityTolerant => false }
+    BatchQualityTolerant => true
+  }
+  if admitted {
+    OperatorClassAdmitted
+  } else {
+    OperatorClassRefused { detail: join(["the operator route admits ", serving_co_tenancy_class_wire(c: route.quality_floor.admitted_class) as String, " turns only (", route.quality_floor.consequence as String, "); this turn is ", serving_co_tenancy_class_wire(c: class) as String, "; placement ruling ", operator_placement_ruling.decl_name as String], "") }
+  }
+}
+
+// ── THE CREDENTIAL: a file path read into a Bearer header, never inlined ────────────────────────
+fn operator_credential_path(route: HarnessOperatorRoute) -> NonEmptyStr? {
+  match shell.Env.Get(name: "HOME").value {
+    Absent => none
+    Present { value: h } => if h == "" { none } else { Present { value: join([h, "/", route.credential_relative_path as String], "") as NonEmptyStr } }
+  }
+}
+
+// The header line a request carries, from the key file's text. Trailing newlines are the file's, not the
+// key's; an empty file is refused rather than sent as `Bearer `.
+fn operator_header_line_from_key_text(text: String) -> NonEmptyStr? {
+  let key = trim(s: text)
+  if key == "" { none } else { Present { value: ninfer_authorization_header_line(key: key as NonEmptyStr) as NonEmptyStr } }
+}
+
+type OperatorHeaderOpen
+  = OperatorHeaderOpened { header_dir: NonEmptyStr, header_file: NonEmptyStr }
+  | OperatorHeaderRefused { detail: String }
+
+// The key is read from its file into a 0600 header file in a fresh temp directory (curl -H @file), the way
+// harness_hosted_route does for OpenRouter. A refusal after the directory exists removes it.
+fn operator_open_header(route: HarnessOperatorRoute) -> OperatorHeaderOpen {
+  match operator_credential_path(route: route) {
+    Absent => OperatorHeaderRefused { detail: "HOME is not set, so the operator endpoint's credential file cannot be located" }
+    Present { value: path } => {
+      let read = Filesystem.Read(path: path as String)
+      match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+        FilesystemReadRefused { error: e } => OperatorHeaderRefused { detail: join(["the operator endpoint's credential file ", path as String, " could not be read: ", e], "") }
+        FilesystemReadSucceeded { content: text } =>
+          match operator_header_line_from_key_text(text: text) {
+            Absent => OperatorHeaderRefused { detail: join(["the operator endpoint's credential file ", path as String, " is empty"], "") }
+            Present { value: line } => {
+              let dir = shell.Mktemp.Dir()
+              if !dir.success {
+                OperatorHeaderRefused { detail: "mktemp -d failed for the operator bearer header file" }
+              } else {
+                let header_file = join([dir.path as String, "/authorization"], "") as NonEmptyStr
+                let wrote = Filesystem.WriteOwnerOnly(path: header_file as String, content: line as String)
+                if !wrote.success {
+                  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+                  OperatorHeaderRefused { detail: "could not write the operator bearer header file" }
+                } else {
+                  OperatorHeaderOpened { header_dir: dir.path as String as NonEmptyStr, header_file: header_file }
+                }
+              }
+            }
+          }
+      }
+    }
+  }
+}
+
+fn operator_close_header(header_dir: NonEmptyStr) -> Bool {
+  let removed = shell.Remove.RecursiveForce(path: header_dir as String as FilePath)
+  removed.success
+}
+
+// ── WHAT A PROBE ESTABLISHED, as supplied readings ─────────────────────────────────────────────
+//
+// THE PROBE IS TWO GETS BECAUSE ONE CANNOT SEPARATE A DEAD TUNNEL FROM A REJECTED KEY. /health answers 200
+// with no authorization (observed), so it is the tunnel-and-server reading; /v1/models with the Bearer
+// header is the key-and-model reading. A failed health GET is Unreachable; a healthy server that refuses the
+// authorised list is Unreadable and names the key, never "none serving".
+type OperatorModelsReading
+  = OperatorHealthUnanswered { url: String }
+  | OperatorModelsRefused { url: String }
+  | OperatorModelsAnswered { body: String }
+
+type OperatorRouteStanding
+  = OperatorRouteServing { model: NonEmptyStr }
+  | OperatorRouteModelNotAdmitted { advertised: String }
+  | OperatorRouteUnreachable { url: String }
+  | OperatorRouteUnreadable { cause: String }
+
+fn operator_route_standing(route: HarnessOperatorRoute, reading: OperatorModelsReading) -> OperatorRouteStanding {
+  match reading {
+    OperatorHealthUnanswered { url: u } => OperatorRouteUnreachable { url: u }
+    OperatorModelsRefused { url: u } => OperatorRouteUnreadable { cause: join(["the server answered /health but refused the authorised ", u, " (the key in the credential file may be rejected)"], "") }
+    OperatorModelsAnswered { body: b } =>
+      match parse_json_document(s: b) {
+        JsonDocumentUnreadable { gap: g } => OperatorRouteUnreadable { cause: json_document_gap_text(gap: g) }
+        JsonDocumentParsed { value: doc } => {
+          let ids = vllm_models_advertised_ids(doc: doc)
+          let wanted = harness_unit_model_id(unit: route.unit)
+          if list_member(xs: ids, x: wanted as String, eq: (a, b) => a == b) {
+            OperatorRouteServing { model: wanted }
+          } else {
+            OperatorRouteModelNotAdmitted { advertised: join(ids, ", ") }
+          }
+        }
+      }
+  }
+}

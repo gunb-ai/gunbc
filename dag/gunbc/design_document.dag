@@ -20,6 +20,7 @@ import gunbc.design_ruling {
   v2_better_than_the_seed,
   v1_withdrawn_one_required_job,
   memory_envelope_is_part_of_the_verdict,
+  harness_default_requirement_places_on_operator_endpoint,
 }
 import gunbc.documentary_refs {
   documentary_ref_symbol_text,
@@ -177,7 +178,9 @@ fn section_3b_blocks() -> List<MarkdownBlock> {
       li(text: "**Boundary** — a nearby responsibility owned elsewhere."),
       li(text: "**Existing authorities** — declarations that already carry the model. A conforming change reuses or extends them rather than introducing a parallel representation."),
     ]),
-  ], conformance_domain_blocks())
+  ], concat(conformance_domain_blocks(), [
+    p(text: concat("**The harness's default requirement lands on the operator-run endpoint** ", concat(ruling(r: harness_default_requirement_places_on_operator_endpoint), ", overruling the earlier rule that `AnyAdmittedModel` lands only on a fleet seat. The route is `gunbc.harness.harness_operator_route` `harness_operator_route`; its quality floor refuses a quality-sensitive turn there rather than silently answering it with the smaller model."))),
+  ]))
 }
 
 fn section_3c_blocks() -> List<MarkdownBlock> {

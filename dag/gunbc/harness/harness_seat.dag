@@ -42,7 +42,11 @@ import gunbc.harness.harness_backend {
 import gunbc.harness.harness_wire { HarnessWireShape, AnthropicMessagesShape, OpenAiChatCompletionsShape, harness_backend_url_for_endpoint }
 import gunbc.harness.harness_reasoning_wire {
   HarnessServingUnit, harness_unit_model_id, HarnessReasoningLevel, harness_unit_placement, HarnessUnitPlacement, PlacedOnFleetSeat,
-  LeasedFromHostedQuota, harness_serving_unit_wire,
+  LeasedFromHostedQuota, RunOnOperatorEndpoint, harness_serving_unit_wire,
+}
+import gunbc.harness.harness_operator_route {
+  harness_operator_route, operator_class_admission, OperatorClassAdmitted, OperatorClassRefused,
+  operator_open_header, OperatorHeaderOpened, OperatorHeaderRefused, operator_close_header, operator_chat_completions_url,
 }
 import gunbc.harness.harness_hosted_route {
   HarnessHostedAccess, HarnessHostedQuota, HostedBound, HostedBindRefused, harness_hosted_bind, HostedReleased, HostedReleaseRefused,
@@ -301,6 +305,7 @@ type HarnessSeatBinding
   | HarnessSeatPending { detail: String }
   | HarnessSeatRefused { detail: String }
   | HarnessHostedBound { url: String, model: NonEmptyStr, unit: HarnessServingUnit, level: HarnessReasoningLevel, access: HarnessHostedAccess }
+  | HarnessOperatorBound { url: String, model: NonEmptyStr, unit: HarnessServingUnit, header_dir: NonEmptyStr, header_file: NonEmptyStr }
 
 fn seat_bind_detail(group: FabricGroup, text: String) -> String {
   join([fabric_group_wire(g: group) as String, ": ", text], "")
@@ -1431,15 +1436,41 @@ fn harness_bind_seat(short_hostname: String, class: ServingCoTenancyClass, requi
   match harness_requirement_placement(requirement: requirement) {
     LeasedFromHostedQuota => HarnessSeatRefused { detail: "the required unit is reached through a hosted quota lease, not a fleet seat; bind it with harness_bind_hosted" }
     PlacedOnFleetSeat => harness_bind_fleet_seat(short_hostname: short_hostname, class: class, requirement: requirement, shape: shape, inputs: inputs, actor: actor, attempt: attempt, policy: policy)
+    RunOnOperatorEndpoint => harness_bind_operator(class: class, shape: shape)
   }
 }
 
-// WHERE A REQUIREMENT IS PLACED. Any admitted model is a fleet seat: the hosted listing is governed by
-// trial terms (extdeps.nvidia.api_trial_terms), and an unnamed requirement must not quietly route a turn
-// to an upstream whose terms the caller never chose. Only a caller naming the hosted unit reaches it.
+// THE OPERATOR ENDPOINT TAKES NO SEAT: the class floor is applied, the Bearer header file is materialized from
+// the credential file, and the binding carries the chat-completions URL. Only the OpenAI chat shape is spoken
+// by ninfer-serve, so any other shape refuses by name.
+fn harness_bind_operator(class: ServingCoTenancyClass, shape: HarnessWireShape) -> HarnessSeatBinding {
+  match shape {
+    AnthropicMessagesShape => HarnessSeatRefused { detail: "the operator endpoint speaks the OpenAI chat-completions shape only" }
+    OpenAiChatCompletionsShape =>
+      match operator_class_admission(route: harness_operator_route, class: class) {
+        OperatorClassRefused { detail: d } => HarnessSeatRefused { detail: d }
+        OperatorClassAdmitted =>
+          match operator_chat_completions_url() {
+            Absent => HarnessSeatRefused { detail: "the operator endpoint URL could not be composed" }
+            Present { value: u } =>
+              match operator_open_header(route: harness_operator_route) {
+                OperatorHeaderRefused { detail: d } => HarnessSeatRefused { detail: d }
+                OperatorHeaderOpened { header_dir: dir, header_file: hf } =>
+                  HarnessOperatorBound { url: u as String, model: harness_unit_model_id(unit: harness_operator_route.unit), unit: harness_operator_route.unit, header_dir: dir, header_file: hf }
+              }
+          }
+      }
+  }
+}
+
+// WHERE A REQUIREMENT IS PLACED. Any admitted model lands on the operator-run endpoint, by the operator's
+// ruling (see operator_placement_ruling = gunbc.design_ruling harness_default_requirement_places_on_operator_endpoint),
+// which overrules the earlier rule that an unnamed requirement lands only on a fleet seat. The hosted listing stays
+// governed by trial terms (extdeps.nvidia.api_trial_terms): an unnamed requirement must not quietly route a turn
+// to an upstream whose terms the caller never chose, so only a caller naming the hosted unit reaches it.
 fn harness_requirement_placement(requirement: ServingModelRequirement) -> HarnessUnitPlacement {
   match requirement {
-    AnyAdmittedModel => PlacedOnFleetSeat
+    AnyAdmittedModel => harness_unit_placement(unit: harness_operator_route.unit)
     ExactServingUnit { unit: u } => harness_unit_placement(unit: u)
   }
 }
@@ -1450,6 +1481,7 @@ fn harness_requirement_placement(requirement: ServingModelRequirement) -> Harnes
 fn harness_bind_hosted(short_hostname: String, unit: HarnessServingUnit, actor: NonEmptyStr, max_tokens: TokenCount) -> HarnessSeatBinding {
   match harness_unit_placement(unit: unit) {
     PlacedOnFleetSeat => HarnessSeatRefused { detail: join(["the unit ", harness_serving_unit_wire(unit: unit) as String, " is served on a fleet seat; bind it with harness_bind_seat"], "") }
+    RunOnOperatorEndpoint => HarnessSeatRefused { detail: join(["the unit ", harness_serving_unit_wire(unit: unit) as String, " is served by the operator endpoint; bind it with harness_bind_seat"], "") }
     LeasedFromHostedQuota =>
       match harness_hosted_bind(unit: unit, short_hostname: short_hostname, actor: actor, max_tokens: max_tokens) {
         HostedBindRefused { detail: d } => HarnessSeatRefused { detail: d }
@@ -1586,6 +1618,7 @@ fn harness_seat_pointer_of(binding: HarnessSeatBinding) -> HarnessSeatPointer? {
     HarnessSeatRefused { detail: _ } => none
     HarnessSeatPending { detail: _ } => none
     HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } => none
+    HarnessOperatorBound { url: _, model: _, unit: _, header_dir: _, header_file: _ } => none
   }
 }
 
@@ -1606,6 +1639,8 @@ fn harness_release_seat(binding: HarnessSeatBinding, reason: NonEmptyStr) -> Har
   match binding {
     HarnessSeatRefused { detail: d } => HarnessSeatReleaseRefused { detail: join(["nothing to release: ", d], "") }
     HarnessSeatPending { detail: d } => HarnessSeatReleaseRefused { detail: join(["nothing to release, the placement is pending: ", d], "") }
+    HarnessOperatorBound { url: _, model: _, unit: _, header_dir: d, header_file: _ } =>
+      if operator_close_header(header_dir: d) { HarnessHostedCredentialRemoved } else { HarnessSeatReleaseRefused { detail: join(["the operator bearer header directory ", d as String, " could not be removed"], "") } }
     HarnessHostedBound { url: _, model: _, unit: _, level: _, access: a } =>
       match harness_hosted_release(access: a) {
         HostedReleased => HarnessHostedCredentialRemoved
