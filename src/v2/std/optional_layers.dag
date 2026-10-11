@@ -14,7 +14,7 @@ import v2.std.node {
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.collection { list_at_optional }
 
-// OPTIONAL-LAYER DEPTH IS std.nat Nat (review 78547; Zero = required / no wrappers). A two-arm
+// OPTIONAL-LAYER DEPTH IS std.nat Nat (Zero = required / no wrappers). A two-arm
 // Required | CardOptional sum is Zero | Succ under another name (DESIGN §2/#3). gunbc#13488's
 // concern was two zeros (Required beside CardOptional { layers: Nat }); a single Nat has one
 // (Zero). Compose is nat_add. Peel is nat_sub of one, refused at Zero. This module keeps the Node

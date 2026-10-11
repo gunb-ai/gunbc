@@ -344,7 +344,7 @@ fn inhabitance_optional_layer_wrapper_malformed_reason() -> Symbol {
   ^inhabitance_optional_layer_wrapper_malformed
 }
 
-// Malformed is not "no depth mismatch": Bool false conflated those arms (review 78513).
+// Malformed is not "no depth mismatch": a Bool false conflated those arms.
 type OptionalLayerInhabitanceVerdict
   = OptionalLayerInhabitanceHolds
   | OptionalLayerDepthMismatch

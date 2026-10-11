@@ -17,10 +17,13 @@ import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, T
 // reads a container Instantiation's infer_type_head_and_args.args (never a slot spelling;
 // gunbc#13330). Re-keying TypeVariableInstance from a Symbol to a
 // TypeParameter DeclarationRef, and carrying DerivedTypeOrigin on every copied node, remains a
-// DECLARED FRONTIER: v2 Node has no origin field yet, so generic_identity_of cannot be asked of a
-// produced type without reconstructing origin from shape (this module forbids that). The residual
-// spelling key is the same class gunbc.recurring_failure_mode generic_identity_decided_by_spelling
-// names. v1.compiler.infer unify_generics is history; do not edit it.
+// DECLARED FRONTIER. Next-rung trigger: a v2 Node origin field populated on every node-copying
+// path, sufficient to re-key TypeVariableInstance to a TypeParameter DeclarationRef and to ask
+// generic_identity_of of a produced type without reconstructing origin from shape. Until that
+// field exists, generic_identity_of cannot be asked of a produced type (this module forbids
+// reconstructing origin from shape). The residual spelling key is
+// gunbc.recurring_failure_mode generic_identity_decided_by_spelling. v1.compiler.infer
+// unify_generics is history; do not edit it.
 //
 // Every identity here is a reference, never a spelling: `container` is the DeclarationRef of the
 // carrier's declaration (std.algebra FreeMonoid, FinitePowerSet, PartialFunction, ...), which the
