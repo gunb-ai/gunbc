@@ -3,9 +3,9 @@ module v2.test.claim.compiler.optional_layers
 import std.types { Bool }
 import std.algebra { Empty }
 import std.optional { Absent, Present }
+import std.nat { Zero }
 import v2.std.optional_layers {
   CardinalityWrapperMalformed,
-  Required,
   TypeNodeCardinality,
   one_optional_layer,
   two_optional_layers,
@@ -83,7 +83,7 @@ test fn a_nested_cardinality_tree_reads_as_two_layers() -> Bool {
 }
 
 test fn wrapping_required_is_the_base() -> Bool {
-  wrap_type_node_cardinality(base: ol_atom(id: ^ol_int), card: Required) == ol_atom(id: ^ol_int)
+  wrap_type_node_cardinality(base: ol_atom(id: ^ol_int), card: Zero) == ol_atom(id: ^ol_int)
 }
 
 fn ol_malformed_cardinality() -> Node {

@@ -36,10 +36,9 @@ import v2.std.node {
 import std.algebra { list_append }
 import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
+import std.nat { Succ, Zero }
 import v2.std.optional_layers {
-  CardOptional,
   CardinalityWrapperMalformed,
-  Required,
   TypeNodeCardinality,
   type_node_cardinality_read
 }
@@ -359,17 +358,17 @@ fn inhabitance_optional_layer_judgement(declared: Node, produced: Node) -> Optio
         CardinalityWrapperMalformed { wrapper: _ } => OptionalLayerWrapperMalformed
         TypeNodeCardinality { card: pc, base: _ } =>
           match dc {
-            CardOptional { layers: _ } =>
+            Zero => OptionalLayerInhabitanceHolds
+            Succ { prev: _ } =>
               match pc {
-                CardOptional { layers: _ } =>
+                Zero => OptionalLayerInhabitanceHolds
+                Succ { prev: _ } =>
                   if dc == pc {
                     OptionalLayerInhabitanceHolds
                   } else {
                     OptionalLayerDepthMismatch
                   }
-                Required => OptionalLayerInhabitanceHolds
               }
-            Required => OptionalLayerInhabitanceHolds
           }
       }
   }
