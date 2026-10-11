@@ -244,7 +244,7 @@ fn deployed_tree_leg(locus: DeployedTreeLocus, argv: List<String>) -> DeployedTr
 //
 // A deployed tree at the right commit with modified tracked files is NOT converged and NOT drifted:
 // its revision agrees while its bytes do not, so reporting it as either is wrong in a way that
-// matters. `fleet_desired_observe` `fleet_revision_standing` compares revisions alone and has no arm
+// matters. `origin_main_revision_observe` `fleet_revision_standing` compares revisions alone and has no arm
 // for it, which means a hand-edited deployed file reads as converged there and reads as modified here.
 // THE REFUSAL IS TYPED TO WHAT IS DECIDABLE, AND NO FURTHER. The tempting split is "not a git
 // repository" versus "permission denied on .git", because those have different remedies. It is NOT
@@ -457,7 +457,7 @@ fn observe_deployed_tree_against_revision(
   }
 }
 
-// FOUR ARMS, AND THE THIRD IS WHY THIS EXISTS. `gunbc.fleet_desired_observe` `fleet_revision_standing`
+// FOUR ARMS, AND THE THIRD IS WHY THIS EXISTS. `gunbc.origin_main_revision_observe` `fleet_revision_standing`
 // compares revisions and nothing else, so a deployed tree sitting at the admitted commit with edited
 // tracked files reads as CONVERGED there. It is not: its revision agrees while its bytes do not, and
 // the whole point of publishing a tree is the bytes. That state gets its own arm here rather than

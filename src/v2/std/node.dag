@@ -48,6 +48,14 @@ fn host_text_type_node() -> Node {
   }
 }
 
+// THE KERNEL HOST-TEXT FREE-MONOID OPERATION: concatenation of two host texts. Distinct from
+// v2.std.text / std.algebra list_append over FreeMonoid<Char>. This is the witness of
+// dag_host_text_free_monoid_inhabitance; the only lawful crossing to the structural carrier remains
+// UnicodeScalarSequenceUnfold (DESIGN section 4).
+fn host_text_concatenation(left: String, right: String) -> String {
+  concat(left, right)
+}
+
 // THE VALUE TYPE OF A SYMBOL, as a node: what a symbol literal (`^x`) is typed as and what an
 // annotation naming Symbol binds to. This module declares Symbol, so it owns its type node, as
 // v2.std.logic bool_node does for Bool and v2.std.integer integer_int_type_node for Int. The atom's
@@ -194,6 +202,7 @@ type CoreEdgeLabel
   | ArrowEffectClaimsEdge
   | ArrowExecutionModeClaimEdge
   | BinderTypeEdge
+  | BinderStructureEdge
   | BinderDefaultEdge
   | ArrowResourceRequirementsEdge
   | AdmitCallersEdge
@@ -282,6 +291,7 @@ fn core_edge_labels() -> List<CoreEdgeLabel> {
     ArrowEffectClaimsEdge,
     ArrowExecutionModeClaimEdge,
     BinderTypeEdge,
+    BinderStructureEdge,
     BinderDefaultEdge,
     ArrowResourceRequirementsEdge,
     AdmitCallersEdge,
@@ -319,6 +329,7 @@ fn core_edge_label_canonical_symbol(marker: CoreEdgeLabel) -> Symbol {
     ArrowEffectClaimsEdge => ^core_arrow_effect_claims_edge
     ArrowExecutionModeClaimEdge => ^core_arrow_execution_mode_claim_edge
     BinderTypeEdge => ^core_binder_type_edge
+    BinderStructureEdge => ^core_binder_structure_edge
     BinderDefaultEdge => ^core_binder_default_edge
     ArrowResourceRequirementsEdge => ^core_arrow_resource_requirements_edge
     AdmitCallersEdge => ^core_admit_callers_edge
@@ -1179,9 +1190,11 @@ fn arrow_first_positional_target(children: List<Edge>) -> FirstPositionalTarget 
 // Atom is unwritable here rather than refused downstream.
 //
 // A KINDED TYPE PARAMETER (`type MachineWidth<bits: WidthResolution>`) carries its kind the way a value
-// binder carries its type: one BinderTypeEdge, here on the binder's own Atom, so the identity the
-// binder declares is unchanged and an unkinded binder is exactly the leaf it was. Any other child is
-// unwritable. v2.std.type_binder type_param_kind_optional is the one reader of the edge.
+// binder carries its type: one BinderTypeEdge, here on the binder's own Atom. A parameter bounded by a
+// signature-world STRUCTURE instead carries one BinderStructureEdge: a distinct marker, so whether a
+// bound is a structure is a fact of how the binder is built (v2.std.type_binder type_param_bound), never
+// guessed from the annotation's shape. An unkinded, unbounded binder is exactly the leaf it was. Any
+// other child is unwritable.
 fn type_binder_conforms(e: Edge) -> Bool {
   match e.label {
     Positional => false
@@ -1202,7 +1215,7 @@ fn type_binder_conforms(e: Edge) -> Bool {
 fn type_binder_children_conform(children: List<Edge>) -> Bool {
   match children {
     Empty => true
-    Cons { head: k, tail: Empty } => edge_is_core(e: k, marker: BinderTypeEdge)
+    Cons { head: k, tail: Empty } => edge_is_core(e: k, marker: BinderTypeEdge) || edge_is_core(e: k, marker: BinderStructureEdge)
     Cons { head: _, tail: Cons { head: _, tail: _ } } => false
   }
 }
