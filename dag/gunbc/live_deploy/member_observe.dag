@@ -38,7 +38,7 @@ import gunbc.owned_directory {
 }
 import gunbc.live_deploy.emit { live_deploy_systemd_unit_for }
 import gunbc.auth.tracker_web_oauth_client {
-  tracker_web_oidc_serve_placement, tracker_web_oidc_config_document,
+  tracker_web_oidc_serve_placement, tracker_web_oidc_config_document, TrackerWebOidcServeConfig,
   TrackerWebOidcServeReady, TrackerWebOidcPlacementUnassigned, TrackerWebOidcPlacementUnbound,
   TrackerWebOidcPlacementMissingRealization,
 }
@@ -304,20 +304,11 @@ fn observe_oidc_config_file(arm: ObservationArm, spec: DeploymentSpec) -> Observ
   }
 }
 
-fn desired_oidc_config_file(spec: DeploymentSpec) -> MemberIdentity {
-  match tracker_web_oidc_serve_placement(instance_id: spec.instance_id) {
-    TrackerWebOidcServeReady { config: cfg } =>
-      OidcConfigAt { file: OidcConfigFileIdentity {
-        path: cfg.config_path,
-        document: content_hash_atom(value: tracker_web_oidc_config_document(cfg: cfg) as NonEmptyStr),
-      } }
-    TrackerWebOidcPlacementUnassigned { instance_id: _ } =>
-      OidcConfigAt { file: OidcConfigFileIdentity { path: "/" as NonEmptyStr, document: content_hash_atom(value: "unassigned" as NonEmptyStr) } }
-    TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } =>
-      OidcConfigAt { file: OidcConfigFileIdentity { path: "/" as NonEmptyStr, document: content_hash_atom(value: "unbound" as NonEmptyStr) } }
-    TrackerWebOidcPlacementMissingRealization { instance_id: _, environment: _ } =>
-      OidcConfigAt { file: OidcConfigFileIdentity { path: "/" as NonEmptyStr, document: content_hash_atom(value: "missing-realization" as NonEmptyStr) } }
-  }
+fn desired_oidc_config_file(cfg: TrackerWebOidcServeConfig) -> MemberIdentity {
+  OidcConfigAt { file: OidcConfigFileIdentity {
+    path: cfg.config_path,
+    document: content_hash_atom(value: tracker_web_oidc_config_document(cfg: cfg) as NonEmptyStr),
+  } }
 }
 
 // THE MANAGER: systemd's own answer to whether the loaded unit matches the file on disk. The wire
@@ -676,15 +667,20 @@ fn desired_member_identity(
   spec: DeploymentSpec,
   candidate: CandidateRelease,
   desired_bin: MemberIdentity,
-) -> MemberIdentity {
+) -> MemberIdentity? {
   match member {
-    Executable => desired_bin
-    TreePublication => desired_tree(candidate: candidate)
-    UnitFile => desired_unit_file(spec: spec, candidate: candidate)
-    UnitManager => desired_unit_manager()
-    ServiceProcess => desired_service_process(candidate: candidate)
-    DirectoryRoot { path } => RootAt { root: DirectoryRootIdentity { path: path, standing: RootConverged } }
-    OidcConfigFile => desired_oidc_config_file(spec: spec)
+    Executable => Present { value: desired_bin }
+    TreePublication => Present { value: desired_tree(candidate: candidate) }
+    UnitFile => Present { value: desired_unit_file(spec: spec, candidate: candidate) }
+    UnitManager => Present { value: desired_unit_manager() }
+    ServiceProcess => Present { value: desired_service_process(candidate: candidate) }
+    DirectoryRoot { path } => Present { value: RootAt { root: DirectoryRootIdentity { path: path, standing: RootConverged } } }
+    OidcConfigFile => match tracker_web_oidc_serve_placement(instance_id: spec.instance_id) {
+      TrackerWebOidcServeReady { config: cfg } => Present { value: desired_oidc_config_file(cfg: cfg) }
+      TrackerWebOidcPlacementUnassigned { instance_id: _ } => none
+      TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } => none
+      TrackerWebOidcPlacementMissingRealization { instance_id: _, environment: _ } => none
+    }
   }
 }
 

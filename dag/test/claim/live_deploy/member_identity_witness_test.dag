@@ -1,6 +1,7 @@
 module test.claim.live_deploy.member_identity_witness_test
 
 import std.types { Bool, String, List, NonEmptyStr, CommitSha }
+import std.optional { Present }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import extdeps.systemd { Active, Failed, Inactive }
@@ -57,7 +58,7 @@ fn converged_observation_for(m: ConvergedMember) -> ObservedMember {
 fn plan_with(observed: fn(ConvergedMember) -> ObservedMember) -> EffectDerivation {
   derive_member_plan(
     roster: release_member_roster(),
-    desired: m => desired_for(m: m),
+    desired: m => Present { value: desired_for(m: m) },
     observed: observed,
     target: release_target(),
   )

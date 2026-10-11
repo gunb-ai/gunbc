@@ -5,6 +5,7 @@ import gunbc.fleet_converge_scope { LiveDeploy }
 import gunbc.fleet_converge_terminal { FullyApplied, AwaitingCapability }
 
 import std.types { Bool, String, List, NonEmptyStr, CommitSha }
+import std.optional { Present }
 import std.decl_ref { declaration_ref_eq, declaration_ref_display_key }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, serialize_content_hash }
@@ -144,7 +145,7 @@ fn admit_obs(observed: List<ObservedMember>) -> gunbc.live_deploy.fleet_request.
     candidate: candidate(),
     target: target(),
     observed: observed,
-    desired: m => desired_for(m: m),
+    desired: m => Present { value: desired_for(m: m) },
   )
 }
 
@@ -232,11 +233,11 @@ test fn a_desired_identity_for_another_member_refuses_the_effect_plan() -> Bool 
     candidate: candidate(),
     target: target(),
     observed: matching_obs(),
-    desired: m =>
+    desired: m => Present { value:
       match m {
         Executable => desired_tree()
         _ => desired_for(m: m)
-      },
+      } },
   ) {
     LiveDeployBasisAdmitted { basis: _ } => false
     LiveDeployBasisRefused { cause: c } => match c {
@@ -261,7 +262,7 @@ fn admit_live_deploy_request_for(row: DesiredDeployment) -> LiveDeployFleetReque
     desired: row,
     candidate: candidate(),
     observed: matching_obs_for(unit: row.names.unit_name),
-    desired_member: m => desired_for_unit(unit: row.names.unit_name, m: m),
+    desired_member: m => Present { value: desired_for_unit(unit: row.names.unit_name, m: m) },
   )
 }
 
@@ -293,7 +294,7 @@ test fn admit_refuses_a_selected_identity_that_is_not_the_roster_row() -> Bool {
     },
     candidate: candidate(),
     observed: matching_obs_for(unit: live.names.unit_name),
-    desired_member: m => desired_for_unit(unit: live.names.unit_name, m: m),
+    desired_member: m => Present { value: desired_for_unit(unit: live.names.unit_name, m: m) },
   ) {
     LiveDeployFleetRequestIdentityMismatch { carried, rostered } =>
       declaration_ref_eq(a: carried, b: srv1_lab_selected_identity())
@@ -313,7 +314,7 @@ test fn admit_refuses_a_desired_unit_that_is_not_the_roster_row_unit() -> Bool {
     desired: live,
     candidate: candidate(),
     observed: matching_obs_for(unit: lab_unit),
-    desired_member: m => desired_for_unit(unit: lab_unit, m: m),
+    desired_member: m => Present { value: desired_for_unit(unit: lab_unit, m: m) },
   ) {
     LiveDeployFleetRequestUnitMismatch { carried, rostered } =>
       carried == lab_unit
@@ -408,7 +409,7 @@ fn admit_prod_observed(observed: List<ObservedMember>) -> LiveDeployFleetRequest
     desired: live,
     candidate: candidate(),
     observed: observed,
-    desired_member: m => desired_for_unit(unit: live.names.unit_name, m: m),
+    desired_member: m => Present { value: desired_for_unit(unit: live.names.unit_name, m: m) },
   )
 }
 
