@@ -632,7 +632,7 @@ fn internal_expr_error_node(message: String, span: SourceSpan) -> Node {
 // arm as competitor, Unique/Ambiguous owner-count, global_bare Conj insert).
 // A HIT of lookup_type_by_name that IS the owning Disj must still win: substituting
 // the locals node there left Int fields as NoConnective leaves (span in the consumer)
-// and emitted OperandIdentityUnavailableAt for `+` in std.import.
+// and emitted OperandIdentityUnavailableAt for `+` in std.import_statement.
 // Locals fill every other arm: name-lookup miss, parent-enum miss (lookup_type_for
 // on the locals node fails under composed intern while the Disj node is still in
 // locals), expected coproduct that owns the arm, and a HIT that is not that owner
