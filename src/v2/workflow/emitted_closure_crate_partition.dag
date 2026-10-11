@@ -46,7 +46,7 @@ import v2.workflow.rust_crate_partition { resolve_partition_outcome }
 //
 // WHAT THIS DAG DOES NOT CARRY, stated so nothing reads its absence as a fact. exports and
 // type_definitions are empty maps. The interfaces a partition_fold_outcome would derive from them
-// are the module-binding supply's to carry (the capability
+// are the module acquirer's supply to carry (the capability
 // v2.workflow.rust_crate_partition stage0_module_interface_grounding_target names), so this DAG is
 // fed to resolve_partition_outcome -- which
 // reads modules and edges only -- and to NOTHING that builds CompilationUnit interfaces. The edges

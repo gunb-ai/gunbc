@@ -550,24 +550,24 @@ test fn a_dep_edge_to_a_unit_with_no_package_row_refuses() -> Bool {
 }
 // The debt row's trigger has now been repointed twice, and BOTH previous targets named an
 // authority that could not carry the fact -- a roster row and then a module-to-location index.
-// This pins the third: the dissolve target must name the module-binding SUPPLY, whose contents
-// half is the capability, and not a carrier that merely sits near it. Repointing it back at
+// This pins the current one: the dissolve target must name the module ACQUIRER, whose per-module
+// contents are the capability, and not a carrier that merely sits near it. Repointing it back at
 // ModuleStorageIndex, or at any other declaration, reds this claim -- which is the whole point,
 // because nothing else in the corpus re-reads a dissolve target once it is written.
-test fn witness_interface_grounding_target_names_the_binding_supply_holds() -> Bool {
+test fn witness_interface_grounding_target_names_the_module_acquirer_holds() -> Bool {
   let target = stage0_module_interface_grounding_target()
-  ((target.module_path as String) == "v2.compiler.source_authority")
-    && ((target.decl_name as String) == "module_storage_bindings_for_source_roots")
+  ((target.module_path as String) == "v2.compiler.module_acquisition")
+    && ((target.decl_name as String) == "acquire_closure_of")
 }
 
 // A DECLARATION REF NAMES A DECLARATION AND NOTHING ELSE, so the claim above pins only the supply.
 // DESIGN 4b(3) wants the trigger to name the CAPABILITY and what the artifact must be SUFFICIENT
-// FOR. Both debt carriers must hold the same typed capability: host emission JOINED to the supply's
-// existing dissolution, and the emitted-closure derivation as the population. Pointing either at
-// another declaration, or letting the two maps disagree, reds this claim.
+// FOR. Both debt carriers must hold the same typed capability: the acquirer as the contents supply,
+// and the emitted-closure derivation as the population. Pointing either at another declaration, or
+// letting the two maps disagree, reds this claim.
 //
 // STATED AT ITS STRENGTH: this pins which declarations the trigger names. It does NOT evaluate
-// whether the supply is host-emitted or carries contents -- no program can yet, which is the debt.
+// whether the supply carries declaration contents -- no program can yet, which is the debt.
 test fn witness_interface_grounding_trigger_states_both_capability_halves_holds() -> Bool {
   match stage0_module_dag_interface_grounding() {
     Stage0ModuleDagInterfaceSourceGrounded => false
@@ -578,9 +578,8 @@ test fn witness_interface_grounding_trigger_states_both_capability_halves_holds(
 }
 
 fn interface_grounding_capability_is_the_declared_one(capability: InterfaceGroundingCapability) -> Bool {
-  ((capability.host_emission.module_path as String) == "v2.compiler.source_authority")
-    && ((capability.host_emission.decl_name as String) == "module_storage_supply_dissolution_trigger")
-    && ((capability.contents_supply.decl_name as String) == "module_storage_bindings_for_source_roots")
+  ((capability.contents_supply.module_path as String) == "v2.compiler.module_acquisition")
+    && ((capability.contents_supply.decl_name as String) == "acquire_closure_of")
     && ((capability.population.module_path as String) == "v2.workflow.emitted_closure_crate_partition")
     && ((capability.population.decl_name as String) == "module_dag_from_dependency_facts")
 }
