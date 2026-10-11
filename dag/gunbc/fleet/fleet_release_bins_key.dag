@@ -201,9 +201,9 @@ fn fleet_release_bins_product() -> ReleaseBinsProduct {
 // THE COMPILER PAIR: the two binaries the required floor builds anyway (gunbc.ci_release_bins
 // ci_floor_invoked_bins, which gunbc.witness_floor_workflow witness_floor_required_bins is), with the
 // floor's own build line -- the same roster row and the same build function the floor's build step
-// consumes, so the key names the build the floor ran. It is the product the merge queue produces
-// as a candidate, fleet-desired publishes, and hw boot consumes -- none of which needs the other
-// fourteen binaries.
+// consumes, so the key names the build the floor ran. It is the product the merge queue used to
+// produce as a candidate that the withdrawn fleet-desired admission published and hw boot consumed
+// -- none of which needs the other fourteen binaries. That admission consumer is gone.
 // claim_executor's own spelling of the sidecar beside it: <stem>_checker_inputs
 // (v1_compiler cli_run checker_dependency restored_checker_inputs_path).
 data compiler_pair_checker_inputs_sidecar: String = "claim_executor_checker_inputs"
@@ -1263,12 +1263,13 @@ fn release_bins_canonical_address_statements(product: ReleaseBinsProduct) -> Lis
 // sees a manifest without its archive (std.fabric_blob: one address, one whole publication).
 data release_bins_pack_object_name: String = "pack.tar"
 
-// THE CANDIDATE HAND-OFF: the merge-queue floor uploads the compiler pair's pack object under this
-// artifact name, and fleet-desired downloads it by the same row. One spelling for both ends.
+// THE CANDIDATE HAND-OFF SPELLING: the merge-queue floor uploaded the compiler pair's pack object
+// under this artifact name, and the withdrawn fleet-desired admission downloaded it by the same
+// row. One spelling for both ends; the download end is gone.
 data compiler_pair_candidate_artifact_name: String = "compiler-pair-candidate"
 
-// THE CANDIDATE'S RETENTION IS A DURATION (std.measure Second), not a day count: fleet-desired runs on
-// the landing it follows, so one day covers it. GitHub's upload-artifact takes whole days, so the
+// THE CANDIDATE'S RETENTION IS A DURATION (std.measure Second), not a day count: the withdrawn
+// admission ran on the landing it followed, so one day covered it. GitHub's upload-artifact takes whole days, so the
 // emitter converts at that boundary (compiler_pair_candidate_retention_whole_days); the duration is
 // authored as whole days and test.claim.long.fleet_release_bins_key_witness holds that it stays one.
 fn compiler_pair_candidate_retention() -> Second {
