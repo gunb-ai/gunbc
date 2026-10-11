@@ -74,10 +74,19 @@ data oar_lift_source: String = "module v2.test.oar_lift\n\nfn oar_f(x: Int) -> I
 
 data oar_field_bad_source: String = "module v2.test.oar_field_bad\n\ntype OarR {\n  n: Int\n}\n\nfn oar_mk(x: Int?) -> OarR { OarR { n: x } }\n"
 
+// A FN PARAMETER REFERENCED AS A RECORD FIELD VALUE, two refusing shapes and the accepted control
+// (the native route has judged no fn-body record construct's fields since gunbc#13641 until
+// v2.compiler.name_resolve marked the closure fold's record declarations).
+data oar_field_bool_source: String = "module v2.test.oar_field_bool\n\nimport std.types { Bool }\n\ntype OarR {\n  n: Int\n}\n\nfn oar_mk(x: Bool) -> OarR { OarR { n: x } }\n"
+
+data oar_field_ok_source: String = "module v2.test.oar_field_ok\n\ntype OarR {\n  n: Int\n}\n\nfn oar_mk(x: Int) -> OarR { OarR { n: x } }\n"
+
 data oar_ingest: SourceRootIngest = [
   rcf_read(source: oar_return_bad_source, id: ^oar_return_bad_read, unit: ^oar_return_bad_cu, path: "src/v2/test/fixture/optional_at_required/return_bad.dag"),
   rcf_read(source: oar_lift_source, id: ^oar_lift_read, unit: ^oar_lift_cu, path: "src/v2/test/fixture/optional_at_required/lift.dag"),
-  rcf_read(source: oar_field_bad_source, id: ^oar_field_bad_read, unit: ^oar_field_bad_cu, path: "src/v2/test/fixture/optional_at_required/field_bad.dag")
+  rcf_read(source: oar_field_bad_source, id: ^oar_field_bad_read, unit: ^oar_field_bad_cu, path: "src/v2/test/fixture/optional_at_required/field_bad.dag"),
+  rcf_read(source: oar_field_bool_source, id: ^oar_field_bool_read, unit: ^oar_field_bool_cu, path: "src/v2/test/fixture/optional_at_required/field_bool.dag"),
+  rcf_read(source: oar_field_ok_source, id: ^oar_field_ok_read, unit: ^oar_field_ok_cu, path: "src/v2/test/fixture/optional_at_required/field_ok.dag")
 ]
 
 fn oar_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
@@ -101,6 +110,8 @@ fn oar_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
 fn oar_resolved_return_bad() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_return_bad") }
 fn oar_resolved_lift() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_lift") }
 fn oar_resolved_field_bad() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_field_bad") }
+fn oar_resolved_field_bool() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_field_bool") }
+fn oar_resolved_field_ok() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_field_ok") }
 
 fn oar_optional_int() -> Node {
   inhabitance_occupancy_type(inner: integer_int_type_node())
@@ -140,11 +151,22 @@ test fn oar_an_optional_at_a_required_kernel_type_is_refused_holds() -> Bool {
   oar_refused_optional_at_required(declared: integer_int_type_node(), produced: oar_optional_int(), type_variables: [])
 }
 
-// THE CONTROLS THAT MUST NOT REFUSE. The lift `Int` at `Int?` and `Int?` at `Int?` keep the counted
-// optional-carrier verdict they had.
-test fn oar_the_lift_and_optional_at_optional_stay_counted_holds() -> Bool {
+// THE CONTROLS THAT MUST NOT REFUSE. The lift `Int` at `Int?` keeps the counted optional-carrier
+// verdict it had: whether a value inhabits an optional carrier is not decided by the relation.
+test fn oar_the_lift_stays_counted_holds() -> Bool {
   oar_counted_optional_carrier(declared: oar_optional_int(), produced: integer_int_type_node(), type_variables: [])
-    && oar_counted_optional_carrier(declared: oar_optional_int(), produced: oar_optional_int(), type_variables: [])
+}
+
+// `Int?` at `Int?` is DECIDED, no longer counted: v2.compiler.infer infer_match_generic_formal peels
+// matching Occupancy layers (gunbc#13696, optional depth one std.nat Nat), so equal depth inhabits. The
+// claim formerly asserted the counted frontier here; it is flipped to the decided verdict and keeps a
+// discriminating half, the lift above, which must stay counted.
+test fn oar_optional_at_optional_is_decided_by_peeling_holds() -> Bool {
+  match declared_type_inhabitance(obligation: oar_obligation(declared: oar_optional_int(), produced: oar_optional_int(), type_variables: [])) {
+    Inhabits { homomorphism: _ } => true
+    InhabitanceRefused { find_witness_reason: _ } => false
+    InhabitanceUndecidable { reason: _ } => false
+  }
 }
 
 // An optional at a declared type the relation cannot know to be required is NOT refused: a
@@ -173,6 +195,20 @@ test fn oar_an_optional_at_a_required_record_field_refuses_holds() -> Bool {
 // THE ROUTE CONTROL: the lift `fn oar_f(x: Int) -> Int? { x }` is still accepted.
 test fn oar_the_lift_is_still_accepted_on_the_route_holds() -> Bool {
   match rcf_verdict(resolved: oar_resolved_lift()) {
+    RcfInferAccepted { diagnostics: _ } => true
+    RcfInferRefused { diagnostics: _ } => false
+    RcfResolveRefused => false
+  }
+}
+
+// SECOND SHAPE, a Bool parameter at an Int field refuses (not an optional: a plain kind mismatch).
+test fn oar_a_bool_parameter_at_an_int_record_field_refuses_holds() -> Bool {
+  rcf_refuses_with(resolved: oar_resolved_field_bool(), reason: ^record_field_value_does_not_inhabit)
+}
+
+// THE POSITIVE CONTROL: an Int parameter at an Int field is accepted on the same route.
+test fn oar_an_int_parameter_at_an_int_record_field_is_accepted_holds() -> Bool {
+  match rcf_verdict(resolved: oar_resolved_field_ok()) {
     RcfInferAccepted { diagnostics: _ } => true
     RcfInferRefused { diagnostics: _ } => false
     RcfResolveRefused => false

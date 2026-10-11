@@ -24,6 +24,7 @@ import v2.std.diagnostic {
   None,
   Rejected,
   Some,
+  diagnostics_fatal_reason,
   diagnostics_has_reason
 }
 import std.algebra { list_snoc_item }
@@ -89,18 +90,24 @@ fn inhabitance_call_tree(arg: Node) -> Node {
 // the obligation is counted UndecidableGenericFormal. An Instantiation that mentions no declared type
 // variable is decided structurally instead (inhabitance_ground_instantiation_* below).
 fn inhabitance_generic_formal_tree() -> Node {
+  inhabitance_generic_formal_tree_over(
+    declared: node_synthetic(
+      kind: TypeNode { connective: Instantiation },
+      children: [
+        Edge {
+          label: Positional,
+          target: dag_type_atom_node(identity: ^inhabitance_type_param_t)
+        }
+      ]
+    )
+  )
+}
+
+fn inhabitance_generic_formal_tree_over(declared: Node) -> Node {
   let arrow = dag_arrow_with_body_node(
     domain: inhabitance_named_conj_domain(
       parameter: ^inhabitance_param_t,
-      declared: node_synthetic(
-        kind: TypeNode { connective: Instantiation },
-        children: [
-          Edge {
-            label: Positional,
-            target: dag_type_atom_node(identity: ^inhabitance_type_param_t)
-          }
-        ]
-      )
+      declared: declared
     ),
     return_type_binding: ^dag_binding_type_int,
     body: dag_int_literal_fixture_one()
@@ -223,14 +230,39 @@ test fn infer_argument_type_not_derived_is_counted_frontier_holds() -> Bool {
   }
 }
 
-test fn infer_generic_formal_is_counted_frontier_holds() -> Bool {
+// An Instantiation that mentions the declared type variable is no longer a counted frontier: the formal
+// is matched structurally (v2.compiler.infer infer_judge_generic_formal) and the Int argument, whose
+// type is derived, does not inhabit it, so the application refuses. The claim formerly asserted
+// UndecidableGenericFormal here and is flipped to the decided verdict.
+test fn infer_generic_formal_instantiation_refuses_a_non_inhabiting_argument_holds() -> Bool {
   match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_generic_formal_tree())) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_fatal_reason(d: d) == ^application_argument_does_not_inhabit
+  }
+}
+
+// THE DISCRIMINATING HALF THAT STAYS COUNTED: a type variable inside an ARROW formal (`(Int) -> T`) is
+// still the generic formal the judge holds no instance for; only a first-order Instantiation is matched.
+// (A bare variable formal binds its first instance and is decided, so it is not the counted shape.)
+test fn infer_type_variable_inside_an_arrow_formal_is_counted_frontier_holds() -> Bool {
+  match infer(
+    tree: claim_resolved_tree_without_declarations(
+      root: inhabitance_generic_formal_tree_over(
+        declared: dag_arrow_with_body_node(
+          domain: inhabitance_named_conj_domain(
+            parameter: ^inhabitance_param_x,
+            declared: dag_type_atom_node(identity: ^dag_binding_type_int)
+          ),
+          return_type_binding: ^inhabitance_type_param_t,
+          body: dag_int_literal_fixture_one()
+        )
+      )
+    )
+  ) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
-      diagnostics_has_reason(
-        d: d,
-        reason: ^inhabitance_undecidable_generic_formal
-      )
+      diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_generic_formal)
   }
 }
 
