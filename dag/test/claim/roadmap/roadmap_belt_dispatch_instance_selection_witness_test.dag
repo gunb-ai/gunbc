@@ -38,3 +38,10 @@ test fn the_named_admitted_instances_still_resolve() -> Bool {
       }
   }
 }
+
+test fn a_roster_instance_outside_belt_admission_still_refuses() -> Bool {
+  match belt_dispatch_instance_selected(raw: Present { value: "srv1-lab-codex-feedback-v0" }) {
+    Absent => true
+    Present { value } => false
+  }
+}
