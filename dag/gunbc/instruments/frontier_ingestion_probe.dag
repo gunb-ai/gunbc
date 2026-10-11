@@ -378,7 +378,7 @@ fn roster_identity(rows: List<FrontierMember>) -> ContentHash {
   as_content_hash_structural(
     structural: fold_list(
       xs: rows,
-      empty: content_hash_atom(value: "gunbc.instruments.frontier_ingestion_probe.frontier_roster" as NonEmptyStr),
+      empty: content_hash_atom(value: "gunbc.tools.frontier_ingestion_probe.frontier_roster" as NonEmptyStr),
       cons: fn(acc, m) {
         content_hash_combine_structural(left: acc, right: content_hash_atom(value: m.path as NonEmptyStr))
       }

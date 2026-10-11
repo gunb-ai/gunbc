@@ -77,7 +77,7 @@ fn read_store_receipt_keyring() -> ApprovalKeyringRead {
 // broker's own (approval_capability_issuer, approval_capability_authority): the receipt reports the
 // broker's decision in the broker's authority, and the store reads the operation's SCOPE from the
 // approved intent (std.scoped_authorization parse_intent_scopes), never from this envelope.
-data approval_store_receipt_audience: NonEmptyStr = "gunbc.fabric.fabric_storage_serve"
+data approval_store_receipt_audience: NonEmptyStr = "gunbc.fabric_storage_serve"
 
 // Why a mint refuses, one arm per remedy: nothing to receipt yet (not filed, pending), the operator
 // said no (denied), the store could not be read, the filing the decision stands on does not agree

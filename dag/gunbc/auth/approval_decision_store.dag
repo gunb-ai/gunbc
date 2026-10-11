@@ -130,7 +130,7 @@ fn read_approval_keyring() -> ApprovalKeyringRead {
 // redeems them, authority is the one this store brokers for: operator consent to a fleet
 // convergence step. A capability minted for another authority fails here on audience or
 // authority before any decision is read.
-data approval_capability_issuer: NonEmptyStr = "gunbc.roadmap.roadmap_serve"
+data approval_capability_issuer: NonEmptyStr = "gunbc.roadmap_serve"
 data approval_capability_audience: NonEmptyStr = "gunbc.auth.approval_broker"
 data approval_capability_authority: NonEmptyStr = "gunbc.auth.scoped_authorization"
 

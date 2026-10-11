@@ -61,7 +61,7 @@ fn redemption_vector(name: NonEmptyStr, decision: ProposedDecision, stored_reque
       request_revision: "sha256:abababababababababababababababababababababababababababababababab",
       stored_request_text: stored_request_text,
       decision: decision,
-      capability_text: join(["gunbc.approval-capability.v1", "gunbc.roadmap.roadmap_serve", "gunbc.auth.approval_broker"], signing_field_separator) as NonEmptyStr,
+      capability_text: join(["gunbc.approval-capability.v1", "gunbc.roadmap_serve", "gunbc.auth.approval_broker"], signing_field_separator) as NonEmptyStr,
       capability_tag_b64url: "0fHxA0NwMC8UBb0LzXHpB8B56tW_kS2glcvhENeHZmM=",
     },
   }

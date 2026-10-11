@@ -613,7 +613,7 @@ fn cause_complete_report(acquisition: CauseCorpusAcquisition, declarations: List
   join([
     "roots\tdag,src/v2",
     cause_acquisition_disposition_report(acquisition: acquisition),
-    "method\ttools.cause_assertion_census.census",
+    "method\tgunbc.instruments.cause_assertion_census.census",
     "evidence boundary: NO_ASSERTION is a candidate gap; ASSERTED_UNESTABLISHED records syntax, not discriminating coverage; ESTABLISHED requires a cause-identity join to v2.std.test_claim_falsification.FalsificationReceipt",
     "identity boundary: ambiguous candidates have empty assertion-standing columns and are named in the typed refusal section; independently joined import gaps remain reportable",
     join(["missing_import_file_count", to_string(count(missing_files))], "\t"),

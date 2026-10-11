@@ -39,7 +39,7 @@ import gunbc.roadmap.roadmap_site_surface_render {
 
 // producer_identity names the observe/render implementation that produced a bundle, distinct from subject_identity (which roadmap snapshot) and bundle_identity (which rendered artifact population).
 fn roadmap_site_surface_producer_identity() -> Fnv1a64Structural {
-  content_hash_atom(value: "gunbc.roadmap.roadmap_site_surface_observe/v1" as NonEmptyStr)
+  content_hash_atom(value: "gunbc.roadmap_site_surface_observe/v1" as NonEmptyStr)
 }
 
 fn acceptance_identity_from_accepted(accepted: List<RoadmapNodeId>) -> Fnv1a64Structural {

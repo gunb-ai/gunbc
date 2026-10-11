@@ -231,10 +231,10 @@ type SourceComposition
 fn source_composition_wire(composition: SourceComposition) -> NonEmptyStr {
   match composition {
     PublicOnlyComposition { public_root: p } =>
-      join(["gunbc.fabric.fabric_source_snapshot.composition.v1;public=", p as String], "") as NonEmptyStr
+      join(["gunbc.fabric_source_snapshot.composition.v1;public=", p as String], "") as NonEmptyStr
     PublicAndPrivateComposition { public_root: p, private_root: q } =>
       join([
-        "gunbc.fabric.fabric_source_snapshot.composition.v1;public=",
+        "gunbc.fabric_source_snapshot.composition.v1;public=",
         p as String,
         ";private=",
         q as String,

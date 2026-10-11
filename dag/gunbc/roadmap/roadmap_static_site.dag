@@ -273,7 +273,7 @@ fn sh_single_quote(s: String) -> String {
 
 fn roadmap_site_deploy_receipt_line(host: String, port: Int) -> String {
   let dispatch = roadmap_site_dispatch_json_artifact()
-  let model_hash = content_hash_atom(value: "gunbc.roadmap.roadmap_static_site/v1" as NonEmptyStr)
+  let model_hash = content_hash_atom(value: "gunbc.roadmap_static_site/v1" as NonEmptyStr)
   concat(
     concat(
       concat(concat("echo roadmap-site-receipt host=", host), concat(" port=", to_string(port))),

@@ -64,6 +64,19 @@ type RunDisposition {
   reason: String
 }
 
+// An IDENTITY LITERAL is text that spells a module name but is a value, not a reference: a wire
+// protocol audience or issuer, a hash or signing domain, a model marker. The rewrite decides by
+// spelling, and a value that is hashed, signed or compared with a deployed peer must keep the bytes
+// it has, so a rename of the module it happens to spell would silently change the protocol. A pin
+// names the file (by the path it has AFTER the sweep, so the pin holds before and after the files
+// move) and the exact text to leave; every occurrence of that text in that file is kept, and a pin
+// whose text the file no longer contains is stale and is reported as a note, which blocks the sweep.
+type IdentityLiteral {
+  file: String
+  text: String
+  reason: String
+}
+
 type RewriteTables {
   renames: Map<String, String>
   modules: Map<String, Bool>
@@ -72,6 +85,7 @@ type RewriteTables {
   moves: Map<String, String>
   directories: Map<String, DirectoryFate>
   dispositions: Map<String, DispositionOutcome>
+  pins: Map<String, List<String>>
 }
 
 fn note_line(kind: String, subject: String) -> String {
@@ -90,6 +104,10 @@ fn note_run_exceeds_window(subject: String) -> String {
   note_line(kind: "run-exceeds-window", subject: subject)
 }
 
+fn note_identity_literal_absent(subject: String) -> String {
+  note_line(kind: "identity-literal-absent", subject: subject)
+}
+
 fn disposition_note(disposition: RunDisposition) -> String {
   note_line(kind: disposition.kind, subject: disposition.subject)
 }
@@ -106,6 +124,11 @@ fn run_window() -> Int {
 
 fn sentinel() -> String {
   from_code_point(57344)
+}
+
+// Brackets the index of a pinned literal while the passes run, so no pass reads inside it.
+fn pin_mark() -> String {
+  from_code_point(57345)
 }
 
 fn bool_map_of(names: List<String>) -> Map<String, Bool> {
@@ -340,7 +363,14 @@ fn directory_fates(files: List<String>, moves: Map<String, String>) -> Map<Strin
 
 // THE TABLES OF A MIGRATION. `modules` is every module before the sweep, `files` every path of the
 // inventory before the sweep.
-fn rewrite_tables(modules: List<ModulePair>, files: List<PathPair>, dispositions: List<RunDisposition>) -> RewriteTables {
+fn pins_with(index: Map<String, List<String>>, pin: IdentityLiteral) -> Map<String, List<String>> {
+  match map_lookup(m: index, key: pin.file) {
+    Present { value: texts } => map_insert(m: index, key: pin.file, value: list_push(texts, pin.text))
+    Absent => map_insert(m: index, key: pin.file, value: [pin.text])
+  }
+}
+
+fn rewrite_tables(modules: List<ModulePair>, files: List<PathPair>, dispositions: List<RunDisposition>, pins: List<IdentityLiteral>) -> RewriteTables {
   let renamed = modules |> filter(pair => pair.old_name != pair.new_name)
   let surviving = bool_map_of(names: modules |> map(pair => pair.new_name) |> fold(init: [], f: fn(acc, name) {
     fold(proper_prefixes(name: name, delimiter: "."), init: acc, f: (inner, namespace) => list_push(inner, namespace))
@@ -354,7 +384,8 @@ fn rewrite_tables(modules: List<ModulePair>, files: List<PathPair>, dispositions
     tops: sorted_distinct_names(values: renamed |> map(pair => first_segment(name: pair.old_name))),
     moves: moves,
     directories: directory_fates(files: files |> map(pair => pair.old_path), moves: moves),
-    dispositions: fold(dispositions, init: empty_map(), f: (index, d) => map_insert(m: index, key: disposition_note(disposition: d), value: d.outcome))
+    dispositions: fold(dispositions, init: empty_map(), f: (index, d) => map_insert(m: index, key: disposition_note(disposition: d), value: d.outcome)),
+    pins: fold(pins, init: empty_map(), f: (index, pin) => pins_with(index: index, pin: pin))
   }
 }
 
@@ -626,19 +657,22 @@ type PieceFold {
   out: List<String>
   notes: List<String>
   edits: Int
-  prev_last: String
+  prev_tail: String
   index: Int
 }
 
-fn last_char_of(piece: String) -> String {
-  char_or_empty(w: piece, at: string_length(s: piece) - 1)
+// The last three characters of a piece: the character before an anchor decides whether the anchor
+// starts a reference, and the two before that decide whether it is the end of a string-literal
+// escape rather than the end of a word.
+fn tail_of(piece: String) -> String {
+  let length = string_length(s: piece)
+  if length <= 3 { piece } else { substring(s: piece, start: length - 3, end: length) }
 }
 
 // An empty piece is two anchors with nothing between them: the second follows the first's last
 // character, which for every anchor is a separator.
-fn next_prev_last(piece: String) -> String {
-  let last = last_char_of(piece: piece)
-  if last == "" { "." } else { last }
+fn next_prev_tail(piece: String) -> String {
+  if piece == "" { "." } else { tail_of(piece: piece) }
 }
 
 fn rewrite_anchored(tables: RewriteTables, kind: RunKind, anchor: String, text: String) -> Rewritten {
@@ -646,15 +680,15 @@ fn rewrite_anchored(tables: RewriteTables, kind: RunKind, anchor: String, text: 
   if count(pieces) < 2 {
     Rewritten { text: text, notes: [], edits: 0 }
   } else {
-    let folded = fold(pieces, init: PieceFold { out: [], notes: [], edits: 0, prev_last: "", index: 0 }, f: fn(acc, piece) {
+    let folded = fold(pieces, init: PieceFold { out: [], notes: [], edits: 0, prev_tail: "", index: 0 }, f: fn(acc, piece) {
       if acc.index == 0 {
-        PieceFold { out: [piece], notes: [], edits: 0, prev_last: last_char_of(piece: piece), index: 1 }
-      } else if !reference_boundary(kind: kind, prev: acc.prev_last) {
+        PieceFold { out: [piece], notes: [], edits: 0, prev_tail: tail_of(piece: piece), index: 1 }
+      } else if !reference_boundary(kind: kind, tail: acc.prev_tail) {
         PieceFold {
           out: list_push(acc.out, concat(anchor, piece)),
           notes: acc.notes,
           edits: acc.edits,
-          prev_last: next_prev_last(piece: piece),
+          prev_tail: next_prev_tail(piece: piece),
           index: acc.index + 1
         }
       } else {
@@ -666,7 +700,7 @@ fn rewrite_anchored(tables: RewriteTables, kind: RunKind, anchor: String, text: 
             Absent => acc.notes
           },
           edits: if anchored.edited { acc.edits + 1 } else { acc.edits },
-          prev_last: next_prev_last(piece: piece),
+          prev_tail: next_prev_tail(piece: piece),
           index: acc.index + 1
         }
       }
@@ -675,14 +709,30 @@ fn rewrite_anchored(tables: RewriteTables, kind: RunKind, anchor: String, text: 
   }
 }
 
-// Whether the character before an anchor makes it the start of a reference. A reference does not
-// continue an identifier, a dotted run, a path or a hyphenated word; "" is the start of the text. A
-// label additionally does not follow ':' (the `//` of a URL).
-fn reference_boundary(kind: RunKind, prev: String) -> Bool {
+// Whether the text before an anchor ends a string-literal escape: a backslash that is itself
+// unescaped, then `n`, `t` or `r`. The letter belongs to the escape and not to a word, so what
+// follows it starts a fresh token; an escaped backslash before the letter (`\\n`) leaves the letter
+// to be an ordinary one.
+fn escape_letter(c: String) -> Bool {
+  c == "n" || c == "t" || c == "r"
+}
+
+fn ends_with_string_escape(tail: String) -> Bool {
+  let length = string_length(s: tail)
+  let backslash = "\\"
+  escape_letter(c: char_or_empty(w: tail, at: length - 1)) && char_or_empty(w: tail, at: length - 2) == backslash && char_or_empty(w: tail, at: length - 3) != backslash
+}
+
+// Whether the text before an anchor makes it the start of a reference. A reference does not
+// continue an identifier, a dotted run, a path or a hyphenated word; "" is the start of the text,
+// and the end of a string-literal escape separates tokens as whitespace does. A label additionally
+// does not follow ':' (the `//` of a URL).
+fn reference_boundary(kind: RunKind, tail: String) -> Bool {
+  let prev = char_or_empty(w: tail, at: string_length(s: tail) - 1)
   match kind {
-    RunKindLabel => !path_char(c: prev) && prev != ":"
-    RunKindDotted => !path_char(c: prev)
-    RunKindPath => !path_char(c: prev)
+    RunKindLabel => (!path_char(c: prev) && prev != ":") || ends_with_string_escape(tail: tail)
+    RunKindDotted => !path_char(c: prev) || ends_with_string_escape(tail: tail)
+    RunKindPath => !path_char(c: prev) || ends_with_string_escape(tail: tail)
   }
 }
 
@@ -707,16 +757,61 @@ fn apply_pass(tables: RewriteTables, kind: RunKind, anchor: String, so_far: Rewr
   merge_rewritten(left: so_far, right: rewrite_anchored(tables: tables, kind: kind, anchor: anchor, text: so_far.text))
 }
 
-// THE REWRITE OF ONE TEXT: labels first (their packages are paths or dotted runs written with
-// slashes, which the path anchors would otherwise skip), then repository paths, then dotted module
-// runs, then the sentinels are dropped. A text that already contains the sentinel is refused.
-fn rewrite_text(tables: RewriteTables, text: String) -> TextRewrite {
+// ---- identity literals ---------------------------------------------------------------------------
+// The pinned texts of a file, looked up by the path the file has after the sweep: a file not yet
+// moved is found through the move table, a file already in place is its own key.
+fn pinned_texts(tables: RewriteTables, path: String) -> List<String> {
+  let after = match map_lookup(m: tables.moves, key: path) {
+    Present { value: moved } => moved
+    Absent => path
+  }
+  match map_lookup(m: tables.pins, key: after) {
+    Present { value: texts } => texts
+    Absent => []
+  }
+}
+
+type ShieldFold {
+  text: String
+  index: Int
+  absent: List<String>
+}
+
+fn shield_mark(index: Int) -> String {
+  concat(pin_mark(), index as String, pin_mark())
+}
+
+// One pinned text replaced, wherever it occurs, by its mark; a text the file does not contain is
+// reported, never skipped.
+fn shield_one(path: String, acc: ShieldFold, literal: String) -> ShieldFold {
+  let pieces = split(s: acc.text, delimiter: literal)
+  if count(pieces) < 2 {
+    ShieldFold { text: acc.text, index: acc.index + 1, absent: list_push(acc.absent, note_identity_literal_absent(subject: concat(path, ": ", literal))) }
+  } else {
+    ShieldFold { text: join(pieces, shield_mark(index: acc.index)), index: acc.index + 1, absent: acc.absent }
+  }
+}
+
+fn unshield_one(acc: ShieldFold, literal: String) -> ShieldFold {
+  ShieldFold { text: join(split(s: acc.text, delimiter: shield_mark(index: acc.index)), literal), index: acc.index + 1, absent: acc.absent }
+}
+
+// THE REWRITE OF ONE TEXT: the pinned identity literals of its file are set aside, then labels
+// (their packages are paths or dotted runs written with slashes, which the path anchors would
+// otherwise skip), then repository paths, then dotted module runs, then the pinned literals are put
+// back and the sentinels are dropped. A text that already contains a reserved character is refused.
+fn rewrite_text(tables: RewriteTables, path: String, text: String) -> TextRewrite {
   if text.contains(sentinel()) {
     TextRewriteRefused { cause: "the text already contains the rewrite sentinel U+E000" }
+  } else if text.contains(pin_mark()) {
+    TextRewriteRefused { cause: "the text already contains the pin mark U+E001" }
   } else {
-    let labeled = apply_pass(tables: tables, kind: RunKindLabel {}, anchor: "//", so_far: Rewritten { text: text, notes: [], edits: 0 })
+    let pins = pinned_texts(tables: tables, path: path)
+    let shielded = fold(pins, init: ShieldFold { text: text, index: 0, absent: [] }, f: (acc, literal) => shield_one(path: path, acc: acc, literal: literal))
+    let labeled = apply_pass(tables: tables, kind: RunKindLabel {}, anchor: "//", so_far: Rewritten { text: shielded.text, notes: shielded.absent, edits: 0 })
     let pathed = fold(path_anchors(), init: labeled, f: (acc, anchor) => apply_pass(tables: tables, kind: RunKindPath {}, anchor: anchor, so_far: acc))
     let dotted = fold(tables.tops, init: pathed, f: (acc, top) => apply_pass(tables: tables, kind: RunKindDotted {}, anchor: concat(top, "."), so_far: acc))
-    TextRewritten { rewritten: Rewritten { text: join(split(s: dotted.text, delimiter: sentinel()), ""), notes: dotted.notes, edits: dotted.edits } }
+    let restored = fold(pins, init: ShieldFold { text: dotted.text, index: 0, absent: [] }, f: (acc, literal) => unshield_one(acc: acc, literal: literal))
+    TextRewritten { rewritten: Rewritten { text: join(split(s: restored.text, delimiter: sentinel()), ""), notes: dotted.notes, edits: dotted.edits } }
   }
 }
