@@ -112,6 +112,13 @@ data memory_envelope_is_part_of_the_verdict: DesignRuling = DesignRuling {
   provenance: "Operator ruling issued with the v1 withdrawal.",
 }
 
+data regeneration_jobs_added_to_roster: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "regeneration_jobs_added_to_roster"),
+  decided: "2026-10-11",
+  section: "Building & checks",
+  provenance: "Roster growth by two non-required jobs, heal-publish.yml and drift-watch.yml, recorded as approved by default: escalation msg_6b00c6a2-c66c-4f41-a3bf-b76dc9d8ab4e went unanswered inside the dashboard's 15-minute window, so its recommended option was recorded; this is not an explicit yes to the two-job split. The operator's own words cover the capability: at 2026-10-11T03:01:08Z 'could you make the regeneration CI step and we can see?', and at 2026-10-11T03:15:35Z 'OK - agreed with your rec - P and D are not urgent' on the proposal of a Tier S push-back plus a Tier O scheduled read-only check.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
     job_roster_closed_to_growth,
@@ -126,6 +133,7 @@ fn design_rulings() -> List<DesignRuling> {
     v2_better_than_the_seed,
     v1_withdrawn_one_required_job,
     memory_envelope_is_part_of_the_verdict,
+    regeneration_jobs_added_to_roster,
   ]
 }
 
