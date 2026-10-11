@@ -25,7 +25,7 @@ module test.claim.emitter_optional_payload_cast_witness
 // genuinely being the built-in Optional, because variant_belongs_to_enum finds a user-declared
 // Present and lets the peel proceed, never on the spelling alone. This file does NOT cover
 // nested-refinement lowering, a separate open deficit tracked by
-// emitter_nested_refinement_cast_witness_test.dag.
+// emitter_nested_refinement_cast_witness.dag.
 
 fn w_optional_payload_cast_lowers_to_some() -> Bool {
   compile_dag_rust_emit_check(

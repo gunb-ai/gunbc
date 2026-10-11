@@ -12,7 +12,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 // The irreducible half of the lifecycle-carrier census: its subject IS the breadth of the
 // live corpus, so it walks all ~16,975 data declarations under both roots and cannot be made
 // smaller without measuring less. Split from the mechanism controls in
-// lifecycle_survivor_scan_witness_test.dag per the witness-cost ruling: a live population
+// lifecycle_survivor_scan_witness.dag per the witness-cost ruling: a live population
 // whose breadth is the subject decomposes into small discriminating fixtures per PR plus the
 // irreducible census on an enrolled cadence. The fixtures there are the per-PR half and run
 // in ~0ms; this is the cadence half.

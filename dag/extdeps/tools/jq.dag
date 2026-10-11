@@ -634,7 +634,7 @@ fn jq_execute_admitted_plan(plan: JqAdmittedProcessPlan) -> ProcessObservation {
   }
 }
 
-// The four-case receipt's entry point (test/manual/process_argv_expansion_receipt_test.dag). It
+// The four-case receipt's entry point (test/manual/process_argv_expansion_receipt.dag). It
 // exists so the receipt asserts through the SAME handler production uses, rather than a
 // look-alike declared in the witness -- a witness-local service would prove nothing about this one.
 fn jq_argv_expansion_probe(expansion: ProcessArgvExpansion, payload: String) -> Int {

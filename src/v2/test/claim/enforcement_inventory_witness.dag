@@ -8,8 +8,8 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // world fact seven times and safety-interrupted every identity before verdict; required-floor run
 // 32794539384 measured the seven interruptions, and this consolidation is their bounded reshape.
 // Excluded from per-PR discovery via witness_exclusion_frontier row
-// enforcement_inventory_witness_test.dag (OfflineLocalRecipe, same dissolve_on as
-// enforcement_live_witness_test.dag). Local recipe: claim_batch --source-root dag --source-root
+// enforcement_inventory_witness.dag (OfflineLocalRecipe, same dissolve_on as
+// enforcement_live_witness.dag). Local recipe: claim_batch --source-root dag --source-root
 // src/v2 --entry src/v2/test/claim/enforcement_inventory_witness.dag --function
 // enforcement_inventory_global_receipt_holds --claim-run --wet. Two frontier-reconciliation tests
 // (enforcement_live specimen + row-count) are cheap but share this file grain.
@@ -22,9 +22,9 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // LensEnforcementApplication rows, not lens_id. evaluated_scope and subject_counts
 // evaluated/unavailable are typed absent until Phase 1. Scope leg and whole_corpus_scope constant
 // were not modified. 0A red-control evidence is construction in the production fold; discriminating
-// witnesses execute at offline cadence only (enforcement_live_witness_test.dag frontier row).
+// witnesses execute at offline cadence only (enforcement_live_witness.dag frontier row).
 
-data enforcement_live_witness_pattern: String = "enforcement_live_witness_test.dag"
+data enforcement_live_witness_pattern: String = "enforcement_live_witness.dag"
 
 test fn enforcement_live_witness_exclusion_inventory_matches_frontier() -> Bool {
   match find_witness_admission_row_for_pattern(
@@ -49,7 +49,7 @@ test fn witness_admission_inventory_reconciles_exclusion_frontier() -> Bool {
   length(xs: witness_admission_inventory_live()) == length(xs: witness_exclusion_frontier)
 }
 
-data enforcement_inventory_witness_pattern: String = "enforcement_inventory_witness_test.dag"
+data enforcement_inventory_witness_pattern: String = "enforcement_inventory_witness.dag"
 
 test fn enforcement_inventory_witness_excluded_via_frontier() -> Bool {
   match find_witness_admission_row_for_pattern(

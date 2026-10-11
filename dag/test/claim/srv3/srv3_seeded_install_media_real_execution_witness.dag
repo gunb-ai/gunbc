@@ -16,7 +16,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data real_execution_home_doc: String = "This witness drives real shell/filesystem effects (shell.Mktemp.Dir, Filesystem.Write/Read, shell.Remove.RecursiveForce have no mock_response - dag/extdeps/shell/shell.dag - so it cannot run in CI's default Hermetic discovery corpus, dag/std/execution_mode.dag). Split out of srv3_seeded_install_media_witness_test.dag so that file's pure witnesses keep hermetic per-PR discovery; excluded from discovery (gunbc.ci.ci_layer_roots witness_exclusion_substrings) and executed per PR by the required floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule; gunbc.ci.ci_layer_roots excl_install_media_seeded_local_wet_reason)."
+data real_execution_home_doc: String = "This witness drives real shell/filesystem effects (shell.Mktemp.Dir, Filesystem.Write/Read, shell.Remove.RecursiveForce have no mock_response - dag/extdeps/shell/shell.dag - so it cannot run in CI's default Hermetic discovery corpus, dag/std/execution_mode.dag). Split out of srv3_seeded_install_media_witness.dag so that file's pure witnesses keep hermetic per-PR discovery; excluded from discovery (gunbc.ci.ci_layer_roots witness_exclusion_substrings) and executed per PR by the required floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule; gunbc.ci.ci_layer_roots excl_install_media_seeded_local_wet_reason)."
 
 // THE EDIT RUNS ON THIS HOST'S REAL FILESYSTEM: the stock member is written to a real file, the builder
 // measures it with a real sha256sum and writes its edit; a file that is NOT the stock member is refused

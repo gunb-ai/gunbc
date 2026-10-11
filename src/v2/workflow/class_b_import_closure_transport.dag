@@ -46,7 +46,7 @@ import std.types { String, List, NonEmptyStr }
 // paired same-dispatch, same-host comparison found declared_import_closure_lists_rust_import
 // through the narrow probe entry (70.0s/69.4s) statistically indistinguishable from the identical
 // function reached directly through this heavy module (69.98s) -- see
-// rust_test_fixtures_import_closure_witness_test.dag's class_b_witness_note for the full
+// rust_test_fixtures_import_closure_witness.dag's class_b_witness_note for the full
 // measurement. The floor's own [floor-witness-slow] line for these same two identities (24674ms
 // declared_import_closure_lists_rust_import, 31603ms ambient_pool_provider_preserves_listed_import)
 // is the citable magnitude -- the standalone 70.0-80.8s figures above are ~2-3x inflated because a
@@ -64,8 +64,8 @@ import std.types { String, List, NonEmptyStr }
 // ObservationProduced carrying a successfully ingested BindingObserved outcome; every
 // ObservationProductionRefused (overlay read/strip/mkdir/mktemp/write/cleanup/compile) reds the
 // gate — compile graph:None is P1(b), not a seam refusal. Predicate unit controls stay in
-// class_b_import_closure_binding_refusal_witness_test.dag and
-// class_b_strip_receipt_witness_test.dag. Affected-set skip:
+// class_b_import_closure_binding_refusal_witness.dag and
+// class_b_strip_receipt_witness.dag. Affected-set skip:
 // class_b_import_closure_gate_not_affected_skip
 // (cli_run::class_b_import_closure_gate_skip_label_for_ci) skips the ~2.3min gate on pull_request
 // when the merge-base diff is provably disjoint from the gate input closure; empty diff / departed

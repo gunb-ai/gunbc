@@ -262,7 +262,7 @@ type ContinuationShapeSeen
 // forging `status: FoldEnded` beside items from the witness module -- the exact state finding 1
 // named -- was authored and run, and the compiler refused it, located:
 //
-//   page_fold_witness_test.dag:482:16: error: sole_constructor type 'PageFoldState'
+//   page_fold_witness.dag:482:16: error: sole_constructor type 'PageFoldState'
 //   cannot be constructed outside its defining module
 //
 // The probe is AUTHORABLE and was run; what it cannot be is ENROLLED, because a module carrying it

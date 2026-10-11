@@ -10,7 +10,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // converted per DESIGN §4b dissolution-on-climb — not deleted without replacement.
 // compile_dag_rust_emit_check pins the old specimen source; if the wall loosens, the RED greens and
 // this witness fails. Record-literal call-arg handoff controls live in
-// record_literal_call_arg_handoff_witness_test.dag plus diagnostics_witness
+// record_literal_call_arg_handoff_witness.dag plus diagnostics_witness
 // record_literal_field_walls.
 
 fn w_missing_variant_terminal_at_mechanism_field_red() -> Bool {

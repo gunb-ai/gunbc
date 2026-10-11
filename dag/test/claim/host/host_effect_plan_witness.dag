@@ -31,7 +31,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // In-process receipt and typed refusal controls cover plan sequencing and the
 // presence of an attempted intent. Effective-principal transport controls live
-// in host_effect_plan_real_execution_witness_test.dag (Wet bin batch).
+// in host_effect_plan_real_execution_witness.dag (Wet bin batch).
 
 fn witness_host_os_target() -> NodeControlPlane {
   HostOs { node: srv1_host }

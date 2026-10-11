@@ -31,8 +31,8 @@ import std.types { Bool }
 // witness_decomposition_does_not_reduce_entry_cost_note); this is not that — it narrows what the
 // SAME entry's assertions depend on by fixing the imported dependency's shape (relocation-not-refork
 // per DESIGN.md §3), not by moving test fns to a new file. Rows 3-4 stay in
-// class_b_import_closure_binding_refusal_witness_test.dag and
-// class_b_strip_receipt_witness_test.dag; wet integration remains run_class_b_import_closure_gate
+// class_b_import_closure_binding_refusal_witness.dag and
+// class_b_strip_receipt_witness.dag; wet integration remains run_class_b_import_closure_gate
 // on source_root_ingest_gate. MEASURED 2026-08-19, NEGATIVE — the narrowing is FALSIFIED as an
 // import-closure-pollution repair. Two-sided test (paired same-host comparison, per the standing
 // acceptance bar: cost must collapse when the closure narrows AND not collapse under mere

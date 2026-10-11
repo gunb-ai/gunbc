@@ -19,8 +19,8 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // Full-corpus meta_exec_confinement clean-tree receipt exceeds the per-PR 5s fast-lane eval budget
 // once layer_import_facts_live unions reference_resolution_facts over witness_layer_roots.
-// Fast-lane per-PR coverage: scanner/planted_leak_test.dag (fixture scan only) and
-// roster_soundness_test.dag (the empty-roster construction wall). Excluded from discovery by
+// Fast-lane per-PR coverage: scanner/planted_leak.dag (fixture scan only) and
+// roster_soundness.dag (the empty-roster construction wall). Excluded from discovery by
 // test/claim/long/ dir grain.
 
 // The LIVE half of the roster-soundness fix, homed here on measurement, not preference:

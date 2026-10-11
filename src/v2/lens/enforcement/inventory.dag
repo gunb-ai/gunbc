@@ -577,7 +577,7 @@ type WitnessAdmissionInventoryRow {
 // Phase 0B witness admission inventory: every row is derived from gunbc.ci.ci_layer_roots
 // witness_exclusion_frontier (pattern, classification, reason, dissolve_on) plus witness-admission
 // cadence projection — never hand-authored scheduling. First specimen:
-// enforcement_live_witness_test.dag (0A red-control probes) is OfflineLocalRecipe at the
+// enforcement_live_witness.dag (0A red-control probes) is OfflineLocalRecipe at the
 // offline-recipe cadence, SchedulingExcluded at PR-floor/main-push, with dissolve_on from the
 // frontier row. 0A fabrication removal is construction in the production fold; discriminating
 // evidence runs at offline cadence only (operator status correction 2026-08-02).

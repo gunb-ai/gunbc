@@ -28,7 +28,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // returned Fn closure over a non-Copy capture, invoked twice); a FnOnce closure invoked exactly
 // once, and the ExprForEach arm at src/v1/ownership.dag:276, remain UNMEASURED and are not asserted
 // safe or unsafe by this witness. Two-arm fixture through compile_dag_rust_emit_check (the per-PR
-// enrolled real-emitter consumer, per generic_item_clone_bound_witness_test.dag's pattern): ARM A
+// enrolled real-emitter consumer, per generic_item_clone_bound_witness.dag's pattern): ARM A
 // returns a param directly (no lambda) and must emit it BARE (moves_by_value true, no .clone()) --
 // the control that the clone is not simply blanket-emitted; ARM B returns the identical single-use
 // param from inside a returned closure and must emit .clone() -- the behavior Arm C proved

@@ -16,8 +16,8 @@ import v2.std.text { String }
 // that fold and its capability roster WERE the old two-clause acceptance algebra, superseded by the
 // production group whose parent expectation folds leaves directly and needs no
 // capability-completeness count. The group's own algebra is discriminated over planted observations
-// in direct_rust_door_group_algebra_test.dag at zero production cost; its single production walk
-// lives in long/direct_rust_door_production_group_test.dag.
+// in direct_rust_door_group_algebra.dag at zero production cost; its single production walk
+// lives in long/direct_rust_door_production_group.dag.
 
 test fn witness_missing_rule_assessment_establishes_on_fixture() -> Bool {
   match assess_missing_translation_rule_refuses() {

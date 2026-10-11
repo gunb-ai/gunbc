@@ -9,7 +9,7 @@ import gunbc.roadmap.roadmap_model { acceptance_history_integrity_verdict_detail
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// SPLIT OUT OF roadmap_receipt_continuity_acceptance_test.dag AND roadmap_authority_test.dag SO THE
+// SPLIT OUT OF roadmap_receipt_continuity_acceptance.dag AND roadmap_authority.dag SO THE
 // HERMETIC DISCOVERY CORPUS CAN RUN. roadmap_acceptance_history_integrity_holds reaches
 // git.Inspect.HeadCommit, git.Inspect.MergeBase, and git.Core.Show without mock_response, so under
 // the hermetic envelope the observation REFUSES rather than skipping — and a planted git refusal

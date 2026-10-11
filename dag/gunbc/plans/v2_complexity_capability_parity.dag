@@ -47,7 +47,7 @@ fn v2_complexity_capability_parity_body() -> List<MarkdownBlock> {
         row(cells: [
           cell(text: "`lens_contract_cost`"),
           cell(text: "**`Blocking`**"),
-          cell(text: "**`BoundConsumerWitness`** (`complexity_gate/budget_roster_completeness_test.dag`)"),
+          cell(text: "**`BoundConsumerWitness`** (`complexity_gate/budget_roster_completeness.dag`)"),
           cell(text: "`WallNow`"),
         ]),
         row(cells: [

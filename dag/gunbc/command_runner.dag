@@ -57,7 +57,7 @@ data ssh_exit_255_conflation_dissolution: DissolutionCondition = unbound_dissolu
 // WHAT GUARDS THIS, AND WHAT DOES NOT -- read before assuming the property below is enforced.
 //
 // The property "the local path reaches no shell" is established by execution, wet, against a real
-// process: test/manual/command_runner_local_argv_receipt_test.dag runs printf against an operand
+// process: test/manual/command_runner_local_argv_receipt.dag runs printf against an operand
 // containing a space and asserts the one-argument reading arrives while the shell-split reading
 // does not. It passes. It is also EXCLUDED FROM THE FLOOR, so CI does not run it, and after this
 // lands someone reintroducing a render-and-bash hop on this arm gets NO SIGNAL from CI.

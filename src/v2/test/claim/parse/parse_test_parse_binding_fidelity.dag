@@ -298,7 +298,7 @@ fn pbf_ambiguous_export_rejects() -> Bool {
 }
 
 // Fixture: three cross-file binding resolution + fail-closed witness tests. Discovered per-PR via
-// *_test.dag walk. Long-lane corpus split: long/parse_binding_fidelity_witness_test.dag
+// *_test.dag walk. Long-lane corpus split: long/parse_binding_fidelity_witness.dag
 // (commit_workflow-enrolled module ingest tests) — see parse_binding_fidelity_long_note.
 
 test fn witness_cross_file_import_binding_resolves_holds() -> Bool {

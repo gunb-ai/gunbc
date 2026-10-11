@@ -13,7 +13,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // dag/gunbc/instruments/generated_artifact_gate.dag main_wet, and require real cargo build refusal
 // (E0004 / macro expansion). Distinct from interpreter_dispatch_bijection_compile_red.rs (isolated
 // temp fixture, per-PR-local cargo test) and from
-// v1_interpreter_primitive_dispatch_authority_acceptance_test.dag (structural .dag contract).
+// v1_interpreter_primitive_dispatch_authority_acceptance.dag (structural .dag contract).
 // Memory envelope prediction: gunbc.instruments.interpreter_dispatch_bijection_real_roster_transport
 // interpreter_dispatch_bijection_real_roster_memory_envelope_note.
 

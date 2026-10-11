@@ -290,7 +290,7 @@ fn v2_eval_runtime_value_as_int(value: RuntimeValue) -> Outcome<Int> {
 
 // 🟡 dissolve-on: v2_eval_runtime_bool_is_true and v2_eval_runtime_bool_is_false are coproduct
 // RuntimeValue→Bool predicates (RuntimePrimitive bool-literal pin, one arm true / others false) —
-// parallel to lazy_arm_runtime_bool_true/false in branch_lazy_arm_eval_acceptance_test.dag; NFR
+// parallel to lazy_arm_runtime_bool_true/false in branch_lazy_arm_eval_acceptance.dag; NFR
 // roster listing alone is not a predicate-dissolution receipt. DISSOLVES WHEN std/runtime carries
 // canonical RuntimeValue bool decode/eq (single authority for branch condition discrimination) and
 // v2_evaluator branch dispatch routes through it instead of hand-rolled byte probes.

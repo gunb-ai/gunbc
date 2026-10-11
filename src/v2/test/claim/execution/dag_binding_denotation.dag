@@ -37,7 +37,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // The boundary control pins the rule's edge at the authority itself: dag_binding_denotation
 // declares no denotation for the operand bindings `x`/`y` -- the table is a lookup, not an
 // invention. (The operand atoms derive today, but by a different rule -- the binding-reference
-// derivation in infer_atom_grounding_rules_test.dag -- not by this one.) Deleting the rule
+// derivation in infer_atom_grounding_rules.dag -- not by this one.) Deleting the rule
 // reddens the positive control; widening the table to operand bindings reddens the boundary
 // control.
 

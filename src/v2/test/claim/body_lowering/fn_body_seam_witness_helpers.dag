@@ -43,8 +43,8 @@ import v2.test.claim.parse.parse_binding_fidelity_support {
 
 // Shared helpers for fn_body seam witnesses (decoupled from #6775 integer closure). Execution
 // proofs exceed per-PR 5s fast-lane budget — enrolled in
-// long/wave1_gate1_a1_fn_body_seam_witness_test.dag. Fast RED (invalid shell wrapper-retained)
-// lives in self_host/wave1_gate1_a1_fn_body_seam_witness_test.dag.
+// long/wave1_gate1_a1_fn_body_seam_witness.dag. Fast RED (invalid shell wrapper-retained)
+// lives in self_host/wave1_gate1_a1_fn_body_seam_witness.dag.
 
 fn fn_body_seam_parsed_add_module() -> Optional<Node> {
   let lm = dag_language_model()

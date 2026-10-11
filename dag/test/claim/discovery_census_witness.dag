@@ -651,7 +651,7 @@ test fn the_census_counts_a_declined_no_ci_wet_lane_row_in_its_own_bucket() -> B
   ])
   let rows = map(real, r => CensusRow {
     label: r.label,
-    disposition: DeclinedNoCiWetLane { pattern: "bootstrap_test.dag" }
+    disposition: DeclinedNoCiWetLane { pattern: "bootstrap.dag" }
   })
   let counts = census_counts(rows: rows)
   let split = census_partition(rows: rows)

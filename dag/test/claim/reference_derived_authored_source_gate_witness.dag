@@ -9,7 +9,7 @@ module test.claim.reference_derived_authored_source_gate_witness
 // is the DIRECT arm only. Since Root K the gate decision is reference_derived_candidate_authored, a
 // disjunction of this arm and a variant-induced arm that admits a unit-only enum whose variant is
 // spelled and binds unambiguously back to it; that second arm and its homonym refusal are witnessed
-// separately in reference_derived_variant_induced_parent_gate_witness_test.dag. Extending THIS
+// separately in reference_derived_variant_induced_parent_gate_witness.dag. Extending THIS
 // oracle to cover it would fork the second witness rather than complete this one. GREEN: a name
 // spelled in module source is admitted. RED: AuthoredTokenOrdinal-shaped over-collection against an
 // http_path-like source that never mentions it is refused — the exact fabrication that previously

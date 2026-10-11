@@ -83,7 +83,7 @@ import v2.std.text { String }
 // FAST lane: discriminates the direct-rust-door group ALGEBRA over PLANTED observations, paying
 // ZERO production walks — no ingest, assemble, infer, or emit runs here. This is the cheap half of
 // the composition pilot: the one canonical heavy root in
-// long/direct_rust_door_production_group_test.dag establishes what production actually does, and
+// long/direct_rust_door_production_group.dag establishes what production actually does, and
 // these controls establish what the group does with any observation it is handed. Splitting them is
 // what keeps the expensive walk to ONE PER GROUP CONSTRUCTION while the group behaviour stays fully
 // discriminated. That is a claim about the walk per construction and about there being ONE

@@ -62,7 +62,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // primary cold then warm (octet 9), then the wrong-value alt tree colds in the SAME root with the
 // flipped octet 1 — the content-change MISS and the wrong-value RED in one cold rebuild. Formerly 5
 // crate builds per pass (per-test eviction roots); now 2. Interpreted==native agreement stays in
-// emit_host_variant_construct_equals_eval_test.dag (its own oracle leg). Pure receipts unchanged.
+// emit_host_variant_construct_equals_eval.dag (its own oracle leg). Pure receipts unchanged.
 
 data variant_construct_family_cache_root: String = emit_on_demand_family_cache_root(family: "variant_construct_family")
 data variant_construct_family_emitter: String = "v2.compiler.emit"
