@@ -6,6 +6,8 @@ import std.algebra { trim }
 import std.measure { byte_size_count }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_names_entry }
 import gunbc.output_policy { OutcomeIsData }
+import gunbc.git_diff_change_window { gunbc_diff_window_path_env }
+import extdeps.languages.json.emit { json_object, json_kv, json_string, json_array, serialize_json }
 import extdeps.gunbc
 import extdeps.shell
 import extdeps.git { shape_git_worktree_add_detached_argv }
@@ -68,15 +70,45 @@ import gunbc.compute.host_capacity {
 }
 import std.measure { kibibyte }
 import std.content_hash { serialize_content_hash }
-import std.materialization_provider { ComputeWorkRequest, request_key, compute_work_demand_nature }
-import std.materialization_ladder { FreshEffect, IdempotentEffect, PureComputation, WorldRead }
+import std.materialization_provider { ArtifactRequest, ComputeWorkRequest, request_key, request_kind, request_judgment_contract, compute_work_binary_output }
+import std.cache_identity { ArtifactKindId }
+import std.judgment_contract { output_compute_work_outcome, output_compute_work_log, output_compute_work_outputs }
+import std.materialization_ladder {
+  Frame, FrameDemand, UnboundedSiblingsFrame, LadderVerdict, RefusedNoProvider,
+  materialization_ladder, ladder_verdict_is_green, ladder_verdict_prescribes, verdict_identity,
+}
+import std.realization { Materialization, Memoize, Recompute, Share }
+import std.materialization_store_grant { MaterializationStoreRoot, DurableHostVolumeRoot, materialization_store_frame, materialization_store_root_path }
+import std.materialization_object {
+  ArtifactPayload, ArtifactBlobPart, StoreLookup, StoreLookupHit, StoreLookupMiss, StoreLookupRefused, StoreLookupRefusal,
+  StoreLookupObjectUnavailable, StoreLookupObjectMalformed, StoreLookupManifestUninterpretable, StoreLookupPayloadMissing,
+  StoreLookupPayloadUndeclared, StoreLookupPayloadRepeated, StoreLookupContractRefused, StoreLookupEvaluationPreimageMismatch,
+  StoreLookupStoreFamilyRefused, StoreCommitSettled, StoreCommitRefused, StoreCommitRefusal,
+  StoreCommitManifestUninterpretable, StoreCommitContractRefused, StoreCommitPublishRefused, StoreCommitReadBackRefused,
+  StoreCommitStoreFamilyRefused, StoreCommitResultContentConflict, StoreCommitResultHashFamilyIncomparable,
+  StoreCommitResultIdentityUnverifiable, StoreCommitBudgetUndeclared, StoreCommitDidNotFit, StoreCommitOccupancyUnavailable,
+  StoreCommitCleanupOutstanding,
+  StoreFault, store_lookup_payload,
+}
+import extdeps.realization.materialization_store_local {
+  LocalStoreInitialization, LocalStoreInitialized, LocalStoreInitializationRefused, LocalStoreOpening, LocalStoreOpened, LocalStoreUnavailable,
+  LocalStoreUnavailableCause, LocalStoreGrantRefused, LocalStoreNotInitialized, LocalStoreMarkerUnrecognized, LocalStoreMarkerUnavailable,
+  LocalStoreMarkerMalformed, LocalStoreCatalogMismatch, LocalStoreCatalogInadmissible, LocalStoreSweepIncomplete,
+  local_store_initialize, local_store_lookup, local_store_commit, local_store_family_budget, local_store_family_provider,
+  LocalStoreStagedPart, LocalStorePartsLookup, local_store_lookup_parts, LocalStoreFamilyBudget,
+}
+import gunbc.materialization_store_budgets { materialization_store_durable_family_budgets
+}
+import std.fabric_blob { FabricBlobReading, fabric_blob_reading_path, fabric_blob_reading_digest }
 import gunbc.compute.work_request {
+  work_refusal_detail, work_ending_decode, WorkEndedSucceeded,
   WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
-  WorkToolchainIdentity, work_toolchain_observed, rustc_verbose_host_triple, work_default_build, work_declared_outputs,
+  WorkToolchainIdentity, work_toolchain_observed, rustc_verbose_host_triple, work_default_build, work_default_bins,
+  GunbcBinary, GunbcDriver, ClaimBatchRunner, gunbc_binary_name, work_binary_declared_path, work_declared_outputs,
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
   WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
-  CheckoutUnavailable, StoreUnavailable, FreshEffectNotServed,
+  CheckoutUnavailable, StoreUnavailable, UnitLaunchRefused,
   ToolchainUnobserved, DependencyNotSucceeded, SubjectUnresolved, UnitMemoryGrantExceeded, UnitEndingUnclassifiable,
   work_outcome_wire, work_outcome_ending, work_outcome_ending_of, work_operation_canonical, work_outcome_identity, StoredOutcomeRead, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_decode, stored_outcome_is_success,
 }
@@ -105,10 +137,9 @@ type ComputeLayout {
   out_dir: String
   leases_dir: String
   lease_path: String
-  store_dir: String
+  staging_dir: String
   target_dir: String
   log_path: String
-  outcome_path: String
   consumption_path: String
   attempts_dir: String
 }
@@ -123,10 +154,9 @@ fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> Comp
     out_dir: join([work_dir, "/out"], ""),
     leases_dir: join([root, "/leases"], ""),
     lease_path: join([root, "/leases/", identity_hex], ""),
-    store_dir: join([root, "/store/", identity_hex], ""),
+    staging_dir: compute_staging_dir(),
     target_dir: join([root, "/target"], ""),
     log_path: join([work_dir, "/log"], ""),
-    outcome_path: join([work_dir, "/outcome.json"], ""),
     consumption_path: join([work_dir, "/consumption"], ""),
     attempts_dir: join([root, "/attempts"], ""),
   }
@@ -323,26 +353,52 @@ fn provide_result_document(r: ProvideResult) -> String {
 }
 
 // The command an operation runs inside the unit. Build runs the host's cargo; compile and claims run
-// the binaries the SAME subject's build produced (dependency_store is that build's store dir), so a
-// worker never checks its .dag with a compiler built from a different tree.
-fn compute_command_argv(instance: HostDashboardInstance, layout: ComputeLayout, op: WorkOperation, dependency_store: String) -> List<String> {
+// the binaries the SAME subject's build produced -- the verified byte-part readings of that build's
+// record in the materialization store (compute_dependency_read) -- so a worker never checks its .dag
+// with a compiler built from a different tree, and never executes bytes the store did not verify.
+// THE MODE IS ALWAYS SPELLED. claim_batch defaults to hermetic, so leaving the flag off for a wet
+// request ran it hermetic while its identity said wet -- the key and the realization answering two
+// different questions. Both arms now name their mode, so the run is the operation the key describes.
+fn compute_command_argv(instance: HostDashboardInstance, layout: ComputeLayout, op: WorkOperation, dependency: ComputeDependency) -> List<String> {
   match op {
     BuildGunbcBinaries { profile, bins } =>
       concat(
         concat([compute_program(instance: instance, cap: CargoCapability), "build"], match profile { CargoRelease => ["--release"]  CargoDebug => [] }),
-        concat(["-p", "v1-compiler"], flat_map(bins, b => ["--bin", b as String])),
+        concat(["-p", "v1-compiler"], flat_map(bins, b => ["--bin", gunbc_binary_name(b: b) as String])),
       )
     CompileEntry { entry } =>
-      [join([dependency_store, "/gunbc"], ""), "compile",
+      [compute_dependency_program(dependency: dependency, bin: GunbcDriver), "compile",
        "--source-root", join([layout.checkout, "/dag"], ""), "--source-root", join([layout.checkout, "/src/v2"], ""),
        "--entry", join([layout.checkout, "/", entry as String], ""), "--output-dir", layout.out_dir, "--target", "dag"]
-    RunClaims { entry, functions, hermetic } =>
+    RunClaims { entry, functions, hermetic, window: _ } =>
       concat(
-        [join([dependency_store, "/claim_batch"], ""),
+        [compute_dependency_program(dependency: dependency, bin: ClaimBatchRunner),
          "--source-root", join([layout.checkout, "/dag"], ""), "--source-root", join([layout.checkout, "/src/v2"], ""),
          "--entry", join([layout.checkout, "/", entry as String], ""), "--functions", functions as String],
-        if hermetic { ["--hermetic"] } else { [] },
+        if hermetic { ["--hermetic"] } else { ["--wet"] },
       )
+  }
+}
+
+// THE BUILD A DEPENDENT EXECUTES: the verified reading of each default binary, by name. Only
+// compute_dependency_read constructs the populated arm, from a store lookup whose parts verified.
+type ComputeDependency
+  = NoComputeDependency
+  | VerifiedBuildBinaries { gunbc: FabricBlobReading, claim_batch: FabricBlobReading }
+
+// THE PROGRAM FOR ONE BINARY IS A TOTAL MATCH OVER THE CLOSED SET: the resolved dependency carries one
+// verified reading per GunbcBinary, so selecting one is never a lookup that can miss. A dependent
+// reaches this only through compute_provide_dependent, which refuses unless both readings verified,
+// so the NoComputeDependency arm names the refusal it would have been rather than a path: exec of it
+// fails loudly instead of running something else.
+fn compute_dependency_program(dependency: ComputeDependency, bin: GunbcBinary) -> String {
+  match dependency {
+    NoComputeDependency => join(["compute: no verified build binary for ", gunbc_binary_name(b: bin) as String], "")
+    VerifiedBuildBinaries { gunbc, claim_batch } =>
+      match bin {
+        GunbcDriver => fabric_blob_reading_path(reading: gunbc) as String
+        ClaimBatchRunner => fabric_blob_reading_path(reading: claim_batch) as String
+      }
   }
 }
 
@@ -408,7 +464,22 @@ type ComputeUnitRun {
 // set must refuse rather than have its figures read against a format nobody has checked. Reading
 // `systemctl --version` there would answer about a DIFFERENT executable than the one that prints the
 // line, which on a mixed install is a different version.
-fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, granted: Kibibyte) -> ComputeUnitRunReading {
+// THE ENVIRONMENT AN OPERATION DECLARES. Only a claim run that reads an affected-set window binds
+// one, and the binding is the window's path under the one env name its reader consumes; the window's
+// identity is already in the work's key (gunbc.compute.work_request ClaimDiffWindow).
+fn compute_operation_env(op: WorkOperation) -> List<SystemdSetenvBinding> {
+  match op {
+    BuildGunbcBinaries { profile: _, bins: _ } => []
+    CompileEntry { entry: _ } => []
+    RunClaims { entry: _, functions: _, hermetic: _, window } =>
+      match window {
+        Present { value: w } => [SystemdSetenvBinding { name: gunbc_diff_window_path_env, value: w.path as String as NonEmptyStr }]
+        Absent => []
+      }
+  }
+}
+
+fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, env: List<SystemdSetenvBinding>, granted: Kibibyte) -> ComputeUnitRunReading {
   let systemd_run = match instance.toolchain.systemd_run { Present { value: p } => p as String  Absent => "" }
   if systemd_run == "" {
     ComputeUnitRunExecuted { run: ComputeUnitRun {
@@ -423,10 +494,10 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
     match systemd_run_user_wait_command(
       unit: compute_unit_name(identity_hex: identity_hex),
       properties: compute_unit_properties(layout: layout, granted: granted),
-      setenv_bindings: [
+      setenv_bindings: concat([
         SystemdSetenvBinding { name: "CARGO_TARGET_DIR", value: layout.target_dir },
         SystemdSetenvBinding { name: "RUSTC_WRAPPER", value: sccache_installed_binary_path },
-      ],
+      ], env),
       command_argv: argv,
     ) {
       SystemdSummaryPrintingWaitRefused { cause: why } =>
@@ -785,8 +856,9 @@ fn unit_termination_wire(t: UnitTermination) -> String {
 }
 
 // Return declared outputs by content: hash each with git (a blob object id is a content identity
-// every subject already uses) and install it into the identity's store directory. An absent or
-// unreadable output is a mismatch, never a success with a hole.
+// every subject already uses) and STAGE it on the materialization store's filesystem, where the
+// commit links it into the record as a byte part (compute_store_commit). An absent or unreadable
+// output is a mismatch, never a success with a hole.
 type OutputsReturn
   = OutputsReturned { outputs: List<WorkOutput> }
   | OutputsMismatch { detail: String }
@@ -798,18 +870,30 @@ fn compute_return_outputs(instance: HostDashboardInstance, layout: ComputeLayout
       OutputsReturned { outputs } => {
         let rel = d.path
         let src = join([match d.root { CheckoutRoot => layout.checkout  TargetRoot => layout.target_dir }, "/", rel], "")
-        let dst = join([layout.store_dir, "/", compute_basename(path: rel)], "")
+        let dst = compute_staged_path(layout: layout, declared: rel)
         match compute_exec(program: compute_program(instance: instance, cap: GitWorkspaceCapability), workdir: layout.checkout, args: ["hash-object", src]) {
           ComputeExecFailed { exit_code: _, stdout: _, stderr } => OutputsMismatch { detail: join(["declared output ", rel, " could not be hashed: ", stderr], "") }
           ComputeExecOk { stdout, stderr: _ } =>
             match compute_exec(program: compute_program(instance: instance, cap: AttemptStateDirectoryCapability), workdir: layout.checkout, args: ["-m", "0755", src, dst]) {
               ComputeExecFailed { exit_code: _, stdout: _, stderr } => OutputsMismatch { detail: join(["declared output ", rel, " could not be stored: ", stderr], "") }
               ComputeExecOk { stdout: _, stderr: _ } =>
-                OutputsReturned { outputs: concat(outputs, [WorkOutput { declared: rel, blob: trim(s: stdout), store_path: dst }]) }
+                OutputsReturned { outputs: concat(outputs, [WorkOutput { declared: rel, blob: trim(s: stdout) }]) }
             }
         }
       }
     })
+}
+
+// THE STAGING DIRECTORY sits beside the store root, so a staged file and the root share a filesystem
+// and the commit's link is a link, never a copy (C1b refuses a cross-device stage). It is DERIVED from
+// the store root's path, never re-spelled. A staged file is named by the work identity and the
+// declared output, and is removed once the commit has linked it.
+fn compute_staging_dir() -> String {
+  join([materialization_store_root_path(root: compute_durable_store.root), "-staging"], "")
+}
+
+fn compute_staged_path(layout: ComputeLayout, declared: String) -> String {
+  join([layout.staging_dir, "/", compute_basename(path: layout.work_dir), ".", compute_basename(path: declared)], "")
 }
 
 fn compute_basename(path: String) -> String {
@@ -1044,28 +1128,6 @@ fn compute_attempt_retries_at_ceiling(grant: WorkClassGrant, attempt: ComputeAtt
   !work_class_grant_is_ceiling(g: grant) && compute_summary_is_oom_kill(summary: attempt.summary)
 }
 
-fn compute_run_granted(
-  instance: HostDashboardInstance,
-  commit: String,
-  layout: ComputeLayout,
-  identity: String,
-  subject: WorkSubject,
-  op: WorkOperation,
-  dependency_store: String,
-  grant: WorkClassGrant,
-  reference: NonEmptyStr,
-  reservation: ComputeReservation,
-) -> ProvideResult {
-  match compute_open_attempt(layout: layout, identity: identity, reference: reference, granted: work_class_grant_amount(g: grant)) {
-    AttemptGateRefused { detail: d } =>
-      compute_refused_before_launch(identity: identity, subject: subject, op: op, layout: layout, reservation: reservation, detail: d)
-    AttemptGateReady { record: rec, generation: g } =>
-      compute_run_opened(
-        instance: instance, commit: commit, layout: layout, identity: identity, subject: subject, op: op,
-        dependency_store: dependency_store, grant: grant, reference: reference, reservation: reservation,
-        opened: AttemptGateReady { record: rec, generation: g })
-  }
-}
 
 // THE FIRST ATTEMPT IS SETTLED IN ITS OWN SLOT BEFORE THE RETRY OPENS ONE. The retry is a new
 // attempt under compute_ceiling_retry_reference, so it has its own slot and must be opened and
@@ -1074,21 +1136,22 @@ fn compute_run_granted(
 // whatever the retry produces.
 fn compute_run_opened(
   instance: HostDashboardInstance,
+  materialization: ComputeMaterialization,
   commit: String,
   layout: ComputeLayout,
   identity: String,
   subject: WorkSubject,
   op: WorkOperation,
-  dependency_store: String,
+  dependency: ComputeDependency,
   grant: WorkClassGrant,
   reference: NonEmptyStr,
   reservation: ComputeReservation,
   opened: AttemptGate,
 ) -> ProvideResult {
   let granted = work_class_grant_amount(g: grant)
-  let attempt = compute_run_leased(instance: instance, commit: commit, layout: layout, identity: identity, op: op, dependency_store: dependency_store, granted: granted, grant_was_ceiling: work_class_grant_is_ceiling(g: grant), opened: opened)
+  let attempt = compute_run_leased(instance: instance, commit: commit, layout: layout, identity: identity, op: op, dependency: dependency, granted: granted, grant_was_ceiling: work_class_grant_is_ceiling(g: grant), opened: opened)
   if !compute_attempt_retries_at_ceiling(grant: grant, attempt: attempt) {
-    compute_run_and_settle(instance: instance, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency_store: dependency_store, grant: grant, attempt: attempt, reference: reference, reservation: reservation)
+    compute_run_and_settle(instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency, grant: grant, attempt: attempt, reference: reference, reservation: reservation)
   } else {
     let counted = compute_grant_exceeded_record(instance: instance, layout: layout, op: op, grant: grant, attempt: attempt, reference: reference)
     let termination = observe_unit_termination(identity_hex: identity, attempt_completed: compute_attempt_completed(outcome: attempt.outcome))
@@ -1098,7 +1161,7 @@ fn compute_run_opened(
       ComputeReleaseRefused { detail: if counted { join(["not retried: ", unit_termination_wire(t: termination)], "") } else { "not retried: the exceedance could not be recorded, and an uncounted retry is the absorbing fallback" } }
     }
     if !compute_release_landed(r: returned) {
-      compute_run_and_settle(instance: instance, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency_store: dependency_store, grant: grant, attempt: attempt, reference: reference, reservation: reservation)
+      compute_run_and_settle(instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency, grant: grant, attempt: attempt, reference: reference, reservation: reservation)
     } else {
       let ceiling = compute_memory_ceiling(instance: instance)
       let retry_grant = GrantAtCeiling { class: work_class_of(op: op), amount: ceiling, reason: ClassRetryAfterGrantExceeded { exceeded: granted } }
@@ -1107,19 +1170,26 @@ fn compute_run_opened(
         layout: layout, gate: attempt.gate,
         verdict: AttemptWorkEnded { ending: work_outcome_ending_of(o: attempt.outcome) },
         detail: join(["grant exceeded (oom-kill); ", compute_release_wire(r: returned), "; retried at the ceiling as ", retry_reference as String], ""))
-      let retry_reservation = compute_reserve(instance: instance, reference: retry_reference, term_seconds: compute_reservation_term_seconds, request: ceiling)
       provide_result_with_host_record(
-        r: match retry_reservation {
-          ComputeCapacityFull { wire: w } =>
-            compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: HostComputeCapacityFull { wire: w })
-          ComputeHostBelowFloor { requested: rq, available: av } =>
-            compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: HostBelowMemoryFloor { requested: rq, available: av })
-          ComputeReservationRefused { detail: d } =>
-            compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: ComputeCapacityLedgerUnavailable { detail: d })
-          ComputeReserved { grant: _, partition: _, amount: _, store: _ } =>
-            compute_run_ceiling_retry(
-              instance: instance, commit: commit, layout: layout, identity: identity, subject: subject, op: op,
-              dependency_store: dependency_store, grant: retry_grant, reference: retry_reference, reservation: retry_reservation)
+        r: match compute_open_attempt(layout: layout, identity: identity, reference: retry_reference, granted: ceiling) {
+          AttemptGateRefused { detail: d } =>
+            compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: StoreUnavailable { detail: join(["the retry's attempt slot could not be opened, so nothing was reserved: ", d], "") })
+          AttemptGateReady { record: rec, generation: g } => {
+            let retry_opened = AttemptGateReady { record: rec, generation: g }
+            let retry_reservation = compute_reserve(instance: instance, reference: retry_reference, term_seconds: compute_reservation_term_seconds, request: ceiling)
+            match retry_reservation {
+              ComputeCapacityFull { wire: w } =>
+                compute_refused_after_open(instance: instance, identity: identity, subject: subject, op: op, layout: layout, opened: retry_opened, cause: HostComputeCapacityFull { wire: w })
+              ComputeHostBelowFloor { requested: rq, available: av } =>
+                compute_refused_after_open(instance: instance, identity: identity, subject: subject, op: op, layout: layout, opened: retry_opened, cause: HostBelowMemoryFloor { requested: rq, available: av })
+              ComputeReservationRefused { detail: d } =>
+                compute_refused_after_open(instance: instance, identity: identity, subject: subject, op: op, layout: layout, opened: retry_opened, cause: ComputeCapacityLedgerUnavailable { detail: d })
+              ComputeReserved { grant: _, partition: _, amount: _, store: _ } =>
+                compute_run_ceiling_retry(
+                  instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op,
+                  dependency: dependency, grant: retry_grant, reference: retry_reference, reservation: retry_reservation, opened: retry_opened)
+            }
+          }
         },
         carried: attempt_settlement_host_record(s: first_closed))
     }
@@ -1131,24 +1201,26 @@ fn compute_run_opened(
 // retry itself is never retried -- its grant is the ceiling.
 fn compute_run_ceiling_retry(
   instance: HostDashboardInstance,
+  materialization: ComputeMaterialization,
   commit: String,
   layout: ComputeLayout,
   identity: String,
   subject: WorkSubject,
   op: WorkOperation,
-  dependency_store: String,
+  dependency: ComputeDependency,
   grant: WorkClassGrant,
   reference: NonEmptyStr,
   reservation: ComputeReservation,
+  opened: AttemptGate,
 ) -> ProvideResult {
-  match compute_open_attempt(layout: layout, identity: identity, reference: reference, granted: work_class_grant_amount(g: grant)) {
+  match opened {
     AttemptGateRefused { detail: d } =>
       compute_refused_before_launch(identity: identity, subject: subject, op: op, layout: layout, reservation: reservation, detail: d)
     AttemptGateReady { record: rec, generation: g } => {
       let retry = compute_run_leased(
-        instance: instance, commit: commit, layout: layout, identity: identity, op: op, dependency_store: dependency_store,
+        instance: instance, commit: commit, layout: layout, identity: identity, op: op, dependency: dependency,
         granted: work_class_grant_amount(g: grant), grant_was_ceiling: true, opened: AttemptGateReady { record: rec, generation: g })
-      compute_run_and_settle(instance: instance, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency_store: dependency_store, grant: grant, attempt: retry, reference: reference, reservation: reservation)
+      compute_run_and_settle(instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency, grant: grant, attempt: retry, reference: reference, reservation: reservation)
     }
   }
 }
@@ -1256,12 +1328,13 @@ fn compute_refused_before_launch(
 
 fn compute_run_and_settle(
   instance: HostDashboardInstance,
+  materialization: ComputeMaterialization,
   commit: String,
   layout: ComputeLayout,
   identity: String,
   subject: WorkSubject,
   op: WorkOperation,
-  dependency_store: String,
+  dependency: ComputeDependency,
   grant: WorkClassGrant,
   attempt: ComputeAttempt,
   reference: NonEmptyStr,
@@ -1277,7 +1350,7 @@ fn compute_run_and_settle(
     ComputeReleaseRefused { detail: join(["the seat was NOT released: ", unit_termination_wire(t: termination)], "") }
   }
   let settled = if compute_release_landed(r: returned) {
-    compute_settled_record(layout: layout, identity: identity, subject: subject, op: op, outcome: outcome)
+    compute_settled_record(materialization: materialization, layout: layout, identity: identity, subject: subject, op: op, outcome: outcome)
   } else {
     compute_unreleased_record(
       layout: layout, identity: identity, subject: subject, op: op, outcome: outcome,
@@ -1363,7 +1436,7 @@ fn compute_with_lost_host_record(
 fn compute_stale_lease_note(layout: ComputeLayout, error: String) -> String {
   join([
     "STALE PRODUCER LEASE: ", layout.lease_path, " could not be dropped: ", error,
-    "; the record for this identity is published at ", layout.outcome_path, " and is authoritative, ",
+    "; the record for this identity is committed in the materialization store under that identity and is authoritative, ",
     "and a caller reaching that record ATTACHES to it -- the attach is decided before this name is ",
     "consulted. The stale name matters only to a request that must PRODUCE again, which it will ",
     "refuse as ProducerInFlight until an operator removes it\n",
@@ -1373,6 +1446,7 @@ fn compute_stale_lease_note(layout: ComputeLayout, error: String) -> String {
 // THE ORDINARY ENDING: the reservation came back, so the record is the run's own ending and the
 // caller is told the same thing.
 fn compute_settled_record(
+  materialization: ComputeMaterialization,
   layout: ComputeLayout,
   identity: String,
   subject: WorkSubject,
@@ -1380,27 +1454,28 @@ fn compute_settled_record(
   outcome: WorkOutcome,
 ) -> ProvideResult {
   let document = work_outcome_wire(o: outcome, subject: subject, op: op)
-  let written = Filesystem.Write(path: layout.outcome_path, content: document)
-  if written.success {
-    ProvideFresh { outcome: outcome, document: document, host_record: HostRecordWritten }
-  } else {
-    compute_fresh(
-      outcome: WorkRefusedByInfrastructure {
-        identity: identity,
-        cause: StoreUnavailable {
-          detail: join([
-            "the work ended ", work_outcome_ending(o: outcome),
-            " and its reservation was released, but the record could not be completed -- outcome written: ",
-            written.error,
-          ], ""),
+  match compute_store_commit(materialization: materialization, layout: layout, op: op, outcome: outcome, document: document) {
+    ComputeCommitNotOwed => ProvideFresh { outcome: outcome, document: document, host_record: HostRecordWritten }
+    ComputeCommitted => ProvideFresh { outcome: outcome, document: document, host_record: HostRecordWritten }
+    ComputeCommitRefused { detail } =>
+      compute_fresh(
+        outcome: WorkRefusedByInfrastructure {
+          identity: identity,
+          cause: StoreUnavailable {
+            detail: join([
+              "the work ended ", work_outcome_ending(o: outcome),
+              " and its reservation was released, but the materialization store refused its record, so it is not shared: ",
+              detail,
+            ], ""),
+          },
         },
-      },
-      subject: subject, op: op)
+        subject: subject, op: op)
   }
 }
 
-// THE ENDING WITH AN OUTSTANDING OBLIGATION: one document, written once, given to this caller and
-// read by the next one.
+// THE ENDING WITH AN OUTSTANDING OBLIGATION. It is told to this caller and NOT committed: the
+// store keeps only a succeeded outcome (compute_store_commit), and a stuck seat is a host fact the
+// attempt slot and the recovery door carry, not an answer a later request may be served.
 fn compute_unreleased_record(
   layout: ComputeLayout,
   identity: String,
@@ -1420,13 +1495,7 @@ fn compute_unreleased_record(
       " and any declared outputs are in the store. ", compute_stuck_reservation_remedy,
     ], ""),
   }
-  let document = work_outcome_wire(o: WorkRefusedByInfrastructure { identity: identity, cause: cause }, subject: subject, op: op)
-  let written = Filesystem.Write(path: layout.outcome_path, content: document)
-  if written.success {
-    ProvideFresh { outcome: WorkRefusedByInfrastructure { identity: identity, cause: cause }, document: document, host_record: HostRecordWritten }
-  } else {
-    compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: cause }, subject: subject, op: op)
-  }
+  compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: cause }, subject: subject, op: op)
 }
 
 // THE REMEDY SENTENCE FOR A SEAT THIS PROVIDER CANNOT GIVE BACK, and it is a declared absence
@@ -1476,21 +1545,33 @@ data compute_stuck_reservation_remedy: String = "THE REMEDY IS compute_recover_c
 // because it lets the overwhelmingly common case -- an identity that is already built -- answer
 // without touching the lease at all; it is an optimisation, and the one inside the lease is the
 // decision.
-fn compute_read_stored_outcome(layout: ComputeLayout) -> StoredOutcomeRead {
-  let stored = Filesystem.Read(path: layout.outcome_path)
-  if stored.success { stored_outcome_decode(text: stored.content) } else { StoredOutcomeUnreadable { reason: "no stored outcome" } }
+fn compute_read_stored_outcome(materialization: ComputeMaterialization) -> ComputeStoreRead {
+  match materialization.plan {
+    ComputeMemoized => compute_store_read(store: materialization.store, req: materialization.request)
+    ComputeRecomputed { verdict: _ } => ComputeStoreNotConsulted
+  }
 }
 
 // ATTACHING FROM INSIDE THE LEASE MEANS GIVING THE LEASE BACK, and a failure to do so is reported
-// through the one lease-drop authority rather than a second spelling of it.
-fn compute_attach_under_lease(layout: ComputeLayout, identity: String, subject: WorkSubject, op: WorkOperation) -> ProvideResult {
-  let attached = compute_read_stored_outcome(layout: layout)
+// through the one lease-drop authority rather than a second spelling of it. The read is the decision
+// the lease was taken for, so a refused read refuses here too: it is never treated as room to produce.
+fn compute_attach_under_lease(materialization: ComputeMaterialization, layout: ComputeLayout, identity: String, subject: WorkSubject, op: WorkOperation, served: ComputeStoreRead) -> ProvideResult {
   let dropped = compute_drop_producer_lease(layout: layout)
-  match attached {
-    StoredOutcomeFound { ending, identity: stored_identity, document } =>
+  match served {
+    ComputeStoreServed { ending, identity: stored_identity, document } =>
       ProvideAttached { identity: stored_identity, ending: ending, document: document, host_record: compute_lease_drop_record(dropped: dropped, layout: layout) }
-    StoredOutcomeUnreadable { reason } =>
-      compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: reason } }, subject: subject, op: op)
+    ComputeStoreRefused { detail } =>
+      provide_result_with_host_record(
+        r: compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: detail } }, subject: subject, op: op),
+        carried: compute_lease_drop_record(dropped: dropped, layout: layout))
+    ComputeStoreAbsent =>
+      provide_result_with_host_record(
+        r: compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: "the store answered absent after answering present" } }, subject: subject, op: op),
+        carried: compute_lease_drop_record(dropped: dropped, layout: layout))
+    ComputeStoreNotConsulted =>
+      provide_result_with_host_record(
+        r: compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: "attach reached for work the ladder does not memoize" } }, subject: subject, op: op),
+        carried: compute_lease_drop_record(dropped: dropped, layout: layout))
   }
 }
 
@@ -1521,6 +1602,361 @@ fn compute_lease_drop_record(dropped: LeaseDrop, layout: ComputeLayout) -> HostR
   }
 }
 
+// ── THE SHARED COMPUTATION: compute outcomes realize through the materialization store ─────────
+//
+// THE STORE IS THE MATERIALIZATION AUTHORITY'S, NOT THIS PROVIDER'S. A compute outcome is an artifact
+// of the ComputeWorkRequest family (std.materialization_provider), held in the one bounded per-host
+// store (extdeps.realization.materialization_store_local) under the family's own declared budget.
+// This provider used to keep a private outcome.json per identity -- a second store with its own
+// keying and no bound -- and it is deleted: whether a request is served, refused or produced is now
+// the store's three-way answer, and nothing else.
+//
+// WHETHER THE STORE IS CONSULTED AT ALL IS THE LADDER'S JUDGMENT, not this provider's. The demand
+// site is the host's recurring compute requests -- separate processes asking over time, an
+// UnboundedSiblingsFrame under the store's own frame -- so a repeatable request (build, compile,
+// hermetic claims) is a declared recurrence the store discharges, and a wet claim run is a
+// FreshEffect the ladder exempts: it is never looked up and never committed, so dedup happens only
+// where recurrence is real.
+//
+// A REFUSED LOOKUP REFUSES. The store answers Hit, Miss (established absence) or Refused, and only
+// the Miss produces. std.cache_interface realize_route expresses the same rule over a backend's
+// CacheLookupResult, where the one recompute-on-rejection arm is FreshnessExpired; this store has
+// no freshness window to expire (its key is complete -- the toolchain is a declared input), so that
+// arm has no inhabitant here and the store's own StoreLookup is routed directly rather than through
+// a lossy projection into the backend vocabulary. That is a stated departure from consuming
+// realize_route, with the rule it states kept whole.
+//
+// ONLY A SUCCEEDED OUTCOME IS COMMITTED. The store is write-once, and a failure, a mismatch or an
+// infrastructure refusal is not an answer a later request may be served -- the provider has always
+// re-produced every ending but success, and a write-once record of a flaky failure would make it
+// permanent.
+//
+// THE BINARIES ARE BYTE PARTS OF THE SAME RECORD (royal-moth-86 ruling 2026-10-03, realized by
+// quick-gull-60's C1b). A build stages each declared binary beside the store root and the commit
+// links it in, charged to the family's budget and evicted with the record; a dependent executes only
+// the verified readings a lookup returns (compute_dependency_read). The per-identity store directory
+// this provider used to install binaries into is deleted, so there is no second, unbounded home for
+// them.
+
+// THE STORE A COMPUTE REQUEST USES: a root and the budgets it is opened under. The budgets are policy
+// (gunbc.materialization_store_budgets), handed to the transport as a parameter; production uses the
+// one durable root under that layer's rows, and a witness supplies a scratch root with fixture rows.
+type ComputeStore {
+  root: MaterializationStoreRoot
+  budgets: List<LocalStoreFamilyBudget>
+}
+
+data compute_durable_store: ComputeStore = ComputeStore { root: DurableHostVolumeRoot, budgets: materialization_store_durable_family_budgets }
+
+data compute_requests_frame: Frame = Frame { name: "compute-host-requests", kind: UnboundedSiblingsFrame }
+
+type ComputeMaterializationPlan
+  = ComputeMemoized
+  | ComputeRecomputed { verdict: String }
+
+type ComputeMaterializationJudgment
+  = ComputeMaterializationPlanned { plan: ComputeMaterializationPlan }
+  | ComputeMaterializationRefused { detail: String }
+
+type ComputeMaterialization {
+  store: ComputeStore
+  request: ArtifactRequest
+  plan: ComputeMaterializationPlan
+}
+
+// The family's provider row is the store's own (local_store_family_provider over the budget the root
+// declares), so the ladder judges against exactly the bound that will hold the bytes; a family the
+// root declares no budget for has no provider and the ladder refuses.
+fn compute_store_providers(family: ArtifactKindId) -> List<std.materialization_ladder.CacheProvider> {
+  match local_store_family_budget(budgets: compute_durable_store.budgets, family: family) {
+    Present { value: b } => [local_store_family_provider(family: family, budget: b.budget)]
+    Absent => []
+  }
+}
+
+fn compute_work_ladder_verdict(req: ArtifactRequest) -> LadderVerdict {
+  let family = request_kind(req: req)
+  let demand = FrameDemand {
+    identity: family as String,
+    site: [materialization_store_frame, compute_requests_frame],
+    nature: request_judgment_contract(req: req).demand_nature,
+  }
+  match materialization_ladder(demands: [demand], providers: compute_store_providers(family: family), cost_floor_exempt: []) |> first() {
+    Present { value: v } => v
+    Absent => RefusedNoProvider { identity: family as String, lca: [] }
+  }
+}
+
+fn compute_materialization_judgment(v: LadderVerdict) -> ComputeMaterializationJudgment {
+  if !ladder_verdict_is_green(v: v) {
+    ComputeMaterializationRefused { detail: join(["the materialization ladder refused this compute demand: ", ladder_verdict_name(v: v), " for ", verdict_identity(v: v)], "") }
+  } else {
+    match ladder_verdict_prescribes(v: v) {
+      Memoize => ComputeMaterializationPlanned { plan: ComputeMemoized }
+      Recompute => ComputeMaterializationPlanned { plan: ComputeRecomputed { verdict: ladder_verdict_name(v: v) } }
+      Share => ComputeMaterializationRefused { detail: join(["the materialization ladder prescribes Share for ", verdict_identity(v: v), ", which a host compute request cannot carry"], "") }
+    }
+  }
+}
+
+fn compute_materialization_plan(req: ArtifactRequest) -> ComputeMaterializationJudgment {
+  compute_materialization_judgment(v: compute_work_ladder_verdict(req: req))
+}
+
+fn ladder_verdict_name(v: LadderVerdict) -> String {
+  match v {
+    std.materialization_ladder.AuthoredDuplication { identity: _, lca: _, site_count: _ } => "AuthoredDuplication"
+    std.materialization_ladder.DeadComputation { identity: _ } => "DeadComputation"
+    std.materialization_ladder.Discharged { identity: _, lca: _, provider_id: p } => join(["Discharged by ", p], "")
+    RefusedNoProvider { identity: _, lca: _ } => "RefusedNoProvider"
+    std.materialization_ladder.RefusedScopeTooNarrow { identity: _, lca: _, provider_id: p } => join(["RefusedScopeTooNarrow (", p, ")"], "")
+    std.materialization_ladder.RefusedExistenceKeyed { identity: _, lca: _, provider_id: p } => join(["RefusedExistenceKeyed (", p, ")"], "")
+    std.materialization_ladder.RefusedRetentionUnbounded { identity: _, lca: _, provider_id: p } => join(["RefusedRetentionUnbounded (", p, ")"], "")
+    std.materialization_ladder.RefusedRetentionUnobserved { identity: _, lca: _, provider_id: p } => join(["RefusedRetentionUnobserved (", p, ")"], "")
+    std.materialization_ladder.RefusedUnmodeledWorldRead { identity: _, lca: _ } => "RefusedUnmodeledWorldRead"
+    std.materialization_ladder.ExemptFreshEffect { identity: _ } => "ExemptFreshEffect"
+    std.materialization_ladder.AcceptedBelowCostFloor { identity: _ } => "AcceptedBelowCostFloor"
+    std.materialization_ladder.AcceptedSingleRecompute { identity: _ } => "AcceptedSingleRecompute"
+    std.materialization_ladder.AcceptedEffectIsTheUse { identity: _ } => "AcceptedEffectIsTheUse"
+    std.materialization_ladder.RefusedNatureConflict { identity: _ } => "RefusedNatureConflict"
+  }
+}
+
+// THE THREE-WAY ANSWER, plus the arm for a demand the ladder keeps out of the store.
+type ComputeStoreRead
+  = ComputeStoreServed { ending: String, identity: String, document: String }
+  | ComputeStoreAbsent
+  | ComputeStoreRefused { detail: String }
+  | ComputeStoreNotConsulted
+
+type ComputeStoreOpen
+  = ComputeStoreOpened { opening: LocalStoreOpening }
+  | ComputeStoreOpenRefused { detail: String }
+
+// Initialization is idempotent (an existing marker opens as the store it names), so opening and
+// initializing are one call; a missing root refuses, it is never created elsewhere.
+fn compute_store_open(store: ComputeStore) -> ComputeStoreOpen {
+  match local_store_initialize(root: store.root, instance_label: "gunbc-compute" as NonEmptyStr, budgets: store.budgets) {
+    LocalStoreInitializationRefused { root_path, cause } => ComputeStoreOpenRefused { detail: join(["the materialization store at ", root_path, " could not be initialized: ", compute_store_unavailable_detail(c: cause)], "") }
+    LocalStoreInitialized { opening } => ComputeStoreOpened { opening: opening }
+  }
+}
+
+fn compute_store_read(store: ComputeStore, req: ArtifactRequest) -> ComputeStoreRead {
+  match compute_store_open(store: store) {
+    ComputeStoreOpenRefused { detail } => ComputeStoreRefused { detail: detail }
+    ComputeStoreOpened { opening } =>
+      match opening {
+        LocalStoreUnavailable { root_path, cause } => ComputeStoreRefused { detail: join(["the materialization store at ", root_path, " is unavailable: ", compute_store_unavailable_detail(c: cause)], "") }
+        LocalStoreOpened { capability, durability: _ } =>
+          compute_store_read_decide(lookup: local_store_lookup(capability: capability, req: req))
+      }
+  }
+}
+
+// PURE: the lookup decides. A hit whose outcome part does not decode, or decodes to anything but a
+// success, is a stored claim this provider cannot serve, and it refuses -- never a miss.
+fn compute_store_read_decide(lookup: StoreLookup) -> ComputeStoreRead {
+  match lookup {
+    StoreLookupMiss { key: _ } => ComputeStoreAbsent
+    StoreLookupRefused { key: _, refusal } => ComputeStoreRefused { detail: join(["the materialization store refused this compute record: ", compute_store_lookup_refusal_detail(r: refusal)], "") }
+    StoreLookupHit { artifact: _, payloads: _, blobs: _, receipt: _, evaluation_identity: _ } =>
+      match store_lookup_payload(l: lookup, id: output_compute_work_outcome) {
+        Absent => ComputeStoreRefused { detail: "a served compute record carried no outcome part" }
+        Present { value: text } =>
+          match stored_outcome_decode(text: text) {
+            StoredOutcomeUnreadable { reason } => ComputeStoreRefused { detail: join(["a served compute record's outcome is unreadable: ", reason], "") }
+            StoredOutcomeFound { ending, identity, document } =>
+              match work_ending_decode(word: ending) {
+                Present { value: e } => match e {
+                  WorkEndedSucceeded => ComputeStoreServed { ending: ending, identity: identity, document: document }
+                  _ => ComputeStoreRefused { detail: join(["a served compute record ended ", ending, ", and only a success is ever committed"], "") }
+                }
+                Absent => ComputeStoreRefused { detail: join(["a served compute record's ending is not a work ending: ", ending], "") }
+              }
+          }
+      }
+  }
+}
+
+type ComputeStoreCommit
+  = ComputeCommitNotOwed
+  | ComputeCommitted
+  | ComputeCommitRefused { detail: String }
+
+// The outputs part is the declared-output MANIFEST (declared path and blob identity), not the bytes
+// and not where they sit: a location is a fact of one realization and is never in the record.
+fn compute_outputs_manifest(outputs: List<WorkOutput>) -> String {
+  serialize_json(v: json_array(elements: map(outputs, o => json_object(members: [
+    json_kv(key: "declared", value: json_string(s: o.declared)),
+    json_kv(key: "blob", value: json_string(s: o.blob)),
+  ]))))
+}
+
+// THE BYTE PARTS A BUILD COMMITS: one per binary its operation declares, under that binary's declared
+// output id, staged where compute_return_outputs put it. A checking operation commits none.
+fn compute_binary_parts(layout: ComputeLayout, op: WorkOperation) -> List<LocalStoreStagedPart> {
+  match op {
+    BuildGunbcBinaries { profile, bins } =>
+      bins |> map(b => LocalStoreStagedPart {
+        id: compute_work_binary_output(b: b),
+        staged: compute_staged_path(layout: layout, declared: work_binary_declared_path(profile: profile, b: b)) as NonEmptyStr,
+      })
+    CompileEntry { entry: _ } => []
+    RunClaims { entry: _, functions: _, hermetic: _, window: _ } => []
+  }
+}
+
+fn compute_store_commit(materialization: ComputeMaterialization, layout: ComputeLayout, op: WorkOperation, outcome: WorkOutcome, document: String) -> ComputeStoreCommit {
+  match materialization.plan {
+    ComputeRecomputed { verdict: _ } => ComputeCommitNotOwed
+    ComputeMemoized =>
+      match outcome {
+        WorkSucceeded { identity: _, outputs, log_path: _ } => {
+          let log = Filesystem.Read(path: layout.log_path)
+          if !log.success {
+            ComputeCommitRefused { detail: join(["the run log at ", layout.log_path, " could not be read, and a record without its log is not the run that happened: ", log.error], "") }
+          } else {
+            match compute_store_open(store: materialization.store) {
+              ComputeStoreOpenRefused { detail } => ComputeCommitRefused { detail: detail }
+              ComputeStoreOpened { opening } =>
+                match opening {
+                  LocalStoreUnavailable { root_path, cause } => ComputeCommitRefused { detail: join(["the materialization store at ", root_path, " is unavailable: ", compute_store_unavailable_detail(c: cause)], "") }
+                  LocalStoreOpened { capability, durability: _ } =>
+                    {
+                      let parts = compute_binary_parts(layout: layout, op: op)
+                      let committed = local_store_commit(capability: capability, req: materialization.request, payloads: [
+                        ArtifactPayload { id: output_compute_work_outcome, content: document },
+                        ArtifactPayload { id: output_compute_work_log, content: log.content },
+                        ArtifactPayload { id: output_compute_work_outputs, content: compute_outputs_manifest(outputs: outputs) },
+                      ], parts: parts).commit
+                      let unstaged = compute_unstage(parts: parts)
+                      match committed {
+                        StoreCommitSettled { receipt: _ } =>
+                          if unstaged == "" { ComputeCommitted } else { ComputeCommitRefused { detail: unstaged } }
+                        StoreCommitRefused { key: _, refusal } =>
+                          ComputeCommitRefused { detail: if unstaged == "" { compute_store_commit_refusal_detail(r: refusal) } else { join([compute_store_commit_refusal_detail(r: refusal), "; and ", unstaged], "") } }
+                      }
+                    }
+                }
+            }
+          }
+        }
+        WorkFailed { identity: _, exit_code: _, log_path: _ } => ComputeCommitNotOwed
+        WorkRefusedByInfrastructure { identity: _, cause: _ } => ComputeCommitNotOwed
+        WorkCancelled { identity: _, detail: _ } => ComputeCommitNotOwed
+        WorkOutputMismatch { identity: _, detail: _ } => ComputeCommitNotOwed
+      }
+  }
+}
+
+// A STAGED FILE OUTLIVES ITS COMMIT ONLY AS A LOUD FACT. The link holds the bytes in the store, so
+// the staged name is removed on every ending; one that cannot be removed is reported, because an
+// unremoved stage is bytes on the store's filesystem that no budget counts.
+fn compute_unstage(parts: List<LocalStoreStagedPart>) -> String {
+  parts |> fold(init: "", f: (acc, p) => {
+    let removed = Filesystem.Delete(path: p.staged as String)
+    if removed.success { acc } else { join([acc, "staged part ", p.staged as String, " could not be removed: ", removed.error, "; "], "") }
+  })
+}
+
+// A DEPENDENT'S BUILD IS READ FROM THE STORE, VERIFIED, OR THE DEPENDENT REFUSES. The build just
+// succeeded (served or produced), so its record is expected: established absence here means it was
+// evicted between the two reads, and a refusal means its bytes did not verify -- neither licenses
+// rebuilding inside a dependent, and neither licenses running anything else.
+type ComputeDependencyRead
+  = ComputeDependencyResolved { dependency: ComputeDependency }
+  | ComputeDependencyRefused { detail: String }
+
+fn compute_dependency_read(store: ComputeStore, build: ArtifactRequest) -> ComputeDependencyRead {
+  match compute_store_open(store: store) {
+    ComputeStoreOpenRefused { detail } => ComputeDependencyRefused { detail: detail }
+    ComputeStoreOpened { opening } =>
+      match opening {
+        LocalStoreUnavailable { root_path, cause } => ComputeDependencyRefused { detail: join(["the materialization store at ", root_path, " is unavailable: ", compute_store_unavailable_detail(c: cause)], "") }
+        LocalStoreOpened { capability, durability: _ } =>
+          compute_dependency_decide(read: local_store_lookup_parts(capability: capability, req: build))
+      }
+  }
+}
+
+// PURE: the verified readings, joined to their binaries by the record's own typed part identity. The
+// hit names each byte part by its ArtifactOutputId and SHA-256; a verified reading is that part only
+// when its digest is the part's, so the join is by identity and content, never by a path's shape.
+fn compute_dependency_decide(read: LocalStorePartsLookup) -> ComputeDependencyRead {
+  match read.lookup {
+    StoreLookupMiss { key: _ } => ComputeDependencyRefused { detail: "the build this request depends on succeeded but its record is not in the store (evicted between the build and this read)" }
+    StoreLookupRefused { key: _, refusal } => ComputeDependencyRefused { detail: join(["the build this request depends on did not verify: ", compute_store_lookup_refusal_detail(r: refusal)], "") }
+    StoreLookupHit { artifact: _, payloads: _, blobs, receipt: _, evaluation_identity: _ } =>
+      match compute_verified_binary(blobs: blobs, parts: read.parts, b: GunbcDriver) {
+        Absent => ComputeDependencyRefused { detail: join(["the build record carries no verified part for ", gunbc_binary_name(b: GunbcDriver) as String], "") }
+        Present { value: g } =>
+          match compute_verified_binary(blobs: blobs, parts: read.parts, b: ClaimBatchRunner) {
+            Absent => ComputeDependencyRefused { detail: join(["the build record carries no verified part for ", gunbc_binary_name(b: ClaimBatchRunner) as String], "") }
+            Present { value: c } => ComputeDependencyResolved { dependency: VerifiedBuildBinaries { gunbc: g, claim_batch: c } }
+          }
+      }
+  }
+}
+
+// One binary's verified reading: its part found by declared output id, its reading by that part's digest.
+fn compute_verified_binary(blobs: List<ArtifactBlobPart>, parts: List<FabricBlobReading>, b: GunbcBinary) -> FabricBlobReading? {
+  match blobs |> filter(p => p.id == compute_work_binary_output(b: b)) |> first() {
+    Absent => none
+    Present { value: part } => parts |> filter(r => (fabric_blob_reading_digest(reading: r).hex as String) == (part.digest.hex as String)) |> first()
+  }
+}
+
+// PRESENTATION ONLY: the store's typed refusals rendered for the outcome document, which carries a
+// detail string. The typed value is the store's; this is the one place it becomes text here.
+fn compute_store_fault_detail(f: StoreFault) -> String {
+  f.detail
+}
+
+fn compute_store_unavailable_detail(c: LocalStoreUnavailableCause) -> String {
+  match c {
+    LocalStoreGrantRefused { verb: _, target: _, frame: _ } => "the store grant was refused"
+    LocalStoreNotInitialized { marker_path } => join(["not initialized (no marker at ", marker_path, ")"], "")
+    LocalStoreMarkerUnrecognized { marker_path } => join(["the marker at ", marker_path, " is not a gunbc materialization store"], "")
+    LocalStoreMarkerUnavailable { fault } => join(["the marker could not be read: ", compute_store_fault_detail(f: fault)], "")
+    LocalStoreMarkerMalformed { marker_path, detail } => join(["the marker at ", marker_path, " is malformed: ", detail], "")
+    LocalStoreCatalogMismatch { marker_path, offered } => join(["the marker at ", marker_path, " records a different catalog than the one offered: ", offered], "")
+    LocalStoreCatalogInadmissible { detail } => join(["the offered catalog is inadmissible: ", detail], "")
+    LocalStoreSweepIncomplete { sweep: _ } => "the open could not clear the store's orphaned objects, so the store is not writable"
+  }
+}
+
+fn compute_store_lookup_refusal_detail(r: StoreLookupRefusal) -> String {
+  match r {
+    StoreLookupObjectUnavailable { fault } => join(["object unavailable: ", compute_store_fault_detail(f: fault)], "")
+    StoreLookupObjectMalformed { cause } => join(["object malformed: ", cause], "")
+    StoreLookupManifestUninterpretable { decode: _ } => "manifest uninterpretable"
+    StoreLookupPayloadMissing { part } => join(["payload missing: ", part as String], "")
+    StoreLookupPayloadUndeclared { part } => join(["payload undeclared: ", part as String], "")
+    StoreLookupPayloadRepeated { part } => join(["payload repeated: ", part as String], "")
+    StoreLookupContractRefused { lookup: _ } => "the provider contract refused the stored artifact"
+    StoreLookupEvaluationPreimageMismatch { expected: _, found: _ } => "evaluation preimage mismatch (a different computation under this bucket)"
+    StoreLookupStoreFamilyRefused { family: _, scope: _ } => "hash family refused for the persistent store"
+  }
+}
+
+fn compute_store_commit_refusal_detail(r: StoreCommitRefusal) -> String {
+  match r {
+    StoreCommitManifestUninterpretable { decode: _ } => "manifest uninterpretable"
+    StoreCommitContractRefused { binding: _ } => "the provider contract refused the offered artifact"
+    StoreCommitPublishRefused { fault } => join(["publish refused: ", compute_store_fault_detail(f: fault)], "")
+    StoreCommitReadBackRefused { read_back: _ } => "the published record did not read back"
+    StoreCommitStoreFamilyRefused { family: _, scope: _ } => "hash family refused for the persistent store"
+    StoreCommitResultContentConflict { binding: _, observed: _ } => "a different result is already committed under this identity"
+    StoreCommitResultHashFamilyIncomparable { left: _, right: _ } => "result hash families are incomparable"
+    StoreCommitResultIdentityUnverifiable { cause } => join(["result identity unverifiable: ", cause], "")
+    StoreCommitBudgetUndeclared { family } => join(["no budget is declared for family ", family as String], "")
+    StoreCommitDidNotFit { artifact_bytes: a, budget: b } => join(["the record (", to_string(value: byte_size_count(b: a)), " bytes) exceeds the family budget (", to_string(value: byte_size_count(b: b)), " bytes)"], "")
+    StoreCommitCleanupOutstanding { artifact_bytes: a, budget: b, undeleted: u } => join(["the record (", to_string(value: byte_size_count(b: a)), " bytes) does not fit the family budget (", to_string(value: byte_size_count(b: b)), " bytes) while ", to_string(value: byte_size_count(b: u)), " bytes of evicted entries are still undeleted"], "")
+    StoreCommitOccupancyUnavailable { cause } => join(["occupancy record unavailable: ", cause], "")
+  }
+}
+
 // THE WORK'S IDENTITY IS THE MATERIALIZATION PROVIDER'S KEY, not a second one. It is derived from
 // the ComputeWorkRequest family's judgment contract (std.materialization_provider), so the tree,
 // the operation and the observed execution identity are the only things that move it, and the key a
@@ -1530,48 +1966,153 @@ fn compute_work_identity(subject: WorkSubject, op: WorkOperation, toolchain: Wor
   serialize_content_hash(hash: request_key(req: ComputeWorkRequest { subject: subject, operation: op, toolchain: toolchain })) as String
 }
 
+// THE DEMAND IDENTITY AND THE EXECUTION IDENTITY ARE TWO FACTS (ruling on gunbc#13072, item 2). The
+// request key names the question; a memoized demand has exactly one execution per key, so its lease
+// and work directory are keyed by it and a second request attaches. A demand the ladder recomputes --
+// a wet claim run, a FreshEffect -- is a new execution EVERY time: its lease and work directory are
+// keyed by an occurrence of the request, it never reads the store and is never committed, so two
+// identical wet requests are two executions and neither can attach to the other. Two wet requests in
+// the same clock instant collide on the occurrence's lease and the second refuses ProducerInFlight;
+// they never share an outcome.
+fn compute_execution_identity(identity: String, plan: ComputeMaterializationPlan, occurrence: String) -> String {
+  match plan {
+    ComputeMemoized => identity
+    ComputeRecomputed { verdict: _ } => join([identity, ".occurrence.", occurrence], "")
+  }
+}
+
 fn compute_provide_leaf(
   instance: HostDashboardInstance,
   commit: String,
   subject: WorkSubject,
   op: WorkOperation,
   toolchain: WorkToolchainIdentity,
-  dependency_store: String,
+  dependency: ComputeDependency,
 ) -> ProvideResult {
+  let request = ComputeWorkRequest { subject: subject, operation: op, toolchain: toolchain }
   let identity = compute_work_identity(subject: subject, op: op, toolchain: toolchain)
-  let layout = compute_layout(instance: instance, identity_hex: identity)
-  let attached = compute_read_stored_outcome(layout: layout)
-  if stored_outcome_is_success(r: attached) {
-    match attached {
-      StoredOutcomeFound { ending, identity: stored_identity, document } => ProvideAttached { identity: stored_identity, ending: ending, document: document, host_record: HostRecordWritten }
-      StoredOutcomeUnreadable { reason } => compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: reason } }, subject: subject, op: op)
+  match compute_materialization_plan(req: request) {
+    ComputeMaterializationRefused { detail } =>
+      compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: detail } }, subject: subject, op: op)
+    ComputeMaterializationPlanned { plan } => {
+      let layout = compute_layout(instance: instance, identity_hex: compute_execution_identity(identity: identity, plan: plan, occurrence: clock_now_probed_at_or_unknown() as String))
+      let materialization = ComputeMaterialization { store: compute_durable_store, request: request, plan: plan }
+      match compute_read_stored_outcome(materialization: materialization) {
+        ComputeStoreServed { ending, identity: stored_identity, document } =>
+          ProvideAttached { identity: stored_identity, ending: ending, document: document, host_record: HostRecordWritten }
+        ComputeStoreRefused { detail } =>
+          compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: detail } }, subject: subject, op: op)
+        ComputeStoreAbsent => compute_provide_produce(instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency)
+        ComputeStoreNotConsulted => compute_provide_produce(instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency)
+      }
     }
-  } else if !(compute_ensure_dir(instance: instance, path: layout.work_dir) && compute_ensure_dir(instance: instance, path: layout.leases_dir) && compute_ensure_dir(instance: instance, path: layout.store_dir) && compute_ensure_dir(instance: instance, path: layout.target_dir) && compute_ensure_dir(instance: instance, path: layout.attempts_dir)) {
+  }
+}
+
+// ONLY ESTABLISHED ABSENCE (or a demand the ladder exempts from the store) REACHES PRODUCTION. The
+// re-read under the lease is the same three-way answer: served attaches, refused refuses, and only
+// absence goes on to reserve.
+fn compute_provide_produce(
+  instance: HostDashboardInstance,
+  materialization: ComputeMaterialization,
+  commit: String,
+  layout: ComputeLayout,
+  identity: String,
+  subject: WorkSubject,
+  op: WorkOperation,
+  dependency: ComputeDependency,
+) -> ProvideResult {
+  if !(compute_ensure_dir(instance: instance, path: layout.work_dir) && compute_ensure_dir(instance: instance, path: layout.leases_dir) && compute_ensure_dir(instance: instance, path: layout.staging_dir) && compute_ensure_dir(instance: instance, path: layout.target_dir) && compute_ensure_dir(instance: instance, path: layout.attempts_dir)) {
     compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: join(["could not create the compute directories under ", layout.root], "") } }, subject: subject, op: op)
   } else {
     let lease = Filesystem.WriteCreateNew(path: layout.lease_path, content: join([commit, " ", clock_now_probed_at_or_unknown() as String, "\n"], ""))
     if !lease.success {
       compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: ProducerInFlight { lease_path: layout.lease_path } }, subject: subject, op: op)
-    } else if stored_outcome_is_success(r: compute_read_stored_outcome(layout: layout)) {
-      compute_attach_under_lease(layout: layout, identity: identity, subject: subject, op: op)
     } else {
-      let reference = compute_reservation_reference(identity: identity)
-      let grant = work_class_grant(class: work_class_of(op: op), rows: work_class_grant_rows, ceiling: compute_memory_ceiling(instance: instance))
-      let reservation = compute_reserve(instance: instance, reference: reference, term_seconds: compute_reservation_term_seconds, request: work_class_grant_amount(g: grant))
-      match reservation {
-        ComputeCapacityFull { wire: w } =>
-          compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: HostComputeCapacityFull { wire: w })
-        ComputeHostBelowFloor { requested: rq, available: av } =>
-          compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: HostBelowMemoryFloor { requested: rq, available: av })
-        ComputeReservationRefused { detail: d } =>
-          compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: ComputeCapacityLedgerUnavailable { detail: d })
-        ComputeReserved { grant: _, partition: _, amount: _, store: _ } =>
-          compute_run_granted(
-            instance: instance, commit: commit, layout: layout, identity: identity, subject: subject, op: op,
-            dependency_store: dependency_store, grant: grant, reference: reference, reservation: reservation)
+      let reread = compute_read_stored_outcome(materialization: materialization)
+      match reread {
+        ComputeStoreServed { ending: _, identity: _, document: _ } =>
+          compute_attach_under_lease(materialization: materialization, layout: layout, identity: identity, subject: subject, op: op, served: reread)
+        ComputeStoreRefused { detail: _ } =>
+          compute_attach_under_lease(materialization: materialization, layout: layout, identity: identity, subject: subject, op: op, served: reread)
+        ComputeStoreAbsent => compute_reserve_and_run(instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency)
+        ComputeStoreNotConsulted => compute_reserve_and_run(instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency)
       }
     }
   }
+}
+
+// SLOT FIRST, THEN THE LEDGER (conforming to gunbc.roadmap_session_placement, ruling on #13074). The
+// attempt slot names the seat before the seat exists: a crash between the two then leaves an open
+// slot with no reservation -- which recovery settles from the slot alone -- never a held reservation
+// no slot names, which nothing in the corpus can find. A reservation refused after the slot opened
+// closes that slot, and a close that fails rides out as a host-record loss beside the refusal.
+fn compute_reserve_and_run(
+  instance: HostDashboardInstance,
+  materialization: ComputeMaterialization,
+  commit: String,
+  layout: ComputeLayout,
+  identity: String,
+  subject: WorkSubject,
+  op: WorkOperation,
+  dependency: ComputeDependency,
+) -> ProvideResult {
+  let reference = compute_reservation_reference(identity: identity)
+  let grant = work_class_grant(class: work_class_of(op: op), rows: work_class_grant_rows, ceiling: compute_memory_ceiling(instance: instance))
+  match compute_open_attempt(layout: layout, identity: identity, reference: reference, granted: work_class_grant_amount(g: grant)) {
+    AttemptGateRefused { detail: d } =>
+      compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: StoreUnavailable { detail: join(["the attempt slot could not be opened, so nothing was reserved: ", d], "") })
+    AttemptGateReady { record: rec, generation: g } =>
+      compute_reserve_opened(
+        instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op,
+        dependency: dependency, grant: grant, reference: reference, opened: AttemptGateReady { record: rec, generation: g })
+  }
+}
+
+// THE RESERVATION, TAKEN UNDER AN OPEN SLOT. Each refusal closes the slot before reporting.
+fn compute_reserve_opened(
+  instance: HostDashboardInstance,
+  materialization: ComputeMaterialization,
+  commit: String,
+  layout: ComputeLayout,
+  identity: String,
+  subject: WorkSubject,
+  op: WorkOperation,
+  dependency: ComputeDependency,
+  grant: WorkClassGrant,
+  reference: NonEmptyStr,
+  opened: AttemptGate,
+) -> ProvideResult {
+  let reservation = compute_reserve(instance: instance, reference: reference, term_seconds: compute_reservation_term_seconds, request: work_class_grant_amount(g: grant))
+  match reservation {
+    ComputeCapacityFull { wire: w } =>
+      compute_refused_after_open(instance: instance, identity: identity, subject: subject, op: op, layout: layout, opened: opened, cause: HostComputeCapacityFull { wire: w })
+    ComputeHostBelowFloor { requested: rq, available: av } =>
+      compute_refused_after_open(instance: instance, identity: identity, subject: subject, op: op, layout: layout, opened: opened, cause: HostBelowMemoryFloor { requested: rq, available: av })
+    ComputeReservationRefused { detail: d } =>
+      compute_refused_after_open(instance: instance, identity: identity, subject: subject, op: op, layout: layout, opened: opened, cause: ComputeCapacityLedgerUnavailable { detail: d })
+    ComputeReserved { grant: _, partition: _, amount: _, store: _ } =>
+      compute_run_opened(
+        instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op,
+        dependency: dependency, grant: grant, reference: reference, reservation: reservation, opened: opened)
+  }
+}
+
+// A REFUSED RESERVATION CLOSES THE SLOT IT WAS TAKEN UNDER, then reports as a request that holds
+// nothing. The close's own failure is a host-record fact beside the refusal, never a second verdict.
+fn compute_refused_after_open(
+  instance: HostDashboardInstance,
+  identity: String,
+  subject: WorkSubject,
+  op: WorkOperation,
+  layout: ComputeLayout,
+  opened: AttemptGate,
+  cause: WorkInfrastructureRefusal,
+) -> ProvideResult {
+  let closed = compute_settle_attempt(layout: layout, gate: opened, verdict: AttemptRecovered, detail: join(["reservation refused: ", work_refusal_detail(r: cause)], ""))
+  provide_result_with_host_record(
+    r: compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: cause),
+    carried: attempt_settlement_host_record(s: closed))
 }
 
 
@@ -1607,7 +2148,7 @@ fn compute_reservation_reference(identity: String) -> NonEmptyStr {
 // THE REPAIR IS CONSTRUCTION, NOT PRECISION. A finer clock would narrow the window and leave the
 // class writable; deriving the retry's reference FROM the first one makes the collision
 // unexpressible, and it needs no clock at all. Exactly one ceiling retry is permitted per attempt
-// (compute_run_granted refuses a second), so one discriminator is sufficient rather than a counter.
+// (compute_run_ceiling_retry never retries again), so one discriminator is sufficient rather than a counter.
 data compute_retry_reference_discriminator: String = "#ceiling-retry"
 
 fn compute_ceiling_retry_reference(reference: NonEmptyStr) -> NonEmptyStr {
@@ -1791,7 +2332,7 @@ fn compute_run_leased(
   layout: ComputeLayout,
   identity: String,
   op: WorkOperation,
-  dependency_store: String,
+  dependency: ComputeDependency,
   granted: Kibibyte,
   grant_was_ceiling: Bool,
   opened: AttemptGate,
@@ -1819,7 +2360,7 @@ fn compute_run_leased(
           ComputeAttempt { outcome: WorkCancelled { identity: identity, detail: d }, summary: compute_unspawned_summary(), gate: AttemptGateRefused { detail: d } }
         AttemptGateReady { record: rec2, generation: g2 } =>
           compute_spawn_and_collect(
-            instance: instance, layout: layout, identity: identity, op: op, dependency_store: dependency_store,
+            instance: instance, layout: layout, identity: identity, op: op, dependency: dependency,
             granted: granted, grant_was_ceiling: grant_was_ceiling, launched: AttemptGateReady { record: rec2, generation: g2 })
       }
   }
@@ -1830,12 +2371,12 @@ fn compute_spawn_and_collect(
   layout: ComputeLayout,
   identity: String,
   op: WorkOperation,
-  dependency_store: String,
+  dependency: ComputeDependency,
   granted: Kibibyte,
   grant_was_ceiling: Bool,
   launched: AttemptGate,
 ) -> ComputeAttempt {
-  match compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency_store: dependency_store), granted: granted) {
+  match compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: dependency), env: compute_operation_env(op: op), granted: granted) {
     ComputeUnitRunRefused { cause: cause } =>
       ComputeAttempt {
         outcome: WorkRefusedByInfrastructure { identity: identity, cause: UnitLaunchRefused { cause: cause } },
@@ -1873,31 +2414,11 @@ fn compute_unspawned_summary() -> SystemdRunWaitSummary {
 }
 
 // PROVIDE, WITH THE BUILD DEPENDENCY RESOLVED FIRST. The build of the same subject is itself a
-// request: attached if stored, produced once otherwise, and compile/claims consume its store.
-// A WET CLAIM RUN IS A FRESH EFFECT AND THIS PROVIDER DOES NOT SERVE ONE (ruling on gunbc#13072,
-// item 2). Its identity is the request key, and every request with that key shares one lease, one
-// work directory and one stored outcome -- so a second identical wet run would attach to the first,
-// memoizing what std.materialization_provider classifies FreshEffect and the ladder answers Recompute.
-// Serving it needs an execution-occurrence identity beside the demand identity, which the ladder
-// cutover introduces; until then the request refuses before anything is observed or run. The
-// classification is the contract's own (std.materialization_provider compute_work_demand_nature, a
-// fold over the operation alone), read here rather than re-derived, so a future FreshEffect operation
-// refuses without this function changing.
-fn compute_operation_admission(op: WorkOperation) -> String? {
-  match compute_work_demand_nature(operation: op) {
-    FreshEffect => Present { value: "the request's contract classifies it FreshEffect, and this provider has no occurrence identity, so a repeat would attach to a prior run's outcome; run it hermetic or through the materialization cutover" }
-    IdempotentEffect => none
-    PureComputation => none
-    WorldRead { staleness_envelope_declared: _ } => Present { value: "the request's contract classifies it a WorldRead, which this provider's key does not cover" }
-  }
-}
-
+// request: attached if stored, produced once otherwise, and compile/claims consume its store. A wet
+// claim run is a FreshEffect the ladder answers Recompute (compute_materialization_plan): it runs per
+// occurrence, never reads the store and is never committed, so it is served here rather than refused.
 fn compute_provide(instance: HostDashboardInstance, commit: String, op: WorkOperation) -> ProvideResult {
-  match compute_operation_admission(op: op) {
-    Present { value: why } =>
-      compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: FreshEffectNotServed { detail: why } }, subject: ExactTree { tree: compute_null_tree() }, op: op)
-    Absent => compute_provide_admitted(instance: instance, commit: commit, op: op)
-  }
+  compute_provide_admitted(instance: instance, commit: commit, op: op)
 }
 
 fn compute_provide_admitted(instance: HostDashboardInstance, commit: String, op: WorkOperation) -> ProvideResult {
@@ -1911,9 +2432,9 @@ fn compute_provide_admitted(instance: HostDashboardInstance, commit: String, op:
         SubjectResolved { subject } =>
           match op {
             BuildGunbcBinaries { profile: _, bins: _ } =>
-              compute_provide_leaf(instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency_store: "")
+              compute_provide_leaf(instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency)
             CompileEntry { entry: _ } => compute_provide_dependent(instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain)
-            RunClaims { entry: _, functions: _, hermetic: _ } => compute_provide_dependent(instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain)
+            RunClaims { entry: _, functions: _, hermetic: _, window: _ } => compute_provide_dependent(instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain)
           }
       }
   }
@@ -1925,12 +2446,20 @@ fn compute_provide_admitted(instance: HostDashboardInstance, commit: String, op:
 // reading vanished at exactly the seam where nobody was left to report it (side-chat review at
 // f5344b28). The work contract is untouched; only the host-record fact is joined.
 fn compute_provide_dependent(instance: HostDashboardInstance, commit: String, subject: WorkSubject, op: WorkOperation, toolchain: WorkToolchainIdentity) -> ProvideResult {
-  let build = compute_provide_leaf(instance: instance, commit: commit, subject: subject, op: work_default_build(), toolchain: toolchain, dependency_store: "")
+  let build = compute_provide_leaf(instance: instance, commit: commit, subject: subject, op: work_default_build(), toolchain: toolchain, dependency: NoComputeDependency)
   if provide_result_succeeded(r: build) {
     let build_identity = provide_result_identity(r: build)
-    provide_result_with_host_record(
-      r: compute_provide_leaf(instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency_store: compute_layout(instance: instance, identity_hex: build_identity).store_dir),
-      carried: provide_result_host_record(r: build))
+    let identity = compute_work_identity(subject: subject, op: op, toolchain: toolchain)
+    match compute_dependency_read(store: compute_durable_store, build: ComputeWorkRequest { subject: subject, operation: work_default_build(), toolchain: toolchain }) {
+      ComputeDependencyRefused { detail } =>
+        provide_result_with_host_record(
+          r: compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: DependencyNotSucceeded { dependency_identity: build_identity, ending: join(["succeeded, but ", detail], "") } }, subject: subject, op: op),
+          carried: provide_result_host_record(r: build))
+      ComputeDependencyResolved { dependency } =>
+        provide_result_with_host_record(
+          r: compute_provide_leaf(instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: dependency),
+          carried: provide_result_host_record(r: build))
+    }
   } else {
     let identity = compute_work_identity(subject: subject, op: op, toolchain: toolchain)
     provide_result_with_host_record(
@@ -2166,7 +2695,7 @@ fn compute_parse_operation(operation: String, entry: String, functions: String, 
   } else if operation == "compile" && entry != "" {
     Present { value: CompileEntry { entry: entry as FilePath } }
   } else if operation == "claims" && entry != "" && functions != "" && (hermetic == "true" || hermetic == "false") {
-    Present { value: RunClaims { entry: entry as FilePath, functions: functions as NonEmptyStr, hermetic: hermetic == "true" } }
+    Present { value: RunClaims { entry: entry as FilePath, functions: functions as NonEmptyStr, hermetic: hermetic == "true", window: none } }
   } else {
     none
   }
