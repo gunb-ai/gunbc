@@ -377,11 +377,14 @@ fn population_parse_unmet(tally: PopulationParse) -> List<String> {
 // THE VERDICT IS THIS FUNCTION'S, AND ONLY THIS FUNCTION'S. `held` follows from the typed result: no
 // contradicted or unreadable member, no declared refusal left unmet, and at least one module parsed. A
 // host that prints the report reads `held`; it does not reinterpret the text to decide whether a held
-// population held.
+// population held. A walk that observed no module at all says so in its detail (the unmet declarations
+// follow from it, and stay on the text, one located line each) rather than reporting only the
+// consequence.
 fn population_parse_report(tally: PopulationParse) -> PopulationReport {
   let unmet = population_parse_unmet(tally: tally)
   let lines = list_reverse(xs: fold_list(xs: unmet, empty: tally.refusals, cons: fn(acc, line) { Cons { head: line, tail: acc } }))
-  if length(xs: lines) > 0 {
+  let nothing_observed = tally.parsed == 0 && tally.declared == 0 && is_empty(xs: tally.refusals)
+  if length(xs: lines) > 0 && !nothing_observed {
     PopulationReport {
       text: join(lines, "\n"),
       held: false,
@@ -394,7 +397,7 @@ fn population_parse_report(tally: PopulationParse) -> PopulationReport {
     }
   } else if tally.parsed == 0 {
     PopulationReport {
-      text: "",
+      text: join(lines, "\n"),
       held: false,
       detail: "the bound trees store no module under the declared namespaces; a parse over nothing is not a parse of zero"
     }
