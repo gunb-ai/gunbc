@@ -1,0 +1,1178 @@
+module gunbc.live_deploy.role_singleton_convergence
+
+import std.types { String, NonEmptyStr, List, Bool, Int, EpochMs, FilePath }
+import v2.std.collection { Present, Absent }
+import gunbc.deployment_risk { DeploymentId, deployment_id, ProdRoleSelection, prod_role_selection }
+import std.decl_ref { decl_ref }
+import gunbc.roadmap_dashboard_instance {
+  ProdRoleHolder,
+  ProdRoleRealization,
+  ProdRoleRealizedBy,
+  ProdRoleRealizationRefused,
+  ProdRoleRealizationRefusal,
+  ProdRoleUnheld,
+  ProdRoleHolderUnrealized,
+  ProdRoleHolderAmbiguous,
+  ProdRoleHolderUnactuatable,
+  prod_role_realization_refusal_detail,
+  HostDashboardInstance,
+}
+import gunbc.host_effect { HostEffectTransport }
+import gunbc.live_deploy.spec {
+  DeploymentSpec,
+  HoldsProdRoleSingletons,
+  HoldsNoRoleSingleton,
+  deployment_fabric_storage_unit_path,
+  gunbc_approval_broker_unit_path,
+  deployment_tailnet_url,
+}
+import gunbc.fabric_storage_placement { FabricStorageOwnershipMarkerSpec, FabricStorageMarkerReading, FabricStorageMarkerExact, FabricStorageMarkerMismatched, fabric_storage_ownership_marker_spec, fabric_storage_marker_verdict }
+import extdeps.shell
+import std.algebra { trim }
+import std.list { distinct_by_key }
+import std.measure { Millisecond, millisecond, millisecond_count, second_to_millisecond }
+import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
+import extdeps.clock { clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused }
+import extdeps.tools.curl { curl_localhost_max_time }
+import extdeps.http.client
+import extdeps.tailscale.whois { WhoIsNodeName, WhoIsNodeNamed, WhoIsNodeUnreadable, whois_node_name }
+import extdeps.languages.json.emit {
+  JsonValue, JsonArray, JsonString, json_object, json_kv, json_string, json_int, json_null, json_array,
+}
+import extdeps.languages.json.parse {
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  json_document_gap_text,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
+  json_member_presence,
+  JsonMemberMissing,
+  JsonMemberNull,
+  JsonMemberValue,
+  JsonMemberUnreadable,
+  json_field_int,
+  FieldAbsent,
+  FieldMalformed,
+  FieldRead,
+}
+import gunbc.live_deploy.desired { DesiredDeployment, desired_deployment_roster, prod_role_actuated_realization, prod_role_actuated_realization_in, selected_deployment_spec, bind_desired_selected_identity, DesiredSelectedIdentityBound, DesiredSelectedIdentityUnknownInstance, DesiredSelectedIdentityRosterRefused, DesiredSelectedIdentityMismatch, instance_id_text }
+import v2.std.operation_argv {
+  ArgvMaterialized,
+  ArgvMaterializationRefused,
+  operation_argv_bind_text,
+  operation_argv_cause_label,
+}
+import gunbc.live_deploy.member_observe {
+  ObservationArm,
+  OnTheHostItself,
+  OverTransport,
+  Leg,
+  LegOut,
+  LegRefused,
+  remote_leg,
+  unit_document_leg,
+  observation_arm,
+  entry_presence,
+  EntryPresence,
+  EntryPresent,
+  EntryAbsent,
+  EntryPresenceIndeterminate,
+}
+
+// THE ROLE-FOLLOWING SINGLETONS AS A CONVERGENCE SUBJECT. The approval broker and the fabric store
+// (unit, route, socket, root, directories and ownership marker -- one subject, gunbc.live_deploy.spec
+// RoleSingletonHolding) are installed only by the spec that holds the prod role, and a spec's apply
+// reconciles its owned members against `observed: []`. So a role move, or NoProdRole, would leave the
+// old singleton running and, on a move, start a second EMPTY one beside it -- the store's state does not
+// travel with a unit. This module assesses the DESIRED realization against an INDEPENDENT OBSERVATION
+// of every roster host (DESIGN 3d) and, only when that assessment admits it, mints the one token an
+// apply may act on (RoleSingletonAdmission).
+//
+// ONLY FIRST INSTALL AND NOOP ARE IMPLEMENTED. Noop when exactly one complete realization is
+// observed and it is the desired one on its own target (or nothing is desired and nothing is observed);
+// Install when a valid holder is desired and NOTHING is observed anywhere. Completeness is the
+// broker unit and the fabric unit -- the store's directories are already owned-directory demands
+// (gunbc.fabric_storage_placement fabric_storage_directory_demands, landed in #13688). The
+// Ensured ownership-marker file is written by the holder's apply, not a second ownership census
+// and not an ssh hand step: a holder that already has its units therefore Noops the assessment
+// and the apply still ensures the marker.
+//
+// MOVE AND REMOVE ARE A DECLARED FRONTIER, not an untracked stall (DESIGN 4b). Operator ruling
+// 2026-10-05 on closed gunbc#13217: "Move/Remove convergence is the next deliverable after D2".
+// Today's arms are RoleSingletonMoveUnimplemented and RoleSingletonRemovalUnimplemented.
+// TRIGGER: RoleSingletonConvergence grows Move and Remove actuation arms and those two refusal
+// variants are deleted. SUFFICIENT FOR: a role change or NoProdRole is assessed and applied
+// without a typed unimplemented refusal. Until then a move or removal stops the line.
+//
+// THE HOST UNIVERSE IS THE ROSTER'S TARGETS (desired_deployment_roster), derived, not listed. A
+// singleton on a host outside the roster is INVISIBLE to this observation: a bounded residual whose
+// trigger is a roster row for that host.
+
+// ── What can be seen ────────────────────────────────────────────────────────────────────────────
+// THE MEMBERS a realization is made of. The broker unit is host-global and names no deployment; the
+// fabric store unit and the store's ownership marker each name exactly one roster deployment. The
+// marker (in the store's control directory, read by the deploy job principal) is read because the
+// store root, auth state and door directories are Ensured and no retract
+// removes them: an old store with no unit is still a store.
+type RoleSingletonMember
+  = BrokerUnitMember
+  | FabricUnitMember
+  | StoreMarkerMember
+
+// ONE SIGHTING, KEPT AT (host, deployment, member) GRAIN until multiplicity is adjudicated -- never
+// deduplicated by DeploymentId first, which is how the same deployment on two hosts, or a deployment
+// realized on a host it does not target, would read as one ordinary holder.
+type RoleSingletonSighting
+  = SightedDeploymentMember { host: NonEmptyStr, deployment: DeploymentId, member: RoleSingletonMember }
+  | SightedBroker { host: NonEmptyStr }
+  | SightedMismatchedMarker { host: NonEmptyStr, deployment: DeploymentId, field: NonEmptyStr, expected: String, observed: String }
+
+type HostRoleSingletonReading
+  = HostRoleSingletonsRead { host: NonEmptyStr, sightings: List<RoleSingletonSighting> }
+  | HostRoleSingletonsUnobservable { host: NonEmptyStr, cause: String }
+
+// THE READING SOURCE IS AN INTERFACE. Production observation is host self-report
+// (self_report_reading_source_with). The adjudication is indifferent to which source produced a
+// HostRoleSingletonReading; absence is never synthesized from unobservable.
+//
+// A2 (PERMANENT). APPROVED BY DEFAULT: escalation msg_a3162feb-b8aa-41e4-958e-a7d680a495c3
+// (2026-10-11), with no operator answer inside the 15-minute window. The global-observation gate
+// applies to singleton PLACEMENT changes only (Install, Move, Remove). An apply may include
+// singleton steps only for members already EntryPresent on the applying host (OnTheHostItself):
+// that is an in-place rewrite and cannot raise the count. An Absent member the spec would write is
+// Install, so the global gate applies. Partial stays refused. Marker ensure on an already-complete
+// local holder is the existing Noop side effect. HoldsNoRoleSingleton hosts may enroll the
+// dashboard/reporter with no broker or fabric steps. The receipt records global picture
+// unobservable whenever any roster host is unobservable; it never concludes that a host is empty.
+type RoleSingletonReadingSource {
+  read: fn(NonEmptyStr, List<DesiredDeployment>) -> HostRoleSingletonReading
+}
+
+// ── What is refused ─────────────────────────────────────────────────────────────────────────────
+type RoleSingletonRefusal
+  = RoleSingletonMoveUnimplemented { observed: DeploymentId, desired: DeploymentId }
+  | RoleSingletonRemovalUnimplemented { observed: DeploymentId }
+  | RoleSingletonDesiredRealizationRefused { cause: ProdRoleRealizationRefusal }
+  | RoleSingletonHostUnobservable { host: NonEmptyStr, cause: String }
+  | RoleSingletonHoldersAmbiguous { observed: List<DeploymentId> }
+  | RoleSingletonRealizedOnTwoHosts { deployment: DeploymentId, hosts: List<NonEmptyStr> }
+  | RoleSingletonMisplaced { deployment: DeploymentId, target: NonEmptyStr, observed_on: NonEmptyStr }
+  | RoleSingletonTwoOnOneHost { host: NonEmptyStr, deployments: List<DeploymentId> }
+  | RoleSingletonBrokerWithoutStore { host: NonEmptyStr }
+  | RoleSingletonPartial { deployment: DeploymentId, host: NonEmptyStr, missing: List<RoleSingletonMember> }
+  | RoleSingletonMarkerMismatched { deployment: DeploymentId, host: NonEmptyStr, field: NonEmptyStr, expected: String, observed: String }
+  | RoleSingletonStaleSpec { instance_id: NonEmptyStr, detail: String }
+  | RoleSingletonDeploymentUnrostered { instance_id: String, detail: String }
+
+// ── What is decided ─────────────────────────────────────────────────────────────────────────────
+type RoleSingletonConvergence
+  = RoleSingletonNoop
+  | RoleSingletonInPlace { global_unobservable: List<NonEmptyStr> }
+  | RoleSingletonInstall { holder: ProdRoleHolder }
+  | RoleSingletonRefused { cause: RoleSingletonRefusal }
+
+// ── The observation ─────────────────────────────────────────────────────────────────────────────
+type ObservedRealization {
+  deployment: DeploymentId
+  host: NonEmptyStr
+  members: List<RoleSingletonMember>
+}
+
+type RoleSingletonObservation
+  = RoleSingletonsObserved { realizations: List<ObservedRealization> }
+  | RoleSingletonObservationRefused { cause: RoleSingletonRefusal }
+
+fn member_eq(a: RoleSingletonMember, b: RoleSingletonMember) -> Bool {
+  match a {
+    BrokerUnitMember => match b { BrokerUnitMember => true  FabricUnitMember => false  StoreMarkerMember => false }
+    FabricUnitMember => match b { BrokerUnitMember => false  FabricUnitMember => true  StoreMarkerMember => false }
+    StoreMarkerMember => match b { BrokerUnitMember => false  FabricUnitMember => false  StoreMarkerMember => true }
+  }
+}
+
+fn distinct_ids(ids: List<DeploymentId>) -> List<DeploymentId> {
+  distinct_by_key(xs: ids, key: d => d.name as String)
+}
+
+fn distinct_hosts(hosts: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  distinct_by_key(xs: hosts, key: h => h as String)
+}
+
+fn deployment_sightings(readings: List<HostRoleSingletonReading>) -> List<RoleSingletonSighting> {
+  readings |> flat_map(r => match r {
+    HostRoleSingletonsRead { host: _, sightings } => sightings |> filter(s => match s {
+      SightedDeploymentMember { host: _, deployment: _, member: _ } => true
+      SightedBroker { host: _ } => false
+      SightedMismatchedMarker { host: _, deployment: _, field: _, expected: _, observed: _ } => false
+    })
+    HostRoleSingletonsUnobservable { host: _, cause: _ } => []
+  })
+}
+
+fn sighting_host(s: RoleSingletonSighting) -> NonEmptyStr {
+  match s {
+    SightedDeploymentMember { host, deployment: _, member: _ } => host
+    SightedBroker { host } => host
+    SightedMismatchedMarker { host, deployment: _, field: _, expected: _, observed: _ } => host
+  }
+}
+
+fn sighting_deployment(s: RoleSingletonSighting) -> DeploymentId? {
+  match s {
+    SightedDeploymentMember { host: _, deployment, member: _ } => Present { value: deployment }
+    SightedBroker { host: _ } => none
+    SightedMismatchedMarker { host: _, deployment, field: _, expected: _, observed: _ } => Present { value: deployment }
+  }
+}
+
+fn sighting_member(s: RoleSingletonSighting) -> RoleSingletonMember {
+  match s {
+    SightedDeploymentMember { host: _, deployment: _, member } => member
+    SightedBroker { host: _ } => BrokerUnitMember
+    SightedMismatchedMarker { host: _, deployment: _, field: _, expected: _, observed: _ } => StoreMarkerMember
+  }
+}
+
+fn broker_hosts(readings: List<HostRoleSingletonReading>) -> List<NonEmptyStr> {
+  readings |> flat_map(r => match r {
+    HostRoleSingletonsRead { host: _, sightings } => sightings |> flat_map(s => match s {
+      SightedBroker { host } => [host]
+      SightedMismatchedMarker { host: _, deployment: _, field: _, expected: _, observed: _ } => []
+      SightedDeploymentMember { host: _, deployment: _, member: _ } => []
+    })
+    HostRoleSingletonsUnobservable { host: _, cause: _ } => []
+  })
+}
+
+fn sighted_ids(sightings: List<RoleSingletonSighting>) -> List<DeploymentId> {
+  distinct_ids(ids: sightings |> flat_map(s => match sighting_deployment(s: s) { Present { value: d } => [d]  Absent => [] }))
+}
+
+fn hosts_of(sightings: List<RoleSingletonSighting>, deployment: DeploymentId) -> List<NonEmptyStr> {
+  distinct_hosts(hosts: sightings |> filter(s => match sighting_deployment(s: s) { Present { value: x } => x == deployment  Absent => false }) |> map(s => sighting_host(s: s)))
+}
+
+fn target_host_of(rows: List<DesiredDeployment>, deployment: DeploymentId) -> NonEmptyStr? {
+  match rows |> filter(r => r.instance.deployment == deployment) |> first {
+    Present { value: r } => Present { value: r.target.ssh_host }
+    Absent => none
+  }
+}
+
+// THE ADJUDICATION, over per-host readings and the roster, with NO deduplication before the
+// multiplicity checks. In order: an unobservable host; one deployment realized on two hosts; one
+// deployment realized off its own target; two deployments realized on one host; two deployments
+// realized anywhere; a broker on a host where no store is realized. Only then are realizations formed,
+// each (deployment, host) with the members seen for it, broker included from the same host.
+fn role_singleton_observation_of(readings: List<HostRoleSingletonReading>, rows: List<DesiredDeployment>) -> RoleSingletonObservation {
+  let unobservable = readings |> flat_map(r => match r {
+    HostRoleSingletonsUnobservable { host, cause } => [RoleSingletonHostUnobservable { host: host, cause: cause }]
+    HostRoleSingletonsRead { host: _, sightings: _ } => []
+  })
+  let mismatched = readings |> flat_map(r => match r {
+    HostRoleSingletonsRead { host: _, sightings: ss } => ss |> flat_map(x => match x {
+      SightedMismatchedMarker { host, deployment, field, expected, observed } => [RoleSingletonMarkerMismatched { deployment: deployment, host: host, field: field, expected: expected, observed: observed }]
+      SightedDeploymentMember { host: _, deployment: _, member: _ } => []
+      SightedBroker { host: _ } => []
+    })
+    HostRoleSingletonsUnobservable { host: _, cause: _ } => []
+  })
+  let sightings = deployment_sightings(readings: readings)
+  let ids = sighted_ids(sightings: sightings)
+  let two_hosts = ids |> flat_map(d => if count(hosts_of(sightings: sightings, deployment: d)) > 1 { [RoleSingletonRealizedOnTwoHosts { deployment: d, hosts: hosts_of(sightings: sightings, deployment: d) }] } else { [] })
+  let misplaced = ids |> flat_map(d => match target_host_of(rows: rows, deployment: d) {
+    Absent => []
+    Present { value: t } => hosts_of(sightings: sightings, deployment: d) |> flat_map(h => if (h as String) == (t as String) { [] } else { [RoleSingletonMisplaced { deployment: d, target: t, observed_on: h }] })
+  })
+  let store_hosts = distinct_hosts(hosts: sightings |> map(s => sighting_host(s: s)))
+  let two_on_one = store_hosts |> flat_map(h => {
+    let here = distinct_ids(ids: sightings |> filter(s => (sighting_host(s: s) as String) == (h as String)) |> flat_map(s => match sighting_deployment(s: s) { Present { value: d } => [d]  Absent => [] }))
+    if count(here) > 1 { [RoleSingletonTwoOnOneHost { host: h, deployments: here }] } else { [] }
+  })
+  let brokers = broker_hosts(readings: readings)
+  let broker_alone = brokers |> flat_map(h => if any(store_hosts, s => (s as String) == (h as String)) { [] } else { [RoleSingletonBrokerWithoutStore { host: h }] })
+  let first_refusal = concat(concat(concat(concat(unobservable, mismatched), two_hosts), concat(misplaced, two_on_one)), concat(if count(ids) > 1 { [RoleSingletonHoldersAmbiguous { observed: ids }] } else { [] }, broker_alone)) |> first
+  match first_refusal {
+    Present { value: c } => RoleSingletonObservationRefused { cause: c }
+    Absent => RoleSingletonsObserved { realizations: ids |> flat_map(d => hosts_of(sightings: sightings, deployment: d) |> map(h => ObservedRealization {
+      deployment: d,
+      host: h,
+      members: concat(
+        sightings |> filter(s => (sighting_host(s: s) as String) == (h as String)) |> map(s => sighting_member(s: s)),
+        if any(brokers, b => (b as String) == (h as String)) { [BrokerUnitMember] } else { [] },
+      ),
+    })) }
+  }
+}
+
+fn missing_members(r: ObservedRealization) -> List<RoleSingletonMember> {
+  [BrokerUnitMember, FabricUnitMember] |> filter(m => !any(r.members, x => member_eq(a: x, b: m)))
+}
+
+// ── The decision ────────────────────────────────────────────────────────────────────────────────
+fn desired_is_no_prod(cause: ProdRoleRealizationRefusal) -> Bool {
+  match cause {
+    ProdRoleUnheld => true
+    ProdRoleHolderUnrealized { deployment: _ } => false
+    ProdRoleHolderAmbiguous { deployment: _, count: _ } => false
+    ProdRoleHolderUnactuatable { deployment: _ } => false
+  }
+}
+
+// ONLY ProdRoleUnheld MEANS "NO PROD". An unrealized, ambiguous or unactuatable holder is a refusal of
+// the desired side, never read as the no-prod path -- which is how a typo in the selection would
+// otherwise turn into a removal of the real prod singletons.
+fn role_singleton_convergence(desired: ProdRoleRealization, observed: RoleSingletonObservation, rows: List<DesiredDeployment>) -> RoleSingletonConvergence {
+  match observed {
+    RoleSingletonObservationRefused { cause } => RoleSingletonRefused { cause: cause }
+    RoleSingletonsObserved { realizations } => match desired {
+      ProdRoleRealizationRefused { cause } =>
+        if desired_is_no_prod(cause: cause) {
+          match realizations |> first {
+            Absent => RoleSingletonNoop
+            Present { value: r } => RoleSingletonRefused { cause: RoleSingletonRemovalUnimplemented { observed: r.deployment } }
+          }
+        } else {
+          RoleSingletonRefused { cause: RoleSingletonDesiredRealizationRefused { cause: cause } }
+        }
+      ProdRoleRealizedBy { holder } => match realizations |> first {
+        Absent => RoleSingletonInstall { holder: holder }
+        Present { value: r } =>
+          if !(r.deployment == holder.instance.deployment) {
+            RoleSingletonRefused { cause: RoleSingletonMoveUnimplemented { observed: r.deployment, desired: holder.instance.deployment } }
+          } else {
+            let missing = missing_members(r: r)
+            if count(missing) == 0 { RoleSingletonNoop }
+            else {
+              RoleSingletonRefused { cause: RoleSingletonPartial { deployment: r.deployment, host: r.host, missing: missing } }
+            }
+          }
+      }
+    }
+  }
+}
+
+// ── The admission: the decision bound to the spec that acts ─────────────────────────────────────
+// THE APPLY CONSUMES THIS TOKEN, NEVER THE CALLER'S SPEC. sole_constructor, and its one mint
+// (mint_role_singleton_admission) is sealed to assess_and_admit_rostered, reached only from assess_and_admit over a bound roster row. The spec inside is the one the assessment was made against, and it is admitted only when
+// its own holding agrees with the desired realization: a spec built before the role moved, a holding
+// spec under NoProdRole, or a non-holder spec while the holder's first install is pending all refuse
+// before any member is planned.
+type RoleSingletonAdmission sole_constructor {
+  spec: DeploymentSpec
+  decision: RoleSingletonConvergence
+}
+
+type RoleSingletonAdmissionResult
+  = RoleSingletonAdmitted { admission: RoleSingletonAdmission }
+  | RoleSingletonNotAdmitted { cause: RoleSingletonRefusal }
+
+// THE PURE CLASSIFICATION a fixture may run: whether a spec WOULD be admitted for a decision. It
+// returns a standing, never a usable token -- the only route to a RoleSingletonAdmission is the sealed
+// mint below, reached only from the observing assessor.
+type RoleSingletonAdmissionStanding
+  = RoleSingletonAdmissible { decision: RoleSingletonConvergence }
+  | RoleSingletonInadmissible { cause: RoleSingletonRefusal }
+
+// THE TOKEN'S READERS ARE SEALED TOO, to the apply steps that consume it inside one assess-and-act
+// composition, so a token cannot be carried out of the apply it was minted for and replayed later.
+fn admitted_spec(admission: RoleSingletonAdmission) -> DeploymentSpec admit_callers: [
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_admitted_via_transport"),
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_mutation_via_transport"),
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "role_singleton_disposition_of"),
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_transaction_decided"),
+] {
+  admission.spec
+}
+
+fn admitted_decision(admission: RoleSingletonAdmission) -> RoleSingletonConvergence admit_callers: [
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_admitted_via_transport"),
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_mutation_via_transport"),
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "role_singleton_disposition_of"),
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_transaction_decided"),
+] {
+  admission.decision
+}
+
+fn stale(spec: DeploymentSpec, detail: String) -> RoleSingletonAdmissionStanding {
+  RoleSingletonInadmissible { cause: RoleSingletonStaleSpec { instance_id: spec.instance_id, detail: detail } }
+}
+
+fn classify_role_singleton_admission(spec: DeploymentSpec, desired: ProdRoleRealization, decision: RoleSingletonConvergence) -> RoleSingletonAdmissionStanding {
+  let spec_holder = match spec.role_singletons {
+    HoldsProdRoleSingletons { holder } => Present { value: holder.instance.deployment }
+    HoldsNoRoleSingleton => none
+  }
+  let desired_holder = match desired {
+    ProdRoleRealizedBy { holder } => Present { value: holder.instance }
+    ProdRoleRealizationRefused { cause: _ } => none
+  }
+  let desired_is_this_spec = match desired_holder { Present { value: i } => (i.instance_id as String) == (spec.instance_id as String)  Absent => false }
+  let agrees = match spec_holder {
+    Present { value: d } => match desired_holder { Present { value: i } => i.deployment == d  Absent => false }
+    Absent => !desired_is_this_spec
+  }
+  let admissible = RoleSingletonAdmissible { decision: decision }
+  let stale_holding = stale(spec: spec, detail: "the spec's role-singleton holding disagrees with the prod role resolved now; it was built against a different selection")
+  match decision {
+    RoleSingletonRefused { cause } => RoleSingletonInadmissible { cause: cause }
+    RoleSingletonNoop => if agrees { admissible } else { stale_holding }
+    RoleSingletonInPlace { global_unobservable: _ } => if agrees { admissible } else { stale_holding }
+    RoleSingletonInstall { holder: _ } =>
+      if !agrees { stale_holding }
+      else if desired_is_this_spec { admissible }
+      else { stale(spec: spec, detail: "the holder's first install is pending; no other spec applies until it lands") }
+  }
+}
+
+// THE ONLY MINT, sealed to the observing assessor: no caller can hand it a fabricated decision or a
+// noncanonical desired realization, because no other caller may reach it.
+fn mint_role_singleton_admission(spec: DeploymentSpec, decision: RoleSingletonConvergence) -> RoleSingletonAdmission admit_callers: [
+  decl_ref(module_path: "gunbc.live_deploy.role_singleton_convergence", decl_name: "assess_and_admit_rostered"),
+] {
+  RoleSingletonAdmission { spec: spec, decision: decision }
+}
+
+fn role_singleton_refusal_detail(cause: RoleSingletonRefusal) -> String {
+  match cause {
+    RoleSingletonMoveUnimplemented { observed, desired } =>
+      join(["role singletons refused: the prod role moved from ", observed.name as String, " to ", desired.name as String, " while the old singletons are still observed; moving their persistent state is not implemented"], "")
+    RoleSingletonRemovalUnimplemented { observed } =>
+      join(["role singletons refused: no deployment holds the prod role but ", observed.name as String, "'s singletons are still observed; removal is not implemented"], "")
+    RoleSingletonDesiredRealizationRefused { cause: c } =>
+      join(["role singletons refused: the desired realization is not a holder and not NoProdRole: ", prod_role_realization_refusal_detail(cause: c)], "")
+    RoleSingletonHostUnobservable { host, cause: c } =>
+      join(["role singletons refused: host ", host as String, " could not be observed (", c, "); unobserved is not absent"], "")
+    RoleSingletonHoldersAmbiguous { observed } =>
+      join(["role singletons refused: ", to_string(count(observed)), " deployments are observed holding them: ", join(map(observed, d => d.name as String), ", ")], "")
+    RoleSingletonRealizedOnTwoHosts { deployment, hosts } =>
+      join(["role singletons refused: ", deployment.name as String, " is realized on ", join(map(hosts, h => h as String), ", ")], "")
+    RoleSingletonMisplaced { deployment, target, observed_on } =>
+      join(["role singletons refused: ", deployment.name as String, " targets ", target as String, " but is realized on ", observed_on as String], "")
+    RoleSingletonTwoOnOneHost { host, deployments } =>
+      join(["role singletons refused: ", host as String, " carries the singletons of ", join(map(deployments, d => d.name as String), ", ")], "")
+    RoleSingletonBrokerWithoutStore { host } =>
+      join(["role singletons refused: the approval broker is present on ", host as String, " but no store is realized there"], "")
+    RoleSingletonPartial { deployment, host, missing } =>
+      join(["role singletons refused: ", deployment.name as String, " on ", host as String, " is partial (missing ", to_string(count(missing)), " member(s)); an interrupted install or a store without its broker is not adopted"], "")
+    RoleSingletonMarkerMismatched { deployment, host, field, expected, observed } =>
+      join(["role singletons refused: the store ownership marker for ", deployment.name as String, " on ", host as String, " does not match its row: ", field as String, " is '", observed, "', expected '", expected, "'; a marker that differs in any field is not the marker"], "")
+    RoleSingletonStaleSpec { instance_id, detail } =>
+      join(["role singletons refused: spec ", instance_id as String, " is not admitted: ", detail], "")
+    RoleSingletonDeploymentUnrostered { instance_id, detail } =>
+      join(["role singletons refused: deployment ", instance_id, " does not bind to its desired_deployment_roster row: ", detail], "")
+  }
+}
+
+// ── Reading one host ────────────────────────────────────────────────────────────────────────────
+// EVERY roster deployment's members are probed on the host read -- probing only where a deployment is
+// targeted is what made a realization on the wrong host invisible. A host whose legs refuse is
+// unobservable and stops the line; absence is only ever a successful listing.
+type MemberProbe {
+  deployment: DeploymentId?
+  member: RoleSingletonMember
+  presence: EntryPresence
+}
+
+fn presence_seen(p: EntryPresence) -> Bool {
+  match p {
+    EntryPresent => true
+    EntryAbsent => false
+    EntryPresenceIndeterminate { cause: _ } => false
+  }
+}
+
+fn presence_cause(p: EntryPresence) -> String? {
+  match p {
+    EntryPresenceIndeterminate { cause } => Present { value: cause }
+    EntryPresent => none
+    EntryAbsent => none
+  }
+}
+
+// THE MARKER IS READ BACK, NOT ONLY SEEN: its bytes, its mode, its owner and its group, each through
+// the same observation arm, against the one marker row (gunbc.fabric_storage_placement
+// fabric_storage_ownership_marker_spec). Only an exact match is the marker; any differing field is a
+// distinct sighting the adjudication refuses, and a field that cannot be read makes the host
+// unobservable rather than reading as either.
+// WHICH STAT FIELD A LEG READS, as a closed choice over shell.Stat operations. Local dispatch
+// invokes the operation; the remote arm materializes THAT SAME row's argv (v2.std.operation_argv)
+// and carries it over the transport. The format string is declared once, on the operation.
+type MarkerStatField = MarkerStatMode | MarkerStatOwner | MarkerStatGroup
+
+data shell_stat_operation_path: String = "dag/extdeps/shell.dag"
+data shell_stat_operation_service: String = "shell.Stat"
+
+fn marker_stat_operation(field: MarkerStatField) -> String {
+  match field {
+    MarkerStatMode => "ModeOf"
+    MarkerStatOwner => "OwnerOf"
+    MarkerStatGroup => "GroupOf"
+  }
+}
+
+fn stat_leg(arm: ObservationArm, path: String, field: MarkerStatField, leg: String) -> Leg {
+  match arm {
+    OnTheHostItself => {
+      let r = match field {
+        MarkerStatMode => shell.Stat.ModeOf(path: path as FilePath)
+        MarkerStatOwner => shell.Stat.OwnerOf(path: path as FilePath)
+        MarkerStatGroup => shell.Stat.GroupOf(path: path as FilePath)
+      }
+      if r.success { LegOut { stdout: r.stdout } } else { LegRefused { cause: join([leg, " failed: ", r.stderr], "") } }
+    }
+    OverTransport { transport } =>
+      match shell_materialize_operation_argv(
+        shell_stat_operation_path,
+        shell_stat_operation_service,
+        marker_stat_operation(field: field),
+        [operation_argv_bind_text(name: "path", text: path)],
+      ) {
+        ArgvMaterialized { argv } => remote_leg(transport: transport, argv: argv, leg: leg)
+        ArgvMaterializationRefused { at: _, cause } =>
+          LegRefused { cause: join([leg, ": ", operation_argv_cause_label(cause: cause)], "") }
+      }
+  }
+}
+
+type MarkerRead
+  = MarkerReadBack { reading: FabricStorageMarkerReading }
+  | MarkerReadRefused { cause: String }
+
+fn read_marker(arm: ObservationArm, path: NonEmptyStr) -> MarkerRead {
+  match unit_document_leg(arm: arm, path: path as String) {
+    LegRefused { cause } => MarkerReadRefused { cause: cause }
+    LegOut { stdout: content } => match stat_leg(arm: arm, path: path as String, field: MarkerStatMode, leg: "reading the marker's mode") {
+      LegRefused { cause } => MarkerReadRefused { cause: cause }
+      LegOut { stdout: mode } => match stat_leg(arm: arm, path: path as String, field: MarkerStatOwner, leg: "reading the marker's owner") {
+        LegRefused { cause } => MarkerReadRefused { cause: cause }
+        LegOut { stdout: owner } => match stat_leg(arm: arm, path: path as String, field: MarkerStatGroup, leg: "reading the marker's group") {
+          LegRefused { cause } => MarkerReadRefused { cause: cause }
+          LegOut { stdout: group } => MarkerReadBack { reading: FabricStorageMarkerReading { path: path, content: content, mode: trim(s: mode), owner: owner, group: group } }
+        }
+      }
+    }
+  }
+}
+
+type MarkerSighting
+  = MarkerSightingAbsent
+  | MarkerSightingOf { sighting: RoleSingletonSighting }
+  | MarkerSightingUnobservable { cause: String }
+
+fn marker_sighting(host: NonEmptyStr, r: DesiredDeployment, arm: ObservationArm) -> MarkerSighting {
+  let spec = fabric_storage_ownership_marker_spec(instance: r.instance)
+  marker_sighting_of(
+    host: host,
+    r: r,
+    presence: entry_presence(arm: arm, path: spec.path as String),
+    read_back: path => read_marker(arm: arm, path: path),
+  )
+}
+
+// THE THREE OUTCOMES, decided from what the observer's own legs returned: the marker exactly as its row
+// (a sighting), no marker (a successful listing of the control directory without it), or a marker the
+// observer cannot read (a listing or readback that failed -- permission denied included), which makes
+// the host unobservable and is never read as absent.
+fn marker_sighting_of(host: NonEmptyStr, r: DesiredDeployment, presence: EntryPresence, read_back: fn(NonEmptyStr) -> MarkerRead) -> MarkerSighting {
+  let spec = fabric_storage_ownership_marker_spec(instance: r.instance)
+  match presence {
+    EntryPresenceIndeterminate { cause } => MarkerSightingUnobservable { cause: cause }
+    EntryAbsent => MarkerSightingAbsent
+    EntryPresent => match read_back(spec.path) {
+      MarkerReadRefused { cause } => MarkerSightingUnobservable { cause: cause }
+      MarkerReadBack { reading } => match fabric_storage_marker_verdict(spec: spec, reading: reading) {
+        FabricStorageMarkerExact => MarkerSightingOf { sighting: SightedDeploymentMember { host: host, deployment: r.instance.deployment, member: StoreMarkerMember } }
+        FabricStorageMarkerMismatched { field, expected, observed } => MarkerSightingOf { sighting: SightedMismatchedMarker { host: host, deployment: r.instance.deployment, field: field, expected: expected, observed: observed } }
+      }
+    }
+  }
+}
+
+fn host_role_singleton_reading(host: NonEmptyStr, rows: List<DesiredDeployment>, arm: ObservationArm) -> HostRoleSingletonReading {
+  let probes = concat(
+    [MemberProbe { deployment: none, member: BrokerUnitMember, presence: entry_presence(arm: arm, path: gunbc_approval_broker_unit_path() as String) }],
+    rows |> map(r => MemberProbe { deployment: Present { value: r.instance.deployment }, member: FabricUnitMember, presence: entry_presence(arm: arm, path: deployment_fabric_storage_unit_path(names: r.names) as String) }),
+  )
+  let markers = rows |> map(r => marker_sighting(host: host, r: r, arm: arm))
+  let causes = concat(
+    probes |> flat_map(p => match presence_cause(p: p.presence) { Present { value: c } => [c]  Absent => [] }),
+    markers |> flat_map(m => match m { MarkerSightingUnobservable { cause } => [cause]  MarkerSightingAbsent => []  MarkerSightingOf { sighting: _ } => [] }),
+  )
+  match causes |> first {
+    Present { value: cause } => HostRoleSingletonsUnobservable { host: host, cause: cause }
+    Absent => HostRoleSingletonsRead {
+      host: host,
+      sightings: concat(
+        probes |> filter(p => presence_seen(p: p.presence)) |> map(p => match p.deployment {
+          Present { value: d } => SightedDeploymentMember { host: host, deployment: d, member: p.member }
+          Absent => SightedBroker { host: host }
+        }),
+        markers |> flat_map(m => match m { MarkerSightingOf { sighting } => [sighting]  MarkerSightingAbsent => []  MarkerSightingUnobservable { cause: _ } => [] }),
+      ),
+    }
+  }
+}
+
+fn roster_hosts(rows: List<DesiredDeployment>) -> List<NonEmptyStr> {
+  distinct_hosts(hosts: rows |> map(r => r.target.ssh_host))
+}
+
+// CROSS-HOST OBSERVATION IS HOST SELF-REPORT (operator ruling 2026-10-05): each host reports its own
+// role-singleton members and no host reaches into another. The reporter is the host's dashboard
+// (GET /instance.json, member `role_singletons`), which reads its own units and marker ON THE HOST
+// ITSELF. The reader fetches every roster host's report -- its own included -- and accepts it only when:
+//   (a) curl's connected peer (GetBoundedReportingPeer) is, per tailscale whois, the roster row's
+//       MagicDNS node (Node.Name, trailing dot);
+//   (b) the report names that host, and every sighting in it is of that host;
+//   (c) observed_at is within curl_localhost_max_time of the reader's clock at THAT response, either
+//       direction (a future stamp is a clock fault). Too old: stale. Writer: the dashboard service
+//       principal on the reported host, at GET time. Anything else is HostRoleSingletonsUnobservable
+//       and NEVER absent.
+// THE SSH PROBE IS DELETED, not kept as a fallback.
+data role_singleton_self_report_schema: String = "role-singleton-self-report/v1"
+data role_singleton_self_report_member: String = "role_singletons"
+data role_singleton_self_report_route: String = "/instance.json"
+
+type RoleSingletonSelfReport {
+  host: NonEmptyStr
+  observed_at_unix_millis: EpochMs?
+  reading: HostRoleSingletonReading
+}
+
+fn roster_row_of_instance(instance: HostDashboardInstance, rows: List<DesiredDeployment>) -> DesiredDeployment? {
+  rows |> filter(r => instance_id_text(id: r.instance.instance_id) == instance_id_text(id: instance.instance_id)) |> first
+}
+
+fn role_singleton_self_report_of(instance: HostDashboardInstance) -> RoleSingletonSelfReport {
+  let rows = desired_deployment_roster()
+  match roster_row_of_instance(instance: instance, rows: rows) {
+    Absent => RoleSingletonSelfReport {
+      host: instance.host_identity as NonEmptyStr,
+      observed_at_unix_millis: none,
+      reading: HostRoleSingletonsUnobservable { host: instance.host_identity as NonEmptyStr, cause: join(["dashboard instance ", instance_id_text(id: instance.instance_id), " is not a desired_deployment_roster row, so it names no roster host"], "") },
+    }
+    Present { value: row } => match clock_unix_millis_read() {
+      ClockUnixMillisRefused { detail } => RoleSingletonSelfReport {
+        host: row.target.ssh_host,
+        observed_at_unix_millis: none,
+        reading: HostRoleSingletonsUnobservable { host: row.target.ssh_host, cause: join(["the reporter's clock is unreadable: ", detail], "") },
+      }
+      ClockUnixMillisObserved { millis } => RoleSingletonSelfReport {
+        host: row.target.ssh_host,
+        observed_at_unix_millis: Present { value: millis },
+        reading: host_role_singleton_reading(host: row.target.ssh_host, rows: rows, arm: OnTheHostItself),
+      }
+    }
+  }
+}
+
+fn member_wire(m: RoleSingletonMember) -> String {
+  match m {
+    BrokerUnitMember => "broker_unit"
+    FabricUnitMember => "fabric_unit"
+    StoreMarkerMember => "store_marker"
+  }
+}
+
+fn member_of_wire(s: String) -> RoleSingletonMember? {
+  if s == "fabric_unit" { Present { value: FabricUnitMember } } else if s == "store_marker" { Present { value: StoreMarkerMember } } else if s == "broker_unit" { Present { value: BrokerUnitMember } } else { none }
+}
+
+fn sighting_json(s: RoleSingletonSighting) -> JsonValue {
+  match s {
+    SightedDeploymentMember { host, deployment, member } => json_object(members: [
+      json_kv(key: "kind", value: json_string(s: "member")),
+      json_kv(key: "host", value: json_string(s: host as String)),
+      json_kv(key: "deployment", value: json_string(s: deployment.name as String)),
+      json_kv(key: "member", value: json_string(s: member_wire(m: member))),
+    ])
+    SightedBroker { host } => json_object(members: [
+      json_kv(key: "kind", value: json_string(s: "broker")),
+      json_kv(key: "host", value: json_string(s: host as String)),
+    ])
+    SightedMismatchedMarker { host, deployment, field, expected, observed } => json_object(members: [
+      json_kv(key: "kind", value: json_string(s: "mismatched_marker")),
+      json_kv(key: "host", value: json_string(s: host as String)),
+      json_kv(key: "deployment", value: json_string(s: deployment.name as String)),
+      json_kv(key: "field", value: json_string(s: field as String)),
+      json_kv(key: "expected", value: json_string(s: expected)),
+      json_kv(key: "observed", value: json_string(s: observed)),
+    ])
+  }
+}
+
+fn reading_json(r: HostRoleSingletonReading) -> JsonValue {
+  match r {
+    HostRoleSingletonsRead { host, sightings } => json_object(members: [
+      json_kv(key: "kind", value: json_string(s: "read")),
+      json_kv(key: "host", value: json_string(s: host as String)),
+      json_kv(key: "sightings", value: json_array(elements: sightings |> map(s => sighting_json(s: s)))),
+    ])
+    HostRoleSingletonsUnobservable { host, cause } => json_object(members: [
+      json_kv(key: "kind", value: json_string(s: "unobservable")),
+      json_kv(key: "host", value: json_string(s: host as String)),
+      json_kv(key: "cause", value: json_string(s: cause)),
+    ])
+  }
+}
+
+fn role_singleton_self_report_json(report: RoleSingletonSelfReport) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: role_singleton_self_report_schema)),
+    json_kv(key: "host", value: json_string(s: report.host as String)),
+    json_kv(key: "observed_at_unix_millis", value: match report.observed_at_unix_millis { Present { value: at } => json_int(n: at)  Absent => json_null() }),
+    json_kv(key: "reading", value: reading_json(r: report.reading)),
+  ])
+}
+
+type WireText
+  = WireTextFound { value: String }
+  | WireTextRefused { cause: String }
+
+fn wire_text(v: JsonValue, key: String) -> WireText {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: JsonString { value: s } } => WireTextFound { value: s }
+    JsonMemberFound { value: _ } => WireTextRefused { cause: join([key, " is not a string"], "") }
+    JsonMemberAbsent => WireTextRefused { cause: join([key, " is missing"], "") }
+    JsonMemberDuplicated { count: _ } => WireTextRefused { cause: join([key, " is duplicated"], "") }
+    JsonMemberNotAnObject => WireTextRefused { cause: join(["the value carrying ", key, " is not an object"], "") }
+  }
+}
+
+fn wire_name(v: JsonValue, key: String) -> WireText {
+  match wire_text(v: v, key: key) {
+    WireTextRefused { cause } => WireTextRefused { cause: cause }
+    WireTextFound { value } => if value == "" { WireTextRefused { cause: join([key, " is empty"], "") } } else { WireTextFound { value: value } }
+  }
+}
+
+type SightingDecode
+  = SightingDecoded { sighting: RoleSingletonSighting }
+  | SightingUndecodable { cause: String }
+
+fn decode_member_sighting(v: JsonValue, host: NonEmptyStr) -> SightingDecode {
+  match wire_name(v: v, key: "deployment") {
+    WireTextRefused { cause } => SightingUndecodable { cause: cause }
+    WireTextFound { value: d } => match wire_text(v: v, key: "member") {
+      WireTextRefused { cause } => SightingUndecodable { cause: cause }
+      WireTextFound { value: m } => match member_of_wire(s: m) {
+        Absent => SightingUndecodable { cause: join(["member ", m, " is not a role-singleton member"], "") }
+        Present { value: member } => SightingDecoded { sighting: SightedDeploymentMember { host: host, deployment: deployment_id(name: d as NonEmptyStr), member: member } }
+      }
+    }
+  }
+}
+
+fn decode_mismatched_sighting(v: JsonValue, host: NonEmptyStr) -> SightingDecode {
+  match wire_name(v: v, key: "deployment") {
+    WireTextRefused { cause } => SightingUndecodable { cause: cause }
+    WireTextFound { value: d } => match wire_name(v: v, key: "field") {
+      WireTextRefused { cause } => SightingUndecodable { cause: cause }
+      WireTextFound { value: f } => match wire_text(v: v, key: "expected") {
+        WireTextRefused { cause } => SightingUndecodable { cause: cause }
+        WireTextFound { value: e } => match wire_text(v: v, key: "observed") {
+          WireTextRefused { cause } => SightingUndecodable { cause: cause }
+          WireTextFound { value: o } => SightingDecoded { sighting: SightedMismatchedMarker { host: host, deployment: deployment_id(name: d as NonEmptyStr), field: f as NonEmptyStr, expected: e, observed: o } }
+        }
+      }
+    }
+  }
+}
+
+fn decode_sighting(v: JsonValue) -> SightingDecode {
+  match wire_name(v: v, key: "host") {
+    WireTextRefused { cause } => SightingUndecodable { cause: cause }
+    WireTextFound { value: h } => match wire_text(v: v, key: "kind") {
+      WireTextRefused { cause } => SightingUndecodable { cause: cause }
+      WireTextFound { value: kind } =>
+        if kind == "broker" { SightingDecoded { sighting: SightedBroker { host: h as NonEmptyStr } } }
+        else if kind == "member" { decode_member_sighting(v: v, host: h as NonEmptyStr) }
+        else if kind == "mismatched_marker" { decode_mismatched_sighting(v: v, host: h as NonEmptyStr) }
+        else { SightingUndecodable { cause: join(["sighting kind ", kind, " is not one this reader knows"], "") } }
+    }
+  }
+}
+
+type ReadingDecode
+  = ReadingDecoded { reading: HostRoleSingletonReading }
+  | ReadingUndecodable { cause: String }
+
+fn decode_sightings(host: NonEmptyStr, elements: List<JsonValue>) -> ReadingDecode {
+  let decoded = elements |> map(e => decode_sighting(v: e))
+  match decoded |> flat_map(d => match d { SightingUndecodable { cause } => [cause]  SightingDecoded { sighting: _ } => [] }) |> first {
+    Present { value: cause } => ReadingUndecodable { cause: cause }
+    Absent => ReadingDecoded { reading: HostRoleSingletonsRead { host: host, sightings: decoded |> flat_map(d => match d { SightingDecoded { sighting } => [sighting]  SightingUndecodable { cause: _ } => [] }) } }
+  }
+}
+
+fn decode_reading(v: JsonValue) -> ReadingDecode {
+  match wire_name(v: v, key: "host") {
+    WireTextRefused { cause } => ReadingUndecodable { cause: cause }
+    WireTextFound { value: h } => match wire_text(v: v, key: "kind") {
+      WireTextRefused { cause } => ReadingUndecodable { cause: cause }
+      WireTextFound { value: kind } =>
+        if kind == "unobservable" {
+          match wire_text(v: v, key: "cause") {
+            WireTextRefused { cause } => ReadingUndecodable { cause: cause }
+            WireTextFound { value: c } => ReadingDecoded { reading: HostRoleSingletonsUnobservable { host: h as NonEmptyStr, cause: c } }
+          }
+        } else if kind == "read" {
+          match json_object_unique_member(v: v, key: "sightings") {
+            JsonMemberFound { value: JsonArray { elements } } => decode_sightings(host: h as NonEmptyStr, elements: elements)
+            JsonMemberFound { value: _ } => ReadingUndecodable { cause: "sightings is not an array" }
+            JsonMemberAbsent => ReadingUndecodable { cause: "sightings is missing" }
+            JsonMemberDuplicated { count: _ } => ReadingUndecodable { cause: "sightings is duplicated" }
+            JsonMemberNotAnObject => ReadingUndecodable { cause: "the reading is not an object" }
+          }
+        } else {
+          ReadingUndecodable { cause: join(["reading kind ", kind, " is not one this reader knows"], "") }
+        }
+    }
+  }
+}
+
+type SelfReportDecode
+  = SelfReportDecoded { report: RoleSingletonSelfReport }
+  | SelfReportUndecodable { cause: String }
+
+type ObservedInstant
+  = InstantDecoded { at: EpochMs? }
+  | InstantUndecodable { cause: String }
+
+fn observed_instant(v: JsonValue) -> ObservedInstant {
+  match json_member_presence(obj: v, key: "observed_at_unix_millis") {
+    JsonMemberMissing => InstantUndecodable { cause: "observed_at_unix_millis is missing" }
+    JsonMemberUnreadable { cause } => InstantUndecodable { cause: cause }
+    JsonMemberNull => InstantDecoded { at: none }
+    JsonMemberValue { value: _ } => match json_field_int(obj: v, key: "observed_at_unix_millis") {
+      FieldAbsent => InstantUndecodable { cause: "observed_at_unix_millis is missing" }
+      FieldMalformed { cause } => InstantUndecodable { cause: cause }
+      FieldRead { value: at } => if at < 0 { InstantUndecodable { cause: join(["observed_at_unix_millis is negative: ", to_string(at)], "") } } else { InstantDecoded { at: Present { value: at } } }
+    }
+  }
+}
+
+fn decode_self_report_value(v: JsonValue) -> SelfReportDecode {
+  match wire_text(v: v, key: "schema") {
+    WireTextRefused { cause } => SelfReportUndecodable { cause: cause }
+    WireTextFound { value: schema } =>
+      if schema != role_singleton_self_report_schema {
+        SelfReportUndecodable { cause: join(["schema is not ", role_singleton_self_report_schema, ": ", schema], "") }
+      } else {
+        match wire_name(v: v, key: "host") {
+          WireTextRefused { cause } => SelfReportUndecodable { cause: cause }
+          WireTextFound { value: h } => match observed_instant(v: v) {
+            InstantUndecodable { cause } => SelfReportUndecodable { cause: cause }
+            InstantDecoded { at } => match json_object_unique_member(v: v, key: "reading") {
+              JsonMemberFound { value: r } => match decode_reading(v: r) {
+                ReadingUndecodable { cause } => SelfReportUndecodable { cause: cause }
+                ReadingDecoded { reading } => SelfReportDecoded { report: RoleSingletonSelfReport { host: h as NonEmptyStr, observed_at_unix_millis: at, reading: reading } }
+              }
+              JsonMemberAbsent => SelfReportUndecodable { cause: "reading is missing" }
+              JsonMemberDuplicated { count: _ } => SelfReportUndecodable { cause: "reading is duplicated" }
+              JsonMemberNotAnObject => SelfReportUndecodable { cause: "the report is not an object" }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn decode_self_report_in_instance_document(body: String) -> SelfReportDecode {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap } => SelfReportUndecodable { cause: join([role_singleton_self_report_route, " is ", json_document_gap_text(gap: gap)], "") }
+    JsonDocumentParsed { value: doc } => match json_object_unique_member(v: doc, key: role_singleton_self_report_member) {
+      JsonMemberFound { value: r } => decode_self_report_value(v: r)
+      JsonMemberAbsent => SelfReportUndecodable { cause: join([role_singleton_self_report_route, " carries no ", role_singleton_self_report_member, " report"], "") }
+      JsonMemberDuplicated { count: _ } => SelfReportUndecodable { cause: join([role_singleton_self_report_member, " is duplicated"], "") }
+      JsonMemberNotAnObject => SelfReportUndecodable { cause: join([role_singleton_self_report_route, " is not an object"], "") }
+    }
+  }
+}
+
+type FetchedSelfReport
+  = SelfReportServed { peer_node: WhoIsNodeName, body: String, received_at_unix_millis: EpochMs }
+  | SelfReportUnserved { cause: String }
+
+fn role_singleton_self_report_max_age() -> Millisecond {
+  second_to_millisecond(s: curl_localhost_max_time)
+}
+
+type ReportAge
+  = ReportAgedBy { age: Millisecond }
+  | ReportAheadBy { lead: Millisecond }
+  | ReportAgeUnrepresentable { cause: String }
+
+fn report_age(observed: EpochMs, received: EpochMs) -> ReportAge {
+  match checked_int_magnitude(a: received - observed) {
+    CheckedNatOverflow { cause: _ } => ReportAgeUnrepresentable { cause: "the distance between the report's instant and its receipt overflows" }
+    CheckedNatReady { value: n } => if received >= observed { ReportAgedBy { age: millisecond(count: n) } } else { ReportAheadBy { lead: millisecond(count: n) } }
+  }
+}
+
+fn millisecond_text(m: Millisecond) -> String {
+  join([to_string(millisecond_count(m: m)), "ms"], "")
+}
+
+fn roster_host_tailnet_node(row: DesiredDeployment) -> NonEmptyStr? {
+  match row.target.tailnet_domain {
+    Present { value: domain } => Present { value: join([row.target.host.identity as String, ".", domain as String, "."], "") as NonEmptyStr }
+    Absent => none
+  }
+}
+
+fn self_report_unobservable(host: NonEmptyStr, cause: String) -> HostRoleSingletonReading {
+  HostRoleSingletonsUnobservable { host: host, cause: join(["self-report: ", cause], "") }
+}
+
+fn reading_of_reported_host(host: NonEmptyStr, reading: HostRoleSingletonReading) -> HostRoleSingletonReading {
+  match reading {
+    HostRoleSingletonsUnobservable { host: _, cause } => self_report_unobservable(host: host, cause: join(["the host reported itself unobservable: ", cause], ""))
+    HostRoleSingletonsRead { host: h, sightings } =>
+      if (h as String) != (host as String) {
+        self_report_unobservable(host: host, cause: join(["the reading inside the report is of ", h as String], ""))
+      } else {
+        match sightings |> filter(s => (sighting_host(s: s) as String) != (host as String)) |> first {
+          Present { value: s } => self_report_unobservable(host: host, cause: join(["the report carries a sighting on ", sighting_host(s: s) as String, "; a report is a reading of its reporter only"], ""))
+          Absent => HostRoleSingletonsRead { host: host, sightings: sightings }
+        }
+      }
+  }
+}
+
+fn fresh_reading(host: NonEmptyStr, report: RoleSingletonSelfReport, observed: EpochMs, received: EpochMs) -> HostRoleSingletonReading {
+  let bound = role_singleton_self_report_max_age()
+  match report_age(observed: observed, received: received) {
+    ReportAgeUnrepresentable { cause } => self_report_unobservable(host: host, cause: cause)
+    ReportAgedBy { age } =>
+      if millisecond_count(m: age) > millisecond_count(m: bound) {
+        self_report_unobservable(host: host, cause: join(["the report is stale: ", millisecond_text(m: age), " old, bound ", millisecond_text(m: bound)], ""))
+      } else {
+        reading_of_reported_host(host: host, reading: report.reading)
+      }
+    ReportAheadBy { lead } =>
+      if millisecond_count(m: lead) > millisecond_count(m: bound) {
+        self_report_unobservable(host: host, cause: join(["the report is stamped ", millisecond_text(m: lead), " after the reader received it, bound ", millisecond_text(m: bound)], ""))
+      } else {
+        reading_of_reported_host(host: host, reading: report.reading)
+      }
+  }
+}
+
+fn self_report_host_reading(host: NonEmptyStr, expected_node: NonEmptyStr, fetched: FetchedSelfReport) -> HostRoleSingletonReading {
+  match fetched {
+    SelfReportUnserved { cause } => self_report_unobservable(host: host, cause: cause)
+    SelfReportServed { peer_node, body, received_at_unix_millis } => match peer_node {
+      WhoIsNodeUnreadable { cause } => self_report_unobservable(host: host, cause: join(["the serving peer is unidentified: ", cause], ""))
+      WhoIsNodeNamed { name } =>
+        if (name as String) != (expected_node as String) {
+          self_report_unobservable(host: host, cause: join(["the report was served by tailnet node ", name as String, ", not ", expected_node as String], ""))
+        } else {
+          match decode_self_report_in_instance_document(body: body) {
+            SelfReportUndecodable { cause } => self_report_unobservable(host: host, cause: cause)
+            SelfReportDecoded { report } =>
+              if (report.host as String) != (host as String) {
+                self_report_unobservable(host: host, cause: join(["the report names host ", report.host as String], ""))
+              } else {
+                match report.reading {
+                  HostRoleSingletonsUnobservable { host: _, cause: _ } => reading_of_reported_host(host: host, reading: report.reading)
+                  HostRoleSingletonsRead { host: _, sightings: _ } => match report.observed_at_unix_millis {
+                    Absent => self_report_unobservable(host: host, cause: "the report carries a reading but no observed_at instant")
+                    Present { value: observed } => fresh_reading(host: host, report: report, observed: observed, received: received_at_unix_millis)
+                  }
+                }
+              }
+          }
+        }
+    }
+  }
+}
+
+fn fetch_self_report(row: DesiredDeployment) -> FetchedSelfReport {
+  match deployment_tailnet_url(spec: selected_deployment_spec(row: row)) {
+    Absent => SelfReportUnserved { cause: "the roster row declares no tailnet domain, so its host serves no reachable report" }
+    Present { value: base } => {
+      let url = concat(base, role_singleton_self_report_route)
+      let got = http.Client.GetBoundedReportingPeer(url: url as NonEmptyStr)
+      if !got.success {
+        SelfReportUnserved { cause: join(["GET ", url, " failed (an unreachable or unreporting host is unobservable, never absent)"], "") }
+      } else {
+        let lines = split(s: got.body, delimiter: "\n")
+        match reverse(lines) |> first {
+          Absent => SelfReportUnserved { cause: join(["GET ", url, " reported no peer address"], "") }
+          Present { value: peer } =>
+            if trim(s: peer) == "" {
+              SelfReportUnserved { cause: join(["GET ", url, " reported no peer address"], "") }
+            } else {
+              let body = join(take(lines, n: length(lines) - 1), "\n")
+              match clock_unix_millis_read() {
+                ClockUnixMillisRefused { detail } => SelfReportUnserved { cause: join(["the reader's clock is unreadable at receipt: ", detail], "") }
+                ClockUnixMillisObserved { millis } => {
+                  let w = tailscale.WhoIs.Json(address: trim(s: peer) as NonEmptyStr)
+                  if w.success {
+                    SelfReportServed { peer_node: whois_node_name(whois_json: w.stdout), body: body, received_at_unix_millis: millis }
+                  } else {
+                    SelfReportServed { peer_node: WhoIsNodeUnreadable { cause: join(["tailscale whois failed for ", trim(s: peer)], "") }, body: body, received_at_unix_millis: millis }
+                  }
+                }
+              }
+            }
+        }
+      }
+    }
+  }
+}
+
+fn host_row(host: NonEmptyStr, rows: List<DesiredDeployment>) -> DesiredDeployment? {
+  rows |> filter(r => (r.target.ssh_host as String) == (host as String)) |> first
+}
+
+fn self_report_reading_source_with(fetch: fn(DesiredDeployment) -> FetchedSelfReport) -> RoleSingletonReadingSource {
+  RoleSingletonReadingSource {
+    read: (host, rows) => match host_row(host: host, rows: rows) {
+      Absent => self_report_unobservable(host: host, cause: "no roster row targets this host")
+      Present { value: row } => match roster_host_tailnet_node(row: row) {
+        Absent => self_report_unobservable(host: host, cause: "the roster row declares no tailnet domain, so no node can be bound to the host")
+        Present { value: node } => self_report_host_reading(host: host, expected_node: node, fetched: fetch(row))
+      }
+    },
+  }
+}
+
+fn observe_role_singletons_by_self_report(rows: List<DesiredDeployment>) -> RoleSingletonObservation {
+  observe_role_singletons_with(source: self_report_reading_source_with(fetch: r => fetch_self_report(row: r)), rows: rows)
+}
+
+fn observe_role_singletons_with(source: RoleSingletonReadingSource, rows: List<DesiredDeployment>) -> RoleSingletonObservation {
+  let read = source.read
+  role_singleton_observation_of(readings: map(roster_hosts(rows: rows), h => read(h, rows)), rows: rows)
+}
+
+fn assess_over_roster(source: RoleSingletonReadingSource) -> RoleSingletonConvergence {
+  let rows = desired_deployment_roster()
+  role_singleton_convergence(
+    desired: prod_role_actuated_realization(),
+    observed: observe_role_singletons_with(source: source, rows: rows),
+    rows: rows,
+  )
+}
+
+fn unobservable_hosts_of(readings: List<HostRoleSingletonReading>) -> List<NonEmptyStr> {
+  readings |> flat_map(r => match r {
+    HostRoleSingletonsUnobservable { host, cause: _ } => [host]
+    HostRoleSingletonsRead { host: _, sightings: _ } => []
+  })
+}
+
+fn first_unobservable_refusal(readings: List<HostRoleSingletonReading>) -> RoleSingletonRefusal {
+  match readings |> flat_map(r => match r {
+    HostRoleSingletonsUnobservable { host, cause } => [RoleSingletonHostUnobservable { host: host, cause: cause }]
+    HostRoleSingletonsRead { host: _, sightings: _ } => []
+  }) |> first {
+    Present { value: c } => c
+    Absent => RoleSingletonHostUnobservable { host: "unobservable" as NonEmptyStr, cause: "a roster host was unobservable but no host was named" }
+  }
+}
+
+fn local_placement_change(spec: DeploymentSpec, realizations: List<ObservedRealization>, desired: ProdRoleRealization) -> Bool {
+  match spec.role_singletons {
+    HoldsNoRoleSingleton => match realizations |> first {
+      Absent => false
+      Present { value: _ } => true
+    }
+    HoldsProdRoleSingletons { holder } => match desired {
+      ProdRoleRealizationRefused { cause: _ } => true
+      ProdRoleRealizedBy { holder: desired_holder } =>
+        if !(desired_holder.instance.deployment == holder.instance.deployment) {
+          true
+        } else {
+          match realizations |> first {
+            Absent => true
+            Present { value: r } =>
+              !(r.deployment == holder.instance.deployment && count(missing_members(r: r)) == 0)
+          }
+        }
+    }
+  }
+}
+
+fn production_reading_source(applying_host: NonEmptyStr) -> RoleSingletonReadingSource {
+  let peer = self_report_reading_source_with(fetch: r => fetch_self_report(row: r))
+  let read_peer = peer.read
+  RoleSingletonReadingSource {
+    read: (host, rows) =>
+      if (host as String) == (applying_host as String) {
+        host_role_singleton_reading(host: host, rows: rows, arm: OnTheHostItself)
+      } else {
+        read_peer(host, rows)
+      },
+  }
+}
+
+fn assess_spec_over_roster(spec: DeploymentSpec, source: RoleSingletonReadingSource) -> RoleSingletonAdmissionStanding {
+  assess_spec_over_roster_in(spec: spec, source: source, selection: prod_role_selection)
+}
+
+fn assess_spec_over_roster_in(spec: DeploymentSpec, source: RoleSingletonReadingSource, selection: ProdRoleSelection) -> RoleSingletonAdmissionStanding {
+  let rows = desired_deployment_roster()
+  let desired = prod_role_actuated_realization_in(selection: selection)
+  let read = source.read
+  let readings = map(roster_hosts(rows: rows), h => read(h, rows))
+  match read(spec.target.ssh_host, rows) {
+    HostRoleSingletonsUnobservable { host, cause } =>
+      RoleSingletonInadmissible { cause: RoleSingletonHostUnobservable { host: host, cause: cause } }
+    HostRoleSingletonsRead { host: _, sightings: _ } =>
+      match role_singleton_observation_of(readings: [read(spec.target.ssh_host, rows)], rows: rows) {
+        RoleSingletonObservationRefused { cause } => RoleSingletonInadmissible { cause: cause }
+        RoleSingletonsObserved { realizations } =>
+          if count(unobservable_hosts_of(readings: readings)) == 0 {
+            classify_role_singleton_admission(
+              spec: spec,
+              desired: desired,
+              decision: role_singleton_convergence(
+                desired: desired,
+                observed: role_singleton_observation_of(readings: readings, rows: rows),
+                rows: rows,
+              ),
+            )
+          } else if local_placement_change(spec: spec, realizations: realizations, desired: desired) {
+            RoleSingletonInadmissible { cause: first_unobservable_refusal(readings: readings) }
+          } else {
+            classify_role_singleton_admission(
+              spec: spec,
+              desired: desired,
+              decision: RoleSingletonInPlace { global_unobservable: unobservable_hosts_of(readings: readings) },
+            )
+          }
+      }
+  }
+}
+
+fn assess_and_admit(deployment: DesiredDeployment) -> RoleSingletonAdmissionResult admit_callers: [
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_via_transport"),
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_transaction_decided"),
+] {
+  match bind_desired_selected_identity(desired: deployment) {
+    DesiredSelectedIdentityUnknownInstance { instance_id } =>
+      RoleSingletonNotAdmitted { cause: RoleSingletonDeploymentUnrostered { instance_id: instance_id, detail: "no roster row carries this instance id" } }
+    DesiredSelectedIdentityRosterRefused { refusal: _ } =>
+      RoleSingletonNotAdmitted { cause: RoleSingletonDeploymentUnrostered { instance_id: instance_id_text(id: deployment.instance.instance_id), detail: "the desired roster itself refused" } }
+    DesiredSelectedIdentityMismatch { carried: _, rostered: _ } =>
+      RoleSingletonNotAdmitted { cause: RoleSingletonDeploymentUnrostered { instance_id: instance_id_text(id: deployment.instance.instance_id), detail: "the carried selected identity is not the rostered one" } }
+    DesiredSelectedIdentityBound { row } => assess_and_admit_rostered(spec: selected_deployment_spec(row: row))
+  }
+}
+
+fn assess_and_admit_rostered(spec: DeploymentSpec) -> RoleSingletonAdmissionResult admit_callers: [
+  decl_ref(module_path: "gunbc.live_deploy.role_singleton_convergence", decl_name: "assess_and_admit"),
+] {
+  match assess_spec_over_roster(spec: spec, source: production_reading_source(applying_host: spec.target.ssh_host)) {
+    RoleSingletonInadmissible { cause } => RoleSingletonNotAdmitted { cause: cause }
+    RoleSingletonAdmissible { decision: d } => RoleSingletonAdmitted { admission: mint_role_singleton_admission(spec: spec, decision: d) }
+  }
+}

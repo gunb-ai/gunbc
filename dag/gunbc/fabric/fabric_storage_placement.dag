@@ -3,10 +3,11 @@ module gunbc.fabric_storage_placement
 import gunbc.fabric_storage_address { fabric_storage_route_prefix, fabric_storage_state_suffix, fabric_storage_state_root, fabric_storage_state_file_root }
 
 import std.types { String, NonEmptyStr, FilePath, Int, Bool, Port, List }
+import std.algebra { trim }
 import product.host_identity { HostIdentity }
 import gunbc.fleet_intent_network { fleet_intent_network }
 import gunbc.roadmap_dashboard_instance {
-  HostDashboardInstance, dashboard_instance_child,
+  HostDashboardInstance, dashboard_instance_child, dashboard_ownership_marker_in,
   ProdRoleRealization, ProdRoleRealizedBy, ProdRoleRealizationRefused, ProdRoleRealizationRefusal,
 }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryManaged }
@@ -19,7 +20,7 @@ import gunbc.managed_directory {
 }
 import gunbc.fleet_posix_accounts { fleet_posix_ci_runner_user }
 import gunbc.fabric_storage_file_store { FabricStorageFileRoot, fabric_storage_file_root, fabric_storage_file_root_with }
-import extdeps.access.posix { FileMode, file_mode_bits }
+import extdeps.access.posix { FileMode, PermissionBits, PosixUser, file_mode_bits, file_mode_octal, file_mode_of_octal_text }
 
 // WHERE THE FABRIC DB IS: one host holds the store's files and answers the endpoint. This is the
 // POLICY fact of the three (DESIGN 3) -- std.fabric_storage is the interface, the file store and the
@@ -81,6 +82,91 @@ fn fabric_storage_root_of(instance: HostDashboardInstance) -> FilePath {
 
 fn fabric_storage_store_root(instance: HostDashboardInstance) -> NonEmptyStr {
   fabric_storage_root_of(instance: instance) as String as NonEmptyStr
+}
+
+fn fabric_storage_control_directory_path(instance: HostDashboardInstance) -> NonEmptyStr {
+  dashboard_instance_child(root: instance.instance_root, child: "fabric-storage-control") as String as NonEmptyStr
+}
+
+fn fabric_storage_ownership_marker_path(instance: HostDashboardInstance) -> NonEmptyStr {
+  dashboard_ownership_marker_in(root: fabric_storage_control_directory_path(instance: instance) as String as FilePath, instance_id: instance.instance_id) as String as NonEmptyStr
+}
+
+data fabric_storage_marker_observer: PosixUser = fleet_posix_ci_runner_user
+
+fn fabric_storage_control_directory(instance: HostDashboardInstance) -> ManagedDirectory {
+  let service = srv1_dashboard_service_principal()
+  ManagedDirectory {
+    member: "fabric-storage-control",
+    path: fabric_storage_control_directory_path(instance: instance) as String as FilePath,
+    owner: service,
+    group_principal: fabric_storage_marker_observer,
+    dependents: [
+      DirectoryDependent { who: service, needs: [Read, Write, Execute] },
+      DirectoryDependent { who: fabric_storage_marker_observer, needs: [Read, Execute] },
+    ],
+    ownership: Ensured,
+    entries: EntriesUnmanaged,
+  }
+}
+
+fn fabric_storage_ownership_marker_content(instance: HostDashboardInstance) -> NonEmptyStr {
+  join(["deployment=", instance.deployment.name as String, "\nhost=", instance.host_identity as String, "\n"], "") as NonEmptyStr
+}
+
+type FabricStorageOwnershipMarkerSpec {
+  path: NonEmptyStr
+  content: NonEmptyStr
+  mode: FileMode
+  owner: NonEmptyStr
+  group: NonEmptyStr
+}
+
+data fabric_storage_ownership_marker_mode: FileMode = FileMode {
+  owner: PermissionBits { read: true, write: true, execute: false },
+  group: PermissionBits { read: true, write: false, execute: false },
+  other: PermissionBits { read: true, write: false, execute: false },
+  setuid: false,
+  setgid: false,
+  sticky: false,
+}
+
+fn fabric_storage_ownership_marker_spec(instance: HostDashboardInstance) -> FabricStorageOwnershipMarkerSpec {
+  FabricStorageOwnershipMarkerSpec {
+    path: fabric_storage_ownership_marker_path(instance: instance),
+    content: fabric_storage_ownership_marker_content(instance: instance),
+    mode: fabric_storage_ownership_marker_mode,
+    owner: srv1_dashboard_service_principal().name,
+    group: srv1_dashboard_service_principal().name,
+  }
+}
+
+type FabricStorageMarkerReading {
+  path: NonEmptyStr
+  content: String
+  mode: String
+  owner: String
+  group: String
+}
+
+type FabricStorageMarkerVerdict
+  = FabricStorageMarkerExact
+  | FabricStorageMarkerMismatched { field: NonEmptyStr, expected: String, observed: String }
+
+fn fabric_storage_marker_mode_matches(spec: FileMode, observed: String) -> Bool {
+  match file_mode_of_octal_text(text: observed) {
+    Present { value: m } => file_mode_octal(mode: m) == file_mode_octal(mode: spec)
+    Absent => false
+  }
+}
+
+fn fabric_storage_marker_verdict(spec: FabricStorageOwnershipMarkerSpec, reading: FabricStorageMarkerReading) -> FabricStorageMarkerVerdict {
+  if !((reading.path as String) == (spec.path as String)) { FabricStorageMarkerMismatched { field: "path", expected: spec.path as String, observed: reading.path as String } }
+  else if !(reading.content == (spec.content as String)) { FabricStorageMarkerMismatched { field: "content", expected: spec.content as String, observed: reading.content } }
+  else if !fabric_storage_marker_mode_matches(spec: spec.mode, observed: reading.mode) { FabricStorageMarkerMismatched { field: "mode", expected: file_mode_octal(mode: spec.mode), observed: reading.mode } }
+  else if !(trim(s: reading.owner) == (spec.owner as String)) { FabricStorageMarkerMismatched { field: "owner", expected: spec.owner as String, observed: reading.owner } }
+  else if !(trim(s: reading.group) == (spec.group as String)) { FabricStorageMarkerMismatched { field: "group", expected: spec.group as String, observed: reading.group } }
+  else { FabricStorageMarkerExact }
 }
 
 // WHETHER AN INSTANCE HOLDS THE PLACEMENT: the store is the prod deployment's state, so the placement
@@ -251,6 +337,7 @@ fn fabric_storage_store_directories(instance: HostDashboardInstance) -> List<Man
     fabric_storage_state_directory(member: "fabric-state-objects", path: fabric_storage_state_file_root(store_root: root).objects),
     fabric_storage_state_directory(member: "fabric-state-heads", path: fabric_storage_state_file_root(store_root: root).heads),
     fabric_storage_door_directory(instance: instance),
+    fabric_storage_control_directory(instance: instance),
   ]
 }
 
