@@ -29,8 +29,7 @@ module test.claim.gcp_oauth_access_token_witness
 // what let a stale receipt sit under a correct claim unnoticed.
 //
 // Enrolled under a false disposition these would be refused at the hermetic boundary, counted
-// `executed`, and assert nothing, while a `_test.dag` name made `BarrenTestSidecar` vouch for it:
-// a silently inert witness converted into a loudly enrolled one. That is strictly worse than this
+// `executed`, and assert nothing: a silently inert witness converted into a loudly enrolled one. That is strictly worse than this
 // comment.
 //
 // WHAT WOULD ACTUALLY MAKE IT ASSERT SOMETHING is restructuring onto a subject that carries no

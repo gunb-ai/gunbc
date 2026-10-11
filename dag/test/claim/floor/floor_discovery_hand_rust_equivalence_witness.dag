@@ -6,7 +6,7 @@ import gunbc.floor.floor_discovery_scaffold {
   floor_discovery_hand_rust_scaffold,
   floor_discovery_dissolve_trigger,
   floor_discovery_producer_entry,
-  floor_discovery_equivalence_test_sidecar_misplaced,
+  floor_discovery_equivalence_wire_contract_misplaced,
   floor_discovery_equivalence_test_scan_wire_contract,
   floor_discovery_equivalence_test_narrowed_corpus_control,
   floor_entry_resolution_host_boundary_note,
@@ -440,7 +440,7 @@ test fn floor_discovery_live_tree_disposition_note_sibling_not_declaration_holds
 
 test fn floor_discovery_equivalence_rust_tests_named() -> Bool {
   string_contains(
-    s: floor_discovery_equivalence_test_sidecar_misplaced,
+    s: floor_discovery_equivalence_wire_contract_misplaced,
     pattern: "misplaced_wire_contract_decl_drives_discover_to_err"
   ) && string_contains(
     s: floor_discovery_equivalence_test_scan_wire_contract,

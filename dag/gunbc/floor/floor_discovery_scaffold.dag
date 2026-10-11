@@ -23,7 +23,7 @@ data floor_entry_resolution_host_boundary_discriminator: String = "resolve_works
 
 data floor_discovery_producer_entry: String = "src/v2/workflow/floor_discovery_producer.dag"
 
-data floor_discovery_equivalence_test_sidecar_misplaced: String = "misplaced_wire_contract_decl_drives_discover_to_err"
+data floor_discovery_equivalence_wire_contract_misplaced: String = "misplaced_wire_contract_decl_drives_discover_to_err"
 
 data floor_discovery_equivalence_test_scan_wire_contract: String = "scan_detects_coproduct_wire_contract_data"
 
