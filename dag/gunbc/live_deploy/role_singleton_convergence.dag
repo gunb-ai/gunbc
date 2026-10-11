@@ -650,8 +650,12 @@ type RoleSingletonSelfReport {
   reading: HostRoleSingletonReading
 }
 
+fn roster_row_of_instance_id(instance_id: NonEmptyStr, rows: List<DesiredDeployment>) -> DesiredDeployment? {
+  rows |> filter(r => instance_id_text(id: r.instance.instance_id) == instance_id_text(id: instance_id)) |> first
+}
+
 fn roster_row_of_instance(instance: HostDashboardInstance, rows: List<DesiredDeployment>) -> DesiredDeployment? {
-  rows |> filter(r => instance_id_text(id: r.instance.instance_id) == instance_id_text(id: instance.instance_id)) |> first
+  roster_row_of_instance_id(instance_id: instance.instance_id, rows: rows)
 }
 
 fn role_singleton_self_report_of(instance: HostDashboardInstance) -> RoleSingletonSelfReport {
@@ -1086,7 +1090,7 @@ fn first_unobservable_refusal(readings: List<HostRoleSingletonReading>) -> RoleS
 }
 
 fn spec_deployment_on_roster(spec: DeploymentSpec, rows: List<DesiredDeployment>) -> DeploymentId? {
-  match rows |> filter(r => instance_id_text(id: r.instance.instance_id) == instance_id_text(id: spec.instance_id)) |> first {
+  match roster_row_of_instance_id(instance_id: spec.instance_id, rows: rows) {
     Present { value: r } => Present { value: r.instance.deployment }
     Absent => none
   }
@@ -1097,9 +1101,9 @@ fn spec_deployment_on_roster(spec: DeploymentSpec, rows: List<DesiredDeployment>
 // units. A placement change exists only when an observed realization belongs to THIS spec's
 // deployment — leftover units of its own (review 78627), not a co-hosted holder's. An unrostered
 // spec cannot attribute a realization and is treated as a placement change (fail-closed).
-fn local_placement_change(spec: DeploymentSpec, realizations: List<ObservedRealization>, desired: ProdRoleRealization) -> Bool {
+fn local_placement_change(spec: DeploymentSpec, realizations: List<ObservedRealization>, desired: ProdRoleRealization, rows: List<DesiredDeployment>) -> Bool {
   match spec.role_singletons {
-    HoldsNoRoleSingleton => match spec_deployment_on_roster(spec: spec, rows: desired_deployment_roster()) {
+    HoldsNoRoleSingleton => match spec_deployment_on_roster(spec: spec, rows: rows) {
       Absent => true
       Present { value: d } => any(realizations, r => r.deployment == d)
     }
@@ -1158,7 +1162,7 @@ fn assess_spec_over_roster_in(spec: DeploymentSpec, source: RoleSingletonReading
                 rows: rows,
               ),
             )
-          } else if local_placement_change(spec: spec, realizations: realizations, desired: desired) {
+          } else if local_placement_change(spec: spec, realizations: realizations, desired: desired, rows: rows) {
             RoleSingletonInadmissible { cause: first_unobservable_refusal(readings: readings) }
           } else {
             classify_role_singleton_admission(
