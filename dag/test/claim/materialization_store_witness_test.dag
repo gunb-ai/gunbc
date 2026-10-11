@@ -1,6 +1,6 @@
 module test.claim.materialization_store_witness
 
-import std.judgment_contract { identity_structural_component, identity_digest_component }
+import std.judgment_contract { identity_structural_component, identity_digest_component, identity_component_canonical }
 import std.cache_identity { native_module_verdict_bundle_artifact_kind }
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.content_hash {
@@ -636,14 +636,14 @@ test fn the_declared_input_projection_carries_the_required_lens_contract() -> Bo
     req: NativeCompilerArtifactRequest { generation: moved }
   )
   let named_present = (inputs |> filter(i =>
-    i.ref == "generation.required_lens_contract" && i.digest == base.required_lens_contract
+    i.ref == "generation.required_lens_contract" && identity_component_canonical(component: i.component) == identity_component_canonical(component: identity_structural_component(digest: base.required_lens_contract))
   ) |> count()) == 1
   let named_moved = (inputs_moved |> filter(i =>
-    i.ref == "generation.required_lens_contract" && i.digest == moved.required_lens_contract
+    i.ref == "generation.required_lens_contract" && identity_component_canonical(component: i.component) == identity_component_canonical(component: identity_structural_component(digest: moved.required_lens_contract))
   ) |> count()) == 1
   let others_unmoved = (inputs |> filter(i =>
     i.ref != "generation.required_lens_contract"
-      && (inputs_moved |> filter(j => j.ref == i.ref && j.digest == i.digest) |> count()) != 1
+      && (inputs_moved |> filter(j => j.ref == i.ref && identity_component_canonical(component: j.component) == identity_component_canonical(component: i.component)) |> count()) != 1
   ) |> count()) == 0
   let same_row_count = (inputs |> count()) == (inputs_moved |> count())
   named_present && named_moved && others_unmoved && same_row_count

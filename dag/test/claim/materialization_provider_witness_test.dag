@@ -764,7 +764,7 @@ fn witness_native_compiler_request() -> ArtifactRequest {
 
 fn witness_universe_request() -> ArtifactRequest {
   UniverseArtifactRequest {
-    tested_tree_identity: content_hash_atom(value: "tree-1"),
+    tested_tree_identity: as_content_hash_structural(structural: content_hash_atom(value: "tree-1")),
     route_binary: DeclaredInput {
       ref: "route_binary_identity",
       component: identity_structural_component(digest: content_hash_atom(value: "route-binary-1"))
@@ -774,11 +774,11 @@ fn witness_universe_request() -> ArtifactRequest {
 
 fn witness_verdict_bundle_request() -> ArtifactRequest {
   NativeModuleVerdictBundleRequest(NativeModuleVerdictBundleSubject {
-    route_binary_identity: content_hash_atom(value: "route-1"),
-    module_identity: content_hash_atom(value: "module-1"),
-    canonical_module_import_closure_identity: content_hash_atom(value: "closure-1"),
-    ordered_test_identity_population: content_hash_atom(value: "tests-1"),
-    eval_interpretation_identity: content_hash_atom(value: "eval-1")
+    route_binary_identity: as_content_hash_structural(structural: content_hash_atom(value: "route-1")),
+    module_identity: as_content_hash_structural(structural: content_hash_atom(value: "module-1")),
+    canonical_module_import_closure_identity: as_content_hash_structural(structural: content_hash_atom(value: "closure-1")),
+    ordered_test_identity_population: as_content_hash_structural(structural: content_hash_atom(value: "tests-1")),
+    eval_interpretation_identity: as_content_hash_structural(structural: content_hash_atom(value: "eval-1"))
   })
 }
 
