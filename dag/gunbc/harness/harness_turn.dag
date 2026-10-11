@@ -1919,11 +1919,15 @@ fn harness_supervision_bounded(text: String) -> String {
 
 // THE ROUND, AS THE CHECK SEES IT: the messages the round added, each bounded. A round adds an
 // assistant message and its tool results per turn (one tool message per call on the chat shape), so
-// the tail is bounded by three messages per turn of the round; the brief, which the chain restates,
-// is never re-sent.
+// the tail is three messages per turn of the round, and never more than the cap: a hundred-turn
+// round would otherwise hand a twelve-step check some 180k characters. The check reads the
+// worktree for the rest; the brief, which the chain restates, is never re-sent.
+data harness_supervision_observed_message_cap: Int = 120
+
 fn harness_supervision_observation_text(messages: List<JsonValue>, round_steps: Int) -> String {
   let n = list_length(items: messages)
-  let from = if n - 3 * round_steps < 1 { 1 } else { n - 3 * round_steps }
+  let tail = if 3 * round_steps < harness_supervision_observed_message_cap { 3 * round_steps } else { harness_supervision_observed_message_cap }
+  let from = if n - tail < 1 { 1 } else { n - tail }
   join(
     enumerate(messages)
       |> filter(pair => pair.first >= from)

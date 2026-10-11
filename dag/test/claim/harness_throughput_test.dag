@@ -171,7 +171,7 @@ test fn the_unspent_budget_is_projected_at_the_mean_pace() -> Bool {
   ] }
   round_remaining_flex(ledger: ledger, budget_steps: 5) == 4000
     && round_remaining_flex(ledger: ledger, budget_steps: 3) == 0
-    && harness_round_budget_steps == 40
+    && harness_round_budget_steps == 100
 }
 
 // A ROUND WHOSE COUNT COULD NOT BE READ IS NOT A ROUND THAT PRODUCED NOTHING (review 63779).
