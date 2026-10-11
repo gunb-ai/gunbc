@@ -351,17 +351,20 @@ fn harness_observe_operator_reading(route: HarnessOperatorRoute) -> OperatorMode
 }
 
 fn harness_operator_roster_step(acc: HarnessRosterFold, route: HarnessOperatorRoute, standing: OperatorRouteStanding) -> HarnessRosterFold {
-  let endpoint = match operator_endpoint_origin() { Present { value: o } => o  Absent => "operator-endpoint-unresolved" as NonEmptyStr }
-  match standing {
-    OperatorRouteServing { model: m } =>
-      HarnessRosterFold {
-        serving: concat(acc.serving, [HarnessRouteServing { endpoint: endpoint, group_wire: route.group_wire, model: m, unit: route.unit }]),
-        declined: acc.declined,
-        unresolved: acc.unresolved,
+  match operator_endpoint_origin() {
+    Absent => HarnessRosterFold { serving: acc.serving, declined: acc.declined, unresolved: concat(acc.unresolved, ["the operator endpoint origin could not be composed" as NonEmptyStr]) }
+    Present { value: endpoint } =>
+      match standing {
+        OperatorRouteServing { model: m } =>
+          HarnessRosterFold {
+            serving: concat(acc.serving, [HarnessRouteServing { endpoint: endpoint, group_wire: route.group_wire, model: m, unit: route.unit }]),
+            declined: acc.declined,
+            unresolved: acc.unresolved,
+          }
+        OperatorRouteModelNotAdmitted { advertised: a } => harness_operator_decline(acc: acc, route: route, endpoint: endpoint, standing: HarnessBackendModelNotAdmitted { advertised: a })
+        OperatorRouteUnreachable { url: u } => harness_operator_decline(acc: acc, route: route, endpoint: endpoint, standing: HarnessBackendUnreachable { url: u })
+        OperatorRouteUnreadable { cause: c } => harness_operator_decline(acc: acc, route: route, endpoint: endpoint, standing: HarnessBackendUnreadable { cause: c })
       }
-    OperatorRouteModelNotAdmitted { advertised: a } => harness_operator_decline(acc: acc, route: route, endpoint: endpoint, standing: HarnessBackendModelNotAdmitted { advertised: a })
-    OperatorRouteUnreachable { url: u } => harness_operator_decline(acc: acc, route: route, endpoint: endpoint, standing: HarnessBackendUnreachable { url: u })
-    OperatorRouteUnreadable { cause: c } => harness_operator_decline(acc: acc, route: route, endpoint: endpoint, standing: HarnessBackendUnreadable { cause: c })
   }
 }
 
