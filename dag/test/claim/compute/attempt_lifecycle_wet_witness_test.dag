@@ -400,7 +400,7 @@ test fn the_loser_of_a_launch_race_never_reports_that_it_settled_the_slot() -> B
 fn fixture_toolchain() -> WorkToolchainIdentity {
   work_toolchain_observed(
     rustc_verbose: "rustc fixture" as NonEmptyStr, target_triple: "fixture-triple" as NonEmptyStr, cargo_version: "cargo fixture" as NonEmptyStr,
-    cache_release: "sccache fixture" as NonEmptyStr, provider_revision: "fixture-provider" as NonEmptyStr,
+    cache_release: "sccache fixture" as NonEmptyStr, provider_revision: match git_object_id_from_untagged_hex(hex: "2222222222222222222222222222222222222222") { Present { value: oid } => oid  Absent => "2222222222222222222222222222222222222222" },
   )
 }
 

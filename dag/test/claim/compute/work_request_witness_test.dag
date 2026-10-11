@@ -67,10 +67,17 @@ fn tc_axes(rustc: String, triple: String, cargo: String, cache: String, provider
   tc(rustc: rustc, triple: triple, cargo: cargo, cache: cache, provider: provider)
 }
 
+fn provider_tree_oid(hex: String) -> GitObjectId {
+  match git_object_id_from_untagged_hex(hex: hex) {
+    Present { value: oid } => oid
+    Absent => hex as GitObjectId
+  }
+}
+
 fn tc(rustc: String, triple: String, cargo: String, cache: String, provider: String) -> WorkToolchainIdentity {
   work_toolchain_observed(
     rustc_verbose: rustc as NonEmptyStr, target_triple: triple as NonEmptyStr, cargo_version: cargo as NonEmptyStr,
-    cache_release: cache as NonEmptyStr, provider_revision: provider as NonEmptyStr,
+    cache_release: cache as NonEmptyStr, provider_revision: provider_tree_oid(hex: provider),
   )
 }
 
@@ -151,11 +158,16 @@ test fn wet_requests_execute_per_occurrence_and_hermetic_requests_share_one_exec
 test fn the_execution_identity_reads_the_host_triple_and_refuses_without_one() -> Bool {
   let verbose = "rustc 1.90.0 (abc 2025-01-01)\nbinary: rustc\nhost: aarch64-unknown-linux-gnu\nrelease: 1.90.0\n"
   let ok = ComputeExecOk { stdout: "x", stderr: "" }
-  (match compute_toolchain_decide(rustc: ComputeExecOk { stdout: verbose, stderr: "" }, cargo: ok, cache: ok, provider: ok) {
+  let provider_ok = ComputeExecOk { stdout: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n", stderr: "" }
+  (match compute_toolchain_decide(rustc: ComputeExecOk { stdout: verbose, stderr: "" }, cargo: ok, cache: ok, provider: provider_ok) {
     ToolchainObserved { toolchain } => (toolchain.target_triple as String) == "aarch64-unknown-linux-gnu"
     ToolchainObservationRefused { detail: _ } => false
   })
-    && (match compute_toolchain_decide(rustc: ComputeExecOk { stdout: "rustc 1.90.0\n", stderr: "" }, cargo: ok, cache: ok, provider: ok) {
+    && (match compute_toolchain_decide(rustc: ComputeExecOk { stdout: verbose, stderr: "" }, cargo: ok, cache: ok, provider: ok) {
+      ToolchainObserved { toolchain: _ } => false
+      ToolchainObservationRefused { detail } => string_contains(s: detail, pattern: "not a git object id")
+    })
+    && (match compute_toolchain_decide(rustc: ComputeExecOk { stdout: "rustc 1.90.0\n", stderr: "" }, cargo: ok, cache: ok, provider: provider_ok) {
       ToolchainObserved { toolchain: _ } => false
       ToolchainObservationRefused { detail } => string_contains(s: detail, pattern: "host")
     })
