@@ -1,0 +1,70 @@
+module test.claim.roadmap.roadmap_task_design_witness_test
+
+import std.types { Bool, String, List }
+import gunbc.roadmap_status { TicketFields, line_ticket, item_superseded_by }
+import gunbc.roadmap_authority { declared_roadmap_nodes }
+import gunbc.roadmap.roadmap_readiness {
+  ReadinessGap, GapDesign, readiness_design_gaps, readiness_gap_reason,
+}
+import test.claim.roadmap.roadmap_node_fixture { fx_ticket_wi }
+
+fn designed() -> TicketFields {
+  TicketFields {
+    headline: "Render the gate line from the typed operation",
+    brief: "The gate line stops spelling its command as a string",
+    displaced_cost: "a drift between the string and the model is invisible until the gate runs",
+    current_state: "Unaccepted",
+    first_slice: "Make the pinned acceptance check green",
+    red_control: "a rendered line that still carries the literal command",
+    out_of_scope: "other gate lines",
+    handback: "the typed line and the check green by execution",
+    updates: [],
+    authored_on: "2026-10-11",
+    last_verified_on: "2026-10-11",
+  }
+}
+
+fn with_red_control(t: TicketFields, red_control: String) -> TicketFields {
+  TicketFields {
+    headline: t.headline, brief: t.brief, displaced_cost: t.displaced_cost, current_state: t.current_state,
+    first_slice: t.first_slice, red_control: red_control, out_of_scope: t.out_of_scope, handback: t.handback,
+    updates: t.updates, authored_on: t.authored_on, last_verified_on: t.last_verified_on,
+  }
+}
+
+fn with_headline_and_handback(t: TicketFields, headline: String, handback: String) -> TicketFields {
+  TicketFields {
+    headline: headline, brief: t.brief, displaced_cost: t.displaced_cost, current_state: t.current_state,
+    first_slice: t.first_slice, red_control: t.red_control, out_of_scope: t.out_of_scope, handback: handback,
+    updates: t.updates, authored_on: t.authored_on, last_verified_on: t.last_verified_on,
+  }
+}
+
+fn missing_of(gaps: List<ReadinessGap>) -> List<String> {
+  gaps |> flat_map(g => match g { GapDesign { missing } => missing  _ => [] as List<String> })
+}
+
+// A DESIGNED TASK HAS NO DESIGN GAP: every worker field and the reviewer's red control are present.
+test fn a_designed_ticket_has_no_design_gap() -> Bool {
+  count(readiness_design_gaps(node: fx_ticket_wi(identity: "rnfx_DESIGN0000000000000001", id: "designed", done: false, t: designed(), repo: "gunbc"))) == 0
+}
+
+// THE FALSIFICATION QUESTION IS PART OF THE DESIGN: a ticket whose red control is blank -- whitespace
+// is blank -- is not designed, and the gap names exactly what is missing, in the fields' order.
+test fn a_blank_red_control_or_worker_field_is_named_missing() -> Bool {
+  let no_falsifier = fx_ticket_wi(identity: "rnfx_DESIGN0000000000000002", id: "no-falsifier", done: false, t: with_red_control(t: designed(), red_control: "  "), repo: "gunbc")
+  let two_blank = fx_ticket_wi(identity: "rnfx_DESIGN0000000000000003", id: "two-blank", done: false, t: with_headline_and_handback(t: designed(), headline: "", handback: ""), repo: "gunbc")
+  missing_of(gaps: readiness_design_gaps(node: no_falsifier)) == ["red control"]
+    && missing_of(gaps: readiness_design_gaps(node: two_blank)) == ["headline", "handback"]
+    && readiness_gap_reason(g: GapDesign { missing: ["red control"] }).contains("missing: red control")
+}
+
+// EVERY LIVE DECLARED NODE IS A TICKET, so the design gate, which reads tickets, covers the whole
+// authority: a live row authored in another shape would bypass it, and this census reds on it by name.
+// A superseded row is outside it -- it never dispatches, whatever its shape.
+test fn every_live_declared_node_is_a_ticket() -> Bool {
+  declared_roadmap_nodes()
+    |> filter(n => item_superseded_by(item: n.line) == "")
+    |> filter(n => match line_ticket(item: n.line) { Present { value: _ } => false  Absent => true })
+    |> map(n => n.node) == [] as List<String>
+}

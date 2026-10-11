@@ -88,14 +88,17 @@ fn readiness_centering_gaps(node: RoadmapNode) -> List<ReadinessGap> {
 // first slice, what is out of scope, and the handback -- and what only the reviewer is given, the red
 // control, the falsification question the reviewer judges with and steers by. The acceptance check
 // and the plan are gated beside this (contract, centering). A field present but blank is missing: an
-// empty string is not a design.
+// empty string is not a design. The gate reads TICKET rows, the one shape the authority declares and
+// the runtime task store creates; the older authored and derivable lines carry no design fields to
+// read and are declared nowhere, which test.claim.roadmap.roadmap_task_design_witness_test pins over
+// the declared authority so a non-ticket row cannot arrive unnoticed.
 fn readiness_design_field(name: String, text: String) -> List<String> {
   if trim(s: text) == "" { [name] } else { [] }
 }
 
 fn readiness_design_gaps(node: RoadmapNode) -> List<ReadinessGap> {
   match line_ticket(item: node.line) {
-    Absent => [GapDesign { missing: ["ticket"] }]
+    Absent => []
     Present { value: t } => {
       let missing = concat(readiness_design_field(name: "headline", text: t.headline),
         concat(readiness_design_field(name: "boundary", text: t.brief),
