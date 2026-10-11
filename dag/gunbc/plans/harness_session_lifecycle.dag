@@ -1,14 +1,14 @@
-module gunbc.plans.harness_work_lifecycle
+module gunbc.plans.harness_session_lifecycle
 
 import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
 import std.markdown { MarkdownBlock }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote }
 
-fn harness_work_lifecycle_body() -> List<MarkdownBlock> {
+fn harness_session_lifecycle_body() -> List<MarkdownBlock> {
   [
     quote(blocks: [
-      p(text: "**Status: design authority for a dispatched worker's session; operator decisions of 2026-10-11 recorded in section 5.** It restores the document at the path the roadmap rows `harness-recursive-alignment` and `factory` and a dozen code annotations still cite; the previous version was deleted in fa44b981025 (2026-10-10, v1 closeout). It keeps that version's intent -- the alignment ladder (owner direction 2026-09-21) and durable obligations over replaceable processes (owner ruling 2026-09-21) -- and replaces its realization, which turned the alignment cadence into a process restart."),
+      p(text: "**Status: design authority for a dispatched worker's session; operator decisions of 2026-10-11 recorded in section 5.** It supersedes ONE part of the deleted `docs/plans/harness-work-lifecycle.md` (deleted in fa44b981025, 2026-10-10): the realization of the alignment cadence as a process restart, and the continuation turns built on it. It does not restore that document: its other standing sections -- resource policy, delivery structure, the conservation laws, the belt and frontend rulings -- are not carried here, so the roadmap rows `factory` and `harness-recursive-alignment` and the code annotations that cite the deleted path still name an absent authority, and are a separate repair. The alignment ladder's intent (owner direction 2026-09-21) and durable obligations over replaceable processes (owner ruling 2026-09-21) are the parts this plan keeps."),
       p(text: "**Operator rulings, 2026-10-11.** (1) The round boundary is a supervision cadence and is transparent to the worker: most of the time the worker never knows it happened. (2) Terminology: a turn is one model reply; a round is the larger stretch of turns. (3) Everything is event-driven; the belt is being retired, so nothing here is assigned to it."),
       p(text: "**Evidence.** The srv1 lab bring-up of 2026-10-10/11, findings ledger F61, F64, F65, F68, F71, F72, F73, F74 and F75, and the census of the current lifecycle taken the same day (section 4)."),
     ]),
@@ -97,10 +97,10 @@ fn harness_work_lifecycle_body() -> List<MarkdownBlock> {
   ]
 }
 
-data harness_work_lifecycle_plan: Plan = Plan {
+data harness_session_lifecycle_plan: Plan = Plan {
   projection: PlanProjectsCommittedMarkdown,
-  slug: "harness-work-lifecycle",
-  title: "Harness work lifecycle: one durable session per attempt, supervision as a transparent cadence",
-  body: harness_work_lifecycle_body(),
+  slug: "harness-session-lifecycle",
+  title: "Harness session lifecycle: one durable session per attempt, supervision as a transparent cadence",
+  body: harness_session_lifecycle_body(),
   retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this document when slices S1 to S4 are realized and their rules are carried by the harness and roadmap modules' own declarations and witnesses.") },
 }
