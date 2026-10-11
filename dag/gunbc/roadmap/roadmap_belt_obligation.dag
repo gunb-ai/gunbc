@@ -8,7 +8,7 @@ import gunbc.roadmap_workflow_stage {
   workflow_segment_of_kind,
 }
 import gunbc.roadmap_provider_events {
-  ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderAwaitingSeat, ProviderRunning,
+  ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderAwaitingSeat, ProviderAwaitingAcceptance, ProviderRunning,
   ProviderCompleted, ProviderFailed, ProviderBudgetSpent, ProviderEventsRefused,
 }
 
@@ -32,6 +32,7 @@ type BeltAttemptObligationKind
   | VerifyObligation
   | ReviewObligation
   | AuditObligation
+  | AcceptanceOutcomeObligation
   | PublishObligation
 
 // THE ORDER IN WHICH ONE ATTEMPT'S OBLIGATIONS BECOME ELIGIBLE. It is the evidence dependency, not a
@@ -39,7 +40,7 @@ type BeltAttemptObligationKind
 // a reviewed one. Review and audit are siblings -- both launch asynchronous units and neither waits on
 // the other -- and they are listed in a fixed order only so a run is deterministic.
 data belt_attempt_obligation_order: List<BeltAttemptObligationKind> = [
-  CaptureObligation, VerifyObligation, ReviewObligation, AuditObligation, PublishObligation,
+  CaptureObligation, VerifyObligation, ReviewObligation, AuditObligation, AcceptanceOutcomeObligation, PublishObligation,
 ]
 
 fn belt_attempt_obligation_kind_key(kind: BeltAttemptObligationKind) -> String {
@@ -48,6 +49,7 @@ fn belt_attempt_obligation_kind_key(kind: BeltAttemptObligationKind) -> String {
     VerifyObligation => "verify"
     ReviewObligation => "review"
     AuditObligation => "audit"
+    AcceptanceOutcomeObligation => "acceptance-outcome"
     PublishObligation => "publish"
   }
 }
@@ -58,7 +60,8 @@ fn belt_attempt_obligation_kind_rank(kind: BeltAttemptObligationKind) -> Int {
     VerifyObligation => 1
     ReviewObligation => 2
     AuditObligation => 2
-    PublishObligation => 3
+    AcceptanceOutcomeObligation => 3
+    PublishObligation => 4
   }
 }
 
@@ -169,8 +172,34 @@ fn belt_provider_terminal(provider: ProviderExecutionState) -> Bool {
     ProviderNotStarted => false
     ProviderStarting { activity: _ } => false
     ProviderAwaitingSeat { detail: _ } => false
+    ProviderAwaitingAcceptance { handin: _ } => false
     ProviderRunning { activity: _ } => false
     ProviderEventsRefused { activity: _, detail: _ } => false
+  }
+}
+
+// A HANDED-IN WORKER HAS NOT ENDED, BUT ITS CANDIDATE IS READY (gunbc.plans.harness_session_lifecycle,
+// slice S2): the session waits, alive, while acceptance runs, so capture and verification act on
+// "ended or handed in" while every reading of whether the worker has ENDED -- the spawn decision,
+// metering -- still sees a live worker.
+fn belt_provider_handed_in(provider: ProviderExecutionState) -> String {
+  match provider {
+    ProviderAwaitingAcceptance { handin } => handin
+    ProviderCompleted { activity: _ } => ""
+    ProviderFailed { activity: _, detail: _ } => ""
+    ProviderBudgetSpent { activity: _, detail: _ } => ""
+    ProviderNotStarted => ""
+    ProviderStarting { activity: _ } => ""
+    ProviderAwaitingSeat { detail: _ } => ""
+    ProviderRunning { activity: _ } => ""
+    ProviderEventsRefused { activity: _, detail: _ } => ""
+  }
+}
+
+fn belt_provider_candidate_ready(provider: ProviderExecutionState) -> Bool {
+  belt_provider_terminal(provider: provider) || match provider {
+    ProviderAwaitingAcceptance { handin: _ } => true
+    _ => false
   }
 }
 
@@ -184,10 +213,11 @@ fn belt_attempt_outstanding(provider: ProviderExecutionState, segments: List<Wor
 
 fn belt_attempt_obligation_outstanding(kind: BeltAttemptObligationKind, provider: ProviderExecutionState, segments: List<WorkflowSegment>) -> Bool {
   match kind {
-    CaptureObligation => belt_provider_terminal(provider: provider) && belt_segment_unsettled(segments: segments, kind: SubmissionWorkflowSegment)
+    CaptureObligation => belt_provider_candidate_ready(provider: provider) && belt_segment_unsettled(segments: segments, kind: SubmissionWorkflowSegment)
     VerifyObligation => belt_segment_complete(segments: segments, kind: SubmissionWorkflowSegment) && belt_segment_unsettled(segments: segments, kind: VerificationWorkflowSegment)
     ReviewObligation => belt_segment_complete(segments: segments, kind: VerificationWorkflowSegment) && belt_segment_unsettled(segments: segments, kind: ReviewWorkflowSegment)
     AuditObligation => belt_segment_complete(segments: segments, kind: VerificationWorkflowSegment) && belt_segment_unsettled(segments: segments, kind: GoalAuditWorkflowSegment)
+    AcceptanceOutcomeObligation => belt_provider_handed_in(provider: provider) != ""
     PublishObligation => belt_segment_complete(segments: segments, kind: ReviewWorkflowSegment) && belt_segment_unsettled(segments: segments, kind: PublicationWorkflowSegment)
   }
 }

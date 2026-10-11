@@ -542,12 +542,15 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_actuator_selection_process_fingerprint,
   dispatch_worker_attempt_identity,
 }
+import gunbc.roadmap.roadmap_acceptance_outcome {
+  AcceptanceOutcomeRecord, acceptance_outcome_of_stages, acceptance_outcome_record_text, acceptance_outcome_key, acceptance_outcome_basename,
+}
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorAttemptFacts,
   ContinuationDecision, ContinuationSpawnFresh, ContinuationRefused, ContinuationHold, ContinuationComplete, ContinuationEnded,
   continuation_decision,
 }
-import gunbc.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, ProviderBudgetSpent, ProviderRunning, ProviderStarting, ProviderAwaitingSeat, ProviderNotStarted, ProviderExecutionState, ProviderCompleted, provider_execution_activity }
+import gunbc.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, ProviderBudgetSpent, ProviderRunning, ProviderStarting, ProviderAwaitingSeat, ProviderAwaitingAcceptance, ProviderNotStarted, ProviderExecutionState, ProviderCompleted, provider_execution_activity }
 import extdeps.version { VersionIdentity }
 import std.content_hash {
   content_hash_tagged_structural,
@@ -559,7 +562,7 @@ import std.content_hash {
   as_content_hash_structural,
 }
 import gunbc.roadmap.roadmap_belt_obligation {
-  BeltAttemptObligationKind, CaptureObligation, VerifyObligation, ReviewObligation, AuditObligation, PublishObligation,
+  BeltAttemptObligationKind, CaptureObligation, VerifyObligation, ReviewObligation, AuditObligation, AcceptanceOutcomeObligation, PublishObligation, belt_provider_candidate_ready, belt_provider_handed_in,
   belt_attempt_obligation_order, belt_attempt_obligation_outstanding, belt_attempt_obligation_kind_key, belt_attempt_outstanding,
   BeltInstanceObligationKind, belt_instance_obligation_kinds, belt_record_moved_obligation_kinds, belt_instance_obligation_kind_key, LaunchObligation,
   BeltOperatorAction, belt_operator_follow_up_kinds,
@@ -7136,6 +7139,7 @@ fn belt_commit_capture_candidate(
   message: NonEmptyStr,
   submission: WorkerSubmission,
   digest: String,
+  handin: String?,
 ) -> BeltCommitOutcome {
   match belt_scm_persist_capture(
     mint: belt_scm_capture_candidate_tree(
@@ -7180,7 +7184,7 @@ fn belt_commit_capture_candidate(
                   scm_root_locator: SubmissionCaptureRootBound { locator: commit_root_locator },
                   digest: digest,
                   submission: submission,
-                  handin: none,
+                  handin: handin,
                 }),
               )
               if write.success {
@@ -7414,7 +7418,7 @@ fn belt_commit_attempt_compute_for_instance(
                       CommitRecorded { node_id: node_id, message: join([message as String, " (", note, ")"], "") }
                     StagedCommitFailed { detail } => CommitFailed { node_id: node_id, detail: detail }
                   }
-                CandidateCommitNeeded { message, submission, digest } =>
+                CandidateCommitNeeded { message, submission, digest, handin } =>
                   belt_commit_capture_candidate(
                     instance: instance,
                     worktree: worktree,
@@ -7423,6 +7427,7 @@ fn belt_commit_attempt_compute_for_instance(
                     message: message,
                     submission: submission,
                     digest: digest,
+                    handin: handin,
                   )
               }
           }
@@ -8124,7 +8129,7 @@ fn belt_verify_attempt_for_instance(
   progress: WorkflowAttemptProgress,
 ) -> BeltVerifyOutcome {
   let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
-  if belt_provider_is_terminal(provider: progress.provider) {
+  if belt_provider_candidate_ready(provider: progress.provider) {
       match belt_lookup_node(node_id: progress.node_id) {
         AuthorityProjectionRefused { detail: detail } =>
           VerifyDeferred {
@@ -13254,6 +13259,85 @@ fn belt_review_pass_outcome_from(outcomes: List<BeltReviewOutcome>) -> BeltPassO
   }
 }
 
+// ── THE ACCEPTANCE OUTCOME OF A HAND-IN (gunbc.plans.harness_session_lifecycle, slice S2) ────────────
+//
+// A worker that hands in waits, alive, for one outcome addressed to its hand-in. This step reduces the
+// stage records of the candidate at the attempt's current head (gunbc.roadmap.roadmap_acceptance_outcome
+// acceptance_outcome_of_stages) and, once they decide, publishes the outcome record whole: staged
+// beside its final path and moved into place, so the session never reads half a decision. Until they
+// decide it records nothing and defers; the next stage to finish -- a reviewer's or auditor's exit --
+// wakes the attempt again. A hand-in whose id could not be read is refused rather than answered: an
+// outcome addressed to no hand-in could finish or steer whichever came next.
+type BeltAcceptanceOutcomeResult
+  = AcceptanceOutcomePublished { handin: String, head: String, outcome: String }
+  | AcceptanceOutcomeUndecided { reason: String }
+  | AcceptanceOutcomeRefused { reason: String }
+
+fn belt_acceptance_outcome_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
+  join([dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", acceptance_outcome_basename as String], "")
+}
+
+fn belt_acceptance_outcome_for_instance(instance: HostDashboardInstance, progress: WorkflowAttemptProgress) -> BeltAcceptanceOutcomeResult {
+  let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
+  let handin = belt_provider_handed_in(provider: progress.provider)
+  if handin == "" {
+    AcceptanceOutcomeRefused { reason: "the attempt is not awaiting acceptance under a readable hand-in id, so no outcome can be addressed" }
+  } else {
+    match belt_worktree_head_observe(instance: instance, worktree: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key)) {
+      WorktreeHeadUnobserved { reason } =>
+        AcceptanceOutcomeRefused { reason: join(["the handed-in candidate's head cannot be observed, so an outcome could not name the code it judged: ", reason], "") }
+      WorktreeHeadObserved { revision } =>
+        match acceptance_outcome_of_stages(
+          verification: workflow_segment_of_kind(segments: progress.segments, kind: VerificationWorkflowSegment),
+          review: workflow_segment_of_kind(segments: progress.segments, kind: ReviewWorkflowSegment),
+          goal_audit: workflow_segment_of_kind(segments: progress.segments, kind: GoalAuditWorkflowSegment),
+        ) {
+          Absent => AcceptanceOutcomeUndecided { reason: join(["acceptance is still running for hand-in ", handin], "") }
+          Present { value: outcome } => {
+            let final_path = belt_acceptance_outcome_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key)
+            let staging = join([final_path, ".staging"], "")
+            let text = acceptance_outcome_record_text(r: AcceptanceOutcomeRecord { handin: handin, head: revision as String, outcome: outcome })
+            let staged = Filesystem.Write(path: staging, content: text)
+            if !staged.success {
+              AcceptanceOutcomeRefused { reason: join(["the acceptance outcome could not be staged at ", staging, ": ", staged.error], "") }
+            } else {
+              let moved = shell.Move.File(source: staging as FilePath, destination: final_path as FilePath)
+              if moved.success {
+                AcceptanceOutcomePublished { handin: handin, head: revision as String, outcome: acceptance_outcome_key(o: outcome) }
+              } else {
+                AcceptanceOutcomeRefused { reason: join(["the acceptance outcome was staged but could not be moved into place at ", final_path], "") }
+              }
+            }
+          }
+        }
+    }
+  }
+}
+
+fn belt_acceptance_outcome_pass(r: BeltAcceptanceOutcomeResult) -> BeltPassOutcome {
+  match r {
+    AcceptanceOutcomePublished { handin: _, head: _, outcome: _ } => BeltPassRecorded
+    AcceptanceOutcomeUndecided { reason } => BeltPassDeferred { reason: reason }
+    AcceptanceOutcomeRefused { reason } => BeltPassFailed { reason: reason }
+  }
+}
+
+fn belt_acceptance_outcome_json(r: BeltAcceptanceOutcomeResult) -> JsonValue {
+  match r {
+    AcceptanceOutcomePublished { handin, head, outcome } =>
+      json_object(members: [
+        json_kv(key: "status", value: json_string(s: "published")),
+        json_kv(key: "handin", value: json_string(s: handin)),
+        json_kv(key: "head", value: json_string(s: head)),
+        json_kv(key: "outcome", value: json_string(s: outcome)),
+      ])
+    AcceptanceOutcomeUndecided { reason } =>
+      json_object(members: [json_kv(key: "status", value: json_string(s: "undecided")), json_kv(key: "reason", value: json_string(s: reason))])
+    AcceptanceOutcomeRefused { reason } =>
+      json_object(members: [json_kv(key: "status", value: json_string(s: "refused")), json_kv(key: "reason", value: json_string(s: reason))])
+  }
+}
+
 fn belt_attempt_obligation_step(instance: HostDashboardInstance, progress: WorkflowAttemptProgress, kind: BeltAttemptObligationKind) -> BeltAttemptObligationStep {
   match kind {
     CaptureObligation => {
@@ -13271,6 +13355,10 @@ fn belt_attempt_obligation_step(instance: HostDashboardInstance, progress: Workf
     AuditObligation => {
       let o = belt_audit_attempt_for_instance(instance: instance, progress: progress)
       BeltAttemptObligationStep { kind: kind, pass: belt_review_pass_outcome_from(outcomes: [o]), detail: belt_review_outcome_json(o: o) }
+    }
+    AcceptanceOutcomeObligation => {
+      let o = belt_acceptance_outcome_for_instance(instance: instance, progress: progress)
+      BeltAttemptObligationStep { kind: kind, pass: belt_acceptance_outcome_pass(r: o), detail: belt_acceptance_outcome_json(r: o) }
     }
     PublishObligation => {
       let o = belt_publish_attempt_for_instance(instance: instance, node_id: progress.node_id, attempt_key: progress.attempt_key)

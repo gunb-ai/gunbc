@@ -26,7 +26,7 @@ import extdeps.languages.json.parse {
 import gunbc.roadmap_provider_events {
   ProviderExecutionState,
   ProviderNotStarted,
-  ProviderStarting, ProviderAwaitingSeat,
+  ProviderStarting, ProviderAwaitingSeat, ProviderAwaitingAcceptance,
   ProviderRunning,
   ProviderCompleted,
   ProviderFailed,
@@ -488,12 +488,34 @@ type CandidateDecision
   = CandidateFresh { submission: WorkerSubmission, digest: String }
   | CandidateCheckpoint { note: String }
 
+// A HAND-IN IS ITS OWN ACT (gunbc.plans.harness_session_lifecycle, slice S2). A session that handed
+// in names the hand-in, and a declaration is fresh exactly when no capture answers that hand-in yet --
+// even when its wording repeats an earlier one, because a revision that keeps its explanation is
+// still new code. With no hand-in named (a worker that ended), the digest rule above stands.
+fn submission_capture_answers_handin(c: SubmissionCapture, handin: String) -> Bool {
+  match c.handin {
+    Present { value: h } => h == handin
+    Absent => false
+  }
+}
+
 fn submission_candidate_decision(
   observation: SubmissionObservation,
   captures: List<SubmissionCapture>,
+  handin: String?,
 ) -> CandidateDecision {
   match observation {
     SubmissionDeclared { submission, digest } =>
+      match handin {
+        Present { value: h } =>
+          match (captures |> filter(c => submission_capture_answers_handin(c: c, handin: h))).first() {
+            Present { value: prior } =>
+              CandidateCheckpoint {
+                note: join(["hand-in ", h, " was already captured at ", prior.head_sha, ": one hand-in answers one capture"], ""),
+              }
+            Absent => CandidateFresh { submission: submission, digest: digest }
+          }
+        Absent =>
       match (captures |> filter(c => c.digest == digest)).first() {
         Present { value: prior } =>
           CandidateCheckpoint {
@@ -504,6 +526,7 @@ fn submission_candidate_decision(
             ], ""),
           }
         Absent => CandidateFresh { submission: submission, digest: digest }
+      }
       }
     SubmissionAbsent =>
       CandidateCheckpoint {

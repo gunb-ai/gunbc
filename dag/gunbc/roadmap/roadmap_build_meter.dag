@@ -10,7 +10,7 @@ import gunbc.harness.harness_throughput {
 import gunbc.harness.harness_tool { HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool }
 import v2.std.algebra { filter }
 import gunbc.roadmap_provider_events {
-  ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderAwaitingSeat, ProviderRunning,
+  ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderAwaitingSeat, ProviderAwaitingAcceptance, ProviderRunning,
   ProviderCompleted, ProviderFailed, ProviderBudgetSpent, ProviderEventsRefused,
 }
 import gunbc.roadmap_workflow_stage {

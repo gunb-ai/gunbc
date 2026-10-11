@@ -23,7 +23,7 @@ import gunbc.roadmap_dispatch_environment {
 import gunbc.roadmap_provider_events {
   ProviderExecutionState,
   ProviderNotStarted,
-  ProviderStarting, ProviderAwaitingSeat,
+  ProviderStarting, ProviderAwaitingSeat, ProviderAwaitingAcceptance,
   ProviderRunning,
   ProviderCompleted,
   ProviderFailed,

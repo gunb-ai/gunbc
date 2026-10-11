@@ -201,6 +201,7 @@ test fn a_declaration_byte_identical_to_a_captured_one_is_a_checkpoint_naming_th
       digest: submission_digest(submission: ready_submission()),
     },
     captures: [capture_at(head: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", submission: ready_submission())],
+    handin: none,
   ) {
     CandidateFresh { submission: _, digest: _ } => false
     CandidateCheckpoint { note } =>
@@ -219,10 +220,46 @@ test fn a_revised_declaration_after_an_edit_is_a_fresh_candidate() -> Bool {
   match submission_candidate_decision(
     observation: SubmissionDeclared { submission: revised, digest: submission_digest(submission: revised) },
     captures: [capture_at(head: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", submission: ready_submission())],
+    handin: none,
   ) {
     CandidateFresh { submission: _, digest } => digest == submission_digest(submission: revised)
     CandidateCheckpoint { note: _ } => false
   }
+}
+
+fn capture_answering(head: String, submission: WorkerSubmission, handin: String) -> SubmissionCapture {
+  let c = capture_at(head: head, submission: submission)
+  SubmissionCapture {
+    head_sha: c.head_sha, scm_repository: c.scm_repository, scm_commit_ordinal: c.scm_commit_ordinal,
+    scm_root_locator: c.scm_root_locator, digest: c.digest, submission: c.submission,
+    handin: Present { value: handin },
+  }
+}
+
+// A HAND-IN IS ITS OWN ACT (slice S2): a revision handed in with the SAME wording as the capture it
+// revises is a fresh candidate, because it answers a new hand-in -- the digest alone would read it as
+// the old declaration swept again and never verify the new code -- while a second sweep of a hand-in
+// already captured is the checkpoint the digest rule guards against, named by its hand-in.
+test fn a_new_hand_in_with_repeated_wording_is_fresh_and_a_captured_one_is_not() -> Bool {
+  let same = ready_submission()
+  let first = capture_answering(head: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", submission: same, handin: "h1")
+  let fresh = match submission_candidate_decision(
+    observation: SubmissionDeclared { submission: same, digest: submission_digest(submission: same) },
+    captures: [first],
+    handin: Present { value: "h2" },
+  ) {
+    CandidateFresh { submission: _, digest: _ } => true
+    CandidateCheckpoint { note: _ } => false
+  }
+  let swept = match submission_candidate_decision(
+    observation: SubmissionDeclared { submission: same, digest: submission_digest(submission: same) },
+    captures: [first],
+    handin: Present { value: "h1" },
+  ) {
+    CandidateFresh { submission: _, digest: _ } => false
+    CandidateCheckpoint { note } => note.contains("hand-in h1 was already captured")
+  }
+  fresh && swept
 }
 
 // ------------------------------------------------------------------------------------------------

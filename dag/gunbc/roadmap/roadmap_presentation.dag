@@ -45,7 +45,7 @@ import gunbc.roadmap_launch_admission {
 }
 import gunbc.roadmap_provider_events {
   provider_execution_activity,
-  ProviderEventsRefused, ProviderAwaitingSeat }
+  ProviderEventsRefused, ProviderAwaitingSeat, ProviderAwaitingAcceptance }
 import gunbc.auth.profile_projection { PrincipalProfile }
 import gunbc.roadmap_fleet_components { spark_host_component_paths }
 import gunbc.roadmap_workflow_stage {

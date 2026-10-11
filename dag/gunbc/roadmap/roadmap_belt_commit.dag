@@ -21,7 +21,7 @@ import gunbc.roadmap.roadmap_submission {
 // purity boundary is unchanged from the pre-submission design: this module decides from values, the
 // belt performs every read and write.
 type BeltCommitDecision
-  = CandidateCommitNeeded { message: NonEmptyStr, submission: WorkerSubmission, digest: String }
+  = CandidateCommitNeeded { message: NonEmptyStr, submission: WorkerSubmission, digest: String, handin: String? }
   | CheckpointCommitNeeded { message: NonEmptyStr, note: String }
   | CommitNotNeeded { reason: NonEmptyStr }
 
@@ -78,16 +78,18 @@ fn belt_commit_decision_for_terminal(
   entries_nul: String,
   submission: SubmissionObservation,
   captures: List<SubmissionCapture>,
+  handin: String?,
 ) -> BeltCommitDecision {
   if entries_nul == "" {
     CommitNotNeeded { reason: "worktree clean" }
   } else {
-    match submission_candidate_decision(observation: submission, captures: captures) {
+    match submission_candidate_decision(observation: submission, captures: captures, handin: handin) {
       CandidateFresh { submission, digest } =>
         CandidateCommitNeeded {
           message: belt_candidate_commit_message(node_id: node_id, attempt_key: attempt_key),
           submission: submission,
           digest: digest,
+          handin: handin,
         }
       CandidateCheckpoint { note } =>
         CheckpointCommitNeeded {
@@ -103,13 +105,15 @@ fn belt_commit_decision(provider: ProviderExecutionState, node_id: String, attem
     ProviderNotStarted => CommitNotNeeded { reason: "provider not completed" }
     ProviderStarting { activity: _ } => CommitNotNeeded { reason: "provider not completed" }
     ProviderAwaitingSeat { detail: _ } => CommitNotNeeded { reason: "provider not completed" }
+    ProviderAwaitingAcceptance { handin } =>
+      belt_commit_decision_for_terminal(node_id: node_id, attempt_key: attempt_key, entries_nul: entries_nul, submission: submission, captures: captures, handin: Present { value: handin })
     ProviderRunning { activity: _ } => CommitNotNeeded { reason: "provider not completed" }
     ProviderCompleted { activity: _ } =>
-      belt_commit_decision_for_terminal(node_id: node_id, attempt_key: attempt_key, entries_nul: entries_nul, submission: submission, captures: captures)
+      belt_commit_decision_for_terminal(node_id: node_id, attempt_key: attempt_key, entries_nul: entries_nul, submission: submission, captures: captures, handin: none)
     ProviderFailed { activity: _, detail: _ } =>
-      belt_commit_decision_for_terminal(node_id: node_id, attempt_key: attempt_key, entries_nul: entries_nul, submission: submission, captures: captures)
+      belt_commit_decision_for_terminal(node_id: node_id, attempt_key: attempt_key, entries_nul: entries_nul, submission: submission, captures: captures, handin: none)
     ProviderBudgetSpent { activity: _, detail: _ } =>
-      belt_commit_decision_for_terminal(node_id: node_id, attempt_key: attempt_key, entries_nul: entries_nul, submission: submission, captures: captures)
+      belt_commit_decision_for_terminal(node_id: node_id, attempt_key: attempt_key, entries_nul: entries_nul, submission: submission, captures: captures, handin: none)
     ProviderEventsRefused { activity: _, detail: _ } => CommitNotNeeded { reason: "provider not completed" }
   }
 }
