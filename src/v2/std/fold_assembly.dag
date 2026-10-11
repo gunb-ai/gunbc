@@ -109,7 +109,7 @@ fn decode_node_list(node: Node) -> Outcome<FreeMonoid<Node>> {
     TypeNode { connective: Atom { identity: _ } } => fold_decode_reject(node: node, reason: ^fold_form_list_node_not_conj)
     TypeNode { connective: Disj } => fold_decode_reject(node: node, reason: ^fold_form_list_node_not_conj)
     TypeNode { connective: Arrow } => fold_decode_reject(node: node, reason: ^fold_form_list_node_not_conj)
-    TypeNode { connective: Cardinality } => fold_decode_reject(node: node, reason: ^fold_form_list_node_not_conj)
+    TypeNode { connective: Occupancy } => fold_decode_reject(node: node, reason: ^fold_form_list_node_not_conj)
     TypeNode { connective: Instantiation } => fold_decode_reject(node: node, reason: ^fold_form_list_node_not_conj)
     ComputationNode { behavior: _ } => fold_decode_reject(node: node, reason: ^fold_form_list_node_not_conj)
   }

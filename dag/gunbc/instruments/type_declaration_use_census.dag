@@ -8,7 +8,7 @@ import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.node {
   Edge, Authored, StructuralLabel, Positional, Node, Symbol, symbol_lexeme, node_subtree_nodes,
-  TypeNode, ComputationNode, Atom, Conj, Disj, Arrow, Cardinality, Instantiation,
+  TypeNode, ComputationNode, Atom, Conj, Disj, Arrow, Occupancy, Instantiation,
   Transform, Value, Branch, Loop, Bind, Match
 }
 import v2.std.type_binder { GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, type_decl_view, type_param_names }
@@ -190,7 +190,7 @@ fn tdc_generic_form(name: Symbol, target: Node, kinds: FreeMonoid<DeclaredTypeKi
             Conj => tdc_member_form(name: name, member: m, kinds: kinds)
             Atom { identity: _ } => FormUndecided
             Arrow => FormUndecided
-            Cardinality => FormUndecided
+            Occupancy => FormUndecided
             Instantiation => FormUndecided
           }
         ComputationNode { behavior: _ } => FormUndecided

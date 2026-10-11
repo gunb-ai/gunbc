@@ -1570,8 +1570,8 @@ fn ts_type_expression_projection() -> TargetTypeExpressionProjection {
       param_type_separator: ^ts_token_colon,
       param_list_separator: ^ts_token_comma
     },
-    cardinality_form: TargetGenericApply {
-      surface: ^ts_surface_type_cardinality,
+    occupancy_form: TargetGenericApply {
+      surface: ^ts_surface_type_occupancy,
       open: ^ts_token_lt,
       separator: ^ts_token_comma,
       field_label_separator: optional_absent(),
