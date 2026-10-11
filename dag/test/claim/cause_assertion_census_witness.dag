@@ -7,11 +7,12 @@ import gunbc.instruments.cause_assertion_census {
   CauseCaretOccurrence, cause_witness_module,
   CauseSourceObserved, CauseSourceExcluded, CauseSourceLexicalRefused, cause_source_observation_from_content,
   cause_caret_occurrences, cause_import_projection, cause_source_projection_observation, cause_source_observation_report,
-  CauseSourceImportProjectionUnestablished, cause_declarations_by_name, cause_join_declaration,
+  CauseSourceImportProjectionUnestablished, CauseSourceMarkerFactRefused, cause_declarations_by_name, cause_join_declaration,
   cause_row_evidence, cause_row_record_use, cause_census_join, cause_all_joined_rows, cause_standing_rows,
   CauseCorpusAcquisition, cause_complete_report, cause_corpus_acquire, CauseSourceIndexRefused
 }
 import v2.workflow.floor_discovery_producer { FloorDiscoverySource }
+import v2.workflow.floor_discovery_row { FloorMarkedSource }
 import v2.lens.module_graph { ModuleDeclarationFact }
 import v2.std.compilers.lexing { Token }
 import v2.std.decl_index { DataDeclTypeFact }
@@ -69,7 +70,7 @@ fn cause_census_declaration(owner: String) -> DataDeclTypeFact {
 
 fn cause_census_witness_source() -> CauseModuleSyntax {
   CauseModuleSyntax {
-    module: "test.fixture", path: "dag/test/fixture_test.dag", witness: true,
+    module: "test.fixture", path: "dag/test/fixture.dag", witness: true,
     carets: [], import_modules: empty_map(), import_members: empty_map()
   }
 }
@@ -179,15 +180,26 @@ test fn cause_census_unknown_token_cannot_report_no_causes() -> Bool {
   }
 }
 
-test fn cause_census_acquisition_requires_the_source_index_join() -> Bool {
-  let source = FloorDiscoverySource {
+fn cause_census_acquisition_source() -> FloorDiscoverySource {
+  FloorDiscoverySource {
     module_path: "fixture", repo_path: "fixture.dag",
     content: "module fixture\nimport std.types { String }\nfn value() -> Symbol { ^fixture_cause }\n"
   }
-  let observed = cause_corpus_acquire(subjects: [source], modules: [
-    ModuleDeclarationFact { module: "fixture", path: "fixture.dag" }
-  ])
-  let refused = cause_corpus_acquire(subjects: [source], modules: [])
+}
+
+fn cause_census_acquisition_modules() -> List<ModuleDeclarationFact> {
+  [ModuleDeclarationFact { module: "fixture", path: "fixture.dag" }]
+}
+
+fn cause_census_marker_fact(marked: List<String>) -> FloorMarkedSource {
+  FloorMarkedSource { repo_path: "fixture.dag", marked: marked }
+}
+
+test fn cause_census_acquisition_requires_the_source_index_join() -> Bool {
+  let source = cause_census_acquisition_source()
+  let supply = [cause_census_marker_fact(marked: [])]
+  let observed = cause_corpus_acquire(subjects: [source], modules: cause_census_acquisition_modules(), marked_sources: supply)
+  let refused = cause_corpus_acquire(subjects: [source], modules: [], marked_sources: supply)
   count(observed.sources) == 1 && count(observed.refusals) == 0
     && count(sorted_map_keys(observed.identifier_counts)) > 0
     && count(refused.sources) == 0 && count(refused.refusals) == 1
@@ -197,14 +209,64 @@ test fn cause_census_acquisition_requires_the_source_index_join() -> Bool {
     }
 }
 
-// Production declarations can have witness in their name without being test sidecars.
-test fn cause_census_module_role_uses_floor_authority() -> Bool {
-  cause_witness_module(path: "dag/test/claim/cause_assertion_census_witness.dag")
-    && !cause_witness_module(path: "dag/gunbc/bmc/bmc_fan_program_decode_witness.dag")
-    && !cause_witness_module(path: "dag/gunbc/json_exact_number_witness.dag")
-    && !cause_witness_module(path: "src/v2/std/find_witness.dag")
-    && !cause_witness_module(path: "src/v2/workflow/floor_changed_witness.dag")
-    && !cause_witness_module(path: "dag/test/helpers.dag")
+// A witness module is a module that declares a test-marked declaration, and the marked names are
+// SUPPLIED: the control keeps the real acquisition route and flips only the supplied fact.
+test fn cause_census_module_role_is_the_supplied_marker_fact() -> Bool {
+  let source = cause_census_acquisition_source()
+  let marked = cause_corpus_acquire(
+    subjects: [source], modules: cause_census_acquisition_modules(),
+    marked_sources: [cause_census_marker_fact(marked: ["fixture_cause_holds"])]
+  )
+  let unmarked = cause_corpus_acquire(
+    subjects: [source], modules: cause_census_acquisition_modules(),
+    marked_sources: [cause_census_marker_fact(marked: [])]
+  )
+  count(marked.refusals) == 0 && count(unmarked.refusals) == 0
+    && marked.sources[0].witness && !unmarked.sources[0].witness
+    && cause_witness_module(marked: ["a"]) && !cause_witness_module(marked: [])
+}
+
+// RED: the spelling of a module's path has no vote. A module named like a witness and a module
+// under a test directory are production modules when no declaration of theirs carries the marker.
+test fn cause_census_module_role_ignores_path_spelling() -> Bool {
+  let source = FloorDiscoverySource {
+    module_path: "test.claim.shaped_like_a_witness", repo_path: "dag/test/claim/shaped_like_a_witness.dag",
+    content: "module test.claim.shaped_like_a_witness\nfn plain() -> Symbol { ^fixture_cause }\n"
+  }
+  let acquired = cause_corpus_acquire(
+    subjects: [source],
+    modules: [ModuleDeclarationFact { module: "test.claim.shaped_like_a_witness", path: "dag/test/claim/shaped_like_a_witness.dag" }],
+    marked_sources: [FloorMarkedSource { repo_path: "dag/test/claim/shaped_like_a_witness.dag", marked: [] }]
+  )
+  count(acquired.refusals) == 0 && count(acquired.sources) == 1 && !acquired.sources[0].witness
+}
+
+// RED: an observed module with no supplied fact refuses; an absent fact is never read as "declares
+// no tests", because that reading would classify an unobserved witness as production.
+test fn cause_census_acquisition_without_a_marker_fact_refuses() -> Bool {
+  let acquired = cause_corpus_acquire(
+    subjects: [cause_census_acquisition_source()], modules: cause_census_acquisition_modules(), marked_sources: []
+  )
+  count(acquired.sources) == 0 && count(acquired.refusals) == 1
+    && match acquired.refusals[0] {
+      CauseSourceMarkerFactRefused { path: path, reason: reason } =>
+        path == "fixture.dag" && string_contains(s: reason, pattern: "no marker fact was supplied")
+      _ => false
+    }
+}
+
+// RED: a supplier that names one module twice has no answer for it.
+test fn cause_census_acquisition_with_two_marker_facts_refuses() -> Bool {
+  let acquired = cause_corpus_acquire(
+    subjects: [cause_census_acquisition_source()], modules: cause_census_acquisition_modules(),
+    marked_sources: [cause_census_marker_fact(marked: ["a"]), cause_census_marker_fact(marked: [])]
+  )
+  count(acquired.sources) == 0 && count(acquired.refusals) == 1
+    && match acquired.refusals[0] {
+      CauseSourceMarkerFactRefused { path: _, reason: reason } =>
+        string_contains(s: reason, pattern: "more than one marker fact was supplied")
+      _ => false
+    }
 }
 
 // The parser admits keyword-shaped names; their complete dotted spelling must survive.
