@@ -2,11 +2,13 @@ module test.claim.serving.serving_availability_bind_wet_witness
 
 import std.types { Bool, String, NonEmptyStr, List }
 import gunbc.spark.fabric_switch_observed { FabricGroupB, FabricGroup }
+import std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.fabric.demand { ObservationReceiptRef }
 import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
 import gunbc.serving.turn_admission {
   BatchQualityTolerant, QueueDepthRead, RouteAdmittingMore, SeatStandingRead,
+  ServingSessionResidency, ResidentOnGpu, MustReconstruct, TokenPrefixBroken,
   PrefixFieldsUnread, PrefixFieldsRead, ServingPrefixFields, ServingSessionRecord, NoSessionRecord, SessionRecord,
 }
 import gunbc.spark.vllm_endpoint_process_launch {
@@ -24,7 +26,7 @@ import gunbc.spark.serving_offer { spark_serving_incarnation_unobserved_obligati
 import gunbc.spark.pair_serving_realization { DeclaredUnitDigested, DeclaredUnitDigestUnavailable }
 import gunbc.harness.harness_wire { OpenAiChatCompletionsShape }
 import gunbc.harness.harness_seat {
-  HarnessCandidates, HarnessDeclaredUnitRoster, HarnessGroupParticipationRoster, harness_add_serving_candidate,
+  HarnessCandidates, HarnessDeclaredUnitRoster, HarnessGroupParticipationRoster, harness_add_serving_candidate, harness_placement_is_free,
   harness_declared_unit_roster, harness_declared_unit_from_roster,
   harness_turn_subject, harness_turn_request, AnyAdmittedModel,
   harness_bind_candidate, harness_serving_route,
@@ -80,7 +82,7 @@ fn w_place(declared_units: HarnessDeclaredUnitRoster) -> HarnessCandidates {
 fn w_place_session(declared_units: HarnessDeclaredUnitRoster, session: ServingSessionRecord, prefix: ServingPrefixFields) -> HarnessCandidates {
   let field = "1789300000.12"
   harness_add_serving_candidate(
-    acc: HarnessCandidates { candidates: [], notes: [], retryable: false, incarnations: [] },
+    acc_in: HarnessCandidates { candidates: [], notes: [], retryable: false, incarnations: [], owner_standing: none },
     endpoint: w_endpoint,
     class: BatchQualityTolerant,
     requirement: AnyAdmittedModel,
@@ -158,7 +160,7 @@ test fn a_ready_route_reaches_the_existing_incarnation_frontier_in_the_product_p
   let launch = w_launch(field: field)
   let a = harness_route_availability(endpoint: w_endpoint, before: w_seen(field: field), standing: w_serving_standing(), after: w_seen(field: field), now: w_now)
   let bound = harness_bind_candidate(
-    acc: HarnessCandidates { candidates: [], notes: [], retryable: false, incarnations: [] },
+    acc: HarnessCandidates { candidates: [], notes: [], retryable: false, incarnations: [], owner_standing: none },
     group: FabricGroupB {}, endpoint: w_endpoint, launch: launch, availability: a,
     readback: w_readback(),
     incarnation: EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation },
@@ -175,28 +177,41 @@ test fn a_ready_route_reaches_the_existing_incarnation_frontier_in_the_product_p
     && any(bound.notes, n => n.contains(spark_serving_incarnation_unobserved_obligation as String))
 }
 
-// THE ROUTE, NOT ONLY THE ANSWER. A session recorded as owned by ANOTHER launch with a hit observed
-// on this one is not a candidate here (the pin fires before the incarnation frontier), while the same
-// engine for a session owned by THIS launch, and the same engine with no session record, both reach
-// the incarnation frontier. Deleting the harness call to serving_session_placement fails the first.
+// THE ROUTE, NOT ONLY THE ANSWER. The owner's standing is read from the OWNER launch's own counters
+// inside the production fold, whatever order routes arrive in; a non-owner's engine contributes none.
+// Deleting harness_note_owner_standing fails the first claim; reading the standing from the candidate
+// being probed (the earlier defect) fails the second.
 fn w_record(owner: String, intact: Bool) -> ServingSessionRecord {
   SessionRecord { owner_launch: owner as NonEmptyStr, prefix_intact: intact, prior_queries_field: "10.0" as NonEmptyStr, prior_hits_field: "4.0" as NonEmptyStr }
 }
 
 data w_hit_prefix: ServingPrefixFields = PrefixFieldsRead { queries_field: "20.0" as NonEmptyStr, hits_field: "9.0" as NonEmptyStr }
 
-test fn a_warm_session_owned_elsewhere_is_not_a_candidate_here_but_the_owner_and_an_unrecorded_session_are() -> Bool {
-  let own = vllm_endpoint_process_launch_key(launch: w_launch(field: "1789300000.12")) as String
-  let elsewhere = w_place_session(declared_units: harness_declared_unit_roster(), session: w_record(owner: "some-other-launch", intact: true), prefix: w_hit_prefix)
-  let owner = w_place_session(declared_units: harness_declared_unit_roster(), session: w_record(owner: own, intact: true), prefix: w_hit_prefix)
-  let none_recorded = w_place_session(declared_units: harness_declared_unit_roster(), session: NoSessionRecord, prefix: w_hit_prefix)
-  any(elsewhere.notes, n => n.contains("owned by launch some-other-launch"))
-    && !any(owner.notes, n => n.contains("owned by launch"))
-    && !any(none_recorded.notes, n => n.contains("owned by launch"))
+fn w_own_key() -> String {
+  vllm_endpoint_process_launch_key(launch: w_launch(field: "1789300000.12")) as String
 }
 
-// A broken prefix on a session owned elsewhere reads must-reconstruct, so nothing pins it.
-test fn a_broken_prefix_session_is_not_pinned_to_its_old_owner() -> Bool {
-  let p = w_place_session(declared_units: harness_declared_unit_roster(), session: w_record(owner: "some-other-launch", intact: false), prefix: w_hit_prefix)
-  !any(p.notes, n => n.contains("owned by launch"))
+test fn the_owner_launch_contributes_a_resident_standing_from_its_own_counters() -> Bool {
+  match w_place_session(declared_units: harness_declared_unit_roster(), session: w_record(owner: w_own_key(), intact: true), prefix: w_hit_prefix).owner_standing {
+    Present { value: ResidentOnGpu } => true
+    _ => false
+  }
+}
+
+test fn a_non_owner_engine_contributes_no_standing_and_a_broken_prefix_reads_reconstruct() -> Bool {
+  (match w_place_session(declared_units: harness_declared_unit_roster(), session: w_record(owner: "some-other-launch", intact: true), prefix: w_hit_prefix).owner_standing {
+     Absent => true
+     _ => false
+   })
+    && (match w_place_session(declared_units: harness_declared_unit_roster(), session: w_record(owner: w_own_key(), intact: false), prefix: w_hit_prefix).owner_standing {
+          Present { value: MustReconstruct { cause: _ } } => true
+          _ => false
+        })
+}
+
+// The predicate harness_collect_candidates filters by: warm on another launch removes this one.
+test fn a_warm_owner_elsewhere_removes_this_launch_from_the_field() -> Bool {
+  !harness_placement_is_free(standing: ResidentOnGpu, session: w_record(owner: "some-other-launch", intact: true), launch: w_launch(field: "1789300000.12"))
+    && harness_placement_is_free(standing: ResidentOnGpu, session: w_record(owner: w_own_key(), intact: true), launch: w_launch(field: "1789300000.12"))
+    && harness_placement_is_free(standing: MustReconstruct { cause: TokenPrefixBroken }, session: w_record(owner: "some-other-launch", intact: true), launch: w_launch(field: "1789300000.12"))
 }

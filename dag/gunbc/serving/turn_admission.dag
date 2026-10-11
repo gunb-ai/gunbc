@@ -364,33 +364,35 @@ fn serving_session_residency(
 }
 
 type ServingSessionPlacement
-  = PlaceByAdmission { admission: ServingGroupAdmission }
+  = PlacementFree
   | OwnedByAnotherReplica { owner: NonEmptyStr }
 
-// A warm session stays on its owning replica: a candidate that is not the owner is refused for a
-// resident or restorable session, so adding a replica never moves it (rendezvous affinity alone
-// re-ranks ~1/n sessions on a new offer). A session that must reconstruct or is unread has nothing
-// to protect and takes ordinary admission anywhere -- warmth is never assumed for an unread one.
+// RESIDENCY IS READ ONCE PER SESSION, FROM THE OWNING LAUNCH'S OWN READING, AND THEN APPLIED TO EVERY
+// CANDIDATE. It is never recomputed from a candidate's own data: a non-owner candidate's launch
+// differs from the owner's by construction, so that reading would always say LaunchReplaced and the
+// pin could never fire. A warm session (resident or host-restorable) stays on its owner, so adding a
+// replica never moves it; a session that must reconstruct or is unread has nothing to protect.
+// The pin only removes non-owners: the owner itself still passes serving_group_admission like any
+// other candidate, so a busy owner makes the session wait rather than relocate.
 fn serving_session_placement(
   residency: ServingSessionResidency,
   record: ServingSessionRecord,
   candidate_launch: NonEmptyStr,
-  admission: ServingGroupAdmission,
 ) -> ServingSessionPlacement {
   match record {
-    NoSessionRecord => PlaceByAdmission { admission: admission }
+    NoSessionRecord => PlacementFree
     SessionRecord { owner_launch: owner, prefix_intact: _, prior_queries_field: _, prior_hits_field: _ } =>
       match residency {
-        ResidentOnGpu => serving_pin_to_owner(owner: owner, candidate: candidate_launch, admission: admission)
-        HostRestorable => serving_pin_to_owner(owner: owner, candidate: candidate_launch, admission: admission)
-        MustReconstruct { cause: _ } => PlaceByAdmission { admission: admission }
-        ResidencyUnread { obligation: _ } => PlaceByAdmission { admission: admission }
+        ResidentOnGpu => serving_pin_to_owner(owner: owner, candidate: candidate_launch)
+        HostRestorable => serving_pin_to_owner(owner: owner, candidate: candidate_launch)
+        MustReconstruct { cause: _ } => PlacementFree
+        ResidencyUnread { obligation: _ } => PlacementFree
       }
   }
 }
 
-fn serving_pin_to_owner(owner: NonEmptyStr, candidate: NonEmptyStr, admission: ServingGroupAdmission) -> ServingSessionPlacement {
-  if owner == candidate { PlaceByAdmission { admission: admission } } else { OwnedByAnotherReplica { owner: owner } }
+fn serving_pin_to_owner(owner: NonEmptyStr, candidate: NonEmptyStr) -> ServingSessionPlacement {
+  if (owner as String) == (candidate as String) { PlacementFree } else { OwnedByAnotherReplica { owner: owner } }
 }
 
 fn serving_admission_detail(group: FabricGroup, admission: ServingGroupAdmission) -> String {

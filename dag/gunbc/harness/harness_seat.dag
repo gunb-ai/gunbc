@@ -93,7 +93,7 @@ import gunbc.serving.turn_admission {
   InadmissibleRouteHoldingForCapacity, InadmissibleClassCeilingReached, InadmissibleUnexplainedOccupancy,
   AdmissibilityUnread, serving_group_admission,
   ServingSessionRecord, NoSessionRecord, HostTierUnread, serving_session_standing, serving_session_placement,
-  ServingSessionPlacement, PlaceByAdmission, OwnedByAnotherReplica, serving_admission_detail, serving_isolation_profile,
+  ServingSessionResidency, SessionRecord, ServingSessionPlacement, PlacementFree, OwnedByAnotherReplica, serving_admission_detail, serving_isolation_profile,
   spark_serving_trust_domain, serving_delay_valuation, serving_dispatch_inputs,
 }
 import gunbc.serving.turn_demand { ServingModelRequirementRef, serving_turn_requirements, serving_turn_work, ServingTurnRequest }
@@ -603,10 +603,11 @@ type HarnessCandidates {
   notes: List<String>
   retryable: Bool
   incarnations: List<IncarnationMemoEntry>
+  owner_standing: ServingSessionResidency?
 }
 
 fn harness_no_candidate(acc: HarnessCandidates, note: String, retryable: Bool) -> HarnessCandidates {
-  HarnessCandidates { candidates: acc.candidates, notes: concat(acc.notes, [note]), retryable: acc.retryable || retryable, incarnations: acc.incarnations }
+  HarnessCandidates { candidates: acc.candidates, notes: concat(acc.notes, [note]), retryable: acc.retryable || retryable, incarnations: acc.incarnations, owner_standing: acc.owner_standing }
 }
 
 // A BOUND OFFER BECOMES A CANDIDATE ONLY THROUGH PROVIDER-USE ADMISSION, AND THE ORDER IS FORCED.
@@ -867,6 +868,7 @@ fn harness_admit_bound_offer(acc: HarnessCandidates, group: FabricGroup, endpoin
         notes: acc.notes,
         retryable: acc.retryable,
         incarnations: acc.incarnations,
+        owner_standing: acc.owner_standing,
       }
     OfferNotAdmittedForUse { offer: _, cause: why } =>
       harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: join(["provider-use admission refused this turn: ", refusal_reason(c: why)], "")), retryable: false)
@@ -970,7 +972,7 @@ fn harness_candidate_from_standing(
                 )
               } else {
                 harness_add_serving_candidate(
-                  acc: acc, endpoint: endpoint, class: class, requirement: requirement, subject: subject,
+                  acc_in: acc, endpoint: endpoint, class: class, requirement: requirement, subject: subject,
                   availability: availability, launch: launch, engine: engine,
                   model: observed_model, unit: observed_unit, readback: observed_readback,
                   seats: harness_class_ceiling(class: class, route_ceiling: route_ceiling),
@@ -997,7 +999,7 @@ fn harness_candidate_from_standing(
 // are taken one call up, in harness_add_candidate, which no claim executes because it reads live
 // endpoints.
 fn harness_add_serving_candidate(
-  acc: HarnessCandidates,
+  acc_in: HarnessCandidates,
   endpoint: ServingRouteEndpoint,
   class: ServingCoTenancyClass,
   requirement: ServingModelRequirement,
@@ -1017,6 +1019,7 @@ fn harness_add_serving_candidate(
   participation_roster: HarnessGroupParticipationRoster,
 ) -> HarnessCandidates {
   let group = endpoint.group
+  let acc = harness_note_owner_standing(acc: acc_in, session: session, launch: launch, engine: engine)
   let admission = serving_group_admission(
     incoming: class,
     tenancy: serving_co_tenancy(reading: engine.queue),
@@ -1025,16 +1028,7 @@ fn harness_add_serving_candidate(
     ceiling: seats,
     receipt: harness_metrics_probe_receipt,
   )
-  let placement = serving_session_placement(
-    residency: serving_session_standing(record: session, current_launch: vllm_endpoint_process_launch_key(launch: launch), now: engine.prefix, host: HostTierUnread),
-    record: session,
-    candidate_launch: vllm_endpoint_process_launch_key(launch: launch),
-    admission: admission,
-  )
-  match placement {
-    OwnedByAnotherReplica { owner: o } =>
-      harness_no_candidate(acc: acc, note: join([fabric_group_wire(g: group) as String, ": this session's warm prefix is owned by launch ", o as String, ", so it is not moved to a different replica"], ""), retryable: false)
-    PlaceByAdmission { admission: _ } => match admission {
+  match admission {
     AdmissibleForClass { class: _, receipt: _ } => {
       let launch_key = vllm_endpoint_process_launch_key(launch: launch)
       let declared_unit = harness_declared_unit_from_roster(roster: declared_units, group: group)
@@ -1045,7 +1039,7 @@ fn harness_add_serving_candidate(
         Absent => {
           let observed = harness_incarnation_standing(access: access, group: group, launch: launch)
           harness_bind_candidate(
-            acc: HarnessCandidates { candidates: acc.candidates, notes: acc.notes, retryable: acc.retryable, incarnations: append(acc.incarnations, IncarnationMemoEntry { launch_key: launch_key, standing: observed }) },
+            acc: HarnessCandidates { candidates: acc.candidates, notes: acc.notes, retryable: acc.retryable, incarnations: append(acc.incarnations, IncarnationMemoEntry { launch_key: launch_key, standing: observed }), owner_standing: acc.owner_standing },
             group: group, endpoint: endpoint, launch: launch, availability: availability, readback: readback, incarnation: observed, route: harness_serving_route(group: group, launch: launch, readback: readback, incarnation: observed, declared_unit: declared_unit, participation: participation), subject: subject, model: model, unit: unit, seats: seats)
         }
       }
@@ -1062,7 +1056,6 @@ fn harness_add_serving_candidate(
       harness_no_candidate(acc: acc, note: serving_admission_detail(group: group, admission: admission), retryable: true)
     AdmissibilityUnread { obligation: _ } =>
       harness_no_candidate(acc: acc, note: serving_admission_detail(group: group, admission: admission), retryable: false)
-  }
   }
 }
 
@@ -1081,13 +1074,47 @@ fn harness_is_excluded(excluded: List<String>, key: NonEmptyStr) -> Bool {
 // authority for the second question; every route it names still has to answer a probe before it
 // becomes a candidate, which is what makes membership observed rather than declared.
 fn harness_collect_candidates(session: ServingSessionRecord, class: ServingCoTenancyClass, requirement: ServingModelRequirement, subject: HarnessTurnSubject, store: FabricStorageBinding, now: EpochSecs, excluded: List<String>, access: FleetSshContextPreparation, incarnations: List<IncarnationMemoEntry>, declared_units: HarnessDeclaredUnitRoster, participation_roster: HarnessGroupParticipationRoster) -> HarnessCandidates {
-  let collected = fold(serving_enrolled_routes(), init: HarnessCandidates { candidates: [], notes: [], retryable: false, incarnations: incarnations }, f: (acc, r) =>
+  let collected = fold(serving_enrolled_routes(), init: HarnessCandidates { candidates: [], notes: [], retryable: false, incarnations: incarnations, owner_standing: none }, f: (acc, r) =>
     harness_add_candidate(acc: acc, session: session, route: r, class: class, requirement: requirement, subject: subject, store: store, now: now, access: access, declared_units: declared_units, participation_roster: participation_roster))
-  HarnessCandidates {
-    candidates: filter(collected.candidates, c => !harness_is_excluded(excluded: excluded, key: c.key)),
-    notes: collected.notes,
-    retryable: collected.retryable,
-    incarnations: collected.incarnations,
+  let kept = filter(collected.candidates, c => !harness_is_excluded(excluded: excluded, key: c.key))
+  match collected.owner_standing {
+    Absent => HarnessCandidates { candidates: kept, notes: collected.notes, retryable: collected.retryable, incarnations: collected.incarnations, owner_standing: none }
+    Present { value: standing } => {
+      let free = filter(kept, c => harness_placement_is_free(standing: standing, session: session, launch: c.launch))
+      HarnessCandidates {
+        candidates: free,
+        notes: concat(collected.notes, map(filter(kept, c => !harness_placement_is_free(standing: standing, session: session, launch: c.launch)), c => join([fabric_group_wire(g: c.group) as String, ": this session's warm prefix is owned by another launch, so it is not moved to a different replica"], ""))),
+        retryable: collected.retryable || length(free) < length(kept),
+        incarnations: collected.incarnations,
+        owner_standing: collected.owner_standing,
+      }
+    }
+  }
+}
+
+fn harness_placement_is_free(standing: ServingSessionResidency, session: ServingSessionRecord, launch: VllmEndpointProcessLaunch) -> Bool {
+  match serving_session_placement(residency: standing, record: session, candidate_launch: vllm_endpoint_process_launch_key(launch: launch)) {
+    PlacementFree => true
+    OwnedByAnotherReplica { owner: _ } => false
+  }
+}
+
+// THE OWNER'S STANDING IS READ WHERE THE OWNER IS PROBED: only a candidate whose launch IS the recorded
+// owner contributes a standing, from its own prefix counters, whatever order the routes are folded in.
+fn harness_note_owner_standing(acc: HarnessCandidates, session: ServingSessionRecord, launch: VllmEndpointProcessLaunch, engine: HarnessEngineReading) -> HarnessCandidates {
+  match session {
+    NoSessionRecord => acc
+    SessionRecord { owner_launch: owner, prefix_intact: _, prior_queries_field: _, prior_hits_field: _ } => {
+      let key = vllm_endpoint_process_launch_key(launch: launch)
+      if (owner as String) != (key as String) {
+        acc
+      } else {
+        HarnessCandidates {
+          candidates: acc.candidates, notes: acc.notes, retryable: acc.retryable, incarnations: acc.incarnations,
+          owner_standing: Present { value: serving_session_standing(record: session, current_launch: key, now: engine.prefix, host: HostTierUnread) },
+        }
+      }
+    }
   }
 }
 

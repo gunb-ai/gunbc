@@ -10,7 +10,6 @@ import gunbc.spark.vllm_endpoint_process_launch {
   LaunchObserved, LaunchUnobserved,
 }
 import gunbc.serving.turn_admission {
-  GroupOccupied,
   ServingQueueReading, QueueDepthRead, GroupOccupied, QueueDepthUnread, GroupIdle, serving_co_tenancy,
   serving_capacity_pressure, ServingCapacityPressure, RouteAdmittingMore, RouteHoldingForCapacity,
   CapacityPressureUnread,
@@ -26,7 +25,7 @@ import gunbc.serving.turn_admission {
   ResidencyUnread, TokenPrefixBroken, LaunchReplaced, PrefixMissedAndNotRetained,
   serving_session_residency, serving_session_placement, ServingSessionRecord, NoSessionRecord, SessionRecord,
   ServingPrefixFields, PrefixFieldsRead, PrefixFieldsUnread, serving_prefix_interval, serving_session_standing,
-  ServingSessionPlacement, PlaceByAdmission, OwnedByAnotherReplica,
+  ServingSessionPlacement, PlacementFree, OwnedByAnotherReplica,
 }
 import gunbc.harness.harness_backend {
   harness_gauge_count, harness_queue_from_body, harness_launch_from_body,
@@ -393,16 +392,16 @@ fn rec(owner: String) -> ServingSessionRecord {
 }
 
 test fn a_warm_session_is_pinned_to_its_owner_and_a_cold_one_is_not() -> Bool {
-  (match serving_session_placement(residency: ResidentOnGpu, record: rec(owner: "L1"), candidate_launch: "L2" as NonEmptyStr, admission: idle_admission()) {
+  (match serving_session_placement(residency: ResidentOnGpu, record: rec(owner: "L1"), candidate_launch: "L2" as NonEmptyStr) {
      OwnedByAnotherReplica { owner: o } => (o as String) == "L1"
      _ => false
    })
-    && (match serving_session_placement(residency: ResidentOnGpu, record: rec(owner: "L1"), candidate_launch: "L1" as NonEmptyStr, admission: idle_admission()) {
-          PlaceByAdmission { admission: _ } => true
+    && (match serving_session_placement(residency: HostRestorable, record: rec(owner: "L1"), candidate_launch: "L1" as NonEmptyStr) {
+          PlacementFree => true
           _ => false
         })
-    && (match serving_session_placement(residency: MustReconstruct { cause: TokenPrefixBroken }, record: rec(owner: "L1"), candidate_launch: "L2" as NonEmptyStr, admission: idle_admission()) {
-          PlaceByAdmission { admission: _ } => true
+    && (match serving_session_placement(residency: MustReconstruct { cause: TokenPrefixBroken }, record: rec(owner: "L1"), candidate_launch: "L2" as NonEmptyStr) {
+          PlacementFree => true
           _ => false
         })
 }
