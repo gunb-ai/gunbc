@@ -128,8 +128,23 @@ fn sudo_nopasswd_grant_list_all_shell_condition() -> Node {
       inner: bash_build_command_from_lits(lits: sudo_nopasswd_grant_list_argv()),
       redir: ^bash_production_fold_redir_stderr_null
     ),
-    right: bash_build_command_from_lits(lits: ["grep", "-Ex", "--", "[[:space:]]*\\((ALL|ALL : ALL|root)\\)[[:space:]]+NOPASSWD:[[:space:]]*ALL[[:space:]]*"])
+    right: bash_build_command_from_lits(lits: ["grep", "-Ex", "--", sudo_nopasswd_all_grant_line_ere()])
   )
+}
+
+// THE SHELL TWIN'S RUN-AS ALTERNATION IS DERIVED FROM THE TYPED READING'S ROW (review 78587), so the
+// set exists once: each admitted run-as spelling with its parentheses escaped for ERE (its spaces and
+// colon are already literal), joined as alternatives. Adding a spelling to the row widens both readings.
+fn sudo_nopasswd_ere_escape_parens(s: String) -> String {
+  join(split(s: join(split(s: s, delimiter: "("), "\\("), delimiter: ")"), "\\)")
+}
+
+fn sudo_nopasswd_all_grant_line_ere() -> String {
+  join([
+    "[[:space:]]*(",
+    join(map(sudo_nopasswd_all_grant_runas, r => sudo_nopasswd_ere_escape_parens(s: r)), "|"),
+    ")[[:space:]]+NOPASSWD:[[:space:]]*ALL[[:space:]]*",
+  ], "")
 }
 
 fn sudo_nopasswd_grant_list_path_shell_condition(probe: SudoNopasswdGrantListProbeShape) -> Node {
