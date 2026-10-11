@@ -43,8 +43,7 @@ Every remaining compiler module flips to self-emitted **or** is declared a **pin
 1. Pipeline runs on **emitted Rust** (not v1 seed mirror).
 2. `src/v1` collapses to **~8-15k LOC pinned bootstrap kernel** ([seed-shrink-census.md](seed-shrink-census.md)).
 3. **Import grammar deleted** (import-deletion ladder B4 — see §3).
-4. **CI compile cone gone** — regen cutover complete; HAND queue drained.
-5. TypeScript fixed-point work **opens** post-Rust (END GOAL unchanged; [typescript-gap-census.md](typescript-gap-census.md)).
+4. TypeScript fixed-point work **opens** post-Rust (END GOAL unchanged; [typescript-gap-census.md](typescript-gap-census.md)).
 
 ## 2. Census honesty — what is firm vs carrier-held
 
