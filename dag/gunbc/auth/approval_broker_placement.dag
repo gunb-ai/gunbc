@@ -42,6 +42,12 @@ fn approval_broker_host_under(realization: ProdRoleRealization) -> ApprovalBroke
   }
 }
 
+// THE ONE PRODUCTION AUTHORITY FOR WHERE THE BROKER LIVES: the host of the actuated holder, so a selected
+// holder with no desired deployment row refuses instead of resolving a host nothing installs on.
+fn approval_broker_host() -> ApprovalBrokerHost {
+  approval_broker_host_under(realization: prod_role_actuated_realization())
+}
+
 fn approval_broker_public_host_under(realization: ProdRoleRealization, domain: NonEmptyStr?) -> ApprovalBrokerAddress {
   match approval_broker_host_under(realization: realization) {
     ApprovalBrokerHostResolved { host } => ApprovalBrokerAddressResolved { value: approval_broker_public_host_on(host: host, domain: domain) }

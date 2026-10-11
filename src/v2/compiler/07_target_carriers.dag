@@ -79,7 +79,7 @@ fn fidelity_disposition_node_decode_fidelity(node: Node) -> Outcome<DecodeFideli
       }
     TypeNode { connective: Disj } => fidelity_disposition_malformed(node: node)
     TypeNode { connective: Arrow } => fidelity_disposition_malformed(node: node)
-    TypeNode { connective: Cardinality } => fidelity_disposition_malformed(node: node)
+    TypeNode { connective: Occupancy } => fidelity_disposition_malformed(node: node)
     TypeNode { connective: Instantiation } => fidelity_disposition_malformed(node: node)
     ComputationNode { behavior: _ } => fidelity_disposition_malformed(node: node)
   }
@@ -123,7 +123,7 @@ fn fidelity_quotient_decode_fidelity(quotient: Node) -> Outcome<DecodeFidelity> 
     TypeNode { connective: Atom { identity: _ } } => fidelity_quotient_malformed(quotient: quotient)
     TypeNode { connective: Disj } => fidelity_quotient_malformed(quotient: quotient)
     TypeNode { connective: Arrow } => fidelity_quotient_malformed(quotient: quotient)
-    TypeNode { connective: Cardinality } => fidelity_quotient_malformed(quotient: quotient)
+    TypeNode { connective: Occupancy } => fidelity_quotient_malformed(quotient: quotient)
     TypeNode { connective: Instantiation } => fidelity_quotient_malformed(quotient: quotient)
     ComputationNode { behavior: _ } => fidelity_quotient_malformed(quotient: quotient)
   }

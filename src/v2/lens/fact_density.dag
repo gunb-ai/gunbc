@@ -7,7 +7,6 @@ import v2.lens.common.construction_justification { ConstructionJustification }
 
 import v2.std.witness { Holds }
 import v2.std.diagnostic { outcome_accepted, outcome_rejected, node_locus }
-import std.constructors { Cardinality }
 import v2.lens.common.construction_justification { ConstructionJustification }
 
 fn symbol_is_kernel_ambient(s: Symbol) -> Bool {
@@ -48,7 +47,7 @@ fn connective_is_kernel_ambient_atom(c: Connective) -> Bool {
     Conj => false
     Disj => false
     Arrow => false
-    Cardinality => false
+    Occupancy => false
     Instantiation => false
   }
 }
