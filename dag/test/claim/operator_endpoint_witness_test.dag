@@ -122,9 +122,17 @@ test fn the_operator_backend_access_hands_the_turn_its_header_file_and_a_seat_ha
 
 // ── 4. ANY ADMITTED MODEL PLACES ON THE OPERATOR ROUTE (the operator's 2026-10-11 ruling) ──────
 test fn any_admitted_model_places_on_the_operator_endpoint_not_a_fleet_seat() -> Bool {
-  match harness_requirement_placement(requirement: AnyAdmittedModel) {
+  match harness_requirement_placement(requirement: AnyAdmittedModel, class: BatchQualityTolerant) {
     RunOnOperatorEndpoint => true
     PlacedOnFleetSeat => false
+    LeasedFromHostedQuota => false
+  }
+}
+
+test fn a_quality_sensitive_any_model_turn_keeps_its_fleet_seat() -> Bool {
+  match harness_requirement_placement(requirement: AnyAdmittedModel, class: InteractiveQualitySensitive) {
+    PlacedOnFleetSeat => true
+    RunOnOperatorEndpoint => false
     LeasedFromHostedQuota => false
   }
 }

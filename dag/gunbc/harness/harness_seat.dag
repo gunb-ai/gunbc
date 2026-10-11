@@ -1433,7 +1433,7 @@ data harness_placement_rounds: Nat = 3
 // that constructed the request itself could hand in a request naming one requirement beside a
 // screen argument naming another.
 fn harness_bind_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, inputs: List<String>, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy) -> HarnessSeatBinding {
-  match harness_requirement_placement(requirement: requirement) {
+  match harness_requirement_placement(requirement: requirement, class: class) {
     LeasedFromHostedQuota => HarnessSeatRefused { detail: "the required unit is reached through a hosted quota lease, not a fleet seat; bind it with harness_bind_hosted" }
     PlacedOnFleetSeat => harness_bind_fleet_seat(short_hostname: short_hostname, class: class, requirement: requirement, shape: shape, inputs: inputs, actor: actor, attempt: attempt, policy: policy)
     RunOnOperatorEndpoint => harness_bind_operator(class: class, shape: shape)
@@ -1468,9 +1468,18 @@ fn harness_bind_operator(class: ServingCoTenancyClass, shape: HarnessWireShape) 
 // which overrules the earlier rule that an unnamed requirement lands only on a fleet seat. The hosted listing stays
 // governed by trial terms (extdeps.nvidia.api_trial_terms): an unnamed requirement must not quietly route a turn
 // to an upstream whose terms the caller never chose, so only a caller naming the hosted unit reaches it.
-fn harness_requirement_placement(requirement: ServingModelRequirement) -> HarnessUnitPlacement {
+//
+// THE RULING GOVERNS THE CLASS THE ROUTE'S QUALITY FLOOR ADMITS. The operator route admits batch turns only, so an
+// unnamed requirement from a quality-sensitive caller (the router's place entry, the seat-collision probe) keeps
+// its fleet seat rather than being refused by a route it could never use; the ruling's words ("make our harness
+// pick this pod") are read as the harness worker's default, not as removing the fleet path for interactive turns.
+fn harness_requirement_placement(requirement: ServingModelRequirement, class: ServingCoTenancyClass) -> HarnessUnitPlacement {
   match requirement {
-    AnyAdmittedModel => harness_unit_placement(unit: harness_operator_route.unit)
+    AnyAdmittedModel =>
+      match operator_class_admission(route: harness_operator_route, class: class) {
+        OperatorClassAdmitted => harness_unit_placement(unit: harness_operator_route.unit)
+        OperatorClassRefused { detail: _ } => PlacedOnFleetSeat
+      }
     ExactServingUnit { unit: u } => harness_unit_placement(unit: u)
   }
 }
