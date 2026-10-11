@@ -54,6 +54,8 @@ data tracker_web_test_oauth_desired_revision: NonEmptyStr = "tracker-web-test-20
 
 data tracker_web_oauth_callback_path: String = "/auth/google/callback"
 
+// DNS name the TEST environment will use once owned-domain TLS exists. "dev" here is the
+// product hostname (tracker-dev.gunb.ai), not a GoogleLoginEnvironment Dev arm.
 data tracker_web_test_target_owned_domain: NonEmptyStr = "tracker-dev.gunb.ai" as NonEmptyStr
 
 data tracker_web_test_srv2_public_port: Port = 18082
@@ -228,11 +230,14 @@ fn tracker_web_test_registered_web_client_console_readback() -> WorkspaceAdminRe
   }
 }
 
+// Secret Manager id as already provisioned. The "dev" token is that upstream resource's
+// spelling, kept for compatibility; the client this pin admits is GoogleLoginEnvironmentTest.
 data tracker_web_test_oauth_client_secret_ref: SecretRef = secret_ref_pin_version(
   ref: fleet_secret_ref(secret_id: "tracker-web-dev-oauth-client-secret"),
   version: "1",
 )
 
+// Host path as already placed. Same as the Secret Manager id: an upstream spelling, not a Dev arm.
 data tracker_web_test_oauth_client_secret_host_path: NonEmptyStr = "/etc/gunbc-oidc/tracker-web-dev-client-secret" as NonEmptyStr
 
 data tracker_web_test_oidc_config_host_path: NonEmptyStr = "/etc/gunbc-oidc/tracker-web-dev.json" as NonEmptyStr
@@ -279,17 +284,24 @@ fn tracker_web_oidc_serve_placement(instance_id: NonEmptyStr) -> TrackerWebOidcS
         TrackerWebOauthClientUnbound { environment: _, reason } =>
           TrackerWebOidcPlacementUnbound { instance_id: instance_id, reason: reason }
         TrackerWebOauthClientBound { binding: b } =>
-          match row.redirect_uri {
-            Absent => TrackerWebOidcPlacementMissingRealization { instance_id: instance_id, environment: row.environment }
-            Present { value: uri } =>
-              TrackerWebOidcServeReady {
-                config: TrackerWebOidcServeConfig {
-                  config_path: tracker_web_test_oidc_config_host_path,
-                  redirect_uri: uri,
-                  secret_file: tracker_web_test_oauth_client_secret_host_path,
-                  binding: b,
-                }
+          match b.environment {
+            GoogleLoginEnvironmentTest =>
+              match row.redirect_uri {
+                Absent => TrackerWebOidcPlacementMissingRealization { instance_id: instance_id, environment: row.environment }
+                Present { value: uri } =>
+                  TrackerWebOidcServeReady {
+                    config: TrackerWebOidcServeConfig {
+                      config_path: tracker_web_test_oidc_config_host_path,
+                      redirect_uri: uri,
+                      secret_file: tracker_web_test_oauth_client_secret_host_path,
+                      binding: b,
+                    }
+                  }
               }
+            GoogleLoginEnvironmentStage =>
+              TrackerWebOidcPlacementMissingRealization { instance_id: instance_id, environment: GoogleLoginEnvironmentStage }
+            GoogleLoginEnvironmentProd =>
+              TrackerWebOidcPlacementMissingRealization { instance_id: instance_id, environment: GoogleLoginEnvironmentProd }
           }
       }
   }
@@ -303,6 +315,18 @@ fn tracker_web_oidc_serve_standing(instance_id: NonEmptyStr, now_epoch: Int) -> 
     TrackerWebOidcPlacementMissingRealization { instance_id: id, environment } =>
       TrackerWebOidcRealizationMissing { instance_id: id, environment: environment }
     TrackerWebOidcServeReady { config: cfg } =>
+      match cfg.binding.environment {
+        GoogleLoginEnvironmentStage =>
+          TrackerWebOidcConsoleReadbackUnsatisfied {
+            instance_id: instance_id,
+            cause: "no tracker-web STAGE Auth Platform console readback is declared" as NonEmptyStr,
+          }
+        GoogleLoginEnvironmentProd =>
+          TrackerWebOidcConsoleReadbackUnsatisfied {
+            instance_id: instance_id,
+            cause: "no tracker-web PROD Auth Platform console readback is declared" as NonEmptyStr,
+          }
+        GoogleLoginEnvironmentTest =>
       match tracker_web_test_auth_platform_client_assessment(now_epoch: now_epoch) {
         GoalSatisfied { evidence: _ } => TrackerWebOidcServeConfigured { config: cfg }
         GoalDiverged { deviations: _ } =>
@@ -317,6 +341,7 @@ fn tracker_web_oidc_serve_standing(instance_id: NonEmptyStr, now_epoch: Int) -> 
           }
         GoalAssessmentRefused { cause } =>
           TrackerWebOidcConsoleReadbackUnsatisfied { instance_id: instance_id, cause: cause as NonEmptyStr }
+      }
       }
   }
 }
