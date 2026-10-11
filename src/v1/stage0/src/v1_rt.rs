@@ -334,10 +334,10 @@ pub fn utf8_encode_bytes(s: String) -> Vec<u8> {
     s.into_bytes().into_iter().collect()
 }
 
-/// std.bytes pure_dag_seam_unreachable: bottom. Reached only if an arm its author proved
+/// std.error_primitives pure_dag_seam_unreachable: bottom. Reached only if an arm its author proved
 /// unreachable was evaluated, and then it diverges, as the interpreter's arm refuses.
 pub fn pure_dag_seam_unreachable() -> i64 {
-    panic!("std.bytes pure_dag_seam_unreachable reached: an arm declared unreachable was evaluated")
+    panic!("std.error_primitives pure_dag_seam_unreachable reached: an arm declared unreachable was evaluated")
 }
 
 /// See `char_at`: the ASCII fast path is bounded by `end`, not by the whole string.
