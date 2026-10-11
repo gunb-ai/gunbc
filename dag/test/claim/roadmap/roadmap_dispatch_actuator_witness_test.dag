@@ -958,12 +958,16 @@ fn ticket_fixture_node() -> RoadmapNode {
   }, repo: "gunbc")
 }
 
-test fn witness_ticket_brief_fills_real_slots() -> Bool {
+// THE WORKER'S BRIEF FILLS EVERY WORKER SLOT AND WITHHOLDS THE FALSIFICATION QUESTION: the ticket's
+// red control is the reviewer's (operator ruling 2026-10-11), so a node carrying a distinctive one
+// renders a brief that never contains it.
+test fn witness_ticket_brief_fills_real_slots_and_withholds_the_red_control() -> Bool {
   let brief = filled_dispatch_brief_for_node(node: ticket_fixture_node())
   string_contains(s: brief, pattern: "the real displaced cost")
     && string_contains(s: brief, pattern: "the real current state")
     && string_contains(s: brief, pattern: "the real first slice")
-    && string_contains(s: brief, pattern: "the real red control")
+    && !string_contains(s: brief, pattern: "the real red control")
+    && !string_contains(s: brief, pattern: "RED control")
     && string_contains(s: brief, pattern: "the real scope wall")
     && string_contains(s: brief, pattern: "the real handback")
 }
