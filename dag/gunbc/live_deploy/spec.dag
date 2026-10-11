@@ -1162,6 +1162,13 @@ fn deployment_owned_steps(
   ))))))
 }
 
+// THE OIDC CONFIG FILE IS A PLACEMENT-SCOPED MEMBER, not an instance-kind every twin must share.
+// tracker_web_oidc_serve_placement admits ServeReady only for the instances assigned a realized
+// Google login environment; production's assignment is unbound, so it owns none, and the lab
+// instance that is ServeReady owns the file. Same shape as fabric storage, the approval-broker
+// front door, and the tailnet door: presence is decided by a named function, the other twin owns
+// zero of them, and a_twin_deployment_on_one_host_collides_with_nothing subtracts them from the
+// kind join rather than demanding a mirror.
 fn deployment_oidc_config_steps(instance: HostDashboardInstance) -> List<DeploymentArtifactStep> {
   match tracker_web_oidc_serve_placement(instance_id: instance.instance_id) {
     TrackerWebOidcServeReady { config: cfg } => [
