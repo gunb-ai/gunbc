@@ -144,8 +144,8 @@ pub mod std_literal_elaboration;
 #[path = "../../stage0/src/std_operator_realization.rs"]
 pub mod std_operator_realization;
 #[rustfmt::skip]
-#[path = "../../stage0/src/std_import.rs"]
-pub mod std_import;
+#[path = "../../stage0/src/std_import_statement.rs"]
+pub mod std_import_statement;
 #[rustfmt::skip]
 #[path = "../../stage0/src/v1_std_core.rs"]
 pub mod v1_std_core;
