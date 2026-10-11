@@ -18,12 +18,23 @@ import gunbc.fleet_intent_network {
 }
 import gunbc.fleet_host_identity { operator_host_srv2 }
 import gunbc.roadmap_dashboard_instance {
+  DeploymentId,
   HostDashboardInstance,
+  ProdRoleRealization,
+  ProdRoleRealizedBy,
+  ProdRoleRealizationRefused,
+  ProdRoleRealizationRefusal,
+  prod_role_realization_refusal_detail,
+  ProdRoleHolderUnactuatable,
+  prod_role_realization,
+  prod_role_realization_in,
+  public_builtin_dashboard_instances,
   srv1_live_dashboard_instance,
   srv1_lab_dashboard_instance,
   srv2_deploy_dashboard_instance,
 }
 import v2.std.collection { Present, Absent }
+import gunbc.deployment_risk { ProdRoleSelection }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
   DeploymentHostTarget,
@@ -72,6 +83,7 @@ fn srv2_deploy_selected_identity() -> DeclarationRef {
 
 fn selected_deployment_spec(row: DesiredDeployment) -> DeploymentSpec {
   deployment_spec_for(
+    realization: prod_role_actuated_realization(),
     instance: row.instance,
     target: row.target,
     names: row.names,
@@ -126,6 +138,87 @@ fn srv2_deploy_desired_deployment() -> DesiredDeployment {
   }
 }
 
+// THE PROD ROLE AS SOMETHING THAT CAN BE ACTUATED. The holder resolves over the six dashboard
+// instances (gunbc.roadmap_dashboard_instance prod_role_realization), but only a row of THIS roster
+// has a target and a spec, so a holder outside it -- the MacBook, srv2-preview, srv2's lab -- names a
+// deployment nothing can install. Joined here, against the one roster, it refuses with
+// ProdRoleHolderUnactuatable instead of placing the role-following singletons nowhere. Every
+// role-following reader takes this joined realization; there is no second list of eligible holders.
+fn prod_role_actuated_realization_over(realization: ProdRoleRealization, rows: List<DesiredDeployment>) -> ProdRoleRealization {
+  match realization {
+    ProdRoleRealizedBy { holder } =>
+      if any(rows, r => r.instance.deployment == holder.instance.deployment) { realization }
+      else { ProdRoleRealizationRefused { cause: ProdRoleHolderUnactuatable { deployment: holder.instance.deployment } } }
+    ProdRoleRealizationRefused { cause: _ } => realization
+  }
+}
+
+fn prod_role_actuated_realization_in(selection: ProdRoleSelection) -> ProdRoleRealization {
+  prod_role_actuated_realization_over(
+    realization: prod_role_realization_in(selection: selection, instances: public_builtin_dashboard_instances()),
+    rows: desired_deployment_roster(),
+  )
+}
+
+fn prod_role_actuated_realization() -> ProdRoleRealization {
+  prod_role_actuated_realization_over(realization: prod_role_realization(), rows: desired_deployment_roster())
+}
+
+// THE PROD ROLE AS A ROW. A PROJECTION of prod_role_actuated_realization(), read through the ONE
+// admitted roster: the realization, then desired_roster_standing over the rows, then the exact
+// lookup by the holder's INSTANCE id (desired_deployment_for_instance_id_over), then a check that
+// the row found names the holder's deployment. Three distinct refusals: the realization's own
+// cause, the roster's own refusal (a duplicate id or same-host collision ANYWHERE in the roster
+// stops every production entry), and an exact-holder-row mismatch. No filter by deployment id: that
+// was a second, weaker roster reader.
+type ProdRoleDeployment
+  = ProdRoleDeploymentSelected { deployment: DesiredDeployment }
+  | ProdRoleDeploymentRefused { cause: ProdRoleRealizationRefusal }
+  | ProdRoleDeploymentRosterRefused { refusal: DesiredRosterRefusal }
+  | ProdRoleDeploymentHolderRowMismatch { holder: DeploymentId, rostered: DeploymentId }
+
+fn prod_role_desired_deployment_over(realization: ProdRoleRealization, rows: List<DesiredDeployment>) -> ProdRoleDeployment {
+  match realization {
+    ProdRoleRealizationRefused { cause } => ProdRoleDeploymentRefused { cause: cause }
+    ProdRoleRealizedBy { holder } =>
+      prod_role_holder_row_checked(
+        holder: holder.instance.deployment,
+        lookup: desired_deployment_for_instance_id_over(rows: rows, instance_id: instance_id_text(id: holder.instance.instance_id)),
+      )
+  }
+}
+
+// The exact-row check, over a supplied lookup so a control can hand it a row naming another
+// deployment (the real lookup is keyed by instance id, so the real roster never produces one).
+fn prod_role_holder_row_checked(holder: DeploymentId, lookup: DesiredDeploymentLookup) -> ProdRoleDeployment {
+  match lookup {
+    DesiredDeploymentRosterRefused { refusal } => ProdRoleDeploymentRosterRefused { refusal: refusal }
+    DesiredDeploymentUnknownInstanceId { instance_id: _ } =>
+      ProdRoleDeploymentRefused { cause: ProdRoleHolderUnactuatable { deployment: holder } }
+    DesiredDeploymentFound { row } =>
+      if row.instance.deployment == holder {
+        ProdRoleDeploymentSelected { deployment: row }
+      } else {
+        ProdRoleDeploymentHolderRowMismatch { holder: holder, rostered: row.instance.deployment }
+      }
+  }
+}
+
+fn desired_roster_refusal_detail(refusal: DesiredRosterRefusal) -> String {
+  match refusal {
+    DesiredRosterSameHostCollision { host } => join(["DesiredRosterSameHostCollision on host ", host], "")
+    DesiredRosterDuplicateInstanceId { instance_id } => join(["DesiredRosterDuplicateInstanceId ", instance_id], "")
+  }
+}
+
+fn prod_role_deployment_mismatch_detail(holder: DeploymentId, rostered: DeploymentId) -> String {
+  join(["prod role refused: the roster row for holder ", holder.name as String, "'s instance names deployment ", rostered.name as String], "")
+}
+
+fn prod_role_desired_deployment() -> ProdRoleDeployment {
+  prod_role_desired_deployment_over(realization: prod_role_actuated_realization(), rows: desired_deployment_roster())
+}
+
 fn desired_deployment_roster() -> List<DesiredDeployment> {
   [
     srv1_production_desired_deployment(),
@@ -145,7 +238,7 @@ fn deployment_owned_identity(spec: DeploymentSpec, step: DeploymentArtifactStep)
 // HOST-QUALIFIED PATHS OF OWNED ARTIFACT STEPS ONLY — the retract-order membership
 // gunbc.live_deploy.spec deployment_owned_steps actually installs: serve binary, source tree,
 // tree-remote unit, dispatch worktree root, attempt-state root, compute root, fabric event-log
-// root, systemd unit, publication-helper timer, belt timer, tailscale route member path.
+// root, systemd unit, publication-helper path, belt event path, tailscale route member path.
 // Dispatch/attempt/compute/event-log roots are already in that list (C6 moving them into the
 // member roster does not extend this fold). It does NOT enumerate listen port, serve_function,
 // tree-sync unit/env filenames, slice unit, belt/publication service units, or the credential
@@ -271,7 +364,10 @@ fn desired_roster_standing(rows: List<DesiredDeployment>) -> DesiredRosterStandi
 }
 
 fn desired_deployment_for_instance_id(instance_id: String) -> DesiredDeploymentLookup {
-  let rows = desired_deployment_roster()
+  desired_deployment_for_instance_id_over(rows: desired_deployment_roster(), instance_id: instance_id)
+}
+
+fn desired_deployment_for_instance_id_over(rows: List<DesiredDeployment>, instance_id: String) -> DesiredDeploymentLookup {
   match desired_roster_standing(rows: rows) {
     DesiredRosterRefused { refusal } => DesiredDeploymentRosterRefused { refusal: refusal }
     DesiredRosterAdmitted { keyed } =>
@@ -313,23 +409,6 @@ fn bind_desired_selected_identity(desired: DesiredDeployment) -> DesiredSelected
       }
   }
 }
-
-// PRODUCTION WRAPPERS in apply/readiness/CLI survive one migration PR as typed scaffolds.
-// Their deletion consumer is CONVERGENCE-ONE C8: the first wet action, which must select a
-// DesiredDeployment from this roster and therefore cannot keep a production-only entry as
-// the executing route. The wrappers retire by deletion; that absence is the discharge.
-// ONE ROW OVER THE POPULATION, not one DeclarationRetires on live_deploy_apply_srv1_wet:
-// apply.dag still defines ten live_deploy_{apply,retract}_srv1* wrappers. A singular
-// retirement trigger would fire (or look discharged) while nine production callers remained.
-data srv1_production_wrapper_dissolution: DissolutionCondition = unbound_dissolution(
-  description: "TRIGGER: the production wrappers retire when gunbc.live_deploy.desired deployment_spec_srv1 has no remaining production caller. The capability is that absence across the wrapper population (apply, retract, with-access, wet, operator, operator-local, transaction), not the deletion of any one wrapper name. A DeclarationRetires on live_deploy_apply_srv1_wet alone is not this trigger. SUFFICIENT FOR: every live_deploy_\{apply,retract\}_srv1* production wrapper gone, and no remaining production caller of deployment_spec_srv1." as NonEmptyStr
-)
-
-data srv1_production_wrapper_frontier: FrontierRow = frontier_row_path(
-  path: "gunbc.live_deploy.apply srv1 production wrappers",
-  reason: "production live_deploy_\{apply,retract\}_srv1* wrappers are typed scaffolds until C8 selects a DesiredDeployment; they retire together when deployment_spec_srv1 has no remaining production caller",
-  dissolution: srv1_production_wrapper_dissolution,
-)
 
 // RESIDUAL, NOT THE WHOLE PATH CLAIM. selecting_lab_changes_emitted_unit_bytes
 // discriminates every path the serve unit names (WorkingDirectory repo_root, slice,

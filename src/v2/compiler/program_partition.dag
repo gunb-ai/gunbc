@@ -81,7 +81,7 @@ import v2.std.node {
   node_subtree_nodes,
   well_formed,
   Arrow,
-  Cardinality,
+  Occupancy,
   Instantiation,
   Positional,
   Bind,
@@ -121,7 +121,7 @@ fn partition_user_semantic_type_shape(node: Node) -> Bool {
     TypeNode { connective: Conj } => true
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -146,7 +146,7 @@ fn partition_semantic_type_search_subtree(root: Node) -> Optional<Node> {
       TypeNode { connective: Atom { identity: _ } } => Absent
       TypeNode { connective: Disj } => Absent
       TypeNode { connective: Arrow } => Absent
-      TypeNode { connective: Cardinality } => Absent
+      TypeNode { connective: Occupancy } => Absent
       TypeNode { connective: Instantiation } => Absent
       ComputationNode { behavior: _ } => Absent
     }
@@ -207,7 +207,7 @@ fn partition_collect_user_semantic_types_from_module(
     TypeNode { connective: Atom { identity: _ } } => acc
     TypeNode { connective: Disj } => acc
     TypeNode { connective: Arrow } => acc
-    TypeNode { connective: Cardinality } => acc
+    TypeNode { connective: Occupancy } => acc
     TypeNode { connective: Instantiation } => acc
     ComputationNode { behavior: _ } => acc
   }
@@ -581,7 +581,7 @@ fn partition_segment_root_is_transform_computation(root: Node) -> Bool {
     TypeNode { connective: Conj } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: Value } => false
     ComputationNode { behavior: Branch } => false

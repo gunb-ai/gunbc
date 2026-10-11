@@ -21,7 +21,7 @@ import v2.std.find_witness {
 }
 import v2.std.node {
   Atom,
-  Cardinality,
+  Occupancy,
   ComputationNode,
   Conj,
   Edge,
@@ -38,9 +38,9 @@ import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 import std.nat { Succ, Zero }
 import v2.std.optional_layers {
-  CardinalityWrapperMalformed,
-  TypeNodeCardinality,
-  type_node_cardinality_read
+  OccupancyWrapperMalformed,
+  TypeNodeOccupancy,
+  type_node_occupancy_read
 }
 
 // WHAT A FORMAL IS DECLARED AS, READ AGAINST ITS OWN ARROW. A formal declared as one of the
@@ -67,7 +67,7 @@ fn inhabitance_formal_declaration(declared: Node, type_params: List<Symbol>) -> 
     TypeNode { connective: Conj } => DeclaredType { declared: declared }
     TypeNode { connective: Disj } => DeclaredType { declared: declared }
     TypeNode { connective: Arrow } => DeclaredType { declared: declared }
-    TypeNode { connective: Cardinality } => DeclaredType { declared: declared }
+    TypeNode { connective: Occupancy } => DeclaredType { declared: declared }
     TypeNode { connective: Instantiation } => DeclaredType { declared: declared }
     ComputationNode { behavior: _ } => DeclaredType { declared: declared }
   }
@@ -202,9 +202,9 @@ fn inhabitance_declared_singleton(declared: Node) -> CandidateSet {
   }
 }
 
-fn inhabitance_cardinality_type(inner: Node) -> Node {
+fn inhabitance_occupancy_type(inner: Node) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Cardinality },
+    kind: TypeNode { connective: Occupancy },
     children: [
       Edge { label: Positional, target: inner }
     ]
@@ -241,7 +241,7 @@ fn inhabitance_node_undecidable_reason(
     optional_present(value: UndecidableGenericFormal)
   } else {
     match n.kind {
-      TypeNode { connective: Cardinality } =>
+      TypeNode { connective: Occupancy } =>
         optional_present(value: UndecidableOptionalCarrier)
       _ => Absent
     }
@@ -269,9 +269,9 @@ fn inhabitance_pair_undecidable_reason(
     inhabitance_pair_undecidable_reason_declared_then_produced(declared: declared, produced: produced, type_variables: type_variables)
   } else {
     match declared.kind {
-      TypeNode { connective: Cardinality } =>
+      TypeNode { connective: Occupancy } =>
         match produced.kind {
-          TypeNode { connective: Cardinality } => Absent
+          TypeNode { connective: Occupancy } => Absent
           TypeNode { connective: _ } =>
             inhabitance_pair_undecidable_reason_declared_then_produced(declared: declared, produced: produced, type_variables: type_variables)
           ComputationNode { behavior: _ } =>
@@ -300,7 +300,7 @@ fn inhabitance_pair_undecidable_reason(
 // Rung, ceiling, and next-rung triggers live in
 // gunbc.recurring_failure_mode.argument_type_obligation_absent_while_the_route_advances.
 // AN OPTIONAL PRODUCED AT A REQUIRED DECLARED TYPE IS DECIDED: IT DOES NOT INHABIT. `T?` admits
-// absence and a required type admits no absent value, so a produced Cardinality type node (the type
+// absence and a required type admits no absent value, so a produced Occupancy type node (the type
 // `T?` lowers to; v2.std.node_query declared_field_cardinality_of_target reads the same node as
 // Optional) inhabits no required declared type, whatever T is. UndecidableOptionalCarrier was
 // written for the LIFT direction -- a produced `T` at a declared `T?` -- and, read off either side,
@@ -321,7 +321,7 @@ fn inhabitance_optional_produced_at_required_declared(
   type_variables: List<Symbol>
 ) -> Bool {
   match produced.kind {
-    TypeNode { connective: Cardinality } =>
+    TypeNode { connective: Occupancy } =>
       match declared.kind {
         TypeNode { connective: Atom { identity: _ } } =>
           (count(declared.children) == 0)
@@ -351,12 +351,12 @@ type OptionalLayerInhabitanceVerdict
   | OptionalLayerWrapperMalformed
 
 fn inhabitance_optional_layer_judgement(declared: Node, produced: Node) -> OptionalLayerInhabitanceVerdict {
-  match type_node_cardinality_read(n: declared) {
-    CardinalityWrapperMalformed { wrapper: _ } => OptionalLayerWrapperMalformed
-    TypeNodeCardinality { card: dc, base: _ } =>
-      match type_node_cardinality_read(n: produced) {
-        CardinalityWrapperMalformed { wrapper: _ } => OptionalLayerWrapperMalformed
-        TypeNodeCardinality { card: pc, base: _ } =>
+  match type_node_occupancy_read(n: declared) {
+    OccupancyWrapperMalformed { wrapper: _ } => OptionalLayerWrapperMalformed
+    TypeNodeOccupancy { depth: dc, base: _ } =>
+      match type_node_occupancy_read(n: produced) {
+        OccupancyWrapperMalformed { wrapper: _ } => OptionalLayerWrapperMalformed
+        TypeNodeOccupancy { depth: pc, base: _ } =>
           match dc {
             Zero => OptionalLayerInhabitanceHolds
             Succ { prev: _ } =>

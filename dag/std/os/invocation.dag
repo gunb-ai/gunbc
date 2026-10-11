@@ -1,5 +1,7 @@
 module std.os.invocation
 
+import std.types { NonEmptyStr, List }
+import extdeps.abi { CallingConvention }
 
 type SyscallEntry {
   number: Int

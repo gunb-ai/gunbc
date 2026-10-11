@@ -1,8 +1,18 @@
 module v2.test.claim.compiler.string_template_unlowered
 
-import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble }
-import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_infer_tree, fmi_reason }
+import v2.test.claim.callexec.declaration_reference_eval { cref_the_call_to }
+import v2.compiler.infer { infer }
+import v2.compiler.inferred_tree { InferredTree }
+import v2.compiler.eval { eval, inputs_root_only }
+import v2.compiler.translate { translate }
+import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, Symbol, node_subtree_nodes }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
+import std.optional { Absent, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -10,20 +20,126 @@ data stu_template_src: String = "module p\n\nfn f(x: String) -> String {\n  \"he
 
 data stu_literal_src: String = "module p\n\nfn f(x: String) -> String {\n  \"hello\"\n}\n"
 
-// DISCRIMINATING RED: a hole in a string is a template shell. Lowering must refuse it as
-// body_lowering_reason_string_template_unlowered, located on the real assemble path — not as a
-// later incidental fatal that names something else.
-test fn a_string_template_refuses_unlowered_at_itself() -> Bool {
-  match fmi_assemble(src: stu_template_src) {
-    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_string_template_unlowered
-    Accepted { value: _, diagnostics: _ } => false
+data stu_eval_src: String = "module p\n\ndata k: String = \"k\"\n\nfn f() -> String {\n  \"a\{k\}b\"\n}\n\nfn consume_f() -> String {\n  f()\n}\n"
+
+// REAL-ROUTE CONTROL: the module declares BOTH a local concat and a local collection_concat_shape.
+// A template must still bind std.algebra.collection_concat_shape. An authored call of the declaration
+// spelling binds the local (the old bare-atom operator would have been captured the same way).
+data stu_shadow_src: String = "module p\n\nfn concat(a: Int, b: Int) -> Int {\n  a\n}\n\nfn collection_concat_shape(a: Int, b: Int) -> Int {\n  a\n}\n\ndata k: String = \"k\"\n\nfn f() -> String {\n  \"a\{k\}b\"\n}\n\nfn g() -> Int {\n  collection_concat_shape(1, 2)\n}\n"
+
+fn stu_path_is(n: Node, dotted: String) -> Bool {
+  match declaration_reference_path_optional(node: n) {
+    Present { value: p } => qualified_name_to_dotted_string(qn: p) == dotted
+    Absent => false
   }
 }
 
-// GREEN: a hole-free string literal is not that refusal.
+fn stu_count_paths(root: Node, dotted: String) -> Int {
+  fold(node_subtree_nodes(root: root), init: 0, f: fn(acc, n) {
+    if stu_path_is(n: n, dotted: dotted) { acc + 1 } else { acc }
+  })
+}
+
+fn stu_binds_concat_row(root: Node) -> Bool {
+  fold(node_subtree_nodes(root: root), init: false, f: fn(acc, n) {
+    acc || (match declaration_reference_path_optional(node: n) {
+      Present { value: p } => qualified_name_to_dotted_string(qn: p) == "std.algebra.collection_concat_shape"
+      Absent => false
+    })
+  })
+}
+
+fn stu_eval_inferred() -> Outcome<InferredTree> {
+  match fmi_assemble(src: stu_eval_src) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: tree, diagnostics: _ } => infer(tree: tree)
+  }
+}
+
+fn stu_eval_f_reason() -> Symbol {
+  match stu_eval_inferred() {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+    Accepted { value: inferred, diagnostics: _ } =>
+      match cref_the_call_to(root: inferred.root, name: ^f) {
+        Absent => ^call_absent
+        Present { value: call } =>
+          match eval(tree: inferred, interpretation: v2_evaluator_interpretation(), inputs: inputs_root_only(root: call)) {
+            Accepted { value: _, diagnostics: _ } => ^accepted
+            Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+          }
+      }
+  }
+}
+
+fn stu_translate_reason() -> Symbol {
+  match stu_eval_inferred() {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+    Accepted { value: inferred, diagnostics: _ } =>
+      match translate(tree: inferred, target: rust_target_model()) {
+        Accepted { value: _, diagnostics: _ } => ^accepted
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+      }
+  }
+}
+
+// GREEN: a well-formed template is no longer body_lowering_reason_string_template_unlowered.
+test fn a_string_template_assembles_as_a_concat_chain() -> Bool {
+  match fmi_assemble(src: stu_template_src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      stu_binds_concat_row(root: tree.root) && (fmi_reason(o: fmi_infer_tree(tree: tree)) == ^accepted)
+  }
+}
+
+// WHAT THIS ESTABLISHES: the lowered tree of a template whose hole is a data reference binds the
+// roster concat row (#13693) and infers. It does NOT evaluate the template.
+test fn a_lowered_template_binds_concat_and_infers() -> Bool {
+  match stu_eval_inferred() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } => stu_binds_concat_row(root: inferred.root)
+  }
+}
+
+// FRONTIER, V2 EVAL PATH (DESIGN 4b-1, 4b-4): v2.compiler.eval of a call whose body is a lowered
+// template refuses typed and located. The reason is eval_rejected_grounding_not_derived — not a
+// silent concat of host bytes. When the eval concat arm lands, this row flips to the positive
+// control (the produced bytes).
+test fn a_lowered_template_refuses_at_v2_eval() -> Bool {
+  stu_eval_f_reason() == ^eval_rejected_grounding_not_derived
+}
+
+// FRONTIER, EMITTED PATH: v2.compiler.translate of the same inferred tree to rust_target_model
+// refuses typed and located with translate_rejected_grounding_not_derived. It does not emit a host
+// concat of the template's parts. No emitted bytes exist for a claim to execute.
+test fn a_lowered_template_refuses_at_translate() -> Bool {
+  stu_translate_reason() == ^translate_rejected_grounding_not_derived
+}
+
+// GREEN: a hole-free string literal still assembles.
 test fn a_plain_string_literal_assembles() -> Bool {
   match fmi_assemble(src: stu_literal_src) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
+  }
+}
+
+// GREEN: locals named concat and collection_concat_shape do not capture the generated operator.
+test fn a_template_binds_the_roster_row_beside_local_concat_spellings() -> Bool {
+  match fmi_assemble(src: stu_shadow_src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      (stu_count_paths(root: tree.root, dotted: "std.algebra.collection_concat_shape") >= 1)
+        && (fmi_reason(o: fmi_infer_tree(tree: tree)) == ^accepted)
+  }
+}
+
+// RED of the old route: an authored collection_concat_shape(...) in that module binds the LOCAL,
+// not the roster. A template lowered as a bare atom of that spelling would have been captured here.
+test fn an_authored_collection_concat_shape_binds_the_local_not_the_roster() -> Bool {
+  match fmi_assemble(src: stu_shadow_src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      (stu_count_paths(root: tree.root, dotted: "p.collection_concat_shape") >= 1)
+        && (stu_count_paths(root: tree.root, dotted: "std.algebra.collection_concat_shape") >= 1)
   }
 }

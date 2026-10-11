@@ -1,6 +1,6 @@
 module gunbc.fabric_event_log
 
-import gunbc.fabric_storage_binding { fabric_storage_binding_for }
+import gunbc.fabric_storage_binding { fabric_storage_binding_for, fabric_storage_placement }
 
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat, nat_range_inclusive }
@@ -14,7 +14,6 @@ import std.fabric_storage {
   FabricHeadAdvanced, FabricHeadMoved, FabricHeadAdvanceRefused,
   FabricClosureRead, FabricClosureBudgetExhausted, FabricClosureRefused, FabricStoredObject,
 }
-import gunbc.fabric_storage_placement { fabric_storage_placement }
 import gunbc.fabric_storage_client { FabricStorageBinding, fabric_storage_head, fabric_storage_put, fabric_storage_advance, fabric_storage_closure }
 import product.capacity.pool { Pool, PoolReading, PoolRead, PoolReadingRefused, pool_reading_at, PoolOutcome, PoolAdvanced, PoolRefused, pool_release, pool_refusal_wire }
 import product.capacity.event_chain {
