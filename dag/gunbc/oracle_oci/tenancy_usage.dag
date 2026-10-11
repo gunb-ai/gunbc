@@ -14,7 +14,7 @@ import extdeps.languages.json.number {
 }
 import extdeps.cloud.oracle_oci { VmStandardA1Flex, VmStandardE21Micro, oci_shape_wire_name }
 import product.supplier.oracle_oci { OciOtherUsage }
-import extdeps.uri { uri_percent_encode_component, UriPercentComponentEncoded, UriPercentComponentRefused }
+import extdeps.uri.percent_encoding { uri_percent_encode_component, UriPercentComponentEncoded, UriPercentComponentRefused }
 import gunbc.oracle_oci.api {
   OciListRead, OciListed, OciListInaccessible, OciListRefused,
   OciRowsAdmitted, OciRowRefused, oci_admit_rows, oci_admitted_text,

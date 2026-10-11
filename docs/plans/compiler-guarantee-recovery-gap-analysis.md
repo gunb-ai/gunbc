@@ -938,7 +938,7 @@ plain `pub`-field records. This clause previously read the absence as "not autom
 defect" because nothing in ordinary self-hosting use hand-writes a violating construction
 through the emitted-struct door — that reasoning stopped at the v1 seed's own hand-written
 Rust (`v1_interpreter.rs`, `cli_run.rs`) and did not consider the GENERATED mirror itself as
-a forgery surface. ARM 3 executed against `extdeps.uri` `UriValidatedScalar` — `sole_constructor`,
+a forgery surface. ARM 3 executed against `extdeps.uri.percent_encoding` `UriValidatedScalar` — `sole_constructor`,
 single fixed-law mint `uri_validated_scalar_construction`, refusing surrogate and
 out-of-range code points — and found its emitted mirror (`extdeps_uri.rs`) is
 `pub struct UriValidatedScalar { pub admitted_cp: i64 }` deriving `serde::Serialize,
@@ -1066,7 +1066,7 @@ ask, 2026-08-20):**
   no exposure dimension; it is closed, not open-with-zero-exposure.
 - *Emit-side reconstruction — TWO findings at this row, not one, per the §10 correction above.*
   (a) The generated mirror itself: CONFIRMED BY EXECUTION (ARM 3, PR #8661) that a production
-  sole_constructor type's own emitted struct (`extdeps.uri` `UriValidatedScalar`) admits, via
+  sole_constructor type's own emitted struct (`extdeps.uri.percent_encoding` `UriValidatedScalar`) admits, via
   `serde_json::from_value` and via a direct struct literal, every value its fixed-law `.dag`
   mint refuses. This is not measured the same way as the three within-`.dag` holes above (no
   grep-for-a-shape count applies — the construction path is the ordinary emitted API surface
@@ -1242,7 +1242,7 @@ parameter's declared default-value expression — a distinct position gap, execu
 live exposure today — targeted grep, no fn-parameter default-value use of any declared
 sole_constructor type found). **On the source→Rust-emission path**, it does not exist at all
 for a production sole_constructor type's own emitted mirror: ARM 3 (§10) confirmed by
-execution that `extdeps.uri` `UriValidatedScalar`'s emitted struct admits, via
+execution that `extdeps.uri.percent_encoding` `UriValidatedScalar`'s emitted struct admits, via
 `serde_json::from_value` and a direct struct literal, every value its fixed-law mint refuses —
 no production caller is established to have exercised this, but the mechanism is real and the
 gap is silent (below floor), not a decidable zero-exposure hole among otherwise-sound coverage.
