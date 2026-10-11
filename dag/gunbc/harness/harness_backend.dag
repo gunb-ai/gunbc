@@ -14,7 +14,7 @@ import gunbc.serving.serving_availability {
   serving_availability_bracketing_read,
 }
 import extdeps.vllm.metrics {
-  VllmServingMetric, NumRequestsWaiting, NumRequestsRunning, NumRequestsWaitingByReason, GenerationTokensTotal,
+  VllmServingMetric, NumRequestsWaiting, NumRequestsRunning, NumRequestsWaitingByReason, GenerationTokensTotal, PrefixCacheQueries, PrefixCacheHits,
   HistogramStatistic, vllm_metric_name, vllm_histogram_series_name,
   vllm_waiting_reason_label, vllm_waiting_reason_capacity,
 }
