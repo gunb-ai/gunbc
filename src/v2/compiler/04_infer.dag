@@ -2761,6 +2761,9 @@ type InferTypeHeadArgs {
   args: List<Node>
 }
 
+// Instantiation args are the container element slots for one infer_match_generic_formal step
+// (gunbc#13330): never the Instantiation node and never a child that only spells the parameter.
+// Home: std.derived_type_origin generic_identity_of. Not occurrence identity or content_hash.
 fn infer_type_head_and_args(t: Node) -> InferTypeHeadArgs {
   match t.kind {
     TypeNode { connective: Instantiation } =>
@@ -3864,18 +3867,6 @@ type InferFormalMatch
   = InferFormalMatched { instances: List<TypeVariableInstance> }
   | InferFormalShapeMismatch
 
-// THE CONTAINER ELEMENT IS THE INSTANTIATION ARGUMENT. Relation: generic-parameter instance for one
-// infer_match_generic_formal step. Scope: one Instantiation type node. Canonical preimage: the
-// positional children after the constructor head (infer_type_head_and_args.args) -- never the
-// Instantiation node itself and never a child that only spells the parameter (v1 unify_generics bound
-// T to the slot named T; gunbc#13330). Home for the identity verdict: std.derived_type_origin
-// generic_identity_of; this read is the v2 analogue of v1.compiler.types child_type_node. Not
-// occurrence identity (the built argument has none) and not content_hash (this is a slot, not a
-// structural digest).
-fn infer_container_instantiation_args(actual: Node) -> List<Node> {
-  infer_type_head_and_args(t: actual).args
-}
-
 fn infer_type_variable_binder(t: Node, type_params: List<Symbol>) -> Optional<Symbol> {
   match t.kind {
     TypeNode { connective: Atom { identity: id } } =>
@@ -3903,15 +3894,14 @@ fn infer_match_generic_formal(formal: Node, produced: Node, type_params: List<Sy
             TypeNode { connective: Instantiation } =>
               let f = infer_type_head_and_args(t: formal)
               let p = infer_type_head_and_args(t: produced)
-              let p_args = infer_container_instantiation_args(actual: produced)
-              if length(xs: f.args) != length(xs: p_args) {
+              if length(xs: f.args) != length(xs: p.args) {
                 InferFormalShapeMismatch
               } else if inhabitance_node_mentions_type_variable(n: f.head, type_variables: type_params) {
                 InferFormalMatched { instances: instances }
               } else if !infer_type_equal_ignoring_provenance(a: f.head, b: p.head) {
                 InferFormalShapeMismatch
               } else {
-                fold(zip_map(a: f.args, b: p_args, f: fn(fa, pa) { InferTypePair { formal: fa, produced: pa } }), init: InferFormalMatched { instances: instances }, f: fn(acc, pair) {
+                fold(zip_map(a: f.args, b: p.args, f: fn(fa, pa) { InferTypePair { formal: fa, produced: pa } }), init: InferFormalMatched { instances: instances }, f: fn(acc, pair) {
                   match acc {
                     InferFormalShapeMismatch => acc
                     InferFormalMatched { instances: so_far } => infer_match_generic_formal(formal: pair.formal, produced: pair.produced, type_params: type_params, instances: so_far, declarations: declarations)

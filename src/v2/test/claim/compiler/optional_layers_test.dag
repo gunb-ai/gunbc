@@ -16,8 +16,8 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.infer {
   InferFormalMatched,
   InferFormalShapeMismatch,
-  infer_container_instantiation_args,
   infer_match_generic_formal,
+  infer_type_head_and_args,
   infer_type_instantiated
 }
 import v2.std.inhabitance {
@@ -114,7 +114,7 @@ test fn a_malformed_cardinality_wrapper_is_refused_at_inhabitance() -> Bool {
 // Instantiation node and never a child that only spells the parameter.
 test fn container_instantiation_args_are_the_element_not_the_slot_spelling() -> Bool {
   let produced = ol_list_of(element: ol_atom(id: ^ol_int))
-  match list_at_optional(xs: infer_container_instantiation_args(actual: produced), index: 0) {
+  match list_at_optional(xs: infer_type_head_and_args(t: produced).args, index: 0) {
     Absent => false
     Present { value: arg } =>
       match arg.kind {
