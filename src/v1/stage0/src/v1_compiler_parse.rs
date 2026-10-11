@@ -3,6 +3,7 @@
 
 use self::AdvanceResult::*;
 use self::EatResult::*;
+use self::ErasedScopeRelation::*;
 use self::ErasedSourceScopeKind::*;
 use self::ExpectedToken::*;
 use self::OperationRequiresDeclaration::*;
@@ -261,7 +262,21 @@ pub enum ErasedSourceScopeKind {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ErasedScopeRelation {
+    ErasedScopeEncloses { occurrence: OccurrenceId },
+    ErasedScopeInside { container: OccurrenceId },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ErasedSourceScope {
+    pub kind: ErasedSourceScopeKind,
+    pub extent: Rc<SourceSpan>,
+    pub relation: Rc<ErasedScopeRelation>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RecordedErasedScope {
     pub kind: ErasedSourceScopeKind,
     pub extent: Rc<SourceSpan>,
     pub enclosed: OccurrenceId,
@@ -277,7 +292,8 @@ pub struct ParsedSourceExtents {
 pub struct ParseSourceExtentState {
     pub recorded: Rc<HashMap<OccurrenceId, Rc<SourceSpan>>>,
     pub published: Rc<Vec<Rc<ParsedSourceExtent>>>,
-    pub erased_scopes: Rc<Vec<Rc<ErasedSourceScope>>>,
+    pub erased_scopes: Rc<Vec<Rc<RecordedErasedScope>>>,
+    pub absorbed: Rc<HashMap<OccurrenceId, OccurrenceId>>,
 }
 
 pub fn parse_source_extent_state_empty() -> Rc<ParseSourceExtentState> {
@@ -285,6 +301,7 @@ pub fn parse_source_extent_state_empty() -> Rc<ParseSourceExtentState> {
         recorded: v1_rt::rc_empty_map::<OccurrenceId, Rc<SourceSpan>>(),
         published: Rc::new(vec![]),
         erased_scopes: Rc::new(vec![]),
+        absorbed: v1_rt::rc_empty_map::<OccurrenceId, OccurrenceId>(),
     })
 }
 
@@ -315,16 +332,83 @@ pub fn parsed_source_extents_published(
             erased_scopes: Rc::new({
                 let mut __result = Vec::new();
                 for scope in state.erased_scopes.clone().iter().cloned() {
-                    if match v1_rt::lookup(&published_ids, scope.enclosed.clone()) {
-                        Some(_) => true,
-                        std::option::Option::None => false,
-                    } {
-                        __result.push(scope);
-                    }
+                    __result.extend(
+                        (*match erased_scope_relation(
+                            published_ids.clone(),
+                            state.absorbed.clone(),
+                            scope.enclosed.clone(),
+                            0,
+                        ) {
+                            Some(relation) => Rc::new(vec![Rc::new(ErasedSourceScope {
+                                kind: scope.kind.clone(),
+                                extent: scope.extent.clone(),
+                                relation: relation.clone(),
+                            })]),
+                            std::option::Option::None => Rc::new(vec![]),
+                        })
+                        .iter()
+                        .cloned(),
+                    );
                 }
                 __result
             }),
         })
+    }
+}
+
+pub fn occurrence_is_published(
+    published_ids: Rc<HashMap<OccurrenceId, bool>>,
+    id: OccurrenceId,
+) -> bool {
+    match v1_rt::lookup(&published_ids, id.clone()) {
+        Some(_) => true,
+        std::option::Option::None => false,
+    }
+}
+
+pub fn erased_scope_relation(
+    mut __tco_loop_published_ids: Rc<HashMap<OccurrenceId, bool>>,
+    mut __tco_loop_absorbed: Rc<HashMap<OccurrenceId, OccurrenceId>>,
+    mut __tco_loop_enclosed: OccurrenceId,
+    mut __tco_loop_depth: i64,
+) -> Option<Rc<ErasedScopeRelation>> {
+    loop {
+        #[allow(unused_mut)]
+        let mut published_ids = __tco_loop_published_ids;
+        #[allow(unused_mut)]
+        let mut absorbed = __tco_loop_absorbed;
+        #[allow(unused_mut)]
+        let mut enclosed = __tco_loop_enclosed;
+        #[allow(unused_mut)]
+        let mut depth = __tco_loop_depth;
+        if occurrence_is_published(published_ids.clone(), enclosed.clone()) {
+            if (depth.clone() == 0) {
+                break Some(Rc::new(ErasedScopeRelation::ErasedScopeEncloses {
+                    occurrence: enclosed.clone(),
+                }));
+            } else {
+                break Some(Rc::new(ErasedScopeRelation::ErasedScopeInside {
+                    container: enclosed.clone(),
+                }));
+            }
+        } else {
+            match v1_rt::lookup(&absorbed, enclosed.clone()) {
+                Some(parent) => {
+                    let __tco_0 = published_ids;
+                    let __tco_1 = absorbed;
+                    let __tco_2 = parent.clone();
+                    let __tco_3 = v1_rt::int_add(depth, 1);
+                    __tco_loop_published_ids = __tco_0;
+                    __tco_loop_absorbed = __tco_1;
+                    __tco_loop_enclosed = __tco_2;
+                    __tco_loop_depth = __tco_3;
+                    continue;
+                }
+                std::option::Option::None => {
+                    break std::option::Option::None;
+                }
+            }
+        }
     }
 }
 
@@ -557,6 +641,7 @@ pub fn parse_context_record_extent(
             ),
             published: ctx.source_extents.clone().published.clone(),
             erased_scopes: ctx.source_extents.clone().erased_scopes.clone(),
+            absorbed: ctx.source_extents.clone().absorbed.clone(),
         }),
     )
 }
@@ -631,14 +716,45 @@ pub fn parse_context_record_erased_scope(
                         published: ctx.source_extents.clone().published.clone(),
                         erased_scopes: v1_rt::rc_list_push(
                             ctx.source_extents.clone().erased_scopes.clone(),
-                            Rc::new(ErasedSourceScope {
+                            Rc::new(RecordedErasedScope {
                                 kind: kind.clone(),
                                 extent: extent.clone(),
                                 enclosed: id.clone(),
                             }),
                         ),
+                        absorbed: ctx.source_extents.clone().absorbed.clone(),
                     }),
                 ),
+            }
+        }
+        _ => ctx.clone(),
+    }
+}
+
+pub fn parse_context_record_absorbed(
+    ctx: Rc<ParseContext>,
+    absorbed: Rc<Node>,
+    into: Rc<NodeOccurrenceIdentity>,
+) -> Rc<ParseContext> {
+    match (*absorbed.occurrence_identity.clone()).clone() {
+        NodeOccurrenceIdentity::OccurrenceMinted { id: from, .. } => {
+            match (*into.clone()).clone() {
+                NodeOccurrenceIdentity::OccurrenceMinted { id: to, .. } => {
+                    parse_context_with_source_extents(
+                        ctx.clone(),
+                        Rc::new(ParseSourceExtentState {
+                            recorded: ctx.source_extents.clone().recorded.clone(),
+                            published: ctx.source_extents.clone().published.clone(),
+                            erased_scopes: ctx.source_extents.clone().erased_scopes.clone(),
+                            absorbed: v1_rt::rc_map_insert(
+                                ctx.source_extents.clone().absorbed.clone(),
+                                from.clone(),
+                                to.clone(),
+                            ),
+                        }),
+                    )
+                }
+                _ => ctx.clone(),
             }
         }
         _ => ctx.clone(),
@@ -3894,6 +4010,7 @@ pub fn stamp_parsed_node(
                                 }),
                             ),
                             erased_scopes: recorded.erased_scopes.clone(),
+                            absorbed: recorded.absorbed.clone(),
                         }),
                     ),
                     std::option::Option::None => with_index.clone(),
@@ -15212,8 +15329,8 @@ pub fn parse_caret_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                 );
                 let call_mint = mint_parsed_node_identity(
                     callee_mint.ctx.clone(),
-                    Rc::new(ParsedExtentAt::ConsumedWindow {
-                        from: tokens.clone(),
+                    Rc::new(ParsedExtentAt::FromToken {
+                        start: span.clone(),
                         to: r2.tokens.clone(),
                     }),
                 );
@@ -15672,7 +15789,11 @@ pub fn try_postfix(
                             expr: call_expr.clone(),
                             changed: true,
                             tokens: r.tokens.clone(),
-                            ctx: minted.ctx.clone(),
+                            ctx: parse_context_record_absorbed(
+                                minted.ctx.clone(),
+                                lhs.clone(),
+                                minted.identity.clone(),
+                            ),
                             err: std::option::Option::None,
                         })
                     }
@@ -15821,7 +15942,11 @@ pub fn try_postfix(
                                     expr: r.expr.clone(),
                                     changed: true,
                                     tokens: r.tokens.clone(),
-                                    ctx: r.ctx.clone(),
+                                    ctx: parse_context_record_absorbed(
+                                        r.ctx.clone(),
+                                        lhs.clone(),
+                                        r.expr.clone().occurrence_identity.clone(),
+                                    ),
                                     err: std::option::Option::None,
                                 })
                             }
@@ -15877,7 +16002,11 @@ pub fn try_postfix(
                                         expr: r.expr.clone(),
                                         changed: true,
                                         tokens: r.tokens.clone(),
-                                        ctx: r.ctx.clone(),
+                                        ctx: parse_context_record_absorbed(
+                                            r.ctx.clone(),
+                                            lhs.clone(),
+                                            r.expr.clone().occurrence_identity.clone(),
+                                        ),
                                         err: std::option::Option::None,
                                     })
                                 }
@@ -16694,7 +16823,11 @@ pub fn parse_expr_loop_no_brace(
                 );
                 {
                     let __tco_0 = r.tokens.clone();
-                    let __tco_1 = minted.ctx.clone();
+                    let __tco_1 = parse_context_record_absorbed(
+                        minted.ctx.clone(),
+                        lhs,
+                        minted.identity.clone(),
+                    );
                     let __tco_2 = new_lhs.clone();
                     let __tco_3 = lhs_from;
                     let __tco_4 = min_bp;
@@ -19344,7 +19477,13 @@ pub fn parse_brace_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                                     Rc::new(ExprResult {
                                         expr: r.stmts.clone().first().cloned().clone().unwrap(),
                                         tokens: r2.tokens.clone(),
-                                        ctx: r.ctx.clone(),
+                                        ctx: parse_context_record_erased_scope(
+                                            r.ctx.clone(),
+                                            ErasedSourceScopeKind::ErasedSingletonBlockScope,
+                                            r.stmts.clone().first().cloned().clone().unwrap(),
+                                            entry.clone(),
+                                            r2.tokens.clone(),
+                                        ),
                                         err: std::option::Option::None,
                                     })
                                 } else {
@@ -19435,7 +19574,13 @@ pub fn parse_brace_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                                     Rc::new(ExprResult {
                                         expr: r.expr.clone(),
                                         tokens: r2.tokens.clone(),
-                                        ctx: r.ctx.clone(),
+                                        ctx: parse_context_record_erased_scope(
+                                            r.ctx.clone(),
+                                            ErasedSourceScopeKind::ErasedSingletonBlockScope,
+                                            r.expr.clone(),
+                                            entry.clone(),
+                                            r2.tokens.clone(),
+                                        ),
                                         err: std::option::Option::None,
                                     })
                                 }
@@ -19556,7 +19701,13 @@ pub fn parse_brace_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                                         Rc::new(ExprResult {
                                             expr: r.stmts.clone().first().cloned().clone().unwrap(),
                                             tokens: r2.tokens.clone(),
-                                            ctx: r.ctx.clone(),
+                                            ctx: parse_context_record_erased_scope(
+                                                r.ctx.clone(),
+                                                ErasedSourceScopeKind::ErasedSingletonBlockScope,
+                                                r.stmts.clone().first().cloned().clone().unwrap(),
+                                                entry.clone(),
+                                                r2.tokens.clone(),
+                                            ),
                                             err: std::option::Option::None,
                                         })
                                     } else {

@@ -6,11 +6,13 @@ pub use crate::std_algebra::FreeMonoid;
 pub use crate::std_occurrence_identity::{OccurrenceId, OccurrenceIndexEntry};
 pub use crate::std_types::{Bool, List, SourceSpan};
 pub use crate::v1_compiler_parse::parse_with_table;
+use crate::v1_compiler_parse::ErasedScopeRelation::{ErasedScopeEncloses, ErasedScopeInside};
 use crate::v1_compiler_parse::ErasedSourceScopeKind::{
     ErasedParenScope, ErasedSingletonBlockScope,
 };
 pub use crate::v1_compiler_parse::{
-    ErasedSourceScope, ErasedSourceScopeKind, ParseWithTableResult, ParsedSourceExtent,
+    ErasedScopeRelation, ErasedSourceScope, ErasedSourceScopeKind, ParseWithTableResult,
+    ParsedSourceExtent,
 };
 pub use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_rt;
@@ -34,7 +36,7 @@ pub fn extent_fixture_file() -> String {
 pub fn extent_fixture_source() -> String {
     thread_local! {
         static CACHED: String = {
-            "module zqxext.user\n\nimport std.types { Int, String }\nimport std.algebra\n\ntype ZqxRecord {\n  first: Int?\n  second: List<Int>\n}\n\ntype ZqxChoice = ZqxLeft | ZqxRight { n: Int }\n\ntype ZqxAlias = Int\n\ndata zqx_value: Int = (1 + 2) * 3\n\nfn zqx_fn(arg: Int, other: String) -> Int {\n  let x = ((arg))\n  let s = \"a{x}b\"\n  let r = ZqxRecord { first: x, second: [1, 2] }\n  let y = match r {\n    ZqxRecord { first: f, second: _ } => { f }\n    _ => 0\n  }\n  if x > 1 { x |> add(1) } else { zqx_other(a: x, b: [1, 2]) }\n}\n".to_string()
+            "module zqxext.user\n\nimport std.types { Int, String }\nimport std.algebra\n\ntype ZqxRecord {\n  first: Int?\n  second: List<Int>\n}\n\ntype ZqxChoice = ZqxLeft | ZqxRight { n: Int }\n\ntype ZqxAlias = Int\n\ndata zqx_value: Int = (1 + 2) * 3\n\ndata zqx_brace: Int = { 1 }\n\nfn zqx_fn(arg: Int, other: String) -> Int {\n  let x = ((arg))\n  let c = ^(x)\n  let k = ((zqx_g))(x)\n  let s = \"a{x}b\"\n  let r = ZqxRecord { first: x, second: [1, 2] }\n  let y = match r {\n    ZqxRecord { first: f, second: _ } => { f }\n    _ => 0\n  }\n  if x > 1 { x |> add(1) } else { zqx_other(a: x, b: [1, 2]) }\n}\n".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -448,17 +450,21 @@ pub fn nested_parentheses_keep_both_erased_scopes_holds() -> bool {
             && match arg_scopes.clone().first().cloned() {
                 std::option::Option::None => false,
                 Some(inner) => {
-                    ((extent_text(extent_fixture_source(), inner.extent.clone())
+                    (((extent_text(extent_fixture_source(), inner.extent.clone())
                         == "(arg)".to_string())
                         && {
                             let mut __all = true;
                             for scope in arg_scopes.iter().cloned() {
-                                if !(scope.enclosed.clone() == inner.enclosed.clone()) {
+                                if !(scope.relation.clone() == inner.relation.clone()) {
                                     __all = false;
                                     break;
                                 }
                             }
                             __all
+                        })
+                        && match (*inner.relation.clone()).clone() {
+                            ErasedScopeRelation::ErasedScopeEncloses { occurrence: _, .. } => true,
+                            ErasedScopeRelation::ErasedScopeInside { container: _, .. } => false,
                         })
                 }
             })
@@ -519,4 +525,86 @@ pub fn abandoned_branch_leaves_no_extent_rows_holds() -> bool {
 
 pub fn fixture_uncovered_occurrences() -> Rc<Vec<String>> {
     uncovered_occurrences(extent_fixture_source())
+}
+
+pub fn caret_call_extent_starts_at_the_caret_holds() -> bool {
+    {
+        let parsed = parse_fixture(extent_fixture_source());
+        (has_extent_text(parsed.clone(), extent_fixture_source(), "^(x)".to_string())
+            && !has_extent_text(parsed.clone(), extent_fixture_source(), ")".to_string()))
+    }
+}
+
+pub fn brace_expression_singleton_keeps_its_erased_scope_holds() -> bool {
+    {
+        let parsed = parse_fixture(extent_fixture_source());
+        {
+            let mut __found = false;
+            for t in erased_scope_texts(parsed.clone(), extent_fixture_source(), false)
+                .iter()
+                .cloned()
+            {
+                if (t.clone() == "{ 1 }".to_string()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+    }
+}
+
+pub fn extent_of(parsed: Rc<ParseWithTableResult>, id: OccurrenceId) -> Option<Rc<SourceSpan>> {
+    match extent_rows_for(parsed.clone(), id.clone()).first().cloned() {
+        Some(row) => Some(row.extent.clone()),
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn scopes_around_an_absorbed_callee_lie_inside_its_call_holds() -> bool {
+    {
+        let parsed = parse_fixture(extent_fixture_source());
+        let callee_scopes = Rc::new({
+            let mut __result = Vec::new();
+            for scope in parsed
+                .source_extents
+                .clone()
+                .erased_scopes
+                .clone()
+                .iter()
+                .cloned()
+            {
+                if ((extent_text(extent_fixture_source(), scope.extent.clone())
+                    == "(zqx_g)".to_string())
+                    || (extent_text(extent_fixture_source(), scope.extent.clone())
+                        == "((zqx_g))".to_string()))
+                {
+                    __result.push(scope);
+                }
+            }
+            __result
+        });
+        (((callee_scopes.clone().len() as i64) == 2) && {
+            let mut __all = true;
+            for scope in callee_scopes.iter().cloned() {
+                if !(match (*scope.relation.clone()).clone() {
+                    ErasedScopeRelation::ErasedScopeEncloses { occurrence: _, .. } => false,
+                    ErasedScopeRelation::ErasedScopeInside { container: c, .. } => {
+                        match extent_of(parsed.clone(), c.clone()) {
+                            Some(outer) => {
+                                ((extent_text(extent_fixture_source(), outer.clone())
+                                    == "((zqx_g))(x)".to_string())
+                                    && span_within(scope.extent.clone(), outer.clone()))
+                            }
+                            std::option::Option::None => false,
+                        }
+                    }
+                }) {
+                    __all = false;
+                    break;
+                }
+            }
+            __all
+        })
+    }
 }

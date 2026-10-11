@@ -204,7 +204,23 @@ type ParsedSourceExtent {
 
 type ErasedSourceScopeKind = ErasedParenScope | ErasedSingletonBlockScope
 
+// What a published erased scope stands in relation to. Usually it ENCLOSES a published occurrence:
+// `(x)` encloses `x`. But a parser simplification can absorb the enclosed node into a surviving
+// parent -- `((f))(x)` folds the callee `f` into the call's name -- and the scope is still accepted
+// source; it then lies INSIDE the occurrence that absorbed what it enclosed. Neither is a claim that
+// the scope contains its container: `(f)` lies inside `(f)(x)`, it does not enclose it.
+type ErasedScopeRelation
+  = ErasedScopeEncloses { occurrence: OccurrenceId }
+  | ErasedScopeInside { container: OccurrenceId }
+
 type ErasedSourceScope {
+  kind: ErasedSourceScopeKind
+  extent: SourceSpan
+  relation: ErasedScopeRelation
+}
+
+// As recorded while parsing, before publication resolves `enclosed` against the surviving tree.
+type RecordedErasedScope {
   kind: ErasedSourceScopeKind
   extent: SourceSpan
   enclosed: OccurrenceId
@@ -224,14 +240,17 @@ type ParsedSourceExtents {
 }
 
 // The parse-time state: `recorded` by occurrence while parsing, `published` by the stamping walk.
+// `absorbed` maps an identity a parent folded into itself to that parent, recorded where the
+// absorption happens (make_call_expr's callee, a record literal's type name).
 type ParseSourceExtentState {
   recorded: Map<OccurrenceId, SourceSpan>
   published: List<ParsedSourceExtent>
-  erased_scopes: List<ErasedSourceScope>
+  erased_scopes: List<RecordedErasedScope>
+  absorbed: Map<OccurrenceId, OccurrenceId>
 }
 
 fn parse_source_extent_state_empty() -> ParseSourceExtentState {
-  ParseSourceExtentState { recorded: empty_map(), published: [], erased_scopes: [] }
+  ParseSourceExtentState { recorded: empty_map(), published: [], erased_scopes: [], absorbed: empty_map() }
 }
 
 // The recorded extent of `node`, or Absent when it has no minted identity or recorded no row.
@@ -243,16 +262,38 @@ fn parsed_source_extent_of(extents: ParseSourceExtentState, node: Node) -> Sourc
 }
 
 // THE PUBLISHED TABLE. `published` was built by the stamping walk, so it already holds exactly the
-// published occurrences; an erased scope is published only when the occurrence it encloses was, since
-// `(f)(x)` absorbs `f` into its call exactly as `f(x)` does.
+// published occurrences. Each recorded erased scope is resolved against them: it encloses its
+// occurrence when that survived, lies inside the absorbing occurrence when a parent folded it in,
+// and is dropped only when neither holds -- a scope recorded on a branch the parser abandoned.
 fn parsed_source_extents_published(state: ParseSourceExtentState) -> ParsedSourceExtents {
   let published_ids = state.published |> fold(init: empty_map(), f: (acc, row) => map_insert(acc, row.occurrence, true))
   ParsedSourceExtents {
     extents: state.published,
-    erased_scopes: state.erased_scopes |> filter(scope => match lookup(published_ids, key: scope.enclosed) {
-      Present { value: _ } => true
-      Absent => false
-    }),
+    erased_scopes: state.erased_scopes |> flat_map(scope =>
+      match erased_scope_relation(published_ids: published_ids, absorbed: state.absorbed, enclosed: scope.enclosed, depth: 0) {
+        Present { value: relation } => [ErasedSourceScope { kind: scope.kind, extent: scope.extent, relation: relation }]
+        Absent => []
+      }),
+  }
+}
+
+fn occurrence_is_published(published_ids: Map<OccurrenceId, Bool>, id: OccurrenceId) -> Bool {
+  match lookup(published_ids, key: id) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// Follows absorption to the first published occurrence. `depth` 0 is the enclosed node itself; each
+// absorbing parent was minted after its child, so the chain is finite and strictly ascending.
+fn erased_scope_relation(published_ids: Map<OccurrenceId, Bool>, absorbed: Map<OccurrenceId, OccurrenceId>, enclosed: OccurrenceId, depth: Int) -> ErasedScopeRelation? {
+  if occurrence_is_published(published_ids: published_ids, id: enclosed) {
+    if depth == 0 { Present { value: ErasedScopeEncloses { occurrence: enclosed } } } else { Present { value: ErasedScopeInside { container: enclosed } } }
+  } else {
+    match lookup(absorbed, key: enclosed) {
+      Present { value: parent } => erased_scope_relation(published_ids: published_ids, absorbed: absorbed, enclosed: parent, depth: depth + 1)
+      Absent => none
+    }
   }
 }
 
@@ -398,6 +439,7 @@ fn parse_context_record_extent(ctx: ParseContext, occurrence: OccurrenceId, exte
     recorded: map_insert(ctx.source_extents.recorded, occurrence, extent),
     published: ctx.source_extents.published,
     erased_scopes: ctx.source_extents.erased_scopes,
+    absorbed: ctx.source_extents.absorbed,
   })
 }
 
@@ -445,8 +487,27 @@ fn parse_context_record_erased_scope(ctx: ParseContext, kind: ErasedSourceScopeK
           parse_context_with_source_extents(ctx: ctx, source_extents: ParseSourceExtentState {
             recorded: ctx.source_extents.recorded,
             published: ctx.source_extents.published,
-            erased_scopes: list_push(ctx.source_extents.erased_scopes, ErasedSourceScope { kind: kind, extent: extent, enclosed: id }),
+            erased_scopes: list_push(ctx.source_extents.erased_scopes, RecordedErasedScope { kind: kind, extent: extent, enclosed: id }),
+            absorbed: ctx.source_extents.absorbed,
           })
+      }
+    _ => ctx
+  }
+}
+
+// `absorbed`'s identity was folded into `into`, which survives in its place.
+fn parse_context_record_absorbed(ctx: ParseContext, absorbed: Node, into: NodeOccurrenceIdentity) -> ParseContext {
+  match absorbed.occurrence_identity {
+    OccurrenceMinted { id: from } =>
+      match into {
+        OccurrenceMinted { id: to } =>
+          parse_context_with_source_extents(ctx: ctx, source_extents: ParseSourceExtentState {
+            recorded: ctx.source_extents.recorded,
+            published: ctx.source_extents.published,
+            erased_scopes: ctx.source_extents.erased_scopes,
+            absorbed: map_insert(ctx.source_extents.absorbed, from, to),
+          })
+        _ => ctx
       }
     _ => ctx
   }
@@ -2148,6 +2209,7 @@ fn stamp_parsed_node(
           recorded: recorded.recorded,
           published: list_push(recorded.published, ParsedSourceExtent { occurrence: id, extent: extent }),
           erased_scopes: recorded.erased_scopes,
+          absorbed: recorded.absorbed,
         })
         Absent => with_index
       }
@@ -5547,7 +5609,7 @@ fn parse_caret_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
       let call_span = make_file_span(file: span.file, start: span.start, end: r2.token.span.end)
       let callee_mint = mint_parsed_node_identity(ctx: r.ctx, at: AtToken { span: span })
       let callee = make_named_expr_node(occurrence_identity: callee_mint.identity, name: "discriminant", expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: call_span, name_span: kernel_span(name: "discriminant"))
-      let call_mint = mint_parsed_node_identity(ctx: callee_mint.ctx, at: ConsumedWindow { from: tokens, to: r2.tokens })
+      let call_mint = mint_parsed_node_identity(ctx: callee_mint.ctx, at: FromToken { start: span, to: r2.tokens })
       let call = make_call_expr(occurrence_identity: call_mint.identity, lhs: callee, args: [r.expr], span: call_span, source_indices: ctx.source_indices)
       ExprResult { expr: call, tokens: r2.tokens, ctx: call_mint.ctx, err: none }
     }
@@ -5717,7 +5779,7 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: Toke
         if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, tokens: r.tokens, ctx: r.ctx, err: r.err } }
         let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: lhs_from, to: r.tokens })
         let call_expr = make_call_expr(occurrence_identity: minted.identity, lhs: lhs, args: r.args, span: span, source_indices: ctx.source_indices)
-        PostfixResult { expr: call_expr, changed: true, tokens: r.tokens, ctx: minted.ctx, err: none }
+        PostfixResult { expr: call_expr, changed: true, tokens: r.tokens, ctx: parse_context_record_absorbed(ctx: minted.ctx, absorbed: lhs, into: minted.identity), err: none }
       }
     }
     Present { value: ShIdent } => {
@@ -5758,7 +5820,7 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: Toke
             if is_uppercase_start(name: n) {
               let r = parse_record_literal(tokens: tokens, ctx: ctx, name: n, span: lhs.span, from: lhs_from)
               if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-              PostfixResult { expr: r.expr, changed: true, tokens: r.tokens, ctx: r.ctx, err: none }
+              PostfixResult { expr: r.expr, changed: true, tokens: r.tokens, ctx: parse_context_record_absorbed(ctx: r.ctx, absorbed: lhs, into: r.expr.occurrence_identity), err: none }
             } else {
               PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
             }
@@ -5774,7 +5836,7 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: Toke
                 Present { value: spine } => {
                   let r = parse_record_literal_named(tokens: tokens, ctx: ctx, name: spine.dotted, span: field_access_chain_span(texpr: lhs), name_span: kernel_span(name: spine.dotted), from: lhs_from)
                   if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-                  PostfixResult { expr: r.expr, changed: true, tokens: r.tokens, ctx: r.ctx, err: none }
+                  PostfixResult { expr: r.expr, changed: true, tokens: r.tokens, ctx: parse_context_record_absorbed(ctx: r.ctx, absorbed: lhs, into: r.expr.occurrence_identity), err: none }
                 }
                 Absent => PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
               }
@@ -6044,7 +6106,7 @@ fn parse_expr_loop_no_brace(tokens: TokenStream, ctx: ParseContext, lhs: Node, l
       let span = token_span(tok: token_stream_first(stream: tokens))
       let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: lhs_from, to: r.tokens })
       let new_lhs = make_call_expr(occurrence_identity: minted.identity, lhs: lhs, args: r.args, span: span, source_indices: ctx.source_indices)
-      parse_expr_loop_no_brace(tokens: r.tokens, ctx: minted.ctx, lhs: new_lhs, lhs_from: lhs_from, min_bp: min_bp)
+      parse_expr_loop_no_brace(tokens: r.tokens, ctx: parse_context_record_absorbed(ctx: minted.ctx, absorbed: lhs, into: minted.identity), lhs: new_lhs, lhs_from: lhs_from, min_bp: min_bp)
     } else if tok_is_lbracket(tok: token_stream_first(stream: tokens)) && 21 >= min_bp {
       let span = token_span(tok: token_stream_first(stream: tokens))
       let r = parse_index_or_slice(tokens: tokens, ctx: ctx, base: lhs, base_from: lhs_from, span: span)
@@ -6882,7 +6944,7 @@ fn parse_brace_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
           let r2 = expect(tokens: tokens, expected: ExpectRBrace)
           if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
           if count(r.stmts) == 1 {
-            ExprResult { expr: first(r.stmts).value, tokens: r2.tokens, ctx: r.ctx, err: none }
+            ExprResult { expr: first(r.stmts).value, tokens: r2.tokens, ctx: parse_context_record_erased_scope(ctx: r.ctx, kind: ErasedSingletonBlockScope, enclosed: first(r.stmts).value, from: entry, to: r2.tokens), err: none }
           } else {
             parsed_expr_result(from: entry, tokens: r2.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprBlock, children: r.stmts, inferred: none, span: span))
           }
@@ -6900,7 +6962,7 @@ fn parse_brace_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
             let tokens = skip_newlines(tokens: r.tokens)
             let r2 = expect(tokens: tokens, expected: ExpectRBrace)
             if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
-            ExprResult { expr: r.expr, tokens: r2.tokens, ctx: r.ctx, err: none }
+            ExprResult { expr: r.expr, tokens: r2.tokens, ctx: parse_context_record_erased_scope(ctx: r.ctx, kind: ErasedSingletonBlockScope, enclosed: r.expr, from: entry, to: r2.tokens), err: none }
           }
         }
       }
@@ -6927,7 +6989,7 @@ fn parse_brace_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
           let r2 = expect(tokens: tokens, expected: ExpectRBrace)
           if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
           if count(r.stmts) == 1 {
-            ExprResult { expr: first(r.stmts).value, tokens: r2.tokens, ctx: r.ctx, err: none }
+            ExprResult { expr: first(r.stmts).value, tokens: r2.tokens, ctx: parse_context_record_erased_scope(ctx: r.ctx, kind: ErasedSingletonBlockScope, enclosed: first(r.stmts).value, from: entry, to: r2.tokens), err: none }
           } else {
             parsed_expr_result(from: entry, tokens: r2.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprBlock, children: r.stmts, inferred: none, span: span))
           }
