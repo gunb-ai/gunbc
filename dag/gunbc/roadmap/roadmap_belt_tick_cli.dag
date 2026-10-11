@@ -1,5 +1,6 @@
 module gunbc.roadmap_belt_tick_cli
 
+import gunbc.compute.work_provider_local { compute_seat_sweep, compute_seat_sweep_failures }
 import std.types { String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.shell
@@ -46,7 +47,7 @@ import gunbc.roadmap.roadmap_result_returned {
 import gunbc.roadmap.roadmap_event_carrier { CarrierSnapshotClose, carrier_snapshot_close_failures }
 import gunbc.roadmap.roadmap_belt_obligation {
   BeltInstanceObligationKind, LaunchObligation, ServedObservationObligation, ResultReturnObligation, MeteringObligation,
-  DogfoodStartRecordObligation, SnapshotCensusObligation, belt_record_moved_obligation_kinds, belt_instance_obligation_kind_of_key,
+  DogfoodStartRecordObligation, SnapshotCensusObligation, ComputeSeatSettlementObligation, belt_record_moved_obligation_kinds, belt_instance_obligation_kind_of_key,
   BeltObligationEnqueue, BeltObligationStarted, BeltObligationHeld, BeltObligationEnqueueRefused,
 }
 import gunbc.roadmap.roadmap_event_snapshot_census { roadmap_snapshot_census_for_instance, belt_tick_exit_with_snapshot_census }
@@ -491,6 +492,10 @@ fn belt_instance_obligation_run(instance: HostDashboardInstance, kind: BeltInsta
       }
     DogfoodStartRecordObligation => belt_start_record_exit(start: dogfood_start_record_for_instance(instance: instance))
     SnapshotCensusObligation => belt_tick_exit_with_snapshot_census(exit: ExitSuccess, census: roadmap_snapshot_census_for_instance(instance: instance, observed_at: observed_at))
+    ComputeSeatSettlementObligation => {
+      let failures = compute_seat_sweep_failures(s: compute_seat_sweep(instance: instance))
+      if count(failures) == 0 { ExitSuccess } else { exit_failure(reason: join(failures, "\n")) }
+    }
   }
 }
 

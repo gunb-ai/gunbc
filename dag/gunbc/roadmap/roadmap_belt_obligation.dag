@@ -76,16 +76,17 @@ type BeltInstanceObligationKind
   | MeteringObligation
   | DogfoodStartRecordObligation
   | SnapshotCensusObligation
+  | ComputeSeatSettlementObligation
 
 data belt_instance_obligation_kinds: List<BeltInstanceObligationKind> = [
-  LaunchObligation, MeteringObligation, ResultReturnObligation, ServedObservationObligation, DogfoodStartRecordObligation, SnapshotCensusObligation,
+  LaunchObligation, MeteringObligation, ResultReturnObligation, ServedObservationObligation, DogfoodStartRecordObligation, SnapshotCensusObligation, ComputeSeatSettlementObligation,
 ]
 
 // THE INSTANCE OBLIGATIONS AN ATTEMPT'S RECORD MOVING MAKES OWED: every one but launch. Launch is owed
 // on a worker's exit (the exit drain queues it) and on an operator's request, not on every record an
 // obligation writes -- a launch per review verdict would admit against unchanged capacity for nothing.
 data belt_record_moved_obligation_kinds: List<BeltInstanceObligationKind> = [
-  MeteringObligation, ResultReturnObligation, ServedObservationObligation, DogfoodStartRecordObligation, SnapshotCensusObligation,
+  MeteringObligation, ResultReturnObligation, ServedObservationObligation, DogfoodStartRecordObligation, SnapshotCensusObligation, ComputeSeatSettlementObligation,
 ]
 
 // WHAT AN OPERATOR ACTION MAKES STALE. The served page is last-known-good bytes; a mutation that
@@ -115,6 +116,7 @@ fn belt_instance_obligation_kind_key(kind: BeltInstanceObligationKind) -> String
     MeteringObligation => "metering"
     DogfoodStartRecordObligation => "dogfood-start"
     SnapshotCensusObligation => "snapshot-census"
+    ComputeSeatSettlementObligation => "compute-seats"
   }
 }
 

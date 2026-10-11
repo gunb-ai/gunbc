@@ -4,7 +4,11 @@ import std.types { String, Bool, Int, List, NonEmptyStr, FilePath, GitRef, Epoch
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { trim }
 import std.measure { byte_size_count }
-import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_names_entry }
+import extdeps.filesystem.filesystem_io {
+  Filesystem, filesystem_listing_names_entry,
+  FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
+}
+import gunbc.filesystem_file_observe { filesystem_entry_presence_of_path }
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.git_diff_change_window { gunbc_diff_window_path_env }
 import extdeps.languages.json.emit { json_object, json_kv, json_string, json_array, serialize_json }
@@ -2668,6 +2672,77 @@ fn compute_recover_exit(outcome: ComputeRecovery, receipt_path: String) -> Proce
     }
   }
 }
+
+// THE HELD-SEAT SWEEP, the first slice of the guaranteed-cleanup leaf (gunbc.plans.convergence_coverage_program
+// cc-guaranteed-cleanup): an ensure over every compute attempt slot, observed and acted on through the
+// one recovery door above rather than a second one. A seat whose unit is proven ended is drifted and
+// the door frees it; a seat inside its launch window, or whose unit still runs, the door declines
+// (no-op); a seat it cannot decide stays charged and is named. Terminal slots are skipped before any
+// unit is observed. Its driver is the belt's record-moved obligation set, so it runs after every
+// attempt's obligations -- including the exit of a worker whose turn ended mid-build, the source of
+// every orphaned seat on the srv1 lab (2026-10-11). A slot directory that cannot be listed refuses:
+// an unlisted directory is not an empty one.
+type ComputeSeatSweep
+  = ComputeSeatsSwept { recoveries: List<ComputeRecovery> }
+  | ComputeSeatSweepRefused { detail: String }
+
+// A slot is named <reference>.<generation>, and a reference (identity @ UTC second) carries no dot.
+fn compute_attempt_slot_references(names: List<String>) -> List<String> {
+  fold(names |> filter(n => trim(n) != "") |> flat_map(n => match split(s: trim(n), delimiter: ".").first() {
+    Present { value: r } => [r]
+    Absent => [] as List<String>
+  }), init: [] as List<String>, f: fn(acc, r) { if acc |> any(x => x == r) { acc } else { concat(acc, [r]) } })
+}
+
+fn compute_attempt_state_open(state: AttemptState) -> Bool {
+  match state {
+    AttemptReserved => true
+    AttemptLaunching => true
+    AttemptTerminal { verdict: _, detail: _ } => false
+  }
+}
+
+fn compute_seat_offer(instance: HostDashboardInstance, root: NonEmptyStr, reference: String) -> List<ComputeRecovery> {
+  match attempt_slot_read(root: root, reference: reference as NonEmptyStr) {
+    AttemptSlotAbsent => [] as List<ComputeRecovery>
+    AttemptSlotUnreadable { detail } => [RecoveryRefused { detail: join(["the attempt slot for ", reference, " could not be read: ", detail], "") }]
+    AttemptSlotHeld { record, generation: _ } =>
+      if compute_attempt_state_open(state: record.state) { [compute_recover_attempt(instance: instance, reference: reference as NonEmptyStr)] } else { [] as List<ComputeRecovery> }
+  }
+}
+
+fn compute_seat_sweep(instance: HostDashboardInstance) -> ComputeSeatSweep {
+  let root = compute_attempts_root(instance: instance)
+  match filesystem_entry_presence_of_path(path: root as String) {
+    FilesystemEntryAbsent(_) => ComputeSeatsSwept { recoveries: [] }
+    FilesystemEntryPresenceIndeterminate { cause } =>
+      ComputeSeatSweepRefused { detail: join(["whether compute attempt slots exist at ", root as String, " could not be established: ", cause], "") }
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause } => ComputeSeatSweepRefused { detail: cause }
+    FilesystemEntryListed { directory: _, name: _ } => {
+      let listing = Filesystem.List(path: root as String)
+      if listing.success {
+        ComputeSeatsSwept { recoveries: compute_attempt_slot_references(names: split(s: listing.entries, delimiter: "\n")) |> flat_map(r => compute_seat_offer(instance: instance, root: root, reference: r)) }
+      } else {
+        ComputeSeatSweepRefused { detail: join(["the compute attempt slots at ", root as String, " could not be listed: ", listing.error], "") }
+      }
+    }
+  }
+}
+
+// What the sweep could not settle: a refusal, or a closed attempt whose seat did not come back. A
+// declined seat is the door doing its job and is not a failure.
+fn compute_seat_sweep_failures(s: ComputeSeatSweep) -> List<String> {
+  match s {
+    ComputeSeatSweepRefused { detail } => [join(["compute seat sweep refused: ", detail], "")]
+    ComputeSeatsSwept { recoveries } => recoveries |> flat_map(r => match r {
+      RecoveryReleased { reference: _, verdict: _, seat: _ } => [] as List<String>
+      RecoveryDeclined { reference: _, why: _ } => [] as List<String>
+      RecoverySettledButHeld { reference: _, verdict: _, seat: _ } => [compute_recovery_wire(r: r)]
+      RecoveryRefused { detail: _ } => [compute_recovery_wire(r: r)]
+    })
+  }
+}
+
 
 // THE RECEIPT STAYS THE DOCUMENT, AND THE HOST-RECORD FACT GETS ITS OWN FILE BESIDE IT.
 //
