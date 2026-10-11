@@ -14,6 +14,7 @@ import gunbc.fabric_writer_roster {
   fabric_door_writer_admission_over, fabric_door_principal_of, fabric_door_local_roster, FabricDoorWriterAdmitted, FabricDoorWriterRefused,
 }
 import gunbc.fabric_storage_placement { fabric_storage_directory, fabric_storage_store_root, fabric_storage_door_directory }
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.managed_directory { ManagedDirectory, managed_directory_permissions, dependent_class_of, OwnerClass, GroupClass, OtherClass }
 import gunbc.fleet_posix_accounts { fleet_posix_operator_user, fleet_posix_ci_runner_user }
 
@@ -116,7 +117,7 @@ fn class_writes(d: ManagedDirectory, who: PosixUser) -> Bool {
 }
 
 test fn the_door_admits_the_operator_and_the_ci_runner_locally_and_no_one_else() -> Bool {
-  let door = fabric_storage_door_directory()
+  let door = fabric_storage_door_directory(instance: srv1_live_dashboard_instance())
   let roster = fabric_door_local_roster()
   class_traverses(d: door, who: fleet_posix_operator_user) && class_traverses(d: door, who: fleet_posix_ci_runner_user)
     && class_traverses(d: door, who: outsider()) == false
@@ -126,7 +127,7 @@ test fn the_door_admits_the_operator_and_the_ci_runner_locally_and_no_one_else()
 }
 
 test fn the_placed_store_areas_admit_no_writer_but_the_service() -> Bool {
-  let areas = fabric_storage_file_root(root: fabric_storage_store_root())
+  let areas = fabric_storage_file_root(root: fabric_storage_store_root(instance: srv1_live_dashboard_instance()))
   let objects = fabric_storage_directory(member: "fabric-storage-objects", path: areas.objects, writes: true)
   let heads = fabric_storage_directory(member: "fabric-storage-heads", path: areas.heads, writes: true)
   class_writes(d: objects, who: fleet_posix_operator_user) && class_writes(d: heads, who: fleet_posix_operator_user)

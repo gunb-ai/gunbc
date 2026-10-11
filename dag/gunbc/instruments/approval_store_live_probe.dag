@@ -1,5 +1,6 @@
 module tools.approval_store_live_probe
 
+import gunbc.auth.approval_broker_endpoint { approval_broker_serving_base_url }
 import std.types { Bool, NonEmptyStr, String, Timestamp, Secret }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest }
@@ -193,6 +194,7 @@ fn probe_submit(root: NonEmptyStr, signer: MacKey, request: StoredApprovalReques
         publisher: PublisherTokenUnavailable { path: "/etc/gunbc-ntfy/publisher-token", detail: "probe fixture: no message leaves this probe" },
         tag_hex: t.hex,
         request: request,
+        broker: approval_broker_serving_base_url(),
       )
       match outcome {
         SubmissionRefused { refusal: SubmissionNotEnrolled { detail: _ } } => ProbeNotEnrolled

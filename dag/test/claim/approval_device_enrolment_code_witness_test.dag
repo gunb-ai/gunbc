@@ -1,5 +1,8 @@
 module test.claim.approval_device_enrolment_code_witness_test
 
+import gunbc.auth.approval_broker_endpoint { approval_broker_base_url_env_name, ApprovalBrokerAddressResolved }
+import gunbc.roadmap_dashboard_instance { prod_role_realization, prod_role_realization_in, public_builtin_dashboard_instances }
+import gunbc.deployment_risk { ProdRoleHeldBy, NoProdRole, srv2_deploy_deployment }
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, Timestamp, List, Secret, Int }
 import std.process { ExitSuccess }
@@ -18,7 +21,7 @@ import gunbc.auth.approval_device_redemption { observe_enrolment_slot, Enrolment
 import extdeps.shell
 import gunbc.auth.approval_notification { approval_ntfy_topic }
 import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
-import gunbc.auth.approval_device_enrolment_code_issue { enrolment_code_issue_remote_command, sudo_elevate_words, enrolment_code_issue_refuses_off_srv1 }
+import gunbc.auth.approval_device_enrolment_code_issue { enrolment_code_issue_remote_command, sudo_elevate_words, enrolment_code_issue_refuses_off_broker_host, enrolment_code_issue_placement_under, EnrolmentCodeIssuePlaced, EnrolmentCodeIssueUnplaced }
 import gunbc.live_deploy.release_locus {
   RevisionBoundAtEmission,
 }
@@ -41,8 +44,8 @@ data fx_code: NonEmptyStr = "9f3ac1d20b7e44c1a5d3e8f60c2b91aa"
 data fx_expires: Timestamp = "2026-09-21T20:10:00Z"
 
 test fn the_delivered_receipt_comes_from_the_published_message_and_its_line_never_carries_the_code() -> Bool {
-  let message = enrolment_code_notification(code: fx_code, expires_at: fx_expires)
-  (match deliver_enrolment_code(code: fx_code, expires_at: fx_expires, publisher: PublisherTokenLoaded { token: "hermetic-publisher-token" as Secret }) {
+  let message = enrolment_code_notification(code: fx_code, expires_at: fx_expires, approval_url: "https://srv1.example.ts.net" as NonEmptyStr)
+  (match deliver_enrolment_code(code: fx_code, expires_at: fx_expires, publisher: PublisherTokenLoaded { token: "hermetic-publisher-token" as Secret }, broker: ApprovalBrokerAddressResolved { value: "https://srv1.example.ts.net" as NonEmptyStr }) {
     EnrolmentCodeIssued { topic: t, expires_at: x, delivery: DeliveryAccepted { message_id: Present { value: m } } } => {
       let line = enrolment_code_delivery_line(r: EnrolmentCodeDeliveryReceipt { topic: t, message_id: Present { value: m }, expires_at: x })
       (m as String) == hermetic_ntfy_publish_message_id
@@ -54,7 +57,7 @@ test fn the_delivered_receipt_comes_from_the_published_message_and_its_line_neve
     }
     _ => false
   })
-    && (match deliver_enrolment_code(code: fx_code, expires_at: fx_expires, publisher: PublisherTokenUnavailable { path: "/etc/gunbc-ntfy/publisher-token", detail: "absent" }) {
+    && (match deliver_enrolment_code(code: fx_code, expires_at: fx_expires, publisher: PublisherTokenUnavailable { path: "/etc/gunbc-ntfy/publisher-token", detail: "absent" }, broker: ApprovalBrokerAddressResolved { value: "https://srv1.example.ts.net" as NonEmptyStr }) {
       EnrolmentCodeIssued { topic: _, expires_at: x, delivery: DeliveryRefused { detail: c } } => x == fx_expires && string_contains(s: c, pattern: "absent")
       _ => false
     })
@@ -79,9 +82,10 @@ test fn the_remote_argv_runs_the_release_verb_as_the_operator_user() -> Bool {
   let op = fleet_posix_operator_user.name as String
   let rev = "0123456789abcdef0123456789abcdef01234567"
   the_remote_verb_words_carry_the_release_shape(
-    reading: enrolment_code_issue_remote_command(revision: RevisionBoundAtEmission { revision: rev }),
+    reading: enrolment_code_issue_remote_command(revision: RevisionBoundAtEmission { revision: rev }, base_url: "https://srv1.example.ts.net" as NonEmptyStr),
     rev: rev,
     op: op,
+    base_url: "https://srv1.example.ts.net",
   )
 }
 
@@ -89,15 +93,15 @@ test fn the_remote_argv_runs_the_release_verb_as_the_operator_user() -> Bool {
 // string-built form rendered for the same arguments -- non-interactive sudo, a system-manager scope
 // bounded by the broker's slice rows, the account entered through setpriv --init-groups (never
 // systemd-run's --uid/--gid; run 37098981121), the release directory as the seed's checkout root
-// inside the elevation, and the verb naming its module and function. The projection's rejected-word
+// inside the elevation, the broker base URL the placement resolved, and the verb naming its module and function. The projection's rejected-word
 // refusals are unreachable for these compile-time shapes; the claim's red depends on the words, not
 // on a refusal arm.
-fn the_remote_verb_words_carry_the_release_shape(reading: SystemdRunCommandReading, rev: String, op: String) -> Bool {
+fn the_remote_verb_words_carry_the_release_shape(reading: SystemdRunCommandReading, rev: String, op: String, base_url: String) -> Bool {
   match reading {
     SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: command } => {
       let joined = join(sudo_elevate_words(command: command), " ")
-      string_contains(s: joined, pattern: "/usr/bin/sudo -n systemd-run --scope --property=MemoryMax=" + to_string(byte_size_count(b: approval_broker_slice_memory_max)) + " --property=MemoryHigh=" + to_string(byte_size_count(b: approval_broker_slice_memory_high)) + " -- setpriv --reuid=" + op + " --regid=" + op + " --init-groups -- /usr/bin/env " + gunbc_workspace_root_env_name + "=/opt/gunbc/approval-broker/releases/" + rev + " /opt/gunbc/approval-broker/releases/" + rev + "/gunbc run ")
+      string_contains(s: joined, pattern: "/usr/bin/sudo -n systemd-run --scope --property=MemoryMax=" + to_string(byte_size_count(b: approval_broker_slice_memory_max)) + " --property=MemoryHigh=" + to_string(byte_size_count(b: approval_broker_slice_memory_high)) + " -- setpriv --reuid=" + op + " --regid=" + op + " --init-groups -- /usr/bin/env " + gunbc_workspace_root_env_name + "=/opt/gunbc/approval-broker/releases/" + rev + " " + (approval_broker_base_url_env_name as String) + "=" + base_url + " /opt/gunbc/approval-broker/releases/" + rev + "/gunbc run ")
         && !string_contains(s: joined, pattern: "--uid=")
         && string_contains(s: joined, pattern: "/releases/" + rev + "/gunbc run ")
         && string_contains(s: joined, pattern: "--entry /opt/gunbc/approval-broker/releases/" + rev + "/dag/gunbc/auth/approval_device_enrolment_code.dag --function issue_device_enrolment_code --arg revision=" + rev)
@@ -105,17 +109,27 @@ fn the_remote_verb_words_carry_the_release_shape(reading: SystemdRunCommandReadi
   }
 }
 
-// The step runs on srv1 and nowhere else; the mode is rostered, wired, and consumes the fleet SSH
-// key like its keyring sibling.
-test fn the_mode_is_rostered_and_pinned_to_srv1() -> Bool {
-  (match enrolment_code_issue_refuses_off_srv1(host: operator_host_srv1 as String) {
-    ExitSuccess => true
-    _ => false
+// The step runs on the broker's placed host and nowhere else -- srv1 under today's selection, srv2
+// when the role moves to srv2-deploy, and nowhere under NoProdRole; the mode is rostered, wired, and
+// consumes the fleet SSH key like its keyring sibling.
+test fn the_mode_is_rostered_and_pinned_to_the_brokers_placed_host() -> Bool {
+  let roster = public_builtin_dashboard_instances()
+  let today = enrolment_code_issue_placement_under(realization: prod_role_realization())
+  let moved = enrolment_code_issue_placement_under(realization: prod_role_realization_in(selection: ProdRoleHeldBy { deployment: srv2_deploy_deployment }, instances: roster))
+  let unheld = enrolment_code_issue_placement_under(realization: prod_role_realization_in(selection: NoProdRole, instances: roster))
+  (match today {
+    EnrolmentCodeIssuePlaced { host, base_url: _ } =>
+      (match enrolment_code_issue_refuses_off_broker_host(host: "srv1", broker_host: host) { ExitSuccess => true  _ => false })
+        && (match enrolment_code_issue_refuses_off_broker_host(host: "srv2", broker_host: host) { ExitSuccess => false  _ => true })
+    EnrolmentCodeIssueUnplaced { detail: _ } => false
   })
-    && (match enrolment_code_issue_refuses_off_srv1(host: "srv2") {
-      ExitSuccess => false
-      _ => true
+    && (match moved {
+      EnrolmentCodeIssuePlaced { host, base_url } => (host as String) == "srv2" && string_contains(s: base_url as String, pattern: "srv2.")
+        && (match enrolment_code_issue_refuses_off_broker_host(host: "srv2", broker_host: host) { ExitSuccess => true  _ => false })
+        && (match enrolment_code_issue_refuses_off_broker_host(host: "srv1", broker_host: host) { ExitSuccess => false  _ => true })
+      EnrolmentCodeIssueUnplaced { detail: _ } => false
     })
+    && (match unheld { EnrolmentCodeIssueUnplaced { detail: _ } => true  _ => false })
     && fleet_converge_workflow_mode_wire(mode: ApprovalDeviceEnrolmentCodeIssue) == "approval_device_enrolment_code_issue"
     && any(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m) == "approval_device_enrolment_code_issue")
     && (match fleet_converge_mode_fleet_ssh_key_demand(mode: ApprovalDeviceEnrolmentCodeIssue) {
