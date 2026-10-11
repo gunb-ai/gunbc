@@ -396,19 +396,21 @@ test fn an_unreported_turn_is_never_warm() -> Bool {
   }
 }
 
+fn placed_on_l2(standing: ServingSessionResidency) -> ServingSessionPlacement {
+  serving_session_placement(residency: standing, record: rec(owner: "L1"), candidate_launch: "L2" as NonEmptyStr)
+}
+
 test fn a_gpu_miss_is_host_restorable_only_when_the_host_tier_retains() -> Bool {
-  (match residency_on(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierRetains) {
-     HostRestorable => true
-     _ => false
-   })
-    && (match residency_on(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierEmpty) {
-          ResidencyUnread { obligation: _ } => true
-          _ => false
-        })
-    && (match residency_on_gpu(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierEmpty, gpu: GpuPrefixCurrentlyEvicted) {
-          MustReconstruct { cause: PrefixMissedAndNotRetained } => true
-          _ => false
-        })
+  let unread_gpu_retains = residency_on(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierRetains)
+  let unread_gpu_empty = residency_on(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierEmpty)
+  let evicted_retains = residency_on_gpu(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierRetains, gpu: GpuPrefixCurrentlyEvicted)
+  let evicted_unread = residency_on_gpu(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierUnread, gpu: GpuPrefixCurrentlyEvicted)
+  let evicted_empty = residency_on_gpu(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierEmpty, gpu: GpuPrefixCurrentlyEvicted)
+  (match unread_gpu_retains { HostRestorable => match placed_on_l2(standing: unread_gpu_retains) { OwnedByAnotherReplica { owner: o } => (o as String) == "L1"  _ => false }  _ => false })
+    && (match unread_gpu_empty { ResidencyUnread { obligation: _ } => match placed_on_l2(standing: unread_gpu_empty) { OwnedByAnotherReplica { owner: _ } => true  _ => false }  _ => false })
+    && (match evicted_retains { HostRestorable => match placed_on_l2(standing: evicted_retains) { OwnedByAnotherReplica { owner: o } => (o as String) == "L1"  _ => false }  _ => false })
+    && (match evicted_unread { ResidencyUnread { obligation: _ } => match placed_on_l2(standing: evicted_unread) { OwnedByAnotherReplica { owner: _ } => true  _ => false }  _ => false })
+    && (match evicted_empty { MustReconstruct { cause: PrefixMissedAndNotRetained } => match placed_on_l2(standing: evicted_empty) { PlacementFree => true  _ => false }  _ => false })
 }
 
 fn idle_admission() -> ServingGroupAdmission {

@@ -318,7 +318,8 @@ type ServingHostTierStanding
 
 // CURRENT GPU PREFIX PRESENCE, not last-turn reuse. A completed cold turn (cached_tokens == 0) can
 // still leave its freshly computed prefix in the GPU cache (vLLM 1967a5627 prefix_caching.md). Host
-// emptiness is not that fact. PrefixMissedAndNotRetained is reached only on this observation.
+// emptiness is not that fact. PrefixMissedAndNotRetained is reached only when this observation
+// coincides with HostTierEmpty. HostTierRetains is HostRestorable; HostTierUnread is unread.
 //
 // DECLARED FRONTIER (DESIGN.md 3c): production passes GpuPrefixUnread (harness_note_owner_standing).
 // The consumer of GpuPrefixCurrentlyEvicted is serving_session_residency. Trigger: the first
@@ -364,13 +365,13 @@ fn serving_session_residency(
         } else if n > 0 {
           ReusedAtTurn { cached_tokens: n, launch: l, turn: t }
         } else {
-          match gpu {
-            GpuPrefixCurrentlyEvicted => MustReconstruct { cause: PrefixMissedAndNotRetained }
-            GpuPrefixUnread =>
-              match host {
-                HostTierRetains => HostRestorable
-                HostTierEmpty => ResidencyUnread { obligation: "the completed turn reused no prefix; that cold turn can leave its computed prefix cached, and host-tier empty is not a current GPU eviction" as NonEmptyStr }
-                HostTierUnread => ResidencyUnread { obligation: "the completed turn reused no prefix and neither the host tier nor current GPU presence was read" as NonEmptyStr }
+          match host {
+            HostTierRetains => HostRestorable
+            HostTierUnread => ResidencyUnread { obligation: "the completed turn reused no prefix and the host tier was not read" as NonEmptyStr }
+            HostTierEmpty =>
+              match gpu {
+                GpuPrefixCurrentlyEvicted => MustReconstruct { cause: PrefixMissedAndNotRetained }
+                GpuPrefixUnread => ResidencyUnread { obligation: "the completed turn reused no prefix; that cold turn can leave its computed prefix cached, and host-tier empty is not a current GPU eviction" as NonEmptyStr }
               }
           }
         }
@@ -390,8 +391,8 @@ fn serving_unread_when_owner_unprobed() -> ServingSessionResidency {
 
 // ATTACHMENT IS NOT RESIDENCY. A SessionRecord pins on ReusedAtTurn, HostRestorable and
 // ResidencyUnread (including missing owner standing, treated as unread). Only NoSessionRecord or an
-// established MustReconstruct (TokenPrefixBroken, LaunchReplaced, or a current GpuPrefixCurrentlyEvicted)
-// frees placement. LaunchReplaced frees because it is that reconstruction transition -- the named
+// established MustReconstruct (TokenPrefixBroken, LaunchReplaced, or GpuPrefixCurrentlyEvicted
+// together with HostTierEmpty) frees placement. LaunchReplaced frees because it is that reconstruction transition -- the named
 // owner launch is gone -- not because a non-owner candidate was probed. Owner standing is only
 // recorded on the owner launch, so a candidate never contributes LaunchReplaced as the field standing.
 fn serving_session_placement(
