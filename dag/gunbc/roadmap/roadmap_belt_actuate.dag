@@ -10624,6 +10624,23 @@ data belt_dispatch_env_var: NonEmptyStr = "GUNBC_BELT_NODE_ID" as NonEmptyStr
 // THE INSTANCE SELECTION: GUNBC_BELT_INSTANCE_ID names the instance. Unset, blank or any spelling
 // outside belt_dispatch_admitted_instance_ids REFUSES before anything stages; there is no default
 // instance (DESIGN 5).
+fn belt_dispatch_instance_cli() -> HostDashboardInstance? {
+  belt_dispatch_instance_selected(raw: shell.Env.Get(name: belt_dispatch_instance_env_var).value)
+}
+
+// The pure decision over what the environment read returned, so a claim can supply the raw value.
+fn belt_dispatch_instance_selected(raw: String?) -> HostDashboardInstance? {
+  match raw {
+    Absent => none
+    Present { value: v } =>
+      if string_length(s: trim(s: v)) == 0 {
+        none
+      } else {
+        belt_dispatch_instance_named(id: trim(s: v))
+      }
+  }
+}
+
 data belt_dispatch_instance_env_var: NonEmptyStr = "GUNBC_BELT_INSTANCE_ID" as NonEmptyStr
 
 // The instance comes from the one roster (gunbc.roadmap_dashboard_instance dashboard_instance_for_id),
