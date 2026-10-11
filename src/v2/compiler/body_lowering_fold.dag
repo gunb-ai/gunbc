@@ -10861,7 +10861,12 @@ type TypeDeclarationModifierChannel
       rows: List<QualifiedDeclaredTypeModifiers>
     }
 
-fn no_type_declaration_modifiers_channel() -> TypeDeclarationModifierChannel {
+// Covers no modules: not "nothing is sealed". Infer treats a declaring module outside `covered`
+// as unreadable (`TypeDeclModifierModuleUncovered`). This helper is for trees that are not a
+// `.dag` declaration population (ingest-bridge CoreNodes, hermetic fixtures without type
+// decls). A construct-shaped node against it refuses modifiers_unreadable; a non-construct
+// never consults the channel.
+fn type_declaration_modifiers_covering_no_modules() -> TypeDeclarationModifierChannel {
   TypeDeclarationModifiersCaptured { covered: Empty, rows: Empty }
 }
 
