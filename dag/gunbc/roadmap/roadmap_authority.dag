@@ -1196,12 +1196,12 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "src/v2/compiler/02_parse.dag"),
       line: ticket(t: updated(t: fields(
         headline: "Both parsers record every node's full source extent when they build it",
-        boundary: "Every node the parser builds -- expressions, types, patterns, fields, imports, blocks, functions -- publishes its complete source extent at construction, from its first consumed token to its last. v2: the accepted parse result carries the end of the last consumed token, maintained per step like remaining, and a completed production records its extent beside its DerivedBy lineage in v2.std.provenance SpanIndex (today parse_wrap_production_captured records lineage only, so a composite's range is discarded although the parser held it). v1: Node gains an extent field set by each constructor; span stays the diagnostic focus and is not widened (src/v1/02_parse.dag parse_fn_body_from_prefix sets span to the fn token and drops the consumed body's end). Diagnostic focus, source extent and causal lineage stay three facts (DESIGN 3).",
+        boundary: "PRODUCER CONTRACT: every successfully published source occurrence has its complete source interval retained from the parse that establishes it -- including suffixes consumed after its identity was minted (v1 maybe_optional reuses a type's identity after consuming `?`) and excluding separators outside it (parse_import consumes trailing newlines its extent must not cover) -- and the parser publishes those intervals in its final source artifact, following the accepted branch through speculative parsing. The interval is recorded at SYNTAX COMPLETION, not at identity minting: minting and completion diverge (optional-type suffix, interpolation fragments minted together after the string ends, a property and its value minted together over different regions, binary expressions whose diagnostic span is the operator). The population is every source occurrence: terminals, production wrappers, infix applications, sequence/repeat composites that are not synthetic, nested productions and the root; an empty match records no interval and synthetic scaffolding records none. SOURCE SCOPES THAT SEMANTIC SIMPLIFICATION ERASES ARE RETAINED with their ordered containment (v1 parse_paren_expr returns the inner expression; parse_block returns a sole statement), in the parser's source side table, without adding semantic nodes. v2: SpanIndex extents beside DerivedBy lineage. v1: the same side-table shape published with the parse result, not a Node field. Diagnostic focus, source extent and causal lineage stay three facts (DESIGN 3). The existing v1 import-extent reader (the consumed-window rescan) reads the recorded interval instead.",
         displaced_cost: "Consumers that need containment (annotation attachment, import editing) cannot tell whether a position is inside a node or after its closing delimiter, so each reconstructs a range from descendants or tokens -- an approximate second answer to a fact the parser had and discarded (DESIGN 2, 6b).",
-        first_slice: "v2: one production's extent recorded at completion and read back for a block whose last token is its closing brace.",
-        red_control: "A position between a block's last statement and its closing brace is reported inside the block; a position after the brace is reported outside. A recorded extent that ends at the last child rather than the last consumed token makes the first case RED.",
+        first_slice: "v2: production wrappers record their interval at completion (block reaches its closing brace); then infix, repeat and root paths; then v1 through the same contract.",
+        red_control: "Discriminating cases on BOTH parsers: a position between a block's last statement and its closing brace is inside the block and one after the brace is outside (an interval ending at the last child is RED); `((x))` retains both paren scopes around one occurrence; a singleton block retains its scope; `Int?` covers the `?`; an import's interval stops before its trailing newlines; an empty production and an abandoned speculative branch record nothing.",
         out_of_scope: "Comment attachment itself (parse-comment-gap-attachment). Changing what span means in v1.",
-        handback: "Extents recorded at construction in both parsers, with the inside/outside-brace control green on each."
+        handback: "BOTH PARSERS COMPLETE under the one contract, with every red control above green on each and the import rescan deleted. A passing v2 block check alone does not close this node."
       ), on: "2026-10-11", note: "Authored 2026-10-11 from the in-body comment design: the producer boundary is the parser's published result (DESIGN 6b), so the repair is here, not in the annotation binder.")),
       dispatch: dispatchable(),
       parent: in_project(project: "v2-compiler-live", contribution: "The live compiler's parse result must carry the source facts its consumers need instead of leaving each to re-derive them."),
@@ -1214,12 +1214,12 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/std/source_annotation.dag"),
       line: ticket(t: updated(t: fields(
         headline: "A comment attaches to the gap between its neighbouring nodes, anywhere in a file",
-        boundary: "std.source_annotation replaces the single-subject anchor with AnnotationScope = FileScope | NodeScope and AnnotationGap { scope, before?, after? }: the scope is the innermost node whose extent contains the comment (the file when none does), and before/after are that scope's adjacent children. One rule replaces the positional cases: BodyGrainNotModeled, TrailingNotModeled, UnattachedAtScopeEnd, module_header_gap_subject and v1 module_item_extent_ends are deleted. v1 v1.compiler.annotation_bind and the v2 authored parse both feed the one attach_annotations. Anchors reference existing occurrences and mint none (DESIGN 4c). Which node a comment documents is derived from the gap, never stored.",
+        boundary: "std.source_annotation replaces the single-subject anchor with AnnotationScope = FileScope | SourceScope and AnnotationGap { scope, before?, after? }. The scope is the innermost retained source scope containing the comment (the file when none does); before/after are its ORDERED DIRECT SOURCE-SYNTAX CHILDREN, with parser scaffolding (v2 production markers, sequence/repeat spines, projection edges) projected transparently. For a call `foo(a, b)` with a comment on its own line between the arguments, the scope is the argument-list scope with before = a and after = b, never a descendant of an argument. File scope covers leading and trailing trivia: the lexer's final source position is retained in its artifact rather than dropped, so a banner above the module header and a comment after the last item both land. One rule replaces the positional cases: BodyGrainNotModeled, TrailingNotModeled, UnattachedAtScopeEnd, module_header_gap_subject and v1 module_item_extent_ends are deleted. v1 v1.compiler.annotation_bind and the v2 authored parse both feed the one attach_annotations. Anchors reference existing occurrences and mint none (DESIGN 4c). Which node a comment documents is derived from the gap, never stored.",
         displaced_cost: "A comment inside a function body is a hard compile error today, and each further position (trailing, before a closing brace, file top) is its own special case or refusal.",
         first_slice: "The shared fold over a supplied roster: in-body, before-closing-brace, trailing and file-top comments each land their expected gap.",
-        red_control: "A comment inside f's body never attaches to the next declaration g; a comment inside a call's arguments anchors to the call's sibling grain, not to an argument fragment. Adding, removing or moving a comment leaves semantic hash, occurrence ids and emitted bytes unchanged.",
+        red_control: "A comment inside f's body never attaches to the next declaration g; the argument-list case lands before = a, after = b. Adding, removing or moving a comment leaves semantic hash, occurrence ids and emitted bytes unchanged. Round trip: a negative control where allocation ordinals stay equal but the target syntax changes must DISAGREE.",
         out_of_scope: "Computing extents (parse-node-source-extent). Doc-comment semantics beyond the derived documents-view.",
-        handback: "In-body comments compile in the corpus, the three refusal arms deleted, and the round trip agreeing on gap keys."
+        handback: "In-body comments compile in the corpus and the three refusal arms are deleted. The round trip, over a named route (the v1 render/reparse path, not a full formatter), agrees on a STRUCTURAL cross-parse key for scope and both neighbours -- never occurrence ordinals, which are equal across parses by position only (std.source_annotation KeyedAnnotationRow) -- and preserves normalized text, source order and multiplicity, including duplicate comments in one gap."
       ), on: "2026-10-11", note: "Authored 2026-10-11. Depends on parse-node-source-extent: attachment reads the parser's extents rather than reconstructing them.")),
       dispatch: dispatchable(),
       parent: in_project(project: "v2-compiler-live", contribution: "Authors can annotate any position in a .dag file without a compile error, under one attachment rule."),
@@ -1232,15 +1232,105 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "src/v2/compiler/02_parse.dag"),
       line: ticket(t: updated(t: fields(
         headline: "The parser receives the grammar analysis validation already computed",
-        boundary: "grammar_validate_and_analyze returns PreparedModeledGrammar { validated, analysis }; grammar_validate_for_parse keeps only validated and parse_production recomputes compute_grammar_first_analysis. Callers move onto the prepared result, parse_production takes PreparedModeledGrammar, and grammar_validate_for_parse plus the recompute are deleted.",
-        displaced_cost: "Every parse through the validated door pays the FIRST analysis twice -- authored duplication DESIGN 2 says to carry or share, not cache.",
+        boundary: "grammar_validate_and_analyze returns PreparedModeledGrammar { validated, analysis }; grammar_validate_for_parse keeps only validated and parse_production recomputes the analysis (compute_grammar_first_analysis wraps compute_grammar_first_analysis_given, which validation already called). Callers move onto the prepared result, the parse interface stops constructing analysis at all, and grammar_validate_for_parse plus the recompute are deleted. The migration carries TokenStream.layout through: the list-only prepared entry supplies absent layout where the stream route carries it.",
+        displaced_cost: "Every parse through the validated door pays the FIRST analysis again, and a prepared grammar cannot be reused across files -- authored duplication DESIGN 2 says to carry or share, not cache.",
         first_slice: "parse_production takes the prepared grammar and one caller migrates.",
-        red_control: "An instrument counting compute_grammar_first_analysis per parse reads one, not two.",
+        red_control: "Prepare one grammar and parse at least two modules with that same prepared value: ONE full analysis across the whole operation, counted at the underlying _given work (a count of the wrapper alone already reads one on the defective path), or established structurally because no parse entry can construct analysis.",
         out_of_scope: "Speculative-parse rollback, which correctly discards failed attempts.",
-        handback: "No caller of grammar_validate_for_parse remains and the analysis is computed once per parse."
+        handback: "No caller of grammar_validate_for_parse remains, no parse entry constructs analysis, layout reaches every migrated caller, and the two-module control is green."
       ), on: "2026-10-11", note: "Authored 2026-10-11 from a review of the v2 parse interfaces: the discard is a DESIGN 2 conformance defect, not an optional optimisation.")),
       dispatch: dispatchable(),
       parent: in_project(project: "debt-payoff", contribution: "Removes authored duplicate work from every validated parse."),
+    ),
+
+    roadmap_node(
+      identity: "rn_BS0YK7QAA67P73F6YYGZRTGXJ3",
+      id: "v1-parse-allocator-carried",
+      owner: "parse",
+      carriers: carrier(path: "src/v1/02_parse.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "v1 parse carries its occurrence allocator instead of re-walking built subtrees",
+        boundary: "v1 02_parse reconstructs allocator state by walking already-built subtrees (occurrence_allocator_after_node and siblings), including a traversal of the growing left operand in the binary-expression loop. Carry the allocator through accepted results and delete the recovery scans wherever that invariant holds.",
+        displaced_cost: "Each re-walk repeats work proportional to the subtree, and the expression loop's is quadratic in operand chain length -- a proven cost shape DESIGN 6 says is fixed regardless of today's n.",
+        first_slice: "The binary-expression loop carries the allocator from its operand result.",
+        red_control: "Allocated ids are identical before and after on a fixture with a long operator chain, and an instrument shows no subtree re-walk on that path.",
+        out_of_scope: "Changing which ids are minted or their order.",
+        handback: "The allocator-recovery walks deleted on every path where the carried value exists, with id-equality on the fixture corpus."
+      ), on: "2026-10-11", note: "Authored 2026-10-11 from the parser recomputation audit. A source-level finding, not a measured speedup.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "debt-payoff", contribution: "Removes a quadratic re-walk from the seed parser."),
+    ),
+
+    roadmap_node(
+      identity: "rn_HQF67ZYAVPCEVTYNYWMCC6N5KM",
+      id: "v2-grammar-preparation-first-summaries",
+      owner: "parse",
+      carriers: carrier(path: "src/v2/compiler/02_parse.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "v2 grammar preparation keeps each child's FIRST summary instead of rebuilding it",
+        boundary: "Prepared child construction drops child FIRST summaries and later reconstructs them, repeating FIRST-union and guard-summary work within preparation. Retain the child summaries in the prepared expression and consume them. Separate from parse-prepared-grammar-analysis-carried, which fixes the validation-to-parse handoff, not repetition inside preparation.",
+        displaced_cost: "Every grammar preparation repeats summary work per child.",
+        first_slice: "One choice node consumes its children's retained summaries.",
+        red_control: "Prepared output is identical before and after on the .dag grammar, and an instrument shows each child summary built once.",
+        out_of_scope: "The validation-to-parse handoff.",
+        handback: "No reconstruction of a child summary remains in preparation."
+      ), on: "2026-10-11", note: "Authored 2026-10-11 from the parser recomputation audit. A source-level finding, not a measured speedup.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "debt-payoff", contribution: "Removes repeated FIRST computation from grammar preparation."),
+    ),
+
+    roadmap_node(
+      identity: "rn_D48CRKRR0HAT5PNPTVY491JD05",
+      id: "v2-predicate-recognition-without-materialization",
+      owner: "parse",
+      carriers: carrier(path: "src/v2/compiler/02_parse.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "v2 predicates recognize without materializing nodes they then discard",
+        boundary: "A predicate path can materialize a terminal (minting and recording it), discard it, and the accepted infix path then materializes it again. Recognition during predicates avoids unnecessary materialization while preserving refusal and layout behavior. Necessary speculative rollback of a failed attempt is correct and stays.",
+        displaced_cost: "Work spent minting and recording nodes whose only purpose was a yes/no answer.",
+        first_slice: "The infix continuation guard recognizes without minting.",
+        red_control: "Parse trees, refusals and layout decisions identical on the corpus, and the predicate path mints no occurrence.",
+        out_of_scope: "Speculative rollback of failed alternatives.",
+        handback: "No predicate path materializes a node it discards."
+      ), on: "2026-10-11", note: "Authored 2026-10-11 from the parser recomputation audit. A source-level finding, not a measured speedup.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "debt-payoff", contribution: "Removes discarded materialization from predicate recognition."),
+    ),
+
+    roadmap_node(
+      identity: "rn_A8SREB643YJ2KHT9424TXFE388",
+      id: "v1-source-chars-converted-once",
+      owner: "parse",
+      carriers: carrier(path: "src/v1/01_tokenize.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "v1 converts a source to characters once for tokenizing and newline indexing",
+        boundary: "v1 tokenization and newline-index construction each convert the same source text to characters. Building the newline index is useful work; converting the source again is the repeated part. Convert once and hand the result to both.",
+        displaced_cost: "Every ingested file pays the conversion twice.",
+        first_slice: "The newline index consumes the tokenizer's converted characters.",
+        red_control: "Tokens and newline indices identical before and after on the corpus, with one conversion per file.",
+        out_of_scope: "Changing token or index semantics.",
+        handback: "One conversion per source file on the ingest path."
+      ), on: "2026-10-11", note: "Authored 2026-10-11 from the parser recomputation audit. A source-level finding, not a measured speedup.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "debt-payoff", contribution: "Removes a repeated per-file conversion from ingest."),
+    ),
+
+    roadmap_node(
+      identity: "rn_FA2BX92WF9PGE7FWZBG60E0XP8",
+      id: "v2-parse-final-token-retained",
+      owner: "parse",
+      carriers: carrier(path: "src/v2/compiler/02_parse.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "v2 parse keeps the final token its order check already holds for the end-of-input diagnostic",
+        boundary: "Token-order validation holds the final token and discards it; the end-of-input diagnostic later recovers it. Carry it in the consumption state instead. A small cold-path item, deferred behind parse-node-source-extent, whose consumption state it may share.",
+        displaced_cost: "A cold-path re-derivation of a value already held.",
+        first_slice: "The EOF diagnostic reads the retained final token.",
+        red_control: "EOF diagnostics identical before and after; the recovery walk is gone.",
+        out_of_scope: "Other diagnostics.",
+        handback: "The recovery walk deleted."
+      ), on: "2026-10-11", note: "Authored 2026-10-11 from the parser recomputation audit. A source-level finding, not a measured speedup.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "debt-payoff", contribution: "Removes a re-derivation of the final token."),
     ),
 
     roadmap_node(
@@ -5845,6 +5935,7 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
     edge(child: "extended-admission-cardinality", parent: "accepted-floor-obligation-closure"),
     edge(child: "extended-admission-cardinality", parent: "cardinality-vertical-slice"),
     edge(child: "parse-comment-gap-attachment", parent: "parse-node-source-extent"),
+    edge(child: "v2-parse-final-token-retained", parent: "parse-node-source-extent"),
   ]
 }
 
