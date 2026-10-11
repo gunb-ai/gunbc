@@ -1,0 +1,274 @@
+module v2.test.claim.compiler.free_monoid_structure_bound
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_infer_tree, fmi_reason }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.qualified_name { qualified_name_from_dotted_string, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Atom, Authored, BinderStructureEdge, BinderTypeEdge, Conj, CoreEdgeLabel, Edge, Instantiation, Node, Positional, Symbol, TypeNode, core_edge_label, host_text_concatenation, node_subtree_nodes, node_synthetic }
+import v2.std.type_binder { ArgumentOutsideKind, KindUnresolved, edge_is_type_params, TypeApplicationArityMismatch, TypeApplicationBinderOrderMalformed, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, type_application_conformance, type_binder_set_children }
+import v2.std.algebra_structure_signature { free_monoid_structure_node }
+import std.types { Bool, List }
+import std.algebra { Empty }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.fold_lowering { collection_roster_element_type, collection_roster_carrier_type, collection_roster_primitive_call_row_optional, collection_roster_signature_arrow }
+import v2.compiler.infer { infer_type_equal_ignoring_provenance, InferFormalMatched, StructureInhabited, StructureNotInhabited, StructureRowMalformed, infer_instance_structure_inhabitance_in, InferFormalShapeMismatch, infer_binder_set_structure_bounds, infer_match_generic_formal, infer_type_instantiated }
+import v2.std.inhabitance { TypeVariableInstance }
+import v2.std.symbol_index { empty_symbol_index }
+import v2.std.list_introduction { list_introduction_head_path }
+import v2.extdeps.languages.dag { dag_algebra_inhabitance_decls, dag_kernel_value_type_first }
+import v2.std.model_core { AlgebraInhabitanceDecl }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: the collection roster's concat binds a carrier M BOUNDED BY THE FREE-MONOID STRUCTURE
+// (v2.std.algebra_structure_signature free_monoid_structure_type_node, its own binder ^free_monoid_field_concat),
+// carried on the binder's one BinderStructureEdge and read as a StructureBound (v2.std.type_binder type_param_bound).
+// v2.compiler.infer infer_application_structure_bounds admits M's instance only through a declared
+// AlgebraInhabitanceDecl row: std.algebra FreeMonoid<T> (witness list_append) and the kernel host text
+// (witness v2.std.node host_text_concatenation). BOUNDARY: source text in, through the production assembly
+// route, then infer, in ONE claim (fmb_kernel_text_concat_is_accepted_through_its_row). Every RED supplies its input
+// at one interface -- the roster's binder set and a carrier instance, judged by infer's own bound check or matcher --
+// per DESIGN section 3's witness rule; so does the resolve-kind control (a supplied binder set, the shape the roster
+// synthesizes and resolve never sees).
+
+data fmb_kernel: String = "module p\n\nfn f(a: String, b: String) -> String {\n  concat(a, b)\n}\n"
+
+fn fmb_binds_row(tree: ResolvedTree) -> Bool {
+  fold(node_subtree_nodes(root: tree.root), init: false, f: fn(acc, n) {
+    acc || (match declaration_reference_path_optional(node: n) {
+      Present { value: p } => qualified_name_to_dotted_string(qn: p) == "std.algebra.collection_concat_shape"
+      Absent => false
+    })
+  })
+}
+
+type FmbReading {
+  binds_row: Bool
+  reason: Symbol
+}
+
+fn fmb_kernel_reading() -> FmbReading {
+  match fmi_assemble(src: fmb_kernel) {
+    Rejected { diagnostics: d } => FmbReading { binds_row: false, reason: fmi_reason(o: Rejected { diagnostics: d }) }
+    Accepted { value: tree, diagnostics: _ } => FmbReading { binds_row: fmb_binds_row(tree: tree), reason: fmi_reason(o: fmi_infer_tree(tree: tree)) }
+  }
+}
+
+// THE ONE REAL-PATH CLAIM (DESIGN section 3 witness rule): kernel String concat kernel String, assembled from source,
+// binds the roster row and inhabits the bound through its declared row. Deleting the kernel host-text inhabitance row
+// reds it at the bound; deleting the roster row reds it unbound.
+test fn fmb_kernel_text_concat_is_accepted_through_its_row() -> Bool {
+  let r = fmb_kernel_reading()
+  r.binds_row && r.reason == ^accepted
+}
+
+// EXECUTES: the kernel arm's witness is host string concatenation.
+test fn fmb_kernel_text_concatenation_executes() -> Bool {
+  host_text_concatenation(left: "ab", right: "c") == "abc"
+}
+
+// SUPPLIED INPUTS from here down: each claim asks ONE interface -- the roster's own binder set, read through the
+// production projection (v2.compiler.fold_lowering collection_roster_signature_arrow), judged by infer's production bound
+// check (v2.compiler.infer infer_binder_set_structure_bounds) or matcher (infer_match_generic_formal) at a supplied
+// instance -- never by re-assembling a module.
+fn fmb_kernel_type(spelling: String) -> Node {
+  match dag_kernel_value_type_first(select: fn(row, _binding) {
+    match row.spelling {
+      Present { value: s } => s == spelling
+      Absent => false
+    }
+  }) {
+    Present { value: row } => row.value_type
+    Absent => node_synthetic(kind: TypeNode { connective: Atom { identity: ^fmb_kernel_type_unread } }, children: [])
+  }
+}
+
+fn fmb_roster_binders() -> Optional<Node> {
+  match collection_roster_primitive_call_row_optional(head: ^concat) {
+    Absent => optional_absent()
+    Present { value: row } =>
+      match collection_roster_signature_arrow(row: row) {
+        Absent => optional_absent()
+        Present { value: arrow } =>
+          fold(arrow.children, init: optional_absent(), f: fn(acc, e) {
+            match acc {
+              Present { value: _ } => acc
+              Absent => if edge_is_type_params(e: e) { optional_present(value: e.target) } else { acc }
+            }
+          })
+      }
+  }
+}
+
+// The bound's verdict for one supplied carrier instance: ^accepted, the refusal's own reason, or ^fmb_no_binders when
+// the projection supplies no binder set (so a vanished bound is red, never vacuously accepted).
+fn fmb_bound_reason(instance: Node) -> Symbol {
+  fmb_bound_reason_with(instances: [TypeVariableInstance { binder: ^collection_roster_carrier, instance: instance }])
+}
+
+fn fmb_bound_reason_with(instances: List<TypeVariableInstance>) -> Symbol {
+  match fmb_roster_binders() {
+    Absent => ^fmb_no_binders
+    Present { value: binders } =>
+      match infer_binder_set_structure_bounds(node: fmb_carrier(), binders: binders, declarations: empty_symbol_index(), instances: instances) {
+        Absent => ^accepted
+        Present { value: d } => d.reason
+      }
+  }
+}
+
+// SUPPLIED, POSITIVE: the same bound admits kernel String -- so the REDs below are the bound discriminating, not
+// the bound refusing everything.
+test fn fmb_bound_admits_kernel_text() -> Bool {
+  fmb_bound_reason(instance: fmb_kernel_type(spelling: "String")) == ^accepted
+}
+
+// SUPPLIED, RED, THE BINDER TRAP: Int inhabits a monoid (its ring's additive one) but not the FREE monoid, so it
+// refuses AT THE BOUND, with the bound's own cause.
+test fn fmb_int_refuses_at_the_free_monoid_bound() -> Bool {
+  fmb_bound_reason(instance: fmb_kernel_type(spelling: "Int")) == ^infer_reason_type_argument_does_not_inhabit_bound
+}
+
+// SUPPLIED, RED: a type inhabiting another structure (Bool, a boolean algebra) does not inhabit the free monoid.
+test fn fmb_bool_refuses_at_the_free_monoid_bound() -> Bool {
+  fmb_bound_reason(instance: fmb_kernel_type(spelling: "Bool")) == ^infer_reason_type_argument_does_not_inhabit_bound
+}
+
+// SUPPLIED, RED: an inhabitance row whose inhabitant IS the instance but whose algebra node is malformed refuses with
+// THE ROW'S OWN cause -- a defect in the authority -- never as the user's type argument failing the bound
+// (review 76678). The row table is supplied; the judge is infer's own.
+fn fmb_malformed_row() -> AlgebraInhabitanceDecl {
+  AlgebraInhabitanceDecl {
+    algebra: node_synthetic(kind: TypeNode { connective: Atom { identity: ^fmb_malformed_algebra } }, children: []),
+    inhabitant: fmb_kernel_type(spelling: "String"),
+    witness: fmb_carrier()
+  }
+}
+
+test fn fmb_malformed_inhabitance_row_refuses_with_its_own_cause() -> Bool {
+  match infer_instance_structure_inhabitance_in(rows: [fmb_malformed_row()], instance: fmb_kernel_type(spelling: "String"), structure: free_monoid_structure_node(inhabitant: fmb_carrier(), generator: fmb_carrier()), declarations: empty_symbol_index()) {
+    StructureRowMalformed { cause: c } => c != ^infer_reason_type_argument_does_not_inhabit_bound
+    StructureInhabited { generator: _ } => false
+    StructureNotInhabited => false
+  }
+}
+
+fn fmb_list_of(element: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge { label: Positional, target: declaration_reference_node(qn: list_introduction_head_path(), occurrence_id: OccurrenceSynthetic) },
+      Edge { label: Positional, target: element }
+    ]
+  )
+}
+
+// SUPPLIED, RED, RULING 3: once the first operand fixes the ONE carrier M to kernel String, M instantiates to kernel
+// String and not to a List<Int> -- the crossing the judge then refuses (one M cannot take both).
+test fn fmb_mixed_carriers_refuse() -> Bool {
+  let carrier = collection_roster_carrier_type()
+  match infer_match_generic_formal(formal: carrier, produced: fmb_kernel_type(spelling: "String"), type_params: [^collection_roster_carrier], instances: Empty, declarations: empty_symbol_index()) {
+    InferFormalShapeMismatch => false
+    InferFormalMatched { instances: bound } =>
+      infer_type_instantiated(t: carrier, instances: bound) == fmb_kernel_type(spelling: "String")
+        && infer_type_instantiated(t: carrier, instances: bound) != fmb_list_of(element: fmb_kernel_type(spelling: "Int"))
+  }
+}
+
+// RESOLVE JUDGES KINDS ONLY: a structure-bound binder applied in type position is not judged as a kind, so
+// an inhabits() that would answer KindUnresolved for it is never asked; a kind-bound binder still is.
+fn fmb_carrier() -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: ^fmb_carrier } }, children: [])
+}
+
+fn fmb_binders(marker: CoreEdgeLabel, annotation: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: type_binder_set_children(
+      binders: [Edge { label: Authored { name: ^fmb_carrier }, target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^fmb_carrier } }, children: [Edge { label: core_edge_label(marker: marker), target: annotation }]) }],
+      source: fmb_carrier()
+    )
+  )
+}
+
+fn fmb_conforms(c: TypeApplicationConformance) -> Bool {
+  match c {
+    TypeApplicationConforms => true
+    TypeApplicationArityMismatch { declared: _, supplied: _ } => false
+    TypeApplicationKindNotInhabited { argument: _, kind: _ } => false
+    TypeApplicationKindUnresolved { argument: _, kind: _ } => false
+    TypeApplicationBinderOrderMalformed => false
+  }
+}
+
+test fn fmb_structure_bound_is_not_judged_as_a_kind_at_resolve() -> Bool {
+  let structure_bound = type_application_conformance(binders: fmb_binders(marker: BinderStructureEdge, annotation: free_monoid_structure_node(inhabitant: fmb_carrier(), generator: fmb_carrier())), arguments: [fmb_carrier()], inhabits: fn(a, k) { KindUnresolved })
+  let kind_bound = type_application_conformance(binders: fmb_binders(marker: BinderTypeEdge, annotation: fmb_carrier()), arguments: [fmb_carrier()], inhabits: fn(a, k) { ArgumentOutsideKind })
+  fmb_conforms(c: structure_bound) && !fmb_conforms(c: kind_bound)
+}
+
+// SUPPLIED, RED, THE SHAPE TRAP (review 76687): a KIND whose annotation has EXACTLY the structure's shape -- a Conj of
+// ^algebra_edge and ^inhabitant_edge, as an authored record kind with those field names lowers -- carried on the kind's
+// BinderTypeEdge is still judged as a kind, and refuses when its argument is outside it. Whether a bound is a structure
+// is the marker the binder was built with (v2.std.type_binder type_param_bound), never the annotation's shape.
+test fn fmb_structure_shaped_kind_is_still_kind_checked() -> Bool {
+  let shaped_kind = type_application_conformance(binders: fmb_binders(marker: BinderTypeEdge, annotation: free_monoid_structure_node(inhabitant: fmb_carrier(), generator: fmb_carrier())), arguments: [fmb_carrier()], inhabits: fn(a, k) { ArgumentOutsideKind })
+  !fmb_conforms(c: shaped_kind)
+}
+
+// RULING B: THE BOUND IS FREE OVER ITS GENERATOR, AND THE ADMITTING ROW SAYS WHAT IT IS. SUPPLIED inputs at infer's
+// own judge (infer_instance_structure_inhabitance_in over the one row table, at the roster's own bound structure):
+// List<Edge> is admitted with generator Edge, kernel String with generator std.types Char, Int not at all.
+fn fmb_declared(dotted: String) -> Node {
+  declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: dotted), occurrence_id: OccurrenceSynthetic)
+}
+
+fn fmb_roster_structure() -> Node {
+  free_monoid_structure_node(inhabitant: collection_roster_carrier_type(), generator: collection_roster_element_type())
+}
+
+fn fmb_generator_is(instance: Node, expected: Node) -> Bool {
+  match infer_instance_structure_inhabitance_in(rows: dag_algebra_inhabitance_decls(), instance: instance, structure: fmb_roster_structure(), declarations: empty_symbol_index()) {
+    StructureInhabited { generator: generator } =>
+      match generator {
+        Present { value: g } => infer_type_equal_ignoring_provenance(a: g, b: expected)
+        Absent => false
+      }
+    StructureNotInhabited => false
+    StructureRowMalformed { cause: _ } => false
+  }
+}
+
+test fn fmb_list_of_edge_has_generator_edge() -> Bool {
+  fmb_generator_is(instance: fmb_list_of(element: fmb_declared(dotted: "v2.std.node.Edge")), expected: fmb_declared(dotted: "v2.std.node.Edge"))
+    && !fmb_generator_is(instance: fmb_list_of(element: fmb_declared(dotted: "v2.std.node.Edge")), expected: fmb_kernel_type(spelling: "Int"))
+}
+
+test fn fmb_kernel_text_has_generator_char() -> Bool {
+  fmb_generator_is(instance: fmb_kernel_type(spelling: "String"), expected: fmb_declared(dotted: "std.types.Char"))
+}
+
+test fn fmb_int_has_no_free_monoid_generator() -> Bool {
+  match infer_instance_structure_inhabitance_in(rows: dag_algebra_inhabitance_decls(), instance: fmb_kernel_type(spelling: "Int"), structure: fmb_roster_structure(), declarations: empty_symbol_index()) {
+    StructureNotInhabited => true
+    StructureInhabited { generator: _ } => false
+    StructureRowMalformed { cause: _ } => false
+  }
+}
+
+// THE DERIVED GENERATOR'S CONSUMER: a call that has fixed E from an argument must agree with the generator the row
+// derives for M, judged by infer's production bound check over the roster's own binder set. RED: M = List<Edge> with
+// E fixed to Int refuses at the bound with its own cause; the positive control fixes E = Edge and is admitted.
+test fn fmb_fixed_element_disagreeing_with_the_generator_refuses() -> Bool {
+  let edges = fmb_list_of(element: fmb_declared(dotted: "v2.std.node.Edge"))
+  fmb_bound_reason_with(instances: [
+    TypeVariableInstance { binder: ^collection_roster_carrier, instance: edges },
+    TypeVariableInstance { binder: ^collection_roster_element, instance: fmb_kernel_type(spelling: "Int") }
+  ]) == ^infer_reason_bound_generator_disagrees
+    && fmb_bound_reason_with(instances: [
+      TypeVariableInstance { binder: ^collection_roster_carrier, instance: edges },
+      TypeVariableInstance { binder: ^collection_roster_element, instance: fmb_declared(dotted: "v2.std.node.Edge") }
+    ]) == ^accepted
+}

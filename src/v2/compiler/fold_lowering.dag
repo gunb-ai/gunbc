@@ -65,6 +65,7 @@ import v2.std.node {
   LoopCarrierEdge,
   LoopDomainEdge,
   LoopRealizedDeclarationEdge,
+  BinderStructureEdge,
   core_edge_label,
   Found,
   Instantiation,
@@ -79,7 +80,8 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.node_query { DeclaredField, declared_field_from_edge, find_named_child, node_positional_child_targets }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_from_dotted_string, qualified_name_snoc, qualified_name_to_dotted_string }
 import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, anonymous_signature_arrow, arrow_declared_parameter_order }
-import v2.std.type_binder { type_param_names, type_params_edge }
+import v2.std.type_binder { type_param_names, type_params_edge, type_binder_set_children }
+import v2.std.algebra_structure_signature { free_monoid_structure_node }
 import v2.std.list_introduction { list_introduction_head_path }
 import std.algebra { AlgebraTypeTemplate, AlgebraTypeVariable, CallableOf, ContainerOf, NamedTemplate, OptionalOf, ReceiverElement, ReceiverKey, ReceiverSelf, ReceiverValue, TupleOf, WitnessOf }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -280,6 +282,20 @@ fn collection_roster_fold_row_optional(head: Symbol) -> Optional<CollectionRoste
 }
 
 // The primitive-call row an unbound bare head binds to, if the roster carries one for it.
+fn collection_roster_primitive_call_row_by_declaration_optional(decl_name: Symbol) -> Optional<CollectionRosterRow> {
+  fold_list(xs: collection_roster_rows, empty: optional_absent(), cons: fn(acc, r) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match r.form {
+          RosterFreeMonoidPrimitiveCall => if symbol_intern_lexeme(lexeme: r.row.decl_name) == decl_name { optional_present(value: r) } else { acc }
+          RosterAuthoredStep => acc
+          RosterCallbackStep { realization: _ } => acc
+        }
+    }
+  })
+}
+
 fn collection_roster_primitive_call_row_optional(head: Symbol) -> Optional<CollectionRosterRow> {
   match collection_roster_row_optional(head: head) {
     Present { value: r } =>
@@ -310,19 +326,20 @@ fn collection_roster_element_type() -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: ^collection_roster_element } }, children: [])
 }
 
-fn collection_roster_free_monoid_type() -> Node {
+fn collection_roster_carrier_type() -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: ^collection_roster_carrier } }, children: [])
+}
+
+fn collection_roster_carrier_binder() -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Instantiation },
-    children: [
-      Edge { label: Positional, target: declaration_reference_node(qn: list_introduction_head_path(), occurrence_id: OccurrenceSynthetic) },
-      Edge { label: Positional, target: collection_roster_element_type() }
-    ]
+    kind: TypeNode { connective: Atom { identity: ^collection_roster_carrier } },
+    children: [Edge { label: core_edge_label(marker: BinderStructureEdge), target: free_monoid_structure_node(inhabitant: collection_roster_carrier_type(), generator: collection_roster_element_type()) }]
   )
 }
 
 fn collection_roster_template_type(t: AlgebraTypeTemplate) -> Optional<Node> {
   match t {
-    ReceiverSelf => optional_present(value: collection_roster_free_monoid_type())
+    ReceiverSelf => optional_present(value: collection_roster_carrier_type())
     ReceiverElement => optional_present(value: collection_roster_element_type())
     ReceiverKey => optional_absent()
     ReceiverValue => optional_absent()
@@ -364,10 +381,10 @@ fn collection_roster_signature_arrow(row: CollectionRosterRow) -> Optional<Node>
           match collection_roster_template_type(t: row.template.return_type) {
             Absent => optional_absent()
             Present { value: codomain } =>
-              let arrow = anonymous_signature_arrow(domain_types: domain_types, codomain: codomain, source: collection_roster_element_type())
+              let arrow = anonymous_signature_arrow(domain_types: domain_types, codomain: codomain, source: collection_roster_carrier_type())
               let binders = node_synthetic(
                 kind: TypeNode { connective: Conj },
-                children: [Edge { label: Authored { name: ^collection_roster_element }, target: collection_roster_element_type() }]
+                children: type_binder_set_children(binders: [Edge { label: Authored { name: ^collection_roster_carrier }, target: collection_roster_carrier_binder() }, Edge { label: Authored { name: ^collection_roster_element }, target: collection_roster_element_type() }], source: collection_roster_carrier_type())
               )
               optional_present(value: node_synthetic(kind: arrow.kind, children: list_snoc_item(xs: arrow.children, item: type_params_edge(conj: binders))))
           }

@@ -35,6 +35,15 @@ type Symbol
 // UnicodeScalarSequenceUnfold) or refuses. v2.extdeps.languages.dag binds the spelling `String` to
 // this declaration only where no other declaration of the spelling is visible.
 type String
+
+// THE KERNEL TEXT'S CONCATENATION, declared at the kernel String: the witness that host text inhabits the
+// free-monoid structure (v2.std.algebra_structure_signature free_monoid_structure_type_node), cited by
+// v2.extdeps.languages.dag dag_host_text_free_monoid_inhabitance. Both operands and the result are host
+// text: no crossing to v2.std.text String (Ruling 3). Realized by the host string concatenation primitive,
+// O(n + m) -- std.primitives concat_contract's ephemeral work; host text is not the persistent carrier.
+fn host_text_concatenation(left: String, right: String) -> String {
+  concat(left, right)
+}
 type Hash = Fnv1a64Structural
 
 // THE VALUE TYPE OF HOST TEXT, as a node: what a string literal is typed as, and what the unbound
@@ -194,6 +203,7 @@ type CoreEdgeLabel
   | ArrowEffectClaimsEdge
   | ArrowExecutionModeClaimEdge
   | BinderTypeEdge
+  | BinderStructureEdge
   | BinderDefaultEdge
   | ArrowResourceRequirementsEdge
   | AdmitCallersEdge
@@ -282,6 +292,7 @@ fn core_edge_labels() -> List<CoreEdgeLabel> {
     ArrowEffectClaimsEdge,
     ArrowExecutionModeClaimEdge,
     BinderTypeEdge,
+    BinderStructureEdge,
     BinderDefaultEdge,
     ArrowResourceRequirementsEdge,
     AdmitCallersEdge,
@@ -319,6 +330,7 @@ fn core_edge_label_canonical_symbol(marker: CoreEdgeLabel) -> Symbol {
     ArrowEffectClaimsEdge => ^core_arrow_effect_claims_edge
     ArrowExecutionModeClaimEdge => ^core_arrow_execution_mode_claim_edge
     BinderTypeEdge => ^core_binder_type_edge
+    BinderStructureEdge => ^core_binder_structure_edge
     BinderDefaultEdge => ^core_binder_default_edge
     ArrowResourceRequirementsEdge => ^core_arrow_resource_requirements_edge
     AdmitCallersEdge => ^core_admit_callers_edge
@@ -1202,7 +1214,7 @@ fn type_binder_conforms(e: Edge) -> Bool {
 fn type_binder_children_conform(children: List<Edge>) -> Bool {
   match children {
     Empty => true
-    Cons { head: k, tail: Empty } => edge_is_core(e: k, marker: BinderTypeEdge)
+    Cons { head: k, tail: Empty } => edge_is_core(e: k, marker: BinderTypeEdge) || edge_is_core(e: k, marker: BinderStructureEdge)
     Cons { head: _, tail: Cons { head: _, tail: _ } } => false
   }
 }
