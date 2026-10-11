@@ -120,9 +120,40 @@ type AttemptExitRecord {
   entry_name: String
 }
 
+// A HAND-IN IS NOT AN EXIT (gunbc.plans.harness_session_lifecycle, slice S2). A worker that hands in
+// stays alive and waits for acceptance, so nothing stops and no stop hook writes. The session itself
+// records the hand-in in the same inbox, because that inbox is what wakes an attempt's obligations, but
+// under its own name -- node, attempt, the word "handin", the hand-in id -- and it decodes to its own
+// arm: it carries no service result and no process end, and a reader of exits never mistakes it for one.
 type AttemptExitEntryDecode
   = AttemptExitEntryDecoded { record: AttemptExitRecord }
+  | AttemptHandInEntryDecoded { node_id: String, attempt_key: String, handin: String, entry_name: String }
   | AttemptExitEntryMalformed { entry_name: String, reason: String }
+
+data attempt_handin_entry_word: String = "handin"
+
+fn attempt_handin_entry_name(node_id: String, attempt_key: String, handin: String) -> String {
+  join([node_id, attempt_key, attempt_handin_entry_word, handin], attempt_exit_entry_separator)
+}
+
+// The inbox path a hand-in is recorded at, beside the exits; the session writes it, the drain reads it.
+fn attempt_handin_entry_path(instance_root: String, node_id: String, attempt_key: String, handin: String) -> String {
+  join([attempt_exit_inbox_dir(instance_root: instance_root), "/", attempt_handin_entry_name(node_id: node_id, attempt_key: attempt_key, handin: handin)], "")
+}
+
+// THE ATTEMPT AN ENTRY WAKES, whichever kind it is: what the drain, the sweep and the claim need.
+type AttemptSpoolSubject {
+  node_id: String
+  attempt_key: String
+}
+
+fn attempt_spool_entry_subject(d: AttemptExitEntryDecode) -> AttemptSpoolSubject? {
+  match d {
+    AttemptExitEntryDecoded { record } => Present { value: AttemptSpoolSubject { node_id: record.node_id, attempt_key: record.attempt_key } }
+    AttemptHandInEntryDecoded { node_id, attempt_key, handin: _, entry_name: _ } => Present { value: AttemptSpoolSubject { node_id: node_id, attempt_key: attempt_key } }
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => none
+  }
+}
 
 // THE END THE TWO STOP VARIABLES DESCRIBE, or why they describe none. "Exited" must carry a number;
 // "killed" and "dumped" carry a signal name; a word systemd.exec(5) does not document is refused
@@ -162,7 +193,16 @@ fn attempt_exit_entry_part(parts: List<String>, index: Int) -> String {
 
 fn attempt_exit_entry_decode(entry_name: String) -> AttemptExitEntryDecode {
   let parts = entry_name.split(delimiter: attempt_exit_entry_separator)
-  if count(parts) != 7 {
+  if count(parts) == 4 && attempt_exit_entry_part(parts: parts, index: 2) == attempt_handin_entry_word {
+    let node_id = attempt_exit_entry_part(parts: parts, index: 0)
+    let attempt_key = attempt_exit_entry_part(parts: parts, index: 1)
+    let handin = attempt_exit_entry_part(parts: parts, index: 3)
+    if string_length(s: node_id) == 0 || string_length(s: attempt_key) == 0 || string_length(s: handin) == 0 {
+      AttemptExitEntryMalformed { entry_name: entry_name, reason: "a hand-in record names its node, attempt and hand-in; one of them is empty" }
+    } else {
+      AttemptHandInEntryDecoded { node_id: node_id, attempt_key: attempt_key, handin: handin, entry_name: entry_name }
+    }
+  } else if count(parts) != 7 {
     AttemptExitEntryMalformed { entry_name: entry_name, reason: join(["an exit record has seven '+'-separated parts; this name has ", to_string(value: count(parts))], "") }
   } else {
     let node_id = attempt_exit_entry_part(parts: parts, index: 0)
@@ -273,6 +313,7 @@ fn attempt_exit_record_matching(
         })
         |> flat_map(name => match attempt_exit_entry_decode(entry_name: name) {
           AttemptExitEntryDecoded { record: _ } => [] as List<String>
+          AttemptHandInEntryDecoded { node_id: _, attempt_key: _, handin: _, entry_name: _ } => [] as List<String>
           AttemptExitEntryMalformed { entry_name: _, reason: why } => {
             let parts = name.split(delimiter: attempt_exit_entry_separator)
             if count(parts) >= 3 && matches(attempt_exit_entry_part(parts: parts, index: 0), attempt_exit_entry_part(parts: parts, index: 1), attempt_exit_entry_part(parts: parts, index: 2)) {
@@ -289,6 +330,7 @@ fn attempt_exit_record_matching(
         })
         |> flat_map(name => match attempt_exit_entry_decode(entry_name: name) {
           AttemptExitEntryDecoded { record } => if matches(record.node_id, record.attempt_key, record.role) { [record] } else { [] as List<AttemptExitRecord> }
+          AttemptHandInEntryDecoded { node_id: _, attempt_key: _, handin: _, entry_name: _ } => [] as List<AttemptExitRecord>
           AttemptExitEntryMalformed { entry_name: _, reason: _ } => [] as List<AttemptExitRecord>
         })
       if count(malformed) > 0 {

@@ -4,7 +4,7 @@ import extdeps.posix.signal { linux_standard_signal_number }
 import std.types { String, List, Bool }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole, AttemptReviewerRole,
-  attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
+  attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed, AttemptHandInEntryDecoded, attempt_handin_entry_name,
   AttemptProcessExitedWith, AttemptProcessSignaled,
   AttemptWorkerRole, AttemptReviewerRole, AttemptAuditorRole,
   attempt_exit_record_from_listings, AttemptExitStageNames, AttemptExitStageUnreadable,
@@ -36,20 +36,22 @@ test fn an_exit_record_decodes_to_its_status_and_a_kill_to_its_signal() -> Bool 
         && (match record.result { ServiceResultSuccess => true _ => false })
         && (match record.end { AttemptProcessExitedWith { status } => status == 0 AttemptProcessSignaled { signal: _ } => false })
     AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+    AttemptHandInEntryDecoded { node_id: _, attempt_key: _, handin: _, entry_name: _ } => false
   }
   let killed = match attempt_exit_entry_decode(entry_name: "n-1+k1+worker+0123456789abcdef0123456789abcdef+signal+killed+TERM") {
     AttemptExitEntryDecoded { record } =>
       (match record.result { ServiceResultSignal => true _ => false })
         && (match record.end { AttemptProcessSignaled { signal } => linux_standard_signal_number(signal: signal) == 15 AttemptProcessExitedWith { status: _ } => false })
     AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+    AttemptHandInEntryDecoded { node_id: _, attempt_key: _, handin: _, entry_name: _ } => false
   }
   exited && killed
 }
 
 test fn a_name_that_is_not_seven_parts_or_whose_status_contradicts_its_code_is_malformed() -> Bool {
-  let short = match attempt_exit_entry_decode(entry_name: "n+k+worker+inv+success+exited") { AttemptExitEntryMalformed { entry_name: _, reason: _ } => true AttemptExitEntryDecoded { record: _ } => false }
-  let contradiction = match attempt_exit_entry_decode(entry_name: "n+k+worker+inv+success+exited+TERM") { AttemptExitEntryMalformed { entry_name: _, reason: _ } => true AttemptExitEntryDecoded { record: _ } => false }
-  let unlisted_code = match attempt_exit_entry_decode(entry_name: "n+k+worker+inv+success+vanished+0") { AttemptExitEntryMalformed { entry_name: _, reason: _ } => true AttemptExitEntryDecoded { record: _ } => false }
+  let short = match attempt_exit_entry_decode(entry_name: "n+k+worker+inv+success+exited") { AttemptExitEntryMalformed { entry_name: _, reason: _ } => true AttemptExitEntryDecoded { record: _ } => false AttemptHandInEntryDecoded { node_id: _, attempt_key: _, handin: _, entry_name: _ } => false }
+  let contradiction = match attempt_exit_entry_decode(entry_name: "n+k+worker+inv+success+exited+TERM") { AttemptExitEntryMalformed { entry_name: _, reason: _ } => true AttemptExitEntryDecoded { record: _ } => false AttemptHandInEntryDecoded { node_id: _, attempt_key: _, handin: _, entry_name: _ } => false }
+  let unlisted_code = match attempt_exit_entry_decode(entry_name: "n+k+worker+inv+success+vanished+0") { AttemptExitEntryMalformed { entry_name: _, reason: _ } => true AttemptExitEntryDecoded { record: _ } => false AttemptHandInEntryDecoded { node_id: _, attempt_key: _, handin: _, entry_name: _ } => false }
   short && contradiction && unlisted_code
 }
 
@@ -99,6 +101,7 @@ test fn an_unlisted_signal_name_is_refused_at_decode() -> Bool {
   match attempt_exit_entry_decode(entry_name: "n-1+k1+worker+0123456789abcdef0123456789abcdef+signal+killed+RTMIN") {
     AttemptExitEntryMalformed { entry_name: _, reason: _ } => true
     AttemptExitEntryDecoded { record: _ } => false
+    AttemptHandInEntryDecoded { node_id: _, attempt_key: _, handin: _, entry_name: _ } => false
   }
 }
 
@@ -115,3 +118,22 @@ test fn an_undecodable_entry_for_this_attempt_is_unreadable_and_another_attempts
     _ => false
   })
 }
+
+// A HAND-IN IS ITS OWN RECORD (slice S2): the four-part name the session writes decodes to the hand-in
+// arm with its attempt and id -- never to an exit with an invented result -- and a hand-in name with an
+// empty part is malformed like any other.
+test fn a_hand_in_entry_decodes_to_its_own_kind() -> Bool {
+  let named = attempt_handin_entry_name(node_id: "n-1", attempt_key: "k1", handin: "h2")
+  let decoded = match attempt_exit_entry_decode(entry_name: named) {
+    AttemptHandInEntryDecoded { node_id, attempt_key, handin, entry_name: _ } => node_id == "n-1" && attempt_key == "k1" && handin == "h2"
+    AttemptExitEntryDecoded { record: _ } => false
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+  let empty = match attempt_exit_entry_decode(entry_name: "n-1+k1+handin+") {
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => true
+    AttemptHandInEntryDecoded { node_id: _, attempt_key: _, handin: _, entry_name: _ } => false
+    AttemptExitEntryDecoded { record: _ } => false
+  }
+  named == "n-1+k1+handin+h2" && decoded && empty
+}
+
