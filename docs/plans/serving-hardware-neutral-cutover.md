@@ -83,7 +83,7 @@ Import-graph census (`.dag` `import gunbc.spark.<X> { … }`). Internal X→X ed
 
 `gunbc.spark.host_commitment`, `host_occupancy_admission`, `managed_access_bootstrap`, `model_snapshot_materialize`, `fabric_rail_apply`, `arm_memory_fit`, `arm_memory_experiment_observed`, `prefill_batch_sweep`, `tensor_parallel_comparison`, `v41_runtime_image_probe`. These exist to operate the Spark rack. They stay **Spark rows**. They are not Y.
 
-### Evidence modules (70)
+### Evidence modules
 
 Witnesses under `test.claim.spark.*`, `test.claim.serving.*`, `test.claim.harness_*`, plus `test.claim.workflow_dispatch_input_witness`, `test.claim.vllm_memory_receipt`, `test.claim.vllm_kv_dtype_capability_witness_test`, `test.claim.frontend_eval_witness_test`, `test.claim.fabric.{node_qualification,jurisdiction_drop_accounting}_witness`, `test.claim.product.superchip_assembly_qualification_witness`. Doctrine: re-enroll claims Y still makes; retire Spark-only claims with a receipt. Not listed at identity grain here — the executing cut writes `EvidenceDisposition` rows.
 
