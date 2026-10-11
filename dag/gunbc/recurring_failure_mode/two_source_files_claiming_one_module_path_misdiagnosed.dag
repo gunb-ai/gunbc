@@ -16,7 +16,7 @@ data two_source_files_claiming_one_module_path_misdiagnosed: RecurringFailureMod
 
     "DISTINGUISHING FACT: this is not `two_modules_answer_to_one_logical_qualified_name` (a logical-name strip after ingest). It is ingest identity: declared module path, or a tree tag guessed from the file's path, answering for two files as one.",
 
-    "RECOGNITION RULE: a native emit or census over a small tree reports `resolve_unbound_name_is_declared_elsewhere` (or any resolve unbound) while two walked files share a declared module path OR a copied layout is tagged by file spelling rather than by the discovering --source-root. The reviewer tell: the diagnostic's file is not one of the two that share the identity.",
+    "RECOGNITION RULE: a native emit or census over a small tree reports a resolve unbound (once with a `resolve_unbound_name_is_declared_elsewhere` advisory, which compilation no longer produces) while two walked files share a declared module path OR a copied layout is tagged by file spelling rather than by the discovering --source-root. The reviewer tell: the diagnostic's file is not one of the two that share the identity.",
 
     "RUNG FOUND AT: OUTSIDE THE LADDER -- silent wrongness. The later diagnostic is typed and located, and it is the wrong subject.",
 
