@@ -240,7 +240,9 @@ import gunbc.roadmap_dashboard_instance {
   DashboardObserveOnly,
   DashboardActuating,
   srv1_live_dashboard_instance,
-  srv2_deploy_dashboard_instance,
+  dashboard_instance_for_id,
+  DashboardInstanceForId,
+  DashboardInstanceIdUnknown,
   dashboard_instance_provider_state_root,
   dashboard_instance_provider_executable,
   dashboard_instance_provider_executable_refusal_detail,
@@ -10609,27 +10611,30 @@ fn belt_dispatch_provider_label() -> String {
 
 data belt_dispatch_env_var: NonEmptyStr = "GUNBC_BELT_NODE_ID" as NonEmptyStr
 
-// The ProcessExit entrypoint the roadmap-UI launch button drives. gunbc run --function cannot pass
-// an argument (no --arg flag), so the node id enters through the environment: the Node HTTP server
-// on srv1 shells env GUNBC_BELT_NODE_ID=NODE gunbc run --function belt_dispatch_node_cli, read via
-// shell.Env.Get (the env-read authority github.auth uses for its token). Fail-closed on the
-// channel: missing OR empty GUNBC_BELT_NODE_ID refuses — shell.Env.Get returns Present-but-empty
-// for an unset var wet, so empty folds into the Absent refusal. Exit map: DispatchSpawned or
-// DispatchAlreadyLive -> ExitSuccess (the click achieved or already holds the desired state); every
-// refusal or failure (node_not_found, already_done, observe_refused, spawn_failed) -> exit_failure
-// with the JSON receipt on stderr, so the server relays the exact cause.
-// THE INSTANCE SELECTION (owner ruling 2026-09-28: sessions are pressured toward latest — a fresh
-// dispatch binds the CURRENT deployment line, never a stale recorded pin): GUNBC_BELT_INSTANCE_ID
-// names the admitted instance ("srv2-deploy" or "srv1-live"); absent/empty defaults to srv1-live,
-// the historical behavior; any other spelling refuses before anything stages. The default stays
-// srv1-live only until the CLI's callers move; the dispatch surface on the dashboard already serves
-// its own instance.
+// The ProcessExit entrypoint a caller drives with the node id in the environment: gunbc run
+// --function cannot pass an argument (no --arg flag), so the node id enters through
+// GUNBC_BELT_NODE_ID, read via shell.Env.Get (the env-read authority github.auth uses for its
+// token). Missing OR empty GUNBC_BELT_NODE_ID refuses -- shell.Env.Get returns Present-but-empty for
+// an unset var wet, so empty folds into the Absent refusal. Exit map: DispatchSpawned or
+// DispatchAlreadyLive -> ExitSuccess; every refusal or failure (node_not_found, already_done,
+// observe_refused, spawn_failed) -> exit_failure with the JSON receipt on stderr.
+// The Node HTTP server that once shelled this entry no longer exists (observed on srv1, 2026-10-11:
+// no unit references it, no Node server runs, the listeners are native gunbc); an unknown out-of-tree
+// caller therefore meets the refusals below.
+// THE INSTANCE SELECTION: GUNBC_BELT_INSTANCE_ID names the instance. Unset, blank or any spelling
+// outside belt_dispatch_admitted_instance_ids REFUSES before anything stages; there is no default
+// instance (DESIGN 5).
 fn belt_dispatch_instance_cli() -> HostDashboardInstance? {
-  match shell.Env.Get(name: belt_dispatch_instance_env_var).value {
-    Absent => Present { value: srv1_live_dashboard_instance() }
+  belt_dispatch_instance_selected(raw: shell.Env.Get(name: belt_dispatch_instance_env_var).value)
+}
+
+// The pure decision over what the environment read returned, so a claim can supply the raw value.
+fn belt_dispatch_instance_selected(raw: String?) -> HostDashboardInstance? {
+  match raw {
+    Absent => none
     Present { value: v } =>
-      if string_length(s: v) == 0 {
-        Present { value: srv1_live_dashboard_instance() }
+      if string_length(s: trim(s: v)) == 0 {
+        none
       } else {
         belt_dispatch_instance_named(id: trim(s: v))
       }
@@ -10638,11 +10643,19 @@ fn belt_dispatch_instance_cli() -> HostDashboardInstance? {
 
 data belt_dispatch_instance_env_var: NonEmptyStr = "GUNBC_BELT_INSTANCE_ID" as NonEmptyStr
 
+// The instance comes from the one roster (gunbc.roadmap_dashboard_instance dashboard_instance_for_id),
+// so no constructor is named here. Admission for belt dispatch is a narrower set than the roster
+// (DashboardActuating alone also admits srv1-lab and macbook-local) and is not yet a modeled row, so
+// it stays this list of roster ids, unchanged from before. Trigger: an entry takes the instance its deployment names (frontier A of D2 layer 4,
+// gunb-ai/gunbc#13726); the list is then replaced by a modeled belt-dispatch admission row on the roster.
+data belt_dispatch_admitted_instance_ids: List<String> = ["srv2-deploy", "srv1-live"]
+
 fn belt_dispatch_instance_named(id: String) -> HostDashboardInstance? {
-  if id == "srv2-deploy" {
-    Present { value: srv2_deploy_dashboard_instance() }
-  } else if id == "srv1-live" {
-    Present { value: srv1_live_dashboard_instance() }
+  if any(belt_dispatch_admitted_instance_ids, admitted => admitted == id) {
+    match dashboard_instance_for_id(instance_id: id) {
+      DashboardInstanceForId { instance } => Present { value: instance }
+      DashboardInstanceIdUnknown { instance_id } => none
+    }
   } else {
     none
   }
@@ -10658,7 +10671,7 @@ fn belt_dispatch_node_cli() -> ProcessExit {
       } else {
         match belt_dispatch_instance_cli() {
           Absent =>
-            exit_failure(reason: "belt_dispatch_node_cli: GUNBC_BELT_INSTANCE_ID names no admitted instance (srv1-live or srv2-deploy) — refusing before anything stages")
+            exit_failure(reason: "belt_dispatch_node_cli: GUNBC_BELT_INSTANCE_ID is unset, empty or names no admitted instance (srv1-live or srv2-deploy) — refusing before anything stages")
           Present { value: instance } =>
             let r = belt_dispatch_node_for_instance(instance: instance, node_id: v)
             if belt_dispatch_result_ok(r: r) {
