@@ -10,10 +10,10 @@ import gunbc.live_deploy.role_singleton_convergence {
   HostRoleSingletonReading, HostRoleSingletonsRead, HostRoleSingletonsUnobservable,
   RoleSingletonRemovalUnimplemented, RoleSingletonRealizedOnTwoHosts, RoleSingletonStaleSpec,
   RoleSingletonHostUnobservable,
-  RoleSingletonConvergence, RoleSingletonNoop, RoleSingletonInstall, RoleSingletonRefused,
+  RoleSingletonConvergence, RoleSingletonNoop, RoleSingletonInPlace, RoleSingletonInstall, RoleSingletonRefused,
   RoleSingletonAdmissible, RoleSingletonInadmissible,
   RoleSingletonReadingSource,
-  assess_over_roster, fetch_self_report, SelfReportUnserved, SelfReportServed,
+  assess_over_roster, assess_spec_over_roster, fetch_self_report, SelfReportUnserved, SelfReportServed,
   role_singleton_observation_of, role_singleton_convergence, classify_role_singleton_admission,
   role_singleton_self_report_member,
   role_singleton_refusal_detail, marker_sighting_of, MarkerSightingOf, MarkerSightingAbsent, MarkerSightingUnobservable,
@@ -24,7 +24,10 @@ import gunbc.live_deploy.desired {
   desired_deployment_roster, srv1_production_desired_deployment, srv1_lab_desired_deployment, srv2_deploy_desired_deployment, selected_deployment_spec,
   prod_role_actuated_realization, prod_role_actuated_realization_in,
 }
-import gunbc.live_deploy.spec { HoldsProdRoleSingletons, HoldsNoRoleSingleton }
+import gunbc.live_deploy.spec {
+  HoldsProdRoleSingletons, HoldsNoRoleSingleton,
+  deployment_owns_the_host_approval_broker, deployment_fabric_storage_steps,
+}
 import gunbc.roadmap_dashboard_instance {
   ProdRoleRealization, ProdRoleRealizedBy, ProdRoleRealizationRefused, srv1_live_dashboard_instance,
 }
@@ -153,17 +156,85 @@ fn srv2_unobservable_peers_source() -> RoleSingletonReadingSource {
   }
 }
 
+fn empty_srv1_unobservable_srv2_source() -> RoleSingletonReadingSource {
+  let holder = srv1_production_desired_deployment()
+  let srv2 = srv2_deploy_desired_deployment().target.ssh_host
+  RoleSingletonReadingSource {
+    read: (host, rows) =>
+      if (host as String) == (holder.target.ssh_host as String) {
+        HostRoleSingletonsRead { host: host, sightings: [] }
+      } else if (host as String) == (srv2 as String) {
+        HostRoleSingletonsUnobservable { host: host, cause: "required control: srv2 is unobservable" }
+      } else {
+        HostRoleSingletonsRead { host: host, sightings: [] }
+      },
+  }
+}
+
+fn srv2_enroll_unobservable_srv1_source() -> RoleSingletonReadingSource {
+  let srv1 = srv1_production_desired_deployment().target.ssh_host
+  let srv2 = srv2_deploy_desired_deployment().target.ssh_host
+  RoleSingletonReadingSource {
+    read: (host, rows) =>
+      if (host as String) == (srv2 as String) {
+        HostRoleSingletonsRead { host: host, sightings: [] }
+      } else if (host as String) == (srv1 as String) {
+        HostRoleSingletonsUnobservable { host: host, cause: "required control: srv1 is unobservable" }
+      } else {
+        HostRoleSingletonsRead { host: host, sightings: [] }
+      },
+  }
+}
+
 test fn the_production_assessor_over_the_real_roster_noops_when_srv1_is_complete_and_srv2_is_observable_and_empty() -> Bool {
   any(desired_deployment_roster(), r => (r.target.ssh_host as String) == (srv2_deploy_desired_deployment().target.ssh_host as String))
     && match assess_over_roster(source: complete_srv1_empty_peers_source()) {
       RoleSingletonNoop => true
       _ => false
     }
+    && match assess_spec_over_roster(spec: selected_deployment_spec(row: srv1_production_desired_deployment()), source: complete_srv1_empty_peers_source()) {
+      RoleSingletonAdmissible { decision: RoleSingletonNoop } => true
+      _ => false
+    }
 }
 
-test fn the_production_assessor_over_the_real_roster_refuses_when_srv2_is_unobservable() -> Bool {
-  match assess_over_roster(source: srv2_unobservable_peers_source()) {
-    RoleSingletonRefused { cause: RoleSingletonHostUnobservable { host, cause: _ } } =>
+test fn local_complete_srv1_and_unobservable_srv2_is_in_place_with_global_picture_unobservable() -> Bool {
+  let srv2 = srv2_deploy_desired_deployment().target.ssh_host
+  match assess_spec_over_roster(spec: selected_deployment_spec(row: srv1_production_desired_deployment()), source: srv2_unobservable_peers_source()) {
+    RoleSingletonAdmissible { decision: RoleSingletonInPlace { global_unobservable } } =>
+      any(global_unobservable, h => (h as String) == (srv2 as String))
+        && !any(global_unobservable, h => (h as String) == (srv1_production_desired_deployment().target.ssh_host as String))
+    _ => false
+  }
+}
+
+test fn local_empty_srv1_and_unobservable_srv2_is_refused_as_install() -> Bool {
+  let srv2 = srv2_deploy_desired_deployment().target.ssh_host
+  match assess_spec_over_roster(spec: selected_deployment_spec(row: srv1_production_desired_deployment()), source: empty_srv1_unobservable_srv2_source()) {
+    RoleSingletonInadmissible { cause: RoleSingletonHostUnobservable { host, cause: _ } } =>
+      (host as String) == (srv2 as String)
+    _ => false
+  }
+}
+
+test fn srv2_enroll_with_no_role_singleton_is_admitted_emitting_no_broker_or_fabric() -> Bool {
+  let spec = selected_deployment_spec(row: srv2_deploy_desired_deployment())
+  match spec.role_singletons {
+    HoldsProdRoleSingletons { holder: _ } => false
+    HoldsNoRoleSingleton =>
+      !deployment_owns_the_host_approval_broker(spec: spec)
+        && count(deployment_fabric_storage_steps(holding: spec.role_singletons, names: spec.names)) == 0
+        && match assess_spec_over_roster(spec: spec, source: srv2_enroll_unobservable_srv1_source()) {
+          RoleSingletonAdmissible { decision: RoleSingletonInPlace { global_unobservable } } =>
+            any(global_unobservable, h => (h as String) == (srv1_production_desired_deployment().target.ssh_host as String))
+          _ => false
+        }
+  }
+}
+
+test fn unobservable_srv2_and_desired_install_is_host_unobservable() -> Bool {
+  match assess_spec_over_roster(spec: selected_deployment_spec(row: srv1_production_desired_deployment()), source: empty_srv1_unobservable_srv2_source()) {
+    RoleSingletonInadmissible { cause: RoleSingletonHostUnobservable { host, cause: _ } } =>
       (host as String) == (srv2_deploy_desired_deployment().target.ssh_host as String)
     _ => false
   }

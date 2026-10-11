@@ -138,6 +138,16 @@ type HostRoleSingletonReading
 // THE READING SOURCE IS AN INTERFACE. Production observation is host self-report
 // (self_report_reading_source_with). The adjudication is indifferent to which source produced a
 // HostRoleSingletonReading; absence is never synthesized from unobservable.
+//
+// A2 (PERMANENT). APPROVED BY DEFAULT: escalation msg_a3162feb-b8aa-41e4-958e-a7d680a495c3
+// (2026-10-11), with no operator answer inside the 15-minute window. The global-observation gate
+// applies to singleton PLACEMENT changes only (Install, Move, Remove). An apply may include
+// singleton steps only for members already EntryPresent on the applying host (OnTheHostItself):
+// that is an in-place rewrite and cannot raise the count. An Absent member the spec would write is
+// Install, so the global gate applies. Partial stays refused. Marker ensure on an already-complete
+// local holder is the existing Noop side effect. HoldsNoRoleSingleton hosts may enroll the
+// dashboard/reporter with no broker or fabric steps. The receipt records global picture
+// unobservable whenever any roster host is unobservable; it never concludes that a host is empty.
 type RoleSingletonReadingSource {
   read: fn(NonEmptyStr, List<DesiredDeployment>) -> HostRoleSingletonReading
 }
@@ -161,6 +171,7 @@ type RoleSingletonRefusal
 // ── What is decided ─────────────────────────────────────────────────────────────────────────────
 type RoleSingletonConvergence
   = RoleSingletonNoop
+  | RoleSingletonInPlace { global_unobservable: List<NonEmptyStr> }
   | RoleSingletonInstall { holder: ProdRoleHolder }
   | RoleSingletonRefused { cause: RoleSingletonRefusal }
 
@@ -410,6 +421,7 @@ fn classify_role_singleton_admission(spec: DeploymentSpec, desired: ProdRoleReal
   match decision {
     RoleSingletonRefused { cause } => RoleSingletonInadmissible { cause: cause }
     RoleSingletonNoop => if agrees { admissible } else { stale_holding }
+    RoleSingletonInPlace { global_unobservable: _ } => if agrees { admissible } else { stale_holding }
     RoleSingletonInstall { holder: _ } =>
       if !agrees { stale_holding }
       else if desired_is_this_spec { admissible }
@@ -1050,6 +1062,90 @@ fn assess_over_roster(source: RoleSingletonReadingSource) -> RoleSingletonConver
   )
 }
 
+fn unobservable_hosts_of(readings: List<HostRoleSingletonReading>) -> List<NonEmptyStr> {
+  readings |> flat_map(r => match r {
+    HostRoleSingletonsUnobservable { host, cause: _ } => [host]
+    HostRoleSingletonsRead { host: _, sightings: _ } => []
+  })
+}
+
+fn first_unobservable_refusal(readings: List<HostRoleSingletonReading>) -> RoleSingletonRefusal {
+  match readings |> flat_map(r => match r {
+    HostRoleSingletonsUnobservable { host, cause } => [RoleSingletonHostUnobservable { host: host, cause: cause }]
+    HostRoleSingletonsRead { host: _, sightings: _ } => []
+  }) |> first {
+    Present { value: c } => c
+    Absent => RoleSingletonHostUnobservable { host: "unobservable" as NonEmptyStr, cause: "a roster host was unobservable but no host was named" }
+  }
+}
+
+fn local_placement_change(spec: DeploymentSpec, realizations: List<ObservedRealization>, desired: ProdRoleRealization) -> Bool {
+  match spec.role_singletons {
+    HoldsNoRoleSingleton => false
+    HoldsProdRoleSingletons { holder } => match desired {
+      ProdRoleRealizationRefused { cause: _ } => true
+      ProdRoleRealizedBy { holder: desired_holder } =>
+        if !(desired_holder.instance.deployment == holder.instance.deployment) {
+          true
+        } else {
+          match realizations |> first {
+            Absent => true
+            Present { value: r } =>
+              !(r.deployment == holder.instance.deployment && count(missing_members(r: r)) == 0)
+          }
+        }
+    }
+  }
+}
+
+fn production_reading_source(applying_host: NonEmptyStr) -> RoleSingletonReadingSource {
+  let peer = self_report_reading_source_with(fetch: r => fetch_self_report(row: r))
+  let read_peer = peer.read
+  RoleSingletonReadingSource {
+    read: (host, rows) =>
+      if (host as String) == (applying_host as String) {
+        host_role_singleton_reading(host: host, rows: rows, arm: OnTheHostItself)
+      } else {
+        read_peer(host, rows)
+      },
+  }
+}
+
+fn assess_spec_over_roster(spec: DeploymentSpec, source: RoleSingletonReadingSource) -> RoleSingletonAdmissionStanding {
+  let rows = desired_deployment_roster()
+  let desired = prod_role_actuated_realization()
+  let read = source.read
+  let readings = map(roster_hosts(rows: rows), h => read(h, rows))
+  match read(spec.target.ssh_host, rows) {
+    HostRoleSingletonsUnobservable { host, cause } =>
+      RoleSingletonInadmissible { cause: RoleSingletonHostUnobservable { host: host, cause: cause } }
+    HostRoleSingletonsRead { host: _, sightings: _ } =>
+      match role_singleton_observation_of(readings: [read(spec.target.ssh_host, rows)], rows: rows) {
+        RoleSingletonObservationRefused { cause } => RoleSingletonInadmissible { cause: cause }
+        RoleSingletonsObserved { realizations } =>
+          if count(unobservable_hosts_of(readings: readings)) == 0 {
+            classify_role_singleton_admission(
+              spec: spec,
+              desired: desired,
+              decision: role_singleton_convergence(
+                desired: desired,
+                observed: role_singleton_observation_of(readings: readings, rows: rows),
+                rows: rows,
+              ),
+            )
+          } else if local_placement_change(spec: spec, realizations: realizations, desired: desired) {
+            RoleSingletonInadmissible { cause: first_unobservable_refusal(readings: readings) }
+          } else {
+            classify_role_singleton_admission(
+              spec: spec,
+              desired: desired,
+              decision: RoleSingletonInPlace { global_unobservable: unobservable_hosts_of(readings: readings) },
+            )
+          }
+      }
+  }
+}
+
 fn assess_and_admit(deployment: DesiredDeployment) -> RoleSingletonAdmissionResult admit_callers: [
   decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_via_transport"),
   decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_transaction_decided"),
@@ -1068,9 +1164,7 @@ fn assess_and_admit(deployment: DesiredDeployment) -> RoleSingletonAdmissionResu
 fn assess_and_admit_rostered(spec: DeploymentSpec) -> RoleSingletonAdmissionResult admit_callers: [
   decl_ref(module_path: "gunbc.live_deploy.role_singleton_convergence", decl_name: "assess_and_admit"),
 ] {
-  let desired = prod_role_actuated_realization()
-  let decision = assess_over_roster(source: self_report_reading_source_with(fetch: r => fetch_self_report(row: r)))
-  match classify_role_singleton_admission(spec: spec, desired: desired, decision: decision) {
+  match assess_spec_over_roster(spec: spec, source: production_reading_source(applying_host: spec.target.ssh_host)) {
     RoleSingletonInadmissible { cause } => RoleSingletonNotAdmitted { cause: cause }
     RoleSingletonAdmissible { decision: d } => RoleSingletonAdmitted { admission: mint_role_singleton_admission(spec: spec, decision: d) }
   }

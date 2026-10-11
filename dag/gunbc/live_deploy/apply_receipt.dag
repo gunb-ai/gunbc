@@ -3,7 +3,7 @@ module gunbc.live_deploy.apply_receipt
 import std.types { String, Bool, NonEmptyStr, Int, List, FilePath, GitRef }
 import std.algebra { trim }
 import std.content_hash { content_hash_atom, content_hash_tagged_structural }
-import extdeps.languages.json.emit { JsonValue, json_kv, json_string, json_object, serialize_json }
+import extdeps.languages.json.emit { JsonValue, JsonArray, JsonString, json_kv, json_string, json_object, json_array, serialize_json }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
   json_object_unique_member,
@@ -51,12 +51,14 @@ data live_deploy_apply_receipt_schema: String = "live-deploy-apply-receipt/v3"
 
 type LiveDeployRoleSingletonDisposition
   = RoleSingletonsNoop
+  | RoleSingletonsInPlace { global_unobservable: List<String> }
   | RoleSingletonsInstalled { deployment: String, host: String }
   | RoleSingletonsRefusedBeforeApply { detail: String }
 
 fn live_deploy_role_singleton_disposition_text(d: LiveDeployRoleSingletonDisposition) -> String {
   match d {
     RoleSingletonsNoop => "noop"
+    RoleSingletonsInPlace { global_unobservable } => join(["in_place:", join(global_unobservable, ",")], "")
     RoleSingletonsInstalled { deployment, host } => join(["installed:", deployment, "@", host], "")
     RoleSingletonsRefusedBeforeApply { detail } => join(["refused:", detail], "")
   }
@@ -65,6 +67,10 @@ fn live_deploy_role_singleton_disposition_text(d: LiveDeployRoleSingletonDisposi
 fn live_deploy_role_singleton_disposition_json(d: LiveDeployRoleSingletonDisposition) -> JsonValue {
   match d {
     RoleSingletonsNoop => json_object(members: [json_kv(key: "disposition", value: json_string(s: "noop"))])
+    RoleSingletonsInPlace { global_unobservable } => json_object(members: [
+      json_kv(key: "disposition", value: json_string(s: "in_place")),
+      json_kv(key: "global_unobservable", value: json_array(elements: global_unobservable |> map(h => json_string(s: h)))),
+    ])
     RoleSingletonsInstalled { deployment, host } => json_object(members: [json_kv(key: "disposition", value: json_string(s: "installed")), json_kv(key: "deployment", value: json_string(s: deployment)), json_kv(key: "host", value: json_string(s: host))])
     RoleSingletonsRefusedBeforeApply { detail } => json_object(members: [json_kv(key: "disposition", value: json_string(s: "refused")), json_kv(key: "detail", value: json_string(s: detail))])
   }
@@ -83,6 +89,16 @@ fn live_deploy_role_singleton_disposition_of_member(doc: JsonValue) -> LiveDeplo
       JsonStringMemberRefused { reason: r } => DispositionUnreadable { reason: r }
       JsonStringMemberFound { value: kind } =>
         if kind == "noop" { DispositionDecoded { disposition: RoleSingletonsNoop } }
+        else if kind == "in_place" {
+          match json_object_unique_member(v: d, key: "global_unobservable") {
+            JsonMemberAbsent => DispositionUnreadable { reason: "role_singleton_disposition.in_place is missing global_unobservable" }
+            JsonMemberDuplicated { count: _ } => DispositionUnreadable { reason: "role_singleton_disposition.in_place duplicates global_unobservable" }
+            JsonMemberNotAnObject => DispositionUnreadable { reason: "role_singleton_disposition is not an object" }
+            JsonMemberFound { value: JsonArray { elements } } =>
+              DispositionDecoded { disposition: RoleSingletonsInPlace { global_unobservable: elements |> flat_map(e => match e { JsonString { value: s } => [s]  _ => [] }) } }
+            JsonMemberFound { value: _ } => DispositionUnreadable { reason: "role_singleton_disposition.global_unobservable is not an array" }
+          }
+        }
         else if kind == "refused" {
           match json_required_string_member(doc: d, key: "detail") {
             JsonStringMemberRefused { reason: r } => DispositionUnreadable { reason: r }
@@ -97,7 +113,7 @@ fn live_deploy_role_singleton_disposition_of_member(doc: JsonValue) -> LiveDeplo
                 DispositionDecoded { disposition: RoleSingletonsInstalled { deployment: dep, host: host } }
             }
           }
-        } else { DispositionUnreadable { reason: join(["live-deploy receipt role_singleton_disposition is not one of noop|installed|refused: ", kind], "") } }
+        } else { DispositionUnreadable { reason: join(["live-deploy receipt role_singleton_disposition is not one of noop|in_place|installed|refused: ", kind], "") } }
     }
   }
 }

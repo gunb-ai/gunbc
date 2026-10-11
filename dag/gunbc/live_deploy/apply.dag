@@ -43,7 +43,7 @@ import gunbc.live_deploy.desired {
 import gunbc.live_deploy.role_singleton_convergence {
   assess_and_admit, role_singleton_refusal_detail, admitted_spec, admitted_decision,
   RoleSingletonAdmission, RoleSingletonAdmitted, RoleSingletonNotAdmitted,
-  RoleSingletonNoop, RoleSingletonInstall, RoleSingletonRefused, RoleSingletonConvergence,
+  RoleSingletonNoop, RoleSingletonInPlace, RoleSingletonInstall, RoleSingletonRefused, RoleSingletonConvergence,
 }
 import gunbc.live_deploy.apply_warrant { warrant_live_deploy_apply }
 import std.types { String, CommitSha, NonEmptyStr }
@@ -168,7 +168,7 @@ import gunbc.live_deploy.apply_receipt {
   read_live_deploy_fleet_provenance, FleetProvenancePresent, FleetProvenanceAbsent, LiveDeployFleetProvenance,
   LiveDeployApplyConverged, LiveDeployApplyNotConverged,
   LiveDeployReadinessObserved, LiveDeployReadinessRefused,
-  LiveDeployRoleSingletonDisposition, RoleSingletonsNoop, RoleSingletonsInstalled, RoleSingletonsRefusedBeforeApply,
+  LiveDeployRoleSingletonDisposition, RoleSingletonsNoop, RoleSingletonsInPlace, RoleSingletonsInstalled, RoleSingletonsRefusedBeforeApply,
   observe_candidate_root_tree_oid, CandidateTreeOidObserved, CandidateTreeOidUnobservable,
   live_deploy_apply_receipt_json, live_deploy_apply_receipt_dir_for, live_deploy_apply_receipt_artifact_path_for,
 }
@@ -1368,6 +1368,7 @@ fn role_singleton_disposition_of(admission: RoleSingletonAdmission) -> LiveDeplo
 fn role_singleton_disposition_of_decision(decision: RoleSingletonConvergence) -> LiveDeployRoleSingletonDisposition {
   match decision {
     RoleSingletonNoop => RoleSingletonsNoop
+    RoleSingletonInPlace { global_unobservable } => RoleSingletonsInPlace { global_unobservable: global_unobservable |> map(h => h as String) }
     RoleSingletonInstall { holder } => RoleSingletonsInstalled { deployment: holder.instance.deployment.name as String, host: holder.instance.host_identity as String }
     RoleSingletonRefused { cause } => RoleSingletonsRefusedBeforeApply { detail: role_singleton_refusal_detail(cause: cause) }
   }
