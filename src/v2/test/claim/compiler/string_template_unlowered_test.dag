@@ -22,6 +22,24 @@ data stu_literal_src: String = "module p\n\nfn f(x: String) -> String {\n  \"hel
 
 data stu_eval_src: String = "module p\n\ndata k: String = \"k\"\n\nfn f() -> String {\n  \"a\{k\}b\"\n}\n\nfn consume_f() -> String {\n  f()\n}\n"
 
+// REAL-ROUTE CONTROL: the module declares BOTH a local concat and a local collection_concat_shape.
+// A template must still bind std.algebra.collection_concat_shape. An authored call of the declaration
+// spelling binds the local (the old bare-atom operator would have been captured the same way).
+data stu_shadow_src: String = "module p\n\nfn concat(a: Int, b: Int) -> Int {\n  a\n}\n\nfn collection_concat_shape(a: Int, b: Int) -> Int {\n  a\n}\n\ndata k: String = \"k\"\n\nfn f() -> String {\n  \"a\{k\}b\"\n}\n\nfn g() -> Int {\n  collection_concat_shape(1, 2)\n}\n"
+
+fn stu_path_is(n: Node, dotted: String) -> Bool {
+  match declaration_reference_path_optional(node: n) {
+    Present { value: p } => qualified_name_to_dotted_string(qn: p) == dotted
+    Absent => false
+  }
+}
+
+fn stu_count_paths(root: Node, dotted: String) -> Int {
+  fold(node_subtree_nodes(root: root), init: 0, f: fn(acc, n) {
+    if stu_path_is(n: n, dotted: dotted) { acc + 1 } else { acc }
+  })
+}
+
 fn stu_binds_concat_row(root: Node) -> Bool {
   fold(node_subtree_nodes(root: root), init: false, f: fn(acc, n) {
     acc || (match declaration_reference_path_optional(node: n) {
@@ -102,5 +120,26 @@ test fn a_plain_string_literal_assembles() -> Bool {
   match fmi_assemble(src: stu_literal_src) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
+  }
+}
+
+// GREEN: locals named concat and collection_concat_shape do not capture the generated operator.
+test fn a_template_binds_the_roster_row_beside_local_concat_spellings() -> Bool {
+  match fmi_assemble(src: stu_shadow_src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      (stu_count_paths(root: tree.root, dotted: "std.algebra.collection_concat_shape") >= 1)
+        && (fmi_reason(o: fmi_infer_tree(tree: tree)) == ^accepted)
+  }
+}
+
+// RED of the old route: an authored collection_concat_shape(...) in that module binds the LOCAL,
+// not the roster. A template lowered as a bare atom of that spelling would have been captured here.
+test fn an_authored_collection_concat_shape_binds_the_local_not_the_roster() -> Bool {
+  match fmi_assemble(src: stu_shadow_src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      (stu_count_paths(root: tree.root, dotted: "p.collection_concat_shape") >= 1)
+        && (stu_count_paths(root: tree.root, dotted: "std.algebra.collection_concat_shape") >= 1)
   }
 }

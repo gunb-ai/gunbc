@@ -22,7 +22,8 @@ import std.algebra { Cons, Empty, FreeSemigroup }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { node_subtree_nodes, Atom, ComputationNode, Conj, Edge, Node, Positional, Symbol, Transform, TypeNode, node_synthetic, node_with_occurrence_id, symbol_lexeme }
-import v2.std.grammar { GrammarEmitTerminal, GrammarEmitClassTerminal, GrammarEmitLexemeTerminal, grammar_named_edge, node_atom_identity_optional }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
+import v2.std.grammar { GrammarEmitTerminal, GrammarEmitClassTerminal, GrammarEmitLexemeTerminal, grammar_named_edge }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 
@@ -224,17 +225,13 @@ fn st_child(n: Node, index: Int) -> Optional<Node> {
   }
 }
 
-// The operator is the roster row, spelled by its DECLARATION name: the atom collection_concat_shape (resolve binds a
-// roster row by that name, fold_lowering collection_roster_primitive_call_row_by_declaration_optional) -- never the bare atom `concat`, which resolve
-// binds to a module's own declaration before the roster.
-fn st_count_atoms(op: Node, identity: Symbol) -> Int {
-  fold(node_subtree_nodes(root: op), init: 0, f: fn(acc, n) {
-    if node_atom_identity_optional(node: n) == optional_present(value: identity) { acc + 1 } else { acc }
-  })
-}
-
+// The operator is the roster row's declaration identity (a marked declaration_reference_node to
+// std.algebra.collection_concat_shape), never a bare atom of that spelling or of `concat`.
 fn st_names_roster_concat_row(op: Node) -> Bool {
-  (st_count_atoms(op: op, identity: ^collection_concat_shape) == 1) && (st_count_atoms(op: op, identity: ^concat) == 0)
+  match declaration_reference_path_optional(node: op) {
+    Present { value: p } => qualified_name_to_dotted_string(qn: p) == "std.algebra.collection_concat_shape"
+    Absent => false
+  }
 }
 
 fn st_is_concat_of(n: Node, cause: Int) -> Bool {
