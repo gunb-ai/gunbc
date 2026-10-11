@@ -31,6 +31,7 @@ import std.algebra { list_snoc_item }
 import v2.std.type_binder { type_binder_set_children, type_params_edge }
 import std.optional { Absent, Optional, Present }
 import v2.std.node_query { binder_edge }
+import v2.std.arrow_signature { declared_signature_arrow }
 import v2.std.node {
   ComputationNode,
   Conj,
@@ -469,5 +470,55 @@ test fn inhabitance_sibling_refinement_argument_refuses_holds() -> Bool {
     produced: ^aai_neg,
     carrier: Present { value: dag_type_atom_node(identity: ^dag_binding_type_int) },
     declared: ^aai_pos
+  ))
+}
+
+// AN ARROW AT AN ARROW IS ITS DOMAIN TYPES POSITIONALLY AND ITS RETURN (v2.std.inhabitance
+// declared_type_inhabitance_arrow), never a binder name or a body, at every position that reaches the
+// one relation: this is the ARGUMENT position (a named fn passed to an Arrow-typed formal), the record
+// field and declared-return positions are claimed from source in infer_optional_at_required_witness_test.
+// RED BEFORE: the relation had no Arrow arm, so two arrows of one signature differing in a binder name
+// refused with the exact-equality reason.
+fn aai_arrow(parameter: Symbol, domain: Symbol, codomain: Symbol) -> Node {
+  declared_signature_arrow(
+    params: [binder_edge(name: parameter, type_node: dag_type_atom_node(identity: domain))],
+    codomain: dag_type_atom_node(identity: codomain),
+    source: dag_type_atom_node(identity: codomain)
+  )
+}
+
+fn aai_arrow_obligation(declared: Node, produced: Node) -> DeclaredTypeObligation {
+  DeclaredTypeObligation {
+    position: position_direct_call_argument(),
+    parameter_identity: ^inhabitance_param_x,
+    declared: declared,
+    produced: produced,
+    produced_declared_carrier: Absent,
+    application: produced,
+    type_variables: []
+  }
+}
+
+test fn inhabitance_arrow_differing_only_in_a_binder_name_inhabits_holds() -> Bool {
+  match declared_type_inhabitance(obligation: aai_arrow_obligation(
+    declared: aai_arrow(parameter: ^aai_k, domain: ^dag_binding_type_int, codomain: ^dag_binding_type_bool),
+    produced: aai_arrow(parameter: ^inhabitance_param_x, domain: ^dag_binding_type_int, codomain: ^dag_binding_type_bool)
+  )) {
+    Inhabits { homomorphism: _ } => true
+    _ => false
+  }
+}
+
+test fn inhabitance_arrow_with_a_different_domain_refuses_holds() -> Bool {
+  aai_refused(o: aai_arrow_obligation(
+    declared: aai_arrow(parameter: ^aai_k, domain: ^dag_binding_type_int, codomain: ^dag_binding_type_bool),
+    produced: aai_arrow(parameter: ^aai_k, domain: ^dag_binding_type_bool, codomain: ^dag_binding_type_bool)
+  ))
+}
+
+test fn inhabitance_arrow_with_a_different_return_refuses_holds() -> Bool {
+  aai_refused(o: aai_arrow_obligation(
+    declared: aai_arrow(parameter: ^aai_k, domain: ^dag_binding_type_int, codomain: ^dag_binding_type_bool),
+    produced: aai_arrow(parameter: ^aai_k, domain: ^dag_binding_type_int, codomain: ^dag_binding_type_int)
   ))
 }
