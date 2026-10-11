@@ -646,8 +646,15 @@ fn acquire_closure(layout: SourceStorageLayout, bindings: List<SourceRootBinding
 
 // ---- the acquired set as the compiler's source ingest ----------------------------------------------
 
+// The host path an acquired member was read from. It is the artifact id, the artifact path and the
+// compilation unit of the member's witness, so a consumer that names the member's file (a discovery
+// row's entry, a diagnostic locus) names this path and no second spelling of it.
+fn acquisition_module_path(module: AcquiredModule) -> String {
+  source_root_child_path(directory: module.host_directory, name: module.file.relative_path)
+}
+
 fn acquisition_witness(module: AcquiredModule) -> DagSourceReadWitness {
-  let path = source_root_child_path(directory: module.host_directory, name: module.file.relative_path)
+  let path = acquisition_module_path(module: module)
   DagSourceReadWitness {
     source: Medium { carried: module.content, fidelity: Lossless },
     artifact: Artifact { kind: SourceFile, id: symbol_intern_lexeme(lexeme: path), file_path: path },
@@ -968,4 +975,63 @@ fn enumerate_bound_modules_go(
 
 fn enumerate_bound_modules(layout: SourceStorageLayout, bindings: List<SourceRootBinding>) -> BoundModules {
   enumerate_bound_modules_go(layout: layout, bindings: bindings, pending: layout.namespace_roots, acc: [])
+}
+
+// ---- reading a named population (a census's explicit input) -----------------------------------------------
+//
+// A census exists to report what is wrong with each member of a population, so it cannot be driven by
+// the acquirer, whose first unparseable member refuses the whole acquisition. Its input is a list of
+// module names (enumerate_bound_modules), and this reads exactly those files -- one read per name, by
+// the layout -- carrying no requests and no markers because nothing here asked for a closure. An
+// unreadable or absent file refuses the population with its name: a census over a population that
+// silently lost a member would report a smaller repository.
+type PopulationRead
+  = PopulationReadComplete { modules: List<AcquiredModule> }
+  | PopulationReadRefused { name: String, cause: String }
+
+type PopulationMember
+  = PopulationMemberRead { member: AcquiredModule }
+  | PopulationMemberRefused { cause: String }
+
+fn population_member_of(name: String, file: ModuleFileRef, host_directory: String) -> PopulationMember {
+  match acquisition_probe(host_directory: host_directory, file: file) {
+    ModuleFilePresent { file: _, content: content } =>
+      PopulationMemberRead {
+        member: AcquiredModule { name: name, file: file, host_directory: host_directory, content: content, requests: [], test_markers: [] }
+      }
+    ModuleFileAbsent { file: _ } => PopulationMemberRefused { cause: concat("the file ", module_file_key(file: file), " is absent") }
+    ModuleFileRefused { file: _, cause: cause } => PopulationMemberRefused { cause: cause }
+  }
+}
+
+fn population_member(layout: SourceStorageLayout, bindings: List<SourceRootBinding>, name: String) -> PopulationMember {
+  match module_file(layout: layout, name: name) {
+    ModuleNameUnderivable { name: _, cause: cause } => PopulationMemberRefused { cause: cause }
+    ModuleFileDerived { file: file } =>
+      match acquisition_host_directory(bindings: bindings, tree: file.tree) {
+        Absent => PopulationMemberRefused { cause: concat("tree ", source_root_ref_label(tree: file.tree), " is not bound") }
+        Present { value: host_directory } => population_member_of(name: name, file: file, host_directory: host_directory)
+      }
+  }
+}
+
+fn read_population_go(
+  layout: SourceStorageLayout,
+  bindings: List<SourceRootBinding>,
+  pending: List<String>,
+  acc: List<AcquiredModule>
+) -> PopulationRead {
+  match list_head(xs: pending) {
+    HeadAbsent => PopulationReadComplete { modules: list_reverse(xs: acc) }
+    HeadFound { value: name } =>
+      match population_member(layout: layout, bindings: bindings, name: name) {
+        PopulationMemberRefused { cause: cause } => PopulationReadRefused { name: name, cause: cause }
+        PopulationMemberRead { member: member } =>
+          read_population_go(layout: layout, bindings: bindings, pending: skip(xs: pending, n: 1), acc: Cons { head: member, tail: acc })
+      }
+  }
+}
+
+fn read_population(layout: SourceStorageLayout, bindings: List<SourceRootBinding>, names: List<String>) -> PopulationRead {
+  read_population_go(layout: layout, bindings: bindings, pending: names, acc: [])
 }

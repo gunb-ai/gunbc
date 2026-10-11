@@ -1,0 +1,56 @@
+module v2.cli.source_root_bindings
+
+import std.types { List }
+import std.algebra { Cons, Empty, FreeMonoid }
+import std.optional { Absent, Present }
+import v2.compiler.module_acquisition { SourceRootBinding, acquisition_host_directory }
+import v2.cli.repository_layout { repository_tree_of_root_argument }
+import v2.std.algebra { fold_list }
+import v2.std.cross_tree.import_model { SourceRootRef }
+import v2.std.text { String }
+
+// THE ROOTS A DRIVER WAS GIVEN, BOUND TO THE TREES THEY ARE. A source-root argument is a governed
+// tree's directory (v2.cli.repository_layout repository_tree_of_root_argument); an argument that is no
+// governed tree is refused where it was typed, and so is a second directory for a tree already bound,
+// because a module's file is decided by its name and its tree alone -- two directories for one tree
+// would make which of them holds a module a fact of read order. Every driver that acquires modules
+// (the native CLI, the native lane's evaluation driver) binds its roots here, so none of them keeps a
+// second reading of which directory is which tree.
+type SourceRootBindings
+  = SourceRootsBound { bindings: List<SourceRootBinding> }
+  | SourceRootsUnrecognized { argument: String }
+  | SourceRootsDuplicated { argument: String }
+
+fn source_root_bound(tree: SourceRootRef, argument: String, bindings: List<SourceRootBinding>) -> SourceRootBindings {
+  match acquisition_host_directory(bindings: bindings, tree: tree) {
+    Present { value: _ } => SourceRootsDuplicated { argument: argument }
+    Absent =>
+      SourceRootsBound { bindings: Cons { head: SourceRootBinding { tree: tree, host_directory: argument }, tail: bindings } }
+  }
+}
+
+fn source_root_bindings_step(acc: SourceRootBindings, argument: String) -> SourceRootBindings {
+  match acc {
+    SourceRootsUnrecognized { argument: _ } => acc
+    SourceRootsDuplicated { argument: _ } => acc
+    SourceRootsBound { bindings: bindings } =>
+      match repository_tree_of_root_argument(argument: argument) {
+        Absent => SourceRootsUnrecognized { argument: argument }
+        Present { value: tree } => source_root_bound(tree: tree, argument: argument, bindings: bindings)
+      }
+  }
+}
+
+fn source_root_bindings(roots: FreeMonoid<String>) -> SourceRootBindings {
+  fold_list(xs: roots, empty: SourceRootsBound { bindings: Empty }, cons: source_root_bindings_step)
+}
+
+fn source_root_bindings_refusal_text(bindings: SourceRootBindings) -> String {
+  match bindings {
+    SourceRootsBound { bindings: _ } => ""
+    SourceRootsUnrecognized { argument: argument } =>
+      concat("source root is not a governed tree directory: ", argument)
+    SourceRootsDuplicated { argument: argument } =>
+      concat("source root names a tree another --source-root already binds: ", argument)
+  }
+}
