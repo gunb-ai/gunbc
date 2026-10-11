@@ -233,7 +233,7 @@ test fn vf_braced_variant_declares_named_field() -> Bool {
 }
 
 // A record declaration is a Named member whose payload declares its fields: Required `v`,
-// Optional `w` (a Cardinality node over Int), and `xs` typed by an Instantiation of List over Int.
+// Optional `w` (an Occupancy node over Int), and `xs` typed by an Instantiation of List over Int.
 test fn vf_record_declaration_is_named_with_declared_fields() -> Bool {
   match vfs_normalized_1() {
     Rejected { diagnostics: _ } => false

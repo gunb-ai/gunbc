@@ -63,7 +63,7 @@ data stub_empty_disj: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
-data stub_empty_cardinality: Node = Node {
+data stub_empty_occupancy: Node = Node {
   kind: TypeNode { connective: Occupancy },
   children: [],
   occurrence_id: OccurrenceSynthetic
@@ -144,7 +144,7 @@ data claim_arrow_two_conj_compiles: TestClaim = CompilesClaim {
 
 data claim_occupancy_empty_rejected: TestClaim = arity_rejection_claim(
   label: "manual/connective: empty Occupancy type-node fails well-formedness (A1 arity)",
-  input: stub_empty_cardinality,
+  input: stub_empty_occupancy,
   anchor: ManualTcOccupancyEmpty
 )
 

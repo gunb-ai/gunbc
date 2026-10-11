@@ -22,7 +22,7 @@ import v2.std.node {
 }
 import v2.std.witness { Holds }
 
-// Discriminating RED for Wave 1 Gate 1 C1: Arrow domain Cardinality children must NOT inflate the
+// Discriminating RED for Wave 1 Gate 1 C1: Arrow domain Occupancy children must NOT inflate the
 // cost fold — only ^arrow_body_edge is priced. If cost_edge_role regresses to
 // include Arrow positional children, this witness goes red (domain linear cost would dominate).
 

@@ -60,7 +60,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // THE ROUTE CLAIMS NEED OPTIONAL TYPES TO REACH THEIR JUDGMENTS AT ALL. Before the descent fix that
 // landed with this witness (gunbc#12806, which carried gunbc#12777: v2.std.cardinality
-// connective_multiplicity answers Bounded for Cardinality) a program mentioning `T?` was refused for
+// connective_multiplicity answers Bounded for Occupancy) a program mentioning `T?` was refused for
 // descent before any declared-type judgment was asked (infer_descent_not_derived). The route claims
 // are therefore also that fix's real-route evidence.
 //

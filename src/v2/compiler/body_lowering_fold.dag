@@ -2738,7 +2738,7 @@ fn body_lower_unwrap_optional_element(node: Node) -> Node {
 // before (a binding atom or a qualified-name spine); a generic application becomes the
 // Instantiation connective with the head as its first positional child and each argument
 // after it (the shape v2.std.compilers.target_model reads the head from, index 0); a trailing
-// `?` wraps the result in the Cardinality connective, v2's authority for an optional field
+// `?` wraps the result in the Occupancy connective, v2's authority for an optional field
 // (v2.std.node_query DeclaredField.cardinality, decoded once at declared_field_cardinality_of_target). Before this reader a param or field typed
 // `List<Int>` or `Int?` lowered to the bare head atom, silently.
 fn body_lower_type_generic_args_optional(generic_capture: Node) -> Optional<List<Node>> {
@@ -2801,7 +2801,7 @@ fn body_lower_type_wrap_instantiation_image(head: Node, args: List<Node>, source
   }
 }
 
-fn body_lower_type_wrap_cardinality(base: Node, question_capture: Node, source: Node) -> Optional<Node> {
+fn body_lower_type_wrap_occupancy(base: Node, question_capture: Node, source: Node) -> Optional<Node> {
   let stripped = body_lower_deep_unwrap_optional(node: question_capture)
   if is_empty_conj_root(n: stripped) {
     optional_present(value: base)
@@ -2926,7 +2926,7 @@ fn body_lower_type_expr_lowered_optional(node: Node) -> Optional<Node> {
                   match body_lower_type_generic_args_optional(generic_capture: inner.right) {
                     Absent => Absent
                     Present { value: args } =>
-                      body_lower_type_wrap_cardinality(
+                      body_lower_type_wrap_occupancy(
                         base: body_lower_type_wrap_instantiation(head: head, args: args, source: node),
                         question_capture: outer.right,
                         source: node

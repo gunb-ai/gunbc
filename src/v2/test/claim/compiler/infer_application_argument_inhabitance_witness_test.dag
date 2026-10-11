@@ -248,7 +248,7 @@ test fn inhabitance_occupancy_type_is_optional_carrier_holds() -> Bool {
   }
 }
 
-// A formal declared `Int?` owes no descent: the Cardinality type connective is Bounded
+// A formal declared `Int?` owes no descent: the Occupancy type connective is Bounded
 // (v2.std.cardinality connective_multiplicity). The application reaches its ordinary inhabitance
 // judgment and is counted as the OptionalCarrier frontier on the Accepted path, not Rejected for
 // infer_descent_not_derived.

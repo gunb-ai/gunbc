@@ -579,7 +579,7 @@ fn namespace_graft_is_graft_candidate(root: Node) -> Bool {
 // identical to a LOST forest. Conj body edges must be uniquely Named (well_formed). Flattening
 // already produces that shape for a nonempty forest, so a nonempty flatten is kept as-is.
 // An empty flatten with surviving top-level-item alternatives reconstructs one Named forest
-// (Cardinality of those units as Positional children, interiors kept). Empty flatten, no units,
+// (Occupancy of those units as Positional children, interiors kept). Empty flatten, no units,
 // and a leftover dag_surface_top_level_item is a genuine loss and still refuses.
 // A MARKER IS COUNTED BY ITS EMISSION, NEVER BY A BARE ATOM IDENTITY. A top-level item is a
 // production whose emitted identity (the atom under ^grammar_production_identity_node_projection,
