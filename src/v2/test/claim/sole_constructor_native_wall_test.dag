@@ -151,6 +151,32 @@ test fn a_sealed_type_with_no_constructing_module_refuses_ownership_unreadable_h
   }
 }
 
+test fn a_homonym_in_another_module_does_not_seal_this_modules_open_type_holds() -> Bool {
+  match infer_sole_constructor_path_diags(
+    at: wall_at,
+    type_path: wall_type_path(),
+    constructing_module: optional_present(value: wall_home_module()),
+    tree: wall_tree(
+      channel: TypeDeclarationModifiersCaptured {
+        covered: [
+          wall_module_aca(),
+          Cons { head: ^bcb, tail: Empty }
+        ],
+        rows: [
+          QualifiedDeclaredTypeModifiers {
+            module: Cons { head: ^bcb, tail: Empty },
+            name: ^SealedRec,
+            modifiers: Cons { head: SoleConstructorModifier, tail: Empty }
+          }
+        ]
+      }
+    )
+  ) {
+    None => true
+    Some { diagnostics: _ } => false
+  }
+}
+
 test fn an_unavailable_channel_seals_nothing_holds() -> Bool {
   match infer_sole_constructor_path_diags(
     at: wall_at,

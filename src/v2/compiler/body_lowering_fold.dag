@@ -10889,32 +10889,6 @@ fn type_declaration_modifier_module_covered(covered: List<QualifiedName>, module
   fold(covered, init: false, f: fn(acc, m) { acc || (m == module) })
 }
 
-type TypeDeclModifierNameHits
-  = TypeDeclModifierNameNone
-  | TypeDeclModifierNameUnique { row: QualifiedDeclaredTypeModifiers }
-  | TypeDeclModifierNameAmbiguous
-
-fn type_declaration_modifier_unique_name(
-  channel: TypeDeclarationModifierChannel,
-  name: Symbol
-) -> TypeDeclModifierNameHits {
-  match channel {
-    TypeDeclarationModifiersUnavailable => TypeDeclModifierNameNone
-    TypeDeclarationModifiersCaptured { covered: _, rows: rows } =>
-      fold(rows, init: TypeDeclModifierNameNone, f: fn(acc, row) {
-        if symbol_eq(a: row.name, b: name) {
-          match acc {
-            TypeDeclModifierNameNone => TypeDeclModifierNameUnique { row: row }
-            TypeDeclModifierNameUnique { row: _ } => TypeDeclModifierNameAmbiguous
-            TypeDeclModifierNameAmbiguous => acc
-          }
-        } else {
-          acc
-        }
-      })
-  }
-}
-
 fn type_declaration_modifier_row_at(
   channel: TypeDeclarationModifierChannel,
   module: QualifiedName,
