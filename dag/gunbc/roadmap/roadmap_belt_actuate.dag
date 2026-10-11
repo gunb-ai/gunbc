@@ -31,10 +31,16 @@ import gunbc.roadmap.roadmap_review_function {
 import gunbc.roadmap.roadmap_review_criteria { ReviewCriterion }
 import gunbc.roadmap.roadmap_goal_audit_role { goal_audit_criterion_key, goal_audit_approved, goal_audit_reconcile, goal_audit_brief }
 import gunbc.roadmap_dispatch_actuator { dispatch_events_projection_argv_at, dispatch_current_attempt_events_path_for_instance }
+import gunbc.dispatch_credential_snapshot {
+  TakenCredentialSnapshot,
+  taken_credential_snapshot_path,
+  dispatch_credential_snapshot_discard,
+  NoCredentialSnapshot,
+  CredentialSnapshotHeld,
+}
 import gunbc.roadmap_dispatch_actuator {
   DispatchExecutorRequest, ExecutorDefault, dispatch_actuator_selection_for_request,
   RecordedAttemptFingerprint, dispatch_tmux_session_scope_for_recorded,
-  dispatch_credential_snapshot_path_for_instance, dispatch_credential_snapshot_discard,
   filter_dispatch_tmux_sessions, dispatch_node_id_from_session_name,
   dispatch_attempt_review_dir_for_instance, dispatch_attempt_review_verdict_path_for_instance, dispatch_attempt_review_verdict_basename,
   dispatch_review_unit_name, dispatch_review_unit_command,
@@ -129,7 +135,6 @@ import gunbc.roadmap_dispatch_actuator {
   DispatchSpawnPlan,
   DispatchSpawnReady,
   DispatchSpawnRefused,
-  dispatch_spawn_commands_for_instance,
   dispatch_spawn_commands_for_resolved_instance,
   dispatch_capability_program,
   dispatch_attempt_key,
@@ -2123,14 +2128,16 @@ fn belt_footprint_admission_for_instance(
 // closed, sitting on the one route where the model actually reaches a process, and this module's own
 // rule is that the fix is the carrier rather than the call.
 // ONE OWNER FOR THE CREDENTIAL SNAPSHOT'S LIFECYCLE AFTER SELECTION (side-chat finding, 2026-10-05).
-// A vendor selection may take a per-attempt credential snapshot (gunbc.roadmap_dispatch_actuator
-// dispatch_credential_snapshot_path_for_instance). Exactly one path consumes it: the launched child,
-// whose wrapper removes it before exec. Every other way out of the spawn after selection -- a refused
-// provider preflight, no spawn route, a supervisor route, a placement refusal, any SpawnFailed --
-// never launches that child, so the snapshot would outlive the attempt. The decision is a pure fold
-// over the outcome so every arm is witnessed; the discard is applied once, here, around everything
-// that follows selection. rm -f on a path no selection wrote succeeds, so providers that take no
-// snapshot pass through unchanged.
+// A vendor selection may take a per-attempt credential snapshot, and when it does the selection
+// CARRIES the sealed value it took (DispatchActuatorSelectionOk credential_snapshot, a
+// gunbc.dispatch_credential_snapshot TakenCredentialSnapshot). Exactly one path consumes it: the
+// launched child, whose wrapper removes it before exec. Every other way out of the spawn after
+// selection -- a refused provider preflight, no spawn route, a supervisor route, a placement refusal,
+// any SpawnFailed -- never launches that child, so the snapshot would outlive the attempt. The
+// decision is a pure fold over the outcome so every arm is witnessed; the discard is applied once,
+// here, around everything that follows selection, and it removes the snapshot the selection took --
+// never a path re-derived here. A selection that took none holds NoCredentialSnapshot and passes
+// through unchanged.
 type BeltSnapshotDisposition
   = SnapshotConsumedByChild
   | SnapshotDiscardRequired
@@ -2145,7 +2152,7 @@ fn belt_snapshot_disposition(outcome: BeltSpawnOutcome) -> BeltSnapshotDispositi
 }
 
 fn belt_snapshot_owned_outcome(
-  snapshot: NonEmptyStr,
+  snapshot: TakenCredentialSnapshot,
   provider_wire_label: String,
   launch: LaunchIdentity,
   outcome: BeltSpawnOutcome,
@@ -2159,7 +2166,7 @@ fn belt_snapshot_owned_outcome(
         SpawnFailed {
           node_id: launch.node_id as String,
           step: "credential-snapshot-discard",
-          detail: join(["the attempt did not launch its provider, and its credential snapshot ", snapshot as String, " could not be removed"], ""),
+          detail: join(["the attempt did not launch its provider, and its credential snapshot ", taken_credential_snapshot_path(snapshot: snapshot) as String, " could not be removed"], ""),
           provider: provider_wire_label,
           launch: launch,
         }
@@ -2220,7 +2227,7 @@ fn belt_actuate_spawn_for_instance(
             provider: belt_dispatch_spawn_selection_refused_provider_wire_label(reason: reason),
             launch: launch,
           }
-        DispatchActuatorSelectionOk { provider, effort: _, model: _, process_fingerprint: _ } => {
+        DispatchActuatorSelectionOk { provider, effort: _, model: _, process_fingerprint: _, credential_snapshot } => {
           let post_selection = match belt_provider_preflight_for_instance(
             instance: instance,
             provider: provider,
@@ -2250,17 +2257,16 @@ fn belt_actuate_spawn_for_instance(
                 request: request,
               )
           }
-          belt_snapshot_owned_outcome(
-            snapshot: dispatch_credential_snapshot_path_for_instance(
-              instance: instance,
-              node_id: node.node,
-              attempt_key: dispatch_attempt_key(node_id: node.node, probed_at: probed_at),
-              provider: provider,
-            ),
-            provider_wire_label: belt_dispatch_spawn_provider_wire_label(provider: provider),
-            launch: launch,
-            outcome: post_selection,
-          )
+          match credential_snapshot {
+            NoCredentialSnapshot => post_selection
+            CredentialSnapshotHeld { snapshot } =>
+              belt_snapshot_owned_outcome(
+                snapshot: snapshot,
+                provider_wire_label: belt_dispatch_spawn_provider_wire_label(provider: provider),
+                launch: launch,
+                outcome: post_selection,
+              )
+          }
         }
       }
     }
@@ -3229,7 +3235,7 @@ fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String, lau
             provider: belt_dispatch_spawn_selection_refused_provider_wire_label(reason: reason),
             launch: launch,
           }
-        DispatchActuatorSelectionOk { provider, effort: _, model: _, process_fingerprint: _ } =>
+        DispatchActuatorSelectionOk { provider, effort: _, model: _, process_fingerprint: _, credential_snapshot: _ } =>
           match belt_provider_preflight(provider: provider) {
             ProviderPreflightRefused { step: st, detail: d } =>
               SpawnFailed {
@@ -3319,7 +3325,7 @@ fn belt_actuate_teardown(session_name: String) -> BeltTeardownOutcome {
 data belt_session_uuid_salt: NonEmptyStr = "belt-session-uuid-v1" as NonEmptyStr
 
 // The UUID is the Claude provider's --session-id input (Claude requires a valid UUID). It is
-// computed for every provider so dispatch_spawn_commands has one arity, but CodexCliProvider
+// computed for every provider so dispatch_spawn_commands_for_resolved_instance has one arity, but CodexCliProvider
 // ignores it and lets Codex mint its persisted thread id. For Claude it is ATTEMPT-scoped (U1
 // redispatch fix 2026-07-25): (node_id x the spawn's clock observation) reshaped to RFC-4122 v4;
 // the earlier node-deterministic derivation made every node one-shot at the Claude layer. Reconcile
@@ -3387,7 +3393,7 @@ fn belt_resolved_spawn_plan(
         step: "dispatch-selection" as NonEmptyStr,
         detail: reason as String,
       }
-    DispatchActuatorSelectionOk { provider, effort, model, process_fingerprint: _ } =>
+    DispatchActuatorSelectionOk { provider, effort, model, process_fingerprint: _, credential_snapshot } =>
       dispatch_spawn_commands_for_resolved_instance(
         instance: instance,
         node: node,
@@ -3398,6 +3404,7 @@ fn belt_resolved_spawn_plan(
         model: model,
         origin: origin,
         resolution: resolution,
+        credential_snapshot: credential_snapshot,
       )
   }
 }
@@ -10603,7 +10610,7 @@ data belt_dispatch_path_prefix: String = "/dispatch/"
 // standing refuses production re-query.
 fn belt_dispatch_provider_label() -> String {
   match dispatch_actuator_selection(sizing_expectation: NoDerivedSizingExpectation) {
-    DispatchActuatorSelectionOk { provider, effort: _, model: _, process_fingerprint: _ } =>
+    DispatchActuatorSelectionOk { provider, effort: _, model: _, process_fingerprint: _, credential_snapshot: _ } =>
       dispatch_provider_label(provider: provider)
     DispatchActuatorSelectionRefused { reason } =>
       concat("selection-refused: ", reason as String)
