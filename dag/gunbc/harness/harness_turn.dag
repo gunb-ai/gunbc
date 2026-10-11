@@ -1369,10 +1369,12 @@ fn harness_response_headers_path(config: HarnessTurnConfig) -> String {
 // transport failed, no body came back, and no response header was received -- an engine that answered
 // anything, an error included, is never retried, and a hosted route never retries at all
 // (gunbc.harness.hosted_failure). The bound is small and every retry is a recorded event, so a flaky
-// endpoint is visible in the stream rather than absorbed by it.
-data harness_transport_retry_bound: Int = 2
+// endpoint is visible in the stream rather than absorbed by it. The spacing outlasts an engine reload:
+// the srv1 lab's empty replies were the operator engine restarting under the request, back serving
+// about 27 s later (2026-10-11 23:51:41 -> 23:52:08), so three tries 30 s apart cover one restart.
+data harness_transport_retry_bound: Int = 3
 
-data harness_transport_retry_delay: Int = 15
+data harness_transport_retry_delay: Int = 30
 
 fn harness_post_drew_no_response(posted: HarnessPostOutcome) -> Bool {
   !posted.success && trim(posted.body) == "" && (match posted.headers {
