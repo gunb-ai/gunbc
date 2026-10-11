@@ -21,9 +21,10 @@ import std.types { Int, List, String }
 // here drive sweep_rows_with_identities with a PLANTED identity roster over a planted two-module
 // closure (fixture-controlled: the same author writes the input and the expected population), and
 // the join law is the independent both-directions identity join sweep_rows_join_canonical,
-// duplicate-free. The canonical derivation itself (entry_canonical_identities = the
-// floor_discovery_producer walk filtered to the entry) is witnessed against THIS file's own
-// enrolled roster — a fixture-controlled identity join, not a tree-copied count. The witness-absent
+// duplicate-free. The canonical derivation itself (entry_canonical_identities = the entry's
+// supplied marked names, unioned with the exact-admission and long-lane rosters) is witnessed with
+// THIS file's own authored test names as the supplied marker fact -- a fixture-controlled identity
+// join against the real long-lane roster, not a tree-copied count. The witness-absent
 // arm is the RED: an entry not present in its own closure ingest is a located refusal row, never an
 // empty (silently uncovered) roster.
 
@@ -91,13 +92,13 @@ test fn witness_sweep_receipt_and_histogram_render_every_row() -> Bool {
 }
 
 test fn witness_canonical_identities_join_own_enrolled_roster() -> Bool {
-  let ids = entry_canonical_identities(entry: "dag/test/claim/long/realization_sweep.dag")
   let authored = [
     "witness_sweep_rows_join_planted_roster_exactly_once",
     "witness_sweep_entry_witness_absent_is_located_refusal_RED",
     "witness_sweep_receipt_and_histogram_render_every_row",
     "witness_canonical_identities_join_own_enrolled_roster"
   ]
+  let ids = entry_canonical_identities(entry: "dag/test/claim/long/realization_sweep.dag", marked: authored)
   length(xs: ids) == length(xs: authored)
     && fold_list(xs: authored, empty: true, cons: fn(acc, a) {
       acc && fold_list(xs: ids, empty: false, cons: fn(found, i) { found || (i == a) })

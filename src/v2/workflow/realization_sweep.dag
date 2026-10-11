@@ -11,11 +11,6 @@ import v2.workflow.realization_attempt {
   entry_witness_source
 }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
-import v2.workflow.floor_discovery_producer { floor_discovery_walk_dir }
-import v2.workflow.floor_discovery_source_authority {
-  FloorDiscoveryWalkState,
-  floor_discovery_walk_state_zero
-}
 import gunbc.explicit_witness_admission { explicit_witness_admissions }
 import gunbc.ci.ci_layer_roots { falsifier_substrate_long_lane_rows }
 import v2.compiler.source_authority {
@@ -42,8 +37,8 @@ import std.algebra { Cons, Empty }
 // assembly per entry, one attempt per required test-fn identity, a typed standing per identity,
 // exactly once. The receipt is a phase-and-cause histogram whose laws are structural (row count
 // equals identity count; every row typed), never tree-copied literals. Identity source: the entry's
-// authored test-fn roster, scanned from the entry witness's own source text at line grain — the
-// same 'test fn ' surface the floor's discovery walk recognizes — and interned to the resolved
+// test declarations, which are the declarations carrying the authored `test` marker — a SUPPLIED
+// fact (the entry's marked names), never a scan of its source text — interned to the resolved
 // declaration name the exactly-one join consumes.
 
 type RealizationSweepRow {
@@ -59,32 +54,11 @@ fn no_name_strings() -> List<String> {
 }
 
 // Roster authority correction (operator verdict, msg_6305b900): identities come from the CANONICAL
-// enrolled floor population — the same floor_discovery_producer walk the floor's discovery batch
-// runs, filtered to the entry — never a source-text line scan, which would be a second census
-// beside the execution roster (the class the circular census died of). The walk is over the entry's
-// own directory; a walk failure or empty roster is a refusal surface, not an empty list, because
-// the survey verdict downstream refuses on canonical/output mismatch.
-
-fn sweep_dir_join(out: String, seg: String) -> String {
-  if out == "" { seg } else { concat(out, "/", seg) }
-}
-
-fn entry_parent_dir(entry: String) -> String {
-  let segs = split(s: entry, delimiter: "/")
-  let n = length(xs: segs)
-  let folded = fold_list(xs: segs, empty: SweepDirState { index: 0, out: "" }, cons: fn(st, seg) {
-    SweepDirState {
-      index: st.index + 1,
-      out: if st.index + 1 == n { st.out } else { sweep_dir_join(out: st.out, seg: seg) }
-    }
-  })
-  folded.out
-}
-
-type SweepDirState {
-  index: Int
-  out: String
-}
+// enrolled population -- the entry's marked test declarations, the same fact the floor's discovery
+// enrols from -- never a source-text line scan, which would be a second census beside the execution
+// roster (the class the circular census died of). The marker fact is a supplied value: this module
+// neither parses nor walks the entry's directory, so a sibling file can neither contribute an
+// identity nor refuse the sweep.
 
 fn identity_snoc_unique(acc: List<String>, f: String) -> List<String> {
   if fold_list(xs: acc, empty: false, cons: fn(found, x) { found || (x == f) }) {
@@ -95,24 +69,16 @@ fn identity_snoc_unique(acc: List<String>, f: String) -> List<String> {
 }
 
 // The canonical enrolled population per entry is the UNION of the cadences that execute it: the
-// per-PR discovery roster (the floor walk, which deliberately excludes exactly-admitted rows from
-// ITS cadence), plus the exact-admission roster (gunbc.explicit_witness_admission), plus the
-// substrate long-lane rows (ci_layer_roots) — each an enrolled executing consumer. Discovery
-// exclusion is a CADENCE fact, not an enrollment fact; deriving the population from discovery alone
-// would silently drop every long-lane witness.
+// entry's marked test declarations (the source of the per-PR discovery roster, whose corpus-mode row
+// admission deliberately excludes exactly-admitted rows from ITS cadence), plus the exact-admission
+// roster (gunbc.explicit_witness_admission), plus the substrate long-lane rows (ci_layer_roots) --
+// each an enrolled executing consumer. Discovery exclusion is a CADENCE fact, not an enrollment
+// fact; deriving the population from discovery's admitted rows alone would silently drop every
+// long-lane witness.
 
-fn entry_canonical_identities(entry: String) -> List<String> {
-  let state = floor_discovery_walk_dir(
-    state: floor_discovery_walk_state_zero(),
-    dir_path: entry_parent_dir(entry: entry),
-    exclude_substrings: []
-  )
-  let discovered = fold_list(xs: state.rows, empty: no_name_strings(), cons: fn(acc, r) {
-    if r.entry == entry {
-      identity_snoc_unique(acc: acc, f: r.function)
-    } else {
-      acc
-    }
+fn entry_canonical_identities(entry: String, marked: List<String>) -> List<String> {
+  let discovered = fold_list(xs: marked, empty: no_name_strings(), cons: fn(acc, name) {
+    identity_snoc_unique(acc: acc, f: name)
   })
   let with_admitted = fold_list(xs: explicit_witness_admissions, empty: discovered, cons: fn(acc, a) {
     if a.witness.entry == entry {
@@ -148,12 +114,12 @@ fn sweep_row_cause(a: EntryRealizationAttempt) -> String {
   }
 }
 
-fn sweep_rows(ingest: SourceRootIngest, admission: Admission, entry: String) -> List<RealizationSweepRow> {
+fn sweep_rows(ingest: SourceRootIngest, admission: Admission, entry: String, marked: List<String>) -> List<RealizationSweepRow> {
   sweep_rows_with_identities(
     ingest: ingest,
     admission: admission,
     entry: entry,
-    identities: entry_canonical_identities(entry: entry)
+    identities: entry_canonical_identities(entry: entry, marked: marked)
   )
 }
 
