@@ -143,6 +143,12 @@ fn systemd_run_option_words_refused_cause_detail(cause: SystemdRunOptionWordsRef
   }
 }
 
+// NAME=VALUE for one property: the single spelling every --property=/-p word and every record of a
+// unit's properties carries.
+fn systemd_run_property_assignment(property: SystemdRunProperty) -> String {
+  concat(systemd_unit_property_wire(property: property.property), concat("=", property.value as String))
+}
+
 fn systemd_run_property_options_long(properties: List<SystemdRunProperty>) -> List<SystemdRunOption> {
   fold(properties, init: [], f: (acc, p) => list_append(left: acc, right: [PropertyLong { property: p }]))
 }
@@ -172,13 +178,13 @@ fn systemd_run_option_projection_step(acc: SystemdRunOptionWordsReading, option:
           if systemd_run_option_word_has_newline(s: p.value as String) {
             systemd_run_option_word_refused(cause: UnitSettingValueMultiline { property: p.property })
           } else {
-            SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["-p", concat(systemd_unit_property_wire(property: p.property), concat("=", p.value as String))]) }
+            SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["-p", systemd_run_property_assignment(property: p)]) }
           }
         PropertyLong { property: p } =>
           if systemd_run_option_word_has_newline(s: p.value as String) {
             systemd_run_option_word_refused(cause: UnitSettingValueMultiline { property: p.property })
           } else {
-            SystemdRunOptionWordsProjected { words: list_append(left: words, right: [concat("--property=", concat(systemd_unit_property_wire(property: p.property), concat("=", p.value as String)))]) }
+            SystemdRunOptionWordsProjected { words: list_append(left: words, right: [concat("--property=", systemd_run_property_assignment(property: p))]) }
           }
         SetEnv { binding: b } =>
           if string_contains(s: b.name as String, pattern: "=") {
