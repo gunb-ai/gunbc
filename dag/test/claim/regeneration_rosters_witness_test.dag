@@ -5,7 +5,7 @@ import std.types { String, Bool }
 import gunbc.generated_artifact { artifact_path }
 import gunbc.generated_artifact_registry { committed_generated_artifact_paths }
 import gunbc.seed_build_artifact_emit { seed_build_artifacts }
-import gunbc.heal_candidate_stage0 { seed_build_artifact_paths, mirror_paths_of }
+import gunbc.heal_candidate_stage0 { seed_build_artifact_paths, mirror_paths_of, stage0_round_writes_among }
 import gunbc.heal_publication_boundary { path_is_stage0_mirror }
 import gunbc.tier_o_artifact_emit { tier_o_artifacts }
 
@@ -54,4 +54,12 @@ test fn witness_a_seed_build_artifact_that_is_a_mirror_is_named_once() -> Bool {
     && any(overlap, p => p == "src/v1/stage0/src/gunbc_file_transport_generated.rs")
     && !any(mirror_paths_of(names: listing), p => p == "src/v1/stage0/src/gunbc_file_transport_generated.rs")
     && any(mirror_paths_of(names: listing), p => p == "src/v1/stage0/src/lib.rs")
+}
+
+// RED: a stage0 round that changed a seed-build roster path is two writers for one file, so the
+// overlap is named; a round that changed only an ordinary mirror is not.
+test fn witness_a_stage0_round_write_to_a_seed_build_path_is_named() -> Bool {
+  let hit = "src/v1/stage0/src/gunbc_file_transport_generated.rs"
+  stage0_round_writes_among(changed: ["src/v1/stage0/src/lib.rs", hit]) == [hit]
+    && stage0_round_writes_among(changed: ["src/v1/stage0/src/lib.rs"]) == []
 }

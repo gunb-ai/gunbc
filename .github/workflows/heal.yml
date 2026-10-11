@@ -92,6 +92,10 @@ jobs:
 
       - name: Converge the stage0 mirrors to the seed's own fixed point
         run: target/release/claim_executor --regen-round-cost --source-root dag --source-root src/v2
+      - name: Refuse when the stage0 round wrote a file the seed-build writer owns
+        run: |-
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/heal_candidate_stage0.dag --function heal_stage0_overlap_refusal_wet
       - name: Regenerate the seed-build artifacts without loading the registry
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)

@@ -1277,6 +1277,11 @@ data gunbc_ci_heal_candidate_stage0_target: GunbcRunStepTarget = GunbcRunStepTar
   function: "heal_candidate_stage0_produce_wet",
 }
 
+data gunbc_ci_heal_stage0_overlap_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/heal_candidate_stage0.dag",
+  function: "heal_stage0_overlap_refusal_wet",
+}
+
 data gunbc_ci_seed_build_artifacts_regen_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/instruments/seed_build_artifacts_regen.dag",
   function: "main_wet",
@@ -1403,6 +1408,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_heal_verify_target,
     gunbc_ci_heal_candidate_target,
     gunbc_ci_heal_candidate_stage0_target,
+    gunbc_ci_heal_stage0_overlap_target,
     gunbc_ci_seed_build_artifacts_regen_target,
     gunbc_ci_tier_o_drift_check_target,
     gunbc_ci_heal_publication_admit_target,
@@ -3818,6 +3824,16 @@ fn gunbc_ci_heal_candidate_stage0_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_heal_candidate_stage0_target.entry,
     function: gunbc_ci_heal_candidate_stage0_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_heal_stage0_overlap_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_heal_stage0_overlap_target.entry,
+    function: gunbc_ci_heal_stage0_overlap_target.function,
     claim_run: false,
     receipt_rel: none
   )
