@@ -8,7 +8,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List }
 import product.host_identity { HostIdentity }
 import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
-import gunbc.deployment_risk { NoProdRole, ProdRoleHeldBy, srv2_deploy_deployment }
+import gunbc.deployment_risk { NoProdRole, ProdRoleHeldBy, srv2_deploy_deployment, srv2_preview_codex_feedback_deployment }
+import gunbc.live_deploy.desired { prod_role_actuated_realization_in }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance, prod_role_realization_in, srv1_live_dashboard_instance, srv2_deploy_dashboard_instance }
 import gunbc.live_deploy.served_slice_charge {
   host_served_deployment_claim,
@@ -49,6 +50,21 @@ test fn no_prod_role_refuses_the_charge_and_never_falls_back_to_srv1() -> Bool {
 test fn the_real_route_charges_the_holders_host() -> Bool {
   match host_served_deployment_claim(host: srv1_live_dashboard_instance().host_identity as HostIdentity) {
     ServedDeploymentClaimResolved { memory: _ } => true
+    _ => false
+  }
+}
+
+// A holder in the public roster with no desired_deployment_roster row (srv2-preview) is unactuatable
+// (ProdRoleHolderUnactuatable via the real joined route): the charge is Unmeasured on its own host and
+// on srv1, never pinned to the holder's host.
+test fn an_unactuatable_holder_is_never_charged() -> Bool {
+  let p = served_deployment_placement_of(realization: prod_role_actuated_realization_in(selection: ProdRoleHeldBy { deployment: srv2_preview_codex_feedback_deployment }))
+  match host_served_deployment_claim_under(host: operator_host_srv1, placement: p) {
+    ServedDeploymentClaimUnmeasured { cause: _ } =>
+      match host_served_deployment_claim_under(host: operator_host_srv2, placement: p) {
+        ServedDeploymentClaimUnmeasured { cause: _ } => true
+        _ => false
+      }
     _ => false
   }
 }

@@ -19,8 +19,8 @@ import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDige
 import extdeps.sudo.elevation { sudo_elevate }
 import extdeps.tools.chown { chown_argv, ChownOwnerNames }
 import extdeps.posix.identity { PosixOwnerNames }
-import gunbc.auth.approval_broker_placement { approval_broker_host_under, ApprovalBrokerHostResolved, ApprovalBrokerHostRefused }
-import gunbc.roadmap_dashboard_instance { ProdRoleRealization, prod_role_realization, prod_role_realization_refusal_detail }
+import gunbc.auth.approval_broker_placement { approval_broker_host, ApprovalBrokerHost, ApprovalBrokerHostResolved, ApprovalBrokerHostRefused }
+import gunbc.roadmap_dashboard_instance { prod_role_realization_refusal_detail }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name, actions_variable_trimmed }
 import gunbc.auth.approval_keyring_pins {
   approval_submission_mac_key_path_env,
@@ -91,18 +91,18 @@ fn approval_keyring_staged_digest_ok(path: NonEmptyStr, expected_prefix: NonEmpt
 }
 
 // THE KEYRING FILES LIVE ON THE MACHINE THAT SERVES /approve, which is the approval broker's host:
-// the host of the prod-role holder (gunbc.auth.approval_broker_placement approval_broker_host_under
-// over gunbc.deployment_risk prod_role_selection). It was the literal srv1; moving the role now moves
+// the host of the ACTUATED prod-role holder (gunbc.auth.approval_broker_placement approval_broker_host,
+// the one production authority, over gunbc.deployment_risk prod_role_selection joined with the desired roster). It was the literal srv1; moving the role now moves
 // this converge with it, and a refused realization refuses the run -- no default host.
-fn keyring_host_must_be_broker_host_under(host: String, realization: ProdRoleRealization) -> Bool {
-  match approval_broker_host_under(realization: realization) {
+fn keyring_host_must_be_broker_host_under(host: String, broker_host: ApprovalBrokerHost) -> Bool {
+  match broker_host {
     ApprovalBrokerHostResolved { host: broker } => host == (broker as String)
     ApprovalBrokerHostRefused { cause: _ } => false
   }
 }
 
-fn approval_keyring_converge_refuses_off_broker_host_under(host: String, realization: ProdRoleRealization) -> ProcessExit {
-  match approval_broker_host_under(realization: realization) {
+fn approval_keyring_converge_refuses_off_broker_host_under(host: String, broker_host: ApprovalBrokerHost) -> ProcessExit {
+  match broker_host {
     ApprovalBrokerHostRefused { cause } =>
       exit_failure(reason: concat("approval keyring converge: no broker host to converge: ", prod_role_realization_refusal_detail(cause: cause)))
     ApprovalBrokerHostResolved { host: broker } => {
@@ -335,7 +335,7 @@ fn approval_keyring_converge_wet() -> ProcessExit
     ActionsVariableAbsent { variable: v, detail: d } =>
       exit_failure(reason: concat("approval keyring converge: ", concat(v, concat(" ", concat(d, "; one host per run, named by the dispatch")))))
     ActionsVariablePresent { value: host } =>
-      match approval_keyring_converge_refuses_off_broker_host_under(host: host, realization: prod_role_realization()) {
+      match approval_keyring_converge_refuses_off_broker_host_under(host: host, broker_host: approval_broker_host()) {
         ExitSuccess => approval_keyring_converge_on_host(host: host)
         other => other
       }
