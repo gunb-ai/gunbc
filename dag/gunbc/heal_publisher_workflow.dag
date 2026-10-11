@@ -127,6 +127,10 @@ fn heal_publisher_checkout_step() -> Step {
 // So the run is ASKED first -- one artifacts listing, which is a read the job's `actions: read`
 // grant already covers -- and the answer decides whether the download runs at all. The download
 // itself then carries no continue-on-error, so its failure is a failure.
+// The shell of the two forge-facing steps below is hand-spelled strings. The marker rides in the
+// emitted run text, as the toolchain prelude's does, so a reader of the YAML sees the trigger.
+data heal_publisher_forge_shell_dissolve_marker: String = "# dissolve-on: heal_publisher_forge_shell -- hand-spelled gh api / gh pr comment shell in the publisher job; delete when these steps render from typed forge effects through the bash emit capability (docs/plans/shell-intent-emit-realization-design.md, shell-to-intent). The artifact listing and name-membership test, and the receipt comment, are typed data a forge extdeps interface can own."
+
 data heal_publisher_candidate_probe_step_id: String = "candidate_probe"
 data heal_publisher_candidate_present_output: String = "present"
 
@@ -135,6 +139,7 @@ fn heal_publisher_candidate_probe_step() -> Step {
     name: Present { value: "Ask the triggering run whether it sealed a candidate" },
     id: Present { value: heal_publisher_candidate_probe_step_id },
     run: join([
+      heal_publisher_forge_shell_dissolve_marker,
       "set -euo pipefail",
       concat("NAMES=$(gh api --paginate \"repos/$GITHUB_REPOSITORY/actions/runs/$TRIGGERING_RUN_ID/artifacts\" --jq '.artifacts[].name')", ""),
       concat("if printf '%s\\n' \"$NAMES\" | grep -qx \"", concat(heal_repair_candidate_artifact_name as String, "\"; then")),
@@ -289,6 +294,7 @@ fn heal_publisher_receipt_comment_step() -> Step {
   heal_publisher_gated(
     step_name: "Post the publication receipt on the pull request",
     run: join([
+      heal_publisher_forge_shell_dissolve_marker,
       "set -euo pipefail",
       concat("gh pr comment \"$PR_NUMBER\" --repo \"$GITHUB_REPOSITORY\" --body-file ", heal_publication_receipt_path)
     ], "\n"),
