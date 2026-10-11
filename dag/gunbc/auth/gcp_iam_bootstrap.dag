@@ -25,7 +25,7 @@ import gunbc.secret_provision_actuator {
   observe_secret_container, create_secret_container, SecretContainerObserved, SecretContainerAbsent, SecretObservationRefused, SecretObservationOutcome, SecretContainerCreation,
   SecretContainerCreated, SecretContainerCreationRefused, SecretContainerCreationOutcomeUnknown,
 }
-import gunbc.auth.gcp_iam_converge { gcp_iam_observe_dedicated_federation, gcp_iam_converge_targets, gcp_iam_converge_grant_set_secrets, grant_set_payload_permissions, iam_converge_service_account, iam_observe_service_account, iam_converge_denied_permissions, same_key_set, cell_preimage, observe_and_plan_estate, GcpIamEstateRefused, GcpIamEstateNoop, GcpIamEstateApply, PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable }
+import gunbc.auth.gcp_iam_converge { gcp_iam_observe_dedicated_federation, gcp_iam_converge_targets, gcp_iam_converge_grant_set_secrets, grant_set_payload_permissions, iam_converge_service_account, iam_observe_service_account, iam_converge_denied_permissions, same_key_set, cell_preimage, observe_and_plan_estate, estate_refused_texts, GcpIamEstatePartialNoop, GcpIamEstateRefused, GcpIamEstateNoop, GcpIamEstateApply, PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable }
 import gunbc.auth.heal_publisher_provision {
   standing_principal_set,
   DedicatedFederation, observe_and_classify, create_absent_subjects, federation_fully_present,
@@ -631,8 +631,14 @@ fn iam_bootstrap_privilege_readback(token: Secret) -> String {
             BootstrapProbeTokenRefused { reason } => concat("observer readback credential unavailable; workflow trust withheld: ", reason)
             BootstrapProbeTokenReady { access_token: observer_token } => match observe_and_plan_estate(token: observer_token) {
               GcpIamEstateRefused { reasons } => concat("observer cannot establish the declared estate: ", join(reasons, "; "))
+              GcpIamEstatePartialNoop { refused } => concat("observer cannot establish the declared estate: ", join(estate_refused_texts(refused: refused), "; "))
               GcpIamEstateNoop => iam_bootstrap_observer_secret_readback(observer_token: observer_token, apply_token: apply_token)
-              GcpIamEstateApply { diff: _ } => iam_bootstrap_observer_secret_readback(observer_token: observer_token, apply_token: apply_token)
+              GcpIamEstateApply { diff: d } =>
+                if d.refused.length() > 0 {
+                  concat("observer cannot establish the declared estate: ", join(estate_refused_texts(refused: d.refused), "; "))
+                } else {
+                  iam_bootstrap_observer_secret_readback(observer_token: observer_token, apply_token: apply_token)
+                }
             }
           }
         }

@@ -118,7 +118,7 @@ import v2.std.node {
   Value,
   Arrow,
   Atom,
-  Cardinality,
+  Occupancy,
   Conj,
   Disj,
   Instantiation,
@@ -1524,7 +1524,7 @@ fn eval_node_is_arrow(node: Node) -> Bool {
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Conj } => false
     TypeNode { connective: Disj } => false
-    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: Value } => false
     ComputationNode { behavior: Transform } => false
@@ -1633,7 +1633,7 @@ fn eval_transform_has_callee_reference(node: Node) -> Bool {
     TypeNode { connective: Conj } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: Value } => false
     ComputationNode { behavior: Branch } => false
@@ -1650,7 +1650,7 @@ fn eval_node_is_branch(node: Node) -> Bool {
     TypeNode { connective: Conj } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: Value } => false
     ComputationNode { behavior: Transform } => false
@@ -1667,7 +1667,7 @@ fn eval_node_is_loop(node: Node) -> Bool {
     TypeNode { connective: Conj } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: Value } => false
     ComputationNode { behavior: Transform } => false
@@ -1699,7 +1699,7 @@ fn eval_node_is_effect_io_roundtrip(node: Node, effect_io: EffectIoEvalContext) 
         TypeNode { connective: Conj } => false
         TypeNode { connective: Disj } => false
         TypeNode { connective: Arrow } => false
-        TypeNode { connective: Cardinality } => false
+        TypeNode { connective: Occupancy } => false
         TypeNode { connective: Instantiation } => false
         ComputationNode { behavior: Value } => false
         ComputationNode { behavior: Branch } => false
@@ -3063,7 +3063,7 @@ fn eval_runtime_node_is_control_transfer(node: Node) -> Bool {
     TypeNode { connective: Conj } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: Value } => false
     ComputationNode { behavior: Transform } => false
@@ -3092,7 +3092,7 @@ fn eval_runtime_control_node(
           TransformRuntimeInterpreter { interpreter: interpretation.transform }
         TypeNode { connective: Arrow } =>
           TransformRuntimeInterpreter { interpreter: interpretation.transform }
-        TypeNode { connective: Cardinality } =>
+        TypeNode { connective: Occupancy } =>
           TransformRuntimeInterpreter { interpreter: interpretation.transform }
         TypeNode { connective: Instantiation } =>
           TransformRuntimeInterpreter { interpreter: interpretation.transform }
@@ -3147,7 +3147,7 @@ fn eval_runtime_control_node(
             outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
           TypeNode { connective: Arrow } =>
             outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
-          TypeNode { connective: Cardinality } =>
+          TypeNode { connective: Occupancy } =>
             outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
           TypeNode { connective: Instantiation } =>
             outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))

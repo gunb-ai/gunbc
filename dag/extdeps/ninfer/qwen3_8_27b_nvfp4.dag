@@ -1,0 +1,79 @@
+module extdeps.ninfer.qwen3_8_27b_nvfp4
+
+import std.types { NonEmptyStr }
+import std.nat { Nat }
+import std.measure { TokenCount, token_count, ByteSize, byte_size }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
+import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_repo_https_uri }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// THE PUBLISHED NINFER ARTIFACT of Qwen3.8-27B NVFP4: its own authority, separate from the Qwen base model
+// and from the unsloth quantization it was built from (DESIGN 3, external upstream decomposition). Those two
+// are named below as SOURCES by repository and revision only; their facts are not stated here.
+data qwen3_8_27b_ninfer_hub_repo: HubRepoId = HubRepoId {
+  kind: HubModelRepo,
+  path: "neroued/Qwen3.8-27B-nvfp4-NInfer" as NonEmptyStr,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: hub_repo_https_uri(repo: qwen3_8_27b_ninfer_hub_repo),
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ninfer.qwen3_8_27b_nvfp4",
+      decl_name: "qwen3_8_27b_ninfer_hub_repo",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+type NinferNvfp4 {}
+
+type NinferModelQuantization
+  = NinferNvfp4
+
+type NinferArtifactSource {
+  repo: HubRepoId
+  revision: NonEmptyStr
+}
+
+type NinferModelRow {
+  served_id: NonEmptyStr
+  context_tokens: TokenCount
+  quantization: NinferModelQuantization
+  quantized_from: NinferArtifactSource
+  base_model: NinferArtifactSource
+  container_file: NonEmptyStr
+  container_bytes: ByteSize
+  container_sha256: Sha256Digest
+  figures: CitedFigureStanding
+}
+
+// Every figure is read from the artifact manifest (schema ninfer.artifact-manifest v2) and the header config
+// on the pod, observed by the operator's session on 2026-10-11. The manifest's quantized source is what
+// grounds NVFP4. The README at the published repo is the citation; the manifest bytes themselves were read
+// on the pod, not fetched here, so the standing is TranscribedUncited until the sha256 is re-read at the Hub.
+data qwen3_8_27b_nvfp4_row: NinferModelRow = NinferModelRow {
+  served_id: "qwen3.8-27b" as NonEmptyStr,
+  context_tokens: token_count(count: 262144),
+  quantization: NinferNvfp4 {},
+  quantized_from: NinferArtifactSource {
+    repo: HubRepoId { kind: HubModelRepo, path: "unsloth/Qwen3.8-27B-NVFP4" as NonEmptyStr },
+    revision: "60e813d4dbbdc5d64cf3f5a8caf2897bedf03679" as NonEmptyStr,
+  },
+  base_model: NinferArtifactSource {
+    repo: HubRepoId { kind: HubModelRepo, path: "Qwen/Qwen3.8-27B" as NonEmptyStr },
+    revision: "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0" as NonEmptyStr,
+  },
+  container_file: "qwen3_8_27b_nvfp4.ninfer" as NonEmptyStr,
+  container_bytes: byte_size(count: 23719715844),
+  container_sha256: Sha256Digest { hex: "74d2c57145e6ff11d1d2faa79594477f9bc903a611af1fb20218189fbbb77d82" },
+  figures: TranscribedUncited {
+    read_obligation: "Re-read artifact-manifest.json at the published neroued repo (or the file on the pod) and compare the sha256 and byte size; /v1/models reported max_model_len 262144 for served id qwen3.8-27b. The dflash2 source z-lab/Qwen3.8-27B-DFlash2 @50307d4c4cde6860d4eee73e2547cd786fe8e8a4 is a component not consumed here." as NonEmptyStr
+  },
+}

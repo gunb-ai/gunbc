@@ -36,7 +36,7 @@ import extdeps.languages.json.parse {
 }
 
 import v2.std.node {
-  Cardinality,
+  Occupancy,
   Node,
   Edge,
   EdgeLabel,
@@ -821,7 +821,7 @@ test fn scm_image_permuted_named_children_reconstruct_the_canonical_identity() -
 test fn scm_image_permuted_positional_children_are_a_different_identity() -> Bool {
   let atoms = scm_image_two_atoms()
   let forward = scm_image_insert_children(
-    kind: TypeNode { connective: Cardinality },
+    kind: TypeNode { connective: Occupancy },
     children: [
       scm_image_positional_stored(target: atoms.first),
       scm_image_positional_stored(target: atoms.second),
@@ -829,7 +829,7 @@ test fn scm_image_permuted_positional_children_are_a_different_identity() -> Boo
     fallback: atoms.first
   )
   let swapped = scm_image_insert_children(
-    kind: TypeNode { connective: Cardinality },
+    kind: TypeNode { connective: Occupancy },
     children: [
       scm_image_positional_stored(target: atoms.second),
       scm_image_positional_stored(target: atoms.first),

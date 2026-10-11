@@ -40,6 +40,12 @@ import gunbc.spark.vllm_observed {
 }
 import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, harness_serving_unit_wire }
 import extdeps.http.client
+import gunbc.harness.harness_operator_route {
+  harness_operator_route, HarnessOperatorRoute, OperatorModelsReading, OperatorHealthUnanswered, OperatorHealthUnhealthy, OperatorModelsRefused, OperatorModelsAnswered,
+  OperatorRouteStanding, OperatorRouteServing, OperatorRouteModelNotAdmitted, OperatorRouteUnreachable, OperatorRouteUnreadable,
+  operator_route_standing, operator_open_header, OperatorHeaderOpened, OperatorHeaderRefused, operator_close_header,
+  operator_models_url, operator_health_url, operator_endpoint_origin,
+}
 import extdeps.tools.curl { curl_exit_outcome, CurlCouldNotConnect, CurlOperationTimedOut }
 import extdeps.languages.json.parse {
   JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text,
@@ -306,14 +312,83 @@ fn harness_observe_route(acc: HarnessRosterFold, route: ServingRoute) -> Harness
   }
 }
 
-fn harness_observe_roster() -> HarnessBackendRoster {
-  let folded = fold(serving_enrolled_routes(), init: HarnessRosterFold { serving: [], declined: [], unresolved: [] }, f: (acc, r) =>
-    harness_observe_route(acc: acc, route: r))
+// THE OPERATOR ENDPOINT IS A ROUTE THE FLEET'S ENROLLMENT DOES NOT NAME, so it is observed beside the enrolled
+// routes and folded into the same roster (operator ruling: gunbc.design_ruling
+// harness_default_requirement_places_on_operator_endpoint). Two GETs, because one cannot tell a dead tunnel from
+// a rejected key: /health needs no authorization, so its absence is the tunnel or the server; /v1/models is read
+// with the Bearer header file, so its refusal is the key. A dead tunnel is HarnessBackendUnreachable, never an
+// empty roster entry.
+fn harness_observe_operator_reading(route: HarnessOperatorRoute) -> OperatorModelsReading {
+  match operator_health_url() {
+    Absent => OperatorHealthUnanswered { url: "the operator endpoint URL could not be composed" }
+    Present { value: health } =>
+      match harness_bounded_presence(url: health as String) {
+        HarnessConnectFailed { url: u, curl_exit: _ } => OperatorHealthUnanswered { url: u }
+        HarnessDeadline { url: u } => OperatorHealthUnanswered { url: u }
+        HarnessTransportUnread { url: u, curl_exit: _ } => OperatorHealthUnanswered { url: u }
+        HarnessResponded { status: st } =>
+          if st != "200" { OperatorHealthUnhealthy { url: health as String, status: st } } else {
+          match operator_models_url() {
+            Absent => OperatorModelsRefused { url: "the operator endpoint URL could not be composed" }
+            Present { value: models } =>
+              match operator_open_header(route: route) {
+                OperatorHeaderRefused { detail: d } => OperatorModelsRefused { url: join([models as String, " (", d, ")"], "") }
+                OperatorHeaderOpened { header_dir: dir, header_file: hf } => {
+                  let read = http.Client.GetFollowRedirectsBoundedWithHeaderFile(
+                    url: models,
+                    max_seconds: to_string(second_count(s: harness_front_door_probe_bound)) as NonEmptyStr,
+                    accept: "Accept: application/json" as NonEmptyStr,
+                    header_file: hf,
+                  )
+                  let closed = operator_close_header(header_dir: dir)
+                  if read.success { OperatorModelsAnswered { body: read.body } } else { OperatorModelsRefused { url: models as String } }
+                }
+              }
+          }
+          }
+      }
+  }
+}
+
+fn harness_operator_roster_step(acc: HarnessRosterFold, route: HarnessOperatorRoute, standing: OperatorRouteStanding) -> HarnessRosterFold {
+  match operator_endpoint_origin() {
+    Absent => HarnessRosterFold { serving: acc.serving, declined: acc.declined, unresolved: concat(acc.unresolved, ["the operator endpoint origin could not be composed" as NonEmptyStr]) }
+    Present { value: endpoint } =>
+      match standing {
+        OperatorRouteServing { model: m } =>
+          HarnessRosterFold {
+            serving: concat(acc.serving, [HarnessRouteServing { endpoint: endpoint, group_wire: route.group_wire, model: m, unit: route.unit }]),
+            declined: acc.declined,
+            unresolved: acc.unresolved,
+          }
+        OperatorRouteModelNotAdmitted { advertised: a } => harness_operator_decline(acc: acc, route: route, endpoint: endpoint, standing: HarnessBackendModelNotAdmitted { advertised: a })
+        OperatorRouteUnreachable { url: u } => harness_operator_decline(acc: acc, route: route, endpoint: endpoint, standing: HarnessBackendUnreachable { url: u })
+        OperatorRouteUnreadable { cause: c } => harness_operator_decline(acc: acc, route: route, endpoint: endpoint, standing: HarnessBackendUnreadable { cause: c })
+      }
+  }
+}
+
+fn harness_operator_decline(acc: HarnessRosterFold, route: HarnessOperatorRoute, endpoint: NonEmptyStr, standing: HarnessBackendStanding) -> HarnessRosterFold {
+  HarnessRosterFold {
+    serving: acc.serving,
+    declined: concat(acc.declined, [HarnessRouteDecline { endpoint: endpoint, group_wire: route.group_wire, standing: standing }]),
+    unresolved: acc.unresolved,
+  }
+}
+
+fn harness_roster_of(folded: HarnessRosterFold) -> HarnessBackendRoster {
   if count(folded.serving) == 0 {
     HarnessRosterNoneServing { declined: folded.declined, unresolved: folded.unresolved }
   } else {
     HarnessRosterServing { serving: folded.serving, declined: folded.declined, unresolved: folded.unresolved }
   }
+}
+
+fn harness_observe_roster() -> HarnessBackendRoster {
+  let folded = fold(serving_enrolled_routes(), init: HarnessRosterFold { serving: [], declined: [], unresolved: [] }, f: (acc, r) =>
+    harness_observe_route(acc: acc, route: r))
+  let standing = operator_route_standing(route: harness_operator_route, reading: harness_observe_operator_reading(route: harness_operator_route))
+  harness_roster_of(folded: harness_operator_roster_step(acc: folded, route: harness_operator_route, standing: standing))
 }
 
 fn harness_declines_detail(declined: List<HarnessRouteDecline>, unresolved: List<NonEmptyStr>) -> String {

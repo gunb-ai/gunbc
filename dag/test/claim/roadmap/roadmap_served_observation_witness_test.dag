@@ -32,11 +32,20 @@ import gunbc.roadmap_served_observation {
   served_observation_body_read_from_observation,
   served_observation_body_response,
   served_observation_index_refusal,
+  served_observation_freshness,
+  served_observation_freshness_from_events,
+  served_observation_newest_event_at,
+  served_events_after_snapshot_close,
+  served_observation_apply_freshness,
+  ObservationCurrent, ObservationStale, ObservationFreshnessUnread,
   served_observation_entry_for,
   served_observation_standing_json_value,
   served_observation_standing_http_status,
 }
 import extdeps.languages.json.emit { serialize_json }
+import gunbc.roadmap.roadmap_event_carrier {
+  AllEventsRead, AllEventsReadRefused, CarrierClosed, SnapshotCloseFailed,
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -308,12 +317,12 @@ test fn a_surface_the_producer_did_not_render_is_a_typed_503() -> Bool {
 }
 
 test fn standing_publishes_observed_at_and_identity_when_present() -> Bool {
-  let body = serialize_json(v: served_observation_standing_json_value(read: fixture_read()))
-  served_observation_standing_http_status(read: fixture_read()) == 200
+  let body = serialize_json(v: served_observation_standing_json_value(read: fixture_read(), freshness: ObservationCurrent))
+  served_observation_standing_http_status(read: fixture_read(), freshness: ObservationCurrent) == 200
     && string_contains(s: body, pattern: "\"observed_at\": \"2026-09-04T18:00:00Z\"")
     && string_contains(s: body, pattern: served_observation_identity_hex(index: fixture_index()))
     && string_contains(s: body, pattern: "\"url_path\": \"/workflow.json\"")
-    && served_observation_standing_http_status(read: ServedObservationAbsent) == 503
+    && served_observation_standing_http_status(read: ServedObservationAbsent, freshness: ObservationCurrent) == 503
 }
 
 // Same law as the belt tick receipt's home: the index and every body are per-instance, under the
@@ -335,4 +344,65 @@ test fn the_snapshot_files_are_homed_in_the_instance_receipts_dir_not_the_shared
 
 test fn the_standing_route_is_served() -> Bool {
   any(roadmap_serve_route_specs(), r => r.raw == "/observation.json" && (match r.handler { ObservationJsonHandler => true  _ => false }))
+}
+
+// An index older than the newest event is stale; equal or newer is current. Serving the older
+// bytes without this standing would be silent wrongness (DESIGN §5).
+test fn a_newer_event_makes_the_served_observation_stale() -> Bool {
+  match served_observation_freshness(observed_at: "2026-10-10T18:00:00Z", newest_event_at: "2026-10-10T18:00:01Z") {
+    ObservationStale { observed_at, newest_event_at } => observed_at == "2026-10-10T18:00:00Z" && newest_event_at == "2026-10-10T18:00:01Z"
+    ObservationCurrent => false
+    ObservationFreshnessUnread { reason: _ } => false
+  }
+    && match served_observation_freshness(observed_at: "2026-10-10T18:00:01Z", newest_event_at: "2026-10-10T18:00:01Z") {
+      ObservationCurrent => true
+      ObservationStale { observed_at: _, newest_event_at: _ } => false
+      ObservationFreshnessUnread { reason: _ } => false
+    }
+    && match served_observation_freshness(observed_at: "2026-10-10T18:00:00Z", newest_event_at: "") {
+      ObservationFreshnessUnread { reason: _ } => true
+      ObservationCurrent => false
+      ObservationStale { observed_at: _, newest_event_at: _ } => false
+    }
+    && match served_observation_freshness(observed_at: "2026-10-10T18:00:00Z", newest_event_at: "2026-10-10T18:00:01+00:00") {
+      ObservationFreshnessUnread { reason: _ } => true
+      ObservationCurrent => false
+      ObservationStale { observed_at: _, newest_event_at: _ } => false
+    }
+}
+
+test fn standing_and_surface_consume_freshness_from_supplied_events() -> Bool {
+  let stale = ObservationStale { observed_at: "2026-10-10T18:00:00Z", newest_event_at: "2026-10-10T18:00:01Z" }
+  let unread = ObservationFreshnessUnread { reason: "snapshot: fixture" }
+  let standing_stale = serialize_json(v: served_observation_standing_json_value(read: fixture_read(), freshness: stale))
+  let body = served_observation_body_response(
+    entry: fixture_entry(kind: DailyPage),
+    body: ServedObservationBodyPresent { body: fixture_daily_body },
+  )
+  let marked = served_observation_apply_freshness(response: body, freshness: stale)
+  let unread_r = served_observation_apply_freshness(response: body, freshness: unread)
+  served_observation_newest_event_at(envelopes: []) == ""
+    && match served_observation_freshness_from_events(observed_at: "2026-10-10T18:00:00Z", events: AllEventsRead { envelopes: [] }) {
+      ObservationCurrent => true
+      ObservationStale { observed_at: _, newest_event_at: _ } => false
+      ObservationFreshnessUnread { reason: _ } => false
+    }
+    && match served_observation_freshness_from_events(observed_at: "2026-10-10T18:00:00Z", events: AllEventsReadRefused { step: "snapshot", reason: "fixture" }) {
+      ObservationFreshnessUnread { reason } => string_contains(s: reason, pattern: "fixture")
+      ObservationCurrent => false
+      ObservationStale { observed_at: _, newest_event_at: _ } => false
+    }
+    && match served_events_after_snapshot_close(read: CarrierClosed {
+      result: AllEventsRead { envelopes: [] },
+      close: SnapshotCloseFailed { worktree: "/tmp/events" as FilePath, exit_code: 1, stderr: "busy" },
+    }) {
+      AllEventsReadRefused { step, reason } =>
+        step == "snapshot-close" && string_contains(s: reason, pattern: "busy")
+      AllEventsRead { envelopes: _ } => false
+    }
+    && string_contains(s: standing_stale, pattern: "\"standing\": \"stale\"")
+    && string_contains(s: standing_stale, pattern: "2026-10-10T18:00:01Z")
+    && served_observation_standing_http_status(read: fixture_read(), freshness: stale) == 200
+    && marked.status == 409 && marked.body == fixture_daily_body
+    && unread_r.status == 503 && string_contains(s: unread_r.body, pattern: "ServedObservationFreshnessUnread")
 }

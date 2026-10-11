@@ -96,7 +96,7 @@ import extdeps.systemd.unit_file {
   SystemdSliceDirective,
   DirectiveByteCount,
 }
-import gunbc.host_layout { belt_spawn_workdir_env_var, attempt_exit_inbox_dir, publication_answer_dir }
+import gunbc.host_layout { belt_spawn_workdir_env_var, attempt_exit_inbox_dir, publication_answer_dir, publication_refused_dir }
 
 // A DATED, INDEPENDENTLY TRANSCRIBED REALIZATION FIXTURE — NOT LIVE DRIFT DETECTION.
 //
@@ -594,6 +594,7 @@ test fn the_answer_path_wakes_discovery_on_a_changed_answer_directory() -> Bool 
   let f = live_deploy_belt_answer_path_unit_file(spec: spec)
   path_has_line(file: f, line: join(["Unit=", deployment_belt_discovery_service_unit_name(names: spec.names) as String], ""))
     && path_has_line(file: f, line: join(["PathChanged=", publication_answer_dir(instance_root: spec.service.instance_root as String)], ""))
+    && path_has_line(file: f, line: join(["PathChanged=", publication_refused_dir(instance_root: spec.service.instance_root as String)], ""))
     && !path_has_line(file: f, line: join(["DirectoryNotEmpty=", publication_answer_dir(instance_root: spec.service.instance_root as String)], ""))
 }
 
