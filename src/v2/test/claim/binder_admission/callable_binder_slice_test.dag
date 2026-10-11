@@ -2,6 +2,7 @@ module v2.test.claim.binder_admission.callable_binder_slice
 
 import v2.compiler.resolve {
   LexicalBinding,
+  LexicalUntyped,
   frame_binders_add,
   frame_binders_empty,
   lexical_frame,
@@ -177,7 +178,7 @@ fn cbs_frame_binding(name: Symbol) -> Scope {
     fb: frame_binders_add(
       fb: frame_binders_empty(),
       name: name,
-      binding: LexicalBinding { binder_site: OccurrenceMinted { id: OccurrenceId { value: 1 } }, declared: optional_absent(), value: optional_absent() }
+      binding: LexicalBinding { binder_site: OccurrenceMinted { id: OccurrenceId { value: 1 } }, standing: LexicalUntyped }
     ),
     outer: cbs_root_scope()
   )

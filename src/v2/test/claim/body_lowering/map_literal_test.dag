@@ -34,8 +34,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // A MAP LITERAL ELABORATES FROM ITS AUTHORED Map<K, V>, OR REFUSES LOCATED.
 //
-// The subject is the map arm of v2.compiler.resolve's one elaboration writer
-// (docs/plans/map-literal-introduction-design.md): lowering writes a headless string-keyed brace
+// The subject is the map arm of v2.compiler.resolve's one elaboration writer:
+// lowering writes a headless string-keyed brace
 // with one MapLiteralEntriesEdge edge, and resolve elaborates it to the one introduction
 // v2.std.map_introduction lower_map_introduction builds, or refuses. The oracle is CONTENT EQUALITY
 // WITH THE HEADED SPELLING, `map_from_entries(entries: [MapIntroductionEntry { .. }, ..])`, resolved

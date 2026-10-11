@@ -1,0 +1,371 @@
+module gunbc.plans.v2_closed_pr_recovery
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
+import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, AlignNone }
+import gunbc.plans.md_helpers { h2, p, li, ul, cell, row }
+import std.types { NonEmptyStr }
+import std.integer { int_to_decimal_string }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+
+// CLOSED-BUT-UNFOLDED PR CENSUS as a planning carrier. The operator's instruction (2026-10-10):
+// keep the v2-relevant work named so it cannot be lost. The census judgments are neat-wolf-604's
+// 2026-10-10 reading, not verified facts; the dispositions record the operator's rulings of the
+// same day (start and finish the v2 compiler rows; the shared-std and product/fleet/ops rows get
+// in; the dead rows are irrelevant).
+
+// ONE STANDING PER ROW, BY CONSTRUCTION (review 78443): a live row carries the area its diff
+// touches and a live disposition; a dead row carries why it is dead and has no area. A dead
+// row with a revival disposition, or a revival with an empty first step, has no constructor.
+type ClosedPrArea
+  = V2Compiler
+  | SharedStdOrV1Written
+  | ProductFleetOps
+
+type DeadKind
+  = RetiredFloor
+  | Scratch
+  | DuplicateOrSuperseded
+  | PlansOnly
+  | RejectedOnDesign
+  | SubjectRetired
+
+type LiveDisposition
+  = ReviveOnMain { first_step: NonEmptyStr }
+  | ReDeriveInV2 { what_carries_over: NonEmptyStr, first_step: NonEmptyStr }
+  | ProductPriorityCall
+
+type ClosedPrStanding
+  = LiveWork { area: ClosedPrArea, disposition: LiveDisposition }
+  | DeadWork { kind: DeadKind, why: NonEmptyStr }
+
+type ClosedPrRecoveryRow {
+  pr_numbers: List<Int>,
+  subject: NonEmptyStr,
+  why_closed: NonEmptyStr,
+  standing: ClosedPrStanding,
+}
+
+type ClosedPrCensusProvenance {
+  session: String,
+  date: String,
+  method: String,
+  standing: CitedFigureStanding,
+}
+
+data closed_pr_census_provenance: ClosedPrCensusProvenance = ClosedPrCensusProvenance {
+  session: "neat-wolf-604",
+  date: "2026-10-10",
+  method: "gh pr diff --name-only (paths, not line-by-line)",
+  standing: TranscribedUncited {
+    read_obligation: "Re-read each named PR's paths, completeness and greenness on current main before reviving it; this carrier transcribes neat-wolf-604's 2026-10-10 path-only reading. The revival dispositions are the operator's 2026-10-10 rulings, not part of the reading." as NonEmptyStr,
+  },
+}
+
+data closed_pr_recovery_rows: List<ClosedPrRecoveryRow> = [
+  ClosedPrRecoveryRow {
+    pr_numbers: [13558, 13623],
+    subject: "N7: payload-binder facts, and typing lambda arguments that have no declared type (src/v2/compiler/03_resolve, 04_infer)" as NonEmptyStr,
+    why_closed: "Built on a base branch other than main; never ran CI" as NonEmptyStr,
+    standing: LiveWork { area: V2Compiler, disposition: ReviveOnMain { first_step: "Rebase onto main first." as NonEmptyStr } },
+  },
+  ClosedPrRecoveryRow {
+    pr_numbers: [13430, 13638, 13284],
+    subject: "XL-2: string templates in v2 parse/resolve; kernel String concatenation through a free monoid" as NonEmptyStr,
+    why_closed: "Red, lane cancelled" as NonEmptyStr,
+    standing: LiveWork { area: V2Compiler, disposition: ReviveOnMain { first_step: "Open a fresh lane; this is the text crossing the 2026-09-27 ruling commits to, not a rebase of the old WIP." as NonEmptyStr } },
+  },
+  ClosedPrRecoveryRow {
+    pr_numbers: [13426],
+    subject: "Foreign lexers: Rust ingest of a bare +, TypeScript single-quoted strings" as NonEmptyStr,
+    why_closed: "Never ran CI" as NonEmptyStr,
+    standing: LiveWork { area: V2Compiler, disposition: ReviveOnMain { first_step: "Re-run the small foreign-lexer patch on current main." as NonEmptyStr } },
+  },
+  ClosedPrRecoveryRow {
+    pr_numbers: [13391],
+    subject: "Refuse a product value where a kernel-scalar type is declared" as NonEmptyStr,
+    why_closed: "Review asked for a whole-corpus census" as NonEmptyStr,
+    standing: LiveWork { area: V2Compiler, disposition: ReviveOnMain { first_step: "Take the whole-corpus census the review asked for; the finding is a real floor-class gap." as NonEmptyStr } },
+  },
+  ClosedPrRecoveryRow {
+    pr_numbers: [13642],
+    subject: "Census: a brace in a quoted record key is not a field" as NonEmptyStr,
+    why_closed: "Red" as NonEmptyStr,
+    standing: LiveWork { area: V2Compiler, disposition: ReviveOnMain { first_step: "Re-run the census on current main." as NonEmptyStr } },
+  },
+  ClosedPrRecoveryRow {
+    pr_numbers: [13377],
+    subject: "Qualify Cardinality/Optional in v2 lenses" as NonEmptyStr,
+    why_closed: "Made an ambiguity worse" as NonEmptyStr,
+    standing: LiveWork { area: V2Compiler, disposition: ReDeriveInV2 {
+      what_carries_over: "The qualification obligation; the patch itself was a symptom fix." as NonEmptyStr,
+      first_step: "Redo from the root rather than the closed symptom patch." as NonEmptyStr,
+    } },
+  },
+  ClosedPrRecoveryRow {
+    pr_numbers: [13399],
+    subject: "Move the bottom seam to std.error_primitives" as NonEmptyStr,
+    why_closed: "Red and conflicting" as NonEmptyStr,
+    standing: LiveWork { area: V2Compiler, disposition: ReviveOnMain { first_step: "Fresh rebase; the closed head is 31 files." as NonEmptyStr } },
+  },
+  ClosedPrRecoveryRow {
+    pr_numbers: [13390],
+    subject: "RFC 3986 percent-encoding split (from the Unicode scalar from_code_point -> percent-encoding -> git fixture chain)" as NonEmptyStr,
+    why_closed: "Stale against #13453" as NonEmptyStr,
+    standing: LiveWork { area: V2Compiler, disposition: ReviveOnMain { first_step: "Re-derive the percent-coding split on its own; it stands without the rest of the chain." as NonEmptyStr } },
+  },
+  ClosedPrRecoveryRow {
+    pr_numbers: [13378, 13392],
+    subject: "Unicode scalar from_code_point with typed refusal, and the git fixture that followed the percent-encoding split" as NonEmptyStr,
+    why_closed: "Stale against #13453" as NonEmptyStr,
+    standing: LiveWork { area: V2Compiler, disposition: ReDeriveInV2 {
+      what_carries_over: "Typed refusal at from_code_point, and a git fixture that consumes percent-coding." as NonEmptyStr,
+      first_step: "Re-derive against current main rather than rebase the stale chain." as NonEmptyStr,
+    } },
+  },
+  ClosedPrRecoveryRow {
+    pr_numbers: [13630],
+    subject: "Recover a callee's arrow type through an instantiation refusal" as NonEmptyStr,
+    why_closed: "Two reviews found a fail-open" as NonEmptyStr,
+    standing: DeadWork { kind: RejectedOnDesign, why: "Rejected on design grounds." as NonEmptyStr },
+  },
+  ClosedPrRecoveryRow {
+    pr_numbers: [13265],
+    subject: "Type parameters bind only inside their own declaration" as NonEmptyStr,
+    why_closed: "Rejected because it would bind Result.ok to an unrelated ok and produce a fabricated type" as NonEmptyStr,
+    standing: LiveWork { area: SharedStdOrV1Written, disposition: ReDeriveInV2 {
+      what_carries_over: "Rule A' still applies in v2." as NonEmptyStr,
+      first_step: "Re-derive the binding rule in v2's infer stage." as NonEmptyStr,
+    } },
+  },
+  ClosedPrRecoveryRow {
+    pr_numbers: [13330, 13488],
+    subject: "Derived-node identity and nested-optionality design" as NonEmptyStr,
+    why_closed: "Mostly src/v1/04_infer and 00_core plus the Rust mirrors" as NonEmptyStr,
+    standing: LiveWork { area: SharedStdOrV1Written, disposition: ReDeriveInV2 {
+      what_carries_over: "The ideas; the v1 code does not." as NonEmptyStr,
+      first_step: "Re-derive the identity and nested-optionality facts in v2 rather than porting the v1 patch." as NonEmptyStr,
+    } },
+  },
+  ClosedPrRecoveryRow {
+    pr_numbers: [13475],
+    subject: "An empty [] stops locking the accumulator to List<Unit>" as NonEmptyStr,
+    why_closed: "The fix is in v1" as NonEmptyStr,
+    standing: LiveWork { area: SharedStdOrV1Written, disposition: ReDeriveInV2 {
+      what_carries_over: "The empty-list accumulator bug, if v2 infer still has it." as NonEmptyStr,
+      first_step: "Check whether v2 infer has the same bug, then fix there if it does." as NonEmptyStr,
+    } },
+  },
+  ClosedPrRecoveryRow {
+    pr_numbers: [13541],
+    subject: "Retire v2.std.algebra filter/any" as NonEmptyStr,
+    why_closed: "The diff now comes back empty" as NonEmptyStr,
+    standing: LiveWork { area: SharedStdOrV1Written, disposition: ReDeriveInV2 {
+      what_carries_over: "The retirement intent, not the closed patch." as NonEmptyStr,
+      first_step: "Redo the retirement from scratch against current main." as NonEmptyStr,
+    } },
+  },
+  ClosedPrRecoveryRow {
+    pr_numbers: [13614],
+    subject: "A seed-interpreter fix" as NonEmptyStr,
+    why_closed: "Seed-interpreter work" as NonEmptyStr,
+    standing: DeadWork { kind: SubjectRetired, why: "The interpreter is no longer part of what the seed emits." as NonEmptyStr },
+  },
+  ClosedPrRecoveryRow {
+    pr_numbers: [13217, 13339, 13639],
+    subject: "Deployment-risk D2" as NonEmptyStr,
+    why_closed: "Closed as red, stacked on the retiring floor, or with REQUEST_CHANGES" as NonEmptyStr,
+    standing: LiveWork { area: ProductFleetOps, disposition: ReviveOnMain { first_step: "Re-derive on main from first principles; the closed head is history (operator ruling 2026-10-10: the product, fleet and ops rows get in)." as NonEmptyStr } },
+  },
+  ClosedPrRecoveryRow {
+    pr_numbers: [13097],
+    subject: "G1 belt cutover" as NonEmptyStr,
+    why_closed: "Closed as red, stacked on the retiring floor, or with REQUEST_CHANGES" as NonEmptyStr,
+    standing: LiveWork { area: ProductFleetOps, disposition: ReviveOnMain { first_step: "Re-derive on main from first principles; the closed head is history (operator ruling 2026-10-10: the product, fleet and ops rows get in)." as NonEmptyStr } },
+  },
+  ClosedPrRecoveryRow {
+    pr_numbers: [13420],
+    subject: "Managed-host fan/KVM" as NonEmptyStr,
+    why_closed: "Closed as red, stacked on the retiring floor, or with REQUEST_CHANGES" as NonEmptyStr,
+    standing: LiveWork { area: ProductFleetOps, disposition: ReviveOnMain { first_step: "Re-derive on main from first principles; the closed head is history (operator ruling 2026-10-10: the product, fleet and ops rows get in)." as NonEmptyStr } },
+  },
+  ClosedPrRecoveryRow {
+    pr_numbers: [13578],
+    subject: "Hosted OpenAI-compat classifier" as NonEmptyStr,
+    why_closed: "Closed as red, stacked on the retiring floor, or with REQUEST_CHANGES" as NonEmptyStr,
+    standing: LiveWork { area: ProductFleetOps, disposition: ReviveOnMain { first_step: "Re-derive on main from first principles; the closed head is history (operator ruling 2026-10-10: the product, fleet and ops rows get in)." as NonEmptyStr } },
+  },
+  ClosedPrRecoveryRow {
+    pr_numbers: [13252],
+    subject: "The mtcollins1 runner offer" as NonEmptyStr,
+    why_closed: "Closed as red, stacked on the retiring floor, or with REQUEST_CHANGES" as NonEmptyStr,
+    standing: LiveWork { area: ProductFleetOps, disposition: ReviveOnMain { first_step: "Re-derive on main from first principles; the closed head is history (operator ruling 2026-10-10: the product, fleet and ops rows get in)." as NonEmptyStr } },
+  },
+  ClosedPrRecoveryRow {
+    pr_numbers: [13382, 13383, 13411],
+    subject: "Accepting wildcards" as NonEmptyStr,
+    why_closed: "Blocked only on the floor's browser-toolchain premise, which no longer applies" as NonEmptyStr,
+    standing: LiveWork { area: ProductFleetOps, disposition: ReviveOnMain { first_step: "Re-derive on main from first principles; the closed head is history (operator ruling 2026-10-10: the product, fleet and ops rows get in)." as NonEmptyStr } },
+  },
+  ClosedPrRecoveryRow {
+    pr_numbers: [13211, 13288, 13605, 13612, 13620, 13624, 13640, 13629, 13617],
+    subject: "Floor-runner and floor-control PRs, plus #13617" as NonEmptyStr,
+    why_closed: "v1 floor work; the required floor lanes were withdrawn" as NonEmptyStr,
+    standing: DeadWork { kind: RetiredFloor, why: "Genuinely dead: v1 floor." as NonEmptyStr },
+  },
+  ClosedPrRecoveryRow {
+    pr_numbers: [12707, 12737, 12917, 13631, 13632, 13647, 13648, 13652, 13656],
+    subject: "Model-eval runs and the qwen/dusk lanes" as NonEmptyStr,
+    why_closed: "Scratch lanes" as NonEmptyStr,
+    standing: DeadWork { kind: Scratch, why: "Genuinely dead: scratch." as NonEmptyStr },
+  },
+  ClosedPrRecoveryRow {
+    pr_numbers: [13125, 13608, 13628],
+    subject: "Duplicates or superseded: the argv, printer, BMC-boot and compile-door duplicates, plus the named PRs" as NonEmptyStr,
+    why_closed: "Duplicates or superseded" as NonEmptyStr,
+    standing: DeadWork { kind: DuplicateOrSuperseded, why: "Genuinely dead: duplicates or superseded." as NonEmptyStr },
+  },
+  ClosedPrRecoveryRow {
+    pr_numbers: [13557, 13637],
+    subject: "Plans-only closed PRs" as NonEmptyStr,
+    why_closed: "Plans-only" as NonEmptyStr,
+    standing: DeadWork { kind: PlansOnly, why: "Genuinely dead: plans-only; nothing to recover." as NonEmptyStr },
+  },
+]
+
+fn format_one_pr(n: Int) -> String {
+  concat("#", int_to_decimal_string(value: n))
+}
+
+fn format_prs(ns: List<Int>) -> String {
+  fold(ns, init: "", f: (acc, n) =>
+    if acc == "" {
+      format_one_pr(n: n)
+    } else {
+      concat(concat(acc, ", "), format_one_pr(n: n))
+    }
+  )
+}
+
+fn area_label(a: ClosedPrArea) -> String {
+  match a {
+    V2Compiler => "V2Compiler"
+    SharedStdOrV1Written => "SharedStdOrV1Written"
+    ProductFleetOps => "ProductFleetOps"
+  }
+}
+
+fn dead_kind_label(k: DeadKind) -> String {
+  match k {
+    RetiredFloor => "Dead (retired floor)"
+    Scratch => "Dead (scratch)"
+    DuplicateOrSuperseded => "Dead (duplicate or superseded)"
+    PlansOnly => "Dead (plans only)"
+    RejectedOnDesign => "Dead (rejected on design)"
+    SubjectRetired => "Dead (subject retired)"
+  }
+}
+
+fn disposition_label(d: LiveDisposition) -> String {
+  match d {
+    ReviveOnMain { first_step } => concat("ReviveOnMain — ", first_step as String)
+    ReDeriveInV2 { what_carries_over, first_step } =>
+      concat(concat(concat("ReDeriveInV2 — carries: ", what_carries_over as String), " First step: "), first_step as String)
+    ProductPriorityCall => "ProductPriorityCall — revival is a product-priority call, not a v1/v2 question."
+  }
+}
+
+fn standing_area_cell(st: ClosedPrStanding) -> String {
+  match st {
+    LiveWork { area, disposition: _ } => area_label(a: area)
+    DeadWork { kind, why: _ } => dead_kind_label(k: kind)
+  }
+}
+
+fn standing_disposition_cell(st: ClosedPrStanding) -> String {
+  match st {
+    LiveWork { area: _, disposition } => disposition_label(d: disposition)
+    DeadWork { kind: _, why } => concat("Dead — ", why as String)
+  }
+}
+
+fn recovery_table_row(r: ClosedPrRecoveryRow) -> MarkdownTableRow {
+  row(cells: [
+    cell(text: format_prs(ns: r.pr_numbers)),
+    cell(text: r.subject as String),
+    cell(text: standing_area_cell(st: r.standing)),
+    cell(text: r.why_closed as String),
+    cell(text: standing_disposition_cell(st: r.standing)),
+  ])
+}
+
+fn flatten_pr_numbers(rows: List<ClosedPrRecoveryRow>) -> List<Int> {
+  fold(rows, init: [], f: (acc, r) => concat(acc, r.pr_numbers))
+}
+
+fn int_eq(a: Int, b: Int) -> Bool {
+  a == b
+}
+
+fn count_equal_ints(xs: List<Int>, item: Int) -> Int {
+  fold(xs, init: 0, f: (n, x) => if int_eq(a: x, b: item) { n + 1 } else { n })
+}
+
+fn pr_numbers_are_unique(rows: List<ClosedPrRecoveryRow>) -> Bool {
+  let nums = flatten_pr_numbers(rows: rows)
+  fold(nums, init: true, f: (acc, n) => acc && (count_equal_ints(xs: nums, item: n) == 1))
+}
+
+fn provenance_paragraph(p: ClosedPrCensusProvenance) -> String {
+  concat(
+    concat(
+      concat(
+        concat(
+          concat("**Provenance.** Session ", p.session),
+          " on "
+        ),
+        p.date
+      ),
+      " judged closed-but-unfolded PRs by "
+    ),
+    concat(
+      p.method,
+      ". DESIGN section 4d: the census is that session's inference, typed TranscribedUncited, not a deduced fact. The dispositions record the operator's 2026-10-10 rulings: start and finish the v2 compiler rows; the shared-std and product/fleet/ops rows get in; the dead rows are irrelevant. A later change of disposition is a row edit."
+    )
+  )
+}
+
+fn v2_closed_pr_recovery_body() -> List<MarkdownBlock> {
+  [
+    p(text: "**Status:** typed planning carrier for the v1-closeout census of closed-but-unfolded PRs (gunbc#13641 landed on main at fa44b981025, 2026-10-10). Authority is `gunbc.plans.v2_closed_pr_recovery`; this page is its generated projection. Linked from ROADMAP parked context. A live row's disposition is the operator's revival ruling of 2026-10-10; the census reading beside it is not."),
+    p(text: provenance_paragraph(p: closed_pr_census_provenance)),
+    p(text: "Every closed branch was kept. Each live row is re-derived on current main from first principles rather than rebased: each old head was red or stale for a reason."),
+    h2(text: "Census rows"),
+    TableBlock {
+      header: row(cells: [
+        cell(text: "PRs"),
+        cell(text: "Subject"),
+        cell(text: "Area"),
+        cell(text: "Why closed"),
+        cell(text: "Disposition"),
+      ]),
+      alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
+      rows: closed_pr_recovery_rows |> map(item => recovery_table_row(r: item)),
+    },
+    h2(text: "How a later decision lands"),
+    ul(items: [
+      li(text: "A row's standing is `LiveWork` (an area and a `LiveDisposition`: ReviveOnMain, ReDeriveInV2 or ProductPriorityCall) or `DeadWork` (a `DeadKind` and a reason). A dead row has no area and a live row cannot be dead, by construction; every first step and reason is non-empty by type."),
+      li(text: "A later decision is an edit of the named row's standing, not new prose. This module does not open revival work items and does not re-judge the census."),
+    ]),
+  ]
+}
+
+data v2_closed_pr_recovery_plan: Plan = Plan {
+  projection: PlanProjectsCommittedMarkdown,
+  slug: "v2-closed-pr-recovery",
+  title: "v2 closed-PR recovery — census of closed-but-unfolded PRs after the v1 closeout",
+  body: v2_closed_pr_recovery_body(),
+  retirement: PlanRetiresWhen {
+    condition: unbound_dissolution(description: "Delete this census when every LiveWork row has landed as revival work on main or been row-edited to DeadWork, so the closeout reading is no longer the reference for unrevived closed PRs.")
+  },
+}

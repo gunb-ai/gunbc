@@ -469,15 +469,30 @@ type FrameKind
 // and a lambda's parameter are not declarations: nothing indexes them at a path, so the frame keys
 // each by its SITE -- the minted occurrence (std.occurrence_identity) of the node that introduces
 // it: the binder atom for a `let` or a pattern binder, the lambda's Arrow for a parameter its domain
-// carries as an edge label. `declared` is the binder's declared type where its frame carries one (a
-// lambda domain edge, read through v2.std.node_query member_edge_type_node), Absent where it does not.
+// carries as an edge label. Its standing is LexicalDeclared at a lambda domain edge (read through
+// v2.std.node_query member_edge_type_node), LexicalValued at a let, LexicalOwedFormal at a
+// match-payload formal, LexicalUntyped otherwise.
 // A reference this frame answers is minted as v2.std.qualified_name lexical_reference_node and its
 // binding is recorded in ResolvedTree.lexical_bindings under the REFERENCE's own occurrence, so a
 // consumer reads which binder answered and never searches scope again: resolve decided it here.
+//
+// A lexical binder's standing is ONE case, not a bag of independent Optionals: a declared type, a
+// let's value, an unpaid match-payload formal, or none. A binder that is both declared and owed is
+// unwritable. LexicalOwedFormal is a match-arm payload field typed by the DECLARING coproduct's own
+// formal: resolve cannot know the scrutinee's arguments, so it records the obligation and
+// v2.compiler.infer discharges it from the scrutinee's settled type at arm entry or refuses it
+// located. Minting the formal as the binder's type would fabricate one (DESIGN 5), and recording
+// the binder untyped would let the match frontier accept the arm (fail-open); the distinct case is
+// what keeps both unwritable.
+type LexicalBinderStanding
+  = LexicalDeclared { node: Node }
+  | LexicalValued { node: Node }
+  | LexicalOwedFormal { field_type: Node }
+  | LexicalUntyped
+
 type LexicalBinding {
   binder_site: NodeOccurrenceIdentity
-  declared: Optional<Node>
-  value: Optional<Node>
+  standing: LexicalBinderStanding
 }
 
 // One answered lexical reference: the reference's own minted occurrence and the binding that
@@ -876,8 +891,10 @@ fn arrow_domain_frame_binders(n: Node) -> FrameBinders {
                       name: b.name,
                       binding: LexicalBinding {
                         binder_site: n.occurrence_id,
-                        declared: member_edge_type_node(e: e),
-                        value: optional_absent()
+                        standing: match member_edge_type_node(e: e) {
+                          Present { value: t } => LexicalDeclared { node: t }
+                          Absent => LexicalUntyped
+                        }
                       }
                     )
                   Absent => fb
@@ -905,8 +922,10 @@ fn bind_frame_binders(n: Node) -> FrameBinders {
                   name: sym,
                   binding: LexicalBinding {
                     binder_site: e0.target.occurrence_id,
-                    declared: optional_absent(),
-                    value: list_at_optional(xs: node_positional_child_targets(node: n), index: 1)
+                    standing: match list_at_optional(xs: node_positional_child_targets(node: n), index: 1) {
+                      Present { value: v } => LexicalValued { node: v }
+                      Absent => LexicalUntyped
+                    }
                   }
                 )
               _ => frame_binders_empty()
@@ -2763,54 +2782,32 @@ fn resolve_pattern_atom_names_constructor(ctx: ResolveContext, id: Symbol) -> Bo
   }
 }
 
-fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: PatternBindersOutcome) -> PatternBindersOutcome {
+fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: FrameBinders) -> FrameBinders {
   match construct_tag_optional(n: pat) {
     Absent => acc
     Present { value: _ } =>
-      fold(construct_field_edges(n: pat), init: acc, f: fn(m, e) {
-        match m {
-          PatternBindersRefused { diagnostic: _ } => m
-          PatternBindersAdmitted { binders: fb } =>
-            match node_atom_identity_optional(node: e.target) {
-              Present { value: id } =>
-                if is_wildcard_pattern(pattern: e.target) {
-                  m
-                } else if resolve_pattern_atom_names_constructor(ctx: ctx, id: id) {
-                  m
-                } else {
-                  match resolve_pattern_binder_declared_type(ctx: ctx, pat: pat, field: e) {
-                    PatternBinderFormal { at: at } =>
-                      PatternBindersRefused {
-                        diagnostic: pattern_payload_formal_uninstantiated_diagnostic(at: at)
-                      }
-                    PatternBinderTyped { node: t } =>
-                      PatternBindersAdmitted {
-                        binders: frame_binders_add(
-                          fb: fb,
-                          name: id,
-                          binding: LexicalBinding {
-                            binder_site: e.target.occurrence_id,
-                            declared: optional_present(value: t),
-                            value: optional_absent()
-                          }
-                        )
-                      }
-                    PatternBinderUntyped =>
-                      PatternBindersAdmitted {
-                        binders: frame_binders_add(
-                          fb: fb,
-                          name: id,
-                          binding: LexicalBinding {
-                            binder_site: e.target.occurrence_id,
-                            declared: optional_absent(),
-                            value: optional_absent()
-                          }
-                        )
-                      }
+      fold(construct_field_edges(n: pat), init: acc, f: fn(fb, e) {
+        match node_atom_identity_optional(node: e.target) {
+          Present { value: id } =>
+            if is_wildcard_pattern(pattern: e.target) {
+              fb
+            } else if resolve_pattern_atom_names_constructor(ctx: ctx, id: id) {
+              fb
+            } else {
+              frame_binders_add(
+                fb: fb,
+                name: id,
+                binding: LexicalBinding {
+                  binder_site: e.target.occurrence_id,
+                  standing: match resolve_pattern_binder_declared_type(ctx: ctx, pat: pat, field: e) {
+                    PatternBinderFormal { field_type: ft } => LexicalOwedFormal { field_type: ft }
+                    PatternBinderTyped { node: t } => LexicalDeclared { node: t }
+                    PatternBinderUntyped => LexicalUntyped
                   }
                 }
-              Absent => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: m)
+              )
             }
+          Absent => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: fb)
         }
       })
   }
@@ -2824,33 +2821,13 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: PatternBindersOu
 // field the arm does not declare, leaves the binder untyped exactly as before: the match row judges
 // the pattern against the scrutinee's coproduct and refuses the mismatch at the arm row.
 //
-// A field whose type names the DECLARING TYPE's formal is neither of those: the type node exists
-// but names a type nothing instantiates at this stage (the scrutinee's arguments flow into the arm
-// frame only with central deep substitution -- the derivation follow-up). Minting the formal
-// fabricates a type the binder does not have (DESIGN 5), and leaving the binder untyped lets the
-// match frontier ACCEPT the arm as an advisory frontier -- the module prepares and the native lane
-// reports a prepared module whose binder has no type. Both fail open. The binders fold therefore
-// refuses the arm walk here, with the payload field as the location
-// (^resolve_reason_pattern_payload_formal_uninstantiated), and the deep-instantiation follow-up
-// flips this refusal to grounding by installing the scrutinee's arguments.
+// A field whose type names the DECLARING TYPE's formal is neither typed nor untyped: it is OWED
+// (LexicalBinderStanding.LexicalOwedFormal carries the field type) and infer pays it from the
+// scrutinee's arguments or refuses.
 type PatternBinderDeclared
   = PatternBinderTyped { node: Node }
   | PatternBinderUntyped
-  | PatternBinderFormal { at: Node }
-
-// The binders fold carries the mint's outcome so a formal-typed payload field refuses the walk
-// before any binder is admitted under an invented scope.
-type PatternBindersOutcome
-  = PatternBindersAdmitted { binders: FrameBinders }
-  | PatternBindersRefused { diagnostic: Diagnostic }
-
-fn pattern_payload_formal_uninstantiated_diagnostic(at: Node) -> Diagnostic {
-  Diagnostic {
-    reason: ^resolve_reason_pattern_payload_formal_uninstantiated,
-    at: node_locus(node: at),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
+  | PatternBinderFormal { field_type: Node }
 
 // A payload field whose type still names the declaring type's formal is detected against the
 // declaring type's OWN parameter list -- `symbol_index_declared_type_params_at` at the arm's
@@ -2902,7 +2879,7 @@ fn resolve_pattern_binder_declared_type(ctx: ResolveContext, pat: Node, field: E
                     arm_path: arm_path,
                     t: f.type_node
                   ) {
-                    PatternBinderFormal { at: field.target }
+                    PatternBinderFormal { field_type: f.type_node }
                   } else {
                     PatternBinderTyped { node: f.type_node }
                   }
@@ -3249,7 +3226,7 @@ fn resolve_elided_construct_walk(ctx: ResolveContext, n: Node, x: ResolveExpecta
   }
 }
 
-// THE MAP ARM OF THE ONE ELABORATION WRITER (docs/plans/map-literal-introduction-design.md). A
+// THE MAP ARM OF THE ONE ELABORATION WRITER. A
 // headless brace whose authored expected head is, by declaration identity, a Map
 // (v2.std.map_introduction map_introduction_expected_head_is_map) elaborates to the one
 // introduction v2.std.map_introduction lower_map_introduction builds, or refuses located:
@@ -3620,12 +3597,7 @@ fn resolve_match_arm_walk(ctx: ResolveContext, arm: Node) -> ResolveNodeWalk {
       match gate_value_binders(names: pattern_binder_name_list(ctx: ctx, pat: pat), outer: ctx.scope, at: pat) {
         BinderGateRefused { diagnostic: d } => resolve_walk_refused_one(chain: diagnostics_singleton(d: d))
         BinderGateAdmitted =>
-          match resolve_pattern_binders(ctx: ctx, pat: pat, acc: PatternBindersAdmitted { binders: frame_binders_empty() }) {
-            PatternBindersRefused { diagnostic: d } =>
-              resolve_walk_refused_one(chain: diagnostics_singleton(d: d))
-            PatternBindersAdmitted { binders: fb } =>
-              resolve_match_arm_admitted(ctx: ctx, arm: arm, pat: pat, fb: fb)
-          }
+          resolve_match_arm_admitted(ctx: ctx, arm: arm, pat: pat, fb: resolve_pattern_binders(ctx: ctx, pat: pat, acc: frame_binders_empty()))
       }
   }
 }
