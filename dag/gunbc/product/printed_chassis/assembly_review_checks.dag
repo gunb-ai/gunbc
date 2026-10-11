@@ -69,7 +69,7 @@ fn bore_index(parts:List<AssemblyPart>) -> Map<BoreLine,List<Bore>> {
  })
 }
 fn bore_has_mate(b:Bore,index:Map<BoreLine,List<Bore>>) -> Bool {
- match map_lookup(m:index,key:b.line) {Absent=>false Present {value:rows}=>rows|>any(q=>q.owner!=b.owner&&q.diameter<=b.diameter&&b.diameter-q.diameter<=600)}
+ match map_lookup(m:index,key:b.line) {Absent=>false Present {value:rows}=>concat([b],rows)|>any(q=>q.owner!=b.owner&&q.diameter<=b.diameter&&b.diameter-q.diameter<=600)}
 }
 type PartIds {seen:Map<String,Bool>,unique:Bool}
 fn review_model_checks(parts:List<AssemblyPart>,interfaces:List<MechanicalInterface>) -> Bool {

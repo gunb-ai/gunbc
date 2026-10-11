@@ -244,7 +244,7 @@ fn cause_join_declaration(
   spelling: String,
   declarations: Map<String, List<DataDeclTypeFact>>
 ) -> CauseIdentityJoin {
-  let candidates = match map_lookup(m: declarations, key: spelling) {
+  let candidates: List<DataDeclTypeFact> = match map_lookup(m: declarations, key: spelling) {
     Present { value: rows } => rows
     Absent => []
   }
@@ -521,6 +521,20 @@ fn cause_source_refusal_report(refusal: CauseSourceObservation) -> String {
   }
 }
 
+fn cause_import_projection_unestablished_count(refusals: List<CauseSourceObservation>) -> Int {
+  fold(refusals, init: 0, f: (n, r) => {
+    match r {
+      CauseSourceImportProjectionUnestablished { path: _, tokens: _ } => n + 1
+      CauseSourceObserved { tokens: _, imports: _, members: _ } => n
+      CauseSourceReadRefused { path: _, detail: _ } => n
+      CauseSourceImportParseRefused { path: _, cause: _ } => n
+      CauseSourceExcluded { path: _, cause: _ } => n
+      CauseSourceIndexRefused { path: _, module_path: _ } => n
+      CauseSourceLexicalRefused { path: _ } => n
+    }
+  })
+}
+
 fn cause_acquisition_disposition_report(acquisition: CauseCorpusAcquisition) -> String {
   join([
     "source ingress: v2.workflow.floor_discovery_producer.floor_discovery_source_inventory_live, before closure selection and witness policy",
@@ -528,15 +542,7 @@ fn cause_acquisition_disposition_report(acquisition: CauseCorpusAcquisition) -> 
     join(["sources_observed", to_string(count(acquisition.sources))], "\t"),
     join(["sources_excluded", to_string(count(acquisition.excluded))], "\t"),
     join(["sources_refused", to_string(count(acquisition.refusals))], "\t"),
-    join(["import_projection_unestablished_sources", to_string(count(filter(acquisition.refusals, r => match r {
-      CauseSourceImportProjectionUnestablished { path: _, tokens: _ } => true
-      CauseSourceObserved { tokens: _, imports: _, members: _ } => false
-      CauseSourceReadRefused { path: _, detail: _ } => false
-      CauseSourceImportParseRefused { path: _, cause: _ } => false
-      CauseSourceExcluded { path: _, cause: _ } => false
-      CauseSourceIndexRefused { path: _, module_path: _ } => false
-      CauseSourceLexicalRefused { path: _ } => false
-    })))], "\t"),
+    join(["import_projection_unestablished_sources", to_string(cause_import_projection_unestablished_count(refusals: acquisition.refusals))], "\t"),
     join(map(acquisition.excluded, r => cause_source_refusal_report(refusal: r)), "\n"),
     join(map(acquisition.refusals, r => cause_source_refusal_report(refusal: r)), "\n")
   ], "\n")
@@ -554,7 +560,7 @@ fn cause_unconsumed_string_rows(
     }
     map_insert(m: acc, key: declaration.decl_name, value: prior + 1)
   })
-  filter(declarations, d => {
+  fold(declarations, init: [], f: (acc, d) => {
     let occurrences = match map_lookup(m: identifier_counts, key: d.decl_name) {
       Present { value: n } => n
       Absent => 0
@@ -567,7 +573,9 @@ fn cause_unconsumed_string_rows(
       Present { value: _ } => true
       Absent => false
     }
-    d.type_name == "String" && occurrences == declaration_occurrences && !is_cause
+    if d.type_name == "String" && occurrences == declaration_occurrences && !is_cause {
+      list_snoc_item(xs: acc, item: d)
+    } else { acc }
   })
 }
 
@@ -590,7 +598,7 @@ fn cause_standing_rows(joined: CauseCensusJoin, rows: List<CauseRowEvidence>) ->
       CauseDeclarationJoined { declaration: _ } => acc
     }
   })
-  filter(rows, row =>
+  rows |> filter(row =>
     !cause_name_is_known(names: unresolved, spelling: cause_declaration_key(declaration: row.declaration)))
 }
 
@@ -606,7 +614,7 @@ fn cause_complete_report(acquisition: CauseCorpusAcquisition, declarations: List
   let rows = cause_standing_rows(joined: joined, rows: all_rows)
   let standing_keys = fold(rows, init: empty_map(), f: (acc, row) =>
     map_insert(m: acc, key: cause_declaration_key(declaration: row.declaration), value: true))
-  let production_rows = filter(rows, r => r.production_use)
+  let production_rows = rows |> filter(r => r.production_use)
   let missing_files = cause_missing_import_file_list(rows: all_rows)
   let unconsumed = cause_unconsumed_string_rows(declarations: declarations, identifier_counts: acquisition.identifier_counts, joined: joined.rows)
   join([
@@ -617,9 +625,9 @@ fn cause_complete_report(acquisition: CauseCorpusAcquisition, declarations: List
     "identity boundary: ambiguous candidates have empty assertion-standing columns and are named in the typed refusal section; independently joined import gaps remain reportable",
     join(["missing_import_file_count", to_string(count(missing_files))], "\t"),
     join(["missing_import_files", join(missing_files, ",")], "\t"),
-    join(["NO_ASSERTION", to_string(count(filter(production_rows, r => cause_row_standing(row: r) == NO_ASSERTION)))], "\t"),
-    join(["ASSERTED_UNESTABLISHED", to_string(count(filter(production_rows, r => cause_row_standing(row: r) == ASSERTED_UNESTABLISHED)))], "\t"),
-    join(["ESTABLISHED", to_string(count(filter(production_rows, r => cause_row_standing(row: r) == ESTABLISHED))), "no executing cause-identity falsification receipt join"], "\t"),
+    join(["NO_ASSERTION", to_string((production_rows |> filter(r => cause_row_standing(row: r) == NO_ASSERTION)) |> count())], "\t"),
+    join(["ASSERTED_UNESTABLISHED", to_string((production_rows |> filter(r => cause_row_standing(row: r) == ASSERTED_UNESTABLISHED)) |> count())], "\t"),
+    join(["ESTABLISHED", to_string((production_rows |> filter(r => cause_row_standing(row: r) == ESTABLISHED)) |> count()), "no executing cause-identity falsification receipt join"], "\t"),
     join(["UNCONSUMED", to_string(count(unconsumed))], "\t"),
     "UNCONSUMED boundary: unmarked String data whose spelling has no identifier-token occurrences beyond its data-declaration names; this is a syntactic observation, not a claim about reflective consumption or intended causes",
     "scope: a census over a declared syntactic subset with explicit unresolved cases",
@@ -670,7 +678,7 @@ fn bounded_census(production_module: String, witness_module: String, report: Str
   match floor_discovery_source_inventory_live(pool_roots: roots) {
     FloorDiscoverySourcesRefused { reason: reason } => exit_failure(reason: reason)
     FloorDiscoverySourcesObserved { sources: subjects } => {
-      let selected = filter(subjects, s => s.module_path == production_module || s.module_path == witness_module)
+      let selected = subjects |> filter(s => s.module_path == production_module || s.module_path == witness_module)
       if count(selected) != 2 {
         exit_failure(reason: "bounded cause census requires two distinct source module identities")
       } else {
@@ -678,7 +686,7 @@ fn bounded_census(production_module: String, witness_module: String, report: Str
         if count(acquisition.refusals) != 0 {
           exit_failure(reason: cause_acquisition_disposition_report(acquisition: acquisition))
         } else {
-          let declarations = filter(data_decl_type_facts(pool_roots: roots), d =>
+          let declarations = data_decl_type_facts(pool_roots: roots) |> filter(d =>
             d.module_path == production_module || d.module_path == witness_module)
           let content = join(["BOUNDED CONTROL: conclusions apply only to the selected module identities",
             production_module, witness_module,

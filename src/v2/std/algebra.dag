@@ -181,7 +181,7 @@ fn for_all<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Bool {
 }
 
 fn contains<T>(xs: FreeMonoid<T>, item: T, eq: fn(T, T) -> Bool) -> Bool {
-  any(xs: xs, predicate: fn(candidate) { eq(candidate, item) })
+  xs.any(candidate => eq(candidate, item))
 }
 
 fn count_where<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Int {
