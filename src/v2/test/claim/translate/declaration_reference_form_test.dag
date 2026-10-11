@@ -68,7 +68,7 @@ fn drf_projection_without_reference_form() -> TargetTypeExpressionProjection {
     conj_form: row.conj_form,
     disj_form: row.disj_form,
     arrow_form: row.arrow_form,
-    cardinality_form: row.cardinality_form,
+    occupancy_form: row.occupancy_form,
     instantiation_form: row.instantiation_form,
     declaration_reference_form: NoDeclarationReferenceForm
   }
