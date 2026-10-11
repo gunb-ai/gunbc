@@ -55,7 +55,7 @@ import extdeps.systemd {
   systemd_unit_property_wire, SystemdUnitProperty, LoadState, SubState, ExecMainStatus,
   MemoryMax, WorkingDirectoryProperty, StandardOutputProperty, StandardErrorProperty,
   ProtectSystemProperty, ProtectHomeProperty, PrivateTmpProperty, ReadWritePathsProperty,
-  RemainAfterExitProperty, ExecStopPostProperty,
+  RemainAfterExitProperty, ExecStopPostProperty, CollectModeProperty,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitHook, AttemptExitHookRendered, AttemptExitHookRefused, attempt_exit_hook,
@@ -2823,9 +2823,8 @@ fn attempt_current_pointer_argv_for_instance(
 // which is why every receipt looked right while nothing ran.
 // THE ATTEMPT'S UNIT NAME. Per attempt, not per node: the attempt key is a content hash, so two
 // attempts on one node get distinct units and the collision the tmux path reports as
-// `duplicate session` has no spelling here. A unit that has exited stays loaded in `failed` or
-// `inactive` carrying its Result, which is the evidence the next step reads; clearing it is an
-// explicit act rather than a side effect of starting the next attempt.
+// `duplicate session` has no spelling here. A unit that has exited is collected, however it exited;
+// its exit record is the evidence the next step reads (dispatch_worker_unit_stream_properties).
 fn dispatch_attempt_unit_name(node_id: String, attempt_key: String) -> NonEmptyStr {
   join(["gunbc-attempt-", node_id, "-", attempt_key, ".service"], "") as NonEmptyStr
 }
@@ -2880,6 +2879,7 @@ fn dispatch_worker_unit_stream_properties(
       SystemdRunProperty { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
       SystemdRunProperty { property: ReadWritePathsProperty, value: dispatch_worker_writable_paths(instance: instance) as NonEmptyStr },
       SystemdRunProperty { property: ExecStopPostProperty, value: exit_hook },
+      SystemdRunProperty { property: CollectModeProperty, value: "inactive-or-failed" as NonEmptyStr },
     ],
   )
 }
@@ -2899,6 +2899,13 @@ fn dispatch_worker_unit_stream_properties(
 // exited or was signaled. The observer reads the unit while it is loaded and the record once it is
 // not (attempt_worker_unit_observation), and a unit that is gone with NO record is reported as
 // exactly that -- never as a worker that did not run.
+//
+// A NON-ZERO EXIT IS COLLECTED TOO, which the reversal above intended and the default did not do:
+// systemd collects only `inactive` units, so a worker exiting 3 at its alignment checkpoint stayed
+// `failed`, and every re-dispatch of its lineage refused stale_session until someone ran
+// reset-failed by hand (srv1 lab, 2026-10-11, every checkpoint). CollectMode=inactive-or-failed
+// makes that state unreachable; the failure's facts are on the record, and the output is in the
+// worker's own log.
 
 // THE WORKER MAY WRITE ONLY UNDER THE INSTANCE ROOT: its worktree, its attempt state, the spool. The
 // second belt-dispatched attempt (2026-09-04) edited the deploy tree instead of its worktree, having

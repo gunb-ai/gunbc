@@ -56,13 +56,15 @@ test fn the_prepare_step_creates_the_verification_directory_with_the_attempt_dir
 // DISCRIMINATING: the worker unit no longer outlives its process (reversal of 2026-09-05, bold-bee-114
 // ruling 2026-10-06): it carries no RemainAfterExit, so it stops when the worker exits and its
 // ExecStopPost exit record is written at that moment; the record, not unit-loaded state, is the exit
-// evidence once the unit is collected. SubState still decides exit for a unit that is loaded (a failed
-// worker is retained as failed).
+// evidence once the unit is collected. SubState still decides exit for a unit that is loaded. A failed
+// worker is collected as well (CollectMode=inactive-or-failed): RED against the default, which kept a
+// checkpoint exit `failed` and refused every re-dispatch as stale_session.
 test fn the_worker_unit_stops_with_its_process_and_writes_its_exit_record() -> Bool {
   let inst = srv2_deploy_dashboard_instance()
   let props = dispatch_worker_unit_properties(instance: inst, working_directory: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1048576), process_bounds: session_process_bounds, exit_hook: "mkdir -- /i/attempt-exit-spool/inbox/n+k+x" as NonEmptyStr)
   !has_property(props: props, needle: "RemainAfterExit")
     && has_property(props: props, needle: "ExecStopPost=mkdir -- /i/attempt-exit-spool/inbox/n+k+x")
+    && has_property(props: props, needle: "CollectMode=inactive-or-failed")
     && attempt_unit_substate_has_exited(substate: "exited")
     && attempt_unit_substate_has_exited(substate: "failed")
     && !attempt_unit_substate_has_exited(substate: "running")
