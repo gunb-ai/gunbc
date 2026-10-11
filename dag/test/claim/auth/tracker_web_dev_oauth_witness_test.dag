@@ -1,6 +1,7 @@
 module test.claim.auth.tracker_web_dev_oauth_witness_test
 
-import std.types { Bool, String, CommitSha, NonEmptyStr }
+import std.types { Bool, String, CommitSha, NonEmptyStr, Int }
+import std.measure { second_count }
 import v2.std.algebra { any }
 import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalAssessmentRefused }
 import std.keyed_roster { KeyedRosterBuilt }
@@ -30,6 +31,8 @@ import gunbc.auth.tracker_web_oauth_client {
   tracker_web_test_registered_web_client_console_readback,
   tracker_web_test_console_readback_observed_at_epoch,
   tracker_web_test_console_readback_valid_until_epoch,
+  tracker_web_test_console_readback_observed_at,
+  tracker_web_test_console_readback_valid_until,
   tracker_web_test_console_readback_unix_int,
   tracker_web_test_console_observed_redirect_uris,
   tracker_web_unassigned_redirects,
@@ -174,10 +177,22 @@ test fn srv2_hand_started_unit_is_unmodeled_and_not_adopted() -> Bool {
 }
 
 test fn console_readback_epochs_are_the_2026_calendar_receipt() -> Bool {
-  iso8601_utc_text(unix: tracker_web_test_console_readback_unix_int(year: 2026, month: 10, day: 11, hour: 4)) == "2026-10-11T04:00:00Z"
-    && iso8601_utc_text(unix: tracker_web_test_console_readback_unix_int(year: 2026, month: 11, day: 10, hour: 4)) == "2026-11-10T04:00:00Z"
-    && match tracker_web_test_console_readback_observed_at_epoch { Present { value: _ } => true  Absent => false }
-    && match tracker_web_test_console_readback_valid_until_epoch { Present { value: _ } => true  Absent => false }
+  let observed_unix = tracker_web_test_console_readback_unix_int(at: tracker_web_test_console_readback_observed_at)
+  let until_unix = tracker_web_test_console_readback_unix_int(at: tracker_web_test_console_readback_valid_until)
+  iso8601_utc_text(unix: observed_unix) == "2026-10-11T04:00:00Z"
+    && iso8601_utc_text(unix: until_unix) == "2026-11-10T04:00:00Z"
+    && match tracker_web_test_console_readback_observed_at_epoch {
+      Absent => false
+      Present { value: s } => (second_count(s: s) as Int) == observed_unix
+    }
+    && match tracker_web_test_console_readback_valid_until_epoch {
+      Absent => false
+      Present { value: s } => (second_count(s: s) as Int) == until_unix
+    }
+    && match tracker_web_test_registered_web_client_console_readback() {
+      Absent => false
+      Present { value: r } => r.observed_at_epoch == observed_unix && r.valid_until_epoch == until_unix
+    }
 }
 
 test fn a_desired_redirect_uri_change_diverges_from_the_console_receipt() -> Bool {
@@ -192,15 +207,19 @@ test fn a_desired_redirect_uri_change_diverges_from_the_console_receipt() -> Boo
   }
   match workspace_identity_admin_obligations(binding: drifted, discovery: BasicSignInOnly).first() {
     Absent => false
-    Present { value: ob } => match workspace_admin_assess(
-      goal: ob,
-      receipt: tracker_web_test_registered_web_client_console_readback(),
-      admitted_admins: [workspace_operator_principal()],
-      now_epoch: tracker_web_test_console_readback_unix_int(year: 2026, month: 10, day: 11, hour: 4),
-    ) {
-      GoalDiverged { deviations: _ } => true
-      _ => false
-    }
+    Present { value: ob } =>
+      match tracker_web_test_registered_web_client_console_readback() {
+        Absent => false
+        Present { value: receipt } => match workspace_admin_assess(
+          goal: ob,
+          receipt: receipt,
+          admitted_admins: [workspace_operator_principal()],
+          now_epoch: receipt.observed_at_epoch,
+        ) {
+          GoalDiverged { deviations: _ } => true
+          _ => false
+        }
+      }
   }
 }
 

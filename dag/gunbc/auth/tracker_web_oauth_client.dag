@@ -153,6 +153,8 @@ fn tracker_web_test_oauth_client_binding() -> TrackerWebOauthClientBinding {
   }
 }
 
+// Bound is constructed only for Test. Stage and Prod are Unbound until those clients exist, so
+// placement/standing do not match Bound × Stage/Prod — that pair has no constructor here.
 fn tracker_web_oauth_standing_for_environment(environment: GoogleLoginEnvironment) -> TrackerWebOauthClientStanding {
   match environment {
     GoogleLoginEnvironmentTest => TrackerWebOauthClientBound { binding: tracker_web_test_oauth_client_binding() }
@@ -198,23 +200,44 @@ data tracker_web_test_console_observed_redirect_uris: List<NonEmptyStr> = [
   "https://srv2.tailecbe08.ts.net:18082/auth/google/callback" as NonEmptyStr,
 ]
 
+type TrackerWebConsoleCivilClock {
+  year: Int
+  month: Int
+  day: Int
+  hour: Int
+}
+
+data tracker_web_test_console_readback_observed_at: TrackerWebConsoleCivilClock = TrackerWebConsoleCivilClock {
+  year: 2026,
+  month: 10,
+  day: 11,
+  hour: 4,
+}
+
+data tracker_web_test_console_readback_valid_until: TrackerWebConsoleCivilClock = TrackerWebConsoleCivilClock {
+  year: 2026,
+  month: 11,
+  day: 10,
+  hour: 4,
+}
+
 // Unix seconds at a UTC civil clock, via the ISO-8601 calendar (Hinnant days_from_civil),
 // not a transcribed epoch integer. The console receipt date is the civil triple; the
 // instrument is iso8601_days_from_civil. Inverse: iso8601_utc_text.
-fn tracker_web_test_console_readback_unix_int(year: Int, month: Int, day: Int, hour: Int) -> Int {
-  iso8601_days_from_civil(y: year, m: month, d: day) * iso8601_seconds_per_day() + hour * iso8601_seconds_per_hour()
+fn tracker_web_test_console_readback_unix_int(at: TrackerWebConsoleCivilClock) -> Int {
+  iso8601_days_from_civil(y: at.year, m: at.month, d: at.day) * iso8601_seconds_per_day() + at.hour * iso8601_seconds_per_hour()
 }
 
-fn tracker_web_test_console_readback_unix_at(year: Int, month: Int, day: Int, hour: Int) -> Second? {
-  match checked_int_to_nat(n: tracker_web_test_console_readback_unix_int(year: year, month: month, day: day, hour: hour)) {
+fn tracker_web_test_console_readback_unix_at(at: TrackerWebConsoleCivilClock) -> Second? {
+  match checked_int_to_nat(n: tracker_web_test_console_readback_unix_int(at: at)) {
     Present { value: n } => Present { value: second(count: n) }
     Absent => none
   }
 }
 
-data tracker_web_test_console_readback_observed_at_epoch: Second? = tracker_web_test_console_readback_unix_at(year: 2026, month: 10, day: 11, hour: 4)
+data tracker_web_test_console_readback_observed_at_epoch: Second? = tracker_web_test_console_readback_unix_at(at: tracker_web_test_console_readback_observed_at)
 
-data tracker_web_test_console_readback_valid_until_epoch: Second? = tracker_web_test_console_readback_unix_at(year: 2026, month: 11, day: 10, hour: 4)
+data tracker_web_test_console_readback_valid_until_epoch: Second? = tracker_web_test_console_readback_unix_at(at: tracker_web_test_console_readback_valid_until)
 
 fn tracker_web_oidc_deploy_now_epoch() -> Second? {
   match observer_clock_read() {
@@ -227,20 +250,27 @@ fn tracker_web_oidc_deploy_now_epoch() -> Second? {
   }
 }
 
-fn tracker_web_test_registered_web_client_console_readback() -> WorkspaceAdminReadback {
-  WorkspaceAdminReadback {
-    subject: AuthPlatformClient {
-      project: tracker_web_test_oauth_console_project,
-      client: tracker_web_test_oauth_client_id,
-    },
-    observed: RegisteredWebClient { redirect_uris: tracker_web_test_console_observed_redirect_uris },
-    source: AdminConsoleReadback {
-      administrator: workspace_operator_principal(),
-      evidence: "bright-moth-475 2026-10-11 operator console URI add; no Auth Platform write API" as NonEmptyStr,
-    },
-    observed_at_epoch: tracker_web_test_console_readback_unix_int(year: 2026, month: 10, day: 11, hour: 4),
-    valid_until_epoch: tracker_web_test_console_readback_unix_int(year: 2026, month: 11, day: 10, hour: 4),
-    coverage: EffectiveAtDeclaredScope,
+fn tracker_web_test_registered_web_client_console_readback() -> WorkspaceAdminReadback? {
+  match tracker_web_test_console_readback_observed_at_epoch {
+    Absent => none
+    Present { value: observed } =>
+      match tracker_web_test_console_readback_valid_until_epoch {
+        Absent => none
+        Present { value: until } => Present { value: WorkspaceAdminReadback {
+          subject: AuthPlatformClient {
+            project: tracker_web_test_oauth_console_project,
+            client: tracker_web_test_oauth_client_id,
+          },
+          observed: RegisteredWebClient { redirect_uris: tracker_web_test_console_observed_redirect_uris },
+          source: AdminConsoleReadback {
+            administrator: workspace_operator_principal(),
+            evidence: "bright-moth-475 2026-10-11 operator console URI add; no Auth Platform write API" as NonEmptyStr,
+          },
+          observed_at_epoch: second_count(s: observed) as Int,
+          valid_until_epoch: second_count(s: until) as Int,
+          coverage: EffectiveAtDeclaredScope,
+        } }
+      }
   }
 }
 
@@ -281,12 +311,16 @@ fn tracker_web_test_auth_platform_client_assessment(now_epoch: Second) -> GoalAs
   match workspace_identity_admin_obligations(binding: binding, discovery: BasicSignInOnly).first() {
     Absent => GoalAssessmentRefused { cause: "tracker-web TEST Auth Platform obligation is missing" }
     Present { value: ob } =>
-      workspace_admin_assess(
-        goal: ob,
-        receipt: tracker_web_test_registered_web_client_console_readback(),
-        admitted_admins: [workspace_operator_principal()],
-        now_epoch: second_count(s: now_epoch) as Int,
-      )
+      match tracker_web_test_registered_web_client_console_readback() {
+        Absent => GoalAssessmentRefused { cause: "console readback unix seconds do not inhabit Nat" }
+        Present { value: receipt } =>
+          workspace_admin_assess(
+            goal: ob,
+            receipt: receipt,
+            admitted_admins: [workspace_operator_principal()],
+            now_epoch: second_count(s: now_epoch) as Int,
+          )
+      }
   }
 }
 
@@ -298,24 +332,17 @@ fn tracker_web_oidc_serve_placement(instance_id: NonEmptyStr) -> TrackerWebOidcS
         TrackerWebOauthClientUnbound { environment: _, reason } =>
           TrackerWebOidcPlacementUnbound { instance_id: instance_id, reason: reason }
         TrackerWebOauthClientBound { binding: b } =>
-          match b.environment {
-            GoogleLoginEnvironmentTest =>
-              match row.redirect_uri {
-                Absent => TrackerWebOidcPlacementMissingRealization { instance_id: instance_id, environment: row.environment }
-                Present { value: uri } =>
-                  TrackerWebOidcServeReady {
-                    config: TrackerWebOidcServeConfig {
-                      config_path: tracker_web_test_oidc_config_host_path,
-                      redirect_uri: uri,
-                      secret_file: tracker_web_test_oauth_client_secret_host_path,
-                      binding: b,
-                    }
-                  }
+          match row.redirect_uri {
+            Absent => TrackerWebOidcPlacementMissingRealization { instance_id: instance_id, environment: row.environment }
+            Present { value: uri } =>
+              TrackerWebOidcServeReady {
+                config: TrackerWebOidcServeConfig {
+                  config_path: tracker_web_test_oidc_config_host_path,
+                  redirect_uri: uri,
+                  secret_file: tracker_web_test_oauth_client_secret_host_path,
+                  binding: b,
+                }
               }
-            GoogleLoginEnvironmentStage =>
-              TrackerWebOidcPlacementMissingRealization { instance_id: instance_id, environment: GoogleLoginEnvironmentStage }
-            GoogleLoginEnvironmentProd =>
-              TrackerWebOidcPlacementMissingRealization { instance_id: instance_id, environment: GoogleLoginEnvironmentProd }
           }
       }
   }
@@ -329,18 +356,6 @@ fn tracker_web_oidc_serve_standing(instance_id: NonEmptyStr, now_epoch: Second) 
     TrackerWebOidcPlacementMissingRealization { instance_id: id, environment } =>
       TrackerWebOidcRealizationMissing { instance_id: id, environment: environment }
     TrackerWebOidcServeReady { config: cfg } =>
-      match cfg.binding.environment {
-        GoogleLoginEnvironmentStage =>
-          TrackerWebOidcConsoleReadbackUnsatisfied {
-            instance_id: instance_id,
-            cause: "no tracker-web STAGE Auth Platform console readback is declared" as NonEmptyStr,
-          }
-        GoogleLoginEnvironmentProd =>
-          TrackerWebOidcConsoleReadbackUnsatisfied {
-            instance_id: instance_id,
-            cause: "no tracker-web PROD Auth Platform console readback is declared" as NonEmptyStr,
-          }
-        GoogleLoginEnvironmentTest =>
       match tracker_web_test_auth_platform_client_assessment(now_epoch: now_epoch) {
         GoalSatisfied { evidence: _ } => TrackerWebOidcServeConfigured { config: cfg }
         GoalDiverged { deviations: _ } =>
@@ -355,7 +370,6 @@ fn tracker_web_oidc_serve_standing(instance_id: NonEmptyStr, now_epoch: Second) 
           }
         GoalAssessmentRefused { cause } =>
           TrackerWebOidcConsoleReadbackUnsatisfied { instance_id: instance_id, cause: cause as NonEmptyStr }
-      }
       }
   }
 }
