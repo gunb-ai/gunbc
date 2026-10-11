@@ -4,6 +4,7 @@ import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
 import std.measure { TokenCount, token_count_value, Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { trim }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.languages.json.emit {
   JsonValue, JsonKeyValue, JsonBool, JsonObject, JsonArray, JsonString, json_kv, json_string, json_int, json_array, json_object, serialize_json,
 }
@@ -441,6 +442,14 @@ fn harness_worktree_files_changed(environment: HarnessToolEnvironment) -> Int? {
 // "Verification passed" on the same row, which the operator could not reconcile: the agent had not
 // failed, it had been stopped. A consumer that wants the two conflated can join them; one that wants
 // them apart could not split a single event type, so the split is made where the fact is known.
+fn harness_event_transport_retry(round: Int, detail: String) -> String {
+  serialize_json(v: json_object([
+    json_kv(key: "type", value: json_string(s: "round.transport_retry")),
+    json_kv(key: "round", value: json_int(n: round)),
+    json_kv(key: "detail", value: json_string(s: detail)),
+  ]))
+}
+
 fn harness_event_turn_budget_exhausted(steps_taken: Int) -> String {
   serialize_json(v: json_object([
     json_kv(key: "type", value: json_string(s: "turn.budget_exhausted")),
@@ -1096,6 +1105,7 @@ type HarnessPostedRound {
   wire_log_detail: String?
   inflight_release_detail: String?
   hosted_failure: HostedHttpFailure?
+  transport_retries: List<String>
 }
 
 // AN IN-FLIGHT SEAT THAT DID NOT RELEASE IS NOT A REFUSAL OF THE ROUND -- the request went out and its
@@ -1142,6 +1152,7 @@ fn harness_post_round(
         wire_log_detail: none,
         inflight_release_detail: none,
         hosted_failure: none,
+        transport_retries: [] as List<String>,
       } }
     ReasoningKwargsAdmitted { kwargs } =>
       match harness_prepare_round(config: config, messages: messages, reasoning_kwargs: kwargs, round: round) {
@@ -1209,7 +1220,7 @@ fn harness_hosted_round_charged_post(config: HarnessTurnConfig, round: Int, head
           let hold = HostedInflightHeld { reference: r, store: st }
           let posted = harness_send_round(config: config, round: round, header_file: Present { value: header_file }, wire_request_detail: wire_request_detail)
           let released = harness_hosted_inflight_release(quota: quota, hold: hold, reason: "the transport returned" as NonEmptyStr)
-          RoundPosted { posted: HarnessPostedRound { read: posted.read, wire_log_detail: posted.wire_log_detail, inflight_release_detail: released, hosted_failure: posted.hosted_failure } }
+          RoundPosted { posted: HarnessPostedRound { read: posted.read, wire_log_detail: posted.wire_log_detail, inflight_release_detail: released, hosted_failure: posted.hosted_failure, transport_retries: posted.transport_retries } }
         }
       }
   }
@@ -1238,6 +1249,7 @@ fn harness_prepare_round(
       wire_log_detail: none,
       inflight_release_detail: none,
       hosted_failure: none,
+      transport_retries: [] as List<String>,
     } }
   } else {
     let wire_request_path = harness_wire_log_path(config: config, round: round, kind: ".request.json")
@@ -1277,6 +1289,7 @@ fn harness_send_round(
           wire_log_detail: wire_log_detail,
           inflight_release_detail: none,
           hosted_failure: Present { value: f },
+          transport_retries: posted.retries,
         }
       Absent =>
     if !posted.success {
@@ -1289,6 +1302,7 @@ fn harness_send_round(
         wire_log_detail: wire_log_detail,
         inflight_release_detail: none,
         hosted_failure: none,
+        transport_retries: posted.retries,
       }
     } else if !kept.success {
       HarnessPostedRound {
@@ -1298,6 +1312,7 @@ fn harness_send_round(
         wire_log_detail: wire_log_detail,
         inflight_release_detail: none,
         hosted_failure: none,
+        transport_retries: posted.retries,
       }
     } else {
       HarnessPostedRound {
@@ -1305,6 +1320,7 @@ fn harness_send_round(
         wire_log_detail: wire_log_detail,
         inflight_release_detail: none,
         hosted_failure: none,
+        transport_retries: posted.retries,
       }
     }
     }
@@ -1316,6 +1332,7 @@ type HarnessPostOutcome {
   body: String
   success: Bool
   headers: HttpHeaderDump?
+  retries: List<String>
 }
 
 // HOSTED FAILURES ARE CLASSIFIED ONCE (gunbc.harness.hosted_failure) and never retried. A fleet
@@ -1347,7 +1364,51 @@ fn harness_response_headers_path(config: HarnessTurnConfig) -> String {
   join([config.request_scratch_path as String, ".response.headers"], "")
 }
 
+// A REQUEST THAT DREW NO RESPONSE HAD NO EFFECT, so it may be sent again (F85; the plan's slice S3
+// names this as the first recovery an observed failure required). "No response" is exact: the
+// transport failed, no body came back, and no response header was received -- an engine that answered
+// anything, an error included, is never retried, and a hosted route never retries at all
+// (gunbc.harness.hosted_failure). The bound is small and every retry is a recorded event, so a flaky
+// endpoint is visible in the stream rather than absorbed by it.
+data harness_transport_retry_bound: Int = 2
+
+data harness_transport_retry_delay: Int = 15
+
+fn harness_post_drew_no_response(posted: HarnessPostOutcome) -> Bool {
+  !posted.success && trim(posted.body) == "" && (match posted.headers {
+    Absent => true
+    Present { value: HeaderDumpRead { text } } => trim(text) == ""
+    Present { value: HeaderDumpUnread { cause: _ } } => true
+  })
+}
+
+fn harness_post_may_retry(config: HarnessTurnConfig) -> Bool {
+  match config.backend_access {
+    BackendAdmittedBySeat => true
+    BackendAdmittedByOperatorEndpoint { header_file: _ } => true
+    BackendAdmittedByHostedQuota { header_file: _, quota: _ } => false
+  }
+}
+
 fn harness_post_json(config: HarnessTurnConfig, header_file: NonEmptyStr?) -> HarnessPostOutcome {
+  harness_post_json_retrying(config: config, header_file: header_file, retried: [] as List<String>)
+}
+
+fn harness_post_json_retrying(config: HarnessTurnConfig, header_file: NonEmptyStr?, retried: List<String>) -> HarnessPostOutcome {
+  let posted = harness_post_json_once(config: config, header_file: header_file)
+  if harness_post_may_retry(config: config) && harness_post_drew_no_response(posted: posted) && list_length(items: retried) < harness_transport_retry_bound {
+    let waited = sleep_delay_seconds_second_carrier_projection(duration: second(count: harness_transport_retry_delay))
+    harness_post_json_retrying(
+      config: config,
+      header_file: header_file,
+      retried: concat(retried, [join(["no response to attempt ", to_string(value: list_length(items: retried) + 1), if waited { "" } else { " (the delay before retrying refused)" }], "")]),
+    )
+  } else {
+    HarnessPostOutcome { body: posted.body, success: posted.success, headers: posted.headers, retries: retried }
+  }
+}
+
+fn harness_post_json_once(config: HarnessTurnConfig, header_file: NonEmptyStr?) -> HarnessPostOutcome {
   match header_file {
     Absent => {
       let posted = http.Client.PostJsonFromFile(
@@ -1355,7 +1416,7 @@ fn harness_post_json(config: HarnessTurnConfig, header_file: NonEmptyStr?) -> Ha
         request_body_file: config.request_scratch_path as String as NonEmptyStr,
         max_seconds: to_string(value: second_count(s: config.request_deadline)) as NonEmptyStr,
       )
-      HarnessPostOutcome { body: posted.body, success: posted.success, headers: none }
+      HarnessPostOutcome { body: posted.body, success: posted.success, headers: none, retries: [] as List<String> }
     }
     Present { value: hf } => {
       let posted = http.Client.PostJsonFromFileWithHeaderFile(
@@ -1370,6 +1431,7 @@ fn harness_post_json(config: HarnessTurnConfig, header_file: NonEmptyStr?) -> Ha
         body: posted.body,
         success: posted.success,
         headers: Present { value: if dump.success { HeaderDumpRead { text: dump.content } } else { HeaderDumpUnread { cause: join(["the curl header dump ", harness_response_headers_path(config: config), " could not be read: ", dump.error], "") } } },
+        retries: [] as List<String>,
       }
     }
   }
@@ -1542,9 +1604,10 @@ fn harness_turn_after_post(
       Present { value: detail } => concat(events, [harness_event_inflight_release_unrecorded(detail: detail)])
       Absent => events
     }
+    let events_after_retries = concat(events_after_release, posted_round.transport_retries |> map(d => harness_event_transport_retry(round: steps_taken + 1, detail: d)))
     let events_after_wire = match posted_round.wire_log_detail {
-      Present { value: detail } => concat(events_after_release, [harness_event_wire_log_unwritable(detail: detail)])
-      Absent => events_after_release
+      Present { value: detail } => concat(events_after_retries, [harness_event_wire_log_unwritable(detail: detail)])
+      Absent => events_after_retries
     }
     match posted_round.read {
       HarnessResponseUnreadable { cause: c } =>

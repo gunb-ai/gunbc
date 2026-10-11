@@ -80,6 +80,7 @@ type ProviderEventKind
   | TurnFailed
   | ProviderStreamError
   | HarnessRoundUsage
+  | HarnessTransportRetry
   | HarnessBudgetExhausted
   | HarnessSupervisionVerdict
   | HarnessStoppedBySupervision
@@ -480,6 +481,8 @@ fn classify_provider_event_line(raw: String) -> ProviderEventLineDisposition {
     ProviderEventObserved { kind: HarnessBudgetExhausted }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "round.usage") {
     ProviderEventObserved { kind: HarnessRoundUsage }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "round.transport_retry") {
+    ProviderEventObserved { kind: HarnessTransportRetry }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "supervision.verdict") {
     ProviderEventObserved { kind: HarnessSupervisionVerdict }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.stopped_by_supervision") {
@@ -693,6 +696,7 @@ fn provider_execution_fold_event(
         ThreadStarted => ProviderStarting { activity: "thread started" }
         TurnStarted => ProviderRunning { activity: "agent started" }
         HarnessRoundUsage => state
+        HarnessTransportRetry => state
         HarnessWireLogUnwritable => state
         HarnessPlacementWaiting => ProviderAwaitingSeat { detail: harness_placement_waiting_detail(raw: event.raw) }
         HarnessSupervisionVerdict => state
