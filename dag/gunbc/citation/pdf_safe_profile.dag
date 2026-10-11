@@ -2,7 +2,8 @@ module gunbc.citation.pdf_safe_profile
 
 import std.types { NonEmptyStr, List, Bool }
 import std.integer { PositiveInt }
-import extdeps.uri { Uri, UriPercentEncodeRefusalCause }
+import extdeps.uri { Uri }
+import extdeps.uri.percent_encoding { UriPercentEncodeRefusalCause }
 import extdeps.standards.rfc_8118 {
   PdfProfileParameter,
   PdfProfileParameterConstruction,

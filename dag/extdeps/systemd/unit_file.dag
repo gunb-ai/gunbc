@@ -558,7 +558,7 @@ type SystemdInstallDirective
 // SCOPE OF THAT GUARANTEE, DECLARED RATHER THAN INHERITED (DESIGN section 4b). `sole_constructor`
 // confines cross-module construction on the source-to-`.dag` acceptance path, and DESIGN records by
 // execution that an emitted Rust mirror of such a type is silently forgeable
-// (`extdeps.uri` `UriValidatedScalar`). This record is constructed and rendered entirely inside the
+// (`extdeps.uri.percent_encoding` `UriValidatedScalar`). This record is constructed and rendered entirely inside the
 // `.dag` pipeline -- it is never deserialized, and nothing on the emitted side reconstructs one --
 // so the mint is sufficient FOR THE PATH IT TRAVELS. If a directive ever arrives from outside that
 // path, this paragraph is the notice that the invariant needs a fresh answer rather than an
