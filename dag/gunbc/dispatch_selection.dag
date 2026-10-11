@@ -982,7 +982,11 @@ fn declared_provider_inventory_for_instance(instance: HostDashboardInstance) -> 
       ),
     }
   } else {
-    if instance.instance_id == srv1_live_dashboard_instance().instance_id {
+    // THE CLAUDE OFFER BELONGS TO THE HOST, NOT TO ONE INSTANCE ON IT: srv1's instances share its
+    // provider state and its Claude credential, so the lab offered only Codex while the host held
+    // Claude, and an operator dispatch with executor=claude on the lab refused at selection
+    // (srv1 lab, 2026-10-11).
+    if instance.host_identity == srv1_live_dashboard_instance().host_identity {
       ProviderInventory {
         offers: concat(
           codex_inventory_offers_for_instance(instance: instance),
