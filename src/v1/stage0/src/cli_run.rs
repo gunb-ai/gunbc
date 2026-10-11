@@ -4908,7 +4908,7 @@ type ModuleSourceIndex = HashMap<String, Rc<v1_compiler_compile::SourceFile>>;
 /// returns a located `Err` instead of unwinding.
 fn try_build_module_index(source_roots: &[String]) -> Result<ModuleSourceIndex, String> {
     let mut index = ModuleSourceIndex::new();
-    for (root_idx, root) in source_roots.iter().enumerate() {
+    for root in source_roots.iter() {
         let anchored_root = anchor_source_root(root);
         let root_path = std::path::Path::new(&anchored_root);
         if !root_path.exists() {
