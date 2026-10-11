@@ -1,0 +1,8 @@
+module test.fixture.floor_discovery_walk.leaf
+
+import std.types { Bool }
+
+// The one module the floor-discovery producer witness walks by path
+// (test.claim.floor.floor_discovery_hand_rust_equivalence_witness). It declares no test: which names
+// are marked is the SUPPLIED fact, so the witness changes the fact and never this file's bytes.
+fn floor_discovery_walk_leaf() -> Bool { true }
