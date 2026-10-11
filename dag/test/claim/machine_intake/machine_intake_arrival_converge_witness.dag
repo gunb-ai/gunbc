@@ -257,7 +257,7 @@ data mtjade1_managed_ipmi_user: IpmiUserId = 3
 data mtjade1_published_ipmi_user: IpmiUserId = 2
 data mtjade1_managed_password_v2: String = "managed-generation-2!"
 data mtjade1_route_fixture_citation: ExternalAuthority = ExternalAuthority {
-  uri: uri_https(locator: "fixture-not-an-authority.invalid/test.claim.machine_intake_arrival_converge_witness/mtjade1-route" as NonEmptyStr),
+  uri: uri_https(locator: "fixture-not-an-authority.invalid/test.claim.machine_intake.machine_intake_arrival_converge_witness/mtjade1-route" as NonEmptyStr),
 }
 
 fn mtjade1_intake_subject_for(attempt: IntakeAttemptId) -> MachineIntakeSubject {

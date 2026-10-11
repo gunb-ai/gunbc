@@ -560,17 +560,18 @@ fn long_home_storage_agreement(path_is_long: Bool, module_is_long: Bool) -> Long
 // can. Recorded as the fourth data point for that repair, not as a fourth apology.
 
 //
-// THREE PREFIXES, NOT ONE, and the count is what found that. A single `test.claim.long.` test
-// excluded 42 rows of an expected ~310, because the long home is not one namespace: 64 modules
-// there declare `v2.test.claim.long.`, 10 declare `test.claim.long.`, and one declares
-// `v2.test.claim.long.`. The directory looks uniform and the authored names are not.
+// SIX PREFIXES, NOT ONE, and the count is what found that. A single `test.claim.long.` test
+// excluded rows of the floor's expected population, because the long home is not one namespace:
+// the storage rule derives a module's name from its directory, so every directory named `long`
+// contributes the module prefix its own path gives (`gunbc.source_layout`), one row below. A new
+// `long` directory adds a row here, and `LongHomeStorageAgreement` reports a directory this
+// roster does not name.
 //
-// One file in that directory declares no long namespace at all —
-// `qualified_declaration_reference_emit_cross_module_witness_test.dag` declares
-// `test.claim.long.qualified_declaration_reference_emit_cross_module_witness` — so it stays in the
-// floor. That is the honest consequence of reading the declaration instead of the path, and it
-// is the right consequence: the file sits in a directory claiming one thing while its module
-// says another, and only one of those is a fact the program can read.
+// Before the storage rule a directory and the names its files declared could disagree, and the
+// roster read the declaration rather than the path: a file in a `long` directory declaring a
+// short name stayed in the floor. That disagreement is now unwritable, because a module declared
+// anywhere but its rule position is refused by the layout check, so the roster and the tree
+// cannot drift apart.
 //
 // The one thing worth keeping from the version this replaces: the test is on the module's
 // AUTHORED NAME, not on the file path. `is_long_home` in the host tested whether a path
@@ -591,16 +592,14 @@ fn long_home_storage_agreement(path_is_long: Bool, module_is_long: Bool) -> Long
 //
 // These rows are NOT COVERED by anything. The host reports the count every run.
 fn long_home_prefixes() -> List<String> {
-  Cons {
-    head: "test.claim.long.",
-    tail: Cons {
-      head: "v2.test.claim.long.",
-      tail: Cons {
-        head: "v2.test.claim.long.",
-        tail: Empty {}
-      }
-    }
-  }
+  [
+    "test.claim.long.",
+    "v2.test.claim.long.",
+    "v2.test.claim.execution.long.",
+    "v2.test.claim.body_lowering.long.",
+    "v2.test.claim.identity_captured_navigation.long.",
+    "v2.test.manual.long."
+  ]
 }
 
 // THE THIRD DECLINE: A FIXTURE MEMBER IS NOT A WITNESS, AND ENROLLING ONE IS NOT DEBT.

@@ -1408,7 +1408,7 @@ mod discovery_exclude_tests {
     fn real_ingest_gate_only_path_excluded_on_ci_style_paths() {
         let paths = [
             "src/v2/test/claim/program_assembly/real_ingest.dag",
-            "/opt/actions-runner/work/gunbc/gunbc/src/v2/test/claim/program_assembly/real_ingest_test.dag",
+            "/opt/actions-runner/work/gunbc/gunbc/src/v2/test/claim/program_assembly/real_ingest.dag",
         ];
         for path in paths {
             assert!(

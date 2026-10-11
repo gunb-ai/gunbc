@@ -201,7 +201,7 @@ mod heads_reading_item_boundary_tests {
     #[test]
     fn a_test_item_after_a_data_value_is_its_own_item() {
         let names = heads_names(include_str!(
-            "../../../../../dag/test/fixture/heads_after_data_provider_test.dag"
+            "../../../../../dag/test/fixture/heads_after_data_provider.dag"
         ));
         assert!(
             names.iter().any(|n| n == "heads_after_data_marked_probe"),

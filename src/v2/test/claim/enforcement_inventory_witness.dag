@@ -118,7 +118,7 @@ test fn enforcement_inventory_global_receipt_holds() -> Bool {
         xs: row.applications,
         empty: false,
         cons: fn(found, app) {
-          found || ((app.application_id == "contract.consumer.src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag::complexity_budget_roster_family_gate_holds")
+          found || ((app.application_id == "contract.consumer.src/v2/test/claim/complexity_gate/budget_roster_completeness.dag::complexity_budget_roster_family_gate_holds")
             && match app.support {
               SupportHeld => true
               SupportGap { gap: _ } => false

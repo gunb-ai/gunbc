@@ -28140,12 +28140,12 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
 
         // gunbc#9823's own `git diff -U0` output for the renamed entry, verbatim.
         let diff = "\
-diff --git a/dag/test/claim/machine_shape_construction_wall_test.dag b/src/v2/test/claim/machine_shape_construction_wall_test.dag
+diff --git a/dag/test/claim/machine_shape_construction_wall_test.dag b/src/v2/test/claim/machine_shape_construction_wall.dag
 similarity index 97%
 rename from dag/test/claim/machine_shape_construction_wall_test.dag
 rename to src/v2/test/claim/machine_shape_construction_wall.dag
 --- a/dag/test/claim/machine_shape_construction_wall_test.dag
-+++ b/src/v2/test/claim/machine_shape_construction_wall_test.dag
++++ b/src/v2/test/claim/machine_shape_construction_wall.dag
 @@ -1 +1 @@
 -module test.claim.machine_shape_construction_wall
 +module v2.test.claim.machine_shape_construction_wall
@@ -28275,12 +28275,12 @@ rename to src/v2/test/claim/machine_shape_construction_wall.dag
         let dest = "src/v2/test/claim/machine_shape_construction_wall.dag";
         let src = "dag/test/claim/machine_shape_construction_wall_test.dag";
         let diff = "\
-diff --git a/dag/test/claim/machine_shape_construction_wall_test.dag b/src/v2/test/claim/machine_shape_construction_wall_test.dag
+diff --git a/dag/test/claim/machine_shape_construction_wall_test.dag b/src/v2/test/claim/machine_shape_construction_wall.dag
 similarity index 97%
 rename from dag/test/claim/machine_shape_construction_wall_test.dag
 rename to src/v2/test/claim/machine_shape_construction_wall.dag
 --- a/dag/test/claim/machine_shape_construction_wall_test.dag
-+++ b/src/v2/test/claim/machine_shape_construction_wall_test.dag
++++ b/src/v2/test/claim/machine_shape_construction_wall.dag
 @@ -1 +1 @@
 -module test.claim.machine_shape_construction_wall
 +module v2.test.claim.machine_shape_construction_wall

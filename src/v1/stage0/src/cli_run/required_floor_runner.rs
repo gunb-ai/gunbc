@@ -16577,7 +16577,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
         std::fs::create_dir_all(&dir).expect("fixture dir");
         std::fs::write(
             dir.join("probe_test.dag"),
-            "module v2.test.long.quarantine_selection_fixture
+            "module v2.test.claim.long.quarantine_selection_fixture
 
              test fn admitted_reds() -> Bool { false }
              test fn unadmitted_reds() -> Bool { false }
@@ -16613,7 +16613,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
         .expect("identities");
         assert_eq!(
             identities,
-            vec!["v2.test.long.quarantine_selection_fixture.unadmitted_reds".to_string()],
+            vec!["v2.test.claim.long.quarantine_selection_fixture.unadmitted_reds".to_string()],
             "a long-home witness with no quarantine admission must still be planned"
         );
         std::fs::remove_dir_all(&dir).ok();

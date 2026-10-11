@@ -423,7 +423,7 @@ fn request_user(r: BmcAccountWriteRequest) -> IpmiUserId {
 // outside test.claim imports this witness: the two production references to its name are admit-list
 // declaration references, not imports.
 data lab_route_fixture_citation: ExternalAuthority = ExternalAuthority {
-  uri: uri_https(locator: "fixture-not-an-authority.invalid/test.claim.machine_intake_bmc_secure_state_witness/lab-route" as NonEmptyStr),
+  uri: uri_https(locator: "fixture-not-an-authority.invalid/test.claim.machine_intake.machine_intake_bmc_secure_state_witness/lab-route" as NonEmptyStr),
 }
 
 fn cited_lab_route_managed_user() -> BmcRotationRouteStanding
