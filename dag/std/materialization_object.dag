@@ -33,7 +33,7 @@ import std.materialization_provider {
   EvaluationIdentity, EvaluationResultBinding, EvaluationResultConsistent, EvaluationContentConflict,
   EvaluationResultHashFamilyIncomparable, EvaluationResultUnverifiable, ResultContentIdentity,
   EvaluationStoreAddress,
-  evaluation_store_address, evaluation_store_address_digest,
+  evaluation_store_address, evaluation_store_address_digest, AddressedRequest, addressed_request, RequestAddressed, RequestAddressRefused,
   evaluation_store_address_preimage,
   request_key, request_kind,
   length_prefixed_encode, result_content_identity,
@@ -597,16 +597,15 @@ fn store_observed_digest(manifest: ArtifactManifest, payloads: List<ArtifactPayl
 
 fn store_lookup_from_address(
   store: OpenedMaterializationStore,
-  req: ArtifactRequest,
-  address: EvaluationStoreAddress,
+  addressed: AddressedRequest,
   read: StoreObjectRead
 ) -> StoreLookup {
   store_lookup_decide_present(
     store: store,
-    req: req,
-    key: evaluation_store_address_digest(address: address),
+    req: addressed.request,
+    key: evaluation_store_address_digest(address: addressed.address),
     read: read,
-    address: address
+    address: addressed.address
   )
 }
 
@@ -615,14 +614,14 @@ fn store_lookup_decide(
   req: ArtifactRequest,
   read: StoreObjectRead
 ) -> StoreLookup {
-  match evaluation_store_address(req: req) {
-    FamilyRefused { family: f, scope: sc } =>
+  match addressed_request(req: req) {
+    RequestAddressRefused { family: f, scope: sc } =>
       StoreLookupRefused {
         key: request_key(req: req),
         refusal: StoreLookupStoreFamilyRefused { family: f, scope: sc }
       }
-    Admitted { address: addr } =>
-      store_lookup_from_address(store: store, req: req, address: addr, read: read)
+    RequestAddressed { addressed: a } =>
+      store_lookup_from_address(store: store, addressed: a, read: read)
   }
 }
 
@@ -748,25 +747,29 @@ type StoreCommitPreparation
 // payload, or a missing required output is refused here, before any byte is published, by the same
 // authorities the read side uses.
 fn store_commit_prepare(req: ArtifactRequest, payloads: List<ArtifactPayload>, blobs: List<ArtifactBlobPart>) -> StoreCommitPreparation {
-  match evaluation_store_address(req: req) {
-    FamilyRefused { family: f, scope: sc } =>
+  match addressed_request(req: req) {
+    RequestAddressRefused { family: f, scope: sc } =>
       StoreCommitNotPrepared {
         commit: StoreCommitRefused {
           key: request_key(req: req),
           refusal: StoreCommitStoreFamilyRefused { family: f, scope: sc }
         }
       }
-    Admitted { address: addr } =>
-      store_commit_prepare_admitted(req: req, payloads: concat(payloads, blobs |> map(b => blob_part_payload(b: b))), blobs: blobs, address: addr)
+    RequestAddressed { addressed: a } => store_commit_prepare_addressed(addressed: a, payloads: payloads, blobs: blobs)
   }
 }
 
+fn store_commit_prepare_addressed(addressed: AddressedRequest, payloads: List<ArtifactPayload>, blobs: List<ArtifactBlobPart>) -> StoreCommitPreparation {
+  store_commit_prepare_admitted(addressed: addressed, payloads: concat(payloads, blobs |> map(b => blob_part_payload(b: b))), blobs: blobs)
+}
+
 fn store_commit_prepare_admitted(
-  req: ArtifactRequest,
+  addressed: AddressedRequest,
   payloads: List<ArtifactPayload>,
-  blobs: List<ArtifactBlobPart>,
-  address: EvaluationStoreAddress
+  blobs: List<ArtifactBlobPart>
 ) -> StoreCommitPreparation {
+  let req = addressed.request
+  let address = addressed.address
   let key = evaluation_store_address_digest(address: address)
   let offered = ArtifactManifest {
     kind: request_kind(req: req),

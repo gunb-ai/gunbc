@@ -104,7 +104,7 @@ import gunbc.process_hold_identity {
 import std.durable_compare_and_set { CasGeneration, cas_generation_count }
 import std.materialization_provider {
   ResultContentIdentity, ArtifactRequest, request_key, request_kind, evaluation_store_address,
-  Admitted, FamilyRefused
+  Admitted, FamilyRefused, AddressedRequest, addressed_request, RequestAddressed, RequestAddressRefused
 }
 import std.materialization_store_grant {
   MaterializationStoreRoot,
@@ -129,7 +129,8 @@ import std.materialization_object {
   ArtifactBlobPart, store_lookup_blob_parts,
   StoreCommitCleanupOutstanding,
   StoreCommitPreparation, StoreCommitPrepared, StoreCommitNotPrepared,
-  store_object_name, store_object_format_version, store_lookup_from_address, store_commit_prepare, store_commit_settle,
+  store_object_name, store_object_format_version, store_lookup_from_address, store_commit_prepare_addressed, store_commit_settle,
+  StoreCommitStoreFamilyRefused,
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -1825,7 +1826,7 @@ fn local_store_record_recency_current(held: LocalStoreFamilyHeld, served: List<S
 // ---------------------------------------------------------------------------------------------
 // Lookup and commit over an opened store.
 
-fn local_store_record_lookup(binding: LocalStoreBinding, req: ArtifactRequest) -> StoreLookup
+fn local_store_record_lookup(binding: LocalStoreBinding, addressed: AddressedRequest) -> StoreLookup
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_lookup_parts_bound"),
   ]
@@ -1836,25 +1837,15 @@ fn local_store_record_lookup(binding: LocalStoreBinding, req: ArtifactRequest) -
   match materialization_store_admissible(root: root, verb: Read) {
     Deny { refusal: _ } =>
       StoreLookupRefused {
-        key: request_key(req: req),
+        key: request_key(req: addressed.request),
         refusal: StoreLookupObjectUnavailable { fault: StoreFault { class: StoreFaultUnauthorized, detail: concat("read grant refused for ", root_path) } }
       }
     Permit => {
-      let read = match evaluation_store_address(req: req) {
-        FamilyRefused { family: f, scope: sc } =>
-          StoreLookupRefused {
-            key: request_key(req: req),
-            refusal: StoreLookupStoreFamilyRefused { family: f, scope: sc }
-          }
-        Admitted { address: addr } =>
-          store_lookup_from_address(
-            store: store,
-            req: req,
-            address: addr,
-            read: store_read_observation(read: local_store_read(path: store_path(root_path: root_path, name: store_object_name(address: addr))))
-          )
-      }
-      read
+      store_lookup_from_address(
+        store: store,
+        addressed: addressed,
+        read: store_read_observation(read: local_store_read(path: store_path(root_path: root_path, name: store_object_name(address: addressed.address))))
+      )
     }
   }
 }
@@ -1893,40 +1884,49 @@ fn local_store_check_part(root_path: String, record: String, part: ArtifactBlobP
 }
 
 fn local_store_lookup_parts(capability: LocalStoreCapability, req: ArtifactRequest) -> LocalStorePartsLookup {
-  local_store_lookup_parts_bound(binding: capability.binding, req: req)
+  match addressed_request(req: req) {
+    RequestAddressRefused { family: f, scope: sc } =>
+      LocalStorePartsLookup {
+        lookup: StoreLookupRefused { key: request_key(req: req), refusal: StoreLookupStoreFamilyRefused { family: f, scope: sc } },
+        parts: []
+      }
+    RequestAddressed { addressed: a } => local_store_lookup_parts_addressed(capability: capability, addressed: a)
+  }
 }
 
-fn local_store_lookup_parts_bound(binding: LocalStoreBinding, req: ArtifactRequest) -> LocalStorePartsLookup
+// THE ADDRESSED DOORS. Each public operation above derives the request's address ONCE and enters
+// here; nothing below derives it again. A witness of the store's own behaviour enters here too,
+// holding a request and address minted together (std.materialization_provider AddressedRequest).
+fn local_store_lookup_parts_addressed(capability: LocalStoreCapability, addressed: AddressedRequest) -> LocalStorePartsLookup {
+  local_store_lookup_parts_bound(binding: capability.binding, addressed: addressed)
+}
+
+fn local_store_lookup_parts_bound(binding: LocalStoreBinding, addressed: AddressedRequest) -> LocalStorePartsLookup
   admit_callers: [
-    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_lookup_parts"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_lookup_parts_addressed"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_lookup_bound"),
   ]
 {
   let root = binding.root
   let store = binding.store
   let root_path = materialization_store_root_path(root: root)
-  let lookup = local_store_record_lookup(binding: binding, req: req)
+  let lookup = local_store_record_lookup(binding: binding, addressed: addressed)
   let blobs = store_lookup_blob_parts(l: lookup)
   if count(blobs) == 0 { LocalStorePartsLookup { lookup: lookup, parts: [] } } else {
-    match evaluation_store_address(req: req) {
-      FamilyRefused { family: _, scope: _ } => LocalStorePartsLookup { lookup: lookup, parts: [] }
-      Admitted { address: addr } => {
-        let record = store_object_name(address: addr)
-        let checks = blobs |> map(b => local_store_check_part(root_path: root_path, record: record, part: b))
-        let refusal = checks |> fold(init: none, f: (acc, c) => match acc {
-          Present { value: _ } => acc
-          Absent => match c { LocalStorePartRefused { cause: why } => Present { value: why } LocalStorePartVerified { reading: _ } => none }
-        })
-        match refusal {
-          Present { value: why } =>
-            LocalStorePartsLookup { lookup: StoreLookupRefused { key: request_key(req: req), refusal: StoreLookupObjectMalformed { cause: why } }, parts: [] }
-          Absent =>
-            LocalStorePartsLookup {
-              lookup: lookup,
-              parts: checks |> flat_map(c => match c { LocalStorePartVerified { reading: r } => [r] LocalStorePartRefused { cause: _ } => [] })
-            }
+    let record = store_object_name(address: addressed.address)
+    let checks = blobs |> map(b => local_store_check_part(root_path: root_path, record: record, part: b))
+    let refusal = checks |> fold(init: none, f: (acc, c) => match acc {
+      Present { value: _ } => acc
+      Absent => match c { LocalStorePartRefused { cause: why } => Present { value: why } LocalStorePartVerified { reading: _ } => none }
+    })
+    match refusal {
+      Present { value: why } =>
+        LocalStorePartsLookup { lookup: StoreLookupRefused { key: request_key(req: addressed.request), refusal: StoreLookupObjectMalformed { cause: why } }, parts: [] }
+      Absent =>
+        LocalStorePartsLookup {
+          lookup: lookup,
+          parts: checks |> flat_map(c => match c { LocalStorePartVerified { reading: r } => [r] LocalStorePartRefused { cause: _ } => [] })
         }
-      }
     }
   }
 }
@@ -1934,18 +1934,26 @@ fn local_store_lookup_parts_bound(binding: LocalStoreBinding, req: ArtifactReque
 // The record lookup with its byte parts verified: a record whose parts do not hold their bytes is
 // refused here too, so every caller -- including a commit's read-back -- judges the whole artifact.
 fn local_store_lookup(capability: LocalStoreCapability, req: ArtifactRequest) -> StoreLookup {
-  local_store_lookup_bound(binding: capability.binding, req: req)
+  match addressed_request(req: req) {
+    RequestAddressRefused { family: f, scope: sc } =>
+      StoreLookupRefused { key: request_key(req: req), refusal: StoreLookupStoreFamilyRefused { family: f, scope: sc } }
+    RequestAddressed { addressed: a } => local_store_lookup_addressed(capability: capability, addressed: a)
+  }
 }
 
-fn local_store_lookup_bound(binding: LocalStoreBinding, req: ArtifactRequest) -> StoreLookup
+fn local_store_lookup_addressed(capability: LocalStoreCapability, addressed: AddressedRequest) -> StoreLookup {
+  local_store_lookup_bound(binding: capability.binding, addressed: addressed)
+}
+
+fn local_store_lookup_bound(binding: LocalStoreBinding, addressed: AddressedRequest) -> StoreLookup
   admit_callers: [
-    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_lookup"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_lookup_addressed"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_held"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_reserved"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_verified"),
   ]
 {
-  local_store_lookup_parts_bound(binding: binding, req: req).lookup
+  local_store_lookup_parts_bound(binding: binding, addressed: addressed).lookup
 }
 
 // THE COMMIT RECEIPT carries what the bound did beside the store-level commit: the names this commit
@@ -2001,7 +2009,7 @@ fn local_store_commit_released(c: LocalStoreCommit, settled_release: LocalStoreH
 // what the reservation committed is still the index when the object appears.
 fn local_store_commit_held(
   held: LocalStoreFamilyHeld,
-  req: ArtifactRequest,
+  addressed: AddressedRequest,
   key: ContentHash,
   name: String,
   object: String,
@@ -2018,12 +2026,12 @@ fn local_store_commit_held(
   let root = held.binding.root
   let root_path = materialization_store_root_path(root: root)
   let bytes = measure_add(a: local_store_object_bytes(object: object), b: local_store_parts_bytes(parts: blobs))
-  let presence = local_store_object_presence(lookup: local_store_lookup_bound(binding: held.binding, req: req))
+  let presence = local_store_object_presence(lookup: local_store_lookup_bound(binding: held.binding, addressed: addressed))
   match presence {
     LocalStoreObjectUnavailable { lookup: _ } =>
       local_store_commit_refused(commit: StoreCommitRefused { key: key, refusal: StoreCommitOccupancyUnavailable { cause: "the object's presence could not be established, so its row is neither converged on nor replaced" } })
-    LocalStoreObjectVerified => local_store_commit_verified(held: held, req: req, key: key, name: name, object: object, offered: offered, offered_result: offered_result)
-    LocalStoreObjectAbsent => local_store_commit_reserved(held: held, req: req, key: key, name: name, object: object, offered: offered, offered_result: offered_result, parts: parts, blobs: blobs, bytes: bytes,
+    LocalStoreObjectVerified => local_store_commit_verified(held: held, addressed: addressed, key: key, name: name, object: object, offered: offered, offered_result: offered_result)
+    LocalStoreObjectAbsent => local_store_commit_reserved(held: held, addressed: addressed, key: key, name: name, object: object, offered: offered, offered_result: offered_result, parts: parts, blobs: blobs, bytes: bytes,
       reservation: local_store_reserve(held: held, name: name, bytes: bytes, presence: presence, attempt: 1))
   }
 }
@@ -2035,7 +2043,7 @@ fn local_store_commit_held(
 // is copied, so a divergent retry leaves the index, the root and every part exactly as they were.
 fn local_store_commit_verified(
   held: LocalStoreFamilyHeld,
-  req: ArtifactRequest,
+  addressed: AddressedRequest,
   key: ContentHash,
   name: String,
   object: String,
@@ -2058,14 +2066,14 @@ fn local_store_commit_verified(
         offered_digest: offered,
         offered_result: offered_result,
         publish: store_publish_observation(create: local_store_create_new(path: store_path(root_path: root_path, name: name), content: object)),
-        read_back: local_store_lookup_bound(binding: held.binding, req: req)
+        read_back: local_store_lookup_bound(binding: held.binding, addressed: addressed)
       ))
   }
 }
 
 fn local_store_commit_reserved(
   held: LocalStoreFamilyHeld,
-  req: ArtifactRequest,
+  addressed: AddressedRequest,
   key: ContentHash,
   name: String,
   object: String,
@@ -2087,7 +2095,7 @@ fn local_store_commit_reserved(
     LocalStoreReservationRefused { refusal: r } => local_store_commit_refused(commit: StoreCommitRefused { key: key, refusal: r })
     LocalStoreReservationIndexRefused { refusal: r } => local_store_commit_index_refused(key: key, refusal: r)
     LocalStoreReservationProviderRefused { construction: _ } =>
-      local_store_commit_refused(commit: StoreCommitRefused { key: key, refusal: StoreCommitOccupancyUnavailable { cause: concat("the family's provider row does not construct a bounded store: ", request_kind(req: req) as String) } })
+      local_store_commit_refused(commit: StoreCommitRefused { key: key, refusal: StoreCommitOccupancyUnavailable { cause: concat("the family's provider row does not construct a bounded store: ", request_kind(req: addressed.request) as String) } })
     LocalStoreReserved { admission: adm } => {
       let budget = adm.budget
       let evicted = adm.evicted
@@ -2115,7 +2123,7 @@ fn local_store_commit_reserved(
             offered_digest: offered,
             offered_result: offered_result,
             publish: store_publish_observation(create: local_store_create_new(path: store_path(root_path: root_path, name: name), content: object)),
-            read_back: local_store_lookup_bound(binding: held.binding, req: req)
+            read_back: local_store_lookup_bound(binding: held.binding, addressed: addressed)
             )
           },
           evicted: evicted |> map(e => e.name), eviction_delete_refused: [], retired: retired, index_reclamation: rc,
@@ -2294,8 +2302,16 @@ fn local_store_parts_bytes(parts: List<ArtifactBlobPart>) -> ByteSize {
 // (local_store_publish_part); (6) publish the record create-only and read the whole artifact back,
 // parts included. Any part refusal refuses the commit before the record appears.
 fn local_store_commit(capability: LocalStoreCapability, req: ArtifactRequest, payloads: List<ArtifactPayload>, parts: List<LocalStoreStagedPart>) -> LocalStoreCommit {
-  match local_store_with_family(capability: capability, of: req, run: h => local_store_commit_under(held: h, req: req, payloads: payloads, parts: parts)) {
-    LocalStoreBracketRefused { refusal: r } => local_store_commit_hold_refused(key: request_key(req: req), refusal: r)
+  match addressed_request(req: req) {
+    RequestAddressRefused { family: f, scope: sc } =>
+      local_store_commit_refused(commit: StoreCommitRefused { key: request_key(req: req), refusal: StoreCommitStoreFamilyRefused { family: f, scope: sc } })
+    RequestAddressed { addressed: a } => local_store_commit_addressed(capability: capability, addressed: a, payloads: payloads, parts: parts)
+  }
+}
+
+fn local_store_commit_addressed(capability: LocalStoreCapability, addressed: AddressedRequest, payloads: List<ArtifactPayload>, parts: List<LocalStoreStagedPart>) -> LocalStoreCommit {
+  match local_store_with_family(capability: capability, of: addressed.request, run: h => local_store_commit_under(held: h, addressed: addressed, payloads: payloads, parts: parts)) {
+    LocalStoreBracketRefused { refusal: r } => local_store_commit_hold_refused(key: request_key(req: addressed.request), refusal: r)
     LocalStoreBracketRan { value: written, hold_release: rel } => local_store_commit_released(c: written, settled_release: rel)
   }
 }
@@ -2306,32 +2322,32 @@ fn local_store_commit(capability: LocalStoreCapability, req: ArtifactRequest, pa
 // are read once, and their readings shape the record and its budget.
 fn local_store_commit_under(
   held: LocalStoreFamilyHeld,
-  req: ArtifactRequest,
+  addressed: AddressedRequest,
   payloads: List<ArtifactPayload>,
   parts: List<LocalStoreStagedPart>
 ) -> LocalStoreCommit {
   let root = held.binding.root
   let root_path = materialization_store_root_path(root: root)
-  if request_kind(req: req) != held.family {
-    local_store_commit_hold_refused(key: request_key(req: req), refusal: LocalStoreHoldWrongFamily { held: held.family, requested: request_kind(req: req) })
+  if request_kind(req: addressed.request) != held.family {
+    local_store_commit_hold_refused(key: request_key(req: addressed.request), refusal: LocalStoreHoldWrongFamily { held: held.family, requested: request_kind(req: addressed.request) })
   } else {
     match local_store_hold_check(held: held) {
-      LocalStoreHoldNotCurrent { observed: o } => local_store_commit_hold_refused(key: request_key(req: req), refusal: LocalStoreHoldStale { observed: o })
-      LocalStoreHoldNamedWindowMoved { named: n } => local_store_commit_hold_refused(key: request_key(req: req), refusal: LocalStoreHoldNamedWindowHeadMoved { named: n })
+      LocalStoreHoldNotCurrent { observed: o } => local_store_commit_hold_refused(key: request_key(req: addressed.request), refusal: LocalStoreHoldStale { observed: o })
+      LocalStoreHoldNamedWindowMoved { named: n } => local_store_commit_hold_refused(key: request_key(req: addressed.request), refusal: LocalStoreHoldNamedWindowHeadMoved { named: n })
       LocalStoreHoldCurrent => {
         let staged = parts |> map(p => local_store_read_part(id: p.id, path: p.staged))
         match local_store_first_unreadable(readings: staged) {
           Present { value: why } =>
-            local_store_commit_refused(commit: StoreCommitRefused { key: request_key(req: req), refusal: StoreCommitResultIdentityUnverifiable { cause: why } })
+            local_store_commit_refused(commit: StoreCommitRefused { key: request_key(req: addressed.request), refusal: StoreCommitResultIdentityUnverifiable { cause: why } })
           Absent => {
             let blobs = local_store_read_parts(readings: staged)
-            match store_commit_prepare(req: req, payloads: payloads, blobs: blobs) {
+            match store_commit_prepare_addressed(addressed: addressed, payloads: payloads, blobs: blobs) {
               StoreCommitNotPrepared { commit: c } => local_store_commit_refused(commit: c)
               StoreCommitPrepared { key: k, object_name: name, object: object, offered_digest: offered, offered_result: offered_result } =>
                 match materialization_store_admissible(root: root, verb: Write) {
                   Deny { refusal: _ } =>
                     local_store_commit_refused(commit: StoreCommitRefused { key: k, refusal: StoreCommitPublishRefused { fault: StoreFault { class: StoreFaultUnauthorized, detail: concat("write grant refused for ", root_path) } } })
-                  Permit => local_store_commit_held(held: held, req: req, key: k, name: name, object: object, offered: offered, offered_result: offered_result, parts: parts, blobs: blobs)
+                  Permit => local_store_commit_held(held: held, addressed: addressed, key: k, name: name, object: object, offered: offered, offered_result: offered_result, parts: parts, blobs: blobs)
                 }
             }
           }

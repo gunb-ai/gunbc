@@ -172,7 +172,7 @@ type ArtifactRequest
     }
   | ResolveClosureRequest { closure_digest: Fnv1a64Structural, compiler: DeclaredInput }
   | NativeCompilerArtifactRequest { generation: PreMaterializationIdentity }
-  | UniverseArtifactRequest { tested_tree_identity: Fnv1a64Structural, route_binary: DeclaredInput }
+  | UniverseArtifactRequest { tested_tree_identity: ContentHash, route_binary: DeclaredInput }
   | NativeModuleVerdictBundleRequest(NativeModuleVerdictBundleSubject)
   | ComputeWorkRequest { subject: WorkSubject, operation: WorkOperation, toolchain: WorkToolchainIdentity }
 
@@ -271,11 +271,11 @@ type ArtifactRequest
 // commits its outcome and binaries there (compute_store_commit); belt verification reaches it through
 // gunbc.roadmap_belt_actuate belt_run_claim_through_compute.
 type NativeModuleVerdictBundleSubject {
-  route_binary_identity: Fnv1a64Structural
-  module_identity: Fnv1a64Structural
-  canonical_module_import_closure_identity: Fnv1a64Structural
-  ordered_test_identity_population: Fnv1a64Structural
-  eval_interpretation_identity: Fnv1a64Structural
+  route_binary_identity: ContentHash
+  module_identity: ContentHash
+  canonical_module_import_closure_identity: ContentHash
+  ordered_test_identity_population: ContentHash
+  eval_interpretation_identity: ContentHash
 }
 
 // JudgmentContract is the ONE authority for what an ArtifactRequest family denotes. ArtifactRequest
@@ -434,7 +434,8 @@ fn evaluation_bucket_for_request(req: ArtifactRequest) -> EvaluationBucket admit
   decl_ref(module_path: "std.materialization_provider", decl_name: "evaluation_store_address"),
   decl_ref(module_path: "std.materialization_provider", decl_name: "request_key"),
   decl_ref(module_path: "std.materialization_provider", decl_name: "provider_serve"),
-  decl_ref(module_path: "std.materialization_provider", decl_name: "in_process_materialization")
+  decl_ref(module_path: "std.materialization_provider", decl_name: "in_process_materialization"),
+  decl_ref(module_path: "std.materialization_provider", decl_name: "addressed_request_with_supplied_digest")
 ] {
   let identity = request_evaluation_identity(req: req)
   EvaluationBucket {
@@ -576,6 +577,67 @@ fn request_canonical_digest(req: ArtifactRequest) -> Sha256Digest {
 
 fn evaluation_store_address(req: ArtifactRequest) -> EvaluationStoreAddressAdmission {
   persist_evaluation_store_address(bucket: evaluation_bucket_for_request(req: req))
+}
+
+// A REQUEST TOGETHER WITH THE ADDRESS THAT NAMES IT, AND THE ONLY WAY TO HOLD ONE IS TO MINT IT.
+// The store's doors used to take a request and an address as peer parameters, which admits an
+// address minted for some OTHER request: the object it names would then be bound, verified and
+// served as the answer to a question it was never an answer to. Here the pair has no constructor
+// outside the two mints below, each of which derives the address FROM the request it stores beside
+// it, so a mismatched pair is unwritable rather than refused by a check a door has to remember
+// (the std.fabric_storage FabricAddressedObject move, for the same reason). It is also how an
+// address is derived ONCE per operation and carried, instead of once per door that needs it.
+type AddressedRequest sole_constructor {
+  request: ArtifactRequest
+  address: EvaluationStoreAddress
+}
+
+type AddressedRequestAdmission
+  = RequestAddressed { addressed: AddressedRequest }
+  | RequestAddressRefused { family: HashFamily, scope: KeyingScope }
+
+fn addressed_request(req: ArtifactRequest) -> AddressedRequestAdmission {
+  match evaluation_store_address(req: req) {
+    Admitted { address: a } => RequestAddressed { addressed: AddressedRequest { request: req, address: a } }
+    FamilyRefused { family: f, scope: sc } => RequestAddressRefused { family: f, scope: sc }
+  }
+}
+
+// THE SUPPLIED-DIGEST MINT, FOR WITNESSES OF THE STORE'S OWN DECISIONS. A witness of object decoding,
+// corruption, completeness or settlement is a claim about the store given an address, and deriving
+// that address re-executes a SHA-256 the claim is not about (DESIGN section 3, a witness
+// discriminates at one interface). So such a witness supplies the DIGEST -- and only the digest.
+// The identity and preimage are still derived from the request, and every component is still
+// judged: a request the persistent scope refuses is refused here too, so this mint is not a way
+// around the admission. What it leaves unexecuted is the digest computation, and the pairing
+// obligation is discharged by the inhabitance claim that derives a real address through
+// addressed_request and compares it with the published SHA-256 of its preimage.
+fn addressed_request_with_supplied_digest(req: ArtifactRequest, digest: Sha256Digest) -> AddressedRequestAdmission admit_callers: [
+  decl_ref(module_path: "test.claim.materialization_provider_witness", decl_name: "witness_supplied_addressed"),
+  decl_ref(module_path: "test.claim.materialization_store_witness", decl_name: "witness_supplied_addressed"),
+  decl_ref(module_path: "test.claim.materialization_store_local_wet_witness", decl_name: "witness_supplied_addressed"),
+  decl_ref(module_path: "test.claim.materialization_store_local_immutable_pin_wet_witness", decl_name: "witness_supplied_addressed")
+] {
+  let bucket = evaluation_bucket_for_request(req: req)
+  let refused = evaluation_store_refused_component_refs(identity: bucket.identity, scope: PersistentStoreScope)
+  if count(refused) > 0 {
+    RequestAddressRefused { family: Fnv1a64StructuralFamily, scope: PersistentStoreScope }
+  } else {
+    RequestAddressed {
+      addressed: AddressedRequest {
+        request: req,
+        address: EvaluationStoreAddress {
+          identity: bucket.identity,
+          digest: as_content_hash_cryptographic(digest: digest),
+          canonical_preimage: bucket.canonical_preimage,
+          standing: EvaluationStoreAddressStanding {
+            family: Sha256Family,
+            upstream_object_identity_refs: evaluation_store_upstream_object_refs(identity: bucket.identity)
+          }
+        }
+      }
+    }
+  }
 }
 
 fn evaluation_store_address_digest(address: EvaluationStoreAddress) -> ContentHash {
@@ -742,11 +804,11 @@ fn native_compiler_judgment_contract(generation: PreMaterializationIdentity) -> 
   }
 }
 
-fn universe_judgment_contract(tested_tree_identity: Fnv1a64Structural, route_binary: DeclaredInput) -> JudgmentContract {
+fn universe_judgment_contract(tested_tree_identity: ContentHash, route_binary: DeclaredInput) -> JudgmentContract {
   JudgmentContract {
     demand_identity: DemandIdentity {
       kind: native_test_universe_artifact_kind,
-      subject: identity_structural_component(digest: tested_tree_identity),
+      subject: identity_digest_component(hash: tested_tree_identity),
       declared_inputs: [route_binary]
     },
     result: ResultContract {
@@ -767,8 +829,13 @@ fn module_verdict_bundle_judgment_contract(subject: NativeModuleVerdictBundleSub
   JudgmentContract {
     demand_identity: DemandIdentity {
       kind: native_module_verdict_bundle_artifact_kind,
-      subject: identity_structural_component(digest: module_verdict_bundle_subject_digest(subject: subject)),
-      declared_inputs: []
+      subject: identity_digest_component(hash: subject.module_identity),
+      declared_inputs: [
+        DeclaredInput { ref: "verdict_bundle.route_binary_identity", component: identity_digest_component(hash: subject.route_binary_identity) },
+        DeclaredInput { ref: "verdict_bundle.canonical_module_import_closure_identity", component: identity_digest_component(hash: subject.canonical_module_import_closure_identity) },
+        DeclaredInput { ref: "verdict_bundle.ordered_test_identity_population", component: identity_digest_component(hash: subject.ordered_test_identity_population) },
+        DeclaredInput { ref: "verdict_bundle.eval_interpretation_identity", component: identity_digest_component(hash: subject.eval_interpretation_identity) }
+      ]
     },
     result: ResultContract {
       carries_semantic_value: true,
@@ -915,7 +982,7 @@ fn request_fold<T>(
   typecheck_module: fn(Fnv1a64Structural, List<InterfaceHash>, DeclaredInput) -> T,
   resolve_closure: fn(Fnv1a64Structural, DeclaredInput) -> T,
   native_compiler: fn(PreMaterializationIdentity) -> T,
-  universe: fn(Fnv1a64Structural, DeclaredInput) -> T,
+  universe: fn(ContentHash, DeclaredInput) -> T,
   module_verdict_bundle: fn(NativeModuleVerdictBundleSubject) -> T,
   compute_work: fn(WorkSubject, WorkOperation, WorkToolchainIdentity) -> T
 ) -> T {
@@ -934,25 +1001,6 @@ fn request_fold<T>(
 // The verdict bundle's subject digest folds its five identities in DECLARED field order under a
 // tag of its own, so two bundles agree on the subject only when all five agree; the tag keeps it
 // from colliding with any other family's subject over the same digests.
-fn module_verdict_bundle_subject_digest(subject: NativeModuleVerdictBundleSubject) -> Fnv1a64Structural {
-  content_hash_tagged_structural(
-    tag: "materialization_provider.native_module_verdict_bundle",
-    payload: content_hash_combine_structural(
-      left: content_hash_combine_structural(
-        left: content_hash_combine_structural(
-          left: content_hash_combine_structural(
-            left: subject.route_binary_identity,
-            right: subject.module_identity
-          ),
-          right: subject.canonical_module_import_closure_identity
-        ),
-        right: subject.ordered_test_identity_population
-      ),
-      right: subject.eval_interpretation_identity
-    )
-  )
-}
-
 fn request_kind(req: ArtifactRequest) -> ArtifactKindId {
   request_judgment_contract(req: req).demand_identity.kind
 }
