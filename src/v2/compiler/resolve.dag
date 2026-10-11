@@ -11,7 +11,6 @@ import v2.std.member_declaration_kind {
   QualifiedDeclaredMember,
   no_member_declaration_kinds
 }
-import v2.compiler.namespace_graft { namespace_graft_module_body_optional }
 import v2.compiler.lexical_scope {
   ArrowAuthoredSlot,
   ArrowBodyOrNamedSlot,
@@ -34,6 +33,8 @@ import v2.compiler.lexical_scope {
   arrow_slot_scope,
   bind_binder,
   bind_positional_slot,
+  declaration_names_value,
+  module_root_bindings,
   try_edge_declared_binding
 }
 import v2.std.declaration_marker {
@@ -47,7 +48,6 @@ import v2.std.declaration_marker {
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.extdeps.languages.dag {
-  namespace_graft_node_is_module_body,
   dag_kernel_string_type_spelling,
   dag_string_literal_value_optional,
   dag_kernel_type_binding_optional,
@@ -774,61 +774,14 @@ data resolve_variant_visibility_disposition: Disposition = Scaffold {
 // reads both: the root's direct named members and, where the graft collected one, the body's. Two doors
 // built a Namespace -- build_program_namespace grafted the body, v2.compiler.name_resolve
 // admitted_subject_from_bindings did not -- so on the admission route a module's own `data` value was
-// absent from the scope chain and `cfg.field` answered ScopeUnbound. One harvest here is what keeps the two
-// from disagreeing again.
+// absent from the scope chain and `cfg.field` answered ScopeUnbound. One harvest is what keeps the two
+// from disagreeing again, and it is v2.compiler.lexical_scope module_root_bindings, the producer module
+// acquisition reads for the same question.
 fn namespace_bindings_augment_from_module_atoms(
   root: Node,
   bindings: Map<Symbol, Symbol>
 ) -> Map<Symbol, Symbol> {
-  let root_bindings = harvest_module_root_named_bindings(root: root, acc: bindings)
-  match namespace_graft_module_body_optional(root: root) {
-    Present { value: body } => harvest_module_root_named_bindings(root: body, acc: root_bindings)
-    Absent => root_bindings
-  }
-}
-
-// A MODULE ROOT'S BARE BINDINGS OMIT ITS SERVICE NAMESPACES (the operator's nesting ban; XL-2 service
-// spine). A named edge whose target is a marked namespace body -- the prefix `s` of `service s.F` -- is a
-// path segment, never a lexical binding: its members stay reachable by their qualified paths through the
-// symbol index, and v2.std.symbol_index NamespaceBodyDeclared keeps the index walk from answering with
-// it. This is the same classification at the module root's binding harvest, which resolve consults
-// before the index. Module-root only: an Arrow domain's binders (add_arrow_domain_named_params) are
-// harvested by harvest_conj_named_bindings, unchanged.
-fn harvest_module_root_named_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
-  match root.kind {
-    TypeNode { connective: c } =>
-      match c {
-        Conj => harvest_module_root_conj_bindings(root: root, acc: acc)
-        Atom { identity: _ } => acc
-        Disj => acc
-        Arrow => acc
-        Cardinality => acc
-        Instantiation => acc
-      }
-    ComputationNode { behavior: _ } => acc
-  }
-}
-
-// Only a Conj root has named members to harvest; every other node kind binds nothing at the module root.
-fn harvest_module_root_conj_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
-  fold(root.children, init: acc, f: fn(a, e) {
-    if module_binding_edge_is_namespace_body(e: e) {
-      a
-    } else {
-      match try_edge_declared_binding(e: e) {
-        Present { value: b } => map_insert(a, b.name, b.name)
-        Absent => a
-      }
-    }
-  })
-}
-
-fn module_binding_edge_is_namespace_body(e: Edge) -> Bool {
-  match e.label {
-    Authored { name: _ } => namespace_graft_node_is_module_body(node: e.target)
-    StructuralLabel { label: _ } => false
-    Positional => false
-  }
+  fold(module_root_bindings(root: root), init: bindings, f: fn(acc, b) { map_insert(acc, b.name, b.name) })
 }
 
 // A FRAME'S BINDERS, BUILT ONCE: the name each binder answers (locals, what lookup_chain reads) and,
@@ -1722,24 +1675,17 @@ fn try_resolve_qualified_name_node(ctx: ResolveContext, n: Node) -> Optional<Out
 // the type, exactly as resolve_bound_head_projection's own header says. A path admitted here as a
 // projection off a fieldless receiver still refuses at infer -- this change moves which paths are READ as
 // projections, and changes nothing about what a projection must satisfy.
-// A ROOT BINDING NAMES A VALUE EXACTLY WHEN THE DECLARATION IT NAMES IS AN ARROW. Body lowering realizes a
-// `data` item as the nullary function that returns it (v2.compiler.body_lowering_fold
-// body_lower_data_decl_to_member), so a module-level value is an Arrow declaration, while a type or a
-// namespace is not. The kind is READ OFF THE DECLARATION the binding already names -- the same declaring path
-// resolve_atom_bound mints from -- and is not stored beside the binding, so the two cannot drift. A root head
-// whose path has no indexed declaration names no value and keeps the declaration reading.
+// A ROOT BINDING NAMES A VALUE EXACTLY WHEN THE DECLARATION IT NAMES DOES (v2.compiler.lexical_scope
+// declaration_names_value). The kind is READ OFF THE DECLARATION the binding already names -- the same
+// declaring path resolve_atom_bound mints from -- and is not stored beside the binding, so the two cannot
+// drift. A root head whose path has no indexed declaration names no value and keeps the declaration reading.
 fn root_binding_names_value(namespace: Namespace, canonical: Symbol) -> Bool {
   match symbol_index_entry_at(
     index: namespace.symbol_index,
     qualified_path: root_binding_declaration_path(namespace: namespace, name: canonical)
   ) {
     Absent => false
-    Present { value: decl } =>
-      match decl.kind {
-        TypeNode { connective: Arrow } => true
-        TypeNode { connective: _ } => false
-        ComputationNode { behavior: _ } => false
-      }
+    Present { value: decl } => declaration_names_value(declaration: decl)
   }
 }
 

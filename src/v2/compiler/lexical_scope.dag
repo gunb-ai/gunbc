@@ -29,6 +29,8 @@ import v2.std.node {
   positional_edges
 }
 import v2.std.type_binder { edge_is_type_params }
+import v2.compiler.namespace_graft { namespace_graft_module_body_optional }
+import v2.extdeps.languages.dag { namespace_graft_node_is_module_body }
 
 // WHERE A NAME IS BOUND LEXICALLY, AS ONE FACT. Resolution decides what a name means at a site by the
 // frames that enclose the site; module acquisition decides whether a dotted spelling at a site can name
@@ -38,8 +40,9 @@ import v2.std.type_binder { edge_is_type_params }
 // each reads it: which names a binding construct introduces, and which of its children each name is
 // visible in. Neither stage restates the other's table.
 //
-// The module imports only std and v2.std and is a pure reading of one Node, so resolution and acquisition
-// both import it and no import cycle can form.
+// The module is a pure reading of one Node and imports only std, v2.std and the module-body marker's
+// producer (v2.compiler.namespace_graft), none of which import a stage that reads it, so resolution and
+// acquisition both import it and no import cycle can form.
 
 type DeclaredBinding {
   name: Symbol
@@ -214,5 +217,66 @@ fn bind_slot_sees_binder(slot: BindSlot) -> Bool {
     BindBinderSlot => false
     BindValueSlot => false
     BindBodySlot => true
+  }
+}
+
+// ---- Module root ---------------------------------------------------------------------------------------
+
+// WHAT A MODULE ROOT BINDS, as one producer. The names a module's own tree introduces at its root are the
+// AUTHORED Named edges of the root Conj and of the module body the namespace graft stamped, each with the
+// declaration it names (v2.compiler.symbol_index_fill indexes edge.target as that declaration). A service
+// namespace the body declares is a path segment, never a bare binding, so it is not a member: its members
+// stay reachable by their qualified paths. Resolution builds its root frame from this list
+// (v2.compiler.resolve namespace_bindings_augment_from_module_atoms), and module acquisition reads which of
+// those declarations name a value from the same list.
+type ModuleRootBinding {
+  name: Symbol
+  declaration: Node
+}
+
+fn module_binding_edge_is_namespace_body(e: Edge) -> Bool {
+  match e.label {
+    Authored { name: _ } => namespace_graft_node_is_module_body(node: e.target)
+    StructuralLabel { label: _ } => false
+    Positional => false
+  }
+}
+
+fn module_root_bindings(root: Node) -> List<ModuleRootBinding> {
+  let at_root = module_node_root_bindings(root: root, acc: [])
+  match namespace_graft_module_body_optional(root: root) {
+    Present { value: body } => module_node_root_bindings(root: body, acc: at_root)
+    Absent => at_root
+  }
+}
+
+// Only a Conj root has named members to bind; every other node kind binds nothing at the module root.
+fn module_node_root_bindings(root: Node, acc: List<ModuleRootBinding>) -> List<ModuleRootBinding> {
+  match root.kind {
+    TypeNode { connective: Conj } =>
+      fold(root.children, init: acc, f: fn(a, e) {
+        if module_binding_edge_is_namespace_body(e: e) {
+          a
+        } else {
+          match try_edge_declared_binding(e: e) {
+            Present { value: b } => list_snoc_item(xs: a, item: ModuleRootBinding { name: b.name, declaration: e.target })
+            Absent => a
+          }
+        }
+      })
+    TypeNode { connective: _ } => acc
+    ComputationNode { behavior: _ } => acc
+  }
+}
+
+// A DECLARATION NAMES A VALUE EXACTLY WHEN IT IS AN ARROW. Body lowering realizes a `data` item as the
+// nullary function that returns it (v2.compiler.body_lowering_fold body_lower_data_decl_to_member), so a
+// module-level value is an Arrow declaration, while a type or a namespace is not. A name bound at a module
+// root whose declaration names a value is the head of a field projection exactly as a frame binder is.
+fn declaration_names_value(declaration: Node) -> Bool {
+  match declaration.kind {
+    TypeNode { connective: Arrow } => true
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
   }
 }

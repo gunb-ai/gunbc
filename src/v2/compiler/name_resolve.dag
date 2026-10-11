@@ -9,7 +9,6 @@ import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_bi
 import v2.std.declaration_marker { TestCodeIndex, test_code_index_add_module, test_code_index_empty }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
 import v2.compiler.resolve {
-  module_binding_edge_is_namespace_body,
   Namespace,
   namespace_bindings_augment_from_module_atoms,
   ObservationIncomplete,
@@ -23,7 +22,7 @@ import v2.compiler.resolve {
   resolve_walk_with_namespace_policy,
   ResolveWalkAccepted
 }
-import v2.compiler.lexical_scope { DeclaredBinding, try_edge_declared_binding }
+import v2.compiler.lexical_scope { DeclaredBinding, module_binding_edge_is_namespace_body, try_edge_declared_binding }
 import v2.std.resolution_policy {
   ImportScoped,
   NameResolutionPolicy,
@@ -470,7 +469,7 @@ type ExportAdmissionScope
   = OwnModuleBody
   | ImportedModuleExports
 
-// A SERVICE NAMESPACE OF THE SUBJECT'S OWN BODY IS NOT ADMITTED AS A BARE NAME (v2.compiler.resolve
+// A SERVICE NAMESPACE OF THE SUBJECT'S OWN BODY IS NOT ADMITTED AS A BARE NAME (v2.compiler.lexical_scope
 // module_binding_edge_is_namespace_body). This is the multi-root route's counterpart of the single-tree
 // module-root harvest, so both resolution entries agree on the subject's own names; an imported module's
 // service namespaces are admitted as any export is.

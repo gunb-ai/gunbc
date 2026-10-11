@@ -8021,7 +8021,7 @@ fn infer_admission_from_roster(
 // carrier, not the image root ... re-hangs the Arrow under the module; the Arrow is what stands for
 // the authored declaration in the admitted tree"). So an AUTHORED edge whose target is an Arrow
 // inside the grafted body names the declaration the calls below it sit in — the same edge resolve
-// harvests the binding from (v2.compiler.03_resolve harvest_module_root_named_bindings /
+// harvests the binding from (v2.compiler.lexical_scope module_root_bindings /
 // try_edge_declared_binding). Keying REPLACES the caller, so a nested declaration keys its own
 // calls once the descent passes its authored edge (innermost enclosing declaration wins, which is
 // the caller v1 judged). Descending through any other edge keeps the enclosing caller.
