@@ -2,7 +2,7 @@ module extdeps.ninfer.ninfer_serve
 
 import std.types { NonEmptyStr, String, Bool, List, Int }
 import std.nat { Nat }
-import std.measure { Millisecond }
+import std.measure { Millisecond, TokenCount }
 import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -66,10 +66,10 @@ type NinferSpeculation
 type NinferServeLaunch {
   model_id: NonEmptyStr
   max_concurrency: Nat
-  max_context: Nat
+  max_context: TokenCount
   max_pending_requests: Nat
   pending_timeout: Millisecond
-  default_max_tokens: Nat
+  default_max_tokens: TokenCount
   kv_dtype: NinferKvDtype
   kv_capacity_auto: Bool
   speculation: NinferSpeculation
@@ -90,4 +90,12 @@ data ninfer_message_reasoning_field: NonEmptyStr = "reasoning_content" as NonEmp
 // so no decoder reads this while that holds. It is the closer harness_unit_thinking_end_token must answer
 // with to stay total, spelled as the Qwen family's usual think tag and standing as an unread assumption
 // (ninfer_upstream_read_obligation) until the chat template is read.
-data ninfer_inline_think_end_token: NonEmptyStr = "</think>" as NonEmptyStr
+type NinferAssumedToken {
+  token: NonEmptyStr
+  standing: CitedFigureStanding
+}
+
+data ninfer_inline_think_end_token: NinferAssumedToken = NinferAssumedToken {
+  token: "</think>" as NonEmptyStr,
+  standing: TranscribedUncited { read_obligation: ninfer_upstream_read_obligation },
+}

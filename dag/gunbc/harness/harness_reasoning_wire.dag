@@ -452,7 +452,7 @@ fn harness_unit_thinking_end_token(unit: HarnessServingUnit) -> NonEmptyStr {
     DeepseekV4FlashOnVllm => deepseek_v4_thinking_end_token
     Glm53FlashOnVllm => glm_5_3_flash_thinking_end_token
     NemotronUltraFreeOnOpenRouter => nemotron_ultra_thinking_end_token
-    Qwen3_8_27bOnNinfer => ninfer_inline_think_end_token
+    Qwen3_8_27bOnNinfer => ninfer_inline_think_end_token.token
   }
 }
 
@@ -463,6 +463,6 @@ fn harness_unit_declared_context_ceiling(unit: HarnessServingUnit) -> TokenCount
     DeepseekV4FlashOnVllm => deepseek_v4_context_length
     Glm53FlashOnVllm => glm_5_3_flash_context_length
     NemotronUltraFreeOnOpenRouter => nemotron_ultra_free_context_length
-    Qwen3_8_27bOnNinfer => token_count(count: qwen3_8_27b_nvfp4_row.context_tokens)
+    Qwen3_8_27bOnNinfer => qwen3_8_27b_nvfp4_row.context_tokens
   }
 }

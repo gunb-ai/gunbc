@@ -11,7 +11,7 @@ import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable
 import extdeps.network.endpoint { SocketAddress, socket_address, render_network_host, host_by_ipv4 }
 import extdeps.network.ipv4 { ipv4_address }
 import extdeps.ssh.openssh_port_forwarding { PortForwardSpec, LocalForward }
-import std.measure { millisecond }
+import std.measure { millisecond, token_count }
 import extdeps.external_authority { TranscribedUncited }
 import extdeps.ninfer.ninfer_serve { NinferServeLaunch, NinferKvFp8, NinferMtp, ninfer_upstream_read_obligation, ninfer_authorization_header_line, ninfer_models_path, ninfer_chat_completions_path, ninfer_health_path }
 import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, Qwen3_8_27bOnNinfer, harness_unit_model_id }
@@ -103,10 +103,10 @@ type HarnessOperatorRoute {
 data operator_observed_launch: NinferServeLaunch = NinferServeLaunch {
   model_id: "qwen3.8-27b" as NonEmptyStr,
   max_concurrency: 8,
-  max_context: 262144,
+  max_context: token_count(count: 262144),
   max_pending_requests: 64,
   pending_timeout: millisecond(count: 900000),
-  default_max_tokens: 32768,
+  default_max_tokens: token_count(count: 32768),
   kv_dtype: NinferKvFp8,
   kv_capacity_auto: true,
   speculation: NinferMtp { draft_tokens: 3, lm_head_draft: true },
