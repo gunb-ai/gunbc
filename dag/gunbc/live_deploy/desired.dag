@@ -25,7 +25,7 @@ import gunbc.roadmap_dashboard_instance {
   ProdRoleRealizationRefusal,
   prod_role_realization_refusal_detail,
   ProdRoleHolderUnactuatable,
-  ProdRoleHolderAmbiguous,
+  ProdRoleHolderRowsDuplicated,
   prod_role_realization,
   prod_role_realization_in,
   public_builtin_dashboard_instances,
@@ -178,7 +178,7 @@ fn prod_role_desired_deployment_over(realization: ProdRoleRealization, rows: Lis
     ProdRoleRealizedBy { holder } =>
       let matching = rows |> filter(r => r.instance.deployment == holder.instance.deployment)
       if count(matching) > 1 {
-        ProdRoleDeploymentRefused { cause: ProdRoleHolderAmbiguous { deployment: holder.instance.deployment, count: count(matching) } }
+        ProdRoleDeploymentRefused { cause: ProdRoleHolderRowsDuplicated { deployment: holder.instance.deployment, count: count(matching) } }
       } else {
         match matching |> first {
           Present { value: row } => ProdRoleDeploymentSelected { deployment: row }

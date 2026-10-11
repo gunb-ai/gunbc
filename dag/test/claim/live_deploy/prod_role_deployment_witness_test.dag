@@ -14,7 +14,7 @@ import gunbc.deployment_risk {
 import gunbc.roadmap_dashboard_instance {
   ProdRoleUnheld,
   ProdRoleHolderUnactuatable,
-  ProdRoleHolderAmbiguous,
+  ProdRoleHolderRowsDuplicated,
   prod_role_realization,
 }
 import gunbc.live_deploy.desired {
@@ -129,10 +129,10 @@ test fn a_holder_on_srv1_is_admitted_by_the_srv1_access_and_the_launch_vantage()
 
 // A roster that lists the holder's deployment twice is refused as ambiguous, never resolved by
 // taking the first row (DESIGN 5: no silent choice); the real roster's single row still selects.
-test fn a_duplicated_roster_row_refuses_as_ambiguous_and_never_picks_one() -> Bool {
+test fn a_duplicated_roster_row_refuses_as_rows_duplicated_and_never_picks_one() -> Bool {
   let duplicated = list_append(desired_deployment_roster(), [srv1_production_desired_deployment()])
   match prod_role_desired_deployment_over(realization: prod_role_actuated_realization_in(selection: ProdRoleHeldBy { deployment: srv1_daily_workspace_deployment }), rows: duplicated) {
-    ProdRoleDeploymentRefused { cause: ProdRoleHolderAmbiguous { deployment: d, count: n } } => d == srv1_daily_workspace_deployment && n == 2
+    ProdRoleDeploymentRefused { cause: ProdRoleHolderRowsDuplicated { deployment: d, count: n } } => d == srv1_daily_workspace_deployment && n == 2
     _ => false
   }
 }
