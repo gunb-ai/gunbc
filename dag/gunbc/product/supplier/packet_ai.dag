@@ -1,18 +1,32 @@
 module product.supplier.packet_ai
 
-import std.types { List, Bool, Int }
-import std.measure { ByteSize, HardwareThreadCount, MoneyPerHour, money_amount_micro }
-import product.fabric.work { Shape, HardRequirements }
+import std.types { List, Bool, Int, NonEmptyStr, Timestamp }
+import std.measure {
+  HardwareThreadCount, MoneyPerHour, Second, money_amount_micro, gibibyte, gibibyte_to_byte_size,
+}
+import std.decl_ref { decl_ref, DeclarationRef }
+import product.fabric.identity { FabricIdentity }
+import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef }
 import product.fabric.envelope { ResourceEnvelope, GpuRequirement }
-import product.fabric.supply { OfferQuote, QuotedPerHour }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.supply { SupplierOffer, OfferQuote, QuotedPerHour, QuotedSupply }
+import product.fabric.provider_route {
+  ProviderRegionObservation, ProviderRouteStanding, ProviderRouteObserved, ProviderRouteRegionUnobserved,
+  provider_route_from_region,
+}
+import product.supplier.ubicloud {
+  SupplierOfferProjection, UnexpressedSupplyFact, IsolationNotObserved, OfferBinding, OfferBound,
+  OfferBindingRefused, ReadinessObservation, ReadinessMeasured, ReadinessUnmeasured,
+}
 import extdeps.gpu.types { Cuda }
 import extdeps.currency.currency { Usd }
 import extdeps.cloud.packet_ai { PacketAiProduct }
 
 // PACKET.AI AS A SUPPLIER: POLICY OVER extdeps.cloud.packet_ai, NOTHING RESTATED.
 //
-// ROLE: Packet is the SERVING supplier; Vast (product.supplier.vast_ai) is qualification only. That
-// split is this repository's decision, so it lives here and not in either interface module.
+// ROLE: Packet is the SERVING supplier; Vast (product.supplier.vast_ai) is qualification only. The
+// split is this repository's decision, so it lives here and in neither interface module.
 type PacketAiRentalRole {
   serving_seat: Bool
   benchmark_qualification: Bool
@@ -23,26 +37,36 @@ data packet_ai_rental_role: PacketAiRentalRole = PacketAiRentalRole {
   benchmark_qualification: false,
 }
 
-// WHAT THE FABRIC CANNOT SAY ABOUT A PACKET POOL, AND WHAT THE UPSTREAM DOES NOT SAY EITHER.
-// GpuCountNotExpressibleInShape: ResourceEnvelope has no GPU-count axis, and Packet's create body has
-// no count field either. TierNotEstablished: the RTX 6000 Pro pool is sold as shared "Dynamic"
-// infrastructure; until a pool is established as a whole card, it is not a quality-conditioned seat
-// (DESIGN §4b), and this projection must not claim it is.
-type PacketAiUnexpressedFact
-  = GpuCountNotExpressibleInShape
+// HOW MANY GPUs ONE PACKET INSTANCE HAS IS NOT A REQUEST PARAMETER: the create body names a pool and
+// a region and carries no count, so the pool the vendor sells fixes it. The count therefore arrives
+// as a typed fact about the pool, and a pool whose count nobody has established refuses to bind, so a
+// 2x requirement is met only by a pool KNOWN to hand out two.
+type PacketAiPoolGpuCount
+  = CountFixedByPool { gpus_per_instance: Int }
+  | CountUnestablished { obligation: DeclarationRef }
+
+// THE DYNAMIC (SHARED) TIER IS A TYPED FACT, NOT A SILENT ASSUMPTION. Packet sells the RTX 6000 Pro
+// 96GB as shared infrastructure whose scheduler co-locates workloads; a Dedicated tier gives the whole
+// card. Until a pool is established as whole-card it is not a quality-conditioned seat (DESIGN §4b).
+// This is recorded on every projection and is the fact the operator ruling will consume.
+type PacketAiTierFact
+  = TierShared
+  | TierWholeCard
   | TierNotEstablished
 
-fn packet_ai_shape(threads: HardwareThreadCount, min_vram: ByteSize) -> Shape {
-  Shape {
-    hard: HardRequirements { threads: threads },
-    envelope: ResourceEnvelope {
-      cpu: none,
-      gpu: Present { value: GpuRequirement { min_vram: min_vram, runtimes: [Cuda] } },
-      memory: none,
-      storage: none,
-      network: none,
-    },
-  }
+// Nobody has established whether a pool is a whole card, so that is what is stated.
+fn packet_ai_tier_standing() -> PacketAiTierFact {
+  TierNotEstablished
+}
+
+data packet_ai_vram_unstated_obligation: NonEmptyStr = "A Packet product with vramGb null states no per-GPU memory, so no shape can be projected from it. Read the pool's GPU model memory from the vendor's console or datasheet and cite it."
+
+fn packet_ai_route(region: ProviderRegionObservation) -> ProviderRouteStanding {
+  provider_route_from_region(
+    provider: decl_ref(module_path: "extdeps.cloud.packet_ai", decl_name: "extdeps_external_authority_anchor"),
+    service: decl_ref(module_path: "extdeps.cloud.packet_ai", decl_name: "packet_ai_pricing_page"),
+    region: region,
+  )
 }
 
 // pricePerHourCents is an integer; one cent is 10_000 micro-dollars, so the conversion is exact.
@@ -51,4 +75,84 @@ fn packet_ai_quote(product: PacketAiProduct) -> OfferQuote {
     amount: money_amount_micro(count: product.pricePerHourCents * 10000),
     currency: Usd,
   })
+}
+
+data packet_ai_offer_quantity_bound: Int = 1
+
+fn packet_ai_unexpressed() -> List<UnexpressedSupplyFact> {
+  [IsolationNotObserved]
+}
+
+fn bind_packet_ai_offer<P>(
+  principal: P,
+  executor: P,
+  product: PacketAiProduct,
+  gpu_count: PacketAiPoolGpuCount,
+  threads: HardwareThreadCount,
+  billing_quantum: Second,
+  capabilities: CapabilityManifestRef,
+  trust_domain: TrustDomainRef,
+  readiness: ReadinessObservation,
+  region: ProviderRegionObservation,
+  quoted_at: Timestamp,
+  valid_until: Timestamp,
+  receipt: ObservationReceiptRef,
+) -> OfferBinding<P> {
+  match gpu_count {
+    CountUnestablished { obligation } =>
+      OfferBindingRefused { runs_on_label: product.name, cause: obligation },
+    CountFixedByPool { gpus_per_instance } =>
+    match product.vramGb {
+      Absent =>
+        OfferBindingRefused {
+          runs_on_label: product.name,
+          cause: decl_ref(module_path: "product.supplier.packet_ai", decl_name: "packet_ai_vram_unstated_obligation"),
+        }
+      Present { value: vram_gb } =>
+      match packet_ai_route(region: region) {
+        ProviderRouteRegionUnobserved { obligation } =>
+          OfferBindingRefused { runs_on_label: product.name, cause: obligation },
+        ProviderRouteObserved { route: bound_route } =>
+        match readiness {
+          ReadinessUnmeasured { obligation } =>
+            OfferBindingRefused { runs_on_label: product.name, cause: obligation },
+          ReadinessMeasured { ready_at, receipt: readiness_receipt } =>
+            OfferBound {
+              bound: SupplierOfferProjection {
+                offer: SupplierOffer {
+                  id: FabricIdentity { principal: principal, key: product.name },
+                  executor: executor,
+                  route: bound_route,
+                  shape: Shape {
+                    hard: HardRequirements { threads: threads },
+                    envelope: ResourceEnvelope {
+                      cpu: none,
+                      gpu: Present {
+                        value: GpuRequirement {
+                          count: gpus_per_instance,
+                          min_vram: gibibyte_to_byte_size(g: gibibyte(count: vram_gb)),
+                          runtimes: [Cuda],
+                        },
+                      },
+                      memory: none,
+                      storage: none,
+                      network: none,
+                    },
+                  },
+                  capabilities: capabilities,
+                  trust_domain: trust_domain,
+                  isolation: IsolationProfile { guarantees: [] },
+                  quantity_bound: packet_ai_offer_quantity_bound,
+                  ready_at: ready_at,
+                  quote: packet_ai_quote(product: product),
+                  billing_quantum: billing_quantum,
+                  evidence: QuotedSupply { quoted_at: quoted_at, valid_until: valid_until, receipt: receipt },
+                },
+                unexpressed: packet_ai_unexpressed(),
+              },
+            },
+        },
+      },
+    },
+  }
 }

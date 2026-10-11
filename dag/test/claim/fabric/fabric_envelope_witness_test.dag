@@ -16,7 +16,7 @@ import product.fabric.supply {
   unmet_shape_axes, unmet_shape_axis_wire, offer_covers_shape,
   MemoryNotCovered, ArchitectureMismatch, ThreadsNotCovered,
   MemoryNotOffered, ArchitectureNotOffered,
-  VramNotCovered, GpuNotOffered, GpuRuntimeNotOffered,
+  VramNotCovered, GpuNotOffered, GpuRuntimeNotOffered, GpuCountNotCovered,
 }
 
 fn shape_of(threads: Int, arch: Architecture?, bytes: Int) -> Shape {
@@ -57,6 +57,7 @@ test fn an_eight_gib_x64_need_is_not_covered_by_a_six_gib_arm_offer() -> Bool {
          VramNotCovered { required: _, offered: _ } => false
          GpuNotOffered { required: _ } => false
          GpuRuntimeNotOffered { required: _ } => false
+         GpuCountNotCovered { required: _, offered: _ } => false
        })
     && any(unmet, a => match a {
          ArchitectureMismatch { required: _, offered: _ } => true
@@ -67,6 +68,7 @@ test fn an_eight_gib_x64_need_is_not_covered_by_a_six_gib_arm_offer() -> Bool {
          VramNotCovered { required: _, offered: _ } => false
          GpuNotOffered { required: _ } => false
          GpuRuntimeNotOffered { required: _ } => false
+         GpuCountNotCovered { required: _, offered: _ } => false
        })
 }
 
@@ -155,7 +157,7 @@ fn gpu_shape(threads: Int, bytes: Int, gpu: GpuRequirement?) -> Shape {
 }
 
 fn cuda_gpu(vram: Int) -> GpuRequirement? {
-  Present { value: GpuRequirement { min_vram: byte_size(vram), runtimes: [Cuda] } }
+  Present { value: GpuRequirement { count: 1, min_vram: byte_size(vram), runtimes: [Cuda] } }
 }
 
 // THE DISCRIMINATING RED, AND IT WAS GREEN BEFORE THIS AXIS EXISTED.
@@ -179,6 +181,7 @@ test fn work_demanding_vram_is_not_fungible_with_an_offer_stating_no_gpu() -> Bo
            VramNotCovered { required: _, offered: _ } => false
            GpuNotOffered { required: _ } => true
            GpuRuntimeNotOffered { required: _ } => false
+           GpuCountNotCovered { required: _, offered: _ } => false
          })
 }
 
@@ -197,6 +200,7 @@ test fn a_gpu_smaller_than_the_requirement_is_not_fungible() -> Bool {
            VramNotCovered { required: _, offered: _ } => true
            GpuNotOffered { required: _ } => false
            GpuRuntimeNotOffered { required: _ } => false
+           GpuCountNotCovered { required: _, offered: _ } => false
          })
 }
 
@@ -205,7 +209,7 @@ test fn a_gpu_smaller_than_the_requirement_is_not_fungible() -> Bool {
 test fn ample_vram_on_the_wrong_runtime_is_not_fungible() -> Bool {
   let needed = gpu_shape(threads: 8, bytes: eight_gib(), gpu: cuda_gpu(vram: six_gib()))
   let offered = gpu_shape(threads: 8, bytes: eight_gib(),
-    gpu: Present { value: GpuRequirement { min_vram: byte_size(eight_gib()), runtimes: [Rocm] } })
+    gpu: Present { value: GpuRequirement { count: 1, min_vram: byte_size(eight_gib()), runtimes: [Rocm] } })
   !offer_covers_shape(offered: offered, needed: needed)
     && any(unmet_shape_axes(offered: offered, needed: needed), a =>
          match a {
@@ -217,6 +221,7 @@ test fn ample_vram_on_the_wrong_runtime_is_not_fungible() -> Bool {
            VramNotCovered { required: _, offered: _ } => false
            GpuNotOffered { required: _ } => false
            GpuRuntimeNotOffered { required: _ } => true
+           GpuCountNotCovered { required: _, offered: _ } => false
          })
 }
 

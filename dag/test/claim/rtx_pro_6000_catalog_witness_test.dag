@@ -8,7 +8,27 @@ import extdeps.gpu.nvidia {
   nvidia_rtx_pro_6000_server_catalog,
 }
 import extdeps.pricing.hetzner_dedicated { hetzner_gex131_listed }
-import product.supplier.vast_ai { vast_ai_rental_role, vast_ai_unexpressed }
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import std.measure { hardware_thread_count, byte_size, second, money_amount_micro, MoneyPerHour }
+import extdeps.currency.currency { Usd }
+import product.fabric.provider_route { ProviderRegionObservation, ProviderRegionRead, ProviderRegionUnread }
+import product.fabric.work { Shape }
+import extdeps.external_authority { CitedToAuthority, TranscribedUncited, ObservedByReceipt }
+import extdeps.gpu.nvidia {
+  rtx_pro_6000_workstation_cuda_core_standing, rtx_pro_6000_max_q_cuda_core_standing,
+  rtx_pro_6000_server_cuda_core_standing, rtx_pro_6000_workstation_figure_citations,
+  rtx_pro_6000_max_q_figure_citations, rtx_pro_6000_server_figure_citations,
+}
+import product.fabric.supply { unmet_shape_axes }
+import product.supplier.ubicloud { ReadinessMeasured, OfferBound, OfferBindingRefused }
+import product.supplier.vast_ai { vast_ai_rental_role, bind_vast_ai_offer }
+import product.supplier.packet_ai {
+  bind_packet_ai_offer, PacketAiPoolGpuCount, CountFixedByPool, CountUnestablished,
+  packet_ai_tier_standing, PacketAiTierFact, TierNotEstablished, TierShared, TierWholeCard,
+  packet_ai_vram_unstated_obligation,
+}
+import extdeps.cloud.packet_ai { PacketAiProduct, PacketAiRegion }
 import extdeps.cloud.vast_ai { VastAiOffer }
 import product.supplier.packet_ai { packet_ai_rental_role }
 
@@ -45,14 +65,142 @@ test fn w_roles_are_disjoint() -> Bool {
     && !vast_ai_rental_role.serving_seat
 }
 
-test fn w_vast_two_gpu_offer_count_is_carried_not_dropped() -> Bool {
-  let offer = VastAiOffer {
-    id: 1, machine_id: 2, gpu_name: "RTX PRO 6000 S", num_gpus: 2, gpu_ram: 97887.0,
+data observed_region: NonEmptyStr = "observed-region-for-this-witness"
+
+fn a_read_region() -> ProviderRegionObservation {
+  ProviderRegionRead {
+    region: decl_ref(module_path: "test.claim.rtx_pro_6000_catalog_witness", decl_name: "observed_region"),
+  }
+}
+
+fn vast_offer(gpus: Int) -> VastAiOffer {
+  VastAiOffer {
+    id: 1, machine_id: 2, gpu_name: "RTX PRO 6000 S", num_gpus: gpus, gpu_ram: 97887.0,
     gpu_total_ram: 195774.0, gpu_mem_bw: 1597.0, compute_cap: 1200, cpu_cores_effective: 16.0,
     cpu_ram: 128000.0, disk_space: 500.0, dph_total: 3.2, reliability: 0.99,
     verification: "verified", geolocation: "US", rentable: true, rented: false,
   }
-  match vast_ai_unexpressed(offer: offer) {
-    GpuCountNotExpressibleInShape { num_gpus } => num_gpus == 2
+}
+
+fn hourly() -> MoneyPerHour {
+  MoneyPerHour { amount: money_amount_micro(count: 3200000), currency: Usd }
+}
+
+fn vast_shape_for(gpus: Int, region: ProviderRegionObservation) -> Shape? {
+  match bind_vast_ai_offer(
+    principal: "gunbc", executor: "gunbc", offer: vast_offer(gpus: gpus),
+    threads: hardware_thread_count(count: 16), min_vram: byte_size(103079215104), rate: hourly(),
+    billing_quantum: second(count: 1), capabilities: "cap-1", trust_domain: "trust-1",
+    readiness: ReadinessMeasured { ready_at: "2026-10-11T00:00:00Z", receipt: "r1" },
+    region: region, quoted_at: "2026-10-11T00:00:00Z", valid_until: "2026-10-12T00:00:00Z",
+    receipt: "r2", key: "vast-offer-1",
+  ) {
+    OfferBound { bound: b } => Present { value: b.offer.shape }
+    OfferBindingRefused { runs_on_label: _, cause: _ } => none
   }
+}
+
+// Unmet axes of an offered-GPUs shape against a needed-GPUs shape; -1 when either refused to bind.
+fn unmet_count(offered_gpus: Int, needed_gpus: Int) -> Int {
+  match vast_shape_for(gpus: offered_gpus, region: a_read_region()) {
+    Absent => 0 - 1
+    Present { value: offered } =>
+      match vast_shape_for(gpus: needed_gpus, region: a_read_region()) {
+        Absent => 0 - 1
+        Present { value: needed } => count(unmet_shape_axes(offered: offered, needed: needed))
+      }
+  }
+}
+
+// A 1x and a 2x offer of one card are different shapes, and the fabric's own fold tells them apart:
+// a 2x requirement is NOT covered by a 1x offer (RED) and IS covered by a 2x offer (control).
+test fn w_one_gpu_offer_does_not_cover_a_two_gpu_requirement() -> Bool {
+  unmet_count(offered_gpus: 1, needed_gpus: 2) == 1
+}
+
+test fn w_two_gpu_offer_covers_a_two_gpu_requirement() -> Bool {
+  unmet_count(offered_gpus: 2, needed_gpus: 2) == 0
+}
+
+test fn w_vast_unobserved_region_refuses() -> Bool {
+  match vast_shape_for(gpus: 2, region: ProviderRegionUnread {
+    obligation: decl_ref(module_path: "test.claim.rtx_pro_6000_catalog_witness", decl_name: "observed_region"),
+  }) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+fn packet_product(vram: Int?) -> PacketAiProduct {
+  PacketAiProduct {
+    id: "p1", name: "RTX 6000 Pro 96GB", featured: true, poolIds: [1], pricePerHourCents: 189,
+    totalAvailableGpus: 8, vramGb: vram,
+    regions: [PacketAiRegion { id: none, name: "r", city: "c", country: "US" }],
+  }
+}
+
+fn packet_binds(count: PacketAiPoolGpuCount, vram: Int?) -> String {
+  match bind_packet_ai_offer(
+    principal: "gunbc", executor: "gunbc", product: packet_product(vram: vram), gpu_count: count,
+    threads: hardware_thread_count(count: 16), billing_quantum: second(count: 3600),
+    capabilities: "cap-1", trust_domain: "trust-1",
+    readiness: ReadinessMeasured { ready_at: "2026-10-11T00:00:00Z", receipt: "r1" },
+    region: a_read_region(), quoted_at: "2026-10-11T00:00:00Z",
+    valid_until: "2026-10-12T00:00:00Z", receipt: "r2",
+  ) {
+    OfferBound { bound: _ } => "bound"
+    OfferBindingRefused { runs_on_label: _, cause: _ } => "refused"
+  }
+}
+
+test fn w_packet_pool_with_fixed_count_binds() -> Bool {
+  packet_binds(count: CountFixedByPool { gpus_per_instance: 2 }, vram: Present { value: 96 }) == "bound"
+}
+
+// RED: a pool whose GPU count nobody established refuses; it is not assumed to be one.
+test fn w_packet_pool_with_unestablished_count_refuses() -> Bool {
+  packet_binds(
+    count: CountUnestablished {
+      obligation: decl_ref(module_path: "product.supplier.packet_ai", decl_name: "packet_ai_vram_unstated_obligation"),
+    },
+    vram: Present { value: 96 },
+  ) == "refused"
+}
+
+test fn w_packet_product_without_vram_refuses() -> Bool {
+  packet_binds(count: CountFixedByPool { gpus_per_instance: 2 }, vram: none) == "refused"
+}
+
+test fn w_packet_tier_is_recorded_not_assumed() -> Bool {
+  match packet_ai_tier_standing() {
+    TierNotEstablished => true
+    TierShared => false
+    TierWholeCard => false
+  }
+}
+
+// Only the Server Edition page states the CUDA core count; the other two are an honest bet.
+test fn w_cuda_core_standing_is_cited_only_for_server() -> Bool {
+  (match rtx_pro_6000_server_cuda_core_standing {
+    CitedToAuthority { authority: _ } => true
+    TranscribedUncited { read_obligation: _ } => false
+    ObservedByReceipt { observed: _ } => false
+  })
+    && (match rtx_pro_6000_workstation_cuda_core_standing {
+      TranscribedUncited { read_obligation: _ } => true
+      CitedToAuthority { authority: _ } => false
+      ObservedByReceipt { observed: _ } => false
+    })
+    && (match rtx_pro_6000_max_q_cuda_core_standing {
+      TranscribedUncited { read_obligation: _ } => true
+      CitedToAuthority { authority: _ } => false
+      ObservedByReceipt { observed: _ } => false
+    })
+}
+
+// The server list cites the core count on top of the three figures the others cite.
+test fn w_figure_citation_lists_cover_the_cited_fields() -> Bool {
+  count(rtx_pro_6000_workstation_figure_citations) == 3
+    && count(rtx_pro_6000_max_q_figure_citations) == 3
+    && count(rtx_pro_6000_server_figure_citations) == 4
 }
