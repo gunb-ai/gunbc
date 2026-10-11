@@ -268,6 +268,12 @@ fn target_host_of(rows: List<DesiredDeployment>, deployment: DeploymentId) -> No
 // deployment realized off its own target; two deployments realized on one host; two deployments
 // realized anywhere; a broker on a host where no store is realized. Only then are realizations formed,
 // each (deployment, host) with the members seen for it, broker included from the same host.
+// THE HOST-LEVEL BROKER (gunbc_approval_broker_unit_path) is SightedBroker: it carries no
+// DeploymentId. Attribution is derived, never guessed. The broker joins the ObservedRealization of
+// the unique store deployment on the same host. Two store deployments on one host refuse as
+// RoleSingletonTwoOnOneHost before realizations form. A broker with no store refuses as
+// RoleSingletonBrokerWithoutStore. A co-hosted non-holder therefore sees the holder's broker
+// attributed to the holder, never to itself.
 fn role_singleton_observation_of(readings: List<HostRoleSingletonReading>, rows: List<DesiredDeployment>) -> RoleSingletonObservation {
   let unobservable = readings |> flat_map(r => match r {
     HostRoleSingletonsUnobservable { host, cause } => [RoleSingletonHostUnobservable { host: host, cause: cause }]
@@ -644,8 +650,12 @@ type RoleSingletonSelfReport {
   reading: HostRoleSingletonReading
 }
 
+fn roster_row_of_instance_id(instance_id: NonEmptyStr, rows: List<DesiredDeployment>) -> DesiredDeployment? {
+  rows |> filter(r => instance_id_text(id: r.instance.instance_id) == instance_id_text(id: instance_id)) |> first
+}
+
 fn roster_row_of_instance(instance: HostDashboardInstance, rows: List<DesiredDeployment>) -> DesiredDeployment? {
-  rows |> filter(r => instance_id_text(id: r.instance.instance_id) == instance_id_text(id: instance.instance_id)) |> first
+  roster_row_of_instance_id(instance_id: instance.instance_id, rows: rows)
 }
 
 fn role_singleton_self_report_of(instance: HostDashboardInstance) -> RoleSingletonSelfReport {
@@ -1079,16 +1089,23 @@ fn first_unobservable_refusal(readings: List<HostRoleSingletonReading>) -> RoleS
   }
 }
 
-// A NON-HOLDER CHANGES PLACEMENT ONLY THROUGH ITS OWN STRAY UNITS. The leftover rule (review 78627) is
-// about a deployment's own singleton units left behind; reading ANY realization on the host as a change
-// made every lab and preview deploy on srv1 a Remove of srv1-live's broker and fabric units, refused
-// while srv2 is unobservable (srv1 lab, 2026-10-11; owner confirmed, fix lane
-// census/d2-colocated-nonholder-admission). A spec absent from the roster stays a change: fail closed.
+fn spec_deployment_on_roster(spec: DeploymentSpec, rows: List<DesiredDeployment>) -> DeploymentId? {
+  match roster_row_of_instance_id(instance_id: spec.instance_id, rows: rows) {
+    Present { value: r } => Present { value: r.instance.deployment }
+    Absent => none
+  }
+}
+
+// A2: the global gate covers singleton PLACEMENT changes only (Install, Move, Remove).
+// HoldsNoRoleSingleton emits no broker/fabric step and must never retract another deployment's
+// units. A placement change exists only when an observed realization belongs to THIS spec's
+// deployment — leftover units of its own (review 78627), not a co-hosted holder's. An unrostered
+// spec cannot attribute a realization and is treated as a placement change (fail-closed).
 fn local_placement_change(spec: DeploymentSpec, realizations: List<ObservedRealization>, desired: ProdRoleRealization, rows: List<DesiredDeployment>) -> Bool {
   match spec.role_singletons {
-    HoldsNoRoleSingleton => match rows |> filter(r => instance_id_text(id: r.instance.instance_id) == instance_id_text(id: spec.instance_id)) |> first {
+    HoldsNoRoleSingleton => match spec_deployment_on_roster(spec: spec, rows: rows) {
       Absent => true
-      Present { value: own } => realizations |> any(r => r.deployment == own.instance.deployment)
+      Present { value: d } => any(realizations, r => r.deployment == d)
     }
     HoldsProdRoleSingletons { holder } => match desired {
       ProdRoleRealizationRefused { cause: _ } => true
