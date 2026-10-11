@@ -23,7 +23,12 @@ import v2.compiler.module_acquisition {
   acquisition_ingest,
   acquisition_member_requests,
   acquisition_module_path,
-  acquisition_refusal_text
+  acquisition_refusal_text,
+  bound_modules_prepended,
+  namespace_module_name,
+  namespace_relative_directory,
+  namespace_top_level,
+  top_level_namespaces
 }
 import v2.cli.repository_layout { repository_storage_layout }
 import v2.compiler.parse { prepare_grammar }
@@ -281,4 +286,64 @@ test fn a_well_formed_import_is_requested_and_its_marked_declaration_is_captured
   member_read_of(
     content: "module v2.test.subject\nimport v2.std.optional { Present }\ntest fn a_claim() -> Bool { true }\n"
   ) == "read|v2.std.optional|a_claim"
+}
+
+// ---- enumerating the declared namespaces ----------------------------------------------------------------
+//
+// THE SUBJECT IS THE PURE HALF OF THE ENUMERATION: which directories a declared namespace list puts a
+// walk under, and which module name a walked path denotes. The walk itself reads a host directory, so
+// the claim that it lists the files a tree really holds is carried by the native lane's census over a
+// real root, which is the route deleting the integration would fail; these controls state the values
+// the walk is handed and the names it hands back.
+
+fn joined(names: List<String>) -> String {
+  join(names, ",")
+}
+
+// A declared namespace is walked from its top-level segment once, so a nested row adds nothing to the
+// walks and the first row to name a top-level namespace fixes its place.
+test fn nested_rows_collapse_to_their_distinct_top_level_namespaces_in_first_named_order() -> Bool {
+  joined(top_level_namespaces(namespaces: ["gunbc", "gunbc.auth", "std", "v2.compiler", "v2.std", "std.algebra"])) == "gunbc,std,v2"
+}
+
+test fn no_declared_namespace_walks_nothing() -> Bool {
+  length(xs: top_level_namespaces(namespaces: [])) == 0
+}
+
+test fn a_single_segment_namespace_is_its_own_top_level() -> Bool {
+  namespace_top_level(namespace: "std") == "std"
+}
+
+test fn a_dotted_namespace_names_its_first_segment() -> Bool {
+  namespace_top_level(namespace: "gunbc.auth.access") == "gunbc"
+}
+
+// The directory a namespace occupies is the directory of a probe module placed directly in it, less
+// the probe's own file name; a namespace the rule stores at the tree's root occupies the root itself.
+test fn a_namespace_stored_at_the_tree_root_occupies_the_root() -> Bool {
+  namespace_relative_directory(probe_relative_path: "x.dag") == ""
+}
+
+test fn a_namespace_occupies_the_directory_its_probe_module_sits_in() -> Bool {
+  namespace_relative_directory(probe_relative_path: "std/x.dag") == "std"
+}
+
+test fn a_nested_namespace_occupies_a_nested_directory() -> Bool {
+  namespace_relative_directory(probe_relative_path: "gunbc/auth/x.dag") == "gunbc/auth"
+}
+
+// A walked path denotes the module the rule would store there: the namespace the walk started from,
+// then the path below the walked directory with its separators read as segment dots.
+test fn a_walked_path_below_the_namespace_directory_names_its_module() -> Bool {
+  namespace_module_name(namespace: "gunbc", directory: "dag/gunbc", path: "dag/gunbc/auth/access.dag") == "gunbc.auth.access"
+}
+
+test fn a_walked_path_directly_in_the_namespace_directory_names_a_direct_member() -> Bool {
+  namespace_module_name(namespace: "std", directory: "dag/std", path: "dag/std/logic.dag") == "std.logic"
+}
+
+// A listing is added in its own order ahead of what earlier namespaces already listed, so the
+// enumeration the callers see is one flat list of module names with none repeated and none dropped.
+test fn a_listing_is_added_ahead_of_the_names_already_listed() -> Bool {
+  joined(bound_modules_prepended(listed: ["a.x", "a.y"], acc: ["b.z"])) == "a.x,a.y,b.z"
 }
