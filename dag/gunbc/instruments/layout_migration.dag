@@ -37,6 +37,7 @@ import gunbc.instruments.layout_migration_rewrite {
   rewrite_text
 }
 import v2.cli.repository_layout { repository_storage_layout }
+import v2.compiler.source_authority { module_namespace }
 import gunbc.instruments.layout_migration_map {
   MigrationPlanned,
   MigrationPlanRefused,
@@ -49,7 +50,8 @@ import gunbc.instruments.layout_migration_map {
   plan_file_moves,
   plan_migration,
   plan_module_renames,
-  migration_refusal_line
+  migration_refusal_line,
+  sorted_distinct
 }
 
 // THE LAYOUT MIGRATION GENERATOR (docs/plans/source-layout-authority.md, C0/C1). It is a .dag
@@ -247,6 +249,64 @@ fn collect_inventory() -> Inventory {
         InventoryRefused { reasons: refused }
       } else {
         InventoryRead { files: files, sites: scans |> map(scan_site_of) }
+      }
+    }
+  }
+}
+
+// ---- the namespace rows ---------------------------------------------------------------------------
+// gunbc.source_layout_namespaces is the repository policy's list of namespaces that DIRECTLY contain
+// modules (parents derived, no per-module rows). It is derived from the module lines of the governed
+// trees and emitted at the position its own name gives it, so a re-run on an unchanged tree writes the
+// same bytes. A namespace added later is a new row the layout check demands (UndeclaredNamespace), and
+// a row whose namespace lost its last module is refused the other way (NamespaceRowWithoutModules).
+data namespaces_module_path: String = "dag/gunbc/source_layout_namespaces.dag"
+
+fn namespaces_of_sites(sites: List<MigrationSite>) -> List<String> {
+  sorted_distinct(values: sites |> filter(site => string_length(s: site.module) > 0) |> map(site => module_namespace(name: site.module)))
+}
+
+fn namespace_row_line(namespace: String) -> String {
+  concat("    \"", namespace, "\"")
+}
+
+fn namespaces_module_text(namespaces: List<String>) -> String {
+  join(
+    [
+      "module gunbc.source_layout_namespaces",
+      "",
+      "import std.types { List, String }",
+      "",
+      "// THE NAMESPACE ROWS OF THE REPOSITORY'S STORAGE POLICY: every namespace that directly contains a",
+      "// module, in byte order, parents derived. This module is emitted by",
+      "// gunbc.instruments.layout_migration layout_namespaces_emit; the layout check holds it to the",
+      "// governed trees as an identity join in both directions, so a namespace gained or lost is a row",
+      "// gained or lost here. Whether a file is generated is not recorded: gunbc.generated_artifact_registry",
+      "// is that fact's single authority.",
+      "fn layout_namespaces() -> List<String> {",
+      "  [",
+      join(namespaces |> map(namespace => namespace_row_line(namespace: namespace)), ",\n"),
+      "  ]",
+      "}",
+      ""
+    ],
+    "\n"
+  )
+}
+
+// THE NAMESPACE ROWS EMISSION. Writes gunbc.source_layout_namespaces from the module lines of the
+// governed trees; a tree whose inventory cannot be read emits nothing.
+fn layout_namespaces_emit(report: String) -> ProcessExit {
+  match collect_inventory() {
+    InventoryRefused { reasons: reasons } =>
+      exit_failure(reason: concat("layout migration: the inventory is not readable: ", join(reasons, "; ")))
+    InventoryRead { files: _, sites: sites } => {
+      let namespaces = namespaces_of_sites(sites: sites)
+      let w = Filesystem.Write(path: namespaces_module_path, content: namespaces_module_text(namespaces: namespaces))
+      if w.success {
+        write_report(path: report, content: concat("namespace rows: ", plan_count_text(n: count(namespaces))))
+      } else {
+        exit_failure(reason: concat("layout migration: write failed for ", namespaces_module_path, ": ", w.error))
       }
     }
   }

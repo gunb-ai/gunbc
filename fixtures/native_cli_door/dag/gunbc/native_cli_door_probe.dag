@@ -1,4 +1,4 @@
-module fixture.native_cli_door.door_probe
+module gunbc.native_cli_door_probe
 
 // THE V2-NATIVE CLI'S POSITIVE CONTROL, AND THE REASON IT IS ITS OWN SOURCE ROOT.
 //
@@ -7,18 +7,23 @@ module fixture.native_cli_door.door_probe
 // walked through, which DESIGN section 5 names as specification-without-execution: a green that
 // establishes the closure typechecks and nothing about whether the program runs. This file is the
 // argv the built binary is handed so that it does run: `emit --entry
-// fixture.native_cli_door.door_probe --source-root fixtures/native_cli_door/dag`.
+// gunbc.native_cli_door_probe --source-root fixtures/native_cli_door/dag`.
 //
 // IT HAS NO IMPORTS, for the same reason `fixture.closure.rustc_green_probe` has none: the
-// admission's subject resolves against the validated roots the ingest produced, so a module whose
-// closure is itself is the SMALLEST subject that still walks argv parse, source-root read, ingest,
+// entry resolves against the roots the argv bound, so a module whose
+// closure is itself is the SMALLEST subject that still walks argv parse, source-root binding, acquisition,
 // resolution and emission end to end. A subject with imports would add nothing to what the door
 // decides and would make a red attributable to the import graph rather than to the door.
 //
-// IT IS ITS OWN DIRECTORY AND NOT A FILE IN AN EXISTING FIXTURE ROOT, because the CLI's source
-// root is walked RECURSIVELY for every `.dag` file under it; sharing a directory would make the
-// control's ingest a function of what some other fixture's author adds next to it. The walk
-// argument is the dag tree (`.../dag`), not a parent of mixed trees.
+// IT IS ITS OWN DIRECTORY AND NOT A FILE IN AN EXISTING FIXTURE ROOT, and it sits at the position its
+// name derives under `gunbc.source_layout` (`gunbc/native_cli_door_probe.dag` under the tree
+// directory the argv names). The name is in a declared namespace (`gunbc.source_layout_namespaces`)
+// because the census control enumerates the root's population from the declared rows: a module in a
+// namespace no row declares would be a population the census cannot see. The CLI reads the file its
+// entry NAME derives and the files that file's own text requests, and nothing else, so no neighbour
+// can change the control's closure; a separate directory still keeps the control's subject one file
+// a reader can see whole.
+// The argument is the dag tree's directory (`.../dag`), which the CLI recognises as the dag tree.
 //
 // THE DECLARATION'S NAME AND VALUE ARE WHAT THE CONTROL READS. v2 lowers this `data` declaration to
 // a named member whose body is the literal, and the door renders it through the Rust target's

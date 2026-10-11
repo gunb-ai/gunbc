@@ -1,4 +1,4 @@
-module direct_rust_door_ingest_fixture
+module v2.compiler.self_host.direct_rust_door_ingest_fixture
 
 import v2.std.text { String }
 

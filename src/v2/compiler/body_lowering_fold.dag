@@ -4485,7 +4485,7 @@ fn body_lower_repeated_param_binding_diagnostic(edge: Edge) -> Diagnostic {
 // SYNTAX -- namespace_graft named the member `x -> <the parse tail ': T = e'>` -- and infer was
 // asked to ground `:` and `=` tokens and the type's spelling. Nothing could ground those, so every
 // data declaration stayed on the grounding frontier and gen-one's translate gate refused the
-// one-line door probe (fixture.native_cli_door.door_probe). A constant is the nullary function that
+// one-line door probe (gunbc.native_cli_door_probe). A constant is the nullary function that
 // returns it: that is the seed's own realization (v1.compiler.emit_rust emits a data item as a
 // nullary fn and calls it at every reference), and it lets the existing Arrow, product and literal
 // derivations ground the member with no data-specific infer rule. The data-versus-fn distinction a

@@ -1,4 +1,4 @@
-module stage0_boundary_add_probe
+module v2.compiler.self_host.stage0_boundary_add_probe
 
 // THE COMMITTED SPECIMEN FOR THE STORAGE-READ SEAM, AND ONLY THAT SEAM.
 //

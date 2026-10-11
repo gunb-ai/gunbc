@@ -226,7 +226,7 @@ type AlgebraRef {
 // (infer_literal_payload_entries), and a childless Conj in an Arrow's domain position derives as
 // the empty product (infer_arrow_empty_domain_edge). A node's KIND does not decide whether it
 // grounds, so a count of kinds covered does not measure how much of a closure grounds: gen-one's
-// door probe (fixture.native_cli_door.door_probe) met this frontier only through Atom and Conj
+// door probe (gunbc.native_cli_door_probe) met this frontier only through Atom and Conj
 // nodes, because body lowering handed infer a data declaration's surface tokens (fixed at
 // v2.compiler.body_lowering_fold body_lower_data_decl_to_member).
 

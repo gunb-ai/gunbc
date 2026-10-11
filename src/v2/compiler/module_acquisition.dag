@@ -47,7 +47,6 @@ import v2.compiler.source_authority {
   ReferenceUnknownModule,
   SourceRootIngest,
   SourceStorageLayout,
-  StorageNamespaceRoot,
   module_file,
   module_file_key,
   reference_after_probe,
@@ -936,9 +935,11 @@ fn enumerate_namespace_modules(layout: SourceStorageLayout, bindings: List<Sourc
 }
 
 // THE MODULES OF EVERY BOUND TREE: a population job's input when the population is the repository
-// under the bindings it was handed. A layout namespace whose tree is not bound contributes nothing
-// (the caller bound the trees it wants); a bound namespace that cannot be listed refuses the whole
-// enumeration, never a partial population.
+// under the bindings it was handed. The namespaces are the layout's declared rows (namespaces that
+// directly contain modules); each tree directory is walked once per top-level namespace they name,
+// so nothing is enumerated that the layout does not declare and no namespace is listed twice. A
+// top-level namespace whose tree is not bound contributes nothing (the caller bound the trees it
+// wants); a bound one that cannot be listed refuses the whole enumeration, never a partial population.
 type BoundModules
   = BoundModulesListed { modules: List<String> }
   | BoundModulesRefused { namespace: String, cause: String }
@@ -947,34 +948,64 @@ fn bound_modules_prepended(listed: List<String>, acc: List<String>) -> List<Stri
   fold_list(xs: list_reverse(xs: listed), empty: acc, cons: fn(rest, name) { Cons { head: name, tail: rest } })
 }
 
+fn namespace_top_level(namespace: String) -> String {
+  match list_head(xs: split(s: namespace, delimiter: ".")) {
+    HeadAbsent => namespace
+    HeadFound { value: first } => first
+  }
+}
+
+fn top_level_namespaces_go(pending: List<String>, seen: Map<String, Bool>, acc: List<String>) -> List<String> {
+  match list_head(xs: pending) {
+    HeadAbsent => acc
+    HeadFound { value: namespace } => {
+      let top = namespace_top_level(namespace: namespace)
+      if text_set_has(set: seen, name: top) {
+        top_level_namespaces_go(pending: skip(xs: pending, n: 1), seen: seen, acc: acc)
+      } else {
+        top_level_namespaces_go(pending: skip(xs: pending, n: 1), seen: map_insert(m: seen, key: top, value: true), acc: list_snoc_item(xs: acc, item: top))
+      }
+    }
+  }
+}
+
+// The distinct first segments of the declared namespaces, in the order the rows first name them.
+fn top_level_namespaces(namespaces: List<String>) -> List<String> {
+  top_level_namespaces_go(pending: namespaces, seen: empty_map(), acc: [])
+}
+
 fn enumerate_bound_modules_go(
   layout: SourceStorageLayout,
   bindings: List<SourceRootBinding>,
-  pending: List<StorageNamespaceRoot>,
+  pending: List<String>,
   acc: List<String>
 ) -> BoundModules {
   match list_head(xs: pending) {
     HeadAbsent => BoundModulesListed { modules: acc }
-    HeadFound { value: root } =>
-      match acquisition_host_directory(bindings: bindings, tree: root.tree) {
-        Absent => enumerate_bound_modules_go(layout: layout, bindings: bindings, pending: skip(xs: pending, n: 1), acc: acc)
-        Present { value: _ } =>
-          match enumerate_namespace_modules(layout: layout, bindings: bindings, namespace: root.namespace) {
-            NamespaceModulesRefused { namespace: namespace, cause: cause } => BoundModulesRefused { namespace: namespace, cause: cause }
-            NamespaceModulesListed { namespace: _, modules: listed } =>
-              enumerate_bound_modules_go(
-                layout: layout,
-                bindings: bindings,
-                pending: skip(xs: pending, n: 1),
-                acc: bound_modules_prepended(listed: listed, acc: acc)
-              )
+    HeadFound { value: namespace } =>
+      match module_file(layout: layout, name: concat(namespace, ".x")) {
+        ModuleNameUnderivable { name: _, cause: cause } => BoundModulesRefused { namespace: namespace, cause: cause }
+        ModuleFileDerived { file: file } =>
+          match acquisition_host_directory(bindings: bindings, tree: file.tree) {
+            Absent => enumerate_bound_modules_go(layout: layout, bindings: bindings, pending: skip(xs: pending, n: 1), acc: acc)
+            Present { value: root } =>
+              match namespace_walk_under(namespace: namespace, root: root, relative: namespace_relative_directory(probe_relative_path: file.relative_path)) {
+                NamespaceModulesRefused { namespace: refused, cause: cause } => BoundModulesRefused { namespace: refused, cause: cause }
+                NamespaceModulesListed { namespace: _, modules: listed } =>
+                  enumerate_bound_modules_go(
+                    layout: layout,
+                    bindings: bindings,
+                    pending: skip(xs: pending, n: 1),
+                    acc: bound_modules_prepended(listed: listed, acc: acc)
+                  )
+              }
           }
       }
   }
 }
 
-fn enumerate_bound_modules(layout: SourceStorageLayout, bindings: List<SourceRootBinding>) -> BoundModules {
-  enumerate_bound_modules_go(layout: layout, bindings: bindings, pending: layout.namespace_roots, acc: [])
+fn enumerate_bound_modules(layout: SourceStorageLayout, bindings: List<SourceRootBinding>, namespaces: List<String>) -> BoundModules {
+  enumerate_bound_modules_go(layout: layout, bindings: bindings, pending: top_level_namespaces(namespaces: namespaces), acc: [])
 }
 
 // ---- reading a named population (a census's explicit input) -----------------------------------------------

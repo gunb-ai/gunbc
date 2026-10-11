@@ -23,11 +23,14 @@ import v2.compiler.module_acquisition {
   enumerate_bound_modules
 }
 import v2.cli.repository_layout { repository_storage_layout }
+import gunbc.source_layout_namespaces { layout_namespaces }
 import v2.cli.source_root_bindings {
+  SourceRootBindings,
   SourceRootsBound,
   SourceRootsDuplicated,
   SourceRootsUnrecognized,
-  source_root_bindings
+  source_root_bindings,
+  source_root_bindings_refusal_text
 }
 import v2.cli.if_arm_reader_differential {
   IardCensus,
@@ -552,7 +555,7 @@ fn cli_acquisition_entries(verb: CliVerb, bindings: List<SourceRootBinding>) -> 
   match verb {
     CliEmitClosure { entry: entry, source_roots: _, target: _ } => CliEntriesListed { entries: [entry] }
     CliIfArmReaderDifferential { source_roots: _ } =>
-      match enumerate_bound_modules(layout: repository_storage_layout(), bindings: bindings) {
+      match enumerate_bound_modules(layout: repository_storage_layout(), bindings: bindings, namespaces: layout_namespaces()) {
         BoundModulesListed { modules: modules } => CliEntriesListed { entries: modules }
         BoundModulesRefused { namespace: namespace, cause: cause } =>
           CliEntriesRefused { cause: concat("could not list the modules of namespace ", namespace, ": ", cause) }
@@ -583,6 +586,22 @@ fn cli_run_bound(plan: CliPlan, verb: CliVerb, bindings: List<SourceRootBinding>
   }
 }
 
+fn cli_run_roots(plan: CliPlan, verb: CliVerb, roots: SourceRootBindings) -> CliRunOutcome {
+  match roots {
+    SourceRootsUnrecognized { argument: _ } =>
+      CliUsageRefused {
+        reason: ^cli_source_root_unrecognized,
+        detail: source_root_bindings_refusal_text(bindings: roots)
+      }
+    SourceRootsDuplicated { argument: _ } =>
+      CliUsageRefused {
+        reason: ^cli_source_root_duplicated,
+        detail: source_root_bindings_refusal_text(bindings: roots)
+      }
+    SourceRootsBound { bindings: bindings } => cli_run_bound(plan: plan, verb: verb, bindings: bindings)
+  }
+}
+
 // One entry fold owns parse, source acquisition, and compilation. The native main supplies
 // the existing Filesystem realization; a refused plan never acquires the filesystem.
 fn v2_cli_main(argv: FreeMonoid<String>) -> CliRunOutcome {
@@ -590,18 +609,6 @@ fn v2_cli_main(argv: FreeMonoid<String>) -> CliRunOutcome {
   match plan {
     CliPlanRefused { reason: reason, detail: detail } => CliUsageRefused { reason: reason, detail: detail }
     CliPlanParsed { verb: verb } =>
-      match source_root_bindings(roots: v2_cli_plan_source_roots(plan: plan)) {
-        SourceRootsUnrecognized { argument: argument } =>
-          CliUsageRefused {
-            reason: ^cli_source_root_unrecognized,
-            detail: concat("source root is not a governed tree directory: ", argument)
-          }
-        SourceRootsDuplicated { argument: argument } =>
-          CliUsageRefused {
-            reason: ^cli_source_root_duplicated,
-            detail: concat("source root names a tree another --source-root already binds: ", argument)
-          }
-        SourceRootsBound { bindings: bindings } => cli_run_bound(plan: plan, verb: verb, bindings: bindings)
-      }
+      cli_run_roots(plan: plan, verb: verb, roots: source_root_bindings(roots: v2_cli_plan_source_roots(plan: plan)))
   }
 }

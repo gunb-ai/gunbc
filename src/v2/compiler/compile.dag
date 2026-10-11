@@ -22,6 +22,7 @@ import gunbc.witness.v2_native_route {
 // THE FRONTIER RATCHET JOINS THIS CLOSURE HERE. The adjudicating main renders a call to it beside
 // native_route_admission, and the emitted crate carries a module only when this closure reaches it.
 import gunbc.native_frontier_ratchet { native_frontier_verdict }
+import gunbc.source_layout_namespaces { layout_namespaces }
 import v2.workflow.floor_discovery_row { FloorDiscoveryRow }
 import v2.workflow.floor_discovery_source_authority {
   FloorDiscoveryAccepted,
@@ -2874,7 +2875,7 @@ fn native_lane_census_ingest(source_roots: FreeMonoid<String>) -> Outcome<Source
     SourceRootsBound { bindings: bindings } =>
       native_lane_census_listed(
         bindings: bindings,
-        listed: enumerate_bound_modules(layout: repository_storage_layout(), bindings: bindings)
+        listed: enumerate_bound_modules(layout: repository_storage_layout(), bindings: bindings, namespaces: layout_namespaces())
       )
     SourceRootsUnrecognized { argument: _ } => native_lane_roots_refusal(bindings: resolved)
     SourceRootsDuplicated { argument: _ } => native_lane_roots_refusal(bindings: resolved)

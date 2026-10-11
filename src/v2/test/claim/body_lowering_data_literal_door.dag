@@ -11,7 +11,7 @@ import v2.std.text { String }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE NATIVE DOOR'S ONE-LINE CONTROL, ON THE INTERPRETED v2 ROUTE (MQ-5, #12942). The door's accepting
-// control (fixture.native_cli_door.door_probe) is a `data` declaration whose initializer is one Int
+// control (gunbc.native_cli_door_probe) is a `data` declaration whose initializer is one Int
 // literal; the emitted compiler refused it with body_lowering_reason_unrecognised_lowered_shape at a
 // synthetic node once the cut made every reader classify its input through body_term_of. Nothing on the
 // required floor normalized that shape, so the refusal surfaced only on the native emit-build lane. This
@@ -22,7 +22,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // debt of v2.workflow.floor_pure_producer_share floor_single_claim_fill_debt:
 // a whole-grammar parse plus normalize is past one claim's budget, and the claim reads the result.
 
-data door_data_literal_source: String = "module fixture.native_cli_door.door_probe\n\ndata native_cli_door_probe_value: Int = 606060\n"
+data door_data_literal_source: String = "module gunbc.native_cli_door_probe\n\ndata native_cli_door_probe_value: Int = 606060\n"
 
 fn door_data_literal_normalized() -> Outcome<Node> {
   match g_tokenize_parse(text: door_data_literal_source, file: ^probe_door_data_literal) {

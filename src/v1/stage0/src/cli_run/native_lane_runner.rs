@@ -103,10 +103,12 @@ const MALFORMED_MATERIALIZED_PATH: &str =
 /// the CLI door emits this subject, and the eval driver's accepting control censuses it. A
 /// `CLI_DOOR_` prefix would have been a fact about which caller was written first.
 ///
-/// The source root is a directory of its own because the CLI walks a root RECURSIVELY for every
-/// `.dag` file under it: a control sharing a directory with other fixtures would ingest whatever
-/// their authors add next, so what the door compiled would stop being a fact this harness states.
-/// The subject is the module that directory's one file declares.
+/// The source root is a directory of its own, named for the governed tree it stands for (`dag`),
+/// because a root is recognised by the tree directory it ends in and never by what it contains.
+/// The door reads only the modules the entry's closure requests, so a sibling file would not be
+/// compiled; the directory still holds one file, because the census control enumerates the declared
+/// namespaces under it and a second module there would change what that control observes.
+/// The subject is the module that directory's one file declares, stored where its name puts it.
 ///
 /// `CLI_DOOR_EMITTED_WITNESS` AND `CLI_DOOR_EMITTED_VALUE` ARE WHAT AN EMISSION MUST CARRY, and the
 /// NAME ALONE WAS AN OVER-CLAIM. On 2026-09-23 this arm was flipped to admit exit 0 plus the
@@ -117,11 +119,9 @@ const MALFORMED_MATERIALIZED_PATH: &str =
 /// ACCEPTS; anything less is that class returning, not an emission.
 const WELL_FORMED_CONTROL_ROOT: &str = "fixtures/native_cli_door/dag";
 const NATIVE_INGEST_COPIED_SINGLE_ROOT: &str = "fixtures/native_ingest_copied_single_root";
-const NATIVE_INGEST_SRC_IN_DAG_ROOT: &str = "fixtures/native_ingest_src_in_dag/dag";
 const NATIVE_INGEST_TWO_ROOTS_DAG: &str = "fixtures/native_ingest_two_roots/dag";
 const NATIVE_INGEST_TWO_ROOTS_V2: &str = "fixtures/native_ingest_two_roots/src/v2";
-const NATIVE_INGEST_DUPLICATE_MODULE_ROOT: &str = "fixtures/native_ingest_duplicate_module/dag";
-const CLI_DOOR_ENTRY_MODULE: &str = "fixture.native_cli_door.door_probe";
+const CLI_DOOR_ENTRY_MODULE: &str = "gunbc.native_cli_door_probe";
 const CLI_DOOR_EMITTED_WITNESS: &str = "native_cli_door_probe_value";
 const CLI_DOOR_EMITTED_VALUE: &str = "606060";
 
@@ -1963,7 +1963,7 @@ pub struct V2NativeCliHeld {
 ///
 /// WHAT IS STILL NOT CLAIMED, and the distinction is the whole reason the door exists. This is not
 /// the second generation: that is this binary emitting the COMPILER'S OWN closure, and the subject
-/// walked here is `fixture.native_cli_door.door_probe`, a single import-free module. What the walk
+/// walked here is `gunbc.native_cli_door_probe`, a single import-free module. What the walk
 /// establishes is that argv parsing, the source-root read, ingest, resolution, emission and the
 /// process exit all execute in the built artifact — the inhabitance obligation beside
 /// `v2.test.claim.cli.v2_native_cli`, whose rows supply their argv and their ingest and are claims about
@@ -2586,21 +2586,39 @@ fn walk_cli_door(
             refused.stderr.trim()
         ));
     }
-    // Permanent filesystem controls execute the same built CLI as the emission control.
-    // A panic is not a typed refusal: require the declared usage status, empty stdout,
-    // and the located acquisition diagnostic, including the host's kind.
+    // Permanent filesystem controls execute the same built CLI as the emission control. Each root is
+    // spelled as the governed tree directory it stands for (`dag`), because a root is recognised by
+    // that name and an argument naming no tree is refused as usage before any file is read. A panic
+    // is not a typed refusal: require the acquisition refusal's status, empty stdout, and the
+    // located diagnostic. The unreadable file is stored where the entry's name puts it, so the exact
+    // read reaches it and the host's kind rides the refusal; the absent root names a directory that
+    // is not there, so the exact read of the entry's file concludes absence for that path alone.
     let filesystem_probe = scratch.join("filesystem-door-controls");
     std::fs::create_dir_all(&filesystem_probe)
         .map_err(|e| format!("create filesystem controls: {e}"))?;
-    for (name, bytes, expected_kind) in [
-        ("invalid-utf8", Some(&[0xff_u8][..]), "other"),
-        ("absent-root", None, "not_found"),
+    let acquisition_refusal_frame =
+        format!("{CLI_REFUSAL_PREFIX}the source roots did not yield an exact closure: ");
+    for (name, bytes, expected_causes) in [
+        (
+            "invalid-utf8",
+            Some(&[0xff_u8][..]),
+            vec![
+                format!("module {CLI_DOOR_ENTRY_MODULE} at "),
+                "could not be read: other:".to_string(),
+            ],
+        ),
+        (
+            "absent-root",
+            None,
+            vec![format!("no module is stored for {CLI_DOOR_ENTRY_MODULE}")],
+        ),
     ] {
-        let subject = filesystem_probe.join(name);
+        let subject = filesystem_probe.join(name).join("dag");
         if let Some(bytes) = bytes {
-            std::fs::create_dir(&subject)
-                .map_err(|e| format!("create {}: {e}", subject.display()))?;
-            std::fs::write(subject.join("unreadable.dag"), bytes)
+            let stored = subject.join("gunbc");
+            std::fs::create_dir_all(&stored)
+                .map_err(|e| format!("create {}: {e}", stored.display()))?;
+            std::fs::write(stored.join("native_cli_door_probe.dag"), bytes)
                 .map_err(|e| format!("write unreadable source: {e}"))?;
         }
         let observation = run_cli_door(
@@ -2613,13 +2631,11 @@ fn walk_cli_door(
                 subject.display().to_string(),
             ],
         )?;
-        let expected = format!("[{expected_kind}]");
-        if observation.status != Some(CLI_DOOR_USAGE_REFUSAL_EXIT)
+        if observation.status != Some(CLI_DOOR_REFUSAL_EXIT)
             || !observation.stdout.is_empty()
             || !observation.stderr.lines().any(|line| {
-                line.starts_with("REFUSED: could not read source root at ")
-                    && line.contains(&subject.display().to_string())
-                    && line.contains(&expected)
+                line.starts_with(&acquisition_refusal_frame)
+                    && expected_causes.iter().all(|cause| line.contains(cause))
             })
         {
             return Err(format!(
@@ -2634,10 +2650,17 @@ fn walk_cli_door(
     Ok((door_exit_status, emitted_bytes, refusal_status))
 }
 
-/// THE LAYOUT REDS THE PARENT ASKED THE NATIVE DOOR TO EXECUTE. Claims over `v2_cli_run` supply
-/// ingest at that fold; these walks are the inhabitance that the discovering --source-root, not
-/// the file spelling, tags the tree — deleting any of the four fixture roots makes this control
-/// fail.
+/// THE LAYOUT REDS THE NATIVE DOOR IS ASKED TO EXECUTE. Claims over `v2_cli_run` supply ingest at
+/// that fold; these walks are the inhabitance that a root is a governed tree's directory and that the
+/// acquirer reads the entry's closure and nothing beside it -- deleting any of the fixture roots
+/// makes this control fail. Three controls, each differing from the accepting one in a single fact:
+///
+/// - a root that is no tree's directory is refused as usage, naming the argument;
+/// - two roots, each a tree's directory, emit the entry that lives in one of them, and the module the
+///   OTHER root stores (which nothing requests) is absent from the emission, so a door that read
+///   whatever its roots held would be told apart from one that reads the requested closure;
+/// - two directories for one tree are refused as usage, because which of them stores a module would
+///   otherwise be a fact of argument order.
 ///
 /// SEED DELTA (ctrl hand-Rust receipt): extend `walk_cli_door`; no new production route and no
 /// deleted scaffold. Accounted on `gunbc.source_root_eval_driver_seed_growth`
@@ -2645,16 +2668,14 @@ fn walk_cli_door(
 /// this inhabitance walk over existing `run_cli_door`.
 fn walk_native_ingest_layout_controls(binary: &Path, workspace: &Path) -> Result<(), String> {
     let copied = workspace.join(NATIVE_INGEST_COPIED_SINGLE_ROOT);
-    let src_in_dag = workspace.join(NATIVE_INGEST_SRC_IN_DAG_ROOT);
+    let copied_dag = copied.join("dag");
     let two_dag = workspace.join(NATIVE_INGEST_TWO_ROOTS_DAG);
     let two_v2 = workspace.join(NATIVE_INGEST_TWO_ROOTS_V2);
-    let dup = workspace.join(NATIVE_INGEST_DUPLICATE_MODULE_ROOT);
     for (label, path) in [
         ("copied-single-root", copied.as_path()),
-        ("src-in-dag", src_in_dag.as_path()),
+        ("copied-single-root-dag", copied_dag.as_path()),
         ("two-roots-dag", two_dag.as_path()),
         ("two-roots-v2", two_v2.as_path()),
-        ("duplicate-module", dup.as_path()),
     ] {
         if !path.is_dir() {
             return Err(format!(
@@ -2678,31 +2699,13 @@ fn walk_native_ingest_layout_controls(binary: &Path, workspace: &Path) -> Result
         || !copied_obs.stdout.is_empty()
         || !copied_obs
             .stderr
-            .contains("source root is not a dag or src/v2 tree")
+            .contains("source root is not a governed tree directory")
         || !copied_obs.stderr.contains(&copied.display().to_string())
     {
         return Err(format!(
             "V2-NATIVE REFUSAL cause=NativeIngestCopiedRootNotUnrecognized — status={:?} stderr={}",
             copied_obs.status,
             copied_obs.stderr.trim()
-        ));
-    }
-
-    let src_obs = run_cli_door(
-        binary,
-        &[
-            "emit".into(),
-            "--entry".into(),
-            "fixture.native_ingest.src_in_dag".into(),
-            "--source-root".into(),
-            src_in_dag.display().to_string(),
-        ],
-    )?;
-    if src_obs.status != Some(0) || src_obs.stdout.is_empty() {
-        return Err(format!(
-            "V2-NATIVE REFUSAL cause=NativeIngestSrcInDagPathMisclassified — status={:?} stderr={}",
-            src_obs.status,
-            src_obs.stderr.trim()
         ));
     }
 
@@ -2718,36 +2721,47 @@ fn walk_native_ingest_layout_controls(binary: &Path, workspace: &Path) -> Result
             two_v2.display().to_string(),
         ],
     )?;
-    if two_obs.status != Some(0) || two_obs.stdout.is_empty() {
+    if two_obs.status != Some(0)
+        || !two_obs.stdout.contains("native_ingest_dag_entry_value")
+        || two_obs.stdout.contains("native_ingest_v2_other_value")
+    {
         return Err(format!(
-            "V2-NATIVE REFUSAL cause=NativeIngestTwoRootsDidNotEmit — status={:?} stderr={}",
+            "V2-NATIVE REFUSAL cause=NativeIngestTwoRootsDidNotEmitTheRequestedClosure — status={:?} \
+             stdout_bytes={} stderr={}",
             two_obs.status,
+            two_obs.stdout.len(),
             two_obs.stderr.trim()
         ));
     }
 
-    let dup_obs = run_cli_door(
+    let duplicate_obs = run_cli_door(
         binary,
         &[
             "emit".into(),
             "--entry".into(),
-            "fixture.native_ingest.collision".into(),
+            "fixture.native_ingest.dag_entry".into(),
             "--source-root".into(),
-            dup.display().to_string(),
+            two_dag.display().to_string(),
+            "--source-root".into(),
+            copied_dag.display().to_string(),
         ],
     )?;
-    if dup_obs.status != Some(CLI_DOOR_REFUSAL_EXIT)
-        || !dup_obs.stderr.contains("closure_census_duplicate_module")
-        || !dup_obs.stderr.contains("collision_a.dag")
-        || !dup_obs.stderr.contains("collision_b.dag")
+    if duplicate_obs.status != Some(CLI_DOOR_USAGE_REFUSAL_EXIT)
+        || !duplicate_obs.stdout.is_empty()
+        || !duplicate_obs
+            .stderr
+            .contains("source root names a tree another --source-root already binds")
+        || !duplicate_obs
+            .stderr
+            .contains(&copied_dag.display().to_string())
     {
         return Err(format!(
-            "V2-NATIVE REFUSAL cause=NativeIngestDuplicateDidNotNameBothFiles — status={:?} stderr={}",
-            dup_obs.status,
-            dup_obs.stderr.trim()
+            "V2-NATIVE REFUSAL cause=NativeIngestDuplicateRootNotRefused — status={:?} stderr={}",
+            duplicate_obs.status,
+            duplicate_obs.stderr.trim()
         ));
     }
-    eprintln!("v2-native-cli: native-ingest layout controls held (unrecognized copied root, /src/ under dag, two roots, both-files duplicate)");
+    eprintln!("v2-native-cli: native-ingest layout controls held (unrecognized copied root, two roots emit only the requested closure, two directories for one tree)");
     Ok(())
 }
 
@@ -4427,7 +4441,7 @@ mod cli_emit_probe_tests {
     /// locus, and does not compare offsets.
     fn located_body_refusal() -> String {
         format!(
-            "REFUSED: the closure did not emit; diagnostic chain: {CLI_DOOR_EMIT_BODY_REFUSAL} @ fixtures/native_cli_door/door_probe.dag bytes 43..47 | FATAL AT fixtures/native_cli_door/door_probe.dag bytes 43..47"
+            "REFUSED: the closure did not emit; diagnostic chain: {CLI_DOOR_EMIT_BODY_REFUSAL} @ fixtures/native_cli_door/dag/gunbc/native_cli_door_probe.dag bytes 43..47 | FATAL AT fixtures/native_cli_door/dag/gunbc/native_cli_door_probe.dag bytes 43..47"
         )
     }
 
@@ -4440,7 +4454,7 @@ mod cli_emit_probe_tests {
             &located_body_refusal(),
         )) {
             CliEmitProbeVerdict::BodyRefusalReturned { locus } => {
-                assert!(locus.contains("door_probe.dag bytes 43..47"));
+                assert!(locus.contains("native_cli_door_probe.dag bytes 43..47"));
             }
             other => panic!("expected BodyRefusalReturned, got {other:?}"),
         }
@@ -4497,7 +4511,7 @@ mod cli_emit_probe_tests {
     }
 
     /// ACCEPTED: name, value and a compiler that accepts -- the one admitting arm. The text is what
-    /// the door's fold emits for the fixture (`v2_cli_run` over `fixture.native_cli_door.door_probe`).
+    /// the door's fold emits for the fixture (`v2_cli_run` over `gunbc.native_cli_door_probe`).
     #[test]
     fn a_rust_emission_carrying_the_value_passes() {
         let emitted =

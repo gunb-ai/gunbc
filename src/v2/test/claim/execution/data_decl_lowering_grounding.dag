@@ -48,7 +48,7 @@ import v2.std.text { String }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE CONTROLS FOR GEN-ONE'S ONE-LINE DOOR PROBE, ONE PER LINK THAT REFUSED IT. The built native CLI
-// could not emit `data native_cli_door_probe_value: Int = 606060` (fixture.native_cli_door.door_probe):
+// could not emit `data native_cli_door_probe_value: Int = 606060` (gunbc.native_cli_door_probe):
 // translate's grounding gate found nodes infer had left underived. Three links upstream of that gate
 // were wrong, and each has a control here.
 //
