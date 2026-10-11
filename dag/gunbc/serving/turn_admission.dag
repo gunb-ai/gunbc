@@ -375,7 +375,9 @@ type ServingSessionPlacement
 // RESIDENCY IS READ ONCE PER SESSION, FROM THE OWNING LAUNCH'S OWN READING, AND THEN APPLIED TO EVERY
 // CANDIDATE. It is never recomputed from a candidate's own data: a non-owner candidate's launch
 // differs from the owner's by construction, so that reading would always say LaunchReplaced and the
-// pin could never fire. A warm session (resident or host-restorable) stays on its owner, so adding a
+// pin could never fire. ATTACHMENT IS NOT RESIDENCY: missing reuse evidence (unread) refuses the warm
+// claim but does not unpin the session, so a new replica never relocates it; only an observed
+// reconstruct (nothing left to protect) frees it. A warm session (resident or host-restorable) stays on its owner, so adding a
 // replica never moves it; a session that must reconstruct or is unread has nothing to protect.
 // The pin only removes non-owners: the owner itself still passes serving_group_admission like any
 // other candidate, so a busy owner makes the session wait rather than relocate.
@@ -391,7 +393,7 @@ fn serving_session_placement(
         ReusedAtTurn { cached_tokens: _, launch: _, turn: _ } => serving_pin_to_owner(owner: owner, candidate: candidate_launch)
         HostRestorable => serving_pin_to_owner(owner: owner, candidate: candidate_launch)
         MustReconstruct { cause: _ } => PlacementFree
-        ResidencyUnread { obligation: _ } => PlacementFree
+        ResidencyUnread { obligation: _ } => serving_pin_to_owner(owner: owner, candidate: candidate_launch)
       }
   }
 }
