@@ -211,6 +211,13 @@ type ErasedSourceScope {
 }
 
 // The published table, carried on ParseWithTableResult.
+//
+// CONSUMERS (DESIGN 3c). The recorded rows are read in this change by
+// parse_import_statement_extents, whose production caller is v1.gunbc.parsed_import_statements
+// (import editing in std.import): it replaced the import-window rescan. The PUBLISHED table on
+// ParseWithTableResult is a declared frontier: its consumer is roadmap node
+// parse-comment-gap-attachment, whose v1 binder (v1.compiler.annotation_bind) locates each comment's
+// gap by containment over these rows and scopes. Trigger: that node's change lands.
 type ParsedSourceExtents {
   extents: List<ParsedSourceExtent>
   erased_scopes: List<ErasedSourceScope>

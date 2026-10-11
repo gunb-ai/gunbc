@@ -35,6 +35,12 @@ fn origin_event_from_source(locus: Locus) -> OriginEvent {
 // consumed token's start to the last consumed token's end. A terminal's extent is its FromSource
 // locus and is not recorded twice. Consumers that need containment read span_index_extent; nobody
 // reconstructs a range from descendants (DESIGN 6b: the parser held it, so the parser publishes it).
+//
+// DECLARED FRONTIER (DESIGN 3c). No production fold reads `extents` in this change. Its consumer is
+// roadmap node parse-comment-gap-attachment (gunbc.roadmap.roadmap_authority): attaching a comment
+// to the gap between ordered source children of its innermost containing scope reads
+// span_index_extent for containment. Trigger: that node's change lands; until it does, the only
+// readers are v2.test.provenance.parse_production_extent.
 type SpanIndex {
   entries: Map<OccurrenceId, OriginEvent>
   extents: Map<OccurrenceId, Locus>
