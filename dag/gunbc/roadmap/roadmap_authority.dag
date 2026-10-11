@@ -1190,6 +1190,60 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
 
     roadmap_node(
+      identity: "rn_ZD63T58V6YJR8Y3TJJ090QAZVF",
+      id: "parse-node-source-extent",
+      owner: "parse",
+      carriers: carrier(path: "src/v2/compiler/02_parse.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "Both parsers record every node's full source extent when they build it",
+        boundary: "Every node the parser builds -- expressions, types, patterns, fields, imports, blocks, functions -- publishes its complete source extent at construction, from its first consumed token to its last. v2: the accepted parse result carries the end of the last consumed token, maintained per step like remaining, and a completed production records its extent beside its DerivedBy lineage in v2.std.provenance SpanIndex (today parse_wrap_production_captured records lineage only, so a composite's range is discarded although the parser held it). v1: Node gains an extent field set by each constructor; span stays the diagnostic focus and is not widened (src/v1/02_parse.dag parse_fn_body_from_prefix sets span to the fn token and drops the consumed body's end). Diagnostic focus, source extent and causal lineage stay three facts (DESIGN 3).",
+        displaced_cost: "Consumers that need containment (annotation attachment, import editing) cannot tell whether a position is inside a node or after its closing delimiter, so each reconstructs a range from descendants or tokens -- an approximate second answer to a fact the parser had and discarded (DESIGN 2, 6b).",
+        first_slice: "v2: one production's extent recorded at completion and read back for a block whose last token is its closing brace.",
+        red_control: "A position between a block's last statement and its closing brace is reported inside the block; a position after the brace is reported outside. A recorded extent that ends at the last child rather than the last consumed token makes the first case RED.",
+        out_of_scope: "Comment attachment itself (parse-comment-gap-attachment). Changing what span means in v1.",
+        handback: "Extents recorded at construction in both parsers, with the inside/outside-brace control green on each."
+      ), on: "2026-10-11", note: "Authored 2026-10-11 from the in-body comment design: the producer boundary is the parser's published result (DESIGN 6b), so the repair is here, not in the annotation binder.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-compiler-live", contribution: "The live compiler's parse result must carry the source facts its consumers need instead of leaving each to re-derive them."),
+    ),
+
+    roadmap_node(
+      identity: "rn_JXW6HYEDDAHGZ77HCGTYSF3FX3",
+      id: "parse-comment-gap-attachment",
+      owner: "parse",
+      carriers: carrier(path: "dag/std/source_annotation.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "A comment attaches to the gap between its neighbouring nodes, anywhere in a file",
+        boundary: "std.source_annotation replaces the single-subject anchor with AnnotationScope = FileScope | NodeScope and AnnotationGap { scope, before?, after? }: the scope is the innermost node whose extent contains the comment (the file when none does), and before/after are that scope's adjacent children. One rule replaces the positional cases: BodyGrainNotModeled, TrailingNotModeled, UnattachedAtScopeEnd, module_header_gap_subject and v1 module_item_extent_ends are deleted. v1 v1.compiler.annotation_bind and the v2 authored parse both feed the one attach_annotations. Anchors reference existing occurrences and mint none (DESIGN 4c). Which node a comment documents is derived from the gap, never stored.",
+        displaced_cost: "A comment inside a function body is a hard compile error today, and each further position (trailing, before a closing brace, file top) is its own special case or refusal.",
+        first_slice: "The shared fold over a supplied roster: in-body, before-closing-brace, trailing and file-top comments each land their expected gap.",
+        red_control: "A comment inside f's body never attaches to the next declaration g; a comment inside a call's arguments anchors to the call's sibling grain, not to an argument fragment. Adding, removing or moving a comment leaves semantic hash, occurrence ids and emitted bytes unchanged.",
+        out_of_scope: "Computing extents (parse-node-source-extent). Doc-comment semantics beyond the derived documents-view.",
+        handback: "In-body comments compile in the corpus, the three refusal arms deleted, and the round trip agreeing on gap keys."
+      ), on: "2026-10-11", note: "Authored 2026-10-11. Depends on parse-node-source-extent: attachment reads the parser's extents rather than reconstructing them.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-compiler-live", contribution: "Authors can annotate any position in a .dag file without a compile error, under one attachment rule."),
+    ),
+
+    roadmap_node(
+      identity: "rn_DCHDCNK5Z6GZP693VSZA6MC84T",
+      id: "parse-prepared-grammar-analysis-carried",
+      owner: "parse",
+      carriers: carrier(path: "src/v2/compiler/02_parse.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "The parser receives the grammar analysis validation already computed",
+        boundary: "grammar_validate_and_analyze returns PreparedModeledGrammar { validated, analysis }; grammar_validate_for_parse keeps only validated and parse_production recomputes compute_grammar_first_analysis. Callers move onto the prepared result, parse_production takes PreparedModeledGrammar, and grammar_validate_for_parse plus the recompute are deleted.",
+        displaced_cost: "Every parse through the validated door pays the FIRST analysis twice -- authored duplication DESIGN 2 says to carry or share, not cache.",
+        first_slice: "parse_production takes the prepared grammar and one caller migrates.",
+        red_control: "An instrument counting compute_grammar_first_analysis per parse reads one, not two.",
+        out_of_scope: "Speculative-parse rollback, which correctly discards failed attempts.",
+        handback: "No caller of grammar_validate_for_parse remains and the analysis is computed once per parse."
+      ), on: "2026-10-11", note: "Authored 2026-10-11 from a review of the v2 parse interfaces: the discard is a DESIGN 2 conformance defect, not an optional optimisation.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "debt-payoff", contribution: "Removes authored duplicate work from every validated parse."),
+    ),
+
+    roadmap_node(
       identity: "rn_RSPTW7T9VRES9F7FHCP08QFGX5",
       id: "ci-required-run-cost",
       owner: "ci-cost",
@@ -5790,6 +5844,7 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
     edge(child: "accepted-floor-obligation-closure", parent: "floor-record-construction-wall"),
     edge(child: "extended-admission-cardinality", parent: "accepted-floor-obligation-closure"),
     edge(child: "extended-admission-cardinality", parent: "cardinality-vertical-slice"),
+    edge(child: "parse-comment-gap-attachment", parent: "parse-node-source-extent"),
   ]
 }
 
