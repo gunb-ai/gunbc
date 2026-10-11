@@ -1,6 +1,6 @@
 module gunbc.auth.google_workspace_login
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 import extdeps.auth.jwt { JwtStringOrUri, JwtUriString, NumericDate }
 import extdeps.auth.oidc { OidcHostedDomain, OidcIdTokenVerdictPolicy }
 import gunbc.principal_projection { google_oidc_issuer }
@@ -32,12 +32,32 @@ type GoogleLoginClient
   = GoogleLoginClientTrackerWeb
   | GoogleLoginClientApprovalsWeb
 
+type GoogleLoginEnvironment
+  = GoogleLoginEnvironmentDev
+  | GoogleLoginEnvironmentProd
+
 fn google_login_client_label(client: GoogleLoginClient) -> NonEmptyStr {
   match client {
     GoogleLoginClientTrackerWeb => "tracker-web" as NonEmptyStr
     GoogleLoginClientApprovalsWeb => "approvals-web" as NonEmptyStr
   }
 }
+
+// ONE OAUTH CLIENT PER APP × ENVIRONMENT. client_id is public; the client secret is a custody
+// fact (gunbc.auth.tracker_web_oauth_client), never a repository value. admitted_audiences is
+// exactly this client_id unless a later environment names a roster.
+type TrackerWebOauthClientBinding {
+  client: GoogleLoginClient
+  environment: GoogleLoginEnvironment
+  client_id: NonEmptyStr
+  redirect_uris: List<NonEmptyStr>
+  hosted_domain: OidcHostedDomain
+  admitted_audiences: List<NonEmptyStr>
+}
+
+type TrackerWebOauthClientStanding
+  = TrackerWebOauthClientBound { binding: TrackerWebOauthClientBinding }
+  | TrackerWebOauthClientUnbound { environment: GoogleLoginEnvironment, reason: NonEmptyStr }
 
 // THE LOGIN POLICY, one value binding every expectation: the Google issuer, exactly this
 // client's admitted audience, hd == gunb.ai, the login transaction's nonce, and the observed

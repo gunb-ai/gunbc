@@ -33,6 +33,7 @@ import gunbc.live_deploy.spec {
   deployment_srv1_target,
   srv1_live_deployment_names,
   derived_deployment_names,
+  srv1_lab_deployment_names,
   ubuntu_noble_os_package_manager,
   deployment_plan_host_identity,
   deployment_plan_listen_port,
@@ -93,7 +94,7 @@ fn srv1_lab_desired_deployment() -> DesiredDeployment {
   DesiredDeployment {
     instance: instance,
     target: deployment_srv1_target(),
-    names: derived_deployment_names(instance: instance),
+    names: srv1_lab_deployment_names(instance: instance),
     selected_identity: srv1_lab_selected_identity(),
   }
 }

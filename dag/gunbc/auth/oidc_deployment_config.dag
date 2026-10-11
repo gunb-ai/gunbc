@@ -50,6 +50,57 @@ data oidc_config_env_var: NonEmptyStr = "GUNBC_OIDC_CONFIG_FILE" as NonEmptyStr
 
 data oidc_config_schema: String = "gunbc-oidc-config/v1"
 
+data oidc_session_lifetime_seconds: Int = 43200
+
+data oidc_login_transaction_lifetime_seconds: Int = 600
+
+data oidc_client_secret_file_member: String = "client_secret_file"
+
+type OidcClientSecretSource
+  = OidcClientSecretInline { value: String }
+  | OidcClientSecretFromFile { path: String }
+  | OidcClientSecretSourceRefused { cause: String }
+
+fn oidc_client_secret_source(doc: JsonValue) -> OidcClientSecretSource {
+  match oidc_config_optional_string(doc: doc, key: "client_secret") {
+    OidcOptionalStringUnavailable { cause: c } => OidcClientSecretSourceRefused { cause: c }
+    OidcOptionalStringAbsent =>
+      match oidc_config_optional_string(doc: doc, key: oidc_client_secret_file_member) {
+        OidcOptionalStringUnavailable { cause: c } => OidcClientSecretSourceRefused { cause: c }
+        OidcOptionalStringAbsent =>
+          OidcClientSecretSourceRefused { cause: "the config file has neither client_secret nor client_secret_file" }
+        OidcOptionalStringRead { value: path } => OidcClientSecretFromFile { path: path }
+      }
+    OidcOptionalStringRead { value: secret } =>
+      match oidc_config_optional_string(doc: doc, key: oidc_client_secret_file_member) {
+        OidcOptionalStringUnavailable { cause: c } => OidcClientSecretSourceRefused { cause: c }
+        OidcOptionalStringRead { value: _ } =>
+          OidcClientSecretSourceRefused { cause: "the config file names both client_secret and client_secret_file; name exactly one" }
+        OidcOptionalStringAbsent => OidcClientSecretInline { value: secret }
+      }
+  }
+}
+
+type OidcSecretFileStanding
+  = OidcSecretFileLoaded { content: String }
+  | OidcSecretFileMissing { path: String }
+  | OidcSecretFileUnreadable { path: String, cause: String }
+
+fn oidc_secret_from_file_standing(standing: OidcSecretFileStanding) -> OidcConfigFieldString {
+  match standing {
+    OidcSecretFileLoaded { content: c } =>
+      if trim(c) == "" {
+        OidcConfigFieldStringUnavailable { cause: join(["client_secret_file ", "is empty"], "") }
+      } else {
+        OidcConfigFieldStringRead { value: trim(c) }
+      }
+    OidcSecretFileMissing { path: p } =>
+      OidcConfigFieldStringUnavailable { cause: join(["client_secret_file ", p, " does not exist"], "") }
+    OidcSecretFileUnreadable { path: p, cause: c } =>
+      OidcConfigFieldStringUnavailable { cause: join(["client_secret_file ", p, " could not be read: ", c], "") }
+  }
+}
+
 // THE ONE DEFAULT: admitted_audiences rides [client_id] when the operator names no roster.
 // The audience roster is the anti-substitution binding (a token minted for another client
 // refuses), and one client admitting exactly itself is the deployment's ordinary shape; an
@@ -187,11 +238,29 @@ type OidcConfigFieldString
   = OidcConfigFieldStringRead { value: String }
   | OidcConfigFieldStringUnavailable { cause: String }
 
+type OidcConfigOptionalString
+  = OidcOptionalStringRead { value: String }
+  | OidcOptionalStringUnavailable { cause: String }
+  | OidcOptionalStringAbsent
+
+fn oidc_config_optional_string(doc: JsonValue, key: String) -> OidcConfigOptionalString {
+  match json_field_string(obj: doc, key: key) {
+    FieldAbsent => OidcOptionalStringAbsent
+    FieldMalformed { cause: c } => OidcOptionalStringUnavailable { cause: join(["the config file's ", key, " member refused: ", c], "") }
+    FieldRead { value: v } =>
+      if v == "" {
+        OidcOptionalStringUnavailable { cause: join(["the config file's ", key, " member is empty"], "") }
+      } else {
+        OidcOptionalStringRead { value: v }
+      }
+  }
+}
+
 fn oidc_deployment_config_members(doc: JsonValue, path: String) -> OidcDeploymentConfigRead {
   match oidc_config_required_string(doc: doc, key: "client_id") {
     OidcConfigFieldStringUnavailable { cause: c } => OidcDeploymentConfigUnavailable { cause: c }
     OidcConfigFieldStringRead { value: client_id } =>
-      match oidc_config_required_string(doc: doc, key: "client_secret") {
+      match oidc_resolve_client_secret(doc: doc) {
         OidcConfigFieldStringUnavailable { cause: c } => OidcDeploymentConfigUnavailable { cause: c }
         OidcConfigFieldStringRead { value: client_secret } =>
           match oidc_config_required_string(doc: doc, key: "redirect_uri") {
@@ -220,6 +289,44 @@ fn oidc_deployment_config_members(doc: JsonValue, path: String) -> OidcDeploymen
               }
           }
       }
+  }
+}
+
+fn oidc_resolve_client_secret(doc: JsonValue) -> OidcConfigFieldString {
+  match oidc_client_secret_source(doc: doc) {
+    OidcClientSecretSourceRefused { cause: c } => OidcConfigFieldStringUnavailable { cause: c }
+    OidcClientSecretInline { value: secret } => OidcConfigFieldStringRead { value: secret }
+    OidcClientSecretFromFile { path: p } => oidc_secret_from_file_standing(standing: oidc_observe_secret_file(path: p))
+  }
+}
+
+fn oidc_observe_secret_file(path: String) -> OidcSecretFileStanding {
+  let slash = oidc_last_slash(path: path)
+  let directory = if slash < 0 { "." } else { substring(s: path, start: 0, end: slash + 1) }
+  let name = if slash < 0 { path } else { substring(s: path, start: slash + 1, end: string_length(s: path)) }
+  if name == "" {
+    OidcSecretFileUnreadable { path: path, cause: "the client_secret_file path names no file" }
+  } else {
+    let listing_result = Filesystem.List(path: directory)
+    let listing = filesystem_listing_observation(
+      directory: directory,
+      success: listing_result.success,
+      entries: listing_result.entries,
+      error: listing_result.error,
+    )
+    let read_result = Filesystem.Read(path: path)
+    match filesystem_file_observation(
+      listing: listing,
+      name: name,
+      path: path,
+      read: filesystem_read_outcome(content: read_result.content, success: read_result.success, error: read_result.error),
+    ) {
+      FilesystemFileAbsent(_) => OidcSecretFileMissing { path: path }
+      FilesystemFileIndeterminate { cause: c } => OidcSecretFileUnreadable { path: path, cause: c }
+      FilesystemFileObservationsDisagree { path: _, cause: c } => OidcSecretFileUnreadable { path: path, cause: c }
+      FilesystemFileSubjectRefused { directory: _, name: _, cause: c } => OidcSecretFileUnreadable { path: path, cause: c }
+      FilesystemFileRead { path: _, content: c } => OidcSecretFileLoaded { content: c }
+    }
   }
 }
 

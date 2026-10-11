@@ -52,6 +52,7 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_tailnet_door_socket,
   dashboard_instance_tailnet_door_directory,
 }
+import gunbc.auth.tracker_web_oauth_client { tracker_web_dev_srv1_lab_https_port }
 import extdeps.http.server { HttpServerListenConfig }
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port, approval_broker_listen_host, approval_broker_confirm_front_door }
 import gunbc.auth.approval_broker_cutover { approval_front_door_mounts_installed, approval_broker_front_door_endpoints }
@@ -870,6 +871,21 @@ data tailscale_default_https_port: Port = 443
 // resolution): instance_id is itself a flat identifier, so this derivation is namespacing by string
 // prefix where namespacing by position is the end state. The mount then projects from the
 // instance's position rather than from its name, and this function stops spelling a separator.
+
+fn srv1_lab_deployment_names(instance: HostDashboardInstance) -> DeploymentNames {
+  let derived = derived_deployment_names(instance: instance)
+  DeploymentNames {
+    unit_name: derived.unit_name,
+    tailscale_serve_endpoint: TailscaleServeEndpoint {
+      https_port: tracker_web_dev_srv1_lab_https_port,
+      mount: ServeRootMount,
+      backend: to_string(instance.listen_port) as NonEmptyStr,
+    },
+    tree_sync_unit_name: derived.tree_sync_unit_name,
+    tree_sync_env_path: derived.tree_sync_env_path,
+    publication_principal: derived.publication_principal,
+  }
+}
 
 fn derived_deployment_names(instance: HostDashboardInstance) -> DeploymentNames {
   DeploymentNames {

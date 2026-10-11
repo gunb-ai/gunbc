@@ -186,6 +186,9 @@ import gunbc.live_deploy.spec {
   tree_sync_unit_path,
 }
 import gunbc.ci_release_bins { gunbc_release_bin_name }
+import gunbc.auth.tracker_web_oauth_client {
+  tracker_web_oidc_serve_config, tracker_web_oidc_config_document, tracker_web_oidc_env_assignment,
+}
 import gunbc.host_layout {
   belt_spawn_workdir_env_var,
   instance_receipts_dir,
@@ -519,6 +522,13 @@ fn user_manager_environment_directives(uid: Int) -> List<SystemdServiceDirective
   ]
 }
 
+fn live_deploy_oidc_environment_directives(spec: DeploymentSpec) -> List<SystemdServiceDirective> {
+  match tracker_web_oidc_serve_config(instance_id: spec.instance_id) {
+    Absent => []
+    Present { value: cfg } => [Environment { assignment: tracker_web_oidc_env_assignment(cfg: cfg) }]
+  }
+}
+
 // The belt-B unit: ExecStart is `gunbc serve` (the seed binary answering every request through the
 // ONE .dag entry gunbc.roadmap_serve.roadmap_serve_handle — no emitted JS, no subprocess dispatch).
 // User=briansrls, NOT root: claude auth exists only under briansrls on srv1 (parent lane
@@ -555,7 +565,7 @@ fn live_deploy_serve_unit_file_over(
       ServiceGroup { name: svc.service_user },
       ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
       WorkingDirectory { path: svc.repo_root },
-    ], concat(user_manager_environment_directives(uid: svc.service_uid), [
+    ], concat(user_manager_environment_directives(uid: svc.service_uid), concat(live_deploy_oidc_environment_directives(spec: spec), [
       ExecStart { command: join([
         svc.serve_binary as String,
         " serve --source-root dag --source-root src/v2",
@@ -566,7 +576,7 @@ fn live_deploy_serve_unit_file_over(
         eval_budget_flag_text(flag: "--eval-budget-wall-ms", limit: svc.serve_wall_limit),
       ], "") as NonEmptyStr },
       Restart { policy: "on-failure" as NonEmptyStr },
-    ])),
+    ]))),
     install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
   }
 }
@@ -1270,6 +1280,25 @@ fn apply_systemd_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevision
   ))
 }
 
+fn apply_oidc_config_steps(spec: DeploymentSpec) -> List<PipelineStep> {
+  match tracker_web_oidc_serve_config(instance_id: spec.instance_id) {
+    Absent => []
+    Present { value: cfg } => [
+      deploy_raw(command: deploy_stage_write_command(
+        stage_name: "gunbc-oidc-config.json",
+        content: tracker_web_oidc_config_document(cfg: cfg),
+      )),
+      deploy_raw(command: deploy_stage_install_owned_command(
+        stage_name: "gunbc-oidc-config.json",
+        mode: install_file_owner_only_mode,
+        owner: spec.service.service_user,
+        group: spec.service.service_user,
+        dest: cfg.config_path as String,
+      )),
+    ]
+  }
+}
+
 // THE SAME PER-INSTANCE ONESHOT CHANGES REALIZATION AFTER ITS TWO INPUTS EXIST. GunbcSourceTree
 // first installs the owner-run working-byte sync; ServeBinary then installs the admitted binary and
 // replaces that unit document with Git-native convergence. There is no second unit name, lifecycle,
@@ -1467,6 +1496,8 @@ fn path_parent_dir(path: String) -> String {
 data install_d_shared_mode: NonEmptyStr = "0755"
 
 data install_file_shared_mode: NonEmptyStr = "0644"
+
+data install_file_owner_only_mode: NonEmptyStr = "0600"
 
 data install_executable_shared_mode: NonEmptyStr = "0755"
 
@@ -2873,7 +2904,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         mode: install_file_shared_mode,
         dest: art.path as String,
       )),
-    ], apply_approval_broker_unit_write_steps(spec: spec, revision: revision)), concat([
+    ], concat(apply_oidc_config_steps(spec: spec), apply_approval_broker_unit_write_steps(spec: spec, revision: revision))), concat([
       deploy_effect(inv: systemctl_daemon_reload_effect()),
       deploy_effect(inv: systemctl_enable_effect(unit: spec.service.unit_name)),
       deploy_effect(inv: systemctl_restart_effect(unit: spec.service.unit_name)),
