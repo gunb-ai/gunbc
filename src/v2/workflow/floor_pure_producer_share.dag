@@ -894,7 +894,8 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   SingleClaimFillDebtModule {
     module: "v2.test.claim.compiler.declared_return_result",
     claims: [
-      SingleClaimFillDebtClaim { claim: "drr_the_real_route_judges_a_projected_generic_call_result", standing: ActiveFillDebt }
+      SingleClaimFillDebtClaim { claim: "drr_the_real_route_judges_a_projected_generic_call_result", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "drr_declared_return_call_results_are_judged", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {

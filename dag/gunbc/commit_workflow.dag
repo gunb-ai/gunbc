@@ -1063,10 +1063,10 @@ type CommitWriterTransportObservation
 // module_storage_supply_unbound_body_note), and the manifest-overlay-supply mechanism used
 // elsewhere (module_binding_supply_transport.dag) does not fit here: discover_source_root_ingest
 // mints ^-edge identifiers from source-file basenames with no keyword-escaping, so scanning dag/
-// mints ^capability, ^module, ^import — all reserved .dag keywords (extdeps_languages_dag_syntax.rs
-// dag_keyword_set) — for dag/extdeps/bmc/capability.dag, dag/extdeps/languages/go/module.dag, and
-// dag/std/import.dag respectively, producing syntactically invalid overlay output for any scope
-// touching dag/. DISSOLUTION TRIGGER: this declaration dissolves in favor of a real
+// mints ^capability — a reserved .dag keyword (extdeps_languages_dag_syntax.rs dag_keyword_set) —
+// for dag/extdeps/bmc/capability.dag and dag/extdeps/ollama/capability.dag, producing syntactically
+// invalid overlay output for any scope touching dag/. (Historically the same defect minted ^module and
+// ^import for go/module.dag and std/import.dag; those were renamed to go_mod and import_statement.) DISSOLUTION TRIGGER: this declaration dissolves in favor of a real
 // module_storage_bindings_for_source_roots binding once (a) that scaffold gains a live host
 // dispatch, or (b) the manifest-overlay identifier-minting defect is fixed and re-verified
 // end-to-end; either bounds a real fixture-exemption receipt for this writer instead of the empty
