@@ -1,0 +1,23 @@
+module gunbc.recurring_failure_mode.a_continuation_turn_does_not_inherit_its_predecessors_uncommitted_work
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+// Consumer: directory-derived recurring_failure_mode.roster, projected by
+// gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
+data a_continuation_turn_does_not_inherit_its_predecessors_uncommitted_work: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_continuation_turn_does_not_inherit_its_predecessors_uncommitted_work" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a continuation turn is spawned from a predecessor attempt whose unfinished edits exist only in an uncommitted worktree, and the continuation origin carries the committed branch (and verdict) but not those edits, so the next worker starts from a head that dropped the predecessor's uncommitted work. HARM: the loop that was supposed to be write then verify then diagnose then write on one lineage silently restarts from a thinner tree; hours of uncommitted work vanish without a typed refusal (DESIGN section 5).",
+
+    "OCCURRENCE, 2026-10-11, newest entry of the srv1 workspace bring-up findings ledger (F-number not supplied with the filing request; cite it on this receipt when known), operator review of source pinned to main at acc218340ed6e24a9ad06c550a5494307d0320bb. ContinueFromAttempt (gunbc.roadmap.roadmap_attempt_continuation AttemptOrigin) carries parent_attempt_key, branch, turn and verdict_detail. The belt starts the next turn from that branch. Dirty worktree files of the predecessor are not an input to the origin, so a continuation can inherit the committed lineage and still omit the predecessor's uncommitted work. Roadmap leaf cc-selection-to-use (which environment, candidate and source tree belong to this attempt is not answered by the host or the branch name alone).",
+
+    "DISTINGUISHING FACTS: this is not a FreshFromBase restart after a refused continuation, which is an explicit new lineage. It is not a continuation from a committed terminal head that really contains the unfinished work (PriorAttemptFacts already treats a preservation-only commit as unfinished on its branch). The class is specifically: ContinueFromAttempt's worktree is the committed branch, so uncommitted predecessor state is unrepresentable as an inherited input. RUNG FOUND AT: mitigatable if the drop is noticed; silent if it is not. CEILING: structurally guaranteed -- whether the predecessor worktree is dirty relative to the origin branch is decidable. NEXT TRIGGER: a continuation either inherits the predecessor worktree as a declared input (committed plus uncommitted) or refuses when that worktree is dirty relative to the origin branch; a discriminating red is a dirty predecessor whose continuation checkout lacks those paths.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.roadmap.roadmap_attempt_continuation", decl_name: "AttemptOrigin", field: WholeDeclaration },
+  ],
+}
