@@ -239,7 +239,7 @@ dissolution, so deleting the witness *and* the receipt would retire a coverage c
 deciding to.
 
 **Correction, kept rather than deleted — the `Endpoint` claim was also wrong.** An earlier version
-recorded `grounding_lens_test.dag` as citing a non-existent `product.compute_fabric.Endpoint`, "a
+recorded `grounding_lens.dag` as citing a non-existent `product.compute_fabric.Endpoint`, "a
 fabricated citation, the §3 class". It is a **controlled fixture**: `product_namespace_fixture_decls()`
 hand-builds two `concept_decl` rows to test that a `product.*` namespace is not layer-excluded, and
 its sibling names `product.network_topology.Url`, which also does not exist. The test needs a

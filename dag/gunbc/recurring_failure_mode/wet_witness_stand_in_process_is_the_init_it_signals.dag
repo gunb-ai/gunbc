@@ -13,7 +13,7 @@ data wet_witness_stand_in_process_is_the_init_it_signals: RecurringFailureMode =
 
     "THE HARM is not a red: it is the EXECUTOR's death, so no verdict is reported at all. The run is retried as transient, retried again, and read as infrastructure flakiness; the claim never reaches a reader, so it rots outside the gate while appearing to have been attempted. And where the executor survives (a non-init victim the user happens to own), the claim can go green having signalled a process that is not its subject.",
 
-    "CENSUS at filing, over dag/** and src/v2/** *wet* witnesses: sol_hold_stdin_wet_witness_test.dag carried the only two instances. Witnesses that signal processes they launched themselves (owned_process, the KVM observer's term-ignoring child) are the correct shape: the identity they signal is one they created and recorded.",
+    "CENSUS at filing, over dag/** and src/v2/** *wet* witnesses: sol_hold_stdin_wet_witness.dag carried the only two instances. Witnesses that signal processes they launched themselves (owned_process, the KVM observer's term-ignoring child) are the correct shape: the identity they signal is one they created and recorded.",
 
     "REPAIR, landed with the specimens: each claim checks its premise BEFORE executing the path -- `kill -0 1` must be refused, and `test -r` on the chmod-000 record must fail -- and where the premise does not hold the claim is RED without signalling anything: an environment that cannot host the claim, never a pass. Verified as root on BuildBuddy at 32cdaa21: both claims red, VM alive.",
 

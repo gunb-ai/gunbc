@@ -13,7 +13,7 @@ An unbounded input is the data-side of a non-terminating Loop (which requires De
 - input_admitted function: EnvelopeUnknown => RefusedUndeclared; per-axis ceiling check
 - WorkDemand.input_envelope required field added; existing demands carry EnvelopeUnknown (honest: ceiling not yet declared)
 - gunbc_ci_corpus_envelope: the CI corpus as the first BoundedInput instance — ceiling values are operator-set operating-point ceilings, NOT derived quantities (P2 derives them; P1 scaffolds with explicit Scaffold-disposition values)
-- input_envelope_admission_test.dag: 5 test fns covering at-limit, over-limit, undeclared-axis, EnvelopeUnknown, and a red-on-revert discriminating assertion
+- input_envelope_admission.dag: 5 test fns covering at-limit, over-limit, undeclared-axis, EnvelopeUnknown, and a red-on-revert discriminating assertion
 
 ## P2 (follow-on, operator sign-off before landing) — ceiling derivation
 
