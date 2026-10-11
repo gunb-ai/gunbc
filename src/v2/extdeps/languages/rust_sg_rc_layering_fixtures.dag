@@ -51,8 +51,8 @@ fn sg_rc_layering_fixture_reference_layer_tokens_edge() -> Edge {
 
 // THE LIVE RUST CATALOG, DELIBERATELY. sg_rc_probe_heap_param_without_row_rejects asserts that
 // rust's own catalog carries no OwnershipAtFunctionParameter row for the probe-heap carrier, and
-// the wrap witnesses depend on rust's rows disagreeing by position
-// (docs/plans/rc-ownership-wrap-decision-design.md). A synthetic row set would agree with itself,
+// the wrap witnesses depend on rust's rows disagreeing by position.
+// A synthetic row set would agree with itself,
 // so those claims would stay green while testing a different question.
 fn sg_rc_layering_fixture_ownership_catalog_edge() -> Edge {
   rust_named_edge(

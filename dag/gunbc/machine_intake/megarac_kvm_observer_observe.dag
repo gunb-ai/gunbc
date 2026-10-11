@@ -12,8 +12,7 @@ import gunbc.owned_process { OwnedRelease, OwnedReleased, OwnedAlreadyGone, Owne
 import gunbc.megarac_managed_host { AdmittedMegaRacHost, admitted_megarac_host_identity }
 import gunbc.managed_host_unit_hold {
   UnitHeld, UnitHoldRefused, kvm_observer_acquire_unit_hold, unit_hold_release,
-  ProbeHoldReleased, ProbeHoldAlreadyFree, ProbeHoldNotOurs, ProbeHoldStale, ProbeHoldUnreleased,
-  kvm_observer_release_unit_hold, probe_hold_release_outcome_text,
+  kvm_observer_release_unit_hold, probe_hold_release_outcome_text, probe_hold_release_step_exit,
 }
 import gunbc.machine_intake_megarac_kvm_still {
   KvmObserverRecord, KvmObserverStart, KvmObserverStarted, KvmObserverNotStarted,
@@ -268,8 +267,5 @@ fn megarac_kvm_observer_release(host: HostIdentity, run_id: NonEmptyStr, paths: 
   }
   let hold = kvm_observer_release_unit_hold(host: host, run_id: run_id)
   let line = join(["megarac kvm observer release: process ", owned_release_text(r: process), "; unit hold ", probe_hold_release_outcome_text(o: hold)], "")
-  match hold {
-    ProbeHoldUnreleased { cause: _ } => exit_failure(reason: line)
-    _ => ExitSuccess
-  }
+  probe_hold_release_step_exit(o: hold, context_line: line)
 }

@@ -57,7 +57,7 @@ import product.fabric.supply { UnmetShapeAxis, unmet_shape_axes }
 // on two nodes, more available memory than total). None of them is resolved by picking the first
 // or last line -- a pick is an answer the host never gave.
 type ResourceUnread
-  = SectionAbsent { section: NonEmptyStr }
+  = ResourceSectionAbsent { section: NonEmptyStr }
   | SectionUnparsed { section: NonEmptyStr, detail: String }
   | SectionInconsistent { section: NonEmptyStr, detail: String }
 
@@ -90,7 +90,7 @@ fn nat_token(t: String) -> Nat? {
 // not a count each refuse; none of them is read as a count.
 fn observe_threads(nproc: List<String>?) -> ObservationAttempt<HardwareThreadCount, ResourceUnread> {
   match nproc {
-    Absent => ObservationRefused { cause: SectionAbsent { section: "nproc" } }
+    Absent => ObservationRefused { cause: ResourceSectionAbsent { section: "nproc" } }
     Present { value: out } => {
       let lines = non_blank(out: out)
       if count(lines) != 1 {
@@ -152,7 +152,7 @@ fn has_duplicate(xs: List<Nat>) -> Bool {
 // refusal naming the line verbatim, so the diagnostic names the offending record.
 fn observe_numa(numa: List<String>?) -> ObservationAttempt<List<NumaNode>, ResourceUnread> {
   match numa {
-    Absent => ObservationRefused { cause: SectionAbsent { section: "numa" } }
+    Absent => ObservationRefused { cause: ResourceSectionAbsent { section: "numa" } }
     Present { value: out } => {
       let lines = filter(non_blank(out: out), l => is_node_cpus_line(line: l))
       let attempts = map(lines, l => numa_record_attempt(line: l))
@@ -218,7 +218,7 @@ fn memory_field(metrics: List<MemoryMetric>, field: NonEmptyStr) -> ObservationA
 // only these two names), each name exactly once, and available may not exceed total.
 fn observe_memory(meminfo: List<String>?) -> ObservationAttempt<HostMemoryReading, ResourceUnread> {
   match meminfo {
-    Absent => ObservationRefused { cause: SectionAbsent { section: "meminfo" } }
+    Absent => ObservationRefused { cause: ResourceSectionAbsent { section: "meminfo" } }
     Present { value: out } => {
       let lines = non_blank(out: out)
       let metrics = flat_map(lines, l => match meminfo_line_metric(line: l) { Present { value: m } => [m]  Absent => [] })

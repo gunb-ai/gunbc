@@ -74,7 +74,7 @@ A dependency relation alone leaves the commonest sequential shape -- a fold whos
 - **Associativity permits many trees; the canonical one is chosen.** Stable incremental reuse needs an append-stable decomposition (content-defined chunks under a Merkle hierarchy, or a persistent sequence with canonical branching) so that appending invalidates a bounded path by construction.
 - **Granularity is priced by total cost**: semantic work plus dependency bookkeeping, queueing, encoding, lookup, lease acquisition, process startup, transfer, commit and reduction -- otherwise splitting wins on paper and loses in execution.
 
-This consumes the reduce-spine and idle-lane direction of `docs/plans/machine-shape-orthogonal-scheduling.md` (computation graph x machine facts x algebraic evidence -> schedule) rather than restating it.
+This carries the reduce-spine and idle-lane direction of the since-deleted machine-shape-orthogonal-scheduling plan (computation graph x machine facts x algebraic evidence -> schedule).
 
 ### 2.7 Realization: placement from fabric supply
 
@@ -110,11 +110,11 @@ Sequence, as standalone realization cuts owned by the CLI lane and not blocking 
 | --- | --- |
 | `v2.std.materialize` (`run ≜ realize ∘ materialize ∘ dependency_view`, analysis-side) | **Consumed and made live.** Its structural identity grade and spine wording are this program's; M3a is its first runtime. |
 | `docs/plans/keying-relation-design.md` | **Consumed.** Its named-relation-in-scope model is section 2.3; M1 is its first large consumer. |
-| `docs/plans/realization-measurement-loop.md` | **Consumed.** Its gate (realize(T) content-addressed at minimal placement; uncached non-redundant work is an error) is M5's acceptance. |
-| `docs/plans/machine-shape-orthogonal-scheduling.md` | **Consumed.** Its reduce-spine, idle-lane and algebraic-evidence direction is section 2.6. |
-| `docs/plans/resource-aware-scheduler.md`, `bounded-input-cost-envelope-scheduling` (authority-only) | **Superseded on width.** `spawn_width` formulas are replaced by lease admission against an observed offer. Bounded-input admission and predicted-versus-measured cost roles are retained. |
+| realization-measurement-loop plan (since deleted) | **Consumed.** Its gate (realize(T) content-addressed at minimal placement; uncached non-redundant work is an error) is M5's acceptance. |
+| machine-shape-orthogonal-scheduling plan (since deleted) | **Consumed.** Its reduce-spine, idle-lane and algebraic-evidence direction is section 2.6. |
+| resource-aware-scheduler and bounded-input-cost-envelope-scheduling plans (since deleted) | **Superseded on width.** `spawn_width` formulas are replaced by lease admission against an observed offer. Bounded-input admission and predicted-versus-measured cost roles are retained. |
 | `docs/plans/serving-capacity-home-ruling.md` | **Consistent.** Shared selection, subject-specific occupancy; local processes get their own producer and linearization. |
-| `docs/plans/content-hash-family-grounding.md` | **Consumed.** This program adds the family-by-sharing-scope rule. |
+| content-hash-family-grounding plan (since deleted) | **Consumed.** This program adds the family-by-sharing-scope rule. |
 | `v2.lens.cost`, `std.realization_schedule` `CostAccount` | **Consumed.** Symbolic cost and measured/predicted axes exist; M4 joins them to demand and realization identities. |
 | `v2.workflow.scheduler` / `executor` / `runtime_run`, `module_resolution_plan`; `v2.workflow.realization_runner` scheduling surfaces | **Split.** M3a cuts the native-fold scheduling loop. M3b migrates `v2.program` and `module_resolution_plan`, relocates `NodeKeyedGraphArtifact`, `NodeKeyedGraphRow`, `NodeKeyedGraphArtifactEntry`, `node_keyed_graph_row_lookup` / `NodeKeyedGraphRowMissing`, `node_keyed_graph_transitive_bytes` / `NodeKeyedGraphTransitiveBytesMissingRow`, and deletes unconsumed scheduler/batch/runner-schedule/`runtime_run` surfaces once the exact producer/consumer/disposition census reaches zero old scheduling consumers. The interpreter is not deleted. |
 | `gunbc.source_root_eval_driver_seed_growth` `source_root_eval_driver_seed_growth_justification` | **Consumed.** The seed-growth row whose subject is the production host boundary `v1.compiler.emit_rust` `emit_source_root_eval_driver_main_rs`; section 2.9's E2/E4 and M3a each delete part of that function toward the row's own trigger, and the row retires by that trigger, never by a partial cut. |

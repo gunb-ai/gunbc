@@ -30,8 +30,8 @@ import extdeps.external_authority { ExternalModelScope }
 // are evidence producers, not subjects; std.primitive_identity RealizationTarget is deliberately a
 // three-arm primitive-realization DISPATCH surface (InterpreterHost | EmitRust | EmitTypeScript),
 // not a general language identity, and widening it would fuse two unrelated join keys;
-// gunbc.plans.language_target_self_host_frontier is a markdown prose table that says in its own
-// text that its typed carrier does not yet exist.
+// the self-host frontier plan (since deleted) was a markdown prose table that said in its own
+// text that its typed carrier did not yet exist.
 
 // AN UNGROUNDED TARGET IS UNWRITABLE, not admitted-then-flagged (DESIGN section 5 construction over
 // validation; direction from loyal-ant-382 and the grounding correction from the operator,

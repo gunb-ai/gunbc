@@ -60,7 +60,7 @@ test fn witness_parent_is_top_level() -> Bool {
 }
 
 data existing_docs: List<String> = [
-  "docs/plans/invert-hand-maintained.md",
+  "docs/plans/replacement-migration-doctrine.md",
   "DESIGN.md",
 ]
 
@@ -81,7 +81,7 @@ fn node_with_carriers(cs: List<Pointer>) -> RoadmapNode {
 
 test fn witness_resolving_carrier_clean() -> Bool {
   node_carrier_clean(
-    rn: node_with_carriers(cs: [Pointer { label: "plan", path: "docs/plans/invert-hand-maintained.md" }]),
+    rn: node_with_carriers(cs: [Pointer { label: "plan", path: "docs/plans/replacement-migration-doctrine.md" }]),
     existing_docs: existing_docs,
   )
 }

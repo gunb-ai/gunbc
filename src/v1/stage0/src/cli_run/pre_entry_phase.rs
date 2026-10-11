@@ -15,9 +15,7 @@
 //! question the row asks is which part scales with the tree, and a figure without that tag
 //! answers only how big a number is.
 //!
-//! Host transport, like `phase_profile`'s `[phase-profile]` lines, and it dissolves on the same
-//! trigger: a `.dag` `PerformanceReceipt` per-phase carrier (realization_measurement_loop Phase 0)
-//! consumed by execution, at which point these rows become that carrier's projection.
+//! Host transport, like `phase_profile`'s `[phase-profile]` lines.
 //!
 //! Thread-local, like `ResolveStageNanos`: a `gunbc run` resolves on its main thread, and a
 //! floor worker that reaches these timers keeps its own accumulator rather than sharing one.

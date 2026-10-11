@@ -7,19 +7,29 @@ import std.algebra { trim }
 import std.measure { kibibyte, kibibyte_count }
 import std.durable_compare_and_set { CasGeneration, cas_generation_count, cas_generation_first }
 import gunbc.compute.work_provider_local {
-  ComputeLayout,
+  ComputeLayout, ComputeStore, ComputeMaterialization, ComputeRecomputed, compute_open_attempt, compute_refused_after_open, NoComputeDependency, ComputeMemoized,
+  compute_store_commit, ComputeCommitted, ComputeCommitNotOwed, ComputeCommitRefused,
+  compute_store_read, ComputeStoreServed, ComputeStoreAbsent, ComputeStoreRefused, ComputeStoreNotConsulted,
+  compute_dependency_read, ComputeDependencyResolved, ComputeDependencyRefused, VerifiedBuildBinaries,
   AttemptGate, AttemptGateReady, AttemptGateRefused, compute_begin_launch,
   AttemptSettlement, AttemptSettled, AttemptNotSettled, AttemptUnsettleable,
   compute_settle_attempt, compute_attempt_settlement_wire, attempt_settlement_host_record,
   host_record_was_written,
-  ProvideResult, ProvideFresh, ProvideAttached, compute_run_ceiling_retry, compute_ceiling_retry_reference,
+  ProvideResult, ProvideFresh, ProvideAttached, compute_ceiling_retry_reference,
 }
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.compute.host_capacity { ComputeReservationRefused }
+import std.materialization_provider { ComputeWorkRequest }
+import std.materialization_store_grant { DurableHostVolumeRoot, WitnessScratchRoot }
+import extdeps.realization.materialization_store_local { LocalStoreFamilyBudget }
+import std.cache_identity { compute_work_artifact_kind }
+import std.measure { byte_size }
+import std.fabric_blob { fabric_blob_reading_path }
 import gunbc.compute.work_class_grant { work_class_grant, work_class_grant_rows, work_class_of }
 import extdeps.git.object_store { git_object_id_from_untagged_hex }
 import gunbc.compute.work_request {
-  ExactTree, work_default_build,
+  ComputeCapacityLedgerUnavailable,
+  ExactTree, work_default_build, WorkToolchainIdentity, work_toolchain_observed, WorkOutput, WorkSucceeded, work_outcome_wire,
   WorkEnding, WorkEndedSucceeded, WorkEndedFailed, WorkEndedRefusedByInfrastructure, WorkEndedCancelled, WorkEndedOutputMismatch,
 }
 import gunbc.compute.attempt_lifecycle {
@@ -348,8 +358,8 @@ test fn an_over_long_pre_launch_declaration_refuses_at_open_and_is_not_clamped()
 fn layout_at(root: String) -> ComputeLayout {
   ComputeLayout {
     root: root, work_dir: root, checkout: root, out_dir: root,
-    leases_dir: root, lease_path: root, store_dir: root, target_dir: root,
-    log_path: root, outcome_path: root, consumption_path: root,
+    leases_dir: root, lease_path: root, staging_dir: root, target_dir: root,
+    log_path: root, consumption_path: root,
     attempts_dir: root,
   }
 }
@@ -387,26 +397,93 @@ test fn the_loser_of_a_launch_race_never_reports_that_it_settled_the_slot() -> B
 // the unused ceiling seat is returned through ComputeNothingToRelease rather than silently. Were
 // the retry route to skip compute_open_attempt, it would reach compute_run_leased and end as a
 // unit's outcome, never as this refusal.
+fn fixture_toolchain() -> WorkToolchainIdentity {
+  work_toolchain_observed(
+    rustc_verbose: "rustc fixture" as NonEmptyStr, target_triple: "fixture-triple" as NonEmptyStr, cargo_version: "cargo fixture" as NonEmptyStr,
+    cache_release: "sccache fixture" as NonEmptyStr, provider_revision: "fixture-provider" as NonEmptyStr,
+  )
+}
+
+// SLOT FIRST, THEN THE LEDGER (ruling on #13074). A slot already held under the retry's reference
+// refuses the open, and the reservation is reachable only from an open that succeeded -- so a held
+// slot can never leave a reservation behind. RED against a provider that reserves before opening.
 test fn the_ceiling_retry_opens_its_own_attempt_and_a_held_slot_refuses_it_before_spawn() -> Bool {
   let root = fresh_root()
   let layout = layout_at(root: root)
   let retry_reference = compute_ceiling_retry_reference(reference: "attempt-first" as NonEmptyStr)
   let squatter = record_for(reference: retry_reference as String)
   let held = attempt_open(root: root as NonEmptyStr, record: squatter)
-  let op = work_default_build()
-  let tree = match git_object_id_from_untagged_hex(hex: "0000000000000000000000000000000000000000") { Present { value: oid } => oid  Absent => "0000000000000000000000000000000000000000" }
-  let r = compute_run_ceiling_retry(
-    instance: srv1_live_dashboard_instance(), commit: "0000000000000000000000000000000000000000", layout: layout,
-    identity: "abcdef0123456789", subject: ExactTree { tree: tree }, op: op, dependency_store: "",
-    grant: work_class_grant(class: work_class_of(op: op), rows: work_class_grant_rows, ceiling: kibibyte(count: 27262976)),
-    reference: retry_reference, reservation: ComputeReservationRefused { detail: "fixture: no ledger" })
+  let opened = compute_open_attempt(layout: layout, identity: "abcdef0123456789", reference: retry_reference, granted: kibibyte(count: 27262976))
   let after = attempt_slot_read(root: root as NonEmptyStr, reference: retry_reference)
   attempt_transition_advanced(t: held)
-    && (match r {
-      ProvideFresh { outcome: _, document: doc, host_record: _ } =>
-        string_contains(s: doc, pattern: "opening the attempt") && string_contains(s: doc, pattern: "no seat to return")
-      ProvideAttached { identity: _, ending: _, document: _, host_record: _ } => false
-    })
+    && (match opened { AttemptGateRefused { detail: d } => string_contains(s: d, pattern: "opening the attempt")  AttemptGateReady { record: _, generation: _ } => false })
     && generation_of(r: after) == 1
     && state_word_of(r: after) == attempt_state_wire(s: AttemptReserved)
+}
+
+// A RESERVATION REFUSED UNDER AN OPEN SLOT CLOSES THE SLOT. RED against a refusal arm that reports and
+// leaves the slot reserved, which recovery would later have to settle with no reservation to find.
+test fn a_refused_reservation_closes_the_slot_it_was_taken_under() -> Bool {
+  let root = fresh_root()
+  let layout = ComputeLayout {
+    root: root, work_dir: root, checkout: root, out_dir: root,
+    leases_dir: root, lease_path: join([root, "/lease"], ""), staging_dir: root, target_dir: root,
+    log_path: join([root, "/log"], ""), consumption_path: join([root, "/consumption"], ""),
+    attempts_dir: root,
+  }
+  let reference = "attempt-refused" as NonEmptyStr
+  let opened = compute_open_attempt(layout: layout, identity: "abcdef0123456789", reference: reference, granted: kibibyte(count: 1048576))
+  let tree = match git_object_id_from_untagged_hex(hex: "0000000000000000000000000000000000000000") { Present { value: oid } => oid  Absent => "0000000000000000000000000000000000000000" }
+  let r = compute_refused_after_open(
+    instance: srv1_live_dashboard_instance(), identity: "abcdef0123456789", subject: ExactTree { tree: tree }, op: work_default_build(),
+    layout: layout, opened: opened, cause: ComputeCapacityLedgerUnavailable { detail: "fixture: ledger refused" })
+  let after = attempt_slot_read(root: root as NonEmptyStr, reference: reference)
+  (match opened { AttemptGateReady { record: _, generation: _ } => true  AttemptGateRefused { detail: _ } => false })
+    && (match r { ProvideFresh { outcome: _, document: doc, host_record: _ } => string_contains(s: doc, pattern: "fixture: ledger refused")  ProvideAttached { identity: _, ending: _, document: _, host_record: _ } => false })
+    && string_contains(s: state_word_of(r: after), pattern: "terminal:")
+}
+
+// THE REAL ROUTE, ONCE (DESIGN section 3 pairing obligation for the pure decisions in
+// test.claim.compute.work_request_witness_test). A build's record is committed through
+// compute_store_commit with its two binaries staged beside the store root, read back through
+// compute_store_read as a served success, and resolved by compute_dependency_read into two VERIFIED
+// readings that live under the store root -- and the stages are gone. Deleting the byte-part
+// integration (committing without parts, or a dependent reading anything but the store's readings)
+// turns this red.
+test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() -> Bool {
+  let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_matstore.XXXXXX").path
+  let root = ComputeStore { root: WitnessScratchRoot { root: root_path }, budgets: [LocalStoreFamilyBudget { family: compute_work_artifact_kind, budget: byte_size(count: 1048576) }] }
+  let layout = ComputeLayout {
+    root: root_path, work_dir: join([root_path, "/w"], ""), checkout: root_path, out_dir: root_path,
+    leases_dir: root_path, lease_path: root_path, staging_dir: root_path, target_dir: root_path,
+    log_path: join([root_path, "/run.log"], ""), consumption_path: root_path, attempts_dir: root_path,
+  }
+  let log = Filesystem.Write(path: layout.log_path, content: "built\n")
+  let g = Filesystem.WriteCreateNew(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
+  let c = Filesystem.WriteCreateNew(path: join([root_path, "/w.claim_batch"], ""), content: "claim-batch-bytes")
+  let tree = match git_object_id_from_untagged_hex(hex: "1111111111111111111111111111111111111111") { Present { value: oid } => oid  Absent => "1111111111111111111111111111111111111111" }
+  let request = ComputeWorkRequest { subject: ExactTree { tree: tree }, operation: work_default_build(), toolchain: fixture_toolchain() }
+  let outcome = WorkSucceeded { identity: "fixture-identity", outputs: [
+    WorkOutput { declared: "release/gunbc", blob: "b1" },
+    WorkOutput { declared: "release/claim_batch", blob: "b2" },
+  ], log_path: layout.log_path }
+  let committed = compute_store_commit(
+    materialization: ComputeMaterialization { store: root, request: request, plan: ComputeMemoized },
+    layout: layout, op: work_default_build(), outcome: outcome,
+    document: work_outcome_wire(o: outcome, subject: ExactTree { tree: tree }, op: work_default_build()))
+  let served = compute_store_read(store: root, req: request)
+  let resolved = compute_dependency_read(store: root, build: request)
+  let stage_left = Filesystem.Read(path: join([root_path, "/w.gunbc"], "")).success
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  log.success && g.success && c.success
+    && (match committed { ComputeCommitted => true  _ => false })
+    && (match served { ComputeStoreServed { ending, identity, document: _ } => ending == "succeeded" && identity == "fixture-identity"  _ => false })
+    && (match resolved {
+      ComputeDependencyResolved { dependency } => match dependency {
+        VerifiedBuildBinaries { gunbc, claim_batch } => starts_with(s: fabric_blob_reading_path(reading: gunbc) as String, prefix: root_path) && starts_with(s: fabric_blob_reading_path(reading: claim_batch) as String, prefix: root_path) && fabric_blob_reading_path(reading: gunbc) != fabric_blob_reading_path(reading: claim_batch)
+        _ => false
+      }
+      ComputeDependencyRefused { detail: _ } => false
+    })
+    && !stage_left
 }

@@ -14,8 +14,7 @@ import gunbc.codex_runtime_paths {
 }
 import gunbc.package_delivery { codex_linux_arm64_native_executable_rel }
 
-// The ONE authority for the srv1 gunbc host paths (docs/plans/gunbc-served-dashboard-design.md
-// section 5; lane agreement with royal-carp-451, 2026-07-20). Five facts must agree with their
+// The ONE authority for the srv1 gunbc host paths (lane agreement with royal-carp-451, 2026-07-20). Five facts must agree with their
 // consumers or in-process dispatch breaks: srv1_gunbc_repo_root is BOTH the tree `gunbc serve`
 // loads AND the repo the belt runs `git worktree add` from; srv1_dispatch_worktree_root is where
 // those worktrees land; srv1_dispatch_attempt_state_root is where the belt publishes attempt
