@@ -7,17 +7,21 @@ import gunbc.guarantee_probe_corpus { census_blocking_count_for_class, census_bl
 import gunbc.live_deploy.role_singleton_convergence {
   BrokerUnitMember, FabricUnitMember, StoreMarkerMember,
   RoleSingletonSighting, SightedDeploymentMember, SightedBroker,
-  HostRoleSingletonReading, HostRoleSingletonsRead,
+  HostRoleSingletonReading, HostRoleSingletonsRead, HostRoleSingletonsUnobservable,
   RoleSingletonRemovalUnimplemented, RoleSingletonRealizedOnTwoHosts, RoleSingletonStaleSpec,
+  RoleSingletonHostUnobservable,
   RoleSingletonConvergence, RoleSingletonNoop, RoleSingletonInstall, RoleSingletonRefused,
   RoleSingletonAdmissible, RoleSingletonInadmissible,
+  RoleSingletonReadingSource,
+  assess_over_roster, fetch_self_report, SelfReportUnserved, SelfReportServed,
   role_singleton_observation_of, role_singleton_convergence, classify_role_singleton_admission,
+  role_singleton_self_report_member,
   role_singleton_refusal_detail, marker_sighting_of, MarkerSightingOf, MarkerSightingAbsent, MarkerSightingUnobservable,
   MarkerReadBack, MarkerReadRefused,
 }
 import gunbc.live_deploy.desired {
   DesiredDeployment,
-  desired_deployment_roster, srv1_production_desired_deployment, srv1_lab_desired_deployment, selected_deployment_spec,
+  desired_deployment_roster, srv1_production_desired_deployment, srv1_lab_desired_deployment, srv2_deploy_desired_deployment, selected_deployment_spec,
   prod_role_actuated_realization, prod_role_actuated_realization_in,
 }
 import gunbc.live_deploy.spec { HoldsProdRoleSingletons, HoldsNoRoleSingleton }
@@ -29,6 +33,7 @@ import gunbc.fabric_storage_placement {
   fabric_storage_ownership_marker_spec, fabric_storage_marker_verdict, FabricStorageMarkerExact, FabricStorageMarkerMismatched, FabricStorageMarkerReading,
 }
 import gunbc.live_deploy.member_observe { EntryPresent, EntryAbsent, EntryPresenceIndeterminate }
+import gunbc.roadmap_serve { dashboard_instance_served_json }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -109,6 +114,72 @@ test fn the_production_row_is_admissible_for_noop_when_it_holds() -> Bool {
   }
 }
 
+fn complete_srv1_empty_peers_source() -> RoleSingletonReadingSource {
+  let holder = srv1_production_desired_deployment()
+  RoleSingletonReadingSource {
+    read: (host, rows) =>
+      if (host as String) == (holder.target.ssh_host as String) {
+        HostRoleSingletonsRead {
+          host: host,
+          sightings: [
+            SightedBroker { host: host },
+            SightedDeploymentMember { host: host, deployment: holder.instance.deployment, member: FabricUnitMember },
+          ],
+        }
+      } else {
+        HostRoleSingletonsRead { host: host, sightings: [] }
+      },
+  }
+}
+
+fn srv2_unobservable_peers_source() -> RoleSingletonReadingSource {
+  let holder = srv1_production_desired_deployment()
+  let srv2 = srv2_deploy_desired_deployment().target.ssh_host
+  RoleSingletonReadingSource {
+    read: (host, rows) =>
+      if (host as String) == (holder.target.ssh_host as String) {
+        HostRoleSingletonsRead {
+          host: host,
+          sightings: [
+            SightedBroker { host: host },
+            SightedDeploymentMember { host: host, deployment: holder.instance.deployment, member: FabricUnitMember },
+          ],
+        }
+      } else if (host as String) == (srv2 as String) {
+        HostRoleSingletonsUnobservable { host: host, cause: "required control: srv2 is unobservable" }
+      } else {
+        HostRoleSingletonsRead { host: host, sightings: [] }
+      },
+  }
+}
+
+test fn the_production_assessor_over_the_real_roster_noops_when_srv1_is_complete_and_srv2_is_observable_and_empty() -> Bool {
+  any(desired_deployment_roster(), r => (r.target.ssh_host as String) == (srv2_deploy_desired_deployment().target.ssh_host as String))
+    && match assess_over_roster(source: complete_srv1_empty_peers_source()) {
+      RoleSingletonNoop => true
+      _ => false
+    }
+}
+
+test fn the_production_assessor_over_the_real_roster_refuses_when_srv2_is_unobservable() -> Bool {
+  match assess_over_roster(source: srv2_unobservable_peers_source()) {
+    RoleSingletonRefused { cause: RoleSingletonHostUnobservable { host, cause: _ } } =>
+      (host as String) == (srv2_deploy_desired_deployment().target.ssh_host as String)
+    _ => false
+  }
+}
+
+test fn production_fetch_self_report_is_the_executed_reader() -> Bool {
+  match fetch_self_report(row: srv2_deploy_desired_deployment()) {
+    SelfReportUnserved { cause } => cause != ""
+    SelfReportServed { peer_node: _, body: _, received_at_unix_millis: _ } => false
+  }
+}
+
+test fn the_served_instance_document_carries_the_self_report() -> Bool {
+  string_contains(s: dashboard_instance_served_json(instance: srv1_live_dashboard_instance()), pattern: role_singleton_self_report_member)
+}
+
 test fn every_marker_field_mismatch_is_named() -> Bool {
   let m = fabric_storage_ownership_marker_spec(instance: srv1_live_dashboard_instance())
   let exact = FabricStorageMarkerReading { path: m.path, content: m.content as String, mode: "644", owner: m.owner as String, group: m.group as String }
@@ -135,7 +206,7 @@ test fn the_marker_readback_has_three_distinct_outcomes() -> Bool {
   exact && absent && denied
 }
 
-data forged_deploy_routes_source: String = "module probe_forged_deploy_routes\nimport gunbc.live_deploy.role_singleton_convergence { mint_role_singleton_admission, RoleSingletonNoop, RoleSingletonAdmission, assess_and_admit, assess_and_admit_rostered, RoleSingletonAdmissionResult, admitted_spec }\nimport gunbc.live_deploy.desired { deployment_spec_srv1, srv1_production_desired_deployment }\nimport gunbc.live_deploy.spec { DeploymentSpec }\nimport gunbc.host_effect { LocalShell, HostEffect, LiveDeployApply }\nimport gunbc.live_deploy.apply { live_deploy_apply_member_plan_via_transport }\nimport gunbc.live_deploy.apply_warrant { warrant_live_deploy_apply, AdmittedLiveDeployApply }\nimport gunbc.live_deploy.candidate_identity { CandidateRelease }\nimport gunbc.live_deploy.member_identity { ReleaseEffectPlan }\nimport gunbc.ci_deploy_access { DeployAccess }\nfn forge_admission() -> RoleSingletonAdmission { mint_role_singleton_admission(spec: deployment_spec_srv1(), decision: RoleSingletonNoop) }\nfn obtain_admission() -> RoleSingletonAdmissionResult { assess_and_admit(deployment: srv1_production_desired_deployment(), own: LocalShell) }\nfn replay_admission(a: RoleSingletonAdmission) -> DeploymentSpec { admitted_spec(admission: a) }\nfn alter_spec() -> RoleSingletonAdmissionResult { assess_and_admit_rostered(spec: deployment_spec_srv1(), own: LocalShell) }\nfn bypass_member_plan(c: CandidateRelease, a: DeployAccess) -> Bool { let r = live_deploy_apply_member_plan_via_transport(spec: deployment_spec_srv1(), candidate: c, transport: LocalShell, access: a)\n true }\nfn forge_warrant(c: CandidateRelease, p: ReleaseEffectPlan) -> AdmittedLiveDeployApply { warrant_live_deploy_apply(spec: deployment_spec_srv1(), candidate: c, plan: p) }\nfn forge_warrant_literal(c: CandidateRelease, p: ReleaseEffectPlan) -> HostEffect { LiveDeployApply { warrant: AdmittedLiveDeployApply { spec: deployment_spec_srv1(), candidate: c, plan: p } } }\n"
+data forged_deploy_routes_source: String = "module probe_forged_deploy_routes\nimport gunbc.live_deploy.role_singleton_convergence { mint_role_singleton_admission, RoleSingletonNoop, RoleSingletonAdmission, assess_and_admit, assess_and_admit_rostered, RoleSingletonAdmissionResult, admitted_spec }\nimport gunbc.live_deploy.desired { deployment_spec_srv1, srv1_production_desired_deployment }\nimport gunbc.live_deploy.spec { DeploymentSpec }\nimport gunbc.host_effect { LocalShell, HostEffect, LiveDeployApply }\nimport gunbc.live_deploy.apply { live_deploy_apply_member_plan_via_transport }\nimport gunbc.live_deploy.apply_warrant { warrant_live_deploy_apply, AdmittedLiveDeployApply }\nimport gunbc.live_deploy.candidate_identity { CandidateRelease }\nimport gunbc.live_deploy.member_identity { ReleaseEffectPlan }\nimport gunbc.ci_deploy_access { DeployAccess }\nfn forge_admission() -> RoleSingletonAdmission { mint_role_singleton_admission(spec: deployment_spec_srv1(), decision: RoleSingletonNoop) }\nfn obtain_admission() -> RoleSingletonAdmissionResult { assess_and_admit(deployment: srv1_production_desired_deployment()) }\nfn replay_admission(a: RoleSingletonAdmission) -> DeploymentSpec { admitted_spec(admission: a) }\nfn alter_spec() -> RoleSingletonAdmissionResult { assess_and_admit_rostered(spec: deployment_spec_srv1()) }\nfn bypass_member_plan(c: CandidateRelease, a: DeployAccess) -> Bool { let r = live_deploy_apply_member_plan_via_transport(spec: deployment_spec_srv1(), candidate: c, transport: LocalShell, access: a)\n true }\nfn forge_warrant(c: CandidateRelease, p: ReleaseEffectPlan) -> AdmittedLiveDeployApply { warrant_live_deploy_apply(spec: deployment_spec_srv1(), candidate: c, plan: p) }\nfn forge_warrant_literal(c: CandidateRelease, p: ReleaseEffectPlan) -> HostEffect { LiveDeployApply { warrant: AdmittedLiveDeployApply { spec: deployment_spec_srv1(), candidate: c, plan: p } } }\n"
 
 data canonical_apply_source: String = "module probe_canonical_apply\nimport gunbc.live_deploy.apply { live_deploy_apply_with_access }\nimport gunbc.live_deploy.desired { srv1_production_desired_deployment }\nimport gunbc.live_deploy.candidate_identity { CandidateRelease }\nimport gunbc.ci_deploy_access { DeployAccess }\nfn act(c: CandidateRelease, a: DeployAccess) -> Bool { let r = live_deploy_apply_with_access(deployment: srv1_production_desired_deployment(), access: a, candidate: c)\n true }\n"
 

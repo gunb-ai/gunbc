@@ -48,6 +48,11 @@ import gunbc.auth.tailnet_serve_readback {
 import gunbc.live_deploy.desired {
   desired_deployment_for_instance_id, DesiredDeploymentFound, DesiredDeploymentUnknownInstanceId, DesiredDeploymentRosterRefused,
 }
+import gunbc.live_deploy.role_singleton_convergence {
+  role_singleton_self_report_member,
+  role_singleton_self_report_json,
+  role_singleton_self_report_of,
+}
 import gunbc.roadmap_auth_routes { auth_login_response, auth_google_callback_response, auth_logout_response, roadmap_serve_authentication_evidence }
 import extdeps.tailscale.acl { operator_tailscale_acl_policy }
 import gunbc.auth.request_authentication {
@@ -1208,8 +1213,19 @@ fn serve_dispatch_handler_response(params: List<PathParamBinding>) -> ServeHttpR
 }
 
 fn dashboard_instance_json(instance: HostDashboardInstance) -> String {
+  serialize_json(v: json_object(members: dashboard_instance_json_members(instance: instance)))
+}
+
+fn dashboard_instance_served_json(instance: HostDashboardInstance) -> String {
+  serialize_json(v: json_object(members: concat(
+    dashboard_instance_json_members(instance: instance),
+    [json_kv(key: role_singleton_self_report_member, value: role_singleton_self_report_json(report: role_singleton_self_report_of(instance: instance)))],
+  )))
+}
+
+fn dashboard_instance_json_members(instance: HostDashboardInstance) -> List<JsonKeyValue> {
   let plan = dashboard_instance_provision_plan_rows(instance: instance)
-  serialize_json(v: json_object(members: [
+  [
     json_kv(key: "schema", value: json_string(s: dashboard_instance_health_schema)),
     json_kv(key: "instance_id", value: json_string(s: instance.instance_id as String)),
     json_kv(key: "host_identity", value: json_string(s: instance.host_identity as String)),
@@ -1243,7 +1259,7 @@ fn dashboard_instance_json(instance: HostDashboardInstance) -> String {
         json_kv(key: "detail", value: json_string(s: row.detail)),
       ]))),
     ),
-  ]))
+  ]
 }
 
 // Every handler receives the FULL modeled ServeHttpRequest (review 40314: the request body was
@@ -1326,7 +1342,7 @@ fn roadmap_serve_invoke_over(
       serve_text_response(
         status: 200,
         content_type: application_json_utf8,
-        body: dashboard_instance_json(instance: instance),
+        body: dashboard_instance_served_json(instance: instance),
       )
     ProviderReadinessHandler =>
       serve_text_response(

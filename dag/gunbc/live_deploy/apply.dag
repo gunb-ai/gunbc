@@ -619,7 +619,7 @@ fn live_deploy_apply_via_transport(
   decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_with_access"),
   decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_transaction_decided"),
 ] {
-  match assess_and_admit(deployment: deployment, own: transport) {
+  match assess_and_admit(deployment: deployment) {
     RoleSingletonNotAdmitted { cause } =>
       NotConverged {
         reason: role_singleton_refusal_detail(cause: cause),
@@ -1394,7 +1394,7 @@ fn live_deploy_transaction_decided(
       exit: live_deploy_reconciliation_exit(r: preflight),
     )
   } else {
-    match assess_and_admit(deployment: deployment, own: access.transport) {
+    match assess_and_admit(deployment: deployment) {
       RoleSingletonNotAdmitted { cause } => {
         let why = role_singleton_refusal_detail(cause: cause)
         live_deploy_write_transaction_receipt(
