@@ -1,7 +1,10 @@
 module gunbc.auth.tracker_web_oauth_client
 
 import std.types { String, NonEmptyStr, List, Bool, Int, Port }
-import std.measure { second_count }
+import std.nat { Nat }
+import std.measure {
+  Second, second, second_count, millisecond, millisecond_to_second_floor,
+}
 import gunbc.clock_read { observer_clock_read, observer_instant_millis, ObserverClockObserved, ObserverClockUnreadable }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_path }
@@ -197,18 +200,20 @@ data tracker_web_test_console_observed_redirect_uris: List<NonEmptyStr> = [
 // Unix seconds at a UTC civil clock, via the ISO-8601 calendar (Hinnant days_from_civil),
 // not a transcribed epoch integer. The console receipt date is the civil triple; the
 // instrument is iso8601_days_from_civil. Inverse: iso8601_utc_text.
-fn tracker_web_test_console_readback_unix_at(year: Int, month: Int, day: Int, hour: Int) -> Int {
-  iso8601_days_from_civil(y: year, m: month, d: day) * iso8601_seconds_per_day() + hour * iso8601_seconds_per_hour()
+fn tracker_web_test_console_readback_unix_at(year: Int, month: Int, day: Int, hour: Int) -> Second {
+  second(count: (
+    iso8601_days_from_civil(y: year, m: month, d: day) * iso8601_seconds_per_day() + hour * iso8601_seconds_per_hour()
+  ) as Nat)
 }
 
-data tracker_web_test_console_readback_observed_at_epoch: Int = tracker_web_test_console_readback_unix_at(year: 2026, month: 10, day: 11, hour: 4)
+data tracker_web_test_console_readback_observed_at_epoch: Second = tracker_web_test_console_readback_unix_at(year: 2026, month: 10, day: 11, hour: 4)
 
-data tracker_web_test_console_readback_valid_until_epoch: Int = tracker_web_test_console_readback_unix_at(year: 2026, month: 11, day: 10, hour: 4)
+data tracker_web_test_console_readback_valid_until_epoch: Second = tracker_web_test_console_readback_unix_at(year: 2026, month: 11, day: 10, hour: 4)
 
-fn tracker_web_oidc_deploy_now_epoch() -> Int? {
+fn tracker_web_oidc_deploy_now_epoch() -> Second? {
   match observer_clock_read() {
     ObserverClockObserved { instant } =>
-      Present { value: (observer_instant_millis(instant: instant) as Int) / 1000 }
+      Present { value: millisecond_to_second_floor(m: millisecond(count: observer_instant_millis(instant: instant) as Nat)) }
     ObserverClockUnreadable { detail: _ } => none
   }
 }
@@ -224,8 +229,8 @@ fn tracker_web_test_registered_web_client_console_readback() -> WorkspaceAdminRe
       administrator: workspace_operator_principal(),
       evidence: "bright-moth-475 2026-10-11 operator console URI add; no Auth Platform write API" as NonEmptyStr,
     },
-    observed_at_epoch: tracker_web_test_console_readback_observed_at_epoch,
-    valid_until_epoch: tracker_web_test_console_readback_valid_until_epoch,
+    observed_at_epoch: second_count(s: tracker_web_test_console_readback_observed_at_epoch) as Int,
+    valid_until_epoch: second_count(s: tracker_web_test_console_readback_valid_until_epoch) as Int,
     coverage: EffectiveAtDeclaredScope,
   }
 }
@@ -262,7 +267,7 @@ type TrackerWebOidcServeStanding
   | TrackerWebOidcRealizationMissing { instance_id: NonEmptyStr, environment: GoogleLoginEnvironment }
   | TrackerWebOidcConsoleReadbackUnsatisfied { instance_id: NonEmptyStr, cause: NonEmptyStr }
 
-fn tracker_web_test_auth_platform_client_assessment(now_epoch: Int) -> GoalAssessment<WorkspaceAdminEvidence, WorkspaceAdminDifference, String, String> {
+fn tracker_web_test_auth_platform_client_assessment(now_epoch: Second) -> GoalAssessment<WorkspaceAdminEvidence, WorkspaceAdminDifference, String, String> {
   let binding = tracker_web_test_workspace_identity_binding()
   match workspace_identity_admin_obligations(binding: binding, discovery: BasicSignInOnly).first() {
     Absent => GoalAssessmentRefused { cause: "tracker-web TEST Auth Platform obligation is missing" }
@@ -271,7 +276,7 @@ fn tracker_web_test_auth_platform_client_assessment(now_epoch: Int) -> GoalAsses
         goal: ob,
         receipt: tracker_web_test_registered_web_client_console_readback(),
         admitted_admins: [workspace_operator_principal()],
-        now_epoch: now_epoch,
+        now_epoch: second_count(s: now_epoch) as Int,
       )
   }
 }
@@ -307,7 +312,7 @@ fn tracker_web_oidc_serve_placement(instance_id: NonEmptyStr) -> TrackerWebOidcS
   }
 }
 
-fn tracker_web_oidc_serve_standing(instance_id: NonEmptyStr, now_epoch: Int) -> TrackerWebOidcServeStanding {
+fn tracker_web_oidc_serve_standing(instance_id: NonEmptyStr, now_epoch: Second) -> TrackerWebOidcServeStanding {
   match tracker_web_oidc_serve_placement(instance_id: instance_id) {
     TrackerWebOidcPlacementUnassigned { instance_id: id } => TrackerWebOidcInstanceUnassigned { instance_id: id }
     TrackerWebOidcPlacementUnbound { instance_id: id, reason } =>

@@ -1,6 +1,7 @@
 module test.claim.auth.tracker_web_dev_oauth_witness_test
 
-import std.types { Bool, String, CommitSha, NonEmptyStr }
+import std.types { Bool, String, CommitSha, NonEmptyStr, Int }
+import std.measure { second_count }
 import v2.std.algebra { any }
 import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalAssessmentRefused }
 import std.keyed_roster { KeyedRosterBuilt }
@@ -173,8 +174,8 @@ test fn srv2_hand_started_unit_is_unmodeled_and_not_adopted() -> Bool {
 }
 
 test fn console_readback_epochs_are_the_2026_calendar_receipt() -> Bool {
-  iso8601_utc_text(unix: tracker_web_test_console_readback_observed_at_epoch) == "2026-10-11T04:00:00Z"
-    && iso8601_utc_text(unix: tracker_web_test_console_readback_valid_until_epoch) == "2026-11-10T04:00:00Z"
+  iso8601_utc_text(unix: second_count(s: tracker_web_test_console_readback_observed_at_epoch) as Int) == "2026-10-11T04:00:00Z"
+    && iso8601_utc_text(unix: second_count(s: tracker_web_test_console_readback_valid_until_epoch) as Int) == "2026-11-10T04:00:00Z"
 }
 
 test fn a_desired_redirect_uri_change_diverges_from_the_console_receipt() -> Bool {
@@ -193,7 +194,7 @@ test fn a_desired_redirect_uri_change_diverges_from_the_console_receipt() -> Boo
       goal: ob,
       receipt: tracker_web_test_registered_web_client_console_readback(),
       admitted_admins: [workspace_operator_principal()],
-      now_epoch: tracker_web_test_console_readback_observed_at_epoch,
+      now_epoch: second_count(s: tracker_web_test_console_readback_observed_at_epoch) as Int,
     ) {
       GoalDiverged { deviations } => count(deviations) > 0
       _ => false

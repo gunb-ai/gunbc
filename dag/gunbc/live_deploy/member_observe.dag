@@ -1,6 +1,7 @@
 module gunbc.live_deploy.member_observe
 
 import std.types { String, Bool, List, Int, NonEmptyStr, CommitSha, FilePath }
+import std.measure { Second }
 import std.optional { Optional, Present, Absent }
 import std.algebra { trim }
 import std.content_hash { content_hash_atom }
@@ -275,7 +276,7 @@ fn observe_unit_file(arm: ObservationArm, spec: DeploymentSpec) -> ObservedMembe
   }
 }
 
-fn desired_unit_file(spec: DeploymentSpec, candidate: CandidateRelease, now_epoch: Int?) -> MemberIdentity {
+fn desired_unit_file(spec: DeploymentSpec, candidate: CandidateRelease, now_epoch: Second?) -> MemberIdentity {
   UnitFileAt { file: UnitFileIdentity {
     unit: spec.service.unit_name,
     document: content_hash_atom(value: live_deploy_systemd_unit_for(spec: spec, revision: RevisionBoundAtEmission { revision: candidate.revision }, now_epoch: now_epoch) as NonEmptyStr),
@@ -668,7 +669,7 @@ fn desired_member_identity(
   spec: DeploymentSpec,
   candidate: CandidateRelease,
   desired_bin: MemberIdentity,
-  now_epoch: Int?,
+  now_epoch: Second?,
 ) -> MemberIdentity? {
   match member {
     Executable => Present { value: desired_bin }
@@ -710,7 +711,7 @@ fn release_member_plan(
   transport: HostEffectTransport,
   desired_bin: MemberIdentity,
   target: ReleaseTarget,
-  now_epoch: Int?,
+  now_epoch: Second?,
 ) -> EffectDerivation {
   let arm = observation_arm(transport: transport)
   derive_member_plan(

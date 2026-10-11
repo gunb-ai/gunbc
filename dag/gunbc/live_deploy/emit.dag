@@ -44,7 +44,7 @@ import gunbc.fleet_converge_timer {
   fleet_converge_timer_on_calendar,
   fleet_converge_timer_randomized_delay,
 }
-import std.measure { ByteSize, byte_size, second_count, positive_millisecond_count }
+import std.measure { ByteSize, byte_size, second_count, positive_millisecond_count, Second }
 import std.evaluation_budget { EvaluationLimit, LimitSet, LimitUnset }
 
 import std.types { String, List, Bool, NonEmptyStr, Int, FilePath, CommitSha, Port }
@@ -561,7 +561,7 @@ fn live_deploy_oidc_unit_env(standing: TrackerWebOidcServeStanding) -> LiveDeplo
   }
 }
 
-fn live_deploy_oidc_unit_env_for(spec: DeploymentSpec, now_epoch: Int?) -> LiveDeployOidcUnitEnv {
+fn live_deploy_oidc_unit_env_for(spec: DeploymentSpec, now_epoch: Second?) -> LiveDeployOidcUnitEnv {
   match tracker_web_oidc_serve_placement(instance_id: spec.instance_id) {
     TrackerWebOidcPlacementUnassigned { instance_id: _ } =>
       LiveDeployOidcEnvAdmitted { directives: [] }
@@ -578,7 +578,7 @@ fn live_deploy_oidc_unit_env_for(spec: DeploymentSpec, now_epoch: Int?) -> LiveD
   }
 }
 
-fn live_deploy_oidc_unit_env_at(spec: DeploymentSpec, now_epoch: Int) -> LiveDeployOidcUnitEnv {
+fn live_deploy_oidc_unit_env_at(spec: DeploymentSpec, now_epoch: Second) -> LiveDeployOidcUnitEnv {
   live_deploy_oidc_unit_env_for(spec: spec, now_epoch: Present { value: now_epoch })
 }
 
@@ -589,7 +589,7 @@ fn live_deploy_oidc_unit_env_at(spec: DeploymentSpec, now_epoch: Int) -> LiveDep
 // non-privileged so briansrls binds it. WorkingDirectory = the repo root — the source roots and
 // entry are relative to it, and the belt's spawn workdir projects the same gunbc.host_layout fact.
 fn live_deploy_serve_unit_emission(
-  spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Int?,
+  spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second?,
 ) -> LiveDeployServeUnitEmission {
   match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: now_epoch) {
     LiveDeployOidcEnvAdmitted { directives } =>
@@ -600,7 +600,7 @@ fn live_deploy_serve_unit_emission(
 }
 
 fn live_deploy_serve_unit_emission_at(
-  spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Int,
+  spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second,
 ) -> LiveDeployServeUnitEmission {
   live_deploy_serve_unit_emission(spec: spec, revision: revision, now_epoch: Present { value: now_epoch })
 }
@@ -657,7 +657,7 @@ fn live_deploy_serve_unit_file_over_listener(
 // to the socket the deployment's serve route targets (gunbc.live_deploy.spec
 // deployment_tailnet_door_socket). Absent for a deployment whose route targets a port.
 fn live_deploy_tailnet_door_unit_file(
-  spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Int?,
+  spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second?,
 ) -> SystemdUnitFile? {
   match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: now_epoch) {
     LiveDeployOidcEnvRefused { cause: _ } => none
@@ -675,14 +675,14 @@ fn live_deploy_tailnet_door_unit_file(
 }
 
 fn live_deploy_tailnet_door_unit_file_at(
-  spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Int,
+  spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second,
 ) -> SystemdUnitFile? {
   live_deploy_tailnet_door_unit_file(spec: spec, revision: revision, now_epoch: Present { value: now_epoch })
 }
 
 // A step of this kind exists only where the door does (deployment_tailnet_door_steps), so the
 // absent arm is a spec whose steps and names disagree: it writes a refusal marker, never a unit.
-fn apply_tailnet_door_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Int?) -> PipelineStep {
+fn apply_tailnet_door_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Second?) -> PipelineStep {
   match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: oidc_now) {
     LiveDeployOidcEnvRefused { cause } => apply_oidc_readback_refuse_step(cause: cause)
     LiveDeployOidcEnvAdmitted { directives: _ } =>
@@ -749,7 +749,7 @@ fn fabric_storage_door_unknown_step(spec: DeploymentSpec) -> PipelineStep {
   deploy_raw(command: join([fabric_storage_door_unknown_instance_poison, spec.instance_id as String, "\n"], ""))
 }
 
-fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Int?) -> Doc {
+fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second?) -> Doc {
   match live_deploy_serve_unit_emission(spec: spec, revision: revision, now_epoch: now_epoch) {
     LiveDeployServeUnitEmitted { file } =>
       doc_text(text: serialize_systemd_unit_file(file: file))
@@ -1420,7 +1420,7 @@ fn deployment_retract_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentSte
 // fact. Parameterizing only the install side would have left the writer staging one name and the
 // installer copying another — a deploy that fails on a missing file, which is at least loud, or
 // worse installs a stale unit left in the stage directory from a previous run.
-fn apply_systemd_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Int?) -> PipelineStep {
+fn apply_systemd_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Second?) -> PipelineStep {
   match live_deploy_serve_unit_emission(spec: spec, revision: revision, now_epoch: oidc_now) {
     LiveDeployServeUnitEmitted { file } =>
       deploy_raw(command: deploy_stage_write_command(
@@ -1435,14 +1435,14 @@ fn apply_oidc_readback_refuse_step(cause: NonEmptyStr) -> PipelineStep {
   deploy_raw(command: join(["__GUNBC_OIDC_READBACK_REFUSED__ ", cause as String], ""))
 }
 
-fn apply_oidc_line_stop_steps(spec: DeploymentSpec, oidc_now: Int?) -> List<PipelineStep> {
+fn apply_oidc_line_stop_steps(spec: DeploymentSpec, oidc_now: Second?) -> List<PipelineStep> {
   match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: oidc_now) {
     LiveDeployOidcEnvAdmitted { directives: _ } => []
     LiveDeployOidcEnvRefused { cause } => [apply_oidc_readback_refuse_step(cause: cause)]
   }
 }
 
-fn apply_oidc_config_steps(spec: DeploymentSpec, oidc_now: Int?) -> List<PipelineStep> {
+fn apply_oidc_config_steps(spec: DeploymentSpec, oidc_now: Second?) -> List<PipelineStep> {
   match tracker_web_oidc_serve_placement(instance_id: spec.instance_id) {
     TrackerWebOidcPlacementUnassigned { instance_id: _ } => []
     TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } => []
@@ -1456,7 +1456,7 @@ fn apply_oidc_config_steps(spec: DeploymentSpec, oidc_now: Int?) -> List<Pipelin
   }
 }
 
-fn apply_oidc_config_steps_at(spec: DeploymentSpec, now_epoch: Int, should_write: Bool) -> List<PipelineStep> {
+fn apply_oidc_config_steps_at(spec: DeploymentSpec, now_epoch: Second, should_write: Bool) -> List<PipelineStep> {
   match tracker_web_oidc_serve_standing(instance_id: spec.instance_id, now_epoch: now_epoch) {
     TrackerWebOidcServeConfigured { config: cfg } =>
       if !(should_write) {
@@ -2965,7 +2965,7 @@ fn approval_broker_unit_write_steps_on(
   ]
 }
 
-fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan, spec: DeploymentSpec, oidc_now: Int?) -> List<PipelineStep> {
+fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan, spec: DeploymentSpec, oidc_now: Second?) -> List<PipelineStep> {
   let revision = RevisionBoundAtEmission { revision: plan.target.revision }
   match member {
     TreePublication => if !plan_publishes_tree(plan: plan) { [] } else { concat([
@@ -3064,7 +3064,7 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
 // line above and the planned identity name one file.
 data release_executable_install_source: String = "target/release/gunbc"
 
-fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Int?) -> List<PipelineStep> {
+fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Second?) -> List<PipelineStep> {
   match art.kind {
     GunbcSourceTree => [
       deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: "/opt/gunbc", privileged: true)),
@@ -3433,7 +3433,7 @@ fn emit_deploy_teardown_dependency_refusal(dep: DeploymentDependencyStep) -> Lis
   [deploy_raw(command: concat(live_deploy_teardown_dependency_unreachable_poison, ensured_subject_identity(subject: dep.subject) as String))]
 }
 
-fn emit_deploy_member_effect(effect: MemberEffect<DeploymentStep>, spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Int?) -> List<PipelineStep> {
+fn emit_deploy_member_effect(effect: MemberEffect<DeploymentStep>, spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Second?) -> List<PipelineStep> {
   match effect {
     EffectAdd { to: step } =>
       match step {
@@ -3478,7 +3478,7 @@ fn apply_step_effects(
   effects: List<MemberEffect<DeploymentStep>>,
   spec: DeploymentSpec,
   plan: ReleaseEffectPlan,
-  oidc_now: Int?,
+  oidc_now: Second?,
 ) -> List<PipelineStep> {
   match identity_member_of_step(step: step) {
     Present { value: member } => match member {
@@ -3501,7 +3501,7 @@ fn step_membership_effects(
   effects: List<MemberEffect<DeploymentStep>>,
   spec: DeploymentSpec,
   plan: ReleaseEffectPlan,
-  oidc_now: Int?,
+  oidc_now: Second?,
 ) -> List<PipelineStep> {
   flat_map(
     filter(effects, e => deployment_step_key_eq(a: deployment_step_key(step: member_effect_step(e: e)), b: deployment_step_key(step: step))),
@@ -3549,7 +3549,7 @@ fn apply_intent_from_effects(
   access: DeployAccess,
   plan: ReleaseEffectPlan,
   cap_authorization: CapConvergeDecision,
-  oidc_now: Int?,
+  oidc_now: Second?,
 ) -> Pipeline {
   Pipeline {
     steps: concat(
@@ -3747,7 +3747,7 @@ fn live_deploy_apply_script_for(
   spec: DeploymentSpec,
   plan: ReleaseEffectPlan,
   cap_authorization: CapConvergeDecision,
-  oidc_now: Int?,
+  oidc_now: Second?,
 ) -> String {
   match ci_deploy_srv1_access_or_refusal() {
     DeployAccessJobPrincipalRefused { refusal: r } =>
@@ -3813,7 +3813,7 @@ fn live_deploy_apply_script_for_wet(
   )
 }
 
-fn live_deploy_systemd_unit_for(spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Int?) -> String {
+fn live_deploy_systemd_unit_for(spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second?) -> String {
   render(doc: emit_systemd_unit_doc(spec: spec, revision: revision, now_epoch: now_epoch), proto: live_deploy_protocol)
 }
 

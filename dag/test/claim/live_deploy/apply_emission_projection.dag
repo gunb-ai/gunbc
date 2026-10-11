@@ -1,6 +1,7 @@
 module test.claim.live_deploy.apply_emission_projection
 
-import std.types { String, List, Int }
+import std.types { String, List }
+import std.measure { Second }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentStep }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
 import gunbc.live_deploy.emit { apply_step_effects }
@@ -135,7 +136,7 @@ fn pipeline_steps_text(steps: List<PipelineStep>) -> String {
   fold(steps, init: "", f: (acc, st) => concat(acc, pipeline_step_text(st: st)))
 }
 
-fn claim_oidc_now() -> Int? {
+fn claim_oidc_now() -> Second? {
   Present { value: tracker_web_test_console_readback_observed_at_epoch }
 }
 
