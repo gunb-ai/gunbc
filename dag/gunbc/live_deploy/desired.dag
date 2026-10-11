@@ -145,7 +145,7 @@ fn deployment_owned_identity(spec: DeploymentSpec, step: DeploymentArtifactStep)
 // HOST-QUALIFIED PATHS OF OWNED ARTIFACT STEPS ONLY — the retract-order membership
 // gunbc.live_deploy.spec deployment_owned_steps actually installs: serve binary, source tree,
 // tree-remote unit, dispatch worktree root, attempt-state root, compute root, fabric event-log
-// root, systemd unit, publication-helper timer, belt timer, tailscale route member path.
+// root, systemd unit, publication-helper path, belt event path, tailscale route member path.
 // Dispatch/attempt/compute/event-log roots are already in that list (C6 moving them into the
 // member roster does not extend this fold). It does NOT enumerate listen port, serve_function,
 // tree-sync unit/env filenames, slice unit, belt/publication service units, or the credential

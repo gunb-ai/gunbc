@@ -101,7 +101,7 @@ type OwnedArtifactKind =
   | FleetConvergeTimerUnit
   | TailscaleServeMapping
   | DeployedTreeRemoteUnit
-  | PublicationHelperTimerUnit
+  | PublicationHelperPathUnit
   | FabricStorageServeUnit
   | FabricStorageServeMapping
   | ApprovalBrokerFrontDoor
@@ -179,7 +179,7 @@ fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDispo
     BeltEventPathUnit => TeardownActs
     FleetConvergeTimerUnit => TeardownActs
     TailscaleServeMapping => TeardownActs
-    PublicationHelperTimerUnit => TeardownActs
+    PublicationHelperPathUnit => TeardownActs
     FabricStorageServeUnit => TeardownActs
     FabricStorageServeMapping => TeardownActs
     ApprovalBrokerFrontDoor => TeardownActs
@@ -700,16 +700,32 @@ fn deployment_publication_service_unit_name(names: DeploymentNames) -> NonEmptyS
   join([deployment_belt_unit_stem(names: names), "-publication.service"], "") as NonEmptyStr
 }
 
+fn deployment_publication_path_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-publication.path"], "") as NonEmptyStr
+}
+
 fn deployment_publication_timer_unit_name(names: DeploymentNames) -> NonEmptyStr {
   join([deployment_belt_unit_stem(names: names), "-publication.timer"], "") as NonEmptyStr
+}
+
+fn deployment_retired_belt_timer_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-belt.timer"], "") as NonEmptyStr
 }
 
 fn deployment_publication_service_unit_path(names: DeploymentNames) -> NonEmptyStr {
   join(["/etc/systemd/system/", deployment_publication_service_unit_name(names: names) as String], "") as NonEmptyStr
 }
 
+fn deployment_publication_path_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_publication_path_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
 fn deployment_publication_timer_unit_path(names: DeploymentNames) -> NonEmptyStr {
   join(["/etc/systemd/system/", deployment_publication_timer_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_retired_belt_timer_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_retired_belt_timer_unit_name(names: names) as String], "") as NonEmptyStr
 }
 
 // THE INSTANCE'S CREDENTIAL FILE IS A PATH THIS GRAPH NAMES AND A SECRET THIS GRAPH NEVER HOLDS,
@@ -779,11 +795,11 @@ fn deployment_credential_env_path(names: DeploymentNames) -> NonEmptyStr {
 // have since swapped -- deployment_steps_apply_order says why binary now lands before the tree --
 // and this member's position after BOTH is unchanged by that.)
 //
-// It sits THIRD -- immediately after ServeBinary and GunbcSourceTree, and before the belt timer.
-// An earlier cut of this change said "last" and placed it last; that was an inversion of
+// It sits THIRD -- immediately after ServeBinary and GunbcSourceTree, and before the belt event
+// units. An earlier cut of this change said "last" and placed it last; that was an inversion of
 // the rule deployment_steps_apply_order's annotation states, that dependencies precede their
 // consumers, because the
-// remote is a prerequisite of every belt tick and a candidate belt would otherwise fire once
+// remote is a prerequisite of every belt observation and a candidate belt would otherwise fire once
 // against the known-broken observation state before the correction ran. Third is the EARLIEST
 // position satisfying the fresh-instance constraint above, so it satisfies both; last satisfied
 // only one. Witness: deployed_tree_remote_witness_test
@@ -1076,8 +1092,8 @@ fn deployment_owned_steps(
     },
     DeploymentArtifactStep { kind: SystemdUnit, path: deployment_systemd_unit_path(names: names) },
     DeploymentArtifactStep {
-      kind: PublicationHelperTimerUnit,
-      path: deployment_publication_timer_unit_path(names: names),
+      kind: PublicationHelperPathUnit,
+      path: deployment_publication_path_unit_path(names: names),
     },
     DeploymentArtifactStep { kind: BeltEventPathUnit, path: deployment_belt_exit_path_unit_path(names: names) },
   ], concat(deployment_tailnet_door_steps(names: names), concat([
@@ -1194,8 +1210,9 @@ fn deployment_directory_demands(spec: DeploymentSpec) -> List<OwnedDirectoryTarg
 // convergence_unit_doc) -- the order used to read tree-then-binary on the grounds that the binary serves
 // the tree, which is true of the running process but not of the installation, and the identity emitter
 // had to override it downstream until this authority said it (review on PR #10696); both before the
-// unit (ExecStart references binary + tree), then the belt timer (its ExecStart references that same
-// binary and tree), and the tailscale mapping last (routes to a live service). The directories every
+// unit (ExecStart references binary + tree), then the publication and belt event units (their
+// ExecStart references that same binary and tree), and the tailscale mapping last (routes to a live
+// service). The directories every
 // one of these writes into are not steps: the apply ensures all of them before the first step
 // (gunbc.live_deploy.emit owned_directory_apply_steps), so no member runs before the roots it writes.
 // FleetConvergeTimerUnit is RETIRED from deployment membership (operator directive 2026-08-13,

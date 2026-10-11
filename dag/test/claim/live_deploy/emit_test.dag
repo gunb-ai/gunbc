@@ -60,6 +60,11 @@ import gunbc.live_deploy.spec {
   owned_artifact_teardown_disposition,
   deployment_step_teardown_disposition,
   gunbc_service_user,
+  deployment_retired_belt_timer_unit_name,
+  deployment_retired_belt_timer_unit_path,
+  deployment_publication_timer_unit_name,
+  deployment_publication_path_unit_name,
+  deployment_publication_service_unit_name,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
 import gunbc.host_layout { srv1_dispatch_attempt_state_root, belt_spawn_workdir_env_var, srv1_attempt_state_directory }
@@ -108,7 +113,9 @@ import gunbc.live_deploy.effect_leaf {
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, SystemdServiceDirective, ExecStart,
+  systemd_unit_file_lines,
 }
+import v2.std.algebra { any }
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_host }
 import gunbc.host_layout { srv1_gunbc_approval_broker_root, srv1_gunbc_repo_root }
 import gunbc.live_deploy.spec { approval_broker_serve_binary_is_per_release_poison, deployment_directory_demands }
@@ -142,6 +149,9 @@ import gunbc.live_deploy.emit {
   live_deploy_emit_shell_dissolution_trigger,
   live_deploy_remote_mutation_service_op_realization_dissolution_trigger,
   live_deploy_intent_dependency_graph_emit_dissolution_trigger,
+  leftover_systemd_timer_retire_steps,
+  leftover_systemd_timer_retire_dissolution,
+  live_deploy_publication_path_unit_file,
 }
 import gunbc.live_deploy.release_locus {
   approval_broker_tree_receipt_path_for,
@@ -172,6 +182,7 @@ import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import std.measure { byte_size_count }
 import v2.std.orchestration { Do, Run, PipelineStep, Comment, Exit, If, For, While, Retry, Let, Call }
 import std.disposition { Scaffold, RealizationDispatch, Terminal }
+import std.dissolution { UnboundDissolution, BoundDissolution }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.generated_artifact {
   artifact_path,
@@ -1847,4 +1858,36 @@ test fn the_fabric_storage_unit_binds_its_door_socket_and_its_route_proxies_to_i
     && (match route.mount { ServeRootMount => true  ServeSetPath { path: _ } => false })
 }
 
+// Leftover timer retirement: present is disable+rm+reload+not-found readback; absent is the same
+// script skipping disable because LoadState is already not-found (rm -f is a no-op).
+test fn leftover_timer_retire_removes_a_present_unit_and_is_noop_when_absent() -> Bool {
+  let spec = deployment_spec_srv1()
+  let unit = deployment_retired_belt_timer_unit_name(names: spec.names)
+  let path = deployment_retired_belt_timer_unit_path(names: spec.names)
+  let text = pipeline_steps_text(steps: leftover_systemd_timer_retire_steps(unit: unit, path: path))
+  string_contains(s: text, pattern: unit as String)
+    && string_contains(s: text, pattern: path as String)
+    && string_contains(s: text, pattern: "not-found")
+    && string_contains(s: text, pattern: "systemctl")
+    && (match leftover_systemd_timer_retire_dissolution {
+      UnboundDissolution { description } => string_contains(s: description as String, pattern: "LoadState=not-found")
+      BoundDissolution { trigger: _ } => false
+    })
+}
+
+test fn apply_retires_leftover_belt_and_publication_timers_and_installs_publication_path() -> Bool {
+  let spec = deployment_spec_srv1()
+  let live = apply_emitted_steps_text(spec: spec, plan: deploy_witness_full_install_plan(spec: spec))
+  let pub_path = systemd_unit_file_lines(file: live_deploy_publication_path_unit_file(spec: spec))
+  !any(deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names), s => string_contains(s: s.path as String, pattern: ".timer"))
+    && string_contains(s: live, pattern: deployment_retired_belt_timer_unit_name(names: spec.names) as String)
+    && string_contains(s: live, pattern: deployment_publication_timer_unit_name(names: spec.names) as String)
+    && string_contains(s: live, pattern: deployment_publication_path_unit_name(names: spec.names) as String)
+    && !string_contains(s: live, pattern: "OnUnitInactiveSec=")
+    && any(pub_path, l => string_contains(s: l, pattern: "DirectoryNotEmpty="))
+    && any(pub_path, l => string_contains(s: l, pattern: "TriggerLimitIntervalSec="))
+    && any(pub_path, l => string_contains(s: l, pattern: "TriggerLimitBurst="))
+    && any(pub_path, l => string_contains(s: l, pattern: "StartLimitIntervalSec="))
+    && any(pub_path, l => l == join(["Unit=", deployment_publication_service_unit_name(names: spec.names) as String], ""))
+}
 

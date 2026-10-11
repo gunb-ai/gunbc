@@ -809,12 +809,16 @@ fn publication_helper_answer_request(
               content: publication_receipt_json(receipt: receipt),
             )
             if !write.success {
-              HelperAnswerWriteFailed {
-                key: key,
-                detail: join([
-                  "the publication answer could not be written: ", write.error,
-                ], ""),
-              }
+              publication_helper_retire_request(
+                instance_root: instance_root,
+                entry: entry,
+                refused: HelperAnswerWriteFailed {
+                  key: key,
+                  detail: join([
+                    "the publication answer could not be written: ", write.error,
+                  ], ""),
+                },
+              )
             } else {
               let consumed = Filesystem.Delete(
                 path: join([
@@ -827,13 +831,17 @@ fn publication_helper_answer_request(
                   outcome_key: publication_receipt_outcome_key(outcome: receipt.outcome) as String,
                 }
               } else {
-                HelperRequestNotConsumed {
-                  key: key,
-                  detail: join([
-                    "the answer was written and its request could not be removed, so this subject would be re-observed every run with nothing recording why: ",
-                    consumed.error,
-                  ], ""),
-                }
+                publication_helper_retire_request(
+                  instance_root: instance_root,
+                  entry: entry,
+                  refused: HelperRequestNotConsumed {
+                    key: key,
+                    detail: join([
+                      "the answer was written and its request could not be removed, so this subject would be re-observed every run with nothing recording why: ",
+                      consumed.error,
+                    ], ""),
+                  },
+                )
               }
             }
     }
@@ -922,13 +930,17 @@ fn publication_helper_entry_outcome(
     let read = Filesystem.Read(path: path)
     match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
       FilesystemReadRefused { error } =>
-        HelperRequestUnreadable {
+        publication_helper_retire_request(
+          instance_root: instance_root,
           entry: entry,
-          detail: join([
-            "a publication request was listed and then could not be read: ",
-            path, " (", error, ")",
-          ], ""),
-        }
+          refused: HelperRequestUnreadable {
+            entry: entry,
+            detail: join([
+              "a publication request was listed and then could not be read: ",
+              path, " (", error, ")",
+            ], ""),
+          },
+        )
       FilesystemReadSucceeded { content } =>
         publication_helper_answer_request(
           instance_root: instance_root,

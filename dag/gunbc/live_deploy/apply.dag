@@ -266,10 +266,10 @@ fn live_deploy_mutation_denied(
 // an oversight, and the mitigation is that every member is idempotent and a retract remains
 // available.
 //
-// THE HAZARD THIS ALSO CLOSES: two slots meant two belt timers, both enabled, sharing one dispatch-
-// worktree root and one attempt-state root. Nothing prevented a collision except that both belts
-// happened to be crashing; with one deployment there is one belt and the prepare/activate split it
-// would have needed is no longer owed.
+// THE HAZARD THIS ALSO CLOSES: two slots meant two leftover belt clocks, both enabled, sharing one
+// dispatch-worktree root and one attempt-state root. Nothing prevented a collision except that both
+// belts happened to be crashing; with one deployment there is one belt and the leftover timer is
+// retired on apply, so the prepare/activate split it would have needed is no longer owed.
 //
 // A SECOND ORDERING CONSEQUENCE, named because the loss above is not the only one. Under the
 // deleted cutover fold the route write ran AFTER the candidate slot converged, readiness gate
