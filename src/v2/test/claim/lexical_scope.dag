@@ -18,7 +18,7 @@ import v2.compiler.reference_site_collector {
 import v2.compiler.source_authority { ModuleFileRef }
 import v2.compiler.tokenize { prepare_lex_rules }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.algebra { list_map }
+import v2.std.algebra { HeadAbsent, HeadFound, filter, list_head, list_map }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -31,8 +31,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // WITNESSES FOR WHERE A NAME IS BOUND LEXICALLY, AS ONE FACT (v2.compiler.lexical_scope). Resolution and
 // module acquisition ask the same question of the same tree -- which binders enclose a site -- and the
 // answer they share is the slot tables and the module-root producer declared there. The subject here is
-// what the reference-site collector, which carries those binders down a walk, says about each site's head,
-// asked over authored source through the real front end (parse, normalize), the route acquisition reads.
+// what the reference-site collector, which carries those binders down a walk, says about the head of the
+// site a spelling names, asked over authored source through the real front end (parse, normalize), the
+// route acquisition reads. The collector reports every mention the tree holds (binder names, type names
+// and the spellings the front end itself introduces beside the authored ones), so each claim asks about
+// ONE spelling and reads that site's head; it never asserts the population of sites.
 //
 // WHAT EACH CLAIM DISCRIMINATES. A head is `frame` when an enclosing Arrow or `let` binds it where the site
 // is visible, `root` when a module-level declaration that names a value binds it, and `unbound` otherwise;
@@ -64,18 +67,22 @@ fn head_text(head: SiteHeadBinding) -> String {
   }
 }
 
-fn site_text(scoped: ScopedReferenceSite) -> String {
-  concat(qualified_name_to_dotted_string(qn: scoped.site.spelling), ":", head_text(head: scoped.head))
-}
-
-fn heads_of(content: String) -> String {
+// The head of the first site that spells `spelling`: "no-site" when the collector reports no such mention,
+// so a claim that names a spelling the source never wrote fails instead of reading an empty answer.
+fn head_of_site(content: String, spelling: String) -> String {
   match prepare_grammar(grammar: dag_language_model().grammar) {
     Rejected { diagnostics: _ } => "grammar-unprepared"
     Accepted { value: prepared, diagnostics: _ } =>
       match acquisition_front_end(env: scope_env(prepared: prepared), file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" }, content: content) {
         Rejected { diagnostics: _ } => "front-end-refused"
         Accepted { value: front, diagnostics: _ } =>
-          join(list_map(xs: collect_scoped_module_reference_sites(root: front.tree.root).sites, f: fn(s) { site_text(scoped: s) }), ",")
+          match list_head(xs: filter(
+            xs: collect_scoped_module_reference_sites(root: front.tree.root).sites,
+            predicate: fn(s) { qualified_name_to_dotted_string(qn: s.site.spelling) == spelling }
+          )) {
+            HeadAbsent => "no-site"
+            HeadFound { value: found } => head_text(head: found.head)
+          }
       }
   }
 }
@@ -83,50 +90,50 @@ fn heads_of(content: String) -> String {
 // ---- Arrow ---------------------------------------------------------------------------------------------
 
 test fn a_parameter_is_bound_in_the_body() -> Bool {
-  heads_of(content: "module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  x.y\n}\n") == "x.y:frame"
+  head_of_site(content: "module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  x.y\n}\n", spelling: "x.y") == "frame"
 }
 
 // The unbound edge of the pair: the same spelling in a sibling parameter's type, where the type scope holds
 // no value binder.
 test fn a_parameter_is_not_bound_in_a_sibling_parameter_type() -> Bool {
-  heads_of(content: "module v2.test.subject\n\nfn subject(x: Bool, w: x.T) -> Bool {\n  true\n}\n") == "x.T:unbound"
+  head_of_site(content: "module v2.test.subject\n\nfn subject(x: Bool, w: x.T) -> Bool {\n  true\n}\n", spelling: "x.T") == "unbound"
 }
 
 // ---- Bind ----------------------------------------------------------------------------------------------
 
 test fn a_let_binder_is_bound_in_its_body() -> Bool {
-  heads_of(content: "module v2.test.subject\n\nfn subject() -> Bool {\n  let x = true\n  x.y\n}\n") == "x.y:frame"
+  head_of_site(content: "module v2.test.subject\n\nfn subject() -> Bool {\n  let x = true\n  x.y\n}\n", spelling: "x.y") == "frame"
 }
 
 test fn a_let_binder_is_not_bound_in_its_own_value() -> Bool {
-  heads_of(content: "module v2.test.subject\n\nfn subject() -> Bool {\n  let x = x.y\n  x\n}\n") == "x.y:unbound"
+  head_of_site(content: "module v2.test.subject\n\nfn subject() -> Bool {\n  let x = x.y\n  x\n}\n", spelling: "x.y") == "unbound"
 }
 
 // A type annotation is resolved in the type scope, which holds no value binder, so a parameter does not bind
 // the head of an annotation that mentions the same name.
 test fn a_type_annotation_sees_no_value_binder() -> Bool {
-  heads_of(content: "module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  let y: x.T = true\n  y\n}\n") == "x.T:unbound"
+  head_of_site(content: "module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  let y: x.T = true\n  y\n}\n", spelling: "x.T") == "unbound"
 }
 
 // Frames compose: an enclosing parameter stays visible through a nested `let`.
 test fn an_enclosing_parameter_is_bound_through_a_nested_let() -> Bool {
-  heads_of(content: "module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  let z = true\n  x.y\n}\n") == "x.y:frame"
+  head_of_site(content: "module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  let z = true\n  x.y\n}\n", spelling: "x.y") == "frame"
 }
 
 // ---- Module root ---------------------------------------------------------------------------------------
 
 test fn a_module_level_value_is_bound_at_the_root() -> Bool {
-  heads_of(content: "module v2.test.subject\n\ndata cfg: Bool = true\n\nfn subject() -> Bool {\n  cfg.tree\n}\n") == "cfg.tree:root"
+  head_of_site(content: "module v2.test.subject\n\ndata cfg: Bool = true\n\nfn subject() -> Bool {\n  cfg.tree\n}\n", spelling: "cfg.tree") == "root"
 }
 
 // A module-level TYPE is bound at the root but names no value: resolution reads `Box.tree` as a declaration
 // path, which is a candidate module reference like any head nothing binds as a value.
 test fn a_module_level_type_head_is_not_a_value_binding() -> Bool {
-  heads_of(content: "module v2.test.subject\n\ntype Box {\n  tree: Bool\n}\n\nfn subject() -> Bool {\n  Box.tree\n}\n") == "Box.tree:unbound"
+  head_of_site(content: "module v2.test.subject\n\ntype Box {\n  tree: Bool\n}\n\nfn subject() -> Bool {\n  Box.tree\n}\n", spelling: "Box.tree") == "unbound"
 }
 
 test fn a_head_nothing_binds_is_unbound() -> Bool {
-  heads_of(content: "module v2.test.subject\n\nfn subject() -> Bool {\n  v2.std.logic.and(a: true, b: true)\n}\n") == "v2.std.logic.and:unbound"
+  head_of_site(content: "module v2.test.subject\n\nfn subject() -> Bool {\n  v2.std.logic.and(a: true, b: true)\n}\n", spelling: "v2.std.logic.and") == "unbound"
 }
 
 // ---- what a module root binds, and which bindings name a value --------------------------------------------
@@ -139,25 +146,42 @@ fn binding_kind(b: ModuleRootBinding) -> String {
   }
 }
 
-fn binding_text(b: ModuleRootBinding) -> String {
-  concat(symbol_lexeme(sym: b.name), ":", binding_kind(b: b))
-}
-
-fn root_bindings_of(content: String) -> String {
+// What the module root binds under `name`: "value" when the binding names a value, "declaration" when it names
+// a declaration that is not a value, "no-binding" when the root binds nothing of that name. The producer
+// reports the front end's own bindings beside the authored ones, so a claim names the binding it asks about.
+fn root_binding_of(content: String, name: String) -> String {
   match prepare_grammar(grammar: dag_language_model().grammar) {
     Rejected { diagnostics: _ } => "grammar-unprepared"
     Accepted { value: prepared, diagnostics: _ } =>
       match acquisition_front_end(env: scope_env(prepared: prepared), file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" }, content: content) {
         Rejected { diagnostics: _ } => "front-end-refused"
         Accepted { value: front, diagnostics: _ } =>
-          join(list_map(xs: module_root_bindings(root: front.tree.root), f: fn(b) { binding_text(b: b) }), ",")
+          match list_head(xs: filter(xs: module_root_bindings(root: front.tree.root), predicate: fn(b) { symbol_lexeme(sym: b.name) == name })) {
+            HeadAbsent => "no-binding"
+            HeadFound { value: found } => binding_kind(b: found)
+          }
       }
   }
 }
 
-test fn a_data_item_and_a_function_name_values_and_a_type_names_a_declaration() -> Bool {
-  root_bindings_of(content: "module v2.test.subject\n\ntype Box {\n  tree: Bool\n}\n\ndata cfg: Bool = true\n\nfn subject() -> Bool {\n  true\n}\n")
-    == "Box:declaration,cfg:value,subject:value"
+fn root_subject() -> String {
+  "module v2.test.subject\n\ntype Box {\n  tree: Bool\n}\n\ndata cfg: Bool = true\n\nfn subject() -> Bool {\n  true\n}\n"
+}
+
+test fn a_data_item_names_a_value() -> Bool {
+  root_binding_of(content: root_subject(), name: "cfg") == "value"
+}
+
+test fn a_function_names_a_value() -> Bool {
+  root_binding_of(content: root_subject(), name: "subject") == "value"
+}
+
+test fn a_type_names_a_declaration_and_no_value() -> Bool {
+  root_binding_of(content: root_subject(), name: "Box") == "declaration"
+}
+
+test fn a_name_the_module_never_declares_is_not_bound() -> Bool {
+  root_binding_of(content: root_subject(), name: "absent") == "no-binding"
 }
 
 // ---- the projection is the same fact --------------------------------------------------------------------

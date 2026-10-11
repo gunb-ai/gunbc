@@ -119,8 +119,9 @@ import extdeps.communication.medium { Lossless, Medium }
 // too, never from the spelling's shape. THE FRAMES THIS READS ARE A SUBSET OF RESOLUTION'S: a match arm's
 // pattern binder, a loop carrier, a type parameter and an imported value are bound by constructs whose
 // binder-versus-constructor or kind decision needs the resolution namespace, so a head only one of those
-// binds is still a candidate here. The collision that leaves is exact: such a binder spelled like a layout
-// root namespace AND a module `<root>.<field>` that exists and is unreadable or malformed.
+// binds is still a candidate here. The collision that leaves is exact: such a binder spelled like the first
+// segment of a module name AND the module `<head>.<field>` it would be probed as existing and being
+// unreadable or malformed.
 //
 // THE DECISIONS ARE v2.compiler.source_authority's, THE READS ARE THIS MODULE'S. That module owns the
 // pure decisions (which file a name is stored at, the prefix order, the tri-state probe, the

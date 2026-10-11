@@ -32,6 +32,7 @@ import v2.compiler.module_acquisition {
   NamespaceWalkAbsent,
   NamespaceWalkListed,
   NamespaceWalkRefused,
+  SourceRootBinding,
   acquisition_exactness,
   acquisition_ingest,
   acquisition_member_requests,
@@ -317,32 +318,63 @@ test fn a_well_formed_import_is_requested_and_its_marked_declaration_is_captured
 // enclosing binder or a module-level value binds is a projection off that binder and names no module, so it
 // is absent; one whose head nothing visible binds is a candidate module reference and is present. The
 // requests are a function of the member's own text and the lexical frames at each site, and NOT of which
-// modules exist -- the acquirer's input carries no tree here at all -- so a same-named module, present,
-// absent or malformed, cannot change what a projection requests. The paired execution is the native emit
-// verb's walked controls over a real source root (src/v1/stage0/src/cli_run/native_lane_runner.rs
-// walk_native_acquisition_projection_controls), which read a tree with and without the same-named module and
-// compare verdict and read set.
+// modules exist -- the acquirer's input carries no tree at all -- so a same-named module, present, absent
+// or malformed, cannot change what a projection requests.
+//
+// EACH CLAIM ASKS ABOUT ONE SPELLING. The request list also carries spellings the front end introduces
+// beside the authored ones, so a claim reads whether the named spelling is requested and never asserts the
+// whole list. The paired execution is the native emit verb's walked controls over a real source root
+// (src/v1/stage0/src/cli_run/native_lane_runner.rs walk_native_acquisition_projection_controls): the same
+// entry emits the same bytes over a tree without the same-named module, with a malformed one, and with a
+// well-formed one, while the qualified spelling refuses over the malformed one, which is the read witness the
+// verb exposes.
 
-fn member_references_text(read: AcquisitionMemberRead) -> String {
+fn requested_text(read: AcquisitionMemberRead, spelling: String) -> String {
   match read {
-    AcquisitionMemberReadOk { requests: requests, test_markers: _ } => concat("refs|", join(requests.references, ","))
+    AcquisitionMemberReadOk { requests: requests, test_markers: _ } =>
+      if length(xs: filter(xs: requests.references, predicate: fn(r) { r == spelling })) == 0 {
+        "not-requested"
+      } else {
+        "requested"
+      }
     AcquisitionMemberReadRefused { refusal: refusal } => acquisition_refusal_text(refusal: refusal)
   }
 }
 
-fn member_references_of(content: String) -> String {
+fn member_read_under(env: AcquisitionEnv, content: String) -> AcquisitionMemberRead {
+  acquisition_member_requests(
+    env: env,
+    module: "v2.test.subject",
+    file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" },
+    content: content
+  )
+}
+
+// `bound` selects the acquirer's environment: no root bound, or the repository's v2 root bound, which is the
+// storage a lookup would search.
+fn env_for(prepared: PreparedGrammar, bound: Bool) -> AcquisitionEnv {
+  if bound {
+    AcquisitionEnv {
+      layout: repository_storage_layout(),
+      bindings: [SourceRootBinding { tree: V2Tree {}, host_directory: "src/v2" }],
+      lex: prepare_lex_rules(rules: dag_language_model().lex),
+      grammar: prepared
+    }
+  } else {
+    member_env(prepared: prepared)
+  }
+}
+
+fn request_verdict_bound(content: String, spelling: String, bound: Bool) -> String {
   match prepare_grammar(grammar: dag_language_model().grammar) {
     Rejected { diagnostics: _ } => "grammar-unprepared"
     Accepted { value: prepared, diagnostics: _ } =>
-      member_references_text(
-        read: acquisition_member_requests(
-          env: member_env(prepared: prepared),
-          module: "v2.test.subject",
-          file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" },
-          content: content
-        )
-      )
+      requested_text(read: member_read_under(env: env_for(prepared: prepared, bound: bound), content: content), spelling: spelling)
   }
+}
+
+fn request_verdict_of(content: String, spelling: String) -> String {
+  request_verdict_bound(content: content, spelling: spelling, bound: false)
 }
 
 fn subject_body(body: String) -> String {
@@ -350,38 +382,76 @@ fn subject_body(body: String) -> String {
 }
 
 test fn local_projection_does_not_read_same_named_module() -> Bool {
-  member_references_of(content: subject_body(body: "x.y")) == "refs|"
+  request_verdict_of(content: subject_body(body: "x.y"), spelling: "x.y") == "not-requested"
 }
 
 test fn a_let_binder_projection_does_not_read_a_same_named_module() -> Bool {
-  member_references_of(content: "module v2.test.subject\n\nfn subject() -> Bool {\n  let x = true\n  x.y\n}\n") == "refs|"
+  request_verdict_of(content: "module v2.test.subject\n\nfn subject() -> Bool {\n  let x = true\n  x.y\n}\n", spelling: "x.y") == "not-requested"
 }
 
 test fn a_module_level_value_projection_does_not_read_a_same_named_module() -> Bool {
-  member_references_of(content: "module v2.test.subject\n\ndata x: Bool = true\n\nfn subject() -> Bool {\n  x.y\n}\n") == "refs|"
+  request_verdict_of(content: "module v2.test.subject\n\ndata x: Bool = true\n\nfn subject() -> Bool {\n  x.y\n}\n", spelling: "x.y") == "not-requested"
 }
 
 // The paired positive control, differing from the first claim in the head alone: a head no visible binder
 // binds is requested, so a request-free result above is attributable to the binder and not to a reader that
 // requests nothing.
 test fn qualified_module_reference_does_read_named_module() -> Bool {
-  member_references_of(content: subject_body(body: "v2.std.logic.and(a: true, b: true)")) == "refs|v2.std.logic.and"
+  request_verdict_of(content: subject_body(body: "v2.std.logic.and(a: true, b: true)"), spelling: "v2.std.logic.and") == "requested"
 }
 
 test fn a_head_no_visible_binder_binds_is_requested_even_when_a_parameter_has_another_name() -> Bool {
-  member_references_of(content: subject_body(body: "z.y")) == "refs|z.y"
+  request_verdict_of(content: subject_body(body: "z.y"), spelling: "z.y") == "requested"
 }
 
 // A `let` binder is visible in its body and nowhere else, so the same spelling in the binder's own value is
 // not a projection: the slot tables of v2.compiler.lexical_scope are what the collector reads.
 test fn a_let_binder_is_not_visible_in_its_own_value() -> Bool {
-  member_references_of(content: "module v2.test.subject\n\nfn subject() -> Bool {\n  let x = x.y\n  x\n}\n") == "refs|x.y"
+  request_verdict_of(content: "module v2.test.subject\n\nfn subject() -> Bool {\n  let x = x.y\n  x\n}\n", spelling: "x.y") == "requested"
 }
 
 // A parameter is visible in the body and not in a sibling parameter's type: a type position resolves in the
 // type scope, which holds no value binder.
 test fn a_parameter_is_not_visible_in_a_sibling_parameter_type() -> Bool {
-  member_references_of(content: "module v2.test.subject\n\nfn subject(x: Bool, w: x.T) -> Bool {\n  true\n}\n") == "refs|x.T"
+  request_verdict_of(content: "module v2.test.subject\n\nfn subject(x: Bool, w: x.T) -> Bool {\n  true\n}\n", spelling: "x.T") == "requested"
+}
+
+// A projection's receipt is a function of the member's text and frames alone: the acquirer's environment
+// binds the roots a lookup would search, and varying them (none bound, the repository's v2 root bound)
+// leaves the verdict on a projection unchanged while the qualified reference stays requested. A request
+// producer that consulted storage to classify a head could not hold this, since the bound roots are exactly
+// what it would have read.
+test fn adding_same_named_module_does_not_change_lexical_projection_receipt() -> Bool {
+  request_verdict_bound(content: subject_body(body: "x.y"), spelling: "x.y", bound: false) == "not-requested"
+    && request_verdict_bound(content: subject_body(body: "x.y"), spelling: "x.y", bound: true) == "not-requested"
+    && request_verdict_bound(content: subject_body(body: "v2.std.logic.and(a: true, b: true)"), spelling: "v2.std.logic.and", bound: true) == "requested"
+}
+
+// The refusal arm: the projection requests nothing, so a receipt that nevertheless read a same-named module
+// (a malformed one is the case that matters, since reading it is what would change a verdict) is not the
+// requested closure and the exactness verdict refuses it, naming that module. The end-to-end half, a tree
+// that holds the malformed module, is the walked control named above.
+fn same_named_member() -> AcquiredModule {
+  a_member(name: "x", path: "x.dag", requests: [])
+}
+
+fn projection_subject_member() -> AcquiredModule {
+  a_member(name: "v2.test.subject", path: "test/subject.dag", requests: [])
+}
+
+test fn malformed_same_named_module_does_not_change_projection_verdict() -> Bool {
+  request_verdict_bound(content: subject_body(body: "x.y"), spelling: "x.y", bound: true)
+    == request_verdict_bound(content: subject_body(body: "x.y"), spelling: "x.y", bound: false)
+    && verdict_over(
+      entries: closure_entries(),
+      modules: [projection_subject_member()],
+      reads: [key_of(member: projection_subject_member())]
+    ) == "exact"
+    && verdict_over(
+      entries: closure_entries(),
+      modules: [projection_subject_member(), same_named_member()],
+      reads: [key_of(member: projection_subject_member()), key_of(member: same_named_member())]
+    ) == "read-not-requested:x"
 }
 
 // ---- the marker channel, read off the parse tree alone -----------------------------------------------------

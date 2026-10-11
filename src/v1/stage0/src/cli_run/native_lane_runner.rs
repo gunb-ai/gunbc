@@ -123,6 +123,17 @@ const LAYOUT_CHECK_MISPLACED_ROOT: &str = "fixtures/layout_check_misplaced/dag";
 const NATIVE_INGEST_TWO_ROOTS_DAG: &str = "fixtures/native_ingest_two_roots/dag";
 const NATIVE_INGEST_TWO_ROOTS_V2: &str = "fixtures/native_ingest_two_roots/src/v2";
 const CLI_DOOR_ENTRY_MODULE: &str = "gunbc.native_cli_door_probe";
+/// THE ACQUISITION-PROJECTION CONTROLS' SUBJECT: one committed tree, `dag`-rooted, holding two entries and
+/// the module `product.y` that one of them spells as a field projection and the other names for real. The
+/// two scratch trees the walk derives from it differ from it in that module alone.
+const NATIVE_PROJECTION_ROOT: &str = "fixtures/native_acquisition_projection/dag";
+const NATIVE_PROJECTION_SAME_NAMED_FILE: &str = "product/y.dag";
+const NATIVE_PROJECTION_PROJECTED_ENTRY: &str = "fixture.native_projection.projected";
+const NATIVE_PROJECTION_PROJECTED_WITNESS: &str = "native_projection_projected_value";
+const NATIVE_PROJECTION_PROJECTED_VALUE: &str = "707070";
+const NATIVE_PROJECTION_QUALIFIED_ENTRY: &str = "fixture.native_projection.qualified";
+const NATIVE_PROJECTION_QUALIFIED_WITNESS: &str = "native_projection_qualified_value";
+const NATIVE_PROJECTION_SAME_NAMED_WITNESS: &str = "projection_same_named_value";
 const CLI_DOOR_EMITTED_WITNESS: &str = "native_cli_door_probe_value";
 const CLI_DOOR_EMITTED_VALUE: &str = "606060";
 
@@ -2646,6 +2657,7 @@ fn walk_cli_door(
     }
     eprintln!("v2-native-cli: filesystem controls refused absent root and unreadable source with typed, located causes");
     walk_native_ingest_layout_controls(binary, workspace)?;
+    walk_native_acquisition_projection_controls(binary, workspace, scratch)?;
     walk_population_controls(binary, workspace, scratch)?;
     let refusal_status = i64::from(refused.status.unwrap_or_default());
     eprintln!("v2-native-cli: door refused as cli_no_entry — exit {refusal_status}");
@@ -2764,6 +2776,193 @@ fn walk_native_ingest_layout_controls(binary: &Path, workspace: &Path) -> Result
         ));
     }
     eprintln!("v2-native-cli: native-ingest layout controls held (unrecognized copied root, two roots emit only the requested closure, two directories for one tree)");
+    Ok(())
+}
+
+/// THE ACQUISITION-PROJECTION CONTROLS: WHAT A DOTTED SPELLING MEANS IS A FACT OF THE PROGRAM'S BINDERS AND
+/// NEVER OF WHICH FILES THE ROOT HOLDS. Claims over `v2.compiler.module_acquisition` supply the member's text
+/// and read the requests it makes; these walks are the inhabitance that the built door, over a real source
+/// root, reads no file for a spelling whose head a visible binder binds -- deleting the fixture tree, or
+/// letting acquisition probe `product.y` for the projection `product.y`, makes this control fail. The subject is the
+/// module `product.y`, a two-segment name stored at `product/y.dag` under the root, and the two entries below it:
+///
+/// - `projected` spells `product.y` where `product` is a module-level value: a field projection, no module reference. It is
+///   emitted from three trees that differ only in whether `product/y.dag` is absent, malformed or well-formed,
+///   and the status and the emitted text must be the same in all three. A malformed file that was read would
+///   refuse; a well-formed one that was read would put its declaration in the closure.
+/// - `qualified` names `product.y.projection_same_named_value`, which no binder binds, so it IS a qualified
+///   reference. The well-formed tree emits it with the module's declaration present and the malformed tree
+///   refuses it, so silence about the file in the first control is the head's binding and not a door that
+///   never reads `product/y.dag`.
+///
+/// The scratch trees are rebuilt from the committed one on every run (a tree that kept what an earlier run
+/// left could carry a second file into the closure).
+///
+/// SEED DELTA (ctrl hand-Rust receipt): extend `walk_cli_door`; no new production route and no deleted
+/// scaffold. Accounted on `gunbc.source_root_eval_driver_seed_growth`
+/// `source_root_eval_driver_seed_growth_justification` (lane `v1-hand-queue-drain`). Net seed is this
+/// inhabitance walk over existing `run_cli_door`.
+fn walk_native_acquisition_projection_controls(
+    binary: &Path,
+    workspace: &Path,
+    scratch: &Path,
+) -> Result<(), String> {
+    let present = workspace.join(NATIVE_PROJECTION_ROOT);
+    let same_named_present = present.join(NATIVE_PROJECTION_SAME_NAMED_FILE);
+    if !same_named_present.is_file() {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeAcquisitionProjectionRootAbsent — {} is not a file, so the \
+             projection controls have no same-named module and a green here would describe nothing",
+            same_named_present.display()
+        ));
+    }
+    let poison = workspace.join(MALFORMED_SPECIMEN_COMMITTED);
+    let poison_bytes = std::fs::read(&poison).map_err(|e| {
+        format!(
+            "V2-NATIVE REFUSAL cause=MalformedSpecimenUnreadable — reading {}: {e}",
+            poison.display()
+        )
+    })?;
+    let scratch_trees = scratch.join("acquisition-projection-controls");
+    if scratch_trees.exists() {
+        std::fs::remove_dir_all(&scratch_trees)
+            .map_err(|e| format!("clearing {}: {e}", scratch_trees.display()))?;
+    }
+    let absent = scratch_trees.join("absent").join("dag");
+    copy_directory_tree(&present, &absent)?;
+    std::fs::remove_file(absent.join(NATIVE_PROJECTION_SAME_NAMED_FILE)).map_err(|e| {
+        format!(
+            "removing the same-named module from {}: {e}",
+            absent.display()
+        )
+    })?;
+    let malformed = scratch_trees.join("malformed").join("dag");
+    copy_directory_tree(&present, &malformed)?;
+    std::fs::write(
+        malformed.join(NATIVE_PROJECTION_SAME_NAMED_FILE),
+        poison_bytes,
+    )
+    .map_err(|e| {
+        format!(
+            "poisoning the same-named module in {}: {e}",
+            malformed.display()
+        )
+    })?;
+
+    let emit = |root: &Path, entry: &str| {
+        run_cli_door(
+            binary,
+            &[
+                "emit".into(),
+                "--entry".into(),
+                entry.into(),
+                "--source-root".into(),
+                root.display().to_string(),
+            ],
+        )
+    };
+
+    let mut projected_stdout: Option<String> = None;
+    for (label, root) in [
+        ("absent", absent.as_path()),
+        ("malformed", malformed.as_path()),
+        ("well-formed", present.as_path()),
+    ] {
+        let observation = emit(root, NATIVE_PROJECTION_PROJECTED_ENTRY)?;
+        if observation.status != Some(0)
+            || !observation
+                .stdout
+                .contains(NATIVE_PROJECTION_PROJECTED_WITNESS)
+            || !observation
+                .stdout
+                .contains(NATIVE_PROJECTION_PROJECTED_VALUE)
+            || observation
+                .stdout
+                .contains(NATIVE_PROJECTION_SAME_NAMED_WITNESS)
+        {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=NativeProjectionReadSameNamedModule — the projection entry over \
+                 the {label} same-named module exited {:?} with {} stdout byte(s) (it must emit its own \
+                 value and nothing of `product.y`); stderr={}",
+                observation.status,
+                observation.stdout.len(),
+                observation.stderr.trim()
+            ));
+        }
+        match &projected_stdout {
+            None => projected_stdout = Some(observation.stdout),
+            Some(first) if *first == observation.stdout => {}
+            Some(_) => {
+                return Err(format!(
+                    "V2-NATIVE REFUSAL cause=NativeProjectionEmissionDependsOnSameNamedModule — the \
+                     projection entry emitted different text over the {label} same-named module than over \
+                     the absent one, so a file the program does not mention changed what it means"
+                ))
+            }
+        }
+    }
+
+    let referenced = emit(&present, NATIVE_PROJECTION_QUALIFIED_ENTRY)?;
+    if referenced.status != Some(0)
+        || !referenced
+            .stdout
+            .contains(NATIVE_PROJECTION_QUALIFIED_WITNESS)
+        || !referenced
+            .stdout
+            .contains(NATIVE_PROJECTION_SAME_NAMED_WITNESS)
+    {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeQualifiedReferenceDidNotReadNamedModule — the qualified entry \
+             over the well-formed same-named module exited {:?} with {} stdout byte(s) and must emit both \
+             its own value and the module's; stderr={}",
+            referenced.status,
+            referenced.stdout.len(),
+            referenced.stderr.trim()
+        ));
+    }
+    let refused = emit(&malformed, NATIVE_PROJECTION_QUALIFIED_ENTRY)?;
+    if refused.status != Some(CLI_DOOR_REFUSAL_EXIT)
+        || !refused.stdout.is_empty()
+        || !refused.stderr.contains(CLI_REFUSAL_PREFIX)
+    {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeQualifiedReferenceDidNotRefuseMalformedModule — the qualified \
+             entry over the malformed same-named module exited {:?} with {} stdout byte(s); a qualified \
+             reference reads the module it names, so this must refuse (exit {CLI_DOOR_REFUSAL_EXIT}, empty \
+             stdout, a `{CLI_REFUSAL_PREFIX}` line); stderr={}",
+            refused.status,
+            refused.stdout.len(),
+            refused.stderr.trim()
+        ));
+    }
+    eprintln!("v2-native-cli: acquisition-projection controls held (a projection emits identically with the same-named module absent, malformed and well-formed; a qualified reference reads it)");
+    Ok(())
+}
+
+/// Copy a directory tree, creating `to`. The projection controls derive their scratch trees from the
+/// committed one with it so the three trees share every byte the control does not vary.
+fn copy_directory_tree(from: &Path, to: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(to).map_err(|e| format!("creating {}: {e}", to.display()))?;
+    let entries =
+        std::fs::read_dir(from).map_err(|e| format!("reading {}: {e}", from.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("reading {}: {e}", from.display()))?;
+        let target = to.join(entry.file_name());
+        let kind = entry
+            .file_type()
+            .map_err(|e| format!("typing {}: {e}", entry.path().display()))?;
+        if kind.is_dir() {
+            copy_directory_tree(&entry.path(), &target)?;
+        } else {
+            std::fs::copy(entry.path(), &target).map_err(|e| {
+                format!(
+                    "copying {} to {}: {e}",
+                    entry.path().display(),
+                    target.display()
+                )
+            })?;
+        }
+    }
     Ok(())
 }
 
