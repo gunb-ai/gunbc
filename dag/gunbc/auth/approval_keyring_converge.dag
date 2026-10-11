@@ -96,7 +96,7 @@ fn approval_keyring_staged_digest_ok(path: NonEmptyStr, expected_prefix: NonEmpt
 // this converge with it, and a refused realization refuses the run -- no default host.
 fn keyring_host_must_be_broker_host_under(host: String, realization: ProdRoleRealization) -> Bool {
   match approval_broker_host_under(realization: realization) {
-    ApprovalBrokerHostResolved { host: broker } => host == broker as String
+    ApprovalBrokerHostResolved { host: broker } => host == (broker as String)
     ApprovalBrokerHostRefused { cause: _ } => false
   }
 }
@@ -105,12 +105,14 @@ fn approval_keyring_converge_refuses_off_broker_host_under(host: String, realiza
   match approval_broker_host_under(realization: realization) {
     ApprovalBrokerHostRefused { cause } =>
       exit_failure(reason: concat("approval keyring converge: no broker host to converge: ", prod_role_realization_refusal_detail(cause: cause)))
-    ApprovalBrokerHostResolved { host: broker } =>
-      if host == broker as String {
+    ApprovalBrokerHostResolved { host: broker } => {
+      let broker_name = broker as String
+      if host == broker_name {
         ExitSuccess
       } else {
-        exit_failure(reason: concat("approval keyring converge refuses host '", concat(host, concat("': the files live on the machine that serves /approve, which is ", broker as String))))
+        exit_failure(reason: concat("approval keyring converge refuses host '", concat(host, concat("': the files live on the machine that serves /approve, which is ", broker_name))))
       }
+    }
   }
 }
 
