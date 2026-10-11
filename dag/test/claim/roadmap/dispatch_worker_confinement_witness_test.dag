@@ -75,12 +75,13 @@ test fn the_worker_unit_stops_with_its_process_and_writes_its_exit_record() -> B
 // (the worktree as cwd made `gunbc run` refuse its own source roots, exit 101). With an exit hook it
 // stops with its process and records its exit (bold-bee-114 ruling 2026-10-06: the reviewer's
 // RemainAfterExit is removed); the hook is given, the inbox is NOT among its writable paths (the "+"
-// prefix lets the hook write there while the reviewer cannot). The supervisor passes no hook and
-// keeps RemainAfterExit.
+// prefix lets the hook write there while the reviewer cannot). The supervisor records its exit the
+// same way: RED against the retained `active (exited)` supervisor unit that refused its lineage's next
+// dispatch as stale_session.
 test fn the_reviewer_unit_writes_only_its_review_directory_and_runs_from_the_repo_root() -> Bool {
   let inst = srv2_deploy_dashboard_instance()
-  let props = dispatch_review_unit_properties(instance: inst, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/review", exit_hook: Present { value: "+mkdir -- /i/attempt-exit-spool/inbox/x" as NonEmptyStr })
-  let supervisor = dispatch_review_unit_properties(instance: inst, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/supervisor", exit_hook: none)
+  let props = dispatch_review_unit_properties(instance: inst, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/review", exit_hook: "+mkdir -- /i/attempt-exit-spool/inbox/x" as NonEmptyStr)
+  let supervisor = dispatch_review_unit_properties(instance: inst, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/supervisor", exit_hook: "+mkdir -- /i/attempt-exit-spool/inbox/s" as NonEmptyStr)
   has_property(props: props, needle: "ReadWritePaths=/state/a/review")
     && !has_property(props: props, needle: "/.git/worktrees")
     && !has_property(props: props, needle: "ReadWritePaths=/i/attempt-exit-spool")
@@ -88,6 +89,6 @@ test fn the_reviewer_unit_writes_only_its_review_directory_and_runs_from_the_rep
     && has_property(props: props, needle: "ProtectHome=read-only")
     && has_property(props: props, needle: "ExecStopPost=+mkdir -- /i/attempt-exit-spool/inbox/x")
     && !has_property(props: props, needle: "RemainAfterExit")
-    && has_property(props: supervisor, needle: "RemainAfterExit=yes")
-    && !has_property(props: supervisor, needle: "ExecStopPost")
+    && !has_property(props: supervisor, needle: "RemainAfterExit")
+    && has_property(props: supervisor, needle: "ExecStopPost=+mkdir -- /i/attempt-exit-spool/inbox/s")
 }

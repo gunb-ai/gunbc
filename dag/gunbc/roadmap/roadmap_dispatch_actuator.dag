@@ -55,7 +55,7 @@ import extdeps.systemd {
   systemd_unit_property_wire, SystemdUnitProperty, LoadState, SubState, ExecMainStatus,
   MemoryMax, WorkingDirectoryProperty, StandardOutputProperty, StandardErrorProperty,
   ProtectSystemProperty, ProtectHomeProperty, PrivateTmpProperty, ReadWritePathsProperty,
-  RemainAfterExitProperty, ExecStopPostProperty, CollectModeProperty,
+  ExecStopPostProperty, CollectModeProperty,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitHook, AttemptExitHookRendered, AttemptExitHookRefused, attempt_exit_hook,
@@ -1662,16 +1662,16 @@ fn dispatch_review_unit_name(node_id: String, attempt_key: String, criterion_key
 // event the attempt's next obligation waits on, and a unit that stays `active (exited)` never stops,
 // so its stop hook could not fire at that moment. With an exit hook the unit stops with its process
 // and its record carries the exit; the belt reads a collected reviewer from that record
-// (gunbc.roadmap_belt_actuate belt_review_process). The SUPERVISOR shares this shape and passes no
-// hook: its convene gate still reads the retained unit, and moving it onto the record is not part of
-// this change -- so Absent keeps RemainAfterExit exactly as before, and that is the only reason the
-// parameter is optional.
+// (gunbc.roadmap_belt_actuate belt_review_process). The SUPERVISOR now shares it too: its retained
+// `active (exited)` unit outlived its verdict and every next dispatch of its lineage refused
+// stale_session until someone stopped it by hand (srv1 lab, 2026-10-11), so its convene gate reads the
+// record through belt_launch_process like the reviewer's, and no caller is left for RemainAfterExit.
 fn dispatch_review_unit_properties(
   instance: HostDashboardInstance,
   working_directory: String,
   log_path: String,
   review_dir: String,
-  exit_hook: NonEmptyStr?,
+  exit_hook: NonEmptyStr,
 ) -> List<SystemdRunProperty> {
   concat([
     SystemdRunProperty { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
@@ -1682,10 +1682,7 @@ fn dispatch_review_unit_properties(
     SystemdRunProperty { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
     SystemdRunProperty { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
     SystemdRunProperty { property: ReadWritePathsProperty, value: review_dir as NonEmptyStr },
-  ], match exit_hook {
-    Present { value: hook } => [SystemdRunProperty { property: ExecStopPostProperty, value: hook }]
-    Absent => [SystemdRunProperty { property: RemainAfterExitProperty, value: "yes" as NonEmptyStr }]
-  })
+  ], [SystemdRunProperty { property: ExecStopPostProperty, value: exit_hook }])
 }
 
 data gunbc_harness_reviewer_function: String = "harness_reviewer_cli"
@@ -1752,7 +1749,7 @@ fn dispatch_review_unit_command(
       working_directory: instance.repo_root as String,
       log_path: dispatch_attempt_review_log_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
       review_dir: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-      exit_hook: Present { value: exit_hook },
+      exit_hook: exit_hook,
     ),
     setenv_bindings: [],
     command_argv: gunbc_harness_review_argv(
@@ -1814,7 +1811,7 @@ fn dispatch_audit_unit_command(
       working_directory: instance.repo_root as String,
       log_path: join([dir, "/auditor-stdout.log"], ""),
       review_dir: dir,
-      exit_hook: Present { value: exit_hook },
+      exit_hook: exit_hook,
     ),
     setenv_bindings: [],
     command_argv: [
@@ -1869,6 +1866,7 @@ fn dispatch_supervisor_unit_command(
   turn: Int,
   worktree_path: String,
   brief: String,
+  exit_hook: NonEmptyStr,
 ) -> SystemdRunCommandReading {
   let dir = dispatch_attempt_supervisor_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
   systemd_run_user_transient_command(
@@ -1878,7 +1876,7 @@ fn dispatch_supervisor_unit_command(
       working_directory: instance.repo_root as String,
       log_path: join([dir, "/supervisor-stdout.log"], ""),
       review_dir: dir,
-      exit_hook: none,
+      exit_hook: exit_hook,
     ),
     setenv_bindings: [],
     command_argv: [

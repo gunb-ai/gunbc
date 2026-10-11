@@ -1442,6 +1442,7 @@ test fn witness_supervisor_unit_argv_shapes_one_session_per_escalation_record() 
     turn: 3,
     worktree_path: "/x/attempts/wt",
     brief: "BRIEF-MARKER",
+    exit_hook: "+mkdir -- /i/attempt-exit-spool/inbox/s" as NonEmptyStr,
   ) {
     SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: command } => {
@@ -1504,6 +1505,7 @@ test fn witness_supervisor_launch_writes_the_events_path_metering_reads() -> Boo
     turn: 7,
     worktree_path: "/tmp/fci-witness-worktree",
     brief: "witness brief",
+    exit_hook: "+mkdir -- /i/attempt-exit-spool/inbox/s" as NonEmptyStr,
   ) {
     SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: command } =>

@@ -577,7 +577,7 @@ import gunbc.roadmap.roadmap_belt_obligation {
   BeltObligationEnqueue, BeltObligationStarted, BeltObligationHeld, BeltObligationEnqueueRefused,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
-  AttemptUnitRole, AttemptReviewerRole, AttemptAuditorRole,
+  AttemptUnitRole, AttemptReviewerRole, AttemptAuditorRole, AttemptSupervisorRole,
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptObligationRole,
   attempt_exit_record_observe, AttemptExitRecordNone, AttemptExitRecordFound, AttemptExitRecordUnreadable,
   AttemptWorkerRole, attempt_unit_role_token,
@@ -2580,7 +2580,7 @@ fn belt_supervisor_verdict_observe(instance: HostDashboardInstance, node_id: Roa
 // one session: the unit name derives from the record (node, attempt, turn), so a second convene
 // over the same record names the same unit, and this gate reads that unit's liveness. A session
 // already convening is skipped -- escalation does not stack. A session that exited WITHOUT
-// writing its verdict is named and NOT reconvened: the retained unit keeps the fact stable, a
+// writing its verdict is named and NOT reconvened: its exit record keeps the fact stable, a
 // loop of supervisors over one record would be the absorbing fallback, and the documented remedy
 // (escalation to the parent supervisor) is a later slice, not a silent retry here.
 type SupervisorConveneGate
@@ -2775,7 +2775,14 @@ fn belt_supervisor_convene(
 ) -> BeltSpawnOutcome {
   let nid = escalation.node_id as gunbc.roadmap_model.RoadmapNodeId
   let unit = dispatch_supervisor_unit_name(node_id: escalation.node_id, attempt_key: escalation.attempt_key, turn: escalation.turn)
-  match belt_supervisor_convene_gate(process: worker_process_from_attempt_unit(observation: attempt_unit_observation(unit: unit), unit: unit)) {
+  match belt_supervisor_convene_gate(process: belt_launch_process(
+    instance: instance,
+    node_id: escalation.node_id as String,
+    attempt_key: escalation.attempt_key,
+    unit: unit,
+    role: AttemptSupervisorRole { turn: escalation.turn },
+    metered: MeteredSupervisor { turn: escalation.turn },
+  )) {
     ConveneAlreadyLive =>
       SpawnFailed {
         node_id: node.node as String,
@@ -2825,6 +2832,10 @@ fn belt_supervisor_convene(
               match metering_roster_admit(instance: instance, node_id: nid, attempt_key: escalation.attempt_key, role: MeteredSupervisor { turn: escalation.turn }) {
                 RosterAdmissionRefused { cause: roster_cause } => SpawnFailed { node_id: node.node as String, step: "supervisor-roster", detail: join(["the supervisor was not launched: ", roster_cause], ""), provider: provider_wire_label, launch: launch }
                 RosterAdmitted =>
+                  match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: escalation.node_id as String, attempt_key: escalation.attempt_key, role: AttemptSupervisorRole { turn: escalation.turn }) {
+                    AttemptExitHookRefused { reason } =>
+                      SpawnFailed { node_id: node.node as String, step: "supervisor-exit-hook", detail: join(["the supervisor was not launched: its exit hook could not be rendered: ", reason as String], ""), provider: provider_wire_label, launch: launch }
+                    AttemptExitHookRendered { exec_line } =>
                   match dispatch_supervisor_unit_command(
                     instance: instance,
                     node_id: nid,
@@ -2840,6 +2851,7 @@ fn belt_supervisor_convene(
                         history_line: belt_supervisor_history_line(instance: instance, node_id: nid, attempt_key: escalation.attempt_key, turn: escalation.turn),
                       ),
                     ),
+                    exit_hook: exec_line,
                   ) {
                     SystemdRunCommandRefused { cause: why } =>
                       SpawnFailed {
@@ -2875,6 +2887,7 @@ fn belt_supervisor_convene(
                             launch: launch,
                           }
                       }
+                  }
                   }
               }
           }
