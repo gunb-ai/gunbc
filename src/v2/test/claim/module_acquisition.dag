@@ -11,6 +11,7 @@ import v2.compiler.module_acquisition {
   AcquisitionEnv,
   AcquisitionKind,
   AcquisitionMemberNotRead,
+  AcquisitionMarkedDeclaration,
   AcquisitionMarkerRead,
   AcquisitionMarkersRead,
   AcquisitionMarkersRefused,
@@ -52,7 +53,7 @@ import v2.compiler.tokenize { prepare_lex_rules }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.compiler.source_authority { ModuleFileRef, module_file_key }
-import v2.std.algebra { length }
+import v2.std.algebra { HeadAbsent, HeadFound, filter, length, list_head, list_map }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
@@ -316,27 +317,44 @@ test fn a_well_formed_import_is_requested_and_its_marked_declaration_is_captured
 
 fn markers_text(read: AcquisitionMarkerRead) -> String {
   match read {
-    AcquisitionMarkersRead { names: names } => concat("read|", join(names, ","))
+    AcquisitionMarkersRead { declarations: declarations } => concat("read|", join(list_map(xs: declarations, f: fn(d) { d.name }), ","))
     AcquisitionMarkersRefused { cause: cause } => concat("refused|", cause)
   }
 }
 
 fn markers_of(content: String) -> String {
+  markers_text(read: marker_read_of(content: content))
+}
+
+fn marker_read_of(content: String) -> AcquisitionMarkerRead {
   match prepare_grammar(grammar: dag_language_model().grammar) {
-    Rejected { diagnostics: _ } => "grammar-unprepared"
+    Rejected { diagnostics: _ } => AcquisitionMarkersRefused { cause: "grammar-unprepared" }
     Accepted { value: prepared, diagnostics: _ } =>
-      markers_text(
-        read: acquisition_test_markers(
-          env: AcquisitionEnv {
-            layout: repository_storage_layout(),
-            bindings: [],
-            lex: prepare_lex_rules(rules: dag_language_model().lex),
-            grammar: prepared
-          },
-          file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" },
-          content: content
-        )
+      acquisition_test_markers(
+        env: AcquisitionEnv {
+          layout: repository_storage_layout(),
+          bindings: [],
+          lex: prepare_lex_rules(rules: dag_language_model().lex),
+          grammar: prepared
+        },
+        file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" },
+        content: content
       )
+  }
+}
+
+// The authored content of the named marked declaration: "" when the member is refused or marks no declaration of that name.
+fn marked_content_of(content: String, name: String) -> String {
+  match marker_read_of(content: content) {
+    AcquisitionMarkersRefused { cause: _ } => ""
+    AcquisitionMarkersRead { declarations: declarations } => first_content_named(declarations: declarations, name: name)
+  }
+}
+
+fn first_content_named(declarations: List<AcquisitionMarkedDeclaration>, name: String) -> String {
+  match list_head(xs: filter(xs: declarations, predicate: fn(d) { d.name == name })) {
+    HeadAbsent => ""
+    HeadFound { value: d } => d.content
   }
 }
 
@@ -364,6 +382,49 @@ test fn a_member_that_does_not_parse_is_refused_not_read_as_unmarked() -> Bool {
 test fn a_member_ordinary_normalization_refuses_still_has_its_markers_read() -> Bool {
   starts_with(s: member_read_of(content: service_with_a_marked_claim()), prefix: refused_member_prefix())
     && markers_of(content: service_with_a_marked_claim()) == "read|a_claim"
+}
+
+// ---- the marked declaration's content, paired beside its name ----------------------------------------------
+//
+// THE SUBJECT IS WHAT acquisition_test_markers HANDS A JOB THAT COMPARES TWO READINGS OF A FILE: the content of a marked
+// declaration, the structural identity of its parse (v2.std.node content_hash), not its name. A job that
+// pairs only names reads a claim whose body was rewritten as preserved. The content is the declaration's
+// structure and nothing else: moving it, respacing it or annotating it does not change it (annotations ride
+// beside the tree, DESIGN 4c), and changing what it says does. The paired route is markers_of above: the names
+// and the content are one read of one parse.
+
+fn claim_with(body: String) -> String {
+  concat(concat("module v2.test.subject\nfn plain() -> Bool { true }\ntest fn a_claim() -> Bool { ", body), " }\n")
+}
+
+test fn a_marked_declaration_carries_a_content_digest() -> Bool {
+  marked_content_of(content: claim_with(body: "true"), name: "a_claim") != ""
+}
+
+test fn a_declaration_edited_under_the_same_name_has_a_different_content() -> Bool {
+  marked_content_of(content: claim_with(body: "true"), name: "a_claim") != marked_content_of(content: claim_with(body: "false"), name: "a_claim")
+}
+
+test fn a_declaration_moved_and_respaced_has_the_same_content() -> Bool {
+  marked_content_of(content: claim_with(body: "true"), name: "a_claim")
+    == marked_content_of(content: "module v2.test.subject\n\n\ntest fn a_claim()   ->   Bool {\n  true\n}\nfn plain() -> Bool { true }\n", name: "a_claim")
+}
+
+test fn a_declaration_annotated_has_the_same_content() -> Bool {
+  marked_content_of(content: claim_with(body: "true"), name: "a_claim")
+    == marked_content_of(content: "module v2.test.subject\nfn plain() -> Bool { true }\n// why this claim holds\ntest fn a_claim() -> Bool { true }\n", name: "a_claim")
+}
+
+test fn a_declaration_renamed_has_a_different_content() -> Bool {
+  marked_content_of(content: claim_with(body: "true"), name: "a_claim") != marked_content_of(content: "module v2.test.subject\ntest fn another_claim() -> Bool { true }\n", name: "another_claim")
+}
+
+test fn a_name_no_marked_declaration_carries_has_no_content() -> Bool {
+  marked_content_of(content: claim_with(body: "true"), name: "plain") == ""
+}
+
+test fn a_member_that_does_not_parse_has_no_content_to_pair() -> Bool {
+  marked_content_of(content: "module v2.test.subject\ntest fn a_claim( -> Bool { true }\n", name: "a_claim") == ""
 }
 
 // ---- enumerating the declared namespaces ----------------------------------------------------------------
