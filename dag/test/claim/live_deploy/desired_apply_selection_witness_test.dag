@@ -27,7 +27,7 @@ test fn the_lab_instance_id_selects_the_lab_spec_and_never_the_production_unit()
     access: ci_deploy_srv1_operator_local_access,
   ) {
     DesiredApplyRefused { reason: _ } => false
-    DesiredApplySelected { spec } => lab_spec_selected(spec: spec)
+    DesiredApplySelected { deployment } => lab_spec_selected(spec: selected_deployment_spec(row: deployment))
   }
 }
 
@@ -49,11 +49,14 @@ test fn the_production_instance_id_selects_deployment_spec_srv1() -> Bool {
     access: ci_deploy_srv1_operator_local_access,
   ) {
     DesiredApplyRefused { reason: _ } => false
-    DesiredApplySelected { spec } =>
-      (spec.instance_id as String) == (deployment_spec_srv1().instance_id as String)
-        && (spec.service.unit_name as String) == (deployment_spec_srv1().service.unit_name as String)
-        && (spec.service.repo_root as String) == (deployment_spec_srv1().service.repo_root as String)
+    DesiredApplySelected { deployment } => prod_row_matches(spec: selected_deployment_spec(row: deployment))
   }
+}
+
+fn prod_row_matches(spec: DeploymentSpec) -> Bool {
+  (spec.instance_id as String) == (deployment_spec_srv1().instance_id as String)
+    && (spec.service.unit_name as String) == (deployment_spec_srv1().service.unit_name as String)
+    && (spec.service.repo_root as String) == (deployment_spec_srv1().service.repo_root as String)
 }
 
 test fn an_unknown_instance_id_refuses_with_its_typed_cause() -> Bool {
@@ -61,7 +64,7 @@ test fn an_unknown_instance_id_refuses_with_its_typed_cause() -> Bool {
     instance_id: "no-such-dashboard-instance",
     access: ci_deploy_srv1_operator_local_access,
   ) {
-    DesiredApplySelected { spec: _ } => false
+    DesiredApplySelected { deployment: _ } => false
     DesiredApplyRefused { reason } => string_contains(s: reason, pattern: "DesiredDeploymentUnknownInstanceId")
   }
 }
@@ -72,7 +75,7 @@ test fn a_row_on_another_host_refuses_under_srv1_access() -> Bool {
     instance_id: srv2_deploy_dashboard_id as String,
     access: ci_deploy_srv1_operator_local_access,
   ) {
-    DesiredApplySelected { spec: _ } => false
+    DesiredApplySelected { deployment: _ } => false
     DesiredApplyRefused { reason } => string_contains(s: reason, pattern: "DesiredApplyHostMismatch")
   }
 }
