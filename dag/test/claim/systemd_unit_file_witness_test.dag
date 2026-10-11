@@ -6,7 +6,7 @@ import extdeps.systemd.unit_file {
   SystemdUnitFile,
   ServiceUnitFile,
   TimerUnitFile,
-  PathUnitFile, PathUnit, DirectoryNotEmpty,
+  PathUnitFile, PathUnit, DirectoryNotEmpty, TriggerLimitIntervalSec, TriggerLimitBurst,
   SystemdInstallSection,
   NotInstallable,
   Installable,
@@ -38,6 +38,7 @@ import extdeps.systemd.unit_file {
   systemd_unit_directive_line,
   systemd_service_directive_line,
   systemd_timer_directive_line,
+  systemd_path_directive_line,
   systemd_install_directive_line,
   serialize_systemd_unit_file,
   Before,
@@ -246,6 +247,13 @@ test fn a_path_unit_serializes_with_its_path_section() -> Bool {
       install: Installable { directives: [WantedBy { target: "paths.target" as NonEmptyStr }] },
     },
   ) == "[Unit]\nDescription=gunbc roadmap belt: a unit exit was recorded\n\n[Path]\nUnit=gunbc-srv1-green-belt-exit.service\nDirectoryNotEmpty=/opt/gunbc/attempt-exit-spool/inbox\n\n[Install]\nWantedBy=paths.target\n"
+}
+
+test fn a_path_trigger_limit_renders_under_its_own_keys() -> Bool {
+  systemd_path_directive_line(directive: TriggerLimitIntervalSec { duration: "60s" as NonEmptyStr })
+    == "TriggerLimitIntervalSec=60s"
+    && systemd_path_directive_line(directive: TriggerLimitBurst { count: "2" as NonEmptyStr })
+      == "TriggerLimitBurst=2"
 }
 
 // `TimerUnit` renders as `Unit=`, not `TimerUnit=` — the same variant-name-versus-wire-name trap
