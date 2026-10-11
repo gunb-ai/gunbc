@@ -3,7 +3,6 @@ module test.claim.megarac_operation_standing_witness
 import test.fixture.board_fru_observation { collins_fru_read }
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.algebra { any, filter }
 import std.content_hash { Sha256Digest, Sha256Hash }
 import std.decl_ref { decl_ref }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint }

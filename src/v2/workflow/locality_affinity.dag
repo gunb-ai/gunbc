@@ -4,7 +4,7 @@ import std.machine_shape { ExecutionDomain, LevelId, MemoryLevel }
 import std.measure { ByteSize, byte_size, measure_add, measure_le }
 import std.types { Int, List }
 import std.content_hash { ContentHash, Fnv1a64 }
-import v2.std.algebra { any, length }
+import v2.std.algebra { length }
 import std.optional {
   Absent,
   Optional,

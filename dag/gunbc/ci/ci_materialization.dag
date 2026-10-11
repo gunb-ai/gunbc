@@ -20,7 +20,7 @@ import extdeps.cache.sccache { sccache_local_facts, sccache_local_id }
 import v2.workflow.ci_release_build_emit { ci_release_build_script }
 import extdeps.github.actions { Workflow, Job, Step, RunStep, UsesStep }
 import gunbc.floor_materialization { floor_entry_walk_memo_provider_id }
-import v2.std.algebra { any, for_all }
+import v2.std.algebra { for_all }
 import std.measure { Nanosecond, nanosecond, nanosecond_count }
 
 // The worked example the ladder was built for (operator, 2026-07-08): CI emits shell which runs the

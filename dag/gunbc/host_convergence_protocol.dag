@@ -1,7 +1,7 @@
 module gunbc.host_convergence_protocol
 
 import std.types { Bool, String, List, Int }
-import v2.std.algebra { filter, length }
+import v2.std.algebra { length }
 import std.goal_assessment {
   ObservationAttempt,
   ObservationEstablished,

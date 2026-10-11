@@ -6,7 +6,7 @@ import v2.extdeps.languages.rust { rust_host_transport_descriptor, rust_host_bui
 import v2.extdeps.languages.python { python_host_transport_descriptor }
 import v2.extdeps.languages.go { go_host_transport_descriptor }
 import v2.extdeps.languages.typescript { ts_host_transport_descriptor }
-import v2.std.algebra { any, contains, fold_list }
+import v2.std.algebra { contains, fold_list }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
