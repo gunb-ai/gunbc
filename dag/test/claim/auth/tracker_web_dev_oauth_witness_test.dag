@@ -2,7 +2,7 @@ module test.claim.auth.tracker_web_dev_oauth_witness_test
 
 import std.types { Bool, String, CommitSha }
 import v2.std.algebra { any }
-import std.goal_assessment { GoalSatisfied }
+import std.goal_assessment { GoalSatisfied, GoalAssessmentRefused }
 import std.keyed_roster { KeyedRosterBuilt }
 import std.roster_frontier { PathSubject, frontier_rows_keyed_roster_build }
 import extdeps.google.workspace { RegisteredWebClient }
@@ -17,14 +17,18 @@ import gunbc.auth.oidc_deployment_config {
 }
 import gunbc.auth.tracker_web_oauth_client {
   tracker_web_test_oauth_client_binding, tracker_web_test_workspace_identity_binding,
-  tracker_web_oidc_serve_standing, TrackerWebOidcServeConfigured, TrackerWebOidcInstanceUnassigned,
-  TrackerWebOidcEnvironmentUnbound, tracker_web_oidc_config_document,
+  tracker_web_oidc_serve_placement, tracker_web_oidc_serve_standing,
+  TrackerWebOidcServeReady, TrackerWebOidcPlacementUnassigned, TrackerWebOidcPlacementUnbound,
+  TrackerWebOidcServeConfigured, TrackerWebOidcConsoleReadbackUnsatisfied,
+  tracker_web_oidc_config_document,
   tracker_web_test_lab_redirect_uri, tracker_web_dev_oauth_client_secret_host_path,
   tracker_web_oauth_standing_for_environment,
   tracker_web_instance_environment, tracker_web_test_target_owned_domain,
   tracker_web_dev_oauth_client_secret_ref,
   tracker_web_test_auth_platform_client_assessment,
   tracker_web_test_console_readback_observed_at_epoch,
+  tracker_web_test_console_readback_valid_until_epoch,
+  tracker_web_test_console_observed_redirect_uris,
   tracker_web_unassigned_redirects,
   tracker_web_test_srv2_redirect_uri,
   tracker_web_oauth_frontier_rows,
@@ -42,8 +46,8 @@ fn witness_revision() -> ReleaseRevisionBinding {
 }
 
 test fn lab_rendered_oidc_config_names_lab_redirect_and_secret_path() -> Bool {
-  match tracker_web_oidc_serve_standing(instance_id: srv1_dashboard_lab_id) {
-    TrackerWebOidcServeConfigured { config: cfg } =>
+  match tracker_web_oidc_serve_placement(instance_id: srv1_dashboard_lab_id) {
+    TrackerWebOidcServeReady { config: cfg } =>
       let body = tracker_web_oidc_config_document(cfg: cfg)
       string_contains(s: body, pattern: tracker_web_test_lab_redirect_uri as String)
         && string_contains(s: body, pattern: tracker_web_dev_oauth_client_secret_host_path as String)
@@ -54,8 +58,8 @@ test fn lab_rendered_oidc_config_names_lab_redirect_and_secret_path() -> Bool {
 }
 
 test fn production_serve_unit_carries_no_oidc_env() -> Bool {
-  match tracker_web_oidc_serve_standing(instance_id: srv1_dashboard_live_id) {
-    TrackerWebOidcEnvironmentUnbound { instance_id: _, reason: _ } => true
+  match tracker_web_oidc_serve_placement(instance_id: srv1_dashboard_live_id) {
+    TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } => true
     _ => false
   }
     && match tracker_web_instance_environment(instance_id: srv1_dashboard_live_id) {
@@ -112,8 +116,8 @@ test fn missing_client_secret_file_refuses_with_typed_cause() -> Bool {
 }
 
 test fn srv2_hand_started_unit_is_unmodeled_and_not_adopted() -> Bool {
-  match tracker_web_oidc_serve_standing(instance_id: srv2_deploy_dashboard_id) {
-    TrackerWebOidcInstanceUnassigned { instance_id: id } => (id as String) == (srv2_deploy_dashboard_id as String)
+  match tracker_web_oidc_serve_placement(instance_id: srv2_deploy_dashboard_id) {
+    TrackerWebOidcPlacementUnassigned { instance_id: id } => (id as String) == (srv2_deploy_dashboard_id as String)
     _ => false
   }
     && any(tracker_web_unassigned_redirects(), u =>
@@ -133,12 +137,27 @@ test fn srv2_hand_started_unit_is_unmodeled_and_not_adopted() -> Bool {
     }
 }
 
-test fn test_environment_owns_uris_and_console_readback_consumes_the_binding() -> Bool {
+test fn console_readback_is_independent_and_expires() -> Bool {
   let b = tracker_web_test_oauth_client_binding()
+  let observed = tracker_web_test_console_observed_redirect_uris
   (b.environment == GoogleLoginEnvironmentTest)
     && (tracker_web_dev_oauth_client_secret_ref.version as String) == "1"
-    && match tracker_web_test_auth_platform_client_assessment(now_epoch: tracker_web_test_console_readback_observed_at_epoch + 1) {
+    && all(observed, x => any(b.redirect_uris, y => x == y))
+    && all(b.redirect_uris, x => any(observed, y => x == y))
+    && match tracker_web_test_auth_platform_client_assessment(now_epoch: tracker_web_test_console_readback_observed_at_epoch) {
       GoalSatisfied { evidence: _ } => true
+      _ => false
+    }
+    && match tracker_web_test_auth_platform_client_assessment(now_epoch: tracker_web_test_console_readback_valid_until_epoch) {
+      GoalAssessmentRefused { cause: _ } => true
+      _ => false
+    }
+    && match tracker_web_oidc_serve_standing(instance_id: srv1_dashboard_lab_id, now_epoch: tracker_web_test_console_readback_observed_at_epoch) {
+      TrackerWebOidcServeConfigured { config: _ } => true
+      _ => false
+    }
+    && match tracker_web_oidc_serve_standing(instance_id: srv1_dashboard_lab_id, now_epoch: tracker_web_test_console_readback_valid_until_epoch) {
+      TrackerWebOidcConsoleReadbackUnsatisfied { instance_id: _, cause: _ } => true
       _ => false
     }
     && any(census_closure_frontier_rows(), row => match row.subject {

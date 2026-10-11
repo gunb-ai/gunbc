@@ -110,17 +110,15 @@ fn tracker_web_unassigned_redirects() -> List<TrackerWebUnassignedRedirect> {
 }
 
 fn tracker_web_assigned_redirect_uris(environment: GoogleLoginEnvironment) -> List<NonEmptyStr> {
-  map(
-    filter(tracker_web_instance_login_rows(), r =>
-      (r.environment == environment) && match r.redirect_uri {
-        Present { value: _ } => true
-        Absent => false
+  flat_map(tracker_web_instance_login_rows(), r =>
+    if r.environment == environment {
+      match r.redirect_uri {
+        Present { value: uri } => [uri]
+        Absent => []
       }
-    ),
-    r => match r.redirect_uri {
-      Present { value: uri } => uri
-      Absent => tracker_web_test_lab_redirect_uri
-    },
+    } else {
+      []
+    }
   )
 }
 
@@ -182,15 +180,22 @@ fn tracker_web_test_workspace_identity_binding() -> WorkspaceIdentityBinding {
   }
 }
 
+data tracker_web_test_console_observed_redirect_uris: List<NonEmptyStr> = [
+  "https://srv1.tailecbe08.ts.net:8444/auth/google/callback" as NonEmptyStr,
+  "https://srv2.tailecbe08.ts.net:18082/auth/google/callback" as NonEmptyStr,
+]
+
 data tracker_web_test_console_readback_observed_at_epoch: Int = 1760155200
 
 data tracker_web_test_console_readback_valid_until_epoch: Int = 1762747200
 
 fn tracker_web_test_registered_web_client_console_readback() -> WorkspaceAdminReadback {
-  let binding = tracker_web_test_workspace_identity_binding()
   WorkspaceAdminReadback {
-    subject: AuthPlatformClient { project: binding.project, client: binding.client },
-    observed: RegisteredWebClient { redirect_uris: binding.redirect_uris },
+    subject: AuthPlatformClient {
+      project: tracker_web_test_oauth_console_project,
+      client: tracker_web_test_oauth_client_id,
+    },
+    observed: RegisteredWebClient { redirect_uris: tracker_web_test_console_observed_redirect_uris },
     source: AdminConsoleReadback {
       administrator: workspace_operator_principal(),
       evidence: "bright-moth-475 2026-10-11 operator console URI add; no Auth Platform write API" as NonEmptyStr,
@@ -217,6 +222,12 @@ type TrackerWebOidcServeConfig {
   binding: TrackerWebOauthClientBinding
 }
 
+type TrackerWebOidcServePlacement
+  = TrackerWebOidcServeReady { config: TrackerWebOidcServeConfig }
+  | TrackerWebOidcPlacementUnassigned { instance_id: NonEmptyStr }
+  | TrackerWebOidcPlacementUnbound { instance_id: NonEmptyStr, reason: NonEmptyStr }
+  | TrackerWebOidcPlacementMissingRealization { instance_id: NonEmptyStr, environment: GoogleLoginEnvironment }
+
 type TrackerWebOidcServeStanding
   = TrackerWebOidcServeConfigured { config: TrackerWebOidcServeConfig }
   | TrackerWebOidcInstanceUnassigned { instance_id: NonEmptyStr }
@@ -238,41 +249,52 @@ fn tracker_web_test_auth_platform_client_assessment(now_epoch: Int) -> GoalAsses
   }
 }
 
-fn tracker_web_oidc_serve_standing(instance_id: NonEmptyStr) -> TrackerWebOidcServeStanding {
+fn tracker_web_oidc_serve_placement(instance_id: NonEmptyStr) -> TrackerWebOidcServePlacement {
   match tracker_web_instance_login_row(instance_id: instance_id) {
-    Absent => TrackerWebOidcInstanceUnassigned { instance_id: instance_id }
+    Absent => TrackerWebOidcPlacementUnassigned { instance_id: instance_id }
     Present { value: row } =>
       match tracker_web_oauth_standing_for_environment(environment: row.environment) {
         TrackerWebOauthClientUnbound { environment: _, reason } =>
-          TrackerWebOidcEnvironmentUnbound { instance_id: instance_id, reason: reason }
+          TrackerWebOidcPlacementUnbound { instance_id: instance_id, reason: reason }
         TrackerWebOauthClientBound { binding: b } =>
           match row.redirect_uri {
-            Absent => TrackerWebOidcRealizationMissing { instance_id: instance_id, environment: row.environment }
+            Absent => TrackerWebOidcPlacementMissingRealization { instance_id: instance_id, environment: row.environment }
             Present { value: uri } =>
-              match tracker_web_test_auth_platform_client_assessment(now_epoch: tracker_web_test_console_readback_observed_at_epoch + 1) {
-                GoalSatisfied { evidence: _ } =>
-                  TrackerWebOidcServeConfigured {
-                    config: TrackerWebOidcServeConfig {
-                      config_path: tracker_web_dev_oidc_config_host_path,
-                      redirect_uri: uri,
-                      secret_file: tracker_web_dev_oauth_client_secret_host_path,
-                      binding: b,
-                    }
-                  }
-                GoalDiverged { deviations: _ } =>
-                  TrackerWebOidcConsoleReadbackUnsatisfied {
-                    instance_id: instance_id,
-                    cause: "console readback diverged from Auth Platform obligation" as NonEmptyStr,
-                  }
-                GoalIndeterminate { known_deviations: _, unknowns: _ } =>
-                  TrackerWebOidcConsoleReadbackUnsatisfied {
-                    instance_id: instance_id,
-                    cause: "console readback is indeterminate" as NonEmptyStr,
-                  }
-                GoalAssessmentRefused { cause } =>
-                  TrackerWebOidcConsoleReadbackUnsatisfied { instance_id: instance_id, cause: cause as NonEmptyStr }
+              TrackerWebOidcServeReady {
+                config: TrackerWebOidcServeConfig {
+                  config_path: tracker_web_dev_oidc_config_host_path,
+                  redirect_uri: uri,
+                  secret_file: tracker_web_dev_oauth_client_secret_host_path,
+                  binding: b,
+                }
               }
           }
+      }
+  }
+}
+
+fn tracker_web_oidc_serve_standing(instance_id: NonEmptyStr, now_epoch: Int) -> TrackerWebOidcServeStanding {
+  match tracker_web_oidc_serve_placement(instance_id: instance_id) {
+    TrackerWebOidcPlacementUnassigned { instance_id: id } => TrackerWebOidcInstanceUnassigned { instance_id: id }
+    TrackerWebOidcPlacementUnbound { instance_id: id, reason } =>
+      TrackerWebOidcEnvironmentUnbound { instance_id: id, reason: reason }
+    TrackerWebOidcPlacementMissingRealization { instance_id: id, environment } =>
+      TrackerWebOidcRealizationMissing { instance_id: id, environment: environment }
+    TrackerWebOidcServeReady { config: cfg } =>
+      match tracker_web_test_auth_platform_client_assessment(now_epoch: now_epoch) {
+        GoalSatisfied { evidence: _ } => TrackerWebOidcServeConfigured { config: cfg }
+        GoalDiverged { deviations: _ } =>
+          TrackerWebOidcConsoleReadbackUnsatisfied {
+            instance_id: instance_id,
+            cause: "console readback diverged from Auth Platform obligation" as NonEmptyStr,
+          }
+        GoalIndeterminate { known_deviations: _, unknowns: _ } =>
+          TrackerWebOidcConsoleReadbackUnsatisfied {
+            instance_id: instance_id,
+            cause: "console readback is indeterminate" as NonEmptyStr,
+          }
+        GoalAssessmentRefused { cause } =>
+          TrackerWebOidcConsoleReadbackUnsatisfied { instance_id: instance_id, cause: cause as NonEmptyStr }
       }
   }
 }
