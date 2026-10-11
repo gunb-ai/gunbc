@@ -834,7 +834,7 @@ fn every_launch_refusal_arm_has_an_exemplar() -> Bool {
 }
 
 test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
-  belt_dispatch_label_band_rows().length() == 18
+  belt_dispatch_label_band_rows().length() == 19
     && band_key_for_label(label: "no_placement_grant") == "loud"
     && band_key_for_label(label: "stale_session") == "loud"
     && band_key_for_label(label: "no_capacity") == "fail"
@@ -889,6 +889,7 @@ fn d4_wire_contract_labels() -> List<String> {
     "disabled",
     "deployment_transition_inhibited",
     "deployed_revision_unobserved",
+    "revision_not_landed_on_main",
     "authority_refused",
     "node_not_found",
     "not_ready",
