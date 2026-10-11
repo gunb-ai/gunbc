@@ -155,6 +155,25 @@ fn vllm_prefix_caching_argv(r: VllmPrefixCachingRequest) -> List<String> {
   }
 }
 
+// ── PER-REQUEST CACHED-TOKEN REPORTING IS A SERVER FLAG, OFF BY DEFAULT ─────────────────────────
+//
+// vLLM's OpenAI-compatible server reports usage.prompt_tokens_details.cached_tokens (the engine's own
+// per-request prefix-cache hit count, the evidence gunbc.serving.turn_admission ServingTurnReuse
+// stands on) only when launched with --enable-prompt-tokens-details (vllm/entrypoints/openai/cli_args.py
+// at github.com/vllm-project/vllm revision 1967a5627bc3710b680bbec24ecb99aaddedf22b, the pinned
+// vllm_source_revision_1967a5627; a store_true flag, default False). Omitted is a real state: the
+// field is then absent from responses, which the consumer reads as unread, never as zero.
+type VllmPromptTokensDetailsRequest
+  = PromptTokensDetailsOmitted
+  | PromptTokensDetailsReported
+
+fn vllm_prompt_tokens_details_argv(r: VllmPromptTokensDetailsRequest) -> List<String> {
+  match r {
+    PromptTokensDetailsOmitted => []
+    PromptTokensDetailsReported => ["--enable-prompt-tokens-details"]
+  }
+}
+
 // ── THE ENGRAM EMBEDDING STORAGE REQUEST ─────────────────────────────────────────────────────────
 //
 // vLLM's EngramConfig as upstream ships it, read at github.com/vllm-project/vllm revision
