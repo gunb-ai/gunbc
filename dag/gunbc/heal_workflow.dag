@@ -1,6 +1,6 @@
 module gunbc.heal_workflow
 
-import extdeps.github.expressions { Expression, ContextAccess, Inputs }
+import extdeps.github.expressions { Expression, ContextAccess, Inputs, Github, LogicalOr }
 
 
 import std.types { Bool, Int, List, String }
@@ -32,10 +32,13 @@ import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.repo_self_build { repo_self_build_command }
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.ci_spec {
-  gunbc_ci_heal_regen_invoke,
-  gunbc_ci_heal_repair_declaration_invoke,
-  gunbc_ci_heal_candidate_invoke
+  gunbc_ci_stage0_round_invoke,
+  gunbc_ci_seed_build_artifacts_regen_invoke,
+  gunbc_ci_heal_candidate_stage0_invoke
 }
+import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.seed_build_artifact_emit { seed_build_artifacts }
+import gunbc.generated_artifact { artifact_path }
 import gunbc.heal_candidate {
   heal_candidate_directory,
   heal_candidate_repository_env,
@@ -109,7 +112,7 @@ data heal_workflow_job_id: String = "heal-generated-artifacts"
 
 data heal_workflow_timeout_minutes: Int = 90
 
-data heal_workflow_required_bins: List<String> = ["gunbc"]
+data heal_workflow_required_bins: List<String> = ["gunbc", "claim_executor"]
 
 data heal_build_step_name: String = "Build the regenerator this job runs against its own checkout"
 
@@ -122,14 +125,30 @@ data heal_same_repository_clause: String = "github.event.pull_request.head.repo.
 
 data heal_not_dependabot_clause: String = "github.actor != 'dependabot[bot]'"
 
-// A DISPATCH CARRIES NO PULL REQUEST, so the fork clauses would read null and skip the job on the
-// one event this workflow still answers (it became dispatch-only when the required gate took its
-// work). The dispatcher holds write access already, which is the same authority the fork clauses
-// establish for a pull request.
+// A DISPATCH CARRIES NO PULL REQUEST, so the fork clauses would read null and skip it. The manual
+// route holds write access already, which is the authority the fork clauses establish for a pull
+// request. A FORK PULL REQUEST IS NOT SILENT: heal_fork_notice_step runs on exactly the runs this
+// condition skips the job for, in a sibling job that holds no checkout and no credential.
 fn heal_workflow_job_condition() -> String {
-  "github.event_name == 'workflow_dispatch'"
+  concat("github.event_name == 'workflow_dispatch' || (", heal_same_repository_clause, " && ", heal_not_dependabot_clause, ")")
 }
 
+fn heal_fork_notice_condition() -> String {
+  concat("github.event_name == 'pull_request' && ", "github.event.pull_request.head.repo.full_name != github.repository")
+}
+
+// THE TRIGGER PATHS ARE DERIVED, NOT LISTED. The stage0 mirrors are a function of the .dag corpus the
+// layer roots name and of the seed that reads them (src/v1); the seed-build artifacts are named by
+// gunbc.seed_build_artifact_emit. A new root or a new seed-build artifact moves this set with no edit here.
+fn heal_trigger_paths() -> List<String> {
+  concat(
+    concat(
+      list_map(xs: witness_layer_roots, f: fn(root) { concat(root, "/**") }),
+      ["src/v1/**"]
+    ),
+    list_map(xs: seed_build_artifacts(), f: fn(a) { artifact_path(a: a) })
+  )
+}
 
 // persist-credentials: false is the load-bearing input. The job has no write grant to persist, and
 // saying so in the checkout keeps a later editor from inheriting one by default.
@@ -152,11 +171,11 @@ fn heal_checkout_step() -> Step {
   }
 }
 
-fn heal_repair_declaration_step() -> Step {
+fn heal_stage0_round_step() -> Step {
   RunStep {
-    name: Present { value: "Declare which ledger rows this heal will repair" },
+    name: Present { value: "Converge the stage0 mirrors to the seed's own fixed point" },
     id: none,
-    run: gunbc_ci_heal_repair_declaration_invoke(),
+    run: gunbc_ci_stage0_round_invoke(),
     shell: none,
     env: none,
     working_directory: none,
@@ -166,11 +185,11 @@ fn heal_repair_declaration_step() -> Step {
   }
 }
 
-fn heal_regen_step() -> Step {
+fn heal_seed_build_artifacts_step() -> Step {
   RunStep {
-    name: Present { value: "Regenerate every registry-rostered generated artifact (not the stage0 mirrors)" },
+    name: Present { value: "Regenerate the seed-build artifacts without loading the registry" },
     id: none,
-    run: gunbc_ci_heal_regen_invoke(),
+    run: gunbc_ci_seed_build_artifacts_regen_invoke(),
     shell: none,
     env: none,
     working_directory: none,
@@ -187,14 +206,14 @@ fn heal_candidate_step() -> Step {
   RunStep {
     name: Present { value: "Produce the sealed repair candidate" },
     id: none,
-    run: gunbc_ci_heal_candidate_invoke(),
+    run: gunbc_ci_heal_candidate_stage0_invoke(),
     shell: none,
     env: Present {
       value: [
         kv(key: heal_candidate_repository_env as String, value: yaml_string(s: "${{ github.repository }}")),
-        kv(key: heal_candidate_pull_number_env as String, value: yaml_string(s: "${{ inputs.pull_number }}")),
-        kv(key: heal_candidate_head_ref_env as String, value: yaml_string(s: "${{ inputs.head_ref }}")),
-        kv(key: heal_candidate_base_ref_env as String, value: yaml_string(s: "${{ inputs.base_ref }}")),
+        kv(key: heal_candidate_pull_number_env as String, value: yaml_string(s: "${{ github.event.pull_request.number || inputs.pull_number }}")),
+        kv(key: heal_candidate_head_ref_env as String, value: yaml_string(s: "${{ github.event.pull_request.head.ref || inputs.head_ref }}")),
+        kv(key: heal_candidate_base_ref_env as String, value: yaml_string(s: "${{ github.event.pull_request.base.ref || inputs.base_ref }}")),
         kv(key: heal_candidate_run_id_env as String, value: yaml_string(s: "${{ github.run_id }}"))
       ]
     },
@@ -264,14 +283,14 @@ fn heal_workflow_bound_steps() -> List<HealBoundStep> {
       step_name: heal_build_step_name,
     },
     HealBoundStep {
-      step: heal_repair_declaration_step(),
-      role: capability_neutral,
-      step_name: "Declare which ledger rows this heal will repair",
+      step: heal_stage0_round_step(),
+      role: consumes_only(capabilities: [CargoCapability]),
+      step_name: "Converge the stage0 mirrors to the seed's own fixed point",
     },
     HealBoundStep {
-      step: heal_regen_step(),
+      step: heal_seed_build_artifacts_step(),
       role: capability_neutral,
-      step_name: "Regenerate every registry-rostered generated artifact (not the stage0 mirrors)",
+      step_name: "Regenerate the seed-build artifacts without loading the registry",
     },
     HealBoundStep {
       step: heal_candidate_step(),
@@ -325,12 +344,44 @@ fn heal_workflow_job() -> Job {
   }
 }
 
+data heal_fork_notice_job_id: String = "heal-fork-skipped"
+
+// A FORK PULL REQUEST GETS A VISIBLE NOTICE, NEVER SILENCE. The job holds no checkout and no grant
+// beyond the workflow's read; it exists only so the skip is an annotation on the run.
+fn heal_fork_notice_job() -> Job {
+  Job {
+    id: heal_fork_notice_job_id,
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    environment: none,
+    steps: [RunStep {
+      name: Present { value: "Say that a fork pull request is not repaired" },
+      id: none,
+      run: "echo \"::notice title=heal skipped::fork pull request: this repository cannot push to a fork's branch, so stage0 mirrors and seed-build artifacts are not regenerated here. Regenerate them locally and push.\"",
+      shell: none,
+      env: none,
+      working_directory: none,
+      if_condition: none,
+      continue_on_error: none,
+      timeout_minutes: none
+    }],
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: Present { value: heal_fork_notice_condition() },
+    timeout_minutes: Present { value: 5 },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present { value: heal_workflow_job_permissions }
+  }
+}
+
 // A SUPERSEDED HEAL IS CANCELLED, WHICH IS RIGHT FOR A REMEDIATOR AND WOULD BE WRONG FOR A VERDICT.
 // A candidate describes one head; when the author pushes another, the in-flight run is producing a
 // candidate the publisher would refuse as stale, and the successor run produces the one that can
 // land. Nothing here reports a verdict about a revision, so cancelling loses no judgment.
 data heal_workflow_concurrency: ConcurrencySpec = ConcurrencyMappingQueueNotMax {
-  group: "heal-pr-${{ github.event.pull_request.number }}",
+  group: "heal-pr-${{ github.event.pull_request.number || inputs.pull_number }}",
   cancel_in_progress: Present { value: CancelInProgressBool { value: true } },
   explicit_single: none
 }
@@ -345,7 +396,7 @@ data heal_workflow_concurrency: ConcurrencySpec = ConcurrencyMappingQueueNotMax 
 data heal_workflow: Workflow = Workflow {
   name: heal_workflow_name,
   run_name: none,
-  on: [WorkflowDispatch { inputs: [
+  on: [PullRequest { branches: [gunbc_default_branch_name], types: [Opened, Synchronize, Reopened], paths: heal_trigger_paths() }, WorkflowDispatch { inputs: [
     heal_dispatch_pull_number_input,
     heal_dispatch_head_sha_input,
     heal_dispatch_head_ref_input,
@@ -367,7 +418,7 @@ data heal_workflow: Workflow = Workflow {
       id_token: none
     }
   },
-  jobs: [heal_workflow_job()]
+  jobs: [heal_workflow_job(), heal_fork_notice_job()]
 }
 
 // ── The isolation invariant, asked of the emitted job ────────────────────────────────────────
@@ -448,4 +499,7 @@ fn expected_heal_workflow_yml() -> HealWorkflowGenerationOutcome {
 }
 
 // The commit the heal dispatch names; a declared revision input (gunbc.action_use_admission).
-data heal_checkout_ref: Expression = ContextAccess { context: Inputs, path: ["head_sha"] }
+data heal_checkout_ref: Expression = LogicalOr {
+  left: ContextAccess { context: Github, path: ["event", "pull_request", "head", "sha"] },
+  right: ContextAccess { context: Inputs, path: ["head_sha"] }
+}

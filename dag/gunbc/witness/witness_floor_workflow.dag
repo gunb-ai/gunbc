@@ -2529,7 +2529,8 @@ fn witness_floor_triggers() -> List<WorkflowTrigger> {
     MergeGroup,
     PullRequest {
       branches: [gunbc_default_branch_name],
-      types: witness_floor_pull_request_activity_types
+      types: witness_floor_pull_request_activity_types,
+      paths: []
     }
   ]
 }

@@ -157,7 +157,7 @@ test fn the_branch_is_removed_only_when_a_read_finds_it_absent() -> Bool {
 fn push_trigger_could_fire_on(trigger: WorkflowTrigger, branch: String) -> Bool {
   match trigger {
     Push { branches: bs, paths: _ } => count(bs) == 0 || (bs |> any(b => b == branch || string_contains(s: b, pattern: "*")))
-    PullRequest { branches: _, types: _ } => false
+    PullRequest { branches: _, types: _, paths: _ } => false
     Schedule { cron: _ } => false
     WorkflowDispatch { inputs: _ } => false
     WorkflowCall { inputs: _ } => false

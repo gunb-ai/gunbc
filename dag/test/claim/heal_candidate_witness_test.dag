@@ -16,7 +16,7 @@ import gunbc.heal_publication_boundary {
 }
 import gunbc.generated_artifact_registry { committed_generated_artifact_paths }
 import extdeps.github.effect { RepositoryPath, is_workflow_projection_path }
-import gunbc.heal_candidate { candidate_proposable_paths }
+import gunbc.heal_candidate_registry { candidate_proposable_paths }
 
 // NO CLAIM HERE TOUCHES THE REAL REGISTRY, AND THE REASON IS MEASURED RATHER THAN ASSUMED.
 // committed_generated_artifact_paths() costs ~43,000 eval steps and ~119ms to produce AT ALL -- the

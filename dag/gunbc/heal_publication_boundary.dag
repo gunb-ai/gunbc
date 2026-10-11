@@ -526,6 +526,22 @@ fn decode_heal_repair_candidate(text: String) -> CandidateDecode {
 // generated and registered, and still no automation may write them -- a workflow file is the one
 // path whose contents decide what later runs may do, and the publication credential carries no
 // `workflows` permission. The author regenerates and commits them.
+// THE STAGE0 MIRRORS ARE ADMITTED AS A DIRECTORY, NOT A ROSTER. They are not registry artifacts: the
+// seed's own emission (claim_executor --regen-round-cost) decides which files under this directory
+// are regenerated, including a mirror a change newly adds, and no .dag declaration lists them.
+// Admission is by the path's shape -- a `.rs` file directly in this directory -- and the publisher
+// still refuses every other path, a workflow projection included. The bytes are the branch's own
+// regeneration; what the publisher decides is only that the path is one a regeneration may write.
+data heal_stage0_mirror_directory: String = "src/v1/stage0/src"
+
+data heal_stage0_mirror_suffix: String = ".rs"
+
+fn path_is_stage0_mirror(path: String) -> Bool {
+  starts_with(s: path, prefix: concat(heal_stage0_mirror_directory, "/"))
+    && path.ends_with(suffix: heal_stage0_mirror_suffix)
+    && split(s: path, delimiter: "/").length() == split(s: heal_stage0_mirror_directory, delimiter: "/").length() + 1
+}
+
 type PublisherPathPolicy {
   admitted: List<NonEmptyStr>
 }
@@ -552,6 +568,8 @@ fn publisher_path_admission(policy: PublisherPathPolicy, path: RepositoryPath) -
   if is_workflow_projection_path(path: path) {
     PathAdmissionRefused { refusal: PathRequiresAuthorCommit { path: path.value as String } }
   } else if any(policy.admitted, a => (a as String) == (path.value as String)) {
+    PathAdmitted
+  } else if path_is_stage0_mirror(path: path.value as String) {
     PathAdmitted
   } else {
     PathAdmissionRefused { refusal: PathNotPublisherAdmitted { path: path.value as String } }
