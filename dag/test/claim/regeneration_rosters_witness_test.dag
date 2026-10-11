@@ -5,7 +5,7 @@ import std.types { String, Bool }
 import gunbc.generated_artifact { artifact_path }
 import gunbc.generated_artifact_registry { committed_generated_artifact_paths }
 import gunbc.seed_build_artifact_emit { seed_build_artifacts }
-import gunbc.heal_candidate_stage0 { seed_build_paths_beyond_mirrors }
+import gunbc.heal_candidate_stage0 { seed_build_artifact_paths, mirror_paths_of }
 import gunbc.heal_publication_boundary { path_is_stage0_mirror }
 import gunbc.tier_o_artifact_emit { tier_o_artifacts }
 
@@ -46,9 +46,12 @@ test fn witness_the_two_rosters_share_no_artifact() -> Bool {
 // A PATH THE CANDIDATE NAMES TWICE IS REFUSED WHOLE AT ADMISSION, and the demonstration run of the
 // producer did exactly that: a seed-build artifact that is also a stage0 mirror was listed by both
 // rosters. The control is that the overlap is real (some seed-build artifact is a mirror) and that
-// the seed-build contribution to the candidate carries none of them.
+// the mirror category is derived without the paths a seed-build producer owns.
 test fn witness_a_seed_build_artifact_that_is_a_mirror_is_named_once() -> Bool {
-  any(seed_build_artifacts(), a => path_is_stage0_mirror(path: artifact_path(a: a)))
-    && !any(seed_build_paths_beyond_mirrors(), p => path_is_stage0_mirror(path: p))
-    && seed_build_paths_beyond_mirrors().length() > 0
+  let overlap = filter(seed_build_artifact_paths(), p => path_is_stage0_mirror(path: p))
+  let listing = ["gunbc_file_transport_generated.rs", "lib.rs"]
+  overlap.length() > 0
+    && any(overlap, p => p == "src/v1/stage0/src/gunbc_file_transport_generated.rs")
+    && !any(mirror_paths_of(names: listing), p => p == "src/v1/stage0/src/gunbc_file_transport_generated.rs")
+    && any(mirror_paths_of(names: listing), p => p == "src/v1/stage0/src/lib.rs")
 }
