@@ -8,8 +8,12 @@ import v2.compiler.module_acquisition {
   AcquiredModule,
   AcquisitionExact,
   AcquisitionExactness,
+  AcquisitionEnv,
   AcquisitionKind,
   AcquisitionMemberNotRead,
+  AcquisitionMemberRead,
+  AcquisitionMemberReadOk,
+  AcquisitionMemberReadRefused,
   AcquisitionReadNotRequested,
   AcquisitionReadTwice,
   AcquisitionReadWithoutMember,
@@ -17,8 +21,15 @@ import v2.compiler.module_acquisition {
   AcquisitionRequestedNotRead,
   acquisition_exactness,
   acquisition_ingest,
-  acquisition_module_path
+  acquisition_member_requests,
+  acquisition_module_path,
+  acquisition_refusal_text
 }
+import v2.cli.repository_layout { repository_storage_layout }
+import v2.compiler.parse { prepare_grammar }
+import v2.compiler.tokenize { prepare_lex_rules }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.compiler.source_authority { ModuleFileRef, module_file_key }
 import v2.std.algebra { length }
 import v2.std.cross_tree.import_model { V2Tree }
@@ -200,4 +211,74 @@ test fn the_ingest_holds_exactly_the_acquired_modules() -> Bool {
 
 test fn a_member_is_named_by_the_host_path_it_was_read_from() -> Bool {
   acquisition_module_path(module: subject_member()) == "src/v2/test/subject.dag"
+}
+
+// ---- the member's own text, read by the front end -------------------------------------------------------
+
+// WHAT A MEMBER ASKS FOR IS READ BY THE FRONT END AND BY NOTHING ELSE. The acquirer is the only reader of
+// a member's import lines now, so an import line that names no module must REFUSE the member rather than
+// be skipped: a skipped import is a NARROWED CLOSURE -- the module the line meant to name is never read,
+// its declarations never reach the universe, and the run ends green over a smaller population than the
+// source asked for. DESIGN section 5 forbids exactly that arm, and narrowing is the worse direction
+// because it terminates in a pass rather than in a visible over-scan. (Review 64474 item 5; the controls
+// of 2026-09-12 were written against the text scan that this reading replaced.)
+//
+// THE SUBJECT IS acquisition_member_requests, NOT A LINE PREDICATE: a test that stopped at a predicate
+// would prove the malformed line is recognised and nothing about whether recognition reaches the
+// verdict. The two malformed spellings differ in the shape a prefix test cannot see -- `import` with only
+// spaces after it trims to `import`, so a predicate keyed on the prefix `import ` is false for it -- and
+// the well-formed control differs from them in the import line alone, so the refusal is attributable to
+// it and a reader that refused everything is told apart.
+
+fn member_read_text(read: AcquisitionMemberRead) -> String {
+  match read {
+    AcquisitionMemberReadOk { requests: requests, test_markers: markers } =>
+      concat("read|", join(requests.imports, ","), "|", join(markers, ","))
+    AcquisitionMemberReadRefused { refusal: refusal } => acquisition_refusal_text(refusal: refusal)
+  }
+}
+
+fn member_read_of(content: String) -> String {
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: _ } => "grammar-unprepared"
+    Accepted { value: prepared, diagnostics: _ } =>
+      member_read_text(
+        read: acquisition_member_requests(
+          env: AcquisitionEnv {
+            layout: repository_storage_layout(),
+            bindings: [],
+            lex: prepare_lex_rules(rules: dag_language_model().lex),
+            grammar: prepared
+          },
+          module: "v2.test.subject",
+          file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" },
+          content: content
+        )
+      )
+  }
+}
+
+fn refused_member_prefix() -> String {
+  "module v2.test.subject at v2:test/subject.dag did not front-end"
+}
+
+test fn a_malformed_import_line_refuses_the_member_it_sits_in() -> Bool {
+  starts_with(
+    s: member_read_of(content: "module v2.test.subject\nimport \nfn subject() -> Bool { true }\n"),
+    prefix: refused_member_prefix()
+  )
+}
+
+test fn a_bare_import_line_refuses_the_member_it_sits_in() -> Bool {
+  starts_with(
+    s: member_read_of(content: "module v2.test.subject\nimport    \nfn subject() -> Bool { true }\n"),
+    prefix: refused_member_prefix()
+  )
+}
+
+// The positive control, and the member's marked declarations ride the same read.
+test fn a_well_formed_import_is_requested_and_its_marked_declaration_is_captured() -> Bool {
+  member_read_of(
+    content: "module v2.test.subject\nimport v2.std.optional { Present }\ntest fn a_claim() -> Bool { true }\n"
+  ) == "read|v2.std.optional|a_claim"
 }
