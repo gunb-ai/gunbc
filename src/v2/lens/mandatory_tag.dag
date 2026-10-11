@@ -84,7 +84,7 @@ import v2.extdeps.languages.dag {
 // is infer, before lenses, and is not inhabitance (DESIGN §3). The member-kind channel
 // that would classify the spine is gunbc#13513.
 // Corpus grain: the same fold is consumed at parse grain by the live witness in
-// src/v2/test/claim/long/mandatory_tag_extdeps_corpus_test.dag over dag/extdeps/** via
+// src/v2/test/claim/long/mandatory_tag_extdeps_corpus.dag over dag/extdeps/** via
 // filesystem_list_dag_files + filesystem_read + the v2 grammar - the Node-tree projection that
 // supersedes the host module parse (the dissolution trigger named by the deleted cli_run.rs
 // scaffold block).

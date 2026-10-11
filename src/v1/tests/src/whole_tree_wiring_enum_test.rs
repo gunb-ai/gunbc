@@ -27,7 +27,7 @@
 //!
 //! This target is compiled by `repo_self_clippy_command` and run by no CI step (see
 //! DESIGN, "Building & checks"). The executing evidence on the required floor is
-//! `dag/test/claim/fn_arrow_decl_facts_live_subject_witness_test.dag`; this file is
+//! `dag/test/claim/fn_arrow_decl_facts_live_subject_witness.dag`; this file is
 //! the host-side control over the refusal arm, which `.dag` cannot author.
 
 use std::rc::Rc;

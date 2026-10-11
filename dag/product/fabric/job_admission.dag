@@ -42,7 +42,7 @@ data classification_receipt_issuer_frontier: FrontierRow = frontier_row_decl(
 )
 
 data job_admission_billing_frontier: FrontierRow = frontier_row_decl(
-  ref: decl_ref(module_path: "test.claim.job_admission_witness_test", decl_name: "submit_invoice_fixture"),
+  ref: decl_ref(module_path: "test.claim.job_admission_witness", decl_name: "submit_invoice_fixture"),
   reason: "The zero-net invoice join is exercised by a fixture; the real billing receipt is not yet its consumer.",
   dissolution: unbound_dissolution(description: "billing-receipts joins metered usage times founding price, promotional credit, and net due to the admission result for the same work identity, and executes controls proving a zero-net invoice preserves admission, hold, and refusal. A fixture or declared invoice type alone is insufficient."),
 )
@@ -58,7 +58,7 @@ data job_admission_runner_frontier: FrontierRow = frontier_row_decl(
 // floor_expected_red likewise requires a row to be under repair. Neither is
 // authority to quarantine an intentionally broken admission fixture forever.
 data job_admission_mutation_harness_frontier: FrontierRow = frontier_row_decl(
-  ref: decl_ref(module_path: "test.claim.job_admission_witness_test", decl_name: "zero_dollar_net_invoice_cannot_admit_a_job_with_another_jobs_receipt"),
+  ref: decl_ref(module_path: "test.claim.job_admission_witness", decl_name: "zero_dollar_net_invoice_cannot_admit_a_job_with_another_jobs_receipt"),
   reason: "The invoice bypass is authorable as fixture source, but its mutation proof has no permanent expected-red consumer. Temporary known-red quarantine is for feature gaps that must become green; it cannot enroll this deliberately broken fixture as permanent evidence. The ordinary invoice witnesses do not establish that the mutation is executed.",
   dissolution: unbound_dissolution(description: "A scheduled permanent source-mutation consumer runs the unchanged invoice controls against submit_invoice_fixture with the net_due == money_amount_micro(count: 0) arm calling classify_job directly and the paid arm retaining admit_job. It requires the zero-dollar other-job-receipt control to fail by assertion and paid_invoice_does_not_supply_an_admission_receipt to pass in the same mutated run, refuses unexpected green or a pre-verdict failure, and runs the original controls on restored source. The mutation and both expectations remain enrolled after this frontier dissolves; a one-off run, copied receipt, temporary known-red row, or declared harness alone does not close it."),
 )

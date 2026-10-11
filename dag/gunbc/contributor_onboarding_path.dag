@@ -244,7 +244,7 @@ fn onboarding_witness_command() -> String {
 // The one-witness recipe, path-addressed: the built binary, the witness roots, the entry, and
 // `--claim-run` with no `--function`, which runs every `test fn` the file declares in one process.
 fn onboarding_one_witness_command() -> String {
-  join(concat(["./target/release/gunbc"], invocation_words_bare(words: gunbc_run_all_claims_invocation_words(source_roots: witness_layer_roots, entry: "dag/test/claim/spark/pair_serving_authority_witness_test.dag"))), " ")
+  join(concat(["./target/release/gunbc"], invocation_words_bare(words: gunbc_run_all_claims_invocation_words(source_roots: witness_layer_roots, entry: "dag/test/claim/spark/pair_serving_authority_witness.dag"))), " ")
 }
 
 fn onboarding_build_lane_command() -> String {

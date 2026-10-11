@@ -508,7 +508,7 @@ fn ct_native_bool_variant_fixture_closure_discrimination_test() -> String {
     "    /// compiles two emitted crates. It is RUNNABLE ON DEMAND -- `cargo test --release -p\n",
     "    /// v1-compiler --lib native_bool_variant_fixture_closure_discrimination -- --ignored`. No CI\n",
     "    /// path invokes it (gunbc.rung_drop rust_unit_tests_off_the_merge_path); the emitted-bytes\n",
-    "    /// half that does run on the floor is test.claim.native_variant_realization_witness_test.\n",
+    "    /// half that does run on the floor is test.claim.native_variant_realization_witness.\n",
     "    #[test]\n",
     "    #[ignore]\n",
     "    fn native_bool_variant_fixture_closure_discrimination() {\n",
@@ -2368,7 +2368,7 @@ fn ct_renderer_hop_identity_keying_test() -> String {
 // functions called here are std.nat's own, as the seed EMITTER rendered them into the stage0 mirror
 // this test binary links: the eliminator's constructor match under a tail call, the divisor match
 // and successor rebuild in division, and the difference crossing back into the naturals. The
-// INTERPRETED half is test.claim.std_nat_realization_agreement_witness_test, which evaluates the
+// INTERPRETED half is test.claim.std_nat_realization_agreement_witness, which evaluates the
 // same functions on the same arguments under the seed interpreter. Both halves hold the same
 // expected values, which are arithmetic facts about small naturals rather than a reading of either
 // route, so a route that realized a constructor, a match or the eliminator differently fails its own
@@ -5402,7 +5402,7 @@ fn ct_test_marker_item_kind_test() -> String {
 }
 
 // THE ONE WALL ROW THAT STAYS OFF THE FLOOR, AND WHY. Every other red and control of the wall runs on
-// the floor in test.claim.test_reference_wall_witness_test; their compiler_tests copies were deleted when
+// the floor in test.claim.test_reference_wall_witness; their compiler_tests copies were deleted when
 // those were enrolled (review 67649). The identity-grain swap cannot move: it must compile a module
 // that carries a real ledger row, and on the floor such a module collides with the loaded corpus and
 // the census refuses rather than answers. It runs in no CI step. Next-rung trigger: a census probe
@@ -5497,7 +5497,7 @@ fn ct_test_reference_import_all_test() -> String {
 // compile, so it cannot be authored into the real ledger; the arm is therefore exercised at its own
 // interface, v1.compiler.compile test_reference_unevaluated_row_diag, on synthetic rows. Like every
 // compiler_tests row it runs in no CI step. The floor carries its positive control instead: a
-// census-backed fixture compile raises no orphan (test.claim.test_reference_wall_witness_test).
+// census-backed fixture compile raises no orphan (test.claim.test_reference_wall_witness).
 // Next-rung trigger: a census probe that can compile against an injected ledger.
 fn ct_test_reference_orphan_row_test() -> String {
   concat(

@@ -25,7 +25,7 @@ data measurement_producer_bound_without_its_verdict_consumer: RecurringFailureMo
 
     "CEILING: STRUCTURALLY IMPOSSIBLE. Whether a bound step's declared output artifact is consumed by a later step in the same job is decidable from the workflow authority alone -- both the producing argv and the consuming argv are modeled rows in the same fold -- so a job that binds a receipt-writing invocation without binding its reader can be made to have no constructor, rather than being caught by a claim over the emitted steps after the fact.",
 
-    "NEXT-RUNG TRIGGER, STATED AS A CAPABILITY: a bound step that names an output artifact CARRIES its adjudicating consumer in the same value, so a producer without a reader cannot be constructed. The claim landed beside this row -- test.claim.compiler_gate_workflow_witness_test, asserting over the emitted job that the adjudicator exists and is positioned after the producer -- is the legitimate rung 2 step and must not be reported as the ceiling reached: it is one claim over one job, and the next lane to bind the same instrument in a new job is outside its subject.",
+    "NEXT-RUNG TRIGGER, STATED AS A CAPABILITY: a bound step that names an output artifact CARRIES its adjudicating consumer in the same value, so a producer without a reader cannot be constructed. The claim landed beside this row -- test.claim.compiler_gate_workflow_witness, asserting over the emitted job that the adjudicator exists and is positioned after the producer -- is the legitimate rung 2 step and must not be reported as the ceiling reached: it is one claim over one job, and the next lane to bind the same instrument in a new job is outside its subject.",
   ],
 
   evidence: [],

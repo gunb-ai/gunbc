@@ -16,7 +16,7 @@ data resource_contract_validated_but_not_carried: RecurringFailureMode = Recurri
   ],
 
   evidence: [
-    DeclarationRef { module_path: "v2.test.claim.normalize.resource_declaration_lowering_test", decl_name: "an_unknown_kind_refuses_located_RED", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.normalize.resource_declaration_lowering_test", decl_name: "the_capture_names_the_resource_and_only_it_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.normalize.resource_declaration_lowering", decl_name: "an_unknown_kind_refuses_located_RED", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.normalize.resource_declaration_lowering", decl_name: "the_capture_names_the_resource_and_only_it_holds", field: WholeDeclaration },
   ],
 }

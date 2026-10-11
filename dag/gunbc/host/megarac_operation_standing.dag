@@ -107,10 +107,10 @@ fn megarac_operation_evidence_of(
 ) -> MegaRacOperationEvidence
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.megarac_operation_evidence", decl_name: "mtcollins1_megarac_operation_evidence"),
-    decl_ref(module_path: "test.claim.host.megarac_operation_standing_witness_test", decl_name: "w_a_receipt_across_a_reflash_grounds_no_build"),
-    decl_ref(module_path: "test.claim.host.megarac_operation_standing_witness_test", decl_name: "w_a_receipt_beside_a_reading_of_its_build_is_grounded_there"),
-    decl_ref(module_path: "test.claim.host.megarac_managed_host_witness_test", decl_name: "w_a_historical_observation_beside_a_known_later_build_mints_no_carrier"),
-    decl_ref(module_path: "test.claim.host.megarac_managed_host_witness_test", decl_name: "w_a_current_read_build_with_executed_evidence_is_admitted_by_the_shadow_gate"),
+    decl_ref(module_path: "test.claim.host.megarac_operation_standing_witness", decl_name: "w_a_receipt_across_a_reflash_grounds_no_build"),
+    decl_ref(module_path: "test.claim.host.megarac_operation_standing_witness", decl_name: "w_a_receipt_beside_a_reading_of_its_build_is_grounded_there"),
+    decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_a_historical_observation_beside_a_known_later_build_mints_no_carrier"),
+    decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_a_current_read_build_with_executed_evidence_is_admitted_by_the_shadow_gate"),
   ]
 {
   MegaRacOperationEvidence { readings: readings, receipts: receipts, transitions: transitions }
@@ -119,10 +119,10 @@ fn megarac_operation_evidence_of(
 fn megarac_build_reading(endpoint: BmcControllerEndpoint, identity: BmcObservedIdentity, evidence: EvidenceRef, observed_at: EpochMs) -> MegaRacBuildReading
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.megarac_operation_evidence", decl_name: "mtcollins1_megarac_operation_evidence"),
-    decl_ref(module_path: "test.claim.host.megarac_operation_standing_witness_test", decl_name: "w_a_receipt_across_a_reflash_grounds_no_build"),
-    decl_ref(module_path: "test.claim.host.megarac_operation_standing_witness_test", decl_name: "w_a_receipt_beside_a_reading_of_its_build_is_grounded_there"),
-    decl_ref(module_path: "test.claim.host.megarac_managed_host_witness_test", decl_name: "w_a_historical_observation_beside_a_known_later_build_mints_no_carrier"),
-    decl_ref(module_path: "test.claim.host.megarac_managed_host_witness_test", decl_name: "w_a_current_read_build_with_executed_evidence_is_admitted_by_the_shadow_gate"),
+    decl_ref(module_path: "test.claim.host.megarac_operation_standing_witness", decl_name: "w_a_receipt_across_a_reflash_grounds_no_build"),
+    decl_ref(module_path: "test.claim.host.megarac_operation_standing_witness", decl_name: "w_a_receipt_beside_a_reading_of_its_build_is_grounded_there"),
+    decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_a_historical_observation_beside_a_known_later_build_mints_no_carrier"),
+    decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_a_current_read_build_with_executed_evidence_is_admitted_by_the_shadow_gate"),
   ]
 {
   MegaRacBuildReading { endpoint: endpoint, identity: identity, evidence: evidence, observed_at: observed_at }
@@ -131,9 +131,9 @@ fn megarac_build_reading(endpoint: BmcControllerEndpoint, identity: BmcObservedI
 fn megarac_operation_receipt(operation: MegaRacOperation, endpoint: BmcControllerEndpoint, receipt: EvidenceRef, executed_at: EpochMs) -> MegaRacOperationReceipt
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.megarac_operation_evidence", decl_name: "mtcollins1_megarac_operation_evidence"),
-    decl_ref(module_path: "test.claim.host.megarac_operation_standing_witness_test", decl_name: "w_a_receipt_across_a_reflash_grounds_no_build"),
-    decl_ref(module_path: "test.claim.host.megarac_operation_standing_witness_test", decl_name: "w_a_receipt_beside_a_reading_of_its_build_is_grounded_there"),
-    decl_ref(module_path: "test.claim.host.megarac_managed_host_witness_test", decl_name: "w_a_current_read_build_with_executed_evidence_is_admitted_by_the_shadow_gate"),
+    decl_ref(module_path: "test.claim.host.megarac_operation_standing_witness", decl_name: "w_a_receipt_across_a_reflash_grounds_no_build"),
+    decl_ref(module_path: "test.claim.host.megarac_operation_standing_witness", decl_name: "w_a_receipt_beside_a_reading_of_its_build_is_grounded_there"),
+    decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_a_current_read_build_with_executed_evidence_is_admitted_by_the_shadow_gate"),
   ]
 {
   MegaRacOperationReceipt { operation: operation, endpoint: endpoint, receipt: receipt, executed_at: executed_at }
@@ -142,8 +142,8 @@ fn megarac_operation_receipt(operation: MegaRacOperation, endpoint: BmcControlle
 fn megarac_firmware_transition(endpoint: BmcControllerEndpoint, from: BmcFirmwareReleaseIdentity, to: BmcFirmwareReleaseIdentity, not_before: EpochMs, not_after: EpochMs, record: DeclarationRef) -> MegaRacFirmwareTransition
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.megarac_operation_evidence", decl_name: "mtcollins1_megarac_operation_evidence"),
-    decl_ref(module_path: "test.claim.host.megarac_operation_standing_witness_test", decl_name: "w_a_receipt_across_a_reflash_grounds_no_build"),
-    decl_ref(module_path: "test.claim.host.megarac_managed_host_witness_test", decl_name: "w_a_historical_observation_beside_a_known_later_build_mints_no_carrier"),
+    decl_ref(module_path: "test.claim.host.megarac_operation_standing_witness", decl_name: "w_a_receipt_across_a_reflash_grounds_no_build"),
+    decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_a_historical_observation_beside_a_known_later_build_mints_no_carrier"),
   ]
 {
   MegaRacFirmwareTransition { endpoint: endpoint, from: from, to: to, not_before: not_before, not_after: not_after, record: record }

@@ -1,0 +1,74 @@
+module v2.test.claim.repository_layout_adapter
+
+import std.optional { Absent, Present }
+import v2.std.cross_tree.import_model { DagTree, V2Tree }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.compiler.source_authority {
+  ModuleFileDerived,
+  ModuleFileRef,
+  ModuleNameUnderivable,
+  module_file,
+  module_file_ref_eq
+}
+import v2.cli.repository_layout {
+  repository_module_file_of_path,
+  repository_path_of_module_file,
+  repository_storage_layout
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WITNESSES FOR THE ADAPTER FROM THE REPOSITORY POLICY (gunbc.source_layout) TO THE GENERIC STORAGE
+// TYPES. The generic rule is v2.compiler.source_authority module_file; the policy is rows; the
+// adapter only binds them, so these controls pin the binding at the repository's two real trees
+// -- the one place a v2 module name meets src/v2 and every other name meets dag -- and nothing about
+// the rule itself, which source_layout_lookup_test already covers over a hand-built layout.
+
+test fn adapter_derives_a_v2_module_into_the_v2_tree_with_the_namespace_elided() -> Bool {
+  match module_file(layout: repository_storage_layout(), name: "v2.std.text") {
+    ModuleFileDerived { file: file } =>
+      module_file_ref_eq(a: file, b: ModuleFileRef { tree: V2Tree {}, relative_path: "std/text.dag" })
+    ModuleNameUnderivable { name: _, cause: _ } => false
+  }
+}
+
+test fn adapter_derives_every_other_module_into_the_dag_tree() -> Bool {
+  match module_file(layout: repository_storage_layout(), name: "gunbc.source_layout") {
+    ModuleFileDerived { file: file } =>
+      module_file_ref_eq(a: file, b: ModuleFileRef { tree: DagTree {}, relative_path: "gunbc/source_layout.dag" })
+    ModuleNameUnderivable { name: _, cause: _ } => false
+  }
+}
+
+// A repository-relative path denotes the logical file under the tree whose directory owns it, and
+// the inverse restores the path: the pair is the one translation between the host's paths and the
+// storage rule's logical files.
+test fn adapter_path_and_logical_file_round_trip_in_both_trees() -> Bool {
+  let v2_round_trip = match repository_module_file_of_path(path: "src/v2/std/text.dag") {
+    Present { value: file } =>
+      module_file_ref_eq(a: file, b: ModuleFileRef { tree: V2Tree {}, relative_path: "std/text.dag" })
+        && repository_path_of_module_file(file: file) == "src/v2/std/text.dag"
+    Absent => false
+  }
+  let dag_round_trip = match repository_module_file_of_path(path: "dag/gunbc/x.dag") {
+    Present { value: file } =>
+      module_file_ref_eq(a: file, b: ModuleFileRef { tree: DagTree {}, relative_path: "gunbc/x.dag" })
+        && repository_path_of_module_file(file: file) == "dag/gunbc/x.dag"
+    Absent => false
+  }
+  v2_round_trip && dag_round_trip
+}
+
+// A path under no governed tree denotes no logical file. `dagger/` shares a prefix with `dag` but
+// not a directory, so the match is on the directory boundary, never on the string prefix.
+test fn adapter_path_outside_the_governed_trees_has_no_logical_file() -> Bool {
+  let outside_is_absent = match repository_module_file_of_path(path: "docs/x.dag") {
+    Present { value: _ } => false
+    Absent => true
+  }
+  let sibling_prefix_is_absent = match repository_module_file_of_path(path: "dagger/x.dag") {
+    Present { value: _ } => false
+    Absent => true
+  }
+  outside_is_absent && sibling_prefix_is_absent
+}

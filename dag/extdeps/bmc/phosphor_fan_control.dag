@@ -108,7 +108,7 @@ fn phosphor_fan_failsafe_condition_label(condition: PhosphorFanFailsafeCondition
 
 // THIS MODULE HAS NO PRODUCTION CONSUMER YET, AND THAT IS DECLARED HERE RATHER THAN LEFT TO BE
 // DISCOVERED (DESIGN §3c). Its declarations are executed only by
-// test.claim.fan_policy_standing_witness_test, which is the red arm of that section unless the state is
+// test.claim.fan_policy_standing_witness, which is the red arm of that section unless the state is
 // named with its trigger - and the brief this module answers asked for the OpenBMC authority to be
 // cited beside the MegaRAC one precisely so that the two families never share an enum, which means
 // the citation lands before its first host does.
@@ -123,4 +123,4 @@ fn phosphor_fan_failsafe_condition_label(condition: PhosphorFanFailsafeCondition
 // the fan-policy lane with a policy module that supplies its family authority and converge route.
 // Adding an OpenBMC host to the fleet does not retire this row; adding one that reaches this
 // standing does.
-data phosphor_fan_control_first_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "dissolves when an OpenBMC-family host's policy layer supplies a product.fan_policy_standing ConvergeRouteBound whose authority is phosphor_fan_zone_policy_contract, as gunbc.machine_intake.fan_observe supplies the MegaRAC authority today via gunbc.fleet.fleet_fan_converge_routes fan_observation_authority_for_family; until then this module's only executing consumer is test.claim.fan_policy_standing_witness_test. An OpenBMC host merely joining the fleet does not retire this row - one reaching this standing does.")
+data phosphor_fan_control_first_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "dissolves when an OpenBMC-family host's policy layer supplies a product.fan_policy_standing ConvergeRouteBound whose authority is phosphor_fan_zone_policy_contract, as gunbc.machine_intake.fan_observe supplies the MegaRAC authority today via gunbc.fleet.fleet_fan_converge_routes fan_observation_authority_for_family; until then this module's only executing consumer is test.claim.fan_policy_standing_witness. An OpenBMC host merely joining the fleet does not retire this row - one reaching this standing does.")

@@ -1,0 +1,88 @@
+module test.claim.clone_bound_callable_field_witness
+
+import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A CALLABLE FIELD HID ITS DECLARED TYPE FROM THE WELL-FORMEDNESS FIXPOINT.
+//
+// The item-level Clone bound has two triggers (trait_derive_emit_item_clone_bound_rule_note and
+// trait_derive_emit_item_clone_bound_wf_propagation_note). The second one -- naming a Clone-bounded
+// declared type G<A..> anywhere in a field makes the declaring item ill-formed without the bound --
+// walked type expressions through `.children` alone. A callable type expression has NO children:
+// parse builds it as Node { name: "Callable", children: [], connective: Arrow, params: <arguments>,
+// inferred: <return> }, so the walk saw a leaf and returned false at the first step.
+//
+// The consequence is not a missing nicety. An arrow realizes in Rust as `Rc<dyn Fn(A) -> R>`, so
+// the emitted struct still NAMES the bounded type and rustc still refuses it -- E0277 at the field
+// of a type the emitter itself had just emitted the bound for one declaration above. The live
+// specimen is dag/std/interval.dag: OrderedClosedInterval<T: Clone> emits WITH its bound while
+// IntervalConstructionFold<T, R> { ready: fn(OrderedClosedInterval<T>) -> R } emits bare.
+//
+// THE ARMS BELOW ARE A PAIR, and the pairing is what makes either informative. The first is the
+// positive control -- the SAME declared type at a plain field position, which the children walk
+// already reached and which must keep its bound. The second is the discriminating red: identical
+// except the field is a callable, and it is the arm that goes red without the descent. Measuring
+// only the second would not distinguish a repair from a corpus in which every parameter is bounded.
+
+fn a_plain_field_carries_the_declared_types_bounds() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_callable_plain\n\ntype PlainRow<K, V> {\n  k: K\n  v: V\n}\n\ntype PlainHolder<K, V> {\n  row: PlainRow<K, V>\n}\n",
+    "src/probe_callable_plain.rs",
+    ["pub struct PlainHolder<K: Clone, V: Clone>"],
+    ["compile_error"]
+  )
+}
+
+fn a_callable_argument_carries_the_declared_types_bounds() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_callable_arg\n\ntype ArgFlag = ArgOn | ArgOff\n\ntype ArgRow<K, V> {\n  k: K\n  v: V\n}\n\ntype ArgHolder<K, V> {\n  ready: fn(ArgRow<K, V>) -> ArgFlag\n}\n",
+    "src/probe_callable_arg.rs",
+    ["pub struct ArgHolder<K: Clone, V: Clone>"],
+    ["compile_error"]
+  )
+}
+
+// THE RETURN POSITION IS THE SAME FACT, and it is a separate arm because it travels a different
+// accessor: the argument types live on `.params` and the return type lives on `.inferred`, so an
+// implementation that descended into one and not the other would pass the arm above and still leave
+// the corpus red. This arm is what forbids that half-repair.
+fn a_callable_return_carries_the_declared_types_bounds() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_callable_ret\n\ntype RetFlag = RetOn | RetOff\n\ntype RetRow<K, V> {\n  k: K\n  v: V\n}\n\ntype RetHolder<K, V> {\n  build: fn(RetFlag) -> RetRow<K, V>\n}\n",
+    "src/probe_callable_ret.rs",
+    ["pub struct RetHolder<K: Clone, V: Clone>"],
+    ["compile_error"]
+  )
+}
+
+// THE CONVERSE CONTROL, and it is the one that keeps the descent honest rather than merely wide.
+// Well-formedness propagates a bound only from a declared type that HAS one; a callable over
+// parameters that no declaration bounds must stay bare. Without this arm, "bound every parameter
+// mentioned inside an arrow" would pass every arm above -- and a spurious bound is not free, it
+// tightens the emitted signature and refuses callers instantiating with a non-Clone type.
+fn a_callable_over_unbounded_parameters_stays_bare() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_callable_bare\n\ntype BareFlag = BareOn | BareOff\n\ntype BareHolder<K> {\n  decide: fn(K) -> BareFlag\n}\n",
+    "src/probe_callable_bare.rs",
+    ["pub struct BareHolder<K>"],
+    ["pub struct BareHolder<K: Clone>"]
+  )
+}
+
+test fn a_plain_field_still_carries_its_bounds() -> Bool {
+  a_plain_field_carries_the_declared_types_bounds()
+}
+
+test fn a_callable_argument_position_carries_its_bounds() -> Bool {
+  a_callable_argument_carries_the_declared_types_bounds()
+}
+
+test fn a_callable_return_position_carries_its_bounds() -> Bool {
+  a_callable_return_carries_the_declared_types_bounds()
+}
+
+test fn a_callable_over_unbounded_parameters_gains_no_bound() -> Bool {
+  a_callable_over_unbounded_parameters_stays_bare()
+}

@@ -144,7 +144,7 @@ data prose_citation_text_acquisition_disposition: Disposition = Scaffold {
 }
 
 data prose_citation_recogniser_disposition: Disposition = Terminal {
-  reason: "The line recogniser, the two-carrier split, the retired-index join and the census projection answer a question that survives the text-acquisition scaffold above: given a line of prose and the set of retired prose rows, which rows does it name. Publishing annotation text corpus-wide changes where the line comes from and nothing about the answer, so this half is not staged work waiting to be replaced. It is Terminal on the strength of the executed controls in test.claim.prose_citation_census_witness_test -- the twelve sampled corpus specimens, the two boundary arms, the semantic-position negative, and the counter pair shown non-constant in its retired index -- and not on the strength of this sentence."
+  reason: "The line recogniser, the two-carrier split, the retired-index join and the census projection answer a question that survives the text-acquisition scaffold above: given a line of prose and the set of retired prose rows, which rows does it name. Publishing annotation text corpus-wide changes where the line comes from and nothing about the answer, so this half is not staged work waiting to be replaced. It is Terminal on the strength of the executed controls in test.claim.prose_citation_census_witness -- the twelve sampled corpus specimens, the two boundary arms, the semantic-position negative, and the counter pair shown non-constant in its retired index -- and not on the strength of this sentence."
 }
 
 data prose_citation_census_roots: List<String> = ["dag", "src/v1", "src/v2"]

@@ -19,7 +19,7 @@ module test.probe.file_hold_plan_forged_probe
 // encumbrance stands. They are admit_callers-sealed to release_reserved_cell_at /
 // settle_reserved_cell_at -> end_cell_hold -> commit_hold_end -> free_cell_slot, so each call below
 // refuses as ConstructorCallAdmissionRefused. The witness
-// test.claim.file_hold_plan_refusal_probe_witness_test enrolls this probe and asserts every refusal
+// test.claim.file_hold_plan_refusal_probe_witness enrolls this probe and asserts every refusal
 // class at its subject.
 
 import std.types { NonEmptyStr, Int }

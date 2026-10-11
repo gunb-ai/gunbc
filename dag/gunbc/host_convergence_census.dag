@@ -429,7 +429,7 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     current_authority: cite(module_path: "gunbc.ensure", decl_name: "ensure_reconcile"),
     persistent_host_effect: DoesNotMutateHost,
     disposition: BindToAuthority { target: std_reconcile() },
-    first_consumer: cite(module_path: "test.claim.ensure_witness_test", decl_name: "reconcile_case"),
+    first_consumer: cite(module_path: "test.claim.ensure_witness", decl_name: "reconcile_case"),
   ),
   census_row(
     identity: fleet_plan(),

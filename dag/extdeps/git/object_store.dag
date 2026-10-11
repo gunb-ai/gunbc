@@ -2423,7 +2423,7 @@ type GitUpdateRefOutcome
       object_type: ObjectType,
     }
 
-data git_modeled_ref_transition_boundary_note: NonEmptyStr = "git_model_update_ref_exact is the pure R0 transition model only. It proves the exact-old-OID decision and returned state, including Git's default recursive symbolic-ref dereference while retaining the symbolic ref itself; a symbolic cycle refuses. It mints no execution or read-back receipt. The independent receipt is witness_git_cli_fixture_hashes_projects_and_independently_reads_back in test.manual.git_upstream_model_execution_test: a fresh upstream Git process performs update-ref through symbolic HEAD, observes the direct target advance and retained HEAD target, and rejects stale/nonexistent targets. P3 must consume an executing transport observation, never promote this model transition to Applied."
+data git_modeled_ref_transition_boundary_note: NonEmptyStr = "git_model_update_ref_exact is the pure R0 transition model only. It proves the exact-old-OID decision and returned state, including Git's default recursive symbolic-ref dereference while retaining the symbolic ref itself; a symbolic cycle refuses. It mints no execution or read-back receipt. The independent receipt is witness_git_cli_fixture_hashes_projects_and_independently_reads_back in test.manual.git_upstream_model_execution: a fresh upstream Git process performs update-ref through symbolic HEAD, observes the direct target advance and retained HEAD target, and rejects stale/nonexistent targets. P3 must consume an executing transport observation, never promote this model transition to Applied."
 
 fn git_replace_direct_ref(
   refs: List<GitRefRecord>,

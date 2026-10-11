@@ -440,7 +440,7 @@ type UnitFileState
 // materializer -- bind_argv_expr admits a string literal, a variable and an interpolation over
 // those, and refuses everything else as ArgvExpressionUnsupported -- so both operations left the
 // materializable set and the enrolled binding claims went red (review 69392, measured on srv1: two
-// claims in test.claim.operation_argv_binding_wall_witness_test red, green again after this).
+// claims in test.claim.operation_argv_binding_wall_witness red, green again after this).
 //
 // WHAT REMAINS IS CALLER DISCIPLINE AND IT IS WEAKER, STATED PLAINLY. Every caller converts through
 // systemd_unit_property_wire today and nothing stops the next one passing a literal; that is the

@@ -1,0 +1,94 @@
+module test.claim.seeded_filler_real_execution
+
+import std.types { String, NonEmptyStr, Int, Bool, FilePath }
+import std.measure { ByteSize, byte_size, measure_count }
+import std.optional { Present, Absent }
+import extdeps.shell
+import extdeps.tools.coreutils_stat
+import extdeps.tools.coreutils_truncate
+import extdeps.tools.gzip
+import extdeps.tools.sha256sum
+import extdeps.crypto.seeded_filler { seeded_filler_write, SeededFillerWritten, SeededFillerRefused }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SEEDED FILLER BY REAL EXECUTION: truncate and openssl enc run on the host, inside a directory
+// the witness mints and removes. Three facts the workspace pack relies on: the size is exact, one
+// seed reproduces its bytes, and two seeds give different bytes. The red control is the reason the
+// filler exists at all: a zero file of the same size -- what truncate alone would leave -- gzips to
+// almost nothing, while the filler does not shrink, so a zero or patterned stand-in would understate
+// what kopia and the chunk store pay to carry the real content.
+
+fn with_temp_dir(scenario: fn(String) -> Bool) -> Bool {
+  let dir = shell.Mktemp.Dir()
+  if dir.success == false {
+    false
+  } else {
+    let observed = scenario(dir.path as String)
+    let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+    observed && cleaned.success
+  }
+}
+
+fn written_at(seed: String, size: Int, path: String) -> Bool {
+  match seeded_filler_write(seed: seed as NonEmptyStr, size: byte_size(count: size), path: path as NonEmptyStr) {
+    SeededFillerWritten { path: p, size: s } => (p as String) == path && measure_count(m: s) == size
+    SeededFillerRefused { path: _, step: _, detail: _ } => false
+  }
+}
+
+fn stat_size(path: String) -> Int {
+  let st = coreutils.Stat.PathSize(path: path as NonEmptyStr)
+  match parse_int(s: replace(st.size_text, "\n", "")) {
+    Present { value: n } => if st.success { n } else { -1 }
+    Absent => -1
+  }
+}
+
+fn digest_of(path: String) -> String {
+  let d = sha256sum.Sha256.DigestFile(path: path as NonEmptyStr)
+  if d.success { substring(s: d.line, start: 0, end: 64) } else { join(["unread:", path], "") }
+}
+
+fn gzipped_size(path: String) -> Int {
+  if gzip.Compress.BesideKeepBest(path: path as NonEmptyStr).success { stat_size(path: concat(path, ".gz")) } else { -1 }
+}
+
+test fn a_seeded_filler_is_exactly_its_size_and_reproducible_by_real_execution() -> Bool {
+  with_temp_dir(scenario: dir => {
+    let a1 = join([dir, "/a1"], "")
+    let a2 = join([dir, "/a2"], "")
+    let one = join([dir, "/one"], "")
+    let empty = join([dir, "/empty"], "")
+    written_at(seed: "home/u/.claude/projects/p/s.jsonl", size: 70001, path: a1)
+      && written_at(seed: "home/u/.claude/projects/p/s.jsonl", size: 70001, path: a2)
+      && written_at(seed: "x", size: 1, path: one)
+      && written_at(seed: "x", size: 0, path: empty)
+      && stat_size(path: a1) == 70001 && stat_size(path: one) == 1 && stat_size(path: empty) == 0
+      && digest_of(path: a1) == digest_of(path: a2)
+  })
+}
+
+test fn two_seeds_give_different_fillers_by_real_execution() -> Bool {
+  with_temp_dir(scenario: dir => {
+    let a = join([dir, "/a"], "")
+    let b = join([dir, "/b"], "")
+    written_at(seed: "home/u/.claude/history.jsonl", size: 4096, path: a)
+      && written_at(seed: "home/u/.codex/history.jsonl", size: 4096, path: b)
+      && digest_of(path: a) != digest_of(path: b)
+  })
+}
+
+// THE RED CONTROL: zeros of the same size compress to a sliver; the filler does not compress at all.
+test fn a_zero_stand_in_compresses_and_the_filler_does_not_red_control_by_real_execution() -> Bool {
+  with_temp_dir(scenario: dir => {
+    let filler = join([dir, "/filler"], "")
+    let zeros = join([dir, "/zeros"], "")
+    let size = 262144
+    written_at(seed: "home/u/.claude/projects/p/s.jsonl", size: size, path: filler)
+      && coreutils.Truncate.ToSize(size_bytes: to_string(size) as NonEmptyStr, path: zeros as NonEmptyStr).success
+      && gzipped_size(path: zeros) > 0 && gzipped_size(path: zeros) < size / 100
+      && gzipped_size(path: filler) >= size
+  })
+}

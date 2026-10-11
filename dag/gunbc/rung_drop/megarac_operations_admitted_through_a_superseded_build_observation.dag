@@ -14,7 +14,7 @@ import gunbc.guarantee_rung { StructurallyGuaranteed, Mitigatable }
 // unmintable: AdmittedMegaRacHost is sole_constructor, and the gate mints it only when the binding's
 // observed build is the controller's latest known build (gunbc.host.megarac_operation_standing
 // megarac_current_build) and the operation is grounded there by committed evidence. Its RED is enrolled
-// (test.claim.host.megarac_managed_host_witness_test
+// (test.claim.host.megarac_managed_host_witness
 // w_a_historical_observation_beside_a_known_later_build_mints_no_carrier): STRUCTURALLY GUARANTEED.
 //
 // WHAT PRODUCTION HOLDS INSTEAD. admit_megarac_host grounds the operation at the build the binding's

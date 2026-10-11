@@ -43,7 +43,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // and resolve the import closure of these two entries before emitting it. The entries are the
 // instruments' own facts in gunbc.instrument_targets (self_host_entry, v2_native_cli_entry); the
 // seed's two Rust constants cannot read a .dag row yet, so
-// test.claim.compiler_gate_emit_build_lane_witness_test holds them equal to those rows and reds on drift.
+// test.claim.compiler_gate_emit_build_lane_witness holds them equal to those rows and reds on drift.
 fn lane_resolution_roster() -> List<LaneResolutionRow> {
   [
     LaneResolutionRow {

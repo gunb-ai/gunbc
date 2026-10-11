@@ -27,9 +27,9 @@ import v2.std.algebra { fold_list }
 // THE DISCRIMINATING FACTS, measured rather than reasoned -- required floor run 32645296251 on
 // main sha 183e59729995e2ac93a84aa721d8f0642bb27903, from the run's own per-identity output.
 // Two witnesses in ONE module, differing in one string:
-//   test.claim.host.host_effect_apply_witness_test.witness_shell_on_host_success_converges
+//   test.claim.host.host_effect_apply_witness.witness_shell_on_host_success_converges
 //     script "true"   -> host_effect_apply converged      -> PASSED
-//   test.claim.host.host_effect_apply_witness_test.witness_shell_on_host_failure_fails_closed
+//   test.claim.host.host_effect_apply_witness.witness_shell_on_host_failure_fails_closed
 //     script "exit 1" -> host_effect_apply converged too  -> KNOWN-RED (held)
 // Same call, same transport, same evidence, same code path. Only the script differs, and the
 // failing script behaves exactly as the succeeding one did. No new instrument was built to
@@ -40,14 +40,14 @@ import v2.std.algebra { fold_list }
 // alone misses. The mock supplied every output field, so each field is a separate fabrication
 // with its own discriminating row -- and the third one reds in the OPPOSITE direction from the
 // other two, which is why "the exit-1 witnesses" is the wrong description of the population:
-//   exit status           test.claim.host.host_effect_apply_witness_test
+//   exit status           test.claim.host.host_effect_apply_witness
 //                           .witness_shell_on_host_failure_fails_closed
 //                         script "exit 1" asserts NOT converged; the arm answers success.
-//   captured output       test.claim.deploy_access_privilege_witness_test
+//   captured output       test.claim.deploy_access_privilege_witness
 //                           .witness_privileged_fixture_surfaces_stdout
 //                         a SUCCEEDING script asserts its stdout carries a marker; the arm's
 //                         stdout is "", so this row reds on a script the arm gets RIGHT.
-//   transport reachability test.claim.host.host_effect_apply_witness_test
+//   transport reachability test.claim.host.host_effect_apply_witness
 //                           .witness_ssh_shell_unreachable_fails_closed
 //                         script "true" over SshShell to 203.0.113.1 -- TEST-NET-3, reserved
 //                         unroutable -- asserts NOT converged. The arm answers success without
@@ -77,7 +77,7 @@ import v2.std.algebra { fold_list }
 // THE SAME WITNESS ANSWERS DIFFERENTLY IN THE TWO MODES, AND DISAGREES ON BOTH PERTURBATIONS.
 // This is the sharpest statement of the class and it is executed evidence, not a reading of the
 // declaration. One witness,
-// `test.claim.shell_dag_census_5a_typed_ops_witness_test.witness_os_id_uid_realizes_hermetically`,
+// `test.claim.shell_dag_census_5a_typed_ops_witness.witness_os_id_uid_realizes_hermetically`,
 // which asserts `r.success` and `r.value == "1000"` against an arm answering `"1000"`. One
 // binary, one tree, two perturbations, four runs:
 //
@@ -96,7 +96,7 @@ import v2.std.algebra { fold_list }
 // no information about the operation.
 //
 // The neighbouring shape is separately real and has a different remedy. On
-// `test.claim.typed_argv_exec_realization_witness_test.witness_sudo_nopasswd_grant_list_probe_typed_argv_holds`
+// `test.claim.typed_argv_exec_realization_witness.witness_sudo_nopasswd_grant_list_probe_typed_argv_holds`
 // the fixture conjunct reds when the arm's stdout changes AND the discriminating conjunct
 // survives that and reds independently when the production argv changes. That row is not
 // vacuous, it is over-specified: the remedy is to drop the conjunct asserting the fixture, not

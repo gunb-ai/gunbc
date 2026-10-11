@@ -9,6 +9,6 @@ data enforcement_live_closure_gate_stall: GuaranteeStall = GuaranteeStall {
   current: OutsideTheLadder,
   ceiling: MechanicallyPreventable,
   blocker: ClimbableButUnbuilt,
-  population: BoundedPopulation { members: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness_test.lens_closure_question_zero_holds_live", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness_test.lens_module_gate_holds_live", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness_test.question_zero_verdict_live_holds", tail: Empty {} } } } },
+  population: BoundedPopulation { members: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.lens_closure_question_zero_holds_live", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.lens_module_gate_holds_live", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.question_zero_verdict_live_holds", tail: Empty {} } } } },
   next_rung_trigger: climbs_when(capability: "the live closure question returns zero and both gate projections report true")
 }

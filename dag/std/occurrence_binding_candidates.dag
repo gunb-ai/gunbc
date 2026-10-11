@@ -2708,7 +2708,7 @@ fn section13_collector_dedup_dissolve_on() -> DeclarationRef {
 }
 
 fn section13_witness_module_path() -> NonEmptyStr {
-  "test.claim.occurrence_binding_candidates_witness_test" as NonEmptyStr
+  "test.claim.occurrence_binding_candidates_witness" as NonEmptyStr
 }
 
 data section13_population_law_roster: List<Section13PopulationLawRosterRow> = [

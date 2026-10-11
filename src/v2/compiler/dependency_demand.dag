@@ -26,7 +26,7 @@ import v2.std.qualified_name { QualifiedName }
 //
 // THE INPUTS ARE FACT ROWS, not trees: a per-module reader (the census route, D13 step b2) extracts them
 // from each resolved module, and this reducer joins them. Its interface is therefore the rows, which is
-// where its controls supply them (v2.test.claim.compiler.dependency_demand_test).
+// where its controls supply them (v2.test.claim.compiler.dependency_demand).
 
 type RequirementClass
   = RequiresResources { resources: List<QualifiedName> }

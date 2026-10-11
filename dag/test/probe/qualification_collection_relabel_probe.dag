@@ -4,7 +4,7 @@ module test.probe.qualification_collection_relabel_probe
 // never admitted: relabel another collection's run and floor job as dispatch d's. The carrier is
 // sealed, so the one function that mints it -- gunbc.runner.runner_qualification_dispatch
 // collect_qualification_run, whose reads sit in the arm the token join admits -- is the only route.
-// Reached only through test.claim.runner.runner_qualification_delivery_rewrap_witness_test.
+// Reached only through test.claim.runner.runner_qualification_delivery_rewrap_witness.
 
 import gunbc.runner.runner_qualification_dispatch { DispatchedQualificationRun, CollectedQualificationRun }
 

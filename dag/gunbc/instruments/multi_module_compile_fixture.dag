@@ -73,7 +73,7 @@ import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
 // — per FnItem in item_registry: source owner_module + declaration_name and the
 // ordered parameter name list derived from that registry row (emit_ident / service_var_name
 // transforms applied). Witnesses assert over that list; raw text is not offered as an assertion
-// surface. Discriminating RED: test.claim.resolved_rust_fn_projection_witness_test.
+// surface. Discriminating RED: test.claim.resolved_rust_fn_projection_witness.
 //
 // THIS IS NOT AN EMITTED-ARTIFACT OBSERVATION. The projection runs on the resolved graph before
 // emit_resolved_for_target; a defect solely inside emit_func_params / emit_func_def can leave
@@ -324,7 +324,7 @@ fn claim_scope_compile_refusal_has_class(o: ClaimScopeFixtureOutcome, wanted: St
 // and must not be cited as coverage for a refusal that is not in this change." All three clauses
 // are false once the wall lands: the scope builder REFUSES on an ambiguous bare value read rather
 // than collecting it, the field it collected into is deleted, and the negative control rows in
-// `test.claim.bare_name_ambiguity_wall_witness_test` assert through this reader precisely as coverage
+// `test.claim.bare_name_ambiguity_wall_witness` assert through this reader precisely as coverage
 // for that refusal. Its Rust twin `ClaimScopeFixtureOutcome::ScopeAccepted` was rewritten to say so
 // and this one was not, which left one fact carrying two annotations with opposite obligations --
 // §3's meaning fork, between a `.dag` reader and the host value it projects.

@@ -1018,7 +1018,7 @@ fn run_unsafe_allocation_root_scenario(workspace: SnapshotWorkspace) -> Snapshot
 //
 // WHAT THIS HARNESS CANNOT STAGE, said plainly: a base owned by ANOTHER uid, because chown needs a
 // privilege it does not have. That case is claimed over supplied observations against the same
-// base_is_admissible this control executes, in test.claim.fabric_source_snapshot_witness_test.
+// base_is_admissible this control executes, in test.claim.fabric_source_snapshot_witness.
 //
 // THE TWO HALVES NOW SIT AT DIFFERENT RUNGS, AND SAYING SO KEEPS THE SECOND FROM BEING READ AS A
 // LIVE DISCRIMINATOR. The refusal half still discriminates: neutralise base_is_admissible and this

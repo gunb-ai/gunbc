@@ -1,0 +1,63 @@
+module test.claim.workspace_executor_recovery_witness
+
+import std.types { Bool, String }
+import gunbc.workspace_commissioning_executor_journal {
+  WorkspaceExecutorRecord, WorkspaceExecutorSubject, WorkspaceExecutorPhase,
+  ExecutorSubmissionRecorded, ExecutorInvocationRecorded, ExecutorReadbackAccepted,
+  ExecutorReleaseObserved, ExecutorGenerationCommitted,
+}
+import gunbc.workspace_commissioning_executor_recovery {
+  workspace_executor_recovery_phase, workspace_executor_recovery_needs_controller,
+  WorkspaceExecutorRecoveryRefused, WorkspaceExecutorResumeWait,
+  WorkspaceExecutorResumeSettlement, WorkspaceExecutorResumeCompletion,
+}
+
+fn recovery_fixture(phase: WorkspaceExecutorPhase, invocation: String) -> WorkspaceExecutorRecord {
+  WorkspaceExecutorRecord {
+    subject: WorkspaceExecutorSubject { slot: "srv1-13", plan_hash: "reviewed-plan", fleet_bundle_hash: "0123456789abcdef",
+      prior_fleet_generation: 17, planned_fleet_generation: 18, mutation_generation: 3 },
+    submitter: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", previous_invocation: "11111111111111111111111111111111",
+    invocation: invocation, phase: phase,
+  }
+}
+
+data recovery_invocation: String = "22222222222222222222222222222222"
+
+test fn uncertain_submission_never_requests_another_start() -> Bool {
+  match workspace_executor_recovery_phase(record: recovery_fixture(phase: ExecutorSubmissionRecorded, invocation: "")) {
+    WorkspaceExecutorRecoveryRefused { reason } => reason == "submission has no bound controller; queued start must be fenced or drained before another start"
+    _ => false
+  }
+}
+
+test fn bound_controller_resumes_the_same_invocation() -> Bool {
+  workspace_executor_recovery_needs_controller(phase: ExecutorInvocationRecorded)
+    && (match workspace_executor_recovery_phase(record: recovery_fixture(phase: ExecutorInvocationRecorded, invocation: recovery_invocation)) {
+      WorkspaceExecutorResumeWait { invocation } => (invocation as String) == recovery_invocation
+      _ => false
+    })
+}
+
+test fn post_readback_recovery_does_not_inspect_a_reused_guest() -> Bool {
+  !workspace_executor_recovery_needs_controller(phase: ExecutorReadbackAccepted)
+    && !workspace_executor_recovery_needs_controller(phase: ExecutorReleaseObserved)
+    && (match workspace_executor_recovery_phase(record: recovery_fixture(phase: ExecutorReleaseObserved, invocation: recovery_invocation)) {
+      WorkspaceExecutorResumeSettlement { invocation } => (invocation as String) == recovery_invocation
+      _ => false
+    })
+}
+
+test fn committed_recovery_requires_completion_readback_instead_of_restart() -> Bool {
+  !workspace_executor_recovery_needs_controller(phase: ExecutorGenerationCommitted)
+    && (match workspace_executor_recovery_phase(record: recovery_fixture(phase: ExecutorGenerationCommitted, invocation: recovery_invocation)) {
+      WorkspaceExecutorResumeCompletion { invocation } => (invocation as String) == recovery_invocation
+      _ => false
+    })
+}
+
+test fn incoherent_recovery_does_not_cast_an_empty_invocation() -> Bool {
+  match workspace_executor_recovery_phase(record: recovery_fixture(phase: ExecutorGenerationCommitted, invocation: "")) {
+    WorkspaceExecutorRecoveryRefused { reason: _ } => true
+    _ => false
+  }
+}

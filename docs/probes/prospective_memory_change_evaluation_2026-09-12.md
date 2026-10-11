@@ -42,7 +42,7 @@ ctrl-build --local -- /cargo-target/release/gunbc run \
 
 The expected command result is a production admission refusal with the located byte-6 counterexample. This is a read-only replay, not a new boot attempt. `explain_mtcollins_memory_change` returns the full structured assessment and rendered explanation to model consumers; the command wrapper maps the admission result to `ProcessExit`.
 
-Scoped controls live in `test.claim.host.memory_change_evaluation_witness_test`, alongside the migrated fulfillment and selection witnesses. Controlled transcripts there are simulation inputs. They are not evidence that this test session operated the host. Required CI remains a separate outcome: a refusal before claim evaluation is UNEVALUATED, not an assertion failure and not a pass.
+Scoped controls live in `test.claim.host.memory_change_evaluation_witness`, alongside the migrated fulfillment and selection witnesses. Controlled transcripts there are simulation inputs. They are not evidence that this test session operated the host. Required CI remains a separate outcome: a refusal before claim evaluation is UNEVALUATED, not an assertion failure and not a pass.
 
 ## Admission-boundary corrections from review
 

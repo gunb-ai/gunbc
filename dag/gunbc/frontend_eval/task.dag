@@ -88,13 +88,13 @@ type EvalTask {
 }
 
 data pareto_path: String = "dag/std/pareto.dag"
-data pareto_entry: String = "dag/test/claim/pareto_selection_witness_test.dag"
+data pareto_entry: String = "dag/test/claim/pareto_selection_witness.dag"
 data frame_boundary_path: String = "dag/std/frame_boundary.dag"
-data frame_boundary_entry: String = "dag/test/claim/frame_boundary_witness_test.dag"
+data frame_boundary_entry: String = "dag/test/claim/frame_boundary_witness.dag"
 data evaluation_budget_path: String = "dag/std/evaluation_budget.dag"
-data evaluation_budget_entry: String = "dag/test/claim/evaluation_budget_test.dag"
+data evaluation_budget_entry: String = "dag/test/claim/evaluation_budget.dag"
 data goal_assessment_path: String = "dag/std/goal_assessment.dag"
-data goal_assessment_entry: String = "dag/test/claim/goal_assessment_witness_test.dag"
+data goal_assessment_entry: String = "dag/test/claim/goal_assessment_witness.dag"
 
 data frontend_eval_tasks: List<EvalTask> = [
   EvalTask {

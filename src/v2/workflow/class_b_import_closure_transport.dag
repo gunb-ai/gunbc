@@ -30,7 +30,7 @@ import std.types { String, List, NonEmptyStr }
 
 // Class B import-closure transport (#6985). All four rows are ordinary funcs on this module or its
 // v2.workflow.class_b_import_closure_probe companion. NO REQUIRED-FLOOR CONSUMER TODAY: rows 1-2
-// sit in test.claim.long.rust_test_fixtures_import_closure_witness_test, quarantined by #8457 because
+// sit in test.claim.long.rust_test_fixtures_import_closure_witness, quarantined by #8457 because
 // they PASS over the 1552ms ceiling (Cpu 25816ms and 36536ms); required_floor.dag excludes them by
 // authored module name via long_home_prefixes. Their FalsifierSubstrateLongLane exclusion and
 // long-lane enrollment rows are deleted (2026-08-18): the floor never consulted

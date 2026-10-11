@@ -13,28 +13,6 @@
     suspicious_double_ref_op,
     clippy::all
 )]
-pub mod extdeps_filesystem_rust_realization;
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
-pub mod extdeps_languages_rust_derive_contracts;
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
 use im::{OrdSet as BTreeSet, Vector as Vec};
 
 #[allow(
@@ -71,6 +49,28 @@ pub mod extdeps_rust_cargo;
     clippy::all
 )]
 pub mod extdeps_rust_version;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
+pub mod extdeps_filesystem_rust_realization;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
+pub mod extdeps_languages_rust_derive_contracts;
 #[allow(
     unused_imports,
     unused_variables,

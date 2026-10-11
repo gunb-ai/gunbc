@@ -72,8 +72,8 @@ import gunbc.derived_obligation_row {
 // MODULE DECLARES matches nothing and the row still reports a standing -- derived, in form, from a
 // name that cannot match. Two rows shipped that way: both spelled a trailing `_test` the declaring
 // module does not carry, because the file suffix and the module name agree for some witnesses in
-// this corpus and not others (test.claim.rt_bridge_registry_witness_test declares the suffix;
-// test.claim.reference_realization_witness_test does not). Neither spelling is admitted by the gate
+// this corpus and not others (test.claim.rt_bridge_registry_witness declares the suffix;
+// test.claim.reference_realization_witness does not). Neither spelling is admitted by the gate
 // today, so no arm changed -- which is precisely the case gunbc.derived_obligation_row argues
 // against in its own words: a subtraction that happens to be satisfied is not a subtraction that
 // was checked.
@@ -237,9 +237,9 @@ data calls_boundary: RepresentationBoundary = RepresentationBoundary {
   },
   witnesses: [
     witness_subject(
-      entry: "dag/test/claim/rt_bridge_registry_witness_test.dag",
+      entry: "dag/test/claim/rt_bridge_registry_witness.dag",
       function: "rt_bridge_name_agrees_with_registry_on_every_row",
-      module_path: "test.claim.rt_bridge_registry_witness_test"
+      module_path: "test.claim.rt_bridge_registry_witness"
     )
   ],
   supported_scope: "THE JOIN IS DERIVED OVER THE ROW POPULATION AND NOT OVER THE AUTHORITIES, and stating it the other way is the inflation this row exists to refuse. Mutation control is DISCOVERED on AlgebraTemplate, EmitHandler and InterpreterDispatch; it is PARTIAL on BuiltinRegistry and PrimitiveContractRow, which the home counts itself as primitive_d0_parallel_roster_surface_authority_count = 2. A row added to builtin_function_registry alone, or a new *_contract data row alone, does NOT move primitive_surface_census_derived -- only updating the hand roster beside it does. So five surfaces are joined, and three authorities are watched.",
@@ -291,19 +291,19 @@ data coercions_boundary: RepresentationBoundary = RepresentationBoundary {
   },
   witnesses: [
     witness_subject(
-      entry: "dag/test/claim/reference_realization_witness_test.dag",
+      entry: "dag/test/claim/reference_realization_witness.dag",
       function: "w_opaque_provider_preserves_the_provider_declaration",
-      module_path: "test.claim.reference_realization_witness_test"
+      module_path: "test.claim.reference_realization_witness"
     ),
     witness_subject(
-      entry: "src/v2/test/claim/coercion/two_algebra_fork_test.dag",
+      entry: "src/v2/test/claim/coercion/two_algebra_fork.dag",
       function: "name_keyed_coercion_matches_the_declared_cast_rosters_holds",
-      module_path: "v2.test.claim.coercion.two_algebra_fork_test"
+      module_path: "v2.test.claim.coercion.two_algebra_fork"
     ),
     witness_subject(
-      entry: "src/v2/test/claim/coercion/two_algebra_fork_test.dag",
+      entry: "src/v2/test/claim/coercion/two_algebra_fork.dag",
       function: "homomorphism_coercion_matches_the_structural_preservation_contract_holds",
-      module_path: "v2.test.claim.coercion.two_algebra_fork_test"
+      module_path: "v2.test.claim.coercion.two_algebra_fork"
     )
   ],
   supported_scope: "The cast side decides on a NAME, and the corpus already knows a name is insufficient: two declarations may share a spelling and must realize differently (std.nat.Nat, the kernel-realized naturals, against a user-declared Peano type spelled Nat; until the 2026-09-30 de-fork the second was v2.std.nat.Nat), so v1.compiler.coercion keys REALIZATION on the declaring module (and admits target casts from each target's own CastSyntax cast_rules, not from dag_can_cast) and answers NO realization for an unknown identity rather than guessing. One module therefore carries a name-keyed predicate and an identity-keyed decision side by side, answering adjacent questions at two different grains.",
@@ -311,7 +311,7 @@ data coercions_boundary: RepresentationBoundary = RepresentationBoundary {
   crossing_evidence: InterpretedOnly {
     what_goes_red: "the identity-keyed half is a real climb with a receipt: passing the empty string once meant identity-unknown, and eight reference sites doing so rendered dag/std/integer.dag aliases as crate::std_nat::Nat instead of i64. There is now no empty string to pass -- an absent identity is DeclarationIdentityAbsent, and the degraded answer is stamped GroundedByUnidentifiedBareRow so it stays countable rather than silent." as NonEmptyStr,
     blocked_on_a_two_route_oracle: "THE FORK ITSELF. No execution joins the cast table to the homomorphism fold, so if they disagreed today nothing would go red. That is the finding, and it is why this row is not recorded as DEFERRED: a fork whose disposition reads as adjudicated is worse than an unrecorded one, and this fork stayed invisible precisely because the census that holds it asked whether the two modules SHARE TYPE NAMES -- see the scope note on gunbc.plans.dag_v2_defork_audit, whose coercion row answers a resolver-collision question and not this one." as NonEmptyStr,
-    unbuilt_but_testable_now: "BUILT (#12055, v2.test.claim.coercion.two_algebra_fork_test), and it measures the two HELPER CONTRACTS, not the production judgments. Seven supplied pairs reach dag_can_cast and coercion_fold directly, each held to an expectation transcribed from ITS OWN declaration: Int to Float and Int to Nat are admitted name-only (Bool to Int was too, until #12227 withdrew the row), String to String homomorphism-only. WHAT IT DOES NOT ESTABLISH, TWO THINGS. First, no independent semantic oracle: each column restates its own side, so the agree-and-both-wrong arm is still unreportable. Second, no production refusal: every live composition -- kernel_value_declared_type_mismatch, application_type_names_compatible, validate_cast -- admits name identity BEFORE consulting dag_can_cast, so the String to String cell is a property of the raw helper roster and not an identity crossing the compiler refuses. What remains unbuilt and climbable is the context matrix named on the trigger." as String
+    unbuilt_but_testable_now: "BUILT (#12055, v2.test.claim.coercion.two_algebra_fork), and it measures the two HELPER CONTRACTS, not the production judgments. Seven supplied pairs reach dag_can_cast and coercion_fold directly, each held to an expectation transcribed from ITS OWN declaration: Int to Float and Int to Nat are admitted name-only (Bool to Int was too, until #12227 withdrew the row), String to String homomorphism-only. WHAT IT DOES NOT ESTABLISH, TWO THINGS. First, no independent semantic oracle: each column restates its own side, so the agree-and-both-wrong arm is still unreportable. Second, no production refusal: every live composition -- kernel_value_declared_type_mismatch, application_type_names_compatible, validate_cast -- admits name identity BEFORE consulting dag_can_cast, so the String to String cell is a property of the raw helper roster and not an identity crossing the compiler refuses. What remains unbuilt and climbable is the context matrix named on the trigger." as String
   },
   next_trigger: climbs_when(capability: "every consumer of the shared name-pair cast rosters asks ITS OWN judgment through that judgment's one authority, SUFFICIENT FOR dag_can_cast, dag_cast_rules and is_dag_cast_domain_type to have no remaining decision-making caller and be deleted or derived, and for the per-target CastSyntax cast_rules to be consumed by target realization rather than re-deciding legality. THE ROSTER IS NOT ONE QUESTION WITH ONE REPLACEMENT HOME: it is consulted inside declared-type compatibility (v1.compiler.infer kernel_value_declared_type_mismatch and application_type_names_compatible) and inside explicit `as` validation (validate_cast), while v1.compiler.coercion can_cast and the emitter's cast arm read a SEPARATE per-target roster. Literal introduction at a structural destination is already owned by std.literal_elaboration, and Int to Nat is already split between that literal homomorphism and a proof-requiring refinement cast (refinement_cast_rules); neither is a widening. So the homes are expected to be several -- declared-type inhabitance, literal elaboration, an explicit-conversion judgment, target realization -- and naming one fold here, v2.std.coercion coercion_fold or v2.std.inhabitance alike, would be an over-broad home that repointing callers could satisfy while a question stayed forked. The prerequisite is a consumer-by-judgment partition with context-discriminating probes (literal, arbitrary value at a formal, explicit cast, emitted) per admitted pair; if it shows several questions, this row is split per judgment rather than retired whole. Deleting the v1 seed does not fire this: four extdeps language types modules author per-target cast rows and survive v1.")
 }
@@ -345,9 +345,9 @@ data effect_execution_boundary: RepresentationBoundary = RepresentationBoundary 
   },
   witnesses: [
     witness_subject(
-      entry: "src/v2/test/claim/effect_demand/effect_demand_census_test.dag",
+      entry: "src/v2/test/claim/effect_demand/effect_demand_census.dag",
       function: "effect_demand_witness_control_classifies_every_demand",
-      module_path: "v2.test.claim.effect_demand.effect_demand_census_test"
+      module_path: "v2.test.claim.effect_demand.effect_demand_census"
     )
   ],
   supported_scope: "THE ROUTE IS INSIDE THE KEY. EffectDemandKey carries calling_entry_module, operation as a std.primitive_projection identity, mode as the std.execution_mode axis, and subject -- so the SAME operation reached in two modes is TWO DEMANDS WITH TWO INDEPENDENTLY DECIDABLE ANSWERS rather than one row with a widened claim, and a claim about one route cannot be spent as coverage of the other BY CONSTRUCTION. THE RECEIPT THAT PROVES THE AXIS IS LOAD-BEARING RATHER THAN DECORATIVE: the native claim was once a bare NativeV2 while EffectRealizationKey already carried a runtime_identity, so the unproven-native-claim arm admitted a realization from ANY runtime as proof of a native claim. A demand is satisfied by a realization THE PROGRAM ACTUALLY LINKS, so the linked runtime is now part of the claim. Keying the operation on the primitive projection identity also joins this row to the calls boundary instead of re-spelling it.",
@@ -385,9 +385,9 @@ data bindings_boundary: RepresentationBoundary = RepresentationBoundary {
   },
   witnesses: [
     witness_subject(
-      entry: "dag/test/claim/occurrence_binding_witness_test.dag",
+      entry: "dag/test/claim/occurrence_binding_witness.dag",
       function: "occurrence_binding_root_only_path_is_nonempty_holds",
-      module_path: "test.claim.occurrence_binding_witness_test"
+      module_path: "test.claim.occurrence_binding_witness"
     )
   ],
   supported_scope: "std.occurrence_binding's fold answers NO v2 SITE TODAY -- its callers are dag/test claims and gunbc.infer_occurrence_binding_scaffold -- so the two rules cannot currently disagree in production about any one reference. THAT IS A SCOPE FACT AND NOT A SAFETY ARGUMENT: it means the divergence is cheap to carry NOW and says nothing about what happens when the v2 resolver adopts the shared result, which is exactly when two implementations of one rule start mattering.",
@@ -412,9 +412,9 @@ data data_layout_boundary: RepresentationBoundary = RepresentationBoundary {
   },
   witnesses: [
     witness_subject(
-      entry: "dag/test/claim/self_host_symbol_identity_binding_witness_test.dag",
+      entry: "dag/test/claim/self_host_symbol_identity_binding_witness.dag",
       function: "w_symbol_declaration_resolves_to_std_string",
-      module_path: "test.claim.self_host_symbol_identity_binding_witness_test"
+      module_path: "test.claim.self_host_symbol_identity_binding_witness"
     )
   ],
   supported_scope: "SCALAR: extdeps.languages.rust.representation owns it, carries a cited ExternalAuthority, and is consumed by v1.compiler.emit_rust, v1.compiler.coercion, gunbc.rust_source_type_bindings and gunbc.symbol_identity_census. AGGREGATE record and coproduct field layout has a DIFFERENT home -- v1.compiler.emit_rust emit_struct_from_children and emit_struct_field_from_child -- and that home is single and is .dag rather than hand Rust, so the class conforms at both grains. No second authority was found for either half.",
@@ -459,9 +459,9 @@ data materialization_boundary: RepresentationBoundary = RepresentationBoundary {
   },
   witnesses: [
     witness_subject(
-      entry: "dag/test/claim/materialization_ladder_witness_test.dag",
+      entry: "dag/test/claim/materialization_ladder_witness.dag",
       function: "cross_frame_duplicate_discharged_by_covering_provider",
-      module_path: "test.claim.materialization_ladder_witness_test"
+      module_path: "test.claim.materialization_ladder_witness"
     )
   ],
   supported_scope: "CONFORMS. This is a DESIGN section 3b conformance domain with named homes AND a derived reviewer -- gunbc.roadmap.roadmap_review_criteria derives one reviewer per conformance_domains row -- so the boundary is already watched by a standing mechanism this inventory does not improve on.",
@@ -503,9 +503,9 @@ data cross_tree_import_boundary: RepresentationBoundary = RepresentationBoundary
   },
   witnesses: [
     witness_subject(
-      entry: "src/v2/test/claim/long/cross_tree_real_ingest_activation_test.dag",
+      entry: "src/v2/test/claim/long/cross_tree_real_ingest_activation.dag",
       function: "cross_tree_real_ingest_dag_to_v2_denied_holds",
-      module_path: "v2.test.claim.long.cross_tree_real_ingest_activation_test"
+      module_path: "v2.test.claim.long.cross_tree_real_ingest_activation"
     )
   ],
   supported_scope: "The direction of an import edge between the two trees, decided from GROUNDED source-root tags rather than guessed: tree_fundamentality_order is derived, and the QualifiedName-prefix fallback that once stood in for it is deleted. Consumed by v2.compiler.03_name_resolve admit_import_entry.",

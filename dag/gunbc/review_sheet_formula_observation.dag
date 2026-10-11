@@ -101,7 +101,7 @@ import gunbc.review_sheet_values_actuator {
 //
 // RUNG HONESTY (DESIGN 4b). On the v1 seed's acceptance path the wall is structural: a literal
 // outside this module is refused as SoleConstructorViolation, measured by
-// test.claim.review_sheet_header_init_refusal_probe_witness_test against
+// test.claim.review_sheet_header_init_refusal_probe_witness against
 // test.probe.review_sheet_formula_observation_forged_probe. The native v2 path parses
 // sole_constructor WITHOUT enforcing it (gunbc.rung_drop
 // g0_type_decl_modifier_parse_without_sealing_property), so on that path the same literal is
@@ -276,7 +276,7 @@ fn formula_whole_tab_render_option() -> SheetsValueRenderOption {
 // minting the carrier anyway -- survived, because the one hermetic fixture is empty and the mint's
 // occupied arm was never executed. Extracted, the mapping is discriminated with a SUPPLIED
 // FormulaGridOccupied. It is admit_callers-sealed to the observer and to ONE exact witness claim
-// that returns Bool and egresses nothing (test.claim.review_sheet_header_init_witness_test
+// that returns Bool and egresses nothing (test.claim.review_sheet_header_init_witness
 // an_occupied_admission_never_becomes_the_carrier): an admitted call edge does not confine a
 // value when an exported wrapper returns it (gunbc#11725 side-chat), so no wrapper exists and
 // adding a claim means adding a row here.
@@ -285,7 +285,7 @@ fn formula_reading_from_admission(
   admission: FormulaGridAdmission,
 ) -> FormulaWholeTabReading admit_callers: [
   decl_ref(module_path: "gunbc.review_sheet_formula_observation", decl_name: "observe_formula_whole_tab"),
-  decl_ref(module_path: "test.claim.review_sheet_header_init_witness_test", decl_name: "an_occupied_admission_never_becomes_the_carrier")
+  decl_ref(module_path: "test.claim.review_sheet_header_init_witness", decl_name: "an_occupied_admission_never_becomes_the_carrier")
 ] {
   match admission {
     FormulaGridRefused { refusal: r } => FormulaWholeTabRefused { refusal: r }
@@ -328,7 +328,7 @@ fn observe_formula_whole_tab(
 // THE CONSUMER IS PRIVATE AND LATER: strategy.buyer_review_live (gunbc-private, H2) issues this read
 // when its FORMATTED whole-tab read looks blank, and hands the reading to
 // gunbc.review_sheet_header_init plan_header_init. Until it lands, the mint is a declared frontier.
-// test.claim.review_sheet_header_init_witness_test executes the mint against the hermetic values.get
+// test.claim.review_sheet_header_init_witness executes the mint against the hermetic values.get
 // fixture (extdeps.google.sheets hermetic_get_values_value_range) and does not fire this row: a
 // witness is not a production consumer.
 data review_sheet_formula_observation_consumer_frontier_rows: List<FrontierRow> = [

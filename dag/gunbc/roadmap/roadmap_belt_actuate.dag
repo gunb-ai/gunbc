@@ -12679,7 +12679,7 @@ fn belt_path_parent_dir(path: String) -> String {
 //
 // The realization is one function over the git and install programs, so production
 // (belt_publish_project_materialize, the instance's capability programs) and the real-repository
-// witness (test.claim.roadmap.roadmap_belt_publish_realization_wet_witness_test) drive the same code.
+// witness (test.claim.roadmap.roadmap_belt_publish_realization_wet_witness) drive the same code.
 //
 // One note on the fold arms below, kept at declaration grain (the annotation channel admits no
 // in-body comments): NO POISON IS BORN IN MATERIALIZATION (its refusals are all exec/write I/O),

@@ -19,7 +19,7 @@ data dashboard_endpoint_ownership_authored_independently: RecurringFailureMode =
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "test.claim.roadmap.roadmap_dashboard_instance_witness_test" as NonEmptyStr,
+      module_path: "test.claim.roadmap.roadmap_dashboard_instance_witness" as NonEmptyStr,
       decl_name: "a_same_host_same_port_roster_is_refused" as NonEmptyStr,
       field: WholeDeclaration
     },

@@ -311,7 +311,7 @@ fn binding_holds_against_present_section(historical: String?, carried: HostCaptu
 // THE SAME MAP, READ AGAINST THE CAPTURE'S BYTES WITHOUT RE-BINDING THEM (DESIGN §3, a witness
 // discriminates at one interface). This map's subject is the ARGV line each section of attempt=3
 // carries against the roster; binding the capture -- one begin, the matching end, one run -- is a
-// different fact, established on the real file by test.claim.machine_intake.mtcollins1_census_image_local_wet_test
+// different fact, established on the real file by test.claim.machine_intake.mtcollins1_census_image_local_wet
 // the_attempt_three_capture_binds_and_reads_by_real_execution (the inhabitance claim this reader
 // pairs with), and re-executing that bind was ~98% of this claim's cost. The line is read as the
 // text after `----ARGV <name>: ` up to its newline; a name that appears twice or not at all is not

@@ -746,7 +746,7 @@ fn capture_unit_diagnosis(
 // live_deploy_poll_service_ready_outcome_after_attempts without materializing
 // the live site (injected one-attempt observation). Until then the once-Ready
 // property is held by
-// test.claim.roadmap.roadmap_site_surface_readiness_witness_test
+// test.claim.roadmap.roadmap_site_surface_readiness_witness
 // witness_roadmap_site_surface_readiness_materialized_batch_holds via
 // service_ready_once_converges_on_healthy_fixture_for_bundle.
 

@@ -173,7 +173,7 @@ data mtcollins1_sol_notice_final_allowance: Second = second(count: 10)
 // THE SHARE THIS UNIT BOOTS FROM, derived from its authorities rather than typed: srv2's LAN
 // address (gunbc.fleet.fleet_reach) and the export this lane publishes into
 // (gunbc.host.boot_medium bmc_boot_image_export), over NFS. The controller answered exactly this on
-// 2026-09-27 (15:40Z and 18:37Z reads, test.claim.machine_intake.megarac_media_convergence_witness_test
+// 2026-09-27 (15:40Z and 18:37Z reads, test.claim.machine_intake.megarac_media_convergence_witness
 // mtcollins1_media_general_2026_09_27). The generic attach (gunbc.machine_intake.megarac_boot_media_attach)
 // takes it as the boot's fact.
 // THE ACCOUNT THIS UNIT'S BOOT DRIVES ITS CONTROLLER AS: the bound managed host's account

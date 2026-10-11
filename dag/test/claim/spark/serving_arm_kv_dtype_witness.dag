@@ -1,0 +1,112 @@
+module test.claim.spark.serving_arm_kv_dtype_witness
+
+import std.types { String, Bool, NonEmptyStr }
+import std.nat { Nat }
+import extdeps.vllm.kv_cache {
+  vllm_fp8_ds_mla_required_pe_dim, vllm_fp8_ds_mla_kernel_admits_pe_dim,
+}
+import extdeps.vllm.engine_args {
+  VllmKvCacheDtypeRequest, KvAuto, KvFp8, KvFp16, KvBf16, KvFp8DsMla, vllm_kv_cache_dtype_wire,
+}
+import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_mla_pe_dim }
+import gunbc.spark.serving_arm {
+  GlmNativeKvCacheDtypeAdmission, GlmNativeKvCacheDtypeAdmitted, GlmNativeKvCacheDtypeRefused,
+  GlmNativeEngineBuild, GlmNativeEngineStockG385dce36b, GlmNativeEngineDerived8d09804,
+  glm_native_kv_cache_dtype_admission, glm_native_initial_profile, glm_native_concurrent_profile,
+  glm_native_engine_build, glm_native_engine_build_image,
+}
+import gunbc.spark.serving_arm { glm53_nope_derived_row }
+
+// THE CLASS UNDER TEST IS `A SERVING PROFILE CARRYING A KV DTYPE ITS (MODEL, ENGINE BUILD) PAIR
+// CANNOT RUN`. The arm crash-looped on exactly this on 2026-09-17, and the day's measurements
+// showed the law is per-(kernel, build): the STOCK build crashes every fp8 spelling on the
+// pe_dim == 64 assert and finds no backend under bfloat16, while the DERIVED build's only backend
+// for this model supports ONLY the fp8 KV cache and serves fp8_ds_mla. Every assertion below is
+// authorable red: the admission could admit a dtype its build refuses in either direction, the
+// wire map could spell a variant the engine refuses at argument parse, the profile could carry a
+// refused dtype, and the image pin could drift from the declared build.
+
+fn admitted_on(build: GlmNativeEngineBuild, dtype: VllmKvCacheDtypeRequest) -> Bool {
+  match glm_native_kv_cache_dtype_admission(build: build, dtype: dtype) {
+    GlmNativeKvCacheDtypeAdmitted { dtype: _ } => true
+    GlmNativeKvCacheDtypeRefused { dtype: _, cause: _ } => false
+  }
+}
+
+// THE KERNEL LAW ITSELF, asserted at its two discriminating points so the requirement cannot drift
+// to a different number or to an always-true fold without a red here.
+test fn the_fp8_ds_mla_kernel_requires_pe_dim_64() -> Bool {
+  vllm_fp8_ds_mla_required_pe_dim == 64
+    && vllm_fp8_ds_mla_kernel_admits_pe_dim(pe_dim: 64)
+    && !vllm_fp8_ds_mla_kernel_admits_pe_dim(pe_dim: 0)
+}
+
+// THE MODEL'S pe_dim IS 0, joined to the checkpoint authority row rather than restated -- a red
+// here means the mechanism row was edited and this model's fp8 admissibility must be re-derived.
+test fn glm_5_3_flash_pe_dim_is_zero() -> Bool {
+  glm_5_3_flash_mla_pe_dim() == 0
+}
+
+// ON THE DERIVED BUILD (the arm's declared build) THE FP8 SPELLINGS ARE ADMITTED AND THE NON-FP8
+// CONCRETE SPELLINGS ARE REFUSED: the selector's only backend for this model there supports only
+// the fp8 KV cache, and fp8_ds_mla serving is observed on this build family (the hand-built twin,
+// 2026-09-13 to 2026-09-16; the lane-built image's backend selection, smoke 2026-09-17).
+test fn the_derived_build_admits_fp8_and_refuses_non_fp8() -> Bool {
+  admitted_on(build: GlmNativeEngineDerived8d09804, dtype: KvAuto)
+    && admitted_on(build: GlmNativeEngineDerived8d09804, dtype: KvFp8)
+    && admitted_on(build: GlmNativeEngineDerived8d09804, dtype: KvFp8DsMla)
+    && !admitted_on(build: GlmNativeEngineDerived8d09804, dtype: KvBf16)
+    && !admitted_on(build: GlmNativeEngineDerived8d09804, dtype: KvFp16)
+}
+
+// ON THE STOCK BUILD NOTHING IS ADMITTED: every fp8 spelling crashes on the pe_dim == 64 kernel
+// assert and bfloat16 finds no attention backend (both observed on the srv9 head 2026-09-17).
+// This is the row that keeps the pe_dim law from being read as blanket "the model cannot do fp8"
+// -- the law binds THIS build, and this build is not the arm's.
+test fn the_stock_build_admits_no_dtype() -> Bool {
+  !admitted_on(build: GlmNativeEngineStockG385dce36b, dtype: KvAuto)
+    && !admitted_on(build: GlmNativeEngineStockG385dce36b, dtype: KvFp8)
+    && !admitted_on(build: GlmNativeEngineStockG385dce36b, dtype: KvFp8DsMla)
+    && !admitted_on(build: GlmNativeEngineStockG385dce36b, dtype: KvBf16)
+    && !admitted_on(build: GlmNativeEngineStockG385dce36b, dtype: KvFp16)
+}
+
+// THE WIRE MAP SPELLS WHAT THE ENGINE'S OWN CHOICE LIST ADMITS. vLLM v0.28.1rc1 refused 'bf16' at
+// argument parse with a choice list carrying 'bfloat16' and 'float16' (observed 2026-09-17 on the
+// srv9 head); the map's two non-fp8 concrete spellings are asserted against that list so the map
+// cannot drift back to spellings no build accepts.
+test fn the_wire_map_spells_the_engines_own_choices() -> Bool {
+  (vllm_kv_cache_dtype_wire(request: KvBf16) as String) == "bfloat16"
+    && (vllm_kv_cache_dtype_wire(request: KvFp16) as String) == "float16"
+    && (vllm_kv_cache_dtype_wire(request: KvAuto) as String) == "auto"
+    && (vllm_kv_cache_dtype_wire(request: KvFp8) as String) == "fp8"
+    && (vllm_kv_cache_dtype_wire(request: KvFp8DsMla) as String) == "fp8_ds_mla"
+}
+
+// THE PROFILE CARRIES A DTYPE ITS DECLARED BUILD ADMITS -- the gate that goes red if a future
+// edit sets the profile to a dtype the build refuses, or moves the declared build without
+// re-deriving the dtype. Mechanically preventable, as stated on the admission type; the
+// structural rung waits on a profile constructor taking the admission as an argument.
+// BOTH NATIVE SUBJECTS ARE GATED, and the concurrent one is the one that matters most: it is the
+// profile gunbc.spark.native_serving_realization renders into the live launch.
+test fn the_native_arm_profile_carries_an_admitted_dtype() -> Bool {
+  admitted_on(build: glm_native_engine_build, dtype: glm_native_initial_profile.kv_cache_dtype)
+    && admitted_on(build: glm_native_engine_build, dtype: glm_native_concurrent_profile.kv_cache_dtype)
+}
+
+// THE ARM LAUNCHES THE DECLARED BUILD, AND THE TWO WAYS OF SAYING SO MUST AGREE ON THE IMAGE.
+//
+// WHAT MOVED HERE AND WHY. Until 2026-09-18 the systemd renderer carried its own image row, derived
+// from glm_native_engine_build's content-hashed TAG, while the launch specification the direct-docker
+// handler sends carried the runtime row's DIGEST pin for the same build -- two references for one
+// image, and the renderer's row was what this claim checked. The renderer now projects from the
+// launch specification, so the subject is the runtime row: it must name a derived build rather than
+// a stock one, and gunbc.spark.glm_group_b_launch's plan is keyed to that same runtime.
+//
+// THE `derived-` SUBSTRING IS STILL THE DISCRIMINATOR, and it is asserted against the tag the build
+// authority mints, because that is the only spelling in which "derived rather than stock" is visible
+// as a word rather than as an opaque digest.
+test fn the_image_pin_is_the_declared_builds_image() -> Bool {
+  string_contains(s: glm_native_engine_build_image(build: glm_native_engine_build) as String, pattern: "derived-")
+    && count(glm53_nope_derived_row.artifact.patch_set) == 3
+}

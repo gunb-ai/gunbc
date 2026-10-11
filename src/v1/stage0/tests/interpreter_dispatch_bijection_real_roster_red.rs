@@ -23,7 +23,7 @@
 //! interpreter_dispatch_bijection_real_roster_red -- --ignored`) -- the same dark-lane state as
 //! `artifact_store_fs_witness_test.dag` and `direct_rust_door_write_compile_witness_test.dag`.
 //! Full accounting and shared dissolution trigger:
-//! `v2.test.claim.witness_exclusion_reconciliation_test`
+//! `v2.test.claim.witness_exclusion_reconciliation`
 //! `dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note`. Presence in the tree
 //! is not enrollment.
 

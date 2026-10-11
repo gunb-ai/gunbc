@@ -6,7 +6,7 @@ import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_subject, census_any_count_for_class, census_blocking_count_for_class }
 
 // THE SINGLE HOME for "compile this source string and count what it refused". Both of these
-// were declared locally in test.claim.algebra_receiver_alias_witness_test, and a second witness
+// were declared locally in test.claim.algebra_receiver_alias_witness, and a second witness
 // needed the same two facts -- copying them would have made one concept answer from two
 // authorities, which is the fork DESIGN section 3 exists to prevent. They live here rather than
 // inside gunbc.compile_diagnostic_census because they join that census to

@@ -340,7 +340,7 @@ fn review_sheet_write_receipt_text(receipt: ReviewSheetWriteReceipt) -> String {
 // this repository because the buyer roster is private. Until it lands, every declaration on the
 // network route below is a declared frontier: consumed by a named consumer in a named later
 // change. The pure folds -- lower_write_plan, batch_values_request, write_dispatch, review_sheet_write_receipt --
-// are executed by test.claim.review_sheet_converge_witness_test and are not rows here.
+// are executed by test.claim.review_sheet_converge_witness and are not rows here.
 //
 // WHY review_sheet_converge_cli DOES NOT CONSUME THIS TODAY. That entry point converges the
 // ESTATE -- API enablement, the writer account, drive membership, the spreadsheet, its format --

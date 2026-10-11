@@ -88,61 +88,61 @@ fn coverage_subject(module_path: String, decl_name: String) -> DeclarationRef {
 data emit_coverage_frontier_roster: List<EmitCoverageFrontierRow> = [
   EmitCoverageFrontierRow {
     subject: coverage_subject(
-      module_path: "v2.test.claim.manual.rust_add_emit_translate_test",
+      module_path: "v2.test.claim.manual.rust_add_emit_translate",
       decl_name: "rust_add_inferred_tree"
     ),
-    witness_entry: "src/v2/test/claim/execution/emit_host_add_equals_eval_test.dag",
+    witness_entry: "src/v2/test/claim/execution/emit_host_add_equals_eval.dag",
     witness_function: "emit_host_add_equals_eval_holds",
     disposition: SelfEmittedNative {
-      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict.dag",
       backing_function: "emit_host_native_only_add_holds"
     }
   },
   EmitCoverageFrontierRow {
     subject: coverage_subject(
-      module_path: "v2.test.claim.execution.long.emit_host_classical_not_ingested_equals_eval_test",
+      module_path: "v2.test.claim.execution.long.emit_host_classical_not_ingested_equals_eval",
       decl_name: "ingested_classical_not_source"
     ),
-    witness_entry: "src/v2/test/claim/execution/long/emit_host_classical_not_ingested_equals_eval_test.dag",
+    witness_entry: "src/v2/test/claim/execution/long/emit_host_classical_not_ingested_equals_eval.dag",
     witness_function: "emit_host_classical_not_ingested_equals_eval_holds",
     disposition: SelfEmittedNative {
-      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict.dag",
       backing_function: "emit_host_native_only_classical_not_holds"
     }
   },
   EmitCoverageFrontierRow {
     subject: coverage_subject(
-      module_path: "v2.test.claim.execution.emit_host_complement_equals_eval_test",
+      module_path: "v2.test.claim.execution.emit_host_complement_equals_eval",
       decl_name: "emit_complement_eval_subject"
     ),
-    witness_entry: "src/v2/test/claim/execution/emit_host_complement_equals_eval_test.dag",
+    witness_entry: "src/v2/test/claim/execution/emit_host_complement_equals_eval.dag",
     witness_function: "emit_host_complement_equals_eval_holds",
     disposition: SelfEmittedNative {
-      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict.dag",
       backing_function: "emit_host_native_only_complement_holds"
     }
   },
   EmitCoverageFrontierRow {
     subject: coverage_subject(
-      module_path: "v2.test.claim.execution.emit_host_field_access_equals_eval_test",
+      module_path: "v2.test.claim.execution.emit_host_field_access_equals_eval",
       decl_name: "emit_field_eval_subgraph_node"
     ),
-    witness_entry: "src/v2/test/claim/execution/emit_host_field_access_equals_eval_test.dag",
+    witness_entry: "src/v2/test/claim/execution/emit_host_field_access_equals_eval.dag",
     witness_function: "emit_host_field_access_equals_eval_holds",
     disposition: SelfEmittedNative {
-      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict.dag",
       backing_function: "emit_host_native_only_field_access_holds"
     }
   },
   EmitCoverageFrontierRow {
     subject: coverage_subject(
-      module_path: "v2.extdeps.languages.rust_test_fixtures",
+      module_path: "v2.extdeps.languages.rust_fixtures",
       decl_name: "rust_filesystem_read_family_target_model_staging"
     ),
-    witness_entry: "src/v2/test/claim/execution/emit_host_filesystem_read_equals_eval_test.dag",
+    witness_entry: "src/v2/test/claim/execution/emit_host_filesystem_read_equals_eval.dag",
     witness_function: "emit_host_filesystem_read_equals_eval_holds",
     disposition: SelfEmittedNative {
-      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict.dag",
       backing_function: "emit_host_native_only_filesystem_read_holds"
     }
   },
@@ -151,10 +151,10 @@ data emit_coverage_frontier_roster: List<EmitCoverageFrontierRow> = [
       module_path: "v2.test.claim.emit.fold_call_closure_fixture",
       decl_name: "fold_fixture_param_call_body"
     ),
-    witness_entry: "src/v2/test/claim/execution/emit_host_fold_closure_equals_eval_test.dag",
+    witness_entry: "src/v2/test/claim/execution/emit_host_fold_closure_equals_eval.dag",
     witness_function: "emit_host_fold_closure_equals_eval_holds",
     disposition: SelfEmittedNative {
-      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict.dag",
       backing_function: "emit_host_native_only_fold_closure_holds"
     }
   },
@@ -163,10 +163,10 @@ data emit_coverage_frontier_roster: List<EmitCoverageFrontierRow> = [
       module_path: "v2.test.claim.complexity_gate.table_fixture_loop_subject_producer",
       decl_name: "table_fixture_loop_arrow_with_body"
     ),
-    witness_entry: "src/v2/test/claim/execution/emit_host_loop_equals_eval_test.dag",
+    witness_entry: "src/v2/test/claim/execution/emit_host_loop_equals_eval.dag",
     witness_function: "emit_host_loop_equals_eval_holds",
     disposition: SelfEmittedNative {
-      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict.dag",
       backing_function: "emit_host_native_only_loop_holds"
     }
   },
@@ -175,94 +175,94 @@ data emit_coverage_frontier_roster: List<EmitCoverageFrontierRow> = [
       module_path: "v2.test.claim.complexity_gate.table_fixture_match_subject_producer",
       decl_name: "table_fixture_match_arrow_with_body"
     ),
-    witness_entry: "src/v2/test/claim/execution/emit_host_match_equals_eval_test.dag",
+    witness_entry: "src/v2/test/claim/execution/emit_host_match_equals_eval.dag",
     witness_function: "emit_host_match_equals_eval_holds",
     disposition: SelfEmittedNative {
-      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict.dag",
       backing_function: "emit_host_native_only_match_holds"
     }
   },
   EmitCoverageFrontierRow {
     subject: coverage_subject(
-      module_path: "v2.test.claim.execution.emit_host_meet_join_equals_eval_test",
+      module_path: "v2.test.claim.execution.emit_host_meet_join_equals_eval",
       decl_name: "meet_join_eval_subject"
     ),
-    witness_entry: "src/v2/test/claim/execution/emit_host_meet_join_equals_eval_test.dag",
+    witness_entry: "src/v2/test/claim/execution/emit_host_meet_join_equals_eval.dag",
     witness_function: "emit_host_meet_equals_eval_holds",
     disposition: SelfEmittedNative {
-      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict.dag",
       backing_function: "emit_host_native_only_meet_holds"
     }
   },
   EmitCoverageFrontierRow {
     subject: coverage_subject(
-      module_path: "v2.test.claim.execution.emit_host_module_equals_eval_test",
+      module_path: "v2.test.claim.execution.emit_host_module_equals_eval",
       decl_name: "emit_host_module_add_equals_eval_holds"
     ),
-    witness_entry: "src/v2/test/claim/execution/emit_host_module_equals_eval_test.dag",
+    witness_entry: "src/v2/test/claim/execution/emit_host_module_equals_eval.dag",
     witness_function: "emit_host_module_add_equals_eval_holds",
     disposition: SelfEmittedNative {
-      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict.dag",
       backing_function: "emit_host_native_only_module_holds"
     }
   },
   EmitCoverageFrontierRow {
     subject: coverage_subject(
-      module_path: "v2.test.claim.execution.long.emit_host_produced_module_equals_eval_test",
+      module_path: "v2.test.claim.execution.long.emit_host_produced_module_equals_eval",
       decl_name: "emit_host_produced_module_add_equals_eval_holds"
     ),
-    witness_entry: "src/v2/test/claim/execution/long/emit_host_produced_module_equals_eval_test.dag",
+    witness_entry: "src/v2/test/claim/execution/long/emit_host_produced_module_equals_eval.dag",
     witness_function: "emit_host_produced_module_add_equals_eval_holds",
     disposition: SelfEmittedNative {
-      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict.dag",
       backing_function: "emit_host_native_only_produced_module_holds"
     }
   },
   EmitCoverageFrontierRow {
     subject: coverage_subject(
-      module_path: "v2.extdeps.languages.rust_test_fixtures",
+      module_path: "v2.extdeps.languages.rust_fixtures",
       decl_name: "rust_shell_exec_run_family_target_model_staging"
     ),
-    witness_entry: "src/v2/test/claim/execution/emit_host_shell_exec_run_equals_eval_test.dag",
+    witness_entry: "src/v2/test/claim/execution/emit_host_shell_exec_run_equals_eval.dag",
     witness_function: "emit_host_shell_exec_run_equals_eval_holds",
     disposition: SelfEmittedNative {
-      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict.dag",
       backing_function: "emit_host_native_only_shell_exec_run_holds"
     }
   },
   EmitCoverageFrontierRow {
     subject: coverage_subject(
-      module_path: "v2.test.claim.execution.emit_host_variant_construct_equals_eval_test",
+      module_path: "v2.test.claim.execution.emit_host_variant_construct_equals_eval",
       decl_name: "emit_variant_construct_eval_subgraph_node"
     ),
-    witness_entry: "src/v2/test/claim/execution/emit_host_variant_construct_equals_eval_test.dag",
+    witness_entry: "src/v2/test/claim/execution/emit_host_variant_construct_equals_eval.dag",
     witness_function: "emit_host_variant_construct_equals_eval_holds",
     disposition: SelfEmittedNative {
-      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict.dag",
       backing_function: "emit_host_native_only_variant_construct_holds"
     }
   },
   EmitCoverageFrontierRow {
     subject: coverage_subject(
-      module_path: "v2.test.claim.execution.rust_emit_host_call_equals_eval_test",
+      module_path: "v2.test.claim.execution.rust_emit_host_call_equals_eval",
       decl_name: "rust_emit_host_call_equals_eval_holds"
     ),
-    witness_entry: "src/v2/test/claim/execution/rust_emit_host_call_equals_eval_test.dag",
+    witness_entry: "src/v2/test/claim/execution/rust_emit_host_call_equals_eval.dag",
     witness_function: "rust_emit_host_call_equals_eval_holds",
     disposition: SelfEmittedNative {
-      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict.dag",
       backing_function: "emit_host_native_only_call_holds"
     }
   },
   EmitCoverageFrontierRow {
     subject: coverage_subject(
-      module_path: "v2.test.claim.execution.rust_record_construct_emit_host_equals_eval_test",
+      module_path: "v2.test.claim.execution.rust_record_construct_emit_host_equals_eval",
       decl_name: "rust_record_construct_emit_host_equals_eval_holds"
     ),
-    witness_entry: "src/v2/test/claim/execution/rust_record_construct_emit_host_equals_eval_test.dag",
+    witness_entry: "src/v2/test/claim/execution/rust_record_construct_emit_host_equals_eval.dag",
     witness_function: "rust_record_construct_emit_host_equals_eval_holds",
     disposition: SelfEmittedNative {
-      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      backing_entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict.dag",
       backing_function: "emit_host_native_only_record_construct_holds"
     }
   }

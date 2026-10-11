@@ -204,7 +204,7 @@ pub fn render_governor_hold_line_mirror(hold: &HoldReason, emoji: bool) -> Strin
 }
 /// SEED MIRROR of `gunbc.runner.runner_slot_desired` `gunbc_runner_slot_desired` — the declared
 /// per-slot throttle line (field `memory_high`). A mirror, not an independent value: it may only
-/// move toward its authority row. Joined by `test.claim.seed_mirror_constant_lens_witness_test`.
+/// move toward its authority row. Joined by `test.claim.seed_mirror_constant_lens_witness`.
 ///
 /// IT IS NOT A BUDGET SOURCE — the distinction `read_host_budget_bytes` erased until 2026-08-30.
 /// It declares what THIS fleet configures its own self-hosted runner slots to, true of nothing

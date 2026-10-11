@@ -387,7 +387,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
 // variant with the call target it reaches -- and is this class's next-rung trigger, not a ceiling.
 //
 // WHO CONSUMES THE JOIN, AND WHEN (DESIGN section 3c, a declared frontier). Today the executing
-// consumer is test.claim.generated_artifact_producer_coverage_witness_test on the required floor,
+// consumer is test.claim.generated_artifact_producer_coverage_witness on the required floor,
 // which refuses a push that leaves any registry row's producer unresolvable. The census-side
 // consumer is gunbc.v1.v1_consumer_census v1_consumer_population_for: it may count WorkflowArgv,
 // GitHookScript, CommittedGeneratedMirror and the .gitattributes rows as JOINED media only when

@@ -109,7 +109,7 @@ data compile_clean_unlisted_import_use_enforcement_dissolve_on: DissolutionCondi
 // provenance. What the reading still is NOT: re-derived by a gate at a pinned revision and joined
 // against a stored base -- the per-class ratchet is a later consumer, and until it lands this
 // row's transcribed figures are a live observation, named as such by read_as. Its routing is
-// witnessed by test.claim.target_invocation_witness_test
+// witnessed by test.claim.target_invocation_witness
 // the_diagnostic_census_operand_routes_to_its_own_producer.
 //
 // THE STAND-IN READING THIS REPLACED, KEPT AS HISTORY BECAUSE THE FAILURE MODE IS GENERATIVE.

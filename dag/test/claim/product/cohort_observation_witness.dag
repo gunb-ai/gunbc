@@ -1,0 +1,123 @@
+module test.claim.product.cohort_observation_witness
+
+import std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { ObservationInstant, ClockDomain, SharedMonotonic, WallClock, nanosecond }
+import std.interval { interval_low, interval_high }
+import std.observation { OccurrenceId }
+import product.capacity.cohort_observation {
+  SeatSettlement, SeatSettledAs, SeatSucceeded, SeatFailed, SeatUnsettled,
+  CohortSeatReading, CohortReading, CohortSeal, CohortSealed, CohortRefused,
+  CohortRosterEmpty, CohortRosterSeatDuplicated, CohortSeatReadingDuplicated, CohortSeatOffRoster,
+  CohortSeatReadingMissing, CohortHostInstantsIncomparable, CohortHostWindowReversed,
+  CohortSeatInstantsIncomparable, CohortSeatNotReadyAtBarrier, CohortSeatStartedBeforeBarrier,
+  CohortSeatWindowReversed, CohortSeatOutsideHostWindow, CohortSeatNotSettled, CohortNeverAllActive,
+  seal_cohort,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ONE CLOCK FOR THE COHORT, AND A SECOND ONE A SEAT CAN WRONGLY BE READ FROM. Instants are the host's
+// shared monotonic clock at a nanosecond count; every window below is written in those counts.
+fn host_clock() -> ClockDomain { SharedMonotonic { origin: "mtcollins1-boot" as NonEmptyStr } }
+
+fn other_clock() -> ClockDomain { SharedMonotonic { origin: "srv3-boot" as NonEmptyStr } }
+
+fn t(n: Nat) -> ObservationInstant { ObservationInstant { domain: host_clock(), basis: WallClock, since_origin: nanosecond(count: n) } }
+
+fn t_other(n: Nat) -> ObservationInstant { ObservationInstant { domain: other_clock(), basis: WallClock, since_origin: nanosecond(count: n) } }
+
+fn occ(id: String) -> OccurrenceId { OccurrenceId { attempt: "cohort-1" as NonEmptyStr, id: id as NonEmptyStr } }
+
+fn seat_key(s: String) -> String { s }
+
+fn seat(name: String, ready: ObservationInstant, start: ObservationInstant, end: ObservationInstant, settlement: SeatSettlement) -> CohortSeatReading<String> {
+  CohortSeatReading { seat: name, source: occ(id: name), ready_at: ready, started_at: start, ended_at: end, settlement: settlement }
+}
+
+// The barrier releases at 10; the host observes 0..100. Every seat is ready at 5.
+fn cohort(roster: List<String>, seats: List<CohortSeatReading<String>>) -> CohortReading<String> {
+  CohortReading { roster: roster, barrier_released_at: t(n: 10), host_window_from: t(n: 0), host_window_to: t(n: 100), host_source: occ(id: "host"), seats: seats }
+}
+
+fn ok(name: String, start: Nat, end: Nat) -> CohortSeatReading<String> {
+  seat(name: name, ready: t(n: 5), start: t(n: start), end: t(n: end), settlement: SeatSettledAs { settled: SeatSucceeded })
+}
+
+fn refused_on(s: CohortSeal<String>, expect: String) -> Bool {
+  match s {
+    CohortSealed { cohort: _ } => false
+    CohortRefused { refusal: r } =>
+      match r {
+        CohortRosterEmpty => expect == "roster empty"
+        CohortRosterSeatDuplicated { seat: k } => expect == concat("roster duplicated ", k)
+        CohortSeatReadingDuplicated { seat: k } => expect == concat("reading duplicated ", k)
+        CohortSeatOffRoster { seat: k } => expect == concat("off roster ", k)
+        CohortSeatReadingMissing { seat: k } => expect == concat("reading missing ", k)
+        CohortHostInstantsIncomparable => expect == "host incomparable"
+        CohortHostWindowReversed => expect == "host reversed"
+        CohortSeatInstantsIncomparable { seat: k } => expect == concat("seat incomparable ", k)
+        CohortSeatNotReadyAtBarrier { seat: k } => expect == concat("not ready ", k)
+        CohortSeatStartedBeforeBarrier { seat: k } => expect == concat("started early ", k)
+        CohortSeatWindowReversed { seat: k } => expect == concat("window reversed ", k)
+        CohortSeatOutsideHostWindow { seat: k } => expect == concat("outside host ", k)
+        CohortSeatNotSettled { seat: k } => expect == concat("unsettled ", k)
+        CohortNeverAllActive { last_to_start: a, first_to_end: b } => expect == concat(concat("never all active ", a), concat(" ", b))
+      }
+  }
+}
+
+// POSITIVE CONTROL: three seats ready before the barrier, started after it, all active over [30, 40],
+// one of them settled as a failure -- a failed seat is settled, and its failure is data, not a refusal.
+test fn a_cohort_all_active_at_once_seals_with_its_overlap_window() -> Bool {
+  let r = cohort(roster: ["a", "b", "c"], seats: [
+    ok(name: "a", start: 20, end: 40),
+    ok(name: "b", start: 30, end: 60),
+    seat(name: "c", ready: t(n: 5), start: t(n: 25), end: t(n: 50), settlement: SeatSettledAs { settled: SeatFailed { cause: "floor phase refused" as NonEmptyStr } }),
+  ])
+  match seal_cohort(reading: r, seat_key: seat_key) {
+    CohortSealed { cohort: c } =>
+      c.population == 3
+        && interval_low(interval: c.all_active) == t(n: 30)
+        && interval_high(interval: c.all_active) == t(n: 40)
+    CohortRefused { refusal: _ } => false
+  }
+}
+
+// OVERLAP IS ALL N AT ONCE, NOT PAIRWISE: [20,40] [30,60] [50,70] -- a and b overlap, b and c overlap,
+// the peak is two, and a pairwise or peak>=2 test would admit it. a ended at 40 before c started at 50,
+// so the three were never active together, and the refusal names both seats.
+test fn seats_that_overlap_pairwise_but_never_all_at_once_are_refused() -> Bool {
+  refused_on(s: seal_cohort(reading: cohort(roster: ["a", "b", "c"], seats: [ok(name: "a", start: 20, end: 40), ok(name: "b", start: 30, end: 60), ok(name: "c", start: 50, end: 70)]), seat_key: seat_key), expect: "never all active c a")
+}
+
+// THE BARRIER: a seat ready only after the barrier released, and a seat that started before it.
+test fn a_seat_not_ready_at_the_barrier_or_started_before_it_is_refused() -> Bool {
+  refused_on(s: seal_cohort(reading: cohort(roster: ["a", "b"], seats: [ok(name: "a", start: 20, end: 40), seat(name: "b", ready: t(n: 15), start: t(n: 20), end: t(n: 40), settlement: SeatSettledAs { settled: SeatSucceeded })]), seat_key: seat_key), expect: "not ready b")
+    && refused_on(s: seal_cohort(reading: cohort(roster: ["a", "b"], seats: [ok(name: "a", start: 20, end: 40), ok(name: "b", start: 8, end: 40)]), seat_key: seat_key), expect: "started early b")
+}
+
+// THE ROSTER: every roster seat read exactly once, nothing read off the roster, and the roster itself
+// names each seat once and is not empty.
+test fn the_roster_join_refuses_a_missing_extra_or_repeated_seat() -> Bool {
+  refused_on(s: seal_cohort(reading: cohort(roster: ["a", "b"], seats: [ok(name: "a", start: 20, end: 40)]), seat_key: seat_key), expect: "reading missing b")
+    && refused_on(s: seal_cohort(reading: cohort(roster: ["a"], seats: [ok(name: "a", start: 20, end: 40), ok(name: "z", start: 20, end: 40)]), seat_key: seat_key), expect: "off roster z")
+    && refused_on(s: seal_cohort(reading: cohort(roster: ["a", "b"], seats: [ok(name: "a", start: 20, end: 40), ok(name: "a", start: 20, end: 40)]), seat_key: seat_key), expect: "reading duplicated a")
+    && refused_on(s: seal_cohort(reading: cohort(roster: ["a", "a"], seats: [ok(name: "a", start: 20, end: 40)]), seat_key: seat_key), expect: "roster duplicated a")
+    && refused_on(s: seal_cohort(reading: cohort(roster: [], seats: []), seat_key: seat_key), expect: "roster empty")
+}
+
+// SETTLEMENT: a seat whose outcome was never read refuses, where the failed seat above sealed.
+test fn a_seat_whose_outcome_was_never_read_refuses() -> Bool {
+  refused_on(s: seal_cohort(reading: cohort(roster: ["a", "b"], seats: [ok(name: "a", start: 20, end: 40), seat(name: "b", ready: t(n: 5), start: t(n: 20), end: t(n: 40), settlement: SeatUnsettled)]), seat_key: seat_key), expect: "unsettled b")
+}
+
+// CLOCKS AND WINDOWS: a seat timed on another host's clock is incomparable, not ordered by its numbers;
+// a reversed seat window and a seat running past the host's window each refuse.
+test fn an_incomparable_reversed_or_uncovered_seat_window_refuses() -> Bool {
+  refused_on(s: seal_cohort(reading: cohort(roster: ["a", "b"], seats: [ok(name: "a", start: 20, end: 40), seat(name: "b", ready: t(n: 5), start: t_other(n: 20), end: t_other(n: 40), settlement: SeatSettledAs { settled: SeatSucceeded })]), seat_key: seat_key), expect: "seat incomparable b")
+    && refused_on(s: seal_cohort(reading: cohort(roster: ["a", "b"], seats: [ok(name: "a", start: 20, end: 40), ok(name: "b", start: 40, end: 20)]), seat_key: seat_key), expect: "window reversed b")
+    && refused_on(s: seal_cohort(reading: cohort(roster: ["a", "b"], seats: [ok(name: "a", start: 20, end: 40), ok(name: "b", start: 30, end: 140)]), seat_key: seat_key), expect: "outside host b")
+}

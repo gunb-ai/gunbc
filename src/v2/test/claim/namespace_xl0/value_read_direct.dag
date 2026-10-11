@@ -1,0 +1,52 @@
+module v2.test.claim.namespace_xl0.value_read_direct
+
+import v2.compiler.body_lowering_fold { body_lower_value_read }
+import v2.std.diagnostic { Accepted, NodeLocus, Rejected, diagnostics_fatal }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, content_hash, node_synthetic }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE VALUE READER REFUSES AT THE VALUE, ASKED AT ITS ONE INTERFACE WITH A SUPPLIED NODE (DESIGN section
+// 3's witness rule). v2.compiler.body_lowering_fold body_lower_value_read answers a value it cannot
+// lower with body_lowering_reason_value_unlowered located AT that value -- never carried, never
+// relabelled as the enclosing form's navigation. No authored source reaches that arm through the front
+// end once v2.std.node ArrowBodyForm FunctionValueBody lowers a function-valued body (the probe is
+// recorded in v2.test.claim.namespace_xl0.value_read_refusal, whose claims are now the route's
+// positive controls), so the node is SUPPLIED: a parse production whose emitted identity no lowering
+// declares. The positive control is what makes the red discriminating: the same predicate is FALSE
+// for a node the reader lowers, so a reader that refused everything would redden it, and one that
+// widened past the unrecognised production would redden the first.
+fn vrd_atom(id: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
+}
+
+fn vrd_production(emitted: Symbol) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: Authored { name: ^grammar_production_identity_node_projection }, target: vrd_atom(id: emitted) }]
+  )
+}
+
+fn vrd_refused_unlowered_at(n: Node) -> Bool {
+  match body_lower_value_read(value: n) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      let f = diagnostics_fatal(d: d)
+      (f.reason == ^body_lowering_reason_value_unlowered) && (match f.at {
+        NodeLocus { anchor: a } => content_hash(n: a.at) == content_hash(n: n)
+        _ => false
+      })
+  }
+}
+
+test fn an_unrecognised_production_refuses_value_unlowered_at_itself() -> Bool {
+  vrd_refused_unlowered_at(n: vrd_production(emitted: ^vrd_undeclared_production))
+}
+
+test fn a_lowerable_operand_is_not_refused_value_unlowered() -> Bool {
+  match body_lower_value_read(value: vrd_atom(id: ^vrd_lowerable_operand)) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}

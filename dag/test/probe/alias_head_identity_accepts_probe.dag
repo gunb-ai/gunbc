@@ -1,6 +1,6 @@
 module test.probe.alias_head_identity_accepts_probe
 
-// THIS MODULE MUST RESOLVE CLEAN AT EVERY SITE BELOW (test.claim.alias_head_identity_probe_witness_test
+// THIS MODULE MUST RESOLVE CLEAN AT EVERY SITE BELOW (test.claim.alias_head_identity_probe_witness
 // enrolls it as the accepted control). A transparent alias of a record receives its own body's literal
 // and value, and a transparent alias of an application receives that application's literal: each
 // head agrees by the DeclarationRef resolve wrote on the alias's right-hand side, in the alias's own

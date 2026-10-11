@@ -38,7 +38,7 @@ import product.fabric.selection {
 // more than the diff did is the defect this corpus keeps paying for. THREE WITNESS-SIDE HELPERS
 // STILL CALL bind_candidate AND HAND-MATCH THE SEVEN ARMS: d_bound in
 // test.claim.fabric.fabric_floor_dispatch_witness, t_bound and t_unadmitted_bound in
-// test.claim.fabric.fabric_selection_witness_test, and the equivalent in
+// test.claim.fabric.fabric_selection_witness, and the equivalent in
 // test.claim.fabric.fabric_control_plane_witness.
 //
 // They are deliberately left, and the reason is a boundary rather than an exemption: they construct

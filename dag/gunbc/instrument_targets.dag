@@ -231,7 +231,7 @@ fn v2_native_cli_label() -> Label {
 
 // THE ENTRY EACH OF THE TWO SELF-HOST INSTRUMENTS EMITS, AS THE INSTRUMENT'S OWN FACT. Every
 // reader of these entries -- the required-lane resolution census, and the seed's native lane runner
-// whose constants test.claim.compiler_gate_emit_build_lane_witness_test holds against these rows --
+// whose constants test.claim.compiler_gate_emit_build_lane_witness holds against these rows --
 // takes them from here, so a moved subject cannot leave a stale closure reported as covered.
 fn self_host_entry() -> String {
   "src/v2/compiler/compile.dag"
@@ -277,7 +277,7 @@ fn v2_native_frontier_label() -> Label {
 // partition check (members summed over groups == rows reported) was tried and withdrawn in review
 // 74324: every row reaches a group through the same call that counts it, so its red was not
 // authorable in a real run -- a decoration by DESIGN section 4b. The grouping's discriminating red
-// lives where it is authorable, in v2.test.claim.native_census.whole_tree_census_resolve_test.
+// lives where it is authorable, in v2.test.claim.native_census.whole_tree_census_resolve.
 fn v2_native_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "v2-native-census" } }
 }

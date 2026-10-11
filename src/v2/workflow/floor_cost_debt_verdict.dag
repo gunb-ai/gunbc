@@ -16,7 +16,7 @@ import v2.workflow.floor_terminal_ledger {
 // `v2.workflow.floor_cost_debt` withholds a rostered identity from execution because its cost is
 // over the line, and says nothing about its verdict. So a row is only honest while its claim
 // PASSES: a row over a failing claim is a semantic red the floor has stopped reading. That is not
-// hypothetical. `v2.test.claim.body_lowering.single_arm_match_test` regressed at gunbc#13056 and two of
+// hypothetical. `v2.test.claim.body_lowering.single_arm_match` regressed at gunbc#13056 and two of
 // its identities sat in `floor_cost_debt_censored_chunk_03`, so every required lane stayed green
 // over a v2 body-lowering regression.
 //

@@ -54,7 +54,7 @@ import extdeps.github.git_database { GitRefWire, GitRefDeletedBody }
 // census row's parameters selected without a ruling discharge, and is limited to the dedicated
 // qualification group by this module's construction. The token is the gunbai-ci installation token
 // (contents:write for the ref; organization self-hosted-runners write for the group). No workflow
-// fires on creating the branch: see test.claim.runner.runner_qualification_ref_pin_witness_test.
+// fires on creating the branch: see test.claim.runner.runner_qualification_ref_pin_witness.
 
 data qualification_branch_prefix: NonEmptyStr = "qualification/"
 
@@ -220,10 +220,10 @@ fn qualification_ref_pin_of(
 ) -> QualificationRefPinStanding
   admit_callers: [
     decl_ref(module_path: "gunbc.runner.runner_qualification_ref_pin", decl_name: "ensure_qualification_ref_pin"),
-    decl_ref(module_path: "test.claim.runner.runner_qualification_ref_pin_witness_test", decl_name: "the_pin_is_minted_only_from_the_exact_revision_and_the_pinned_group"),
-    decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness_test", decl_name: "the_real_mint_admits_the_attempt_through_the_sealed_subject"),
-    decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness_test", decl_name: "a_delivery_from_another_dispatch_on_the_same_slot_refuses"),
-    decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness_test", decl_name: "the_production_mint_over_todays_fleet_converge_workflow_refuses_at_the_attempt_input"),
+    decl_ref(module_path: "test.claim.runner.runner_qualification_ref_pin_witness", decl_name: "the_pin_is_minted_only_from_the_exact_revision_and_the_pinned_group"),
+    decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "the_real_mint_admits_the_attempt_through_the_sealed_subject"),
+    decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "a_delivery_from_another_dispatch_on_the_same_slot_refuses"),
+    decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "the_production_mint_over_todays_fleet_converge_workflow_refuses_at_the_attempt_input"),
   ]
 {
   match readback {

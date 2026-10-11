@@ -1,0 +1,29 @@
+module test.claim.workspace_commissioning_executor_witness
+import std.types { Bool }
+import std.measure { second }
+import gunbc.workspace_commissioning_executor_unit { workspace_executor_unit_text }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.workspace_commissioning_executor { workspace_commissioning_executor_script, workspace_executor_terminal_admitted }
+
+test fn readable_refusal_is_not_executor_success() -> Bool {
+  workspace_executor_terminal_admitted(text: "commissioning-fleet-generation-committed")
+    && !workspace_executor_terminal_admitted(text: "refused: CellNotBound x")
+    && !workspace_executor_terminal_admitted(text: "commissioned: readiness and provenance read back")
+}
+
+fn export_executor() -> ProcessExit {
+  let result = Filesystem.Write(path: "target/workspace-commissioning-executor.sh", content: workspace_commissioning_executor_script())
+  if result.success { ExitSuccess } else { exit_failure(reason: result.error) }
+}
+
+
+test fn executor_owns_lifetime_without_a_resident_interpreter() -> Bool {
+  let unit = workspace_executor_unit_text(release_dir: "/opt/gunbc/microvm-controller/releases/reviewed",
+    fleet_lock: "/var/lib/gunbc/fleet-converge/plan_generation.lock", wait_bound: second(count: 1200))
+  string_contains(s: unit, pattern: "ExecStart=bash ")
+    && string_contains(s: unit, pattern: "RemainAfterExit=yes")
+    && string_contains(s: unit, pattern: "KillMode=control-group")
+    && string_contains(s: unit, pattern: "Restart=no")
+    && !string_contains(s: unit, pattern: "gunbc run")
+}

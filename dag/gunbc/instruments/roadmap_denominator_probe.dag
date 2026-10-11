@@ -19,7 +19,7 @@ import gunbc.roadmap.roadmap_authority {
 // THIS IS AN INSTRUMENT AND NOT A WITNESS. It asserts nothing; it prints the population, so a figure
 // about the roadmap frontier is cited by naming a producer that re-derives it rather than by being
 // transcribed into prose where it rots (DESIGN section 6). It exists because reading the row
-// constructors gave the WRONG repair: the two size/completeness witnesses in test.claim.roadmap.roadmap_authority_test
+// constructors gave the WRONG repair: the two size/completeness witnesses in test.claim.roadmap.roadmap_authority
 // walk the declared set while their predicate is named active_node_admissible, which reads as a
 // denominator defect -- and repointing them at the active set does not repair it, because the active
 // set itself carries superseded and signed-off rows. Only the measurement separates those two stories.

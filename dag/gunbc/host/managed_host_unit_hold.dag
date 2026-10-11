@@ -392,7 +392,7 @@ fn boot_run_owner(run_id: NonEmptyStr, process: ProcessIdentity, pid_namespace: 
 // acquire outcome therefore cannot become a proof: the pure refusal fold below reads outcomes, and
 // it returns text, never a proof. The proof carries the admitted subject it was acquired for, so what
 // it proves -- this host's slot is held -- is read from the row that admitted it.
-// test.claim.machine_intake.mtcollins1_unit_hold_forged_probe_witness_test enrolls
+// test.claim.machine_intake.mtcollins1_unit_hold_forged_probe_witness enrolls
 // test.probe.unit_hold_proof_forged_probe, where a forged proof is refused at the literal.
 type UnitHoldProof sole_constructor {
   subject: AdmittedUnitHoldSubject

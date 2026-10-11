@@ -350,7 +350,7 @@ fn live_frontier_verdict_text(verdict: LiveFrontierVerdict) -> String {
 // DIRECTION.
 //
 // THE GATE'S BEHAVIOUR IS ENFORCED TODAY. The fold above is witnessed by
-// `test.claim.self_host_compile_phase_live_gate_witness_test`, which the required floor already picks up
+// `test.claim.self_host_compile_phase_live_gate_witness`, which the required floor already picks up
 // under its existing `test.claim.self_host_` prefix -- no roster widening, nothing to price. Break
 // the join, weaken it to a count comparison, or let the unmeasurable arm render as a pass, and a
 // required run goes red on the next push.

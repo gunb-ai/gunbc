@@ -21,7 +21,7 @@ import product.host_identity { HostIdentity }
 // no new producer or consumer may be added to BmcOnboardingPhase; no
 // BmcOnboardingPhase, BmcLifecycleState or FabricJoined value may construct an
 // IntakePhaseStanding, an intake receipt, a disposition or a fleet admission
-// (test.claim.bmc.bmc_onboarding_quarantine_witness_test derives both populations
+// (test.claim.bmc.bmc_onboarding_quarantine_witness derives both populations
 // from the parse-only declaration census and requires each empty: consumers of
 // this module's names under gunbc.machine_intake_*, and declarations in the
 // intake and bmc pools whose atoms bridge this module's names to a

@@ -57,7 +57,7 @@ import extdeps.communication.medium { Lossless, Medium }
 // normalize call is outside this admission; the body-lowering fixtures are routed here.
 //
 // AN EXPECTED DROP IS DECLARED, NEVER ABSORBED. Lowering loses some shapes today, each pinned by its
-// own discriminating fixture in v2.test.claim.namespace_xl0.reference_conservation_test. A fixture whose
+// own discriminating fixture in v2.test.claim.namespace_xl0.reference_conservation. A fixture whose
 // source necessarily contains one of those shapes names it in `explained`, one row per lost atom;
 // each row consumes exactly one DroppedReference of that identity. An explanation that consumes
 // nothing is itself a refusal (conservation_reason_explanation_stale): when lowering is repaired the
@@ -65,7 +65,7 @@ import extdeps.communication.medium { Lossless, Medium }
 // (DESIGN section 5: no escape hatch that outlives its refusal).
 
 // The shapes lowering is known to lose THAT A FIXTURE NEEDS TO EXCUSE, each pinned by its own
-// discriminating claim in v2.test.claim.namespace_xl0.reference_conservation_test. Closed on purpose: a
+// discriminating claim in v2.test.claim.namespace_xl0.reference_conservation. Closed on purpose: a
 // new shape is a new pinned claim first, then a row here, and a row enters only with the fixture
 // that consumes it (gunbc#12221 changed both shapes that were pinned there without a row here: the
 // if-arm argument is now conserved, and a block's later statement now REFUSES located, so both are
@@ -94,7 +94,7 @@ fn known_drop_shape_restoration_trigger(shape: KnownDropShape) -> DropRestoratio
   match shape {
     StatementLetBinder => DropRestorationTrigger {
       retired_by: DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_stmt_spine", field: WholeDeclaration },
-      pinned_by: DeclarationRef { module_path: "v2.test.claim.namespace_xl0.reference_conservation_test", decl_name: "a_statement_let_binder_is_reported_dropped_holds", field: WholeDeclaration }
+      pinned_by: DeclarationRef { module_path: "v2.test.claim.namespace_xl0.reference_conservation", decl_name: "a_statement_let_binder_is_reported_dropped_holds", field: WholeDeclaration }
     }
   }
 }

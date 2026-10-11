@@ -1,0 +1,64 @@
+module test.claim.sk_hynix_dram_module
+
+import std.types { Bool, NonEmptyStr, list_length }
+import std.measure { bit_width_count, byte_size_count }
+import std.decl_ref { decl_ref, declaration_ref_eq }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.memory.types {
+  MemoryPopulationRow,
+  Registered,
+  dram_chips_per_rank,
+  dram_module_is_realizable,
+  dram_module_required_die_density,
+}
+import extdeps.memory.jedec { ddr4_generation_catalog, ddr5_generation_catalog }
+import extdeps.memory.sk_hynix {
+  c_die_rdimm_datasheet_rev_1_7,
+  extdeps_model_scope,
+  hma82gr7afr8n_vk_catalog,
+  hma82gr7cjr8n_vk_catalog,
+  hma82gr7cjr8n_vk_catalog_citation,
+}
+import extdeps.vendor.sk_hynix { sk_hynix }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn w_cjr8n_axes_match_c_die_rdimm_ordering_information() -> Bool {
+  hma82gr7cjr8n_vk_catalog.part_number == ("HMA82GR7CJR8N-VK" as NonEmptyStr)
+    && hma82gr7cjr8n_vk_catalog.manufacturer == sk_hynix
+    && hma82gr7cjr8n_vk_catalog.buffering == Registered
+    && hma82gr7cjr8n_vk_catalog.ecc
+    && bit_width_count(b: hma82gr7cjr8n_vk_catalog.chip_width) == 8
+    && hma82gr7cjr8n_vk_catalog.rank_count == 2
+    && hma82gr7cjr8n_vk_catalog.data_rate_mts == 2666
+    && byte_size_count(b: hma82gr7cjr8n_vk_catalog.capacity_bytes) == 17179869184
+}
+
+test fn w_cjr8n_is_not_the_a_die_x8_row() -> Bool {
+  hma82gr7cjr8n_vk_catalog.part_number != hma82gr7afr8n_vk_catalog.part_number
+}
+
+test fn w_cjr8n_derives_nine_dies_per_rank_and_eight_gigabit() -> Bool {
+  dram_chips_per_rank(module: hma82gr7cjr8n_vk_catalog) == 9
+    && byte_size_count(b: dram_module_required_die_density(module: hma82gr7cjr8n_vk_catalog)) == 1073741824
+}
+
+test fn w_cjr8n_is_realizable_on_ddr4_and_not_ddr5() -> Bool {
+  dram_module_is_realizable(module: hma82gr7cjr8n_vk_catalog, jedec: ddr4_generation_catalog)
+    && !dram_module_is_realizable(module: hma82gr7cjr8n_vk_catalog, jedec: ddr5_generation_catalog)
+}
+
+test fn w_cjr8n_inhabits_a_memory_population_row() -> Bool {
+  let row = MemoryPopulationRow { module: hma82gr7cjr8n_vk_catalog, stick_count: 1 }
+  row.module.part_number == ("HMA82GR7CJR8N-VK" as NonEmptyStr) && row.stick_count == 1
+}
+
+test fn w_cjr8n_citation_is_the_c_die_datasheet_not_the_a_die_scope() -> Bool {
+  declaration_ref_eq(
+    a: hma82gr7cjr8n_vk_catalog_citation.fact,
+    b: decl_ref(module_path: "extdeps.memory.sk_hynix", decl_name: "hma82gr7cjr8n_vk_catalog"),
+  )
+    && hma82gr7cjr8n_vk_catalog_citation.authority == c_die_rdimm_datasheet_rev_1_7
+    && list_length(items: extdeps_model_scope.further_citations) == 0
+    && extdeps_model_scope.first_citation.uri.locator == "en.wikipedia.org/wiki/DDR4_SDRAM"
+}

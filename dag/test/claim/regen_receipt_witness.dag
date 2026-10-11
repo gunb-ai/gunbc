@@ -1,0 +1,54 @@
+module test.claim.regen_receipt_witness
+
+import std.types { Bool, String, List }
+import gunbc.regen_receipt { RegenReceipt, FirstGeneration, Refused, refusal_reason }
+
+// THE REFUSED VARIANT, AND WHAT THESE WITNESSES CAN AND CANNOT ESTABLISH.
+//
+// The wall is the TYPE's shape, not these tests: Refused declares no digest fields and no
+// first_generation_equal, so a refusal has nothing to invent and the invalid receipt has no
+// constructor -- DESIGN 4b structural impossibility, needing no witness: writing the fabricated
+// Bool does not typecheck, so there is no runtime state for an assertion to catch.
+//
+// What these witnesses ARE for is what the shape alone does not give: executing evidence that the
+// shape is the one claimed, so a later edit that quietly restores an equality field to this
+// variant has to pass something that runs.
+//
+// This file covered the FixedPoint variant's cross-tree reference until 2026-10-04, when that
+// variant was deleted with the second-generation pass it described (operator ruling 2026-10-04;
+// gunbc.regen_receipt module header).
+
+data same_tree_sha: String = "bd239370923f0000000000000000000000000000"
+
+fn a_refused_receipt() -> RegenReceipt {
+  Refused {
+    commit_sha: same_tree_sha,
+    authority_digest: "digest-authority",
+    reason: "refusal: committed mirror is no longer emitted",
+    candidate_artifact: "target/stage0-regen-candidate"
+  }
+}
+
+// A refusal carries the one fact it actually measured. Asserted against a DISTINCT literal rather
+// than a Bool, so the witness cannot be satisfied by a constructor that drops the payload and
+// still reports something plausible.
+test fn a_refused_receipt_carries_its_cause() -> Bool {
+  refusal_reason(receipt: a_refused_receipt()) == "refusal: committed mirror is no longer emitted"
+}
+
+// A measured pass did not refuse, so its answer to "why did this refuse" is the empty string --
+// the discriminating partner of the case above: a refusal_reason that returned a cause for every
+// variant would satisfy that witness and fail this one.
+test fn a_first_generation_receipt_carries_no_refusal_cause() -> Bool {
+  refusal_reason(
+    receipt: FirstGeneration {
+      commit_sha: same_tree_sha,
+      authority_digest: "digest-authority",
+      committed_generated_digest: "digest-committed",
+      candidate_generated_digest: "digest-candidate",
+      first_generation_equal: true,
+      changed_paths: [],
+      candidate_artifact: "target/stage0-regen-candidate"
+    }
+  ) == ""
+}

@@ -20,13 +20,13 @@ data a_test_deployment_acts_on_the_prod_deployments_state: RecurringFailureMode 
 
     "CEILING: 3, structurally guaranteed. Once every external attachment and role-following singleton is reached only through gunbc.deployment_risk resolve_deployment_bindings over prod_role_selection, a TestRisk deployment has no route to a ProdRisk binding that the resolver does not refuse. It cannot be 4: a host path is still a string any author can spell, so the state stays describable in source.",
 
-    "CLIMB STARTED BY THE MODEL PR: the class is derived, the bindings resolve per exact class, and test.claim.deployment_risk_witness_test carries the discriminating RED (a TestRisk deployment refuses rather than resolving the prod topic and app) beside its positive control. That covers the two attachments the binding set carries today and none of the four receipts above, so the row's rung is unchanged by it.",
+    "CLIMB STARTED BY THE MODEL PR: the class is derived, the bindings resolve per exact class, and test.claim.deployment_risk_witness carries the discriminating RED (a TestRisk deployment refuses rather than resolving the prod topic and app) beside its positive control. That covers the two attachments the binding set carries today and none of the four receipts above, so the row's rung is unchanged by it.",
 
     "NEXT-RUNG TRIGGER: every pin that names the prod deployment directly (the approval broker owner, fabric storage placement, the approval client/store/trust, the serve and dispatch entry points that call srv1_live_dashboard_instance, the apply's prod peer, fleet_reach_endpoint) resolves through prod_role_selection, AND every attachment the srv1 lab shares with prod today (ntfy, Codex account and home, admitted ref, publication identity, R2/GCP/workload identity, OIDC) resolves through DeploymentExternalBindingSet or refuses. One pin or one binding is not sufficient: the class is the route, and any remaining named route is the next receipt.",
   ],
 
   evidence: [
     DeclarationRef { module_path: "gunbc.deployment_risk", decl_name: "resolve_deployment_bindings", field: WholeDeclaration },
-    DeclarationRef { module_path: "test.claim.deployment_risk_witness_test", decl_name: "a_test_deployment_refuses_rather_than_resolving_the_prod_bindings", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.deployment_risk_witness", decl_name: "a_test_deployment_refuses_rather_than_resolving_the_prod_bindings", field: WholeDeclaration },
   ],
 }

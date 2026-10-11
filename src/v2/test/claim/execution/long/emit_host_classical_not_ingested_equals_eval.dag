@@ -1,0 +1,738 @@
+module v2.test.claim.execution.long.emit_host_classical_not_ingested_equals_eval
+
+import v2.std.member_declaration_kind { no_member_declaration_kinds }
+import std.types { List }
+import v2.compiler.refinement_discharge { infer_and_discharge }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.emit { emit }
+import v2.compiler.emit_host {
+  emit_host_octets_byte_string,
+  run_test_claim_emit_vs_eval
+}
+import v2.compiler.eval {
+  EvalContext,
+  TestClaimEvalSubject,
+  TestClaimRun,
+  eval,
+  eval_context_with_semantics,
+  eval_test_claim_subject,
+  inputs_root_only
+}
+import extdeps.communication.medium { Medium }
+import v2.compiler.infer { InferredFacts, InferredTree, inferred_facts_witness_for_node, infer }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.resolve { ResolvedTree, resolve }
+import v2.std.symbol_index { empty_symbol_index }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  dag_arrow_with_body_node,
+  dag_language_model,
+  dag_match_arm_node,
+  dag_match_body_from_arms,
+  dag_type_atom_node
+}
+import v2.extdeps.languages.rust { rust_emit_host_runtime_primitive_type_node, rust_target_model_staging }
+import v2.extdeps.languages.rust_fixtures {
+  rust_classical_not_ingested_target_model_staging,
+  rust_match_target_model_staging
+}
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations, claim_inferred_facts_from_nodes }
+import v2.std.cardinality { RankingComponent, TerminationProof }
+import v2.std.collection {
+  Map,
+  list_at_optional
+}
+import std.optional {
+  Absent,
+  Optional,
+  Present
+}
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.node {
+  Arrow,
+  Atom,
+  ComputationNode,
+  Conj,
+  Edge,
+  Match,
+  Node,
+  Symbol,
+  TypeNode,
+  MatchArmBodyEdge,
+}
+import v2.std.node_query { find_arrow_body_child, find_core_child }
+import v2.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  ControlTransfer,
+  EnvironmentBindingKey,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  InterpretationStructureWitness,
+  LoopInterpreter,
+  MatchInterpreter,
+  RuntimePrimitive,
+  RuntimePrimitiveValue,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter
+}
+import v2.std.verdict { verdict_establishes_divergence, verdict_establishes_equivalence }
+import v2.std.verification {
+  EqualsClaim,
+  Integration,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier3,
+  manual_claim_anchor
+}
+import v2.std.witness { Holds, Witness }
+
+data ingested_classical_not_source: String = "module m\n\nfn classical_not(x: Int) -> Int {\n  match x {\n    true => false,\n    false => true\n  }\n}\n"
+
+data ingested_classical_not_swapped_source: String = "module m\n\nfn classical_not(x: Int) -> Int {\n  match x {\n    true => true,\n    false => false\n  }\n}\n"
+
+fn ingested_find_arrow_in_module(root: Node) -> Optional<Node> {
+  match root.kind {
+    TypeNode { connective: Arrow } => Present { value: root }
+    _ =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => ingested_find_arrow_in_module(root: e.target)
+        }
+      })
+  }
+}
+
+fn ingested_resolved_module_from_source(source: String) -> Outcome<ResolvedTree> {
+  let lm = dag_language_model()
+  bind_outcome(
+    o: tokenize(text: source, file: ^ingested_classical_not_file, rules: lm.lex),
+    f: fn(tokens) {
+      bind_outcome(
+        o: parse_module(tokens: tokens, grammar: lm.grammar),
+        f: fn(artifact) {
+          bind_outcome(
+            o: normalize(parse_tree: artifact.tree),
+            f: fn(normalized) {
+              resolve(tree: normalized, lm: lm)
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+// THE ARROW, ROOTED IN ITS MODULE'S RESOLVED DECLARATIONS. Its parameter references are path-keyed
+// (v2.std.qualified_name parameter_reference_node, e.g. p.classical_not.x) and infer grounds them
+// through ResolvedTree.resolved_declarations, so an arrow lifted out of its module without those
+// declarations would ask an empty index and refuse. The module's own resolved declarations travel
+// with it; the corpus-wide symbol_index does not, because no stage after resolve reads it.
+fn ingested_arrow_from_source(source: String) -> Outcome<ResolvedTree> {
+  bind_outcome(
+    o: ingested_resolved_module_from_source(source: source),
+    f: fn(resolved) {
+      match ingested_find_arrow_in_module(root: resolved.root) {
+        Present { value: arrow } =>
+          outcome_accepted(value: ResolvedTree { root: arrow, symbol_index: empty_symbol_index(), resolved_declarations: resolved.resolved_declarations, lexical_bindings: resolved.lexical_bindings, unavailable_providers: resolved.unavailable_providers, member_kinds: no_member_declaration_kinds() })
+        Absent =>
+          outcome_rejected(
+            d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_arrow_miss, node: resolved.root)
+          )
+      }
+    }
+  )
+}
+fn ingested_canonical_inferred_tree_from_arrow(arrow: Outcome<ResolvedTree>) -> Outcome<InferredTree> {
+  bind_outcome(
+    o: arrow,
+    f: fn(a) {
+      infer_and_discharge(tree: a)
+    }
+  )
+}
+
+fn ingested_classical_not_staging_facts_lookup(
+  canonical: InferredTree,
+  key: Node
+) -> Optional<InferredFacts> {
+  match inferred_facts_witness_for_node(tree: canonical, node: key) {
+    Holds { value: facts } =>
+      Present { value: facts }
+    Violates { diagnostic: _ } =>
+      Present { value: ingested_classical_not_composed_facts(key: key) }
+  }
+}
+
+fn ingested_staging_inferred_tree_from_arrow(arrow: Outcome<ResolvedTree>) -> Outcome<InferredTree> {
+  bind_outcome(
+    o: arrow,
+    f: fn(a) {
+      bind_outcome(
+        o: infer_and_discharge(tree: a),
+        f: fn(inferred) {
+          outcome_accepted(
+            value: InferredTree {
+              root: inferred.root,
+              facts: PartialFunction {
+                lookup: fn(key) {
+                  ingested_classical_not_staging_facts_lookup(canonical: inferred, key: key)
+                }
+              }
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn ingested_staging_inferred_tree_from_source(source: String) -> Outcome<InferredTree> {
+  ingested_staging_inferred_tree_from_arrow(arrow: ingested_arrow_from_source(source: source))
+}
+
+// Takes the ARROW, not the source: the emit claims supply the rostered
+// ingested_classical_not_arrow_with_body rather than re-ingesting per claim (DESIGN §3 witness
+// rule). ingested_classical_not_arrow_has_match_holds is the inhabitance claim over that same served
+// arrow, whose producer runs the real tokenize->parse->normalize->resolve->find-arrow path.
+fn ingested_emit_shape_frontier_tree_from_arrow(arrow: Outcome<ResolvedTree>) -> Outcome<InferredTree> {
+  bind_outcome(
+    o: arrow,
+    f: fn(arrow) {
+      outcome_accepted(
+        value: InferredTree {
+          root: arrow.root,
+          facts: PartialFunction {
+            lookup: fn(_key) {
+              Absent
+            }
+          }
+        }
+      )
+    }
+  )
+}
+
+fn ingested_wet_emit_eval_composed_tree_from_source(source: String) -> Outcome<InferredTree> {
+  bind_outcome(
+    o: ingested_arrow_from_source(source: source),
+    f: fn(arrow) {
+      bind_outcome(
+        o: infer_and_discharge(tree: arrow),
+        f: fn(inferred) {
+          outcome_accepted(
+            value: InferredTree {
+              root: inferred.root,
+              facts: PartialFunction {
+                lookup: fn(key) {
+                  Present { value: ingested_classical_not_composed_facts(key: key) }
+                }
+              }
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+// THE TWO INGESTED ARROWS, FORCED ONCE OUTSIDE THE CLAIM FOLD. Every tree producer in this file
+// begins from the same tokenize→parse→normalize→resolve→find-arrow pipeline over one of the two
+// module-constant sources above, and the required floor builds a fresh evaluation frame per
+// claim, so each claiming claim re-paid the whole pipeline: claim_batch's gross [witness]
+// receipt prices the pipeline at ~370-420ms of every ~475-510ms emit claim here, and the
+// branch's required-floor run refused the three emit claims below on exactly that (the two
+// staging claims' FAIL rows name marginal_cpu_ns 488209894/473955219 against limit_ms=500; the
+// canonical claim went INTERRUPTED-BEFORE-VERDICT at cpu_at_least=501ms). The pipeline is a pure
+// function of a module constant, so the per-claim recompute is DESIGN §2 redundant work and the
+// repair is the cross-claim pure tier's WARM arm (v2.workflow.floor_pure_producer_share), never
+// a raised ceiling. Warm and not claim-forced by the ceiling arithmetic: a claim-forced fill
+// happens inside the first touching claim's fold, and a ~370ms fill leaves under 130ms of
+// headroom on this lane's own measurement while the lane's runner crossed the ceiling on the
+// meet/join arms at 545/550ms for work this host performs in ~400ms (run 34290525720's
+// COMPLETED-OVER-COST rows) — an in-fold fill of this size dies mid-flight there exactly as
+// prepare_grammar's did. Nullary because only a nullary producer is preparation-forceable, and
+// the arrow rooted in its module's resolved declarations (Outcome<ResolvedTree>, data only) is the deepest pipeline stage whose value stays closure-free and
+// therefore portable: the InferredTree one stage up carries the facts PartialFunction and can
+// never store (ServeCacheValueNotPortable). Same nullary-per-fixture shape as
+// v2.compiler.ingested_fixture_arrows' arrow producers.
+fn ingested_classical_not_arrow_with_body() -> Outcome<ResolvedTree> {
+  ingested_arrow_from_source(source: ingested_classical_not_source)
+}
+
+fn ingested_classical_not_swapped_arrow_with_body() -> Outcome<ResolvedTree> {
+  ingested_arrow_from_source(source: ingested_classical_not_swapped_source)
+}
+
+fn ingested_inferred_tree_from_source(source: String) -> Outcome<InferredTree> {
+  ingested_staging_inferred_tree_from_source(source: source)
+}
+
+fn ingested_classical_not_eval_subgraph_canonical() -> Node {
+  dag_match_body_from_arms(
+    scrutinee: dag_type_atom_node(identity: ^dag_token_kw_true),
+    true_arm: dag_match_arm_node(
+      pattern_lit: ^dag_token_kw_true,
+      body_lit: ^dag_token_kw_false
+    ),
+    false_arm: dag_match_arm_node(
+      pattern_lit: ^dag_token_kw_false,
+      body_lit: ^dag_token_kw_true
+    )
+  )
+}
+
+fn ingested_classical_not_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn ingested_arrow_has_match_body(arrow: Outcome<ResolvedTree>) -> Bool {
+  match arrow {
+    Accepted { value: arrow, diagnostics: _ } =>
+      match find_arrow_body_child(root: arrow.root) {
+        Accepted { value: body, diagnostics: _ } =>
+          match body.kind {
+            ComputationNode { behavior: Match } => true
+            _ => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn ingested_classical_not_generic_facts(node: Node) -> InferredFacts {
+  claim_inferred_facts_from_nodes(
+    resolved: node,
+    algebra: rust_emit_host_runtime_primitive_type_node(),
+    descent: Holds {
+      value: v2.std.cardinality.TerminationProof {
+        non_increasing: [],
+        strict: v2.std.cardinality.RankingComponent { measured: ^ingested_classical_not_generic_descent }
+      }
+    }
+  )
+}
+
+fn ingested_classical_not_composed_facts(key: Node) -> InferredFacts {
+  ingested_classical_not_generic_facts(node: key)
+}
+
+fn ingested_classical_not_octet_value(n: Int) -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: rust_emit_host_runtime_primitive_type_node(),
+      bytes: emit_host_octets_byte_string(octets: [0, n, 0, 0, 0])
+    }
+  }
+}
+
+fn ingested_classical_not_bool_true(value: RuntimeValue) -> Bool {
+  value == ingested_classical_not_octet_value(n: 1)
+}
+
+fn ingested_classical_not_bool_false(value: RuntimeValue) -> Bool {
+  value == ingested_classical_not_octet_value(n: 0)
+}
+
+fn ingested_classical_not_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == ^dag_token_kw_true {
+        outcome_accepted(value: ingested_classical_not_octet_value(n: 1))
+      } else if id == ^dag_token_kw_false {
+        outcome_accepted(value: ingested_classical_not_octet_value(n: 0))
+      } else {
+        outcome_rejected(
+          d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_literal_miss, node: node)
+        )
+      }
+    _ =>
+      outcome_rejected(
+        d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_literal_miss, node: node)
+      )
+  }
+}
+
+fn ingested_classical_not_call_primitive(
+  node: Node,
+  _args: List<RuntimeValue>,
+  _env: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  outcome_rejected(
+    d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_call_primitive_miss, node: node)
+  )
+}
+
+fn ingested_classical_not_choose_branch(
+  node: Node,
+  _value: RuntimeValue,
+  _env: EvaluationEnvironment
+) -> Outcome<Node> {
+  outcome_rejected(
+    d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_branch_miss, node: node)
+  )
+}
+
+fn ingested_classical_not_step_loop(
+  node: Node,
+  _env: EvaluationEnvironment
+) -> Outcome<ControlTransfer> {
+  outcome_rejected(
+    d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_loop_miss, node: node)
+  )
+}
+
+fn ingested_classical_not_bind_value(
+  _key: EnvironmentBindingKey,
+  _value: RuntimeValue,
+  env: EvaluationEnvironment
+) -> Outcome<EvaluationEnvironment> {
+  outcome_accepted(value: env)
+}
+
+fn ingested_classical_not_nth_arm_wire(node: Node, wanted: Int) -> Outcome<Node> {
+  match list_at_optional(xs: node.children, index: wanted) {
+    Present { value: child } =>
+      match child {
+        Edge { label: _, target: arm_wire } => outcome_accepted(value: arm_wire)
+      }
+    Absent =>
+      outcome_rejected(
+        d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_arm_miss, node: node)
+      )
+  }
+}
+
+fn ingested_classical_not_arm_body_node(arm_wire: Node) -> Outcome<Node> {
+  match find_core_child(root: arm_wire, marker: MatchArmBodyEdge) {
+    Accepted { value: body, diagnostics: _ } => outcome_accepted(value: body)
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn ingested_classical_not_choose_arm(
+  node: Node,
+  scrutinee: RuntimeValue,
+  _env: EvaluationEnvironment
+) -> Outcome<Node> {
+  if ingested_classical_not_bool_true(value: scrutinee) {
+    match ingested_classical_not_nth_arm_wire(node: node, wanted: 1) {
+      Accepted { value: arm, diagnostics: _ } =>
+        ingested_classical_not_arm_body_node(arm_wire: arm)
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    }
+  } else if ingested_classical_not_bool_false(value: scrutinee) {
+    match ingested_classical_not_nth_arm_wire(node: node, wanted: 2) {
+      Accepted { value: arm, diagnostics: _ } =>
+        ingested_classical_not_arm_body_node(arm_wire: arm)
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    }
+  } else {
+    outcome_rejected(
+      d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_arm_miss, node: node)
+    )
+  }
+}
+
+fn ingested_classical_not_interpretation() -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter { allocate_literal: ingested_classical_not_allocate_literal, identity: ^ingested_classical_not_allocate_literal },
+    transform: TransformInterpreter { call_primitive: ingested_classical_not_call_primitive, identity: ^ingested_classical_not_call_primitive },
+    branch: BranchInterpreter { choose_branch: ingested_classical_not_choose_branch, identity: ^ingested_classical_not_choose_branch },
+    loop: LoopInterpreter { step_loop: ingested_classical_not_step_loop, identity: ^ingested_classical_not_step_loop },
+    bind: BindInterpreter { bind_value: ingested_classical_not_bind_value, identity: ^ingested_classical_not_bind_value },
+    match: MatchInterpreter { choose_arm: ingested_classical_not_choose_arm, identity: ^ingested_classical_not_choose_arm }
+  }
+}
+
+fn ingested_classical_not_structure_witness() -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: ^ingested_classical_not_allocate_literal,
+    call_primitive: ^ingested_classical_not_call_primitive,
+    choose_branch: ^ingested_classical_not_choose_branch,
+    step_loop: ^ingested_classical_not_step_loop,
+    bind_value: ^ingested_classical_not_bind_value,
+    choose_arm: ^ingested_classical_not_choose_arm
+  }
+}
+
+fn ingested_classical_not_context() -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: ^ingested_classical_not_interpretation_pin,
+    interpretation: ingested_classical_not_interpretation(),
+    structure_witness: ingested_classical_not_structure_witness()
+  )
+}
+
+fn ingested_classical_not_claim(rhs_result_node: Node) -> TestClaim {
+  EqualsClaim {
+    label: "Wave1 exit: ingested classical_not emit-host == eval (true scrutinee → false)",
+    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+    lhs: rhs_result_node,
+    rhs: rhs_result_node,
+    classification: TestClassification { tier: Tier3, layer: Integration }
+  }
+}
+
+fn ingested_classical_not_subject(tree: InferredTree, subgraph: Node) -> TestClaimEvalSubject<Node> {
+  eval_test_claim_subject(
+    claim: ingested_classical_not_claim(rhs_result_node: subgraph),
+    context: ingested_classical_not_context(),
+    tree: tree,
+    evaluator_pin: ^ingested_classical_not_evaluator_pin
+  )
+}
+
+fn ingested_classical_not_run(tree: InferredTree, subgraph: Node) -> TestClaimRun<Node, RuntimeValue> {
+  run_test_claim_emit_vs_eval(
+    subject: ingested_classical_not_subject(tree: tree, subgraph: subgraph),
+    target: rust_classical_not_ingested_target_model_staging()
+  )
+}
+
+fn ingested_classical_not_verdict_is_pass(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+  verdict_establishes_equivalence(v: run.verdict)
+}
+
+fn ingested_classical_not_verdict_is_semantic_mismatch(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+  verdict_establishes_divergence(v: run.verdict)
+}
+
+test fn ingested_classical_not_eval_subgraph_canonical_octet_zero_holds() -> Bool {
+  match ingested_inferred_tree_from_source(source: ingested_classical_not_source) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match eval(
+        tree: tree,
+        interpretation: ingested_classical_not_interpretation(),
+        inputs: inputs_root_only(root: ingested_classical_not_eval_subgraph_canonical())
+      ) {
+        Accepted { value: v, diagnostics: _ } =>
+          v == ingested_classical_not_octet_value(n: 0)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_emit_octet_bridge_shape_holds() -> Bool {
+  match ingested_emit_shape_frontier_tree_from_arrow(arrow: ingested_classical_not_arrow_with_body()) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
+        Accepted { value: Medium { carried: source, fidelity: _ }, diagnostics: _ } =>
+          string_contains(s: source, pattern: "!= ")
+            && string_contains(s: source, pattern: "true => 0")
+            && string_contains(s: source, pattern: "false => 1")
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_emit_source_arm_shape_holds() -> Bool {
+  match ingested_emit_shape_frontier_tree_from_arrow(arrow: ingested_classical_not_arrow_with_body()) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
+        Accepted { value: Medium { carried: source, fidelity: _ }, diagnostics: _ } =>
+          string_contains(s: source, pattern: "pub fn classical_not(x")
+            || string_contains(s: source, pattern: "fn classical_not(x")
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_canonical_emit_accepts_holds() -> Bool {
+  match ingested_canonical_inferred_tree_from_arrow(arrow: ingested_classical_not_arrow_with_body()) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
+        Accepted { value: Medium { carried: source, fidelity: _ }, diagnostics: _ } =>
+          string_contains(s: source, pattern: "fn classical_not(x")
+            && string_contains(s: source, pattern: "!= ")
+            && string_contains(s: source, pattern: "true => 0")
+            && string_contains(s: source, pattern: "false => 1")
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// The inhabitance claim for the real path: the served arrow IS ingested_arrow_from_source over
+// ingested_classical_not_source, forced in the floor's warm pure-producer prep, so the real
+// tokenize->parse->normalize->resolve->find-arrow path executes every floor run and this claim
+// asserts its route (a Match body). An ingest break makes the served producer Rejected, and the
+// control below executes that arm.
+test fn ingested_classical_not_arrow_has_match_holds() -> Bool {
+  ingested_arrow_has_match_body(arrow: ingested_classical_not_arrow_with_body())
+}
+
+test fn ingested_classical_not_arrow_has_match_rejected_producer_refuses_holds() -> Bool {
+  !ingested_arrow_has_match_body(
+    arrow: outcome_rejected(
+      d: ingested_classical_not_diagnostic(
+        reason: ^ingested_classical_not_arrow_miss,
+        node: ingested_classical_not_eval_subgraph_canonical()
+      )
+    )
+  )
+}
+
+fn ingested_classical_not_staging_emit_accepts_arrow(arrow: Outcome<ResolvedTree>) -> Bool {
+  match ingested_staging_inferred_tree_from_arrow(arrow: arrow) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
+        Accepted { value: Medium { carried: emitted, fidelity: _ }, diagnostics: _ } =>
+          string_contains(s: emitted, pattern: "fn classical_not(x")
+            && string_contains(s: emitted, pattern: "!= ")
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_staging_emit_accepts_holds() -> Bool {
+  ingested_classical_not_staging_emit_accepts_arrow(arrow: ingested_classical_not_arrow_with_body())
+}
+
+test fn ingested_classical_not_staging_swapped_emit_accepts_holds() -> Bool {
+  ingested_classical_not_staging_emit_accepts_arrow(arrow: ingested_classical_not_swapped_arrow_with_body())
+}
+
+test fn emit_host_classical_not_ingested_equals_eval_holds() -> Bool {
+  match ingested_wet_emit_eval_composed_tree_from_source(source: ingested_classical_not_source) {
+    Accepted { value: tree, diagnostics: _ } =>
+      ingested_classical_not_verdict_is_pass(
+        run: ingested_classical_not_run(
+          tree: tree,
+          subgraph: ingested_classical_not_eval_subgraph_canonical()
+        )
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_host_classical_not_ingested_swapped_refuses_holds() -> Bool {
+  match ingested_wet_emit_eval_composed_tree_from_source(source: ingested_classical_not_swapped_source) {
+    Accepted { value: tree, diagnostics: _ } =>
+      ingested_classical_not_verdict_is_semantic_mismatch(
+        run: ingested_classical_not_run(
+          tree: tree,
+          subgraph: ingested_classical_not_eval_subgraph_canonical()
+        )
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_emit_accepts_holds() -> Bool {
+  match ingested_emit_shape_frontier_tree_from_arrow(arrow: ingested_classical_not_arrow_with_body()) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ingested_classical_not_real_infer_holds() -> Bool {
+  match ingested_classical_not_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      match infer(tree: arrow) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn ingested_classical_not_match_only_param_body_fixture() -> Node {
+  dag_match_body_from_arms(
+    scrutinee: dag_type_atom_node(identity: ^dag_binding_param_x),
+    true_arm: dag_match_arm_node(
+      pattern_lit: ^dag_token_kw_true,
+      body_lit: ^dag_token_kw_false
+    ),
+    false_arm: dag_match_arm_node(
+      pattern_lit: ^dag_token_kw_false,
+      body_lit: ^dag_token_kw_true
+    )
+  )
+}
+
+fn ingested_classical_not_arrow_empty_domain_fixture() -> Node {
+  dag_arrow_with_body_node(
+    domain: Node {
+      kind: TypeNode { connective: Conj },
+      children: [],
+      occurrence_id: OccurrenceSynthetic
+    },
+    return_type_binding: ^dag_binding_type_int,
+    body: ingested_classical_not_match_only_param_body_fixture()
+  )
+}
+
+fn ingested_classical_not_param_scrutinee_domain_unresolved_infer_refuses(tree: Node) -> Bool {
+  match infer(tree: claim_resolved_tree_without_declarations(root: tree)) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn ingested_classical_not_match_only_param_scrutinee_infer_refuses_holds() -> Bool {
+  ingested_classical_not_param_scrutinee_domain_unresolved_infer_refuses(
+    tree: ingested_classical_not_match_only_param_body_fixture()
+  )
+}
+
+// Marked scaffold (lane: witness-realization / emit-host wet legs; owner:
+// v2-inferred-tree-completeness; trigger: carrier split makes incomplete InferredTree unwritable so
+// staging cannot compose over infer judgments). ingested_staging_inferred_tree_from_source is
+// facts-flow-forward: Holds preserves canonical infer facts verbatim, including GroundingNotDerived
+// — never upgrades infer's judgment to hand-composed DerivedGrounding. Violates (lookup miss) alone
+// receives ingested_classical_not_composed_facts as the offline wet-leg frontier until the trigger
+// fires. ingested_wet_emit_eval_composed_tree_from_source is the separate wet-only carrier:
+// composed DerivedGrounding on every lookup so emit accepts and eval admits facts — never enrolled
+// per-PR and never masquerades as canonical infer output.
+
+// KERNEL-D TESTING RE-STEER (operator direction, 2026-07-24): per-PR layer-boundary mock proof for
+// the classical_not cutover's emit-to-text half — ingested_emit_shape_frontier_tree_from_arrow
+// (orch-emit-compatible empty facts map) -> assert emitted Rust TEXT (string compare, no compile).
+// ingested_canonical_inferred_tree_from_arrow is the pure infer carrier.
+// FRONTIER CLOSED (2026-09-06, grounding-frontier branch): the specimen's real-infer tree fully
+// derives — the grammar-production roster grounds the module identity atom, the binding-reference
+// rule grounds the parameter atom from the arrow domain, and the product rules compose the rest —
+// so ingested_classical_not_canonical_emit_accepts_holds and
+// ingested_classical_not_staging_emit_accepts_holds now witness that emit ACCEPTS the canonical
+// and staging trees and pins the emitted text's shape (the same shape the frontier-path witnesses
+// pin). The translate-refuses-underived behavior stays enrolled on hand-staged frontier fixtures
+// in translate_underived_refusal_test.dag. Wet/nightly emit-vs-eval legs use
+// ingested_wet_emit_eval_composed_tree_from_source (composed facts on every lookup — emit accepts,
+// eval admits); shape-frontier stays emit-only. Deliberately excludes wet legs from per-PR
+// CommitCheckEnrollment.
+
+test fn ingested_classical_not_arrow_empty_domain_infer_refuses_holds() -> Bool {
+  ingested_classical_not_param_scrutinee_domain_unresolved_infer_refuses(
+    tree: ingested_classical_not_arrow_empty_domain_fixture()
+  )
+}
+

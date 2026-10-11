@@ -133,7 +133,7 @@ test fn table_present_string_refuses_under_structural_declaration_text() -> Bool
 // refused the native `bool` spelling. The Bool de-fork deleted that declaration (std.types Bool is
 // the single authority), so no reference can resolve there and the roster row it exercised is gone.
 // The evidence that emitted Bool is correct is the positive control below plus the emitted-bytes
-// rows in test.claim.self_host_peano_literal_operator_realization_witness_test.
+// rows in test.claim.self_host_peano_literal_operator_realization_witness.
 test fn table_present_bool_renders_natively_for_the_corpus_prelude() -> Bool {
   rust_scalar_checkpoint_reference_base(decision: type_realization_decision(target: Rust, dag_name: "Bool", provenance: CorpusDeclared { decl_file: "dag/std/types.dag" }))
     == Present { value: "bool" }

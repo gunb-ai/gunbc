@@ -42,7 +42,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // [witness-row-cost] refusals are the witness_cost_* helpers in cli_run.rs. The citation was
 // fabricated at the moment it was written, in the same 2026-08-22 change that restored the row on a
 // correct premise, and it was copied from here into
-// test.claim.observation_raw_print_retirement_acceptance_test, so one invented symbol became two
+// test.claim.observation_raw_print_retirement_acceptance, so one invented symbol became two
 // files' evidence. The family is still live and still on the roster; only the symbol naming its
 // occurrence was false.
 
@@ -150,10 +150,10 @@ data seed_emit_sources: List<String> = [
 // arm in cli_run/entry_resolve.rs. Neither file was listed, so census_marker_present answered
 // FALSE for floor_claim_memory_site -- a rostered row whose marker the census could not find --
 // and nothing reported it, because the witness that asks is declined by the floor
-// (test.claim.observation_emit_census_witness_test declares ReadsLiveTree). Measured by listing
+// (test.claim.observation_emit_census_witness declares ReadsLiveTree). Measured by listing
 // every seed file containing a bracket-tagged eprintln; the four files added above are the
 // difference. This is the second time a declined witness held a false heartbeat-family row
-// (test.claim.observation_lockstep_witness_test records the first), and the fix is the same each
+// (test.claim.observation_lockstep_witness records the first), and the fix is the same each
 // time: the denominator is re-derived by hand until the source-derived discovery this note names
 // lands.
 

@@ -445,7 +445,7 @@ fn spark_pair_lifecycle_pre_directives(spec: DockerCreateSpec) -> List<SystemdSe
 // FOR EVERY IN-CORPUS MODULE it is ordinary compilation, on every floor run: the byte-level fold
 // returns the UNSEALED RenderedUnitDigestStanding, so bytes cannot become a sealed standing without
 // a typecheck refusal, and sole_constructor refuses a forge at the literal's own position.
-// FOR FOREIGN SOURCE TEXT the probes in test.claim.spark.spark_declared_unit_digest_seal_probe_test
+// FOR FOREIGN SOURCE TEXT the probes in test.claim.spark.spark_declared_unit_digest_seal_probe
 // ask the same question of a fixture module, and they EXECUTED AND PASSED: required-floor run
 // 35162345507 reports standing=planned-and-passed for all three, a cross-module forge refused at the
 // literal's own position and the sanctioned group route tripping no violation. What that does NOT

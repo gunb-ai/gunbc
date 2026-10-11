@@ -316,7 +316,7 @@ fn provenance_host_numeric_alias(name: String, p: TypeDeclarationProvenance) -> 
 // (checkpoint_table_bypasses_identity_note, v1.compiler.emit_rust). emit_rust now imports
 // rust_seed_host_numeric_alias back from here, one direction, no cycle; see
 // numeric_realization_relocation_note there for the fuller account. This decision's Realized
-// branch is exercised by test.claim.map_key_alias_hop_witness_test's negative case (a locally-declared
+// branch is exercised by test.claim.map_key_alias_hop_witness's negative case (a locally-declared
 // alias reusing a checkpoint dag_name, so this decision answers Realized rather than Unrealized,
 // and the aliased record correctly does not gain a derive) -- that fixture demonstrates the
 // mechanism generically rather than naming Nat/Int specifically, because dag/test/claim witnesses
@@ -337,7 +337,7 @@ fn provenance_host_numeric_alias(name: String, p: TypeDeclarationProvenance) -> 
 // emitter writes, so traversing it would recreate the Int/Nat false-positive class this decision
 // was introduced to prevent. The derive selector still consumes one has_fn_fields answer and emits
 // Clone alone; no alias-specific derive roster exists. Executing controls live in
-// test.claim.function_derive_alias_hop_witness_test: structural alias to fn narrows, native Bytes alias
+// test.claim.function_derive_alias_hop_witness: structural alias to fn narrows, native Bytes alias
 // does not, and structural alias to a plain record stays full-derive. No population count is claimed
 // here: the earlier per-code boards use incompatible subjects and refs, and cross-code partitioning
 // owns any later census rather than this producer repair.

@@ -51,7 +51,7 @@ import std.logic { Bool }
 //
 // WHO CONSUMES THIS, AND WHEN — A DECLARED FRONTIER, STATED HERE AND NOT ONLY IN A PULL REQUEST
 // (DESIGN section 3c). As landed, the only executing consumer of this module is its own witness,
-// `test.claim.realization_cost_fidelity_witness_test`, which exercises every arm of the join over
+// `test.claim.realization_cost_fidelity_witness`, which exercises every arm of the join over
 // authored costs. That is deliberately NOT enough on its own, and the honest classification is the
 // middle one: a named consumer landing in a named later change.
 //

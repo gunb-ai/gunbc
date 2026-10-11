@@ -234,7 +234,7 @@ type SeedRetentionCensus {
 }
 
 // MUTATION RECEIPT, executed 2026-08-24 on a linux/amd64 runner at branch head, claim_batch over
-// v2.test.claim.self_host.seed_retention_frontier_test. Baseline: all eight witnesses PASS.
+// v2.test.claim.self_host.seed_retention_frontier. Baseline: all eight witnesses PASS.
 // Treatment: path_in's predicate rewritten from 'candidate == path' to 'candidate == candidate',
 // which makes every membership question answer true and so collapses all three joins at once.
 // Result: the five join probes go FAIL — control totality, control classification, and each of the

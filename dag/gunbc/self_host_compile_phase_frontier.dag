@@ -1098,7 +1098,7 @@ fn newly_exposed_cause_admits(
 // MEASURED, because "n is small here" is the claim DESIGN section 6 refuses. This function was the
 // single largest term in `compile_phase_frontier_standing`, which is the whole cost of three
 // required-floor witness modules -- gunbc.self_host_compile_phase_live_gate's witness,
-// this module's own witness, and test.claim.compiler_frontend_program_status_witness_test through
+// this module's own witness, and test.claim.compiler_frontend_program_status_witness through
 // `gunbc.compiler_frontend_program_status` `milestone_status`. The instrument is
 // `claim_batch --entry <the witness> --functions <its rows>`; the figures are not transcribed here.
 fn newly_exposed_identity_admitted(

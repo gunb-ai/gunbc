@@ -345,7 +345,7 @@ data census_qemu_probe_verdict_frontier_rows: List<FrontierRow> = [
 // DECLARED FRONTIER (DESIGN 3c). The production consumer of this reading is the mtcollins1 boot
 // route's retained SOL captures, read ACROSS attempts; that route retains one capture per run and
 // does not yet collect them, so today the reading is exercised by
-// test.claim.machine_intake.mtcollins1_census_refusal_hypotheses_witness_test over the two real
+// test.claim.machine_intake.mtcollins1_census_refusal_hypotheses_witness over the two real
 // receipts. It is consumed in production when repeated census boots are read together.
 data census_refusal_hypotheses_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(

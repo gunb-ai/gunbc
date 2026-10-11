@@ -1,0 +1,129 @@
+module test.claim.module_graph.import_closure_live
+
+import v2.lens.module_graph { ImportResolutionFact, import_resolution_facts_live, module_graph_exclude_substrings, no_paths }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// PER-PR HOME. This witness lived under test/claim/long/ as a frozen path deferral, so the floor
+// declined it (declined_long) even when the file changed -- the closure golden had no executing
+// claim. It moved here, out of the long home, at gunbc#12910.
+
+// DERIVED FROM THE DECLARED IMPORT EDGES, not copied from the producer's output (a golden copied from
+// import_closure_live would compare the producer with itself). Each member, with the edge that
+// first reaches it, read off that file's own import declarations (re-derived 2026-10-01, gunbc#12910):
+//   conformance_imports_only            the entry; imports v2.std.node only
+//   src/v2/std/node.dag                 <- entry
+//   dag/std/algebra.dag, src/v2/std/optional.dag, dag/std/occurrence_identity.dag,
+//   dag/std/decl_ref.dag, dag/std/disposition.dag, dag/std/content_hash.dag
+//                                       <- v2.std.node
+//   dag/std/error_primitives.dag        <- std.algebra
+//   dag/std/dissolution.dag, dag/std/types.dag
+//                                       <- std.occurrence_identity
+// The golden this replaces listed an older, wider envelope (std.primitives, v2.std.algebra,
+// collection, diagnostic, logic, node_query, witness) the entry no longer imports. It went stale
+// unseen because this module did not resolve: witness_layer_roots was used bare.
+data expected_conformance_closure: FreeMonoid<String> = [
+  "dag/test/claim/module_graph/conformance_imports_only.dag",
+  "src/v2/std/node.dag",
+  "dag/std/algebra.dag",
+  "src/v2/std/optional.dag",
+  "dag/std/occurrence_identity.dag",
+  "dag/std/decl_ref.dag",
+  "dag/std/disposition.dag",
+  "dag/std/content_hash.dag",
+  "dag/std/error_primitives.dag",
+  "dag/std/dissolution.dag",
+  "dag/std/types.dag"
+]
+
+data conformance_entry: String = "dag/test/claim/module_graph/conformance_imports_only.dag"
+
+data bogus_never_imported: String = "src/v2/std/__bogus_never_imported__.dag"
+
+fn string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn set_subset(xs: FreeMonoid<String>, ys: FreeMonoid<String>) -> Bool {
+  for_all(xs: xs, predicate: fn(x) { contains(xs: ys, item: x, eq: string_eq) })
+}
+
+fn set_equal(xs: FreeMonoid<String>, ys: FreeMonoid<String>) -> Bool {
+  set_subset(xs: xs, ys: ys) && set_subset(xs: ys, ys: xs)
+}
+
+fn declared_paths() -> FreeMonoid<String> {
+  expected_conformance_closure
+}
+
+fn declared_without_entry() -> FreeMonoid<String> {
+  fold_list(
+    xs: declared_paths(),
+    empty: no_paths,
+    cons: fn(acc, p) {
+      if string_eq(a: p, b: conformance_entry) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: p)
+      }
+    }
+  )
+}
+
+fn declared_with_bogus() -> FreeMonoid<String> {
+  list_snoc_item(xs: declared_paths(), item: bogus_never_imported)
+}
+
+// THE POOL IS THE CLOSURE'S HOMES, NOT THE WHOLE CORPUS. This claim's subject is one interface, the
+// import closure of one entry (DESIGN section 3, a witness discriminates at one interface), so filling
+// every module under dag/ and src/v2/ re-runs production it is not about. The pool roots are DERIVED
+// from the golden, which is itself derived from the declared import edges above: the distinct parent
+// directories of its members. Nothing here is a hand-listed directory.
+fn closure_parent_dir(path: String) -> String {
+  match list_tail(xs: reverse(split(s: path, delimiter: "/"))) {
+    TailAbsent => path
+    TailFound { tail: rest } => join(reverse(rest), "/")
+  }
+}
+
+fn closure_pool_roots() -> FreeMonoid<String> {
+  fold_list(
+    xs: declared_paths(),
+    empty: no_paths,
+    cons: fn(acc, p) {
+      let dir = closure_parent_dir(path: p)
+      if contains(xs: acc, item: dir, eq: string_eq) { acc } else { list_snoc_item(xs: acc, item: dir) }
+    }
+  )
+}
+
+fn derived_conformance_closure() -> FreeMonoid<String> {
+  import_closure_live(entry_path: conformance_entry, pool_roots: closure_pool_roots())
+}
+
+// A NARROWED POOL MUST NOT HIDE AN EDGE. An import whose target is declared only outside the pool
+// contributes no path to the closure, so the set comparison alone would stay green while an edge was
+// silently dropped. Every import of every reached file must therefore resolve inside the pool.
+fn closure_import_facts() -> List<ImportResolutionFact> {
+  import_resolution_facts_live(
+    pool_roots: closure_pool_roots(),
+    importer_roots: closure_pool_roots(),
+    exclude_substrings: module_graph_exclude_substrings
+  )
+}
+
+fn every_closure_import_resolves_in_pool(closure: FreeMonoid<String>) -> Bool {
+  let facts = closure_import_facts()
+  for_all(xs: facts, predicate: fn(f) {
+    contains(xs: closure, item: f.path, eq: string_eq) == false || f.target_declared
+  })
+}
+
+test fn dag_import_closure_live_witness_bundle_holds() -> Bool {
+  let derived = derived_conformance_closure()
+  set_equal(xs: derived, ys: declared_paths())
+    && set_equal(xs: derived, ys: declared_without_entry()) == false
+    && set_equal(xs: derived, ys: declared_with_bogus()) == false
+    && every_closure_import_resolves_in_pool(closure: derived)
+}

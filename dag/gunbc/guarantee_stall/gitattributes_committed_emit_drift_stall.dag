@@ -18,7 +18,7 @@ data gitattributes_committed_emit_drift_stall: GuaranteeStall = GuaranteeStall {
   current: OutsideTheLadder,
   ceiling: MechanicallyPreventable,
   blocker: ClimbableButUnbuilt,
-  population: BoundedPopulation { members: Cons { head: "test.claim.gitattributes_emit_witness_test.witness_committed_matches_emit_holds", tail: Empty {} } },
+  population: BoundedPopulation { members: Cons { head: "test.claim.gitattributes_emit_witness.witness_committed_matches_emit_holds", tail: Empty {} } },
   next_rung_trigger: climbs_when_awaiting(
     capability: "the authority edit that introduced the drift is identified, .gitattributes is regenerated from that authority, and a required generated-artifact drift gate is restored so later authority/artifact disagreement refuses",
     awaiting: [dashboard_work_item_referent(node: "adhoc-16f7520a-85f" as RoadmapNodeId)],

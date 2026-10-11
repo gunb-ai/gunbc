@@ -397,7 +397,7 @@ fn xl2_rehearse_stripped(source_commit: GitObjectId, source_tree: GitObjectId, s
 // run can only answer refusals already known, so a whole-tree run today buys nothing.
 // The run itself is a one-shot `gunbc run --function` on a host with an enforceable cgroup limit
 // (never a shared session container; the whole-tree resolve is tens of GB), receipt on the delivering
-// change. Until then the stages below the collector execute in test.claim.namespace_xl2_rehearsal_census_test,
+// change. Until then the stages below the collector execute in test.claim.namespace_xl2_rehearsal_census,
 // and the collector's live half carries the route deficit its own module states.
 // NO INHABITANCE CLAIM OVER A PINNED FIXTURE, AND WHY: the collector's subject IS the repository's
 // tree at the ref, and gunbc.namespace.namespace_step0_subject_collector states that a mocked revision would let

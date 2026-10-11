@@ -31,7 +31,7 @@ fn shard_a_exemplar_entry_path() -> String {
 // carrying its WitnessBinRefusal, so "the compile never ran" no longer shares a value with "the
 // module was unclean" at this site (gunbc.predicate_cause_aliasing_roster). The compiler is a
 // parameter so the refusal arm is reachable by a control that supplies an unready binary
-// (test.claim.dag_compile_clean_shard_a_witness_test), not only by breaking the real one.
+// (test.claim.dag_compile_clean_shard_a_witness), not only by breaking the real one.
 fn single_module_shard_compile_typed(compiler: WitnessBin, entry_dir: String, entry_file: String) -> SubjectEvidence<WitnessBinRefusal, Bool> {
   let root = git.Inspect.Toplevel()
   match witness_bin_ensure_built_typed(root: root.path, bin: compiler) {

@@ -9,7 +9,7 @@ import extdeps.illumination.minions { minion_first_names }
 // imports the one in force. Every entry is a lowercase ASCII letter string, so each is a legal DNS
 // label alone and every hyphenated form is too. THE ORDER IS PART OF THE FACT: a recorded draw
 // (gunbc.hostname_allocation HumanNameDraw) indexes these lists, so editing or reordering an entry
-// changes what an old draw denotes and reds test.claim.hostname_allocation_witness_test. Grow a list only
+// changes what an old draw denotes and reds test.claim.hostname_allocation_witness. Grow a list only
 // by appending.
 
 data gen_z_first_parts: List<NonEmptyStr> = [

@@ -107,7 +107,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // SOUNDNESS CONDITION ON THE DIMENSION, sharpened after review 44999 and deep-eagle-728 oracle
 // msg_fac61885. Two subject cases, two carriers, one axis — duplication unwritable rather than
 // forbidden-after-the-fact. (1) Subject does NOT carry content identity (CliTool, and the tag
-// coordinate test.claim.tool_pin_witness_test ActionTagCoordinate -- an ActionRelease is NOT this case,
+// coordinate test.claim.tool_pin_witness ActionTagCoordinate -- an ActionRelease is NOT this case,
 // since its commit is its identity, so it is case (2) or needs no pin at all):
 // Pin<Subject> with required version and expected_identity — the pin SUPPLIES identity the subject
 // lacks; expected_identity is new information with one home. (2) Subject fully determines cited

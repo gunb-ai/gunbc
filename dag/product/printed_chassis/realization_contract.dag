@@ -175,7 +175,7 @@ fn raw_realization_envelope(
 // enrolled in a corpus that must compile. That reasoning skipped the distinction DESIGN 4b draws
 // exactly here: a state unauthorable in the ACCEPTED CORPUS may still be authorable as SOURCE HANDED
 // TO THE COMPILER BY A FIXTURE, and only the second boundary decides whether the check has a RED.
-// It does. test.claim.printed_chassis_admitted_realization_seal_witness_test hands the forged record
+// It does. test.claim.printed_chassis_admitted_realization_seal_witness hands the forged record
 // literal to gunbc.compile_diagnostic_census as data and asserts a SoleConstructorViolation scoped to
 // subject_name DecodedRealizationV0, against a green source with identical imports and no literal, and
 // asserts the difference between them -- the two forms that module's own annotation names as exact.

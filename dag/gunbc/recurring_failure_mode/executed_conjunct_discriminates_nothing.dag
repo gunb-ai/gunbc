@@ -51,7 +51,7 @@ data executed_conjunct_discriminates_nothing: RecurringFailureMode = RecurringFa
 
     "**SPECIMEN, with both halves executed** (gunbc#9838, `gunbc.self_host_compile_phase_frontier`): `census_population_is_duplicate_free` was added as a conjunct of `receipt_population_coherent`, evaluated on every coherence check and reachable from the live path; deleting it left the whole witness module green.",
 
-    "The fixture that isolates it is a receipt whose `refused_files` REPEATS A PATH -- enrolled as `a_receipt_whose_refused_population_repeats_a_path_is_refused_by_coherence` in `test.claim.self_host_compile_phase_frontier_witness_test`, with `the_same_receipt_without_the_repeat_is_coherent` as its positive control.",
+    "The fixture that isolates it is a receipt whose `refused_files` REPEATS A PATH -- enrolled as `a_receipt_whose_refused_population_repeats_a_path_is_refused_by_coherence` in `test.claim.self_host_compile_phase_frontier_witness`, with `the_same_receipt_without_the_repeat_is_coherent` as its positive control.",
 
     "The subject that looks equally good and is not: a repeated ERROR DIAGNOSTIC IDENTITY also reddens the module, but it breaks a count invariant one line over rather than this conjunct, so it would have scored the DEAD conjunct as LIVE and closed the investigation with the wall still inert.",
 
@@ -67,7 +67,7 @@ data executed_conjunct_discriminates_nothing: RecurringFailureMode = RecurringFa
 
     "**Neither is found by checking harder along the axis that already reads green.** **SECOND SPECIMEN, 2026-09-02, the same shape one layer down and found by a different tell.** `v1.stage0.required_regen_host` `admit_stage_execution_from_model` built ONE identity list from the stage plan and passed it as BOTH the `planned` and the `executed` field of `RegenStageExecutionObservation`, so `v2.workflow.regen_convergence_transaction` `regen_identity_population_eq` evaluated x == x.clone() on every install of the self-host convergence transaction.",
 
-    "The conjunct ran, the install boundary really blocked, and `StagePlannedExecutedMismatch` stayed authorable in `v2.test.claim.regen_convergence_transaction_witness_test` while being unreachable from the real acceptance path -- the exact split section 4b's authorable-RED rule exists to catch.",
+    "The conjunct ran, the install boundary really blocked, and `StagePlannedExecutedMismatch` stayed authorable in `v2.test.claim.regen_convergence_transaction_witness` while being unreachable from the real acceptance path -- the exact split section 4b's authorable-RED rule exists to catch.",
 
     "**THE DELETE ARM IS NOT WHAT FOUND IT; THE PRODUCER COUNT IS**, and that is this specimen's addition to the row: reading the two sides of one population equality back to their PRODUCERS and finding a single producer is cheaper than removing the conjunct and re-running, and it needs no experiment -- any equality whose two arguments trace to one value is this class already.",
 

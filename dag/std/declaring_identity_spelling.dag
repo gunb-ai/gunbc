@@ -15,8 +15,8 @@ import v2.std.qualified_name { QualifiedName }
 // collector or a parse-tree walker.
 //
 // WHAT PRODUCTION INGEST ACTUALLY SEES is measured by
-// v2.test.claim.declaring_identity_spelling.production_ingest_test and
-// v2.test.claim.namespace_xl0.call_argument_mention_survival_test:
+// v2.test.claim.declaring_identity_spelling.production_ingest and
+// v2.test.claim.namespace_xl0.call_argument_mention_survival:
 // SURVIVES as sites (unusable for requalification): a BARE value not inside a
 // call; a parameter reference; a BARE type name in PARAMETER position.
 // DOES NOT: a BARE type name in FIELD position (separate from qualification);

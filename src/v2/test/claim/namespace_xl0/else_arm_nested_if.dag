@@ -1,0 +1,187 @@
+module v2.test.claim.namespace_xl0.else_arm_nested_if
+
+import v2.compiler.compile {
+  NativeCensusModuleFileRefused,
+  NativeCensusModuleOutcome,
+  NativeCensusModuleResolveRefused,
+  NativeCensusModuleResolved,
+  NativeTestContext,
+  native_census_module_resolution,
+  native_census_modules,
+  native_lane_file_refusal_index,
+  native_test_context_from_ingest
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.algebra { fold_list }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import std.algebra { Cons, Empty }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT FOLLOWS `else` IS AN `else if` ONLY WHEN ITS FIRST PRODUCTION IS AN if_expr.
+//
+// THE SUBJECT is v2.compiler.body_lowering_fold body_lower_if_else_capture_optional on the native lane's
+// route (native_test_context_from_ingest, then native_census_module_resolution). After `else` it
+// searched the whole else part for ANY if_expr, so `else { match k { A => .. B => if c {..} else {..} } }`
+// answered the if NESTED in the second arm, and the else arm lowered to that if alone
+// (gunbc.recurring_failure_mode else_arm_lowered_as_an_if_nested_inside_it). Found by #12713's census in
+// boot_image_export_ownership export_ownership_standing.
+//
+// THE REDS ON MAIN: an undeclared name in the dropped scrutinee, and one in the dropped first arm, each
+// RESOLVED on main -- the part carrying it was gone -- and each refuses unbound at its atom on head.
+// CONTROLS, TRUE ON BOTH: an undeclared name inside the nested if (the part main kept) refuses at it;
+// a real `else if` chain still reads its nested else; the declared shape resolves.
+data eam_scrutinee_source: String = "module v2.test.eam_scrutinee\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\ntype EamK = EamA | EamB { v: Int }\n\nfn eam_probe(u: Int, c: Bool, k: EamK) -> Int {\n  if u == 0 {\n    u\n  } else {\n    match eam_undeclared_scrutinee {\n      EamA => u\n      EamB { v: w } =>\n        if c { w } else { u }\n    }\n  }\n}\n"
+
+data eam_first_arm_source: String = "module v2.test.eam_first_arm\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\ntype EamK = EamA | EamB { v: Int }\n\nfn eam_probe(u: Int, c: Bool, k: EamK) -> Int {\n  if u == 0 {\n    u\n  } else {\n    match k {\n      EamA => eam_undeclared_first_arm\n      EamB { v: w } =>\n        if c { w } else { u }\n    }\n  }\n}\n"
+
+data eam_nested_if_source: String = "module v2.test.eam_nested_if\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\ntype EamK = EamA | EamB { v: Int }\n\nfn eam_probe(u: Int, c: Bool, k: EamK) -> Int {\n  if u == 0 {\n    u\n  } else {\n    match k {\n      EamA => u\n      EamB { v: w } =>\n        if c { eam_undeclared_nested_if } else { u }\n    }\n  }\n}\n"
+
+data eam_else_if_source: String = "module v2.test.eam_else_if\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\ntype EamK = EamA | EamB { v: Int }\n\nfn eam_probe(u: Int, c: Bool, k: EamK) -> Int {\n  if u == 0 {\n    u\n  } else if c {\n    u\n  } else {\n    eam_undeclared_else_if\n  }\n}\n"
+
+data eam_declared_source: String = "module v2.test.eam_declared\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\ntype EamK = EamA | EamB { v: Int }\n\nfn eam_probe(u: Int, c: Bool, k: EamK) -> Int {\n  if u == 0 {\n    u\n  } else {\n    match k {\n      EamA => u\n      EamB { v: w } =>\n        if c { w } else { u }\n    }\n  }\n}\n"
+
+fn eam_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data eam_ingest: SourceRootIngest = Cons {
+    head: eam_read(source: eam_scrutinee_source, id: ^eam_scrutinee_artifact, unit: ^eam_scrutinee_cu, path: "src/v2/test/fixture/namespace_xl0/eam_scrutinee.dag"),
+    tail: Cons {
+    head: eam_read(source: eam_first_arm_source, id: ^eam_first_arm_artifact, unit: ^eam_first_arm_cu, path: "src/v2/test/fixture/namespace_xl0/eam_first_arm.dag"),
+    tail: Cons {
+    head: eam_read(source: eam_nested_if_source, id: ^eam_nested_if_artifact, unit: ^eam_nested_if_cu, path: "src/v2/test/fixture/namespace_xl0/eam_nested_if.dag"),
+    tail: Cons {
+    head: eam_read(source: eam_else_if_source, id: ^eam_else_if_artifact, unit: ^eam_else_if_cu, path: "src/v2/test/fixture/namespace_xl0/eam_else_if.dag"),
+    tail: Cons {
+    head: eam_read(source: eam_declared_source, id: ^eam_declared_artifact, unit: ^eam_declared_cu, path: "src/v2/test/fixture/namespace_xl0/eam_declared.dag"),
+    tail: Empty
+  }
+  }
+  }
+  }
+  }
+
+// ONE FRONT END FOR EVERY CLAIM, enrolled WARM in v2.workflow.floor_pure_producer_share.
+type EamVerdict
+  = EamResolved
+  | EamRefused { reason: Symbol, at_atom: Optional<Symbol> }
+  | EamFileRefused
+  | EamAbsent
+
+type EamOutcomes
+  = EamContextRefused
+  | EamOutcomesDecided {
+      scrutinee: EamVerdict
+      first_arm: EamVerdict
+      nested_if: EamVerdict
+      else_if: EamVerdict
+      declared: EamVerdict
+    }
+
+fn eam_verdict_of(outcome: NativeCensusModuleOutcome) -> EamVerdict {
+  match outcome {
+    NativeCensusModuleResolved => EamResolved
+    NativeCensusModuleFileRefused => EamFileRefused
+    NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } =>
+      EamRefused {
+        reason: d.head.reason,
+        at_atom: match d.head.at {
+          NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at)
+          _ => optional_absent()
+        }
+      }
+  }
+}
+
+fn eam_verdict_in(context: NativeTestContext, module_name: String) -> EamVerdict {
+  fold_list(
+    xs: native_census_modules(ingest: eam_ingest),
+    empty: EamAbsent,
+    cons: fn(acc, entry) {
+      if entry.module == module_name {
+        eam_verdict_of(
+          outcome: native_census_module_resolution(
+            context: context,
+            refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
+            entry: entry
+          ).outcome
+        )
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn eam_outcomes() -> EamOutcomes {
+  match native_test_context_from_ingest(ingest: eam_ingest) {
+    Rejected { diagnostics: _ } => EamContextRefused
+    Accepted { value: context, diagnostics: _ } =>
+      EamOutcomesDecided {
+        scrutinee: eam_verdict_in(context: context, module_name: "v2.test.eam_scrutinee"),
+        first_arm: eam_verdict_in(context: context, module_name: "v2.test.eam_first_arm"),
+        nested_if: eam_verdict_in(context: context, module_name: "v2.test.eam_nested_if"),
+        else_if: eam_verdict_in(context: context, module_name: "v2.test.eam_else_if"),
+        declared: eam_verdict_in(context: context, module_name: "v2.test.eam_declared")
+      }
+  }
+}
+
+fn eam_unbound_at(v: EamVerdict, atom: Symbol) -> Bool {
+  match v {
+    EamRefused { reason: r, at_atom: Present { value: id } } => (r == ^resolve_reason_unbound_symbol) && (id == atom)
+    _ => false
+  }
+}
+
+test fn the_scrutinee_of_a_match_in_an_else_arm_is_read() -> Bool {
+  match eam_outcomes() {
+    EamOutcomesDecided { scrutinee: v, first_arm: _, nested_if: _, else_if: _, declared: _ } => eam_unbound_at(v: v, atom: ^eam_undeclared_scrutinee)
+    EamContextRefused => false
+  }
+}
+
+test fn the_first_arm_of_a_match_in_an_else_arm_is_read() -> Bool {
+  match eam_outcomes() {
+    EamOutcomesDecided { scrutinee: _, first_arm: v, nested_if: _, else_if: _, declared: _ } => eam_unbound_at(v: v, atom: ^eam_undeclared_first_arm)
+    EamContextRefused => false
+  }
+}
+
+test fn the_if_nested_in_the_match_arm_is_still_read() -> Bool {
+  match eam_outcomes() {
+    EamOutcomesDecided { scrutinee: _, first_arm: _, nested_if: v, else_if: _, declared: _ } => eam_unbound_at(v: v, atom: ^eam_undeclared_nested_if)
+    EamContextRefused => false
+  }
+}
+
+test fn a_real_else_if_chain_still_reads_its_nested_else() -> Bool {
+  match eam_outcomes() {
+    EamOutcomesDecided { scrutinee: _, first_arm: _, nested_if: _, else_if: v, declared: _ } => eam_unbound_at(v: v, atom: ^eam_undeclared_else_if)
+    EamContextRefused => false
+  }
+}
+
+test fn the_declared_shape_resolves() -> Bool {
+  match eam_outcomes() {
+    EamOutcomesDecided { scrutinee: _, first_arm: _, nested_if: _, else_if: _, declared: v } => match v {
+      EamResolved => true
+      _ => false
+    }
+    EamContextRefused => false
+  }
+}

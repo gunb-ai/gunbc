@@ -18,7 +18,7 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_apply_r
 // this population cannot hide inside that drop's trigger.
 //
 // THE COST IS THE APPLY RENDER, NOT THE PREDICATES. Both claims string-inspect
-// `test.claim.live_deploy.emit_test` `witness_apply_script`, which is module-scope
+// `test.claim.live_deploy.emit` `witness_apply_script`, which is module-scope
 // `live_deploy_apply_script_for`. Required floor run 35174104379 measured 197955 and 205036
 // eval steps against a 72300 new-witness budget. Run 35098721741 on the prior C2 head measured
 // 5408 and 230 for the same identities because gunbc#11204's warm share fill of

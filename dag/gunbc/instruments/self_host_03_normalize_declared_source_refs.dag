@@ -7,7 +7,7 @@ import v2.std.cross_tree.import_model { V2Tree }
 // declared_source_refs for the 03_normalize behavioral witness only (review 41433 fix): this list
 // opts src/v2/compiler/normalize.dag's witness entry into the cli_run.rs affected-set selection
 // axis (docs/plans/declared-source-ref-selection-design.md §4-5, §5.1 flagship). Homed in its OWN
-// module, imported only by dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag — not
+// module, imported only by dag/test/claim/self_host_03_normalize_behavioral_witness.dag — not
 // by gunbc.instruments.self_host_module_behavioral_transport_roster, which all 16 frontier witness entries
 // share. cli_run.rs's declared_source_ref scan is closure-wide (every file in a witness entry's
 // transitive import closure), so a declared_source_refs list living in the shared roster would leak
@@ -16,7 +16,7 @@ import v2.std.cross_tree.import_model { V2Tree }
 
 data sn_source_ref: SourceRef = source_ref_for_storage_path(path: "src/v2/compiler/normalize.dag", source_root: V2Tree)
 
-data sn_contract_ref: SourceRef = source_ref_for_storage_path(path: "src/v2/test/claim/self_host_contract/normalize_emitted_contract_test.dag", source_root: V2Tree)
+data sn_contract_ref: SourceRef = source_ref_for_storage_path(path: "src/v2/test/claim/self_host_contract/normalize_emitted_contract.dag", source_root: V2Tree)
 
 // Hand-verified completeness (docs/plans/declared-source-ref-selection-design.md §5.1 flagship):
 // every storage path this transport reads from the repository is listed -- the subject .dag and the

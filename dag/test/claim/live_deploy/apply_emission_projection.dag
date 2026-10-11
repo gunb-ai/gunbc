@@ -16,7 +16,7 @@ import std.optional { Present, Absent }
 //
 // WHY THIS MODULE EXISTS AT ALL, stated first because a projection module beside a fixture module
 // is the shape a reviewer should be suspicious of. Two witness modules assert on what the deploy
-// apply emits -- test.claim.live_deploy.emit_test and test.claim.shell_exec_run_argv_embed_witness_test --
+// apply emits -- test.claim.live_deploy.emit and test.claim.shell_exec_run_argv_embed_witness --
 // and both did it by rendering `live_deploy_apply_script_for` and grepping the result. Measured on
 // the required floor (run 34888954422, artifact required-floor-claim-cost) one render is ~194,000
 // eval steps against a per-claim ceiling of 72,300, and the fixed half of that cost is BELOW the

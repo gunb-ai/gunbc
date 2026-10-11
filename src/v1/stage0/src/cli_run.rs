@@ -499,7 +499,7 @@ pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
 
 // SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.cli_run_workspace_root_scaffold;
 // receipt: docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold;
-// witness: dag/test/claim/cli_run_workspace_root_hand_rust_witness_test.dag).
+// witness: dag/test/claim/cli_run_workspace_root_hand_rust_witness.dag).
 // 🟡 dissolve-on: workspace_root_from — runtime workspace-root discovery in HAND-Rust
 // (landed on main as #6484 .git-ancestor walk); DISSOLVES WHEN cli_run.rs Chunk F lands
 // (cli-run-reconcile-defork.md → GENERATED workflow host-effect apply) OR ROADMAP
@@ -2676,7 +2676,7 @@ fn resolve_process_workspace_root() -> (PathBuf, WorkspaceRootBasis) {
 /// when `path` is not under the runtime root — never widens to cwd-relative or absolute keys.
 ///
 /// Authority: modeled by `gunbc.cli_run_repo_grant` (`cli_run_repo_path_admissible`);
-/// witness: `dag/test/claim/cli_run_repo_grant_witness_test.dag`.
+/// witness: `dag/test/claim/cli_run_repo_grant_witness.dag`.
 /// 🟡 dissolve-on: HAND-RUST gate retires when cli_run.rs Chunk F lands
 /// (docs/plans/cli-run-reconcile-defork.md) — refusal becomes the located
 /// `std.access.AccessDecision::Deny` from the single grant policy, not a parallel string check.
@@ -2743,7 +2743,7 @@ fn module_index_path_key(path: &Path) -> String {
 // SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.cli_run_workspace_root_scaffold
 // (cli_run_source_root_anchor_scaffold row);
 // receipt: docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold;
-// witness: dag/test/claim/cli_run_workspace_root_hand_rust_witness_test.dag).
+// witness: dag/test/claim/cli_run_workspace_root_hand_rust_witness.dag).
 // 🟡 dissolve-on: try_anchor_source_root — declared layer/pool roots come from HAND-Rust
 // while `dag/compiler` is modeled-before-implemented (§6 model-first), so absence is a
 // legitimate state skipped LOUDLY (counted line per root); DISSOLVES WHEN cli_run.rs Chunk F
@@ -3236,7 +3236,7 @@ mod process_workspace_root_tests {
 }
 
 /// Pins HAND-RUST `repo_relative_path` against `gunbc.cli_run_repo_grant` on the same
-/// fixture spellings. Witness: `dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness_test.dag`.
+/// fixture spellings. Witness: `dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness.dag`.
 #[cfg(test)]
 mod cli_run_arg_channel_tests {
     use super::{
@@ -4158,7 +4158,7 @@ pub enum MultiModuleCompileFixtureOutcome {
 /// only consumers being its own witness rows, naming the consumer that would arrive (the
 /// `AmbiguousBareNameRead` refusal in `claim_scope_for`) and the trigger that would let it
 /// (the qualification batches merged and the variant-arm tier landed). Both have happened: the
-/// refusal is in this diff, below, and `dag/test/claim/bare_name_ambiguity_wall_witness_test.dag`
+/// refusal is in this diff, below, and `dag/test/claim/bare_name_ambiguity_wall_witness.dag`
 /// is the consumer that reaches this type through `claim_scope_fixture`. A frontier that outlives
 /// its own trigger is the stale row DESIGN §4b(3) warns about, so it ends here rather than
 /// describing a state that no longer holds.
@@ -4509,7 +4509,7 @@ thread_local! {
     /// claim's elapsed time. It landed on the CPU ceiling alone while the wall ceiling kept
     /// charging the whole fill to the first payer: two rows whose own cost is 0ms and 1ms refused
     /// a required floor at ~18000ms against a 10000ms wall requirement (main run 33145062452,
-    /// `test.claim.transport_script_wall_compile_red_test`: `[floor-shared-fill]` reported
+    /// `test.claim.transport_script_wall_compile_red`: `[floor-shared-fill]` reported
     /// `marginal_cpu_ms=0 fill_cpu_ms=18966` for one). A one-clock rule is the §3 failure the CPU
     /// comment names — one concept, two homes — so this cell closes the second home rather than
     /// adding a policy beside it.
@@ -5678,12 +5678,12 @@ pub(crate) enum CompileCleanScopePlan {
 //   IDENT=CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER
 //   TYPE_ANN=: &str =
 //   rg -F "${IDENT}${TYPE_ANN}" src/v1/stage0/src/cli_run.rs   # == 1 until deletion
-// Witness: dag/test/claim/compile_clean_shard_entry_paths_fast_hand_rust_witness_test.dag;
+// Witness: dag/test/claim/compile_clean_shard_entry_paths_fast_hand_rust_witness.dag;
 // dissolve-on: gunbc.instruments.dag_compile_clean_shard_roster compile_clean_shard_entry_paths_fast_hand_rust_dissolve_trigger.
 pub(crate) const CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER: &str =
     "cli_run_compile_clean_shard_entry_paths_fast";
 
-pub const CLASS_B_ENTRY_REL: &str = "src/v2/extdeps/languages/rust_test_fixtures.dag";
+pub const CLASS_B_ENTRY_REL: &str = "src/v2/extdeps/languages/rust_fixtures.dag";
 pub const CLASS_B_TRANSPORT_REL: &str = "src/v2/workflow/class_b_import_closure_transport.dag";
 /// Rows 1-2's shape+call, relocated out of CLASS_B_TRANSPORT_REL so a witness reaching only
 /// rows 1-2 does not inherit the transport module's extdeps.git / extdeps.git.inspect /
@@ -6701,7 +6701,7 @@ mod typed_module_content_key_tests {
     //!
     //! The compiler-identity term cannot vary within one test process; it is witnessed at the
     //! algebra level by the PR1 .dag witnesses
-    //! (`src/v2/test/claim/interface_summary/typed_module_key_test.dag`). Warm==cold
+    //! (`src/v2/test/claim/interface_summary/typed_module_key.dag`). Warm==cold
     //! byte-equivalence stays owned by `resolve_typed_cache_equivalence_test`.
     //!
     //! Mutations rewrite the SAME file path so the `module_source_identity` collision wall
@@ -8162,7 +8162,7 @@ pub fn compile_emission_over(request: &CompileRequest, residency: IndexResidency
         // HAND-RUST RECEIPT: this adds NO new path predicate. It consumes the existing gate, whose
         // authority is `gunbc.cli_run_repo_grant` `cli_run_repo_path_admissible` and whose
         // Rust/authority equivalence is pinned by
-        // `dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness_test.dag` together with
+        // `dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness.dag` together with
         // this file's `cli_run_repo_grant_equivalence_tests`. Its dissolve-on is that module's:
         // cli_run.rs Chunk F (docs/plans/cli-run-reconcile-defork.md), when the refusal becomes the
         // located `std.access.AccessDecision::Deny` from the single grant policy. Routing a second
@@ -14702,7 +14702,7 @@ pub struct IndexRetentionSnapshot {
 /// the interim declared fraction denominator until measured space lands).
 /// SEED MIRROR of `gunbc.typed_module_cache_capacity` `typed_module_bytes_per_entry_estimate`.
 /// Written as a canonical decimal literal (3 * 1024 * 1024) so the mirror lens can join it to
-/// its authority row; see `test.claim.seed_mirror_constant_lens_witness_test`.
+/// its authority row; see `test.claim.seed_mirror_constant_lens_witness`.
 const TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE: u64 = 3145728;
 /// SEED MIRROR of `gunbc.typed_module_cache_capacity` `typed_module_cache_entries_floor`.
 const TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR: usize = 100;
@@ -17843,7 +17843,7 @@ mod runtime_error_location_tests {
         );
     }
 
-    // Byte-equal to `test.claim.observation_ci_render_witness_test`
+    // Byte-equal to `test.claim.observation_ci_render_witness`
     // `w_runtime_error_detail_names_the_raising_declaration`: the mirror and its authority agree.
     #[test]
     fn detail_mirror_matches_the_dag_authority_literal() {
@@ -20004,7 +20004,7 @@ mod budget_completion_tests {
     /// ceiling with the unsplit figure must still refuse. So the test fails if the split is
     /// removed AND fails if the ceiling stops firing at all, which is the pair a single assertion
     /// cannot carry. The shape is the one main run 33145062452 exhibited on
-    /// `test.claim.transport_script_wall_compile_red_test`, whose two rows reported
+    /// `test.claim.transport_script_wall_compile_red`, whose two rows reported
     /// `marginal_cpu_ms=0`/`1` against `fill_cpu_ms` near 19000 and refused the required floor.
     fn a_shared_fill_is_not_charged_to_the_claim_that_paid_it() {
         let measured_wall_nanos = 18_001_000_000u128;
@@ -24651,7 +24651,7 @@ pub fn compute_histogram_data(rows: &[WitnessRowCost]) -> HistogramData {
 pub const DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N: usize = 15;
 
 pub const WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY: &str =
-    "dag/test/claim/wet_hermetic_equivalence_witness_test.dag";
+    "dag/test/claim/wet_hermetic_equivalence_witness.dag";
 pub const WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA: &str =
     "wet_hermetic_equivalence_representative_prefix";
 
@@ -24757,7 +24757,7 @@ fn path_matches_any_substring(path: &str, subs: &[String]) -> bool {
 
 // SCAFFOLD (§7 HAND-RUST — `cli_run_witness_admission_source_scan`):
 // Registered planning artifact: `gunbc.cli_run_witness_admission_scaffold` (review 44487
-// checkable deferral receipt). Witness: `dag/test/claim/cli_run_witness_admission_hand_rust_witness_test.dag`.
+// checkable deferral receipt). Witness: `dag/test/claim/cli_run_witness_admission_hand_rust_witness.dag`.
 // ROADMAP lane `5-dissolve-patches` / module-identity-storage-binding Phase 1 (b)
 // (gunbc.roadmap.roadmap_authority / ROADMAP.md; module-identity-storage-binding-design (plan doc deleted 2026-08-28)).
 // The host Phase 0(b) admission key set is a hand-rolled text scan over enrollment forms in
@@ -27479,9 +27479,9 @@ pub(crate) const CLI_RUN_AFFECTED_SET_STOP_LINE_BRIDGE_MARKER: &str =
     "cli_run_affected_set_stop_line_bridge";
 
 const COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY: &str =
-    "dag/test/claim/dag_compile_clean_shard_a_witness_test.dag";
+    "dag/test/claim/dag_compile_clean_shard_a_witness.dag";
 const COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY: &str =
-    "dag/test/claim/dag_compile_clean_scope_witness_test.dag";
+    "dag/test/claim/dag_compile_clean_scope_witness.dag";
 
 fn entry_has_declared_source_refs(entry_path: &str, facts: &ModuleGraphFactsLive) -> bool {
     !declared_source_ref_paths_for_entry(entry_path, facts).is_empty()
@@ -28127,7 +28127,7 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
     // asserted 1 of 2 and failed here.
     #[test]
     fn rename_destination_enrolls_every_test_decl_not_only_the_diff_touched_one() {
-        let dest = "src/v2/test/claim/machine_shape_construction_wall_test.dag";
+        let dest = "src/v2/test/claim/machine_shape_construction_wall.dag";
         let content = std::fs::read_to_string(super::process_workspace_root().join(dest))
             .expect("the renamed wall entry is in the tree");
         let declared: HashSet<String> = super::scan_test_decl_names(&content).into_iter().collect();
@@ -28140,15 +28140,15 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
 
         // gunbc#9823's own `git diff -U0` output for the renamed entry, verbatim.
         let diff = "\
-diff --git a/dag/test/claim/machine_shape_construction_wall_test.dag b/src/v2/test/claim/machine_shape_construction_wall_test.dag
+diff --git a/dag/test/claim/machine_shape_construction_wall_test.dag b/src/v2/test/claim/machine_shape_construction_wall.dag
 similarity index 97%
 rename from dag/test/claim/machine_shape_construction_wall_test.dag
-rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
+rename to src/v2/test/claim/machine_shape_construction_wall.dag
 --- a/dag/test/claim/machine_shape_construction_wall_test.dag
-+++ b/src/v2/test/claim/machine_shape_construction_wall_test.dag
++++ b/src/v2/test/claim/machine_shape_construction_wall.dag
 @@ -1 +1 @@
 -module test.claim.machine_shape_construction_wall
-+module v2.test.claim.machine_shape_construction_wall_test
++module v2.test.claim.machine_shape_construction_wall
 @@ -90 +89,0 @@ test fn gate_green_synthetic_shape_from_catalog_call() -> Bool {
 -
 ";
@@ -28175,7 +28175,7 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
     // rule is ever applied unconditionally.
     #[test]
     fn in_place_modify_enrolls_only_the_touched_test_decl() {
-        let dest = "src/v2/test/claim/machine_shape_construction_wall_test.dag";
+        let dest = "src/v2/test/claim/machine_shape_construction_wall.dag";
         let content = std::fs::read_to_string(super::process_workspace_root().join(dest))
             .expect("the renamed wall entry is in the tree");
         let green_line = content
@@ -28201,7 +28201,7 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
     }
 
     fn machine_shape_in_place_green_diff() -> (String, String) {
-        let dest = "src/v2/test/claim/machine_shape_construction_wall_test.dag";
+        let dest = "src/v2/test/claim/machine_shape_construction_wall.dag";
         let content = std::fs::read_to_string(super::process_workspace_root().join(dest))
             .expect("the renamed wall entry is in the tree");
         let green_line = content
@@ -28272,18 +28272,18 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
     }
 
     fn machine_shape_rename_diff() -> (&'static str, &'static str, String) {
-        let dest = "src/v2/test/claim/machine_shape_construction_wall_test.dag";
+        let dest = "src/v2/test/claim/machine_shape_construction_wall.dag";
         let src = "dag/test/claim/machine_shape_construction_wall_test.dag";
         let diff = "\
-diff --git a/dag/test/claim/machine_shape_construction_wall_test.dag b/src/v2/test/claim/machine_shape_construction_wall_test.dag
+diff --git a/dag/test/claim/machine_shape_construction_wall_test.dag b/src/v2/test/claim/machine_shape_construction_wall.dag
 similarity index 97%
 rename from dag/test/claim/machine_shape_construction_wall_test.dag
-rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
+rename to src/v2/test/claim/machine_shape_construction_wall.dag
 --- a/dag/test/claim/machine_shape_construction_wall_test.dag
-+++ b/src/v2/test/claim/machine_shape_construction_wall_test.dag
++++ b/src/v2/test/claim/machine_shape_construction_wall.dag
 @@ -1 +1 @@
 -module test.claim.machine_shape_construction_wall
-+module v2.test.claim.machine_shape_construction_wall_test
++module v2.test.claim.machine_shape_construction_wall
 @@ -90 +89,0 @@ test fn gate_green_synthetic_shape_from_catalog_call() -> Bool {
 -
 ";
@@ -28295,8 +28295,7 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
     // the fixed base census does not name, so reading it enrolled them and the fixture no
     // longer isolated the rename. The two test fns sit at the lines the diff's hunks name.
     fn machine_shape_rename_dest_sources(dest: &str) -> std::collections::HashMap<String, String> {
-        let mut content =
-            String::from("module v2.test.claim.machine_shape_construction_wall_test\n");
+        let mut content = String::from("module v2.test.claim.machine_shape_construction_wall\n");
         while content.lines().count() < 80 {
             content.push('\n');
         }
@@ -28492,7 +28491,7 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
     // No surviving declaration's own text changed, so nothing is charged.
     #[test]
     fn the_13126_claim_trim_charges_no_surviving_claim() {
-        let path = "src/v2/test/claim/parse/test_marker_channel_test.dag";
+        let path = "src/v2/test/claim/parse/test_marker_channel.dag";
         let head = include_str!("../testdata/test_marker_channel_head_587c833.dag.txt");
         let diff = include_str!("../testdata/test_marker_channel_trim_587c833.diff");
         let edits = text_attribution_edits(
@@ -28817,13 +28816,13 @@ new file mode 100644
     fn named_census_specimens_declare_reads_live_tree_and_call_a_sink() {
         let ws = workspace_root();
         let specimens = [
-            "dag/test/claim/fabric/fabric_output_contract_resolution_witness_test.dag",
-            "dag/test/claim/match_exhaustiveness_coproduct_witness_test.dag",
-            "dag/test/claim/direct_call_argument_type_witness_test.dag",
-            "dag/test/claim/declared_type_inhabitance_direct_call_witness_test.dag",
-            "dag/test/claim/declared_type_inhabitance_list_element_witness_test.dag",
-            "dag/test/claim/declared_type_expected_type_path_witness_test.dag",
-            "dag/test/claim/infer_record_lit_variant_field_witness_test.dag",
+            "dag/test/claim/fabric/fabric_output_contract_resolution_witness.dag",
+            "dag/test/claim/match_exhaustiveness_coproduct_witness.dag",
+            "dag/test/claim/direct_call_argument_type_witness.dag",
+            "dag/test/claim/declared_type_inhabitance_direct_call_witness.dag",
+            "dag/test/claim/declared_type_inhabitance_list_element_witness.dag",
+            "dag/test/claim/declared_type_expected_type_path_witness.dag",
+            "dag/test/claim/infer_record_lit_variant_field_witness.dag",
         ];
         let mut files = Vec::new();
         for rel in specimens {
@@ -28851,7 +28850,7 @@ new file mode 100644
     #[test]
     fn named_remaining_sio_direct_live_specimen_is_joined() {
         let ws = workspace_root();
-        let rel = "dag/test/claim/citation_cause_subject_disjointness_witness_test.dag";
+        let rel = "dag/test/claim/citation_cause_subject_disjointness_witness.dag";
         let content =
             std::fs::read_to_string(ws.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
         let files = vec![(rel.to_string(), content)];
@@ -28880,7 +28879,7 @@ new file mode 100644
     #[test]
     fn adding_the_census_marker_would_still_lose_the_conjunction_on_the_remaining_specimen() {
         let ws = workspace_root();
-        let rel = "dag/test/claim/citation_cause_subject_disjointness_witness_test.dag";
+        let rel = "dag/test/claim/citation_cause_subject_disjointness_witness.dag";
         let content =
             std::fs::read_to_string(ws.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
         assert!(
@@ -29255,17 +29254,17 @@ mod module_grain_affected_equivalence_tests {
     // when it doesn't, without requiring the full ~514-entry roster.
     fn dag_only_entry_sample() -> Vec<&'static str> {
         vec![
-            "dag/test/claim/card_intake_risk_witness_test.dag",
-            "dag/test/claim/ebay_listing_witness_test.dag",
-            "src/v2/test/claim/bash_program_fold_test.dag",
-            "dag/test/claim/v1_dag_parse_witness_test.dag",
+            "dag/test/claim/card_intake_risk_witness.dag",
+            "dag/test/claim/ebay_listing_witness.dag",
+            "src/v2/test/claim/bash_program_fold.dag",
+            "dag/test/claim/v1_dag_parse_witness.dag",
             "dag/gunbc/instruments/host_prelude.dag",
             "dag/gunbc/instruments/build_step.dag",
             "dag/gunbc/ci/ci_layer_roots.dag",
-            "src/v2/test/claim/bash_command_fold_test.dag",
-            "src/v2/workflow/orchestration_emit_test.dag",
+            "src/v2/test/claim/bash_command_fold.dag",
+            "src/v2/workflow/orchestration_emit.dag",
             "dag/test/claim/long/import_closure_live_test.dag",
-            "src/v2/test/claim/affected_set_universe_test.dag",
+            "src/v2/test/claim/affected_set_universe.dag",
             "src/v2/lens/module_graph.dag",
         ]
     }
@@ -29276,18 +29275,18 @@ mod module_grain_affected_equivalence_tests {
     // affected=true), and unrelated witnesses from both trees (affected=false).
     fn v2_only_entry_sample() -> Vec<&'static str> {
         vec![
-            "src/v2/workflow/orchestration_bash_test.dag",
-            "src/v2/workflow/orchestration_emit_test.dag",
-            "src/v2/test/claim/bash_command_fold_test.dag",
-            "src/v2/test/claim/bash_program_fold_test.dag",
-            "src/v2/test/claim/manual/bash_emit_command_test.dag",
-            "src/v2/test/claim/manual/emit_directive_bash_test.dag",
-            "src/v2/test/claim/manual/emit_directive_gha_test.dag",
-            "src/v2/workflow/orchestration_retry_emit_test.dag",
-            "src/v2/test/claim/realization_vocabulary_containment/lens_unit/discriminators_test.dag",
-            "dag/test/claim/card_intake_risk_witness_test.dag",
+            "src/v2/workflow/orchestration_bash.dag",
+            "src/v2/workflow/orchestration_emit.dag",
+            "src/v2/test/claim/bash_command_fold.dag",
+            "src/v2/test/claim/bash_program_fold.dag",
+            "src/v2/test/claim/manual/bash_emit_command.dag",
+            "src/v2/test/claim/manual/emit_directive_bash.dag",
+            "src/v2/test/claim/manual/emit_directive_gha.dag",
+            "src/v2/workflow/orchestration_retry_emit.dag",
+            "src/v2/test/claim/realization_vocabulary_containment/lens_unit/discriminators.dag",
+            "dag/test/claim/card_intake_risk_witness.dag",
             "dag/gunbc/instruments/host_prelude.dag",
-            "src/v2/test/claim/affected_set_universe_test.dag",
+            "src/v2/test/claim/affected_set_universe.dag",
             "dag/test/claim/long/import_closure_live_test.dag",
         ]
     }
@@ -32084,7 +32083,7 @@ impl ExprVarClassification<'_> {
         //
         // A HEAD WHOSE CHAIN NAMES A DECLARED MODULE IS A NAMESPACE ROOT, WHETHER OR NOT SOME
         // DECLARATION SHARES ITS SPELLING. The declared-anywhere test above cannot see that case:
-        // `test.claim.secret_rotation_witness_test` declares `fn v2()`, so `v2` in `v2.std.node.Node`
+        // `test.claim.secret_rotation_witness` declares `fn v2()`, so `v2` in `v2.std.node.Node`
         // is "declared", and without this arm it became a bare reference that resolved to that
         // test fn -- a dependency edge from production std modules into a test claim. The chain
         // is already recorded whole and resolved Qualified by its module prefix; its head is that
@@ -34990,7 +34989,7 @@ mod witness_layer_roots_compile_clean_tests {
         });
         let observation = declared_import_closure_binding_observation_from_resolved(
             resolved.as_ref(),
-            "v2.extdeps.languages.rust_test_fixtures",
+            "v2.extdeps.languages.rust_fixtures",
             "rust_selection_policy_node",
         );
         assert!(
@@ -35112,13 +35111,13 @@ mod witness_layer_roots_compile_clean_tests {
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn unrelated_hard_diagnostic_observation_is_not_runnable_at_producer() {
         use crate::v1_std_core::{make_error_node, CompilerDiagnostic};
-        const CONSUMER: &str = "v2.extdeps.languages.rust_test_fixtures";
+        const CONSUMER: &str = "v2.extdeps.languages.rust_fixtures";
         const SYMBOL: &str = "rust_selection_policy_node";
         with_workspace_cwd(|| {
-            let valid = "module v2.extdeps.languages.rust_test_fixtures\n\nimport std.types { Bool }\n\ndata probe: Bool = true\n";
+            let valid = "module v2.extdeps.languages.rust_fixtures\n\nimport std.types { Bool }\n\ndata probe: Bool = true\n";
             let compiled = compile_declared_import_closure_only_with_pool(
                 &class_b_declared_import_pool_roots(),
-                "src/v2/extdeps/languages/rust_test_fixtures.dag",
+                "src/v2/extdeps/languages/rust_fixtures.dag",
                 Some(valid),
             )
             .expect("content override bypasses pool load");
@@ -35131,7 +35130,7 @@ mod witness_layer_roots_compile_clean_tests {
                 Rc::new(CompilerDiagnostic::InternalError {
                     message: "producer control unrelated hard diagnostic".to_string(),
                     span: Rc::new(SourceSpan {
-                        file: "src/v2/extdeps/languages/rust_test_fixtures.dag".to_string(),
+                        file: "src/v2/extdeps/languages/rust_fixtures.dag".to_string(),
                         start: 0,
                         end: 1,
                     }),
@@ -35355,7 +35354,7 @@ mod witness_layer_roots_compile_clean_tests {
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn edgeless_entry_selects_on_its_dependency_and_skips_unrelated_touch() {
         with_workspace_cwd(|| {
-            let entry = "dag/test/claim/base64_rfc4648_witness_test.dag";
+            let entry = "dag/test/claim/base64_rfc4648_witness.dag";
             let roots = default_source_roots();
             let facts = build_module_graph_facts_live(&roots);
             let declared: HashSet<String> = facts.declared_paths.clone();
@@ -35487,7 +35486,7 @@ mod witness_layer_roots_compile_clean_tests {
 
     /// Lever-a receipt: docs-only touched paths skip compile-clean (no affected dag entries).
     #[test]
-    #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold; witness in dag/test/claim/dag_compile_clean_scope_witness_test.dag"]
+    #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold; witness in dag/test/claim/dag_compile_clean_scope_witness.dag"]
     fn scoped_plan_skips_docs_only_touch() {
         with_workspace_cwd(|| {
             let plan = compile_clean_scope_plan_from_touched_paths(
@@ -35534,7 +35533,7 @@ mod witness_layer_roots_compile_clean_tests {
 
     /// Lever-a receipt: a direct dag entry touch scopes to at least that entry.
     #[test]
-    #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold; witness in dag/test/claim/dag_compile_clean_scope_witness_test.dag"]
+    #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold; witness in dag/test/claim/dag_compile_clean_scope_witness.dag"]
     fn scoped_plan_includes_touched_dag_entry() {
         with_workspace_cwd(|| {
             let plan = compile_clean_scope_plan_from_touched_paths(
@@ -36079,7 +36078,7 @@ mod module_path_index_tests {
         let synthetic = "module gunbc.explicit_witness_admission\n\n\
              data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [\n\
                source_root_ingest_gate_admitted_witness(\n\
-                 entry: \"src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag\",\n\
+                 entry: \"src/v2/test/claim/self_host/compiler_closure_emit_from_ingest.dag\",\n\
                  f: \"compiler_closure_scoped_ingest_module_count_ok_holds\",\n\
                  kind: CorpusWitnessKind,\n\
                  reason: \"r\",\n\
@@ -36090,7 +36089,7 @@ mod module_path_index_tests {
             super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
         assert!(
             keys.contains(
-                &"src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag::compiler_closure_scoped_ingest_module_count_ok_holds"
+                &"src/v2/test/claim/self_host/compiler_closure_emit_from_ingest.dag::compiler_closure_scoped_ingest_module_count_ok_holds"
                     .to_string()
             ),
             "transport gate admission rows must register as executing consumer keys; got {keys:?}"
@@ -36106,7 +36105,7 @@ mod module_path_index_tests {
         let synthetic = "module gunbc.explicit_witness_admission\n\n\
              data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [\n\
                known_red_probe(\n\
-                 entry: \"dag/test/claim/self_host_body_producer_behavioral_witness_test.dag\",\n\
+                 entry: \"dag/test/claim/self_host_body_producer_behavioral_witness.dag\",\n\
                  f: \"self_host_body_producer_behavioral_receipt_holds\",\n\
                  kind: ExecutionWitnessKind,\n\
                  reason: \"r\",\n\
@@ -36117,7 +36116,7 @@ mod module_path_index_tests {
             super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
         assert!(
             keys.contains(
-                &"dag/test/claim/self_host_body_producer_behavioral_witness_test.dag::self_host_body_producer_behavioral_receipt_holds"
+                &"dag/test/claim/self_host_body_producer_behavioral_witness.dag::self_host_body_producer_behavioral_receipt_holds"
                     .to_string()
             ),
             "exact admission rows must register as executing consumer keys; got {keys:?}"
@@ -36642,7 +36641,7 @@ pub fn qualified_name_resolves_in_derived_module_set(qn: &crate::v1_interpreter:
 /// here stops `corpus_git_policy_leak_defused_holds`, and that red is NOT closable by the
 /// author who causes it -- the same seven operations are already typed and counted debt on
 /// the MATERIALIZATION side (`v2.std.operation_argv` `ArgvRowExpressionResidue`, pinned in
-/// `test.claim.operation_argv_corpus_witness_test`), owned by the argv-evaluation lane.
+/// `test.claim.operation_argv_corpus_witness`), owned by the argv-evaluation lane.
 ///
 /// So the two readings of one corpus disagree and this comment is where that is recorded:
 /// materialization counts the unreadable element as residue, the policy census renders it as
@@ -36977,11 +36976,11 @@ pub fn extdeps_shape_transport_policy_module_facts(
 // authority is the modeled lens: v2.lens.mandatory_tag's fold, registered in
 // required_compile_lens_roster at CompileLensRoot grain (the mandatory_tag_lens
 // row) and red/green-controlled at the v2 parse grain
-// (v2.test.claim.long.mandatory_tag_gate_witness_test). This block survives only because the
+// (v2.test.claim.long.mandatory_tag_gate_witness). This block survives only because the
 // interpreted v2 pipeline prices a whole-corpus witness out of every cadence
 // (measured 2026-07-22: ~33s/module parse + ~5.5s/module tokenize interpreted,
 // ~330 extdeps modules ≈ 3.5h; the modeled corpus witness exists at
-// src/v2/test/claim/long/mandatory_tag_extdeps_corpus_test.dag, offline recipe).
+// src/v2/test/claim/long/mandatory_tag_extdeps_corpus.dag, offline recipe).
 // Dissolution: witness realization (witness-realization-plan (plan doc deleted 2026-08-28)) runs
 // that parse-grain corpus witness at native speed, then this block and its three
 // builtins (facts_for_qualified_name, live_clean_tree_holds,
@@ -39455,7 +39454,7 @@ pub fn assemble_prepared_subject_from_corpus(
             //    with one import and one bare cross-module call has that edge dropped by the
             //    loader and followed by `claim_scope_for`. Under the whole-tree subject the
             //    flat bare-name channel hid the difference; under this subject the referenced
-            //    module is simply absent (measured 2026-08-29: v2.test.lens_vacuity.vacuity_test
+            //    module is simply absent (measured 2026-08-29: v2.test.lens_vacuity.vacuity
             //    refused no-such-function `rust_target_model_staging`, then `eval_context`, one
             //    hop per run). So every module in the closure is bare-scanned here with the
             //    loader's own scanner, and each pulled module joins with its own both-closure.
@@ -39595,7 +39594,7 @@ pub fn assemble_prepared_subject_from_corpus(
     // reaches the operator then names the IMPORTER -- a file nobody touched -- while the row that
     // caused it is somewhere else entirely, so the evidence points away from the cause. Measured
     // as exactly that, twice in one hour: required-floor run 34016411960 refused at
-    // src/v2/test/claim/long/live_read_classification_test.dag:46 for an exclusion added to
+    // src/v2/test/claim/long/live_read_classification.dag:46 for an exclusion added to
     // `floor_prepared_subject_exclusions`, and the first two diagnoses of it both concluded the
     // imported module had been moved or renamed. It had not.
     //
@@ -40584,7 +40583,7 @@ fn claim_scope_for_with_memos(
     // half — a module that reaches its dependencies by bare reference was carried and one that
     // reaches them by `import` was not.
     //
-    // Measured specimen: `test.claim.host.host_phase_status_witness_test` declares no imports at all, reaches its
+    // Measured specimen: `test.claim.host.host_phase_status_witness` declares no imports at all, reaches its
     // callees by bare reference, and failed with `undefined variable: operator_host_srv1` — a
     // `data` declaration in `gunbc.fleet.fleet_intent_network` that a module in its closure IMPORTS.
     // The definer was one edge away the whole time, across an edge this walk did not traverse.
@@ -40802,7 +40801,7 @@ fn claim_scope_for_with_memos(
     // only print zero. DESIGN §4b(4) says a climb deletes the lower-rung PRODUCTION machinery it
     // obsoletes while the discriminating RED and positive control stay enrolled, so the per-site
     // read lines are gone and the fixture rows in
-    // `dag/test/claim/bare_name_ambiguity_wall_witness_test.dag` remain.
+    // `dag/test/claim/bare_name_ambiguity_wall_witness.dag` remain.
     //
     // THE DECLARATION-GRAIN AND QUALIFIED-READ CENSUSES ARE NOT IN SCOPE HERE AND STAY LIVE:
     // `ambiguous_bare_names` and `qualified_bare_reads` are populated on scopes this wall ACCEPTS,
@@ -41262,10 +41261,9 @@ pub struct LongHomeStorageAgreementRow {
 /// A generic path-segment predicate: true when `path` contains a `long` directory component
 /// anywhere in its ancestry. This is deliberately NOT a hardcoded substring match against one
 /// literal directory — the corpus carries multiple real, only loosely-correlated `long`-shaped
-/// homes (`dag/test/claim/long/`, `src/v2/test/claim/long/`, `src/v2/test/claim/execution/long/`,
-/// `src/v2/test/manual/long/` and the per-area `long/` directories, mirroring the
-/// `long_home_prefixes()` module-name prefixes), and a single hardcoded string would silently
-/// miss the others.
+/// homes (`dag/test/claim/long/`, `src/v2/test/long/`, `src/v2/test/claim/long/`, mirroring the
+/// three `long_home_prefixes()` module-name prefixes above), and a single hardcoded string would
+/// silently miss the others.
 fn is_long_home_path(path: &str) -> bool {
     path.split('/').any(|segment| segment == "long")
 }
@@ -41759,7 +41757,7 @@ fn heartbeat_measured_bytes(v: Option<u64>, cause: &str) -> String {
 /// held byte-equal to the oracle by `heartbeat_tests::render_heartbeat_line_mirror_matches_seed_oracle`
 /// (which runs the `.dag` through the interpreter on the same two specimens), and the oracle's
 /// bytes for those specimens are pinned on the required floor by
-/// `test.claim.observation_seed_heartbeat_witness_test`. The stall clause is computed by the
+/// `test.claim.observation_seed_heartbeat_witness`. The stall clause is computed by the
 /// `memory_governor` mirrors of `gunbc.host.memory_stall_refusal` -- the same two functions the stall
 /// refusal consumes -- exactly as the `.dag` renderer calls the authority's own.
 pub(crate) fn render_heartbeat_line_mirror(
@@ -42671,17 +42669,15 @@ mod required_floor_disposition_and_storage_agreement_law {
         );
     }
 
-    /// The live specimen named at the ruling that grounded these arms: a `git mv` had landed the
+    /// The live specimen named at the ruling that grounded these arms: a `git mv` landed the
     /// file under `dag/test/claim/long/` without updating its own module declaration, so the
-    /// directory said one thing and the authored name another. The storage rule
-    /// (`gunbc.source_layout`) derives the name from the directory, so the same file now
-    /// declares a long-home name and the two agree: the discrepancy
-    /// `LongHomeStorageAgreement` was built to surface cannot be written for a governed module.
+    /// directory says one thing and the authored name says another. This is the exact
+    /// discrepancy `LongHomeStorageAgreement` exists to surface, on the actual file rather than
+    /// a stand-in for it.
     #[test]
-    fn qualified_declaration_reference_specimen_agrees_under_the_storage_rule() {
-        let path = "dag/test/claim/long/qualified_declaration_reference_emit_cross_module_witness_test.dag";
-        let module =
-            "test.claim.long.qualified_declaration_reference_emit_cross_module_witness_test";
+    fn qualified_declaration_reference_specimen_is_long_path_but_executing_module() {
+        let path = "dag/test/claim/long/qualified_declaration_reference_emit_cross_module_witness.dag";
+        let module = "test.claim.long.qualified_declaration_reference_emit_cross_module_witness";
 
         let path_is_long = is_long_home_path(path);
         let matched_prefix = long_home_prefixes_for_test()
@@ -42693,13 +42689,13 @@ mod required_floor_disposition_and_storage_agreement_law {
             "the file lives under a long/-shaped directory"
         );
         assert!(
-            matched_prefix,
-            "the module declaration carries the long-home prefix its directory gives it"
+            !matched_prefix,
+            "the module declaration does not carry a long-home prefix"
         );
         assert_eq!(
             long_home_storage_agreement(path_is_long, matched_prefix),
-            LongHomeStorageAgreement::LongPathAndLongModule,
-            "path-long/module-long must classify as agreement"
+            LongHomeStorageAgreement::LongPathButExecutingModule,
+            "path-long/module-short must classify as the specimen's known disagreement"
         );
     }
 
@@ -42707,15 +42703,12 @@ mod required_floor_disposition_and_storage_agreement_law {
     /// authority the host already reads for admission. Restated here rather than imported
     /// because the loop's own matched-prefix decision is driven by the `.dag`-evaluated roster
     /// at runtime; this fixture exists only to ground the specimen test above against the same
-    /// literal prefixes without requiring a live interpreter frame in a unit test.
+    /// three literal prefixes without requiring a live interpreter frame in a unit test.
     fn long_home_prefixes_for_test() -> Vec<String> {
         vec![
             "test.claim.long.".to_string(),
             "v2.test.claim.long.".to_string(),
-            "v2.test.claim.execution.long.".to_string(),
-            "v2.test.claim.body_lowering.long.".to_string(),
-            "v2.test.claim.identity_captured_navigation.long.".to_string(),
-            "v2.test.manual.long.".to_string(),
+            "v2.test.claim.long.".to_string(),
         ]
     }
 

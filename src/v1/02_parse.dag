@@ -1657,7 +1657,7 @@ fn stamp_parsed_node_list_with_head_role(
 // corpus Unbound -- not mis-bound, unbindable. The containment authority the namespace cut resolves
 // through was therefore correct, executing, and never once fed a production population.
 //
-// WHY THE FIXTURES COULD NOT SHOW THIS. test.claim.type_reference_containment_binding_witness_test
+// WHY THE FIXTURES COULD NOT SHOW THIS. test.claim.type_reference_containment_binding_witness
 // hand-builds its declarations with `category: TypeOccurrence` -- exactly the shape production
 // never emitted -- so the suite supplied the missing side itself and stayed green. That is DESIGN
 // section 5's specification-without-execution boundary sitting on the destination authority of a
@@ -4195,7 +4195,7 @@ fn parse_op_requires_members(tokens: TokenStream, ctx: ParseContext, span: Sourc
 // opaque operation's declaration through operation_requires_declaration, instead of re-scanning the
 // operation's properties at each consumer. compile_dag_operation_requires exposes it to the floor ahead
 // of (c), so the carry is checked against the real parser rather than inferred from acceptance
-// (test.claim.v1_operation_requires_parse_witness_test).
+// (test.claim.v1_operation_requires_parse_witness).
 type OperationRequiresDeclaration
   = RequiresUndeclared
   | RequiresNone

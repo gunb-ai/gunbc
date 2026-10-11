@@ -24,7 +24,7 @@ data foreign_grammar_extended_parse_new_witness_eval_step_cost_population: List<
 data foreign_grammar_extended_parse_new_witness_eval_step_cost: RungDrop = RungDrop {
   identity: "foreign_grammar_extended_parse_new_witness_eval_step_cost" as NonEmptyStr,
 
-  subject: "new-witness eval-step cost gate over the kotlin and rust extended-function grammar parse claims (v2.test.claim.parse.parse_test_kotlin_grammar_test, v2.test.claim.parse.parse_test_rust_grammar_test): they still execute, eval_steps stay recorded, a semantic red and a wall-clock crossing still block; only the eval-step cost-gate rung is lowered",
+  subject: "new-witness eval-step cost gate over the kotlin and rust extended-function grammar parse claims (v2.test.claim.parse.parse_test_kotlin_grammar, v2.test.claim.parse.parse_test_rust_grammar): they still execute, eval_steps stay recorded, a semantic red and a wall-clock crossing still block; only the eval-step cost-gate rung is lowered",
 
   declared: "2026-10-05",
 

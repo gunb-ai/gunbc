@@ -240,7 +240,7 @@ fn host_probe_over_items(
 // Parameterized on the observation so a witness can author every arm -- the refusal, a hit, a
 // scanned-file miss and an unread file -- without a tree read. THAT WITNESS NOW EXISTS and is this
 // arm's enrolled evidence under DESIGN section 4b(4):
-// test.claim.namespace_cut_stale_citation_witness_test. It carries the discriminating RED (a probe
+// test.claim.namespace_cut_stale_citation_witness. It carries the discriminating RED (a probe
 // citing the file an item has moved out of must refuse and name both paths) beside two positive
 // controls (a correct citation resolves PRESENT, a genuinely missing name in a scanned file stays
 // ABSENT) -- the pair is what stops the arm being satisfied either by never refusing or by

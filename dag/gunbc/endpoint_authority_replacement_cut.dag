@@ -192,20 +192,20 @@ fn endpoint_authority_cut_region() -> List<DeclarationRef> {
 fn endpoint_authority_cut_evidence() -> List<EvidenceDisposition> {
   [
     ReplaceEvidence {
-      old_evidence: nes(s: "test.claim.host.host_reach_identity_probe_witness_test spark_probe_targets_are_modeled_addresses_not_names"),
+      old_evidence: nes(s: "test.claim.host.host_reach_identity_probe_witness spark_probe_targets_are_modeled_addresses_not_names"),
       new_evidence: nes(s: "the same claim -- the fleet uses modeled endpoints rather than assuming Spark hostnames resolve -- read against the attachment authority instead of router reservations"),
     },
     ReplaceEvidence {
-      old_evidence: nes(s: "test.claim.host.host_reach_identity_probe_witness_test undecided_spark_slot_projects_no_endpoint"),
+      old_evidence: nes(s: "test.claim.host.host_reach_identity_probe_witness undecided_spark_slot_projects_no_endpoint"),
       new_evidence: nes(s: "absence never becomes a fabricated endpoint, asserted against Y's typed endpoint-refusal arm; the old subject, an unassigned DgxSparkRouterBinding, retires with X"),
     },
     RetireEvidence {
-      evidence: nes(s: "test.claim.host.host_reach_identity_probe_witness_test spark_endpoint_or_empty"),
+      evidence: nes(s: "test.claim.host.host_reach_identity_probe_witness spark_endpoint_or_empty"),
       retired_subject: nes(s: "an Absent-to-empty-String adapter over spark_endpoint_for_binding"),
       retirement_reason: nes(s: "its only role is adapting one of the two retiring X entry points for the equality witness that also retires. Under Y the absence it flattens is representable, so an adapter that erases it would reintroduce the defect the new contract exists to remove."),
     },
     RetireEvidence {
-      evidence: nes(s: "test.claim.host.host_reach_identity_probe_witness_test probe_endpoint_agrees_with_the_projection_it_consumes"),
+      evidence: nes(s: "test.claim.host.host_reach_identity_probe_witness probe_endpoint_agrees_with_the_projection_it_consumes"),
       retired_subject: nes(s: "agreement between the two X entry points fleet_probe_endpoint_for and spark_endpoint_for_binding"),
       retirement_reason: nes(s: "its exact subject is agreement between two old entry points, added because those entry points once carried duplicate implementations. Y has ONE endpoint authority, so recreating a second entry point merely to retain this witness would preserve the defect shape the witness records. A single-authority witness for Y is new evidence for a surviving general invariant, not a continuation of this two-function equality claim."),
     },

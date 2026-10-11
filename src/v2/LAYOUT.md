@@ -21,10 +21,10 @@ filename is the final segment.
    `test/claim/{…}.dag` relative to `src/v2/`, with each dot-separated segment
    after `v2.test` becoming a subdirectory under `test/claim/`.
 
-   Example: `module v2.test.lens_cost.atom_zero_test` →
+   Example: `module v2.test.lens_cost.atom_zero` →
    `src/v2/test/claim/lens_cost/atom_zero.dag`
 
-   Example (deeper): `module v2.test.claim.host_language_transport_script.corpus.migrated_transports_clean_test` →
+   Example (deeper): `module v2.test.claim.host_language_transport_script.corpus.migrated_transports_clean` →
    `src/v2/test/claim/host_language_transport_script/corpus/migrated_transports_clean.dag`
 
 4. **Layer roots** (`std`, `extdeps`, `compiler`, `lens`, `workflow`, …) hold

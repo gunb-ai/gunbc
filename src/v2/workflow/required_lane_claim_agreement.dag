@@ -23,7 +23,7 @@ import v2.std.algebra { Cons, Empty, length, list_reverse }
 // SERIALIZED LEDGER TEXT -- what `gunbc.design_ledgers` and `gunbc.design_document` actually emit --
 // so the check costs one projection fold and no corpus reflection at all. The alternative, a
 // `v2.std.decl_index` `decl_facts` walk over the tree, is the cost this repository has already
-// adjudicated against itself: `test.claim.long.host_identity_single_authoring_witness_test` sits
+// adjudicated against itself: `test.claim.long.host_identity_single_authoring_witness` sits
 // outside the merge path under a declared drop naming exactly "a corpus-scale reflection cost with
 // no lane that both admits it and runs it". Reading the projection is also the STRONGER question:
 // the bytes a reader will read are the bytes checked.

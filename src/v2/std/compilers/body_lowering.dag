@@ -192,7 +192,7 @@ fn lower_block_body_atoms(atoms: List<Node>, witness: Node) -> Outcome<Node> {
 // invisible to it: `f(x)` lowered to Transform[f] is a well-formed nullary application, and
 // application_read admits it. Whether the lowered Node carries everything the source authored is
 // established elsewhere: by the production-fed shape contracts
-// (v2.test.claim.namespace_xl0.body_shape_contract_test), which compare against the authored source; by
+// (v2.test.claim.namespace_xl0.body_shape_contract), which compare against the authored source; by
 // v2.compiler.reference_conservation; and by MQ-5. A view is how those claims read a Node, not a
 // substitute for them.
 

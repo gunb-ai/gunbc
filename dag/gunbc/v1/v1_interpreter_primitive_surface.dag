@@ -299,7 +299,7 @@ data arm_accepted_shape_gap_note: String = "ARITY IS NOT DERIVABLE FROM THIS DIS
 // now has no constructor at all, climbing from a witness RED control to structurally impossible
 // (DESIGN.md 4b). The evidence that stays enrolled and executing is
 // roster_rows_are_authored_in_roster_not_transcribed_from_rust in
-// test.claim.v1_interpreter_primitive_dispatch_authority_acceptance_test (every authored-roster row's
+// test.claim.v1_interpreter_primitive_dispatch_authority_acceptance (every authored-roster row's
 // enumeration equals AuthoredInRoster) and declared_residual_rows_retain_independent_dispositions
 // (every declared row's enumeration is DeclaredHere with its own trigger) -- together an exhaustive
 // positive control over the two remaining variants, not a lower-rung production check left beside a

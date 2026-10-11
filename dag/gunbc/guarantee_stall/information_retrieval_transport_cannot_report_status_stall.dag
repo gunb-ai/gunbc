@@ -27,7 +27,7 @@ data information_retrieval_transport_cannot_report_status_stall: GuaranteeStall 
     members: [
       "gunbc.information_retrieval information_retrieve_evidence -- the reachable arm yields InformationEvidenceUnobservable because neither the response status nor a body digest is observed",
       "gunbc.information_query information_evidence_from_verification -- its CitationRepresentationVerified arm is exercised only by witnesses over authored receipts, never by a live fetch",
-      "test.claim.information_retrieval_witness_test w_retrieval_arm_agrees_with_the_transport -- can only assert which refusal arm ran, because no live retrieval can reach the verified arm to be asserted about",
+      "test.claim.information_retrieval_witness w_retrieval_arm_agrees_with_the_transport -- can only assert which refusal arm ran, because no live retrieval can reach the verified arm to be asserted about",
       "gunbc.information_retrieval information_retrieve_evidence, success arm -- UNEXERCISED BY ANY EXECUTING CONSUMER. http.Client.GetBounded answers the merge envelope from a mock_response fixed at { success: false }, so the reaching-the-network branch never runs on the path that gates; an always-Unavailable regression cannot be caught there. Enrolling the witness as a bin_wet row would NOT close this: that lane has executed nothing since 2026-08-15 (gunbc.ci.ci_layer_roots excl_bin_wet_reason), so it would report the arm as covered while running it less often than the hermetic path does"
     ]
   },

@@ -247,7 +247,7 @@ fn floor_enrolment_dead_band_envelope_floor_ms_count() -> Int {
 // r > line / p90 -- so the line applied once more to the same measured envelope is where a row stops
 // being a fast runner's reading of a member over the line and becomes a claim cheap enough not to need
 // the row on any runner. Derived from floor_enrolment_margin_envelope_permille, never written.
-// Measured specimen: test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test
+// Measured specimen: test.claim.machine_intake.mtcollins1_boot_acceptance_matrix
 // an_interrupted_attempts_dead_hold_is_recovered_by_the_next_one read 523, 582 and 543 ms on srv1 and
 // srv3 (PR floor runs 36765162766, 36775473983, 36783312538) and 466 ms on srv4 in merge-group run
 // 36793281217, which staled its row and dequeued gunbc#12800.

@@ -2,7 +2,7 @@ module stage0_boundary_add_probe
 
 // THE COMMITTED SPECIMEN FOR THE STORAGE-READ SEAM, AND ONLY THAT SEAM.
 //
-// What this file is read by is v2.test.claim.self_host.stage0_production_target_test's read claim: the path
+// What this file is read by is v2.test.claim.self_host.stage0_production_target's read claim: the path
 // reaches source_ref_for_observed_storage_path, source_root_ingest_from_source_refs verifies the
 // bytes against the ref's content hash, and the claim asserts that the source the ingest carries
 // contains this declaration. Its discriminating sibling reads a path no file occupies and requires

@@ -429,23 +429,23 @@ data floor_cost_contended_run: NonEmptyStr = "33691893294" as NonEmptyStr
 // The modules gunbc#10133 repaired. Excluding them replays every run as if the repair had already
 // landed, which is what separates the repair's effect from the contention of the run it landed on.
 data floor_cost_repaired_modules: List<String> = [
-  "test.claim.self_host_compile_phase_live_gate_witness_test",
-  "test.claim.self_host_compile_phase_frontier_witness_test",
-  "test.claim.compiler_frontend_program_status_witness_test"
+  "test.claim.self_host_compile_phase_live_gate_witness",
+  "test.claim.self_host_compile_phase_frontier_witness",
+  "test.claim.compiler_frontend_program_status_witness"
 ]
 
 // Ladder order: remaining modules by max-over-runs cost, worst first.
 data floor_cost_ladder_order: List<String> = [
-  "v2.test.claim.emit.rust_produced_decl_emit_test",
-  "v2.test.claim.execution.emit_host_field_access_equals_eval_test",
-  "v2.test.claim.execution.emit_host_fold_closure_equals_eval_test",
-  "v2.test.claim.emit.semantic_decl_serialize_parity_test",
-  "v2.test.claim.execution.emit_host_meet_join_equals_eval_test",
-  "v2.test.claim.execution.emit_host_complement_equals_eval_test",
-  "v2.test.claim.emit.produced_decl_two_target_test",
-  "v2.test.claim.execution.emit_host_add_equals_eval_test",
-  "v2.test.claim.emit.semantic_decl_routing_generic_test",
-  "v2.test.claim.enforcement.lens_module_gate_witness_test"
+  "v2.test.claim.emit.rust_produced_decl_emit",
+  "v2.test.claim.execution.emit_host_field_access_equals_eval",
+  "v2.test.claim.execution.emit_host_fold_closure_equals_eval",
+  "v2.test.claim.emit.semantic_decl_serialize_parity",
+  "v2.test.claim.execution.emit_host_meet_join_equals_eval",
+  "v2.test.claim.execution.emit_host_complement_equals_eval",
+  "v2.test.claim.emit.produced_decl_two_target",
+  "v2.test.claim.execution.emit_host_add_equals_eval",
+  "v2.test.claim.emit.semantic_decl_routing_generic",
+  "v2.test.claim.enforcement.lens_module_gate_witness"
 ]
 
 fn floor_cost_distribution_report() -> String {
@@ -529,7 +529,7 @@ data floor_cost_envelope_sampled_runs: List<FloorRunProvenance> = [
 
 // The subject the measurement was commissioned over, named so the report prints its envelope beside
 // the corpus percentiles rather than leaving a reader to grep for it.
-data floor_cost_envelope_subject: String = "v2.test.claim.emit.rust_produced_decl_emit_test.rust_produced_decl_name_discriminates"
+data floor_cost_envelope_subject: String = "v2.test.claim.emit.rust_produced_decl_emit.rust_produced_decl_name_discriminates"
 
 fn envelope_runner_line(prov: FloorRunProvenance, census: List<RunExtremeCount>) -> String {
   concat(

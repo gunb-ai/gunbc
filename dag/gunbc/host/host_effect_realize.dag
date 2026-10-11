@@ -1979,10 +1979,10 @@ fn srv3_read_token(
 fn srv3_token_argv(subject: Srv3TokenSubject) -> List<String>
   admit_callers: [
     decl_ref(module_path: "gunbc.host.host_effect_realize", decl_name: "srv3_read_token"),
-    decl_ref(module_path: "test.claim.srv3.srv3_token_subject_witness_test", decl_name: "effective_owner_subjects_derive_the_cited_id_argv"),
-    decl_ref(module_path: "test.claim.srv3.srv3_token_subject_witness_test", decl_name: "path_owner_subjects_derive_the_cited_stat_argv"),
-    decl_ref(module_path: "test.claim.srv3.srv3_token_subject_witness_test", decl_name: "owner_halves_do_not_derive_the_same_command"),
-    decl_ref(module_path: "test.claim.srv3.srv3_token_subject_witness_test", decl_name: "the_path_subject_carries_its_own_path"),
+    decl_ref(module_path: "test.claim.srv3.srv3_token_subject_witness", decl_name: "effective_owner_subjects_derive_the_cited_id_argv"),
+    decl_ref(module_path: "test.claim.srv3.srv3_token_subject_witness", decl_name: "path_owner_subjects_derive_the_cited_stat_argv"),
+    decl_ref(module_path: "test.claim.srv3.srv3_token_subject_witness", decl_name: "owner_halves_do_not_derive_the_same_command"),
+    decl_ref(module_path: "test.claim.srv3.srv3_token_subject_witness", decl_name: "the_path_subject_carries_its_own_path"),
   ]
 {
   match subject {

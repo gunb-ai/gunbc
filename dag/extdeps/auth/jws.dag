@@ -123,7 +123,7 @@ type JwsSignOutcome
 //
 // RUNG: mitigatable at a declared boundary, and unlike the text half THIS RED IS AUTHORABLE
 // TODAY: a fixture supplies the signature list directly, so 256 is expressible from .dag and
-// test.claim.github_effect_perform_witness_test drives it. JwsSignatureNotOctets names which member
+// test.claim.github_effect_perform_witness drives it. JwsSignatureNotOctets names which member
 // was observed, and gunbc.github_effect_perform maps it onto the AppJwtUnsigned arm it already
 // carries rather than minting a second cause.
 type JwsSerializationOutcome

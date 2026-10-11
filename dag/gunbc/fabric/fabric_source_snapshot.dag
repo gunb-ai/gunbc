@@ -944,7 +944,7 @@ fn base_is_admissible(observed: LevelObservation, trusted: TrustedOwners) -> Boo
 //
 // A PREVIOUS REVISION ALSO GUARDED THE CHMOD WITH `created && !chmod(base)`, and `&&` demands its
 // right operand under a false left, so the chmod ran on a SQUATTED directory and the admission then
-// accepted it. The authority for that property is `test.claim.eval_model_probe_test`
+// accepted it. The authority for that property is `test.claim.eval_model_probe`
 // `and_short_circuit_direct_probe`; the squatted-base control caught the instance. With the mode
 // applied at creation there is no guarded effect left here to get wrong.
 // THE ANCESTRY IS CHECKED BEFORE THE FIRST MUTATION, AND THE ORDER IS THE CONTRACT.

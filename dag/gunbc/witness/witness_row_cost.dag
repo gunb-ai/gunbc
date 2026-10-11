@@ -76,8 +76,8 @@ import v2.std.text { String }
 // via AttentionLevel/ObservationDensity (Ambient may suppress a render line while the complete
 // receipt still retains the row). Basis values MUST cite an arm64 srv-fleet run id (never local
 // x86). A row with no dated basis is BasisAbsent. Drift is falsifier-cadence counted, not
-// merge-refusing. Executing consumers: dag/test/claim/witness_row_cost_drift_test.dag and
-// dag/test/claim/witness_row_cost_projection_test.dag.
+// merge-refusing. Executing consumers: dag/test/claim/witness_row_cost_drift.dag and
+// dag/test/claim/witness_row_cost_projection.dag.
 
 // WHAT A ROSTER CAN DETECT AND WHICH ROWS GET TO TRY ARE DIFFERENT FACTS, AND NEITHER ALONE IS A
 // COVERAGE STATEMENT (derived 2026-08-18, sharp-raven-273, from two instruments run against the
@@ -129,13 +129,13 @@ data witness_decomposition_does_not_reduce_entry_cost_note: String = "DO NOT SPL
 // so two claims naming one source with different lists are two full compiles — express the whole
 // conjunction in one call rather than one call per token. WHAT IT MEASURED, so the class is a cost
 // figure rather than a preference (release claim_batch, one remote executor, 2026-08-19):
-// dag/test/claim/e0308_mechanical_trio_test.dag went from nine witnesses in 2450ms to five in
+// dag/test/claim/e0308_mechanical_trio.dag went from nine witnesses in 2450ms to five in
 // 1346ms, four of the deleted rows being negated restatements of an exclude list a sibling claim
 // already carried more strongly. THAT PAIR IS COMMENSURABLE AND THE NEXT ONE IS NOT, which has to
 // be said rather than averaged over: both e0308 figures come from this instrument with e0308 as the
 // FIRST entry of its dispatch, so both paid whatever process-scoped first-touch fill the run owes,
 // and the difference is the witnesses.
-// dag/test/claim/emitted_lib_rs_module_declaration_witness_test.dag ran three compiles and now runs
+// dag/test/claim/emitted_lib_rs_module_declaration_witness.dag ran three compiles and now runs
 // two, both green — but its before-figure is a CI floor observation and its after-figure, 561ms,
 // was taken from a WARM position behind e0308 in the same dispatch, so the two wall numbers are not
 // each other's control and only the crossing count is established. A PER-WITNESS COST FIGURE IS NOT
@@ -146,7 +146,7 @@ data witness_decomposition_does_not_reduce_entry_cost_note: String = "DO NOT SPL
 // row, and a fold that appears to pay may have pushed a fill onto someone else. Fold measurements
 // are therefore only readable when the folded entry holds the same position in both runs. AND ONE
 // SUBJECT WHERE THE SAME REASONING WAS REFUTED BY THE SAME INSTRUMENT, which is why this paragraph
-// reports a measurement rather than a rule. dag/test/claim/long/dag_arrow_lambda_witness_test.dag
+// reports a measurement rather than a rule. dag/test/claim/long/dag_arrow_lambda_witness.dag
 // looked like the flagship: nineteen dag_grammar() constructions serving thirteen three-line
 // sources, one 6,230-line grammar per claim, and the cost triage that dispatched this work named it
 // as the specimen. Folding it to two claims was written, run, and DID NOT PAY — 210.9s for the two
@@ -340,7 +340,7 @@ type WitnessRowCostVerdict
 // witness threshold is stated on, and handing one to this comparator against a wall observation now
 // REFUSES instead of answering. WHERE THIS WALL RUNS, stated so the rung is neither inflated nor
 // understated (DESIGN section 4b). It is reached in the witness corpus by
-// dag/test/claim/witness_row_cost_drift_test.dag AND on the production falsifier cadence,
+// dag/test/claim/witness_row_cost_drift.dag AND on the production falsifier cadence,
 // which is the half that took a second pass: the seed's write_witness_row_cost_drift_receipt_at
 // used to call only witness_row_cost_exceeds_basis, the bare ratio predicate, and rebuild
 // DriftExceeded / WithinBasis / BasisAbsent as Rust string literals -- a second representation of

@@ -99,7 +99,7 @@ data rust_source_prefix_tooling: String = "dag/gunbc/instruments/"
 // citation under it refuse. `v1_compiler` and `v1_compiled` sit outside the .dag index for that
 // reason. Before this row the four shim crates reaching v1_rt were consumers
 // gunbc.v1.v1_consumer_census could see and the exact cut vocabulary could not spell; removing it
-// returns them to that uncitable state, which test.claim.self_host_v1_consumer_census_witness_test
+// returns them to that uncitable state, which test.claim.self_host_v1_consumer_census_witness
 // executes as the falsifier.
 data rust_source_namespace_rows: List<RustSourceNamespaceRow> = [
   RustSourceNamespaceRow { repo_prefix: "src/v1/stage0/src/bin/", namespace_prefix: "v1_compiler.bin." },

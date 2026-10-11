@@ -1,0 +1,25 @@
+module test.claim.wc_byte_count_verification_witness
+
+import std.types { NonEmptyStr }
+import std.measure { byte_size }
+import extdeps.tools.wc {
+  FileByteCountObserved,
+  FileByteCountUnavailable,
+  FileByteCountDiffers,
+  FileByteCountVerificationUnavailable,
+  verify_file_byte_count,
+}
+
+test fn witness_byte_count_verification_preserves_nonmatching_arms() -> Bool {
+  verify_file_byte_count(
+    read: FileByteCountObserved { count: 3 },
+    expected: byte_size(4)) == FileByteCountDiffers {
+      observed_count: 3,
+      expected: byte_size(4),
+    }
+    && verify_file_byte_count(
+      read: FileByteCountUnavailable { reason: "wc unavailable" as NonEmptyStr },
+      expected: byte_size(4)) == FileByteCountVerificationUnavailable {
+        reason: "wc unavailable" as NonEmptyStr,
+      }
+}

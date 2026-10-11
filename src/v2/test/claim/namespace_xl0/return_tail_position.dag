@@ -1,0 +1,395 @@
+module v2.test.claim.namespace_xl0.return_tail_position
+
+import v2.compiler.compile {
+  NativeCensusModuleFileRefused,
+  NativeCensusModuleOutcome,
+  NativeCensusModuleResolveRefused,
+  NativeCensusModuleResolved,
+  NativeTestContext,
+  native_census_module_resolution,
+  native_census_modules,
+  native_lane_file_refusal_index,
+  native_test_context_from_ingest
+}
+import v2.compiler.native_test_vocabulary { native_test_file_refusal_fatal_reason }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.algebra { fold_list }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import std.algebra { Cons, Empty }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.native_test_vocabulary { native_test_file_refusal_fatal_reason }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A `return` LOWERS ONLY AS THE TAIL OF A FUNCTION'S OWN BODY, AND REFUSES LOCATED EVERYWHERE ELSE.
+//
+// THE SUBJECT is v2.compiler.body_lowering_fold's return wall (body_lower_return_outside_tail_optional
+// at the fn declaration, the fn value block body and the data initializer) and its tail read
+// (body_lower_tail_statement_read), on the native lane's route (native_test_context_from_ingest, then
+// native_census_module_resolution) -- the same route
+// v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal drives.
+//
+// THE STRUCTURED TAIL (the RFM's next rung): a return in an arm of a tail if or match, and a guard
+// heading a tail spine with a following statement, are admitted and lower -- the arm to its value,
+// the guard to Branch(c, arm, rest) -- and their `_und` twins prove the arm and the rest are READ.
+// A guard that falls through, is the last statement, or sits in a non-tail spine still refuses.
+//
+// THE RED ON MAIN is `bug`: `let x = if c { return j } else { k }` followed by `x`. No reader named
+// the `return` keyword, so a first-match search answered the statement with its operand: the module
+// was ACCEPTED as x = Branch(c, j, k), the function continuing where it should have exited
+// (gunbc.recurring_failure_mode return_lowered_as_its_operand_outside_the_function_tail). It refuses
+// now, located at the return. `arm` (a return in an if arm, the if in tail position) and
+// `lambda_nontail` were accepted the same way; `nontail` refused on main under the generic
+// statement_precedes_without_binding and now names its own cause. `guard` keeps refusing
+// else_less_if_unlowered: the guard needs the tail position carried through the value readers (the
+// same row's next-rung trigger).
+//
+// THE CONTROLS hold on both sides: a tail return in a fn body, after a let, and in a fn value's
+// block body are accepted. `tail_und` is the discriminator that the tail return's operand is READ,
+// not dropped: its undeclared operand refuses unbound at that atom.
+data rtp_bug_source: String = "module v2.test.rtp_bug\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, j: Int, k: Int) -> Int {\n  let x = if c { return j } else { k }\n  x\n}\n"
+
+data rtp_nontail_source: String = "module v2.test.rtp_nontail\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(i: Int) -> Int {\n  return i\n  i\n}\n"
+
+data rtp_lambda_nontail_source: String = "module v2.test.rtp_lambda_nontail\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(i: Int) -> Int {\n  let g = fn(x) {\n    return x\n    x\n  }\n  i\n}\n"
+
+data rtp_guard_fallthrough_source: String = "module v2.test.rtp_guard_fallthrough\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, i: Int) -> Int {\n  if c { i }\n  i\n}\n"
+
+data rtp_guard_last_source: String = "module v2.test.rtp_guard_last\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, i: Int) -> Int {\n  let j = i\n  if c { return j }\n}\n"
+
+data rtp_guard_nontail_source: String = "module v2.test.rtp_guard_nontail\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, j: Int, k: Int) -> Int {\n  let x = if c {\n    if c { return j }\n    k\n  } else { k }\n  x\n}\n"
+
+data rtp_tail_ctl_source: String = "module v2.test.rtp_tail_ctl\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(i: Int) -> Int { return i }\n"
+
+data rtp_let_tail_ctl_source: String = "module v2.test.rtp_let_tail_ctl\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(i: Int) -> Int {\n  let x = i\n  return x\n}\n"
+
+data rtp_lambda_tail_ctl_source: String = "module v2.test.rtp_lambda_tail_ctl\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(i: Int) -> Int {\n  let g = fn(x) { return x }\n  i\n}\n"
+
+data rtp_tail_und_source: String = "module v2.test.rtp_tail_und\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(i: Int) -> Int { return rtp_undeclared_tail }\n"
+
+data rtp_arm_ctl_source: String = "module v2.test.rtp_arm_ctl\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, i: Int) -> Int { if c { return i } else { i } }\n"
+
+data rtp_guard_ctl_source: String = "module v2.test.rtp_guard_ctl\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, i: Int) -> Int {\n  if c { return i }\n  let j = i\n  j\n}\n"
+
+data rtp_guard_arm_und_source: String = "module v2.test.rtp_guard_arm_und\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, i: Int) -> Int {\n  if c { return rtp_undeclared_guard_arm }\n  i\n}\n"
+
+data rtp_guard_rest_und_source: String = "module v2.test.rtp_guard_rest_und\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, i: Int) -> Int {\n  if c { return i }\n  rtp_undeclared_guard_rest\n}\n"
+
+data rtp_match_ctl_source: String = "module v2.test.rtp_match_ctl\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\ntype RtpS = RtpA | RtpB\n\nfn rtp_probe(s: RtpS, i: Int) -> Int { match s {\n  RtpA => return i\n  RtpB => i\n} }\n"
+
+data rtp_match_und_source: String = "module v2.test.rtp_match_und\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\ntype RtpS = RtpA | RtpB\n\nfn rtp_probe(s: RtpS, i: Int) -> Int { match s {\n  RtpA => return rtp_undeclared_match_arm\n  RtpB => i\n} }\n"
+
+data rtp_match_nested_ctl_source: String = "module v2.test.rtp_match_nested_ctl\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\ntype RtpS = RtpA | RtpB\n\nfn rtp_probe(s: RtpS, t: RtpS, i: Int) -> Int { match s {\n  RtpA => return i\n  RtpB =>\n    match t {\n      RtpA => return i\n      RtpB => return i\n    }\n} }\n"
+
+fn rtp_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data rtp_ingest: SourceRootIngest = Cons {
+    head: rtp_read(source: rtp_match_nested_ctl_source, id: ^rtp_match_nested_ctl_artifact, unit: ^rtp_match_nested_ctl_cu, path: "src/v2/test/fixture/namespace_xl0/rtp_match_nested_ctl.dag"),
+    tail: Cons {
+    head: rtp_read(source: rtp_bug_source, id: ^rtp_bug_artifact, unit: ^rtp_bug_cu, path: "src/v2/test/fixture/namespace_xl0/rtp_bug.dag"),
+    tail: Cons {
+    head: rtp_read(source: rtp_nontail_source, id: ^rtp_nontail_artifact, unit: ^rtp_nontail_cu, path: "src/v2/test/fixture/namespace_xl0/rtp_nontail.dag"),
+    tail: Cons {
+    head: rtp_read(source: rtp_lambda_nontail_source, id: ^rtp_lambda_nontail_artifact, unit: ^rtp_lambda_nontail_cu, path: "src/v2/test/fixture/namespace_xl0/rtp_lambda_nontail.dag"),
+    tail: Cons {
+    head: rtp_read(source: rtp_guard_fallthrough_source, id: ^rtp_guard_fallthrough_artifact, unit: ^rtp_guard_fallthrough_cu, path: "src/v2/test/fixture/namespace_xl0/rtp_guard_fallthrough.dag"),
+    tail: Cons {
+    head: rtp_read(source: rtp_guard_last_source, id: ^rtp_guard_last_artifact, unit: ^rtp_guard_last_cu, path: "src/v2/test/fixture/namespace_xl0/rtp_guard_last.dag"),
+    tail: Cons {
+    head: rtp_read(source: rtp_guard_nontail_source, id: ^rtp_guard_nontail_artifact, unit: ^rtp_guard_nontail_cu, path: "src/v2/test/fixture/namespace_xl0/rtp_guard_nontail.dag"),
+    tail: Cons {
+    head: rtp_read(source: rtp_tail_ctl_source, id: ^rtp_tail_ctl_artifact, unit: ^rtp_tail_ctl_cu, path: "src/v2/test/fixture/namespace_xl0/rtp_tail_ctl.dag"),
+    tail: Cons {
+    head: rtp_read(source: rtp_let_tail_ctl_source, id: ^rtp_let_tail_ctl_artifact, unit: ^rtp_let_tail_ctl_cu, path: "src/v2/test/fixture/namespace_xl0/rtp_let_tail_ctl.dag"),
+    tail: Cons {
+    head: rtp_read(source: rtp_lambda_tail_ctl_source, id: ^rtp_lambda_tail_ctl_artifact, unit: ^rtp_lambda_tail_ctl_cu, path: "src/v2/test/fixture/namespace_xl0/rtp_lambda_tail_ctl.dag"),
+    tail: Cons {
+    head: rtp_read(source: rtp_tail_und_source, id: ^rtp_tail_und_artifact, unit: ^rtp_tail_und_cu, path: "src/v2/test/fixture/namespace_xl0/rtp_tail_und.dag"),
+    tail: Cons {
+    head: rtp_read(source: rtp_arm_ctl_source, id: ^rtp_arm_ctl_artifact, unit: ^rtp_arm_ctl_cu, path: "src/v2/test/fixture/namespace_xl0/rtp_arm_ctl.dag"),
+    tail: Cons {
+    head: rtp_read(source: rtp_guard_ctl_source, id: ^rtp_guard_ctl_artifact, unit: ^rtp_guard_ctl_cu, path: "src/v2/test/fixture/namespace_xl0/rtp_guard_ctl.dag"),
+    tail: Cons {
+    head: rtp_read(source: rtp_guard_arm_und_source, id: ^rtp_guard_arm_und_artifact, unit: ^rtp_guard_arm_und_cu, path: "src/v2/test/fixture/namespace_xl0/rtp_guard_arm_und.dag"),
+    tail: Cons {
+    head: rtp_read(source: rtp_guard_rest_und_source, id: ^rtp_guard_rest_und_artifact, unit: ^rtp_guard_rest_und_cu, path: "src/v2/test/fixture/namespace_xl0/rtp_guard_rest_und.dag"),
+    tail: Cons {
+    head: rtp_read(source: rtp_match_ctl_source, id: ^rtp_match_ctl_artifact, unit: ^rtp_match_ctl_cu, path: "src/v2/test/fixture/namespace_xl0/rtp_match_ctl.dag"),
+    tail: Cons {
+    head: rtp_read(source: rtp_match_und_source, id: ^rtp_match_und_artifact, unit: ^rtp_match_und_cu, path: "src/v2/test/fixture/namespace_xl0/rtp_match_und.dag"),
+    tail: Empty
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+
+// ONE FRONT END FOR EVERY CLAIM, enrolled WARM in v2.workflow.floor_pure_producer_share: the stored
+// value is a verdict per module with no resolution context, Node or closure in it.
+type RtpVerdict
+  = RtpResolved
+  | RtpRefused { reason: Symbol, at_atom: Optional<Symbol> }
+  | RtpFileRefused { fatal_reason: Optional<Symbol> }
+  | RtpAbsent
+
+type RtpOutcomes
+  = RtpContextRefused
+  | RtpOutcomesDecided {
+      bug: RtpVerdict
+      nontail: RtpVerdict
+      lambda_nontail: RtpVerdict
+      guard_fallthrough: RtpVerdict
+      guard_last: RtpVerdict
+      guard_nontail: RtpVerdict
+      tail_ctl: RtpVerdict
+      let_tail_ctl: RtpVerdict
+      lambda_tail_ctl: RtpVerdict
+      tail_und: RtpVerdict
+      arm_ctl: RtpVerdict
+      guard_ctl: RtpVerdict
+      guard_arm_und: RtpVerdict
+      guard_rest_und: RtpVerdict
+      match_ctl: RtpVerdict
+      match_und: RtpVerdict
+      match_nested_ctl: RtpVerdict
+    }
+
+fn rtp_file_refusal_reason(context: NativeTestContext, unit: Symbol) -> Optional<Symbol> {
+  fold_list(
+    xs: context.file_refusals,
+    empty: optional_absent(),
+    cons: fn(acc, refusal) {
+      if refusal.path == unit { optional_present(value: native_test_file_refusal_fatal_reason(fr: refusal)) } else { acc }
+    }
+  )
+}
+
+fn rtp_verdict_of(context: NativeTestContext, unit: Symbol, outcome: NativeCensusModuleOutcome) -> RtpVerdict {
+  match outcome {
+    NativeCensusModuleResolved => RtpResolved
+    NativeCensusModuleFileRefused =>
+      RtpFileRefused { fatal_reason: rtp_file_refusal_reason(context: context, unit: unit) }
+    NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } =>
+      RtpRefused {
+        reason: d.head.reason,
+        at_atom: match d.head.at {
+          NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at)
+          _ => optional_absent()
+        }
+      }
+  }
+}
+
+fn rtp_verdict_in(context: NativeTestContext, module_name: String, unit: Symbol) -> RtpVerdict {
+  fold_list(
+    xs: native_census_modules(ingest: rtp_ingest),
+    empty: RtpAbsent,
+    cons: fn(acc, entry) {
+      if entry.module == module_name {
+        rtp_verdict_of(
+          context: context,
+          unit: unit,
+          outcome: native_census_module_resolution(
+            context: context,
+            refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
+            entry: entry
+          ).outcome
+        )
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn rtp_outcomes() -> RtpOutcomes {
+  match native_test_context_from_ingest(ingest: rtp_ingest) {
+    Rejected { diagnostics: _ } => RtpContextRefused
+    Accepted { value: context, diagnostics: _ } =>
+      RtpOutcomesDecided {
+        bug: rtp_verdict_in(context: context, module_name: "v2.test.rtp_bug", unit: ^rtp_bug_cu),
+        nontail: rtp_verdict_in(context: context, module_name: "v2.test.rtp_nontail", unit: ^rtp_nontail_cu),
+        lambda_nontail: rtp_verdict_in(context: context, module_name: "v2.test.rtp_lambda_nontail", unit: ^rtp_lambda_nontail_cu),
+        guard_fallthrough: rtp_verdict_in(context: context, module_name: "v2.test.rtp_guard_fallthrough", unit: ^rtp_guard_fallthrough_cu),
+        guard_last: rtp_verdict_in(context: context, module_name: "v2.test.rtp_guard_last", unit: ^rtp_guard_last_cu),
+        guard_nontail: rtp_verdict_in(context: context, module_name: "v2.test.rtp_guard_nontail", unit: ^rtp_guard_nontail_cu),
+        tail_ctl: rtp_verdict_in(context: context, module_name: "v2.test.rtp_tail_ctl", unit: ^rtp_tail_ctl_cu),
+        let_tail_ctl: rtp_verdict_in(context: context, module_name: "v2.test.rtp_let_tail_ctl", unit: ^rtp_let_tail_ctl_cu),
+        lambda_tail_ctl: rtp_verdict_in(context: context, module_name: "v2.test.rtp_lambda_tail_ctl", unit: ^rtp_lambda_tail_ctl_cu),
+        tail_und: rtp_verdict_in(context: context, module_name: "v2.test.rtp_tail_und", unit: ^rtp_tail_und_cu),
+        arm_ctl: rtp_verdict_in(context: context, module_name: "v2.test.rtp_arm_ctl", unit: ^rtp_arm_ctl_cu),
+        guard_ctl: rtp_verdict_in(context: context, module_name: "v2.test.rtp_guard_ctl", unit: ^rtp_guard_ctl_cu),
+        guard_arm_und: rtp_verdict_in(context: context, module_name: "v2.test.rtp_guard_arm_und", unit: ^rtp_guard_arm_und_cu),
+        guard_rest_und: rtp_verdict_in(context: context, module_name: "v2.test.rtp_guard_rest_und", unit: ^rtp_guard_rest_und_cu),
+        match_ctl: rtp_verdict_in(context: context, module_name: "v2.test.rtp_match_ctl", unit: ^rtp_match_ctl_cu),
+        match_und: rtp_verdict_in(context: context, module_name: "v2.test.rtp_match_und", unit: ^rtp_match_und_cu),
+        match_nested_ctl: rtp_verdict_in(context: context, module_name: "v2.test.rtp_match_nested_ctl", unit: ^rtp_match_nested_ctl_cu)
+      }
+  }
+}
+
+fn rtp_is_resolved(v: RtpVerdict) -> Bool {
+  match v {
+    RtpResolved => true
+    _ => false
+  }
+}
+
+fn rtp_refuses_as(v: RtpVerdict, reason: Symbol) -> Bool {
+  match v {
+    RtpFileRefused { fatal_reason: Present { value: r } } => r == reason
+    _ => false
+  }
+}
+
+fn rtp_unbound_at(v: RtpVerdict, atom: Symbol) -> Bool {
+  match v {
+    RtpRefused { reason: r, at_atom: Present { value: id } } => (r == ^resolve_reason_unbound_symbol) && (id == atom)
+    _ => false
+  }
+}
+
+test fn a_return_inside_a_let_bound_if_refuses_rather_than_binding_its_operand() -> Bool {
+  match rtp_outcomes() {
+    RtpOutcomesDecided { bug: v, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_refuses_as(v: v, reason: ^body_lowering_reason_return_not_in_tail_position)
+    RtpContextRefused => false
+  }
+}
+
+test fn a_return_followed_by_a_statement_refuses_as_not_in_tail_position() -> Bool {
+  match rtp_outcomes() {
+    RtpOutcomesDecided { bug: _, nontail: v, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_refuses_as(v: v, reason: ^body_lowering_reason_return_not_in_tail_position)
+    RtpContextRefused => false
+  }
+}
+
+test fn a_return_before_another_statement_in_a_fn_value_refuses() -> Bool {
+  match rtp_outcomes() {
+    RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: v, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_refuses_as(v: v, reason: ^body_lowering_reason_return_not_in_tail_position)
+    RtpContextRefused => false
+  }
+}
+
+test fn an_else_less_if_that_falls_through_still_refuses_as_unlowered() -> Bool {
+  match rtp_outcomes() {
+    RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: v, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_refuses_as(v: v, reason: ^body_lowering_reason_else_less_if_unlowered)
+    RtpContextRefused => false
+  }
+}
+
+test fn an_else_less_if_as_the_last_statement_still_refuses_as_unlowered() -> Bool {
+  match rtp_outcomes() {
+    RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: v, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_refuses_as(v: v, reason: ^body_lowering_reason_else_less_if_unlowered)
+    RtpContextRefused => false
+  }
+}
+
+test fn a_guard_in_a_non_tail_spine_still_refuses_as_unlowered() -> Bool {
+  match rtp_outcomes() {
+    RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: v, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_refuses_as(v: v, reason: ^body_lowering_reason_else_less_if_unlowered)
+    RtpContextRefused => false
+  }
+}
+
+test fn a_tail_return_of_a_fn_body_is_accepted() -> Bool {
+  match rtp_outcomes() {
+    RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: v, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_is_resolved(v: v)
+    RtpContextRefused => false
+  }
+}
+
+test fn a_tail_return_after_a_let_is_accepted() -> Bool {
+  match rtp_outcomes() {
+    RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: v, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_is_resolved(v: v)
+    RtpContextRefused => false
+  }
+}
+
+test fn a_tail_return_of_a_fn_value_block_body_is_accepted() -> Bool {
+  match rtp_outcomes() {
+    RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: v, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_is_resolved(v: v)
+    RtpContextRefused => false
+  }
+}
+
+test fn a_tail_return_operand_is_read_and_refuses_unbound_at_its_atom() -> Bool {
+  match rtp_outcomes() {
+    RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: v, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_unbound_at(v: v, atom: ^rtp_undeclared_tail)
+    RtpContextRefused => false
+  }
+}
+
+test fn a_return_in_an_arm_of_a_tail_if_is_accepted() -> Bool {
+  match rtp_outcomes() {
+    RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: v, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_is_resolved(v: v)
+    RtpContextRefused => false
+  }
+}
+
+test fn a_guard_followed_by_statements_is_accepted() -> Bool {
+  match rtp_outcomes() {
+    RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: v, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_is_resolved(v: v)
+    RtpContextRefused => false
+  }
+}
+
+test fn a_guard_arm_return_operand_is_read_and_refuses_unbound_at_its_atom() -> Bool {
+  match rtp_outcomes() {
+    RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: v, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_unbound_at(v: v, atom: ^rtp_undeclared_guard_arm)
+    RtpContextRefused => false
+  }
+}
+
+test fn the_statements_after_a_guard_are_read_and_refuse_unbound_at_their_atom() -> Bool {
+  match rtp_outcomes() {
+    RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: v, match_ctl: _, match_und: _, match_nested_ctl: _ } => rtp_unbound_at(v: v, atom: ^rtp_undeclared_guard_rest)
+    RtpContextRefused => false
+  }
+}
+
+test fn a_return_in_an_arm_of_a_tail_match_is_accepted() -> Bool {
+  match rtp_outcomes() {
+    RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: v, match_und: _, match_nested_ctl: _ } => rtp_is_resolved(v: v)
+    RtpContextRefused => false
+  }
+}
+
+test fn a_tail_match_arm_return_operand_is_read_and_refuses_unbound_at_its_atom() -> Bool {
+  match rtp_outcomes() {
+    RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: v, match_nested_ctl: _ } => rtp_unbound_at(v: v, atom: ^rtp_undeclared_match_arm)
+    RtpContextRefused => false
+  }
+}
+
+test fn a_return_in_an_arm_of_a_match_nested_in_a_tail_match_arm_is_accepted() -> Bool {
+  match rtp_outcomes() {
+    RtpOutcomesDecided { bug: _, nontail: _, lambda_nontail: _, guard_fallthrough: _, guard_last: _, guard_nontail: _, tail_ctl: _, let_tail_ctl: _, lambda_tail_ctl: _, tail_und: _, arm_ctl: _, guard_ctl: _, guard_arm_und: _, guard_rest_und: _, match_ctl: _, match_und: _, match_nested_ctl: v } => rtp_is_resolved(v: v)
+    RtpContextRefused => false
+  }
+}

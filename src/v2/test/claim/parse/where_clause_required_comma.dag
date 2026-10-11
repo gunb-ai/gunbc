@@ -1,0 +1,39 @@
+module v2.test.claim.parse.where_clause_required_comma
+
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A where clause's predicates are separated by a REQUIRED comma (v2.extdeps.languages.dag
+// dag_grammar_where_refinement_clause_expr), as v1 02_parse parse_predicates_acc reads them, so a
+// clause stops where its predicates stop instead of running on into the identifiers after it.
+data alias_then_service_source: String = "module probe.where_comma\n\ntype Element = String where brand(\"Element\")\n\nservice browser.Context {\n  operation Launch {\n    input { profile_path: String }\n  }\n}\n"
+data two_predicates_source: String = "module probe.where_comma\n\ntype Port = Int where range(min: 1, max: 9), brand(\"Port\")\n"
+data adjacent_predicates_source: String = "module probe.where_comma\n\ntype Port = Int where range(min: 1, max: 9) brand(\"Port\")\n"
+
+fn parses(tag: String, text: String) -> Bool {
+  match conservation_subject_of_text(path: "probe_" + tag + ".dag", text: text).parsed {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Each parse is computed ONCE as a nullary value, enrolled WARM in
+// v2.workflow.floor_pure_producer_share, and each claim reads it.
+fn alias_then_service_parsed() -> Bool { parses(tag: "alias_then_service", text: alias_then_service_source) }
+fn two_predicates_parsed() -> Bool { parses(tag: "two_predicates", text: two_predicates_source) }
+fn adjacent_predicates_parsed() -> Bool { parses(tag: "adjacent_predicates", text: adjacent_predicates_source) }
+
+test fn a_service_after_a_refined_alias_parses_holds() -> Bool { alias_then_service_parsed() }
+
+test fn comma_separated_predicates_still_parse_holds() -> Bool { two_predicates_parsed() }
+
+test fn adjacent_predicates_without_a_comma_refuse_holds() -> Bool {
+  match adjacent_predicates_parsed() {
+    true => false
+    false => true
+  }
+}

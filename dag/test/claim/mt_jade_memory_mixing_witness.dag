@@ -1,0 +1,246 @@
+module test.claim.mt_jade_memory_mixing_witness
+
+import std.types { Bool, String, NonEmptyStr, List, list_length }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { external_subject_ref_eq, ExternalSubjectRef }
+import extdeps.ocp.mt_jade.subject { internet_archive_mt_jade_capture_authority, MtJadeRev1_0, mt_jade_reference_platform }
+import extdeps.ocp.mt_jade.memory_mixing {
+  MtJadeDimmMixingPlacement,
+  MtJadeMixedDimmSupportCell,
+  MtJadeMixedDimmSupportOutcome,
+  MtJadeMixedDimmSupportQuery,
+  MixingSupported,
+  MixingNotSupported,
+  MixingNotPreferred,
+  MixingUndetermined,
+  DifferentRcd,
+  DifferentDramDies,
+  MixingX4AndX8,
+  DifferentDensity,
+  DifferentSpeed,
+  DifferentVendor,
+  Mixing1rAnd2r,
+  DifferentChannel,
+  SameChannel,
+  MixedDimmSupportResolved,
+  MixedDimmSupportUnmodelled,
+  MixedDimmSupportAmbiguous,
+  mt_jade_accumulate_mixing_cell,
+  mt_jade_dimm_mixing_axes,
+  mt_jade_dimm_mixing_placements,
+  mt_jade_dimm_mixing_axis_printed_label,
+  mt_jade_dimm_mixing_placement_printed_label,
+  mt_jade_mixed_dimm_support,
+  mt_jade_mixed_dimm_support_printed_label,
+  mt_jade_mixed_dimm_support_table,
+  mt_jade_mixed_dimm_table_basis,
+  mt_jade_memory_mixing_model_scope,
+  mt_jade_memory_mixing_subject,
+  mt_jade_same_channel_prose_divergence,
+}
+import gunbc.specification_citation_read_provenance {
+  DocumentLocatorFetchRefused,
+  DocumentLocatorFetchedButTextUnread,
+  DatedPublisherLocatorMirrorTextIngested,
+  PeerSessionPdfTextIngested,
+  DocumentLocatorFetchedAndTextIngested,
+  DocumentMirrorLocatorFetchedAndTextIngested,
+  OperatorSuppliedDocumentText,
+  mt_jade_mirror_citation_read_receipt,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data expected_mt_jade_mixing_subject_ref: ExternalSubjectRef = ExternalSubjectRef {
+  declaration: DeclarationRef {
+    module_path: "extdeps.ocp.mt_jade.memory_mixing",
+    decl_name: "mt_jade_mixed_dimm_support_table",
+    field: WholeDeclaration,
+  }
+}
+
+fn cell_support_is_not_supported(outcome: MtJadeMixedDimmSupportOutcome) -> Bool {
+  match outcome {
+    MixedDimmSupportResolved { cell: c } => match c.support {
+      MixingNotSupported => true
+      MixingSupported => false
+      MixingNotPreferred => false
+      MixingUndetermined => false
+    }
+    MixedDimmSupportUnmodelled { query: _ } => false
+    MixedDimmSupportAmbiguous { query: _ } => false
+  }
+}
+
+fn cell_support_is_undetermined(outcome: MtJadeMixedDimmSupportOutcome) -> Bool {
+  match outcome {
+    MixedDimmSupportResolved { cell: c } => match c.support {
+      MixingUndetermined => true
+      MixingSupported => false
+      MixingNotSupported => false
+      MixingNotPreferred => false
+    }
+    MixedDimmSupportUnmodelled { query: _ } => false
+    MixedDimmSupportAmbiguous { query: _ } => false
+  }
+}
+
+fn cell_support_is_not_preferred(outcome: MtJadeMixedDimmSupportOutcome) -> Bool {
+  match outcome {
+    MixedDimmSupportResolved { cell: c } => match c.support {
+      MixingNotPreferred => true
+      MixingSupported => false
+      MixingNotSupported => false
+      MixingUndetermined => false
+    }
+    MixedDimmSupportUnmodelled { query: _ } => false
+    MixedDimmSupportAmbiguous { query: _ } => false
+  }
+}
+
+fn cell_support_is_supported(outcome: MtJadeMixedDimmSupportOutcome) -> Bool {
+  match outcome {
+    MixedDimmSupportResolved { cell: c } => match c.support {
+      MixingSupported => true
+      MixingNotSupported => false
+      MixingNotPreferred => false
+      MixingUndetermined => false
+    }
+    MixedDimmSupportUnmodelled { query: _ } => false
+    MixedDimmSupportAmbiguous { query: _ } => false
+  }
+}
+
+fn outcome_resolves(outcome: MtJadeMixedDimmSupportOutcome) -> Bool {
+  match outcome {
+    MixedDimmSupportResolved { cell: _ } => true
+    MixedDimmSupportUnmodelled { query: _ } => false
+    MixedDimmSupportAmbiguous { query: _ } => false
+  }
+}
+
+fn every_axis_resolves_at(placement: MtJadeDimmMixingPlacement) -> Bool {
+  fold(mt_jade_dimm_mixing_axes, init: true, f: (acc, axis) => acc && outcome_resolves(outcome: mt_jade_mixed_dimm_support(placement: placement, axis: axis)))
+}
+
+// THE SAME-CHANNEL RANK RULE, READ OUT OF THE TABLE BY THE EXECUTING LOOKUP RATHER THAN ASSERTED.
+// This is the cell the fleet purchase turns on: two DIMMs in one channel may not differ in rank.
+test fn w_same_channel_rank_mixing_is_refused_by_the_table() -> Bool {
+  cell_support_is_not_supported(outcome: mt_jade_mixed_dimm_support(placement: SameChannel, axis: Mixing1rAnd2r))
+}
+
+// WIDTH IS CLOSED, AND THIS IS THE CELL THAT CLOSES IT. The question this work was dispatched to
+// answer was whether ANY cited platform rule constrains the second module's DRAM width to match its
+// peer's. Table 3 does: Mixing x4 & x8 in the same channel is No. The answer is not "width stays
+// unresolved" - the rule exists, it is upstream of Mt. Collins, and it refuses.
+test fn w_same_channel_chip_width_mixing_is_refused_by_the_table() -> Bool {
+  cell_support_is_not_supported(outcome: mt_jade_mixed_dimm_support(placement: SameChannel, axis: MixingX4AndX8))
+}
+
+// ACROSS CHANNELS, RANK MIXING IS TBD - AN ADMISSION, NOT A PERMISSION. Every other different-channel
+// cell prints Yes; this one alone does not, so a consumer that reads the row as "different channels
+// are fine" is wrong on exactly the axis a mixed 1R/2R fleet population sits on. The discriminating
+// half is the second clause: TBD must not equal the Yes its six neighbours carry.
+test fn w_different_channel_rank_mixing_is_undetermined_not_permitted() -> Bool {
+  cell_support_is_undetermined(outcome: mt_jade_mixed_dimm_support(placement: DifferentChannel, axis: Mixing1rAnd2r))
+    && cell_support_is_supported(outcome: mt_jade_mixed_dimm_support(placement: DifferentChannel, axis: MixingX4AndX8))
+    && cell_support_is_supported(outcome: mt_jade_mixed_dimm_support(placement: DifferentChannel, axis: DifferentDensity))
+    && (mt_jade_mixed_dimm_support_printed_label(support: MixingUndetermined) as String) != (mt_jade_mixed_dimm_support_printed_label(support: MixingSupported) as String)
+}
+
+// THE SAME-CHANNEL ROW IS NOT ALL REFUSALS, which is why the rule may not be modelled as one
+// sentence. RCD and SDRAM-die variation are permitted in one channel; speed and vendor variation are
+// Not Preferred, a third verdict that is neither. A Bool-valued model of this row would have to
+// answer one of those two ways for four cells it has no basis to decide.
+test fn w_the_same_channel_row_carries_all_three_printed_verdicts() -> Bool {
+  cell_support_is_supported(outcome: mt_jade_mixed_dimm_support(placement: SameChannel, axis: DifferentRcd))
+    && cell_support_is_supported(outcome: mt_jade_mixed_dimm_support(placement: SameChannel, axis: DifferentDramDies))
+    && cell_support_is_not_preferred(outcome: mt_jade_mixed_dimm_support(placement: SameChannel, axis: DifferentSpeed))
+    && cell_support_is_not_preferred(outcome: mt_jade_mixed_dimm_support(placement: SameChannel, axis: DifferentVendor))
+    && cell_support_is_not_supported(outcome: mt_jade_mixed_dimm_support(placement: SameChannel, axis: DifferentDensity))
+}
+
+// COMPLETENESS AT COORDINATE GRAIN, NOT BY COUNT. Every placement crossed with every axis resolves,
+// so no cell of the printed two-by-seven is missing and none is duplicated - the lookup refuses on
+// both. The row count is asserted beside it only as a second, weaker reading.
+test fn w_every_printed_cell_of_table_3_resolves() -> Bool {
+  fold(mt_jade_dimm_mixing_placements, init: true, f: (acc, p) => acc && every_axis_resolves_at(placement: p))
+    && list_length(items: mt_jade_dimm_mixing_axes) == 7
+    && list_length(items: mt_jade_dimm_mixing_placements) == 2
+    && list_length(items: mt_jade_mixed_dimm_support_table) == 14
+}
+
+// THE REFUSAL ARMS EXECUTE, rather than existing as unreachable decoration. A cell whose coordinate
+// does not match leaves the accumulator Unmodelled; a second cell at a coordinate already resolved
+// makes it Ambiguous instead of silently overwriting the first.
+test fn w_a_duplicated_coordinate_refuses_instead_of_taking_the_first() -> Bool {
+  let query = MtJadeMixedDimmSupportQuery { placement: SameChannel, axis: Mixing1rAnd2r }
+  let matching = MtJadeMixedDimmSupportCell { placement: SameChannel, axis: Mixing1rAnd2r, support: MixingSupported }
+  let other = MtJadeMixedDimmSupportCell { placement: DifferentChannel, axis: DifferentRcd, support: MixingSupported }
+  let first = mt_jade_accumulate_mixing_cell(acc: MixedDimmSupportUnmodelled { query: query }, query: query, cell: matching)
+  let second = mt_jade_accumulate_mixing_cell(acc: first, query: query, cell: matching)
+  let untouched = mt_jade_accumulate_mixing_cell(acc: MixedDimmSupportUnmodelled { query: query }, query: query, cell: other)
+  outcome_resolves(outcome: first)
+    && match second {
+      MixedDimmSupportAmbiguous { query: _ } => true
+      MixedDimmSupportResolved { cell: _ } => false
+      MixedDimmSupportUnmodelled { query: _ } => false
+    }
+    && match untouched {
+      MixedDimmSupportUnmodelled { query: _ } => true
+      MixedDimmSupportResolved { cell: _ } => false
+      MixedDimmSupportAmbiguous { query: _ } => false
+    }
+}
+
+// THE PROSE DIVERGENCE IS CHECKED AGAINST THE ROWS IT IS ABOUT, NOT AGAINST ITS OWN WORDING. The
+// declaration claims the introducing sentence is stricter than the table on Different Speed and
+// Different Vendor; what makes that a fact rather than a note is that those two cells really do
+// print a verdict other than the refusal the sentence implies.
+test fn w_the_prose_divergence_names_cells_the_table_actually_softens() -> Bool {
+  cell_support_is_not_preferred(outcome: mt_jade_mixed_dimm_support(placement: SameChannel, axis: DifferentSpeed))
+    && cell_support_is_not_preferred(outcome: mt_jade_mixed_dimm_support(placement: SameChannel, axis: DifferentVendor))
+    && (mt_jade_same_channel_prose_divergence.prose_sentence as String) != (mt_jade_same_channel_prose_divergence.divergence as String)
+    && (mt_jade_mixed_dimm_table_basis.attribution as String) != (mt_jade_mixed_dimm_table_basis.geometry_basis as String)
+}
+
+// EVERY PRINTED LABEL IS DISTINCT, so the transcription cannot have collapsed two columns of the
+// table into one concept while still typechecking.
+test fn w_the_printed_labels_distinguish_every_axis_and_verdict() -> Bool {
+  (mt_jade_dimm_mixing_axis_printed_label(axis: MixingX4AndX8) as String) == "Mixing x4 & x8"
+    && (mt_jade_dimm_mixing_axis_printed_label(axis: Mixing1rAnd2r) as String) == "Mixing 1R & 2R"
+    && (mt_jade_dimm_mixing_axis_printed_label(axis: DifferentDensity) as String) != (mt_jade_dimm_mixing_axis_printed_label(axis: DifferentSpeed) as String)
+    && (mt_jade_dimm_mixing_placement_printed_label(placement: SameChannel) as String) == "Same Channel"
+    && (mt_jade_dimm_mixing_placement_printed_label(placement: DifferentChannel) as String) == "Different Channel"
+    && (mt_jade_mixed_dimm_support_printed_label(support: MixingNotPreferred) as String) == "Not Preferred"
+    && (mt_jade_mixed_dimm_support_printed_label(support: MixingNotSupported) as String) == "No"
+}
+
+// THE MODULE CARRIES A TYPED SUBJECT EDGE AND CITES THE DATED MIRROR BESIDE THE PUBLISHER LOCATOR.
+test fn w_the_mixing_model_scope_points_at_the_table_and_cites_both_locators() -> Bool {
+  external_subject_ref_eq(a: mt_jade_memory_mixing_model_scope.subject, b: expected_mt_jade_mixing_subject_ref)
+    && (mt_jade_memory_mixing_model_scope.first_citation.uri.locator as String) == "www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
+    && list_length(items: mt_jade_memory_mixing_model_scope.further_citations) == 1
+    && (internet_archive_mt_jade_capture_authority.uri.locator as String) == "web.archive.org/web/20220603132323id_/https://www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
+    && (mt_jade_memory_mixing_subject.marketing_name as String) == (mt_jade_reference_platform.marketing_name as String)
+    && match mt_jade_memory_mixing_subject.revision { MtJadeRev1_0 {} => true }
+}
+
+// THE MIRROR READ IS ITS OWN RECEIPT, ADDED BESIDE THE OPERATOR HAND-OFF RATHER THAN REPLACING IT.
+// The arm is what decays differently: a dated capture may drift from what the publisher serves,
+// which an operator hand-off does not claim either way.
+test fn w_the_table_3_read_is_receipted_as_a_dated_mirror_capture() -> Bool {
+  match mt_jade_mirror_citation_read_receipt.provenance {
+    DatedPublisherLocatorMirrorTextIngested { mirror: m, capture_date: d, peer_session: _, detail: _ } =>
+      d.year == 2022 && d.month == 6 && d.day == 3
+        && (m.uri.locator as String) == (internet_archive_mt_jade_capture_authority.uri.locator as String)
+    DocumentLocatorFetchRefused { http_status: _, detail: _ } => false
+    DocumentLocatorFetchedButTextUnread { http_status: _, detail: _ } => false
+    PeerSessionPdfTextIngested { peer_session: _, detail: _ } => false
+    DocumentLocatorFetchedAndTextIngested { http_status: _, byte_count: _, content_digest: _, detail: _ } => false
+    DocumentMirrorLocatorFetchedAndTextIngested { mirror: _, observed_on: _, http_status: _, byte_count: _, content_digest: _, detail: _ } => false
+    OperatorSuppliedDocumentText {} => false
+  }
+    && (mt_jade_mirror_citation_read_receipt.subject.decl_name as String) == "mt_jade_reference_platform"
+}

@@ -814,7 +814,7 @@ fn harness_incarnation_standing(access: FleetSshContextPreparation, group: Fabri
 
 // THE ROUTE STANDING IS A SUPPLIED VALUE HERE, computed by the caller from harness_serving_route,
 // so this one interface can be driven with a fixture route that binds and shown to take the bound
-// offer INTO admission (test.claim.harness_turn_admission_witness_test). The incarnation standing is
+// offer INTO admission (test.claim.harness_turn_admission_witness). The incarnation standing is
 // supplied beside it (observed per candidate by harness_incarnation_standing, memoized per
 // collection) because the realization admission is judged on carries it too.
 fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, availability: ServingFrontDoorAvailabilityVerdict, readback: VllmModelsRouteReadbackStanding, incarnation: EndpointIncarnationStanding, route: SparkServingRoute, subject: HarnessTurnSubject, model: NonEmptyStr, unit: HarnessServingUnit, seats: Nat) -> HarnessCandidates {
@@ -989,7 +989,7 @@ fn harness_candidate_from_standing(
 // availability verdict, the launch, the seat pool standing, the fleet context, AND the declared-unit
 // roster, which harness_bind_seat minted once for the whole bind. This fold reaches for nothing
 // itself: it renders nothing and hashes nothing. That is what makes the mint -> carry -> bind wire
-// claimable at this one interface (test.claim.serving.serving_availability_bind_wet_witness_test supplies
+// claimable at this one interface (test.claim.serving.serving_availability_bind_wet_witness supplies
 // a real roster minted from the production declarations, then places). The observations themselves
 // are taken one call up, in harness_add_candidate, which no claim executes because it reads live
 // endpoints.
@@ -1355,7 +1355,7 @@ fn harness_nothing_placed(notes: List<String>, retryable: Bool) -> HarnessSeatBi
 // witness because no claim had ever priced a bound candidate, and the first dispatch that did
 // (2026-09-20) died in selection at `second_count` -- "cannot access field 'count' on Int". The
 // constructor is named so the seam has one authority and a witness can drive it
-// (test.claim.harness_turn_admission_witness_test prices a bound candidate with exactly this duration).
+// (test.claim.harness_turn_admission_witness prices a bound candidate with exactly this duration).
 fn harness_placement_grant_duration(policy: LeasePolicy) -> GrantDuration {
   EstimatedGrantDuration { seconds: second(count: policy.maximum_duration_seconds) }
 }

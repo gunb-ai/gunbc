@@ -1,0 +1,25 @@
+module test.claim.string_family_cast
+
+import std.logic { Bool }
+import std.types { NonEmptyStr, Secret, SecretValue }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn string_to_secret(s: String) -> Secret {
+  s as Secret
+}
+
+fn string_to_nonempty(s: String) -> NonEmptyStr {
+  s as NonEmptyStr
+}
+
+fn string_to_secret_value(s: String) -> SecretValue {
+  s as SecretValue
+}
+
+test fn string_family_cast_holds() -> Bool {
+  string_to_secret("secret-token") == "secret-token"
+    && string_to_nonempty("bmc-host") == "bmc-host"
+    && string_to_secret_value("rotated") == "rotated"
+}

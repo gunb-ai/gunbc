@@ -158,7 +158,7 @@ fn jit_mint_performance_of_generate(
   outcome: RestResult<JitConfigCreatedBody>,
 ) -> JitMintPerformance admit_callers: [
   decl_ref(module_path: "gunbc.github_effect_perform", decl_name: "perform_organization_jit_mint"),
-  decl_ref(module_path: "test.claim.github_effect_perform_witness_test", decl_name: "witness_generate_step_delivers_refuses_or_reports_ambiguity_by_what_github_answered"),
+  decl_ref(module_path: "test.claim.github_effect_perform_witness", decl_name: "witness_generate_step_delivers_refuses_or_reports_ambiguity_by_what_github_answered"),
 ] {
   match outcome {
     RestAnswered { answer: created } =>

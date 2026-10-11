@@ -52,7 +52,7 @@ import std.algebra { Cons, Empty }
 // different homes, and only this unit declared the usage-stats reporter off. A comparison needs a
 // shared value to be against, and there was none -- which is why the drift was found by reading both
 // renderers rather than by anything going red. The equality of the two projections is now claimed:
-// dag/test/claim/spark/glm_group_b_launch_authority_witness_test.dag.
+// dag/test/claim/spark/glm_group_b_launch_authority_witness.dag.
 //
 // THE IMAGE THIS NOW CARRIES IS THE DIGEST-PINNED ONE, WHICH IS A CHANGE TO WHAT THE UNITS SPELL.
 // The hand-assembled line named gunbc.spark.serving_arm glm_native_engine_build_image -- the derived

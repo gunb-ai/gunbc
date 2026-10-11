@@ -114,7 +114,7 @@ type DeclaredPayloadKind
 // symbol_index_declares_resource_at.
 // CONSUMER: v2.compiler.resolve resolve_arrow_resource_requirements, which refuses an operation's
 // `requires` member that does not resolve to a path marked here (D13 step a). That route's controls are
-// v2.test.claim.normalize.operation_requires_edge_test.
+// v2.test.claim.normalize.operation_requires_edge.
 type ResourceDeclared {}
 
 // A PATH THAT BINDS A SERVICE NAMESPACE BODY: a prefix segment of a dotted service name

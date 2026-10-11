@@ -12,7 +12,7 @@ import gunbc.roadmap.roadmap_execution_contract {
 // THE TWO-NODE CANARY OF THE ROADMAP LAUNCH MVP, DECLARED INERT (RLM-0 of
 // docs/plans/roadmap-launch-mvp-plan.md). Nothing here is a row of gunbc.roadmap.roadmap_authority: the
 // identities, contract and edge are declared once, here, and consumed by the synthetic fixture
-// graph at test.claim.roadmap.roadmap_launch_canary_witness_test today and by the live authority at RLM-3.
+// graph at test.claim.roadmap.roadmap_launch_canary_witness today and by the live authority at RLM-3.
 // The identities are minted per gunbc.roadmap.roadmap_model roadmap_node_identity_law, so RLM-3 adds the
 // nodes by reference rather than re-minting them, and every RLM-4..6 receipt binds these values.
 data roadmap_launch_canary_parent_id: NonEmptyStr = "roadmap-launch-canary"
@@ -48,7 +48,7 @@ fn roadmap_launch_canary_edge() -> RoadmapEdge {
 // not a declaration reference -- the verifier's declaration scan
 // (gunbc.roadmap.roadmap_validation_oracle validation_oracle_declaration_count) is what joins the name to
 // exactly one declaration at verification time.
-data roadmap_launch_canary_oracle_entry: FilePath = "dag/test/manual/roadmap_launch_canary_oracle_test.dag" as FilePath
+data roadmap_launch_canary_oracle_entry: FilePath = "dag/test/manual/roadmap_launch_canary_oracle.dag" as FilePath
 
 data roadmap_launch_canary_oracle_function: NonEmptyStr = "roadmap_launch_canary_oracle_completed" as NonEmptyStr
 
@@ -73,7 +73,7 @@ fn roadmap_launch_canary_ticket() -> TicketFields {
     displaced_cost: "Proves, on the production launch path, that one operator click produces exactly one attempt that performs exactly one bounded change which the pinned oracle verifies and publication offers.",
     current_state: "Inert: declared in the synthetic fixture graph only; not a row of gunbc.roadmap.roadmap_authority until RLM-3.",
     first_slice: "The single edit named in the brief.",
-    red_control: "test.manual.roadmap_launch_canary_oracle_test roadmap_launch_canary_oracle_completed is red on base (sentinel pending), green only when the sentinel equals `completed:` followed by the exact nonce, and red on a wrong or missing nonce; the predicate controls execute at test.claim.roadmap.roadmap_launch_canary_witness_test.",
+    red_control: "test.manual.roadmap_launch_canary_oracle roadmap_launch_canary_oracle_completed is red on base (sentinel pending), green only when the sentinel equals `completed:` followed by the exact nonce, and red on a wrong or missing nonce; the predicate controls execute at test.claim.roadmap.roadmap_launch_canary_witness.",
     out_of_scope: "Any change outside roadmap_launch_canary_sentinel.dag; any change to the oracle entry; any change to the nonce.",
     handback: "One attempt head whose diff is exactly the sentinel flip, a passing verification receipt against the pinned oracle, and a publication receipt for that head.",
     updates: [],

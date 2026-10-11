@@ -542,7 +542,7 @@ type FabricCellAddressEvidence
 
 // TWO REFUSALS JOIN TO THE LEAST CAUSE (byte-lexicographic String order), not the first seen, so
 // the full value -- AddressUnreadable.cause included -- is a semilattice join and independent of the
-// order observations arrive in (test.claim.fabric.fabric_cell_evidence_algebra_witness_test
+// order observations arrive in (test.claim.fabric.fabric_cell_evidence_algebra_witness
 // evidence_full_value_is_order_independent). Keeping the first cause made the class order-free
 // while the payload still moved with caller order.
 fn fabric_cell_address_evidence(
@@ -993,7 +993,7 @@ fn fabric_cell_host_mismatch_holds_slot(
 // through `sorted_map_keys`, which is what the rest of the corpus uses to make a fold
 // deterministic. It does not run: `sorted_map_keys` raises `NoSuchFunction` in the interpreter on
 // this tree, and so does the corpus's own witness for it
-// (`test.claim.sorted_map_keys_interpreter_order_witness_test`), whose annotation states the arm
+// (`test.claim.sorted_map_keys_interpreter_order_witness`), whose annotation states the arm
 // exists. That is a live defect in a shared primitive, reported rather than worked around here --
 // this fold needs a total order it can actually compute, not a dependency on a primitive that
 // raises.

@@ -344,7 +344,7 @@ type MemoryFitJudgment
 //
 // THE reserve > envelope SPLIT IS LOAD-BEARING FOR THAT CLAIM, not a redundant early-out: it is
 // what keeps the subtraction from ever running below zero. Its control is
-// test.claim.runner.runner_microvm_witness_test a_reserve_larger_than_the_whole_envelope_admits_no_guest,
+// test.claim.runner.runner_microvm_witness a_reserve_larger_than_the_whole_envelope_admits_no_guest,
 // which is the reason the branch may not be refactored away casually.
 fn guest_memory_fits(
   guest: GuestMemoryRequest,

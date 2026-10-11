@@ -1156,7 +1156,7 @@ fn infer_term_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIn
 // Admitting the shape is not admitting the access, so if this arm merely fell to the frontier every
 // misspelled field would be ACCEPTED by inference. Measured: with resolve's arm landed and this one
 // absent, `b.absent_field` inferred clean. That is exactly the fail-open the absent-field control in
-// v2.test.claim.field_projection.field_projection_stages_test exists to catch, and it caught it.
+// v2.test.claim.field_projection.field_projection_stages exists to catch, and it caught it.
 //
 // IT SITS AT THE HEAD OF THE PRODUCT ROW BECAUSE A PROJECTION IS AN ELIMINATION, NOT A RECORD. A
 // projection is a Conj, so without this arm it reaches infer_product_facts_from_entries and is typed as
@@ -1269,7 +1269,7 @@ fn infer_field_not_declared_diagnostic(node: Node) -> Diagnostic {
 // converts a decided negative into "no evidence" and lets the projection pass at the frontier.
 //
 // MEASURED, NOT ARGUED. Collapsed, this broke the standing negative control
-// v2.test.claim.namespace_xl0.cross_module_reference_resolution_test
+// v2.test.claim.namespace_xl0.cross_module_reference_resolution
 // a_receiver_with_no_such_child_never_accepts: `Bool.v` has no child `v`, and because resolve now
 // commits the projection shape for a bound head, `Bool`'s established type is not a record reference,
 // the payload lookup answered Absent, and the projection was ACCEPTED at the frontier. A receiver with
@@ -1287,7 +1287,7 @@ fn infer_field_not_declared_diagnostic(node: Node) -> Diagnostic {
 // program of a defect it does not have.
 //
 // MEASURED, with one variable moved and a green positive control beside the red:
-// v2.test.claim.field_projection.field_projection_stages_test
+// v2.test.claim.field_projection.field_projection_stages
 // fps_a_same_module_record_projection_infers PASSES and
 // fps_a_cross_module_record_projection_infers FAILS over byte-identical records projected off a plain
 // parameter, differing only in whether the record is declared in the consuming module or an imported one.
@@ -1873,7 +1873,7 @@ fn infer_conj_named_type_for_binding(domain: Node, binding: Symbol) -> Optional<
 // <where-refinement-clause>: clause }` (v2.compiler.body_lowering_fold body_lower_type_variant, the
 // head lowered as a type). A MISS IS ABSENT, and Absent never admits: the declared-carrier widening
 // runs only after the exact crossing refused, so a lookup that finds nothing leaves that refusal
-// standing (v2.test.claim.body_cast_node_test bcn_a_refinement_lookup_miss_refuses).
+// standing (v2.test.claim.body_cast_node bcn_a_refinement_lookup_miss_refuses).
 // CONSUMERS. .carrier is consumed: refinement_declared_carrier hands it to v2.std.coercion
 // coercion_cast_crossing (an explicit cast's declared-carrier widening) and, through
 // infer_judge_declared_position, to v2.std.inhabitance declared_type_inhabitance (the same one-step
@@ -5603,7 +5603,7 @@ fn infer_literal_edge_payload(parent: Node, edge: Edge) -> InferLiteralPayload {
 // same node as that evidence. A domain that IS structurally the empty product (a synthetic
 // childless Conj) meets the self-evidence wall in canonical_grounding_from_derived_type, and infer
 // refuses it rather than typing a node as itself. The standalone childless-Conj rule deliberately
-// still refuses (v2.test.claim.execution.infer_product_introduction_test
+// still refuses (v2.test.claim.execution.infer_product_introduction
 // product_introduction_leaves_childless_conj_on_the_frontier_holds): a childless Conj elsewhere
 // is not known to be a product of anything, and parse residue has that shape too. What this adds
 // is the one position whose meaning the Arrow fixes: its first child, the domain. Before

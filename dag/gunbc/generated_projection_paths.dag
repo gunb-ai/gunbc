@@ -88,7 +88,7 @@ fn deterministic_generated_projection_paths() -> GeneratedProjectionPathsOutcome
 // an unset row emitted ABOVE the glob is inert — and inert in the dangerous direction, since the
 // hand-maintained file then silently acquires the driver with no diagnostic anywhere. The glob is
 // therefore constructed ahead of the unsets here rather than sorted into them, and
-// test.claim.generated_projection_merge_rows_witness_test reds when the two are transposed.
+// test.claim.generated_projection_merge_rows_witness reds when the two are transposed.
 //
 // THE OVER-CLAIM IS THE SAFE DIRECTION, WHICH IS WHY COVERAGE-BY-DEFAULT IS ADMISSIBLE HERE AND
 // #8674 REJECTED THE SAME COMPLEMENT FOR ITS OWN QUESTION. That module classifies maintenance

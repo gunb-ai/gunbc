@@ -3,7 +3,7 @@ module test.fixture.nat_qualified_provider
 import test.fixture.structural_peano_nat { StructuralNat, structural_nat_add }
 
 // Pool-edge fixture for
-// test.claim.self_host_emitted_call_target_realization_witness_test's
+// test.claim.self_host_emitted_call_target_realization_witness's
 // w_qualified_type_reference_qualifier_disambiguates_the_leaf. The mechanism under test is the
 // emitter's qualified-type use-line route, which only sees a reference when the resolver leaves it
 // AUTHORED -- and the resolver leaves test.fixture.structural_peano_nat.StructuralNat authored only in a module that does NOT import

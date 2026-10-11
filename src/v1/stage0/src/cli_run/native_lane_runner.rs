@@ -48,7 +48,7 @@ use std::process::Command;
 
 /// THE FAULT-EXPERIMENT INPUT, joined to `gunbc.emitted_subject_build_gate`
 /// `native_fault_experiment_env_name` / `native_fault_experiment_skip_value` by
-/// `test.claim.compiler_gate_emit_build_lane_witness_test` `the_seed_fault_experiment_input_is_the_dag_rows`.
+/// `test.claim.compiler_gate_emit_build_lane_witness` `the_seed_fault_experiment_input_is_the_dag_rows`.
 const FAULT_EXPERIMENT_ENV: &str = "GUNBC_NATIVE_FAULT_EXPERIMENT";
 const FAULT_EXPERIMENT_SKIP_VALUE: &str = "skip_pull_request";
 
@@ -162,7 +162,7 @@ const CLI_DOOR_EMIT_BODY_REFUSAL: &str = "translate_arrow_body_not_a_type_expres
 /// `v2.cli.compile_cli`'s own annotation warns about ("the head is not the cause"), kept invisible
 /// by a `contains()` that matched the advisory anywhere in the line. Decoding the LAST link
 /// surfaced it on the first real run against the built binary. The corpus already held the answer:
-/// `v2.test.claim.translate_underived_refusal_test` `translate_refused_canonical_grounding` asserts BOTH
+/// `v2.test.claim.translate_underived_refusal` `translate_refused_canonical_grounding` asserts BOTH
 /// halves -- the fatal is `translate_rejected_grounding_not_derived`, and it is NOT the advisory.
 const CLI_DOOR_EMIT_LIMITATION: &str = "translate_rejected_grounding_not_derived";
 
@@ -1964,7 +1964,7 @@ pub struct V2NativeCliHeld {
 /// walked here is `fixture.native_cli_door.door_probe`, a single import-free module. What the walk
 /// establishes is that argv parsing, the source-root read, ingest, resolution, emission and the
 /// process exit all execute in the built artifact — the inhabitance obligation beside
-/// `v2.test.claim.cli.v2_native_cli_test`, whose rows supply their argv and their ingest and are claims about
+/// `v2.test.claim.cli.v2_native_cli`, whose rows supply their argv and their ingest and are claims about
 /// the folds rather than about the program.
 /// SPAWN THE BUILT CLI ONCE, BY EXPLICIT PATH, AND CARRY WHAT IT DID.
 ///
@@ -2426,7 +2426,7 @@ fn cli_emit_probe_refusal(verdict: &CliEmitProbeVerdict, run: &CliDoorRun) -> St
 /// WHAT THIS CLOSES. Before it, `//gunbc/instruments:v2-native-cli` emitted the CLI's closure and
 /// built it, and stopped — the door compiled and nothing ever opened it. DESIGN section 5 names
 /// that exactly: a typecheck is not a consumer, and "done" is a real consumer green BY EXECUTION
-/// plus a discriminating input that goes red. `v2.test.claim.cli.v2_native_cli_test` executes the door's
+/// plus a discriminating input that goes red. `v2.test.claim.cli.v2_native_cli` executes the door's
 /// FOLDS over supplied argv and a supplied ingest, which is the right subject for those claims and
 /// is not this one; the inhabitance obligation beside them is that the REAL PATH runs, and the real
 /// path is the built process reading real argv and real files.
@@ -2449,7 +2449,7 @@ fn cli_emit_probe_refusal(verdict: &CliEmitProbeVerdict, run: &CliDoorRun) -> St
 /// does establish is that THE BUILT BINARY'S ENTRYPOINT EXECUTES: the `cli_no_entry` arm reaches a
 /// LOCATED refusal that only this program's own `.dag` fold can produce, which means the process
 /// started, read argv, parsed it, decided, rendered its own cause and set its own exit status.
-/// That is the inhabitance claim `v2.test.claim.cli.v2_native_cli_test` cannot make, because its rows supply
+/// That is the inhabitance claim `v2.test.claim.cli.v2_native_cli` cannot make, because its rows supply
 /// argv and ingest rather than running the program.
 ///
 /// TWO SPAWNS, ONE BINARY, DIFFERING IN ONE ARGUMENT. The emit probe hands the door a complete
@@ -3887,7 +3887,7 @@ mod tests {
     /// byte-for-byte verified. All 3992 carried `NativeTestRefused`. So this is a reading of the
     /// shape the real producer emits, not a hypothesis about it, and it needs no closure to run --
     /// which is the point: a decoder over rows must be reddable by handing it rows.
-    const REAL_REFUSED_ROW: &str = r#"{"identity":{"module":"v2.test.v2_native_route_test","declaration":"a_divergence_is_refused"},"verdict":{"_variant":"NativeTestRefused","stage":{"_variant":"NativeTestStageContext"},"diagnostics":{"head":{"reason":"parse_g0_tokens_remain","at":{"_variant":"Textual","file":"src/v2/test/v2_native_route_test.dag","extent":{"_variant":"WholeFile"}},"correction":{"_variant":"Unavailable","reason":{"_variant":"UserInputBoundary"}}},"tail":[]}}}"#;
+    const REAL_REFUSED_ROW: &str = r#"{"identity":{"module":"v2.test.v2_native_route","declaration":"a_divergence_is_refused"},"verdict":{"_variant":"NativeTestRefused","stage":{"_variant":"NativeTestStageContext"},"diagnostics":{"head":{"reason":"parse_g0_tokens_remain","at":{"_variant":"Textual","file":"src/v2/test/v2_native_route.dag","extent":{"_variant":"WholeFile"}},"correction":{"_variant":"Unavailable","reason":{"_variant":"UserInputBoundary"}}},"tail":[]}}}"#;
 
     #[test]
     fn a_real_refused_row_decodes_and_folds_to_subject_unreached() {

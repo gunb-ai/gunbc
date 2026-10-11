@@ -312,7 +312,7 @@ fn spark_native_grant_preflight_refusals(ps: List<SparkNativeGrantPreflight>) ->
 // operator needs, rather than a sentence asserting a split nothing observed.
 //
 // WHAT THE EVIDENCE HERE IS. The stage scripts, their ordering and the outcome fold are claimed by
-// dag/test/claim/spark/native_serving_roce_transport_witness_test.dag. NOTHING BELOW HAS BEEN RUN
+// dag/test/claim/spark/native_serving_roce_transport_witness.dag. NOTHING BELOW HAS BEEN RUN
 // AGAINST THE FLEET: this is a transaction that has never actuated, and the receipt that would change
 // that is a converge under the `spark_native_serving_apply` mode.
 

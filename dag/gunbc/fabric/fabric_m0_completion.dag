@@ -200,7 +200,7 @@ fn readback_digest_verdict(subject: NonEmptyStr, recorded: Sha256Digest, readbac
 // gunbc.fabric.fabric_m0_origin_readback, whose only mint computes the digest over the file named in the
 // same value. On the source-to-dag acceptance path there is no constructor that pairs a digest with
 // a file it was not taken from, so that sub-class is structurally impossible rather than validated
-// -- measured, not asserted, by test.claim.fabric_m0_origin_readback_seal_test.
+// -- measured, not asserted, by test.claim.fabric_m0_origin_readback_seal.
 //
 // WHAT REMAINS, and it is what keeps the enclosing class at MITIGATABLE: the staged path is still
 // chosen by whoever calls the mint, so "the digested file was the origin readback's own output and

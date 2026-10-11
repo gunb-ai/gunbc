@@ -90,7 +90,7 @@ type MergeAdmissionReceipt {
 }
 
 // THE FOURTH ARM IS THE LIVE ONE, AND IT IS WEAKER THAN THE ARM THIS REPOSITORY HAS BEEN CALLING
-// LIVE. `gunbc.merge_lifecycle` and `test.claim.merge_lifecycle_interleaving_witness_test` both name
+// LIVE. `gunbc.merge_lifecycle` and `test.claim.merge_lifecycle_interleaving_witness` both name
 // `PerPrGateOnly` as "the live policy -- GitHub strict_required_status_checks false, no queue",
 // and that reading is refuted by measurement rather than by argument. `PerPrGateOnly` requires a
 // SUCCESS receipt minted for the exact head; a head with no receipt is refused under it, because

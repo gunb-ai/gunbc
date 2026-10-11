@@ -89,7 +89,7 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, UncountedNotE
 // SAME OPERATION AS PREPARING AND EXECUTING ITS DEPENDENCY CLOSURE. Read from the artifact rather
 // than inferred: the required-floor-disposition TSV (artifact 9975676354, run 33986383584 at
 // 2f8819b891, checked against its published SHA-256) carries all ELEVEN identities of
-// `test.claim.guarantee_stall_witness_test` as `declined_outside_gate_closure` / `not_executed`.
+// `test.claim.guarantee_stall_witness` as `declined_outside_gate_closure` / `not_executed`.
 // The narrowing itself is
 // `gunbc.recurring_failure_mode.preparation_membership_derived_from_the_execution_selector`, which
 // is the authority for that shape; this comment mints no second wording for it.

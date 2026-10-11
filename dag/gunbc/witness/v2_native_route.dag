@@ -754,7 +754,7 @@ fn native_route_positive_population_present(census: NativeRouteCensus) -> Bool {
 // can replace another while capability is lost, so the join is at identity grain.
 data native_route_required_pass_identities: List<NativeRouteTestIdentity> = [
   NativeRouteTestIdentity {
-    module: "v2.test.native_lane_smoke_test",
+    module: "v2.test.native_lane_smoke",
     declaration: "native_route_positive_population_smoke"
   }
 ]

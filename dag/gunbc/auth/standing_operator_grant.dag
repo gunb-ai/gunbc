@@ -114,7 +114,7 @@ fn standing_grant_scope_matches(g: StandingOperatorGrant, scope: StandingGrantSc
 // secret names: operator sign-off msg_f03558d1.
 // THE BMCSECURE ARM PROMOTES ONLY THIS GRAIN. A supplied InterlockPending with any other
 // obligation, or InterlockedBy a foreign hold, stays as written so grant_discharges still
-// refuses those mutants (test.claim.machine_intake.machine_intake_arrival_converge_witness_test
+// refuses those mutants (test.claim.machine_intake.machine_intake_arrival_converge_witness
 // w_bmc_secure_apply_pending_interlock_refuses_at_discharge).
 data mtjade1_grant_grain_pending_obligation: NonEmptyStr = "grant grain names no hold; landed arms name holds via standing_grant_arm_interlock; J6 boot remains pending until managed_host_boot" as NonEmptyStr
 

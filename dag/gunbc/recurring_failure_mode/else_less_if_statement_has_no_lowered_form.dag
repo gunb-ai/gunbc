@@ -17,12 +17,12 @@ data else_less_if_statement_has_no_lowered_form: RecurringFailureMode = Recurrin
   ],
 
   evidence: [
-    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal_test", decl_name: "an_else_less_if_guard_resolves", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.return_tail_position_test", decl_name: "an_else_less_if_that_falls_through_still_refuses_as_unlowered", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.return_tail_position_test", decl_name: "an_else_less_if_as_the_last_statement_still_refuses_as_unlowered", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.return_tail_position_test", decl_name: "a_guard_in_a_non_tail_spine_still_refuses_as_unlowered", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.return_tail_position_test", decl_name: "a_guard_followed_by_statements_is_accepted", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.return_tail_position_test", decl_name: "a_guard_arm_return_operand_is_read_and_refuses_unbound_at_its_atom", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.return_tail_position_test", decl_name: "the_statements_after_a_guard_are_read_and_refuse_unbound_at_their_atom", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal", decl_name: "an_else_less_if_guard_resolves", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.return_tail_position", decl_name: "an_else_less_if_that_falls_through_still_refuses_as_unlowered", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.return_tail_position", decl_name: "an_else_less_if_as_the_last_statement_still_refuses_as_unlowered", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.return_tail_position", decl_name: "a_guard_in_a_non_tail_spine_still_refuses_as_unlowered", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.return_tail_position", decl_name: "a_guard_followed_by_statements_is_accepted", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.return_tail_position", decl_name: "a_guard_arm_return_operand_is_read_and_refuses_unbound_at_its_atom", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.return_tail_position", decl_name: "the_statements_after_a_guard_are_read_and_refuse_unbound_at_their_atom", field: WholeDeclaration },
   ],
 }

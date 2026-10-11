@@ -180,7 +180,7 @@ fn spark_first_party_route() -> ProviderRoute {
 // so that it could be described as executed, which is the §4c shape exactly -- and worse than an
 // annotation, because an annotation does not claim to be read. The field is deleted; what enforces
 // "for now" is spark_first_party_posture's revision, the roster row bound to it, and the RED in
-// test.claim.spark.spark_first_party_serving_witness_test that drives a superseded revision through
+// test.claim.spark.spark_first_party_serving_witness that drives a superseded revision through
 // admit_provider_use and requires PostureRevisionStale.
 //
 // THE REMAINING FIELDS ARE NOT IN THAT CLASS AND ARE KEPT. They are the evidence an auditor reaches
@@ -232,7 +232,7 @@ data spark_first_party_use_posture: FirstPartySelfUsePosture = FirstPartySelfUse
 // which is the telemetry path's own evidence declaration, and names the drop row that carries the
 // reason, the bounded population and the restoration trigger. A second route citing the same
 // undocumented-jurisdiction field is NOT enrolled and refuses as TransferOrLocationUnresolved --
-// which is enrolled as a red in test.claim.fabric.provider_admission_witness_test, because the property
+// which is enrolled as a red in test.claim.fabric.provider_admission_witness, because the property
 // that the exception is bound to the path rather than to the value is the one a reader most needs
 // and the one no other test in that set can see.
 //
@@ -862,7 +862,7 @@ fn spark_first_party_use_scope<P>(
 // product.fabric.selection bind_candidate as its admission. Only CandidateBound becomes a harness
 // candidate; a refusal here surfaces as OfferNotAdmittedForUse carrying this producer's
 // refusal_reason unchanged.
-// test.claim.spark.spark_first_party_serving_witness_test exercises both arms directly.
+// test.claim.spark.spark_first_party_serving_witness exercises both arms directly.
 fn spark_first_party_admission<P>(
   realization: SparkServingRealization,
   scope: ProviderUseScope<P>,

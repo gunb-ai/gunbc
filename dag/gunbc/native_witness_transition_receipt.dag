@@ -59,11 +59,11 @@ import gunbc.open_node_partial_evidence { OpenNodePartialEvidenceReceipt }
 // used to answer "before" from their inequality is deleted for exactly that reason. A consumer
 // needing the direction must observe the ancestry of this pair rather than read it off the row.
 // The cited evidence is selected_logic_cutover_evidence_holds in
-// v2.test.claim.execution.native_selected_witness_bundle_test, the ordinary fn where the equivalence between
+// v2.test.claim.execution.native_selected_witness_bundle, the ordinary fn where the equivalence between
 // native and interpreted execution is actually established -- deliberately not the
 // native_selected_witness_bundle_cutover_evidence_holds wrapper around it, which is a test
 // function: a test-to-test reference here is exactly the debt the test-reference wall refuses
-// (test.claim.native_witness_transition_receipt_witness_test imports the ordinary fn for the same
+// (test.claim.native_witness_transition_receipt_witness imports the ordinary fn for the same
 // reason). The timing ratio against interpreted and warm-cargo paths remains claimed-not-verified
 // per the design note, and nothing here asserts it.
 
@@ -74,7 +74,7 @@ fn native_at_small_scale_transition_receipt() -> OpenNodePartialEvidenceReceipt 
     landed_merge_commit: "1ebff27f1e538a06edbaf6a1871bff4c10887b39",
     evaluated_head: "2f9e780e6d2130680c4d9fb49739bf0c6cc7c746",
     executed_evidence: decl_ref(
-      module_path: "v2.test.claim.execution.native_selected_witness_bundle_test",
+      module_path: "v2.test.claim.execution.native_selected_witness_bundle",
       decl_name: "selected_logic_cutover_evidence_holds",
     ),
   }

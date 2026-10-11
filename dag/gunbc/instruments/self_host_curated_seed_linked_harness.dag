@@ -205,7 +205,7 @@ fn cssl_pass_marker_stem(pass_marker: String) -> String {
 //   not contains(PASS marker)     the planted fault did not leave the comparison agreeing anyway.
 //
 // A binary that never ran satisfies the first and fails the second. That is the cause swap, and it
-// is exercised directly in test.claim.claim_entailing_evidence_cause_swap_witness_test.
+// is exercised directly in test.claim.claim_entailing_evidence_cause_swap_witness.
 //
 // THE PARAMETERS ARE THE TWO OBSERVATIONS RATHER THAN THE RUN RECORD, and that is what makes the
 // control authorable at all. gunbc.WitnessBin.Run returns an anonymous output record with no name a

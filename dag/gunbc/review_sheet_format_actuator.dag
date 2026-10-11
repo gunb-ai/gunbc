@@ -240,7 +240,7 @@ fn classify_format_step(step: NonEmptyStr, outcome: RestRefusal) -> FormatStepOu
 //
 // The request records exist so that the addressing is a VALUE a claim can read rather than an
 // argument inside an effect. format_request_plan is a pure fold from the located tab and the
-// schema to every request this actuator would send, and test.claim.review_sheet_format_target_witness_test
+// schema to every request this actuator would send, and test.claim.review_sheet_format_target_witness
 // asserts that each one carries the located sheetId; the step functions take a request and pass
 // its fields through. WHAT THAT DOES NOT ESTABLISH, said plainly: the claim reads the plan, not the
 // wire, so it discriminates a plan built from the constant and does NOT discriminate a step

@@ -126,7 +126,7 @@ import extdeps.languages.json.parse {
 // bounded srv1 execution grant, not a standing child credential.
 
 // BOUNDED WET HANDOFF — BISECT FIRST (srv1 OOM receipt 2026-08-14). Bisect entrypoints in
-// dag/test/claim/codex_supervised_turn_wet_witness_test.dag are plain fn (NOT enrolled witnesses —
+// dag/test/claim/codex_supervised_turn_wet_witness.dag are plain fn (NOT enrolled witnesses —
 // admission gate refuses enrolled-with-zero-consumers). Operator runs under MemoryMax caps on srv1
 // only. Step 1: wet_committed_admitted_source_lock_admits (2G). Step 2b:
 // wet_select_codex_exact_target_closure_only (2G). Step 2:

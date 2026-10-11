@@ -373,7 +373,7 @@ type TimerRetirementMemberAt = NonEmptyStr
 //   no authoritative projection consumes an excess field, and a smuggled one cannot alter the
 //   subject, baseline, member-set fingerprint, plan body, counters, terminal, lease, apply shell or
 //   bundle identity -- executed as difference over production-shaped payloads by
-//   test.claim.fleet.fleet_converge_launch_scope_non_interference_test, each pair carrying an owning-scope
+//   test.claim.fleet.fleet_converge_launch_scope_non_interference, each pair carrying an owning-scope
 //   control so the equality cannot be a dead fixture;
 //
 //   excess-field initializers are semantically analysed and are not runtime-evaluated.
@@ -1302,7 +1302,7 @@ fn fleet_converge_activation_refusal_count(
 // specific way: the row goes stale while the refusal printed beside it keeps naming a different
 // cause, so the two disagree and no mechanism notices. Rendering them into plan.txt puts the
 // declared blocker and the executed refusal in front of the same reader in the same artifact, and
-// test.claim.runner.runner_service_activation_witness_test asserts they agree.
+// test.claim.runner.runner_service_activation_witness asserts they agree.
 //
 // BOTH ROWS, NOT ONE. The reachability row says why the admission cannot say yes here; the safety
 // row says what it would guarantee if it did, and that the raw systemctl grants leave a door beside

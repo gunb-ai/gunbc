@@ -665,7 +665,7 @@ fn integrity_violation_count(vs: List<LanguageTargetJoinViolation>) -> Int {
 // asymmetry where continuation lines beginning with + were rejected while && parsed — dissolved by
 // #8259 (continuation eligibility derived from dag_syntax_spec.operators; witness
 // w_arithmetic_operator_newline_family_test in
-// dag/test/claim/dag_parse_continuation_operator_witness_test.dag, migrated from src/v1 in the
+// dag/test/claim/dag_parse_continuation_operator_witness.dag, migrated from src/v1 in the
 // dead-witness-tree triage, gunbc.ci.ci_layer_roots v1_dead_witness_tree_triage_receipt). Named
 // bindings remain clearer here regardless. WHAT MADE THE ORIGINAL PARSE FAILURE EXPENSIVE was blast
 // radius: the kernel failed to load, so every downstream consumer reported unresolved import plus

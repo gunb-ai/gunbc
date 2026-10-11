@@ -33,7 +33,7 @@ data a_control_that_shares_its_derivation_with_its_subject: RecurringFailureMode
 
   evidence: [
     decl_ref(module_path: "extdeps.linux.proc_meminfo", decl_name: "meminfo_line_metric"),
-    decl_ref(module_path: "test.claim.os_proc_meminfo_witness_test", decl_name: "parsing_meminfo_reads_the_named_fields_and_refuses_a_missing_one"),
+    decl_ref(module_path: "test.claim.os_proc_meminfo_witness", decl_name: "parsing_meminfo_reads_the_named_fields_and_refuses_a_missing_one"),
     decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "unit_termination_decide"),
   ],
 }

@@ -158,7 +158,7 @@ data class_b_remaining_sites: List<AliasedPredicateSite> = [
 // THIS MODULE HAS A CONSUMER, AND THAT IS NOT A FORMALITY. An unimported carrier is typechecked by no
 // closure and asserted by nothing -- the orphan shape where a module is CITED as an authority while
 // nothing compiles it. A roster of outstanding obligations is exactly the kind of file that rots that
-// way, so it has a witness: test.claim.predicate_cause_aliasing_roster_witness_test, the `*_test.dag`
+// way, so it has a witness: test.claim.predicate_cause_aliasing_roster_witness, the `*_test.dag`
 // sidecar floor discovery requires for `test`-marked decls (v2.workflow.floor_naming_hygiene
 // floor_test_marked_decl_allowed_in_entry). The three test fns lived in this file until 2026-08-29,
 // where the producer refused them and the floor's filename-blind Rust scan ran them anyway.
@@ -209,27 +209,27 @@ type NegativeControlSite {
 
 data bare_false_negative_controls: List<NegativeControlSite> = [
   NegativeControlSite {
-    module_path: "test.claim.codex_app_server_press_wet_witness_test",
+    module_path: "test.claim.codex_app_server_press_wet_witness",
     symbol: "press_account_trip_yields_standing_or_typed_refusal_never_turn_started_holds"
   },
   NegativeControlSite {
-    module_path: "test.claim.codex_package_delivery_wet_witness_test",
+    module_path: "test.claim.codex_package_delivery_wet_witness",
     symbol: "acquire_required_codex_tarball_sha512_matches_lock"
   },
   NegativeControlSite {
-    module_path: "test.claim.codex_package_delivery_wet_witness_test",
+    module_path: "test.claim.codex_package_delivery_wet_witness",
     symbol: "acquire_exact_target_pair_admits_wrapper_and_platform"
   },
   NegativeControlSite {
-    module_path: "test.claim.codex_supervised_turn_wet_witness_test",
+    module_path: "test.claim.codex_supervised_turn_wet_witness",
     symbol: "wet_acquire_wrapper_artifact_only"
   },
   NegativeControlSite {
-    module_path: "test.claim.codex_supervised_turn_wet_witness_test",
+    module_path: "test.claim.codex_supervised_turn_wet_witness",
     symbol: "wet_acquire_platform_artifact_only"
   },
   NegativeControlSite {
-    module_path: "test.claim.codex_supervised_turn_wet_witness_test",
+    module_path: "test.claim.codex_supervised_turn_wet_witness",
     symbol: "supervised_turn_materialized_bundle_writes_terminal_receipt"
   },
   NegativeControlSite {
@@ -241,7 +241,7 @@ data bare_false_negative_controls: List<NegativeControlSite> = [
     symbol: "fleet_converge_timer_not_installed_by_deploy_apply"
   },
   NegativeControlSite {
-    module_path: "test.claim.run_verdict_exit_status_witness_test",
+    module_path: "test.claim.run_verdict_exit_status_witness",
     symbol: "run_success_verdict_reaches_zero_exit"
   },
   NegativeControlSite {

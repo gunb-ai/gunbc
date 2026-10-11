@@ -103,7 +103,7 @@ data browse_production_access: BrowseProductionAccess = BrowseProductionAccess {
 }
 
 // WHAT THIS CHANGE DOES NOT YET EXECUTE, declared rather than implied. The folds (condition IDs,
-// filter grammar, page admission, contextual header) are executed by test.claim.ebay_browse_witness_test;
+// filter grammar, page admission, contextual header) are executed by test.claim.ebay_browse_witness;
 // the rows below have no executing reader in this closure.
 data ebay_browse_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(

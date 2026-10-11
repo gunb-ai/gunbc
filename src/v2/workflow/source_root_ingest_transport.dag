@@ -37,7 +37,7 @@ So the manifest now lands in a per-run mktemp directory that is scanned and then
 
 data ingest_manifest_name: String = "/v2-source-root-ingest-manifest.dag"
 data ingest_manifest_template: String = "/target/source-root-ingest-XXXXXX"
-data ingest_entry: String = "src/v2/test/claim/program_assembly/real_ingest_test.dag"
+data ingest_entry: String = "src/v2/test/claim/program_assembly/real_ingest.dag"
 data ingest_witness_module_roots_parse: String = "program_assembly_real_ingest_module_roots_parse_holds"
 data ingest_witness_host_manifest_receipt: String = "program_assembly_real_ingest_host_manifest_receipt_holds"
 data ingest_witness_validate_red: String = "program_assembly_real_ingest_validate_module_roots_red_on_parsed_roots"

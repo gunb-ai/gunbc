@@ -1,8 +1,0 @@
-module v2.test.claim.auth_declared_but_unwired_witness_test
-
-
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
-test fn auth_declared_but_unwired_witness_keystone_holds() -> Bool {
-  gunbc.instruments.auth_declared_but_unwired_witness_transport.run_auth_declared_but_unwired_witness()
-}

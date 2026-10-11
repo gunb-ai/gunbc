@@ -4689,8 +4689,7 @@ pub(crate) struct LocalRepoWetScheduledRow {
 }
 
 /// The module whose `local_repo_wet_premise_readings_wet` answers every declared premise once.
-pub(crate) const LOCAL_REPO_WET_PREMISE_READBACK_MODULE: &str =
-    "gunbc.runner.wet_host_premise_readback";
+pub(crate) const LOCAL_REPO_WET_PREMISE_READBACK_MODULE: &str = "gunbc.runner.wet_host_premise_readback";
 
 /// WHAT ONE MEMBER ACTUALLY REACHED, at the width of the `.dag` authority's observed side.
 ///
@@ -5735,7 +5734,7 @@ pub fn floor_prepared_subject_exclusions() -> Vec<String> {
         // callees are undeclared spellings by design, so it must never resolve. Nothing imports it,
         // so it stayed out of preparation by that accident alone until gunbc#12761's widened
         // subject prepared it and it refused. Its designed refusal is asserted by class and subject
-        // in test.claim.fleet.health_read_only_fixture_refusal_witness_test.
+        // in test.claim.fleet.health_read_only_fixture_refusal_witness.
         "test/fixture/health_read_only/".to_string(),
         "test/manual/ownership_movable_test.dag".to_string(),
         // WET RECEIPT, AND IT HAS NO CI CONSUMER TODAY — stated plainly rather than dressed up
@@ -6111,7 +6110,7 @@ fn floor_heap_beat(seam: &str) {
 /// Why the callers differ, and why this must not decide for them: the heartbeat's seam crosses
 /// into `gunbc.observation_seed_render` `seed_heartbeat_subject`, which branches on `seam == ""`
 /// to decide whether a beat carries a `PhaseSegment` at all — the empty string IS that model's
-/// representation of "no phase", pinned by `test.claim.observation_seed_heartbeat_witness_test`.
+/// representation of "no phase", pinned by `test.claim.observation_seed_heartbeat_witness`.
 /// Handing it the beat line's `none` would mint `PhaseSegment { name: "none" }`, fabricating a
 /// phase named after the absence of one. The stat beat, whose line is transcribed into a typed
 /// `gunbc.floor.floor_demand` `FloorSeam`, wants a single non-empty token it can map to
@@ -9020,7 +9019,7 @@ pub fn run_required_floor(
     // misses over two source roots against ONE index address, `edge_index_construction {
     // builds: 1 }` — so the work is already done exactly once per process. It was simply BILLED
     // to whichever claim resolved an entry first:
-    // `test.claim.qualified_spelling_identity_witness_test.qualified_spelling_takes_the_shared_layer`
+    // `test.claim.qualified_spelling_identity_witness.qualified_spelling_takes_the_shared_layer`
     // at 57193ms CPU against a 5000ms per-claim limit, while its sibling reaching the identical
     // computation milliseconds later measured 5ms.
     //
@@ -9112,7 +9111,7 @@ pub fn run_required_floor(
     // billed to a first toucher. `languages_decl_records_cached` is a process-wide `OnceLock`
     // over a token scan of every `.dag` and `.rs` file in the tree, built once; on main runs
     // 33251451113 and 33246969960 (`required_floor_claim_cost.tsv`) the whole build landed on
-    // `v2.test.claim.languages_consumer_census.corpus.rust_language_external_consumer_test
+    // `v2.test.claim.languages_consumer_census.corpus.rust_language_external_consumer
     // corpus_rust_language_has_external_consumer` at 412ms against the 500ms CPU safety deadline
     // standing at the time — red on any runner a fifth slower, which is the
     // class `gunbc.rung_drop floor_cost_claim_qualification_unavailable` now carries with its measurements and
@@ -10823,7 +10822,7 @@ pub fn run_required_floor(
     // `.floor_route_gap_admission_partition` through the hermetic frame the manifest was folded
     // in. There is no Rust copy of the membership test to rot apart from the roster it joins;
     // the arms and their meaning live on the authority's contract, and the pairing witness
-    // (`test.claim.route_gap_partition_witness_test`, floor-side) drives the same surface over the
+    // (`test.claim.route_gap_partition_witness`, floor-side) drives the same surface over the
     // shared fixture.
     let mut route_gap_suppressed = suppress_withheld(&mut route_gap_roster, "floor_route_gap");
     route_gap_suppressed.extend(suppress_declined_no_ci_wet_lane(
@@ -12506,7 +12505,7 @@ pub fn run_required_floor(
         // §4b(4) is the rule that says to delete it rather than keep it as a belt: a climb deletes
         // the redundant lower-rung PRODUCTION machinery it obsoletes, while the class's
         // discriminating RED and positive control REMAIN ENROLLED. The evidence is separate and
-        // stays -- `dag/test/claim/bare_name_ambiguity_wall_witness_test.dag` holds the eight rows,
+        // stays -- `dag/test/claim/bare_name_ambiguity_wall_witness.dag` holds the eight rows,
         // including the subject that must refuse and the field-label and local-parameter controls
         // that must not.
         //
@@ -16682,7 +16681,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             crate::cli_run::quarantine_probe_admission_pairs()
                 .into_iter()
                 .collect();
-        let entry = "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag";
+        let entry = "src/v2/test/claim/long/production_qualification_origin_probe_witness.dag";
         for f in [
             "witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_reds",
             "witness_ingest_mint_surface_requires_call_occurrence_frontier_reds",
@@ -16720,7 +16719,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
     }
 
     /// FLOOR-CHANGED-COST-0 host arms. The model fold is witnessed in
-    /// `v2.test.floor_changed_witness_test`; these assert that the HOST realization joins the same
+    /// `v2.test.floor_changed_witness`; these assert that the HOST realization joins the same
     /// two populations onto it, which is the seam the .dag fold cannot reach.
     /// The figure production actually puts in this field, named once so the fixture cannot drift
     /// from its source again. It minted a bare `500` -- the CPU ceiling that no longer exists --
@@ -17294,7 +17293,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
     /// floor it is stale and blocks (182), above
     /// the line it is the wrong ground and blocks (501), and no cost row blocks as NotMeasured.
     /// THE HOST-SPEED CALIBRATION CONTROLS (node adhoc-c9504740-637), the seed half of
-    /// `v2.test.floor_enrolment_margin_test`'s. Policy figures are the model's today: the specimen's
+    /// `v2.test.floor_enrolment_margin`'s. Policy figures are the model's today: the specimen's
     /// 55,011 steps at 723 steps/ms, plausible range [400, 2500] permille.
     fn test_calibration_policy() -> HostSpeedCalibrationPolicy {
         HostSpeedCalibrationPolicy {
@@ -18041,7 +18040,7 @@ mod route_gap_admission_partition_tests {
     /// decision. It asserts both arms at identity grain: a declared suppressed row comes back
     /// MEASURED with its ground kept, and an enrollment the tree does not declare -- renamed,
     /// deleted, or fabricated -- comes back REFUSED, the wall's discriminating arm. The
-    /// floor-side route witness (`test.claim.route_gap_partition_witness_test`) asserts the same
+    /// floor-side route witness (`test.claim.route_gap_partition_witness`) asserts the same
     /// fixture rows on the floor, so the answer and the route are pinned on both sides.
     #[test]
     fn the_partition_route_decides_the_shared_fixture_at_identity_grain() {
@@ -18123,7 +18122,7 @@ mod route_gap_admission_partition_tests {
             assert_eq!(
                 rows.iter()
                     .filter(|(i, g, refused)| !refused
-                        && i == "test.claim.parse_test.parse_witness_floor_holds"
+                        && i == "test.claim.parse.parse_witness_floor_holds"
                         && g == "WithheldCostDebt")
                     .count(),
                 1,
@@ -18369,17 +18368,14 @@ mod pure_producer_share_refused_carrier_overlap_tests {
             &["v2.extdeps.languages.rust.rust_target_model_staging"],
             vec![refused_row(
                 "v2.extdeps.languages.rust.rust_target_model",
-                &["v2.test.claim.emit.produced_decl_two_target_test"],
+                &["v2.test.claim.emit.produced_decl_two_target"],
             )],
         );
         // THE LEDGER OBSERVES A FILL UNDER THE REFUSED PRODUCER'S OWN KEY. That is the
         // withdrawn computation recurring, not a neighbour sharing a module, and it is the only
         // thing this wall is entitled to charge. The admitted spelling is reached from the
         // roster rather than named by it, which is why the static fold cannot see it.
-        fill_from(
-            "v2.test.claim.emit.produced_decl_two_target_test",
-            "rust_target_model",
-        );
+        fill_from("v2.test.claim.emit.produced_decl_two_target", "rust_target_model");
         let why = refuse_pure_producer_share_refused_carrier_overlap()
             .expect_err("a refused producer's own key recurring over its carriers must refuse");
         // The three things the diagnostic owes: the admitted subject, the row it inherited the
@@ -18401,7 +18397,7 @@ mod pure_producer_share_refused_carrier_overlap_tests {
             "{why}"
         );
         assert!(
-            why.contains("shared_carrier_modules=v2.test.claim.emit.produced_decl_two_target_test"),
+            why.contains("shared_carrier_modules=v2.test.claim.emit.produced_decl_two_target"),
             "{why}"
         );
     }
@@ -18414,11 +18410,11 @@ mod pure_producer_share_refused_carrier_overlap_tests {
             &["v2.extdeps.languages.rust.rust_target_model_staging"],
             vec![refused_row(
                 "v2.extdeps.languages.rust.rust_target_model",
-                &["v2.test.claim.emit.produced_decl_two_target_test"],
+                &["v2.test.claim.emit.produced_decl_two_target"],
             )],
         );
         fill_from(
-            "v2.test.claim.bash_command_fold_test",
+            "v2.test.claim.bash_command_fold",
             "rust_target_model_staging",
         );
         assert!(refuse_pure_producer_share_refused_carrier_overlap().is_ok());
@@ -18433,7 +18429,7 @@ mod pure_producer_share_refused_carrier_overlap_tests {
             &["v2.extdeps.languages.rust.rust_target_model_staging"],
             vec![refused_row(
                 "v2.extdeps.languages.rust.rust_target_model",
-                &["v2.test.claim.emit.produced_decl_two_target_test"],
+                &["v2.test.claim.emit.produced_decl_two_target"],
             )],
         );
         shared_fill::set_current_claim(None);
@@ -18459,13 +18455,13 @@ mod pure_producer_share_refused_carrier_overlap_tests {
             vec![RefusedShareRow {
                 producer: "v2.extdeps.languages.rust.rust_target_model_core_edges".to_string(),
                 verdict: "NoMeasuredEffectOverItsConsumers".to_string(),
-                carrier_modules: ["v2.test.claim.manual.rust_add_emit_translate_test".to_string()]
+                carrier_modules: ["v2.test.claim.manual.rust_add_emit_translate".to_string()]
                     .into_iter()
                     .collect(),
             }],
         );
         fill_from(
-            "v2.test.claim.manual.rust_add_emit_translate_test",
+            "v2.test.claim.manual.rust_add_emit_translate",
             "grammar_relation_row_for_emitted",
         );
         assert!(refuse_pure_producer_share_refused_carrier_overlap().is_ok());
@@ -18481,13 +18477,13 @@ mod pure_producer_share_refused_carrier_overlap_tests {
             vec![RefusedShareRow {
                 producer: "v2.extdeps.languages.rust.rust_target_model_core_edges".to_string(),
                 verdict: "MeasuredServeAboveRecompute".to_string(),
-                carrier_modules: ["v2.test.claim.manual.rust_add_emit_translate_test".to_string()]
+                carrier_modules: ["v2.test.claim.manual.rust_add_emit_translate".to_string()]
                     .into_iter()
                     .collect(),
             }],
         );
         fill_from(
-            "v2.test.claim.manual.rust_add_emit_translate_test",
+            "v2.test.claim.manual.rust_add_emit_translate",
             "rust_target_model_core_edges",
         );
         let why = refuse_pure_producer_share_refused_carrier_overlap()
@@ -18513,13 +18509,13 @@ mod pure_producer_share_refused_carrier_overlap_tests {
             vec![RefusedShareRow {
                 producer: "v2.extdeps.languages.rust.rust_target_model_core_edges".to_string(),
                 verdict: "MeasuredServeAboveRecompute".to_string(),
-                carrier_modules: ["v2.test.claim.manual.rust_add_emit_translate_test".to_string()]
+                carrier_modules: ["v2.test.claim.manual.rust_add_emit_translate".to_string()]
                     .into_iter()
                     .collect(),
             }],
         );
         fill_from(
-            "v2.test.claim.manual.rust_add_emit_translate_test",
+            "v2.test.claim.manual.rust_add_emit_translate",
             "grammar_relation_row_for_emitted",
         );
         assert!(
@@ -18538,16 +18534,13 @@ mod pure_producer_share_refused_carrier_overlap_tests {
             &["a.module.shared_spelling", "b.module.shared_spelling"],
             vec![refused_row(
                 "v2.extdeps.languages.rust.shared_spelling",
-                &["v2.test.claim.emit.produced_decl_two_target_test"],
+                &["v2.test.claim.emit.produced_decl_two_target"],
             )],
         );
         // The refused producer's own key recurs over its own carriers, so the identity trigger
         // fires — and then the bare key is claimed by two admitted spellings, so naming either
         // one would be a fabricated subject.
-        fill_from(
-            "v2.test.claim.emit.produced_decl_two_target_test",
-            "shared_spelling",
-        );
+        fill_from("v2.test.claim.emit.produced_decl_two_target", "shared_spelling");
         let why = refuse_pure_producer_share_refused_carrier_overlap()
             .expect_err("an unattributable overlap must refuse");
         assert!(
@@ -18566,7 +18559,7 @@ mod pure_producer_share_refused_carrier_overlap_tests {
     #[test]
     fn fills_without_an_installed_roster_refuse_rather_than_read_as_clean() {
         PURE_PRODUCER_SHARE_ROSTER.with(|r| *r.borrow_mut() = None);
-        fill_from("v2.test.claim.bash_command_fold_test", "bash_fold_lex");
+        fill_from("v2.test.claim.bash_command_fold", "bash_fold_lex");
         let why = refuse_pure_producer_share_refused_carrier_overlap()
             .expect_err("fills with no installed roster must refuse");
         assert!(
@@ -19141,7 +19134,7 @@ mod changed_witness_sublane_join_tests {
 /// THE HOST DECIDER AND ITS .dag AUTHORITY CLASSIFY ONE SHARED FIXTURE IDENTICALLY.
 ///
 /// The rows are `v2.test.fixture.changed_selection_outside_discovery`, which
-/// `test.claim.discovery_census_witness_test` also asserts on the floor. This test evaluates them through
+/// `test.claim.discovery_census_witness` also asserts on the floor. This test evaluates them through
 /// `v2.workflow.required_floor` `changed_selections_outside_discovery` and through the host's
 /// `changed_selections_outside_discovery`, and joins the two at identity grain: same identities,
 /// each with the same `DeclinedChangedWitnessOutsideDiscovery` module. The .dag side is enforced

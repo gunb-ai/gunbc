@@ -1,0 +1,89 @@
+module v2.test.claim.parse.default_value
+
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, Symbol }
+import v2.std.node_query { binder_node_parts }
+import std.optional { Absent, Present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A DEFAULT VALUE IS ONE PRODUCTION (v2.extdeps.languages.dag dag_grammar_default_value_expr) and ONE
+// CARRIER wherever it is written: the binder it belongs to (v2.std.node_query binder_node_parts; XL-2
+// PR2c-ii). A fn parameter's default and a record field's default each lower onto their binder, so the
+// module normalizes and the lowered tree holds a binder node carrying the default. These claims were
+// the reds of gunbc.recurring_failure_mode default_value_has_no_carrier (both positions refused as
+// body_lowering_reason_default_value_unmodeled); on the climb they flipped into these positive controls
+// and stay enrolled (DESIGN 4b(4)). A record field's wire key, a realization fact with no carrier until
+// the realization binding, keeps body_lowering_reason_interface_member_unmodeled.
+data param_default_source: String = "module probe.default\n\nfn fetch(version: String = \"latest\") -> String {\n  version\n}\n"
+data field_default_source: String = "module probe.default\n\ntype Config {\n  headless: Bool = false\n}\n"
+data io_default_source: String = "module probe.default\n\nservice S {\n  operation Op {\n    input { n: Int = 1 }\n  }\n}\n"
+data field_key_source: String = "module probe.default\n\ntype Account {\n  unique_id: String from \"uniqueId\"\n}\n"
+
+// Each outcome is computed ONCE as a nullary value, enrolled WARM in
+// v2.workflow.floor_pure_producer_share, and each claim reads it.
+fn param_default_parsed() -> Bool {
+  match conservation_subject_of_text(path: "probe_param_default.dag", text: param_default_source).parsed {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// A binder with a default answers true; anything else -- a binder without one included, whose TYPE may
+// hold defaulted binders (a service operation's ^operation_input binder is typed by the io payload whose
+// fields carry the defaults) -- is searched through its children.
+fn tree_holds_a_defaulted_binder(n: Node) -> Bool {
+  node_is_a_defaulted_binder(n: n) || fold(n.children, init: false, f: fn(found, e) { found || tree_holds_a_defaulted_binder(n: e.target) })
+}
+
+fn node_is_a_defaulted_binder(n: Node) -> Bool {
+  match binder_node_parts(n: n) {
+    Present { value: parts } =>
+      match parts.default {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn param_default_lowered_onto_its_binder() -> Bool {
+  match conservation_subject_of_text(path: "probe_param_default.dag", text: param_default_source).normalized {
+    Accepted { value: tree, diagnostics: _ } => tree_holds_a_defaulted_binder(n: tree.root)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn field_default_lowered_onto_its_binder() -> Bool {
+  match conservation_subject_of_text(path: "probe_field_default.dag", text: field_default_source).normalized {
+    Accepted { value: tree, diagnostics: _ } => tree_holds_a_defaulted_binder(n: tree.root)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn io_default_lowered_onto_its_binder() -> Bool {
+  match conservation_subject_of_text(path: "probe_io_default.dag", text: io_default_source).normalized {
+    Accepted { value: tree, diagnostics: _ } => tree_holds_a_defaulted_binder(n: tree.root)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn field_key_refused_as_interface() -> Bool {
+  match conservation_subject_of_text(path: "probe_field_key.dag", text: field_key_source).normalized {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal(d: d).reason == ^body_lowering_reason_interface_member_unmodeled
+  }
+}
+
+test fn a_parameter_default_parses_holds() -> Bool { param_default_parsed() }
+
+test fn a_parameter_default_lowers_onto_its_binder_holds() -> Bool { param_default_lowered_onto_its_binder() }
+
+test fn a_record_field_default_lowers_onto_its_binder_holds() -> Bool { field_default_lowered_onto_its_binder() }
+
+test fn a_service_io_default_lowers_onto_its_binder_holds() -> Bool { io_default_lowered_onto_its_binder() }
+
+test fn a_record_wire_key_keeps_its_interface_reason_holds() -> Bool { field_key_refused_as_interface() }

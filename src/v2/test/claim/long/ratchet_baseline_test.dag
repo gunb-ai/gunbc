@@ -1,8 +1,0 @@
-module v2.test.claim.long.ratchet_baseline_test
-
-
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
-test fn corpus_coexistence_ratchet_baseline_holds() -> Bool {
-  fact_cardinality_live_coexistence_ratchet_holds()
-}

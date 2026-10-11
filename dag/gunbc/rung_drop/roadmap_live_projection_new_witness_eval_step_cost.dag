@@ -38,8 +38,8 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_rows }
 // planned-and-passed them as changed witnesses and enrolment-margin admitted them (their eval_steps
 // are in that run's required_floor_claim_cost.tsv, not transcribed here). New identities are billed
 // by the gate this drop lowers, so the halves needed no roster row. The two identities still
-// rostered -- test.claim.roadmap.roadmap_authority_test.witness_projected_dependency_edges_include_active_edges
-// and test.claim.roadmap.roadmap_program_view_live_corpus_receipt_test.live_roadmap_program_view_corpus_projection_receipt
+// rostered -- test.claim.roadmap.roadmap_authority.witness_projected_dependency_edges_include_active_edges
+// and test.claim.roadmap.roadmap_program_view_live_corpus_receipt.live_roadmap_program_view_corpus_projection_receipt
 // -- are unchanged claims, so no floor run on that pull request bills them, and clause (ii) for
 // them still awaits the live required_floor_claim_cost.tsv reading named above as this row's
 // instrument. THE RESHAPE LANDED WITHOUT RETIRING THE ROW: the list shrank from four to two and

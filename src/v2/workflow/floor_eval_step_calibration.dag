@@ -21,7 +21,7 @@ import std.types { NonEmptyStr, List }
 // grounded in a measurement of the same current tree is a change detector rather than an oracle,
 // and every prior raise of this family of ceilings failed exactly there. The specimen is a fixture:
 // its recursion depth is a literal in
-// `test.claim.floor_eval_step_calibration_specimen_test`, so its step count is a property of that
+// `test.claim.floor_eval_step_calibration_specimen`, so its step count is a property of that
 // file, reproducible on any host, in any run, at any corpus size.
 //
 // THE TWO HALVES ARE OF DIFFERENT KINDS AND ARE CARRIED SEPARATELY.
@@ -134,7 +134,7 @@ type EvalStepCalibration = PinnedSpecimenCalibration {
 // does not deliver that for a gate that compares a CPU READING to a budget, because the reading
 // carries the runner's speed and the pin does not. Measured on gunbc#13168 at b72b994: fifteen parse
 // claims refused with eval steps identical to their green run (48,811 vs 48,755), while a same-step
-// peer already on main (test.claim.parse_test_fn_decl_return_clause_test nfbcp_eq_body_specimen_parses_holds,
+// peer already on main (test.claim.parse_test_fn_decl_return_clause nfbcp_eq_body_specimen_parses_holds,
 // about 48,760 steps) went 240 -> 426 ms between runs on a runner about 1.75x slower. Runner speed
 // flipped the verdict; the pin let it. So the ban's purpose is now better served by a SAME-RUN
 // factor than by the pin, and the overturn is bounded by the conditions of that decision:
@@ -187,8 +187,8 @@ type EvalStepCalibration = PinnedSpecimenCalibration {
 // chosen over the authoring host's because CI is the machine that runs the floor and is the slower
 // of the two -- pinning the faster host would have loosened every derived ceiling by a third.
 data floor_eval_step_calibration: EvalStepCalibration = PinnedSpecimenCalibration {
-  specimen: "test.claim.floor_eval_step_calibration_specimen_test.calibration_specimen_performs_its_declared_work" as NonEmptyStr,
-  instrument: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/floor_eval_step_calibration_specimen_test.dag --function calibration_specimen_performs_its_declared_work, read from its [witness] line (cpu=..ms eval_steps=..)" as NonEmptyStr,
+  specimen: "test.claim.floor_eval_step_calibration_specimen.calibration_specimen_performs_its_declared_work" as NonEmptyStr,
+  instrument: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/floor_eval_step_calibration_specimen.dag --function calibration_specimen_performs_its_declared_work, read from its [witness] line (cpu=..ms eval_steps=..)" as NonEmptyStr,
   host: "RATE SAMPLE, taken at specimen depth 10000 (110,011 eval_steps): authoring container, linux aarch64, three executions at cpu=97ms, 110ms, 110ms; self-hosted CI runner, linux amd64, under the required floor's own fold, cpu=138ms then 152ms. All five returned an IDENTICAL eval_steps of 110011. The pinned rate is 110011/152 floored, the slowest reading from the machine that runs the floor. CURRENT SPECIMEN is depth 5000 (55,011 eval_steps, authoring host 56ms/57ms), reduced so it sits under the new-witness ceiling it helps derive" as NonEmptyStr,
   readings: 5,
   specimen_eval_steps: eval_step_count(count: 55011),
@@ -449,8 +449,8 @@ fn host_speed_calibration_of(
 fn host_speed_specimen_replicates(calibration: EvalStepCalibration) -> List<NonEmptyStr> {
   [
     calibration_specimen_identity(calibration: calibration),
-    "test.claim.floor_eval_step_calibration_specimen_test.calibration_specimen_replicate_two_performs_its_declared_work" as NonEmptyStr,
-    "test.claim.floor_eval_step_calibration_specimen_test.calibration_specimen_replicate_three_performs_its_declared_work" as NonEmptyStr,
+    "test.claim.floor_eval_step_calibration_specimen.calibration_specimen_replicate_two_performs_its_declared_work" as NonEmptyStr,
+    "test.claim.floor_eval_step_calibration_specimen.calibration_specimen_replicate_three_performs_its_declared_work" as NonEmptyStr,
   ]
 }
 

@@ -90,7 +90,7 @@ import gunbc.cloudflare.r2_origin_object {
 // establishes it either way.
 //
 // STANDING: hand-run by the recipe, and nothing else. Its per-PR complement is
-// test.claim.cloudflare_r2_origin_object_test, which establishes the verdict algebra over fixtures.
+// test.claim.cloudflare_r2_origin_object, which establishes the verdict algebra over fixtures.
 data probe_fixture_path: NonEmptyStr = "dag/test/fixture/fabric_m0_origin_readback/other_object.txt"
 
 data probe_key: NonEmptyStr = "probe/fabric-m0-origin-object/other_object.txt"

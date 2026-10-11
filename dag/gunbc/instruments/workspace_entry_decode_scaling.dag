@@ -21,7 +21,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 //
 // It is an instrument, not a merge-path claim: a wall-clock ratio is a measurement of this process
 // on this machine, so it runs by name. Its judgement, decode_scaling_verdict, is pure and is
-// claimed hermetically (test.claim.workspace_checkpoint_instrument_test) with a quadratic red.
+// claimed hermetically (test.claim.workspace_checkpoint_instrument) with a quadratic red.
 
 data workspace_entry_decode_scaling_receipt_path: String = "target/workspace-entry-decode-scaling.txt"
 

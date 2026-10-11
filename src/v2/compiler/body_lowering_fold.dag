@@ -1056,7 +1056,7 @@ fn body_lower_type_variant_suffix_pair_optional(captured: Node) -> Optional<Suga
 // What this used to do, recorded because it was the defect: it kept the FIRST atom found under the
 // clause -- a production-identity projection when there was one -- as a bare Atom at the clause's
 // occurrence, so the predicate's own atom reached no node and every predicate after the first was
-// dropped (the retired drop's control: v2.test.claim.namespace_xl0.reference_conservation_test
+// dropped (the retired drop's control: v2.test.claim.namespace_xl0.reference_conservation
 // the_where_refinement_predicates_are_conserved_holds).
 
 fn body_lower_where_leaf_atom_optional(node: Node) -> Optional<Node> {
@@ -1941,7 +1941,7 @@ fn body_lower_sequence_left_is_lbrace(captured: Node) -> Bool {
 // production. This reader accepted ANY lex token as a binary operator, so `v2.test.p.value` lowered
 // to Transform(dot, v2, test) with every later segment DROPPED -- a fabricated plausible body
 // (DESIGN section 5) that no consumer reads and that the resolver refuses as an unbound `v2`.
-// Measured on the production route (v2.test.claim.namespace_xl0.call_argument_mention_survival_test) before
+// Measured on the production route (v2.test.claim.namespace_xl0.call_argument_mention_survival) before
 // this arm existed. A dotted chain is lowered by body_lower_dotted_reference_optional below. The
 // block delimiters are excluded for the sibling reason (gunbc#11595): a brace is a body boundary,
 // not an operator, and reading it as one dropped the call inside a brace-bodied fn.
@@ -2020,7 +2020,7 @@ fn body_lower_grammar_terminals(expr: GrammarExpr) -> List<Symbol> {
 
 // Nullary, pure and reifying to symbols, so both sets are enrolled WARM in
 // v2.workflow.floor_pure_producer_share: building the grammar expressions per claim frame cost
-// ~11.4k eval steps and pushed v2.test.claim.manual.body_lowering_normalize_add_test over the new-witness
+// ~11.4k eval steps and pushed v2.test.claim.manual.body_lowering_normalize_add over the new-witness
 // budget on this PR's first floor run.
 fn body_lower_binary_operator_tokens() -> List<Symbol> {
   body_lower_grammar_terminals(expr: dag_grammar_binary_expr_expr())
@@ -3067,7 +3067,7 @@ fn body_lower_sequence_head_is_arrow(node: Node) -> Bool {
 // (DESIGN section 4b: construction over validation). Its sibling
 // body_lower_type_expr_after_arrow, a second blind arrow hunt with no consumer on main, is
 // deleted with it rather than left standing as a second authority for the same question.
-// Discriminating red: test.claim.parse_test_fn_decl_return_clause_test
+// Discriminating red: test.claim.parse_test_fn_decl_return_clause
 // `nfbcp_hazard_return_type_is_positional_holds`, which fails on the deleted reading and holds
 // on this one; `nfbcp_hazard_specimen_parses_holds` beside it separates "no hazard" from
 // "specimen does not parse", so the red cannot go green by the specimen ceasing to compile.
@@ -3581,7 +3581,7 @@ fn body_lower_function_value_in_fold(node: Node) -> Outcome<Node> {
 // fold_recurrence_encoding assembles Bind { carrier := init, Loop { step, domain: collection, carrier,
 // bound, realized: head } } from the results. Nothing is lowered and then thrown away, and nothing is
 // re-supplied from side context. So a refusal owned by any operand (`fold(map(s, <unlowerable>), ..)`,
-// v2.test.claim.namespace_xl0.value_read_refusal_test) propagates from the operand that owns it, and every
+// v2.test.claim.namespace_xl0.value_read_refusal) propagates from the operand that owns it, and every
 // authored reference the call carried stands in the encoding at its own occurrence. The head stays
 // the authored atom; resolve checks it (v2.compiler.resolve resolve_realized_declaration).
 fn body_lower_fold_encoding(operands: FoldCallOperands) -> Outcome<Node> {
@@ -4099,7 +4099,7 @@ fn body_lower_body_after_eq_token(captured: Node) -> Optional<Node> {
 // and reify's input is the fold's own output (body_lower_reify_arrow_body is reached only from a
 // producer holding a body it lowered), so under reify that arm can hold only a producer's internal
 // structure. Refusing it was measured, not assumed: propagating the refusal turned three real paths
-// red (v2.test.claim.namespace_xl0.reference_conservation_test the_if_arm_call_argument_is_conserved_holds,
+// red (v2.test.claim.namespace_xl0.reference_conservation the_if_arm_call_argument_is_conserved_holds,
 // caret_symbol_payloads_are_conserved_holds, a_list_literal_call_argument_conserves_every_element_holds).
 // The reading is grounded in provenance by position, not in a shape list, and that is its rung:
 // mitigation, held by the reify call graph rather than by a type. The climb is the stage ceiling
@@ -6248,7 +6248,7 @@ fn body_lower_postfix_projection_step(repeat_elem: Node) -> Optional<Node> {
 // qualified chain today. Neither refusal is a regression of this arm: on the production route
 // `r.v` never reached the projection refusal below -- the infix arm preempted it, lowered it to
 // Transform(dot, r, v), and resolve refused the bare `v`. Both standings are enrolled in
-// v2.test.claim.namespace_xl0.cross_module_reference_resolution_test; the local-receiver row there is a
+// v2.test.claim.namespace_xl0.cross_module_reference_resolution; the local-receiver row there is a
 // NEGATIVE control (`Bool` has no child `v`) and is retired by nothing. The lowering does not
 // compensate by keeping a local-receiver chain out of the spine: that would be the second
 // resolver this header refuses to be.
@@ -7084,8 +7084,8 @@ fn body_lower_string_literal_value_optional(node: Node) -> Optional<Node> {
 
 // THE PATTERN READER: an atom, or the first atom a pattern capture's children yield. A pattern
 // capture such as `A { x: v }` is a sequence whose first atom IS its tag, so the child search is this
-// reader's contract (the pattern claims of v2.test.claim.body_lowering.single_arm_match_test and
-// v2.test.claim.manual.body_lowering_match_test go red without it).
+// reader's contract (the pattern claims of v2.test.claim.body_lowering.single_arm_match and
+// v2.test.claim.manual.body_lowering_match go red without it).
 fn body_lower_pattern_leaf_atom_optional(node: Node) -> Optional<Node> {
   let stripped = body_lower_deep_unwrap_optional(node: node)
   match body_lower_atom_node_lowered_optional(stripped: stripped) {
@@ -8463,7 +8463,7 @@ fn body_lower_guard_branch(guard: BodyLowerGuard, rest: Node) -> Outcome<Node> {
 // `rest` is lowered ONCE and appears once, under the one binding arm, and the
 // scrutinee is evaluated once; no new behavior kind and no carrier type. The language models the
 // form: v1 infer leaves a diverging arm out of the match's join
-// (test.claim.diverging_match_arm_join_witness_test). TWO OR MORE binding arms would each need `rest`, so
+// (test.claim.diverging_match_arm_join_witness). TWO OR MORE binding arms would each need `rest`, so
 // rather than copy it per arm (a cost-shape defect) the form refuses
 // multi_binding_arm_early_return_needs_join_point, located at the let; its trigger is v2 infer typing
 // a local fn value, which admits one shared join point. A let-match with NO binding arm, a let-match
@@ -10215,7 +10215,7 @@ fn body_lower_find_where_host_conj(root: Node) -> Optional<Node> {
 // v2.compiler.normalize record_declaration_capture both ask it, and the capture rides to the symbol
 // index on NormalizedTree type_declaration_kinds (its record projection), where the pattern-binder
 // classifier reads it (Pkg16).
-// The record-versus-where-alias control is v2.test.claim.match_arm_binder_frame_test
+// The record-versus-where-alias control is v2.test.claim.match_arm_binder_frame
 // mab_where_alias_is_not_a_record.
 fn body_lower_record_type_decl(shell: Node, type_name: Symbol, block_shell: Node, type_params: DeclTypeParams) -> Outcome<Node> {
   match body_lower_field_decl_block_payload(block_shell: block_shell) {

@@ -1,0 +1,544 @@
+module test.claim.training_readback_witness
+
+import product.training.readback {
+  TrainingRunSubject, subject_of_desired, training_run_subject_eq,
+  TrainingPopulationObservation,
+  TrainingPopulationObserved, TrainingPopulationNotAttempted, TrainingPopulationObservationRefused,
+  TrainingProcessObservation, TrainingProcessRunning, TrainingProcessExited,
+  TrainingCheckpointObservation,
+  TrainingAttemptTerminalReceipt, TrainingAttemptSucceeded, TrainingAttemptFailed,
+  TrainingOutputArtifactReceipt, TrainingEffectiveManifestReceipt,
+  TrainingSubjectBoundPopulation, TrainingRunReadback,
+  TrainingRunReadbackAdmitted, TrainingRunReadbackRefused, TrainingRunReadbackSubjectMismatch,
+  ExecutionReadbackAxis, CheckpointReadbackAxis, TerminalReadbackAxis,
+  OutputReadbackAxis, EffectiveManifestReadbackAxis,
+  bind_training_run_readback,
+}
+import product.training.resolution {
+  AxisResolution, AxisResolved, ResolvedAxis,
+  TrainingResolution, TrainingResolved, TrainingResolutionRefused,
+  TrainingResolutionObservations, TrainingResolvedManifest,
+  DropoutPermille, DropoutPermilleAdmitted, DropoutPermilleOutOfRange, dropout_permille,
+  Bf16, NoPacking, MaskPromptTokens,
+  TrainingRunDesired, TrainingRunDesiredAdmitted, TrainingRunDesiredRefused,
+  resolve_training, training_work_for, admit_training_run_desired, resolved_training_manifest,
+}
+import product.fabric.work { ExecutionRequirements, Shape, HardRequirements, CustomerExecutableCapacity }
+import product.fabric.isolation { shared_kernel_sandbox_profile }
+import product.fabric.envelope { ResourceEnvelope }
+import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement }
+import product.fabric.identity { FabricIdentity, ExecutionAttemptKey, fabric_identity_eq }
+import std.content_hash { ContentHash, Sha256Digest, content_hash_of_value }
+import extdeps.currency.currency { Usd }
+import std.measure { money_amount_micro, hardware_thread_count }
+import std.nat { Nat }
+import std.types { NonEmptyStr, Bool, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn h(s: NonEmptyStr) -> ContentHash {
+  content_hash_of_value(value: s)
+}
+
+fn ax<T>(v: T) -> AxisResolution<T> {
+  AxisResolved { resolved: ResolvedAxis { value: v, receipt: "obs-readback" } }
+}
+
+fn dp(n: Nat) -> DropoutPermille? {
+  match dropout_permille(permille: n) {
+    DropoutPermilleAdmitted { value: v } => Present { value: v }
+    DropoutPermilleOutOfRange { offered: _ } => none
+  }
+}
+
+data fixture_requirements: ExecutionRequirements = ExecutionRequirements {
+  capacity_class: CustomerExecutableCapacity,
+  shape: Shape {
+    hard: HardRequirements { threads: hardware_thread_count(count: 8) },
+    envelope: ResourceEnvelope { cpu: none, gpu: none, memory: none, storage: none, network: none },
+  },
+  capabilities: "linux-arm64",
+  trust_domain: "fleet-owned",
+  isolation: shared_kernel_sandbox_profile(),
+}
+
+fn fixture_observations(d: DropoutPermille) -> TrainingResolutionObservations {
+  TrainingResolutionObservations {
+    base_artifact: ax(v: h(s: "base-A")),
+    dataset_manifest: ax(v: h(s: "dataset-1")),
+    tokenizer: ax(v: h(s: "tok-1")),
+    chat_template: ax(v: h(s: "tmpl-1")),
+    trainer_closure: ax(v: h(s: "trainer-1")),
+    target_modules: ax(v: h(s: "qkv")),
+    optimizer_config: ax(v: h(s: "adamw-1")),
+    scheduler_config: ax(v: h(s: "cosine-1")),
+    learning_rate_schedule: ax(v: h(s: "lr-1")),
+    rank: ax(v: 16),
+    scaling: ax(v: 32),
+    dropout_permille: ax(v: d),
+    sequence_length: ax(v: 4096),
+    packing: ax(v: NoPacking),
+    loss_mask: ax(v: MaskPromptTokens),
+    mixture: ax(v: h(s: "mix-1")),
+    micro_batch: ax(v: 2),
+    gradient_accumulation: ax(v: 8),
+    numeric_format: ax(v: Bf16),
+    seed: ax(v: 7),
+    data_order_seed: ax(v: 99),
+    checkpoint_format: ax(v: h(s: "ckpt-v1")),
+    output_contract: ax(v: h(s: "adapter-out")),
+  }
+}
+
+fn demand_for(work_key: NonEmptyStr) -> Demand<NonEmptyStr> {
+  demand_keyed(demand_key: "demand-1", work_key: work_key)
+}
+
+fn demand_keyed(demand_key: NonEmptyStr, work_key: NonEmptyStr) -> Demand<NonEmptyStr> {
+  Demand {
+    id: FabricIdentity { principal: "brian", key: demand_key },
+    work: FabricIdentity { principal: "gunbai", key: work_key },
+    origin: "gunbc.observation.training-readback",
+    submitted_at: "2026-08-28T00:00:00Z",
+    admission: AdmissionTerms {
+      deadline: none,
+      buy: BuyTerms {
+        budget_account: "training",
+        currency: Usd,
+        reservation_price: money_amount_micro(count: 1),
+        maximum_buy_order: money_amount_micro(count: 1000),
+      },
+    },
+    satisfaction: SatisfactionRequirement {
+      terminal_receipt_may_satisfy: true,
+      new_attempt_required: false,
+      step_reuse_permitted: true,
+    },
+  }
+}
+
+// The fixture goes THROUGH the admission path rather than sealing a desired run beside it. A
+// fixture that constructed its own subject would be testing a shape it authored, not the one the
+// production route produces.
+fn desired_fixture(demand_work_key_override: NonEmptyStr?) -> TrainingRunDesired<NonEmptyStr>? {
+  match dp(n: 50) {
+    none => none
+    Present { value: d } =>
+      match resolve_training(observations: fixture_observations(d: d), requirements: fixture_requirements) {
+        TrainingResolutionRefused { axis: _, cause: _ } => none
+        TrainingResolved { resolved: r } => {
+          let derived = training_work_for(principal: "gunbai" as NonEmptyStr, resolved: r).id.key
+          let key = match demand_work_key_override {
+            none => derived as NonEmptyStr
+            Present { value: k } => k
+          }
+          match admit_training_run_desired(demand: demand_for(work_key: key), resolved: r) {
+            TrainingRunDesiredRefused { demand_work: _, resolved_work: _ } => none
+            TrainingRunDesiredAdmitted { desired: dd } => Present { value: dd }
+          }
+        }
+      }
+  }
+}
+
+fn attempt(k: NonEmptyStr) -> FabricIdentity<NonEmptyStr, ExecutionAttemptKey> {
+  FabricIdentity { principal: "gunbai", key: k }
+}
+
+fn digest(hex: NonEmptyStr) -> Sha256Digest {
+  Sha256Digest { hex: hex }
+}
+
+data digest_a: NonEmptyStr = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data digest_b: NonEmptyStr = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+fn bound<T>(
+  s: TrainingRunSubject<NonEmptyStr>,
+  o: TrainingPopulationObservation<T>,
+) -> TrainingSubjectBoundPopulation<NonEmptyStr, T> {
+  TrainingSubjectBoundPopulation { subject: s, observation: o }
+}
+
+fn empty_observed<T>() -> TrainingPopulationObservation<T> {
+  TrainingPopulationObserved { members: [], enumeration_receipt: "enumerated-empty" }
+}
+
+// A second subject is produced by a demand naming a DIFFERENT work, admitted through the same
+// route. It is a real subject of a real run, which is exactly what makes a copied observation
+// dangerous: nothing about the value itself is malformed.
+fn other_subject(d: TrainingRunDesired<NonEmptyStr>) -> TrainingRunSubject<NonEmptyStr>? {
+  match desired_fixture(demand_work_key_override: none) {
+    none => none
+    Present { value: _ } =>
+      match dp(n: 60) {
+        none => none
+        Present { value: dd } =>
+          match resolve_training(
+            observations: fixture_observations(d: dd),
+            requirements: fixture_requirements,
+          ) {
+            TrainingResolutionRefused { axis: _, cause: _ } => none
+            TrainingResolved { resolved: r2 } => {
+              let k2 = training_work_for(principal: "gunbai" as NonEmptyStr, resolved: r2).id.key
+              match admit_training_run_desired(demand: demand_for(work_key: k2 as NonEmptyStr), resolved: r2) {
+                TrainingRunDesiredRefused { demand_work: _, resolved_work: _ } => none
+                TrainingRunDesiredAdmitted { desired: d2 } =>
+                  Present { value: subject_of_desired(desired: d2) }
+              }
+            }
+          }
+      }
+  }
+}
+
+// BOTH HALVES OF THE SUBJECT ARE LOAD-BEARING, AND THE SUITE HAS TO SAY SO SEPARATELY. An earlier
+// revision varied only the work identity, so an equality comparing work and ignoring the demand
+// would have passed every control below -- measuring one half of a pair while claiming the pair.
+// These two build subjects that differ in exactly one coordinate each.
+fn subject_differing_only_in_demand() -> TrainingRunSubject<NonEmptyStr>? {
+  match dp(n: 50) {
+    none => none
+    Present { value: d } =>
+      match resolve_training(observations: fixture_observations(d: d), requirements: fixture_requirements) {
+        TrainingResolutionRefused { axis: _, cause: _ } => none
+        TrainingResolved { resolved: r } => {
+          let k = training_work_for(principal: "gunbai" as NonEmptyStr, resolved: r).id.key
+          match admit_training_run_desired(
+            demand: demand_keyed(demand_key: "demand-2", work_key: k as NonEmptyStr),
+            resolved: r,
+          ) {
+            TrainingRunDesiredRefused { demand_work: _, resolved_work: _ } => none
+            TrainingRunDesiredAdmitted { desired: d2 } => Present { value: subject_of_desired(desired: d2) }
+          }
+        }
+      }
+  }
+}
+
+test fn a_subject_differing_only_in_the_demand_identity_is_refused() -> Bool {
+  match desired_fixture(demand_work_key_override: none) {
+    none => false
+    Present { value: d } => {
+      let good = subject_of_desired(desired: d)
+      match subject_differing_only_in_demand() {
+        none => false
+        Present { value: other } =>
+          fabric_identity_eq(left: good.work, right: other.work)
+            && !training_run_subject_eq(left: good, right: other)
+            && match bind_training_run_readback(
+                 desired: d,
+                 execution: bound(s: other, o: empty_observed()),
+                 checkpoints: bound(s: good, o: empty_observed()),
+                 terminals: bound(s: good, o: empty_observed()),
+                 outputs: bound(s: good, o: empty_observed()),
+                 effective_manifests: bound(s: good, o: empty_observed()),
+               ) {
+                 TrainingRunReadbackAdmitted { readback: _ } => false
+                 TrainingRunReadbackRefused { first: _, more: _ } => true
+               }
+      }
+    }
+  }
+}
+
+test fn a_subject_differing_only_in_the_work_identity_is_refused() -> Bool {
+  match desired_fixture(demand_work_key_override: none) {
+    none => false
+    Present { value: d } => {
+      let good = subject_of_desired(desired: d)
+      match other_subject(d: d) {
+        none => false
+        Present { value: other } =>
+          fabric_identity_eq(left: good.demand, right: other.demand)
+            && !training_run_subject_eq(left: good, right: other)
+      }
+    }
+  }
+}
+
+// ONE REFUSAL CONTROL PER AXIS. The binder compares five subjects, and exercising one establishes
+// nothing about the other four: the failure is per-field -- a comparison omitted for one axis
+// compiles, looks complete, and lets that axis carry another run's evidence. The axis is read back
+// from the refusal, so a binder refusing on the wrong axis fails here rather than passing as a
+// generic refusal.
+fn mismatch_axis_for(which: Nat) -> NonEmptyStr {
+  match desired_fixture(demand_work_key_override: none) {
+    none => "fixture-failed"
+    Present { value: d } => {
+      let good = subject_of_desired(desired: d)
+      match other_subject(d: d) {
+        none => "fixture-failed"
+        Present { value: bad } => {
+          let s1 = if which == 0 { bad } else { good }
+          let s2 = if which == 1 { bad } else { good }
+          let s3 = if which == 2 { bad } else { good }
+          let s4 = if which == 3 { bad } else { good }
+          let s5 = if which == 4 { bad } else { good }
+          match bind_training_run_readback(
+            desired: d,
+            execution: bound(s: s1, o: empty_observed()),
+            checkpoints: bound(s: s2, o: empty_observed()),
+            terminals: bound(s: s3, o: empty_observed()),
+            outputs: bound(s: s4, o: empty_observed()),
+            effective_manifests: bound(s: s5, o: empty_observed()),
+          ) {
+            TrainingRunReadbackAdmitted { readback: _ } => "admitted"
+            TrainingRunReadbackRefused { first: f, more: _ } =>
+              match f.axis {
+                ExecutionReadbackAxis => "execution"
+                CheckpointReadbackAxis => "checkpoints"
+                TerminalReadbackAxis => "terminals"
+                OutputReadbackAxis => "outputs"
+                EffectiveManifestReadbackAxis => "effective_manifests"
+              }
+          }
+        }
+      }
+    }
+  }
+}
+
+test fn each_axis_refuses_an_observation_of_another_run_naming_that_axis() -> Bool {
+  mismatch_axis_for(which: 0) == "execution"
+    && mismatch_axis_for(which: 1) == "checkpoints"
+    && mismatch_axis_for(which: 2) == "terminals"
+    && mismatch_axis_for(which: 3) == "outputs"
+    && mismatch_axis_for(which: 4) == "effective_manifests"
+}
+
+// The positive control. Without it, a binder that refused unconditionally would pass every
+// refusal witness above -- the suite would be measuring nothing but its own pessimism.
+test fn five_readings_of_the_same_subject_are_admitted() -> Bool {
+  match desired_fixture(demand_work_key_override: none) {
+    none => false
+    Present { value: d } => {
+      let s = subject_of_desired(desired: d)
+      match bind_training_run_readback(
+        desired: d,
+        execution: bound(s: s, o: empty_observed()),
+        checkpoints: bound(s: s, o: empty_observed()),
+        terminals: bound(s: s, o: empty_observed()),
+        outputs: bound(s: s, o: empty_observed()),
+        effective_manifests: bound(s: s, o: empty_observed()),
+      ) {
+        TrainingRunReadbackAdmitted { readback: rb } => training_run_subject_eq(left: rb.subject, right: s)
+        TrainingRunReadbackRefused { first: _, more: _ } => false
+      }
+    }
+  }
+}
+
+// SIMULTANEOUS MISMATCHES ARE CONSERVED, the witness the earlier suite could not express. One
+// control per axis proves each comparison EXISTS but says nothing about two foreign axes at once,
+// and the binder that passed all five returned on the first mismatch -- so a readback with foreign
+// execution AND foreign outputs reported only execution, and the hidden defect would have read as a
+// new regression the moment the visible one was fixed. Per-axis controls and this one fail on
+// different bugs.
+test fn two_foreign_axes_are_both_reported() -> Bool {
+  match desired_fixture(demand_work_key_override: none) {
+    none => false
+    Present { value: d } => {
+      let good = subject_of_desired(desired: d)
+      match other_subject(d: d) {
+        none => false
+        Present { value: bad } =>
+          match bind_training_run_readback(
+            desired: d,
+            execution: bound(s: bad, o: empty_observed()),
+            checkpoints: bound(s: good, o: empty_observed()),
+            terminals: bound(s: good, o: empty_observed()),
+            outputs: bound(s: bad, o: empty_observed()),
+            effective_manifests: bound(s: good, o: empty_observed()),
+          ) {
+            TrainingRunReadbackAdmitted { readback: _ } => false
+            TrainingRunReadbackRefused { first: f, more: m } => {
+              let axes = [[f], m].flat_map(x => x).map(x =>
+                match x.axis {
+                  ExecutionReadbackAxis => "execution"
+                  CheckpointReadbackAxis => "checkpoints"
+                  TerminalReadbackAxis => "terminals"
+                  OutputReadbackAxis => "outputs"
+                  EffectiveManifestReadbackAxis => "effective_manifests"
+                }
+              )
+              axes.length() == 2
+                && axes.any(a => a == "execution")
+                && axes.any(a => a == "outputs")
+            }
+          }
+      }
+    }
+  }
+}
+
+// THE THREE EPISTEMIC STATES ARE INDEPENDENTLY REPRESENTABLE AND DO NOT READ AS EACH OTHER. Goes
+// red if an absent arm were reintroduced, or a read that found nothing were folded into the
+// not-attempted arm: an unread population becoming an empty one licenses a conclusion -- restart
+// the run -- that ignorance does not.
+fn checkpoint_state(o: TrainingPopulationObservation<TrainingCheckpointObservation<NonEmptyStr>>) -> NonEmptyStr {
+  match o {
+    TrainingPopulationObserved { members: m, enumeration_receipt: _ } =>
+      if m.length() == 0 { "read-and-empty" } else { "read-and-populated" }
+    TrainingPopulationNotAttempted { obligation: _ } => "not-attempted"
+    TrainingPopulationObservationRefused { attempt_receipt: _, cause: _ } => "refused"
+  }
+}
+
+test fn a_complete_read_finding_nothing_is_not_an_unread_population() -> Bool {
+  let read_empty = checkpoint_state(o: empty_observed())
+  let unread = checkpoint_state(o: TrainingPopulationNotAttempted { obligation: "observer not dispatched" })
+  let refused = checkpoint_state(
+    o: TrainingPopulationObservationRefused {
+      attempt_receipt: "gunbc.observation.ckpt-read-1",
+      cause: "checkpoint store unreachable",
+    },
+  )
+  read_empty == "read-and-empty"
+    && unread == "not-attempted"
+    && refused == "refused"
+    && read_empty != unread
+    && read_empty != refused
+    && unread != refused
+}
+
+// EVERY AXIS IS A POPULATION, AND THE CASES BELOW ARE THE ONES A SINGLETON FIELD WOULD HAVE MADE
+// UNREPRESENTABLE. Each is a state the fabric's execution model produces: retry and capability
+// escalation create new attempts rather than mutating an earlier one, so contradictory terminals
+// and conflicting outputs are ordinary.
+test fn a_failed_attempt_and_a_later_successful_attempt_both_survive() -> Bool {
+  let terminals: List<TrainingAttemptTerminalReceipt<NonEmptyStr>> = [
+    TrainingAttemptTerminalReceipt {
+      attempt: attempt(k: "attempt-1"),
+      standing: TrainingAttemptFailed { detail: "out of memory" },
+      receipt: "gunbc.observation.term-1",
+    },
+    TrainingAttemptTerminalReceipt {
+      attempt: attempt(k: "attempt-2"),
+      standing: TrainingAttemptSucceeded,
+      receipt: "gunbc.observation.term-2",
+    },
+  ]
+  match TrainingPopulationObserved { members: terminals, enumeration_receipt: "enum-1" } {
+    TrainingPopulationObserved { members: m, enumeration_receipt: _ } => m.length() == 2
+    TrainingPopulationNotAttempted { obligation: _ } => false
+    TrainingPopulationObservationRefused { attempt_receipt: _, cause: _ } => false
+  }
+}
+
+test fn two_attempts_producing_different_artifacts_stay_representable() -> Bool {
+  let first = TrainingOutputArtifactReceipt {
+    attempt: attempt(k: "attempt-1"),
+    artifact: digest(hex: digest_a),
+    materialization: "spark://checkpoints/run-1/adapter",
+    receipt: "gunbc.observation.out-1",
+  }
+  let second = TrainingOutputArtifactReceipt {
+    attempt: attempt(k: "attempt-2"),
+    artifact: digest(hex: digest_b),
+    materialization: "spark://checkpoints/run-2/adapter",
+    receipt: "gunbc.observation.out-2",
+  }
+  let outputs: List<TrainingOutputArtifactReceipt<NonEmptyStr>> = [first, second]
+  match TrainingPopulationObserved { members: outputs, enumeration_receipt: "enum-2" } {
+    TrainingPopulationObserved { members: m, enumeration_receipt: _ } =>
+      m.length() == 2 && first.artifact.hex != second.artifact.hex
+    TrainingPopulationNotAttempted { obligation: _ } => false
+    TrainingPopulationObservationRefused { attempt_receipt: _, cause: _ } => false
+  }
+}
+
+// AXIS INDEPENDENCE. A running process WITH published checkpoints, and a terminally failed attempt
+// that left a resumable checkpoint, are both real with different remedies. A single coproduct over
+// the run's state -- Absent | Running | Checkpointed | Completed -- cannot spell either, which is
+// why the readback keeps five fields rather than one verdict.
+test fn a_terminally_failed_run_may_still_hold_a_checkpoint() -> Bool {
+  match desired_fixture(demand_work_key_override: none) {
+    none => false
+    Present { value: d } => {
+      let s = subject_of_desired(desired: d)
+      let ck: List<TrainingCheckpointObservation<NonEmptyStr>> = [
+        TrainingCheckpointObservation {
+          attempt: attempt(k: "attempt-1"),
+          global_step: 500,
+          artifact: digest(hex: digest_a),
+          receipt: "gunbc.observation.ckpt-1",
+        },
+      ]
+      let terms: List<TrainingAttemptTerminalReceipt<NonEmptyStr>> = [
+        TrainingAttemptTerminalReceipt {
+          attempt: attempt(k: "attempt-1"),
+          standing: TrainingAttemptFailed { detail: "node evicted" },
+          receipt: "gunbc.observation.term-1",
+        },
+      ]
+      let procs: List<TrainingProcessObservation<NonEmptyStr>> = [
+        TrainingProcessObservation {
+          attempt: attempt(k: "attempt-1"),
+          liveness: TrainingProcessExited { detail: "signal 9" },
+          receipt: "gunbc.observation.proc-1",
+        },
+      ]
+      match bind_training_run_readback(
+        desired: d,
+        execution: bound(s: s, o: TrainingPopulationObserved { members: procs, enumeration_receipt: "e1" }),
+        checkpoints: bound(s: s, o: TrainingPopulationObserved { members: ck, enumeration_receipt: "e2" }),
+        terminals: bound(s: s, o: TrainingPopulationObserved { members: terms, enumeration_receipt: "e3" }),
+        outputs: bound(s: s, o: empty_observed()),
+        effective_manifests: bound(s: s, o: TrainingPopulationNotAttempted { obligation: "manifest probe unscheduled" }),
+      ) {
+        TrainingRunReadbackAdmitted { readback: rb } =>
+          checkpoint_state(o: rb.checkpoints) == "read-and-populated"
+            && match rb.outputs {
+                 TrainingPopulationObserved { members: m, enumeration_receipt: _ } => m.length() == 0
+                 TrainingPopulationNotAttempted { obligation: _ } => false
+                 TrainingPopulationObservationRefused { attempt_receipt: _, cause: _ } => false
+               }
+        TrainingRunReadbackRefused { first: _, more: _ } => false
+      }
+    }
+  }
+}
+
+// THE EFFECTIVE MANIFEST IS THE TYPED MANIFEST, so a disagreement can name its coordinate. Goes red
+// if the axis were narrowed back to a bare hash: a hash answers same-or-different, never WHICH.
+test fn an_effective_manifest_disagreement_names_the_coordinate() -> Bool {
+  match desired_fixture(demand_work_key_override: none) {
+    none => false
+    Present { value: d } => {
+      let intended = resolved_training_manifest(resolved: d.resolved)
+      let observed_manifest = TrainingResolvedManifest {
+        base_artifact: intended.base_artifact,
+        dataset_manifest: intended.dataset_manifest,
+        tokenizer: intended.tokenizer,
+        chat_template: intended.chat_template,
+        trainer_closure: intended.trainer_closure,
+        target_modules: intended.target_modules,
+        optimizer_config: intended.optimizer_config,
+        scheduler_config: intended.scheduler_config,
+        learning_rate_schedule: intended.learning_rate_schedule,
+        rank: intended.rank,
+        scaling: intended.scaling,
+        dropout_permille: intended.dropout_permille,
+        sequence_length: intended.sequence_length,
+        packing: intended.packing,
+        loss_mask: intended.loss_mask,
+        mixture: intended.mixture,
+        micro_batch: intended.micro_batch,
+        gradient_accumulation: 16,
+        numeric_format: intended.numeric_format,
+        seed: intended.seed,
+        data_order_seed: intended.data_order_seed,
+        checkpoint_format: intended.checkpoint_format,
+        output_contract: intended.output_contract,
+      }
+      let r = TrainingEffectiveManifestReceipt {
+        attempt: attempt(k: "attempt-1"),
+        manifest: observed_manifest,
+        receipt: "gunbc.observation.manifest-1",
+      }
+      r.manifest.gradient_accumulation != intended.gradient_accumulation
+        && r.manifest.micro_batch == intended.micro_batch
+    }
+  }
+}

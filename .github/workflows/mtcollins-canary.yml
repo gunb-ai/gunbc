@@ -93,7 +93,7 @@ jobs:
         # Pinned to the commit of actions/checkout v5.1.0, whose action.yml declares node24. A tag
         # is not accepted here: gunbc.action_use_admission refuses any `uses:` that does not name a
         # producer commit it has read, and refuses any release GitHub executes under a runtime other
-        # than the one it declares (test.claim.action_use_admission_witness_test reads this file).
+        # than the one it declares (test.claim.action_use_admission_witness reads this file).
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 1

@@ -1,5 +1,7 @@
 // src/compiler_tests.rs
 // src/emitted_population.rs
+// src/extdeps_rust_cargo.rs
+// src/extdeps_rust_version.rs
 // src/extdeps_container_oci_digest.rs
 // src/extdeps_currency_currency.rs
 // src/extdeps_external_authority.rs
@@ -21,8 +23,6 @@
 // src/extdeps_languages_rust_syntax.rs
 // src/extdeps_languages_rust_types.rs
 // src/extdeps_posix_clock_gettime.rs
-// src/extdeps_rust_cargo.rs
-// src/extdeps_rust_version.rs
 // src/extdeps_units_dimensionless.rs
 // src/extdeps_units_iec_80000_13.rs
 // src/extdeps_units_iso8601.rs

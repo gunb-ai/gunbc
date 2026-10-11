@@ -333,8 +333,8 @@ fn qualification_dispatch_subject_over(
 ) -> QualificationSubjectStanding
   admit_callers: [
     decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "qualification_dispatch_subject"),
-    decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness_test", decl_name: "the_real_mint_admits_the_attempt_through_the_sealed_subject"),
-    decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness_test", decl_name: "a_delivery_from_another_dispatch_on_the_same_slot_refuses"),
+    decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "the_real_mint_admits_the_attempt_through_the_sealed_subject"),
+    decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "a_delivery_from_another_dispatch_on_the_same_slot_refuses"),
   ]
 {
   match jit_registration_of(dispatch: JitMintDispatchAuthorized { dispatch: dispatch }) {
@@ -708,7 +708,7 @@ fn token_names_registration(token_app: DeclaredGitHubApp, token_installation: Gi
 // THE COLLECTION'S ADMISSION IS A PLAN, DECIDED WITHOUT I/O: the reads it will make, or the refusal
 // that makes none. collect_qualification_run performs exactly the planned reads and nothing else, so
 // "a token for another App or installation reads nothing" is a claim about this pure function a
-// witness executes over a really minted subject (test.claim.runner.runner_qualification_dispatch_witness_test
+// witness executes over a really minted subject (test.claim.runner.runner_qualification_dispatch_witness
 // the_real_mint_admits_the_attempt_through_the_sealed_subject), not a property of an effectful path
 // no test can reach.
 type QualificationCollectionRead
@@ -928,7 +928,7 @@ fn designated_job_log(designated_job_id: Int, log: AttemptJobLog) -> DesignatedJ
 // have to trust rows detached from the job and the bytes that produced them. The decoder above is
 // open; this record is not.
 //
-// THE SEAL IS ENROLLED AS EXECUTED REDS. test.claim.runner.qualification_job_log_receipt_forged_probe_witness_test
+// THE SEAL IS ENROLLED AS EXECUTED REDS. test.claim.runner.qualification_job_log_receipt_forged_probe_witness
 // compiles test.probe.qualification_job_log_receipt_forged_probe -- a receipt written from invented
 // readings, and job_log_standing called from outside the collect stage -- and requires a
 // SoleConstructorViolation at QualificationJobLogReceipt and a ConstructorCallAdmissionRefused at

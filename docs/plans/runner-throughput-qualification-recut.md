@@ -140,7 +140,7 @@ group admission. Two honest options; the parent ruled (a) on 2026-09-20, and the
 | `qualification_route`, `mtcollins1_qualification_route` | survive; take the selection rather than a bare workload |
 | `route_registers_one_slot`, `route_deregisters_what_it_registered`, `route_dispatch_selector_names_the_attempt`, `route_boot_leg_is_bound` | survive |
 
-Witness (`test.claim.runner.runner_throughput_qualification_witness_test`): rewritten around the four types.
+Witness (`test.claim.runner.runner_throughput_qualification_witness`): rewritten around the four types.
 Fixtures supply a `SelectedRunnerQualification` and producer-shaped observed runs; every REDs row
 of §1 gets a claim; the frontier claims stay expecting-red; the inhabitance claims for
 `floor_execution_requirements`, `admit_delivered_offer` and `gunbc_runner_cores_per_slot` stay.

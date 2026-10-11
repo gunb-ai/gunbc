@@ -65,7 +65,7 @@ fn oci_body_byte_length(text: String) -> Int {
 // The digest comes from the std sha256_hex_of_text host seam rather than the pure extdeps.crypto.sha2
 // fold. The seam exists for this cost: the pure fold is hundreds of thousands of interpreted steps per
 // digest, and every signed POST takes one. The pure fold stays the seam's differential oracle
-// (test.claim.sha256_host_known_answer_witness_test). The seam hashes the text's UTF-8 bytes, the same encoding
+// (test.claim.sha256_host_known_answer_witness). The seam hashes the text's UTF-8 bytes, the same encoding
 // oci_body_byte_length counts and the transport sends. Lowercase hex that does
 // not decode yields the empty string, which no OCI endpoint accepts as a digest, so the server refuses
 // the request rather than one being signed over an invented hash.

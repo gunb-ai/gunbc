@@ -1,7 +1,7 @@
 module test.fixture.dissolution_live_discriminator.subject
 
 // THE INDEPENDENTLY AUTHORED SUBJECT PAIR for
-// test.claim.dissolution_census_mechanism_witness_test's live discriminator. One
+// test.claim.dissolution_census_mechanism_witness's live discriminator. One
 // declaration is authored here and one name is deliberately NOT, so the resolver's two
 // answers — present and absent — are facts about this file rather than about whatever
 // the corpus happens to contain on the day the witness runs.

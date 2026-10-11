@@ -79,7 +79,7 @@ import v2.extdeps.languages.dag {
 // emits one site per chain with the full spelling -- v2.test.claim.namespace_xl0
 // call_argument_mention_survival is the enrolled receipt. Since declaration grafting a qualified
 // FIELD type reaches this tree too, and so do a dotted callee and a qualified call argument --
-// the parse-tree lens missed those (v2.test.claim.namespace_xl0.qualified_site_enumerator_differential_test).
+// the parse-tree lens missed those (v2.test.claim.namespace_xl0.qualified_site_enumerator_differential).
 // On that measurement the lens's parse walker was retired and this collector is the single authority
 // for reference sites.
 // WHAT COUNTS AS A MENTION, AND WHY A DECLARATION IS NOT ONE. In the v2 containment tree a
@@ -281,7 +281,7 @@ type UnreadableModuleRoot {
 // ROUTE. Import statements are consumed before the normalized tree this collector walks, so the
 // production identities the classifier keyed on never appear, the arm could not be inhabited by
 // any input, and nothing read it. Measured: an import-only spelling in the fixture reaches neither
-// list (v2.test.claim.namespace_xl0.call_argument_mention_survival_test).
+// list (v2.test.claim.namespace_xl0.call_argument_mention_survival).
 //
 // AN UNINHABITABLE ARM IS A DECORATION, WHICH IS THE RULE THIS PR APPLIES ONE FILE OVER AND FAILED
 // TO APPLY HERE. dag/std/repair_input_origin declines to mint a KernelMinted arm on exactly this

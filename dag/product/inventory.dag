@@ -1257,8 +1257,8 @@ fn derive_inventory_balance(
 // Positions locate evidence; the minted identity alone determines repetition.
 // This does not change admit_ledger_evidence or its provenance consumers, which
 // deliberately retain repeated evidence to diagnose asset-source conflicts.
-// Consumers: test.claim.dgx_spark_inventory_witness_test and
-// test.claim.inventory_ledger_witness_test through the required witness lane.
+// Consumers: test.claim.dgx_spark_inventory_witness and
+// test.claim.inventory_ledger_witness through the required witness lane.
 type InventoryLotRepetition {
   lot: InventoryLotIdentity
   first_ordinal: Nat

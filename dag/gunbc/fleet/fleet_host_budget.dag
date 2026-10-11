@@ -224,7 +224,7 @@ data gunbc_per_runner_memory_cap: ByteSize = gunbc_runner_slot_desired().memory_
 // WHY IT GOES, stated without claiming it nicknamed anything. It had no provenance — a bare literal
 // with no note and no citation, in a module where every other figure carries its derivation. It had
 // no production consumer: the census at deletion found only
-// test.claim.host.host_allocation_conservation_test. And its two helpers merely multiplied and divided by it,
+// test.claim.host.host_allocation_conservation. And its two helpers merely multiplied and divided by it,
 // so the only witness over them divided by the same constant it had just multiplied by and held for
 // every value of that constant, including the wrong one it was reading.
 //
@@ -293,7 +293,7 @@ type HostAllocationVerdict
 // matches the verdict directly, and a spare yes/no left in this module is how the collapse would
 // come back -- the next caller wanting a Bool would find one already written and would silently
 // drop the remedy again. The witnesses that legitimately ask a yes/no question declare their own
-// projection in test.claim.host.host_allocation_conservation_test, where a production import of it would be
+// projection in test.claim.host.host_allocation_conservation, where a production import of it would be
 // visibly wrong.
 fn host_allocation_verdict(
   host: ByteSize,

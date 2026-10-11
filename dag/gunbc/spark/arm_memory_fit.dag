@@ -491,7 +491,7 @@ type ArmTierSupply {
 // DECLARED FRONTIER: no launch consumes this yet. The engine's offload arguments are not modeled in
 // extdeps.vllm.engine_args, and no two-tier host has a launch route. Its consumer is the first launch
 // on a host with a coherent-link tier (the GH200 lane), which is the trigger. Until then,
-// test.claim.spark.arm_memory_tier_witness_test exercises it with supplied values.
+// test.claim.spark.arm_memory_tier_witness exercises it with supplied values.
 // SEALED, AND RETURNED AS A PLACEMENT. The split's two residencies leave this fold already paired
 // with their tiers, as the held share (GPU-local) and one further share (coherent-link). A caller
 // takes the placement whole and cannot re-pair a bound with the other tier through this API.

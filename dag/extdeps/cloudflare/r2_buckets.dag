@@ -29,7 +29,7 @@ import extdeps.cloudflare.r2 {
 // the error codes -- stay in extdeps.cloudflare.r2; this module is the operation surface over them.
 // It is separate for a concrete reason as well as the precedent: a `service cloudflare.*` declaration
 // binds the name `cloudflare` in every module that imports its module, and extdeps.cloudflare.r2 is
-// imported beside extdeps.vendor.cloudflare's `cloudflare` value (test.claim.cloudflare_r2_origin_mint_run_test
+// imported beside extdeps.vendor.cloudflare's `cloudflare` value (test.claim.cloudflare_r2_origin_mint_run
 // reads `cloudflare.legal_name`), which then stopped resolving. Callers of the operations import this
 // module whole, as gunbc.cloudflare.r2_token_mint_run imports account_api_tokens.
 

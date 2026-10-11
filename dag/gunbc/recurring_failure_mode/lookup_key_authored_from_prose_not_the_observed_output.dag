@@ -21,7 +21,7 @@ data lookup_key_authored_from_prose_not_the_observed_output: RecurringFailureMod
 
   evidence: [
     decl_ref(module_path: "extdeps.bmc.ipmitool_hpm_check", decl_name: "hpm_component_named"),
-    decl_ref(module_path: "test.claim.fleet.mtcollins_firmware_readback_route_witness_test", decl_name: "the_prose_name_mb_cpld_refuses_against_the_current_bmc_row_by_name"),
-    decl_ref(module_path: "test.claim.fleet.mtcollins_firmware_readback_route_witness_test", decl_name: "the_cpld_route_reads_the_current_bmc_row"),
+    decl_ref(module_path: "test.claim.fleet.mtcollins_firmware_readback_route_witness", decl_name: "the_prose_name_mb_cpld_refuses_against_the_current_bmc_row_by_name"),
+    decl_ref(module_path: "test.claim.fleet.mtcollins_firmware_readback_route_witness", decl_name: "the_cpld_route_reads_the_current_bmc_row"),
   ],
 }

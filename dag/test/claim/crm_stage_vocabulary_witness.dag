@@ -1,0 +1,84 @@
+module test.claim.crm_stage_vocabulary_witness
+
+import extdeps.crm.hubspot_lifecycle {
+  hubspot_lifecycle_stage_catalog,
+  hubspot_stage_marketing_qualified_lead,
+  hubspot_stage_other,
+  hubspot_stage_sales_qualified_lead,
+  hubspot_stage_subscriber,
+}
+import extdeps.crm.salesforce_opportunity {
+  DefaultStageRosterCited,
+  DefaultStageRosterUnavailable,
+  SalesforceDefaultStageRoster,
+  SalesforceForecastPipeline,
+  SalesforceOpportunityStageRow,
+  salesforce_default_stage_roster,
+  salesforce_forecast_best_case,
+  salesforce_forecast_category_catalog,
+  salesforce_forecast_pipeline,
+}
+import std.measure { basis_point }
+import std.nat { Nat }
+import std.types { list_length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type HubspotOrderAcc {
+  ok: Bool
+  prev: Nat
+}
+
+test fn w_hubspot_lifecycle_catalog_is_total_and_ordered() -> Bool {
+  let acc = fold(hubspot_lifecycle_stage_catalog(), init: HubspotOrderAcc { ok: true, prev: 0 }, f: fn(a, row) {
+    HubspotOrderAcc { ok: a.ok && (row.sort_order > a.prev), prev: row.sort_order }
+  })
+  (list_length(items: hubspot_lifecycle_stage_catalog()) == 8)
+    && acc.ok
+    && (hubspot_stage_subscriber.sort_order == 1)
+    && (hubspot_stage_other.sort_order == 8)
+}
+
+test fn w_hubspot_display_labels_are_verbatim() -> Bool {
+  ((hubspot_stage_subscriber.display_label as String) == "Subscriber")
+    && ((hubspot_stage_marketing_qualified_lead.display_label as String) == "Marketing Qualified Lead")
+    && ((hubspot_stage_sales_qualified_lead.display_label as String) == "Sales Qualified Lead")
+    && ((hubspot_stage_other.display_label as String) == "Other")
+}
+
+test fn w_salesforce_forecast_category_catalog_is_total_with_verbatim_wire_values() -> Bool {
+  (list_length(items: salesforce_forecast_category_catalog()) == 6)
+    && ((salesforce_forecast_best_case.wire_value as String) == "BestCase")
+    && ((salesforce_forecast_pipeline.wire_value as String) == "Pipeline")
+}
+
+test fn w_red_salesforce_default_roster_is_refused_not_fabricated() -> Bool {
+  match salesforce_default_stage_roster {
+    DefaultStageRosterCited { rows: _, citation: _ } => false
+    DefaultStageRosterUnavailable { cause: _ } => true
+  }
+}
+
+data synthetic_cited_roster: SalesforceDefaultStageRoster = DefaultStageRosterCited {
+  rows: [
+    SalesforceOpportunityStageRow {
+      master_label: "Witness Stage",
+      api_name: "WitnessStage",
+      default_probability_bp: basis_point(count: 6000),
+      forecast_category: SalesforceForecastPipeline,
+      is_closed: false,
+      is_won: false,
+      sort_order: 1,
+    },
+  ],
+  citation: "witness-fixture -- synthetic roster, not a vendor fact",
+}
+
+test fn w_cited_roster_arm_carries_schema_shaped_rows() -> Bool {
+  match synthetic_cited_roster {
+    DefaultStageRosterCited { rows: rs, citation: _ } =>
+      (list_length(items: rs) == 1)
+    DefaultStageRosterUnavailable { cause: _ } => false
+  }
+}

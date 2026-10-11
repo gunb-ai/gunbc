@@ -15,7 +15,7 @@ data octet_offset_consumed_by_a_scalar_indexed_text_operation: RecurringFailureM
   ],
 
   evidence: [
-    DeclarationRef { module_path: "v2.test.claim.cli.if_arm_reader_differential_test", decl_name: "multibyte_source_before_a_site_is_located_in_octets_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.cli.if_arm_reader_differential", decl_name: "multibyte_source_before_a_site_is_located_in_octets_holds", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.compiler.tokenize", decl_name: "lexeme_utf8_octet_count", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.cli.if_arm_reader_differential", decl_name: "iard_location", field: WholeDeclaration },
   ],

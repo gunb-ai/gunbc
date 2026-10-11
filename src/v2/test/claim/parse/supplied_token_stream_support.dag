@@ -31,7 +31,7 @@ import v2.std.text { String }
 // supplied-route claim costs parse plus normalize plus its assertions. That is comfortable for a
 // small specimen and does NOT rescue a large one -- a specimen whose tokenize alone exceeds the
 // budget hits the same wall through the mechanism meant to be the remedy, and must be split or
-// dispositioned on its own. Measured 2026-09-22 on v2.test.claim.parse.variant_field_lowering_test.
+// dispositioned on its own. Measured 2026-09-22 on v2.test.claim.parse.variant_field_lowering.
 //
 // The generator that authors a stream is deliberately NOT an authority here and is not shared: a
 // second generator cannot produce a wrong green, because every stream is checked per specimen

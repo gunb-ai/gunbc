@@ -406,7 +406,7 @@ fn hetzner_nuremberg_route_facts() -> ProviderRouteFacts {
 // decision receipt, so it carries content. Here there is no roster and no posture to bind -- owning
 // one would be the fabricated authority this whole spine exists to refuse -- so a wrapper could only
 // ever be an alias. Consumers call admit_provider_use directly with the facts rows below, which is
-// what test.claim.spark.spark_first_party_serving_witness_test already does.
+// what test.claim.spark.spark_first_party_serving_witness already does.
 //
 // DECLARED FRONTIER (DESIGN section 3c). The production consumer is a Hetzner supplier binding --
 // the product.supplier.ubicloud shape, producing SupplierOffers on these routes -- joined to a

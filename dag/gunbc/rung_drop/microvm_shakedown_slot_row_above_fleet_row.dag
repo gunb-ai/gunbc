@@ -20,7 +20,7 @@ import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
 // -- and `host_memory_admitted_width` charges that slot first on srv1 before dividing the remainder
 // by the fleet row (`memory_admitted_width_of_envelope`). The conservation property therefore now
 // rests on that fold charging the right slot the right size, which is checked by
-// test.claim.runner.runner_slot_allocation_witness_test rather than unwritable by construction: the class drops
+// test.claim.runner.runner_slot_allocation_witness rather than unwritable by construction: the class drops
 // one rung, on a population of one slot, and this row says so.
 //
 // WHY A DECLARED CHANGE RATHER THAN MOVING THE FLEET ROW. Raising the fleet row to 28 GiB lowers
@@ -48,7 +48,7 @@ data microvm_shakedown_slot_row_above_fleet_row: RungDrop = RungDrop {
     previous: StructurallyGuaranteed,
     temporary: MechanicallyPreventable,
     reason: ReplacementStaged {
-      replacement: "gunbc.runner.runner_slot_allocation gunbc_runner_slot_desired_for (28 GiB MemoryMax, MemoryHigh at the ceiling, MemorySwapMax zero for srv1_microvm_shakedown_slot) and memory_admitted_width_of_envelope charging that slot first on srv1, checked by test.claim.runner.runner_microvm_slot_controller_witness_test",
+      replacement: "gunbc.runner.runner_slot_allocation gunbc_runner_slot_desired_for (28 GiB MemoryMax, MemoryHigh at the ceiling, MemorySwapMax zero for srv1_microvm_shakedown_slot) and memory_admitted_width_of_envelope charging that slot first on srv1, checked by test.claim.runner.runner_microvm_slot_controller_witness",
     },
     population: [
       "gunbc.runner.runner_slot_allocation srv1_microvm_shakedown_slot (srv1-13): 30064771072 bytes against the fleet row's 27917287424",

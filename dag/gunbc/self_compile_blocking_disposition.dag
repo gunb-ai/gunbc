@@ -112,7 +112,7 @@ fn self_compile_disposition_join_holds(j: SelfCompileDispositionJoin) -> Bool {
 
 fn ownership(site: String, diagnostic: String, occurrence: Int) -> SelfCompileDiagnosticIdentity {
   diagnostic_identity(
-    module_path: "v2.test.manual.ownership_movable_test",
+    module_path: "v2.test.manual.ownership_movable",
     site: site,
     diagnostic: diagnostic,
     occurrence: occurrence,

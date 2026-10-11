@@ -160,7 +160,7 @@ type SmproPassSubjectStanding
 fn smpro_pass_subject(host: HostIdentity, endpoint: BmcControllerEndpoint, site: SmproSiteStanding) -> SmproPassSubjectStanding
   admit_callers: [
     decl_ref(module_path: "gunbc.host.managed_host", decl_name: "managed_host_smpro_subject"),
-    decl_ref(module_path: "test.claim.machine_intake.ampere_smpro_observation_witness_test", decl_name: "a_site_behind_another_controller_refuses_before_any_read"),
+    decl_ref(module_path: "test.claim.machine_intake.ampere_smpro_observation_witness", decl_name: "a_site_behind_another_controller_refuses_before_any_read"),
   ]
 {
   match site {
@@ -193,11 +193,11 @@ type SmproPassObservation sole_constructor {
 // rendered against.
 fn smpro_pass_observation_fixture(host: HostIdentity, site: SmproSite, outcomes: List<SmproProbeOutcome>) -> SmproPassObservation
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake.ampere_smpro_observation_witness_test", decl_name: "observed_at"),
-    decl_ref(module_path: "test.claim.machine_intake.smpro_internal_error_witness_test", decl_name: "observed"),
-    decl_ref(module_path: "test.claim.machine_intake.mtcollins1_boot_diagnostic_bundle_witness_test", decl_name: "smpro_probed"),
-    decl_ref(module_path: "test.claim.machine_intake.mtcollins1_boot_run_witness_test", decl_name: "smpro_probed_empty"),
-    decl_ref(module_path: "test.claim.machine_intake.mtcollins1_power_on_account_witness_test", decl_name: "pass_of"),
+    decl_ref(module_path: "test.claim.machine_intake.ampere_smpro_observation_witness", decl_name: "observed_at"),
+    decl_ref(module_path: "test.claim.machine_intake.smpro_internal_error_witness", decl_name: "observed"),
+    decl_ref(module_path: "test.claim.machine_intake.mtcollins1_boot_diagnostic_bundle_witness", decl_name: "smpro_probed"),
+    decl_ref(module_path: "test.claim.machine_intake.mtcollins1_boot_run_witness", decl_name: "smpro_probed_empty"),
+    decl_ref(module_path: "test.claim.machine_intake.mtcollins1_power_on_account_witness", decl_name: "pass_of"),
   ]
 {
   SmproPassObservation { subject: SmproPassSubject { host: host, endpoint: site.endpoint, site: site }, outcomes: outcomes }

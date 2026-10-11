@@ -1981,7 +1981,7 @@ pub(crate) fn run_function_value_adapter_discrimination(
 /// Rust for every such cast but the flattest one.
 ///
 /// WHY A SUBSTRING ORACLE IS NOT ENOUGH FOR THIS SUBJECT, which is why the fixture is here as well
-/// as in `test.claim.emitter_nested_refinement_cast_witness_test`. That witness can assert the
+/// as in `test.claim.emitter_nested_refinement_cast_witness`. That witness can assert the
 /// ABSENCE of the unsupported-cast text, and absence is all it can assert: asserting the presence
 /// of some particular replacement would pin one rendering of "the operand unchanged" and redden on
 /// any faithful change to it. Whether what replaced the panic actually TYPE-CHECKS as the declared

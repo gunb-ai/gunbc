@@ -19,7 +19,7 @@ data fixture_flattened_to_the_reader_grain_it_should_falsify: RecurringFailureMo
 
     "`v2.std.fn_index` `call_reachable_decls` reads a declaration's callees from `decl.output` through `atom_identities_in_node`, which returns the node's own atom identity and those of its IMMEDIATE children.",
 
-    "`v2.test.claim.enforcement.determinism_transitive_witness_test` had first been authored with the callee atom one level deeper, nothing was reachable, and both of its discrimination rows agreed for that shared wrong cause.",
+    "`v2.test.claim.enforcement.determinism_transitive_witness` had first been authored with the callee atom one level deeper, nothing was reachable, and both of its discrimination rows agreed for that shared wrong cause.",
 
     "The repair flattened the fixture and recorded the reason: THE FN-ARROW SKELETON IS FLAT, AND THE FIXTURE MUST BE TOO, because the Rust marshal hoists callee atoms onto the body root.",
 

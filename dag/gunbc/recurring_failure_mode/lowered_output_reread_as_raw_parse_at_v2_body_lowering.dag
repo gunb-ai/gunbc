@@ -15,11 +15,11 @@ data lowered_output_reread_as_raw_parse_at_v2_body_lowering: RecurringFailureMod
   ],
 
   evidence: [
-    DeclarationRef { module_path: "v2.test.claim.body_lowering_unrecognised_lowered_shape_test", decl_name: "an_unrecognised_lowered_shape_refuses_at_the_fold", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.body_lowering_unrecognised_lowered_shape_test", decl_name: "an_unsealed_producer_output_refuses_at_the_fold", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.body_lowering_unrecognised_lowered_shape_test", decl_name: "a_passed_through_atom_leaves_the_fold_sealed", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.body_lowering_unrecognised_lowered_shape_test", decl_name: "a_forged_seal_mint_call_refuses", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.body_lowering_unrecognised_lowered_shape_test", decl_name: "a_forged_seal_record_refuses", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.value_position_whole_read_test", decl_name: "a_field_projection_on_a_call_result_in_an_operand_lowers_whole", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.body_lowering_unrecognised_lowered_shape", decl_name: "an_unrecognised_lowered_shape_refuses_at_the_fold", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.body_lowering_unrecognised_lowered_shape", decl_name: "an_unsealed_producer_output_refuses_at_the_fold", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.body_lowering_unrecognised_lowered_shape", decl_name: "a_passed_through_atom_leaves_the_fold_sealed", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.body_lowering_unrecognised_lowered_shape", decl_name: "a_forged_seal_mint_call_refuses", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.body_lowering_unrecognised_lowered_shape", decl_name: "a_forged_seal_record_refuses", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.value_position_whole_read", decl_name: "a_field_projection_on_a_call_result_in_an_operand_lowers_whole", field: WholeDeclaration },
   ],
 }

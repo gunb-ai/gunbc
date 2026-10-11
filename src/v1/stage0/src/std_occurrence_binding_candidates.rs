@@ -3129,7 +3129,7 @@ pub fn section13_collector_dedup_dissolve_on() -> Rc<DeclarationRef> {
 }
 
 pub fn section13_witness_module_path() -> String {
-    "test.claim.occurrence_binding_candidates_witness_test".to_string()
+    "test.claim.occurrence_binding_candidates_witness".to_string()
 }
 
 pub fn section13_population_law_roster() -> Rc<Vec<Rc<Section13PopulationLawRosterRow>>> {

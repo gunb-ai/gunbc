@@ -1960,7 +1960,7 @@ fn text_representation_by_identity_bounded(n: Node, env: TypeEnv, fuel: Int, vis
 // `T where p` has T's representation -- a refinement narrows which values inhabit a type, it does
 // not change how they are represented. So std.types NonEmptyStr (`String where non_empty`) is host
 // text exactly as String is, and a NonEmptyStr at a code-point formal unfolds or refuses exactly
-// like a String would (test.claim.text_boundary_identity_wall_witness_test's refinement rows).
+// like a String would (test.claim.text_boundary_identity_wall_witness's refinement rows).
 fn is_where_refinement_node(n: Node) -> Bool {
   n.connective == Conj && n.type_annotation != none && (n.children |> count) == 1
 }

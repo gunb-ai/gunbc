@@ -461,7 +461,7 @@ fn runner_activation_admitted_operation_count(plans: List<RunnerTransitionPlan>)
 //
 // "IN PRODUCTION" IS THE WHOLE QUALIFIER AND IT IS NOT A HEDGE. DESIGN section 4b judges a check's
 // reachability against WHAT A FIXTURE MAY AUTHOR, never against what production currently reaches,
-// and test.claim.runner.runner_service_activation_witness_test authors ActivationReadinessObserved and drives the
+// and test.claim.runner.runner_service_activation_witness authors ActivationReadinessObserved and drives the
 // admitted enable/start path with it. So the admitted arm has an authorable, exercised RED: the
 // emission is proven at the fixture boundary and would go red the moment the emitter stopped
 // emitting activation. That is a wall nothing in production can currently trigger -- categorically

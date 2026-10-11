@@ -149,7 +149,7 @@ fn r2_ensure_refuse_absent_non_default_jurisdiction(bucket: R2OriginBucket) -> U
   )
 }
 
-// PURE, SO EVERY ARM IS WITNESSABLE OVER A SUPPLIED READ (test.claim.cloudflare_r2_bucket_ensure_test).
+// PURE, SO EVERY ARM IS WITNESSABLE OVER A SUPPLIED READ (test.claim.cloudflare_r2_bucket_ensure).
 fn classify_r2_bucket_ensure(desired: R2OriginStanding, read: R2BucketRead) -> UpsertClassification<R2BucketCreatePlan> {
   match desired {
     R2OriginUnallocated { purpose: purpose } =>

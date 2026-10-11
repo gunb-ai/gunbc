@@ -356,7 +356,7 @@ type AttemptSubjectAdmission
   = AttemptSubjectAdmitted { subject: AttemptAdmissionSubject }
   | AttemptSubjectRefused { node: RoadmapNodeIdentity, cause: AttemptSubjectRefusal }
 
-// Public executing route: test.claim.roadmap.attempt_admission_subject_witness_test calls admission,
+// Public executing route: test.claim.roadmap.attempt_admission_subject_witness calls admission,
 // identity and join through the same functions the consumers will import. This establishes
 // runtime refusal only, not private production consumption or an unforgeable record constructor.
 // The frontier covers the types above and the mint/field/identity/join functions below.

@@ -15,14 +15,14 @@ data else_arm_lowered_as_an_if_nested_inside_it: RecurringFailureMode = Recurrin
   ],
 
   evidence: [
-    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.else_arm_nested_if_test", decl_name: "the_scrutinee_of_a_match_in_an_else_arm_is_read", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.else_arm_nested_if_test", decl_name: "the_first_arm_of_a_match_in_an_else_arm_is_read", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.else_arm_nested_if_test", decl_name: "the_if_nested_in_the_match_arm_is_still_read", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.else_arm_nested_if_test", decl_name: "a_real_else_if_chain_still_reads_its_nested_else", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.else_arm_nested_if_test", decl_name: "the_declared_shape_resolves", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.else_arm_nested_if", decl_name: "the_scrutinee_of_a_match_in_an_else_arm_is_read", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.else_arm_nested_if", decl_name: "the_first_arm_of_a_match_in_an_else_arm_is_read", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.else_arm_nested_if", decl_name: "the_if_nested_in_the_match_arm_is_still_read", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.else_arm_nested_if", decl_name: "a_real_else_if_chain_still_reads_its_nested_else", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.else_arm_nested_if", decl_name: "the_declared_shape_resolves", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_if_row_arms_optional", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.body_lowering.if_arm_position_test", decl_name: "an_if_nested_in_the_then_arm_keeps_the_outer_else_holds", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.body_lowering.if_arm_position_test", decl_name: "a_function_value_in_a_nested_else_lowers_once_holds", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.body_lowering.if_arm_position_test", decl_name: "an_else_if_chain_keeps_every_arm_control_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.body_lowering.if_arm_position", decl_name: "an_if_nested_in_the_then_arm_keeps_the_outer_else_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.body_lowering.if_arm_position", decl_name: "a_function_value_in_a_nested_else_lowers_once_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.body_lowering.if_arm_position", decl_name: "an_else_if_chain_keeps_every_arm_control_holds", field: WholeDeclaration },
   ],
 }

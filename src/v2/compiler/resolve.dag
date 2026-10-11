@@ -327,7 +327,7 @@ fn resolved_declarations_of(root: Node) -> SymbolIndex {
 // record an imported provider declares was absent from it BY CONSTRUCTION, and v2.compiler.infer
 // infer_projection_receiver could not retrieve the declaration for any imported receiver type.
 //
-// MEASURED, one variable moved: v2.test.claim.field_projection.field_projection_stages_test
+// MEASURED, one variable moved: v2.test.claim.field_projection.field_projection_stages
 // fps_a_same_module_record_projection_infers passed while fps_a_cross_module_record_projection_infers failed
 // over byte-identical records projected off a plain parameter. Two further rows separated the cause from its
 // neighbours -- fps_dbg_same_module_in_two_root_ingest PASSES, so a multi-root ingest is not the defect and
@@ -1564,7 +1564,7 @@ fn lookup_symbol_index_atom_identity(
 // projection this arm cannot yet perform, refused Unbound rather than fabricated. Head not bound:
 // the absolute arm as before. The positive projection (`r.v` resolving through r's type) is a
 // capability NO enrolled row waits on yet: the local-receiver row in
-// v2.test.claim.namespace_xl0.cross_module_reference_resolution_test is `Bool.v`, a permanent negative
+// v2.test.claim.namespace_xl0.cross_module_reference_resolution is `Bool.v`, a permanent negative
 // control (`Bool` has no child `v`), and the positive `Rec.v` specimen needs declaration grafting
 // as well as this projection and is owned by those lanes. This check only closes the fail-open
 // arm beside the projection.
@@ -1576,7 +1576,7 @@ fn lookup_symbol_index_atom_identity(
 // the root is a DECLARATION or a namespace segment, so a path THROUGH it is a qualified name.
 //
 // NO NATIVE RECEIPT IS CLAIMED FOR THIS CHANGE, and an earlier revision of this header claimed one that
-// was false. It attributed the native refusal of v2.test.claim.parse.expression_bodied_fn_decl_parse_test to a
+// was false. It attributed the native refusal of v2.test.claim.parse.expression_bodied_fn_decl_parse to a
 // fully-qualified annotation being read as nested field projections through this collapsed Bool. That was
 // read off a diagnostic CHAIN HEAD and was wrong twice: the native eight measured identically before and
 // after the change, and the actual cause entry in that chain anchors a genuine two-edge field projection
@@ -1586,7 +1586,7 @@ fn lookup_symbol_index_atom_identity(
 // WHAT JUSTIFIES THE CHANGE IS THE READING ITSELF, which needs no incident: one Bool cannot carry a
 // discriminator its consumer must make between two readings, and a consumer forced to re-derive what it was
 // handed is DESIGN section 5's validation standing where construction was available. The controls in
-// v2.test.claim.field_projection.field_projection_stages_test establish the rule; no claim is made here about the
+// v2.test.claim.field_projection.field_projection_stages establish the rule; no claim is made here about the
 // eight, about wall 3d, or about any native refusal consuming this arm.
 //
 // WHY THE ANSWER IS ScopeBinding AND NOT A SECOND Bool. lookup_chain already computes the distinction and
@@ -1623,7 +1623,7 @@ fn qualified_head_scope_binding(ctx: ResolveContext, path: QualifiedName) -> Out
 // already assigns it to the stage over this node. So this arm is structural: it commits to the reading
 // "field access", and a field no type declares is refused later by the stage that can see the type.
 // Admitting the shape is therefore not admitting the access, and the absent-field control in
-// v2.test.claim.field_projection.field_projection_stages_test is what holds that line.
+// v2.test.claim.field_projection.field_projection_stages is what holds that line.
 //
 // THE HEAD IS RESOLVED AS THE FRAME-LOCAL BINDER IT IS, through canonical_atom on the canonical symbol
 // lookup_chain returned -- the same producer every other bound bare use goes through, so a projection
@@ -1795,7 +1795,7 @@ fn try_resolve_qualified_name_node(ctx: ResolveContext, n: Node) -> Optional<Out
 // declaration is a VALUE (`data cfg: Config = ...`, realized as an Arrow; root_binding_names_value) is the
 // head of a projection, exactly as a frame binder is: `cfg.field` projects. That is decided up front from
 // the declaration the binding names, not tried after the declaration reading fails, so it is a reading and
-// not a fallback. Held by v2.test.claim.field_projection.field_projection_stages_test
+// not a fallback. Held by v2.test.claim.field_projection.field_projection_stages
 // fps_a_root_bound_data_value_projects (the value projects) and
 // fps_a_root_bound_type_projected_as_value_refuses (a type still does not).
 //
@@ -2702,7 +2702,7 @@ fn resolve_transform_children(
 // module: v2.compiler.symbol_index_fill symbol_index_fill_containment_node DESCENDS module spine
 // segments (namespace_graft_spine_segment_edge_optional) without inserting a path, so a module name
 // is never an index entry and never a LexicalHit. Measured at fixture scale beside a live control
-// (v2.test.claim.match_arm_binder_frame_test): the reachable route for that spelling is the global-bare
+// (v2.test.claim.match_arm_binder_frame): the reachable route for that spelling is the global-bare
 // lookup, which answers Ambiguous and REFUSES, located, rather than accepting a wrong value. The
 // specimen itself has not been observed on the native route -- that needs the emitted compiler,
 // which does not build on main -- so this states what the corpus shows and not more.
@@ -2732,7 +2732,7 @@ fn resolve_transform_children(
 // declared-elsewhere advisory (unbound_symbol_diagnostics). So the census only decides between
 // "binder" and "refuse". That is the oracle role docs/plans/namespace-resolution-design.md
 // section 13 keeps for global_bare -- explaining an absence -- and not the resolution mechanism
-// #12048 deleted. EXECUTED, not only read: gunbc#12082's v2.test.claim.match_arm_binder_frame_test
+// #12048 deleted. EXECUTED, not only read: gunbc#12082's v2.test.claim.match_arm_binder_frame
 // mab_unimported_constructor_in_a_pattern_refuses_rather_than_binding (`None` declared in one
 // module, not imported, `A(None) => None` in another) refuses resolve_reason_unbound_symbol. The
 // route is GlobalBareLookupAmbiguous (a variant's containment path plus its unique alias), not
@@ -4075,7 +4075,7 @@ fn resolve_realized_declaration(ctx: ResolveContext, head: Node) -> Outcome<Node
 // gt_zero / range, std.content_hash lower_hex_*), and there is no second predicate namespace. The
 // predicate's MEANING is still stated twice until v1's enforcement tables can consult the
 // declaration (feature:where-refinement-predicate-declaration-authority, the next change); the drift
-// between them is held by test.claim.where_refinement_predicate_vocabulary_witness_test. A spelling nothing declares refuses as resolve_reason_where_predicate_unbound,
+// between them is held by test.claim.where_refinement_predicate_vocabulary_witness. A spelling nothing declares refuses as resolve_reason_where_predicate_unbound,
 // located at the predicate's own atom: an unbound predicate is not an unbound value reference, and
 // the author looking for it needs to know a where clause named it. `brand` binds to its declared
 // nominal marker (std.types brand -> WherePredicateMarker), so it too is bound and never silent.
@@ -4564,7 +4564,7 @@ type ResolveRequirementScan {
 
 // THE REQUIREMENT DECISION, over the resolved members and the index alone: it reads nothing else of the
 // resolution context, so it takes nothing else, and its refusals can be exercised at this interface
-// with supplied members (v2.test.claim.normalize.operation_requires_edge_test) while the full route stays
+// with supplied members (v2.test.claim.normalize.operation_requires_edge) while the full route stays
 // exercised by that module's resolving claims.
 fn resolve_requirement_member_refusal_optional(index: SymbolIndex, members: List<Edge>) -> Optional<Diagnostic> {
   fold(members, init: ResolveRequirementScan { seen: Empty, refusal: optional_absent() }, f: fn(acc, e) {

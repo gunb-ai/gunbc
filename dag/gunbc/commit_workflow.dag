@@ -69,7 +69,7 @@ import gunbc.ci.ci_layer_roots {
   frontier_probe_witness_measure_receipt_second_root
 }
 
-data doc_reachability_witness_entry: String = "dag/test/claim/doc_reachability_witness_test.dag"
+data doc_reachability_witness_entry: String = "dag/test/claim/doc_reachability_witness.dag"
 
 type CommitWriter
   = HumanGitCommit
@@ -1361,7 +1361,7 @@ data githooks_pre_push_artifact_drift_gate_removed_disposition: Disposition = Te
 }
 
 data githooks_pre_push_slimmed_to_fmt_disposition: Disposition = Terminal {
-  reason: "The pre-push hook was SLIMMED TO FMT-ONLY 2026-07-25 (operator ruling): 'Pre-push hook restored to fmt-only per CLAUDE.md's documented contract; the witness corpus belongs to CI, not the push path.' Removed from the GitPrePushHook surface: the doc-reachability CommitWitnessClaim enrollment, and (in gunbc.githooks.githooks_pre_push_emit) the whole `claim_batch --pre-push` shim — the affected-set WitnessCorpusRun gate, the DocWitnessRun gate, and the in-hook `cargo build -p v1-compiler --bin claim_batch` that ran from inside a push when the binary was missing. Fail-closed verification before removal (DESIGN §5 — do not drop a check without confirming the authoritative boundary still covers it): the witness corpus remains the required floor, whose admission is owned by v2.workflow.required_floor required_floor_site_disposition; and dag/test/claim/doc_reachability_witness_test.dag keeps its cadence through the floor's discovery-corpus scan (CiSpec.discovery_scan_dirs covers dag/test/claim), so the doc-reachability rows lose no coverage — only their redundant second run on the push path. NOTHING LOSES ENFORCEMENT BECAUSE THE HOOK NEVER PROVIDED ANY: it is opt-in per clone (core.hooksPath), bypassable with --no-verify, absent in container worktrees, and PROVEN ineffective by #6658 (an unformatted .rs landed on main and no hook caught it) — the same argument commit_gate_rust_suite_removed_disposition and githooks_pre_push_artifact_drift_gate_removed_disposition already make. What the weight DID buy was harm: a non-authority check heavy enough to make a legitimately-red mid-lane branch feel unpushable is pressure that converts honest reds into workaround greens, and it was priced — three rounds of hand-import workarounds, one decorative gate, and the normalization of --no-verify on the namespace type-binding lane (2026-07-25). A check that cannot enforce should at least be instant. Explicitly DECLINED as the alternative: branch-level expected-red exemption machinery — building configuration so a non-authority check can be tolerated invests in a mechanism that should not carry this weight at all, and slimming dissolves the need. No skip env var was added; the heavy arms are gone from the model, not hidden behind a toggle (DESIGN §5 no-escape-hatches). Re-heavying requires a GitPrePushHook roster edit, which dag/test/claim/githooks_pre_push_emit_test.dag reds on.\n\nTWO OF THIS ROW'S THREE COVERAGE CITATIONS WERE FALSIFIED BY THE 2026-08-15 FLOOR CUT, corrected 2026-08-27, and only one of the two is repaired by rewording. THE WITNESS-CORPUS HALF named `gunbc_ci_floor_plan`; the corpus still runs, under a different authority, so that citation is simply repointed at v2.workflow.required_floor. THE FMT HALF IS DIFFERENT AND IS A REAL GAP: this row's stated ground for slimming the hook was that `cargo fmt --all --check` remained a required-path CI step, and the floor cut deleted the build job carrying it -- measured against the emitted .github/workflows/witnesses.yml, neither required lane runs fmt at all. So the hook is the only surface left for a check whose removal from the push path was argued FROM the hook being unable to enforce anything. That is recorded at check grain in check_removal_roster above as an Uncovered residual rather than repaired here, because rewording a justification cannot restore a check. The merge-admission receipt this row also cited (`tools.merge_admission_gate.dag`) is likewise deleted and is on DESIGN's unguarded re-add list."
+  reason: "The pre-push hook was SLIMMED TO FMT-ONLY 2026-07-25 (operator ruling): 'Pre-push hook restored to fmt-only per CLAUDE.md's documented contract; the witness corpus belongs to CI, not the push path.' Removed from the GitPrePushHook surface: the doc-reachability CommitWitnessClaim enrollment, and (in gunbc.githooks.githooks_pre_push_emit) the whole `claim_batch --pre-push` shim — the affected-set WitnessCorpusRun gate, the DocWitnessRun gate, and the in-hook `cargo build -p v1-compiler --bin claim_batch` that ran from inside a push when the binary was missing. Fail-closed verification before removal (DESIGN §5 — do not drop a check without confirming the authoritative boundary still covers it): the witness corpus remains the required floor, whose admission is owned by v2.workflow.required_floor required_floor_site_disposition; and dag/test/claim/doc_reachability_witness.dag keeps its cadence through the floor's discovery-corpus scan (CiSpec.discovery_scan_dirs covers dag/test/claim), so the doc-reachability rows lose no coverage — only their redundant second run on the push path. NOTHING LOSES ENFORCEMENT BECAUSE THE HOOK NEVER PROVIDED ANY: it is opt-in per clone (core.hooksPath), bypassable with --no-verify, absent in container worktrees, and PROVEN ineffective by #6658 (an unformatted .rs landed on main and no hook caught it) — the same argument commit_gate_rust_suite_removed_disposition and githooks_pre_push_artifact_drift_gate_removed_disposition already make. What the weight DID buy was harm: a non-authority check heavy enough to make a legitimately-red mid-lane branch feel unpushable is pressure that converts honest reds into workaround greens, and it was priced — three rounds of hand-import workarounds, one decorative gate, and the normalization of --no-verify on the namespace type-binding lane (2026-07-25). A check that cannot enforce should at least be instant. Explicitly DECLINED as the alternative: branch-level expected-red exemption machinery — building configuration so a non-authority check can be tolerated invests in a mechanism that should not carry this weight at all, and slimming dissolves the need. No skip env var was added; the heavy arms are gone from the model, not hidden behind a toggle (DESIGN §5 no-escape-hatches). Re-heavying requires a GitPrePushHook roster edit, which dag/test/claim/githooks_pre_push_emit.dag reds on.\n\nTWO OF THIS ROW'S THREE COVERAGE CITATIONS WERE FALSIFIED BY THE 2026-08-15 FLOOR CUT, corrected 2026-08-27, and only one of the two is repaired by rewording. THE WITNESS-CORPUS HALF named `gunbc_ci_floor_plan`; the corpus still runs, under a different authority, so that citation is simply repointed at v2.workflow.required_floor. THE FMT HALF IS DIFFERENT AND IS A REAL GAP: this row's stated ground for slimming the hook was that `cargo fmt --all --check` remained a required-path CI step, and the floor cut deleted the build job carrying it -- measured against the emitted .github/workflows/witnesses.yml, neither required lane runs fmt at all. So the hook is the only surface left for a check whose removal from the push path was argued FROM the hook being unable to enforce anything. That is recorded at check grain in check_removal_roster above as an Uncovered residual rather than repaired here, because rewording a justification cannot restore a check. The merge-admission receipt this row also cited (`tools.merge_admission_gate.dag`) is likewise deleted and is on DESIGN's unguarded re-add list."
 }
 
 data commit_gate_rust_suite_removed_disposition: Disposition = Terminal {
@@ -1403,7 +1403,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "dag/test/claim/commit_witness_claim_roster_witness_test.dag",
+      entry: "dag/test/claim/commit_witness_claim_roster_witness.dag",
       check_fns: [
         "commit_witness_claim_roster_red_control_holds"
       ],
@@ -1414,7 +1414,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "dag/test/claim/keyed_roster_witness_test.dag",
+      entry: "dag/test/claim/keyed_roster_witness.dag",
       check_fns: [
         "keyed_roster_two_branch_union_disjoint_keys_admits",
         "keyed_roster_two_branch_union_overlap_refuses_red_control",
@@ -1430,7 +1430,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "dag/test/claim/non_fold_residue_frontier_test.dag",
+      entry: "dag/test/claim/non_fold_residue_frontier.dag",
       check_fns: [
         "non_fold_residue_frontier_rows_well_formed_holds",
         "non_fold_residue_frontier_keyed_roster_build_admits",
@@ -1443,7 +1443,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "dag/test/claim/github_merge_state_witness_test.dag",
+      entry: "dag/test/claim/github_merge_state_witness.dag",
       check_fns: ["witness_clean_and_blocked_are_distinct_variants"],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
@@ -1465,7 +1465,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/duplicate_computation/placement_grain_witness_test.dag",
+      entry: "src/v2/test/claim/duplicate_computation/placement_grain_witness.dag",
       check_fns: [
         "ci_build_across_two_jobs_is_one_violation",
         "shared_artifact_rewire_is_clean",
@@ -1480,7 +1480,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "dag/test/claim/materialization_ladder_witness_test.dag",
+      entry: "dag/test/claim/materialization_ladder_witness.dag",
       check_fns: [
         "authored_duplication_in_shared_frame_is_error",
         "cross_frame_duplicate_discharged_by_covering_provider",
@@ -1527,7 +1527,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/emitted_binary_effect_confinement_red_control_test.dag",
+      entry: "src/v2/test/claim/emitted_binary_effect_confinement_red_control.dag",
       check_fns: [
         "emitted_family_runtime_row_gated_admits_rostered_filesystem_read_family",
         "emitted_family_runtime_row_gated_admits_rostered_shell_exec_run_family",
@@ -1540,7 +1540,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag",
+      entry: "src/v2/test/claim/complexity_gate/budget_roster_completeness.dag",
       check_fns: ["complexity_budget_roster_family_gate_holds"],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
@@ -1549,7 +1549,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/loop_multiplicity_measure_test.dag",
+      entry: "src/v2/test/claim/loop_multiplicity_measure.dag",
       check_fns: [
         "loop_strict_measure_infers_proven_termination",
         "loop_missing_measure_is_refused"
@@ -1561,7 +1561,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/lens_complexity_accumulator_copy_test.dag",
+      entry: "src/v2/test/lens_complexity_accumulator_copy.dag",
       check_fns: [
         "red_list_append_right_is_suspect",
         "pure_literal_in_copied_port_is_provably_fresh"
@@ -1573,7 +1573,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/algebra/list_linear_combinators_test.dag",
+      entry: "src/v2/test/claim/algebra/list_linear_combinators.dag",
       check_fns: [
         "map_preserves_order_and_applies",
         "map_of_empty_is_empty",
@@ -1590,7 +1590,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/loop_infer_iteration_test.dag",
+      entry: "src/v2/test/claim/loop_infer_iteration.dag",
       check_fns: [
         "loop_infer_invariant_body_accepts_with_carrier_type",
         "loop_infer_divergent_body_is_refused"
@@ -1602,7 +1602,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/execution/long/bind_eval_by_execution_test.dag",
+      entry: "src/v2/test/claim/execution/long/bind_eval_by_execution.dag",
       check_fns: [],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
@@ -1611,7 +1611,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/execution/long/loop_eval_by_execution_test.dag",
+      entry: "src/v2/test/claim/execution/long/loop_eval_by_execution.dag",
       check_fns: [],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
@@ -1620,7 +1620,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+      entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict.dag",
       check_fns: [
         "emit_host_native_only_verdict_stdout_match_mock_holds",
         "emit_host_native_only_verdict_stdout_mismatch_mock_holds"
@@ -1632,7 +1632,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/execution/long/emit_host_classical_not_ingested_equals_eval_test.dag",
+      entry: "src/v2/test/claim/execution/long/emit_host_classical_not_ingested_equals_eval.dag",
       check_fns: [
         "ingested_classical_not_arrow_has_match_holds",
         "ingested_classical_not_arrow_has_match_rejected_producer_refuses_holds",
@@ -1649,7 +1649,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/manual/bind_demand_driven_eval_test.dag",
+      entry: "src/v2/test/claim/manual/bind_demand_driven_eval.dag",
       check_fns: [],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
@@ -1658,7 +1658,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/realization_vocabulary_containment/no_new_debt_gate_test.dag",
+      entry: "src/v2/test/claim/realization_vocabulary_containment/no_new_debt_gate.dag",
       check_fns: [
         "ts0_census_roadmap_component_edge_is_grandfathered_holds",
         "ts0_census_theme_transition_edge_is_grandfathered_holds",
@@ -1681,7 +1681,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/realization_vocabulary_containment/lens_unit/discriminators_test.dag",
+      entry: "src/v2/test/claim/realization_vocabulary_containment/lens_unit/discriminators.dag",
       check_fns: [
         "fresh_non_edge_import_is_leak_holds",
         "realization_edge_import_is_not_leak_holds",
@@ -1705,7 +1705,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/realization_vocabulary_containment/scanner/planted_leak_test.dag",
+      entry: "src/v2/test/claim/realization_vocabulary_containment/scanner/planted_leak.dag",
       check_fns: ["realization_vocab_planted_leak_detected_holds"],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
@@ -1714,7 +1714,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/realization_vocabulary_containment/roster_soundness_test.dag",
+      entry: "src/v2/test/claim/realization_vocabulary_containment/roster_soundness.dag",
       check_fns: [
         "realization_vocab_roster_soundness_census_complete_holds",
         "realization_vocab_roster_soundness_planted_stale_red_holds",
@@ -1728,7 +1728,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/host_language_transport_script/lens_unit/transport_script_position_test.dag",
+      entry: "src/v2/test/claim/host_language_transport_script/lens_unit/transport_script_position.dag",
       check_fns: [],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
@@ -1737,7 +1737,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/host_language_transport_script/scanner/bare_string_literal_test.dag",
+      entry: "src/v2/test/claim/host_language_transport_script/scanner/bare_string_literal.dag",
       check_fns: ["scanner_bare_string_literal_red_detects_holds"],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
@@ -1746,7 +1746,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/host_language_transport_script/scanner/let_bound_literal_test.dag",
+      entry: "src/v2/test/claim/host_language_transport_script/scanner/let_bound_literal.dag",
       check_fns: ["scanner_let_bound_literal_red_detects_holds"],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
@@ -1755,7 +1755,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/host_language_transport_script/corpus/facts_readback_verdict_perturb_test.dag",
+      entry: "src/v2/test/claim/host_language_transport_script/corpus/facts_readback_verdict_perturb.dag",
       check_fns: [],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
@@ -1764,7 +1764,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/meta_exec_confinement/lens_unit/discriminators_test.dag",
+      entry: "src/v2/test/claim/meta_exec_confinement/lens_unit/discriminators.dag",
       check_fns: [
         "fresh_non_edge_import_is_leak_holds",
         "realization_edge_import_is_not_leak_holds",
@@ -1780,7 +1780,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/meta_exec_confinement/scanner/planted_leak_test.dag",
+      entry: "src/v2/test/claim/meta_exec_confinement/scanner/planted_leak.dag",
       check_fns: ["scanner_planted_meta_exec_leak_detected_holds"],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
@@ -1789,7 +1789,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/meta_exec_confinement/roster_soundness_test.dag",
+      entry: "src/v2/test/claim/meta_exec_confinement/roster_soundness.dag",
       check_fns: [
         "meta_exec_roster_shrunk_to_empty_holds",
         "meta_exec_roster_emptiness_wall_planted_row_red_holds",
@@ -1802,7 +1802,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "dag/test/claim/orchestration_if_emit_test.dag",
+      entry: "dag/test/claim/orchestration_if_emit.dag",
       check_fns: [],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
@@ -1811,7 +1811,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/long/wave1_gate1_c1_copied_port_derivation_witness_test.dag",
+      entry: "src/v2/test/claim/long/wave1_gate1_c1_copied_port_derivation_witness.dag",
       check_fns: [
         "wave1_gate1_c1_derived_list_append_index_witness_holds",
         "wave1_gate1_c1_derived_list_snoc_index_witness_holds",
@@ -1827,7 +1827,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/execution/long/bind_eval_by_execution_test.dag",
+      entry: "src/v2/test/claim/execution/long/bind_eval_by_execution.dag",
       check_fns: [
         "bind_census_ingested_executes_holds",
         "bind_census_ingested_wrong_value_red_holds"
@@ -1839,7 +1839,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/execution/long/loop_eval_by_execution_test.dag",
+      entry: "src/v2/test/claim/execution/long/loop_eval_by_execution.dag",
       check_fns: [
         "loop_census_ingested_executes_holds",
         "loop_census_ingested_wrong_value_red_holds"
@@ -1851,7 +1851,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/long/parse_binding_fidelity_witness_test.dag",
+      entry: "src/v2/test/claim/long/parse_binding_fidelity_witness.dag",
       check_fns: ["witness_resolve_distinct_param_bindings_holds"],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
@@ -1860,7 +1860,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/long/parse_binding_fidelity_witness_test.dag",
+      entry: "src/v2/test/claim/long/parse_binding_fidelity_witness.dag",
       check_fns: ["witness_parse_binding_fidelity_distinct_identifiers_holds"],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
@@ -1869,7 +1869,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/workflow/frontier_probe_closure_readthrough_test.dag",
+      entry: "src/v2/test/claim/workflow/frontier_probe_closure_readthrough.dag",
       check_fns: ["frontier_probe_read_failure_detail_refused_holds"],
       kind: ExecutionWitnessKind,
       span: SpanEnrolled {
@@ -1895,7 +1895,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/workflow/frontier_probe_closure_readthrough_test.dag",
+      entry: "src/v2/test/claim/workflow/frontier_probe_closure_readthrough.dag",
       check_fns: ["frontier_probe_hash_mismatch_detail_carries_observed_holds"],
       kind: ExecutionWitnessKind,
       span: SpanEnrolled {
@@ -1921,7 +1921,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/workflow/frontier_probe_closure_readthrough_test.dag",
+      entry: "src/v2/test/claim/workflow/frontier_probe_closure_readthrough.dag",
       check_fns: ["frontier_probe_ninety_one_read_compiler_closure_elision_integrates_holds"],
       kind: ExecutionWitnessKind,
       span: SpanEnrolled {
@@ -1947,7 +1947,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/long/frontier_probe_closure_matrix_integration_test.dag",
+      entry: "src/v2/test/claim/long/frontier_probe_closure_matrix_integration.dag",
       check_fns: ["frontier_probe_below_cap_complete_population_gates_pass_holds"],
       kind: ExecutionWitnessKind,
       span: SpanEnrolled {
@@ -1973,7 +1973,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/long/frontier_probe_closure_matrix_integration_test.dag",
+      entry: "src/v2/test/claim/long/frontier_probe_closure_matrix_integration.dag",
       check_fns: ["frontier_probe_second_source_root_population_gates_pass_holds"],
       kind: ExecutionWitnessKind,
       span: SpanEnrolled {
@@ -1999,7 +1999,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/long/gauntlet_lane_enrollment_witness_test.dag",
+      entry: "src/v2/test/claim/long/gauntlet_lane_enrollment_witness.dag",
       check_fns: [
         "witness_rehomed_rows_are_cadence_enrolled",
         "witness_split_entries_keep_cheap_half_per_pr",

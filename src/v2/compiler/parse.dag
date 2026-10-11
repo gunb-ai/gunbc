@@ -504,7 +504,7 @@ fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> Witness<Grammar
 // (parse_table_for_stream_analyzed, the real-parse path; parse_table_empty; the furthest and
 // refusal updates, which pass it through) populates this field, so
 // the O(P)->O(1) change is not opt-in per call site. Measured effect (this host,
-// dag/test/claim/long/dag_arrow_lambda_witness_test.dag witness_single_param_lambda_parses via
+// dag/test/claim/long/dag_arrow_lambda_witness.dag witness_single_param_lambda_parses via
 // `gunbc run --claim-run`, fix stashed vs applied around the identical whole-process invocation):
 // 78.023s -> 74.006s wall. That delta undercounts the fix's effect on the specific fold it repairs,
 // because the invocation's wall time is dominated by up-front module-load/typecheck of the full v2

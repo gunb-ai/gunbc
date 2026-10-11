@@ -63,7 +63,7 @@ type MachineWidth<bits: WidthResolution>
 //
 // WHAT IS ACTUALLY OPEN. The kind above rosters the NAMED inhabitants, and the wall checks an
 // argument against them -- witnessed in both directions by
-// test.claim.type_argument_kind_inhabitance_witness_test. A NAT LITERAL is admitted in any kinded
+// test.claim.type_argument_kind_inhabitance_witness. A NAT LITERAL is admitted in any kinded
 // position by a LANGUAGE-LEVEL rule, not by matching StaticWidthIndex or any other arm, so this kind
 // cannot say WHICH literals it admits: MachineWidth<32> and MachineWidth<7> are equally accepted and
 // only the first names a real machine width. The five carriers tried for a per-kind literal roster

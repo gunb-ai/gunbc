@@ -180,7 +180,7 @@ type CalleeAccum {
 // callee the resolver named perfectly well -- LocallyBoundCallee -- and the seam below it
 // used to answer CallableTargetUndetermined for it, so the effect pass reported "no
 // established callee identity" about a call whose target was established. Measured: it
-// reddened the required floor on two v2.test.claim.local_binding_shadow_test fixtures.
+// reddened the required floor on two v2.test.claim.local_binding_shadow fixtures.
 // 
 // It gets its own edge rather than joining the unresolved ones, because the two are
 // different facts with different repairs: an unresolved spelling names nothing and must

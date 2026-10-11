@@ -177,7 +177,7 @@ fn gunbc_ci_host_fixed_overhead_for(host: HostIdentity) -> HostFixedOverhead {
 //
 // ONLY THE CITING HALF OF THAT KEY MOVED, DELIBERATELY. The cited module stays
 // gunbc.ci.ci_floor_measurement because where the successor lands is still undecided --
-// v2.test.lens_disposition_redundancy.disposition_redundancy_test
+// v2.test.lens_disposition_redundancy.disposition_redundancy
 // redundancy_region_budget_per_service_overhead_locator records an earlier attempt to repoint the
 // cited half here on proximity grounds, which broke six declaration findings and was withdrawn as
 // the author's aesthetic judgement rather than a decision the corpus had taken. It is still not

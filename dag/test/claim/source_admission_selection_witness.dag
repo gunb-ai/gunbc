@@ -1,0 +1,566 @@
+module test.claim.source_admission_selection_witness
+
+import std.types { String, Bool, List }
+import extdeps.git.object_store { GitObjectId, git_object_id_eq, git_sha1_object_id }
+import gunbc.source_admission_selection {
+  ActiveSourceIdentity,
+  ActiveSourceManifest,
+  AnnotationCorpusAdmitted,
+  AnnotationMechanismIdentity,
+  AwaitingAdmittedSourceJoin,
+  AwaitingComputedMechanismIdentity,
+  BaseReceiptAbsent,
+  BaseReceiptTreeMismatch,
+  ComputedMechanismIdentity,
+  CorpusAdmitted,
+  DuplicateModulePath,
+  EmptyUniverse,
+  IncompleteWalk,
+  IncrementalSources,
+  ManifestObserved,
+  ManifestUnobservable,
+  MechanismIdentityComputed,
+  MechanismIdentityUnobservable,
+  NotMergeTree,
+  SeedRustExecuting,
+  SelfEmittedExecuting,
+  SourceAdmissionSelection,
+  SourcePoolFile,
+  SourceTransitionRefusalCause,
+  TransitionManifestUnobservable,
+  TransitionMechanismIdentityUnobservable,
+  admit_active_source_manifest,
+  active_source_lists_identity_join,
+  admission_mechanism_seed_roots,
+  annotation_corpus_induction_base_tree,
+  annotation_corpus_induction_standing,
+  fixture_computed_mechanism,
+  fixture_source,
+  incremental_changed_module_paths,
+  mint_annotation_corpus_admitted,
+  nonempty_active_sources_all,
+  production_annotation_mechanism_identity,
+  project_active_source_rows,
+  select_source_admission,
+  source_admission_is_entire_head,
+  source_admission_is_incremental,
+  source_admission_is_unchanged_noop,
+  source_admission_refusal_cause,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type FixtureTrees {
+  base: GitObjectId
+  head: GitObjectId
+  other: GitObjectId
+}
+
+fn fixture_trees() -> FixtureTrees? {
+  match git_sha1_object_id(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+    Absent => none
+    Present { value: base } =>
+      match git_sha1_object_id(hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb") {
+        Absent => none
+        Present { value: head } =>
+          match git_sha1_object_id(hex: "cccccccccccccccccccccccccccccccccccccccc") {
+            Absent => none
+            Present { value: other } =>
+              Present {
+                value: FixtureTrees { base: base, head: head, other: other },
+              }
+          }
+      }
+  }
+}
+
+fn on_trees(body: fn(FixtureTrees) -> Bool) -> Bool {
+  match fixture_trees() {
+    Absent => false
+    Present { value: trees } => body(trees)
+  }
+}
+
+fn mechanism_a() -> ComputedMechanismIdentity {
+  fixture_computed_mechanism(executing: SeedRustExecuting, label: "mechanism-a")
+}
+
+fn mechanism_b() -> ComputedMechanismIdentity {
+  fixture_computed_mechanism(executing: SeedRustExecuting, label: "mechanism-b")
+}
+
+fn mechanism_self_emitted() -> ComputedMechanismIdentity {
+  fixture_computed_mechanism(executing: SelfEmittedExecuting, label: "mechanism-a")
+}
+
+fn identity_of(file: SourcePoolFile) -> ActiveSourceIdentity {
+  ActiveSourceIdentity {
+    module_path: file.module_path,
+    path: file.path,
+    content_digest: file.content_digest,
+  }
+}
+
+fn observed_from_files(files: List<SourcePoolFile>) -> ActiveSourceManifest {
+  let rows = project_active_source_rows(files: files)
+  admit_active_source_manifest(
+    rows: rows,
+    expected_keys: map(rows, r => r.module_path)
+  )
+}
+
+fn mint_from_files(
+  tree: GitObjectId,
+  mechanism: ComputedMechanismIdentity,
+  files: List<SourcePoolFile>
+) -> AnnotationCorpusAdmitted? {
+  let rows = project_active_source_rows(files: files)
+  mint_annotation_corpus_admitted(
+    tree: tree,
+    mechanism: MechanismIdentityComputed { computed: mechanism },
+    manifest: admit_active_source_manifest(
+      rows: rows,
+      expected_keys: map(rows, r => r.module_path)
+    ),
+    admitted: rows,
+  )
+}
+
+fn select_with_receipt(
+  trees: FixtureTrees,
+  receipt: AnnotationCorpusAdmitted,
+  head_mechanism: AnnotationMechanismIdentity,
+  head_files: List<SourcePoolFile>
+) -> SourceAdmissionSelection {
+  select_source_admission(
+    evaluating_merge_tree: true,
+    base_tree: trees.base,
+    head_tree: trees.head,
+    base_receipt: Present { value: receipt },
+    head_mechanism: head_mechanism,
+    head_manifest: observed_from_files(files: head_files),
+  )
+}
+
+fn refusal_is(
+  sel: SourceAdmissionSelection,
+  wanted: SourceTransitionRefusalCause
+) -> Bool {
+  match source_admission_refusal_cause(sel: sel) {
+    Absent => false
+    Present { value: cause } => cause == wanted
+  }
+}
+
+fn file_high() -> SourcePoolFile {
+  fixture_source(
+    root_ordinal: 0,
+    module_path: "mod.alpha",
+    path: "root0/alpha.dag",
+    label: "alpha-high",
+  )
+}
+
+fn file_low() -> SourcePoolFile {
+  fixture_source(
+    root_ordinal: 1,
+    module_path: "mod.alpha",
+    path: "root1/alpha.dag",
+    label: "alpha-low",
+  )
+}
+
+fn file_beta() -> SourcePoolFile {
+  fixture_source(
+    root_ordinal: 0,
+    module_path: "mod.beta",
+    path: "root0/beta.dag",
+    label: "beta-v1",
+  )
+}
+
+fn file_beta_changed() -> SourcePoolFile {
+  fixture_source(
+    root_ordinal: 0,
+    module_path: "mod.beta",
+    path: "root0/beta.dag",
+    label: "beta-v2",
+  )
+}
+
+fn file_gamma() -> SourcePoolFile {
+  fixture_source(
+    root_ordinal: 0,
+    module_path: "mod.gamma",
+    path: "root0/gamma.dag",
+    label: "gamma-v1",
+  )
+}
+
+test fn source_admission_production_mechanism_identity_is_unobservable() -> Bool {
+  match production_annotation_mechanism_identity() {
+    MechanismIdentityComputed { computed: _ } => false
+    MechanismIdentityUnobservable { cause: _ } => true
+  }
+}
+
+test fn source_admission_induction_standing_awaits_computed_identity_on_8201_head() -> Bool {
+  match annotation_corpus_induction_standing() {
+    Absent => false
+    Present { value: standing } =>
+      match standing {
+        AwaitingComputedMechanismIdentity { tree: tree } =>
+          git_object_id_eq(left: tree, right: annotation_corpus_induction_base_tree)
+        AwaitingAdmittedSourceJoin { tree: _, mechanism: _ } => false
+        CorpusAdmitted { receipt: _ } => false
+      }
+  }
+}
+
+test fn source_admission_cannot_mint_receipt_when_mechanism_unobservable() -> Bool {
+  on_trees(body: fn(trees) {
+    let rows = [identity_of(file: file_beta())]
+    match mint_annotation_corpus_admitted(
+      tree: trees.base,
+      mechanism: production_annotation_mechanism_identity(),
+      manifest: admit_active_source_manifest(
+        rows: rows,
+        expected_keys: ["mod.beta"]
+      ),
+      admitted: rows,
+    ) {
+      Present { value: _ } => false
+      Absent => true
+    }
+  })
+}
+
+test fn source_admission_cannot_mint_receipt_when_admitted_set_is_not_identity_join() -> Bool {
+  on_trees(body: fn(trees) {
+    let observed = [identity_of(file: file_beta()), identity_of(file: file_gamma())]
+    let admitted = [identity_of(file: file_beta()), identity_of(file: file_beta())]
+    match mint_annotation_corpus_admitted(
+      tree: trees.base,
+      mechanism: MechanismIdentityComputed { computed: mechanism_a() },
+      manifest: admit_active_source_manifest(
+        rows: observed,
+        expected_keys: ["mod.beta", "mod.gamma"]
+      ),
+      admitted: admitted,
+    ) {
+      Present { value: _ } => false
+      Absent => true
+    }
+  })
+}
+
+test fn source_admission_same_count_different_keys_is_incomplete_walk_not_observed() -> Bool {
+  match admit_active_source_manifest(
+    rows: [identity_of(file: file_beta())],
+    expected_keys: ["mod.gamma"]
+  ) {
+    ManifestObserved { rows: _ } => false
+    ManifestUnobservable { cause: cause } =>
+      match cause {
+        IncompleteWalk { expected_keys: _, observed_count: n } => n == 1
+        EmptyUniverse => false
+        DuplicateModulePath { module_path: _ } => false
+      }
+  }
+}
+
+test fn source_admission_empty_expected_keys_is_empty_universe() -> Bool {
+  match admit_active_source_manifest(rows: [], expected_keys: []) {
+    ManifestObserved { rows: _ } => false
+    ManifestUnobservable { cause: cause } =>
+      match cause {
+        EmptyUniverse => true
+        IncompleteWalk { expected_keys: _, observed_count: _ } => false
+        DuplicateModulePath { module_path: _ } => false
+      }
+  }
+}
+
+test fn source_admission_partial_walk_refuses_not_observed_with_fewer_rows() -> Bool {
+  on_trees(body: fn(trees) {
+    match mint_from_files(
+      tree: trees.base,
+      mechanism: mechanism_a(),
+      files: [file_beta()]
+    ) {
+      Absent => false
+      Present { value: receipt } =>
+        refusal_is(
+          sel: select_source_admission(
+            evaluating_merge_tree: true,
+            base_tree: trees.base,
+            head_tree: trees.head,
+            base_receipt: Present { value: receipt },
+            head_mechanism: MechanismIdentityComputed { computed: mechanism_a() },
+            head_manifest: admit_active_source_manifest(
+              rows: [identity_of(file: file_beta())],
+              expected_keys: ["mod.beta", "mod.gamma"]
+            ),
+          ),
+          wanted: TransitionManifestUnobservable,
+        )
+    }
+  })
+}
+
+test fn source_admission_not_merge_tree_refuses() -> Bool {
+  on_trees(body: fn(trees) {
+    match mint_from_files(
+      tree: trees.base,
+      mechanism: mechanism_a(),
+      files: [file_beta()]
+    ) {
+      Absent => false
+      Present { value: receipt } =>
+        refusal_is(
+          sel: select_source_admission(
+            evaluating_merge_tree: false,
+            base_tree: trees.base,
+            head_tree: trees.head,
+            base_receipt: Present { value: receipt },
+            head_mechanism: MechanismIdentityComputed { computed: mechanism_a() },
+            head_manifest: observed_from_files(files: [file_beta()]),
+          ),
+          wanted: NotMergeTree,
+        )
+    }
+  })
+}
+
+test fn source_admission_missing_base_receipt_refuses_not_incremental_empty() -> Bool {
+  on_trees(body: fn(trees) {
+    let sel = select_source_admission(
+      evaluating_merge_tree: true,
+      base_tree: trees.base,
+      head_tree: trees.head,
+      base_receipt: none,
+      head_mechanism: MechanismIdentityComputed { computed: mechanism_a() },
+      head_manifest: observed_from_files(files: [file_beta()]),
+    )
+    refusal_is(sel: sel, wanted: BaseReceiptAbsent)
+      && source_admission_is_incremental(sel: sel) == false
+      && source_admission_is_unchanged_noop(sel: sel) == false
+  })
+}
+
+test fn source_admission_production_unobservable_refuses_even_with_fixture_receipt() -> Bool {
+  on_trees(body: fn(trees) {
+    match mint_from_files(
+      tree: trees.base,
+      mechanism: mechanism_a(),
+      files: [file_beta()]
+    ) {
+      Absent => false
+      Present { value: receipt } =>
+        refusal_is(
+          sel: select_with_receipt(
+            trees: trees,
+            receipt: receipt,
+            head_mechanism: production_annotation_mechanism_identity(),
+            head_files: [file_beta()],
+          ),
+          wanted: TransitionMechanismIdentityUnobservable,
+        )
+    }
+  })
+}
+
+test fn source_admission_identical_manifest_is_unchanged_noop_not_empty_incremental() -> Bool {
+  on_trees(body: fn(trees) {
+    match mint_from_files(
+      tree: trees.base,
+      mechanism: mechanism_a(),
+      files: [file_beta(), file_gamma()]
+    ) {
+      Absent => false
+      Present { value: receipt } =>
+        let sel = select_with_receipt(
+          trees: trees,
+          receipt: receipt,
+          head_mechanism: MechanismIdentityComputed { computed: mechanism_a() },
+          head_files: [file_beta(), file_gamma()],
+        )
+        source_admission_is_unchanged_noop(sel: sel)
+          && source_admission_is_incremental(sel: sel) == false
+          && incremental_changed_module_paths(sel: sel) == []
+    }
+  })
+}
+
+test fn source_admission_content_change_selects_only_the_changed_head_row() -> Bool {
+  on_trees(body: fn(trees) {
+    match mint_from_files(
+      tree: trees.base,
+      mechanism: mechanism_a(),
+      files: [file_beta(), file_gamma()]
+    ) {
+      Absent => false
+      Present { value: receipt } =>
+        let sel = select_with_receipt(
+          trees: trees,
+          receipt: receipt,
+          head_mechanism: MechanismIdentityComputed { computed: mechanism_a() },
+          head_files: [file_beta_changed(), file_gamma()],
+        )
+        source_admission_is_incremental(sel: sel)
+          && incremental_changed_module_paths(sel: sel) == ["mod.beta"]
+    }
+  })
+}
+
+test fn source_admission_removal_only_is_unchanged_noop() -> Bool {
+  on_trees(body: fn(trees) {
+    match mint_from_files(
+      tree: trees.base,
+      mechanism: mechanism_a(),
+      files: [file_beta(), file_gamma()]
+    ) {
+      Absent => false
+      Present { value: receipt } =>
+        let sel = select_with_receipt(
+          trees: trees,
+          receipt: receipt,
+          head_mechanism: MechanismIdentityComputed { computed: mechanism_a() },
+          head_files: [file_beta()],
+        )
+        source_admission_is_unchanged_noop(sel: sel)
+    }
+  })
+}
+
+test fn source_admission_known_mechanism_digest_change_is_entire_head_not_refused() -> Bool {
+  on_trees(body: fn(trees) {
+    match mint_from_files(
+      tree: trees.base,
+      mechanism: mechanism_a(),
+      files: [file_beta()]
+    ) {
+      Absent => false
+      Present { value: receipt } =>
+        let sel = select_with_receipt(
+          trees: trees,
+          receipt: receipt,
+          head_mechanism: MechanismIdentityComputed { computed: mechanism_b() },
+          head_files: [file_beta()],
+        )
+        source_admission_is_entire_head(sel: sel)
+          && source_admission_is_incremental(sel: sel) == false
+    }
+  })
+}
+
+test fn source_admission_seed_to_self_emitted_is_entire_head_even_with_same_digest_label() -> Bool {
+  on_trees(body: fn(trees) {
+    match mint_from_files(
+      tree: trees.base,
+      mechanism: mechanism_a(),
+      files: [file_beta()]
+    ) {
+      Absent => false
+      Present { value: receipt } =>
+        source_admission_is_entire_head(
+          sel: select_with_receipt(
+            trees: trees,
+            receipt: receipt,
+            head_mechanism: MechanismIdentityComputed { computed: mechanism_self_emitted() },
+            head_files: [file_beta()],
+          )
+        )
+    }
+  })
+}
+
+test fn source_admission_primary_precedence_independent_of_pool_file_list_order() -> Bool {
+  let forward = project_active_source_rows(files: [file_high(), file_low()])
+  let reversed = project_active_source_rows(files: [file_low(), file_high()])
+  active_source_lists_identity_join(expected: forward, observed: reversed)
+    && forward |> any(row => row.path == "root0/alpha.dag")
+}
+
+test fn source_admission_deleting_higher_precedence_exposes_lower_as_incremental() -> Bool {
+  on_trees(body: fn(trees) {
+    match mint_from_files(
+      tree: trees.base,
+      mechanism: mechanism_a(),
+      files: [file_high(), file_low()]
+    ) {
+      Absent => false
+      Present { value: receipt } =>
+        let sel = select_with_receipt(
+          trees: trees,
+          receipt: receipt,
+          head_mechanism: MechanismIdentityComputed { computed: mechanism_a() },
+          head_files: [file_low()],
+        )
+        source_admission_is_incremental(sel: sel)
+          && incremental_changed_module_paths(sel: sel) == ["mod.alpha"]
+          && match sel {
+            IncrementalSources { changed: changed } =>
+              nonempty_active_sources_all(rows: changed) |> any(row =>
+                row.path == "root1/alpha.dag"
+              )
+            _ => false
+          }
+    }
+  })
+}
+
+test fn source_admission_deleting_shadowed_loser_is_active_map_noop() -> Bool {
+  on_trees(body: fn(trees) {
+    match mint_from_files(
+      tree: trees.base,
+      mechanism: mechanism_a(),
+      files: [file_high(), file_low()]
+    ) {
+      Absent => false
+      Present { value: receipt } =>
+        source_admission_is_unchanged_noop(
+          sel: select_with_receipt(
+            trees: trees,
+            receipt: receipt,
+            head_mechanism: MechanismIdentityComputed { computed: mechanism_a() },
+            head_files: [file_high()],
+          )
+        )
+    }
+  })
+}
+
+test fn source_admission_receipt_tree_mismatch_refuses() -> Bool {
+  on_trees(body: fn(trees) {
+    match mint_from_files(
+      tree: trees.other,
+      mechanism: mechanism_a(),
+      files: [file_beta()]
+    ) {
+      Absent => false
+      Present { value: receipt } =>
+        refusal_is(
+          sel: select_source_admission(
+            evaluating_merge_tree: true,
+            base_tree: trees.base,
+            head_tree: trees.head,
+            base_receipt: Present { value: receipt },
+            head_mechanism: MechanismIdentityComputed { computed: mechanism_a() },
+            head_manifest: observed_from_files(files: [file_beta()]),
+          ),
+          wanted: BaseReceiptTreeMismatch,
+        )
+    }
+  })
+}
+
+test fn source_admission_seed_roots_name_executing_path_not_dag_only() -> Bool {
+  admission_mechanism_seed_roots |> any(root =>
+    (root.realization_file as String) == "src/v1/stage0/src/v1_compiler_tokenize.rs"
+      && (root.function_name as String) == "tokenize_artifact"
+  ) && admission_mechanism_seed_roots |> any(root =>
+    (root.function_name as String) == "alloc_occurrence_id"
+  )
+}

@@ -433,7 +433,7 @@ mod tests {
     }
 
     /// THE SEED HALF OF THE ORACLE PAIR. The literals are the ones
-    /// `test.claim.observation_ci_render_witness_test` `w_shared_fill_row_line_holds` and
+    /// `test.claim.observation_ci_render_witness` `w_shared_fill_row_line_holds` and
     /// `w_shared_fill_total_line_holds` assert against the `.dag` authority, so a format change
     /// on either side reds one of the two instead of forking the line silently.
     #[test]
@@ -458,7 +458,7 @@ mod tests {
             "[floor-shared-fill] TOTAL fills=9 fill_ms=60000 shared_fill_ms=42000 \
              unattributed_hits=0"
         );
-        // The same two literals as `test.claim.observation_ci_render_witness_test`
+        // The same two literals as `test.claim.observation_ci_render_witness`
         // `w_shared_fill_unattributed_line_names_frame_phase_and_key`, one per frame arm.
         assert_eq!(
             render_shared_fill_unattributed_text_mirror(

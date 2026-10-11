@@ -21,7 +21,7 @@ import std.materialization_ladder { Frame, SharedStateFrame }
 // path segment) are located std.access.Deny refusals from the EffectRequest profile, never widened
 // (DESIGN 5). HAND-RUST until Chunk F (docs/plans/cli-run-reconcile-defork.md, seed-shrink-census
 // Chunk F — scheduled, not indefinite): Rust gate and this authority must not diverge; pinned by
-// dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness_test.dag + cli_run.rs
+// dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness.dag + cli_run.rs
 // cli_run_repo_grant_equivalence_tests. dissolve-on = cli_run.rs Chunk F lands (GENERATED workflow
 // host-effect apply) OR ROADMAP 5-dissolve-patches retires HAND path handling.
 

@@ -235,7 +235,7 @@ data untyped_fold_init_population_basis: PopulationBasis = SweptCorpus {
         fold_sites_unmeasured: 1,
       },
       {
-        entry: "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag",
+        entry: "src/v2/test/claim/manual/coproduct_reflection_conformance.dag",
         cause: EmitRefusedByCompiler { diagnostic: "unresolved type 'LiveTreeDisposition'; undefined variable 'SubstrateInputsOnly'" },
         fold_sites_unmeasured: 2,
       },

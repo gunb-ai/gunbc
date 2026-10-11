@@ -61,7 +61,7 @@ import product.data_category {
 // changes representation, never permission.
 //
 // WHAT THE TYPE ARGUMENT C ESTABLISHES TODAY, STATED SO IT IS NOT OVER-READ. On the emitted-Rust
-// path distinct markers render distinctly (test.claim.phantom_marker_type_argument_identity_witness_test
+// path distinct markers render distinctly (test.claim.phantom_marker_type_argument_identity_witness
 // and the Classified instance of it in test.claim.data_class_marker_identity_witness), so a
 // Classified<PersonalIdentity, T> handed to a Sink<JobLog> is a rustc type error THERE. On the
 // interpretation path the checker does not yet judge marker identity at generic argument
@@ -256,7 +256,7 @@ type DataHandlingMap sole_constructor {
 fn data_handling_map(authority: DeclarationRef, rows: List<DataHandlingRow>) -> DataHandlingMap
   admit_callers: [
     decl_ref(module_path: "strategy.data_map", decl_name: "data_handling_map_rows"),
-    decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: "fx_map"),
+    decl_ref(module_path: "test.claim.fabric.data_class_admission_witness", decl_name: "fx_map"),
   ]
   = DataHandlingMap { authority: authority, rows: rows }
 

@@ -118,7 +118,7 @@ import gunbc.guarantee_rung {
 // predicted. The probe itself is expressible today: `extdeps.git.plumbing` already models git
 // plumbing with typed argv, existing wet witnesses already reach `extdeps.shell` and
 // `extdeps.filesystem.filesystem_io`, and the three arms above ARE the probe. What it would not do
-// is produce a verdict. Its nearest existing analogue is `test.claim.fleet.fleet_revision_relation_wet_matrix_test`,
+// is produce a verdict. Its nearest existing analogue is `test.claim.fleet.fleet_revision_relation_wet_matrix`,
 // a witness matrix over real git operations: `v2.workflow.floor_route_gap` declares all seven of its
 // identities as expected route gaps, every one `operation: "MergeBase"` with ground `NoMockResponse`,
 // and the recorded fixtures for that operation EXIST in the corpus while the matrix still yields no
@@ -226,7 +226,7 @@ type RungDropReason
 // the note above on what that enumeration does and does not guarantee, and on the concurrent row
 // that established the difference. The spelling of each identity lives in
 // `legacy_prose_identity` and nowhere else, so the row's `identity` field and its arm are joined by
-// one authority; test.claim.rung_drop_standing_partition_witness_test asserts that join as an exact
+// one authority; test.claim.rung_drop_standing_partition_witness asserts that join as an exact
 // set equality in both directions, which is what would go red if a row and its arm disagreed.
 type LegacyProseIdentity
   = FloorCut
@@ -398,7 +398,7 @@ fn authored_prose_rung_drops(ds: List<RungDrop>) -> List<RungDrop> {
 
 // THE IDENTITIES THE PROSE ARM CLAIMS, READ OFF THE ARM RATHER THAN OFF THE ROW. Paired with the
 // identities the rows themselves carry, this is the join that would go red if a row and its arm
-// disagreed -- the assertion lives in test.claim.rung_drop_standing_partition_witness_test, in both
+// disagreed -- the assertion lives in test.claim.rung_drop_standing_partition_witness, in both
 // directions, because one direction alone admits a row whose arm belongs to a different drop.
 fn authored_prose_arm_identities(ds: List<RungDrop>) -> List<String> {
   map(authored_prose_rung_drops(ds), d => match d.declaration {

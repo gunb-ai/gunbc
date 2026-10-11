@@ -3,7 +3,7 @@ module v2.test.claim.manual.sql_create_table_fold_runner
 import std.types { List }
 import std.realization_schedule { Runnable, RunnableSingleClaim, runnable_resource_profile_negligible }
 
-data sql_fold_test_entry: String = "src/v2/test/claim/sql_create_table_fold_test.dag"
+data sql_fold_test_entry: String = "src/v2/test/claim/sql_create_table_fold.dag"
 
 fn sql_create_table_fold_plan() -> List<List<Runnable>> {
   [

@@ -144,11 +144,11 @@ type OutsideIndexWork {
 
 data hand_authored_outside_index_works: List<OutsideIndexWork> = [
   OutsideIndexWork {
-    reference: DeclarationRef { module_path: "test.claim.floor.floor_materialization_witness_test", decl_name: "floor_materialization_witness_note", field: WholeDeclaration },
+    reference: DeclarationRef { module_path: "test.claim.floor.floor_materialization_witness", decl_name: "floor_materialization_witness_note", field: WholeDeclaration },
     coverage: OutsideDeclIndexTestWitnessModule,
   },
   OutsideIndexWork {
-    reference: DeclarationRef { module_path: "v2.test.claim.round_trip.dag_comment_wall_test", decl_name: "dag_comment_wall_line_comment_refused", field: WholeDeclaration },
+    reference: DeclarationRef { module_path: "v2.test.claim.round_trip.dag_comment_wall", decl_name: "dag_comment_wall_line_comment_refused", field: WholeDeclaration },
     coverage: OutsideDeclIndexTestWitnessModule,
   },
 ]

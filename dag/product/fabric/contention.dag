@@ -148,7 +148,7 @@ type DemandSelectionPolicy =
 // the margin becomes the bid itself. The ordering then reduces to bid per billed
 // second, so a short cheap job outranks a long expensive one even though the
 // long one earns strictly more cash on an offer that costs nothing to run.
-// witnessed executably in test.claim.fabric.fabric_contention_witness_test as
+// witnessed executably in test.claim.fabric.fabric_contention_witness as
 // a_zero_quote_ranks_by_bid_rate_and_the_larger_total_bid_loses.
 //
 // THAT IS RIGHT IF THE FREED REMAINDER CAN BE SOLD AND WRONG IF IT EXPIRES

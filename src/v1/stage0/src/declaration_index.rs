@@ -389,7 +389,7 @@ pub struct DeclarationIntegrityFinding {
 /// live corpus the wall refuses in two different populations: the rot §3's rule exists to
 /// catch (a citation naming a module the floor cut deleted), and DELIBERATELY FALSE TEXT — a
 /// witness proving the resolver refuses an absent module must AUTHOR one, so
-/// `test.claim.annotation_carrier_test` cites `extdeps.network.mac` `parse_mac_addres` on purpose,
+/// `test.claim.annotation_carrier` cites `extdeps.network.mac` `parse_mac_addres` on purpose,
 /// one letter short, and refusing it would refuse the evidence for the wall's own mechanism.
 /// Not a leniency carve-out: the difference between a claim and an input, decidable from the
 /// carrier's identity.
@@ -2040,9 +2040,9 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// `resolve_declaration_ref` directly — in `v2.std.decl_ref_resolution`, which SURVIVES with
 /// four other consumers — so they are the only executing evidence for a live authority's
 /// five-arm refusal, and §4b(4) keeps them enrolled; they moved to
-/// `test.claim.long.decl_ref_resolution_witness_test`. The remaining 15 are population and
+/// `test.claim.long.decl_ref_resolution_witness`. The remaining 15 are population and
 /// projection claims about the carriers that PROJECT `DeclarationRef`s, moved to
-/// `test.claim.long.carrier_reference_integrity_witness_test`.
+/// `test.claim.long.carrier_reference_integrity_witness`.
 ///
 /// So the disposition is three-way where this comment admitted two: the lens dies, six
 /// witnesses die with it, twelve rehome onto subjects that outlive it.
@@ -2073,7 +2073,7 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// AND THE HOLE WAS OCCUPIED, not merely reachable — a defect, not a disclosed boundary. Two
 /// rows below are ordinary staleness unrelated to fixture intent:
 ///   - `dag.test.claim.witness_purpose_taxonomy_witness` is a `dag.`-prefixed module path no
-///     module declares; the real module is `test.claim.witness_purpose_taxonomy_witness_test`. A
+///     module declares; the real module is `test.claim.witness_purpose_taxonomy_witness`. A
 ///     plain typo, invisible while the skip stood.
 ///   - `std.disposition` `Disposition` `marker` names a real authority and declaration with
 ///     an absent field, cited twice from `v2.lens/disposition_redundancy_test.dag`.
@@ -2093,11 +2093,11 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// wrong one. Next rung: a witness declaring its planted controls as typed rows, at which point
 /// the deliberate half becomes derivable and only the genuine half survives here as debt.
 ///
-/// ALSO THIS KIND, 2026-09-07: `v2.test.claim.construction_justification.outside_modeled_guarantee_witness_test`
+/// ALSO THIS KIND, 2026-09-07: `v2.test.claim.construction_justification.outside_modeled_guarantee_witness`
 /// `nonexistent_capability_ref` cites `v2.lens.cost` `capability_absent_from_decl_facts`. The
 /// cited name is never a next-rung capability and is never supposed to be authored; the probe
-/// is that the join still treats absence as outside. Same shape as `test.claim.altra_placement_witness_test`
-/// citing `some_other_board` and `test.claim.annotation_carrier_test` citing a one-letter miss.
+/// is that the join still treats absence as outside. Same shape as `test.claim.altra_placement_witness`
+/// citing `some_other_board` and `test.claim.annotation_carrier` citing a one-letter miss.
 /// It does not belong on `NEXT_RUNG_TRIGGER_CITATIONS`: that roster's arm reds when a citation
 /// stops refusing because the named capability was authored — the stamp firing as designed.
 /// For this probe a resolving citation would mean the control had lost its discriminating
@@ -2105,238 +2105,238 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// the other fixture carriers.
 const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &[
     (
-        "test.claim.altra_placement_witness_test",
+        "test.claim.altra_placement_witness",
         "w_a_plan_from_another_design_is_refused_as_incomparable",
         "product.altra_motherboard.minimal_design",
         "some_other_board",
         "",
     ),
     (
-        "test.claim.annotation_carrier_test",
+        "test.claim.annotation_carrier",
         "bound_condition_does_not_fire_on_a_near_miss_ref",
         "extdeps.network.mac",
         "parse_mac_addres",
         "",
     ),
     (
-        "test.claim.annotation_carrier_test",
+        "test.claim.annotation_carrier",
         "bound_condition_does_not_fire_on_a_near_miss_ref",
         "extdeps.network.max",
         "parse_mac_address",
         "",
     ),
     (
-        "test.claim.annotation_carrier_test",
+        "test.claim.annotation_carrier",
         "planted_bound_row_ref",
         "test.fixture.frontier",
         "planted_bound_trigger",
         "",
     ),
     (
-        "test.claim.annotation_carrier_test",
+        "test.claim.annotation_carrier",
         "planted_rows",
         "test.fixture.frontier",
         "planted_subject",
         "",
     ),
     (
-        "test.claim.annotation_carrier_test",
+        "test.claim.annotation_carrier",
         "planted_rows",
         "test.fixture.frontier",
         "planted_unbound_subject",
         "",
     ),
     (
-        "test.claim.annotation_carrier_test",
+        "test.claim.annotation_carrier",
         "frontier_expiry_fired_trigger_absent_from_rows_is_clean",
         "test.fixture.frontier",
         "never_a_trigger_here",
         "",
     ),
     (
-        "test.claim.capability_binding_witness_test",
+        "test.claim.capability_binding_witness",
         "witness_the_bob_requirement_is_still_provisional",
         "gunbc.capability_binding",
         "x",
         "",
     ),
     (
-        "test.claim.dissolution_census_mechanism_witness_test",
+        "test.claim.dissolution_census_mechanism_witness",
         "live_discriminator_rows",
-        "test.claim.dissolution_census_mechanism_witness_test",
+        "test.claim.dissolution_census_mechanism_witness",
         "absent_subject_row",
         "",
     ),
     (
-        "test.claim.dissolution_census_mechanism_witness_test",
+        "test.claim.dissolution_census_mechanism_witness",
         "live_discriminator_rows",
-        "test.claim.dissolution_census_mechanism_witness_test",
+        "test.claim.dissolution_census_mechanism_witness",
         "present_subject_row",
         "",
     ),
     (
-        "test.claim.dissolution_census_mechanism_witness_test",
+        "test.claim.dissolution_census_mechanism_witness",
         "live_discriminator_rows",
         "test.fixture.dissolution_live_discriminator.subject",
         "absent_subject_declaration",
         "",
     ),
     (
-        "test.claim.dissolution_census_mechanism_witness_test",
+        "test.claim.dissolution_census_mechanism_witness",
         "planted_bound_ref",
-        "test.claim.dissolution_census_mechanism_witness_test",
+        "test.claim.dissolution_census_mechanism_witness",
         "planted_bound_target",
         "",
     ),
     (
-        "test.claim.dissolution_census_mechanism_witness_test",
+        "test.claim.dissolution_census_mechanism_witness",
         "planted_retires_ref",
-        "test.claim.dissolution_census_mechanism_witness_test",
+        "test.claim.dissolution_census_mechanism_witness",
         "planted_retires_target",
         "",
     ),
     (
-        "test.claim.dissolution_census_mechanism_witness_test",
+        "test.claim.dissolution_census_mechanism_witness",
         "planted_rows",
-        "test.claim.dissolution_census_mechanism_witness_test",
+        "test.claim.dissolution_census_mechanism_witness",
         "planted_unbound_target",
         "",
     ),
     (
-        "test.claim.keyed_roster_witness_test",
+        "test.claim.keyed_roster_witness",
         "frontier_rows_keyed_build_admits_distinct_decl_fields",
         "synthetic.mod",
         "HostConfig",
         "",
     ),
     (
-        "test.claim.keyed_roster_witness_test",
+        "test.claim.keyed_roster_witness",
         "frontier_rows_keyed_build_admits_distinct_decl_fields",
         "synthetic.mod",
         "HostConfig",
         "memory_swap",
     ),
     (
-        "test.claim.language_target_subject_registration_test",
+        "test.claim.language_target_subject_registration",
         "red_unregistered_subject_ref_is_not_reported_as_present",
         "extdeps.languages.nonexistent.subject",
         "nonexistent_language",
         "",
     ),
     (
-        "test.claim.long.carrier_reference_integrity_witness_test",
+        "test.claim.long.carrier_reference_integrity_witness",
         "carrier_ref_refusal_count_red_on_dangling_fixture",
         "v2.std.node",
         "NoSuchDecl_G1_RED",
         "",
     ),
     (
-        "test.claim.decl_ref_keyed_read_agreement_witness_test",
+        "test.claim.decl_ref_keyed_read_agreement_witness",
         "keyed_and_population_routes_agree_on_declaration_absent",
         "test.fixture.decl_facts_reflection.specimens",
         "no_such_declaration_KEYED_RED",
         "",
     ),
     (
-        "test.claim.decl_ref_keyed_read_agreement_witness_test",
+        "test.claim.decl_ref_keyed_read_agreement_witness",
         "keyed_and_population_routes_agree_on_field_absent",
         "test.fixture.decl_facts_reflection.specimens",
         "disposition_scaffold",
         "no_such_field_KEYED_RED",
     ),
     (
-        "test.claim.decl_ref_keyed_read_agreement_witness_test",
+        "test.claim.decl_ref_keyed_read_agreement_witness",
         "keyed_and_population_routes_agree_on_module_absent",
         "synthetic.keyed_read_module_absent_RED",
         "anything",
         "",
     ),
     (
-        "test.claim.long.decl_ref_resolution_witness_test",
+        "test.claim.long.decl_ref_resolution_witness",
         "decl_ref_refuses_ambiguous_binding",
         "v2.std.node",
         "g1_ambiguous",
         "",
     ),
     (
-        "test.claim.long.decl_ref_resolution_witness_test",
+        "test.claim.long.decl_ref_resolution_witness",
         "decl_ref_refuses_declaration_absent",
         "v2.std.node",
         "NoSuchDecl_G1_RED",
         "",
     ),
     (
-        "test.claim.long.decl_ref_resolution_witness_test",
+        "test.claim.long.decl_ref_resolution_witness",
         "decl_ref_refuses_module_absent",
         "synthetic.g1_module_absent_RED",
         "any",
         "",
     ),
     (
-        "test.claim.long.decl_ref_resolution_witness_test",
+        "test.claim.long.decl_ref_resolution_witness",
         "decl_ref_refuses_named_field_absent",
         "v2.std.node",
         "NodeKind",
         "NoSuchField_G1_RED",
     ),
     (
-        "test.claim.long.carrier_reference_integrity_witness_test",
+        "test.claim.long.carrier_reference_integrity_witness",
         "instance_gap_carrier_dangling_caller_red_control_refuses",
         "v2.compiler.parse",
         "G1_planted_instance_gap_caller_control_RED",
         "",
     ),
     (
-        "test.claim.long.carrier_reference_integrity_witness_test",
+        "test.claim.long.carrier_reference_integrity_witness",
         "instance_gap_membership_dangling_producer_red_control_refuses",
         "gunbc.publication_policy",
         "G1_planted_instance_gap_producer_control_RED",
         "",
     ),
     (
-        "test.claim.long.v1_complexity_capability_census_resolution_test",
+        "test.claim.long.v1_complexity_capability_census_resolution",
         "census_absent_declaration_refuses",
         "v1.compiler.complexity",
         "this_declaration_does_not_exist_in_the_seed",
         "",
     ),
     (
-        "test.claim.long.v1_complexity_capability_census_resolution_test",
+        "test.claim.long.v1_complexity_capability_census_resolution",
         "census_absent_module_refuses",
         "v1.compiler.this_module_does_not_exist",
         "classify_complexity",
         "",
     ),
     (
-        "test.claim.long.v1_complexity_capability_census_resolution_test",
+        "test.claim.long.v1_complexity_capability_census_resolution",
         "census_prose_only_name_does_not_resolve",
         "v1.compiler.complexity",
         "Derived",
         "",
     ),
     (
-        "test.claim.primitive_identity_join_witness_test",
+        "test.claim.primitive_identity_join_witness",
         "w_unknown_realization_refuses",
         "std.primitive_identity",
         "missing_handler",
         "",
     ),
     (
-        "test.claim.primitive_projection_authority_witness_test",
+        "test.claim.primitive_projection_authority_witness",
         "planted_registry_row",
         "test.fixture",
         "planted",
         "",
     ),
     (
-        "test.claim.repository_census_observation_witness_test",
+        "test.claim.repository_census_observation_witness",
         "witness_a_declaration_field_selector_reaches_the_identity",
-        "test.claim.repository_census_observation_witness_test",
+        "test.claim.repository_census_observation_witness",
         "census_witness_classifier",
         "rows",
     ),
     (
-        "test.claim.witness_purpose_taxonomy_witness_test",
+        "test.claim.witness_purpose_taxonomy_witness",
         "fixture_population_ref",
         "dag.test.claim.witness_purpose_taxonomy_witness",
         "witness_purpose_taxonomy_witness_note",
@@ -2357,56 +2357,56 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
         "",
     ),
     (
-        "v2.test.claim.construction_justification.outside_modeled_guarantee_witness_test",
+        "v2.test.claim.construction_justification.outside_modeled_guarantee_witness",
         "nonexistent_capability_ref",
         "v2.lens.cost",
         "capability_absent_from_decl_facts",
         "",
     ),
     (
-        "v2.test.lens_cost.valuation_test",
+        "v2.test.lens_cost.valuation",
         "effect_operation",
-        "v2.test.lens_cost.valuation_test",
+        "v2.test.lens_cost.valuation",
         "unmodelled_effect_specimen",
         "",
     ),
     (
-        "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+        "v2.test.lens_disposition_redundancy.disposition_redundancy",
         "redundancy_present_successor_locator",
         "std.disposition",
         "Disposition",
         "marker",
     ),
     (
-        "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+        "v2.test.lens_disposition_redundancy.disposition_redundancy",
         "redundancy_red_scaffold",
         "std.disposition",
         "Disposition",
         "marker",
     ),
     (
-        "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+        "v2.test.lens_disposition_redundancy.disposition_redundancy",
         "redundancy_region1_real_successor_present",
         "extdeps.llm.anthropic_messages_api",
         "AnthropicTextBlock",
         "cache_control",
     ),
     (
-        "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+        "v2.test.lens_disposition_redundancy.disposition_redundancy",
         "redundancy_region_budget_per_service_overhead_locator",
         "gunbc.ci.ci_floor_measurement",
         "gunbc_ci_managed_host_quiescent_meminfo_read",
         "",
     ),
     (
-        "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+        "v2.test.lens_disposition_redundancy.disposition_redundancy",
         "redundancy_region_bytes_synthetic_present",
         "std.bytes",
         "builtin_function_registry",
         "",
     ),
     (
-        "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+        "v2.test.lens_disposition_redundancy.disposition_redundancy",
         "redundancy_region_rust_gates_synthetic_present",
         "gunbc.instruments.rust_stage0_gates",
         "per_unit_test_selector",
@@ -2777,8 +2777,8 @@ pub fn citation_debt_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// the funeral would have erased the four probes proving this wall's refusal arms are real.
 /// The seven debt rows below were RE-POINTED rather than deleted in the same change: their
 /// citations are deliberately false and moved with their witnesses into
-/// `test.claim.long.decl_ref_resolution_witness_test` and
-/// `test.claim.long.carrier_reference_integrity_witness_test`. A deleted row would be a
+/// `test.claim.long.decl_ref_resolution_witness` and
+/// `test.claim.long.carrier_reference_integrity_witness`. A deleted row would be a
 /// silently dropped obligation; a stale one would refuse, which is how the contract catches
 /// exactly this.
 ///

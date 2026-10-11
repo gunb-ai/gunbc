@@ -236,7 +236,7 @@ fn v1_discovery_undisposed() -> List<String> {
 // SUBJECT exceeds what a merge-path claim may cost, and it is a fact about the subject rather than
 // about the fold: the same fold over one declaration, fetched by name through
 // v1_discovery_rows_at_name, runs inside the ordinary per-PR budget and IS enrolled, in
-// dag/test/claim/self_host_v1_consumer_census_witness_test.dag. So the mechanism has an executed
+// dag/test/claim/self_host_v1_consumer_census_witness.dag. So the mechanism has an executed
 // arm and the whole-corpus JOIN does not, which is an honest split rather than a silence: what is
 // unenrolled is one specific claim -- that the corpus contains no undisposed .dag relation today --
 // and it is available on demand at the command v1cd_producer carries.

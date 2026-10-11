@@ -1,0 +1,144 @@
+module v2.test.claim.binding.lexical_candidate_declaration_identity
+
+import std.types { List }
+import std.algebra { Empty }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.algebra { any, length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Atom, Node, Symbol, TypeNode }
+import std.optional { Absent, Present }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_snoc }
+import v2.std.symbol_index {
+  LexicalAmbiguous,
+  LexicalBindingCandidate,
+  LexicalHit,
+  LexicalUnbound,
+  SymbolIndex,
+  empty_symbol_index,
+  symbol_index_bind_at,
+  symbol_index_entry_at,
+  symbol_index_insert,
+  symbol_index_lexical_collect,
+  symbol_index_lexical_selection
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// R1 OF docs/plans/native-resolve-frontier-root-causes.md: A LEXICAL CANDIDATE IS A DECLARATION,
+// NOT A ROUTE TO ONE. A contained module position that imports `Target` from its home, inside an
+// ancestor that imports the same `Target` from the same home, reaches ONE declaration by two
+// routes. The walk (symbol_index_lexical_collect) must hand the selection one candidate there, and
+// the selection must answer a Hit naming the home -- while two DIFFERENT declarations spelled
+// `Target` must still reach the selection as two candidates and refuse as ambiguous, naming both
+// declaring paths (zero-ambiguity ruling, 2026-10-02: no first-wins, no preference order).
+//
+// THE ROUTE, NOT ONLY THE ANSWER: every claim builds a real SymbolIndex through the production
+// writers (symbol_index_insert for the declarations, symbol_index_bind_at -- the one writer
+// symbol_index_fill uses for import rows -- for the bindings) and runs the real chain walk and
+// the real selection fold; nothing below supplies a candidate population by hand.
+
+data identity_home_qn: List<Symbol> = qualified_name_from_dotted_string(dotted: "v2.test.identity_home")
+data identity_other_home_qn: List<Symbol> = qualified_name_from_dotted_string(dotted: "v2.test.identity_other_home")
+data identity_ancestor_qn: List<Symbol> = qualified_name_from_dotted_string(dotted: "v2.test.identity_user")
+data identity_contained_qn: List<Symbol> = qualified_name_from_dotted_string(dotted: "v2.test.identity_user.inner")
+
+fn identity_decl_node(name: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: name } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn identity_home_target() -> QualifiedName {
+  qualified_name_snoc(qn: identity_home_qn, segment: ^Target)
+}
+
+fn identity_other_home_target() -> QualifiedName {
+  qualified_name_snoc(qn: identity_other_home_qn, segment: ^Target)
+}
+
+fn identity_declared_index() -> SymbolIndex {
+  symbol_index_insert(
+    index: symbol_index_insert(
+      index: empty_symbol_index(),
+      qualified_path: identity_home_target(),
+      resolved: identity_decl_node(name: ^home_target)
+    ),
+    qualified_path: identity_other_home_target(),
+    resolved: identity_decl_node(name: ^other_home_target)
+  )
+}
+
+// `import home { Target }` at the contained module plus `import <ancestor_home> { Target }` at the
+// ancestor module, each bound through the production binding writer.
+fn identity_index_with_imports(ancestor_home_target: QualifiedName) -> SymbolIndex {
+  let with_contained = symbol_index_bind_at(
+    index: identity_declared_index(),
+    binding_path: qualified_name_snoc(qn: identity_contained_qn, segment: ^Target),
+    declaring_path: identity_home_target(),
+    resolved: identity_decl_node(name: ^home_target)
+  )
+  symbol_index_bind_at(
+    index: with_contained,
+    binding_path: qualified_name_snoc(qn: identity_ancestor_qn, segment: ^Target),
+    declaring_path: ancestor_home_target,
+    resolved: match symbol_index_entry_at(index: with_contained, qualified_path: ancestor_home_target) {
+      Present { value: node } => node
+      Absent => identity_decl_node(name: ^absent)
+    }
+  )
+}
+
+fn identity_population(index: SymbolIndex) -> List<LexicalBindingCandidate> {
+  symbol_index_lexical_collect(index: index, position: identity_contained_qn, name: ^Target, acc: Empty)
+}
+
+// RED BEFORE R1: the walk collected the contained binding and the ancestor binding as two
+// candidates, so the selection answered LexicalAmbiguous about one declaration.
+test fn one_declaration_reached_by_own_and_ancestor_import_resolves_to_its_home() -> Bool {
+  let population = identity_population(index: identity_index_with_imports(ancestor_home_target: identity_home_target()))
+  (length(xs: population) == 1)
+    && match symbol_index_lexical_selection(candidates: population) {
+      LexicalHit { node: _, path: path } => path == identity_home_target()
+      LexicalAmbiguous { candidates: _ } => false
+      LexicalUnbound => false
+    }
+}
+
+// The ancestor DECLARES the name the contained module imports from it: the declaration's own
+// position and the import's declaring path are one identity.
+test fn an_import_of_the_declaring_ancestor_resolves_to_the_ancestor_declaration() -> Bool {
+  let ancestor_target = qualified_name_snoc(qn: identity_ancestor_qn, segment: ^Target)
+  let declared = symbol_index_insert(
+    index: empty_symbol_index(),
+    qualified_path: ancestor_target,
+    resolved: identity_decl_node(name: ^ancestor_target)
+  )
+  let index = symbol_index_bind_at(
+    index: declared,
+    binding_path: qualified_name_snoc(qn: identity_contained_qn, segment: ^Target),
+    declaring_path: ancestor_target,
+    resolved: identity_decl_node(name: ^ancestor_target)
+  )
+  match symbol_index_lexical_selection(candidates: identity_population(index: index)) {
+    LexicalHit { node: _, path: path } => path == ancestor_target
+    LexicalAmbiguous { candidates: _ } => false
+    LexicalUnbound => false
+  }
+}
+
+// THE WALL STAYS: two different declarations spelled `Target` are two candidates and refuse,
+// and the refusal names BOTH declaring paths.
+test fn two_distinct_declarations_under_one_name_still_refuse_naming_both() -> Bool {
+  match symbol_index_lexical_selection(
+    candidates: identity_population(index: identity_index_with_imports(ancestor_home_target: identity_other_home_target()))
+  ) {
+    LexicalAmbiguous { candidates: candidates } =>
+      (length(xs: candidates) == 2)
+        && any(xs: candidates, predicate: fn(c) { c.path == identity_home_target() })
+        && any(xs: candidates, predicate: fn(c) { c.path == identity_other_home_target() })
+    LexicalHit { node: _, path: _ } => false
+    LexicalUnbound => false
+  }
+}

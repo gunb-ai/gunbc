@@ -976,7 +976,7 @@ fn release_bins_main_lookup_ref() -> ReleaseBinsLookupRef {
 // This is ONE spelling of the SAME ref, derived from the dispatch's own ref by one expression, not a
 // second admitted scope: an entry under any other tag or branch still does not match, and the
 // disagreement check is untouched. Its evidence is
-// test.claim.long.fleet_release_bins_key_witness_test release_bins_tag_dispatch_entry_is_present and
+// test.claim.long.fleet_release_bins_key_witness release_bins_tag_dispatch_entry_is_present and
 // release_bins_RED_other_tag_entry_is_absence. If the API's spelling changes, the lookup reads
 // absent again and the run refuses loudly, never widens.
 data release_bins_dispatch_scope_ref_env: String = "RELEASE_BINS_DISPATCH_SCOPE_REF"
@@ -1270,7 +1270,7 @@ data compiler_pair_candidate_artifact_name: String = "compiler-pair-candidate"
 // THE CANDIDATE'S RETENTION IS A DURATION (std.measure Second), not a day count: fleet-desired runs on
 // the landing it follows, so one day covers it. GitHub's upload-artifact takes whole days, so the
 // emitter converts at that boundary (compiler_pair_candidate_retention_whole_days); the duration is
-// authored as whole days and test.claim.long.fleet_release_bins_key_witness_test holds that it stays one.
+// authored as whole days and test.claim.long.fleet_release_bins_key_witness holds that it stays one.
 fn compiler_pair_candidate_retention() -> Second {
   second(count: 1 * seconds_per_day())
 }

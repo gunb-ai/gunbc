@@ -26,10 +26,10 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // exists to fail for -- and the wall reports green, because a pin is exactly the input its guard
 // excludes. The class "a row below the floor's demonstrated demand is unwritable" therefore sits
 // at MITIGATABLE: the state is observed loudly by
-// `test.claim.runner.runner_slot_allocation_witness_test` `witness_declared_high_sits_below_the_floor_charge_ceiling`,
+// `test.claim.runner.runner_slot_allocation_witness` `witness_declared_high_sits_below_the_floor_charge_ceiling`,
 // which is written to be GREEN while the pin stands. The microVM consequence was tracked by the
 // runner_microvm_floor_fit_stall row until 2026-09-23, when the demand receipt moved and that row
-// retired (test.claim.runner.runner_microvm_witness_test
+// retired (test.claim.runner.runner_microvm_witness
 // the_production_shape_resolves_on_the_memory_remainder_since_the_2026_09_23_receipt) -- but no
 // required arm refuses the row.
 //

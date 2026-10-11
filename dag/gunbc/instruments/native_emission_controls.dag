@@ -12,7 +12,7 @@ import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimR
 // THE NATIVE EMISSION CONTROLS: one small carrier per Rust-emitter rule, EMITTED, BUILT AND RUN as a
 // NativeClaimDriver entry (std.compiler_entry). `gunbc test //gunbc/instruments:native-emission-controls`
 // emits this closure, builds it and runs it; nothing here is interpreted. A textual witness over the
-// emitted header (test.claim.generic_item_clone_bound_witness_test) says what the emitter PRINTED; only
+// emitted header (test.claim.generic_item_clone_bound_witness) says what the emitter PRINTED; only
 // rustc says whether what it printed is a program, and only a run says whether that program answers
 // correctly. So each rule's control is a carrier whose emission did not compile before the rule and
 // a set of cases over it whose answers are decided here -- a positive and a red per carrier, because

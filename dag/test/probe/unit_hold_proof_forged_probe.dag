@@ -2,7 +2,7 @@ module test.probe.unit_hold_proof_forged_probe
 
 // THIS MODULE MUST NOT RESOLVE. Each function is one way to reach a Mt. Collins BMC write without
 // holding the unit, and each must refuse at compile time
-// (test.claim.machine_intake.mtcollins1_unit_hold_forged_probe_witness_test enrolls the refusals):
+// (test.claim.machine_intake.mtcollins1_unit_hold_forged_probe_witness enrolls the refusals):
 //   - a UnitHoldProof authored outside the hold module: SoleConstructorViolation at the literal;
 //   - a call to each admit_callers-sealed write from outside its admitted callers:
 //     ConstructorCallAdmissionRefused, keyed by the callee's name;
@@ -29,7 +29,7 @@ import gunbc.machine_intake.megarac_boot_media_attach { megarac_observe_boot_pre
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_capability_row, mtcollins1_access_observation, mtcollins1_endpoint, mtcollins1_firmware }
 
 // The subject a forged proof names is a parameter: an AdmittedUnitHoldSubject cannot be authored here
-// either (test.claim.host.managed_host_unit_hold_forged_probe_witness_test pins that), and none of these
+// either (test.claim.host.managed_host_unit_hold_forged_probe_witness pins that), and none of these
 // functions is ever called -- each is refused where it is written.
 fn forged_proof(s: AdmittedUnitHoldSubject) -> UnitHoldProof {
   UnitHoldProof {

@@ -38,9 +38,9 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 //
 // THE DECISION LIVES IN .dag; THE RUST IS ITS MIRROR, NOT A SECOND RULE. The ground, the interval, both
 // self-staling arms and their causes are v2.workflow.floor_enrolment_margin (enrolment_declared_measured_standing
-// and the standing coproduct), tested by v2.test.floor_enrolment_margin_test; the identities are
+// and the standing coproduct), tested by v2.test.floor_enrolment_margin; the identities are
 // v2.workflow.floor_enrolment_dead_band, which the host decodes from the model and never restates.
-// test.claim.enrolment_margin_seed_mirror_witness_test pins the mirror's wire names and causes to
+// test.claim.enrolment_margin_seed_mirror_witness pins the mirror's wire names and causes to
 // the model's, for every arm, so a model arm with no mirror or a drifted spelling reds.
 data enrolment_dead_band_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [

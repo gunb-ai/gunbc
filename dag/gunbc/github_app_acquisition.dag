@@ -1672,7 +1672,7 @@ data census_app_installation_population_frontier_rows: List<FrontierRow> = [
 // AdmittedCensusInstallation and LiveInstallationStanding that existed for that ferry are gone
 // (DESIGN 4b(4): a climb deletes the lower-rung production machinery it obsoletes). The judgment
 // stays ordinary and witnessable over supplied standings; only this producer turns its holding arm
-// into CensusAppAcquired. The executed evidence is test.claim.census_app_acquisition_refusal_probe_witness_test,
+// into CensusAppAcquired. The executed evidence is test.claim.census_app_acquisition_refusal_probe_witness,
 // which hands the compiler a source that spells the old route -- three standings into the minter --
 // and requires it refused by class: each standing an argument no parameter is declared for, and the
 // record the minter does require unsupplied.

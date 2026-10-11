@@ -116,37 +116,37 @@ data permanent_evidence_ruling_question: String = "STATED AS A VIOLATION THAT AL
 
 data doc_reachability_rows: List<ClassifiedRow> = [
   ClassifiedRow {
-    identity: identity(module_path: "test.claim.doc_reachability_witness_test", function: "doc_graph_registered_plan_roots_all_admitted"),
+    identity: identity(module_path: "test.claim.doc_reachability_witness", function: "doc_graph_registered_plan_roots_all_admitted"),
     classification: RealDefect { subject: StaleAuthorityAfterDeletion },
     measured_evidence: "228 declared roots, 209 admitted; the 19 unadmitted are exactly the docs/probes/ files the 2026-08-24 bankruptcy deleted, enumerated by walking doc_graph_roots_all() against the worktree",
     disposition: NeedsOperatorRuling { question: permanent_evidence_ruling_question }
   },
   ClassifiedRow {
-    identity: identity(module_path: "test.claim.doc_reachability_witness_test", function: "doc_graph_has_no_dangling_links"),
+    identity: identity(module_path: "test.claim.doc_reachability_witness", function: "doc_graph_has_no_dangling_links"),
     classification: RealDefect { subject: StaleAuthorityAfterDeletion },
     measured_evidence: "16 dangling .md links: 12 into deleted docs/probes/ targets, 4 at docs/plans/ci-selection-vs-scheduling.md (one of them from ROADMAP.md itself)",
     disposition: RoutedToOwner { owner: "the measurement-bankruptcy cut's owner: the residue DESIGN already names as the next cut" }
   },
   ClassifiedRow {
-    identity: identity(module_path: "test.claim.doc_reachability_witness_test", function: "doc_graph_has_no_orphan_docs"),
+    identity: identity(module_path: "test.claim.doc_reachability_witness", function: "doc_graph_has_no_orphan_docs"),
     classification: RealDefect { subject: StaleAuthorityAfterDeletion },
     measured_evidence: "35 orphans against the admitted root set; 8 are docs/briefs/ authored 2026-08-24 with no bind at all, 2 are the surviving docs/probes/ files, the rest are docs/plans/ rows never registered",
     disposition: RoutedToOwner { owner: "doc-graph roots authority (gunbc.doc_graph_roots) plus each orphan's authoring lane" }
   },
   ClassifiedRow {
-    identity: identity(module_path: "v2.test.lens_doc_reachability.doc_reachability_test", function: "doc_graph_has_no_dangling_links"),
+    identity: identity(module_path: "v2.test.lens_doc_reachability.doc_reachability", function: "doc_graph_has_no_dangling_links"),
     classification: RealDefect { subject: StaleAuthorityAfterDeletion },
     measured_evidence: "same 16 dangling links; this identity and the dag-side one read one report through two witnesses",
     disposition: RoutedToOwner { owner: "the measurement-bankruptcy cut's owner" }
   },
   ClassifiedRow {
-    identity: identity(module_path: "v2.test.lens_doc_reachability.doc_reachability_test", function: "doc_graph_has_no_orphan_docs"),
+    identity: identity(module_path: "v2.test.lens_doc_reachability.doc_reachability", function: "doc_graph_has_no_orphan_docs"),
     classification: RealDefect { subject: StaleAuthorityAfterDeletion },
     measured_evidence: "same 35 orphans",
     disposition: RoutedToOwner { owner: "doc-graph roots authority plus each orphan's authoring lane" }
   },
   ClassifiedRow {
-    identity: identity(module_path: "v2.test.lens_doc_reachability.doc_reachability_test", function: "doc_graph_is_clean"),
+    identity: identity(module_path: "v2.test.lens_doc_reachability.doc_reachability", function: "doc_graph_is_clean"),
     classification: RealDefect { subject: StaleAuthorityAfterDeletion },
     measured_evidence: "the conjunction of the orphan and dangling halves above; it carries no third fact and cannot green before both do",
     disposition: RoutedToOwner { owner: "doc-graph roots authority plus each orphan's authoring lane" }
@@ -168,13 +168,13 @@ data doc_reachability_rows: List<ClassifiedRow> = [
 // and no hand-authored exemption roster can drift or absorb a new finding.
 data lens_module_gate_rows: List<ClassifiedRow> = [
   ClassifiedRow {
-    identity: identity(module_path: "v2.test.claim.enforcement.lens_module_gate_witness_test", function: "lens_module_gate_holds_live"),
+    identity: identity(module_path: "v2.test.claim.enforcement.lens_module_gate_witness", function: "lens_module_gate_holds_live"),
     classification: WrongWitness { fault: CriterionCannotHoldOnLiveCorpus { measured: 42, denominator: 58 } },
     measured_evidence: "decomposed by execution on main: lens_module_gate_unenrolled_count() == 0 PASS, lens_module_gate_unjustified_count() == 0 PASS, lens_module_gate_redundant_blocking_count() == 0 FAIL; the 42 offending pairs were re-derived independently from the registry order and the surface table",
     disposition: RoutedToOwner { owner: "v2.lens.enforcement.lens_module_gate -- the fix is at the criterion (surface declared on-carrier, its own dissolution condition); adding exemption rows is ruled out" }
   },
   ClassifiedRow {
-    identity: identity(module_path: "v2.test.claim.enforcement.lens_module_gate_witness_test", function: "question_zero_verdict_live_holds"),
+    identity: identity(module_path: "v2.test.claim.enforcement.lens_module_gate_witness", function: "question_zero_verdict_live_holds"),
     classification: WrongWitness { fault: CriterionCannotHoldOnLiveCorpus { measured: 42, denominator: 58 } },
     measured_evidence: "same redundant_claim leg; this witness passes facts: [] so its unenrolled and unjustified legs are vacuously clean and only the shared leg can fail",
     disposition: RoutedToOwner { owner: "v2.lens.enforcement.lens_module_gate -- same criterion, same prohibition on exemption rows" }
@@ -184,7 +184,7 @@ data lens_module_gate_rows: List<ClassifiedRow> = [
 // THE FOUR REMAINING GROUP-A ROWS, each a distinct real subject.
 data group_a_remaining_rows: List<ClassifiedRow> = [
   ClassifiedRow {
-    identity: identity(module_path: "v2.lens.mandatory_tag.corpus_scan_witness_test", function: "corpus_live_clean_tree_wall_holds"),
+    identity: identity(module_path: "v2.lens.mandatory_tag.corpus_scan_witness", function: "corpus_live_clean_tree_wall_holds"),
     classification: RealDefect { subject: MissingCitedAuthority },
     measured_evidence: "roster count is healthy (>150 PASS); the clean-tree half fails on exactly two modules, extdeps.cpu_attachment.lotes_azifa072 and extdeps.languages.rust.capabilities, both projecting anchor Absent -- an extdeps module with no external-authority anchor is the DESIGN 3 citation duty unmet",
     disposition: RoutedToOwner { owner: "the authoring lane of each extdeps module: the anchor must be the real upstream locator, which this session cannot invent" }
@@ -196,19 +196,19 @@ data group_a_remaining_rows: List<ClassifiedRow> = [
     disposition: RoutedToOwner { owner: "each unrostered site's module owner -- DESIGN's total-at-the-level-examined class says the remedy is usually to descend the match, not to author a roster row for it" }
   },
   ClassifiedRow {
-    identity: identity(module_path: "v2.test.claim.execution.emit_ingest_grammar_relation_round_trip_test", function: "same_grammar_parse_ingest_bridge_holds"),
+    identity: identity(module_path: "v2.test.claim.execution.emit_ingest_grammar_relation_round_trip", function: "same_grammar_parse_ingest_bridge_holds"),
     classification: RealDefect { subject: CompilerBehaviourRefusal },
     measured_evidence: "DECOMPOSED BY EXECUTION 2026-08-28, and the cause is not the one an earlier revision of this row named. That revision said only that parse_tree_to_emitted_node REFUSES with parse_tree_to_emitted_node_no_matching_row and that it is the parse-tree shape that selects none of the rows -- true, and under-stated in the direction that routes a reader into a non-repair, because it reads as a shape mismatch to be reconciled rather than as a fork. The two spines were printed side by side from a probe entry over the live tree: the row spine from v2.extdeps.languages.dag dag_concrete_tokens is 18 classes (kw_fn ident lparen ident colon ident comma ident colon ident rparen arrow ident lbrace ident plus ident rbrace); the frontier that v2.compiler.ingest operational_parse_tree_project_to_formal_captures builds over parse_module of ingested_add_module_source is 22 symbols (kw_module m kw_fn add lparen x colon Int comma y colon Int rparen arrow Int lbrace x plus y rbrace). TWO INDEPENDENT DISAGREEMENTS, and only the second is the subject. (1) the fixture is a MODULE, so the frontier carries the module header while the row covers only the fn -- a bridge over a module would have to descend to the fn declaration. (2) THE FORK: v2.extdeps.languages.dag carries TWO production tables for one language. dag_grammar_root is the real recursive surface grammar that dag_language_model parses with, and its identifier terminals are dag_grammar_terminal_lexeme, so v2.compiler.parse parse_stamp_terminal stamps StampLexeme atoms with the INTERNED LEXEME and the token class is not recoverable from the atom. dag_formal_production_fn_add is a FLAT 18-token production whose lhs dag_production_fn_add appears NOWHERE in dag_grammar_root, and it is what every grammar-relation row is grounded on. The four sibling witnesses pass because they stay entirely inside the flat table; this one is the only witness that crosses, so it asserts exactly what is false -- it is not the same grammar. The python bridge passes for the complementary reason: python uses grammar_formal_terminal (StampClass) and parses one production, so its atoms already carry token classes. Corollary, and it is why the surfaced reason misleads: v2.compiler.ingest parse_atom_frontier_class keys binding_to_class on BINDING symbols, so it can only ever cover StampBinding terminals, and on a miss it returns the atom identity -- FABRICATING a class rather than refusing, which converts an unrecoverable-token-class condition into a silent non-match reported as no_matching_row",
     disposition: RoutedToOwner { owner: "not a local repair in v2.compiler.ingest: closing this witness is a DESIGN 3 replacement migration in v2.extdeps.languages.dag -- the flat dag_formal_production_fn_add table dies, the grammar-relation rows key on dag_grammar_root's own productions, and the frontier is projected by walking the production's GrammarExpr against the captured tree instead of guessed from atom identities. Scoped as its own lane; the fabricated-class fallback above cannot be repaired ahead of it, because StampClass atoms legitimately carry their class as their identity and nothing at that layer can tell the two cases apart without the grammar" }
   },
   ClassifiedRow {
-    identity: identity(module_path: "v2.test.claim.execution.self_host_candidate_generation_test", function: "candidate_generation_translate_self_emit_dag_add_slice_holds"),
+    identity: identity(module_path: "v2.test.claim.execution.self_host_candidate_generation", function: "candidate_generation_translate_self_emit_dag_add_slice_holds"),
     classification: RealDefect { subject: CompilerBehaviourRefusal },
     measured_evidence: "staged by execution: infer(dag_add_emitted_root) ACCEPTS, translate(inferred, dag_add_target_model) REFUSES with head reason infer_grounding_not_derived; identical under --hermetic and --wet, so the mode is not the discriminator. REPAIR RECEIPT, 2026-09-07: the owner lane's declared-inhabitant roster-membership derivation (v2.compiler.infer infer_node_declared_in_language_inhabitants) grounds the slice's ten type-spine nodes by lookup against the dag language authority's declared-inhabitants roster, and the witness now PASSES under claim_batch --hermetic on the repairing tree (re-measured after the merge onto main at 5ee9cab5fa). The classification and the first sentence are kept verbatim as the dated record of the defect as routed; this sentence is the repair measurement.",
     disposition: RepairedInThisChange
   },
   ClassifiedRow {
-    identity: identity(module_path: "v2.test.claim.manual.test_migration_debt_test", function: "retained_rust_kernel_wall_holds_against_live_tree"),
+    identity: identity(module_path: "v2.test.claim.manual.test_migration_debt", function: "retained_rust_kernel_wall_holds_against_live_tree"),
     classification: RealDefect { subject: UndeclaredResidentPopulation },
     measured_evidence: "src/v1/tests/src/anonymous_record_struct_resolution_test.rs is discovered (column-anchored #[test] present), has no floor-witness stem covering it, and has no row in test.retirement.model retained_legacy_rust_test_modules, so every_discovered_module_is_retained() refuses; the file was added by gunbc#9089 on main",
     disposition: RoutedToOwner { owner: "gunbc#9089's lane: either migrate the module to a .dag witness or declare a retention row with a real non-migratable reason, which this session cannot assert on its behalf" }

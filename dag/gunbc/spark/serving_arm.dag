@@ -1138,7 +1138,7 @@ data glm_native_engine_build: GlmNativeEngineBuild = GlmNativeEngineDerived8d098
 
 // RUNG HONESTY: this is mechanically preventable, not structural -- the profile is a data row and
 // cannot refuse its own field, so the gate is the witness in
-// dag/test/claim/spark/serving_arm_kv_dtype_witness_test.dag, which goes red if the profile
+// dag/test/claim/spark/serving_arm_kv_dtype_witness.dag, which goes red if the profile
 // carries a dtype its declared build refuses. The next-rung trigger is a profile constructor that
 // takes the admission as an argument, making a refused dtype unconstructible.
 type GlmNativeKvCacheDtypeAdmission
@@ -1280,7 +1280,7 @@ data glm_native_initial_profile: ServingLaunchProfile = serving_launch_profile(
 // the format this build serves (its hand-built twin served 2026-09-13 to 2026-09-16). The pe_dim
 // == 64 kernel law that forbids fp8 on the STOCK build is a per-(kernel, build) fact
 // (extdeps.vllm.kv_cache) and does not bind here. The witness
-// test.claim.spark.serving_arm_kv_dtype_witness_test goes red if this row carries a dtype the declared
+// test.claim.spark.serving_arm_kv_dtype_witness goes red if this row carries a dtype the declared
 // build refuses.
 data glm_native_concurrent_profile: ServingLaunchProfile = serving_launch_profile(
   policy: glm53_native_launch_policy,

@@ -2776,7 +2776,7 @@ data protocol_schema_largest_file_rel: NonEmptyStr = "codex_app_server_protocol.
 // parse-only and parse+canonicalize both pin 8 GiB without completion (~16,500x input) —
 // indistinguishable curves. Defect is parse_json / JsonValue construction, not
 // canonicalize_json_value or .dag caller shape. Witness + claim_batch recipe:
-// dag/test/claim/json_protocol_schema_memory_split_wet_witness_test.dag witness_note. Substrate
+// dag/test/claim/json_protocol_schema_memory_split_wet_witness.dag witness_note. Substrate
 // design review precedes fix.
 
 fn finish_bisect_observe_sha512_file(path: FilePath) -> Bool {

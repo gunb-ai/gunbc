@@ -465,7 +465,7 @@ type BmcSecureOutcome
 //
 // THE CEILING, SCOPED RATHER THAN OVERCLAIMED, on this repository's own
 // precedent (gunbc.auth.secret_access_admission, and the coproduct-variant form
-// falsified at test.claim.inventory_admitted_ledger_seal_livetree_witness_test):
+// falsified at test.claim.inventory_admitted_ledger_seal_livetree_witness):
 // sole_constructor seals RECORDS, not coproduct arms, which is why the pairing
 // and not the outcome is the sealed carrier — a caller may still write a
 // BmcSecured OUTCOME literal, and it reaches nothing, because every consumer
@@ -863,7 +863,7 @@ fn unmatched_published_probe_cause(
 // RUNG: mechanically preventable. Ceiling is enrolled one-arm mutants on the
 // merge path (DESIGN §4b(4)): a deletion of a guarding arm that reddens exactly
 // the named witness. Next-rung trigger: that mutation capability for
-// test.claim.machine_intake.machine_intake_bmc_secure_witness_test on required CI, not a
+// test.claim.machine_intake.machine_intake_bmc_secure_witness on required CI, not a
 // scratch-tree one-shot. Named-cause witnesses in that module are the enrolled
 // evidence this PR keeps executing. Do not cite an un-enrolled local run.
 fn adjudicate_published_census_join(
@@ -1333,8 +1333,8 @@ fn observation_with_controller_clock(base: BmcAccountStateObservation, controlle
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "bmc_account_state_observation_same"),
     decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "apply_with_diverged_controller_clock"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "w_bmc_secure_apply_of_a_different_present_controller_clock_is_refused"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "w_bmc_secure_apply_of_a_present_controller_clock_over_absent_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_a_different_present_controller_clock_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_a_present_controller_clock_over_absent_is_refused"),
   ]
 {
   observed_bmc_account_state(
@@ -2125,7 +2125,7 @@ type BmcAccountApplication sole_constructor {
 
 fn apply_with_diverged_controller_clock(application: BmcAccountApplication, controller_clock: ControllerClockReading?) -> BmcAccountApplication
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "w_bmc_secure_apply_of_a_different_present_controller_clock_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_a_different_present_controller_clock_is_refused"),
   ]
 {
   let p = application.plan
@@ -2275,8 +2275,8 @@ fn dry_bmc_account_instant(millis: EpochMs) -> ObserverClockInstant
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "dry_read_bmc_account_state"),
     decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "dry_apply_bmc_account_plan"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "mtjade1_fetched_generation"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "mtjade1_dry_applied_bmc"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "mtjade1_fetched_generation"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "mtjade1_dry_applied_bmc"),
   ]
 {
   observer_clock_modeled(millis: millis, realization: bmc_secure_dry_realization_name)
@@ -2347,12 +2347,12 @@ fn dry_read_bmc_account_state(
   read_at_millis: EpochMs,
 ) -> BmcAccountStateObservation
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "read_in"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "w_mtjade1_converges_through_bmc_secure_noop_on_the_real_prefix"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "w_mtjade1_bmc_secure_apply_inputs_missing_refuses_on_the_real_path"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "mtjade1_dry_applied_bmc"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "w_bmc_secure_apply_for_a_later_break_glass_generation_is_refused"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "w_bmc_secure_apply_of_another_channel_state_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "read_in"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_mtjade1_converges_through_bmc_secure_noop_on_the_real_prefix"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_mtjade1_bmc_secure_apply_inputs_missing_refuses_on_the_real_path"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "mtjade1_dry_applied_bmc"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_for_a_later_break_glass_generation_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_another_channel_state_is_refused"),
   ]
 {
   let at = dry_bmc_account_instant(millis: read_at_millis)
@@ -2413,10 +2413,10 @@ fn dry_apply_bmc_account_plan(
   applied_at_millis: EpochMs,
 ) -> BmcAccountDryStep
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "applied_with"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "the_post_read_is_independent_of_the_reading_that_diverged"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness_test", decl_name: "a_planned_channel_close_is_applied_read_back_and_converges"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness_test", decl_name: "mtjade1_dry_applied_bmc"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "applied_with"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "the_post_read_is_independent_of_the_reading_that_diverged"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "a_planned_channel_close_is_applied_read_back_and_converges"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "mtjade1_dry_applied_bmc"),
   ]
 {
   let managed_step = match dry_fetch_resolves(fetch: managed_fetch, write: plan.managed_write) {

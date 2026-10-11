@@ -111,7 +111,7 @@ pub fn compile_dag_diagnostic_census_memo_counts() -> (u64, u64) {
 /// WHY THIS EXISTS, stated as the measurement that produced it rather than as a general
 /// preference: `compile_dag_rust_emit_check` was memoized and this sibling was not, so a witness
 /// asking two QUESTIONS about one source paid for two full compiles of it. `neither_green_source_
-/// refuses_and_neither_mis_resolves` (`test.claim.callable_candidate_ambiguity_witness_test`) is the
+/// refuses_and_neither_mis_resolves` (`test.claim.callable_candidate_ambiguity_witness`) is the
 /// specimen — four census calls over two distinct sources, so half of its compiles recomputed a
 /// pure function of an input already compiled in the same run. That is the DESIGN §6
 /// bare-minimum-cost class ("a proven cost-shape defect is ALWAYS fixed, regardless of the
@@ -153,7 +153,7 @@ pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
     // only, and a claim that filled a CENSUS entry was still charged the whole compile. That is
     // one accounting rule with two homes, one of which does not apply it (DESIGN §3) — and it is
     // load-bearing rather than cosmetic, because the ceiling it feeds is a fail-stop: measured on
-    // main run 33131296988, `test.claim.callable_candidate_ambiguity_witness_test
+    // main run 33131296988, `test.claim.callable_candidate_ambiguity_witness
     // .neither_green_source_refuses_and_neither_mis_resolves` was the first claim to reach BOTH
     // green sources, paid both compiles, and refused the floor at 5812ms against 5000ms, while the
     // two later claims naming those same sources read them free. The number was a fact about
@@ -3254,7 +3254,7 @@ pub(crate) fn fixture_closure_union_emit_receipt_staged(
 
 /// The red control's member: a non-tail effectful self-call, which the rust emitter refuses
 /// (`EffectfulSelfRecursionUnrealized`, the derived form exercised by
-/// `test.claim.effectful_item_kind_collapse_witness_test`).
+/// `test.claim.effectful_item_kind_collapse_witness`).
 const FIXTURE_CLOSURE_UNION_RED_MEMBER: &str = "module efr_member\nimport extdeps.filesystem.filesystem_io { Filesystem }\nfn walk(n: Int) -> Int {\n  let listed = Filesystem.List(path: \".\")\n  if n == 0 { 0 } else if listed.success { n + walk(n: n - 1) } else { 0 }\n}\n";
 
 /// The positive control's member: the same closure with the self-call in tail position, which is
@@ -3655,7 +3655,7 @@ mod fixture_closure_union_tests {
             shared.source_files.clone(),
             &shared.source_roots,
         );
-        let rel = "dag/test/claim/host/megarac_managed_host_forged_probe_witness_test.dag";
+        let rel = "dag/test/claim/host/megarac_managed_host_forged_probe_witness.dag";
         let content = std::fs::read_to_string(process_workspace_root().join(rel))
             .unwrap_or_else(|e| panic!("read {rel}: {e}"));
         let source = Rc::new(v1_compiler_compile::SourceFile {

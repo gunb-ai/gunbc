@@ -1,0 +1,49 @@
+module test.claim.site_dependency_graph_witness
+import gunbc.site.dependency_graph { DependencyGraphItem, dependency_graph, dependency_graph_interactive }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+import std.types { String, Bool }
+
+fn graph_fixture(prerequisites: List<DependencyGraphItem>, dependents: List<DependencyGraphItem>) -> String {
+  match try_serialize_html_source(node: dependency_graph(current: DependencyGraphItem { id: "selected", label: "Selected issue", status: "Ready" }, prerequisites: prerequisites, dependents: dependents)) {
+    EmitOk { html } => html
+    EmitRejected { reason } => concat("rejected: ", reason)
+  }
+}
+test fn dependency_edges_keep_their_direction() -> Bool {
+  let html = graph_fixture(prerequisites: [DependencyGraphItem { id: "before-a", label: "First prerequisite", status: "open" }, DependencyGraphItem { id: "before-b", label: "Second prerequisite", status: "done" }], dependents: [DependencyGraphItem { id: "after", label: "Dependent", status: "open" }])
+  count(split(s: html, delimiter: "class=\"issue-dag-edge\"")) == 4
+    && string_contains(s: html, pattern: "data-from=\"before-a\" data-to=\"selected\"")
+    && string_contains(s: html, pattern: "data-from=\"before-b\" data-to=\"selected\"")
+    && string_contains(s: html, pattern: "data-from=\"selected\" data-to=\"after\"")
+    && !string_contains(s: html, pattern: "data-from=\"before-a\" data-to=\"before-b\"")
+}
+test fn unconnected_issue_has_no_invented_edges() -> Bool {
+  let html = graph_fixture(prerequisites: [], dependents: [])
+  !string_contains(s: html, pattern: "issue-dag-edge")
+    && string_contains(s: html, pattern: "aria-current=\"true\" data-current=\"1\"")
+    && !string_contains(s: html, pattern: "href=")
+}
+test fn completed_and_unknown_nodes_keep_names_and_links() -> Bool {
+  let html = graph_fixture(prerequisites: [DependencyGraphItem { id: "finished", label: "Finished prerequisite", status: "done" }, DependencyGraphItem { id: "missing", label: "Unknown prerequisite", status: "unknown" }], dependents: [])
+  string_contains(s: html, pattern: "data-state=\"done\"")
+    && string_contains(s: html, pattern: "data-state=\"unknown\"")
+    && string_contains(s: html, pattern: "href=\"/issue/finished\"")
+    && string_contains(s: html, pattern: "href=\"/issue/missing\"")
+    && string_contains(s: html, pattern: "Finished prerequisite")
+    && string_contains(s: html, pattern: "Unknown prerequisite")
+}
+
+
+test fn aggregate_keeps_selected_outside_collapsible_branches() -> Bool {
+  let items = [DependencyGraphItem { id: "a", label: "A", status: "done" }, DependencyGraphItem { id: "b", label: "B", status: "open" }, DependencyGraphItem { id: "c", label: "C", status: "open" }, DependencyGraphItem { id: "d", label: "D", status: "unknown" }]
+  match try_serialize_html_source(node: dependency_graph_interactive(current: DependencyGraphItem { id: "selected", label: "Selected", status: "Ready" }, prerequisites: items, dependents: items)) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html } => string_contains(s: html, pattern: "class=\"issue-dag-cluster\" data-direction=\"upstream\">")
+      && string_contains(s: html, pattern: "class=\"issue-dag-cluster\" data-direction=\"downstream\">")
+      && string_contains(s: html, pattern: "</details><div class=\"issue-dag-selected-anchor\">")
+      && string_contains(s: html, pattern: "data-from=\"a\" data-to=\"selected\"")
+      && string_contains(s: html, pattern: "data-from=\"selected\" data-to=\"a\"")
+      && string_contains(s: html, pattern: "1 done · 3 remaining")
+      && !string_contains(s: html, pattern: "issue-dag-fold")
+  }
+}

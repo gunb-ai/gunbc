@@ -30,7 +30,7 @@ data a_pin_claim_compares_two_copies_while_a_third_drifts: RecurringFailureMode 
   evidence: [
     DeclarationRef { module_path: "extdeps.google.drive", decl_name: "drive_token_env", field: WholeDeclaration },
     DeclarationRef { module_path: "extdeps.google.sheets", decl_name: "sheets_token_env", field: WholeDeclaration },
-    DeclarationRef { module_path: "test.claim.review_sheet_transport_pin_witness_test", decl_name: "sheets_token_env_matches_the_configured_literal", field: WholeDeclaration },
-    DeclarationRef { module_path: "test.claim.review_sheet_transport_pin_witness_test", decl_name: "drive_and_sheets_read_one_credential", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.review_sheet_transport_pin_witness", decl_name: "sheets_token_env_matches_the_configured_literal", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.review_sheet_transport_pin_witness", decl_name: "drive_and_sheets_read_one_credential", field: WholeDeclaration },
   ],
 }

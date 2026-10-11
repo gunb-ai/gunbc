@@ -17,7 +17,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // and with no such observation it refuses. The screen is recorded as not observed, never inferred.
 //
 // WHAT STAYS ENROLLED: kvm_handoff_admission still refuses an observer that is not started or not
-// established (test.claim.machine_intake.megarac_kvm_still_witness_test), now as this drop's control for
+// established (test.claim.machine_intake.megarac_kvm_still_witness), now as this drop's control for
 // the day the capability returns; and the acceptance matrix holds a RED that the handoff refuses with no
 // SOL observation, with a mutant that opens the gate and must fail.
 
@@ -39,6 +39,6 @@ data handoff_observer_is_sol_not_kvm_viewer: RungDrop = RungDrop {
     population: [
       "the mtcollins1 boot handoff only (gunbc.machine_intake.mtcollins1_boot_run mtcollins1_boot_actuate), for as long as no public non-vendor KVM client exists",
     ],
-    restoration_trigger: "THE CAPABILITY: a public, non-vendor KVM client that ESTABLISHES the observer, meaning it logs in to the controller, holds one seat, and journals an established line bound to the BMC host and the attempt, readable through kvm_observer_standing_now. WHAT THAT MUST BE SUFFICIENT FOR: restoring kvm_handoff_admission as a second required precondition of the mtcollins1 handoff beside the SOL admission, with the established-or-refuse control already enrolled in test.claim.machine_intake.megarac_kvm_still_witness_test. The existence of some KVM client, or of a client that cannot establish the observer, does not satisfy this.",
+    restoration_trigger: "THE CAPABILITY: a public, non-vendor KVM client that ESTABLISHES the observer, meaning it logs in to the controller, holds one seat, and journals an established line bound to the BMC host and the attempt, readable through kvm_observer_standing_now. WHAT THAT MUST BE SUFFICIENT FOR: restoring kvm_handoff_admission as a second required precondition of the mtcollins1 handoff beside the SOL admission, with the established-or-refuse control already enrolled in test.claim.machine_intake.megarac_kvm_still_witness. The existence of some KVM client, or of a client that cannot establish the observer, does not satisfy this.",
   }
 }

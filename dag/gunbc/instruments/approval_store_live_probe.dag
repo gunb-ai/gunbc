@@ -23,7 +23,7 @@ import gunbc.auth.approval_decision_store {
 import extdeps.ietf.http_semantics { POST }
 
 // THE LIVE RECEIPT FOR THE EFFECTFUL HALF OF THE APPROVAL DECISION STORE, which the hermetic
-// witness (test.claim.approval_decision_store_witness_test) cannot reach: a request filed into a
+// witness (test.claim.approval_decision_store_witness) cannot reach: a request filed into a
 // real slot, an approve tap that wins generation 2, a deny tap that then loses the race and changes
 // nothing, a second approve tap that reports the standing decision, and the workflow-side join that
 // turns the stored decision into an OperatorGrant for the exact intent. Run it as

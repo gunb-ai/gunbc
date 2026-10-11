@@ -19,7 +19,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // pattern as the cast counters already in that block.
 //
 // WHY THEY WERE ADDED. The required floor's self_host_compile_phase_frontier_witness module
-// (dag/test/claim/self_host_compile_phase_frontier_witness_test.dag) dropped from 2,140ms to
+// (dag/test/claim/self_host_compile_phase_frontier_witness.dag) dropped from 2,140ms to
 // 269ms after #10544, but three claims still showed ~73ms each on ~95k eval_steps and a
 // 4.96ms probe-scan granularity failed to explain the residual ~55ms gap to floor. These
 // counters settle whether the data_cache is a significant remaining multiplier (NEGATIVE RESULT —

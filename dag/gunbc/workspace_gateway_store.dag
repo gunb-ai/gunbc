@@ -123,7 +123,7 @@ fn workspace_publish_gateway_document(store: FabricStorageBinding, slot: RunnerS
 fn workspace_publish_gateway_evidence(store: FabricStorageBinding, slot: RunnerSlotIdentity, evidence: WorkspaceGatewayEvidence) -> WorkspaceGatewayRead
   admit_callers: [
     decl_ref(module_path: "gunbc.workspace_gateway_observer", decl_name: "workspace_refresh_gateway_wet"),
-    decl_ref(module_path: "test.claim.workspace_gateway_refresh_witness_test", decl_name: "gateway_refresh_cycle"),
+    decl_ref(module_path: "test.claim.workspace_gateway_refresh_witness", decl_name: "gateway_refresh_cycle"),
   ]
 {
   workspace_publish_gateway_document(store: store, slot: slot,
@@ -134,7 +134,7 @@ fn workspace_publish_gateway_refusal(store: FabricStorageBinding, slot: RunnerSl
   reason: NonEmptyStr, observed_at: Timestamp) -> WorkspaceGatewayRead
   admit_callers: [
     decl_ref(module_path: "gunbc.workspace_gateway_observer", decl_name: "workspace_refresh_gateway_wet"),
-    decl_ref(module_path: "test.claim.workspace_gateway_refresh_witness_test", decl_name: "gateway_refresh_cycle"),
+    decl_ref(module_path: "test.claim.workspace_gateway_refresh_witness", decl_name: "gateway_refresh_cycle"),
   ]
 {
   workspace_publish_gateway_document(store: store, slot: slot, wire: serialize_json(v: json_object(members: [

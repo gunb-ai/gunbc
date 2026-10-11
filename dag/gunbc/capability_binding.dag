@@ -648,7 +648,7 @@ data coverage_targets: List<BindingCoverageTarget> = [
     implementation: Implemented { implementation: synthetic_tap_provider },
     probe: ProbeObserved {
       receipt: DeclarationRef {
-        module_path: "test.claim.instrument_bob_witness_test",
+        module_path: "test.claim.instrument_bob_witness",
         decl_name: "instrument_bob_keystone_holds",
         field: WholeDeclaration
       }

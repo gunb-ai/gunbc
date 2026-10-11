@@ -1,0 +1,337 @@
+module v2.test.claim.source_layout_lookup
+
+import std.types { Bool, List }
+import std.optional { Absent, optional_present }
+import v2.std.text { String }
+import v2.std.algebra { any, list_map }
+import v2.std.cross_tree.import_model { DagTree, V2Tree }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.compiler.source_authority {
+  LayoutFileHeader,
+  LayoutHolds,
+  LayoutRefusal,
+  LayoutRefused,
+  DeclaredModuleUnderivable,
+  DuplicateModule,
+  FileNotNamed,
+  ModuleFileAbsent,
+  ModuleFilePresent,
+  ModuleFileRef,
+  ModuleFileRefused,
+  ModuleLineMissing,
+  NamespaceRowWithoutModules,
+  NotAtRulePosition,
+  RegistryArtifactMissing,
+  ReferenceCrossTreeDenied,
+  ReferenceModuleLineDisagrees,
+  ReferenceModuleLineMissing,
+  ReferenceRefused,
+  ReferenceResolved,
+  ReferenceUnknownModule,
+  SourceStorageLayout,
+  StorageNamespaceRoot,
+  UndeclaredNamespace,
+  layout_check,
+  reference_prefixes,
+  resolve_reference_over
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WITNESSES FOR THE GENERIC STORAGE LOOKUP AND LAYOUT CHECK (docs/plans/source-layout-authority.md
+// 4.3, 4.4). Both are folds over SUPPLIED observations -- a probe per candidate file, a header per
+// enumerated file -- so each control states the shape the host would hand the fold and asserts the
+// fold's decision; nothing here walks a tree. The pairing obligation (DESIGN 3, a witness
+// discriminates at one interface) is carried by the native layout-check and parse-all verbs, which
+// run the same folds over the real repository on `witnesses`: deleting that integration would not
+// fail THIS file, which is why it names no repository path.
+//
+// Every refusal control pins the KIND of the one refusal it expects, not a count: a count of one
+// is satisfied by any refusal, and a fold that refused for the wrong reason would pass it.
+
+fn layout() -> SourceStorageLayout {
+  SourceStorageLayout {
+    namespace_roots: [StorageNamespaceRoot { namespace: "v2", tree: V2Tree {}, elides_namespace: true }],
+    default_tree: DagTree {}
+  }
+}
+
+fn dag_file(path: String) -> ModuleFileRef {
+  ModuleFileRef { tree: DagTree {}, relative_path: path }
+}
+
+fn v2_file(path: String) -> ModuleFileRef {
+  ModuleFileRef { tree: V2Tree {}, relative_path: path }
+}
+
+// ---- lookup by name ------------------------------------------------------------------------------
+
+test fn lookup_candidates_are_the_prefixes_longest_first() -> Bool {
+  reference_prefixes(reference: "a.b.c") == ["a.b.c", "a.b", "a"]
+}
+
+// `a.b.c.d` is read longest prefix first: a.b.c.d (Absent), then a.b.c (Present) wins, and a.b is
+// never consulted for the answer even though it is also present.
+test fn lookup_longest_present_prefix_wins() -> Bool {
+  match resolve_reference_over(layout: layout(), from_tree: DagTree {}, from_module: "m", reference: "a.b.c.d", observed: [
+    ModuleFileAbsent { file: dag_file(path: "a/b/c/d.dag") },
+    ModuleFilePresent { file: dag_file(path: "a/b.dag"), content: "module a.b\n" },
+    ModuleFilePresent { file: dag_file(path: "a/b/c.dag"), content: "module a.b.c\n" }
+  ]) {
+    ReferenceResolved { module: named, member: member, file: _, content: _ } => named == "a.b.c" && member == "d"
+    ReferenceUnknownModule { reference: _ } => false
+    ReferenceRefused { module: _, file: _, cause: _ } => false
+    ReferenceModuleLineMissing { module: _, file: _ } => false
+    ReferenceModuleLineDisagrees { module: _, declared: _, file: _ } => false
+    ReferenceCrossTreeDenied { module: _, file: _, reason: _ } => false
+  }
+}
+
+test fn lookup_absent_prefix_falls_back_to_the_shorter_one() -> Bool {
+  match resolve_reference_over(layout: layout(), from_tree: DagTree {}, from_module: "m", reference: "a.b.c.d", observed: [
+    ModuleFileAbsent { file: dag_file(path: "a/b/c/d.dag") },
+    ModuleFileAbsent { file: dag_file(path: "a/b/c.dag") },
+    ModuleFilePresent { file: dag_file(path: "a/b.dag"), content: "module a.b\n" }
+  ]) {
+    ReferenceResolved { module: named, member: member, file: _, content: _ } => named == "a.b" && member == "c.d"
+    ReferenceUnknownModule { reference: _ } => false
+    ReferenceRefused { module: _, file: _, cause: _ } => false
+    ReferenceModuleLineMissing { module: _, file: _ } => false
+    ReferenceModuleLineDisagrees { module: _, declared: _, file: _ } => false
+    ReferenceCrossTreeDenied { module: _, file: _, reason: _ } => false
+  }
+}
+
+// A refused read at a longer prefix ends the lookup: falling back to the shorter prefix would
+// answer a question the host could not ask, which is the widening DESIGN 5 forbids.
+test fn lookup_refused_read_refuses_instead_of_falling_back() -> Bool {
+  match resolve_reference_over(layout: layout(), from_tree: DagTree {}, from_module: "m", reference: "a.b.c.d", observed: [
+    ModuleFileAbsent { file: dag_file(path: "a/b/c/d.dag") },
+    ModuleFileRefused { file: dag_file(path: "a/b/c.dag"), cause: "unreadable" },
+    ModuleFilePresent { file: dag_file(path: "a/b.dag"), content: "module a.b\n" }
+  ]) {
+    ReferenceRefused { module: named, file: _, cause: cause } => named == "a.b.c" && cause == "unreadable"
+    ReferenceResolved { module: _, member: _, file: _, content: _ } => false
+    ReferenceUnknownModule { reference: _ } => false
+    ReferenceModuleLineMissing { module: _, file: _ } => false
+    ReferenceModuleLineDisagrees { module: _, declared: _, file: _ } => false
+    ReferenceCrossTreeDenied { module: _, file: _, reason: _ } => false
+  }
+}
+
+test fn lookup_no_present_file_is_an_unknown_module() -> Bool {
+  match resolve_reference_over(layout: layout(), from_tree: DagTree {}, from_module: "m", reference: "a.b.c", observed: [
+    ModuleFileAbsent { file: dag_file(path: "a/b/c.dag") },
+    ModuleFileAbsent { file: dag_file(path: "a/b.dag") },
+    ModuleFileAbsent { file: dag_file(path: "a.dag") }
+  ]) {
+    ReferenceUnknownModule { reference: unresolved } => unresolved == "a.b.c"
+    ReferenceResolved { module: _, member: _, file: _, content: _ } => false
+    ReferenceRefused { module: _, file: _, cause: _ } => false
+    ReferenceModuleLineMissing { module: _, file: _ } => false
+    ReferenceModuleLineDisagrees { module: _, declared: _, file: _ } => false
+    ReferenceCrossTreeDenied { module: _, file: _, reason: _ } => false
+  }
+}
+
+// The file's own `module` line is the authority for which module it is: a file at the rule
+// position that declares a different module is a layout defect and refuses, naming both.
+test fn lookup_module_line_disagreeing_with_the_request_refuses() -> Bool {
+  match resolve_reference_over(layout: layout(), from_tree: DagTree {}, from_module: "m", reference: "a.b", observed: [
+    ModuleFilePresent { file: dag_file(path: "a/b.dag"), content: "// c\nmodule a.other\n" }
+  ]) {
+    ReferenceModuleLineDisagrees { module: named, declared: declared, file: _ } => named == "a.b" && declared == "a.other"
+    ReferenceResolved { module: _, member: _, file: _, content: _ } => false
+    ReferenceUnknownModule { reference: _ } => false
+    ReferenceRefused { module: _, file: _, cause: _ } => false
+    ReferenceModuleLineMissing { module: _, file: _ } => false
+    ReferenceCrossTreeDenied { module: _, file: _, reason: _ } => false
+  }
+}
+
+test fn lookup_file_without_a_module_line_refuses() -> Bool {
+  match resolve_reference_over(layout: layout(), from_tree: DagTree {}, from_module: "m", reference: "a.b", observed: [
+    ModuleFilePresent { file: dag_file(path: "a/b.dag"), content: "no header here\n" }
+  ]) {
+    ReferenceModuleLineMissing { module: named, file: _ } => named == "a.b"
+    ReferenceResolved { module: _, member: _, file: _, content: _ } => false
+    ReferenceUnknownModule { reference: _ } => false
+    ReferenceRefused { module: _, file: _, cause: _ } => false
+    ReferenceModuleLineDisagrees { module: _, declared: _, file: _ } => false
+    ReferenceCrossTreeDenied { module: _, file: _, reason: _ } => false
+  }
+}
+
+// The tree direction survives the lookup: a dag-tree module resolving a name that lives in the v2
+// tree is denied through the same storage verdict the import graph uses (DESIGN 4,
+// tree_fundamentality_order), and the denial is decided from the candidate's name and tree BEFORE
+// any file is read -- so no observation is supplied, and a regression that probed first and
+// denied afterwards would still be answered here by the module it names.
+test fn lookup_dag_to_v2_reference_is_denied_before_any_read() -> Bool {
+  match resolve_reference_over(layout: layout(), from_tree: DagTree {}, from_module: "m", reference: "v2.std.text.String", observed: []) {
+    ReferenceCrossTreeDenied { module: named, file: file, reason: _ } =>
+      named == "v2.std.text.String" && file.relative_path == "std/text/String.dag"
+    ReferenceResolved { module: _, member: _, file: _, content: _ } => false
+    ReferenceUnknownModule { reference: _ } => false
+    ReferenceRefused { module: _, file: _, cause: _ } => false
+    ReferenceModuleLineMissing { module: _, file: _ } => false
+    ReferenceModuleLineDisagrees { module: _, declared: _, file: _ } => false
+  }
+}
+
+test fn lookup_v2_to_dag_reference_is_admitted() -> Bool {
+  match resolve_reference_over(layout: layout(), from_tree: V2Tree {}, from_module: "v2.m", reference: "a.b.f", observed: [
+    ModuleFilePresent { file: dag_file(path: "a/b.dag"), content: "module a.b\n" }
+  ]) {
+    ReferenceResolved { module: named, member: member, file: _, content: _ } => named == "a.b" && member == "f"
+    ReferenceCrossTreeDenied { module: _, file: _, reason: _ } => false
+    ReferenceUnknownModule { reference: _ } => false
+    ReferenceRefused { module: _, file: _, cause: _ } => false
+    ReferenceModuleLineMissing { module: _, file: _ } => false
+    ReferenceModuleLineDisagrees { module: _, declared: _, file: _ } => false
+  }
+}
+
+// A namespace that is elided from its tree's paths has no file of its own: the bare name `v2` is
+// skipped as a candidate rather than read as `src/v2/.dag`, so the lookup ends unknown.
+test fn lookup_elided_namespace_alone_is_not_a_candidate() -> Bool {
+  match resolve_reference_over(layout: layout(), from_tree: V2Tree {}, from_module: "v2.m", reference: "v2.zzz", observed: [
+    ModuleFileAbsent { file: v2_file(path: "zzz.dag") }
+  ]) {
+    ReferenceUnknownModule { reference: unresolved } => unresolved == "v2.zzz"
+    ReferenceResolved { module: _, member: _, file: _, content: _ } => false
+    ReferenceCrossTreeDenied { module: _, file: _, reason: _ } => false
+    ReferenceRefused { module: _, file: _, cause: _ } => false
+    ReferenceModuleLineMissing { module: _, file: _ } => false
+    ReferenceModuleLineDisagrees { module: _, declared: _, file: _ } => false
+  }
+}
+
+// ---- layout check --------------------------------------------------------------------------------
+
+fn header(file: ModuleFileRef, declared: String) -> LayoutFileHeader {
+  LayoutFileHeader { file: file, declared_module: optional_present(value: declared) }
+}
+
+fn good_headers() -> List<LayoutFileHeader> {
+  [
+    header(file: dag_file(path: "a/b/c.dag"), declared: "a.b.c"),
+    header(file: dag_file(path: "a/b/d.dag"), declared: "a.b.d"),
+    header(file: v2_file(path: "std/text.dag"), declared: "v2.std.text")
+  ]
+}
+
+fn good_namespaces() -> List<String> {
+  ["a.b", "v2.std"]
+}
+
+fn refusal_kind(refusal: LayoutRefusal) -> String {
+  match refusal {
+    UndeclaredNamespace { file: _, namespace: _ } => "undeclared-namespace"
+    NamespaceRowWithoutModules { namespace: _ } => "namespace-row-without-modules"
+    NotAtRulePosition { file: _, declared: _, expected: _ } => "not-at-rule-position"
+    DeclaredModuleUnderivable { file: _, declared: _, cause: _ } => "declared-module-underivable"
+    FileNotNamed { file: _, cause: _ } => "file-not-named"
+    ModuleLineMissing { file: _ } => "module-line-missing"
+    DuplicateModule { module: _, files: _ } => "duplicate-module"
+    RegistryArtifactMissing { artifact: _ } => "registry-artifact-missing"
+  }
+}
+
+// The kinds of the check's refusals, in order; empty when the layout holds.
+fn refusal_kinds(
+  namespaces: List<String>,
+  registered: List<ModuleFileRef>,
+  headers: List<LayoutFileHeader>
+) -> List<String> {
+  match layout_check(layout: layout(), namespaces: namespaces, registered: registered, headers: headers) {
+    LayoutHolds => []
+    LayoutRefused { refusals: refusals } => list_map(xs: refusals, f: fn(refusal) { refusal_kind(refusal: refusal) })
+  }
+}
+
+// The positive control: every discriminating red below differs from this input in exactly one
+// fact, so a refusal there is attributable to that fact.
+test fn layout_check_holds_on_a_placed_population() -> Bool {
+  refusal_kinds(namespaces: good_namespaces(), registered: [dag_file(path: "a/b/d.dag")], headers: good_headers()) == []
+}
+
+// A file whose namespace has no row: the rows are the written-down namespace roster, and a module
+// in a namespace nobody declared is a new directory born without a decision.
+test fn layout_check_refuses_a_namespace_without_a_row() -> Bool {
+  refusal_kinds(namespaces: ["a.b"], registered: [], headers: good_headers()) == ["undeclared-namespace"]
+}
+
+// The converse: a row that no file occupies is a stale row, not a harmless extra.
+test fn layout_check_refuses_a_row_no_module_occupies() -> Bool {
+  refusal_kinds(namespaces: ["a.b", "v2.std", "q.r"], registered: [], headers: good_headers()) == ["namespace-row-without-modules"]
+}
+
+// A file whose `module` line names another module than its position implies: the position is the
+// rule, the line is the claim, and a disagreement is neither's authority.
+test fn layout_check_refuses_a_module_line_that_disagrees_with_the_position() -> Bool {
+  refusal_kinds(namespaces: good_namespaces(), registered: [], headers: [
+    header(file: dag_file(path: "a/b/c.dag"), declared: "a.b.zzz"),
+    header(file: dag_file(path: "a/b/d.dag"), declared: "a.b.d"),
+    header(file: v2_file(path: "std/text.dag"), declared: "v2.std.text")
+  ]) == ["not-at-rule-position"]
+}
+
+test fn layout_check_refuses_a_file_without_a_module_line() -> Bool {
+  refusal_kinds(namespaces: good_namespaces(), registered: [], headers: [
+    LayoutFileHeader { file: dag_file(path: "a/b/c.dag"), declared_module: Absent },
+    header(file: dag_file(path: "a/b/d.dag"), declared: "a.b.d"),
+    header(file: v2_file(path: "std/text.dag"), declared: "v2.std.text")
+  ]) == ["module-line-missing"]
+}
+
+// Two modules differing only by ASCII case collide on a case-insensitive filesystem; the check
+// groups by the case fold so the collision is refused here, not discovered on a developer's laptop.
+test fn layout_check_refuses_modules_that_collide_under_case_folding() -> Bool {
+  refusal_kinds(namespaces: good_namespaces(), registered: [], headers: [
+    header(file: dag_file(path: "a/b/c.dag"), declared: "a.b.c"),
+    header(file: dag_file(path: "a/b/C.dag"), declared: "a.b.C"),
+    header(file: v2_file(path: "std/text.dag"), declared: "v2.std.text")
+  ]) == ["duplicate-module"]
+}
+
+// The registry join (plan 4.2): a generated artifact the registry names that is not in the
+// enumerated population is a refusal, so the registry cannot promise a file the tree lacks.
+test fn layout_check_refuses_a_registered_artifact_that_is_missing() -> Bool {
+  refusal_kinds(namespaces: good_namespaces(), registered: [dag_file(path: "a/b/zzz.dag")], headers: good_headers())
+    == ["registry-artifact-missing"]
+}
+
+// A v2 module placed in the dag tree is one misplacement: its namespace is declared and occupied,
+// so nothing else fires, and the refusal names the rule position the file should hold.
+test fn layout_check_refuses_a_v2_module_in_the_dag_tree() -> Bool {
+  refusal_kinds(namespaces: ["a.b", "v2.std"], registered: [], headers: [
+    header(file: dag_file(path: "a/b/c.dag"), declared: "a.b.c"),
+    header(file: dag_file(path: "v2/std/text.dag"), declared: "v2.std.text")
+  ]) == ["not-at-rule-position"]
+}
+
+// The refusal carries the position the rule derives, not only a kind.
+test fn layout_check_names_the_rule_position_of_a_misplaced_module() -> Bool {
+  match layout_check(layout: layout(), namespaces: ["a.b", "v2.std"], registered: [], headers: [
+    header(file: dag_file(path: "a/b/c.dag"), declared: "a.b.c"),
+    header(file: dag_file(path: "v2/std/text.dag"), declared: "v2.std.text")
+  ]) {
+    LayoutHolds => false
+    LayoutRefused { refusals: refusals } => any(xs: refusals, predicate: fn(refusal) { is_misplacement_of_text(refusal: refusal) })
+  }
+}
+
+fn is_misplacement_of_text(refusal: LayoutRefusal) -> Bool {
+  match refusal {
+    NotAtRulePosition { file: file, declared: declared, expected: expected } =>
+      declared == "v2.std.text" && expected.relative_path == "std/text.dag" && file.relative_path == "v2/std/text.dag"
+    UndeclaredNamespace { file: _, namespace: _ } => false
+    NamespaceRowWithoutModules { namespace: _ } => false
+    DeclaredModuleUnderivable { file: _, declared: _, cause: _ } => false
+    FileNotNamed { file: _, cause: _ } => false
+    ModuleLineMissing { file: _ } => false
+    DuplicateModule { module: _, files: _ } => false
+    RegistryArtifactMissing { artifact: _ } => false
+  }
+}

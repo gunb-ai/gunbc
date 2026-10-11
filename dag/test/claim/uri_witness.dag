@@ -1,0 +1,23 @@
+module test.claim.uri_witness
+
+import extdeps.uri { File, Https, Uri, uri_is_url, uri_scheme_is_http }
+import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition }
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn uri_scheme_is_http_matches_https_holds() -> Bool {
+  uri_scheme_is_http(s: Https)
+}
+
+test fn uri_scheme_is_http_rejects_file_holds() -> Bool {
+  uri_scheme_is_http(s: File) == false
+}
+
+test fn uri_is_url_https_projection_holds() -> Bool {
+  uri_is_url(uri: Uri { scheme: Https, locator: "example.com/spec" })
+}
+
+test fn uri_is_url_file_not_url_holds() -> Bool {
+  uri_is_url(uri: Uri { scheme: File, locator: "/doc/spec.pdf" }) == false
+}
+

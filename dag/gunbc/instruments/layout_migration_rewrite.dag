@@ -279,13 +279,22 @@ fn directory_candidate_after(old: DirectoryCandidate, to: String) -> DirectoryCa
   }
 }
 
-// The directory a moved file's new path puts the old directory's content under, or "" when the new
-// path does not end with the part that followed the old directory.
+fn parent_of(path: String) -> String {
+  let segments = split(s: path, delimiter: "/")
+  join(segments.take(n: count(segments) - 1), "/")
+}
+
+// The directory a moved file's new directory puts the old directory's content under, or "" when the
+// new directory does not end with the part of the old directory that followed `directory`. Only the
+// directories are compared: a file renamed inside its directory is still inside it, and its new
+// basename says nothing about where the directory went.
 fn directory_successor(old_path: String, new_path: String, directory: String) -> String {
-  let rest = substring(s: old_path, start: string_length(s: directory) + 1, end: text_end())
-  let tail = concat("/", rest)
-  if new_path.ends_with(suffix: tail) {
-    substring(s: new_path, start: 0, end: string_length(s: new_path) - string_length(s: tail))
+  let kept = substring(s: parent_of(path: old_path), start: string_length(s: directory), end: text_end())
+  let landed = parent_of(path: new_path)
+  if kept == "" {
+    landed
+  } else if landed.ends_with(suffix: kept) {
+    substring(s: landed, start: 0, end: string_length(s: landed) - string_length(s: kept))
   } else {
     ""
   }
@@ -659,6 +668,7 @@ type PieceFold {
   edits: Int
   prev_tail: String
   index: Int
+  pending: Optional<String>
 }
 
 // The last three characters of a piece: the character before an anchor decides whether the anchor
@@ -675,37 +685,78 @@ fn next_prev_tail(piece: String) -> String {
   if piece == "" { "." } else { tail_of(piece: piece) }
 }
 
-fn rewrite_anchored(tables: RewriteTables, kind: RunKind, anchor: String, text: String) -> Rewritten {
-  let pieces = split(s: text, delimiter: anchor)
-  if count(pieces) < 2 {
-    Rewritten { text: text, notes: [], edits: 0 }
-  } else {
-    let folded = fold(pieces, init: PieceFold { out: [], notes: [], edits: 0, prev_tail: "", index: 0 }, f: fn(acc, piece) {
-      if acc.index == 0 {
-        PieceFold { out: [piece], notes: [], edits: 0, prev_tail: tail_of(piece: piece), index: 1 }
-      } else if !reference_boundary(kind: kind, tail: acc.prev_tail) {
+// The group a reference opened is decided: the text after its anchor up to the next anchor that is
+// itself at a boundary. An anchor inside the group that is not at a boundary belongs to its text, so
+// a run that contains its own anchor (`t.u_t.f` under the anchor `t.`) is read whole instead of being
+// cut where the anchor text recurs.
+fn flush_group(tables: RewriteTables, kind: RunKind, anchor: String, acc: PieceFold) -> PieceFold {
+  match acc.pending {
+    Absent => acc
+    Present { value: group } => {
+      let anchored = anchored_piece(tables: tables, kind: kind, anchor: anchor, piece: group)
+      PieceFold {
+        out: list_push(acc.out, anchored.text),
+        notes: match anchored.note {
+          Present { value: note } => list_push(acc.notes, note)
+          Absent => acc.notes
+        },
+        edits: if anchored.edited { acc.edits + 1 } else { acc.edits },
+        prev_tail: acc.prev_tail,
+        index: acc.index,
+        pending: Absent {}
+      }
+    }
+  }
+}
+
+// One piece of the text split at the anchor. The first is the text before any anchor. Every later
+// piece follows an anchor occurrence: at a boundary it opens a group (closing the one before it); not
+// at a boundary it is part of the open group, or plain text when none is open.
+fn anchor_step(tables: RewriteTables, kind: RunKind, anchor: String, acc: PieceFold, piece: String) -> PieceFold {
+  if acc.index == 0 {
+    PieceFold { out: [piece], notes: [], edits: 0, prev_tail: tail_of(piece: piece), index: 1, pending: Absent {} }
+  } else if !reference_boundary(kind: kind, tail: acc.prev_tail) {
+    match acc.pending {
+      Present { value: group } =>
+        PieceFold {
+          out: acc.out,
+          notes: acc.notes,
+          edits: acc.edits,
+          prev_tail: next_prev_tail(piece: piece),
+          index: acc.index + 1,
+          pending: optional_present(value: concat(group, anchor, piece))
+        }
+      Absent =>
         PieceFold {
           out: list_push(acc.out, concat(anchor, piece)),
           notes: acc.notes,
           edits: acc.edits,
           prev_tail: next_prev_tail(piece: piece),
-          index: acc.index + 1
+          index: acc.index + 1,
+          pending: Absent {}
         }
-      } else {
-        let anchored = anchored_piece(tables: tables, kind: kind, anchor: anchor, piece: piece)
-        PieceFold {
-          out: list_push(acc.out, anchored.text),
-          notes: match anchored.note {
-            Present { value: note } => list_push(acc.notes, note)
-            Absent => acc.notes
-          },
-          edits: if anchored.edited { acc.edits + 1 } else { acc.edits },
-          prev_tail: next_prev_tail(piece: piece),
-          index: acc.index + 1
-        }
-      }
-    })
-    Rewritten { text: join(folded.out, ""), notes: folded.notes, edits: folded.edits }
+    }
+  } else {
+    let closed = flush_group(tables: tables, kind: kind, anchor: anchor, acc: acc)
+    PieceFold {
+      out: closed.out,
+      notes: closed.notes,
+      edits: closed.edits,
+      prev_tail: next_prev_tail(piece: piece),
+      index: closed.index + 1,
+      pending: optional_present(value: piece)
+    }
+  }
+}
+
+fn rewrite_anchored(tables: RewriteTables, kind: RunKind, anchor: String, text: String) -> Rewritten {
+  let pieces = split(s: text, delimiter: anchor)
+  if count(pieces) < 2 {
+    Rewritten { text: text, notes: [], edits: 0 }
+  } else {
+    let folded = fold(pieces, init: PieceFold { out: [], notes: [], edits: 0, prev_tail: "", index: 0, pending: Absent {} }, f: (acc, piece) => anchor_step(tables: tables, kind: kind, anchor: anchor, acc: acc, piece: piece))
+    let done = flush_group(tables: tables, kind: kind, anchor: anchor, acc: folded)
+    Rewritten { text: join(done.out, ""), notes: done.notes, edits: done.edits }
   }
 }
 

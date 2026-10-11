@@ -111,8 +111,8 @@ fn mint_authenticated_session(
   observed_at: Timestamp,
 ) -> SessionMint
   admit_callers: [
-    decl_ref(module_path: "test.claim.auth_session_witness_test", decl_name: "witness_mint_session"),
-    decl_ref(module_path: "test.claim.request_authentication_witness_test", decl_name: "witness_mint_session"),
+    decl_ref(module_path: "test.claim.auth_session_witness", decl_name: "witness_mint_session"),
+    decl_ref(module_path: "test.claim.request_authentication_witness", decl_name: "witness_mint_session"),
     decl_ref(module_path: "gunbc.roadmap.roadmap_auth_routes", decl_name: "auth_callback_mint_session"),
   ]
 {

@@ -68,9 +68,9 @@ import gunbc.host_convergence_census {
 // exists at live_deploy_apply_readiness_gate_with_readiness, so the class is
 // mechanically preventable there (the gate admits Ready only), not
 // structurally impossible. Discriminating REDs remain enrolled
-// (test.claim.readiness_algebra_witness_test pending-vs-refused classify
+// (test.claim.readiness_algebra_witness pending-vs-refused classify
 // controls and witness_red_control_observe_unplaced_executable_runs_the_producer;
-// test.claim.live_deploy.apply_test
+// test.claim.live_deploy.apply
 // witness_red_control_pending_readiness_cannot_converge). Isolated compile_fixture still cannot import live
 // types; that residual is control 1's compile instrument, not this class.
 

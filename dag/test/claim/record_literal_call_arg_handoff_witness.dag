@@ -1,0 +1,79 @@
+module test.claim.record_literal_call_arg_handoff_witness
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.algebra { filter }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Permanent regression control for PR #8262 record-literal call-arg handoff.
+// direct_call_arg_mismatch_diags skips record-literal actuals;
+// direct_call_structured_application_mismatch_diags must still refuse every mismatch the legacy
+// path refused for that shape. Pair 1 (nominal-at-literal): Box at Node param — diagnostics_witness
+// record_literal_field_walls carries it on the production compile path. Pair 2 (resolved-type
+// legacy): warm-fox Cons/FreeMonoid<Node> at inline sole_constructor NormalizedTree in
+// compile_dag_diagnostic_census — the shape main's legacy path refused before the skip.
+//
+// BL-1 TYPECHECK RESIDUE — CLOSED. This file used to wait on a PR number for the sealed
+// carrier because a production-path call of this shape was Node-at-Node while NormalizedTree
+// was an alias for Node. That wait was born already fired: the same land that added this
+// prose also added v2.compiler.normalized_tree with type NormalizedTree sole_constructor
+// { root: Node }. The remaining hole was that even a genuine FreeMonoid<Node> at
+// FreeMonoid<NormalizedTree> compiled clean; PositionGenericTypeArgument now constructs the
+// element obligation and declared_type_inhabitance decides it, so
+// record_literal_container_element_mismatch_at_call_arg_still_refuses asserts
+// DeclaredTypeNotInhabited at "generic type argument". The witness is not deleted
+// (DESIGN 4b(4)): it is the permanent regression control. The temporary expected-red admission
+// was the retired floor_expected_red chunk_23 row.
+
+fn w_nominal_record_at_call_arg_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module handoff_nominal\ntype Node { kind: Int, children: List<Int>, occurrence_id: Int }\ntype Box { label: String }\nfn takes_node(n: Node) -> Bool { true }\nfn bad() -> Bool { takes_node(n: Box { label: \"x\" }) }\n",
+    "src/handoff_nominal.rs",
+    [],
+    []
+  )
+}
+
+data container_element_record_at_call_arg_red_source: String = "module warmfox_bl1_prediction\nimport std.algebra { Cons, Empty, FreeMonoid }\nimport v2.std.node { Node, TypeNode, Atom }\nimport std.occurrence_identity { OccurrenceSynthetic }\n\ntype NormalizedTree sole_constructor {\n  root: Node,\n}\n\nfn fc_module_root() -> Node {\n  Node {\n    kind: TypeNode { connective: Atom { identity: ^fc_seg } },\n    children: [],\n    occurrence_id: OccurrenceSynthetic,\n  }\n}\n\nfn fc_single_found_root() -> FreeMonoid<Node> {\n  Cons { head: fc_module_root(), tail: Empty }\n}\n\nfn validate_module_roots(roots: FreeMonoid<NormalizedTree>) -> Bool {\n  true\n}\n\nfn bad_call() -> Bool {\n  validate_module_roots(roots: fc_single_found_root())\n}\n"
+
+fn generic_type_argument_violation_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(
+        rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: "DeclaredTypeNotInhabited")
+          |> filter(row => row.subject_name == "generic type argument")
+      )
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn w_nominal_record_at_call_arg_green() -> Bool {
+  compile_dag_rust_emit_check(
+    "module handoff_nominal_green\ntype Node { kind: Int, children: List<Int>, occurrence_id: Int }\nfn takes_node(n: Node) -> Bool { true }\nfn ok() -> Bool { takes_node(n: Node { kind: 0, children: [], occurrence_id: 0 }) }\n",
+    "src/handoff_nominal_green.rs",
+    [],
+    []
+  )
+}
+
+test fn record_literal_nominal_mismatch_at_call_arg_still_refuses() -> Bool {
+  !w_nominal_record_at_call_arg_red()
+}
+
+// Assert the diagnostic's modeled identity and its declared position, not merely refusal. The
+// census projects DeclaredTypeNotInhabited's rendered position into subject_name, so an
+// UnresolvedType, parse error, lookup miss, or any other blocking diagnostic cannot satisfy it.
+test fn record_literal_container_element_mismatch_at_call_arg_still_refuses() -> Bool {
+  generic_type_argument_violation_count(source: container_element_record_at_call_arg_red_source) == 1
+}
+
+test fn record_literal_matching_nominal_at_call_arg_accepts() -> Bool {
+  w_nominal_record_at_call_arg_green()
+}

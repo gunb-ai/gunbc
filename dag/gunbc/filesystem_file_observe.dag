@@ -43,7 +43,7 @@ type FilesystemPathDecomposition
 // directory rather than an entry in one; and an entry name that is the "." or ".." directory
 // cursor. A "./token" operand decomposes to directory "." and entry name "token", which list and
 // read the same subject the operand names. The controls in
-// test.claim.filesystem_file_observe_witness_test execute the authority for /tmp/token, /token,
+// test.claim.filesystem_file_observe_witness execute the authority for /tmp/token, /token,
 // target/token, and token, and for the refused shapes.
 //
 // WHY THE HELPER IS HERE AND NOT IN extdeps.filesystem.filesystem_io: that module is pure over

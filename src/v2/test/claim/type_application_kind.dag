@@ -1,0 +1,217 @@
+module v2.test.claim.type_application_kind
+
+import v2.compiler.resolve { ResolvedTree }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.node { Atom, Authored, BinderTypeEdge, Conj, Edge, Node, Positional, StructuralLabel, Symbol, TypeNode, core_edge }
+import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, KindInhabitance, TypeApplicationArityMismatch, TypeApplicationConforms, TypeApplicationKindNotInhabited, type_application_conformance, type_binder_set_children }
+import std.types { List, Map }
+import v2.compiler.body_lowering_fold { body_lower_rename_fresh_type_variables }
+import v2.std.collection { empty_map, map_insert }
+import v2.std.node { type_binder_conj_conforms }
+import v2.std.type_binder { binder_conj_names }
+
+// A TYPE APPLICATION AGAINST ITS DECLARATION'S BINDERS (v2.std.type_binder type_application_conformance,
+// consumed by v2.compiler.resolve resolve_type_application). Each specimen is one inline source over the
+// real assembly route; the kinded declaration mirrors std.machine_constraints MachineWidth, whose
+// `<bits: WidthResolution>` is the corpus's use. Controls: a conforming kinded argument, a literal and an
+// unkinded parameter are accepted; a non-conforming argument refuses at the argument; an application whose
+// argument count differs from its declaration's binders refuses -- including one applied to a declaration
+// that binds none.
+data tak_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^type_application_kind_artifact,
+  file_path: "src/v2/pilot/type_application_kind_pilot.dag"
+}
+
+fn tak_assemble(src: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: src, fidelity: Lossless },
+        artifact: tak_artifact,
+        compilation_unit: ^type_application_kind_cu,
+        source_root: V2Tree
+      },
+      tail: Empty
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn tak_accepts<T>(o: Outcome<T>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn tak_refuses_with<T>(o: Outcome<T>, reason: Symbol) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+  }
+}
+
+fn tak_prelude() -> String {
+  "module p\n\ntype Resolution\n  = Static\n  | Pointer\n\ntype Other\n  = Foreign\n  | Alien\n\ntype Width<bits: Resolution>\n\ntype Plain<t>\n\ntype ZKind\n  = | Zk\n\ntype AKind\n  = | Ak\n\ntype Pair<z: ZKind, a: AKind>\n\n"
+}
+
+fn tak_kind_conforms() -> Outcome<ResolvedTree> { tak_assemble(src: concat(tak_prelude(), "type UsesPointer = Width<Pointer>\n")) }
+fn tak_kind_literal() -> Outcome<ResolvedTree> { tak_assemble(src: concat(tak_prelude(), "type UsesEight = Width<8>\n")) }
+fn tak_kind_foreign_variant() -> Outcome<ResolvedTree> { tak_assemble(src: concat(tak_prelude(), "type UsesForeign = Width<Foreign>\n")) }
+fn tak_kind_kernel_type() -> Outcome<ResolvedTree> { tak_assemble(src: concat(tak_prelude(), "type UsesInt = Width<Int>\n")) }
+fn tak_unkinded() -> Outcome<ResolvedTree> { tak_assemble(src: concat(tak_prelude(), "type UsesPlain = Plain<Foreign>\n")) }
+fn tak_arity_over() -> Outcome<ResolvedTree> { tak_assemble(src: concat(tak_prelude(), "type TooMany = Plain<Foreign, Alien>\n")) }
+// Parameter names that sort OPPOSITE to their authored order, each with its own kind: a binder Conj is
+// canonicalized by label, so pairing through its stored edges would judge Zk against AKind.
+fn tak_order_authored() -> Outcome<ResolvedTree> { tak_assemble(src: concat(tak_prelude(), "type InOrder = Pair<Zk, Ak>\n")) }
+fn tak_order_swapped() -> Outcome<ResolvedTree> { tak_assemble(src: concat(tak_prelude(), "type Swapped = Pair<Ak, Zk>\n")) }
+fn tak_arity_nongeneric() -> Outcome<ResolvedTree> { tak_assemble(src: concat(tak_prelude(), "type NotGeneric = Other<Foreign>\n")) }
+
+test fn tak_kinded_parameter_accepts_a_variant_of_its_kind() -> Bool {
+  tak_accepts(o: tak_kind_conforms())
+}
+
+test fn tak_kinded_parameter_accepts_a_nat_literal_unjudged() -> Bool {
+  tak_accepts(o: tak_kind_literal())
+}
+
+test fn tak_kinded_parameter_refuses_a_variant_of_another_coproduct() -> Bool {
+  tak_refuses_with(o: tak_kind_foreign_variant(), reason: ^resolve_reason_type_argument_kind_not_inhabited)
+}
+
+test fn tak_kinded_parameter_refuses_a_kernel_type() -> Bool {
+  tak_refuses_with(o: tak_kind_kernel_type(), reason: ^resolve_reason_type_argument_kind_not_inhabited)
+}
+
+test fn tak_arguments_pair_with_parameters_in_authored_order() -> Bool {
+  tak_accepts(o: tak_order_authored())
+}
+
+test fn tak_arguments_swapped_against_authored_order_refuse() -> Bool {
+  tak_refuses_with(o: tak_order_swapped(), reason: ^resolve_reason_type_argument_kind_not_inhabited)
+}
+
+test fn tak_unkinded_parameter_is_unchanged() -> Bool {
+  tak_accepts(o: tak_unkinded())
+}
+
+test fn tak_application_with_more_arguments_than_binders_refuses() -> Bool {
+  tak_refuses_with(o: tak_arity_over(), reason: ^resolve_reason_type_application_arity_mismatch)
+}
+
+test fn tak_application_of_a_non_generic_declaration_refuses() -> Bool {
+  tak_refuses_with(o: tak_arity_nongeneric(), reason: ^resolve_reason_type_application_arity_mismatch)
+}
+
+// THE VERDICT AT ITS OWN INTERFACE, over supplied binders and a supplied judgment (DESIGN section 3: a
+// witness discriminates at one interface; the specimens above are this boundary's inhabitance claims on
+// the real route). A literal the judgment leaves unjudged is admitted, never refused -- the frontier
+// std.machine_constraints machine_width_literal_roster_frontier declares -- and an arity mismatch is
+// decided before any kind is judged.
+fn tak_atom(id: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: id } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn tak_binder(name: Symbol, kind: Symbol) -> Edge {
+  Edge {
+    label: Authored { name: name },
+    target: Node { kind: TypeNode { connective: Atom { identity: name } }, children: [core_edge(marker: BinderTypeEdge, target: tak_atom(id: kind))], occurrence_id: OccurrenceSynthetic }
+  }
+}
+
+fn tak_set(binders: List<Edge>) -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: type_binder_set_children(binders: binders, source: tak_atom(id: ^binders)), occurrence_id: OccurrenceSynthetic }
+}
+
+fn tak_kinded_binders() -> Node {
+  tak_set(binders: [tak_binder(name: ^bits, kind: ^Resolution)])
+}
+
+// `<z: ZKind, a: AKind>` with its binder edges STORED IN LABEL ORDER (a, z) -- what content hashing's
+// canonical sequence is -- and the declared order (z, a) minted from the authored list. Built by
+// taking the authored set's order edge and re-sequencing only the binder edges.
+fn tak_pair_binders_label_sorted() -> Node {
+  let authored = tak_set(binders: [tak_binder(name: ^z, kind: ^ZKind), tak_binder(name: ^a, kind: ^AKind)])
+  let order_edges = fold(authored.children, init: Empty, f: fn(acc, e) {
+    match e.label {
+      Authored { name: _ } => acc
+      StructuralLabel { label: _ } => concat(acc, [e])
+      Positional => acc
+    }
+  })
+  Node { kind: TypeNode { connective: Conj }, children: concat([tak_binder(name: ^a, kind: ^AKind), tak_binder(name: ^z, kind: ^ZKind)], order_edges), occurrence_id: OccurrenceSynthetic }
+}
+
+// The supplied judgment: an argument inhabits a kind exactly when it is that kind's one variant.
+fn tak_pair_judge(argument: Node, kind: Node) -> KindInhabitance {
+  let expected = if kind == tak_atom(id: ^ZKind) { tak_atom(id: ^Zk) } else { tak_atom(id: ^Ak) }
+  if argument == expected { ArgumentInhabitsKind } else { ArgumentOutsideKind }
+}
+
+
+test fn tak_unjudged_literal_argument_is_admitted() -> Bool {
+  match type_application_conformance(binders: tak_kinded_binders(), arguments: [tak_atom(id: ^eight)], inhabits: fn(a, k) { ArgumentLiteralUnjudged }) {
+    TypeApplicationConforms => true
+    _ => false
+  }
+}
+
+test fn tak_pairing_follows_declared_order_not_stored_sequence() -> Bool {
+  match type_application_conformance(binders: tak_pair_binders_label_sorted(), arguments: [tak_atom(id: ^Zk), tak_atom(id: ^Ak)], inhabits: fn(a, k) { tak_pair_judge(argument: a, kind: k) }) {
+    TypeApplicationConforms => true
+    _ => false
+  }
+}
+
+test fn tak_arguments_swapped_against_declared_order_refuse_at_the_interface() -> Bool {
+  match type_application_conformance(binders: tak_pair_binders_label_sorted(), arguments: [tak_atom(id: ^Ak), tak_atom(id: ^Zk)], inhabits: fn(a, k) { tak_pair_judge(argument: a, kind: k) }) {
+    TypeApplicationKindNotInhabited { argument: _, kind: _ } => true
+    _ => false
+  }
+}
+
+test fn tak_arity_is_decided_before_kind() -> Bool {
+  match type_application_conformance(binders: tak_kinded_binders(), arguments: [tak_atom(id: ^a), tak_atom(id: ^b)], inhabits: fn(a, k) { ArgumentOutsideKind }) {
+    TypeApplicationArityMismatch { declared: d, supplied: s } => (d == 1) && (s == 2)
+    _ => false
+  }
+}
+
+// A FUNCTION VALUE'S BINDER SET STAYS ONE FACT ACROSS POSITIONING (the #13038 regression, reverted by
+// #13293). A function value's fresh type variables are minted unpositioned and then renamed to their
+// position (v2.compiler.body_lowering_fold body_lower_rename_fresh_type_variables). Renaming the binder labels
+// while leaving the set's declared-order edge naming the old variables made every lambda and fold step
+// malformed at post-normalize. Supplied at the renamer's interface: an unkinded set over two
+// unpositioned variables, renamed, must still conform and declare the renamed names in authored order.
+// The route through the real assembly is held by v2.test.claim.body_type_annotation_refusal
+// btar_unannotated_fn_literal_is_not_erased and the fold_encoding claims.
+fn tak_unkinded_binder(name: Symbol) -> Edge {
+  Edge { label: Authored { name: name }, target: tak_atom(id: name) }
+}
+
+fn tak_position_renames() -> Map<Symbol, Symbol> {
+  map_insert(m: map_insert(m: empty_map(), key: ^u_y, value: ^p_y), key: ^u_ret, value: ^p_ret)
+}
+
+test fn tak_renamed_function_value_binder_set_keeps_its_declared_order() -> Bool {
+  let renamed = body_lower_rename_fresh_type_variables(node: tak_set(binders: [tak_unkinded_binder(name: ^u_y), tak_unkinded_binder(name: ^u_ret)]), renames: tak_position_renames(), arrow_body: false)
+  type_binder_conj_conforms(t: renamed) && (binder_conj_names(conj: renamed) == [^p_y, ^p_ret])
+}
+
+// The unrenamed name is left alone: a set whose binders the map does not name comes back conforming
+// and unchanged in its declared order.
+test fn tak_binder_set_outside_the_rename_map_is_unchanged() -> Bool {
+  let kept = body_lower_rename_fresh_type_variables(node: tak_set(binders: [tak_unkinded_binder(name: ^T)]), renames: tak_position_renames(), arrow_body: false)
+  type_binder_conj_conforms(t: kept) && (binder_conj_names(conj: kept) == [^T])
+}

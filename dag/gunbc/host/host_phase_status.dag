@@ -174,7 +174,7 @@ fn host_phase_cell_has_live_producer(c: HostPhaseCellStatus) -> Bool {
 // Spark collector-fact enrollment for srv5/srv6 was about to do. NEXT-RUNG TRIGGER, named rather
 // than silently stalled (DESIGN §4b): observation provenance becomes a carried fact so authored and
 // executed are different states, and coverage counts only the executed one. Until then the honest
-// reading of the coverage number is ZERO. Controls: test.claim.host.host_phase_status_witness_test
+// reading of the coverage number is ZERO. Controls: test.claim.host.host_phase_status_witness
 // witness_covered_cell_verdict_is_selected_by_authorship_alone and
 // witness_every_covered_cell_today_is_the_authored_one. Every other cell returns Absent, which
 // host_phase_verdict_from renders UnknownRefused. What must NOT happen here is the shape this

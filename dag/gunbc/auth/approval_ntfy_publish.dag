@@ -27,8 +27,8 @@ import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain, tailnet_base_url_from }
 // CONSUMED BY EXECUTION TODAY: the publish operation and the outcome fold are exercised against
 // the live self-hosted server by a wet probe (NtfyPublished { message_id: znjShbquiXow }), and
 // every arm of the fold plus every intervention property is exercised by
-// test.claim.ntfy_publish_outcome_witness_test and
-// test.claim.approval_ntfy_deployment_witness_test. That is execution, not a typecheck -- but a
+// test.claim.ntfy_publish_outcome_witness and
+// test.claim.approval_ntfy_deployment_witness. That is execution, not a typecheck -- but a
 // witness is not a production consumer and this note does not claim it is.
 //
 // THE NAMED CONSUMER, AND ITS TRIGGER: the approval broker publishes a notification for a pending

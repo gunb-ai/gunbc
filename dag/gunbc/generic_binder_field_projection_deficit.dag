@@ -76,7 +76,7 @@ type GenericBinderProjectionSite {
 data generic_binder_field_projection_sites: List<GenericBinderProjectionSite> = [
   GenericBinderProjectionSite {
     site: decl_ref(
-      module_path: "v2.test.claim.fold_lowering_test",
+      module_path: "v2.test.claim.fold_lowering",
       decl_name: "lowered_loop_carrier_is_a_generated_slot_not_the_authored_binder"
     ),
     index_coverage: OutsideDeclIndexTestWitnessModule,
@@ -85,7 +85,7 @@ data generic_binder_field_projection_sites: List<GenericBinderProjectionSite> = 
   },
   GenericBinderProjectionSite {
     site: decl_ref(
-      module_path: "v2.test.claim.fold_lowering_test",
+      module_path: "v2.test.claim.fold_lowering",
       decl_name: "duplicate_carrier_edge_is_malformed"
     ),
     index_coverage: OutsideDeclIndexTestWitnessModule,
@@ -96,6 +96,6 @@ data generic_binder_field_projection_sites: List<GenericBinderProjectionSite> = 
 
 fn generic_binder_field_projection_dissolution() -> DissolutionCondition {
   unbound_dissolution(
-    description: "v2 inference resolves a generic coproduct's type argument into the arm binder, so a field projection off that binder checks against the instantiated type. At that point the carrier_binder_of / with_duplicate_carrier_edge helpers in v2.test.claim.fold_lowering_test fold back into their match arms, the annotation that names this deficit deletes with them, and this module deletes with the sites."
+    description: "v2 inference resolves a generic coproduct's type argument into the arm binder, so a field projection off that binder checks against the instantiated type. At that point the carrier_binder_of / with_duplicate_carrier_edge helpers in v2.test.claim.fold_lowering fold back into their match arms, the annotation that names this deficit deletes with them, and this module deletes with the sites."
   )
 }

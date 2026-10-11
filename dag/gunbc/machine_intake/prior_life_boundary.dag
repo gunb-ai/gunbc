@@ -908,15 +908,15 @@ fn dry_archive_prior_life(
 ) -> DryPriorLifeStep
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "prior_life_boundary"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness_test", decl_name: "w_only_the_sel_final_record_with_the_other_carriers_absent_is_not_established"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness_test", decl_name: "w_one_unmodeled_carrier_is_a_typed_gap_that_refuses"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness_test", decl_name: "w_a_policy_refusal_writes_nothing"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness_test", decl_name: "w_an_archive_already_held_is_a_noop_and_is_not_written_twice"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness_test", decl_name: "w_a_lost_corrupted_or_late_write_is_incomplete_not_refused"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness_test", decl_name: "w_the_baseline_cursor_is_derived_from_the_archive_it_was_read_from"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness_test", decl_name: "w_two_log_populations_that_a_delimiter_join_conflated_archive_distinctly"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness_test", decl_name: "w_virtual_media_connected_via_and_media_types_are_archived"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness_test", decl_name: "w_two_locators_that_render_one_resource_path_archive_distinctly"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_only_the_sel_final_record_with_the_other_carriers_absent_is_not_established"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_one_unmodeled_carrier_is_a_typed_gap_that_refuses"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_policy_refusal_writes_nothing"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_an_archive_already_held_is_a_noop_and_is_not_written_twice"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_lost_corrupted_or_late_write_is_incomplete_not_refused"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_the_baseline_cursor_is_derived_from_the_archive_it_was_read_from"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_two_log_populations_that_a_delimiter_join_conflated_archive_distinctly"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_virtual_media_connected_via_and_media_types_are_archived"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_two_locators_that_render_one_resource_path_archive_distinctly"),
   ]
 {
   match prior_life_policy_for(platform: platform) {

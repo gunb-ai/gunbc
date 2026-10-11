@@ -43,7 +43,7 @@ import std.fabric_storage {
 // store-side walk. Chunk addresses live in the body: they name blob-plane objects, which are not
 // metadata-plane objects and so are not links the metadata store may walk (std.fabric_blob).
 //
-// CONSUMERS, A DECLARED FRONTIER (DESIGN 3c). Executed today only by test.claim.std_checkpointed_workspace_test
+// CONSUMERS, A DECLARED FRONTIER (DESIGN 3c). Executed today only by test.claim.std_checkpointed_workspace
 // over supplied values. The real-path consumers are, by name:
 //   * the demo stage-1 restore entry (create, edit, barrier, destroy, recreate):
 //     gunbc.fabric.workspace_checkpoint_instrument workspace_checkpoint_restore_wet, which commits

@@ -29,7 +29,7 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // author can discharge, and it turns a correct emission into a refusal -- the emitted bytes
 // for that probe are byte-identical to the seed's with the wall advisory.
 //
-// EXECUTING EVIDENCE: test.claim.algebra_expansion_evidence_witness_test, discovered on the
+// EXECUTING EVIDENCE: test.claim.algebra_expansion_evidence_witness, discovered on the
 // roots the floor walks. Its red-direction cell asserts the diagnostic IS raised on the
 // expansion receiver, and it discriminates rather than merely passing -- run against a
 // claim_batch built from main, where this diagnostic does not exist, that cell FAILS while

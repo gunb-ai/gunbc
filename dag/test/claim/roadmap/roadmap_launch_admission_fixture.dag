@@ -116,7 +116,7 @@ fn launch_fixture_doc(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> Roa
 
 fn launch_fixture_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/roadmap/roadmap_launch_admission_witness_test.dag" as FilePath,
+    entry: "dag/test/claim/roadmap/roadmap_launch_admission_witness.dag" as FilePath,
     function: "witness_operator_admitted_for_ready_parent" as NonEmptyStr,
   )
 }

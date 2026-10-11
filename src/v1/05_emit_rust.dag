@@ -5953,7 +5953,7 @@ fn is_import_graph_type_name(name: String, import_module: String, typed_modules:
 //
 // TRIGGER, AND IT IS AUTHORABLE TODAY, WHICH IS WHY THIS IS 4b(2) AND NOT AN UNTRACKED STALL:
 // `gunbc.instruments.multi_module_compile_fixture` compiles authored sources, and
-// `v2.test.claim.local_binding_shadow_compile_test` already uses it to make two modules declare one
+// `v2.test.claim.local_binding_shadow_compile` already uses it to make two modules declare one
 // spelling. So the RED is expressible in a fixture even though an ambiguous leaf is not authorable
 // in the ACCEPTED corpus, and declining to write it would be specification-without-execution by
 // section 4b's own test. It lands next, as its own witness rather than a change to this wall.
@@ -6848,7 +6848,7 @@ fn rust_use_line_edges(from: String, lines: List<RustUseLine>) -> List<EmittedEd
 // Measured 2026-09-22: `import std.integer { UInt8 }` lost its line whenever v2.std.integer (whose
 // StandardIntegerType carries a `UInt8` variant) reached the closure through a module the consumer
 // did not import; a second ALIAS declarer of the spelling kept the line and a second VARIANT declarer
-// dropped it (test.claim.authored_import_variant_spelling_witness_test
+// dropped it (test.claim.authored_import_variant_spelling_witness
 // v_same_spelled_variant_keeps_the_use_line, against v_second_alias_declarer_keeps_the_use_line),
 // so the discriminating fact is the variant and not the fork (gunbc.recurring_failure_mode
 // an_authored_import_emits_no_use_line_when_its_spelling_is_forked).
@@ -8012,7 +8012,7 @@ fn emit_item_clone_bound_refusal(item: Node, item_name: String, emit_info: EmitG
 // bound alone would not have been enough; neither half closes this carrier without the other.
 //
 // EVIDENCE, both halves the note demanded: a controlled fixture
-// (test.claim.clone_bound_callable_field_witness_test, four arms — argument position, return position,
+// (test.claim.clone_bound_callable_field_witness, four arms — argument position, return position,
 // a plain-field positive control, and a converse control requiring that a callable over UNBOUNDED
 // parameters still emits bare), PLUS the regen fixed point over the live callable-field carriers
 // as the regression control that the 16 derive carriers did not gain a header bound.
@@ -11808,7 +11808,7 @@ fn rust_runtime_bridge_passes_receiver_by_ref(function_name: String) -> Bool {
 // name. So the guard is stronger than it was: the name reaching this function is
 // a primitive's own identity rather than whatever the author happened to spell.
 // Registry-vs-derivation agreement is held by
-// test.claim.rt_bridge_registry_witness_test
+// test.claim.rt_bridge_registry_witness
 // rt_bridge_name_agrees_with_registry_on_every_row.
 fn rust_runtime_bridge_name(function_name: String) -> String {
   match map_get(rt_bridge_function_names(), function_name) {
@@ -12246,7 +12246,7 @@ fn emit_rust_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferS
 // on the spelling alone. Ordinary variants are untouched: is_optional_variant_name is false for
 // them, so the guard collapses and the peel proceeds unchanged. The variant identity is preserved
 // rather than inferred from the payload type. Evidence:
-// dag/test/claim/emitter_optional_payload_cast_witness_test.dag, whose cast poles flip from
+// dag/test/claim/emitter_optional_payload_cast_witness.dag, whose cast poles flip from
 // known-red to green with this repair, alongside the ordinary-enum Wrap::Holds control that must
 // stay green. A SECOND, independently required narrowing landed beside the peel guard (review on
 // gunbc#7480, 2026-08-01): the optional classification in emit_typed_record_lit briefly carried a
@@ -13923,7 +13923,7 @@ fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List
 // never a call into a binding that does not exist. The realized arm is INHABITED by a service
 // reached through its bare name (`Filesystem.Read`), which the predicate accepts since
 // infer_var_binding_kind recognizes the service-root local; its positive control is
-// test.claim.self_host_emitted_call_target_realization_witness_test
+// test.claim.self_host_emitted_call_target_realization_witness
 // w_a_service_op_through_its_bare_name_is_realized_against_a_bound_service_parameter. THIS REFUSAL
 // IS STILL REACHABLE, and its discriminating red is enrolled beside that row
 // (w_a_service_op_through_an_aliased_service_value_refuses_instead_of_awaiting_an_unbound_binding).

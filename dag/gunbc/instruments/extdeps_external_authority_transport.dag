@@ -17,9 +17,9 @@ import gunbc.instruments.host_prelude { ClaimRun }
 // enrollment wall. The former extdeps_external_authority_source_roots datum was a nickname of
 // witness_layer_roots and dissolved into it.
 
-data uri_witness_entry: String = "dag/test/claim/uri_witness_test.dag"
+data uri_witness_entry: String = "dag/test/claim/uri_witness.dag"
 
-data corpus_scan_entry: String = "src/v2/lens/mandatory_tag/corpus_scan_witness_test.dag"
+data corpus_scan_entry: String = "src/v2/lens/mandatory_tag/corpus_scan_witness.dag"
 
 fn extdeps_external_authority_claims() -> List<ClaimRun> {
   [

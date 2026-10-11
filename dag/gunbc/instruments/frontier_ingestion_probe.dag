@@ -44,7 +44,7 @@ import extdeps.filesystem.filesystem_io
 // continuing to exist, so it would go RED on the repair and GREEN on a regression. The durable
 // claims — that the stage classifier separates its states, that reasons are read by containment,
 // and that census reconciliation is a two-directional join over the roster — live in
-// test.claim.normalize_retention_contract_probe_test and import classify_source from here, so
+// test.claim.normalize_retention_contract_probe and import classify_source from here, so
 // there is one classifier authority and not two.
 //
 // Reason reads are CONTAINMENT reads, never head reads: rejected_with_pending PREPENDS
@@ -313,7 +313,7 @@ type MemberObservation {
 }
 
 data frontier_roster: List<FrontierMember> = [
-  FrontierMember { label: ^entry, path: "src/v2/test/claim/manual/cross_tree_constructor_binding_test.dag" },
+  FrontierMember { label: ^entry, path: "src/v2/test/claim/manual/cross_tree_constructor_binding.dag" },
   FrontierMember { label: ^primitives, path: "dag/std/primitives.dag" },
   FrontierMember { label: ^collection, path: "src/v2/std/collection.dag" },
   FrontierMember { label: ^witness, path: "src/v2/std/witness.dag" },

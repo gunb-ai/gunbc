@@ -396,7 +396,7 @@ fn coproduct_disj_node(ctx: &InterpContext, item: &Rc<Node>) -> Option<Rc<Node>>
 /// inferred node is the `Disj` of `Pick`, so every function returning a coproduct registered
 /// itself as a second declarer of that coproduct's arms. The tier then saw two visible owners --
 /// the real `type Pick` and the phantom `probe` -- and refused a read the author had named
-/// perfectly well. Measured on `dag/test/claim/bare_name_ambiguity_wall_witness_test.dag`: both
+/// perfectly well. Measured on `dag/test/claim/bare_name_ambiguity_wall_witness.dag`: both
 /// arm controls were RED with the branch and are green without it, in the site's own module and
 /// through an explicit import alike. Reading a declaration off an inferred type is the same
 /// category error in miniature that this whole wall exists to refuse.
@@ -4092,7 +4092,7 @@ mod cross_claim_demand_census_tests {
 // Rung honesty: the assertion executes under `cargo test`, which no CI step runs as of the
 // 2026-09-04 runner-capacity ruling (declared drop `gunbc.rung_drop`
 // `rust_unit_tests_off_the_merge_path`). The required-path evidence for the repair is the cost
-// gate on `v2.test.claim.construction_justification.outside_modeled_guarantee_witness_test`
+// gate on `v2.test.claim.construction_justification.outside_modeled_guarantee_witness`
 // reaching a verdict inside its budget; this is the authorable red at the fixture boundary, and
 // it is what attributes a future regression to this lookup rather than to whatever change
 // happens to be in flight when a witness goes slow.
@@ -6368,7 +6368,7 @@ impl PreparedScopeIndexes {
     /// coproduct is declared in the reading module itself, and even when the arm is explicitly
     /// imported by name. Measured on the corpus at the revision this landed against: five such
     /// sites, `std.fidelity` and `v2.extdeps.languages.cpp` reading arms of their OWN
-    /// coproducts, and `gunbc.live_deploy.unit_standing`, `v2.test.lens_cost.valuation_test` and
+    /// coproducts, and `gunbc.live_deploy.unit_standing`, `v2.test.lens_cost.valuation` and
     /// `v2.test.claim.manual.infer_ground_add` reading arms they import by name. None of the five
     /// means either claimant type, so all five are sites a refusal keyed on this population
     /// must NOT refuse.
@@ -7273,7 +7273,7 @@ impl InterpContext {
     /// the module that authored the reference.
     ///
     /// WHY THE IMPORT TIER IS NOT OPTIONAL (established by a floor red, not reasoning):
-    /// `test.claim.ilm4926_designation_witness_test` imports `extdeps_external_authority_anchor`
+    /// `test.claim.ilm4926_designation_witness` imports `extdeps_external_authority_anchor`
     /// explicitly from `extdeps.cpu_attachment.ilm4926` — a name 630 modules declare, one per
     /// extdeps module by convention. With the own-module tier alone the import was inert: the
     /// reference landed on `extdeps.vendor.lotes` (imported one line earlier, winning the shared
@@ -9668,7 +9668,7 @@ fn current_witness_evaluation_frame() -> Option<Value> {
 // transition are .dag; this code keeps a state value, a clock value and the dispatch log, and
 // dispatches. Lane: ROADMAP `v1-materialization-kernel` (rn_53JPH6BB7G588K7DMZNWM0E3AS), with the
 // witness-frame stack above. Deletion condition, checkable by execution: the emitted runtime realizes
-// the evaluation frame and its modeled realization, and `test.claim.operation_realization_witness_test`
+// the evaluation frame and its modeled realization, and `test.claim.operation_realization_witness`
 // stays green without this code.
 /// The dynamic-extent state of one witness frame's modeled operation realization. The model is
 /// `.dag` (`v2.std.operation_realization`): this slot only holds its current state, the virtual
@@ -11252,7 +11252,7 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     // function -- `Value::Fn` (the `ItemKind::FnItem` arm of `eval_expr`'s identifier
     // path), which fell past every tier and was answered by `ctx.lookup_fn` at the FREE FUNCTION
     // sharing its spelling. Measured on the 3x2 grid (let / parameter / pattern x named-fn /
-    // lambda) in `v2.test.claim.local_binding_shadow_test`: the three named-fn cells reached the free
+    // lambda) in `v2.test.claim.local_binding_shadow`: the three named-fn cells reached the free
     // function, the three lambda cells the local. Both variants are one concept -- a lexical
     // binding holding something callable -- so the gate names that.
     //
@@ -12402,7 +12402,7 @@ fn entry_wasted_ns(e: &EvalRecomputeEntry) -> u128 {
 // COMPLETED over budget — so these are measured values, not preemption bounds — at 502ms and
 // EXACTLY 500ms against the 500ms budget. (ii) A ROW OBSERVED CROSSING THE
 // TWO POPULATIONS ON ONE TREE: run 33620893203, attempt 1, records
-// `test.claim.self_host_compile_phase_live_gate_witness_test.an_empty_receipt_series_leaves_the_live_tree_unmeasured_rather_than_held`
+// `test.claim.self_host_compile_phase_live_gate_witness.an_empty_receipt_series_leaves_the_live_tree_unmeasured_rather_than_held`
 // as INTERRUPTED-BEFORE-VERDICT with `cost=UNMEASURED`, and ATTEMPT 2 of the SAME RUN records it
 // as COMPLETED-OVER-COST-REQUIREMENT at cpu_ms=500 — reaching its verdict. Those are the two
 // populations the 2026-08-19 budget cut separated BECAUSE THEY ARE DIFFERENT FACTS WITH DIFFERENT
@@ -13412,7 +13412,7 @@ mod cast_scope_index_tests {
         let _restore = RestoreDirectory(cwd.clone());
         std::env::set_current_dir(root).expect("enter repository root");
         let roots = ["dag", "src/v2"].map(|path| root.join(path).to_string_lossy().into_owned());
-        let entry = "test.claim.compiler_frontend_program_status_witness_test".to_string();
+        let entry = "test.claim.compiler_frontend_program_status_witness".to_string();
         let index = process_shared_index(&roots);
         let (prepared, _) = prepare_repository_closure(
             &roots,
@@ -25189,7 +25189,7 @@ macro_rules! v1_builtin_dispatch {
 // classifies a completed-over-limit claim as `CompletedPastSafetyLimit` CARRYING a
 // `ClaimPreemptionReachability`, and `gunbc.v1.v1_interpreter_opaque_host_call` already grounds
 // which operations are unpollable. But the seed had no way to say which arm a claim actually
-// REACHED, so the field was supplied by hand in `test.claim.preemption_reachability_test` and
+// REACHED, so the field was supplied by hand in `test.claim.preemption_reachability` and
 // discarded everywhere else -- the two populations the model distinguishes arrived at the floor
 // as one bucket. `eval_builtin_inner` is the single point every `free_call.*` arm passes
 // through, so recording reach here costs one site rather than one per arm, and no arm can be
@@ -25917,7 +25917,7 @@ pub struct PerformanceReceipt {
     /// accrued inside an opaque host call no stride point falls inside it, so it completes
     /// however far over the ceiling and the limit observed nothing. Until this field the seed
     /// could not tell the two apart: the reachability was hand-supplied in
-    /// `test.claim.preemption_reachability_test` and every real crossing arrived at the floor as one
+    /// `test.claim.preemption_reachability` and every real crossing arrived at the floor as one
     /// undifferentiated bucket, which is why nobody could say how many crossings were missed
     /// interrupts and how many were near-line overshoots.
     ///

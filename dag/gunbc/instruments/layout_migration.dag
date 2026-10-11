@@ -42,6 +42,7 @@ import gunbc.instruments.layout_migration_map {
   MigrationPlanRefused,
   MigrationSite,
   ModuleMove,
+  SuffixDecision,
   directory_of,
   plan_category_count,
   plan_digest_line,
@@ -61,10 +62,9 @@ import gunbc.instruments.layout_migration_map {
 
 // Decisions for the references the tables cannot decide, one row per distinct reference, each with
 // its reason (see RunDisposition). The census reports a reference with no row as undecided and a row
-// no reference uses as unused; the sweep refuses to run on either. A row exists only while a reference
-// needs it: the sweep that decided the namespaces which vanished by path placement has been applied,
-// so the table is empty on a placed tree and a merge that brings a new unmapped reference stops the
-// sweep until that one reference has a row with its reason.
+// no reference uses as unused; the sweep refuses to run on either. A placed tree plans no change, so
+// the table is empty here: a re-run on a base that has gained a namespace which vanishes into more
+// than one parent adds a row for it, and the row leaves with the sweep that used it.
 data layout_dispositions: List<RunDisposition> = []
 
 // Values that spell a module name without referring to the module (see IdentityLiteral): wire
@@ -157,6 +157,12 @@ data layout_identity_literals: List<IdentityLiteral> = [
 // The namespaces the operator ruled name-wins: a module there keeps its name and its file moves to
 // the name's path, where everywhere else the path's name wins.
 data name_wins_namespaces: List<String> = ["product"]
+
+// The modules the retired test-file suffix cannot simply be dropped from, because the shortened
+// name is another module's (see SuffixDecision). A placed tree has none, so the table is empty
+// here: a module that gains the retired suffix on a later base and collides with an existing name
+// is refused until an operator decision adds its row.
+data suffix_decisions: List<SuffixDecision> = []
 
 // The instrument namespace and the folder R10 places every member of it in.
 data instrument_namespace: String = "tools"
@@ -281,6 +287,7 @@ fn layout_plan_report(report: String) -> ProcessExit {
       match plan_migration(
         layout: repository_storage_layout(),
         name_wins_namespaces: name_wins_namespaces,
+        decisions: suffix_decisions,
         instrument_namespace: instrument_namespace,
         instrument_folder: instrument_folder,
         sites: sites,
@@ -439,6 +446,7 @@ fn read_plan() -> PlanRead {
       match plan_migration(
         layout: repository_storage_layout(),
         name_wins_namespaces: name_wins_namespaces,
+        decisions: suffix_decisions,
         instrument_namespace: instrument_namespace,
         instrument_folder: instrument_folder,
         sites: sites,

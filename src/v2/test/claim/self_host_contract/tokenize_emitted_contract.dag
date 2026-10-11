@@ -1,0 +1,57 @@
+module v2.test.claim.self_host_contract.tokenize_emitted_contract
+
+import std.logic { Bool }
+import v2.compiler.tokenize { tokenize }
+import v2.std.compilers.lexing { LexRules, ModeledLexRules, LexRuleSet, TokenRule, LiteralPattern }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+
+// THE 01_tokenize ROW'S CONTRACT, STATED ONCE AND REALIZED TWICE. Read off the authority:
+// v2.compiler.tokenize tokenize accepts a source its rules match and refuses, with
+// tokenize_lex_e1_unrecognized_char, a character no rule matches. The rules are designed: one
+// token rule matching the single character a.
+fn tkc_a_only_rules() -> LexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: [TokenRule { token_class: ^a_token, pattern: LiteralPattern { text: chars(s: "a") } }],
+      modes: []
+    }
+  }
+}
+
+type TkcReading = TkcAccepted { tokens: Int } | TkcRefusedAsUnrecognized | TkcRefusedOtherwise
+
+fn tkc_tokenize(text: String) -> TkcReading {
+  match tokenize(text: text, file: ^self_host_tokenize_witness, rules: tkc_a_only_rules()) {
+    Accepted { value: stream, diagnostics: _ } => TkcAccepted { tokens: stream.all |> count }
+    Rejected { diagnostics: d } =>
+      if diagnostics_fatal_reason(d: d) == ^tokenize_lex_e1_unrecognized_char {
+        TkcRefusedAsUnrecognized
+      } else {
+        TkcRefusedOtherwise
+      }
+  }
+}
+
+fn tkc_accepted(reading: TkcReading) -> Bool {
+  match reading {
+    TkcAccepted { tokens: _ } => true
+    TkcRefusedAsUnrecognized => false
+    TkcRefusedOtherwise => false
+  }
+}
+
+// The planted fault asserts ONLY the wrong acceptance: a source with an unmatched character
+// tokenizing.
+fn tokenize_emitted_contract_holds(inject_fault: Bool) -> Bool {
+  if inject_fault {
+    tkc_accepted(reading: tkc_tokenize(text: "ab"))
+  } else {
+    tkc_tokenize(text: "aa") == TkcAccepted { tokens: 2 }
+      && tkc_tokenize(text: "ab") == TkcRefusedAsUnrecognized
+  }
+}
+
+test fn tokenize_emitted_contract_holds_and_its_planted_fault_does_not() -> Bool {
+  tokenize_emitted_contract_holds(inject_fault: false)
+    && !tokenize_emitted_contract_holds(inject_fault: true)
+}

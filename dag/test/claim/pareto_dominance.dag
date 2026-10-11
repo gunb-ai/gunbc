@@ -1,0 +1,89 @@
+module test.claim.pareto_dominance
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn compare_axes(a_cap: Int, a_cost: Int, b_cap: Int, b_cost: Int) -> List<AxisComparison> {
+  [
+    axis_comparison_int(goal: HigherIsBetter, a: a_cap, b: b_cap),
+    axis_comparison_int(goal: LowerIsBetter, a: a_cost, b: b_cost)
+  ]
+}
+
+fn verdict_of(a_cap: Int, a_cost: Int, b_cap: Int, b_cost: Int) -> DominanceVerdict {
+  dominance_of_comparisons(comparisons: compare_axes(a_cap: a_cap, a_cost: a_cost, b_cap: b_cap, b_cost: b_cost))
+}
+
+test fn dominates_when_better_on_all_axes() -> Bool {
+  verdict_dominates(v: verdict_of(a_cap: 64, a_cost: 100, b_cap: 32, b_cost: 200))
+}
+
+test fn dominated_is_the_mirror() -> Bool {
+  verdict_is_dominated(v: verdict_of(a_cap: 32, a_cost: 200, b_cap: 64, b_cost: 100))
+}
+
+test fn equivalent_when_identical() -> Bool {
+  verdict_is_equivalent(v: verdict_of(a_cap: 48, a_cost: 150, b_cap: 48, b_cost: 150))
+}
+
+test fn incomparable_is_not_a_tie() -> Bool {
+  let v = verdict_of(a_cap: 64, a_cost: 200, b_cap: 32, b_cost: 100)
+  verdict_is_incomparable(v: v) && !verdict_is_equivalent(v: v)
+}
+
+test fn dominated_candidate_is_off_front() -> Bool {
+
+  let pool = [
+    verdict_of(a_cap: 64, a_cost: 100, b_cap: 32, b_cost: 200),
+    verdict_of(a_cap: 16, a_cost: 100, b_cap: 32, b_cost: 200)
+  ]
+  any_dominates(verdicts: pool) && match front_standing(verdicts: pool) {
+    OffFront => true
+    OnFront => false
+    FrontPendingEvidence => false
+  }
+}
+
+test fn undominated_candidate_stays_on_front() -> Bool {
+
+  let pool = [
+    verdict_of(a_cap: 32, a_cost: 50, b_cap: 64, b_cost: 100),
+    verdict_of(a_cap: 32, a_cost: 200, b_cap: 64, b_cost: 100)
+  ]
+  !any_dominates(verdicts: pool) && match front_standing(verdicts: pool) {
+    OnFront => true
+    OffFront => false
+    FrontPendingEvidence => false
+  }
+}
+
+
+// THE ARM THE OLD BOOLEAN COULD NOT EXPRESS. `on_pareto_front` answered `!any_dominates`, so this
+// pool -- nothing proven to dominate, one comparison undecided -- returned true and asserted the
+// frontier. It is the discriminating case for the whole change, and it stays enrolled as the
+// permanent control that the three-state has not quietly collapsed back to two.
+test fn an_undecided_pool_is_neither_on_nor_off_the_front() -> Bool {
+  let pool = [
+    verdict_of(a_cap: 32, a_cost: 50, b_cap: 64, b_cost: 100),
+    DominanceUndecided
+  ]
+  !any_dominates(verdicts: pool)
+    && match front_standing(verdicts: pool) {
+      FrontPendingEvidence => true
+      OnFront => false
+      OffFront => false
+    }
+}
+
+// A PROVEN DOMINATOR OUTRANKS UNCERTAINTY, at pool grain: uncertainty elsewhere cannot un-prove a
+// domination that one comparison already established.
+test fn a_proven_dominator_outranks_an_undecided_comparison() -> Bool {
+  let pool = [
+    verdict_of(a_cap: 64, a_cost: 100, b_cap: 32, b_cost: 200),
+    DominanceUndecided
+  ]
+  match front_standing(verdicts: pool) {
+    OffFront => true
+    OnFront => false
+    FrontPendingEvidence => false
+  }
+}

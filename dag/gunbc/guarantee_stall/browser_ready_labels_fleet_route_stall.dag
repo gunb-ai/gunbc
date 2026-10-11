@@ -14,7 +14,7 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // and the route's outcome is always BrowserReadyLabelsFailed there. The deleted shell path was
 // carried by the same posture, so this change newly breaks nothing -- it declares what the route
 // already was. The steps DO execute for real in the changed-witness receipts
-// (test.claim.runner.browser_ready_label_real_path_witness_test): the production converge over
+// (test.claim.runner.browser_ready_label_real_path_witness): the production converge over
 // LocalShell, the unprivileged posture, against a mktemp scratch destination, with the unprivileged
 // reload honestly skipped as a typed posture arm.
 data browser_ready_labels_fleet_route_stall: GuaranteeStall = GuaranteeStall {

@@ -47,19 +47,19 @@ import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder }
 // decoration. They are retired by name here rather than deleted quietly, and the trigger below is
 // the condition under which they become writable again against a real population. What replaces
 // them meanwhile is one control that IS authorable and does the load-bearing job:
-// test.claim.roadmap.roadmap_forecast_witness_test.witness_live_graph_refuses_every_node_as_unsized_while_the_deriver_is_a_stub
+// test.claim.roadmap.roadmap_forecast_witness.witness_live_graph_refuses_every_node_as_unsized_while_the_deriver_is_a_stub
 // executes the live authority and refuses -- it goes red the day the graph renders a forecast,
 // which obliges a reassessment: that is either progress toward this drop's trigger or a regression
 // that would otherwise be silent, and the two are told apart by the trigger and not by the red. A
 // forecast rendering is not by itself the restoration condition stated below. The history
 // join keeps its own live control for the same reason:
-// test.claim.roadmap.roadmap_forecast_witness_test.witness_cited_acceptance_pr_history_refuses_every_link_as_unsized
+// test.claim.roadmap.roadmap_forecast_witness.witness_cited_acceptance_pr_history_refuses_every_link_as_unsized
 // asserts that EVERY cited acceptance/pull link refuses as HistoryNodeUnsized, so the loss is
 // measured as total and loud rather than left as four observations quietly becoming zero.
 //
 // WHERE THAT CONTROL EXECUTES, STATED BECAUSE THE ANSWER IS LOAD-BEARING FOR THIS DROP. It runs
 // ON EVERY PULL REQUEST, on the required floor, in its own home
-// (dag/test/claim/roadmap/roadmap_forecast_witness_test.dag) -- NOT on a cadence and NOT in the
+// (dag/test/claim/roadmap/roadmap_forecast_witness.dag) -- NOT on a cadence and NOT in the
 // long home. That matters because the sentence above only holds if something runs the claim on the
 // day the deriver starts answering, and the floor plans a changed witness from the test fns a DIFF
 // TOUCHED rather than from the closure, so a home the floor declines would never run it on that
@@ -101,11 +101,11 @@ data roadmap_sizing_authored_to_derived: RungDrop = RungDrop {
     "gunbc.roadmap.roadmap_forecast observation_for_link",
     "gunbc.roadmap.roadmap_presentation sizing_fact",
     "gunbc.roadmap.roadmap_spawner sizing_json_members",
-    "test.claim.roadmap.roadmap_forecast_witness_test.witness_live_graph_refuses_with_located_counted_calibration_gaps",
-    "test.claim.roadmap.roadmap_forecast_witness_test.witness_live_graph_gap_count_matches_refusal_rows",
-    "test.claim.roadmap.roadmap_forecast_witness_test.witness_live_graph_refusal_is_only_calibration",
-    "test.claim.roadmap.roadmap_forecast_witness_test.witness_live_calibration_keeps_small_sample_intervals",
-    "test.claim.roadmap.roadmap_authority_test.witness_active_sizes_are_intentional_and_nonuniform"
+    "test.claim.roadmap.roadmap_forecast_witness.witness_live_graph_refuses_with_located_counted_calibration_gaps",
+    "test.claim.roadmap.roadmap_forecast_witness.witness_live_graph_gap_count_matches_refusal_rows",
+    "test.claim.roadmap.roadmap_forecast_witness.witness_live_graph_refusal_is_only_calibration",
+    "test.claim.roadmap.roadmap_forecast_witness.witness_live_calibration_keeps_small_sample_intervals",
+    "test.claim.roadmap.roadmap_authority.witness_active_sizes_are_intentional_and_nonuniform"
     ],
     restoration_trigger: "a sizing derivation that reads a task and answers from it UNDER A DECLARED POLICY: given a gunbc.roadmap.roadmap_sizing SizingSubject -- title, description, exit criterion -- derive_task_sizing returns an Intricacy and a Volume on the real acceptance path, with an executed discriminating control in which two materially different subjects receive different cells, and gunbc.roadmap.roadmap_forecast calibrates and projects from those derived cells end to end. AND the derivation states the policy its estimate is a function of, and the answer carries the standing that distinguishes an inference from an observation -- because a size read off a task description is a judgement about work nobody has performed yet, so it is a DERIVED ESTIMATE and never a measurement. INPUT SENSITIVITY ALONE DOES NOT SATISFY THIS TRIGGER. A constant answer leaves the capability dead, and so does any rule that merely varies with the input without grounding what it varies on: a deriver mapping title-contains-compiler to high/medium and everything else to medium/medium would produce different cells for materially different subjects, partition the calibration population and project end to end, while leaving the defect this drop exists about exactly where it was -- an ordinal guess nothing observed and nothing could contradict, now spelled as code. The drop retires when the guess is replaced by a stated method that says what it is a judgement FROM, not when the guess acquires a parameter."
   }

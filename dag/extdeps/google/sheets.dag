@@ -128,7 +128,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // request can influence. One variable serves both services because it is one operator credential
 // for one converge; splitting it would mean two secrets with the same blast radius and one more
 // thing to rotate. The literal is repeated here because the config parse extracts a literal. What
-// test.claim.review_sheet_transport_pin_witness_test sheets_token_env_matches_the_configured_literal
+// test.claim.review_sheet_transport_pin_witness sheets_token_env_matches_the_configured_literal
 // pins is THIS ROW against a third copy inside the claim, not the auth_source literal in the config
 // below, which no fold can read -- so the claim cannot go red for a drift confined to the transport
 // spelling. The sibling claim drive_and_sheets_read_one_credential is the stronger of the two,

@@ -267,7 +267,7 @@ fn no_resource_declarations() -> FreeMonoid<Symbol> {
 // PR-c's door wiring (v2.compiler.self_host.closure_emission, called by v2.cli.compile_cli) calls normalize_census
 // for each parsed file outside the closure. TRIGGER: the gen-one emission of v2.compiler.compile
 // ingests a non-member through normalize_census -- until then this carrier is exercised only by
-// v2.test.claim.normalize.census_mode_test, and if that trigger is abandoned this carrier deletes.
+// v2.test.claim.normalize.census_mode, and if that trigger is abandoned this carrier deletes.
 type CensusTree sole_constructor {
   root: Node,
   import_bindings: FreeMonoid<AliasBindingRow>,

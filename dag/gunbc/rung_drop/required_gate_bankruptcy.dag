@@ -4,7 +4,7 @@ import std.types { NonEmptyStr }
 import gunbc.rung_drop { RungDrop, Standing, AuthoredProse, RequiredGateBankruptcy }
 
 // WORKFLOW-COUNTABLE PARTIAL CLIMB (2026-09-04): the exact module
-// `test.claim.witness_floor_workflow_consolidation_witness_test` joins the static roster because
+// `test.claim.witness_floor_workflow_consolidation_witness` joins the static roster because
 // three standing drops cite one of its rows as their required-path countable. This restores
 // recurring execution for four previously unheld identities in that one module. It follows the
 // 2026-08-31 generated-artifact partial-climb precedent and DOES NOT RETIRE THIS DROP: it moves

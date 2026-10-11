@@ -12,7 +12,7 @@ import std.disposition { SingleAuthority }
 // THE PARSE-TREE REFERENCE WALKER IS RETIRED (replacement migration, DESIGN section 3).
 // reference_sites_from_parsed_module keyed on ^dag_surface_qualified_name and the import
 // productions and carried no postfix handling, so it silently missed a dotted callee and a
-// qualified call argument -- measured by v2.test.claim.namespace_xl0.qualified_site_enumerator_differential_test,
+// qualified call argument -- measured by v2.test.claim.namespace_xl0.qualified_site_enumerator_differential,
 // where the collector saw both and this walker saw neither (gunbc.recurring_failure_mode
 // reference_reader_without_postfix_handling_drops_call_sites). Its census and its closure walk were a
 // second edge producer beside v2.lens.module_graph dependency_resolution_facts_live, whose
