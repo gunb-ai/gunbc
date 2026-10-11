@@ -26,6 +26,7 @@ jobs:
       - name: Ask the triggering run whether it sealed a candidate
         id: candidate_probe
         run: |-
+          # dissolve-on: heal_publisher_forge_shell -- hand-spelled gh api / gh pr comment shell in the publisher job; delete when these steps render from typed forge effects through the bash emit capability (docs/plans/shell-intent-emit-realization-design.md, shell-to-intent). The artifact listing and name-membership test, and the receipt comment, are typed data a forge extdeps interface can own.
           set -euo pipefail
           NAMES=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$TRIGGERING_RUN_ID/artifacts" --jq '.artifacts[].name')
           if printf '%s\n' "$NAMES" | grep -qx "heal-repair-candidate"; then
@@ -173,6 +174,7 @@ jobs:
         if: hashFiles('heal-candidate/heal-repair-candidate-blob-*') != ''
       - name: Post the publication receipt on the pull request
         run: |-
+          # dissolve-on: heal_publisher_forge_shell -- hand-spelled gh api / gh pr comment shell in the publisher job; delete when these steps render from typed forge effects through the bash emit capability (docs/plans/shell-intent-emit-realization-design.md, shell-to-intent). The artifact listing and name-membership test, and the receipt comment, are typed data a forge extdeps interface can own.
           set -euo pipefail
           gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file target/heal-publication-receipt.txt
         env:
