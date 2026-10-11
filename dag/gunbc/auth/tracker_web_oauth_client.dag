@@ -2,6 +2,7 @@ module gunbc.auth.tracker_web_oauth_client
 
 import std.types { String, NonEmptyStr, List, Bool, Int, Port }
 import std.measure { second_count }
+import gunbc.clock_read { observer_clock_read, observer_instant_millis, ObserverClockObserved, ObserverClockUnreadable }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_path }
 import std.goal_assessment {
@@ -189,7 +190,13 @@ data tracker_web_test_console_readback_observed_at_epoch: Int = 1760155200
 
 data tracker_web_test_console_readback_valid_until_epoch: Int = 1762747200
 
-data tracker_web_oidc_deploy_now_epoch: Int = tracker_web_test_console_readback_observed_at_epoch
+fn tracker_web_oidc_deploy_now_epoch() -> Int? {
+  match observer_clock_read() {
+    ObserverClockObserved { instant } =>
+      Present { value: (observer_instant_millis(instant: instant) as Int) / 1000 }
+    ObserverClockUnreadable { detail: _ } => none
+  }
+}
 
 fn tracker_web_test_registered_web_client_console_readback() -> WorkspaceAdminReadback {
   WorkspaceAdminReadback {

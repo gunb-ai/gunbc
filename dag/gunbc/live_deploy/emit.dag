@@ -197,6 +197,7 @@ import gunbc.ci_release_bins { gunbc_release_bin_name }
 import gunbc.auth.tracker_web_oauth_client {
   tracker_web_oidc_serve_standing, tracker_web_oidc_config_document,
   tracker_web_oidc_env_assignment, tracker_web_oidc_deploy_now_epoch,
+  tracker_web_test_console_readback_valid_until_epoch,
   TrackerWebOidcServeConfigured, TrackerWebOidcInstanceUnassigned, TrackerWebOidcEnvironmentUnbound,
   TrackerWebOidcRealizationMissing, TrackerWebOidcConsoleReadbackUnsatisfied,
 }
@@ -533,8 +534,15 @@ fn user_manager_environment_directives(uid: Int) -> List<SystemdServiceDirective
   ]
 }
 
+fn oidc_readback_refuse_environment(cause: NonEmptyStr) -> List<SystemdServiceDirective> {
+  [Environment { assignment: join(["__GUNBC_OIDC_READBACK_REFUSED__=", cause as String], "") as NonEmptyStr }]
+}
+
 fn live_deploy_oidc_environment_directives(spec: DeploymentSpec) -> List<SystemdServiceDirective> {
-  live_deploy_oidc_environment_directives_at(spec: spec, now_epoch: tracker_web_oidc_deploy_now_epoch)
+  match tracker_web_oidc_deploy_now_epoch() {
+    Absent => oidc_readback_refuse_environment(cause: "observer clock unreadable" as NonEmptyStr)
+    Present { value: now } => live_deploy_oidc_environment_directives_at(spec: spec, now_epoch: now)
+  }
 }
 
 fn live_deploy_oidc_environment_directives_at(spec: DeploymentSpec, now_epoch: Int) -> List<SystemdServiceDirective> {
@@ -542,8 +550,10 @@ fn live_deploy_oidc_environment_directives_at(spec: DeploymentSpec, now_epoch: I
     TrackerWebOidcServeConfigured { config: cfg } => [Environment { assignment: tracker_web_oidc_env_assignment(cfg: cfg) }]
     TrackerWebOidcInstanceUnassigned { instance_id: _ } => []
     TrackerWebOidcEnvironmentUnbound { instance_id: _, reason: _ } => []
-    TrackerWebOidcRealizationMissing { instance_id: _, environment: _ } => []
-    TrackerWebOidcConsoleReadbackUnsatisfied { instance_id: _, cause: _ } => []
+    TrackerWebOidcRealizationMissing { instance_id: _, environment: _ } =>
+      oidc_readback_refuse_environment(cause: "tracker-web OIDC realization missing" as NonEmptyStr)
+    TrackerWebOidcConsoleReadbackUnsatisfied { instance_id: _, cause } =>
+      oidc_readback_refuse_environment(cause: cause)
   }
 }
 
@@ -1352,18 +1362,50 @@ fn apply_systemd_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevision
   ))
 }
 
-fn apply_oidc_config_steps(spec: DeploymentSpec) -> List<PipelineStep> {
-  apply_oidc_config_steps_at(spec: spec, now_epoch: tracker_web_oidc_deploy_now_epoch, should_write: true)
+fn apply_oidc_readback_refuse_step(cause: NonEmptyStr) -> PipelineStep {
+  deploy_raw(command: join([
+    "echo '",
+    "__GUNBC_OIDC_READBACK_REFUSED__ ",
+    (cause as String).replace(from: "'", to: ""),
+    "' >&2; exit 1",
+  ], ""))
 }
 
-fn apply_oidc_readback_refuse_step(cause: NonEmptyStr) -> PipelineStep {
-  deploy_raw(command: join(["__GUNBC_OIDC_READBACK_REFUSED__ ", cause as String], ""))
+fn apply_oidc_readback_freshness_gate() -> PipelineStep {
+  deploy_raw(command: join([
+    "now=$(date +%s); if [ \"$now\" -ge ",
+    to_string(tracker_web_test_console_readback_valid_until_epoch),
+    " ]; then echo '__GUNBC_OIDC_READBACK_REFUSED__ console readback expired' >&2; exit 1; fi",
+  ], ""))
+}
+
+fn apply_oidc_line_stop_steps(spec: DeploymentSpec) -> List<PipelineStep> {
+  match tracker_web_oidc_deploy_now_epoch() {
+    Absent => [apply_oidc_readback_refuse_step(cause: "observer clock unreadable" as NonEmptyStr)]
+    Present { value: now } =>
+      match tracker_web_oidc_serve_standing(instance_id: spec.instance_id, now_epoch: now) {
+        TrackerWebOidcServeConfigured { config: _ } => []
+        TrackerWebOidcInstanceUnassigned { instance_id: _ } => []
+        TrackerWebOidcEnvironmentUnbound { instance_id: _, reason: _ } => []
+        TrackerWebOidcRealizationMissing { instance_id: _, environment: _ } =>
+          [apply_oidc_readback_refuse_step(cause: "tracker-web OIDC realization missing" as NonEmptyStr)]
+        TrackerWebOidcConsoleReadbackUnsatisfied { instance_id: _, cause } =>
+          [apply_oidc_readback_refuse_step(cause: cause)]
+      }
+  }
+}
+
+fn apply_oidc_config_steps(spec: DeploymentSpec) -> List<PipelineStep> {
+  match tracker_web_oidc_deploy_now_epoch() {
+    Absent => [apply_oidc_readback_refuse_step(cause: "observer clock unreadable" as NonEmptyStr)]
+    Present { value: now } => apply_oidc_config_steps_at(spec: spec, now_epoch: now, should_write: true)
+  }
 }
 
 fn apply_oidc_config_steps_at(spec: DeploymentSpec, now_epoch: Int, should_write: Bool) -> List<PipelineStep> {
   match tracker_web_oidc_serve_standing(instance_id: spec.instance_id, now_epoch: now_epoch) {
     TrackerWebOidcServeConfigured { config: cfg } =>
-      if !(should_write) {
+      concat([apply_oidc_readback_freshness_gate()], if !(should_write) {
         []
       } else {
         [
@@ -1384,13 +1426,13 @@ fn apply_oidc_config_steps_at(spec: DeploymentSpec, now_epoch: Int, should_write
             dest: cfg.config_path as String,
           )),
         ]
-      }
+      })
     TrackerWebOidcInstanceUnassigned { instance_id: _ } => []
     TrackerWebOidcEnvironmentUnbound { instance_id: _, reason: _ } => []
     TrackerWebOidcRealizationMissing { instance_id: _, environment: _ } =>
       [apply_oidc_readback_refuse_step(cause: "tracker-web OIDC realization missing" as NonEmptyStr)]
     TrackerWebOidcConsoleReadbackUnsatisfied { instance_id: _, cause } =>
-      [apply_oidc_readback_refuse_step(cause: cause)]
+      concat([apply_oidc_readback_freshness_gate()], [apply_oidc_readback_refuse_step(cause: cause)])
   }
 }
 
@@ -2930,30 +2972,36 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
       )),
     ] }
     UnitFile => concat(
-      if !plan_writes_unit(plan: plan) { [] } else { concat([
-        apply_systemd_unit_write_step(spec: spec, revision: revision),
-        deploy_raw(command: deploy_stage_install_command(
-          stage_name: spec.service.unit_name as String,
-          mode: install_file_shared_mode,
-          dest: deployment_systemd_unit_path(names: spec.names) as String,
-        )),
-      ], apply_approval_broker_unit_write_steps(spec: spec, revision: revision)) },
+      apply_oidc_line_stop_steps(spec: spec),
       concat(
-        if !plan_reloads_manager(plan: plan) { [] } else { [deploy_effect(inv: systemctl_daemon_reload_effect())] },
-        if !plan_restarts_process(plan: plan) { [] } else { concat([
-          deploy_effect(inv: systemctl_enable_effect(unit: plan.target.unit)),
-          deploy_effect(inv: systemctl_restart_effect(unit: plan.target.unit)),
-        ], approval_broker_lifecycle_steps(spec: spec)) },
+        if !plan_writes_unit(plan: plan) { [] } else { concat([
+          apply_systemd_unit_write_step(spec: spec, revision: revision),
+          deploy_raw(command: deploy_stage_install_command(
+            stage_name: spec.service.unit_name as String,
+            mode: install_file_shared_mode,
+            dest: deployment_systemd_unit_path(names: spec.names) as String,
+          )),
+        ], apply_approval_broker_unit_write_steps(spec: spec, revision: revision)) },
+        concat(
+          if !plan_reloads_manager(plan: plan) { [] } else { [deploy_effect(inv: systemctl_daemon_reload_effect())] },
+          if !plan_restarts_process(plan: plan) { [] } else { concat([
+            deploy_effect(inv: systemctl_enable_effect(unit: plan.target.unit)),
+            deploy_effect(inv: systemctl_restart_effect(unit: plan.target.unit)),
+          ], approval_broker_lifecycle_steps(spec: spec)) },
+        ),
       ),
     )
     UnitManager => []
     ServiceProcess => []
     DirectoryRoot { path: _ } => []
-    OidcConfigFile => apply_oidc_config_steps_at(
-      spec: spec,
-      now_epoch: tracker_web_oidc_deploy_now_epoch,
-      should_write: plan_writes_oidc_config(plan: plan),
-    )
+    OidcConfigFile => match tracker_web_oidc_deploy_now_epoch() {
+      Absent => [apply_oidc_readback_refuse_step(cause: "observer clock unreadable" as NonEmptyStr)]
+      Present { value: now } => apply_oidc_config_steps_at(
+        spec: spec,
+        now_epoch: now,
+        should_write: plan_writes_oidc_config(plan: plan),
+      )
+    }
   }
 }
 

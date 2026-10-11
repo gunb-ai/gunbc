@@ -35,14 +35,17 @@ import gunbc.auth.tracker_web_oauth_client {
   tracker_web_oauth_frontier_rows,
 }
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
-import gunbc.live_deploy.emit { live_deploy_serve_unit_file, apply_step_effects, apply_oidc_config_steps_at }
+import gunbc.live_deploy.emit {
+  live_deploy_serve_unit_file, apply_step_effects, apply_oidc_config_steps_at,
+  live_deploy_oidc_environment_directives_at, apply_oidc_config_steps,
+}
 import gunbc.live_deploy.desired { srv1_lab_desired_deployment, srv1_production_desired_deployment, selected_deployment_spec }
 import gunbc.live_deploy.spec { ArtifactStep, Dependency, OidcConfigArtifact }
 import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, apply_empty_host_effects }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan }
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
 import gunbc.roadmap_dashboard_instance { srv1_dashboard_lab_id, srv1_dashboard_live_id, srv2_deploy_dashboard_id }
-import extdeps.systemd.unit_file { serialize_systemd_unit_file }
+import extdeps.systemd.unit_file { serialize_systemd_unit_file, Environment }
 import v2.std.collection { Present, Absent }
 
 fn witness_revision() -> ReleaseRevisionBinding {
@@ -198,7 +201,30 @@ test fn lab_apply_oidc_config_refuses_when_console_readback_expired() -> Bool {
     should_write: false,
   ))
   string_contains(s: sh, pattern: "__GUNBC_OIDC_READBACK_REFUSED__")
+    && string_contains(s: sh, pattern: "exit 1")
+    && string_contains(s: sh, pattern: "date +%s")
     && !string_contains(s: sh, pattern: tracker_web_test_oidc_config_host_path as String)
+}
+
+test fn lab_unit_env_refuses_when_console_readback_expired() -> Bool {
+  let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  let dirs = live_deploy_oidc_environment_directives_at(
+    spec: spec,
+    now_epoch: tracker_web_test_console_readback_valid_until_epoch,
+  )
+  any(dirs, d => match d {
+    Environment { assignment: a } =>
+      string_contains(s: a as String, pattern: "__GUNBC_OIDC_READBACK_REFUSED__")
+        && !string_contains(s: a as String, pattern: oidc_config_env_var as String)
+    _ => false
+  })
+}
+
+test fn lab_apply_oidc_config_observes_host_clock_against_valid_until() -> Bool {
+  let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  let sh = pipeline_steps_text(steps: apply_oidc_config_steps(spec: spec))
+  string_contains(s: sh, pattern: "date +%s")
+    && string_contains(s: sh, pattern: to_string(tracker_web_test_console_readback_valid_until_epoch))
 }
 
 test fn production_spec_has_no_oidc_config_artifact() -> Bool {
