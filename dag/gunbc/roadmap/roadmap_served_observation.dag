@@ -4,8 +4,12 @@ import gunbc.roadmap_runtime_plan { roadmap_plan_projection }
 import gunbc.roadmap_page { issue_query_snapshot_for_projection }
 import gunbc.site.markup { page_render_refusal_body }
 
-import gunbc.roadmap.roadmap_event_log { RoadmapStandings }
-import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance, roadmap_standings_read, CarrierClosed, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed }
+import gunbc.roadmap.roadmap_event_log { RoadmapStandings, RoadmapEventEnvelope }
+import gunbc.roadmap.roadmap_event_carrier {
+  roadmap_event_carrier_layout_for_instance, roadmap_standings_read, roadmap_events_read_all,
+  CarrierClosed, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed,
+  RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused,
+}
 import std.types { String, Int, Bool, List, NonEmptyStr }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
@@ -19,11 +23,16 @@ import extdeps.filesystem.filesystem_io {
 }
 import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import std.algebra { trim }
+import extdeps.time.rfc3339 {
+  Rfc3339Timestamp, Rfc3339Comparison,
+  Rfc3339Precedes, Rfc3339Follows, Rfc3339Simultaneous, Rfc3339OrderUndecidable,
+  rfc3339_is_canonically_spelled, rfc3339_compare,
+}
 import std.content_hash { content_hash_tagged_structural, content_hash_atom }
 import extdeps.http.server { MediaType, text_html_utf8, text_plain_utf8, application_json_utf8, ServeHttpResponse }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 import extdeps.languages.json.emit {
-  JsonValue, JsonString, JsonArray, JsonNull, JsonBool, JsonNumber, JsonObject,
+  JsonValue, JsonString, JsonArray, JsonNull, JsonBool, JsonNumber, JsonObject, JsonKeyValue,
   serialize_json, json_string, json_array, json_object, json_kv,
 }
 import extdeps.languages.json.parse {
@@ -687,15 +696,15 @@ fn served_observation_body_response(entry: ServedObservationEntry, body: ServedO
   }
 }
 
-// The reader's refusals are distinct states with distinct owners: Absent means the belt has not
-// ticked since the receipts dir was created (or the timer is not running); Unreadable means a
+// The reader's refusals are distinct states with distinct owners: Absent means no follow-up has
+// written a served observation for this instance yet; Unreadable means a
 // producer and this reader disagree about the index wire; Missing means the index was written by a
 // producer that did not render this surface; BodyMissing and BodyMismatch mean the body on disk is
 // not the one the index names. None of them observes the host as a substitute.
 fn served_observation_index_refusal(read: ServedObservationRead, kind: ServedObservationKind) -> ServeHttpResponse {
   match read {
     ServedObservationAbsent =>
-      served_observation_refusal_response(refusal: "ServedObservationAbsent", detail: "no belt tick has published a served observation for this instance yet")
+      served_observation_refusal_response(refusal: "ServedObservationAbsent", detail: "no follow-up has published a served observation for this instance yet")
     ServedObservationUnreadable { reason } =>
       served_observation_refusal_response(refusal: "ServedObservationUnreadable", detail: reason)
     ServedObservationPresent { index } =>
@@ -714,16 +723,158 @@ fn served_observation_entry_for(read: ServedObservationRead, kind: ServedObserva
   }
 }
 
-fn served_observation_surface_response_for_instance(instance: HostDashboardInstance, kind: ServedObservationKind) -> ServeHttpResponse {
-  let read = served_observation_read_for_instance(instance: instance)
-  match served_observation_entry_for(read: read, kind: kind) {
-    ServedObservationEntryMissing => served_observation_index_refusal(read: read, kind: kind)
-    ServedObservationEntryFound { entry } =>
-      served_observation_body_response(entry: entry, body: served_observation_body_read_for_instance(instance: instance, entry: entry))
+// FRESHNESS IS A COMPARISON, NOT A CLOCK. The pre-render is last-known-good bytes. Serving them
+// as current when a newer event exists is silent wrongness (DESIGN §5). The fold admits each
+// recorded_at and observed_at as a canonical RFC 3339 UTC instant (extdeps.time.rfc3339) and
+// orders them with rfc3339_compare — lexical String `>` is not an instant (DESIGN §2) and would
+// fabricate currency across format drift (DESIGN §5). Standing names the result (present /
+// stale / freshness_unreadable). A stale surface still returns the stored body and answers 409
+// so the bytes are not presented as current. An empty, unparseable, or incomparable instant
+// refuses: absence of a newest instant is not currency. An empty log (no envelopes) is current:
+// there is no later event. Routes enqueue ServedObservationObligation so the window is the
+// obligation's latency, not a minute-timer.
+type ServedObservationFreshness
+  = ObservationCurrent
+  | ObservationStale { observed_at: String, newest_event_at: String }
+  | ObservationFreshnessUnread { reason: String }
+
+type ServedObservationNewestInstant
+  = NewestInstantNone
+  | NewestInstantUnread { reason: String }
+  | NewestInstantAt { at: Rfc3339Timestamp }
+
+fn served_observation_admit_instant(text: String) -> Rfc3339Timestamp? {
+  let t = trim(s: text)
+  if t == "" {
+    none
+  } else {
+    let stamp = t as Rfc3339Timestamp
+    if rfc3339_is_canonically_spelled(value: stamp) {
+      Present { value: stamp }
+    } else {
+      none
+    }
   }
 }
 
-fn served_observation_standing_json_value(read: ServedObservationRead) -> JsonValue {
+fn served_observation_newer_instant(acc: Rfc3339Timestamp, next: Rfc3339Timestamp) -> ServedObservationNewestInstant {
+  match rfc3339_compare(left: acc, right: next) {
+    Rfc3339Precedes => NewestInstantAt { at: next }
+    Rfc3339Follows => NewestInstantAt { at: acc }
+    Rfc3339Simultaneous => NewestInstantAt { at: acc }
+    Rfc3339OrderUndecidable { cause } => NewestInstantUnread { reason: cause as String }
+  }
+}
+
+fn served_observation_newest_instant(envelopes: List<RoadmapEventEnvelope>) -> ServedObservationNewestInstant {
+  fold(envelopes, init: NewestInstantNone, f: (acc, env) =>
+    match acc {
+      NewestInstantUnread { reason: _ } => acc
+      NewestInstantNone =>
+        match served_observation_admit_instant(text: env.event.recorded_at) {
+          Absent => NewestInstantUnread { reason: "an event recorded_at is empty or not a canonical RFC 3339 UTC instant, so the newest instant is unknown" }
+          Present { value: at } => NewestInstantAt { at: at }
+        }
+      NewestInstantAt { at } =>
+        match served_observation_admit_instant(text: env.event.recorded_at) {
+          Absent => NewestInstantUnread { reason: "an event recorded_at is empty or not a canonical RFC 3339 UTC instant, so the newest instant is unknown" }
+          Present { value: next } => served_observation_newer_instant(acc: at, next: next)
+        }
+    })
+}
+
+fn served_observation_newest_event_at(envelopes: List<RoadmapEventEnvelope>) -> String {
+  match served_observation_newest_instant(envelopes: envelopes) {
+    NewestInstantNone => ""
+    NewestInstantUnread { reason: _ } => ""
+    NewestInstantAt { at } => at as String
+  }
+}
+
+fn served_observation_freshness(observed_at: String, newest_event_at: String) -> ServedObservationFreshness {
+  match served_observation_admit_instant(text: observed_at) {
+    Absent => ObservationFreshnessUnread { reason: "observed_at is empty or not a canonical RFC 3339 UTC instant" }
+    Present { value: observed } =>
+      match served_observation_admit_instant(text: newest_event_at) {
+        Absent => ObservationFreshnessUnread { reason: "newest recorded_at is empty or not a canonical RFC 3339 UTC instant" }
+        Present { value: newest } =>
+          match rfc3339_compare(left: observed, right: newest) {
+            Rfc3339Precedes => ObservationStale { observed_at: observed_at, newest_event_at: newest_event_at }
+            Rfc3339Follows => ObservationCurrent
+            Rfc3339Simultaneous => ObservationCurrent
+            Rfc3339OrderUndecidable { cause } => ObservationFreshnessUnread { reason: cause as String }
+          }
+      }
+  }
+}
+
+fn served_observation_freshness_from_events(observed_at: String, events: RoadmapAllEventsRead) -> ServedObservationFreshness {
+  match events {
+    AllEventsReadRefused { step, reason } => ObservationFreshnessUnread { reason: join([step, ": ", reason], "") }
+    AllEventsRead { envelopes } =>
+      match served_observation_newest_instant(envelopes: envelopes) {
+        NewestInstantNone => ObservationCurrent
+        NewestInstantUnread { reason } => ObservationFreshnessUnread { reason: reason }
+        NewestInstantAt { at } => served_observation_freshness(observed_at: observed_at, newest_event_at: at as String)
+      }
+  }
+}
+
+fn served_events_after_snapshot_close(read: CarrierClosed<RoadmapAllEventsRead>) -> RoadmapAllEventsRead {
+  match read.close {
+    SnapshotNotOpened => read.result
+    SnapshotClosed => read.result
+    SnapshotCloseFailed { worktree, exit_code: _, stderr } =>
+      AllEventsReadRefused {
+        step: "snapshot-close",
+        reason: join([
+          "the event-log snapshot was not closed (", worktree as String, "): ", stderr,
+        ], ""),
+      }
+  }
+}
+
+fn served_observation_events_for_instance(instance: HostDashboardInstance) -> RoadmapAllEventsRead {
+  served_events_after_snapshot_close(read: roadmap_events_read_all(layout: roadmap_event_carrier_layout_for_instance(instance: instance)))
+}
+
+fn served_observation_freshness_for_read(read: ServedObservationRead, events: RoadmapAllEventsRead) -> ServedObservationFreshness {
+  match read {
+    ServedObservationPresent { index } => served_observation_freshness_from_events(observed_at: index.observed_at, events: events)
+    ServedObservationAbsent => ObservationCurrent
+    ServedObservationUnreadable { reason: _ } => ObservationCurrent
+  }
+}
+
+fn served_observation_apply_freshness(response: ServeHttpResponse, freshness: ServedObservationFreshness) -> ServeHttpResponse {
+  match freshness {
+    ObservationCurrent => response
+    ObservationStale { observed_at: _, newest_event_at: _ } =>
+      ServeHttpResponse {
+        status: 409,
+        content_type: response.content_type,
+        body: response.body,
+        headers: response.headers,
+      }
+    ObservationFreshnessUnread { reason } =>
+      served_observation_refusal_response(refusal: "ServedObservationFreshnessUnread", detail: reason)
+  }
+}
+
+fn served_observation_surface_response_for_instance(instance: HostDashboardInstance, kind: ServedObservationKind) -> ServeHttpResponse {
+  let read = served_observation_read_for_instance(instance: instance)
+  let freshness = served_observation_freshness_for_read(read: read, events: served_observation_events_for_instance(instance: instance))
+  match served_observation_entry_for(read: read, kind: kind) {
+    ServedObservationEntryMissing => served_observation_index_refusal(read: read, kind: kind)
+    ServedObservationEntryFound { entry } =>
+      served_observation_apply_freshness(
+        response: served_observation_body_response(entry: entry, body: served_observation_body_read_for_instance(instance: instance, entry: entry)),
+        freshness: freshness,
+      )
+  }
+}
+
+fn served_observation_standing_json_value(read: ServedObservationRead, freshness: ServedObservationFreshness) -> JsonValue {
   match read {
     ServedObservationAbsent =>
       json_object(members: [
@@ -737,35 +888,62 @@ fn served_observation_standing_json_value(read: ServedObservationRead) -> JsonVa
         json_kv(key: "reason", value: json_string(s: reason)),
       ])
     ServedObservationPresent { index } =>
-      json_object(members: [
-        json_kv(key: "schema", value: json_string(s: served_observation_schema)),
-        json_kv(key: "standing", value: json_string(s: "present")),
-        json_kv(key: "observed_at", value: json_string(s: index.observed_at)),
-        json_kv(key: "snapshot_identity", value: json_string(s: served_observation_identity_hex(index: index))),
-        json_kv(key: "surfaces", value: json_array(elements: index.entries |> map(e => json_object(members: [
-          json_kv(key: "url_path", value: json_string(s: served_observation_kind_url_path(kind: e.kind))),
-          json_kv(key: "status", value: json_string(s: to_string(e.status))),
-          json_kv(key: "digest", value: json_string(s: e.digest)),
-        ])))),
-      ])
+      json_object(members: concat(
+        [
+          json_kv(key: "schema", value: json_string(s: served_observation_schema)),
+          json_kv(key: "standing", value: json_string(s: served_observation_freshness_standing_word(freshness: freshness))),
+          json_kv(key: "observed_at", value: json_string(s: index.observed_at)),
+          json_kv(key: "snapshot_identity", value: json_string(s: served_observation_identity_hex(index: index))),
+          json_kv(key: "surfaces", value: json_array(elements: index.entries |> map(e => json_object(members: [
+            json_kv(key: "url_path", value: json_string(s: served_observation_kind_url_path(kind: e.kind))),
+            json_kv(key: "status", value: json_string(s: to_string(e.status))),
+            json_kv(key: "digest", value: json_string(s: e.digest)),
+          ])))),
+        ],
+        served_observation_freshness_standing_members(freshness: freshness),
+      ))
   }
 }
 
-fn served_observation_standing_http_status(read: ServedObservationRead) -> Int {
+fn served_observation_freshness_standing_word(freshness: ServedObservationFreshness) -> String {
+  match freshness {
+    ObservationCurrent => "present"
+    ObservationStale { observed_at: _, newest_event_at: _ } => "stale"
+    ObservationFreshnessUnread { reason: _ } => "freshness_unreadable"
+  }
+}
+
+fn served_observation_freshness_standing_members(freshness: ServedObservationFreshness) -> List<JsonKeyValue> {
+  match freshness {
+    ObservationCurrent => []
+    ObservationStale { observed_at: _, newest_event_at } =>
+      [json_kv(key: "newest_event_at", value: json_string(s: newest_event_at))]
+    ObservationFreshnessUnread { reason } =>
+      [json_kv(key: "reason", value: json_string(s: reason))]
+  }
+}
+
+fn served_observation_standing_http_status(read: ServedObservationRead, freshness: ServedObservationFreshness) -> Int {
   match read {
-    ServedObservationPresent { index: _ } => 200
     ServedObservationAbsent => 503
     ServedObservationUnreadable { reason: _ } => 503
+    ServedObservationPresent { index: _ } =>
+      match freshness {
+        ObservationCurrent => 200
+        ObservationStale { observed_at: _, newest_event_at: _ } => 200
+        ObservationFreshnessUnread { reason: _ } => 503
+      }
   }
 }
 
 fn served_observation_standing_response_for_instance(instance: HostDashboardInstance) -> ServeHttpResponse {
   let read = served_observation_read_for_instance(instance: instance)
+  let freshness = served_observation_freshness_for_read(read: read, events: served_observation_events_for_instance(instance: instance))
   ServeHttpResponse {
     headers: [],
-    status: served_observation_standing_http_status(read: read),
+    status: served_observation_standing_http_status(read: read, freshness: freshness),
     content_type: application_json_utf8,
-    body: serialize_json(v: served_observation_standing_json_value(read: read)),
+    body: serialize_json(v: served_observation_standing_json_value(read: read, freshness: freshness)),
   }
 }
 

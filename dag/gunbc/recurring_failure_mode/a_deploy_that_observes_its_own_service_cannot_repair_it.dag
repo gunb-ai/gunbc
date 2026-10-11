@@ -1,6 +1,7 @@
 module gunbc.recurring_failure_mode.a_deploy_that_observes_its_own_service_cannot_repair_it
 
 import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.recurring_failure_mode { RecurringFailureMode }
 
 data a_deploy_that_observes_its_own_service_cannot_repair_it: RecurringFailureMode = RecurringFailureMode {
@@ -14,7 +15,11 @@ data a_deploy_that_observes_its_own_service_cannot_repair_it: RecurringFailureMo
     "WHY IT IS A CLASS AND NOT AN INCIDENT: the observation conflates two facts -- 'the host cannot be observed' (a transport or principal failure, where refusing is right) and 'the service is observed and unhealthy' (a reading, where the plan's job is to replace it). Treating the second as the first makes health a precondition of repair. DESIGN section 5 wants the unhealthy reading to be a typed observed state the plan can act on, not an absorbing refusal of the whole transaction.",
 
     "RUNG FOUND AT: mitigatable (the failure is loud and located, and an operator can break the deadlock by hand). CEILING: 3 -- the service-process observation can type an unhealthy-but-observed process as its own arm and the plan can derive a replace-release step from it. NEXT TRIGGER: the live_deploy service-process observation distinguishes observed-unhealthy from unobservable, and a dashboard_deploy over an observed-unhealthy process at a different expected_revision plans the replacement instead of refusing; evidence is a fixture with a 500-answering /healthz that plans, beside the existing refusal for an unreachable host.",
+
+    "OCCURRENCE, 2026-10-11, srv1 workspace bring-up findings ledger F11 (broken deploy blocks its own redeploy; related F01, F46, F52), ledger v3 numbering, operator review of source pinned to main at acc218340ed6e24a9ad06c550a5494307d0320bb (a source review that did not rerun srv1; F11 repeated on the srv1 lab that day). ProcessRunningRelease carrying a revision, or ProcessNotRunning carrying an active flag: an active service whose /healthz fails becomes MemberUnobservable, which decide_member refuses (gunbc.live_deploy.member_observe, member_identity). There is still no representation of an observable, owned, active service with a broken health or release endpoint, so repair requires the damaged service to cooperate. An arbitrary 403 must not become absent. Domain assessment owns the decision; a generic satisfaction Boolean is insufficient (D14). Roadmap leaf cc-observation-distinctions.",
   ],
 
-  evidence: [],
+  evidence: [
+    DeclarationRef { module_path: "gunbc.live_deploy.member_identity", decl_name: "decide_member", field: WholeDeclaration },
+  ],
 }

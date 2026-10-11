@@ -1,5 +1,8 @@
 module test.claim.uri_percent_encode_witness
 
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.uri.percent_encoding { UriPercentComponentEncoded, UriPercentComponentRefused, UriPercentEncodeBuilding, UriPercentEncodeEmptyInputRefused, UriPercentEncodeHexNibbleOutOfRange, UriPercentEncodeRefused, UriPercentEncodeSurrogateScalarRefused, UriPercentEncodeUnicodeScalarOutOfRangeRefused, UriPercentEncodeUtf8OctetOutOfRangeRefused, UriUnicodeScalar, uri_percent_encode_code_point, uri_percent_encode_code_points, uri_percent_encode_component, uri_percent_encode_unicode_scalar }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_negative_scalar: Int = 0 - 1

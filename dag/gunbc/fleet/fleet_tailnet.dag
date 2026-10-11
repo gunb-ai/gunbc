@@ -4,7 +4,7 @@ import std.types { NonEmptyStr, String, Port }
 
 // THE FLEET'S TAILNET DOMAIN, as a leaf. gunbc.fleet_intent_network fleet_intent_network carries it
 // as its topology's tailnet_domain, and the approval broker composes its public address from it
-// (gunbc.auth.approval_broker_endpoint approval_broker_base_url); a reader of the domain does not
+// (gunbc.auth.approval_broker_endpoint approval_broker_base_url_on); a reader of the domain does not
 // import the topology's assets, segments and endpoints.
 data fleet_tailnet_domain: NonEmptyStr? = Present { value: "tailecbe08.ts.net" }
 
@@ -13,7 +13,7 @@ data fleet_tailnet_domain: NonEmptyStr? = Present { value: "tailecbe08.ts.net" }
 // "https://srv1.tailecbe08.ts.net:8443", which re-minted two facts the corpus owns elsewhere -- the
 // tailnet domain (fleet_tailnet_domain above) and the host's identity, which each caller passes as
 // `host` from its own authority (gunbc.fleet_host_identity operator_host_srv1 for ntfy,
-// gunbc.auth.approval_broker_endpoint approval_broker_host_identity for the broker). Renaming the
+// the serving host for the broker, gunbc.auth.approval_broker_endpoint approval_broker_serving_base_url). Renaming the
 // tailnet or the host would have left that string stale while every modeled consumer moved.
 //
 // The address a CLIENT dials is a different fact from the address the SERVER listens on

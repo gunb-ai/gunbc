@@ -15,6 +15,7 @@ import gunbc.plans.joint_incompatibility_claim_join { joint_incompatibility_clai
 import gunbc.plans.for_while_loop_sugar { for_while_loop_sugar_plan }
 import gunbc.plans.demand_engine_program { demand_engine_program_plan }
 import gunbc.plans.ensure_closure_design { ensure_closure_design_plan }
+import gunbc.plans.convergence_coverage_program { convergence_coverage_program_plan }
 import gunbc.plans.v2_compiler_architecture { v2_compiler_architecture_plan }
 import gunbc.plans.v2_closed_pr_recovery { v2_closed_pr_recovery_plan }
 
@@ -33,6 +34,7 @@ data batch_g_plans: List<Plan> = [
   for_while_loop_sugar_plan,
   demand_engine_program_plan,
   ensure_closure_design_plan,
+  convergence_coverage_program_plan,
   v2_compiler_architecture_plan,
   v2_closed_pr_recovery_plan
 ]

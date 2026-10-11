@@ -1,10 +1,7 @@
 module test.claim.uri_percent_decode_witness
 
 import std.types { Bool, String }
-import extdeps.uri {
-  uri_percent_decode_component, UriPercentComponentDecoded, UriPercentComponentDecodeRefused,
-  UriPercentDecodeTruncatedEscape, UriPercentDecodeNonHexDigit, UriPercentDecodeNotUtf8,
-}
+import extdeps.uri.percent_encoding { uri_percent_decode_component, UriPercentComponentDecoded, UriPercentComponentDecodeRefused, UriPercentDecodeTruncatedEscape, UriPercentDecodeNonHexDigit, UriPercentDecodeNotUtf8 }
 
 fn decodes_to(wire: String, expected: String) -> Bool {
   match uri_percent_decode_component(value: wire) {
@@ -53,4 +50,21 @@ test fn octets_that_are_not_utf8_refuse() -> Bool {
     UriPercentComponentDecodeRefused { cause: UriPercentDecodeNonHexDigit { cp: _ } } => false
     UriPercentComponentDecoded { value: _ } => false
   }
+}
+
+// A SURROGATE SPELLED IN UTF-8 IS NOT UTF-8 (RFC 3629 section 3). ED A0 80 would assemble U+D800, so
+// the one std decoder refuses it, typed, and it never decodes to fabricated text. The positive control
+// mixes a literal non-ASCII character with the same character escaped, so the literal-octet path and
+// the escape path reach the decoder together.
+test fn a_surrogate_octet_sequence_refuses_typed() -> Bool {
+  match uri_percent_decode_component(value: "%ED%A0%80") {
+    UriPercentComponentDecodeRefused { cause: UriPercentDecodeNotUtf8 } => true
+    UriPercentComponentDecodeRefused { cause: UriPercentDecodeTruncatedEscape } => false
+    UriPercentComponentDecodeRefused { cause: UriPercentDecodeNonHexDigit { cp: _ } } => false
+    UriPercentComponentDecoded { value: _ } => false
+  }
+}
+
+test fn a_literal_scalar_and_its_escape_decode_alike() -> Bool {
+  uri_percent_decode_component(value: "\u{E9}%C3%A9") == UriPercentComponentDecoded { value: "\u{E9}\u{E9}" }
 }
