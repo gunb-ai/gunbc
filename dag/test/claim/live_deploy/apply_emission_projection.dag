@@ -4,6 +4,7 @@ import std.types { String, List }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentStep }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
 import gunbc.live_deploy.emit { apply_step_effects }
+import gunbc.auth.tracker_web_oauth_client { tracker_web_oidc_deploy_now_epoch }
 import gunbc.membership_reconcile { MemberEffect, EffectAdd, EffectReplace, EffectRemove }
 import v2.std.orchestration {
   Do, Run, PipelineStep, Comment, Exit, If, For, While, Retry, Let, Call,
@@ -136,8 +137,9 @@ fn pipeline_steps_text(steps: List<PipelineStep>) -> String {
 
 fn apply_emitted_steps_text(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> String {
   let effects = apply_empty_host_effects(spec: spec)
+  let oidc_now = tracker_web_oidc_deploy_now_epoch()
   pipeline_steps_text(steps: flat_map(
     spec.steps,
-    st => apply_step_effects(step: st, effects: effects, spec: spec, plan: plan),
+    st => apply_step_effects(step: st, effects: effects, spec: spec, plan: plan, oidc_now: oidc_now),
   ))
 }

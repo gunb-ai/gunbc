@@ -112,6 +112,7 @@ import gunbc.live_deploy.effect_leaf {
   dpkg_status_effect,
 }
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port }
+import gunbc.auth.tracker_web_oauth_client { tracker_web_oidc_deploy_now_epoch }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, SystemdServiceDirective, ExecStart,
   systemd_unit_file_lines,
@@ -1082,6 +1083,7 @@ test fn production_apply_serves_its_own_endpoint_and_scopes_no_path() -> Bool {
     },
     spec: spec,
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+    oidc_now: none,
   ))
   let route = deployment_serve_route_script(endpoint: spec.names.tailscale_serve_endpoint, enabled: true)
   !string_contains(s: own, pattern: "tailscale")
@@ -1298,7 +1300,7 @@ test fn the_preamble_ensures_the_publication_principal_as_a_nologin_system_accou
 fn member_fragment_text(member: ConvergedMember, plan: ReleaseEffectPlan) -> String {
   join(
     map(
-      emit_release_member_effects(member: member, plan: plan, spec: deployment_spec_srv1()),
+      emit_release_member_effects(member: member, plan: plan, spec: deployment_spec_srv1(), oidc_now: tracker_web_oidc_deploy_now_epoch()),
       st => match st {
         Do { run } => run.command
         Comment { text: _ } => ""

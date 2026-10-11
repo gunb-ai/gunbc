@@ -27,6 +27,7 @@ import gunbc.live_deploy.spec {
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import std.types { List, NonEmptyStr, CommitSha }
 import v2.std.orchestration { PipelineStep, Do, Run }
+import v2.std.collection { Present, Absent }
 
 // THE KEYSTONE. srv1-live resolves the dispatch attempt-state root to a path it does not own
 // alone — it is DispatchStateHostShared, so that root answers for the host, not for this instance.
@@ -128,6 +129,7 @@ fn belt_upsert_commands() -> List<String> {
     art: art,
     spec: spec,
     revision: RevisionBoundAtEmission { revision: "0000000000000000000000000000000000000000" as CommitSha },
+    oidc_now: none,
   ))
 }
 

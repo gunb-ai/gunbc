@@ -33,12 +33,14 @@ import gunbc.auth.tracker_web_oauth_client {
   tracker_web_unassigned_redirects,
   tracker_web_test_srv2_redirect_uri,
   tracker_web_oauth_frontier_rows,
+  tracker_web_oidc_deploy_now_epoch,
 }
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.live_deploy.emit {
   apply_step_effects, apply_oidc_config_steps_at,
   live_deploy_serve_unit_emission, live_deploy_serve_unit_emission_at,
   LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused,
+  live_deploy_oidc_unit_env_at, LiveDeployOidcEnvAdmitted, LiveDeployOidcEnvRefused,
 }
 import extdeps.units.iso8601_calendar { iso8601_utc_text }
 import gunbc.live_deploy.desired { srv1_lab_desired_deployment, srv1_production_desired_deployment, selected_deployment_spec }
@@ -195,7 +197,7 @@ test fn lab_apply_identity_route_writes_oidc_config_file() -> Bool {
   }).first() {
     Absent => false
     Present { value: step } =>
-      let sh = pipeline_steps_text(steps: apply_step_effects(step: step, effects: effects, spec: spec, plan: plan))
+      let sh = pipeline_steps_text(steps: apply_step_effects(step: step, effects: effects, spec: spec, plan: plan, oidc_now: tracker_web_oidc_deploy_now_epoch()))
       string_contains(s: sh, pattern: tracker_web_test_oidc_config_host_path as String)
         && string_contains(s: sh, pattern: "0600")
         && string_contains(s: sh, pattern: "gunbc-oidc-config.json")
@@ -221,6 +223,16 @@ test fn lab_serve_unit_emission_refuses_when_console_readback_expired() -> Bool 
   ) {
     LiveDeployServeUnitOidcReadbackRefused { cause: _ } => true
     LiveDeployServeUnitEmitted { file: _ } => false
+  }
+}
+
+test fn lab_oidc_unit_env_refuses_when_console_readback_expired() -> Bool {
+  match live_deploy_oidc_unit_env_at(
+    spec: selected_deployment_spec(row: srv1_lab_desired_deployment()),
+    now_epoch: tracker_web_test_console_readback_valid_until_epoch,
+  ) {
+    LiveDeployOidcEnvRefused { cause: _ } => true
+    LiveDeployOidcEnvAdmitted { directives: _ } => false
   }
 }
 
