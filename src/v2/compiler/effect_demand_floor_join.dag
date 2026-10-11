@@ -3,7 +3,6 @@ module v2.compiler.effect_demand_floor_join
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
 import std.types { NonEmptyStr, List }
-import gunbc.ci.ci_layer_roots { witness_exclusion_substrings }
 import v2.compiler.effect_demand { SeamStanding, effect_demand_seam_roster }
 import v2.lens.module_graph {
   ModuleDeclarationFact,
@@ -20,7 +19,7 @@ import v2.std.collection { Map, empty_map, map_insert }
 import v2.std.integer { Int }
 import std.optional { Absent, Optional, Present }
 import v2.std.text { String }
-import v2.workflow.floor_discovery_row { FloorDiscoveryRow }
+import v2.workflow.floor_discovery_row { FloorDiscoveryRow, FloorMarkedSource }
 import v2.workflow.floor_discovery_producer { discover_floor_corpus_rows_from_host_facts }
 import v2.workflow.floor_discovery_source_authority { FloorDiscoveryAccepted, FloorDiscoveryProducerResult, FloorDiscoveryRefused }
 import v2.workflow.required_floor {
@@ -325,12 +324,16 @@ fn effect_demand_floor_join(
 // substrate producer of those records exists today, so this shell supplies none and says so in
 // owned_data_records_supplied, which the joined result carries. A consumer that needs the owned-data
 // witnesses in the population is reading a stated lower bound, not a silent one, and the digest is
-// over exactly the basis the result names.
+// over exactly the basis the result names. The test-marked functions are the SUPPLIED marker fact of
+// each walked file (FloorMarkedSource), so this shell takes them from whoever holds the canonical
+// parse and a walked file with no supplied fact refuses inside discovery rather than reading as a
+// file with no tests.
 fn effect_demand_floor_join_live(
   source_roots: List<String>,
-  exclude_substrings: List<String>
+  exclude_substrings: List<String>,
+  marked_sources: List<FloorMarkedSource>
 ) -> FloorStandingJoin {
-  match discover_floor_corpus_rows_from_host_facts(source_roots: source_roots, exclude_substrings: exclude_substrings, owned_data_records: Empty) {
+  match discover_floor_corpus_rows_from_host_facts(source_roots: source_roots, exclude_substrings: exclude_substrings, owned_data_records: Empty, marked_sources: marked_sources) {
     FloorDiscoveryRefused { reason } => FloorStandingJoinRefused { cause: DiscoveryRefused { reason: reason } },
     FloorDiscoveryAccepted { rows } => effect_demand_floor_join(
       discovered: rows,
@@ -340,32 +343,4 @@ fn effect_demand_floor_join_live(
       owned_data_records_supplied: 0
     )
   }
-}
-
-// THE DEFAULT LIVE ENTRY BINDS THE FLOOR'S OWN ROOTS AND EXCLUSIONS, not a copy of them. The required
-// floor's Rust runner parses witness_exclusion_substrings out of gunbc.ci.ci_layer_roots; this shell
-// reads the same declaration through an import, so the two cannot drift apart without a resolve
-// refusal, and a discovery refusal here over a test-marked declaration outside a *_test.dag file is
-// the same refusal the floor would raise, not a defect in this producer. The digest entry returns text
-// so a consumer can quote it: a digest on success, or the refusal in the same words the join carries.
-data effect_demand_floor_join_source_roots: List<String> = ["dag", "src/v2"]
-
-fn effect_demand_floor_join_live_default() -> FloorStandingJoin {
-  effect_demand_floor_join_live(source_roots: effect_demand_floor_join_source_roots, exclude_substrings: witness_exclusion_substrings())
-}
-
-fn effect_demand_floor_join_digest_text(join: FloorStandingJoin) -> String {
-  match join {
-    FloorStandingJoinRefused { cause } => match cause {
-      DiscoveryRefused { reason } => concat("refused: discovery: ", reason),
-      EntryPathUndeclared { entry_path, function } => concat(concat(concat("refused: entry path undeclared: ", entry_path), " fn "), function),
-      DuplicateClaimIdentity { claim_identity } => concat("refused: duplicate claim identity: ", claim_identity),
-      JoinPopulationEmpty => "refused: join population empty"
-    },
-    FloorStandingJoined { rows, counts, digest, seam_modules, owned_data_records_supplied } => concat("digest=", digest)
-  }
-}
-
-fn effect_demand_floor_join_digest_live() -> String {
-  effect_demand_floor_join_digest_text(join: effect_demand_floor_join_live_default())
 }

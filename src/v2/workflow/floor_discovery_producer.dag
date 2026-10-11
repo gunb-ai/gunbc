@@ -1,6 +1,6 @@
 module v2.workflow.floor_discovery_producer
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.source_root_read { source_root_candidate_is_file }
 
 import v2.compiler.discovery_enumeration {
   OwnedBoolWitnessClaimInit,
@@ -9,7 +9,7 @@ import v2.compiler.discovery_enumeration {
   OwnedNodeCorpusInit,
   OwnedOtherInit
 }
-import v2.workflow.floor_discovery_row { FloorDiscoveryRow }
+import v2.workflow.floor_discovery_row { FloorDiscoveryRow, FloorMarkedSource }
 import v2.workflow.floor_discovery_source_authority {
   EntryLiveTreeDispositionRefused,
   EntryLiveTreeResolved,
@@ -27,6 +27,7 @@ import v2.workflow.floor_discovery_source_authority {
   floor_discovery_walk_state_zero
 }
 import v2.workflow.witness_admission { witness_row_excluded_from_discovery }
+import v2.std.collection { empty_map, map_insert, map_lookup }
 import std.optional {
   Absent,
   Optional,
@@ -35,7 +36,7 @@ import std.optional {
   optional_present
 }
 import v2.std.algebra { any, length, fold_list }
-import std.types { String, Int, List }
+import std.types { String, Int, List, Map }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
 // Source ingress shared with required-floor preparation. This is the full ingress inventory,
@@ -60,20 +61,92 @@ fn floor_discovery_source_inventory_live(pool_roots: List<String>) -> FloorDisco
 // discovery-corpus mode's row admission, and finalizes. The per-file authority itself carries no
 // effect and no policy, which is what lets the required floor — and the emitted native compiler's
 // own universe derivation — compose it without either.
+//
+// WHAT IS A TEST IS NOT DECIDED HERE. The walk learns which declarations are tests from the marker
+// fact it is SUPPLIED for each file (FloorMarkedSource), and it never infers a test, a directory or
+// a witness from a name: a `.dag` file is a module because of its extension, a path is a directory
+// because the host's listing succeeded, and a declaration is a test because it carries the authored
+// `test` marker.
+
+// The marker facts of one walk, keyed by repo_path. The index is built ONCE per walk because the
+// corpus is thousands of files: a List scan per file is the quadratic fold DESIGN section 6 fixes
+// regardless of realized n. A path named by two facts is its own arm and not a last-write-wins
+// entry, because a supplier that disagrees with itself about one file has no answer for it.
+type FloorMarkedFact
+  = FloorMarkedFactSupplied { marked: List<String> }
+  | FloorMarkedFactDuplicated
+
+fn floor_discovery_marked_index(marked_sources: List<FloorMarkedSource>) -> Map<String, FloorMarkedFact> {
+  fold(
+    marked_sources,
+    init: empty_map(),
+    f: fn(acc, source) {
+      match map_lookup(m: acc, key: source.repo_path) {
+        Absent => map_insert(
+          m: acc,
+          key: source.repo_path,
+          value: FloorMarkedFactSupplied { marked: source.marked }
+        )
+        Present { value: _ } => map_insert(
+          m: acc,
+          key: source.repo_path,
+          value: FloorMarkedFactDuplicated
+        )
+      }
+    }
+  )
+}
+
+fn floor_discovery_marked_fact_missing_reason(repo_path: String) -> String {
+  concat(
+    "no marker fact was supplied for ",
+    repo_path,
+    " (typed refusal: an absent fact is not an empty list of tests)"
+  )
+}
+
+fn floor_discovery_marked_fact_duplicated_reason(repo_path: String) -> String {
+  concat(
+    "more than one marker fact was supplied for ",
+    repo_path,
+    " (typed refusal: the supplier disagrees with itself about this file)"
+  )
+}
 
 fn floor_discovery_process_dag_file(
   state: FloorDiscoveryWalkState,
   repo_path: String,
+  marked_index: Map<String, FloorMarkedFact>,
   exclude_substrings: List<String>
 ) -> FloorDiscoveryWalkState {
   if floor_discovery_path_excluded(path: repo_path, exclude_substrings: exclude_substrings) {
     state
   } else {
-    let read_out = Filesystem.Read(path: repo_path)
-    if !read_out.success {
-      floor_discovery_record_walk_failure(state: state, path: repo_path)
-    } else {
-      floor_discovery_fold_source(state: state, repo_path: repo_path, content: read_out.content)
+    match map_lookup(m: marked_index, key: repo_path) {
+      Absent => floor_discovery_record_disposition_refusal(
+        state: state,
+        reason: floor_discovery_marked_fact_missing_reason(repo_path: repo_path)
+      )
+      Present { value: fact } =>
+        match fact {
+          FloorMarkedFactDuplicated => floor_discovery_record_disposition_refusal(
+            state: state,
+            reason: floor_discovery_marked_fact_duplicated_reason(repo_path: repo_path)
+          )
+          FloorMarkedFactSupplied { marked: marked } => {
+            let read_out = Filesystem.Read(path: repo_path)
+            if !read_out.success {
+              floor_discovery_record_walk_failure(state: state, path: repo_path)
+            } else {
+              floor_discovery_fold_source(
+                state: state,
+                repo_path: repo_path,
+                marked: marked,
+                content: read_out.content
+              )
+            }
+          }
+        }
     }
   }
 }
@@ -105,67 +178,81 @@ fn floor_discovery_apply_row_admission(state: FloorDiscoveryWalkState) -> FloorD
     ),
     walk_failures: state.walk_failures,
     walk_failure_path: state.walk_failure_path,
-    sidecar_violations: state.sidecar_violations,
+    wire_contract_misplaced_paths: state.wire_contract_misplaced_paths,
     disposition_refusal: state.disposition_refusal
   }
 }
 
-fn floor_discovery_child_is_directory_candidate(name: String) -> Bool {
-  (name != "") && !string_contains(s: name, pattern: ".")
+// THE WALK KNOWS A DIRECTORY BY WHAT THE HOST SAID, NOT BY WHAT IT IS CALLED. A `.dag` path is a
+// module file; every other path is listed, and a failed listing is a file only when the host's own
+// failure kind says NotADirectory (gunbc.source_root_read source_root_candidate_is_file, the one
+// authority for that admission). Any other failure -- a vanished entry, a permission refusal, a
+// broken link -- is a located walk failure and the finalize refuses, so a failed listing is never
+// read as an empty directory and the corpus cannot shrink silently. A root is always a directory.
+fn floor_discovery_walk_path(
+  state: FloorDiscoveryWalkState,
+  path: String,
+  is_root: Bool,
+  marked_index: Map<String, FloorMarkedFact>,
+  exclude_substrings: List<String>
+) -> FloorDiscoveryWalkState {
+  if !is_root && ends_with(s: path, suffix: ".dag") {
+    floor_discovery_process_dag_file(
+      state: state,
+      repo_path: path,
+      marked_index: marked_index,
+      exclude_substrings: exclude_substrings
+    )
+  } else {
+    let listed = Filesystem.List(path: path)
+    if listed.success {
+      if listed.entries == "" {
+        state
+      } else {
+        fold(
+          split(s: listed.entries, delimiter: "\n"),
+          init: state,
+          f: fn(acc, name) {
+            if name == "" {
+              acc
+            } else {
+              floor_discovery_walk_path(
+                state: acc,
+                path: concat(path, "/", name),
+                is_root: false,
+                marked_index: marked_index,
+                exclude_substrings: exclude_substrings
+              )
+            }
+          }
+        )
+      }
+    } else if source_root_candidate_is_file(root: is_root, error_kind: listed.error_kind) {
+      state
+    } else {
+      floor_discovery_record_walk_failure(state: state, path: path)
+    }
+  }
 }
 
 fn floor_discovery_walk_dir(
   state: FloorDiscoveryWalkState,
   dir_path: String,
+  marked_sources: List<FloorMarkedSource>,
   exclude_substrings: List<String>
 ) -> FloorDiscoveryWalkState {
-  let listed = Filesystem.List(path: dir_path)
-  if !listed.success {
-    floor_discovery_record_walk_failure(state: state, path: dir_path)
-  } else if listed.entries == "" {
-    state
-  } else {
-    fold(
-      split(s: listed.entries, delimiter: "\n"),
-      init: state,
-      f: fn(acc, name) {
-        if name == "" {
-          acc
-        } else {
-          let child = concat(dir_path, "/", name)
-          if ends_with(s: name, suffix: ".dag") {
-            floor_discovery_process_dag_file(
-              state: acc,
-              repo_path: child,
-              exclude_substrings: exclude_substrings
-            )
-          } else if floor_discovery_child_is_directory_candidate(name: name) {
-            floor_discovery_walk_dir(
-              state: acc,
-              dir_path: child,
-              exclude_substrings: exclude_substrings
-            )
-          } else {
-            acc
-          }
-        }
-      }
-    )
-  }
+  floor_discovery_walk_path(
+    state: state,
+    path: dir_path,
+    is_root: true,
+    marked_index: floor_discovery_marked_index(marked_sources: marked_sources),
+    exclude_substrings: exclude_substrings
+  )
 }
 
-fn floor_discovery_unified_claim_label(decl_name: String) -> String {
-  if starts_with(s: decl_name, prefix: "unified_claim_") {
-    substring(
-      s: decl_name,
-      start: 14,
-      end: string_length(s: decl_name)
-    )
-  } else {
-    decl_name
-  }
-}
-
+// An owned-data row's label is its declaration name, exactly as a marked test's label is its
+// function: a label names the row and decides nothing (no consumer reads it for a decision), so no
+// prefix of the name is stripped to make it.
 fn floor_discovery_merge_owned_data_record(
   state: FloorDiscoveryWalkState,
   rec: OwnedDataDeclRecord
@@ -196,7 +283,7 @@ fn floor_discovery_merge_owned_data_record(
               floor_discovery_append_row(
                 state: state,
                 row: FloorDiscoveryRow {
-                  label: floor_discovery_unified_claim_label(decl_name: rec.decl_name),
+                  label: rec.decl_name,
                   entry: entry,
                   function: function,
                   reads_live_tree: reads_live
@@ -213,8 +300,10 @@ fn floor_discovery_merge_owned_data_record(
 fn discover_floor_corpus_rows_from_host_facts(
   source_roots: List<String>,
   exclude_substrings: List<String>,
-  owned_data_records: List<OwnedDataDeclRecord>
+  owned_data_records: List<OwnedDataDeclRecord>,
+  marked_sources: List<FloorMarkedSource>
 ) -> FloorDiscoveryProducerResult {
+  let marked_index = floor_discovery_marked_index(marked_sources: marked_sources)
   floor_discovery_finalize(
     state: fold(
       owned_data_records,
@@ -223,9 +312,11 @@ fn discover_floor_corpus_rows_from_host_facts(
           source_roots,
           init: floor_discovery_walk_state_zero(),
           f: fn(acc, root) {
-            floor_discovery_walk_dir(
+            floor_discovery_walk_path(
               state: acc,
-              dir_path: root,
+              path: root,
+              is_root: true,
+              marked_index: marked_index,
               exclude_substrings: exclude_substrings
             )
           }
@@ -248,6 +339,4 @@ fn discover_floor_corpus_rows_from_host_facts(
 // admitted witness stays in this roster and runs per-PR — under the previous file-grain exclusion
 // it was swept out with its neighbour, which is the defect this closes.
 
-data floor_discovery_producer_note: String = "Floor discovery producer: enrolled witness roster = pure fold over Filesystem.List/Read host facts, owned-data transport records (host-materialized from scan_dirs by invoke_floor_discovery_producer before the producer call — scan_dirs is not a producer parameter), witness_exclusion_substrings, and *_test.dag naming rules. List/read failures increment walk_failures with a located Optional path; finalize refuses, never an empty roster. Interior directory candidates (basename has no '.') are descended; dotted basenames are skipped as non-dag files."
-
-data floor_discovery_directory_candidate_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: floor_discovery_directory_candidate — basename-without-dot descent heuristic dissolves when Filesystem.List surfaces entry kind (file | directory) and the walker consumes it; live dag/ + src/v2/ corpora have zero dotted directory basenames today (find -type d -name '*.*' empty).")
+data floor_discovery_producer_note: String = "Floor discovery producer: enrolled witness roster = pure fold over Filesystem.List/Read host facts, owned-data transport records (host-materialized from scan_dirs by invoke_floor_discovery_producer before the producer call — scan_dirs is not a producer parameter), the per-file marker facts the host supplies (marked_sources: the declarations carrying the authored `test` marker, read from the canonical parse), and witness_exclusion_substrings. A walked `.dag` file with no supplied marker fact refuses, and so does a path named by two facts; an absent fact is never an empty list of tests. List/read failures increment walk_failures with a located Optional path; finalize refuses, never an empty roster. A path is a directory when its listing succeeds and a file when the host's failure kind says NotADirectory; any other listing failure is a walk failure."
