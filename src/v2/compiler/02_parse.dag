@@ -953,54 +953,49 @@ fn parse_wrap_production_captured(
 // recorded here -- so no consumed token sits only under a child without one. It reads direct children only, never descendants. A composite none of whose children has
 // an extent consumed nothing and records nothing, rather than a zero-width range at a guessed place.
 fn parse_composite_extent(index: SpanIndex, id: OccurrenceId, children: List<Node>) -> SpanIndex {
-  let span = fold_list(
-    xs: children,
-    empty: ParseExtentSpan { file: optional_absent(), start: optional_absent(), end: optional_absent() },
-    cons: fn(acc, child) { parse_extent_span_step(acc: acc, index: index, child: child) }
-  )
-  match span.file {
-    Absent => index
-    Present { value: file } =>
-      match span.start {
-        Absent => index
-        Present { value: start } =>
-          match span.end {
-            Absent => index
-            Present { value: end } =>
-              span_index_record_extent(
-                index: index,
-                id: id,
-                extent: Textual { file: file, extent: ByteRange { start: start, end: end } }
-              )
-          }
-      }
+  match fold_list(xs: children, empty: ParseExtentNoneYet, cons: fn(acc, child) { parse_extent_span_step(acc: acc, index: index, child: child) }) {
+    ParseExtentSpan { file: file, start: start, end: end } =>
+      span_index_record_extent(index: index, id: id, extent: Textual { file: file, extent: ByteRange { start: start, end: end } })
+    ParseExtentNoneYet => index
+    ParseExtentUnreadable => index
   }
 }
 
-type ParseExtentSpan {
-  file: Optional<Symbol>
-  start: Optional<Int>
-  end: Optional<Int>
-}
 
-fn parse_extent_span_step(acc: ParseExtentSpan, index: SpanIndex, child: Node) -> ParseExtentSpan {
-  match node_occurrence_id_optional(node: child) {
-    Absent => acc
-    Present { value: child_id } =>
-      match span_index_extent(index: index, id: child_id) {
+// THE FOLD OVER A COMPOSITE'S CHILDREN, as a closed sum: nothing read yet, a same-file byte range,
+// or a child whose extent this cannot compose. A child in another file, a WholeFile locus or a
+// non-textual locus is UNREADABLE and absorbing: the parent then records no extent rather than a
+// range that silently omits that child (DESIGN 5: a failure arm refuses, never narrows). A child
+// with no extent consumed nothing and leaves the fold unchanged.
+type ParseExtentFold
+  = ParseExtentNoneYet
+  | ParseExtentSpan { file: Symbol, start: Int, end: Int }
+  | ParseExtentUnreadable
+
+fn parse_extent_span_step(acc: ParseExtentFold, index: SpanIndex, child: Node) -> ParseExtentFold {
+  match acc {
+    ParseExtentUnreadable => ParseExtentUnreadable
+    _ =>
+      match node_occurrence_id_optional(node: child) {
         Absent => acc
-        Present { value: locus } =>
-          match locus {
-            Textual { file: f, extent: ext } =>
-              match ext {
-                ByteRange { start: s, end: e } =>
-                  match acc.start {
-                    Absent => ParseExtentSpan { file: optional_present(value: f), start: optional_present(value: s), end: optional_present(value: e) }
-                    Present { value: _ } => ParseExtentSpan { file: acc.file, start: acc.start, end: optional_present(value: e) }
+        Present { value: child_id } =>
+          match span_index_extent(index: index, id: child_id) {
+            Absent => acc
+            Present { value: locus } =>
+              match locus {
+                Textual { file: f, extent: ext } =>
+                  match ext {
+                    ByteRange { start: s, end: e } =>
+                      match acc {
+                        ParseExtentNoneYet => ParseExtentSpan { file: f, start: s, end: e }
+                        ParseExtentSpan { file: af, start: astart, end: _ } =>
+                          if af == f { ParseExtentSpan { file: af, start: astart, end: e } } else { ParseExtentUnreadable }
+                        ParseExtentUnreadable => ParseExtentUnreadable
+                      }
+                    WholeFile => ParseExtentUnreadable
                   }
-                WholeFile => acc
+                _ => ParseExtentUnreadable
               }
-            _ => acc
           }
       }
   }
