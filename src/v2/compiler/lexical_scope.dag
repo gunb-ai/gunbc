@@ -28,7 +28,7 @@ import v2.std.node {
   positional_child_count,
   positional_edges
 }
-import v2.std.type_binder { edge_is_type_params }
+import v2.std.type_binder { edge_is_cast_target, edge_is_type_annotation, edge_is_type_params }
 import v2.compiler.namespace_graft { namespace_graft_module_body_optional }
 import v2.extdeps.languages.dag { namespace_graft_node_is_module_body }
 
@@ -217,6 +217,69 @@ fn bind_slot_sees_binder(slot: BindSlot) -> Bool {
     BindBinderSlot => false
     BindValueSlot => false
     BindBodySlot => true
+  }
+}
+
+// ---- The value binders a child sees --------------------------------------------------------------------
+
+// WHICH VALUE BINDERS EACH CHILD OF A NODE SEES, as one fact derived from the slot tables above. A walk
+// that carries the value binders in scope (module acquisition's reference-site collector) asks it per child
+// instead of re-deciding where an Arrow's parameters and a `let`'s binder are visible. It names the value
+// binders these two constructs introduce and no others: a match arm's pattern binders, a loop's carriers and
+// the type parameters of an Arrow are bound by constructs whose binder-versus-constructor or kind decision
+// needs the resolution namespace, so a walk that reads only this table sees a SUBSET of the names resolution
+// sees, never a superset. A name this table does not bind is therefore not known to be unbound.
+type ValueFrame
+  = NoValueFrame
+  | ArrowValueFrame { params: List<Symbol> }
+  | BindValueFrame { binder: Symbol }
+
+fn node_value_frame(n: Node) -> ValueFrame {
+  match n.kind {
+    TypeNode { connective: Arrow } => ArrowValueFrame { params: arrow_domain_binder_names(n: n) }
+    ComputationNode { behavior: Bind } =>
+      match bind_binder(n: n) {
+        Present { value: b } => BindValueFrame { binder: b.name }
+        Absent => NoValueFrame
+      }
+    TypeNode { connective: _ } => NoValueFrame
+    ComputationNode { behavior: _ } => NoValueFrame
+  }
+}
+
+type ChildValueScope
+  = ChildSeesParentValues
+  | ChildSeesNoValues
+  | ChildSeesParentValuesAnd { names: List<Symbol> }
+
+// A TYPE-ROLE EDGE is resolved in the type scope, which holds type parameters and no value binder
+// (v2.compiler.resolve resolve_type_role_target), so a child on one sees no value at all. The Arrow's
+// ordinal counts ALL of its children and the Bind's counts its POSITIONAL children only, exactly as the
+// slot tables above are keyed.
+fn child_value_scope(frame: ValueFrame, edge: Edge, ordinal: Int, positional_ordinal: Int) -> ChildValueScope {
+  if edge_is_cast_target(e: edge) || edge_is_type_annotation(e: edge) {
+    ChildSeesNoValues
+  } else {
+    match frame {
+      NoValueFrame => ChildSeesParentValues
+      ArrowValueFrame { params: ps } =>
+        if arrow_slot_scope_binds_value_params(scope: arrow_slot_scope(slot: arrow_slot(e: edge, ordinal: ordinal))) {
+          ChildSeesParentValuesAnd { names: ps }
+        } else {
+          ChildSeesParentValues
+        }
+      BindValueFrame { binder: name } =>
+        match edge.label {
+          Positional =>
+            if bind_slot_sees_binder(slot: bind_positional_slot(ordinal: positional_ordinal)) {
+              ChildSeesParentValuesAnd { names: list_snoc_item(xs: [], item: name) }
+            } else {
+              ChildSeesParentValues
+            }
+          Authored { name: _ } => ChildSeesParentValues
+          StructuralLabel { label: _ } => ChildSeesParentValues
+        }
+    }
   }
 }
 

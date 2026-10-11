@@ -31,7 +31,16 @@ import v2.compiler.normalize { normalize }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { ParseArtifact, PreparedGrammar, parse_module_prepared, prepare_grammar }
 import v2.compiler.test_marker_capture { test_marker_content }
-import v2.compiler.reference_site_collector { collect_module_reference_sites, reference_site_collection_is_total }
+import v2.compiler.reference_site_collector {
+  HeadBoundAtRootValue,
+  HeadBoundInFrame,
+  HeadLexicallyUnbound,
+  ScopedReferenceSite,
+  ScopedReferenceSiteCollection,
+  SiteHeadBinding,
+  collect_scoped_module_reference_sites,
+  scoped_reference_site_collection_is_total
+}
 import v2.compiler.source_authority {
   ModuleFileAbsent,
   ModuleFileDerived,
@@ -101,6 +110,17 @@ import extdeps.communication.medium { Lossless, Medium }
 // or local declaration binds reaches the resolver unbound and refuses there, naming the spelling.
 // A qualified spelling that names no module requests nothing -- it may be a member access on a
 // local, which the resolver judges -- while an import or entry that names no module refuses at once.
+//
+// A SPELLING WHOSE HEAD A VISIBLE BINDER BINDS IS A PROJECTION, NOT A MODULE REFERENCE, AND IS NEVER PROBED.
+// `x.y` with `x` a parameter, a `let` binder or a module-level value is a field projection off `x`; reading
+// `<root>/x/y.dag` for it would make the verdict depend on a file the program does not mention, so an
+// unrelated or malformed same-named module could change what a program means. Whether a head is bound is
+// decided from the lexical frames at the site (v2.compiler.lexical_scope), the producer resolution reads
+// too, never from the spelling's shape. THE FRAMES THIS READS ARE A SUBSET OF RESOLUTION'S: a match arm's
+// pattern binder, a loop carrier, a type parameter and an imported value are bound by constructs whose
+// binder-versus-constructor or kind decision needs the resolution namespace, so a head only one of those
+// binds is still a candidate here. The collision that leaves is exact: such a binder spelled like a layout
+// root namespace AND a module `<root>.<field>` that exists and is unreadable or malformed.
 //
 // THE DECISIONS ARE v2.compiler.source_authority's, THE READS ARE THIS MODULE'S. That module owns the
 // pure decisions (which file a name is stored at, the prefix order, the tri-state probe, the
@@ -398,18 +418,33 @@ fn acquisition_uncovered_binding_texts(tree: NormalizedTree, imported: List<Stri
   })
 }
 
-// A reference site's spelling, kept once per module. A one-segment spelling is a bare name and is not
-// requestable (R1).
-fn acquisition_reference_texts(tree: NormalizedTree) -> List<String> {
+// A reference site's spelling, kept once per module, when the site can name a module at all. A one-segment
+// spelling is a bare name and is not requestable (R1). A spelling whose head an enclosing binder or a
+// module-level value declaration binds is a projection off that binder and names no module, so it requests
+// nothing: whether a spelling is a module reference is decided by the lexical frames at its site
+// (v2.compiler.lexical_scope, through v2.compiler.reference_site_collector), the same frames resolution reads,
+// and never by the spelling.
+fn acquisition_reference_texts(collection: ScopedReferenceSiteCollection) -> List<String> {
   fold_list(
-    xs: collect_module_reference_sites(root: tree.root).sites,
+    xs: collection.sites,
     empty: AcquisitionSeen { order: [], seen: empty_map() },
-    cons: fn(acc, site) { acquisition_seen_site(acc: acc, text: qualified_name_to_dotted_string(qn: site.spelling)) }
+    cons: fn(acc, scoped) { acquisition_seen_site(acc: acc, scoped: scoped) }
   ).order
 }
 
-fn acquisition_seen_site(acc: AcquisitionSeen, text: String) -> AcquisitionSeen {
-  if acquisition_spelling_is_qualified(spelling: text) && !text_set_has(set: acc.seen, name: text) {
+// Only a head no visible binder binds is a candidate module reference. The other two answers are
+// projections: they request nothing and read nothing.
+fn acquisition_head_is_candidate_module(head: SiteHeadBinding) -> Bool {
+  match head {
+    HeadLexicallyUnbound => true
+    HeadBoundInFrame => false
+    HeadBoundAtRootValue => false
+  }
+}
+
+fn acquisition_seen_site(acc: AcquisitionSeen, scoped: ScopedReferenceSite) -> AcquisitionSeen {
+  let text = qualified_name_to_dotted_string(qn: scoped.site.spelling)
+  if acquisition_head_is_candidate_module(head: scoped.head) && acquisition_spelling_is_qualified(spelling: text) && !text_set_has(set: acc.seen, name: text) {
     AcquisitionSeen {
       order: list_snoc_item(xs: acc.order, item: text),
       seen: map_insert(m: acc.seen, key: text, value: true)
@@ -419,21 +454,26 @@ fn acquisition_seen_site(acc: AcquisitionSeen, text: String) -> AcquisitionSeen 
   }
 }
 
-fn acquisition_read_requests(front: AcquisitionFrontEnd, module: String, file: ModuleFileRef) -> AcquisitionMemberRead {
+fn acquisition_read_requests(
+  front: AcquisitionFrontEnd,
+  sites: ScopedReferenceSiteCollection,
+  module: String,
+  file: ModuleFileRef
+) -> AcquisitionMemberRead {
   match admission_from_module_root(root: front.parse_root) {
     Rejected { diagnostics: d } =>
       AcquisitionMemberReadRefused { refusal: AcquisitionMemberRefused { module: module, file: file, diagnostics: d } }
     Accepted { value: admission, diagnostics: _ } =>
-      acquisition_requests_ok(front: front, imported: acquisition_import_texts(rows: admission.imports))
+      acquisition_requests_ok(front: front, sites: sites, imported: acquisition_import_texts(rows: admission.imports))
   }
 }
 
-fn acquisition_requests_ok(front: AcquisitionFrontEnd, imported: List<String>) -> AcquisitionMemberRead {
+fn acquisition_requests_ok(front: AcquisitionFrontEnd, sites: ScopedReferenceSiteCollection, imported: List<String>) -> AcquisitionMemberRead {
   AcquisitionMemberReadOk {
     requests: MemberRequests {
       imports: imported,
       members: acquisition_uncovered_binding_texts(tree: front.tree, imported: imported),
-      references: acquisition_reference_texts(tree: front.tree)
+      references: acquisition_reference_texts(collection: sites)
     },
     test_markers: list_map(xs: front.tree.test_markers.marked, f: fn(marked) { symbol_lexeme(sym: marked.name) })
   }
@@ -507,16 +547,26 @@ fn acquisition_test_markers(env: AcquisitionEnv, file: ModuleFileRef, content: S
   }
 }
 
+// The member's sites are collected ONCE: the totality check and the requests read the same collection.
+fn acquisition_sites_requests(
+  front: AcquisitionFrontEnd,
+  sites: ScopedReferenceSiteCollection,
+  module: String,
+  file: ModuleFileRef
+) -> AcquisitionMemberRead {
+  if scoped_reference_site_collection_is_total(collection: sites) {
+    acquisition_read_requests(front: front, sites: sites, module: module, file: file)
+  } else {
+    AcquisitionMemberReadRefused { refusal: AcquisitionMemberSitesUnreadable { module: module, file: file } }
+  }
+}
+
 fn acquisition_member_requests(env: AcquisitionEnv, module: String, file: ModuleFileRef, content: String) -> AcquisitionMemberRead {
   match acquisition_front_end(env: env, file: file, content: content) {
     Rejected { diagnostics: d } =>
       AcquisitionMemberReadRefused { refusal: AcquisitionMemberRefused { module: module, file: file, diagnostics: d } }
     Accepted { value: front, diagnostics: _ } =>
-      if reference_site_collection_is_total(collection: collect_module_reference_sites(root: front.tree.root)) {
-        acquisition_read_requests(front: front, module: module, file: file)
-      } else {
-        AcquisitionMemberReadRefused { refusal: AcquisitionMemberSitesUnreadable { module: module, file: file } }
-      }
+      acquisition_sites_requests(front: front, sites: collect_scoped_module_reference_sites(root: front.tree.root), module: module, file: file)
   }
 }
 

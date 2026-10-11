@@ -48,7 +48,7 @@ import v2.compiler.module_acquisition {
   top_level_namespaces
 }
 import v2.cli.repository_layout { repository_storage_layout }
-import v2.compiler.parse { prepare_grammar }
+import v2.compiler.parse { PreparedGrammar, prepare_grammar }
 import v2.compiler.tokenize { prepare_lex_rules }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -260,18 +260,22 @@ fn member_read_text(read: AcquisitionMemberRead) -> String {
   }
 }
 
+fn member_env(prepared: PreparedGrammar) -> AcquisitionEnv {
+  AcquisitionEnv {
+    layout: repository_storage_layout(),
+    bindings: [],
+    lex: prepare_lex_rules(rules: dag_language_model().lex),
+    grammar: prepared
+  }
+}
+
 fn member_read_of(content: String) -> String {
   match prepare_grammar(grammar: dag_language_model().grammar) {
     Rejected { diagnostics: _ } => "grammar-unprepared"
     Accepted { value: prepared, diagnostics: _ } =>
       member_read_text(
         read: acquisition_member_requests(
-          env: AcquisitionEnv {
-            layout: repository_storage_layout(),
-            bindings: [],
-            lex: prepare_lex_rules(rules: dag_language_model().lex),
-            grammar: prepared
-          },
+          env: member_env(prepared: prepared),
           module: "v2.test.subject",
           file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" },
           content: content
@@ -305,6 +309,81 @@ test fn a_well_formed_import_is_requested_and_its_marked_declaration_is_captured
   ) == "read|v2.std.optional|a_claim"
 }
 
+// ---- which qualified spellings a member requests -------------------------------------------------------------
+//
+// THE SUBJECT IS THE REQUEST LIST acquisition_member_requests HANDS THE ACQUIRER, because the acquirer reads
+// exactly the files those requests name (every probe is a request's, source layout authority R9): a spelling
+// that is absent from `references` is a file that is never read for it. A dotted spelling whose head an
+// enclosing binder or a module-level value binds is a projection off that binder and names no module, so it
+// is absent; one whose head nothing visible binds is a candidate module reference and is present. The
+// requests are a function of the member's own text and the lexical frames at each site, and NOT of which
+// modules exist -- the acquirer's input carries no tree here at all -- so a same-named module, present,
+// absent or malformed, cannot change what a projection requests. The paired execution is the native emit
+// verb's walked controls over a real source root (src/v1/stage0/src/cli_run/native_lane_runner.rs
+// walk_native_acquisition_projection_controls), which read a tree with and without the same-named module and
+// compare verdict and read set.
+
+fn member_references_text(read: AcquisitionMemberRead) -> String {
+  match read {
+    AcquisitionMemberReadOk { requests: requests, test_markers: _ } => concat("refs|", join(requests.references, ","))
+    AcquisitionMemberReadRefused { refusal: refusal } => acquisition_refusal_text(refusal: refusal)
+  }
+}
+
+fn member_references_of(content: String) -> String {
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: _ } => "grammar-unprepared"
+    Accepted { value: prepared, diagnostics: _ } =>
+      member_references_text(
+        read: acquisition_member_requests(
+          env: member_env(prepared: prepared),
+          module: "v2.test.subject",
+          file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" },
+          content: content
+        )
+      )
+  }
+}
+
+fn subject_body(body: String) -> String {
+  concat("module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  ", body, "\n}\n")
+}
+
+test fn local_projection_does_not_read_same_named_module() -> Bool {
+  member_references_of(content: subject_body(body: "x.y")) == "refs|"
+}
+
+test fn a_let_binder_projection_does_not_read_a_same_named_module() -> Bool {
+  member_references_of(content: "module v2.test.subject\n\nfn subject() -> Bool {\n  let x = true\n  x.y\n}\n") == "refs|"
+}
+
+test fn a_module_level_value_projection_does_not_read_a_same_named_module() -> Bool {
+  member_references_of(content: "module v2.test.subject\n\ndata x: Bool = true\n\nfn subject() -> Bool {\n  x.y\n}\n") == "refs|"
+}
+
+// The paired positive control, differing from the first claim in the head alone: a head no visible binder
+// binds is requested, so a request-free result above is attributable to the binder and not to a reader that
+// requests nothing.
+test fn qualified_module_reference_does_read_named_module() -> Bool {
+  member_references_of(content: subject_body(body: "v2.std.logic.and(a: true, b: true)")) == "refs|v2.std.logic.and"
+}
+
+test fn a_head_no_visible_binder_binds_is_requested_even_when_a_parameter_has_another_name() -> Bool {
+  member_references_of(content: subject_body(body: "z.y")) == "refs|z.y"
+}
+
+// A `let` binder is visible in its body and nowhere else, so the same spelling in the binder's own value is
+// not a projection: the slot tables of v2.compiler.lexical_scope are what the collector reads.
+test fn a_let_binder_is_not_visible_in_its_own_value() -> Bool {
+  member_references_of(content: "module v2.test.subject\n\nfn subject() -> Bool {\n  let x = x.y\n  x\n}\n") == "refs|x.y"
+}
+
+// A parameter is visible in the body and not in a sibling parameter's type: a type position resolves in the
+// type scope, which holds no value binder.
+test fn a_parameter_is_not_visible_in_a_sibling_parameter_type() -> Bool {
+  member_references_of(content: "module v2.test.subject\n\nfn subject(x: Bool, w: x.T) -> Bool {\n  true\n}\n") == "refs|x.T"
+}
+
 // ---- the marker channel, read off the parse tree alone -----------------------------------------------------
 //
 // THE SUBJECT IS acquisition_test_markers: which declarations of one member carry the authored `test`
@@ -331,12 +410,7 @@ fn marker_read_of(content: String) -> AcquisitionMarkerRead {
     Rejected { diagnostics: _ } => AcquisitionMarkersRefused { cause: "grammar-unprepared" }
     Accepted { value: prepared, diagnostics: _ } =>
       acquisition_test_markers(
-        env: AcquisitionEnv {
-          layout: repository_storage_layout(),
-          bindings: [],
-          lex: prepare_lex_rules(rules: dag_language_model().lex),
-          grammar: prepared
-        },
+        env: member_env(prepared: prepared),
         file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" },
         content: content
       )

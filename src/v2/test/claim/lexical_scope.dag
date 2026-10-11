@@ -1,0 +1,184 @@
+module v2.test.claim.lexical_scope
+
+import std.types { Bool, List }
+import v2.cli.repository_layout { repository_storage_layout }
+import v2.compiler.lexical_scope { ModuleRootBinding, declaration_names_value, module_root_bindings }
+import v2.compiler.module_acquisition { AcquisitionEnv, acquisition_front_end }
+import v2.compiler.parse { PreparedGrammar, prepare_grammar }
+import v2.compiler.reference_site_collector {
+  HeadBoundAtRootValue,
+  HeadBoundInFrame,
+  HeadLexicallyUnbound,
+  ScopedReferenceSite,
+  SiteHeadBinding,
+  collect_module_reference_sites,
+  collect_scoped_module_reference_sites,
+  scoped_reference_site_collection_is_total
+}
+import v2.compiler.source_authority { ModuleFileRef }
+import v2.compiler.tokenize { prepare_lex_rules }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.algebra { list_map }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { symbol_lexeme }
+import v2.std.qualified_name { qualified_name_to_dotted_string }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WITNESSES FOR WHERE A NAME IS BOUND LEXICALLY, AS ONE FACT (v2.compiler.lexical_scope). Resolution and
+// module acquisition ask the same question of the same tree -- which binders enclose a site -- and the
+// answer they share is the slot tables and the module-root producer declared there. The subject here is
+// what the reference-site collector, which carries those binders down a walk, says about each site's head,
+// asked over authored source through the real front end (parse, normalize), the route acquisition reads.
+//
+// WHAT EACH CLAIM DISCRIMINATES. A head is `frame` when an enclosing Arrow or `let` binds it where the site
+// is visible, `root` when a module-level declaration that names a value binds it, and `unbound` otherwise;
+// only `unbound` can be a module reference. Every `frame` claim is paired with an `unbound` claim that
+// differs in the slot alone (the binder's own value, a sibling parameter's type, a type annotation), so the
+// slot tables are held at both of their edges and a collector that bound every parameter everywhere, or
+// none anywhere, fails one of the pair.
+//
+// THE RESOLVER'S READING OF THE SAME SPELLINGS is held where resolution is: v2.test.claim.field_projection
+// field_projection_stages fps_a_valid_field_projection_resolves_holds (a parameter head projects),
+// fps_a_root_bound_data_value_projects_holds (a module-level value head projects) and
+// fps_a_root_bound_type_projected_as_value_refuses_holds (a module-level type head does not, which is why
+// `Box.tree` below is `unbound` and not `root`). The frames themselves are one producer both read.
+
+fn scope_env(prepared: PreparedGrammar) -> AcquisitionEnv {
+  AcquisitionEnv {
+    layout: repository_storage_layout(),
+    bindings: [],
+    lex: prepare_lex_rules(rules: dag_language_model().lex),
+    grammar: prepared
+  }
+}
+
+fn head_text(head: SiteHeadBinding) -> String {
+  match head {
+    HeadBoundInFrame => "frame"
+    HeadBoundAtRootValue => "root"
+    HeadLexicallyUnbound => "unbound"
+  }
+}
+
+fn site_text(scoped: ScopedReferenceSite) -> String {
+  concat(qualified_name_to_dotted_string(qn: scoped.site.spelling), ":", head_text(head: scoped.head))
+}
+
+fn heads_of(content: String) -> String {
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: _ } => "grammar-unprepared"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match acquisition_front_end(env: scope_env(prepared: prepared), file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" }, content: content) {
+        Rejected { diagnostics: _ } => "front-end-refused"
+        Accepted { value: front, diagnostics: _ } =>
+          join(list_map(xs: collect_scoped_module_reference_sites(root: front.tree.root).sites, f: fn(s) { site_text(scoped: s) }), ",")
+      }
+  }
+}
+
+// ---- Arrow ---------------------------------------------------------------------------------------------
+
+test fn a_parameter_is_bound_in_the_body() -> Bool {
+  heads_of(content: "module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  x.y\n}\n") == "x.y:frame"
+}
+
+// The unbound edge of the pair: the same spelling in a sibling parameter's type, where the type scope holds
+// no value binder.
+test fn a_parameter_is_not_bound_in_a_sibling_parameter_type() -> Bool {
+  heads_of(content: "module v2.test.subject\n\nfn subject(x: Bool, w: x.T) -> Bool {\n  true\n}\n") == "x.T:unbound"
+}
+
+// ---- Bind ----------------------------------------------------------------------------------------------
+
+test fn a_let_binder_is_bound_in_its_body() -> Bool {
+  heads_of(content: "module v2.test.subject\n\nfn subject() -> Bool {\n  let x = true\n  x.y\n}\n") == "x.y:frame"
+}
+
+test fn a_let_binder_is_not_bound_in_its_own_value() -> Bool {
+  heads_of(content: "module v2.test.subject\n\nfn subject() -> Bool {\n  let x = x.y\n  x\n}\n") == "x.y:unbound"
+}
+
+// A type annotation is resolved in the type scope, which holds no value binder, so a parameter does not bind
+// the head of an annotation that mentions the same name.
+test fn a_type_annotation_sees_no_value_binder() -> Bool {
+  heads_of(content: "module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  let y: x.T = true\n  y\n}\n") == "x.T:unbound"
+}
+
+// Frames compose: an enclosing parameter stays visible through a nested `let`.
+test fn an_enclosing_parameter_is_bound_through_a_nested_let() -> Bool {
+  heads_of(content: "module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  let z = true\n  x.y\n}\n") == "x.y:frame"
+}
+
+// ---- Module root ---------------------------------------------------------------------------------------
+
+test fn a_module_level_value_is_bound_at_the_root() -> Bool {
+  heads_of(content: "module v2.test.subject\n\ndata cfg: Bool = true\n\nfn subject() -> Bool {\n  cfg.tree\n}\n") == "cfg.tree:root"
+}
+
+// A module-level TYPE is bound at the root but names no value: resolution reads `Box.tree` as a declaration
+// path, which is a candidate module reference like any head nothing binds as a value.
+test fn a_module_level_type_head_is_not_a_value_binding() -> Bool {
+  heads_of(content: "module v2.test.subject\n\ntype Box {\n  tree: Bool\n}\n\nfn subject() -> Bool {\n  Box.tree\n}\n") == "Box.tree:unbound"
+}
+
+test fn a_head_nothing_binds_is_unbound() -> Bool {
+  heads_of(content: "module v2.test.subject\n\nfn subject() -> Bool {\n  v2.std.logic.and(a: true, b: true)\n}\n") == "v2.std.logic.and:unbound"
+}
+
+// ---- what a module root binds, and which bindings name a value --------------------------------------------
+
+fn binding_kind(b: ModuleRootBinding) -> String {
+  if declaration_names_value(declaration: b.declaration) {
+    "value"
+  } else {
+    "declaration"
+  }
+}
+
+fn binding_text(b: ModuleRootBinding) -> String {
+  concat(symbol_lexeme(sym: b.name), ":", binding_kind(b: b))
+}
+
+fn root_bindings_of(content: String) -> String {
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: _ } => "grammar-unprepared"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match acquisition_front_end(env: scope_env(prepared: prepared), file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" }, content: content) {
+        Rejected { diagnostics: _ } => "front-end-refused"
+        Accepted { value: front, diagnostics: _ } =>
+          join(list_map(xs: module_root_bindings(root: front.tree.root), f: fn(b) { binding_text(b: b) }), ",")
+      }
+  }
+}
+
+test fn a_data_item_and_a_function_name_values_and_a_type_names_a_declaration() -> Bool {
+  root_bindings_of(content: "module v2.test.subject\n\ntype Box {\n  tree: Bool\n}\n\ndata cfg: Bool = true\n\nfn subject() -> Bool {\n  true\n}\n")
+    == "Box:declaration,cfg:value,subject:value"
+}
+
+// ---- the projection is the same fact --------------------------------------------------------------------
+
+// The collector's plain population is the scoped one with the head dropped: the same sites, in the same
+// order, so a consumer of the plain collection (the module-graph lens, the census instruments) reads what it
+// read before the heads existed.
+test fn the_plain_collection_is_the_scoped_collection_with_the_head_dropped() -> Bool {
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: prepared, diagnostics: _ } =>
+      match acquisition_front_end(
+        env: scope_env(prepared: prepared),
+        file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" },
+        content: "module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  x.y\n}\n"
+      ) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: front, diagnostics: _ } =>
+          join(list_map(xs: collect_module_reference_sites(root: front.tree.root).sites, f: fn(s) { qualified_name_to_dotted_string(qn: s.spelling) }), ",")
+            == join(list_map(xs: collect_scoped_module_reference_sites(root: front.tree.root).sites, f: fn(s) { qualified_name_to_dotted_string(qn: s.site.spelling) }), ",")
+            && scoped_reference_site_collection_is_total(collection: collect_scoped_module_reference_sites(root: front.tree.root))
+      }
+  }
+}
