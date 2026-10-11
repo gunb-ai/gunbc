@@ -62,7 +62,7 @@ fn qn_fold_init(n: Node) -> QnFoldStatus {
       }
     TypeNode { connective: Disj } => qn_fold_init_otherwise(n: n)
     TypeNode { connective: Arrow } => qn_fold_init_otherwise(n: n)
-    TypeNode { connective: Cardinality } => qn_fold_init_otherwise(n: n)
+    TypeNode { connective: Occupancy } => qn_fold_init_otherwise(n: n)
     TypeNode { connective: Instantiation } => qn_fold_init_otherwise(n: n)
     ComputationNode { behavior: _ } => qn_fold_init_otherwise(n: n)
   }
@@ -373,7 +373,7 @@ fn qualified_name_spine_shape_present(root: Node) -> Bool {
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -454,7 +454,7 @@ fn qualified_name_from_node(root: Node) -> Outcome<QualifiedName> {
     TypeNode { connective: Atom { identity: _ } } => qualified_name_from_node_otherwise(root: root)
     TypeNode { connective: Disj } => qualified_name_from_node_otherwise(root: root)
     TypeNode { connective: Arrow } => qualified_name_from_node_otherwise(root: root)
-    TypeNode { connective: Cardinality } => qualified_name_from_node_otherwise(root: root)
+    TypeNode { connective: Occupancy } => qualified_name_from_node_otherwise(root: root)
     TypeNode { connective: Instantiation } => qualified_name_from_node_otherwise(root: root)
     ComputationNode { behavior: _ } => qualified_name_from_node_otherwise(root: root)
   }
