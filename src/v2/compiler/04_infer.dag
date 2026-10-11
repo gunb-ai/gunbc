@@ -1481,10 +1481,13 @@ fn infer_declaration_callable_evidence(declared: Node) -> Optional<Node> {
 // for a route it does not reach. That is the conviction DESIGN section 5 forbids in the other direction,
 // and it is a regression from the accepted-at-frontier behaviour, not a wall.
 //
-// THE RESIDUE IS STATED RATHER THAN COVERED: a generic-returning callee's application stays on the
-// frontier, so its result type is not derived and a match on it is not checked against the coproduct's
-// variants. The trigger is a canonical grounding for an instantiated generic type, which is the typing
-// model's fact and not this reader's.
+// THE RFM SPECIMENS ARE JUDGED (sunny-wolf-624, production route): Nat, generic Nat, kernel Int and
+// Out<Int> call results at a Bool declared return or argument refuse inhabitance
+// (v2.test.claim.compiler.declared_return_result drr_declared_return_call_results_are_judged). This
+// swallow remains for a Rejected grounding of a callee Arrow that is not a program error -- a missing
+// compiler capability must become a named counted frontier, never silent accept. Instantiation
+// grounding of a legitimate derived type is in-scope for that residue; do not weaken
+// canonical_grounding_admits_infer_facts.
 fn infer_reference_facts_or_frontier(
   o: Outcome<InferredFacts>,
   n: Node,
