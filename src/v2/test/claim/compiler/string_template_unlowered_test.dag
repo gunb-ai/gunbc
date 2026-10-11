@@ -5,7 +5,7 @@ import v2.compiler.infer { infer }
 import v2.compiler.inferred_tree { InferredTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Node, host_text_concatenation, node_subtree_nodes }
+import v2.std.node { Node, node_subtree_nodes }
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
 import std.optional { Absent, Present }
 
@@ -15,8 +15,6 @@ data stu_template_src: String = "module p\n\nfn f(x: String) -> String {\n  \"he
 
 data stu_literal_src: String = "module p\n\nfn f(x: String) -> String {\n  \"hello\"\n}\n"
 
-// THE REAL PATH: a well-formed template assembles (no string_template_unlowered), binds the roster
-// concat row, infers, and evaluates through kernel String concatenation.
 data stu_eval_src: String = "module p\n\ndata k: String = \"k\"\n\nfn f() -> String {\n  \"a\{k\}b\"\n}\n"
 
 fn stu_binds_concat_row(root: Node) -> Bool {
@@ -44,16 +42,22 @@ test fn a_string_template_assembles_as_a_concat_chain() -> Bool {
   }
 }
 
-// INHABITANCE: a template whose hole is a data reference assembles and infers on the real route,
-// and the kernel concat witness those concat nodes are admitted through is host string concatenation
-// (v2.std.node host_text_concatenation). v2_eval has no concat primitive arm yet, so the bytes are
-// that witness, not a second interpreter.
-test fn a_lowered_template_evaluates_to_its_concatenated_bytes() -> Bool {
+// WHAT THIS ESTABLISHES: the lowered tree of a template whose hole is a data reference binds the
+// roster concat row (#13693) and infers. It does NOT evaluate the template.
+//
+// v2.compiler.eval ON A LOWERED TEMPLATE TODAY: typed, located refusal
+// (eval_rejected_runtime_binding_lookup_miss and/or eval_rejected_grounding_not_derived at the
+// concat operator, which is a declaration reference to std.algebra.collection_concat_shape — a
+// nullary function returning the AlgebraFieldTemplate, not a callable concat body). It does not
+// fabricate concatenated bytes. FRONTIER: a template evaluates through v2 eval; trigger is that
+// capability (v2.compiler.eval concat arm for the kernel String concat witness the lowered tree
+// binds), not an artifact. Until then, bytes of a template are not produced by v2 eval. The
+// emitted-target route (translate of the same concat call) is the candidate realization of those
+// bytes; no enrolled claim executes an emitted template.
+test fn a_lowered_template_binds_concat_and_infers() -> Bool {
   match stu_eval_inferred() {
     Rejected { diagnostics: _ } => false
-    Accepted { value: inferred, diagnostics: _ } =>
-      stu_binds_concat_row(root: inferred.root)
-        && (host_text_concatenation(left: "a", right: host_text_concatenation(left: "k", right: "b")) == "akb")
+    Accepted { value: inferred, diagnostics: _ } => stu_binds_concat_row(root: inferred.root)
   }
 }
 
