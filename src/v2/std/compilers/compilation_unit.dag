@@ -399,8 +399,8 @@ fn partition_unit_members(
   unit_id: CompilationUnitId
 ) -> List<ModuleId> {
   module_dag.modules
-    |> filter(module => module_in_unit(assignment: assignment, module: module, unit_id: unit_id))
-    |> sort_by(module => module)
+    |> filter(m => module_in_unit(assignment: assignment, module: m, unit_id: unit_id))
+    |> sort_by(m => m)
 }
 
 fn partition_unit_dep_from_edge_fold(

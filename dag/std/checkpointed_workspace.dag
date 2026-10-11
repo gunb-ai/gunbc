@@ -183,7 +183,7 @@ fn workspace_body_to(scan: WorkspaceBodyScan, phase: WorkspaceBodyPhase, field: 
 }
 
 // One literal code point consumed; the phase after the literal is `then`.
-fn workspace_body_literal_step(scan: WorkspaceBodyScan, rest: List<Int>, c: Int, more: fn(List<Int>) -> WorkspaceBodyPhase, then: WorkspaceBodyPhase) -> WorkspaceBodyScan {
+fn workspace_body_literal_step(scan: WorkspaceBodyScan, rest: List<Int>, c: Int, more: fn(List<Int>) -> WorkspaceBodyPhase, next_phase: WorkspaceBodyPhase) -> WorkspaceBodyScan {
   match rest {
     Empty => workspace_body_malformed(scan: scan)
     Cons { head: want, tail: tail } =>
@@ -191,7 +191,7 @@ fn workspace_body_literal_step(scan: WorkspaceBodyScan, rest: List<Int>, c: Int,
         workspace_body_malformed(scan: scan)
       } else {
         match tail {
-          Empty => workspace_body_to(scan: scan, phase: then, field: [])
+          Empty => workspace_body_to(scan: scan, phase: next_phase, field: [])
           Cons { head: _, tail: _ } => workspace_body_to(scan: scan, phase: more(tail), field: [])
         }
       }
@@ -210,7 +210,7 @@ fn workspace_body_step(scan: WorkspaceBodyScan, c: Int) -> WorkspaceBodyScan {
   match scan.phase {
     BodyMalformed => scan
     BodyComplete => workspace_body_malformed(scan: scan)
-    BodyKindLiteral { rest: rest } => workspace_body_literal_step(scan: scan, rest: rest, c: c, more: r => BodyKindLiteral { rest: r }, then: BodyWorkspaceTag)
+    BodyKindLiteral { rest: rest } => workspace_body_literal_step(scan: scan, rest: rest, c: c, more: r => BodyKindLiteral { rest: r }, next_phase: BodyWorkspaceTag)
     BodyWorkspaceTag => if c == code_point(c: "W") { workspace_body_to(scan: scan, phase: BodyWorkspaceLength, field: []) } else { workspace_body_malformed(scan: scan) }
     BodyWorkspaceLength =>
       if c == code_point(c: ":") { workspace_body_length_closed(scan: scan, text: n => BodyWorkspaceText { remaining: n }) } else { workspace_body_to(scan: scan, phase: BodyWorkspaceLength, field: Cons { head: c, tail: scan.field }) }
@@ -222,7 +222,7 @@ fn workspace_body_step(scan: WorkspaceBodyScan, c: Int) -> WorkspaceBodyScan {
         WorkspaceBodyScan { kind: scan.kind, phase: BodyEpochLiteral { rest: unicode_scalar_unfold(s: ";epoch=") }, field: [], workspace: workspace_body_field_text(field: field), epoch: scan.epoch, path: scan.path, chunk: scan.chunk, entries: scan.entries }
       }
     }
-    BodyEpochLiteral { rest: rest } => workspace_body_literal_step(scan: scan, rest: rest, c: c, more: r => BodyEpochLiteral { rest: r }, then: BodyEpochDigits)
+    BodyEpochLiteral { rest: rest } => workspace_body_literal_step(scan: scan, rest: rest, c: c, more: r => BodyEpochLiteral { rest: r }, next_phase: BodyEpochDigits)
     BodyEpochDigits =>
       if c != code_point(c: ";") {
         workspace_body_to(scan: scan, phase: BodyEpochDigits, field: Cons { head: c, tail: scan.field })

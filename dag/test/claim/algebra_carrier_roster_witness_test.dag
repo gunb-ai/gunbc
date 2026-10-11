@@ -93,7 +93,7 @@ test fn every_derived_alias_row_key_resolves_through_a_carrier_with_a_profile() 
   sorted_map_keys(carrier_container_alias_rows())
     |> all(spelling =>
       algebra_carriers() |> any(carrier =>
-        carrier_alias_spellings(carrier: carrier) |> any(alias => alias == spelling)
+        carrier_alias_spellings(carrier: carrier) |> any(a => a == spelling)
           && carrier_alias_canonical_declares_method_surface(carrier: carrier)))
 }
 

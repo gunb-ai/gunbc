@@ -725,9 +725,9 @@ test fn explicit_generation_role_roster_is_total_and_unique_for_generation_input
     "v1.compiler.required_regen_host",
     "std.ordinary_subject"
   ])
-  count(roles |> filter(module => module == "v1.compiler.emit_rust")) == 1
-    && count(roles |> filter(module => module == "v1.compiler.required_regen_host")) == 1
-    && count(roles |> filter(module => module == "std.ordinary_subject")) == 0
+  count(roles |> filter(m => m == "v1.compiler.emit_rust")) == 1
+    && count(roles |> filter(m => m == "v1.compiler.required_regen_host")) == 1
+    && count(roles |> filter(m => m == "std.ordinary_subject")) == 0
 }
 
 // Aggregate generated surfaces have producer ownership even though they deliberately have no
@@ -749,7 +749,7 @@ test fn gunbc_cli_dispatch_aggregate_has_one_declared_generation_subject_owner()
       == ["v1.compiler.emit_rust"]
     && regen_generated_product_generation_role_labels(product: "gunbc_cli_dispatch_generated.rs")
       == ["GenerationSubject"]
-    && count(regen_generation_role_modules(modules: ["v1.compiler.emit_rust"]) |> filter(module => module == "v1.compiler.emit_rust")) == 1
+    && count(regen_generation_role_modules(modules: ["v1.compiler.emit_rust"]) |> filter(m => m == "v1.compiler.emit_rust")) == 1
     && count(regen_bootstrap_product_paths() |> filter(path => path == "gunbc_cli_dispatch_generated.rs")) == 0
 }
 

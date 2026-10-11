@@ -483,13 +483,13 @@ test fn witness_crate_less_manifest_rides_a_compiled_change_holds() -> Bool {
 // The same derived assembly arm owns compile and any other emitted shell module.
 // The controlled fixture includes an unrelated name to discriminate a file exception.
 test fn witness_host_shell_mirrors_rebuild_only_the_shell_holds() -> Bool {
-  ["v1_compiler_compile", "fixture_shell_module"] |> all(module =>
+  ["v1_compiler_compile", "fixture_shell_module"] |> all(name =>
     stage0_partition_rebuild_decision_line(decision: stage0_partition_rebuild_decision_today(
-      changed_mirrors: [concat(module, ".rs")],
+      changed_mirrors: [concat(name, ".rs")],
       unlocatable: [],
       host_shell_modules: ["v1_compiler_compile", "fixture_shell_module"]
     )) == concat(
-      "partition-rebuild: PartitionRebuildScopeDerived changed_mirrors=[", module,
+      "partition-rebuild: PartitionRebuildScopeDerived changed_mirrors=[", name,
       ".rs] owning_packages=[v1-compiler] package_closure=[v1-compiler] executable_assembly=assembled package=v1-compiler bin=claim_executor"
     )
   )
@@ -499,12 +499,12 @@ test fn witness_host_shell_mirrors_rebuild_only_the_shell_holds() -> Bool {
 // correct and remains located; admitting every unpartitioned file would fail here.
 test fn witness_removed_shell_owner_refuses_with_named_cause_holds() -> Bool {
   let shell = ["v1_compiler_compile", "fixture_shell_module"]
-  ["v1_compiler_compile", "fixture_shell_module"] |> all(module =>
+  ["v1_compiler_compile", "fixture_shell_module"] |> all(name =>
     stage0_partition_rebuild_decision_line(decision: stage0_partition_rebuild_decision_today(
-      changed_mirrors: [concat(module, ".rs")],
+      changed_mirrors: [concat(name, ".rs")],
       unlocatable: [],
-      host_shell_modules: shell |> filter(m => m != module)
-    )) == concat("partition-rebuild: RebuildScopeRefused MirrorHasNoOwningPackage mirror=", module, ".rs")
+      host_shell_modules: shell |> filter(m => m != name)
+    )) == concat("partition-rebuild: RebuildScopeRefused MirrorHasNoOwningPackage mirror=", name, ".rs")
   )
 }
 
