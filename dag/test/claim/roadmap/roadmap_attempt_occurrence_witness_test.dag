@@ -215,18 +215,13 @@ test fn the_spawn_identity_is_the_persisted_record_never_a_current_selection() -
 }
 
 // THE PARSE ITSELF: the unit identity split reads the key from the right over node ids that carry
-// dashes, reads the supervisor turn suffix, and refuses shapes that are neither.
-test fn the_unit_identity_parse_reads_dashed_nodes_and_the_turn_suffix() -> Bool {
+// dashes and refuses shapes that are not an attempt unit.
+test fn the_unit_identity_parse_reads_dashed_nodes() -> Bool {
   match occurrence_unit_identity(unit: "gunbc-attempt-shell-dag-cron-entry-line-builder-21f8ff0a982557dc.service") {
     OccurrenceIdentityParsed { node, attempt } =>
       node == "shell-dag-cron-entry-line-builder" && attempt == "21f8ff0a982557dc"
     _ => false
   }
-  && (match occurrence_unit_identity(unit: "gunbc-supervisor-shell-dag-cron-entry-line-builder-21f8ff0a982557dc-t3.service") {
-    OccurrenceIdentityParsed { node, attempt } =>
-      node == "shell-dag-cron-entry-line-builder" && attempt == "21f8ff0a982557dc"
-    _ => false
-  })
   && (match occurrence_unit_identity(unit: "gunbc-attempt-node-a-short.service") {
     OccurrenceIdentityUnparseable { cause: _ } => true
     _ => false

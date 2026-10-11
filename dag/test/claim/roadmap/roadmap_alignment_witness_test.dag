@@ -12,7 +12,7 @@ import std.types { Bool, String, Int, List, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.decl_ref { DeclarationRef, decl_ref, decl_field_eq, WholeDeclaration }
 import gunbc.roadmap.roadmap_alignment {
-  AlignmentChain, AlignmentChainCyclic,
+  AlignmentChain, AlignmentChainCyclic, alignment_l0_pointer,
   AlignmentChainLink,
   AlignmentChained, AlignmentChainUnrooted, AlignmentChainRowUndeclared,
   alignment_chain, alignment_chain_for, alignment_chain_in, alignment_index,
@@ -39,10 +39,6 @@ import gunbc.roadmap.roadmap_alignment {
   alignment_cadence_state_text, alignment_cadence_state_decode,
   AlignmentCadenceStateDecoded, AlignmentCadenceStateNotDecodable,
   alignment_cadence_state_schema,
-}
-import gunbc.roadmap.roadmap_attempt_continuation {
-  continuation_alignment_l0_pointer,
-  continuation_alignment_ask,
 }
 import gunbc.roadmap_model {  RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity, Pointer, NotDispatchable, NodeParent, MemberOf, AdmittedRoot }
 import gunbc.roadmap_status { TicketLine, TicketFields, Unsigned }
@@ -662,8 +658,8 @@ fn render_lists_ids_in_order(rendered: String, ordered_ids: List<String>) -> Boo
 test fn the_rendered_prompt_carries_every_level_from_the_node_to_the_root_in_order() -> Bool {
   match alignment_resolve_chain(chain: four_level_chained(), turns_elapsed: 1, state: alignment_base_cadence_state()) {
     AlignmentReady { chain: _, due_levels: _, rendered_prompt } =>
-      string_contains(s: rendered_prompt, pattern: continuation_alignment_l0_pointer)
-        && string_contains(s: rendered_prompt, pattern: continuation_alignment_ask)
+      string_contains(s: rendered_prompt, pattern: alignment_l0_pointer)
+        && !string_contains(s: rendered_prompt, pattern: "Ask:")
         && string_contains(s: rendered_prompt, pattern: "L1 project intent: arc-two: Arc Two headline")
         && string_contains(s: rendered_prompt, pattern: "L2 project intent: arc-mid: Arc Mid headline")
         && string_contains(s: rendered_prompt, pattern: "L3 project intent: arc-one: Arc One headline")

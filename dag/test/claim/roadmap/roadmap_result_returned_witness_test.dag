@@ -37,7 +37,7 @@ import gunbc.roadmap.roadmap_attempt_request_record {
   AttemptRequestBindingRead, RequestBindingRead, RequestBindingAbsent, RequestBindingUnreadable,
 }
 import gunbc.roadmap.roadmap_attempt_request_binding {
-  AttemptLaunchRequest, LaunchForClaim, LaunchContinuing, LaunchAutonomous, attempt_launch_request_for_origin,
+  AttemptLaunchRequest, LaunchForClaim, LaunchAutonomous,
   AttemptRequestBindingAdmission, RequestBindingAdmitted, RequestBindingNotAdmitted, attempt_request_binding_admission,
 }
 import gunbc.roadmap.roadmap_result_returned {
@@ -223,13 +223,13 @@ test fn a_launch_binds_the_claim_its_dispatch_decision_carried() -> Bool {
   let c1 = rr_claim_by(node: rr_node(), requester: rr_alice(), parent: none, at: "t1")
   let c2 = rr_claim_by(node: rr_node(), requester: rr_bob(), parent: Present { value: c1.id }, at: "t2")
   let log = EventsRead { node: rr_node(), envelopes: [c1, c2] }
-  let bound_to_c1 = attempt_request_binding_admission(request: LaunchForClaim { node: rr_node(), claim: c1.id }, node_id: rr_node(), read: log, predecessor: RequestBindingAbsent) == RequestBindingAdmitted { binding: RequestClaimBound { claim: c1.id } }
-  let other_issue = rr_binding_refused_at(a: attempt_request_binding_admission(request: LaunchForClaim { node: "result-returned-other-node" as RoadmapNodeId, claim: c1.id }, node_id: rr_node(), read: log, predecessor: RequestBindingAbsent), step: "request-node")
+  let bound_to_c1 = attempt_request_binding_admission(request: LaunchForClaim { node: rr_node(), claim: c1.id }, node_id: rr_node(), read: log) == RequestBindingAdmitted { binding: RequestClaimBound { claim: c1.id } }
+  let other_issue = rr_binding_refused_at(a: attempt_request_binding_admission(request: LaunchForClaim { node: "result-returned-other-node" as RoadmapNodeId, claim: c1.id }, node_id: rr_node(), read: log), step: "request-node")
   let foreign = rr_claim(node: "result-returned-other-node" as RoadmapNodeId)
   let note = rr_ev(node: rr_node(), kind: Progress { note: "started" as NonEmptyStr }, parent: Present { value: c2.id }, author: rr_fabric(), at: "t3")
   let no_such_claim = all(["0000000000000000" as RoadmapEventId, foreign.id, note.id], id =>
-    rr_binding_refused_at(a: attempt_request_binding_admission(request: LaunchForClaim { node: rr_node(), claim: id }, node_id: rr_node(), read: EventsRead { node: rr_node(), envelopes: [c1, c2, note] }, predecessor: RequestBindingAbsent), step: "request-claim"))
-  let autonomous = attempt_request_binding_admission(request: LaunchAutonomous, node_id: rr_node(), read: EventsReadRefused { node: rr_node(), step: "sync/fetch", reason: "exit 128" }, predecessor: RequestBindingAbsent) == RequestBindingAdmitted { binding: RequestAutonomous }
+    rr_binding_refused_at(a: attempt_request_binding_admission(request: LaunchForClaim { node: rr_node(), claim: id }, node_id: rr_node(), read: EventsRead { node: rr_node(), envelopes: [c1, c2, note] }), step: "request-claim"))
+  let autonomous = attempt_request_binding_admission(request: LaunchAutonomous, node_id: rr_node(), read: EventsReadRefused { node: rr_node(), step: "sync/fetch", reason: "exit 128" }) == RequestBindingAdmitted { binding: RequestAutonomous }
   bound_to_c1 && other_issue && no_such_claim && autonomous
 }
 
@@ -247,34 +247,12 @@ fn rr_binding_refused_at(a: AttemptRequestBindingAdmission, step: String) -> Boo
 test fn a_request_bound_launch_refuses_when_its_claim_cannot_be_read() -> Bool {
   let c1 = rr_claim(node: rr_node())
   let request = LaunchForClaim { node: rr_node(), claim: c1.id }
-  let unread = rr_binding_refused_at(a: attempt_request_binding_admission(request: request, node_id: rr_node(), read: EventsReadRefused { node: rr_node(), step: "sync/fetch", reason: "exit 128" }, predecessor: RequestBindingAbsent), step: "request-log")
+  let unread = rr_binding_refused_at(a: attempt_request_binding_admission(request: request, node_id: rr_node(), read: EventsReadRefused { node: rr_node(), step: "sync/fetch", reason: "exit 128" }), step: "request-log")
   let left = rr_ev(node: rr_node(), kind: Progress { note: "left" as NonEmptyStr }, parent: Present { value: c1.id }, author: rr_fabric(), at: "t2")
   let right = rr_ev(node: rr_node(), kind: Progress { note: "right" as NonEmptyStr }, parent: Present { value: c1.id }, author: rr_fabric(), at: "t2")
-  let forked = rr_binding_refused_at(a: attempt_request_binding_admission(request: request, node_id: rr_node(), read: EventsRead { node: rr_node(), envelopes: [c1, left, right] }, predecessor: RequestBindingAbsent), step: "request-history")
-  let readable = attempt_request_binding_admission(request: request, node_id: rr_node(), read: EventsRead { node: rr_node(), envelopes: [c1, left] }, predecessor: RequestBindingAbsent) == RequestBindingAdmitted { binding: RequestClaimBound { claim: c1.id } }
+  let forked = rr_binding_refused_at(a: attempt_request_binding_admission(request: request, node_id: rr_node(), read: EventsRead { node: rr_node(), envelopes: [c1, left, right] }), step: "request-history")
+  let readable = attempt_request_binding_admission(request: request, node_id: rr_node(), read: EventsRead { node: rr_node(), envelopes: [c1, left] }) == RequestBindingAdmitted { binding: RequestClaimBound { claim: c1.id } }
   unread && forked && readable
-}
-
-// A CONTINUATION ANSWERS ITS LINEAGE'S REQUEST, BY COPYING A RECORDED FACT. A dispatch nobody's
-// claim caused that continues attempt K is Continuing, not Autonomous; one that starts a lineage is
-// Autonomous; a dispatch for a claim stays for that claim even when it continues a lineage. The
-// continuing attempt takes exactly the binding K recorded -- C1 -- although a later claim C2 is on
-// the issue's log, which the admission is not even handed (it is given a log that could not be
-// read and still binds C1). A predecessor that was autonomous continues autonomous. A predecessor
-// with no binding record, or an unreadable one, REFUSES the launch: the red is a continuation that
-// would run as autonomous and never answer its requester.
-test fn a_continuation_copies_its_predecessors_recorded_binding_or_refuses() -> Bool {
-  let c1 = rr_claim_by(node: rr_node(), requester: rr_alice(), parent: none, at: "t1")
-  let class_continuing = attempt_launch_request_for_origin(request: LaunchAutonomous, predecessor_attempt_key: Present { value: rr_attempt }) == LaunchContinuing { predecessor_attempt_key: rr_attempt }
-  let class_fresh = attempt_launch_request_for_origin(request: LaunchAutonomous, predecessor_attempt_key: none) == LaunchAutonomous
-  let class_reassigned = attempt_launch_request_for_origin(request: LaunchForClaim { node: rr_node(), claim: c1.id }, predecessor_attempt_key: Present { value: rr_attempt }) == LaunchForClaim { node: rr_node(), claim: c1.id }
-  let unread_log = EventsReadRefused { node: rr_node(), step: "sync/fetch", reason: "exit 128" }
-  let continuing = LaunchContinuing { predecessor_attempt_key: rr_attempt }
-  let copies_c1 = attempt_request_binding_admission(request: continuing, node_id: rr_node(), read: unread_log, predecessor: rr_bound(claim: c1.id)) == RequestBindingAdmitted { binding: RequestClaimBound { claim: c1.id } }
-  let copies_autonomous = attempt_request_binding_admission(request: continuing, node_id: rr_node(), read: unread_log, predecessor: RequestBindingRead { binding: RequestAutonomous }) == RequestBindingAdmitted { binding: RequestAutonomous }
-  let missing_refuses = rr_binding_refused_at(a: attempt_request_binding_admission(request: continuing, node_id: rr_node(), read: unread_log, predecessor: RequestBindingAbsent), step: "request-predecessor")
-  let unreadable_refuses = rr_binding_refused_at(a: attempt_request_binding_admission(request: continuing, node_id: rr_node(), read: unread_log, predecessor: RequestBindingUnreadable { reason: "denied" }), step: "request-predecessor")
-  class_continuing && class_fresh && class_reassigned && copies_c1 && copies_autonomous && missing_refuses && unreadable_refuses
 }
 
 // CONTROL 2 OF THE LAUNCH BINDING: THE COMMIT IS CREATE-ONLY. The first commit is a create. A
@@ -612,7 +590,7 @@ test fn a_misaddressed_unreadable_forked_or_duplicated_result_is_not_the_attempt
 test fn a_bound_attempts_result_reaches_its_requester_through_the_real_codecs() -> Bool {
   let c1 = rr_claim_by(node: rr_node(), requester: rr_alice(), parent: none, at: "t1")
   let c2 = rr_claim_by(node: rr_node(), requester: rr_bob(), parent: Present { value: c1.id }, at: "t2")
-  match attempt_request_binding_admission(request: LaunchForClaim { node: rr_node(), claim: c1.id }, node_id: rr_node(), read: EventsRead { node: rr_node(), envelopes: [c1, c2] }, predecessor: RequestBindingAbsent) {
+  match attempt_request_binding_admission(request: LaunchForClaim { node: rr_node(), claim: c1.id }, node_id: rr_node(), read: EventsRead { node: rr_node(), envelopes: [c1, c2] }) {
     RequestBindingNotAdmitted { step: _, detail: _ } => false
     RequestBindingAdmitted { binding: launch } =>
       match attempt_request_binding_commit_of(binding: launch, created: FilesystemCreated { path: "p" }, existing: RequestBindingAbsent) {

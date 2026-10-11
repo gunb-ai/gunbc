@@ -185,7 +185,7 @@ import extdeps.google.issue_tracker {
 }
 import gunbc.roadmap_presentation { stale_attempt_nodes }
 import gunbc.roadmap_belt_actuate {
-  BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted,
+  BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted,
   belt_spawn_outcome_json, belt_launch_host_standing_for_page_over,
   belt_dispatch_node, belt_dispatch_node_for_instance_over,
   belt_workflow_attempts_observe_scoped, WorkflowAttemptsOneNode,
@@ -518,7 +518,6 @@ fn launch_refusal_http_status(r: LaunchRefusal) -> HttpStatus {
 fn belt_dispatch_status(r: BeltSpawnOutcome) -> HttpStatus {
   match r {
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => 200
-    SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => 200
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => 502
     SpawnNotAdmitted { node_id: _, refusal } => launch_refusal_http_status(r: refusal)
   }
@@ -574,8 +573,6 @@ fn serve_dispatch_with_follow_ups(instance: HostDashboardInstance, r: BeltSpawnO
   let response = belt_dispatch_response(r: r)
   match r {
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } =>
-      serve_with_operator_follow_ups(instance: instance, action: OperatorDispatch, response: response)
-    SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } =>
       serve_with_operator_follow_ups(instance: instance, action: OperatorDispatch, response: response)
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } =>
       serve_with_operator_follow_ups(instance: instance, action: OperatorDispatch, response: response)
@@ -1226,8 +1223,6 @@ fn serve_fabric_assignment_response(node_id: String, assignee_display: String, e
   match outcome {
     Spawned { node_id: _, session_name, provider: _, launch: _ } =>
       serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nfabric work request admitted: session ", session_name, " — the attempt renders on the Work tab\n"], ""))
-    SupervisorConvened { node_id: _, unit, provider: _, launch: _ } =>
-      serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nfabric work request admitted: supervisor ", unit, " — the attempt renders on the Work tab\n"], ""))
     SpawnFailed { node_id: _, step, detail, provider: _, launch: _ } =>
       serve_text_response(status: 502, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nfabric launch failed at ", step, ": ", detail, " — the assignment stands; re-assign to retry the request\n"], ""))
     SpawnNotAdmitted { node_id: _, refusal } =>

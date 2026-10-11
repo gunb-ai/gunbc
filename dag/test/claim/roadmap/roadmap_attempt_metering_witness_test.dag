@@ -10,7 +10,7 @@ import gunbc.harness.harness_seat_pointer {
   HarnessSeatPointer, HarnessSeatPointerDecoded, HarnessSeatPointerUndecodable, harness_seat_pointer_decode, harness_seat_pointer_json,
 }
 import gunbc.roadmap_attempt_metering {
-  MeteredRole, MeteredWorker, MeteredReviewer, MeteredAuditor, MeteredSupervisor,
+  MeteredRole, MeteredWorker, MeteredReviewer, MeteredAuditor,
   RoleTokens, TokensObserved, TokensStreamAbsent, TokensRefused,
   SeatHeld, SeatReleased, SeatStillHeld, SeatRefused, SeatPointerAbsent,
   MeteredRoleUsage, AttemptMeteringRecord, ComputeNotAttributable, compute_not_attributable_reason,
@@ -396,7 +396,7 @@ test fn a_sealed_roster_with_complete_rows_is_final() -> Bool {
 // THE RECORD BINDS ITS SEAL: a record bound to another population's seal, or claiming a seal the
 // attempt does not carry, refuses; a seal whose digest does not match its own launches refuses.
 test fn a_record_bound_to_another_seal_refuses() -> Bool {
-  let grown = concat(roster(), [MeteredSupervisor { turn: 1 }])
+  let grown = concat(roster(), [MeteredAuditor { head: "ffffffffffffffffffffffffffffffffffffffff" as NonEmptyStr }])
   observe_under(record: record_of(roles: complete_usage()), roster_state: RosterSealed { launches: roster(), digest: metering_roster_digest(launches: grown) }) == "refused"
     && observe_under(record: record_of(roles: complete_usage()), roster_state: RosterOpen { launches: roster() }) == "refused"
     && (match metering_roster_seal_decode(node_id: "node-x", attempt_key: "7", raw: replace(s: metering_roster_seal_json(node_id: "node-x", attempt_key: "7", launches: roster()), from: metering_roster_digest(launches: roster()), to: "0000")) {

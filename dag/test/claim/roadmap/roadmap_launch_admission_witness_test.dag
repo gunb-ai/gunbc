@@ -10,7 +10,7 @@ import gunbc.worker_lifecycle { WorkerProcessRunning, WorkerProcessExited, Worke
 import gunbc.roadmap_launch_admission { LaunchCensusRow }
 import gunbc.roadmap_belt { SpawnMode, Paused, ManualReady, AutomaticReady, DesiredMember, roadmap_belt_production_spawn_mode, spawn_mode_label, belt_reconcile_upsert_count }
 import gunbc.roadmap_belt_actuate {
-  BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted,
+  BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted,
   belt_tick_admit_and_spawn, belt_dispatch_status_label, belt_dispatch_result_ok,
   BeltLaunchDecision, BeltLaunchDecided, BeltLaunchWithheld, belt_tick_admit,
   BeltLaunchPass, belt_tick_launch_pass,
@@ -162,7 +162,6 @@ fn no_actuation_outcome(o: BeltSpawnOutcome) -> Bool {
   match o {
     SpawnNotAdmitted { node_id: _, refusal: _ } => true
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => false
-    SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => false
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => false
   }
 }

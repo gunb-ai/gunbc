@@ -117,10 +117,10 @@ fn continuation_from_segments(prior: PriorAttemptFacts) -> ContinuationDecision 
       match v.state {
         WorkflowSegmentFailed => continuation_ended(prior: prior, why: join(["verification failed: ", v.detail], ""))
         WorkflowSegmentComplete => continuation_after_green_verification(prior: prior)
-        WorkflowSegmentStopped => ContinuationRefused { reason: "the prior attempt's verification segment is stopped, a state verification does not inhabit -- the segment record is damaged and the decision does not guess" }
+        WorkflowSegmentStopped => ContinuationRefused { reason: "the prior attempt's verification segment is stopped, a state verification does not inhabit -- the segment record is damaged and the operator decides" }
         WorkflowSegmentPending => ContinuationHold { reason: "the prior attempt's verification is owed and still pending; the belt owes it, not a spawn" }
         WorkflowSegmentActive => ContinuationHold { reason: "the prior attempt's verification is running" }
-        WorkflowSegmentRefused => ContinuationHold { reason: "the prior attempt's verification was refused, an environment fact rather than a verdict: the obligation stays outstanding and the belt owes it, not a spawn" }
+        WorkflowSegmentRefused => ContinuationHold { reason: "the prior attempt's verification was refused, an environment fact rather than a verdict: the obligation stays outstanding and the belt retries it when the environment recovers, so no spawn" }
       }
   }
 }

@@ -22,7 +22,7 @@ import extdeps.llm.claude_code_stream_json {
 }
 import extdeps.posix.shell_command_language { admit_posix_shell_name, PosixShellNameAdmitted, PosixShellNameRefused }
 import gunbc.roadmap_belt_actuate {
-  BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted,
+  BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted,
   belt_snapshot_disposition, SnapshotConsumedByChild, SnapshotDiscardRequired,
 }
 import gunbc.roadmap_launch_admission { launch_identity_exemplar, LaunchTransitionInhibited }
@@ -473,7 +473,6 @@ fn discard_required(o: BeltSpawnOutcome) -> Bool {
 test fn only_a_launched_child_consumes_the_snapshot() -> Bool {
   let id = launch_identity_exemplar()
   !discard_required(o: Spawned { node_id: "x", session_name: "gunbc-dispatch-x", provider: "claude", launch: id })
-    && discard_required(o: SupervisorConvened { node_id: "x", unit: "u", provider: "claude", launch: id })
     && discard_required(o: SpawnFailed { node_id: "x", step: "claude-cli", detail: "preflight refused", provider: "claude", launch: id })
     && discard_required(o: SpawnNotAdmitted { node_id: "x", refusal: LaunchTransitionInhibited { reason: "r" } })
 }
