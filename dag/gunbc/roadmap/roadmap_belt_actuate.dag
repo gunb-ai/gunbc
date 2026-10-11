@@ -821,6 +821,96 @@ type AttemptStateInitialization
 // current attempt is constructive proof that admission, workspace creation and event-capture
 // initialization preceded launch; the progress route validates the admitted receipt rather than
 // inferring stages from a tmux name.
+// A CONTINUATION INHERITS ITS PREDECESSOR'S WORKING STATE, OR IT DOES NOT START. ContinueFromAttempt
+// branches the new worktree from the predecessor's branch, but a turn that ends at a checkpoint leaves
+// its work uncommitted -- the belt commits only a submitted candidate, under its SCM capture -- so every
+// continuation on the srv1 lab began without the prior turn's edits and receipts (2026-10-11; carried
+// by hand each turn, and a lineage whose acceptance outlived one turn could never hand in). The
+// predecessor's state is taken as a stash object (add -A, then stash create: an unreferenced commit in
+// the shared object store, on no branch, so no candidate exists without its capture) and applied with
+// its index. A predecessor whose worktree cannot be established refuses: starting without it would
+// drop the prior turn's work silently.
+type BeltContinuationCarry
+  = CarryNotContinuation
+  | CarryNothingUncommitted
+  | CarryApplied { stash: String }
+  | CarryRefused { detail: String }
+
+fn belt_continuation_carry(instance: HostDashboardInstance, node_id: RoadmapNodeId, origin: AttemptOrigin, attempt_key: String) -> BeltContinuationCarry {
+  match origin {
+    FreshFromBase => CarryNotContinuation
+    ContinueFromAttempt { parent_attempt_key, branch: _, turn: _, verdict_detail: _ } =>
+      match belt_attempt_worktree_observe(instance: instance, node_id: node_id, attempt_key: parent_attempt_key) {
+        AttemptWorktreeAbsent { path } =>
+          CarryRefused { detail: join(["the predecessor's worktree is absent at ", path, ", so its uncommitted state cannot be established"], "") }
+        AttemptWorktreeUnobserved { path, cause } =>
+          CarryRefused { detail: join(["the predecessor's worktree at ", path, " could not be observed: ", cause], "") }
+        AttemptWorktreePresent { path: prior } =>
+          match belt_commit_git(instance: instance, worktree: prior, args: ["add", "-A"]) {
+            ExecOk { stdout: _ } =>
+              match belt_commit_git(instance: instance, worktree: prior, args: ["stash", "create"]) {
+                ExecOk { stdout } =>
+                  if trim(s: stdout) == "" {
+                    CarryNothingUncommitted
+                  } else {
+                    match belt_commit_git(
+                      instance: instance,
+                      worktree: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+                      args: ["stash", "apply", "--index", trim(s: stdout)],
+                    ) {
+                      ExecOk { stdout: _ } => CarryApplied { stash: trim(s: stdout) }
+                      ExecFailed { program, exit_code, stderr } => CarryRefused { detail: belt_commit_exec_detail(step: "git stash apply", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }) }
+                      ExecRefused { program, reason } => CarryRefused { detail: belt_commit_exec_detail(step: "git stash apply", outcome: ExecRefused { program: program, reason: reason }) }
+                    }
+                  }
+                ExecFailed { program, exit_code, stderr } => CarryRefused { detail: belt_commit_exec_detail(step: "git stash create", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }) }
+                ExecRefused { program, reason } => CarryRefused { detail: belt_commit_exec_detail(step: "git stash create", outcome: ExecRefused { program: program, reason: reason }) }
+              }
+            ExecFailed { program, exit_code, stderr } => CarryRefused { detail: belt_commit_exec_detail(step: "git add -A", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }) }
+            ExecRefused { program, reason } => CarryRefused { detail: belt_commit_exec_detail(step: "git add -A", outcome: ExecRefused { program: program, reason: reason }) }
+          }
+      }
+  }
+}
+
+fn belt_continuation_carry_refusal(c: BeltContinuationCarry) -> String? {
+  match c {
+    CarryRefused { detail } => Present { value: detail }
+    CarryNotContinuation => Absent
+    CarryNothingUncommitted => Absent
+    CarryApplied { stash: _ } => Absent
+  }
+}
+
+// The attempt's starting state is its carried predecessor state, then its own records.
+fn belt_attempt_state_initialize_after_carry(
+  instance: HostDashboardInstance,
+  node: RoadmapNode,
+  attempt_key: String,
+  admission_receipt: String,
+  launch: LaunchIdentity,
+  origin: AttemptOrigin,
+  binding: AlignmentBinding,
+  request: AttemptLaunchRequest,
+  process_fingerprint: NonEmptyStr,
+) -> AttemptStateInitialization {
+  match belt_continuation_carry_refusal(c: belt_continuation_carry(instance: instance, node_id: node.node, origin: origin, attempt_key: attempt_key)) {
+    Present { value: detail } => AttemptStateInitializationFailed { step: "continuation-carry", detail: detail }
+    Absent =>
+      belt_attempt_state_initialize_for_instance(
+        instance: instance,
+        node: node,
+        attempt_key: attempt_key,
+        admission_receipt: admission_receipt,
+        launch: launch,
+        turn: attempt_origin_turn(origin: origin),
+        binding: binding,
+        request: request,
+        process_fingerprint: process_fingerprint,
+      )
+  }
+}
+
 fn belt_attempt_state_initialize_for_instance(
   instance: HostDashboardInstance,
   node: RoadmapNode,
@@ -3084,13 +3174,13 @@ fn belt_spawn_admitted(
             launch: launch,
           }
         AttemptWorktreePresent { path: _ } =>
-      match belt_attempt_state_initialize_for_instance(
+      match belt_attempt_state_initialize_after_carry(
         instance: instance,
         node: node,
         attempt_key: attempt_key,
         admission_receipt: admission_receipt,
         launch: launch,
-        turn: attempt_origin_turn(origin: origin),
+        origin: origin,
         binding: binding,
         request: request,
         process_fingerprint: process_fingerprint,
