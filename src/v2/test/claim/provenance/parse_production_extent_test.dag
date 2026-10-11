@@ -188,3 +188,83 @@ test fn empty_production_records_no_extent_holds() -> Bool {
       }
   }
 }
+
+fn parse_extent_single_production_root(expression: GrammarExpr) -> GrammarRoot {
+  GrammarRoot {
+    start: ^parse_extent_block,
+    productions: Cons {
+      head: GrammarProduction {
+        name: ^parse_extent_block,
+        expression: expression,
+        emitted: grammar_atom(identity: ^parse_extent_block)
+      },
+      tail: std.algebra.Empty
+    },
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn parse_extent_captured_holds(root: GrammarRoot, tokens: List<Token>, start: Int, end: Int, inside: Int, outside: Int) -> Bool {
+  match parse_extent_parse(root: root, tokens: tokens) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: artifact, diagnostics: _ } =>
+      match find_named_child(root: artifact.tree, name: ^grammar_production_captured_node_projection) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: captured, diagnostics: _ } =>
+          parse_extent_holds(index: artifact.span_index, node: captured, start: start, end: end, inside: inside, outside: outside)
+      }
+  }
+}
+
+// One operator application `a + b` is its own source occurrence: its extent runs from the left
+// operand's start to the right operand's end, so the operator position (3) is inside it.
+test fn infix_application_extent_spans_its_operands_holds() -> Bool {
+  parse_extent_captured_holds(
+    root: parse_extent_single_production_root(expression: InfixTable {
+      operand: Terminal { token_class: ^parse_extent_stmt_tok, stamp: StampClass },
+      continuation_guard: NotPredicate { element: Terminal { token_class: ^parse_extent_never, stamp: StampClass } },
+      operators: Cons {
+        head: InfixOperatorRow { token_class: ^parse_extent_plus, binding_power: 1, associativity: InfixLeft },
+        tail: std.algebra.Empty
+      }
+    }),
+    tokens: Cons {
+      head: parse_extent_token(class: ^parse_extent_stmt_tok, start: 0, end: 1),
+      tail: Cons {
+        head: parse_extent_token(class: ^parse_extent_plus, start: 2, end: 3),
+        tail: Cons {
+          head: parse_extent_token(class: ^parse_extent_stmt_tok, start: 4, end: 5),
+          tail: std.algebra.Empty
+        }
+      }
+    },
+    start: 0,
+    end: 5,
+    inside: 3,
+    outside: 6
+  )
+}
+
+// A repetition's extent runs from its first item to its last, so a gap between items (5) is inside
+// it and a position after the last item (10) is not.
+test fn repeat_extent_spans_its_items_holds() -> Bool {
+  parse_extent_captured_holds(
+    root: parse_extent_single_production_root(expression: Repeat {
+      element: Terminal { token_class: ^parse_extent_stmt_tok, stamp: StampClass }
+    }),
+    tokens: Cons {
+      head: parse_extent_token(class: ^parse_extent_stmt_tok, start: 0, end: 1),
+      tail: Cons {
+        head: parse_extent_token(class: ^parse_extent_stmt_tok, start: 3, end: 4),
+        tail: Cons {
+          head: parse_extent_token(class: ^parse_extent_stmt_tok, start: 8, end: 9),
+          tail: std.algebra.Empty
+        }
+      }
+    },
+    start: 0,
+    end: 9,
+    inside: 5,
+    outside: 10
+  )
+}

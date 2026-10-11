@@ -62,8 +62,10 @@ import std.source_annotation {
 import v2.std.provenance {
   DerivedBy,
   SpanIndex,
+  node_occurrence_id_optional,
   origin_event_from_source,
   span_index_empty,
+  span_index_extent,
   span_index_record,
   span_index_record_extent
 }
@@ -146,15 +148,9 @@ import v2.std.grammar {
 // path: an id minted on an abandoned attempt is minted again by the next one and recorded once.
 // Nothing is served across paths -- the packrat memo that did so was deleted (operator ruling R2,
 // 2026-10-08; gunbc.recurring_failure_mode parse_memo_hit_serves_occurrences_minted_on_an_abandoned_path).
-// `consumed_end` is the end offset of the last token this path consumed, Absent before the first.
-// It rides in the provenance state because that state is exactly one path's: a failed attempt
-// restores it with the allocator and index, so a production's extent never counts tokens an
-// abandoned alternative read. Every consumed token is minted by parse_mint_from_source, which is
-// the one place it advances.
 type ParseProvenanceState {
   alloc: OccurrenceIdAllocator
   index: v2.std.provenance.SpanIndex
-  consumed_end: Optional<Int>
 }
 
 // THE ALLOCATOR RIDES BESIDE THE INDEX BECAUSE THEY ARE ONE FACT. `span_index` says where each
@@ -719,8 +715,7 @@ fn parse_non_empty_diagnostics_to_list(ned: NonEmptyDiagnostics) -> List<Diagnos
 fn parse_prov_seeded(seed: OccurrenceIdAllocator) -> ParseProvenanceState {
   ParseProvenanceState {
     alloc: seed,
-    index: span_index_empty(),
-    consumed_end: optional_absent()
+    index: span_index_empty()
   }
 }
 
@@ -745,8 +740,7 @@ fn parse_mint_from_source(
     id: minted.id,
     prov: ParseProvenanceState {
       alloc: minted.alloc,
-      index: index,
-      consumed_end: optional_present(value: end)
+      index: index
     }
   }
 }
@@ -849,8 +843,7 @@ fn parse_stamp_derived_conj(
     ),
     prov: ParseProvenanceState {
       alloc: minted.alloc,
-      index: index,
-      consumed_end: prov.consumed_end
+      index: parse_composite_extent(index: index, id: minted.id, children: [cap1, cap2])
     }
   }
 }
@@ -879,8 +872,7 @@ fn parse_stamp_infix_application(
     ),
     prov: ParseProvenanceState {
       alloc: minted.alloc,
-      index: index,
-      consumed_end: prov.consumed_end
+      index: parse_composite_extent(index: index, id: minted.id, children: [left, operator, right])
     }
   }
 }
@@ -900,8 +892,7 @@ fn parse_stamp_derived_repeat(
     ),
     prov: ParseProvenanceState {
       alloc: minted.alloc,
-      index: index,
-      consumed_end: prov.consumed_end
+      index: parse_composite_extent(index: index, id: minted.id, children: acc_nodes)
     }
   }
 }
@@ -928,13 +919,9 @@ fn parse_tree_projection_edge(name: Symbol) -> Bool {
     || (name == ^grammar_infix_right_node_projection)
 }
 
-// `first` is the first token the production was handed and `before` the consumed end when it began;
-// with the consumed end it finished at, they are the production's extent (parse_production_extent).
 fn parse_wrap_production_captured(
   production: GrammarProduction,
   captured: Node,
-  first: Optional<Token>,
-  before: Optional<Int>,
   prov: ParseProvenanceState
 ) -> ParseStampResult {
   let minted = alloc_occurrence_id(alloc: prov.alloc)
@@ -952,54 +939,69 @@ fn parse_wrap_production_captured(
     ),
     prov: ParseProvenanceState {
       alloc: minted.alloc,
-      index: parse_production_extent(
-        index: index,
-        id: minted.id,
-        first: first,
-        before: before,
-        after: prov.consumed_end
-      ),
-      consumed_end: prov.consumed_end
+      index: parse_composite_extent(index: index, id: minted.id, children: [captured])
     }
   }
 }
 
-// A COMPLETED PRODUCTION PUBLISHES ITS EXTENT HERE, ONCE, from what the parse already holds: the
-// first token it was handed and the end of the last token its path consumed. Nothing is
-// recomputed from the node's descendants. A production that consumed no token (a nullable one that
-// matched empty) has no extent, detected by the consumed end not having moved -- token ends
-// strictly increase along a path -- and is recorded as nothing rather than as a zero-width range at
-// a guessed position.
-fn parse_production_extent(
-  index: SpanIndex,
-  id: OccurrenceId,
-  first: Optional<Token>,
-  before: Optional<Int>,
-  after: Optional<Int>
-) -> SpanIndex {
-  match first {
+// A COMPOSED NODE PUBLISHES ITS EXTENT WHEN IT IS BUILT, from its direct children's extents, which
+// were themselves published when THEY were built: it starts where its first child with an extent
+// starts and ends where its last one ends. That is exact because every token a composite consumes
+// sits under a minted direct child -- a terminal (FromSource) or a composite recorded here; the only
+// unminted nodes the parse builds are the empty node and the repeat spine, and neither consumed a
+// token. It reads direct children only, never descendants. A composite none of whose children has
+// an extent consumed nothing and records nothing, rather than a zero-width range at a guessed place.
+fn parse_composite_extent(index: SpanIndex, id: OccurrenceId, children: List<Node>) -> SpanIndex {
+  let span = fold_list(
+    xs: children,
+    empty: ParseExtentSpan { file: optional_absent(), start: optional_absent(), end: optional_absent() },
+    cons: fn(acc, child) { parse_extent_span_step(acc: acc, index: index, child: child) }
+  )
+  match span.file {
     Absent => index
-    Present { value: tok } =>
-      match after {
+    Present { value: file } =>
+      match span.start {
         Absent => index
-        Present { value: end } =>
-          if parse_consumed_end_moved(before: before, end: end) {
-            span_index_record_extent(
-              index: index,
-              id: id,
-              extent: Textual { file: tok.file, extent: ByteRange { start: tok.start, end: end } }
-            )
-          } else {
-            index
+        Present { value: start } =>
+          match span.end {
+            Absent => index
+            Present { value: end } =>
+              span_index_record_extent(
+                index: index,
+                id: id,
+                extent: Textual { file: file, extent: ByteRange { start: start, end: end } }
+              )
           }
       }
   }
 }
 
-fn parse_consumed_end_moved(before: Optional<Int>, end: Int) -> Bool {
-  match before {
-    Absent => true
-    Present { value: b } => end > b
+type ParseExtentSpan {
+  file: Optional<Symbol>
+  start: Optional<Int>
+  end: Optional<Int>
+}
+
+fn parse_extent_span_step(acc: ParseExtentSpan, index: SpanIndex, child: Node) -> ParseExtentSpan {
+  match node_occurrence_id_optional(node: child) {
+    Absent => acc
+    Present { value: child_id } =>
+      match span_index_extent(index: index, id: child_id) {
+        Absent => acc
+        Present { value: locus } =>
+          match locus {
+            Textual { file: f, extent: ext } =>
+              match ext {
+                ByteRange { start: s, end: e } =>
+                  match acc.start {
+                    Absent => ParseExtentSpan { file: optional_present(value: f), start: optional_present(value: s), end: optional_present(value: e) }
+                    Present { value: _ } => ParseExtentSpan { file: acc.file, start: acc.start, end: optional_present(value: e) }
+                  }
+                WholeFile => acc
+              }
+            _ => acc
+          }
+      }
   }
 }
 
@@ -1063,8 +1065,6 @@ fn parse_nonterminal(
           let stamped = parse_wrap_production_captured(
             production: production,
             captured: captured,
-            first: parse_token_first(tokens: tokens),
-            before: prov.consumed_end,
             prov: inner_prov
           )
           ParseExprAccepted {
@@ -4934,7 +4934,7 @@ fn parse_production_prepared_ordered(
       match parse_expr_result_table(result: parsed).refusal {
         Present { value: refusal } =>
           Rejected { diagnostics: diagnostics_singleton(d: refusal) }
-        Absent => parse_production_unrefused(parsed: parsed, production: production, root: root, tokens: tokens)
+        Absent => parse_production_unrefused(parsed: parsed, production: production, root: root)
       }
     Violates { diagnostic: d } =>
       Rejected { diagnostics: diagnostics_singleton(d: d) }
@@ -4948,8 +4948,7 @@ fn parse_production_prepared_ordered(
 fn parse_production_unrefused(
   parsed: ParseExprResult,
   production: GrammarProduction,
-  root: GrammarRoot,
-  tokens: List<Token>
+  root: GrammarRoot
 ) -> Outcome<ParseArtifact> {
   match parsed {
     ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov, table: final_table } =>
@@ -4957,8 +4956,6 @@ fn parse_production_unrefused(
         let stamped = parse_wrap_production_captured(
           production: production,
           captured: captured,
-          first: parse_token_first(tokens: tokens),
-          before: optional_absent(),
           prov: inner_prov
         )
         Accepted {
