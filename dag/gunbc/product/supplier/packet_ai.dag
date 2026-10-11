@@ -102,8 +102,14 @@ fn packet_ai_quote(product: PacketAiProduct, gpus_per_instance: Int) -> OfferQuo
 
 data packet_ai_offer_quantity_bound: Int = 1
 
-fn packet_ai_unexpressed() -> List<UnexpressedSupplyFact> {
-  [IsolationNotObserved]
+// IsolationNotObserved means nobody looked (product.supplier.ubicloud): it rides only the tier arm that
+// was never established. A read dedicated or dynamic allocation is an observation, whatever profile it yields.
+fn packet_ai_unexpressed(tier: PacketAiTierFact) -> List<UnexpressedSupplyFact> {
+  match tier {
+    TierWholeCard => []
+    TierShared => []
+    TierNotEstablished => [IsolationNotObserved]
+  }
 }
 
 fn bind_packet_ai_offer<P>(
@@ -172,7 +178,7 @@ fn bind_packet_ai_offer<P>(
                   billing_quantum: billing_quantum,
                   evidence: QuotedSupply { quoted_at: quoted_at, valid_until: valid_until, receipt: receipt },
                 },
-                unexpressed: packet_ai_unexpressed(),
+                unexpressed: packet_ai_unexpressed(tier: packet_ai_tier(product: product, storefront: storefront)),
               },
             },
         },

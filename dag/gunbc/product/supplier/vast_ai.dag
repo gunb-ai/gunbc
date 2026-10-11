@@ -97,9 +97,14 @@ fn vast_ai_route(region: ProviderRegionObservation) -> ProviderRouteStanding {
 // An ask is one machine: it can be rented once. A marketplace fact, not a buyer choice.
 data vast_ai_offer_quantity_bound: Int = 1
 
-// Nobody has measured what a host provides for isolation; the empty profile plus the stated fact.
-fn vast_ai_unexpressed() -> List<UnexpressedSupplyFact> {
-  [IsolationNotObserved]
+// IsolationNotObserved means nobody looked (product.supplier.ubicloud), so it rides only the arm where
+// is_bid was never read. A read is_bid, bid or on-demand, is an observation: the profile it yields,
+// empty or DedicatedDevice, is a stated fact and stamping "not observed" beside it would fork the meaning.
+fn vast_ai_unexpressed(offer: VastAiOffer) -> List<UnexpressedSupplyFact> {
+  match offer.is_bid {
+    Present { value: _ } => []
+    Absent => [IsolationNotObserved]
+  }
 }
 
 fn bind_vast_ai_offer<P>(
@@ -146,7 +151,7 @@ fn bind_vast_ai_offer<P>(
               billing_quantum: billing_quantum,
               evidence: QuotedSupply { quoted_at: quoted_at, valid_until: valid_until, receipt: receipt },
             },
-            unexpressed: vast_ai_unexpressed(),
+            unexpressed: vast_ai_unexpressed(offer: offer),
           },
         },
     },

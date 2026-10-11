@@ -102,4 +102,7 @@ type GpuModelCatalogRow {
   interconnect: PcieLink?
   sm_cache: GpuSmCacheGeometry?
   sm_cache_citations: List<FactCitation>
+  // Citations for the row's other published figures (bandwidth, power, memory, lane count), each
+  // naming the row field it grounds; sm_cache_citations grounds sm_cache only.
+  figure_citations: List<FactCitation>
 }

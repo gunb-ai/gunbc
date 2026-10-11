@@ -62,6 +62,7 @@ data nvidia_rtx_5090_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
   interconnect: Present { value: rtx_5090_interconnect },
   sm_cache: Present { value: rtx_5090_sm_cache_geometry },
   sm_cache_citations: rtx_5090_sm_cache_citations,
+  figure_citations: [],
 }
 
 // THE RTX PRO 6000 BLACKWELL FAMILY: THREE NVIDIA PRODUCTS, THREE ROWS, AND THE BANDWIDTH FIGURE IS
@@ -140,6 +141,7 @@ data nvidia_rtx_pro_6000_workstation_catalog: GpuModelCatalogRow = GpuModelCatal
   interconnect: none,
   sm_cache: none,
   sm_cache_citations: [],
+  figure_citations: rtx_pro_6000_workstation_figure_citations,
 }
 
 data nvidia_rtx_pro_6000_max_q_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
@@ -165,6 +167,7 @@ data nvidia_rtx_pro_6000_max_q_catalog: GpuModelCatalogRow = GpuModelCatalogRow 
   interconnect: none,
   sm_cache: none,
   sm_cache_citations: [],
+  figure_citations: rtx_pro_6000_max_q_figure_citations,
 }
 
 data nvidia_rtx_pro_6000_server_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
@@ -190,6 +193,7 @@ data nvidia_rtx_pro_6000_server_catalog: GpuModelCatalogRow = GpuModelCatalogRow
   interconnect: none,
   sm_cache: none,
   sm_cache_citations: [],
+  figure_citations: rtx_pro_6000_server_figure_citations,
 }
 
 // The figures each page states, as FactCitations on the row fields they ground. The CUDA core count
