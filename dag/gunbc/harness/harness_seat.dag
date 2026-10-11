@@ -93,7 +93,9 @@ import gunbc.serving.turn_admission {
   InadmissibleRouteHoldingForCapacity, InadmissibleClassCeilingReached, InadmissibleUnexplainedOccupancy,
   AdmissibilityUnread, serving_group_admission,
   ServingSessionRecord, NoSessionRecord, HostTierUnread, serving_session_standing, serving_session_placement,
-  ServingSessionResidency, SessionRecord, ServingSessionPlacement, PlacementFree, OwnedByAnotherReplica, serving_admission_detail, serving_isolation_profile,
+  ServingSessionResidency, SessionRecord, ServingSessionPlacement, PlacementFree, OwnedByAnotherReplica,
+  GpuPrefixUnread, serving_unread_when_owner_unprobed,
+  serving_admission_detail, serving_isolation_profile,
   spark_serving_trust_domain, serving_delay_valuation, serving_dispatch_inputs,
 }
 import gunbc.serving.turn_demand { ServingModelRequirementRef, serving_turn_requirements, serving_turn_work, ServingTurnRequest }
@@ -1078,26 +1080,44 @@ fn harness_collect_candidates(session: ServingSessionRecord, class: ServingCoTen
   let collected = fold(serving_enrolled_routes(), init: HarnessCandidates { candidates: [], notes: [], retryable: false, incarnations: incarnations, owner_standing: none }, f: (acc, r) =>
     harness_add_candidate(acc: acc, session: session, route: r, class: class, requirement: requirement, subject: subject, store: store, now: now, access: access, declared_units: declared_units, participation_roster: participation_roster))
   let kept = filter(collected.candidates, c => !harness_is_excluded(excluded: excluded, key: c.key))
-  match collected.owner_standing {
-    Absent => HarnessCandidates { candidates: kept, notes: collected.notes, retryable: collected.retryable, incarnations: collected.incarnations, owner_standing: none }
-    Present { value: standing } => {
-      let free = filter(kept, c => harness_placement_is_free(standing: standing, session: session, launch: c.launch))
+  harness_apply_session_attachment(session: session, collected: collected, kept: kept)
+}
+
+fn harness_apply_session_attachment(session: ServingSessionRecord, collected: HarnessCandidates, kept: List<HarnessCandidate>) -> HarnessCandidates {
+  match session {
+    NoSessionRecord =>
+      HarnessCandidates { candidates: kept, notes: collected.notes, retryable: collected.retryable, incarnations: collected.incarnations, owner_standing: collected.owner_standing }
+    SessionRecord { owner_launch: _, prefix_intact: _, last_turn: _ } => {
+      let standing = match collected.owner_standing {
+        Present { value: s } => s
+        Absent => serving_unread_when_owner_unprobed()
+      }
+      let free = filter(kept, c => harness_session_admits_launch(session: session, standing: standing, launch: c.launch))
       HarnessCandidates {
         candidates: free,
-        notes: concat(collected.notes, map(filter(kept, c => !harness_placement_is_free(standing: standing, session: session, launch: c.launch)), c => join([fabric_group_wire(g: c.group) as String, ": this session's warm prefix is owned by another launch, so it is not moved to a different replica"], ""))),
+        notes: concat(collected.notes, map(filter(kept, c => !harness_session_admits_launch(session: session, standing: standing, launch: c.launch)), c => join([fabric_group_wire(g: c.group) as String, ": this session is attached to another launch, so it is not moved to a different replica"], ""))),
         retryable: collected.retryable || length(free) < length(kept),
         incarnations: collected.incarnations,
-        owner_standing: collected.owner_standing,
+        owner_standing: match collected.owner_standing {
+          Present { value: s } => Present { value: s }
+          Absent => Present { value: standing }
+        },
       }
     }
   }
 }
 
-fn harness_placement_is_free(standing: ServingSessionResidency, session: ServingSessionRecord, launch: VllmEndpointProcessLaunch) -> Bool {
+// THE FINAL FILTER harness_collect_candidates applies after the route fold: a recorded session
+// always runs serving_session_placement, treating a missing owner probe as unread (pinned).
+fn harness_session_admits_launch(session: ServingSessionRecord, standing: ServingSessionResidency, launch: VllmEndpointProcessLaunch) -> Bool {
   match serving_session_placement(residency: standing, record: session, candidate_launch: vllm_endpoint_process_launch_key(launch: launch)) {
     PlacementFree => true
     OwnedByAnotherReplica { owner: _ } => false
   }
+}
+
+fn harness_placement_is_free(standing: ServingSessionResidency, session: ServingSessionRecord, launch: VllmEndpointProcessLaunch) -> Bool {
+  harness_session_admits_launch(session: session, standing: standing, launch: launch)
 }
 
 // THE OWNER'S STANDING IS READ WHERE THE OWNER IS PROBED: only a candidate whose launch IS the recorded
@@ -1112,7 +1132,7 @@ fn harness_note_owner_standing(acc: HarnessCandidates, session: ServingSessionRe
       } else {
         HarnessCandidates {
           candidates: acc.candidates, notes: acc.notes, retryable: acc.retryable, incarnations: acc.incarnations,
-          owner_standing: Present { value: serving_session_standing(record: session, current_launch: key, host: HostTierUnread) },
+          owner_standing: Present { value: serving_session_standing(record: session, current_launch: key, host: HostTierUnread, gpu: GpuPrefixUnread) },
         }
       }
     }

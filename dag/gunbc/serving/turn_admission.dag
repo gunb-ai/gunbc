@@ -302,11 +302,11 @@ type ServingSessionRecord
 
 // The production route: a record and the launch now answering. The record's own attributed evidence is
 // the only observation consulted.
-fn serving_session_standing(record: ServingSessionRecord, current_launch: NonEmptyStr, host: ServingHostTierStanding) -> ServingSessionResidency {
+fn serving_session_standing(record: ServingSessionRecord, current_launch: NonEmptyStr, host: ServingHostTierStanding, gpu: ServingGpuPrefixStanding) -> ServingSessionResidency {
   match record {
     NoSessionRecord => ResidencyUnread { obligation: "no session record exists for this turn, so no prefix was ever placed whose residency could be read" as NonEmptyStr }
     SessionRecord { owner_launch: o, prefix_intact: i, last_turn: t } =>
-      serving_session_residency(owner_launch: o, current_launch: current_launch, prefix_intact: i, last_turn: t, host: host)
+      serving_session_residency(owner_launch: o, current_launch: current_launch, prefix_intact: i, last_turn: t, host: host, gpu: gpu)
   }
 }
 
@@ -315,6 +315,17 @@ type ServingHostTierStanding
   = HostTierRetains
   | HostTierEmpty
   | HostTierUnread
+
+// CURRENT GPU PREFIX PRESENCE, not last-turn reuse. A completed cold turn (cached_tokens == 0) can
+// still leave its freshly computed prefix in the GPU cache (vLLM 1967a5627 prefix_caching.md). Host
+// emptiness is not that fact. PrefixMissedAndNotRetained is reached only on this observation.
+//
+// DECLARED FRONTIER (DESIGN.md 3c): production passes GpuPrefixUnread (harness_note_owner_standing).
+// The consumer of GpuPrefixCurrentlyEvicted is serving_session_residency. Trigger: the first
+// harness path that observes current prefix absence independently of last_turn.cached_tokens.
+type ServingGpuPrefixStanding
+  = GpuPrefixUnread
+  | GpuPrefixCurrentlyEvicted
 
 type ServingMustReconstructCause
   = TokenPrefixBroken
@@ -330,13 +341,15 @@ type ServingSessionResidency
 // ORDER IS THE LAW. A launch replacement or a broken token prefix voids the evidence, because it
 // describes a cache that no longer holds this session's tokens -- so both are decided before the
 // reuse reading is looked at. The reading must also have been taken on the owner launch itself: a
-// reading attributed to another launch is unread, not a hit.
+// reading attributed to another launch is unread, not a hit. last_turn.cached_tokens == 0 is reuse
+// AT THAT TURN (a completed cold turn), never current GPU absence.
 fn serving_session_residency(
   owner_launch: NonEmptyStr,
   current_launch: NonEmptyStr,
   prefix_intact: Bool,
   last_turn: ServingTurnReuse,
   host: ServingHostTierStanding,
+  gpu: ServingGpuPrefixStanding,
 ) -> ServingSessionResidency {
   if owner_launch != current_launch {
     MustReconstruct { cause: LaunchReplaced }
@@ -351,10 +364,14 @@ fn serving_session_residency(
         } else if n > 0 {
           ReusedAtTurn { cached_tokens: n, launch: l, turn: t }
         } else {
-          match host {
-            HostTierRetains => HostRestorable
-            HostTierEmpty => MustReconstruct { cause: PrefixMissedAndNotRetained }
-            HostTierUnread => ResidencyUnread { obligation: "prefix missed on GPU at its last turn and the host tier was not read" as NonEmptyStr }
+          match gpu {
+            GpuPrefixCurrentlyEvicted => MustReconstruct { cause: PrefixMissedAndNotRetained }
+            GpuPrefixUnread =>
+              match host {
+                HostTierRetains => HostRestorable
+                HostTierEmpty => ResidencyUnread { obligation: "the completed turn reused no prefix; that cold turn can leave its computed prefix cached, and host-tier empty is not a current GPU eviction" as NonEmptyStr }
+                HostTierUnread => ResidencyUnread { obligation: "the completed turn reused no prefix and neither the host tier nor current GPU presence was read" as NonEmptyStr }
+              }
           }
         }
     }
@@ -365,15 +382,18 @@ type ServingSessionPlacement
   = PlacementFree
   | OwnedByAnotherReplica { owner: NonEmptyStr }
 
-// RESIDENCY IS READ ONCE PER SESSION, FROM THE OWNING LAUNCH'S OWN READING, AND THEN APPLIED TO EVERY
-// CANDIDATE. It is never recomputed from a candidate's own data: a non-owner candidate's launch
-// differs from the owner's by construction, so that reading would always say LaunchReplaced and the
-// pin could never fire. ATTACHMENT IS NOT RESIDENCY: missing reuse evidence (unread) refuses the warm
-// claim but does not unpin the session, so a new replica never relocates it; only an observed
-// reconstruct (nothing left to protect) frees it. A warm session (resident or host-restorable) stays on its owner, so adding a
-// replica never moves it; a session that must reconstruct or is unread has nothing to protect.
-// The pin only removes non-owners: the owner itself still passes serving_group_admission like any
-// other candidate, so a busy owner makes the session wait rather than relocate.
+data serving_owner_unprobed_obligation: NonEmptyStr = "owner replica was not probed this admission; unread pins the session, it does not relocate" as NonEmptyStr
+
+fn serving_unread_when_owner_unprobed() -> ServingSessionResidency {
+  ResidencyUnread { obligation: serving_owner_unprobed_obligation }
+}
+
+// ATTACHMENT IS NOT RESIDENCY. A SessionRecord pins on ReusedAtTurn, HostRestorable and
+// ResidencyUnread (including missing owner standing, treated as unread). Only NoSessionRecord or an
+// established MustReconstruct (TokenPrefixBroken, LaunchReplaced, or a current GpuPrefixCurrentlyEvicted)
+// frees placement. LaunchReplaced frees because it is that reconstruction transition -- the named
+// owner launch is gone -- not because a non-owner candidate was probed. Owner standing is only
+// recorded on the owner launch, so a candidate never contributes LaunchReplaced as the field standing.
 fn serving_session_placement(
   residency: ServingSessionResidency,
   record: ServingSessionRecord,
@@ -383,9 +403,9 @@ fn serving_session_placement(
     NoSessionRecord => PlacementFree
     SessionRecord { owner_launch: owner, prefix_intact: _, last_turn: _ } =>
       match residency {
+        MustReconstruct { cause: _ } => PlacementFree
         ReusedAtTurn { cached_tokens: _, launch: _, turn: _ } => serving_pin_to_owner(owner: owner, candidate: candidate_launch)
         HostRestorable => serving_pin_to_owner(owner: owner, candidate: candidate_launch)
-        MustReconstruct { cause: _ } => PlacementFree
         ResidencyUnread { obligation: _ } => serving_pin_to_owner(owner: owner, candidate: candidate_launch)
       }
   }

@@ -10,6 +10,7 @@ import gunbc.serving.turn_admission {
   BatchQualityTolerant, QueueDepthRead, RouteAdmittingMore, SeatStandingRead,
   ServingSessionResidency, ReusedAtTurn, TurnReuseRead, TurnReuseUnread, MustReconstruct, TokenPrefixBroken,
   ServingSessionRecord, NoSessionRecord, SessionRecord,
+  ResidencyUnread, serving_unread_when_owner_unprobed,
 }
 import gunbc.spark.vllm_endpoint_process_launch {
   VllmEndpointProcessLaunch, VllmEndpointProcessLaunchObservation, vllm_endpoint_process_launch, LaunchObserved,
@@ -26,7 +27,7 @@ import gunbc.spark.serving_offer { spark_serving_incarnation_unobserved_obligati
 import gunbc.spark.pair_serving_realization { DeclaredUnitDigested, DeclaredUnitDigestUnavailable }
 import gunbc.harness.harness_wire { OpenAiChatCompletionsShape }
 import gunbc.harness.harness_seat {
-  HarnessCandidates, HarnessDeclaredUnitRoster, HarnessGroupParticipationRoster, harness_add_serving_candidate, harness_placement_is_free,
+  HarnessCandidates, HarnessDeclaredUnitRoster, HarnessGroupParticipationRoster, harness_add_serving_candidate, harness_placement_is_free, harness_apply_session_attachment, harness_session_admits_launch,
   harness_declared_unit_roster, harness_declared_unit_from_roster,
   harness_turn_subject, harness_turn_request, AnyAdmittedModel,
   harness_bind_candidate, harness_serving_route,
@@ -221,9 +222,22 @@ test fn a_non_owner_engine_contributes_no_standing_and_a_broken_prefix_reads_rec
         })
 }
 
-// The predicate harness_collect_candidates filters by: warm on another launch removes this one.
-test fn a_warm_owner_elsewhere_removes_this_launch_from_the_field() -> Bool {
-  !harness_placement_is_free(standing: ReusedAtTurn { cached_tokens: 512, launch: "L1" as NonEmptyStr, turn: "t7" as NonEmptyStr }, session: w_record(owner: "some-other-launch", intact: true), launch: w_launch(field: "1789300000.12"))
-    && harness_placement_is_free(standing: ReusedAtTurn { cached_tokens: 512, launch: "L1" as NonEmptyStr, turn: "t7" as NonEmptyStr }, session: w_record(owner: w_own_key(), intact: true), launch: w_launch(field: "1789300000.12"))
-    && harness_placement_is_free(standing: MustReconstruct { cause: TokenPrefixBroken }, session: w_record(owner: "some-other-launch", intact: true), launch: w_launch(field: "1789300000.12"))
+// THE FINAL FILTER BOUNDARY harness_collect_candidates uses. Owner L1 unprobed (unread) plus
+// eligible L2 must not admit L2. NoSessionRecord is the control that still admits L2.
+test fn an_unprobed_owner_does_not_admit_another_replica_and_no_record_does() -> Bool {
+  let l2 = w_launch(field: "1789300000.12")
+  !harness_session_admits_launch(session: w_record(owner: "L1", intact: true), standing: serving_unread_when_owner_unprobed(), launch: l2)
+    && harness_session_admits_launch(session: NoSessionRecord, standing: serving_unread_when_owner_unprobed(), launch: l2)
+    && !harness_placement_is_free(standing: ReusedAtTurn { cached_tokens: 512, launch: "L1" as NonEmptyStr, turn: "t7" as NonEmptyStr }, session: w_record(owner: "some-other-launch", intact: true), launch: l2)
+    && harness_placement_is_free(standing: ReusedAtTurn { cached_tokens: 512, launch: "L1" as NonEmptyStr, turn: "t7" as NonEmptyStr }, session: w_record(owner: w_own_key(), intact: true), launch: l2)
+    && harness_placement_is_free(standing: MustReconstruct { cause: TokenPrefixBroken }, session: w_record(owner: "some-other-launch", intact: true), launch: l2)
+}
+
+test fn owner_unprobed_apply_treats_standing_as_unread() -> Bool {
+  let collected = HarnessCandidates { candidates: [], notes: [], retryable: false, incarnations: [], owner_standing: none }
+  let applied = harness_apply_session_attachment(session: w_record(owner: "L1", intact: true), collected: collected, kept: [])
+  match applied.owner_standing {
+    Present { value: ResidencyUnread { obligation: _ } } => true
+    _ => false
+  }
 }
