@@ -19,7 +19,8 @@ import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDige
 import extdeps.sudo.elevation { sudo_elevate }
 import extdeps.tools.chown { chown_argv, ChownOwnerNames }
 import extdeps.posix.identity { PosixOwnerNames }
-import gunbc.fleet_host_identity { operator_host_srv1 }
+import gunbc.auth.approval_broker_placement { approval_broker_host_under, ApprovalBrokerHostResolved, ApprovalBrokerHostRefused }
+import gunbc.roadmap_dashboard_instance { ProdRoleRealization, prod_role_realization, prod_role_realization_refusal_detail }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name, actions_variable_trimmed }
 import gunbc.auth.approval_keyring_pins {
   approval_submission_mac_key_path_env,
@@ -89,15 +90,27 @@ fn approval_keyring_staged_digest_ok(path: NonEmptyStr, expected_prefix: NonEmpt
   }
 }
 
-fn keyring_host_must_be_srv1(host: String) -> Bool {
-  host == operator_host_srv1 as String
+// THE KEYRING FILES LIVE ON THE MACHINE THAT SERVES /approve, which is the approval broker's host:
+// the host of the prod-role holder (gunbc.auth.approval_broker_placement approval_broker_host_under
+// over gunbc.deployment_risk prod_role_selection). It was the literal srv1; moving the role now moves
+// this converge with it, and a refused realization refuses the run -- no default host.
+fn keyring_host_must_be_broker_host_under(host: String, realization: ProdRoleRealization) -> Bool {
+  match approval_broker_host_under(realization: realization) {
+    ApprovalBrokerHostResolved { host: broker } => host == broker as String
+    ApprovalBrokerHostRefused { cause: _ } => false
+  }
 }
 
-fn approval_keyring_converge_refuses_off_srv1(host: String) -> ProcessExit {
-  if keyring_host_must_be_srv1(host: host) {
-    ExitSuccess
-  } else {
-    exit_failure(reason: concat("approval keyring converge refuses host '", concat(host, concat("': the files live on the machine that serves /approve, which is ", operator_host_srv1 as String))))
+fn approval_keyring_converge_refuses_off_broker_host_under(host: String, realization: ProdRoleRealization) -> ProcessExit {
+  match approval_broker_host_under(realization: realization) {
+    ApprovalBrokerHostRefused { cause } =>
+      exit_failure(reason: concat("approval keyring converge: no broker host to converge: ", prod_role_realization_refusal_detail(cause: cause)))
+    ApprovalBrokerHostResolved { host: broker } =>
+      if host == broker as String {
+        ExitSuccess
+      } else {
+        exit_failure(reason: concat("approval keyring converge refuses host '", concat(host, concat("': the files live on the machine that serves /approve, which is ", broker as String))))
+      }
   }
 }
 
@@ -170,9 +183,9 @@ fn roadmap_unit_restart_argv() -> List<String> {
   systemctl_restart_argv(unit: gunbc_roadmap_unit_name)
 }
 
-fn keyring_ssh_target() -> SshTarget {
+fn keyring_ssh_target(host: String) -> SshTarget {
   SshTarget {
-    endpoint: fleet_probe_endpoint_for(host: operator_host_srv1 as String) as NonEmptyStr,
+    endpoint: fleet_probe_endpoint_for(host: host) as NonEmptyStr,
     principal: executor_bootstrap_principal.login,
   }
 }
@@ -234,7 +247,7 @@ fn keyring_install_file(
   }
 }
 
-fn approval_keyring_converge_on_host() -> ProcessExit
+fn approval_keyring_converge_on_host(host: String) -> ProcessExit
 {
   let cap_path = actions_variable_trimmed(name: approval_capability_mac_key_path_env)
   let sub_path = actions_variable_trimmed(name: approval_submission_mac_key_path_env)
@@ -271,7 +284,7 @@ fn approval_keyring_converge_on_host() -> ProcessExit
                               FleetSshContextRefused { cause: c } =>
                                 exit_failure(reason: concat("approval keyring: ", c))
                               FleetSshContextReady { context: context, receipt: _ } => {
-                                let target = keyring_ssh_target()
+                                let target = keyring_ssh_target(host: host)
                                 match keyring_elevated_exec(target: target, context: context, command: ["true"], step: "administrator-privilege") {
                                   ExitSuccess =>
                                     match keyring_ensure_dirs(target: target, context: context) {
@@ -320,8 +333,8 @@ fn approval_keyring_converge_wet() -> ProcessExit
     ActionsVariableAbsent { variable: v, detail: d } =>
       exit_failure(reason: concat("approval keyring converge: ", concat(v, concat(" ", concat(d, "; one host per run, named by the dispatch")))))
     ActionsVariablePresent { value: host } =>
-      match approval_keyring_converge_refuses_off_srv1(host: host) {
-        ExitSuccess => approval_keyring_converge_on_host()
+      match approval_keyring_converge_refuses_off_broker_host_under(host: host, realization: prod_role_realization()) {
+        ExitSuccess => approval_keyring_converge_on_host(host: host)
         other => other
       }
   }

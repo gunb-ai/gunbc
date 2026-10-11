@@ -1,19 +1,21 @@
 module test.claim.approval_keyring_converge_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, String }
+import std.types { Bool, String, List }
 import v2.std.algebra { list_head, HeadFound }
 import gunbc.fleet_posix_accounts { fleet_usermod_binary_path }
 import std.process { ExitSuccess }
 import gunbc.auth.approval_keyring_pins { approval_mac_key_payload_sha256_prefix, approval_submission_mac_key_payload_sha256_prefix, approval_store_receipt_mac_key_payload_sha256_prefix }
 import gunbc.auth.approval_keyring_converge {
   sha256_prefix_compare, Sha256PrefixMatches, Sha256PrefixMismatch, Sha256Unavailable,
-  keyring_host_must_be_srv1,
-  approval_keyring_converge_refuses_off_srv1, approval_mac_key_digest_standing,
+  keyring_host_must_be_broker_host_under,
+  approval_keyring_converge_refuses_off_broker_host_under, approval_mac_key_digest_standing,
   keyring_mkdir_argv, store_root_mkdir_argv, claim_store_root_mkdir_argv,
   ntfy_group_admit_argv, roadmap_unit_restart_argv,
 }
 import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
+import gunbc.deployment_risk { NoProdRole, ProdRoleHeldBy, srv1_daily_workspace_deployment, srv2_deploy_deployment }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, prod_role_realization_in, srv1_live_dashboard_instance, srv2_deploy_dashboard_instance }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -39,10 +41,25 @@ test fn short_digest_is_unavailable_not_a_match() -> Bool {
   }
 }
 
-test fn keyring_converge_is_srv1_only() -> Bool {
-  keyring_host_must_be_srv1(host: operator_host_srv1 as String)
-    && !keyring_host_must_be_srv1(host: operator_host_srv2 as String)
-    && match approval_keyring_converge_refuses_off_srv1(host: operator_host_srv1 as String) { ExitSuccess => true  _ => false }
+fn keyring_roster() -> List<HostDashboardInstance> {
+  [srv1_live_dashboard_instance(), srv2_deploy_dashboard_instance()]
+}
+
+test fn keyring_converge_follows_the_broker_host_not_srv1() -> Bool {
+  let on_srv1 = prod_role_realization_in(selection: ProdRoleHeldBy { deployment: srv1_daily_workspace_deployment }, instances: keyring_roster())
+  let on_srv2 = prod_role_realization_in(selection: ProdRoleHeldBy { deployment: srv2_deploy_deployment }, instances: keyring_roster())
+  keyring_host_must_be_broker_host_under(host: operator_host_srv1 as String, realization: on_srv1)
+    && !keyring_host_must_be_broker_host_under(host: operator_host_srv2 as String, realization: on_srv1)
+    && keyring_host_must_be_broker_host_under(host: operator_host_srv2 as String, realization: on_srv2)
+    && !keyring_host_must_be_broker_host_under(host: operator_host_srv1 as String, realization: on_srv2)
+    && match approval_keyring_converge_refuses_off_broker_host_under(host: operator_host_srv2 as String, realization: on_srv2) { ExitSuccess => true  _ => false }
+    && match approval_keyring_converge_refuses_off_broker_host_under(host: operator_host_srv1 as String, realization: on_srv2) { ExitSuccess => false  _ => true }
+}
+
+test fn keyring_converge_refuses_every_host_under_no_prod_role() -> Bool {
+  let none_held = prod_role_realization_in(selection: NoProdRole, instances: keyring_roster())
+  !keyring_host_must_be_broker_host_under(host: operator_host_srv1 as String, realization: none_held)
+    && match approval_keyring_converge_refuses_off_broker_host_under(host: operator_host_srv1 as String, realization: none_held) { ExitSuccess => false  _ => true }
 }
 
 test fn digest_standing_admits_the_modeled_prefix_and_refuses_a_mismatch() -> Bool {
