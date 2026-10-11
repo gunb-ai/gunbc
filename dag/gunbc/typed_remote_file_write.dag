@@ -5,13 +5,13 @@ import extdeps.sudo.elevation { ElevatedInvocation, sudo_elevate }
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
 import std.algebra { trim }
 import extdeps.ssh.session { SshSessionExecResult }
-import gunbc.fleet_bootstrap_principal_session {
+import gunbc.fleet.fleet_bootstrap_principal_session {
   exec_as_fleet_principal_with_stdin,
   BootstrapCredentialInRunEnvironment,
   FleetPrincipalLegRan,
   FleetPrincipalLegRefused,
 }
-import gunbc.fleet_known_hosts_anchor {
+import gunbc.fleet.fleet_known_hosts_anchor {
   FleetSshExecutionContext,
   SshTarget,
   portable_remote_word,
@@ -26,7 +26,7 @@ import gunbc.file_access { FileTreeScope, path_within_file_tree_scope }
 // it and is described in its own section. No
 // script body arm, no sh -c, no command string constructor. Path containment uses gunbc.file_access
 // path_within_file_tree_scope (exact root, root/…, .. rejected); portable-word allowlist uses
-// gunbc.fleet_known_hosts_anchor portable_remote_word at seal and portable_remote_words at execute
+// gunbc.fleet.fleet_known_hosts_anchor portable_remote_word at seal and portable_remote_words at execute
 // (one authority, no typed_argv fork). typed_remote_file_write_over_fleet_ssh accepts only
 // TypedRemoteFileWriteAdmitted. TypedRemoteFileWriteOutcome success arm is
 // TypedRemoteFileWriteRemoteExecAccepted (tee exit 0 only) — NOT convergence. A zero tee exit
@@ -93,7 +93,7 @@ type TypedRemoteFileWriteOutcome
 // cmp's exit vocabulary plus the whole route over a hermetic fixture, not a near-side byte compare.
 // For a unit file the transfer is a few hundred bytes.
 // OWNER-READ-ONLY IS ITS OWN ARM, not a caller-supplied octal: a signing key read by root alone
-// (gunbc.host_credential_custody_converge ControllerAppKey) has no reason to be writable even by its owner, and an
+// (gunbc.fleet.host_credential_custody_converge ControllerAppKey) has no reason to be writable even by its owner, and an
 // open octal parameter would let any consumer spell a group- or world-readable key.
 type RemoteFileMode
   = RemoteFileModeOwnerReadWrite
@@ -431,7 +431,7 @@ fn typed_remote_file_write_outcome_after_ssh_exec(
 // THE SESSION COMES FROM THE PRINCIPAL IN THE TARGET, not from this call site. This leg used
 // to name shape_fleet_ssh_exec directly, which silently asserted that every principal a
 // caller might write a file as holds the fleet key. The bootstrap principal does not, and
-// gunbc.fleet_bootstrap_principal_session is now the one place that decides.
+// gunbc.fleet.fleet_bootstrap_principal_session is now the one place that decides.
 fn typed_remote_file_write_over_fleet_ssh(
   target: SshTarget,
   context: FleetSshExecutionContext,

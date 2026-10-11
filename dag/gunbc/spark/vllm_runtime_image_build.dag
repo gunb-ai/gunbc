@@ -27,7 +27,7 @@ import extdeps.docker.cli {
 }
 import extdeps.container.oci.digest { OciContentDigest, render_oci_content_digest_wire, oci_content_digest_encoded_hex, parse_oci_content_digest_wire }
 import std.checked_arithmetic { CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
-import gunbc.host_disk_observation { HostDiskObservation, DiskObserved, DiskObservationRefused, DiskUnobserved, host_disk_free_space_argv, host_disk_observation_of_df }
+import gunbc.host.host_disk_observation { HostDiskObservation, DiskObserved, DiskObservationRefused, DiskUnobserved, host_disk_free_space_argv, host_disk_observation_of_df }
 import extdeps.tools.gnu_coreutils { rm_force_command, mv_exact_destination_command }
 import gunbc.artifact_acquisition { AcquisitionOutcome, AcquisitionAlreadyPresent, AcquisitionFetched, AcquisitionRefused, acquire_artifact, acquisition_refusal_text }
 import gunbc.spark.spark_file_blob { spark_file_blob_handler, spark_read_file_digest, SparkFileDigestRead, SparkFileDigestUnread }
@@ -63,7 +63,7 @@ import extdeps.flashinfer.flashinfer {
 }
 import extdeps.posix.sh_invocation { posix_sh_script_command }
 import gunbc.file_access { FileTreeScope }
-import gunbc.host_effect { FleetSsh }
+import gunbc.host.host_effect { FleetSsh }
 import gunbc.remote_operation { RemoteArgv, RemoteFileBytes, PlannedRemoteStep }
 import gunbc.spark.remote_step_sequence {
   run_remote_step_sequence, remote_step_sequence_failed, remote_step_failure_causes_wire,
@@ -74,18 +74,18 @@ import gunbc.typed_remote_file_write {
 }
 import extdeps.tools.curl { curl_download_command }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
-import gunbc.fleet_known_hosts_anchor {
+import gunbc.fleet.fleet_known_hosts_anchor {
   FleetSshExecutionContext, SshTarget,
   FleetSshAttemptIdentity, fleet_ssh_attempt_identity,
   materialize_fleet_known_hosts_anchor, known_hosts_materialization_receipt,
   fleet_ssh_execution_context_of, fleet_ssh_credential_identity, fleet_ssh_credential_locus_label,
   fleet_openssh_trust_policy_of,
 }
-import gunbc.fleet_ssh_credential_verify {
+import gunbc.fleet.fleet_ssh_credential_verify {
   FleetSshCredentialVerified, FleetSshCredentialIdentityMismatch, FleetSshCredentialDerivationRefused,
   fleet_ssh_credential_verification_refusal_reason,
 }
-import gunbc.fleet_multi_principal_probe {
+import gunbc.fleet.fleet_multi_principal_probe {
   probe_agent_credential_verification,
   SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused,
   spark_converge_target_selection,
@@ -367,7 +367,7 @@ fn glm53_derived_dockerfile(base_tag: NonEmptyStr) -> String {
 // leg with sha256sum's own failure line; nothing falls back to an unverified wheel.
 //
 // THE SCRIPT IS FILE CONTENT, NOT AN ARGV WORD. An earlier revision handed the whole script to
-// `sh -c` as one remote word, and the portable-word wall at gunbc.fleet_known_hosts_anchor refused
+// `sh -c` as one remote word, and the portable-word wall at gunbc.fleet.fleet_known_hosts_anchor refused
 // it before anything ran -- correctly: a word carrying spaces, pipes and redirects is exactly what
 // that wall exists to stop, and the jit-cache wheel's URL alone carries a `+` the allowlist does
 // not admit. The modeled route is the corpus's own: the script and the Dockerfile travel as

@@ -1493,7 +1493,7 @@ fn dag_grammar_let_sugar_expr() -> GrammarExpr {
 // tries them. Kept, they read as a second route to block forms that no input
 // can take, and as a second row emit could select backward.
 //
-// Evidence: `v2.test.parse.block_expr_as_binary_operand_parse` -- two arms red before this reorder
+// Evidence: `v2.test.claim.parse.block_expr_as_binary_operand_parse` -- two arms red before this reorder
 // (a `match` and an `if` heading a binary chain), three controls green on both sides (each block
 // form standing alone, and an operand that was never block-shaped).
 // A BINARY EXPRESSION NEVER BEGINS AS AN ARROW LAMBDA DOES: `name =>`, or `( name ,` -- a grouped
@@ -4476,7 +4476,7 @@ fn dag_add_param_binding_ids() -> List<Symbol> {
 // carry NO spelling -- binding a spelling to them here would change what every reference resolves
 // to -- and name in `converges_on` the declaration each converges on once de-forked. Nothing binds
 // through `converges_on`; it is the de-fork lane's subject, read today only by the control that
-// holds the fork as it is (v2.test.claim.compiler.kernel_value_type_roster_witness_test).
+// holds the fork as it is (v2.test.claim.compiler.kernel_value_type_roster_witness).
 //
 // A kernel type with NO value-type node in a v2 std authority has no row: there is nothing for one
 // to point at. Float, Secret, Json, Unit and Bytes (std.types kernel_type_set) are in that state,

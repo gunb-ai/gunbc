@@ -1,9 +1,9 @@
-module gunbc.runner_microvm_ci_admission
+module gunbc.runner.runner_microvm_ci_admission
 
 import std.types { String, NonEmptyStr }
 import product.fabric.work { ControlPlaneCapacity }
-import gunbc.fabric_executor_class { ExecutorSanction, ExecutorSanctioned, ExecutorUnclassified }
-import gunbc.runner_microvm_cell_readiness {
+import gunbc.fabric.fabric_executor_class { ExecutorSanction, ExecutorSanctioned, ExecutorUnclassified }
+import gunbc.runner.runner_microvm_cell_readiness {
   CellIncarnationAdmission, CellIncarnationAdmitted, CellRecoveryRequired, CellWithdrawn, HostWithdrawn, CellBoundAttempt,
   GitHubRunnerWorkload, WorkspaceWorkload,
 }

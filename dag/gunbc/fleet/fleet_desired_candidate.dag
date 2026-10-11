@@ -1,4 +1,4 @@
-module gunbc.fleet_desired_candidate
+module gunbc.fleet.fleet_desired_candidate
 
 import std.types { String, List }
 import v2.std.node { Node }
@@ -11,18 +11,18 @@ import v2.extdeps.languages.bash_build {
   bash_build_or_else, bash_build_subshell_from_stmts, bash_build_with_redir_to_file, bash_build_exit,
   bash_build_pipe,
 }
-import gunbc.fleet_release_bins_key { compiler_pair_candidate_artifact_name, release_bins_pack_object_name, script_emission_refused_text }
+import gunbc.fleet.fleet_release_bins_key { compiler_pair_candidate_artifact_name, release_bins_pack_object_name, script_emission_refused_text }
 
 // WHERE fleet-desired FINDS THE CANDIDATE THE MERGE QUEUE BUILT FOR THE REVISION THAT JUST LANDED.
 //
 // The merge queue moves main to exactly the composed revision its required run judged
-// (gunbc.fleet_desired_admission's own premise), so the checked-out commit IS the merge_group run's
+// (gunbc.fleet.fleet_desired_admission's own premise), so the checked-out commit IS the merge_group run's
 // head sha. It is read from the checkout (git rev-parse HEAD), never from the event: the workflow names
 // no revision of its own, and the bytes it will verify are the bytes it holds.
 // This step asks the Actions API for the successful merge_group runs of the required workflow on that
 // sha, takes the newest one that still holds the candidate artifact, and downloads that artifact's
 // pack object. It decides only WHETHER a candidate exists: whether the candidate is the product it
-// claims to be is gunbc.fleet_release_bins_key's canonical consumer, run next, which verifies kind,
+// claims to be is gunbc.fleet.fleet_release_bins_key's canonical consumer, run next, which verifies kind,
 // source tree and every member before anything executes. So an API answer can make this step report
 // absence, never trust.
 //
@@ -158,6 +158,6 @@ fn fleet_desired_candidate_fetch_statements() -> List<Node> {
 fn fleet_desired_candidate_fetch_script() -> String {
   match bash_emit_stmts(statements: fleet_desired_candidate_fetch_statements(), set_e: true) {
     Accepted { value: v, diagnostics: _ } => v
-    Rejected { diagnostics: ds } => script_emission_refused_text(script: "gunbc.fleet_desired_candidate fleet_desired_candidate_fetch_script", diagnostics: ds)
+    Rejected { diagnostics: ds } => script_emission_refused_text(script: "gunbc.fleet.fleet_desired_candidate fleet_desired_candidate_fetch_script", diagnostics: ds)
   }
 }

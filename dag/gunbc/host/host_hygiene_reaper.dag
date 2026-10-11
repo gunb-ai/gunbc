@@ -1,4 +1,4 @@
-module gunbc.host_hygiene_reaper
+module gunbc.host.host_hygiene_reaper
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
@@ -32,14 +32,14 @@ data gunbc_host_hygiene_reaper_scope_disposition: Disposition = Terminal {
 data gunbc_host_hygiene_reaper_build_cache_placement_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.build_cache_instance",
+    module_path: "gunbc.build_cache.build_cache_instance",
     decl_name: "BuildCacheServerPlacement",
     field: WholeDeclaration,
   }
 }
 
 data gunbc_host_hygiene_reaper_build_cache_placement_scaffold_note: Disposition = Terminal {
-  reason: "CgroupBuildCacheServerOccupant refuses unconditionally (an unconditional refuse-to-reap, not an allowlist: it is keyed on structurally detecting the sccache server process, never on a hand-maintained unit-name list). This is the interim named in the brief as 'until then'. BuildCacheServerPlacement HAS since landed, in gunbc.build_cache_instance rather than the provisioning fold, and with different arms than this scaffold predicted: ServerManagedUnitOwned | ServerRunnerOwned\{slot,lifecycle} | ServerUnsupervised | ServerPlacementAbsent | ServerPlacementUnknown. The predicted ServerUnitOwned and ServerLazySpawned do not exist — the first became ServerManagedUnitOwned because a unit owning the endpoint is satisfied by ANY unit including the wrong one, and the second named an inferred cause where an observer can only see the current owner. This variant should carry that placement and residual_reap_action_for_inactive should exempt ServerManagedUnitOwned by placement rather than refuse every build-cache occupant — dissolves onto gunbc_host_hygiene_reaper_build_cache_placement_scaffold."
+  reason: "CgroupBuildCacheServerOccupant refuses unconditionally (an unconditional refuse-to-reap, not an allowlist: it is keyed on structurally detecting the sccache server process, never on a hand-maintained unit-name list). This is the interim named in the brief as 'until then'. BuildCacheServerPlacement HAS since landed, in gunbc.build_cache.build_cache_instance rather than the provisioning fold, and with different arms than this scaffold predicted: ServerManagedUnitOwned | ServerRunnerOwned\{slot,lifecycle} | ServerUnsupervised | ServerPlacementAbsent | ServerPlacementUnknown. The predicted ServerUnitOwned and ServerLazySpawned do not exist — the first became ServerManagedUnitOwned because a unit owning the endpoint is satisfied by ANY unit including the wrong one, and the second named an inferred cause where an observer can only see the current owner. This variant should carry that placement and residual_reap_action_for_inactive should exempt ServerManagedUnitOwned by placement rather than refuse every build-cache occupant — dissolves onto gunbc_host_hygiene_reaper_build_cache_placement_scaffold."
 }
 
 type CgroupOccupant
@@ -197,7 +197,7 @@ fn reconcile_residual_reap(
 }
 
 data gunbc_host_hygiene_reaper_show_effective_read: ShowEffectiveRead<List<ResidualSlotObservation>> = ReadAbsent {
-  reason: "this is the pure/CI-hermetic default read (deliberately never observed — this .dag has no shell transport and CI's floor is hermetic-only); the live per-slot cgroup/system.control read runs through gunbc.host_hygiene_reaper_observe.gunbc_host_hygiene_reaper_live_evidence(), which this module does not import to avoid a cycle back onto its own decision core"
+  reason: "this is the pure/CI-hermetic default read (deliberately never observed — this .dag has no shell transport and CI's floor is hermetic-only); the live per-slot cgroup/system.control read runs through gunbc.host.host_hygiene_reaper_observe.gunbc_host_hygiene_reaper_live_evidence(), which this module does not import to avoid a cycle back onto its own decision core"
 }
 
 fn gunbc_host_hygiene_reaper_evidence() -> Reconciliation<String, ResidualReapEvidence> {

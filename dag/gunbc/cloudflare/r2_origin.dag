@@ -13,7 +13,7 @@ import extdeps.object_storage { ObjectPutPrecondition, PutIfAbsent, PutUnconditi
 import gunbc.fabric.fabric_blob_placement { fabric_cache_blob_prefix, fabric_cache_release }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
-import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
 import std.human_intervention {
   HumanIntervention,
   HumanInterventionIdentity,
@@ -82,7 +82,7 @@ fn fleet_cloudflare_account_standing() -> FleetCloudflareAccountStanding {
 }
 
 // WHAT IS ADMITTED TO THE ORIGIN IS A DECLARED POPULATION, NOT "whatever a caller uploads". The
-// durable origin is the byte-owning half of gunbc.fabric_m0_commit's readback distinction: a commit
+// durable origin is the byte-owning half of gunbc.fabric.fabric_m0_commit's readback distinction: a commit
 // manifest read back from a disposable cache establishes nothing, so the origin has to be a named
 // place with a stated admission. Widening it later is a change to this row, which is exactly the
 // visibility a bucket that quietly became a general dumping ground would not have.
@@ -170,7 +170,7 @@ type R2OriginBucket {
 //
 // THE WORKSPACE PLACEMENT IS A FOURTH PURPOSE, NOT A WIDENING OF THE DURABLE ORIGIN OR THE CACHE. It
 // holds durable workspace history (std.fabric_storage): content-addressed chunks and revision
-// objects, write-once and create-only, plus the workspace heads that gunbc.fabric_storage_r2_head
+// objects, write-once and create-only, plus the workspace heads that gunbc.fabric.fabric_storage_r2_head
 // writes under If-Match. It is not the cache bucket because the cache's lifecycle rule releases its
 // objects at seven days and workspace history is released never; it is not the durable origin
 // because that bucket's admission is commit manifests and their outputs, and its write token is the
@@ -228,7 +228,7 @@ fn origin_admission_put_precondition(admission: OriginAdmission) -> ObjectPutPre
 //
 // THE WORKSPACE'S ONE EXCEPTION IS ITS HEADS, AND THEY DO NOT ROUTE THROUGH HERE. Chunks and revision
 // objects are content-addressed and create-only like every other admitted population; a workspace
-// head is replaced, but gunbc.fabric_storage_r2_head writes it under If-Match on the tag it last read
+// head is replaced, but gunbc.fabric.fabric_storage_r2_head writes it under If-Match on the tag it last read
 // -- a precondition derived from that tag, not from this admission -- so the admission's answer
 // stays true for every object that consults it.
 fn origin_admission_is_create_only(admission: OriginAdmission) -> Bool {
@@ -380,7 +380,7 @@ fn fabric_durable_origin_standing() -> R2OriginStanding {
 // which. The read token is what every confirming readback signs with, and it is held by whoever
 // reads back; the write token is spent only at commit. A single read-and-write token would hand
 // every reader the power to overwrite the origin it is confirming, which is the laundering
-// gunbc.fabric_m0_origin_readback exists to make unwritable. The write grant's id is an
+// gunbc.fabric.fabric_m0_origin_readback exists to make unwritable. The write grant's id is an
 // OBSERVATION (gunbc.cloudflare.r2_permission_group_observe) inhabiting extdeps.cloudflare.r2's
 // r2_object_write_grant shape; it is not authored here either.
 

@@ -364,7 +364,7 @@ fn report_outcome(function: &str, outcome: ClaimOutcome, any_failed: &mut bool) 
             *any_failed = true;
         }
         // THE EXECUTOR SURFACE THE DISSOLVE-ON NAMED. This line is where a gate-class claim's
-        // typed refusal reason reaches the operator: `tools.emit_host_gate` once shelled its
+        // typed refusal reason reaches the operator: `gunbc.instruments.emit_host_gate` once shelled its
         // per-smoke verdict line out to printf because this path could only print bare FAIL
         // (the 2026-07-13 srv3 forensics receipt). The reason is the single carrier now — the
         // narration op is deleted, and this arm prints what the claim itself returned.
@@ -1206,7 +1206,7 @@ fn main() -> ExitCode {
     // resolve, so a limit bound by only one of them leaves the other exactly as unbounded as
     // before — and it is claim_batch that runs a `.dag` witness, so the developer route to the
     // witness corpus stays dead without this.
-    // Authority: `gunbc.memory_cgroup_binding`.
+    // Authority: `gunbc.host.memory_cgroup_binding`.
     let bind = v1_compiler::memory_governor::apply_memory_cgroup_bind();
     eprintln!("{}", v1_compiler::memory_governor::cgroup_bind_note(&bind));
     if v1_compiler::memory_governor::cgroup_bind_refusal_diagnostic(&bind).is_some() {
@@ -1256,7 +1256,7 @@ mod cli_path_resolution_wiring_tests {
         let ws = workspace_root();
         let root = ws.join("dag").to_string_lossy().into_owned();
         let entry = ws
-            .join("dag/test/claim/discovery_census_witness_test.dag")
+            .join("dag/test/claim/discovery_census_witness.dag")
             .to_string_lossy()
             .into_owned();
         let parsed = parse_args(&args(&[
@@ -1293,7 +1293,7 @@ mod cli_path_resolution_wiring_tests {
             "--source-root",
             "dag",
             "--entry",
-            "dag/test/claim/discovery_census_witness_test.dag",
+            "dag/test/claim/discovery_census_witness.dag",
             "--function",
             "w_site_label_is_the_module_path_as_package",
         ]));
@@ -1309,7 +1309,7 @@ mod cli_path_resolution_wiring_tests {
     #[test]
     fn nonexistent_explicit_function_refuses_before_resolution() {
         let entry = workspace_root()
-            .join("dag/test/claim/discovery_census_witness_test.dag")
+            .join("dag/test/claim/discovery_census_witness.dag")
             .to_string_lossy()
             .into_owned();
         let groups = vec![EntryGroup {
@@ -1324,7 +1324,7 @@ mod cli_path_resolution_wiring_tests {
         let ws = workspace_root();
         let root = ws.join("dag").to_string_lossy().into_owned();
         let entry = ws
-            .join("dag/test/claim/discovery_census_witness_test.dag")
+            .join("dag/test/claim/discovery_census_witness.dag")
             .to_string_lossy()
             .into_owned();
         let parsed = parse_args(&args(&[
@@ -1342,7 +1342,7 @@ mod cli_path_resolution_wiring_tests {
     #[test]
     fn declared_explicit_function_passes_preflight() {
         let entry = workspace_root()
-            .join("dag/test/claim/discovery_census_witness_test.dag")
+            .join("dag/test/claim/discovery_census_witness.dag")
             .to_string_lossy()
             .into_owned();
         let groups = vec![EntryGroup {
@@ -1407,7 +1407,7 @@ mod discovery_exclude_tests {
     #[test]
     fn real_ingest_gate_only_path_excluded_on_ci_style_paths() {
         let paths = [
-            "src/v2/test/claim/program_assembly/real_ingest_test.dag",
+            "src/v2/test/claim/program_assembly/real_ingest.dag",
             "/opt/actions-runner/work/gunbc/gunbc/src/v2/test/claim/program_assembly/real_ingest_test.dag",
         ];
         for path in paths {

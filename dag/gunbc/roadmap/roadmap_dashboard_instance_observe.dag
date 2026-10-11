@@ -1,4 +1,4 @@
-module gunbc.roadmap_dashboard_instance_observe
+module gunbc.roadmap.roadmap_dashboard_instance_observe
 
 import std.algebra { trim }
 import std.types { String, Bool, List, FilePath }
@@ -9,7 +9,7 @@ import gunbc.typed_argv_exec {
   TypedArgvExecRefused,
   typed_argv_probe_over_ssh,
 }
-import gunbc.roadmap_dashboard_instance {
+import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
   DashboardLocalProvision,
   DashboardSshProvision,
@@ -17,10 +17,10 @@ import gunbc.roadmap_dashboard_instance {
 }
 
 // Observation-only host probes for a dashboard instance. Split out of
-// gunbc.roadmap_dashboard_instance_apply so serving can observe provider
+// gunbc.roadmap.roadmap_dashboard_instance_apply so serving can observe provider
 // readiness without importing the launcher (CONVERGENCE-ONE C5).
-// CONSUMERS: gunbc.roadmap_dashboard_instance_apply dashboard_target_exec,
-// gunbc.dashboard_provider_readiness observe_dashboard_provider_readiness.
+// CONSUMERS: gunbc.roadmap.roadmap_dashboard_instance_apply dashboard_target_exec,
+// gunbc.roadmap.dashboard_provider_readiness observe_dashboard_provider_readiness.
 
 // DECLARED SCAFFOLD (review 44058, DESIGN 5). DashboardExecResult carries
 // failure as success: Bool plus prose. DISSOLVES ON: the apply pipeline

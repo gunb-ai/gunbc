@@ -5,9 +5,9 @@ import extdeps.tailscale.serve {
   TailscaleServeEndpoint, TailscaleServeMount, ServeRootMount, ServeSetPath,
 }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
-import gunbc.fleet_tailnet { fleet_tailnet_domain, tailnet_base_url_from, tailnet_host_from }
+import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain, tailnet_base_url_from, tailnet_host_from }
 import gunbc.serve_liveness { serve_liveness_path }
-import gunbc.srv1_dashboard_bind { srv1_dashboard_host_identity }
+import gunbc.roadmap.srv1_dashboard_bind { srv1_dashboard_host_identity }
 import gunbc.auth.approval_device_wire { approval_device_request_path_prefix, approval_device_enrollment_path_prefix }
 
 // ── WHERE THE APPROVAL BROKER ANSWERS ────────────────────────────────────────────────────────

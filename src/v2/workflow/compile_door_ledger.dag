@@ -42,7 +42,7 @@ import v2.std.node { Node, Symbol, symbol_intern_lexeme }
 
 // The PR-2 transport core: the AuditOnly stopped-line ledger over the v2 compile door (DESIGN 5
 // factory model; sharp-bee-290 contract 2026-07-13; mandated by the milestone-1 receipts in
-// v2.test.long.door_real_module_probe — the door's pre-existing per-node roster and resolve red
+// v2.test.claim.long.door_real_module_probe — the door's pre-existing per-node roster and resolve red
 // real corpus modules today, so Blocking is impossible until causes zero). Each subject path gets
 // exactly ONE typed row: DoorCompiled, or DoorRefused carrying the rejection's FATAL reason —
 // located by the per-path interned unit symbol, counted by the cause histogram, NEVER absorbed into

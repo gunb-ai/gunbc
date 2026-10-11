@@ -1,4 +1,4 @@
-module tools.floor_cost_distribution_instrument
+module gunbc.instruments.floor_cost_distribution_instrument
 
 import extdeps.filesystem.filesystem_io
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -436,15 +436,15 @@ data floor_cost_repaired_modules: List<String> = [
 
 // Ladder order: remaining modules by max-over-runs cost, worst first.
 data floor_cost_ladder_order: List<String> = [
-  "v2.test.emit.rust_produced_decl_emit",
-  "v2.test.execution.emit_host_field_access_equals_eval",
-  "v2.test.execution.emit_host_fold_closure_equals_eval",
-  "v2.test.emit.semantic_decl_serialize_parity",
-  "v2.test.execution.emit_host_meet_join_equals_eval",
-  "v2.test.execution.emit_host_complement_equals_eval",
-  "v2.test.emit.produced_decl_two_target",
-  "v2.test.execution.emit_host_add_equals_eval",
-  "v2.test.emit.semantic_decl_routing_generic",
+  "v2.test.claim.emit.rust_produced_decl_emit",
+  "v2.test.claim.execution.emit_host_field_access_equals_eval",
+  "v2.test.claim.execution.emit_host_fold_closure_equals_eval",
+  "v2.test.claim.emit.semantic_decl_serialize_parity",
+  "v2.test.claim.execution.emit_host_meet_join_equals_eval",
+  "v2.test.claim.execution.emit_host_complement_equals_eval",
+  "v2.test.claim.emit.produced_decl_two_target",
+  "v2.test.claim.execution.emit_host_add_equals_eval",
+  "v2.test.claim.emit.semantic_decl_routing_generic",
   "v2.test.claim.enforcement.lens_module_gate_witness"
 ]
 
@@ -529,7 +529,7 @@ data floor_cost_envelope_sampled_runs: List<FloorRunProvenance> = [
 
 // The subject the measurement was commissioned over, named so the report prints its envelope beside
 // the corpus percentiles rather than leaving a reader to grep for it.
-data floor_cost_envelope_subject: String = "v2.test.emit.rust_produced_decl_emit.rust_produced_decl_name_discriminates"
+data floor_cost_envelope_subject: String = "v2.test.claim.emit.rust_produced_decl_emit.rust_produced_decl_name_discriminates"
 
 fn envelope_runner_line(prov: FloorRunProvenance, census: List<RunExtremeCount>) -> String {
   concat(

@@ -1,4 +1,4 @@
-module extdeps.cargo_tarpaulin
+module extdeps.rust.cargo_tarpaulin
 
 import std.types { String, List }
 import extdeps.external_authority { ExternalAuthority }

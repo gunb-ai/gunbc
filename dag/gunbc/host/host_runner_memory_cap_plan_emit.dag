@@ -1,4 +1,4 @@
-module gunbc.host_runner_memory_cap_plan_emit
+module gunbc.host.host_runner_memory_cap_plan_emit
 
 import std.types { String, List, Bool }
 import std.layout {
@@ -10,8 +10,8 @@ import std.layout {
 import std.languages { SerializationKnobs, SerialField }
 import std.serialize { serial_field, serial_scalar, serialize_fields_doc }
 import product.host_identity { HostIdentity }
-import gunbc.host_converge { ConvergeKnob, PerSlotMemoryCap }
-import gunbc.host_runner_memory_provision {
+import gunbc.host.host_converge { ConvergeKnob, PerSlotMemoryCap }
+import gunbc.host.host_runner_memory_provision {
   runner_memory_host_converge,
   runner_memory_knobs_from,
 }

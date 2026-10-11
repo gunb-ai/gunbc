@@ -1,6 +1,6 @@
-module tools.dag_collect_fingerprint_witness_transport
+module gunbc.instruments.dag_collect_fingerprint_witness_transport
 
-import tools.host_prelude { run_witness_bin }
+import gunbc.instruments.host_prelude { run_witness_bin }
 
 fn run_dag_collect_fingerprint_witness() -> Bool {
   run_witness_bin(

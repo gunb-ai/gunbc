@@ -15,7 +15,7 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import gunbc.command_runner { run_shell_command_observe_outcome }
 import gunbc.floor_cost_distribution { permille_percentile }
 import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
-import gunbc.host_effect { LocalShell }
+import gunbc.host.host_effect { LocalShell }
 import gunbc.fabric.workspace_source {
   WorkspaceSourceRoot, workspace_source_fixed_roots, workspace_source_pack_host,
   WorkspaceAgentStateSlot, AgentStateSlotAdmitted, AgentStateSlotAbsent, AgentStateSlotUnknown,

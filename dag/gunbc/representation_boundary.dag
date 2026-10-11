@@ -72,7 +72,7 @@ import gunbc.derived_obligation_row {
 // MODULE DECLARES matches nothing and the row still reports a standing -- derived, in form, from a
 // name that cannot match. Two rows shipped that way: both spelled a trailing `_test` the declaring
 // module does not carry, because the file suffix and the module name agree for some witnesses in
-// this corpus and not others (test.claim.rt_bridge_registry_witness_test declares the suffix;
+// this corpus and not others (test.claim.rt_bridge_registry_witness declares the suffix;
 // test.claim.reference_realization_witness does not). Neither spelling is admitted by the gate
 // today, so no arm changed -- which is precisely the case gunbc.derived_obligation_row argues
 // against in its own words: a subtraction that happens to be satisfied is not a subtraction that
@@ -237,9 +237,9 @@ data calls_boundary: RepresentationBoundary = RepresentationBoundary {
   },
   witnesses: [
     witness_subject(
-      entry: "dag/test/claim/rt_bridge_registry_witness_test.dag",
+      entry: "dag/test/claim/rt_bridge_registry_witness.dag",
       function: "rt_bridge_name_agrees_with_registry_on_every_row",
-      module_path: "test.claim.rt_bridge_registry_witness_test"
+      module_path: "test.claim.rt_bridge_registry_witness"
     )
   ],
   supported_scope: "THE JOIN IS DERIVED OVER THE ROW POPULATION AND NOT OVER THE AUTHORITIES, and stating it the other way is the inflation this row exists to refuse. Mutation control is DISCOVERED on AlgebraTemplate, EmitHandler and InterpreterDispatch; it is PARTIAL on BuiltinRegistry and PrimitiveContractRow, which the home counts itself as primitive_d0_parallel_roster_surface_authority_count = 2. A row added to builtin_function_registry alone, or a new *_contract data row alone, does NOT move primitive_surface_census_derived -- only updating the hand roster beside it does. So five surfaces are joined, and three authorities are watched.",
@@ -291,17 +291,17 @@ data coercions_boundary: RepresentationBoundary = RepresentationBoundary {
   },
   witnesses: [
     witness_subject(
-      entry: "dag/test/claim/reference_realization_witness_test.dag",
+      entry: "dag/test/claim/reference_realization_witness.dag",
       function: "w_opaque_provider_preserves_the_provider_declaration",
       module_path: "test.claim.reference_realization_witness"
     ),
     witness_subject(
-      entry: "src/v2/test/claim/coercion/two_algebra_fork_test.dag",
+      entry: "src/v2/test/claim/coercion/two_algebra_fork.dag",
       function: "name_keyed_coercion_matches_the_declared_cast_rosters_holds",
       module_path: "v2.test.claim.coercion.two_algebra_fork"
     ),
     witness_subject(
-      entry: "src/v2/test/claim/coercion/two_algebra_fork_test.dag",
+      entry: "src/v2/test/claim/coercion/two_algebra_fork.dag",
       function: "homomorphism_coercion_matches_the_structural_preservation_contract_holds",
       module_path: "v2.test.claim.coercion.two_algebra_fork"
     )
@@ -345,9 +345,9 @@ data effect_execution_boundary: RepresentationBoundary = RepresentationBoundary 
   },
   witnesses: [
     witness_subject(
-      entry: "src/v2/test/claim/effect_demand/effect_demand_census_test.dag",
+      entry: "src/v2/test/claim/effect_demand/effect_demand_census.dag",
       function: "effect_demand_witness_control_classifies_every_demand",
-      module_path: "v2.test.claim.effect_demand.effect_demand_census_test"
+      module_path: "v2.test.claim.effect_demand.effect_demand_census"
     )
   ],
   supported_scope: "THE ROUTE IS INSIDE THE KEY. EffectDemandKey carries calling_entry_module, operation as a std.primitive_projection identity, mode as the std.execution_mode axis, and subject -- so the SAME operation reached in two modes is TWO DEMANDS WITH TWO INDEPENDENTLY DECIDABLE ANSWERS rather than one row with a widened claim, and a claim about one route cannot be spent as coverage of the other BY CONSTRUCTION. THE RECEIPT THAT PROVES THE AXIS IS LOAD-BEARING RATHER THAN DECORATIVE: the native claim was once a bare NativeV2 while EffectRealizationKey already carried a runtime_identity, so the unproven-native-claim arm admitted a realization from ANY runtime as proof of a native claim. A demand is satisfied by a realization THE PROGRAM ACTUALLY LINKS, so the linked runtime is now part of the claim. Keying the operation on the primitive projection identity also joins this row to the calls boundary instead of re-spelling it.",
@@ -385,9 +385,9 @@ data bindings_boundary: RepresentationBoundary = RepresentationBoundary {
   },
   witnesses: [
     witness_subject(
-      entry: "dag/test/claim/occurrence_binding_witness_test.dag",
+      entry: "dag/test/claim/occurrence_binding_witness.dag",
       function: "occurrence_binding_root_only_path_is_nonempty_holds",
-      module_path: "test.claim.occurrence_binding_witness_test"
+      module_path: "test.claim.occurrence_binding_witness"
     )
   ],
   supported_scope: "std.occurrence_binding's fold answers NO v2 SITE TODAY -- its callers are dag/test claims and gunbc.infer_occurrence_binding_scaffold -- so the two rules cannot currently disagree in production about any one reference. THAT IS A SCOPE FACT AND NOT A SAFETY ARGUMENT: it means the divergence is cheap to carry NOW and says nothing about what happens when the v2 resolver adopts the shared result, which is exactly when two implementations of one rule start mattering.",
@@ -412,7 +412,7 @@ data data_layout_boundary: RepresentationBoundary = RepresentationBoundary {
   },
   witnesses: [
     witness_subject(
-      entry: "dag/test/claim/self_host_symbol_identity_binding_witness_test.dag",
+      entry: "dag/test/claim/self_host_symbol_identity_binding_witness.dag",
       function: "w_symbol_declaration_resolves_to_std_string",
       module_path: "test.claim.self_host_symbol_identity_binding_witness"
     )
@@ -459,7 +459,7 @@ data materialization_boundary: RepresentationBoundary = RepresentationBoundary {
   },
   witnesses: [
     witness_subject(
-      entry: "dag/test/claim/materialization_ladder_witness_test.dag",
+      entry: "dag/test/claim/materialization_ladder_witness.dag",
       function: "cross_frame_duplicate_discharged_by_covering_provider",
       module_path: "test.claim.materialization_ladder_witness"
     )
@@ -503,15 +503,15 @@ data cross_tree_import_boundary: RepresentationBoundary = RepresentationBoundary
   },
   witnesses: [
     witness_subject(
-      entry: "src/v2/test/claim/long/cross_tree_real_ingest_activation_test.dag",
+      entry: "src/v2/test/claim/long/cross_tree_real_ingest_activation.dag",
       function: "cross_tree_real_ingest_dag_to_v2_denied_holds",
-      module_path: "v2.test.long.cross_tree_real_ingest_activation"
+      module_path: "v2.test.claim.long.cross_tree_real_ingest_activation"
     )
   ],
   supported_scope: "The direction of an import edge between the two trees, decided from GROUNDED source-root tags rather than guessed: tree_fundamentality_order is derived, and the QualifiedName-prefix fallback that once stood in for it is deleted. Consumed by v2.compiler.03_name_resolve admit_import_entry.",
   preservation_obligation: "An edge the model admits resolves, an edge it denies refuses, and the decision depends on the declared source-root tags rather than on how the invocation spelled its paths.",
   crossing_evidence: EvidenceOnBothRoutes {
-    what_goes_red: "the activation arbiter feeds a host-tagged SourceRootIngest through the REAL grounding machinery and runs the REAL per-edge decision, with a discriminating pair rather than a positive alone: v2 to dag is admitted, and the SAME ingest with its tags reversed is denied. WHAT THE DERIVED STANDING ON THIS ROW ANSWERS, AND IT IS THE REASON THE STANDING IS DERIVED RATHER THAN AUTHORED: this entry sits under a long-running witness path and its module is v2.test.long, so whether the arbiter is reached by an ordinary required run is decided by the live exclusion frontier and gate closure at fold time, NOT by this sentence. A discriminating red that no required run reaches is a weaker fact than it reads as, and the fold is what says which it is." as NonEmptyStr
+    what_goes_red: "the activation arbiter feeds a host-tagged SourceRootIngest through the REAL grounding machinery and runs the REAL per-edge decision, with a discriminating pair rather than a positive alone: v2 to dag is admitted, and the SAME ingest with its tags reversed is denied. WHAT THE DERIVED STANDING ON THIS ROW ANSWERS, AND IT IS THE REASON THE STANDING IS DERIVED RATHER THAN AUTHORED: this entry sits under a long-running witness path and its module is v2.test.claim.long, so whether the arbiter is reached by an ordinary required run is decided by the live exclusion frontier and gate closure at fold time, NOT by this sentence. A discriminating red that no required run reaches is a weaker fact than it reads as, and the fold is what says which it is." as NonEmptyStr
   },
   next_trigger: climbs_when(capability: "none identified by this inventory for the DECISION itself, which conforms. Whether its arbiter is reached on a required route is answered by boundary_interpreted_standing rather than asserted here.")
 }

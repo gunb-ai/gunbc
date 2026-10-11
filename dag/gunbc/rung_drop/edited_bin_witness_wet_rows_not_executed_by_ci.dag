@@ -23,7 +23,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // THE REASON IS LOST-AS-PASSENGER. The class was executed per PR by the bin-witness wet batch,
 // which died with the floor cut of 2026-08-15; the cadence that might have taken it left with
 // falsifier.yml (gunbc#8283). `gunbc.rung_drop.deleted_cadence_reference` declares the class's
-// general non-execution (`gunbc.ci_layer_roots bin_witness_wet_note`); this row declares the
+// general non-execution (`gunbc.ci.ci_layer_roots bin_witness_wet_note`); this row declares the
 // narrower loss the changed-witness decline adds on top of it.
 //
 // THE POPULATION IS BOUNDED AND IT IS THE GATE'S INPUT, one list in one place (review 73267): the
@@ -75,7 +75,7 @@ data edited_bin_witness_wet_rows_not_executed_by_ci_population: List<String> = [
 data edited_bin_witness_wet_rows_not_executed_by_ci: RungDrop = RungDrop {
   identity: "edited_bin_witness_wet_rows_not_executed_by_ci" as NonEmptyStr,
 
-  subject: "an edited witness file classified BinWitnessWet in gunbc.ci_layer_roots witness_exclusion_frontier: the required floor's changed-witness sublane declines it as DeclinedNoCiWetLane instead of blocking, and no CI lane executes it",
+  subject: "an edited witness file classified BinWitnessWet in gunbc.ci.ci_layer_roots witness_exclusion_frontier: the required floor's changed-witness sublane declines it as DeclinedNoCiWetLane instead of blocking, and no CI lane executes it",
 
   declared: "2026-09-30",
 

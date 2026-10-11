@@ -1,13 +1,13 @@
-module gunbc.runner_disk_reclaim
+module gunbc.runner.runner_disk_reclaim
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { Second, second }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_host_identity { operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv4 }
 import gunbc.ownership { Ownership, Owned }
 import v2.std.algebra { any, list_flat_map }
 
-// GROUND TRUTH FIRST, MODEL SECOND. gunbc.runner_lifecycle's ADD path states the rule this module
+// GROUND TRUTH FIRST, MODEL SECOND. gunbc.runner.runner_lifecycle's ADD path states the rule this module
 // follows: read the deployed artifact as ground truth for what it does, then subsume it through
 // typed arms -- never fork it, never invoke it. So the first thing here is a faithful record of the
 // script that is running on the fleet right now, pinned by content digest, and the decomposition
@@ -156,7 +156,7 @@ data reclaim_source_observed_on_srv4: ReclaimSourceObservation = ReclaimSourceOb
   observed_at: "2026-08-23, read over SSH from the session terminal",
 }
 
-// THE MEMBER. gunbc.host_axis_caps owns CapMember and gunbc.fleet_converge_plan reconciles it; this
+// THE MEMBER. gunbc.host.host_axis_caps owns CapMember and gunbc.fleet.fleet_converge_plan reconciles it; this
 // follows that shape exactly rather than inventing a second one -- the member type belongs to the
 // module that knows what the artifact IS, and the convergence plan knows how to reconcile members
 // in general. Identity is the unit path, so a content drift is MemberChanged and never
@@ -204,7 +204,7 @@ fn reclaim_member_ownership(m: ReclaimMember) -> Ownership? {
 }
 
 // THE OBSERVATION HAS THREE ARMS, AND THE THIRD IS WHY THIS IS NOT A COPY OF THE CAP OBSERVER.
-// gunbc.fleet_converge_plan_cli observe_cap_members_wet folds a failed Filesystem.Read to the empty
+// gunbc.fleet.fleet_converge_plan_cli observe_cap_members_wet folds a failed Filesystem.Read to the empty
 // list, so "this unit is not installed" and "I could not read this unit" become the same observed
 // state. For a drop-in that is nearly harmless; for a unit file it is the dangerous direction,
 // because absent is exactly the state that makes the plan propose an install -- so an unreadable

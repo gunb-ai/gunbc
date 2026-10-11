@@ -1,4 +1,4 @@
-module gunbc.bmc_custody_read
+module gunbc.bmc.bmc_custody_read
 
 import std.types { NonEmptyStr, Secret, String }
 import extdeps.cloud.gcp.secret_manager {
@@ -18,7 +18,7 @@ import extdeps.transports.rest {
   RestExchangeUnreached,
   RestReadExchange,
 }
-import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
 
 // READING ONE BMC CREDENTIAL OUT OF CUSTODY, AND NOTHING ELSE. It is its own module so that a
 // read-only consumer -- the fleet health collector, which may hold only the health-reader

@@ -142,7 +142,7 @@ fn observe_generation(
 //
 //   THE DENOMINATOR IS PRODUCTION CLASSIFIERS, and it is stated because the obvious phrasing is
 //     wrong. "Every declaration that returns a `LoadStanding`" is too wide: witness modules declare
-//     their own, and `test.claim.scm_commit_closure_json_v2_witness scm_image_standing_of` is one.
+//     their own, and `test.claim.scm.scm_commit_closure_json_v2_witness scm_image_standing_of` is one.
 //     A fixture helper is not a producer this destination can be reached from, so the population
 //     below is declarations under `gunbc.scm.*` whose return type is `LoadStanding`. Witness helpers
 //     are excluded BY NAME rather than by being overlooked.
@@ -310,13 +310,13 @@ fn supersede_head_slot(
 //
 // WHAT IS CLOSED. `SupersessionEvidence` cannot be forged and `mint_supersession_evidence` cannot be
 // reached except through `observe_generation`, so no caller can state a generation it did not read.
-// Both probes ran against this module from `test.claim.scm_supersession_witness` (bold-crane-188,
+// Both probes ran against this module from `test.claim.scm.scm_supersession_witness` (bold-crane-188,
 // 2026-08-26, base 151e771461) and both refused at resolve:
 //   a cross-module record literal returned "sole_constructor type 'SupersessionEvidence' cannot be
 //     constructed outside its defining module";
 //   a direct call to the mint returned "constructor call admission refused:
 //     'gunbc.scm.supersession.mint_supersession_evidence' refuses call from
-//     'test.claim.scm_supersession_witness.probe_direct_mint' -- permitted callers:
+//     'test.claim.scm.scm_supersession_witness.probe_direct_mint' -- permitted callers:
 //     [gunbc.scm.supersession.observe_generation]".
 // A control on the unmodified file compiled and executed green in the same dispatch, so the refusals
 // are load-bearing rather than a harness that refuses everything. Both probes were removed after

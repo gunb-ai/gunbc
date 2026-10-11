@@ -1,9 +1,9 @@
 module gunbc.workspace_allocation_operations
 
-import gunbc.fleet_converge_state_path { fleet_converge_state_root }
+import gunbc.fleet.fleet_converge_state_path { fleet_converge_state_root }
 import std.types { String, NonEmptyStr, List }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.runner_microvm_slot_unit { microvm_slot_unit_instance_name, workspace_launch_credential_source_path }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.runner.runner_microvm_slot_unit { microvm_slot_unit_instance_name, workspace_launch_credential_source_path }
 import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, EnsureOwnedDirectory, InstallFile, SystemdStartUnit }
 
 // The plan artifact is DATA, copied to the one slot's credential name. systemd's credential

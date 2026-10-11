@@ -171,7 +171,7 @@ pub(crate) fn inert_carrier_type_carrier_blocks(content: &str) -> Vec<(String, S
 // coproduct: the repeated type name after `=` is the record constructor spelling, not a
 // variant. Treating it as one double-counts `self_block_refs` and can drive consumption
 // to ≤0 for a carrier that is actively constructed in the same file (HostToolchainReach
-// falsifier red 2026-07-25 — live consumer in gunbc.host_toolchain_ensure, falsely inert).
+// falsifier red 2026-07-25 — live consumer in gunbc.host.host_toolchain_ensure, falsely inert).
 pub(crate) fn inert_carrier_variant_names(type_name: &str, block: &str) -> Vec<String> {
     if inert_carrier_block_is_nominal_record(type_name, block) {
         return Vec::new();

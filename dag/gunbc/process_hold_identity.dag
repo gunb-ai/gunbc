@@ -5,7 +5,7 @@ import std.optional { Present, Absent }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.algebra { trim }
 import std.durable_exclusive_hold { DurableHoldHolderLiveness, HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable }
-import gunbc.build_cache_instance { ProcessIdentity }
+import gunbc.build_cache.build_cache_instance { ProcessIdentity }
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.exec.command { LocalExec }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
@@ -21,7 +21,7 @@ import extdeps.filesystem.filesystem_io {
 
 // A HOLDER THAT IS A PROCESS ON THIS HOST: its identity as this process reads it, its rendering into a
 // hold owner, and whether it still runs -- observed, never aged. Moved MECHANICALLY out of
-// gunbc.managed_host_unit_hold when the materialization store became a second holder of the same
+// gunbc.host.managed_host_unit_hold when the materialization store became a second holder of the same
 // kind; only the codec's unit_hold_ prefix became process_hold_, and the bodies are unchanged.
 
 // THE PROCESS PART OF A BOOT OWNER, rendered after the run id and decoded back here and nowhere else:

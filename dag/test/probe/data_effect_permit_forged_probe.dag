@@ -18,7 +18,7 @@ import product.data_class {
   admitted_seed, durable_origin_sink, build_output_category, public_fabric_map, public_fabric_posture,
 }
 import product.fabric.provider_route { ProviderRoute }
-import gunbc.fabric_m0_origin_commit { job_output_bytes, fabric_durable_origin_route }
+import gunbc.fabric.fabric_m0_origin_commit { job_output_bytes, fabric_durable_origin_route }
 
 fn forged_permit(path: FilePath) -> DataEffectPermit<BuildOutput, FilePath> {
   DataEffectPermit {

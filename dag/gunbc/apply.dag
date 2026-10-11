@@ -3,7 +3,7 @@ module gunbc.apply
 import std.types { String, Bool, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.live_deploy.apply { live_deploy_apply_srv1_wet, approval_broker_dark_install_srv1_wet }
-import gunbc.runner_capacity_plan {
+import gunbc.runner.runner_capacity_plan {
   RunnerCapacityPlan,
   PlanReady,
   PlanRefused,
@@ -11,11 +11,11 @@ import gunbc.runner_capacity_plan {
   runner_capacity_plan,
 }
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_live_read }
-import gunbc.runner_capacity_realize { runner_capacity_apply_wet_exit }
+import gunbc.runner.runner_capacity_realize { runner_capacity_apply_wet_exit }
 
 // TOP-LEVEL gunbc.apply dispatcher. gunbc.live_deploy.apply remains the srv1 dashboard child
 // workflow only. RunnerCapacity plan half is PR A (#7939 runner_capacity_plan); ADD execution
-// routes through gunbc.runner_capacity_realize (PR C) into shared HostEffect arms from PR B
+// routes through gunbc.runner.runner_capacity_realize (PR C) into shared HostEffect arms from PR B
 // (#7946).
 
 // approval-broker-dark IS A WORKFLOW RATHER THAN A MODE ON dashboard-srv1, because a mode would

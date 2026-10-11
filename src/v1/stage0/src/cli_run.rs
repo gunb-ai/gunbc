@@ -499,7 +499,7 @@ pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
 
 // SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.cli_run_workspace_root_scaffold;
 // receipt: docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold;
-// witness: dag/test/claim/cli_run_workspace_root_hand_rust_witness_test.dag).
+// witness: dag/test/claim/cli_run_workspace_root_hand_rust_witness.dag).
 // 🟡 dissolve-on: workspace_root_from — runtime workspace-root discovery in HAND-Rust
 // (landed on main as #6484 .git-ancestor walk); DISSOLVES WHEN cli_run.rs Chunk F lands
 // (cli-run-reconcile-defork.md → GENERATED workflow host-effect apply) OR ROADMAP
@@ -588,7 +588,7 @@ fn spawn_workspace_root_locus(named: &Path) -> Result<PathBuf, String> {
     Ok(named.to_path_buf())
 }
 
-/// Temporary TOML realization for `gunbc.stage0_cargo_manifest.CargoManifestBinParse`.
+/// Temporary TOML realization for `gunbc.stage0.stage0_cargo_manifest.CargoManifestBinParse`.
 /// Git effects, repository policy, path normalization, and lifecycle classification stay in
 /// `.dag`; this bridge returns only the authored `[[bin]].path` facts or a typed parse refusal.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -656,7 +656,7 @@ pub fn parse_stage0_cargo_manifest_bin_paths(content: &str) -> Stage0CargoManife
     }
 }
 
-/// Temporary seed bridge for `gunbc.roadmap_acceptance_history_projection`.
+/// Temporary seed bridge for `gunbc.roadmap.roadmap_acceptance_history_projection`.
 /// Evaluates `roadmap_acceptance_event_history` from revision-addressed authority
 /// source text using a first-root overlay; used only when the JSONL carrier is
 /// absent at merge-base (one-time migration bootstrap).
@@ -1648,7 +1648,7 @@ pub(crate) fn bind_checkout_root(root: PathBuf) {
 /// over a projection with comments and string bodies removed.
 ///
 /// SCOPE, declared rather than implied: the guarded population is the tests the required unit lane
-/// actually runs (`cargo test --release -p v1-compiler --lib`, `gunbc.repo_self_build`
+/// actually runs (`cargo test --release -p v1-compiler --lib`, `gunbc.repo.repo_self_build`
 /// `repo_self_test_command`), and the EVIDENCE population is the whole of that lane's library
 /// source — every `.rs` file under the crate root, not this file alone. Scanning one file while
 /// claiming the lane was a selection view read as a population, and is the finding of review
@@ -2381,7 +2381,7 @@ mod process_cwd_mutation_reachability_gate {
 }
 
 // SCAFFOLD (§7 HAND-RUST — `cli_run_runtime_workspace_root_plumbing`):
-// ROADMAP lane `5-dissolve-patches` (gunbc.roadmap_authority / ROADMAP.md) — `cli_run.rs`
+// ROADMAP lane `5-dissolve-patches` (gunbc.roadmap.roadmap_authority / ROADMAP.md) — `cli_run.rs`
 // HAND_MAINTAINED drain (~12.1k LOC absorption point; #6046 hard-gates net-new seed logic).
 // Unblock: #6106 orchestration emission → agnostic registry dispatch realizes claim-bin
 // pool-root anchoring from `.dag` (the same exit the floor shell scaffolds take).
@@ -2430,7 +2430,7 @@ static PROCESS_WORKSPACE_ROOT: OnceLock<(PathBuf, WorkspaceRootBasis)> = OnceLoc
 /// `resolve_process_workspace_root` answers "which tree am I in" by asking git for a checkout
 /// carrying Cargo.toml beside dag/. That is a proxy, correct inside a checkout and unable to say
 /// anything at all outside one -- which is not an exotic case: it is an executor handed an
-/// immutable source snapshot by content identity (`gunbc.fabric_source_snapshot`), the whole point
+/// immutable source snapshot by content identity (`gunbc.fabric.fabric_source_snapshot`), the whole point
 /// of which is that no repository travelled with the bytes. Discovery answered that invocation with
 /// a PANIC before a single module was read, so "source without a repository" was unrunnable rather
 /// than unsupported.
@@ -2676,7 +2676,7 @@ fn resolve_process_workspace_root() -> (PathBuf, WorkspaceRootBasis) {
 /// when `path` is not under the runtime root — never widens to cwd-relative or absolute keys.
 ///
 /// Authority: modeled by `gunbc.cli_run_repo_grant` (`cli_run_repo_path_admissible`);
-/// witness: `dag/test/claim/cli_run_repo_grant_witness_test.dag`.
+/// witness: `dag/test/claim/cli_run_repo_grant_witness.dag`.
 /// 🟡 dissolve-on: HAND-RUST gate retires when cli_run.rs Chunk F lands
 /// (docs/plans/cli-run-reconcile-defork.md) — refusal becomes the located
 /// `std.access.AccessDecision::Deny` from the single grant policy, not a parallel string check.
@@ -2743,7 +2743,7 @@ fn module_index_path_key(path: &Path) -> String {
 // SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.cli_run_workspace_root_scaffold
 // (cli_run_source_root_anchor_scaffold row);
 // receipt: docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold;
-// witness: dag/test/claim/cli_run_workspace_root_hand_rust_witness_test.dag).
+// witness: dag/test/claim/cli_run_workspace_root_hand_rust_witness.dag).
 // 🟡 dissolve-on: try_anchor_source_root — declared layer/pool roots come from HAND-Rust
 // while `dag/compiler` is modeled-before-implemented (§6 model-first), so absence is a
 // legitimate state skipped LOUDLY (counted line per root); DISSOLVES WHEN cli_run.rs Chunk F
@@ -3236,7 +3236,7 @@ mod process_workspace_root_tests {
 }
 
 /// Pins HAND-RUST `repo_relative_path` against `gunbc.cli_run_repo_grant` on the same
-/// fixture spellings. Witness: `dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness_test.dag`.
+/// fixture spellings. Witness: `dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness.dag`.
 #[cfg(test)]
 mod cli_run_arg_channel_tests {
     use super::{
@@ -4089,14 +4089,14 @@ pub struct MultiModuleFixtureSource {
 
 /// Per-function **resolved-registry** projection for the Rust emit target: source identity plus
 /// the ordered parameter name list taken from `ItemInfo` with `emit_ident` /
-/// `service_var_name` transforms. See `tools.multi_module_compile_fixture`
+/// `service_var_name` transforms. See `gunbc.instruments.multi_module_compile_fixture`
 /// `ResolvedRustFnSignature`. Not a read of emitted file bytes — the type name admits the Rust
 /// target, not emit-path observation.
 ///
 /// **Names only (permanent ceiling, no next-rung trigger):** no parameter or return types.
 ///
 /// **Registry mirror, not emit join (below ceiling — order and membership):** DESIGN §3b middle
-/// value — deliberate divergence with stated reason (see `tools.multi_module_compile_fixture`
+/// value — deliberate divergence with stated reason (see `gunbc.instruments.multi_module_compile_fixture`
 /// `ResolvedRustFnSignature`). Nothing refuses if `emit_func_params` / `emit_func_def` and this
 /// projection disagree (resource arm already reads `ItemInfo.resource_names` while emit folds
 /// `uses` via `resource_use_name_at`). **Next-rung trigger:** derive from the same source
@@ -4158,7 +4158,7 @@ pub enum MultiModuleCompileFixtureOutcome {
 /// only consumers being its own witness rows, naming the consumer that would arrive (the
 /// `AmbiguousBareNameRead` refusal in `claim_scope_for`) and the trigger that would let it
 /// (the qualification batches merged and the variant-arm tier landed). Both have happened: the
-/// refusal is in this diff, below, and `dag/test/claim/bare_name_ambiguity_wall_witness_test.dag`
+/// refusal is in this diff, below, and `dag/test/claim/bare_name_ambiguity_wall_witness.dag`
 /// is the consumer that reaches this type through `claim_scope_fixture`. A frontier that outlives
 /// its own trigger is the stale row DESIGN §4b(3) warns about, so it ends here rather than
 /// describing a state that no longer holds.
@@ -4735,7 +4735,7 @@ pub(crate) struct WitnessExclusionRowRaw {
     pub classification: String,
 }
 
-/// Witness discovery scan dirs, read live from `gunbc.ci_layer_roots.witness_discovery_scan_dirs`.
+/// Witness discovery scan dirs, read live from `gunbc.ci.ci_layer_roots.witness_discovery_scan_dirs`.
 pub(crate) fn witness_discovery_scan_dirs() -> Vec<String> {
     static SCAN_DIRS: OnceLock<Vec<String>> = OnceLock::new();
     SCAN_DIRS
@@ -4744,7 +4744,7 @@ pub(crate) fn witness_discovery_scan_dirs() -> Vec<String> {
 }
 
 pub fn census_corpus_roots_follow_layer_authority() -> bool {
-    let synthetic = "module gunbc.ci_layer_roots\n\n\
+    let synthetic = "module gunbc.ci.ci_layer_roots\n\n\
          data witness_layer_roots: List<String> = [\"alpha_layer_root\", \"beta_layer_root\", \"gamma_layer_root\"]\n";
     let follows = witness_layer_roots_from_source(synthetic)
         == ["alpha_layer_root", "beta_layer_root", "gamma_layer_root"];
@@ -5678,16 +5678,16 @@ pub(crate) enum CompileCleanScopePlan {
 //   IDENT=CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER
 //   TYPE_ANN=: &str =
 //   rg -F "${IDENT}${TYPE_ANN}" src/v1/stage0/src/cli_run.rs   # == 1 until deletion
-// Witness: dag/test/claim/compile_clean_shard_entry_paths_fast_hand_rust_witness_test.dag;
-// dissolve-on: tools.dag_compile_clean_shard_roster compile_clean_shard_entry_paths_fast_hand_rust_dissolve_trigger.
+// Witness: dag/test/claim/compile_clean_shard_entry_paths_fast_hand_rust_witness.dag;
+// dissolve-on: gunbc.instruments.dag_compile_clean_shard_roster compile_clean_shard_entry_paths_fast_hand_rust_dissolve_trigger.
 pub(crate) const CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER: &str =
     "cli_run_compile_clean_shard_entry_paths_fast";
 
-pub const CLASS_B_ENTRY_REL: &str = "src/v2/extdeps/languages/rust_test_fixtures.dag";
+pub const CLASS_B_ENTRY_REL: &str = "src/v2/extdeps/languages/rust_fixtures.dag";
 pub const CLASS_B_TRANSPORT_REL: &str = "src/v2/workflow/class_b_import_closure_transport.dag";
 /// Rows 1-2's shape+call, relocated out of CLASS_B_TRANSPORT_REL so a witness reaching only
 /// rows 1-2 does not inherit the transport module's extdeps.git / extdeps.git.inspect /
-/// gunbc.ci_layer_roots closure (DESIGN.md §3 relocation-not-refork; the same signature
+/// gunbc.ci.ci_layer_roots closure (DESIGN.md §3 relocation-not-refork; the same signature
 /// extdeps_scope_placement_gate_loudness_witness's repair fixed). The transport module imports
 /// this one back for rows 1-2's own use, so it is part of the gate's input closure too.
 pub const CLASS_B_PROBE_REL: &str = "src/v2/workflow/class_b_import_closure_probe.dag";
@@ -5796,7 +5796,7 @@ enum FloorCompileCleanReceipt {
     Compiled { ok: bool, failure_detail: String },
 }
 
-/// Host mirror of `gunbc.ci_gate` `GateReceipt` — what a CI gate answers to the substrate.
+/// Host mirror of `gunbc.ci.ci_gate` `GateReceipt` — what a CI gate answers to the substrate.
 ///
 /// The arms are OWNERS, not severities: `Clean`/`Failed` are the gate having reached its subject
 /// and decided (`GateObserved`); `NotApplicable` is the gate's own scope selecting nothing to
@@ -6193,7 +6193,7 @@ impl UnlistedImportBindingSource {
 /// One attributed row of the UnlistedImportUse census. `position` is the diagnostic's own span
 /// start within `file` — the occurrence grain the burndown worklist groups and counts at. It is
 /// NOT the occurrence identity the Step 0 binding-provenance census
-/// (gunbc.namespace_step0_binding_provenance_contract) requires before this worklist may actuate
+/// (gunbc.namespace.namespace_step0_binding_provenance_contract) requires before this worklist may actuate
 /// edits: (file, position) locates the charge, but does not name the selected declaration, the
 /// producing rule, or the pre/post-edit targets.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -6701,7 +6701,7 @@ mod typed_module_content_key_tests {
     //!
     //! The compiler-identity term cannot vary within one test process; it is witnessed at the
     //! algebra level by the PR1 .dag witnesses
-    //! (`src/v2/test/claim/interface_summary/typed_module_key_test.dag`). Warm==cold
+    //! (`src/v2/test/claim/interface_summary/typed_module_key.dag`). Warm==cold
     //! byte-equivalence stays owned by `resolve_typed_cache_equivalence_test`.
     //!
     //! Mutations rewrite the SAME file path so the `module_source_identity` collision wall
@@ -6946,9 +6946,9 @@ const LIVE_READ_CARRIER_HOME_MODULES_V0: &[&str] = &[
     "v2.compiler.self_host",
     "v2.std.decl_index",
     "v2.lens.module_graph",
-    "tools.dag_compile_clean_shard_roster",
-    "tools.dag_compile_clean_scope",
-    "gunbc.namespace_cut_subject_observation",
+    "gunbc.instruments.dag_compile_clean_shard_roster",
+    "gunbc.instruments.dag_compile_clean_scope",
+    "gunbc.namespace.namespace_cut_subject_observation",
 ];
 
 fn runtime_data_dependency_touched_via_carrier_closure(
@@ -7216,7 +7216,7 @@ fn resolve_transitively(
 }
 
 /// The `.dag` entry paths a required v2-emission phase compiles, read live from
-/// `gunbc.ci_layer_roots` `required_v2_emission_entries`. A `List<String>` rather than a
+/// `gunbc.ci.ci_layer_roots` `required_v2_emission_entries`. A `List<String>` rather than a
 /// scalar because the axis is "which entries", not "the entry" -- adding a second entry
 /// is a row, never a second host reader.
 pub fn required_v2_emission_entries() -> Vec<String> {
@@ -8162,7 +8162,7 @@ pub fn compile_emission_over(request: &CompileRequest, residency: IndexResidency
         // HAND-RUST RECEIPT: this adds NO new path predicate. It consumes the existing gate, whose
         // authority is `gunbc.cli_run_repo_grant` `cli_run_repo_path_admissible` and whose
         // Rust/authority equivalence is pinned by
-        // `dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness_test.dag` together with
+        // `dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness.dag` together with
         // this file's `cli_run_repo_grant_equivalence_tests`. Its dissolve-on is that module's:
         // cli_run.rs Chunk F (docs/plans/cli-run-reconcile-defork.md), when the refusal becomes the
         // located `std.access.AccessDecision::Deny` from the single grant policy. Routing a second
@@ -8434,7 +8434,7 @@ pub fn run_required_v2_emission(source_roots: &[String]) -> Result<Vec<CompileRu
         // phase failing to reach any subject, and reporting it as clean is the
         // empty-observation narrow (DESIGN, recurring failure modes).
         return Err(
-            "gunbc.ci_layer_roots required_v2_emission_entries is empty — the phase has no subject"
+            "gunbc.ci.ci_layer_roots required_v2_emission_entries is empty — the phase has no subject"
                 .to_string(),
         );
     }
@@ -11784,7 +11784,7 @@ pub enum ClaimOutcome {
     /// `ExitClass::Failure { .. } => ClaimOutcome::Fail` and destroyed the `reason`
     /// `classify_exit` had just extracted — the typed value was in hand and discarded at the
     /// seam, the same defect class the `RuntimeError` comment above documents. A gate refusal
-    /// then surfaced as bare `FAIL`, and `tools.emit_host_gate` carried a whole shell-out
+    /// then surfaced as bare `FAIL`, and `gunbc.instruments.emit_host_gate` carried a whole shell-out
     /// narration scaffold (`emit_host_verdict_narration_scaffold`) whose only job was to print
     /// the per-smoke verdict line the claim path had thrown away (receipt: the 2026-07-13 srv3
     /// reprovisioning reds — five runs of forensics to name the failing toolchain).
@@ -13017,12 +13017,12 @@ pub struct MultiEntryIndex {
     /// Content keys the cap has evicted from this index — the governor's memory of its own
     /// evictions, consulted on the next miss so a recompute of previously-evicted work is
     /// countable as a READMISSION rather than folded into ordinary misses. Carried in the
-    /// stall refusal's observation (`gunbc.memory_stall_refusal`) so an operator reading
+    /// stall refusal's observation (`gunbc.host.memory_stall_refusal`) so an operator reading
     /// the refusal can see whether the typed cache was implicated in the treadmill.
     typed_cache_evicted_keys: RefCell<std::collections::HashSet<String>>,
     /// Count of misses whose key was previously evicted from this index (see above).
     typed_cache_readmissions: Cell<u64>,
-    /// The open stall-observation window for this index (`gunbc.memory_stall_refusal`):
+    /// The open stall-observation window for this index (`gunbc.host.memory_stall_refusal`):
     /// the wall instant and counter values the current window started at. Rolls forward on
     /// every admissible verdict, so an hour of quiet history can never dilute a fresh
     /// treadmill.
@@ -14702,7 +14702,7 @@ pub struct IndexRetentionSnapshot {
 /// the interim declared fraction denominator until measured space lands).
 /// SEED MIRROR of `gunbc.typed_module_cache_capacity` `typed_module_bytes_per_entry_estimate`.
 /// Written as a canonical decimal literal (3 * 1024 * 1024) so the mirror lens can join it to
-/// its authority row; see `test.claim.seed_mirror_constant_lens_witness_test`.
+/// its authority row; see `test.claim.seed_mirror_constant_lens_witness`.
 const TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE: u64 = 3145728;
 /// SEED MIRROR of `gunbc.typed_module_cache_capacity` `typed_module_cache_entries_floor`.
 const TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR: usize = 100;
@@ -14808,7 +14808,7 @@ pub(crate) struct MemoryStallWindowStart {
     cache_readmissions: u64,
 }
 
-/// The stall governor's per-module-boundary step (`gunbc.memory_stall_refusal`): fold the
+/// The stall governor's per-module-boundary step (`gunbc.host.memory_stall_refusal`): fold the
 /// counters since the window opened into one observation and act on its verdict — open
 /// window accumulates, an admissible verdict rolls the window forward, a refusal stops the
 /// line with the pressure clause located to the module that was in hand and the budget the
@@ -15285,7 +15285,7 @@ fn nanos_net_of_pool_parse<T>(f: impl FnOnce() -> T) -> (T, u128) {
 }
 
 // SCAFFOLD (§7 HAND-RUST — `cli_run_exclusive_cost_partition_probe`):
-// ROADMAP lane §2 *Minimal work — caching by realization* (gunbc.roadmap_authority /
+// ROADMAP lane §2 *Minimal work — caching by realization* (gunbc.roadmap.roadmap_authority /
 // ROADMAP.md) — host-side stage attribution for the per-entry resolve, and the accounting
 // law over it. Same lane as the `ResolveStageNanos` rows it partitions; this scaffold
 // does not add a second measurement authority, it makes the existing rows' denominator
@@ -17123,7 +17123,7 @@ fn reconcile_with_typed_cache(
                                 }
                                 // A miss on a key this index already evicted is a READMISSION —
                                 // the governor re-buying paid-for work — counted for the stall
-                                // refusal's observation (`gunbc.memory_stall_refusal`).
+                                // refusal's observation (`gunbc.host.memory_stall_refusal`).
                                 if index.typed_cache_evicted_keys.borrow().contains(&typed_key) {
                                     index
                                         .typed_cache_readmissions
@@ -17248,7 +17248,7 @@ fn reconcile_with_typed_cache(
                 resolve_stage_slot_add(|s| {
                     s.assembly_environment += environment_started.elapsed().as_nanos()
                 });
-                // The stall governor's boundary (`gunbc.memory_stall_refusal`): one windowed
+                // The stall governor's boundary (`gunbc.host.memory_stall_refusal`): one windowed
                 // observation per completed module, so a resolve spending its wall refaulting
                 // evicted pages refuses here with a located diagnostic instead of holding for
                 // hours (2026-08-30 default-VM treadmill, memory_stall_observed_receipt_note).
@@ -17843,7 +17843,7 @@ mod runtime_error_location_tests {
         );
     }
 
-    // Byte-equal to `test.claim.observation_ci_render_witness_test`
+    // Byte-equal to `test.claim.observation_ci_render_witness`
     // `w_runtime_error_detail_names_the_raising_declaration`: the mirror and its authority agree.
     #[test]
     fn detail_mirror_matches_the_dag_authority_literal() {
@@ -17936,7 +17936,7 @@ fn render_witness_claim_result_text(
 /// corpus saying nothing. Three lanes hit that in one night.
 ///
 /// WHAT THIS IS NOT. Widening the sweep is not widening the FLOOR's source roots, which
-/// `gunbc.ci_layer_roots` `v1_dead_witness_tree_triage_receipt_remainder` rules out and whose
+/// `gunbc.ci.ci_layer_roots` `v1_dead_witness_tree_triage_receipt_remainder` rules out and whose
 /// stated blocker is NAME RESOLUTION: `src/v1` and `src/v2` collide on twelve last segments,
 /// so a shared pool re-binds bare cross-module references. This walk resolves nothing — it
 /// tokenizes and parses each file in isolation, with a fresh empty table per file — so no
@@ -19094,7 +19094,7 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
             // THE REASON SURVIVES THE SEAM. This arm used to read
             // `ExitClass::Failure { .. } => ClaimOutcome::Fail`, discarding the `reason`
             // `classify_exit` had just extracted — the typed value was in hand and destroyed
-            // here, which is why `tools.emit_host_gate` once shelled its per-smoke verdict
+            // here, which is why `gunbc.instruments.emit_host_gate` once shelled its per-smoke verdict
             // line out to printf for the executor's shell narration (the claim path could not
             // carry it). `ClaimOutcome::ExitFailure` is the reason's carrier now.
             ExitClass::Failure { code, reason } => ClaimOutcome::ExitFailure { code, reason },
@@ -19150,7 +19150,7 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
 
 /// Single-binary claim execution (v1-run-stability M2 companion, Deliverable 2): run a
 /// batch of claims IN-PROCESS rather than spawning a `claim_batch` child (the
-/// `tools.host_prelude.run_gunbc_claims` transport). Claims are grouped by entry so
+/// `gunbc.instruments.host_prelude.run_gunbc_claims` transport). Claims are grouped by entry so
 /// each closure resolves exactly once — the pooled property claim_batch's
 /// one-child-per-call already had — and every claim keeps `run_claim_measured`'s
 /// per-witness discipline (subject key, eval deadline, the operator 5 s fast-lane
@@ -19701,7 +19701,7 @@ pub fn claim_terminal_tag(outcome: &ClaimOutcome) -> &'static str {
 /// wire's declared fidelity boundary excludes cost telemetry, which has its own receipts.
 /// `ExitFailure` is the one verdict-bearing arm WITH a payload: the `.dag`-authored refusal
 /// reason is the fact this arm exists to carry (its absence is exactly the bare-`FAIL` state the
-/// `tools.emit_host_gate` narration scaffold existed to paper over), so it contributes the reason
+/// `gunbc.instruments.emit_host_gate` narration scaffold existed to paper over), so it contributes the reason
 /// and nothing else — an absent reason renders empty, the same honest nothing `Fail` renders.
 pub fn claim_terminal_detail(outcome: &ClaimOutcome) -> String {
     match outcome {
@@ -19783,7 +19783,7 @@ mod exit_failure_outcome_tests {
     /// THE REASON SURVIVES EVERY PROJECTION, OR THE DISSOLVE IS FAKE. The whole point of the
     /// `ExitFailure` arm is that a gate-class claim's refusal reason reaches each surface as
     /// data instead of being flattened to bare `FAIL` — the defect that made
-    /// `tools.emit_host_gate` shell its per-smoke verdict line out to printf. Each assertion
+    /// `gunbc.instruments.emit_host_gate` shell its per-smoke verdict line out to printf. Each assertion
     /// below is one consumer's projection; losing the reason in any of them re-creates the
     /// archaeology the arm exists to end.
     #[test]
@@ -20252,7 +20252,7 @@ pub fn run_value(
 mod pre_push;
 
 /// Thin CLI transport handler for `claim_batch --pre-push`: stdin parse and gate
-/// orchestration live in `pre_push`; disposition receipt in `gunbc.githooks_pre_push_cli`.
+/// orchestration live in `pre_push`; disposition receipt in `gunbc.githooks.githooks_pre_push_cli`.
 pub fn handle_pre_push() -> std::process::ExitCode {
     pre_push::run()
 }
@@ -24233,7 +24233,7 @@ pub struct WitnessRowCost {
 }
 
 /// Construct the production N+1 `std.observation.ObservationEvent` stream and execute
-/// `gunbc.witness_row_cost.project_witness_cost_receipt`.
+/// `gunbc.witness.witness_row_cost.project_witness_cost_receipt`.
 ///
 /// The projector is invoked once per entry-sized group, rather than once for the whole
 /// discovery corpus: its authored fold performs cardinality checks against the supplied
@@ -24651,7 +24651,7 @@ pub fn compute_histogram_data(rows: &[WitnessRowCost]) -> HistogramData {
 pub const DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N: usize = 15;
 
 pub const WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY: &str =
-    "dag/test/claim/wet_hermetic_equivalence_witness_test.dag";
+    "dag/test/claim/wet_hermetic_equivalence_witness.dag";
 pub const WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA: &str =
     "wet_hermetic_equivalence_representative_prefix";
 
@@ -24757,9 +24757,9 @@ fn path_matches_any_substring(path: &str, subs: &[String]) -> bool {
 
 // SCAFFOLD (§7 HAND-RUST — `cli_run_witness_admission_source_scan`):
 // Registered planning artifact: `gunbc.cli_run_witness_admission_scaffold` (review 44487
-// checkable deferral receipt). Witness: `dag/test/claim/cli_run_witness_admission_hand_rust_witness_test.dag`.
+// checkable deferral receipt). Witness: `dag/test/claim/cli_run_witness_admission_hand_rust_witness.dag`.
 // ROADMAP lane `5-dissolve-patches` / module-identity-storage-binding Phase 1 (b)
-// (gunbc.roadmap_authority / ROADMAP.md; module-identity-storage-binding-design (plan doc deleted 2026-08-28)).
+// (gunbc.roadmap.roadmap_authority / ROADMAP.md; module-identity-storage-binding-design (plan doc deleted 2026-08-28)).
 // The host Phase 0(b) admission key set is a hand-rolled text scan over enrollment forms in
 // dag/gunbc/ci/ci_layer_roots.dag, src/v2/compiler/self_host/wet_receipt_enrollment.dag, and the
 // cycle-free leaf src/v2/compiler/self_host/seed_emitter_behavioral_wet_known_red_entries.dag.
@@ -24854,7 +24854,7 @@ pub(crate) fn explicit_witness_admission_pairs() -> Vec<(String, String)> {
 
 // SCAFFOLD (§7 HAND-RUST — `cli_run_witness_deferral_freeze`): the seed realization of the
 // frozen path-deferral wall. Registered disposition, dissolution sequence and measured LOC delta:
-// `gunbc.cli_run_witness_deferral_freeze_scaffold` (authority `gunbc.witness_deferral_freeze`).
+// `gunbc.cli_run_witness_deferral_freeze_scaffold` (authority `gunbc.witness.witness_deferral_freeze`).
 // The .dag side being the authority does NOT exempt this realization — cli_run.rs is the largest
 // hand-maintained Rust wall in the program and is growing against its own hollowing plan, so this
 // block is accounted for rather than admitted quietly. DELETE WHEN: the frozen-deferral projection
@@ -25065,7 +25065,7 @@ fn quoted_literals(text: &str) -> Vec<String> {
 /// Phase 0(b): every deferred witness row must name an executing consumer (explicit roster, or a
 /// fixture roster), and — since 2026-08-04 — a broad `OfflineLocalRecipe` path policy is no longer
 /// an answer on its own. A row that policy claims is admitted only while it sits in the frozen
-/// legacy population (`gunbc.witness_deferral_freeze`); anything new refuses.
+/// legacy population (`gunbc.witness.witness_deferral_freeze`); anything new refuses.
 /// Per-row EXECUTION STANDING — what actually runs this witness. Mirrors the
 /// `WitnessExecutionStanding` coproduct in `std.witness_admission` arm for arm, and the split is
 /// the point: `LegacyFrozenPathDeferral` means TOLERATED BY THE MIGRATION RATCHET, never COVERED.
@@ -25469,7 +25469,7 @@ fn refuse_frozen_path_deferral_additions(additions: &[String]) -> Result<(), Str
     }
     Err(format!(
         "WITNESS ADMISSION REFUSAL cause=FrozenPathDeferralGrew count={} — \
-         gunbc.witness_deferral_freeze gained identities relative to the diff baseline. The roster \
+         gunbc.witness.witness_deferral_freeze gained identities relative to the diff baseline. The roster \
          is the FROZEN legacy population, so it may only shrink: adding a row is re-opening the \
          escape hatch it exists to close, because it admits a witness that executes nowhere. If \
          this is a new or relocated witness, give it an exact row in gunbc.explicit_witness_admission \
@@ -25496,7 +25496,7 @@ fn refuse_stale_frozen_path_deferrals(
     }
     Err(format!(
         "WITNESS ADMISSION REFUSAL cause=StaleFrozenPathDeferral count={} — \
-         gunbc.witness_deferral_freeze row(s) name witnesses the tree no longer carries. A freeze \
+         gunbc.witness.witness_deferral_freeze row(s) name witnesses the tree no longer carries. A freeze \
          row is a debt marker for one exact (entry, function); left behind it becomes a standing \
          exemption the next witness to take that name inherits. Delete the listed row(s) in the \
          change that removed or renamed the witness: {}",
@@ -25854,7 +25854,7 @@ pub(crate) fn apply_discovery_scope_dirs_filter(
 }
 
 // SCAFFOLD (§7 HAND-RUST — `cli_run_selected_closure_overlap_probe`):
-// ROADMAP lane §2 *Minimal work — caching by realization* (gunbc.roadmap_authority /
+// ROADMAP lane §2 *Minimal work — caching by realization* (gunbc.roadmap.roadmap_authority /
 // ROADMAP.md), lane `ci-cost`, subject `entry-graph-union-construction` slice 1.
 // This is a ONE-SHOT INSTRUMENT, not standing infrastructure: it exists to answer whether
 // the entry-graph-union program is worth building, and it is allowed to conclude that the
@@ -25874,7 +25874,7 @@ pub(crate) fn apply_discovery_scope_dirs_filter(
 // returns 4 while the scaffold stands (this block, the const, and its declaration test)
 // and must return 0 at deletion — the deletion is what the receipt checks, not a fixed hit
 // count. Not a compiler_frontier `.dag` row (seed-Rust, counted here not in the module
-// census), and not enrolled in `gunbc.ci_release_bins` — no `measure_*` probe is.
+// census), and not enrolled in `gunbc.ci.ci_release_bins` — no `measure_*` probe is.
 pub(crate) const CLI_RUN_SELECTED_CLOSURE_OVERLAP_SCAFFOLD_MARKER: &str =
     "cli_run_selected_closure_overlap_probe";
 
@@ -27479,9 +27479,9 @@ pub(crate) const CLI_RUN_AFFECTED_SET_STOP_LINE_BRIDGE_MARKER: &str =
     "cli_run_affected_set_stop_line_bridge";
 
 const COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY: &str =
-    "dag/test/claim/dag_compile_clean_shard_a_witness_test.dag";
+    "dag/test/claim/dag_compile_clean_shard_a_witness.dag";
 const COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY: &str =
-    "dag/test/claim/dag_compile_clean_scope_witness_test.dag";
+    "dag/test/claim/dag_compile_clean_scope_witness.dag";
 
 fn entry_has_declared_source_refs(entry_path: &str, facts: &ModuleGraphFactsLive) -> bool {
     !declared_source_ref_paths_for_entry(entry_path, facts).is_empty()
@@ -27966,7 +27966,7 @@ mod floor_skip_frontier_tests {
     // read entries that may not resolve — the same textual model as
     // `parse_entry_live_tree_disposition`. `v2.std.fn_index` `callees_from_node`
     // needs a Node. v1 PURPOSE: evidence for the failure-mode row
-    // (`gunbc.v1_maintenance_standing` `v1_seed_standing`).
+    // (`gunbc.v1.v1_maintenance_standing` `v1_seed_standing`).
 
     fn builtin_name_spells_a_live_checkout_sink(name: &str) -> bool {
         name.starts_with("compile_dag_")
@@ -28127,7 +28127,7 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
     // asserted 1 of 2 and failed here.
     #[test]
     fn rename_destination_enrolls_every_test_decl_not_only_the_diff_touched_one() {
-        let dest = "src/v2/test/claim/machine_shape_construction_wall_test.dag";
+        let dest = "src/v2/test/claim/machine_shape_construction_wall.dag";
         let content = std::fs::read_to_string(super::process_workspace_root().join(dest))
             .expect("the renamed wall entry is in the tree");
         let declared: HashSet<String> = super::scan_test_decl_names(&content).into_iter().collect();
@@ -28143,7 +28143,7 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
 diff --git a/dag/test/claim/machine_shape_construction_wall_test.dag b/src/v2/test/claim/machine_shape_construction_wall_test.dag
 similarity index 97%
 rename from dag/test/claim/machine_shape_construction_wall_test.dag
-rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
+rename to src/v2/test/claim/machine_shape_construction_wall.dag
 --- a/dag/test/claim/machine_shape_construction_wall_test.dag
 +++ b/src/v2/test/claim/machine_shape_construction_wall_test.dag
 @@ -1 +1 @@
@@ -28175,7 +28175,7 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
     // rule is ever applied unconditionally.
     #[test]
     fn in_place_modify_enrolls_only_the_touched_test_decl() {
-        let dest = "src/v2/test/claim/machine_shape_construction_wall_test.dag";
+        let dest = "src/v2/test/claim/machine_shape_construction_wall.dag";
         let content = std::fs::read_to_string(super::process_workspace_root().join(dest))
             .expect("the renamed wall entry is in the tree");
         let green_line = content
@@ -28201,7 +28201,7 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
     }
 
     fn machine_shape_in_place_green_diff() -> (String, String) {
-        let dest = "src/v2/test/claim/machine_shape_construction_wall_test.dag";
+        let dest = "src/v2/test/claim/machine_shape_construction_wall.dag";
         let content = std::fs::read_to_string(super::process_workspace_root().join(dest))
             .expect("the renamed wall entry is in the tree");
         let green_line = content
@@ -28272,13 +28272,13 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
     }
 
     fn machine_shape_rename_diff() -> (&'static str, &'static str, String) {
-        let dest = "src/v2/test/claim/machine_shape_construction_wall_test.dag";
+        let dest = "src/v2/test/claim/machine_shape_construction_wall.dag";
         let src = "dag/test/claim/machine_shape_construction_wall_test.dag";
         let diff = "\
 diff --git a/dag/test/claim/machine_shape_construction_wall_test.dag b/src/v2/test/claim/machine_shape_construction_wall_test.dag
 similarity index 97%
 rename from dag/test/claim/machine_shape_construction_wall_test.dag
-rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
+rename to src/v2/test/claim/machine_shape_construction_wall.dag
 --- a/dag/test/claim/machine_shape_construction_wall_test.dag
 +++ b/src/v2/test/claim/machine_shape_construction_wall_test.dag
 @@ -1 +1 @@
@@ -28491,7 +28491,7 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
     // No surviving declaration's own text changed, so nothing is charged.
     #[test]
     fn the_13126_claim_trim_charges_no_surviving_claim() {
-        let path = "src/v2/test/claim/parse/test_marker_channel_test.dag";
+        let path = "src/v2/test/claim/parse/test_marker_channel.dag";
         let head = include_str!("../testdata/test_marker_channel_head_587c833.dag.txt");
         let diff = include_str!("../testdata/test_marker_channel_trim_587c833.diff");
         let edits = text_attribution_edits(
@@ -28816,13 +28816,13 @@ new file mode 100644
     fn named_census_specimens_declare_reads_live_tree_and_call_a_sink() {
         let ws = workspace_root();
         let specimens = [
-            "dag/test/claim/fabric/fabric_output_contract_resolution_witness_test.dag",
-            "dag/test/claim/match_exhaustiveness_coproduct_witness_test.dag",
-            "dag/test/claim/direct_call_argument_type_witness_test.dag",
-            "dag/test/claim/declared_type_inhabitance_direct_call_witness_test.dag",
-            "dag/test/claim/declared_type_inhabitance_list_element_witness_test.dag",
-            "dag/test/claim/declared_type_expected_type_path_witness_test.dag",
-            "dag/test/claim/infer_record_lit_variant_field_witness_test.dag",
+            "dag/test/claim/fabric/fabric_output_contract_resolution_witness.dag",
+            "dag/test/claim/match_exhaustiveness_coproduct_witness.dag",
+            "dag/test/claim/direct_call_argument_type_witness.dag",
+            "dag/test/claim/declared_type_inhabitance_direct_call_witness.dag",
+            "dag/test/claim/declared_type_inhabitance_list_element_witness.dag",
+            "dag/test/claim/declared_type_expected_type_path_witness.dag",
+            "dag/test/claim/infer_record_lit_variant_field_witness.dag",
         ];
         let mut files = Vec::new();
         for rel in specimens {
@@ -28850,7 +28850,7 @@ new file mode 100644
     #[test]
     fn named_remaining_sio_direct_live_specimen_is_joined() {
         let ws = workspace_root();
-        let rel = "dag/test/claim/citation_cause_subject_disjointness_witness_test.dag";
+        let rel = "dag/test/claim/citation_cause_subject_disjointness_witness.dag";
         let content =
             std::fs::read_to_string(ws.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
         let files = vec![(rel.to_string(), content)];
@@ -28879,7 +28879,7 @@ new file mode 100644
     #[test]
     fn adding_the_census_marker_would_still_lose_the_conjunction_on_the_remaining_specimen() {
         let ws = workspace_root();
-        let rel = "dag/test/claim/citation_cause_subject_disjointness_witness_test.dag";
+        let rel = "dag/test/claim/citation_cause_subject_disjointness_witness.dag";
         let content =
             std::fs::read_to_string(ws.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
         assert!(
@@ -28994,7 +28994,7 @@ mod module_grain_affected_equivalence_tests {
         ]
     }
 
-    // Mirrors `gunbc.ci_layer_roots.witness_layer_roots` (`data witness_layer_roots: List<String>
+    // Mirrors `gunbc.ci.ci_layer_roots.witness_layer_roots` (`data witness_layer_roots: List<String>
     // = ["dag", "src/v2"]`) — the single authority for pool roots this receipt exercises against.
     fn pool_roots_rel() -> Vec<String> {
         vec!["dag".to_string(), "src/v2".to_string()]
@@ -29254,17 +29254,17 @@ mod module_grain_affected_equivalence_tests {
     // when it doesn't, without requiring the full ~514-entry roster.
     fn dag_only_entry_sample() -> Vec<&'static str> {
         vec![
-            "dag/test/claim/card_intake_risk_witness_test.dag",
-            "dag/test/claim/ebay_listing_witness_test.dag",
-            "src/v2/test/claim/bash_program_fold_test.dag",
-            "dag/test/claim/v1_dag_parse_witness_test.dag",
+            "dag/test/claim/card_intake_risk_witness.dag",
+            "dag/test/claim/ebay_listing_witness.dag",
+            "src/v2/test/claim/bash_program_fold.dag",
+            "dag/test/claim/v1_dag_parse_witness.dag",
             "dag/gunbc/instruments/host_prelude.dag",
             "dag/gunbc/instruments/build_step.dag",
             "dag/gunbc/ci/ci_layer_roots.dag",
-            "src/v2/test/claim/bash_command_fold_test.dag",
-            "src/v2/workflow/orchestration_emit_test.dag",
+            "src/v2/test/claim/bash_command_fold.dag",
+            "src/v2/workflow/orchestration_emit.dag",
             "dag/test/claim/long/import_closure_live_test.dag",
-            "src/v2/test/claim/affected_set_universe_test.dag",
+            "src/v2/test/claim/affected_set_universe.dag",
             "src/v2/lens/module_graph.dag",
         ]
     }
@@ -29275,18 +29275,18 @@ mod module_grain_affected_equivalence_tests {
     // affected=true), and unrelated witnesses from both trees (affected=false).
     fn v2_only_entry_sample() -> Vec<&'static str> {
         vec![
-            "src/v2/workflow/orchestration_bash_test.dag",
-            "src/v2/workflow/orchestration_emit_test.dag",
-            "src/v2/test/claim/bash_command_fold_test.dag",
-            "src/v2/test/claim/bash_program_fold_test.dag",
-            "src/v2/test/claim/manual/bash_emit_command_test.dag",
-            "src/v2/test/claim/manual/emit_directive_bash_test.dag",
-            "src/v2/test/claim/manual/emit_directive_gha_test.dag",
-            "src/v2/workflow/orchestration_retry_emit_test.dag",
-            "src/v2/test/claim/realization_vocabulary_containment/lens_unit/discriminators_test.dag",
-            "dag/test/claim/card_intake_risk_witness_test.dag",
+            "src/v2/workflow/orchestration_bash.dag",
+            "src/v2/workflow/orchestration_emit.dag",
+            "src/v2/test/claim/bash_command_fold.dag",
+            "src/v2/test/claim/bash_program_fold.dag",
+            "src/v2/test/claim/manual/bash_emit_command.dag",
+            "src/v2/test/claim/manual/emit_directive_bash.dag",
+            "src/v2/test/claim/manual/emit_directive_gha.dag",
+            "src/v2/workflow/orchestration_retry_emit.dag",
+            "src/v2/test/claim/realization_vocabulary_containment/lens_unit/discriminators.dag",
+            "dag/test/claim/card_intake_risk_witness.dag",
             "dag/gunbc/instruments/host_prelude.dag",
-            "src/v2/test/claim/affected_set_universe_test.dag",
+            "src/v2/test/claim/affected_set_universe.dag",
             "dag/test/claim/long/import_closure_live_test.dag",
         ]
     }
@@ -29761,7 +29761,7 @@ mod node_frontier_plumbing_controls {
             std::fs::write(
                 self.dir.join(super::WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL),
                 format!(
-                    "module gunbc.witness_deferral_freeze\n\n\
+                    "module gunbc.witness.witness_deferral_freeze\n\n\
                      data frozen_path_deferrals: List<FrozenPathDeferral> = [\n{body}]\n"
                 ),
             )
@@ -34989,7 +34989,7 @@ mod witness_layer_roots_compile_clean_tests {
         });
         let observation = declared_import_closure_binding_observation_from_resolved(
             resolved.as_ref(),
-            "v2.extdeps.languages.rust_test",
+            "v2.extdeps.languages.rust_fixtures",
             "rust_selection_policy_node",
         );
         assert!(
@@ -35111,13 +35111,13 @@ mod witness_layer_roots_compile_clean_tests {
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn unrelated_hard_diagnostic_observation_is_not_runnable_at_producer() {
         use crate::v1_std_core::{make_error_node, CompilerDiagnostic};
-        const CONSUMER: &str = "v2.extdeps.languages.rust_test";
+        const CONSUMER: &str = "v2.extdeps.languages.rust_fixtures";
         const SYMBOL: &str = "rust_selection_policy_node";
         with_workspace_cwd(|| {
-            let valid = "module v2.extdeps.languages.rust_test\n\nimport std.types { Bool }\n\ndata probe: Bool = true\n";
+            let valid = "module v2.extdeps.languages.rust_fixtures\n\nimport std.types { Bool }\n\ndata probe: Bool = true\n";
             let compiled = compile_declared_import_closure_only_with_pool(
                 &class_b_declared_import_pool_roots(),
-                "src/v2/extdeps/languages/rust_test_fixtures.dag",
+                "src/v2/extdeps/languages/rust_fixtures.dag",
                 Some(valid),
             )
             .expect("content override bypasses pool load");
@@ -35130,7 +35130,7 @@ mod witness_layer_roots_compile_clean_tests {
                 Rc::new(CompilerDiagnostic::InternalError {
                     message: "producer control unrelated hard diagnostic".to_string(),
                     span: Rc::new(SourceSpan {
-                        file: "src/v2/extdeps/languages/rust_test_fixtures.dag".to_string(),
+                        file: "src/v2/extdeps/languages/rust_fixtures.dag".to_string(),
                         start: 0,
                         end: 1,
                     }),
@@ -35354,7 +35354,7 @@ mod witness_layer_roots_compile_clean_tests {
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn edgeless_entry_selects_on_its_dependency_and_skips_unrelated_touch() {
         with_workspace_cwd(|| {
-            let entry = "dag/test/claim/base64_rfc4648_witness_test.dag";
+            let entry = "dag/test/claim/base64_rfc4648_witness.dag";
             let roots = default_source_roots();
             let facts = build_module_graph_facts_live(&roots);
             let declared: HashSet<String> = facts.declared_paths.clone();
@@ -35486,7 +35486,7 @@ mod witness_layer_roots_compile_clean_tests {
 
     /// Lever-a receipt: docs-only touched paths skip compile-clean (no affected dag entries).
     #[test]
-    #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold; witness in dag/test/claim/dag_compile_clean_scope_witness_test.dag"]
+    #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold; witness in dag/test/claim/dag_compile_clean_scope_witness.dag"]
     fn scoped_plan_skips_docs_only_touch() {
         with_workspace_cwd(|| {
             let plan = compile_clean_scope_plan_from_touched_paths(
@@ -35533,7 +35533,7 @@ mod witness_layer_roots_compile_clean_tests {
 
     /// Lever-a receipt: a direct dag entry touch scopes to at least that entry.
     #[test]
-    #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold; witness in dag/test/claim/dag_compile_clean_scope_witness_test.dag"]
+    #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold; witness in dag/test/claim/dag_compile_clean_scope_witness.dag"]
     fn scoped_plan_includes_touched_dag_entry() {
         with_workspace_cwd(|| {
             let plan = compile_clean_scope_plan_from_touched_paths(
@@ -35922,7 +35922,7 @@ mod module_path_index_tests {
 
     #[test]
     fn reader_follows_synthetic_authority_with_nondefault_roots() {
-        let synthetic = "module gunbc.ci_layer_roots\n\n\
+        let synthetic = "module gunbc.ci.ci_layer_roots\n\n\
              data witness_layer_roots: List<String> = [\"r_one\", \"r_two\", \"r_three\"]\n";
         assert_eq!(
             witness_layer_roots_from_source(synthetic),
@@ -35964,7 +35964,7 @@ mod module_path_index_tests {
 
     #[test]
     fn exclusion_frontier_reader_follows_synthetic_authority() {
-        let synthetic = "module gunbc.ci_layer_roots\n\n\
+        let synthetic = "module gunbc.ci.ci_layer_roots\n\n\
              data witness_exclusion_frontier: List<WitnessExclusionRow> = [\n\
                WitnessExclusionRow {\n\
                  pattern: \"synthetic/offline_test.dag\",\n\
@@ -36016,7 +36016,7 @@ mod module_path_index_tests {
         // That is what makes the sweep discriminating rather than merely likely.
         for shift in 0..3 {
             let synthetic = format!(
-                "module gunbc.ci_layer_roots\n\n  SubstrateLongLaneRow {{\n    \
+                "module gunbc.ci.ci_layer_roots\n\n  SubstrateLongLaneRow {{\n    \
                  entry: \"dag/test/claim/long/x_test.dag\",\n    \
                  function: \"w_x\",\n    \
                  reason: \"{pad}{dashes} tail\",\n  }}\n",
@@ -36038,7 +36038,7 @@ mod module_path_index_tests {
 
     #[test]
     fn head_scan_ignores_longer_identifiers_containing_a_head() {
-        let synthetic = "module gunbc.ci_layer_roots\n\n\
+        let synthetic = "module gunbc.ci.ci_layer_roots\n\n\
              fn witness_exclusion_row_is_rehomed_bin_wet(row: WitnessExclusionRow) -> Bool {\n\
                true\n\
              }\n";
@@ -36052,7 +36052,7 @@ mod module_path_index_tests {
 
     #[test]
     fn rehomed_bin_wet_rows_parse_as_explicit_consumer_keys() {
-        let synthetic = "module gunbc.ci_layer_roots\n\n\
+        let synthetic = "module gunbc.ci.ci_layer_roots\n\n\
              type RehomedBinWetRow {\n\
                entry: String\n\
                function: String\n\
@@ -36078,7 +36078,7 @@ mod module_path_index_tests {
         let synthetic = "module gunbc.explicit_witness_admission\n\n\
              data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [\n\
                source_root_ingest_gate_admitted_witness(\n\
-                 entry: \"src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag\",\n\
+                 entry: \"src/v2/test/claim/self_host/compiler_closure_emit_from_ingest.dag\",\n\
                  f: \"compiler_closure_scoped_ingest_module_count_ok_holds\",\n\
                  kind: CorpusWitnessKind,\n\
                  reason: \"r\",\n\
@@ -36089,7 +36089,7 @@ mod module_path_index_tests {
             super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
         assert!(
             keys.contains(
-                &"src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag::compiler_closure_scoped_ingest_module_count_ok_holds"
+                &"src/v2/test/claim/self_host/compiler_closure_emit_from_ingest.dag::compiler_closure_scoped_ingest_module_count_ok_holds"
                     .to_string()
             ),
             "transport gate admission rows must register as executing consumer keys; got {keys:?}"
@@ -36105,7 +36105,7 @@ mod module_path_index_tests {
         let synthetic = "module gunbc.explicit_witness_admission\n\n\
              data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [\n\
                known_red_probe(\n\
-                 entry: \"dag/test/claim/self_host_body_producer_behavioral_witness_test.dag\",\n\
+                 entry: \"dag/test/claim/self_host_body_producer_behavioral_witness.dag\",\n\
                  f: \"self_host_body_producer_behavioral_receipt_holds\",\n\
                  kind: ExecutionWitnessKind,\n\
                  reason: \"r\",\n\
@@ -36116,7 +36116,7 @@ mod module_path_index_tests {
             super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
         assert!(
             keys.contains(
-                &"dag/test/claim/self_host_body_producer_behavioral_witness_test.dag::self_host_body_producer_behavioral_receipt_holds"
+                &"dag/test/claim/self_host_body_producer_behavioral_witness.dag::self_host_body_producer_behavioral_receipt_holds"
                     .to_string()
             ),
             "exact admission rows must register as executing consumer keys; got {keys:?}"
@@ -36180,7 +36180,7 @@ mod module_path_index_tests {
 
     #[test]
     fn substrate_long_lane_rows_parse_as_explicit_consumer_keys() {
-        let synthetic = "module gunbc.ci_layer_roots\n\n\
+        let synthetic = "module gunbc.ci.ci_layer_roots\n\n\
              type SubstrateLongLaneRow {\n\
                entry: String\n\
                function: String\n\
@@ -36203,7 +36203,7 @@ mod module_path_index_tests {
 
     #[test]
     fn exclusion_frontier_reader_refuses_unrecognized_classification() {
-        let synthetic = "module gunbc.ci_layer_roots\n\n\
+        let synthetic = "module gunbc.ci.ci_layer_roots\n\n\
              data witness_exclusion_frontier: List<WitnessExclusionRow> = [\n\
                WitnessExclusionRow {\n\
                  pattern: \"synthetic/x_test.dag\",\n\
@@ -36224,7 +36224,7 @@ mod module_path_index_tests {
 
     #[test]
     fn reader_follows_synthetic_authority_scan_dirs() {
-        let synthetic = "module gunbc.ci_layer_roots\n\n\
+        let synthetic = "module gunbc.ci.ci_layer_roots\n\n\
              data witness_discovery_scan_dirs: List<String> = [\"scan/a\", \"scan/b\"]\n";
         assert_eq!(
             witness_discovery_scan_dirs_from_source(synthetic),
@@ -36976,11 +36976,11 @@ pub fn extdeps_shape_transport_policy_module_facts(
 // authority is the modeled lens: v2.lens.mandatory_tag's fold, registered in
 // required_compile_lens_roster at CompileLensRoot grain (the mandatory_tag_lens
 // row) and red/green-controlled at the v2 parse grain
-// (v2.test.long.mandatory_tag_gate_witness). This block survives only because the
+// (v2.test.claim.long.mandatory_tag_gate_witness). This block survives only because the
 // interpreted v2 pipeline prices a whole-corpus witness out of every cadence
 // (measured 2026-07-22: ~33s/module parse + ~5.5s/module tokenize interpreted,
 // ~330 extdeps modules ≈ 3.5h; the modeled corpus witness exists at
-// src/v2/test/claim/long/mandatory_tag_extdeps_corpus_test.dag, offline recipe).
+// src/v2/test/claim/long/mandatory_tag_extdeps_corpus.dag, offline recipe).
 // Dissolution: witness realization (witness-realization-plan (plan doc deleted 2026-08-28)) runs
 // that parse-grain corpus witness at native speed, then this block and its three
 // builtins (facts_for_qualified_name, live_clean_tree_holds,
@@ -37763,7 +37763,7 @@ mod import_closure_equivalence_tests {
     }
 
     /// Floor witness entry paths enrolled by the source-root `*_test.dag` pass
-    /// (`gunbc.ci_layer_roots.witness_layer_roots`), minus the model exclusion list.
+    /// (`gunbc.ci.ci_layer_roots.witness_layer_roots`), minus the model exclusion list.
     /// Avoids `discover_floor_witness_roster`'s producer + facts work — closure set-identity
     /// only needs the witness entry roster.
     fn floor_witness_entry_paths_for_oracle() -> BTreeSet<String> {
@@ -39454,7 +39454,7 @@ pub fn assemble_prepared_subject_from_corpus(
             //    with one import and one bare cross-module call has that edge dropped by the
             //    loader and followed by `claim_scope_for`. Under the whole-tree subject the
             //    flat bare-name channel hid the difference; under this subject the referenced
-            //    module is simply absent (measured 2026-08-29: v2.test.lens_vacuity.vacuity_test
+            //    module is simply absent (measured 2026-08-29: v2.test.lens_vacuity.vacuity
             //    refused no-such-function `rust_target_model_staging`, then `eval_context`, one
             //    hop per run). So every module in the closure is bare-scanned here with the
             //    loader's own scanner, and each pulled module joins with its own both-closure.
@@ -39594,7 +39594,7 @@ pub fn assemble_prepared_subject_from_corpus(
     // reaches the operator then names the IMPORTER -- a file nobody touched -- while the row that
     // caused it is somewhere else entirely, so the evidence points away from the cause. Measured
     // as exactly that, twice in one hour: required-floor run 34016411960 refused at
-    // src/v2/test/claim/long/live_read_classification_test.dag:46 for an exclusion added to
+    // src/v2/test/claim/long/live_read_classification.dag:46 for an exclusion added to
     // `floor_prepared_subject_exclusions`, and the first two diagnoses of it both concluded the
     // imported module had been moved or renamed. It had not.
     //
@@ -40583,9 +40583,9 @@ fn claim_scope_for_with_memos(
     // half — a module that reaches its dependencies by bare reference was carried and one that
     // reaches them by `import` was not.
     //
-    // Measured specimen: `test.claim.host_phase_status` declares no imports at all, reaches its
+    // Measured specimen: `test.claim.host.host_phase_status_witness` declares no imports at all, reaches its
     // callees by bare reference, and failed with `undefined variable: operator_host_srv1` — a
-    // `data` declaration in `gunbc.fleet_intent_network` that a module in its closure IMPORTS.
+    // `data` declaration in `gunbc.fleet.fleet_intent_network` that a module in its closure IMPORTS.
     // The definer was one edge away the whole time, across an edge this walk did not traverse.
     let mut frontier: Vec<String> = vec![entry_module.func_env.name.clone()];
     while let Some(current) = frontier.pop() {
@@ -40801,7 +40801,7 @@ fn claim_scope_for_with_memos(
     // only print zero. DESIGN §4b(4) says a climb deletes the lower-rung PRODUCTION machinery it
     // obsoletes while the discriminating RED and positive control stay enrolled, so the per-site
     // read lines are gone and the fixture rows in
-    // `dag/test/claim/bare_name_ambiguity_wall_witness_test.dag` remain.
+    // `dag/test/claim/bare_name_ambiguity_wall_witness.dag` remain.
     //
     // THE DECLARATION-GRAIN AND QUALIFIED-READ CENSUSES ARE NOT IN SCOPE HERE AND STAY LIVE:
     // `ambiguous_bare_names` and `qualified_bare_reads` are populated on scopes this wall ACCEPTS,
@@ -41123,7 +41123,7 @@ pub enum RequiredFloorDisposition {
     /// denominators have been reconciled.
     DeclinedChangedWitnessOutsideDiscovery { module_path: String },
     /// Selected by the changed-witness sublane, and its file is a `BinWitnessWet`
-    /// `WitnessExclusionRow` (`gunbc.ci_layer_roots` `witness_exclusion_frontier`): its claims
+    /// `WitnessExclusionRow` (`gunbc.ci.ci_layer_roots` `witness_exclusion_frontier`): its claims
     /// drive compiled seed witness binaries on host effects the floor's hermetic route refuses,
     /// and NO CI LANE EXECUTES THAT CLASS -- its per-PR batch died with the floor cut, and
     /// falsifier.yml with gunbc#8283. The name says exactly that and names no owner, because no
@@ -41195,7 +41195,7 @@ pub struct WitnessExecutionOccurrence {
     /// a charge, not a failed interrupt.
     ///
     /// `opaque_host_call_unbounded:<operations>` -- the claim's cost accrued inside one or more
-    /// arms of `gunbc.v1_interpreter_opaque_host_call`'s grounded surface, where no stride point
+    /// arms of `gunbc.v1.v1_interpreter_opaque_host_call`'s grounded surface, where no stride point
     /// falls. Here completion over the ceiling means the deadline OBSERVED NOTHING, so the
     /// crossing is a missed interrupt and blocking it is the enforcement the model intends.
     ///
@@ -41641,7 +41641,7 @@ const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 7] = [
     // policy module's frame because this list IS the declaration that a module is evaluated by
     // name, and the alternative -- asking a `gunbc.*` module through a frame scoped for
     // `v2.workflow.*` -- is what this comment's own rule refuses.
-    "gunbc.v1_interpreter_opaque_host_call",
+    "gunbc.v1.v1_interpreter_opaque_host_call",
     // The enrolment margin budget (`floor_enrolment_margin_budget_ms_count`) and typed
     // cost-debt identities (`enrolment_typed_cost_debt_identities`), qualified, from
     // `floor_enrolment_margin_budget_ms` / `floor_enrolment_typed_cost_debt_identities`.
@@ -41757,8 +41757,8 @@ fn heartbeat_measured_bytes(v: Option<u64>, cause: &str) -> String {
 /// held byte-equal to the oracle by `heartbeat_tests::render_heartbeat_line_mirror_matches_seed_oracle`
 /// (which runs the `.dag` through the interpreter on the same two specimens), and the oracle's
 /// bytes for those specimens are pinned on the required floor by
-/// `test.claim.observation_seed_heartbeat_witness_test`. The stall clause is computed by the
-/// `memory_governor` mirrors of `gunbc.memory_stall_refusal` -- the same two functions the stall
+/// `test.claim.observation_seed_heartbeat_witness`. The stall clause is computed by the
+/// `memory_governor` mirrors of `gunbc.host.memory_stall_refusal` -- the same two functions the stall
 /// refusal consumes -- exactly as the `.dag` renderer calls the authority's own.
 pub(crate) fn render_heartbeat_line_mirror(
     elapsed_ms: u64,
@@ -42676,8 +42676,8 @@ mod required_floor_disposition_and_storage_agreement_law {
     /// a stand-in for it.
     #[test]
     fn qualified_declaration_reference_specimen_is_long_path_but_executing_module() {
-        let path = "dag/test/claim/long/qualified_declaration_reference_emit_cross_module_witness_test.dag";
-        let module = "test.claim.qualified_declaration_reference_emit_cross_module_witness";
+        let path = "dag/test/claim/long/qualified_declaration_reference_emit_cross_module_witness.dag";
+        let module = "test.claim.long.qualified_declaration_reference_emit_cross_module_witness";
 
         let path_is_long = is_long_home_path(path);
         let matched_prefix = long_home_prefixes_for_test()
@@ -42707,7 +42707,7 @@ mod required_floor_disposition_and_storage_agreement_law {
     fn long_home_prefixes_for_test() -> Vec<String> {
         vec![
             "test.claim.long.".to_string(),
-            "v2.test.long.".to_string(),
+            "v2.test.claim.long.".to_string(),
             "v2.test.claim.long.".to_string(),
         ]
     }

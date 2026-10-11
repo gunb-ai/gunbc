@@ -36,7 +36,7 @@ import std.witness_admission { WitnessConsumerCadence }
 // constructor that says how it was come by, and CostAxisUnestablished carries no value at all, so
 // the fabricated zero has no constructor rather than being caught by a check.
 //
-// PER-AXIS IS ALREADY RULED. gunbc.v1_complexity_capability_census and
+// PER-AXIS IS ALREADY RULED. gunbc.v1.v1_complexity_capability_census and
 // gunbc.plans.v2_complexity_capability_parity both record the 2026-08-05 operator ruling on
 // CostBasis: approved three-valued, "applied PER RESOURCE AXIS rather than once per account -- one
 // account may legitimately carry time PredictedFromCalibration, space Derived and power Measured,
@@ -161,7 +161,7 @@ type WitnessSeam {
 // nicknaming violation exactly, and it duplicates at the meaning layer where everything derived
 // duplicates again. It was also not merely redundant, which is what made it urgent rather than
 // tidy: the declared side of a cost comparison was tagged in this vocabulary while the observed
-// side (gunbc.witness_row_cost, ObservationEvent durations) was tagged in ClockBasis, so
+// side (gunbc.witness.witness_row_cost, ObservationEvent durations) was tagged in ClockBasis, so
 // witness_row_cost_verdict's BasisClockMismatch — the wall built to refuse a thread-CPU figure
 // compared against a wall baseline — could not see across the two spellings. A fork that defeats
 // the mechanism written to catch that mistake reports clean while comparing the two quantities it
@@ -284,8 +284,8 @@ type RunnableResourceProfile {
 
 // A clamp carries WHO DECLARED IT, and it is a required field rather than a lookup, because the
 // numbers alone cannot say. Two independently owned populations once fed one aligned clamp list —
-// the positional gunbc.ci_spec rows for ordinary batches, and a scoped witness batch's own row in
-// gunbc.ci_layer_roots (that batch is deleted; the field it forced is not) — and the executor
+// the positional gunbc.ci.ci_spec rows for ordinary batches, and a scoped witness batch's own row in
+// gunbc.ci.ci_layer_roots (that batch is deleted; the field it forced is not) — and the executor
 // reconstructed the origin from the LIST POSITION. That is
 // how a refusal came to report clamp_ms=360000 while citing gunbc_ci_floor_batch_clamp_params[0],
 // a row whose overhead is 240 seconds: two facts that cannot both be true, printed in one located
@@ -555,7 +555,7 @@ WHAT THE SCOPED EXTENSION WAS, and why this row shrank. A scoped-witness worker 
 
 MIGRATION TRIGGER: the executor's own scheduling decisions become a `.dag` walk over `WalkPlan` — lane choice, admission, worker sequencing, and receipt emission expressed as modeled effects rather than as `std::thread`, `std::process`, plus `std::fs` — at which point this Rust becomes an emitted realization and the row deletes. Gated behind the witness-realization lane, concretely ROADMAP `v1-materialization-kernel` (`docs/plans/witness-realization-plan.md`), since a `.dag`-expressed executor needs native witness execution to run at all. The two codec dissolve markers are subordinate parts of this same row: they delete when typed tabular projection is available, before the whole executor can delete. Until then the honest statement is that these are seed-retained by necessity with a named trigger and executable receipts, which is exactly what a self-host frontier row is for."
 
-data walk_finalization_note: String = "THE PLAN CARRIES ITS FINALIZATION POLICY IN ITS TYPE, and the executor never infers it — not from a function's spelling, and not from which arm of a coproduct an authored value happened to pick. Two corrections stacked here. FIRST: the original cut selected finalization by plan-function name (if plan_function == gunbc_ci_floor_plan read the law from the closure) — the same hidden seed-roster convention the WalkPlan carrier was built to remove, reintroduced in the same PR (review 2026-07-30), and the RED fixture made the coupling visible by having to impersonate the production name to arm the contract. Moving it to a field fixed that. SECOND: a field of a coproduct type is still only an authored choice (review 2026-07-30, second pass). With `finalization: WalkFinalization`, `WalkPlan \{ batches: floor_batches, finalization: NoWalkFinalization, .. \}` typechecked — NoWalkFinalization and FloorFinalization inhabit the same sum, so nothing connected floor-shaped work to floor finalization; the production constructor merely chose correctly. So the carrier is PARAMETERIZED: WalkPlan<F>, and gunbc_ci_floor_plan returns WalkPlan<FloorFinalization> while regen, plan-artifact, and falsifier return WalkPlan<NoWalkFinalization>. One runtime parser still reads both, because the parse is over the finalization VALUE and does not care which instantiation produced it. The parameterization also stops this generic std carrier from owning a growing coproduct of gunbc-specific receipt policies: FloorFinalization moved to gunbc.ci_materialization, beside the declared count it is about, and std keeps only the parameter and the declared-empty inhabitant.
+data walk_finalization_note: String = "THE PLAN CARRIES ITS FINALIZATION POLICY IN ITS TYPE, and the executor never infers it — not from a function's spelling, and not from which arm of a coproduct an authored value happened to pick. Two corrections stacked here. FIRST: the original cut selected finalization by plan-function name (if plan_function == gunbc_ci_floor_plan read the law from the closure) — the same hidden seed-roster convention the WalkPlan carrier was built to remove, reintroduced in the same PR (review 2026-07-30), and the RED fixture made the coupling visible by having to impersonate the production name to arm the contract. Moving it to a field fixed that. SECOND: a field of a coproduct type is still only an authored choice (review 2026-07-30, second pass). With `finalization: WalkFinalization`, `WalkPlan \{ batches: floor_batches, finalization: NoWalkFinalization, .. \}` typechecked — NoWalkFinalization and FloorFinalization inhabit the same sum, so nothing connected floor-shaped work to floor finalization; the production constructor merely chose correctly. So the carrier is PARAMETERIZED: WalkPlan<F>, and gunbc_ci_floor_plan returns WalkPlan<FloorFinalization> while regen, plan-artifact, and falsifier return WalkPlan<NoWalkFinalization>. One runtime parser still reads both, because the parse is over the finalization VALUE and does not care which instantiation produced it. The parameterization also stops this generic std carrier from owning a growing coproduct of gunbc-specific receipt policies: FloorFinalization moved to gunbc.ci.ci_materialization, beside the declared count it is about, and std keeps only the parameter and the declared-empty inhabitant.
 
 WHAT THE PARAMETERIZATION DOES AND DOES NOT BUY, measured rather than assumed — and the measurement contradicted the intent, so the intent is not what gets written down. The review that requested this asked for a construction wall: the floor's return type should REJECT the empty policy. It does not, today. Probed by execution 2026-07-30: replacing the floor's finalization with NoFinalizationDeclared \{\} while the signature still reads WalkPlan<FloorFinalization> TYPECHECKS, and fails only later, at the first field access, as a runtime error. A narrower probe isolates the general defect — the typechecker does not check a function's declared return type against its body at all (`fn f() -> Int \{ \"not an int\" \}` typechecks; so does a mismatched generic instantiation), nor a `data` declaration's annotation against its value, while ARGUMENT position is checked and refuses correctly. So this is a §5 WALL-AFTER-GROUNDING, not a wall now: the class is decidable, the single authority it waits on is return-position typechecking, and until that lands the enforcement is honestly VALIDATION — the enrolled witness floor_plan_projects_the_declared_resolve_count_authority (v2.test.claim.ci_floor_plan_witness) reds when the floor stops projecting the declared count, with a forked-count RED control beside it. Saying the signature walls it would be the same overclaim this note's own history is a record of. dissolve-on: return-position type enforcement in the typechecker, at which point the signature becomes the wall and the witness becomes redundant.
 
@@ -648,7 +648,7 @@ fn schedule_witness_entry_eq(a: ScheduleWitnessEntry, b: ScheduleWitnessEntry) -
 // folds, so every consumer joining two witness rosters — the eval-ceiling union, the budget
 // partition of a known-red lane — asks the same question of the same authority. It exists because
 // the first shape of the ceiling union carried its own private membership fold in
-// gunbc.ci_layer_roots and the budget partition was about to author a second one; two folds over
+// gunbc.ci.ci_layer_roots and the budget partition was about to author a second one; two folds over
 // one relation is the fork DESIGN 3 names, and a roster join by bare name rather than by identity
 // is the weaker check the schedule-multiplicity wall already refuses.
 

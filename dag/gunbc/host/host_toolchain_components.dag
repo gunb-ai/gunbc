@@ -1,10 +1,10 @@
-module gunbc.host_toolchain_components
+module gunbc.host.host_toolchain_components
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.upsert_decision { ObservationVerdict, Converged, Drifted, Conflict, Inaccessible, UnknownRefused }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.rustup { RustupComponent, Rustfmt, Clippy, rustup_component_name, rustup_component_eq }
+import extdeps.rust.rustup { RustupComponent, Rustfmt, Clippy, rustup_component_name, rustup_component_eq }
 import gunbc.readback_independence {
   ReadBackProbe,
   ProbeInert,
@@ -12,11 +12,11 @@ import gunbc.readback_independence {
   readback_evidence_verdict,
   readback_probe_is_independent,
 }
-import gunbc.host_phase_status { observation_verdict_eq, host_phase_verdict_from }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.host.host_phase_status { observation_verdict_eq, host_phase_verdict_from }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import product.host_identity { HostIdentity }
 
-data toolchain_completeness_authority_note: String = "B3's toolchain-completeness axis, and it is keyed on a RESOLVED TOOLCHAIN rather than on a host, because the host-shaped question is the one that produces a true-sounding wrong answer. The incident that grounds it, read live on srv2 2026-07-25: floor gates died with `spawn rustfmt: No such file or directory` across two hosts in two days, and the natural reading — rustfmt is missing from the machine — was wrong. rustfmt WAS on srv2. The job principal ghrunner carried two rustup toolchains, 1.93.0 with rustfmt and stable WITHOUT it, ~/.cargo/bin/rustfmt was a shim, and ghrunner's default was stable. So a completeness check keyed on 'is rustfmt installed on this host' answers yes, converges green, and the gate keeps failing — the same presupposition failure gunbc.host_swap_backing found in a MemorySwapMax over absent swap, and gunbc.auth.materialized_secret found in an SmEnabled version upstream had revoked. Three incidents, one shape: a value reported green because the condition under which it would MEAN something was assumed instead of observed. The cell therefore names the toolchain it resolved and the component set THAT toolchain carries, and a requirement is satisfied only by the components of the ACTIVE toolchain."
+data toolchain_completeness_authority_note: String = "B3's toolchain-completeness axis, and it is keyed on a RESOLVED TOOLCHAIN rather than on a host, because the host-shaped question is the one that produces a true-sounding wrong answer. The incident that grounds it, read live on srv2 2026-07-25: floor gates died with `spawn rustfmt: No such file or directory` across two hosts in two days, and the natural reading — rustfmt is missing from the machine — was wrong. rustfmt WAS on srv2. The job principal ghrunner carried two rustup toolchains, 1.93.0 with rustfmt and stable WITHOUT it, ~/.cargo/bin/rustfmt was a shim, and ghrunner's default was stable. So a completeness check keyed on 'is rustfmt installed on this host' answers yes, converges green, and the gate keeps failing — the same presupposition failure gunbc.host.host_swap_backing found in a MemorySwapMax over absent swap, and gunbc.auth.materialized_secret found in an SmEnabled version upstream had revoked. Three incidents, one shape: a value reported green because the condition under which it would MEAN something was assumed instead of observed. The cell therefore names the toolchain it resolved and the component set THAT toolchain carries, and a requirement is satisfied only by the components of the ACTIVE toolchain."
 
 // The requirement is derived from the gate that needs it, carried as a DeclarationRef rather than a
 // label, so a component nothing requires cannot accumulate here and the reason a component is
@@ -34,7 +34,7 @@ data floor_gate_component_requirements: List<ToolchainComponentRequirement> = [
   ToolchainComponentRequirement {
     component: Rustfmt,
     required_by: DeclarationRef {
-      module_path: "gunbc.ci_spec",
+      module_path: "gunbc.ci.ci_spec",
       decl_name: "ci_fmt_gate_line",
       field: WholeDeclaration,
     },
@@ -168,12 +168,12 @@ fn host_toolchain_completeness_verdict(host: HostIdentity) -> ObservationVerdict
   )
 }
 
-data toolchain_ensure_frontier_note: String = "What is NOT here, named rather than half-built. The operator's routing puts the component on the modeled toolchain ensure (B3), which means a HostToolchainKind variant for the runner floor toolchain and a HostEffect arm that applies `rustup component add` to the RESOLVED toolchain of the job principal. That effect cannot be realized today: it hits the argv materializer's hardcoded five-parameter vocabulary, the same blocker gunbc.host_swap_backing and gunbc.auth.materialized_secret both name, now dispatched as its own work item. Landing the variant before the materializer is generic would put an unreachable arm into gunbc.host_effect — a load-bearing type with six match sites and no exhaustiveness checking in the seed, so a variant nothing can apply would fall through silently rather than refuse. The requirement rows, the resolution shape, the verdict and its probe classification are all live now and are what the ensure will consume; the apply arm lands when the materializer child unblocks it. srv2's components were brought into the desired state BY HAND on operator instruction in the meantime, and that hand action is exactly what this axis makes visible and counted rather than invisible."
+data toolchain_ensure_frontier_note: String = "What is NOT here, named rather than half-built. The operator's routing puts the component on the modeled toolchain ensure (B3), which means a HostToolchainKind variant for the runner floor toolchain and a HostEffect arm that applies `rustup component add` to the RESOLVED toolchain of the job principal. That effect cannot be realized today: it hits the argv materializer's hardcoded five-parameter vocabulary, the same blocker gunbc.host.host_swap_backing and gunbc.auth.materialized_secret both name, now dispatched as its own work item. Landing the variant before the materializer is generic would put an unreachable arm into gunbc.host.host_effect — a load-bearing type with six match sites and no exhaustiveness checking in the seed, so a variant nothing can apply would fall through silently rather than refuse. The requirement rows, the resolution shape, the verdict and its probe classification are all live now and are what the ensure will consume; the apply arm lands when the materializer child unblocks it. srv2's components were brought into the desired state BY HAND on operator instruction in the meantime, and that hand action is exactly what this axis makes visible and counted rather than invisible."
 
 data toolchain_ensure_apply_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host_toolchain_ensure",
+    module_path: "gunbc.host.host_toolchain_ensure",
     decl_name: "host_toolchain_ensure_effect",
     field: WholeDeclaration,
   }

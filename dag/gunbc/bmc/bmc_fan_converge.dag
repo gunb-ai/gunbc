@@ -1,4 +1,4 @@
-module gunbc.bmc_fan_converge
+module gunbc.bmc.bmc_fan_converge
 
 import extdeps.board_authority { BoardAuthorityRef }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
@@ -105,46 +105,46 @@ import gunbc.auth.secret_ref_credential {
   SecretCredentialWireDecodeRefused,
   fetch_secret_ref_credential,
 }
-import gunbc.bmc_fan_alignment_standing { fleet_bmc_fan_alignment_standings }
-import gunbc.host_cli_dependency {
+import gunbc.bmc.bmc_fan_alignment_standing { fleet_bmc_fan_alignment_standings }
+import gunbc.host.host_cli_dependency {
   first_absent_password_session_host_cli_dependency,
   host_dependency_absent_wire,
 }
-import gunbc.bmc_converge {
+import gunbc.bmc.bmc_converge {
   BmcFanPolicyApplyPlan,
   bmc_fan_policy_classification,
 }
-import gunbc.bmc_fan_projection {
+import gunbc.bmc.bmc_fan_projection {
   BmcFanDurabilityEvidence,
   BmcFanPolicyProjectionCapability,
 }
-import gunbc.bmc_intent {
+import gunbc.bmc.bmc_intent {
   BmcControlPlaneIntent,
   fleet_bmc_valid_state,
 }
-import gunbc.bmc_fan_monitor { BmcFanMonitoringReceipt }
-import gunbc.bmc_onboarding {
+import gunbc.bmc.bmc_fan_monitor { BmcFanMonitoringReceipt }
+import gunbc.bmc.bmc_onboarding {
   BmcOnboardingPlan,
   srv3_onboarding_plan,
   srv4_onboarding_plan,
 }
-import gunbc.fleet_bmc_state {
+import gunbc.fleet.fleet_bmc_state {
   BmcFanDurabilityEvidenceConstruction,
   srv4_bmc_fan_durability_evidence_construction,
   srv4_bmc_fan_projection_capability,
 }
-import gunbc.fleet_bmc_observation {
+import gunbc.fleet.fleet_bmc_observation {
   srv4_bmc_fan_perturbation_generation,
 }
-import gunbc.fleet_intent {
+import gunbc.fleet.fleet_intent {
   ComputeHost,
   srv3_baseboard,
   srv3_host,
   srv4_baseboard,
   srv4_host,
 }
-import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
-import gunbc.fleet_physical_inventory { installed_cooling_realizations }
+import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.fleet.fleet_physical_inventory { installed_cooling_realizations }
 import product.cooling_qualification {
   CoolingCatalogVerdict,
   CoolingCatalogCompatible,
@@ -1686,7 +1686,7 @@ fn bmc_fan_converge_with_credential(
 // strand a host on a policy it cannot roll back off.
 // THE HOST PREREQUISITE THIS FUNCTION ASKS FIRST is asked OF THE ENROLLED ROSTER rather than of a
 // string literal. The body opened with `shell.PosixCommandV.Check(command: "sshpass")` against a
-// hand-spelled word -- a second authority for a fact gunbc.host_cli_dependency now owns (§3), and
+// hand-spelled word -- a second authority for a fact gunbc.host.host_cli_dependency now owns (§3), and
 // one that could not notice the binary being renamed, re-sourced, or joined by a sibling
 // requirement.
 //

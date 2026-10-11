@@ -147,7 +147,7 @@ fn codex_current_sharing_discipline() -> CredentialSharingDiscipline {
 // FALSE. It said the admission is a typed value a caller must match, so the arm that proceeds
 // anyway does not exist to be written. Both halves were true of THIS function and irrelevant to the
 // system, because nothing called it. admit_account_binding returned a value no consumer ever
-// received: gunbc.roadmap_dashboard_instance wrote DashboardExistingProviderState directly, with a
+// received: gunbc.roadmap.roadmap_dashboard_instance wrote DashboardExistingProviderState directly, with a
 // state root and an executable and no binding at all, so every deployment in the fleet was
 // constructed along a path this admission never touched. A wall with no doorway in front of it is
 // vocabulary.\n\nThat is the exact construction-versus-validation error the rule exists to catch,

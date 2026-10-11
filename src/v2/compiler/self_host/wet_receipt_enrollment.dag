@@ -37,7 +37,7 @@ data falsifier_self_host_wet_cadence_rehome_note: String = "2026-07-25 REHOME of
 // falsifier_self_host_wet_known_red_entries (assemble-red SelfEmitted expect_red quarantine — live
 // on the falsifier until the same deletion).
 
-data falsifier_self_host_wet_cadence_flag_deleted_note: String = "THE CADENCE FLAG IS DELETED AT THE ROOT, AND IT IS DELETED RATHER THAN CORRECTED (2026-08-26, dashboard node adhoc-a660c665-d46). WHAT WAS HERE: `data falsifier_self_host_wet_cadence_active: Bool = true` and its reader `falsifier_self_host_wet_cadence_is_active()`, answering whether this cadence has anything executing it. std.witness_admission witness_cadence_has_scheduled_route already answers that same question for all nine cadences from one exhaustive match, and it answers FalsifierSelfHostWet => false, because falsifier.yml -- the sole scheduled executor -- was deleted at 611fd02770/#8283 (2026-08-15). So two carriers answered one fact and they DISAGREED: this flag said the cadence was active while the route gate said it was dark, and the flag had been false-in-fact since the floor cut without anything refusing. That is DESIGN section 3's single-authority violation with a live contradiction sitting in it, and gunbc.ci_layer_roots excl_behavioral_receipt_reason named it explicitly as `disclosed, not fixed, here` -- this row is the fix it deferred.\n\nWHY DELETION RATHER THAN FLIPPING IT TO FALSE, and this is the load-bearing half. The flag fed a fork in v2.workflow.witness_admission consumer_for_explicit_rosters: `if active { FalsifierSelfHostWet } else { OfflineLocalRecipe }`. FalsifierSelfHostWet has no scheduled route, so a row landing there derives DeclaredCadenceUnrealized and reads as UNCOVERED; OfflineLocalRecipe has a route by definition, so a row landing there reads as COVERED. Setting the flag to its honest value would therefore have RECLASSIFIED every roster row from uncovered to covered -- the honesty edit was wired to produce a coverage inflation, which is the DESIGN section 5 absorbing fallback in its purest form: a failure arm that widens rather than refuses. The flag is not a fact that went stale, it is a switch whose false branch fails open, so correcting its value was never available and only cutting the root was.\n\nWHAT THIS CHANGES TODAY: NOTHING, BY MEASUREMENT, AND THAT IS THE POINT. The flag stood at true, so every one of its three live readers was already taking the branch this change makes unconditional -- consumer_for_explicit_rosters returned FalsifierSelfHostWet, witness_exclusion_falsifier_rows_consistent_holds ran its real check rather than its skip arm, and the enrollment predicate below reduced to its fold. The cut removes an authority and a latent fail-open; it moves no row's coverage standing and re-adds no executor. Restoring a scheduled route for this cadence remains a separate, later operator agreement, exactly as std.witness_admission witness_cadence_has_scheduled_route_note reserves it."
+data falsifier_self_host_wet_cadence_flag_deleted_note: String = "THE CADENCE FLAG IS DELETED AT THE ROOT, AND IT IS DELETED RATHER THAN CORRECTED (2026-08-26, dashboard node adhoc-a660c665-d46). WHAT WAS HERE: `data falsifier_self_host_wet_cadence_active: Bool = true` and its reader `falsifier_self_host_wet_cadence_is_active()`, answering whether this cadence has anything executing it. std.witness_admission witness_cadence_has_scheduled_route already answers that same question for all nine cadences from one exhaustive match, and it answers FalsifierSelfHostWet => false, because falsifier.yml -- the sole scheduled executor -- was deleted at 611fd02770/#8283 (2026-08-15). So two carriers answered one fact and they DISAGREED: this flag said the cadence was active while the route gate said it was dark, and the flag had been false-in-fact since the floor cut without anything refusing. That is DESIGN section 3's single-authority violation with a live contradiction sitting in it, and gunbc.ci.ci_layer_roots excl_behavioral_receipt_reason named it explicitly as `disclosed, not fixed, here` -- this row is the fix it deferred.\n\nWHY DELETION RATHER THAN FLIPPING IT TO FALSE, and this is the load-bearing half. The flag fed a fork in v2.workflow.witness_admission consumer_for_explicit_rosters: `if active { FalsifierSelfHostWet } else { OfflineLocalRecipe }`. FalsifierSelfHostWet has no scheduled route, so a row landing there derives DeclaredCadenceUnrealized and reads as UNCOVERED; OfflineLocalRecipe has a route by definition, so a row landing there reads as COVERED. Setting the flag to its honest value would therefore have RECLASSIFIED every roster row from uncovered to covered -- the honesty edit was wired to produce a coverage inflation, which is the DESIGN section 5 absorbing fallback in its purest form: a failure arm that widens rather than refuses. The flag is not a fact that went stale, it is a switch whose false branch fails open, so correcting its value was never available and only cutting the root was.\n\nWHAT THIS CHANGES TODAY: NOTHING, BY MEASUREMENT, AND THAT IS THE POINT. The flag stood at true, so every one of its three live readers was already taking the branch this change makes unconditional -- consumer_for_explicit_rosters returned FalsifierSelfHostWet, witness_exclusion_falsifier_rows_consistent_holds ran its real check rather than its skip arm, and the enrollment predicate below reduced to its fold. The cut removes an authority and a latent fail-open; it moves no row's coverage standing and re-adds no executor. Restoring a scheduled route for this cadence remains a separate, later operator agreement, exactly as std.witness_admission witness_cadence_has_scheduled_route_note reserves it."
 
 fn self_host_wet_entry(entry: String, f: String) -> ScheduleWitnessEntry {
   ScheduleWitnessEntry { entry: entry, function: f, kind: ExecutionWitnessKind }
@@ -53,47 +53,47 @@ fn self_host_wet_entry(entry: String, f: String) -> ScheduleWitnessEntry {
 
 data falsifier_self_host_wet_template_entries: List<ScheduleWitnessEntry> = [
   self_host_wet_entry(
-    entry: "dag/test/claim/namespace_import_closure_witness_test.dag",
+    entry: "dag/test/claim/namespace_import_closure_witness.dag",
     f: "namespace_import_closure_receipt_holds"
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_on_demand_kernel_witness_test.dag",
+    entry: "src/v2/test/claim/execution/emit_on_demand_kernel_witness.dag",
     f: ""
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_on_demand_field_access_family_witness_test.dag",
+    entry: "src/v2/test/claim/execution/emit_on_demand_field_access_family_witness.dag",
     f: ""
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_on_demand_complement_family_witness_test.dag",
+    entry: "src/v2/test/claim/execution/emit_on_demand_complement_family_witness.dag",
     f: ""
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_on_demand_match_loop_fold_family_witness_test.dag",
+    entry: "src/v2/test/claim/execution/emit_on_demand_match_loop_fold_family_witness.dag",
     f: ""
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_on_demand_meet_join_family_witness_test.dag",
+    entry: "src/v2/test/claim/execution/emit_on_demand_meet_join_family_witness.dag",
     f: ""
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_on_demand_variant_construct_family_witness_test.dag",
+    entry: "src/v2/test/claim/execution/emit_on_demand_variant_construct_family_witness.dag",
     f: ""
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_on_demand_classical_not_ingested_family_witness_test.dag",
+    entry: "src/v2/test/claim/execution/emit_on_demand_classical_not_ingested_family_witness.dag",
     f: ""
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag",
+    entry: "src/v2/test/claim/execution/emit_on_demand_family_crate_witness.dag",
     f: ""
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict_test.dag",
+    entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict.dag",
     f: ""
   ),
   self_host_wet_entry(
-    entry: "dag/test/claim/interpreter_dispatch_bijection_real_roster_witness_test.dag",
+    entry: "dag/test/claim/interpreter_dispatch_bijection_real_roster_witness.dag",
     f: "interpreter_dispatch_bijection_real_roster_red_holds"
   )
 ]
@@ -112,7 +112,7 @@ fn dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet() -> B
     f: fn(acc, row) {
       acc
         || (
-          row.entry == "dag/test/claim/interpreter_dispatch_bijection_real_roster_witness_test.dag"
+          row.entry == "dag/test/claim/interpreter_dispatch_bijection_real_roster_witness.dag"
             && row.function == "interpreter_dispatch_bijection_real_roster_red_holds"
         )
     }
@@ -133,51 +133,51 @@ fn dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet() -> B
 
 data falsifier_native_cache_cold_entries: List<ScheduleWitnessEntry> = [
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_host_add_equals_eval_test.dag",
+    entry: "src/v2/test/claim/execution/emit_host_add_equals_eval.dag",
     f: "emit_host_add_equals_eval_holds"
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_host_field_access_equals_eval_test.dag",
+    entry: "src/v2/test/claim/execution/emit_host_field_access_equals_eval.dag",
     f: "emit_host_field_access_equals_eval_holds"
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_host_complement_equals_eval_test.dag",
+    entry: "src/v2/test/claim/execution/emit_host_complement_equals_eval.dag",
     f: "emit_host_complement_equals_eval_holds"
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_host_match_equals_eval_test.dag",
+    entry: "src/v2/test/claim/execution/emit_host_match_equals_eval.dag",
     f: "emit_host_match_equals_eval_holds"
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_host_loop_equals_eval_test.dag",
+    entry: "src/v2/test/claim/execution/emit_host_loop_equals_eval.dag",
     f: "emit_host_loop_equals_eval_holds"
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_host_fold_closure_equals_eval_test.dag",
+    entry: "src/v2/test/claim/execution/emit_host_fold_closure_equals_eval.dag",
     f: "emit_host_fold_closure_equals_eval_holds"
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_host_meet_join_equals_eval_test.dag",
+    entry: "src/v2/test/claim/execution/emit_host_meet_join_equals_eval.dag",
     f: "emit_host_meet_equals_eval_holds"
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_host_meet_join_equals_eval_test.dag",
+    entry: "src/v2/test/claim/execution/emit_host_meet_join_equals_eval.dag",
     f: "emit_host_join_equals_eval_holds"
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_host_variant_construct_equals_eval_test.dag",
+    entry: "src/v2/test/claim/execution/emit_host_variant_construct_equals_eval.dag",
     f: "emit_host_variant_construct_equals_eval_holds"
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/long/emit_host_classical_not_ingested_equals_eval_test.dag",
+    entry: "src/v2/test/claim/execution/long/emit_host_classical_not_ingested_equals_eval.dag",
     f: "emit_host_classical_not_ingested_equals_eval_holds"
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_host_filesystem_read_equals_eval_test.dag",
+    entry: "src/v2/test/claim/execution/emit_host_filesystem_read_equals_eval.dag",
     f: "emit_host_filesystem_read_equals_eval_holds"
   ),
   self_host_wet_entry(
-    entry: "src/v2/test/claim/execution/emit_host_shell_exec_run_equals_eval_test.dag",
+    entry: "src/v2/test/claim/execution/emit_host_shell_exec_run_equals_eval.dag",
     f: "emit_host_shell_exec_run_equals_eval_holds"
   )
 ]

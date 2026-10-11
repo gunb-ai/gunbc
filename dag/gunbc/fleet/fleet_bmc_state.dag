@@ -1,4 +1,4 @@
-module gunbc.fleet_bmc_state
+module gunbc.fleet.fleet_bmc_state
 
 import extdeps.bmc.capability { HistoricalEvidenceSnapshot }
 import extdeps.bmc.types {
@@ -21,11 +21,11 @@ import extdeps.filesystem.linux {
   LinuxFilePublicationProtocol,
   linux_synchronized_rename_replace_publication,
 }
-import gunbc.bmc_intent {
+import gunbc.bmc.bmc_intent {
   fleet_bmc_fan_graceful_restart_boundary,
   fleet_bmc_valid_state,
 }
-import gunbc.bmc_fan_projection {
+import gunbc.bmc.bmc_fan_projection {
   BmcFanConfigReadbackSubject,
   BmcFanDurabilityAdmission,
   BmcFanDurabilityEvidence,
@@ -34,7 +34,7 @@ import gunbc.bmc_fan_projection {
   bmc_fan_policy_projection_capability,
   bmc_fan_policy_projection_durability_admission,
 }
-import gunbc.fleet_bmc_observation {
+import gunbc.fleet.fleet_bmc_observation {
   BmcFanRebootPersistenceReceipt,
   BmcFanTachReceipt,
   srv4_bmc_fan_active_config_digest,
@@ -50,7 +50,7 @@ import gunbc.fleet_bmc_observation {
   srv4_bmc_fan_realization,
   srv4_bmc_firmware_observation,
 }
-import gunbc.fleet_intent {
+import gunbc.fleet.fleet_intent {
   srv4_baseboard,
   srv4_host,
 }

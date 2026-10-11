@@ -1,6 +1,6 @@
-module gunbc.machine_intake_mtcollins1_memory_census_observation
+module gunbc.machine_intake.mtcollins1_memory_census_observation
 
-import gunbc.machine_intake_mtcollins1_access_observation { MtCollins1ControllerFruIdentity, mtcollins1_controller_fru_identity }
+import gunbc.machine_intake.mtcollins1_access_observation { MtCollins1ControllerFruIdentity, mtcollins1_controller_fru_identity }
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
 import std.nat { Nat }
@@ -595,8 +595,8 @@ data mtcollins1_media_redirection_samples: List<MtCollins1MediaRedirectionSample
 
 // THE HOST WOULD NOT BOOT THE PRESENTED MEDIUM, AND THE REASON IS A FIELD THE BOOT-HANDOFF MODEL
 // DOES NOT CARRY. IPMI boot parameter 5 encodes TWO decisions: the device selector, and the BIOS
-// boot type (byte 1 bit 5 — 0 = PC-compatible/legacy, 1 = EFI). gunbc.machine_intake_oob_boot_handoff
-// and gunbc.managed_host_boot_handoff model the SELECTOR and have no concept of the boot
+// boot type (byte 1 bit 5 — 0 = PC-compatible/legacy, 1 = EFI). gunbc.machine_intake.oob_boot_handoff
+// and gunbc.host.managed_host_boot_handoff model the SELECTOR and have no concept of the boot
 // type at all: `efiboot`, `boot_type` and `legacy` appear nowhere in that path. So every handoff
 // this repository performs requests the device under the DEFAULT boot type, which reads back as
 // "BIOS PC Compatible (legacy) boot".
@@ -750,7 +750,7 @@ type MtCollins1ConsumptionFrontier {
 fn census_frontier_row(decl_name: String, awaited: NonEmptyStr, trigger: NonEmptyStr) -> MtCollins1ConsumptionFrontier {
   MtCollins1ConsumptionFrontier {
     declaration: DeclarationRef {
-      module_path: "gunbc.machine_intake_mtcollins1_memory_census_observation",
+      module_path: "gunbc.machine_intake.mtcollins1_memory_census_observation",
       decl_name: decl_name,
       field: WholeDeclaration,
     },

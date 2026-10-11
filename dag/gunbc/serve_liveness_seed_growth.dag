@@ -2,7 +2,7 @@ module gunbc.serve_liveness_seed_growth
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.seed_growth { SeedGrowthJustification }
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 
 // ── HAND-AUTHORED SEED RUST FOR THE OUT-OF-EVALUATOR LIVENESS ENDPOINT ──────────────────────
 // THE ROW EXISTS BECAUSE THE CHANGE WAS ADMITTED WITHOUT ONE, WHICH IS THE UNTRACKED STALL DESIGN
@@ -12,7 +12,7 @@ import gunbc.roadmap_model { RoadmapNodeId }
 // capability under which the branch stops being hand Rust -- was named nowhere. A reason without a
 // trigger is a retention, not a debt.
 //
-// THE PURPOSE ADMISSION IS THE HONEST WEAK POINT AND IS STATED AS ONE. gunbc.v1_maintenance_standing
+// THE PURPOSE ADMISSION IS THE HONEST WEAK POINT AND IS STATED AS ONE. gunbc.v1.v1_maintenance_standing
 // v1_seed_standing admits a v1 change when it serves the v2 self-host program, and this serves the
 // deployed serving product: an operator's ability to ask a swapped or wedged process which release
 // it is. It is admitted as an OPERATOR AVAILABILITY obligation under the 2026-09-19 side-chat

@@ -41,7 +41,7 @@ fn device_crypto_obligation_evidence(o: DeviceCryptoObligation) -> NonEmptyStr {
     P256SignatureVerification => "extdeps.crypto.signature verify_signature (EcdsaP256Sha256) executing on the natively emitted handler"
     AppAttestAttestationVerification => "extdeps.apple.app_attest verify_attestation executing on the natively emitted handler"
     AppAttestAssertionVerification => "extdeps.apple.app_attest verify_assertion executing on the natively emitted handler"
-    P256BasePointOrder => "test.claim.p256_dag_ecdsa_witness_test the_base_point_has_order_n (n*G == infinity for the published base point) with its discriminating control (n-1)*G != infinity, executing natively"
+    P256BasePointOrder => "test.claim.p256_dag_ecdsa_witness the_base_point_has_order_n (n*G == infinity for the published base point) with its discriminating control (n-1)*G != infinity, executing natively"
   }
 }
 

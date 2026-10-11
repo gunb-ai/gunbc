@@ -3,8 +3,8 @@ module gunbc.runner.jit_registration_subject
 import std.types { String, NonEmptyStr, Bool, List }
 import extdeps.github.actions { self_hosted_provenance_label }
 import extdeps.github.actions_jit_runner { JitRunnerName }
-import gunbc.runner_group_restriction_observation { microvm_shakedown_selected_workflow }
-import gunbc.runner_microvm_attempt {
+import gunbc.runner.runner_group_restriction_observation { microvm_shakedown_selected_workflow }
+import gunbc.runner.runner_microvm_attempt {
   MicroVmAttempt, MicroVmCellBinding, VmBoundToOwnedCell, VmUnboundCellNotOwned,
   runner_microvm_attempt_unit_name,
 }
@@ -13,7 +13,7 @@ import gunbc.runner.runner_host_unit_slot {
 }
 
 // WHAT A JIT REGISTRATION IS MINTED FOR: a name, the one workflow the registration exists to run,
-// and the labels it answers to. That is all gunbc.runner_jit_mint reads. It used to read them out
+// and the labels it answers to. That is all gunbc.runner.runner_jit_mint reads. It used to read them out
 // of a sum over realizations (microVM attempt | host unit), restating the realization in one match
 // per field, and every new realization widened the sum, the mint's refusals and the dispatch's
 // refusals together. The realization is not the mint's fact: how a slot comes to exist, where its
@@ -49,12 +49,12 @@ fn jit_runner_name_for(attempt: MicroVmAttempt) -> JitRunnerName {
 // THE LABELS ARE THE ATTEMPT'S OWN, AND NO CALLER CAN HAND IN ANY OTHERS. A microVM attempt answers
 // to exactly two labels: the provenance label every self-hosted runner carries, and its OWN
 // registration name. It does NOT answer to the host's registration set
-// (gunbc.runner_registration_labels), because that set is what production jobs target, and a guest
+// (gunbc.runner.runner_registration_labels), because that set is what production jobs target, and a guest
 // registered under it could take a production converge job into a trusted-shakedown VM. A job
 // reaches this runner only by naming the attempt in its runs-on -- the binding
 // gunbc.runner_bound_attempt_receipt relies on for the mtcollins canary. Whether a JIT registration
 // also receives GitHub's OS and architecture defaults is not modeled; that arm is closed by the
-// runner group, not the label (gunbc.runner_jit_mint microvm_jit_runner_group_restriction_frontier).
+// runner group, not the label (gunbc.runner.runner_jit_mint microvm_jit_runner_group_restriction_frontier).
 fn microvm_attempt_registration_labels(attempt: MicroVmAttempt) -> List<String> {
   [self_hosted_provenance_label, jit_runner_name_for(attempt: attempt).value as String]
 }

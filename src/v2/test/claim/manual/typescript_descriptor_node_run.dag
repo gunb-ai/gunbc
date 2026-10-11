@@ -1,4 +1,4 @@
-module v2.test.manual.typescript_descriptor_node_run_support
+module v2.test.claim.manual.typescript_descriptor_node_run
 
 import v2.compiler.eval {
   Inputs,
@@ -23,7 +23,7 @@ import v2.std.host_run { HostLogicalRun }
 import v2.std.integer { Int }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.text { String }
-import v2.test.manual.connective_anchors { stub_empty_conj }
+import v2.test.claim.manual.connective_anchors { stub_empty_conj }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

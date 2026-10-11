@@ -1,4 +1,4 @@
-module gunbc.roadmap_issue_sort
+module gunbc.roadmap.roadmap_issue_sort
 
 import extdeps.languages.typescript.program {
   ts_quoted_field, TsStmt, ts_ident, ts_lit_str, ts_lit_num, ts_lit_regex, ts_member, ts_index, ts_call,

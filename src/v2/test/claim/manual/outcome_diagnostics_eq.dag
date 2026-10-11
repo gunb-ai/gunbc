@@ -1,4 +1,4 @@
-module v2.test.manual.outcome_diagnostics_eq
+module v2.test.claim.manual.outcome_diagnostics_eq
 
 import v2.std.diagnostic {
   Diagnostic,
@@ -16,7 +16,7 @@ import v2.std.diagnostic {
   outcome_node_eq
 }
 import v2.std.node { Node, Symbol }
-import v2.test.manual.connective_anchors { stub_empty_conj }
+import v2.test.claim.manual.connective_anchors { stub_empty_conj }
 
 fn diag_eq_x() -> Diagnostic {
   Diagnostic {

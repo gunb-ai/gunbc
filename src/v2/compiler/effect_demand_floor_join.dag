@@ -3,7 +3,7 @@ module v2.compiler.effect_demand_floor_join
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
 import std.types { NonEmptyStr, List }
-import gunbc.ci_layer_roots { witness_exclusion_substrings }
+import gunbc.ci.ci_layer_roots { witness_exclusion_substrings }
 import v2.compiler.effect_demand { SeamStanding, effect_demand_seam_roster }
 import v2.lens.module_graph {
   ModuleDeclarationFact,
@@ -343,7 +343,7 @@ fn effect_demand_floor_join_live(
 }
 
 // THE DEFAULT LIVE ENTRY BINDS THE FLOOR'S OWN ROOTS AND EXCLUSIONS, not a copy of them. The required
-// floor's Rust runner parses witness_exclusion_substrings out of gunbc.ci_layer_roots; this shell
+// floor's Rust runner parses witness_exclusion_substrings out of gunbc.ci.ci_layer_roots; this shell
 // reads the same declaration through an import, so the two cannot drift apart without a resolve
 // refusal, and a discovery refusal here over a test-marked declaration outside a *_test.dag file is
 // the same refusal the floor would raise, not a defect in this producer. The digest entry returns text

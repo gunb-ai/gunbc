@@ -1,4 +1,4 @@
-module gunbc.host_operation_exec
+module gunbc.host.host_operation_exec
 
 import std.types { String, NonEmptyStr, List, Bool }
 import extdeps.systemd.systemctl
@@ -13,14 +13,14 @@ import extdeps.nvidia.system_management_interface
 import extdeps.tools.stat
 import extdeps.tools.coreutils_head
 import std.measure { ByteSize, byte_size_count }
-import gunbc.host_effect {
+import gunbc.host.host_effect {
   HostEffectTransport,
   LocalShell,
   SshShell,
   FleetSsh,
   EmitArtifactThenThinRun,
 }
-import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.typed_argv_exec {
   typed_argv_exec_over_fleet_ssh,
   typed_argv_exec_over_ssh,

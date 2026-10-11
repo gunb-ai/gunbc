@@ -25,7 +25,7 @@ import v2.lens.enforcement.standing_intent {
   whole_corpus_scope, standing_intent_complexity_repo_wide
 }
 import v2.lens.enforcement.gate { lens_closure_question_zero_holds }
-import gunbc.ci_layer_roots { witness_exclusion_frontier }
+import gunbc.ci.ci_layer_roots { witness_exclusion_frontier }
 import v2.lens.enforcement.inventory {
   derive_lens_enforcement_inventory, LensEnforcementInventoryRow,
   derive_witness_admission_inventory, WitnessAdmissionInventoryRow,

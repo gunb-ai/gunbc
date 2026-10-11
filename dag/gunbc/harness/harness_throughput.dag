@@ -277,7 +277,7 @@ fn ledger_read_line(line: String) -> LineRead {
 // A READ STREAM WITH NO ROUND ROW IS AN OBSERVATION OF NO ROUND, NOT A GAP. It used to answer
 // RoundsUnobserved, which made an attempt whose agent has not finished its first round look the
 // same as one whose rounds were never captured. Whether a stream was captured at all is the
-// caller's fact (gunbc.roadmap_workflow_progress reads the events only of a modeled attempt with a
+// caller's fact (gunbc.roadmap.roadmap_workflow_progress reads the events only of a modeled attempt with a
 // readable stream), so this reader states only what the stream it was given holds.
 fn harness_round_ledger_from_events(body: String) -> HarnessRoundLedger {
   let reads = map(split(s: body, delimiter: "\n"), l => ledger_read_line(line: l))

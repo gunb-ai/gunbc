@@ -19,8 +19,8 @@ import std.types { Bool, List, NonEmptyStr, String }
 // representation are two realization modes, not two spellings of one answer.
 //
 // MEASURED BY crisp-cat-384 AND CITED AS THEIRS RATHER THAN RE-DERIVED HERE. The instrument is
-// tools.opaque_realization_census (gunbc#9419), run over the emitted closure of
-// src/v2/compiler/05_eval.dag at grain (consumer module, imported name); ask that lane for the
+// gunbc.instruments.opaque_realization_census (gunbc#9419), run over the emitted closure of
+// src/v2/compiler/eval.dag at grain (consumer module, imported name); ask that lane for the
 // per-row artifact rather than reconstructing it, since it is produced on demand and not committed.
 // What the model has to survive, at subject grain: of the fifteen subjects with any occurrence, SIX
 // are SPLIT between preserved and bypassed consumers -- NonEmptyStr, QualifiedName, Hash, Char, Int

@@ -1,4 +1,4 @@
-module gunbc.bmc_converge
+module gunbc.bmc.bmc_converge
 
 import extdeps.board_authority { BoardAuthorityRef }
 import extdeps.bmc.capability {
@@ -26,11 +26,11 @@ import extdeps.filesystem.linux {
   linux_overlay_observation_is_flash_backed,
 }
 import extdeps.uri { Uri }
-import gunbc.bmc_intent {
+import gunbc.bmc.bmc_intent {
   BmcControlPlaneIntent,
 }
-import gunbc.bmc_fan_alignment_standing { HostBmcFanAlignmentStanding }
-import gunbc.fleet_fan_tach_expectation {
+import gunbc.bmc.bmc_fan_alignment_standing { HostBmcFanAlignmentStanding }
+import gunbc.fleet.fleet_fan_tach_expectation {
   expected_tach_headers,
   HostFanTachExpectationAbsent,
   HostFanTachExpectationDuplicate,
@@ -38,7 +38,7 @@ import gunbc.fleet_fan_tach_expectation {
   HostFanTachExpectationHeaderDuplicated,
   host_fan_tach_expectation_admission,
 }
-import gunbc.bmc_fan_projection {
+import gunbc.bmc.bmc_fan_projection {
   BmcFanConfigReadbackSubject,
   BmcFanDurabilityEvidence,
   BmcFanPolicyDriftAssessment,
@@ -62,7 +62,7 @@ import gunbc.bmc_fan_projection {
   bmc_fan_policy_projection_live_digest_suitability,
   bmc_fan_projection_live_digest_refusal_reason,
 }
-import gunbc.fleet_bmc_state {
+import gunbc.fleet.fleet_bmc_state {
   BmcFanDurabilityEvidenceBuilt,
   BmcFanDurabilityEvidenceConstruction,
   BmcFanDurabilityEvidenceConstructionRefused,

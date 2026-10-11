@@ -1,4 +1,4 @@
-module v2.test.loop_linear_bound.rung_8
+module v2.test.claim.loop_linear_bound.rung_8
 
 
 fn rung8_tier1_eval_run(claim: TestClaim) -> TestClaimRun<Node, RuntimeValue> {

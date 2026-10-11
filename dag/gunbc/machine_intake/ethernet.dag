@@ -1,10 +1,10 @@
-module gunbc.machine_intake_ethernet
+module gunbc.machine_intake.ethernet
 
 import std.types { Bool, NonEmptyStr, String }
 import extdeps.standards.nic_attachment { NicAttachmentClass }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address_eq }
 import extdeps.network.mac { Eui48Address }
-import gunbc.machine_intake_subject { UnitKey }
+import gunbc.machine_intake.subject { UnitKey }
 
 // ONE PHYSICAL CONNECTOR IS NOT ONE FUNCTION. Mt. Collins initially misread a second BMC
 // address as the host PXE interface. Mt. Jade's rear panel can carry a dedicated BMC RJ45

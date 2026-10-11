@@ -74,7 +74,7 @@ import std.algebra { FreeMonoid, Empty, Cons, FreeSemigroup }
 // an oversight. There is no `reconcile_once`: no planner, no admission, no actuator, and no
 // post-actuation re-observation. Those are the effectful half of the same protocol, and the reason
 // they are not here is DESIGN section 3c rather than schedule -- their only honest first consumer
-// is the fleet admission spine (gunbc.fleet_converge_plan: generation, held lease, observed
+// is the fleet admission spine (gunbc.fleet.fleet_converge_plan: generation, held lease, observed
 // baseline, compare-and-set), and a protocol shipped with a single hand-fitted adapter is exactly
 // how the shape this module replaces came to have an apply stage that no corpus path ever ran.
 // TRIGGER: the effectful half lands when that spine binds it, and not before.
@@ -140,7 +140,7 @@ type ObservationAttempt<Observed, ObserveRefusal>
 // constructor that no longer exists and understate the arm's reach.
 //
 // Two bindings still reach it never, and that is a property of their subjects rather than of this
-// arm: gunbc.repo_ruleset instantiates AssessRefusal at v2.std.cardinality Never because no state
+// arm: gunbc.repo.repo_ruleset instantiates AssessRefusal at v2.std.cardinality Never because no state
 // of that subject leaves its inputs incomparable, and the realization-selection witness never mints
 // it either. A parameter instantiated at Never is a binding declaring the arm unreachable FOR
 // ITSELF, which is the honest use of it.
@@ -218,7 +218,7 @@ type GoalInspection<Subject, Goal, ObservationRequest, Observed, Evidence, Devia
 // observation shaped by the hope cannot falsify it.
 //
 // THE ASSESSOR DOES NOT RECEIVE THE SUBJECT, and the asymmetry is deliberate rather than an
-// oversight. The observer needs it because it must go and read that subject -- gunbc.repo_ruleset's
+// oversight. The observer needs it because it must go and read that subject -- gunbc.repo.repo_ruleset's
 // observer builds its request path from `subject.owner` and `subject.name`, which is the consumer
 // that earns the parameter. An assessor has no such use: it compares a goal against a snapshot, and
 // the identity it would want for a located refusal is already carried by `GoalInspection` in BOTH

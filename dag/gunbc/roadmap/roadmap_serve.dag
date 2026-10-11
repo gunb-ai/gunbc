@@ -1,9 +1,9 @@
-module gunbc.roadmap_serve
+module gunbc.roadmap.roadmap_serve
 
-import gunbc.roadmap_runtime_plan { roadmap_plan_projection }import gunbc.roadmap_issue_query { issue_query_rows_of, issue_query_response_body }
-import gunbc.roadmap_served_observation { IssueQueryRows, served_observation_body_digest }
-import gunbc.roadmap_view_preferences { issue_view_preferences_of, issue_view_preferences_json }
-import gunbc.roadmap_view_preference_store { issue_view_store_key, issue_view_store_root, issue_view_store_read, issue_view_store_save, IssueViewAbsent, IssueViewFound, IssueViewUnread, IssueViewSaveOk, IssueViewSaveConflict, IssueViewSaveRefused }
+import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }import gunbc.roadmap.roadmap_issue_query { issue_query_rows_of, issue_query_response_body }
+import gunbc.roadmap.roadmap_served_observation { IssueQueryRows, served_observation_body_digest }
+import gunbc.roadmap.roadmap_view_preferences { issue_view_preferences_of, issue_view_preferences_json }
+import gunbc.roadmap.roadmap_view_preference_store { issue_view_store_key, issue_view_store_root, issue_view_store_read, issue_view_store_save, IssueViewAbsent, IssueViewFound, IssueViewUnread, IssueViewSaveOk, IssueViewSaveConflict, IssueViewSaveRefused }
 import gunbc.auth.request_authentication { ServeActionSaveOwnView }
 import extdeps.http.server { ServeResponseHeaderNoStore, ServeResponseHeaderCacheImmutable, text_css_utf8 }
 import gunbc.site.web_fonts { web_font_stylesheet, web_font_stylesheet_path, web_font_stylesheet_max_age_seconds }
@@ -14,32 +14,32 @@ import gunbc.site.specimen { specimen_route_path, specimen_page }
 import gunbc.site.markup { el, txt }
 import gunbc.site.brand { site_favicon_path, site_favicon_type, site_favicon_source }
 import gunbc.site.controls { site_client_path, site_client_source }
-import gunbc.roadmap_style { roadmap_styles }
+import gunbc.roadmap.roadmap_style { roadmap_styles }
 import gunbc.site.document { SiteStyles }
 
 import gunbc.roadmap.roadmap_attempt_request_binding { AttemptLaunchRequest, LaunchForClaim, LaunchAutonomous }
-import gunbc.roadmap_dispatch_actuator { ExecutorDefault, decode_dispatch_executor_request, DispatchExecutorRequestDecoded, DispatchExecutorRequestUnknown }
+import gunbc.roadmap.roadmap_dispatch_actuator { ExecutorDefault, decode_dispatch_executor_request, DispatchExecutorRequestDecoded, DispatchExecutorRequestUnknown }
 import gunbc.roadmap.roadmap_event_log { StandingsObserved, NodeStandingRow }
 
 import gunbc.roadmap.roadmap_event_log { roadmap_issue_state }
-import gunbc.roadmap_issue_command { IssueCommandSubject, AssignIssue, CreateComment, IssueFormContext, issue_command_apply, issue_operation_nonce }
+import gunbc.roadmap.roadmap_issue_command { IssueCommandSubject, AssignIssue, CreateComment, IssueFormContext, issue_command_apply, issue_operation_nonce }
 import gunbc.roadmap.roadmap_event_carrier { roadmap_operation_identity_valid }
 
 import extdeps.http.form_urlencoded { form_decode, form_field, FormDecoded, FormRefused }
 
-import gunbc.roadmap_allocation_location { allocation_page_path, allocation_list_path, allocation_item_route, allocation_release_route }
-import gunbc.workspace_allocation_routes { workspace_route_create, workspace_route_list, workspace_route_get, workspace_route_release }
+import gunbc.roadmap.roadmap_allocation_location { allocation_page_path, allocation_list_path, allocation_item_route, allocation_release_route }
+import gunbc.roadmap.workspace_allocation_routes { workspace_route_create, workspace_route_list, workspace_route_get, workspace_route_release }
 import gunbc.auth.profile_projection {
   profile_store_layout_for_instance, profile_store_upsert_from_session, profile_store_read_all, ProfileStoreReadAll,
   ProfileStoreUpserted, ProfileStoreUpsertRefused, ProfileStoreRead, ProfileStoreUnread, PrincipalProfile,
 }
-import gunbc.roadmap_auth_route_paths { auth_login_route_path, auth_logout_route_path }
-import gunbc.roadmap_allocation_page { allocation_page_with_stylesheet, allocation_client_path, AllocationViewerSignedIn, AllocationViewerSignedOut }
-import gunbc.roadmap_style { roadmap_css }
-import gunbc.roadmap_allocation_client { allocation_client_source }
+import gunbc.roadmap.roadmap_auth_route_paths { auth_login_route_path, auth_logout_route_path }
+import gunbc.roadmap.roadmap_allocation_page { allocation_page_with_stylesheet, allocation_client_path, AllocationViewerSignedIn, AllocationViewerSignedOut }
+import gunbc.roadmap.roadmap_style { roadmap_css }
+import gunbc.roadmap.roadmap_allocation_client { allocation_client_source }
 
 
-import gunbc.roadmap_inline_assignment { inline_assignment_context_body }
+import gunbc.roadmap.roadmap_inline_assignment { inline_assignment_context_body }
 
 import extdeps.tailscale.serve { TailscaleServeEndpoint }
 import gunbc.auth.tailnet_serve_readback {
@@ -48,7 +48,7 @@ import gunbc.auth.tailnet_serve_readback {
 import gunbc.live_deploy.desired {
   desired_deployment_for_instance_id, DesiredDeploymentFound, DesiredDeploymentUnknownInstanceId, DesiredDeploymentRosterRefused,
 }
-import gunbc.roadmap_auth_routes { auth_login_response, auth_google_callback_response, auth_logout_response, roadmap_serve_authentication_evidence }
+import gunbc.roadmap.roadmap_auth_routes { auth_login_response, auth_google_callback_response, auth_logout_response, roadmap_serve_authentication_evidence }
 import extdeps.tailscale.acl { operator_tailscale_acl_policy }
 import gunbc.auth.request_authentication {
   RequestAuthenticationEvidence,
@@ -77,10 +77,10 @@ import gunbc.principal_projection {
 import std.access { access_refusal_reason, Permit, Deny }
 import gunbc.clock_read { clock_now_probed_at }
 import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read, epoch_secs_of_millis }
-import gunbc.fabric_storage_binding { fabric_state_storage_binding }
-import gunbc.roadmap_task_form { roadmap_task_draft_from_form, roadmap_task_form_missing }
-import gunbc.roadmap_task_record { roadmap_task_encode }
-import gunbc.roadmap_task_store { RuntimeTaskWrite, roadmap_task_create, RuntimeTaskCommitted, RuntimeTaskReplayed, RuntimeTaskConflict, RuntimeTaskStale, RuntimeTaskChainFull, RuntimeTaskRefused, roadmap_task_capacity, CapacityWithin, CapacityCompactionDue, CapacityFull }
+import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
+import gunbc.roadmap.roadmap_task_form { roadmap_task_draft_from_form, roadmap_task_form_missing }
+import gunbc.roadmap.roadmap_task_record { roadmap_task_encode }
+import gunbc.roadmap.roadmap_task_store { RuntimeTaskWrite, roadmap_task_create, RuntimeTaskCommitted, RuntimeTaskReplayed, RuntimeTaskConflict, RuntimeTaskStale, RuntimeTaskChainFull, RuntimeTaskRefused, roadmap_task_capacity, CapacityWithin, CapacityCompactionDue, CapacityFull }
 import std.algebra { trim }
 import std.types { String, Int, Bool, List, NonEmptyStr, Email, CommitSha, HttpStatus }
 import extdeps.uri_path { PathParamBinding, path_param_value }
@@ -122,7 +122,7 @@ import extdeps.languages.json.emit {
   JsonValue,
   JsonKeyValue,
 }
-import gunbc.roadmap_launch_admission {
+import gunbc.roadmap.roadmap_launch_admission {
   LaunchRefusal,
   LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNotReady, LaunchSessionsUnobservable,
@@ -130,28 +130,28 @@ import gunbc.roadmap_launch_admission {
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated, LaunchNoPlacementGrant,
   launch_refusal_label, launch_refusal_reason,
 }
-import gunbc.roadmap_page { issue_detail_not_found_page, issue_create_page,
+import gunbc.roadmap.roadmap_page { issue_detail_not_found_page, issue_create_page,
   roadmap_fleet_page,
   issue_detail_page_for, issue_detail_node_exists,
 }
-import gunbc.roadmap_authority {
+import gunbc.roadmap.roadmap_authority {
   RoadmapAuthorityProjection,
   RoadmapAuthorityProjectionRefused,
 }
-import gunbc.roadmap_component {
+import gunbc.roadmap.roadmap_component {
   dispatch_client_js_source, roadmap_dispatch_asset_path,
 }
-import gunbc.roadmap_static_site {
+import gunbc.roadmap.roadmap_static_site {
   roadmap_site_dispatch_json_body_over,
   roadmap_site_healthz_body_for_release,
 }
 import gunbc.site.markup { page_render_refusal_body }
-import gunbc.roadmap_site_surface_render {
+import gunbc.roadmap.roadmap_site_surface_render {
   roadmap_site_health_path,
   roadmap_site_dispatch_url_path,
   roadmap_site_daily_url_path,
 }
-import gunbc.roadmap_served_observation {
+import gunbc.roadmap.roadmap_served_observation {
   DailyPage, AttemptsJson, WorkflowJson, SessionsJson,
   served_observation_surface_response_for_instance,
   served_attempt_revision_observations, served_current_revision_hex,
@@ -178,8 +178,8 @@ import gunbc.roadmap.roadmap_event_log {
 import extdeps.google.issue_tracker {
   issue_assignee_input_is_email, issue_assign_fabric_display,
 }
-import gunbc.roadmap_presentation { stale_attempt_nodes }
-import gunbc.roadmap_belt_actuate {
+import gunbc.roadmap.roadmap_presentation { stale_attempt_nodes }
+import gunbc.roadmap.roadmap_belt_actuate {
   BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted,
   belt_spawn_outcome_json, belt_launch_host_standing_for_page_over,
   belt_dispatch_node, belt_dispatch_node_for_instance_over,
@@ -192,8 +192,8 @@ import gunbc.roadmap_belt_actuate {
   belt_publish_outcome_http_status,
   belt_publish_outcome_json_value,
 }
-import gunbc.dashboard_provider_readiness { dashboard_provider_readiness_json }
-import gunbc.roadmap_dashboard_instance {
+import gunbc.roadmap.dashboard_provider_readiness { dashboard_provider_readiness_json }
+import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_health_schema,
   HostDashboardInstance,
   DashboardObserveOnly, DashboardActuating,
@@ -217,7 +217,7 @@ import extdeps.ietf.http_semantics { HttpMethod, GET, POST }
 // artifact table and this serve table are two projections of one authority set, never two copies of
 // content, and every body is computed at request time so the served page is the LIVE roadmap, not a
 // deploy-frozen snapshot (the section-3 dual-representation cost this module exists to remove).
-// Dispatch: POST /dispatch/NODE_ID invokes gunbc.roadmap_belt_actuate.belt_dispatch_node IN-PROCESS
+// Dispatch: POST /dispatch/NODE_ID invokes gunbc.roadmap.roadmap_belt_actuate.belt_dispatch_node IN-PROCESS
 // — the single dispatch authority (#6914), no emitted JS, no subprocess exec, no env-var channel.
 // The launch button that POSTs here is transport-agnostic and lands with belt A in roadmap_page
 // (lane agreement 2026-07-20): the page never knows which backend answers.
@@ -225,7 +225,7 @@ import extdeps.ietf.http_semantics { HttpMethod, GET, POST }
 data roadmap_serve_interpreted_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
-    module_path: "gunbc.roadmap_serve",
+    module_path: "gunbc.roadmap.roadmap_serve",
     decl_name: "roadmap_serve_handle",
     field: WholeDeclaration
   }
@@ -264,22 +264,22 @@ data roadmap_serve_interpreted_scaffold: Disposition = Scaffold {
 // removable unit, which DESIGN section 5 forbids. FROZEN MEANS: no new options, no new verbs, no
 // new routes into the interpreter, no completion work, no flag or environment gate re-opening it --
 // an escape hatch is refused outright and would be a NewEscapeHatchOrAdmissionRow under
-// gunbc.v1_maintenance_standing besides.
+// gunbc.v1.v1_maintenance_standing besides.
 //
 // THE DELETED REFUSAL'S SUBSTANTIVE CLAIM IS NOT RETRACTED. Serve remains a desired SERVICE
 // OCCURRENCE that convergence should observe and reconcile rather than a command, and it cannot be
-// modeled that way today because gunbc.host_effect carries only the LiveDeployApply /
+// modeled that way today because gunbc.host.host_effect carries only the LiveDeployApply /
 // LiveDeployRetract / LiveDeployEnsureDependency triple and the runner-slot family -- no generic
 // service-occurrence member exists. That absence is why BOTH bring-up paths must name a command:
 // the systemd unit through gunbc.live_deploy.emit, and the tmux path through
-// gunbc.roadmap_dashboard_instance dashboard_instance_serve_argv. Registering that member is
+// gunbc.roadmap.roadmap_dashboard_instance dashboard_instance_serve_argv. Registering that member is
 // separate work and is the thing that stops this recurring.
 //
 // THE ENGINE OBJECTION IS RECORDED RATHER THAN ARGUED AWAY. This does make the interpreter
 // load-bearing for a capability two lanes are deleting -- the propagation consequence DESIGN
 // section 3 names. It is not a NEW dependency; it is the one that stood until #8286. But if this
 // route begins attracting completion work or performance work on the interpreted loop, the freeze
-// has been repealed by drift, which is the standing danger gunbc.v1_maintenance_standing
+// has been repealed by drift, which is the standing danger gunbc.v1.v1_maintenance_standing
 // v1_seed_standing already warns about for the active-maintenance arm.
 
 type RoadmapServeHandler
@@ -334,7 +334,7 @@ type RoadmapServeHandler
 // (witness_malformed_route_literal_refuses_table: a bad literal through the same build fold ->
 // Refused).
 
-// THE SERVED PATH IS ONE FACT. gunbc.roadmap_site_surface_render already declared each of these
+// THE SERVED PATH IS ONE FACT. gunbc.roadmap.roadmap_site_surface_render already declared each of these
 // paths as data -- the static site, the surface-observation bundle and the deploy witnesses all
 // cite those constants -- while these rows carried a second spelling of the same string. Two copies
 // of a path agree until one moves, and the one that moves silently is the one nothing reads back:
@@ -521,7 +521,7 @@ fn belt_dispatch_response(r: BeltSpawnOutcome) -> ServeHttpResponse {
 // backstop for that unreachable arm — a 400 refusal, never a dispatch with a fabricated id (DESIGN
 // 5: an unreachable arm refuses, never fabricates).
 
-// THE EXECUTOR IS AN OPTIONAL ?executor=LABEL ON THE DISPATCH ROUTE (gunbc.roadmap_dispatch_actuator
+// THE EXECUTOR IS AN OPTIONAL ?executor=LABEL ON THE DISPATCH ROUTE (gunbc.roadmap.roadmap_dispatch_actuator
 // DispatchExecutorRequest): absent, it is the default executor; a vendor label routes the attempt to
 // that vendor's selection, which refuses typed when the vendor's offer or standing does not admit it.
 // An unknown label is a 400 naming the accepted set -- never a dispatch to the default, which would
@@ -921,7 +921,7 @@ fn serve_issue_assign_response_over(
 }
 
 // THE CREATE ROUTE. POST /issues creates a runtime task in the fabric state namespace
-// (gunbc.roadmap_task_store). The write law is the assign route's: the tailnet deployment policy,
+// (gunbc.roadmap.roadmap_task_store). The write law is the assign route's: the tailnet deployment policy,
 // the authenticated human, session CSRF. The operation key is the idempotency key AND the source of
 // the minted identity, so a retry answers the committed record and a reused key with different
 // fields is a 409. The chain event carries the authenticated principal as its actor -- that IS the
@@ -1261,7 +1261,7 @@ fn dashboard_instance_json(instance: HostDashboardInstance) -> String {
 //
 // RoadmapDailyPageHandler IS a roadmap render and must not be filed with them (review 63341, which
 // caught this note grouping it there). Its plan is bound EARLIER, at the tick that rendered the
-// body, by gunbc.roadmap_served_observation served_observation_observe_and_write_over -- so the
+// body, by gunbc.roadmap.roadmap_served_observation served_observation_observe_and_write_over -- so the
 // daily page is parameterized, on the other entry. The consequence a caller has to know: supplying
 // a plan HERE does not reach `/`. A process serving its own plan must supply it at BOTH entries,
 // the serve entry and the tick entry; supply it at only this one and `/` answers from whatever plan
@@ -1302,7 +1302,7 @@ fn roadmap_serve_invoke_over(
               "the authority it came from, so agreement with the plan this entry was given cannot ",
               "be decided here. Refusing rather than answering from an unknown authority ",
               "(gunbc.recurring_failure_mode.a_prerendered_body_carries_no_identity_of_its_source). ",
-              "Bind the same plan at the tick entry, gunbc.roadmap_served_observation ",
+              "Bind the same plan at the tick entry, gunbc.roadmap.roadmap_served_observation ",
               "served_observation_observe_and_write_over, and declare it with ",
               "DailyBodyRenderedUnderThisPlan.\n",
             ], ""),
@@ -1471,7 +1471,7 @@ fn serve_attempts_response() -> ServeHttpResponse {
 // — and the two candidate routes are NOT rival cost centers, because
 // serve_daily_page_response_for_instance and serve_workflow_response_for_instance both served (then) by calling
 // belt_workflow_attempts_observe_for_instance per request (one observing authority, two projections; since the
-// served-observation split, gunbc.roadmap_served_observation calls it once per belt tick instead), so they
+// served-observation split, gunbc.roadmap.roadmap_served_observation calls it once per belt tick instead), so they
 // share the projection cost and differ only in that the daily page adds the render;
 // interpreter-concat hypothesis live and may be primary; share of two-hour peg versus queued
 // duplicate polls unmeasured, and the share attributable to stream capture is unestablished in BOTH
@@ -1586,7 +1586,7 @@ fn roadmap_serve_selection_response(
 // and serve-route authorities: a header alone mints no tailnet path, and neither does a reading
 // that is absent, stale, unreadable, or shows another backend at this instance's declared route.
 // Authentication evidence is the session cookie the seam passes through, resolved against the
-// session store (gunbc.roadmap_auth_routes roadmap_serve_authentication_evidence): an absent
+// session store (gunbc.roadmap.roadmap_auth_routes roadmap_serve_authentication_evidence): an absent
 // cookie is AuthAbsent, a cookie that does not resolve to a live session is SessionStandingInvalid
 // with its cause. NO REQUEST IS AUTHENTICATED BY TAILNET TRANSPORT.
 fn roadmap_serve_request_security(
@@ -1657,7 +1657,7 @@ fn roadmap_serve_declared_serve_endpoint(instance: HostDashboardInstance) -> Tai
 }
 
 // WHICH SELECTED ROUTES DEMAND THE READING: the ones whose write law requires the tailnet path
-// (gunbc.workspace_allocation_routes workspace_allocation_deployment_access_policy). Every other
+// (gunbc.roadmap.workspace_allocation_routes workspace_allocation_deployment_access_policy). Every other
 // route decides nothing over the access path's tailnet arm, so it is handed an untaken reading
 // rather than paying a process spawn per request -- as is a connection whose ingress is not the
 // proxy, which no reading could vouch for.
@@ -1721,7 +1721,7 @@ fn roadmap_serve_respond_over(
               "route table refused: malformed route literal raw=", r,
               " segment=", s,
               " reason=", why,
-              " (fail-closed — fix the literal in gunbc.roadmap_serve.roadmap_serve_route_specs)\n",
+              " (fail-closed — fix the literal in gunbc.roadmap.roadmap_serve.roadmap_serve_route_specs)\n",
             ], ""),
           )
         ServedRouteTableBuilt { table: t } => {
@@ -2193,7 +2193,7 @@ fn allocation_page_response(request: ServeHttpRequest<RequestAccessPath, Request
 }
 
 // The response over a supplied roadmap stylesheet: the session and header decisions do not read the
-// stylesheet, so a claim about them supplies it (gunbc.roadmap_allocation_page
+// stylesheet, so a claim about them supplies it (gunbc.roadmap.roadmap_allocation_page
 // allocation_page_with_stylesheet).
 fn allocation_page_response_over(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, roadmap_stylesheet: SiteStyles) -> ServeHttpResponse {
   let viewer = match request.security.authentication {

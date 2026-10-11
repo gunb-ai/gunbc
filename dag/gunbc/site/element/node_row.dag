@@ -16,7 +16,7 @@ import gunbc.site.element.palette { palette_var, palette_action_ink_var, SlotTex
 import gunbc.site.element.text { element_text_decls, ElementBody, ElementLabel }
 import gunbc.site.element.chip { Chip, chip }
 import gunbc.site.element.priority_mark { PriorityMark, priority_mark, priority_mark_label_inset }
-import gunbc.roadmap_priority { issue_priority_explanation }
+import gunbc.roadmap.roadmap_priority { issue_priority_explanation }
 import gunbc.site.element.status_chip { status_chip, status_chip_of, StatusChipAccepted, StatusChipWithheld }
 import gunbc.site.element.touch_target { touch_target_rule, TouchTargetCentredLink }
 import extdeps.languages.css.selectors { ClassSelector, RawSelector }

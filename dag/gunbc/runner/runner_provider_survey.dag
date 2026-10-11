@@ -1,4 +1,4 @@
-module gunbc.runner_provider_survey
+module gunbc.runner.runner_provider_survey
 
 import std.types { List, String }
 import extdeps.ci_runner.types {
@@ -29,7 +29,7 @@ import extdeps.ci_runner.runs_on { runs_on_runner_catalog, runs_on_label_catalog
 import extdeps.cloud.ubicloud { ubicloud_runner_catalog_shapes, ubicloud_label_catalog }
 
 // WHICH CI RUNNER PROVIDERS THIS REPOSITORY HAS READ. One roster, and it lives here rather than
-// in the extdeps hub for the reason gunbc.runner_shape_census already gives: which providers we
+// in the extdeps hub for the reason gunbc.runner.runner_shape_census already gives: which providers we
 // looked at is an observation this repository made, a receipt in the observing layer, and
 // DESIGN's external-upstream decomposition rule forbids a generic hub from enumerating concrete
 // products or dispatching among their authorities.
@@ -98,7 +98,7 @@ fn surveyed_label_catalogs() -> List<RunnerLabelCatalog> {
 // ARCHITECTURE IS TAKEN FROM THE PUBLIC ROWS AND THE CHOICE IS CHECKED, NOT ASSUMED. Every label
 // appears twice, once per visibility, and the two rows differ in vCPU and memory while agreeing
 // on architecture. Reading one of them is therefore sound and would stop being sound silently, so
-// test.claim.runner_label_resolution_witness_test asserts the agreement over the whole catalog
+// test.claim.runner_label_resolution_witness asserts the agreement over the whole catalog
 // rather than trusting this comment.
 //
 // ubuntu-latest IS DELIBERATELY ABSENT and that is upstream's ruling, not an omission here:
@@ -124,7 +124,7 @@ data github_hosted_standard_snapshot: CatalogSnapshot = CatalogSnapshot {
 }
 
 data github_hosted_standard_label_catalog: RunnerLabelCatalog = RunnerLabelCatalog {
-  catalog: decl_ref(module_path: "gunbc.runner_provider_survey", decl_name: "github_hosted_standard_label_catalog"),
+  catalog: decl_ref(module_path: "gunbc.runner.runner_provider_survey", decl_name: "github_hosted_standard_label_catalog"),
   provider: github_actions_provider_identity,
   selection_surface: github_actions_runs_on_surface,
   snapshot: github_hosted_standard_snapshot,

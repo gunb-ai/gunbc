@@ -1,4 +1,4 @@
-module v2.test.manual.diagnostic_assert_eval
+module v2.test.claim.manual.diagnostic_assert_eval
 
 import std.types { List }
 import v2.compiler.eval {
@@ -32,7 +32,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
-import v2.test.manual.connective_anchors { stub_empty_conj }
+import v2.test.claim.manual.connective_anchors { stub_empty_conj }
 fn diag_assert_node() -> Node {
   stub_empty_conj
 }

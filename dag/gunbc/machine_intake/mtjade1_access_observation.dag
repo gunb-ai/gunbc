@@ -1,10 +1,10 @@
-module gunbc.machine_intake_mtjade1_access_observation
+module gunbc.machine_intake.mtjade1_access_observation
 
-import gunbc.machine_intake_bmc_first_contact_standing {
+import gunbc.machine_intake.bmc_first_contact_standing {
   BmcFirmwareFamilyStanding,
   FamilyUnobserved,
 }
-import gunbc.machine_intake_mtjade1_factory_network {
+import gunbc.machine_intake.mtjade1_factory_network {
   ObservedBmcNetwork,
   BmcNetworkUnobserved,
   BmcNetworkObservedStatic,
@@ -37,12 +37,12 @@ import extdeps.languages.json.parse {
   json_field_value,
 }
 import std.optional { Present, Absent }
-import gunbc.machine_intake_bmc_firmware_family_discriminator {
+import gunbc.machine_intake.bmc_firmware_family_discriminator {
   ManagerIdentityObservation,
   discriminate_family,
   family_standing_from_discrimination,
 }
-import gunbc.machine_intake_subject {
+import gunbc.machine_intake.subject {
   AssemblyManifest,
   ChassisComponent,
   ComponentIdentity,
@@ -57,7 +57,7 @@ import gunbc.ipmitool_fru_text {
 }
 import gunbc.secret_provision { mtjade1_bmc_gunbc_secret_ref }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
-import gunbc.machine_intake_megarac_media_attach {
+import gunbc.machine_intake.megarac_media_attach {
   MediaGeneralShareObserved,
   MediaGeneralShareUnreadable,
   MegaRacObservedShare,
@@ -66,7 +66,7 @@ import gunbc.machine_intake_megarac_media_attach {
 
 // MT. JADE UNIT 1 BMC ACCESS. Every fact below is read from a committed capture; this module invents
 // no host, serial, or board enum arm. The unit key is not a row here: it is derived by
-// gunbc.machine_intake_arrival_converge identity_bind_provisional, through bind_unit_key, from the
+// gunbc.machine_intake.arrival_converge identity_bind_provisional, through bind_unit_key, from the
 // board-serial observations this module reads from the FRU and SMBIOS captures.
 
 // THE FAMILY IS DISCRIMINATED, 2026-10-03, FROM THE COMMITTED CAPTURE AND NOTHING ELSE. The operator
@@ -351,7 +351,7 @@ fn controller_clock_of_capture(content: String) -> ControllerClockReading {
 // capture that did not decode as this unit is not this controller's clock.
 fn current_manager_read_of(content: String, expected_sha256: NonEmptyStr, endpoint: ObservedBmcNetwork, link: Eui48Address?, capture_path: NonEmptyStr) -> CurrentManagerRead
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtjade1_access_observation", decl_name: "read_mtjade1_current_manager_read"),
+    decl_ref(module_path: "gunbc.machine_intake.mtjade1_access_observation", decl_name: "read_mtjade1_current_manager_read"),
   ]
 {
   let decoded = decode_recorded_manager_capture_for_link(content: content, expected_sha256: expected_sha256, link: link)
@@ -600,7 +600,7 @@ fn decode_smbios_type2_capture(content: String, expected_sha256: NonEmptyStr) ->
 // WHO SAYS THE SOL SESSION WAS THIS CONTROLLER'S: the operator. The transcript's bytes say only that
 // some SOL session was operational; they name no controller and no unit. So the binding is carried as
 // what it is, an OPERATOR-ATTESTED standing naming the controller, the observer host and the record
-// (the shape of gunbc.machine_intake_mtcollins1_power_on_account PopulationOperatorAttested), and is
+// (the shape of gunbc.machine_intake.mtcollins1_power_on_account PopulationOperatorAttested), and is
 // never presented as a machine-derived binding. A machine-derived arm joins this type when a capture
 // carries a discriminator of its own (for example the SOL session's own controller address).
 type SolSessionAttribution
@@ -656,7 +656,7 @@ fn read_mtjade1_smbios_type2() -> SmbiosRead uses fs: std.resources.Filesystem {
 
 // mtjade1's PROVISIONAL ASSEMBLY, from the sealed FRU observation: the chassis part number, and the
 // chassis as its one component identified by the chassis serial. The board's identity is the unit key
-// (the board serial) and the BMC's is the firmware manifest's bmc entry; gunbc.machine_intake_subject
+// (the board serial) and the BMC's is the firmware manifest's bmc entry; gunbc.machine_intake.subject
 // ComponentKind has no board or BMC arm and none is added here. InventoryConform re-derives the
 // assembly from the booted host.
 fn provisional_assembly_of_fru(fru: RecordedFruObservation) -> AssemblyManifest {
@@ -672,7 +672,7 @@ fn provisional_assembly_of_fru(fru: RecordedFruObservation) -> AssemblyManifest 
 // facts about the PLATFORM that this document states, and nothing observed on unit 1 distinguishes
 // them. The aliases that used to sit here had exactly one reader, a witness asserting x == x, and
 // their existence made two chassis rows LOOK consumed and kept them off the coverage frontier
-// (review 67996). Both are rostered in gunbc.machine_intake_mtjade1_coverage_frontier now.
+// (review 67996). Both are rostered in gunbc.machine_intake.mtjade1_coverage_frontier now.
 
 // Locus is reserved and off the accessor roster until the secret exists. THE ORDER IS THREE
 // STAGES AND THE FIRST DOES NOT IMPLY THE SECOND: (1) a wet ProbeServiceRoot read establishes

@@ -1,4 +1,4 @@
-module gunbc.runner_throughput_qualification_route
+module gunbc.runner.runner_throughput_qualification_route
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
@@ -8,10 +8,10 @@ import product.host_identity { HostIdentity }
 import gunbc.runner.runner_host_filtered_egress { EgressPolicyShape, runner_host_egress_policy }
 import extdeps.systemd { MemoryMax, MemoryHigh, MemorySwapMax, TasksMax, CPUWeight, CPUQuota }
 import extdeps.systemd.systemd_run { SystemdRunProperty, SystemdRunCommandReading, systemd_run_transient_wait_unit_command }
-import gunbc.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.runner_slot_allocation { runner_host_label, runner_label_set_union }
-import gunbc.runner_slot_desired { RunnerSlotDesired, RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded, gunbc_runner_slot_desired }
-import gunbc.runner_throughput_qualification {
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.runner.runner_slot_allocation { runner_host_label, runner_label_set_union }
+import gunbc.runner.runner_slot_desired { RunnerSlotDesired, RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded, gunbc_runner_slot_desired }
+import gunbc.runner.runner_throughput_qualification {
   WorkspaceBacking, RamBackedTmpfs, FloorWorkloadPin,
   RouteLegStanding, LegAuthorityImplemented, LegAwaitingAuthority, leg_is_wired,
 }
@@ -32,7 +32,7 @@ import gunbc.runner_throughput_qualification {
 // caller on the route. `route_is_executable` is false today and the witness asserts that it is
 // false. No leg is wired yet: the image leg's authority exists (the seeded-media derivation takes its
 // payload as a parameter) but nothing builds the derived runner image. The boot leg has no authority, and not for want of a landing:
-// the boot run on main (`gunbc.machine_intake_mtcollins1_boot_run`) boots exactly two media, the
+// the boot run on main (`gunbc.machine_intake.mtcollins1_boot_run`) boots exactly two media, the
 // census image and the stock installer, and its terminal is the census program's, so it cannot boot a
 // runner and observe it ready. The registration, dispatch and deregistration legs have implemented
 // authorities that nothing on the route calls yet. Each unbound leg names the CAPABILITY missing now
@@ -88,7 +88,7 @@ fn stage_egress(stage: QualificationStage) -> EgressPolicyShape? {
 
 // ── THE EPHEMERAL SLOT IS THE FLEET SLOT SHAPE RENDERED AS A TRANSIENT UNIT ───────────────────
 //
-// `gunbc.runner_slot_desired gunbc_runner_slot_desired` is the one authority for MemoryMax,
+// `gunbc.runner.runner_slot_desired gunbc_runner_slot_desired` is the one authority for MemoryMax,
 // MemoryHigh, MemorySwapMax, TasksMax, CPUWeight and the CPU quota the fleet's slots run under.
 // The permanent slots reach systemd as a unit file; this one reaches it as `systemd-run`
 // properties, and both spell every property through `extdeps.systemd systemd_unit_property_wire`.
@@ -156,7 +156,7 @@ fn qualification_instrument_producer(i: QualificationInstrument) -> DeclarationR
     FloorPhaseRows =>
       decl_ref(module_path: "gunbc.required_ci_phase_roster", decl_name: "required_ci_phases")
     FloorCgroupRows =>
-      decl_ref(module_path: "gunbc.host_budget_source", decl_name: "HostBudgetResolution")
+      decl_ref(module_path: "gunbc.host.host_budget_source", decl_name: "HostBudgetResolution")
     ClaimCostArtifactEvalSteps =>
       decl_ref(module_path: "gunbc.floor_cost_distribution", decl_name: "parse_claim_cost_tsv")
     CalibrationSpecimenWitnessLine =>
@@ -214,26 +214,26 @@ data mtcollins1_qualification_workspace_backing: WorkspaceBacking = RamBackedTmp
 // PRODUCTION CALLER. The boot leg's authority is the runner-host-up acceptance predicate the boot
 // run's terminal watch delegates to for a BootMediumRunnerHostUp medium; the image leg's is the
 // derivation of the runner image's seeded-media build input. Neither is wired: the boot run's medium
-// is still the one data row gunbc.machine_intake_mtcollins1_census_image mtcollins1_boot_medium, and
+// is still the one data row gunbc.machine_intake.mtcollins1_census_image mtcollins1_boot_medium, and
 // it stays the census medium until the one-socket census boot has its receipt (operator sequencing,
 // relayed 2026-10-04), so switching it is a separate one-line import change after that receipt.
 // The boot stage's egress stays none (stage_egress): the runner tarball rides on the medium as a
 // digest-keyed seed artifact fetched at BUILD time, so booting the runner image opens no network.
 data mtcollins1_boot_leg: RouteLegStanding = LegAuthorityImplemented {
   authority: decl_ref(module_path: "gunbc.runner.runner_host_medium", decl_name: "runner_host_up_readback"),
-  wiring_owed: "after the one-socket census boot's receipt exists: a gunbc.runner.runner_host_medium runner_host_boot_medium data row carrying the published runner image's measured digest, the boot run's medium switched to it (one import change), and the boot run's census-only pre-attach readbacks (gunbc.machine_intake_mtcollins1_census_medium_readback, which refuse any medium but the census) replaced by gunbc.boot_medium boot_medium_readback over the selected medium; SUFFICIENT FOR booting mtcollins1 from the derived runner image under grant_from_store with the SOL collector attached before the BMC stimulus, no controller write on deny, expiry or an unfiled request, and a terminal accepted only by runner_host_up_readback" as NonEmptyStr,
+  wiring_owed: "after the one-socket census boot's receipt exists: a gunbc.runner.runner_host_medium runner_host_boot_medium data row carrying the published runner image's measured digest, the boot run's medium switched to it (one import change), and the boot run's census-only pre-attach readbacks (gunbc.machine_intake.mtcollins1_census_medium_readback, which refuse any medium but the census) replaced by gunbc.host.boot_medium boot_medium_readback over the selected medium; SUFFICIENT FOR booting mtcollins1 from the derived runner image under grant_from_store with the SOL collector attached before the BMC stimulus, no controller write on deny, expiry or an unfiled request, and a terminal accepted only by runner_host_up_readback" as NonEmptyStr,
 }
 
 data mtcollins1_image_leg: RouteLegStanding = LegAuthorityImplemented {
   authority: decl_ref(module_path: "gunbc.runner.runner_host_medium", decl_name: "runner_host_medium_image"),
-  wiring_owed: "a production caller that builds runner_host_medium_image's UbuntuSeededInstallMediaBuildInput for mtcollins1 and publishes it create-only into bmc_boot_image_export through gunbc.seeded_install_media_publish with export readback of the content digest, whose receipt is the digest the boot leg's runner_host_boot_medium row carries; SUFFICIENT FOR the image the boot leg boots being the one this route derived, not a fixture" as NonEmptyStr,
+  wiring_owed: "a production caller that builds runner_host_medium_image's UbuntuSeededInstallMediaBuildInput for mtcollins1 and publishes it create-only into bmc_boot_image_export through gunbc.provisioning.seeded_install_media_publish with export readback of the content digest, whose receipt is the digest the boot leg's runner_host_boot_medium row carries; SUFFICIENT FOR the image the boot leg boots being the one this route derived, not a fixture" as NonEmptyStr,
 }
 
 // THE THREE GITHUB CONTROL-PLANE LEGS. Registration and deregistration have implemented
 // authorities but no production caller on this route yet, so they are LegAuthorityImplemented and
 // each names the wiring it still owes. Registration is the one JIT mint, taken over the slot sum
 // whose host-unit arm (gunbc.runner.runner_host_unit_slot host_unit_slot_for) is this route's own
-// ephemeral_slot_unit / ephemeral_slot_command / ephemeral_slot_labels on a gunbc.managed_host host.
+// ephemeral_slot_unit / ephemeral_slot_command / ephemeral_slot_labels on a gunbc.host.managed_host host.
 // Deregistration is NOT left to GitHub's ephemeral removal, which holds only when the one job ran:
 // it is an ensure over every slot exit whose success is the runner absent from the organization's
 // listing, with the host-side teardown carried by gunbc.runner.runner_teardown_receipt
@@ -248,7 +248,7 @@ data mtcollins1_registration_leg: RouteLegStanding = LegAuthorityImplemented {
 
 data mtcollins1_dispatch_leg: RouteLegStanding = LegAuthorityImplemented {
   authority: decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "dispatch_qualification_floor"),
-  wiring_owed: "the gunbc.fleet_converge_workflow mode that lands with the boot leg: a floor job in fleet_converge_workflow whose runs-on is exactly the qualification_attempt_dispatch_input it declares and whose first step is qualification_floor_revision_guard_step over the declared qualification_revision_dispatch_input, with no step that runs past a failure, and a route fold that takes the slot host's unit hold, ensures the per-attempt pin (gunbc.runner.runner_qualification_ref_pin ensure_qualification_ref_pin: branch qualification/<attempt> at the revision, the dedicated group pinned to it), mints the registration into that group, builds qualification_dispatch_subject from the pin, calls dispatch_qualification_floor and then collect_qualification_run, reconciling a commit-ambiguous dispatch before any retry, and removes the pin on every exit; SUFFICIENT FOR the floor run of each attempt being served only by the runner minted for that attempt at the pinned revision and read back as collected or as a typed refusal" as NonEmptyStr,
+  wiring_owed: "the gunbc.fleet.fleet_converge_workflow mode that lands with the boot leg: a floor job in fleet_converge_workflow whose runs-on is exactly the qualification_attempt_dispatch_input it declares and whose first step is qualification_floor_revision_guard_step over the declared qualification_revision_dispatch_input, with no step that runs past a failure, and a route fold that takes the slot host's unit hold, ensures the per-attempt pin (gunbc.runner.runner_qualification_ref_pin ensure_qualification_ref_pin: branch qualification/<attempt> at the revision, the dedicated group pinned to it), mints the registration into that group, builds qualification_dispatch_subject from the pin, calls dispatch_qualification_floor and then collect_qualification_run, reconciling a commit-ambiguous dispatch before any retry, and removes the pin on every exit; SUFFICIENT FOR the floor run of each attempt being served only by the runner minted for that attempt at the pinned revision and read back as collected or as a typed refusal" as NonEmptyStr,
 }
 
 data mtcollins1_deregistration_leg: RouteLegStanding = LegAuthorityImplemented {
@@ -264,7 +264,7 @@ data mtcollins1_collect_leg: RouteLegStanding = LegAuthorityImplemented {
 }
 
 // THE FLEET-CONVERGE MODE THIS ROUTE BECOMES IS NOT NAMED HERE. A mode row belongs to
-// `gunbc.fleet_converge_workflow` and lands there with the boot leg (section 3c: a declared frontier
+// `gunbc.fleet.fleet_converge_workflow` and lands there with the boot leg (section 3c: a declared frontier
 // with its trigger beside it); a mode whose boot leg has no authority on main would dispatch nothing
 // and refuse by construction -- a job on the roster that cannot run is a paid runner claim for a
 // decoration. Pre-minting the mode's spelling in this module would be a data row with no reader,

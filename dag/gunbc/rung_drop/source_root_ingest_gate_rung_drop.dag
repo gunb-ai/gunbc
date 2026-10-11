@@ -8,7 +8,7 @@ import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
 // 2026-08-15, not against any change since.
 //
 // WHY IT WAS MISSED, which is the part worth keeping: nobody deleted this gate. It was re-homed
-// off the per-PR floor onto the falsifier cadence on 2026-07-26 -- gunbc.ci_materialization
+// off the per-PR floor onto the falsifier cadence on 2026-07-26 -- gunbc.ci.ci_materialization
 // Receipt 6 records that re-homing as what dropped the declared floor resolve count from 3 to 1 --
 // and the cadence was deleted outright three weeks later. That is why the gate is absent from the
 // cut's own unguarded list in DESIGN, which names the cadence but not the cadence's passengers.
@@ -57,11 +57,11 @@ data source_root_ingest_gate_rung_drop: RungDrop = RungDrop {
     "v2.workflow.module_binding_supply_transport",
     "src/v1/stage0/src/bin/discover_owned_data.rs",
     "gunbc.explicit_witness_admission source_root_ingest_gate_admitted_witness",
-    "src/v2/test/claim/program_assembly/real_ingest_test.dag",
-    "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag",
-    "src/v2/test/claim/self_host/compiler_closure_ingest_boundary_witness_test.dag",
-    "src/v2/test/claim/self_host/crate_layout_witness_test.dag"
+    "src/v2/test/claim/program_assembly/real_ingest.dag",
+    "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest.dag",
+    "src/v2/test/claim/self_host/compiler_closure_ingest_boundary_witness.dag",
+    "src/v2/test/claim/self_host/crate_layout_witness.dag"
     ],
-    restoration_trigger: "a live workflow reaches v2.workflow.source_root_ingest_gate and the gunbc.ci_layer_roots exclusion rows above name a consumer that executes. Cadence half is gunbc.rung_drop.shared_capability missing_cadence_category. Waiters whose remaining unsatisfied condition is only that capability retire together. A waiter whose remainder is still unsatisfied is removed from missing_cadence_category.waiter_identities in the SAME change as those retirements (delist, not SplitRetirement) and stays Standing until its own trigger is fully satisfied."
+    restoration_trigger: "a live workflow reaches v2.workflow.source_root_ingest_gate and the gunbc.ci.ci_layer_roots exclusion rows above name a consumer that executes. Cadence half is gunbc.rung_drop.shared_capability missing_cadence_category. Waiters whose remaining unsatisfied condition is only that capability retire together. A waiter whose remainder is still unsatisfied is removed from missing_cadence_category.waiter_identities in the SAME change as those retirements (delist, not SplitRetirement) and stays Standing until its own trigger is fully satisfied."
   }
 }

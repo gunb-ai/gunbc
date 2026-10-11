@@ -43,7 +43,7 @@ import gunbc.actions_run_binding {
 // 
 // THE CANDIDATE TREE OID IS `git rev-parse HEAD:` -- the colon form names the root tree of HEAD,
 // and it is the one spelling of that object the fleet portability wall admits
-// (gunbc.fleet_known_hosts_anchor portable_remote_word_char_allowed admits ':' and refuses '^', '{'
+// (gunbc.fleet.fleet_known_hosts_anchor portable_remote_word_char_allowed admits ':' and refuses '^', '{'
 // and '}'), so the candidate side and the deployed side
 // (gunbc.live_deploy.deployed_tree_observation deployed_tree_root_tree_argv) read the same object
 // the same way.

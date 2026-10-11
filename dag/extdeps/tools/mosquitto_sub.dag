@@ -4,7 +4,7 @@ import std.types { NonEmptyStr, String, FilePath }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.exec.program { ProgramIdentity, cataloged_program }
 import extdeps.tools { CliTool, SourceApt }
-import extdeps.apt { package_mosquitto_clients, apt_bin_dir }
+import extdeps.package_managers.apt { package_mosquitto_clients, apt_bin_dir }
 import extdeps.tools.mosquitto_pub { mosquitto_pub_pinned_version }
 import extdeps.oasis.mqtt { MqttEndpoint, MqttTopic }
 import extdeps.external_authority { ExternalAuthority }

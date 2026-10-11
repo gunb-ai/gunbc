@@ -1,4 +1,4 @@
-module tools.publication_publisher
+module gunbc.instruments.publication_publisher
 
 import std.types { Bool, List, NonEmptyStr, String, brand }
 import std.content_hash { serialize_content_hash }

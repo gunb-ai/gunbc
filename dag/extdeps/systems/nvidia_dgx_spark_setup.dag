@@ -11,7 +11,7 @@ import extdeps.uri { Uri, Https }
 // the vendor exposes; they version independently (a firmware/OOBE revision changes the
 // surface without changing a single hardware row). Nothing here is an operator decision,
 // a fleet fact, or an observation of srv5/srv6 — those live downstream, in the product
-// layer: the units' fleet identities and router bindings in gunbc.fleet_intent_network and
+// layer: the units' fleet identities and router bindings in gunbc.fleet.fleet_intent_network and
 // gunbc.spark.dgx_procurement, and what is observed of them in gunbc.spark.serving_observe.
 // This clause used to name gunbc.spark.provisioning, which was deleted as an unconsumed
 // model whose subject completed by another route; the boundary it states is unchanged.

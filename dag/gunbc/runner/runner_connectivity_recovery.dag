@@ -1,21 +1,21 @@
-module gunbc.runner_connectivity_recovery
+module gunbc.runner.runner_connectivity_recovery
 
 import std.types { String, NonEmptyStr, Int, Bool, List, Timestamp, Duration, list_length }
 import std.disposition { ConstructionMechanism, Disposition, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.host_identity { HostIdentity }
-import gunbc.runner_slot_allocation { runner_label_sets_equal }
-import gunbc.runner_registration_labels {
+import gunbc.runner.runner_slot_allocation { runner_label_sets_equal }
+import gunbc.runner.runner_registration_labels {
   runner_slot_labels_conform, RegistrationLabelsConform, RegistrationLabelsDiverge, RegistrationLabelsUnjudged,
 }
-import gunbc.runner_unit { runner_slot_unit_name }
-import gunbc.build_cache_instance {
+import gunbc.runner.runner_unit { runner_slot_unit_name }
+import gunbc.build_cache.build_cache_instance {
   process_identity_eq,
   RunnerSlotIdentity,
   ProcessIdentity,
 }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
-import gunbc.runner_broker_progress_watchdog {
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.runner.runner_broker_progress_watchdog {
   RunnerRemoteRegistration,
   RunnerRemoteOnline,
   RunnerRemoteOffline,
@@ -178,7 +178,7 @@ data runner_connectivity_max_replacements_per_host_per_tick: Int = 2
 data runner_connectivity_rebind_healthy_note: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host_standup",
+    module_path: "gunbc.host.host_standup",
     decl_name: "RunnerSlotHealthy",
     field: WholeDeclaration,
   }
@@ -190,7 +190,7 @@ data runner_connectivity_rebind_healthy_note: Disposition = Scaffold {
 // parseable ordering — the wall is real, the parser is deferred to the observation carrier.
 
 // THIS WAS THE FORK THAT PROVED THE FORK WAS LIVE. It re-derived the two-digit slot suffix by hand
-// -- a rule gunbc.build_cache_instance had ALREADY consolidated after three implementations
+// -- a rule gunbc.build_cache.build_cache_instance had ALREADY consolidated after three implementations
 // disagreed above index 8 -- and then re-spelled the unit prefix and suffix around it. So the
 // watchdog that restarts a wedged runner computed the unit to restart through a different
 // derivation than the one that named it, and nothing related the two.

@@ -1,7 +1,7 @@
-module gunbc.namespace_pool_independence
+module gunbc.namespace.namespace_pool_independence
 
 import std.types { FilePath, List }
-import gunbc.namespace_clause_e_projection_law {
+import gunbc.namespace.namespace_clause_e_projection_law {
   lists_agree_at,
   ListsAgree,
   ListsDisagree,

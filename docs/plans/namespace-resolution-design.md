@@ -690,7 +690,7 @@ global_unique=20345 — the walk is O(chain depth) map hits with depth almost al
 so the fold is a **substitution, not a rewrite**; the claim held. One genuine §13
 fail-open surfaced by the silent-pick join (both whole-tree and closure-scoped scopes,
 pre-existing on main): `gunbc.falsifier_workflow` bare `ci_repo_root_shell` first-hits
-`gunbc.ci_spec` over the identical duplicate decl in `gunbc.merge_admission_produce`
+`gunbc.ci.ci_spec` over the identical duplicate decl in `gunbc.merge_admission_produce`
 (fn_parent_first_hit=1) — a real §3 fork needing consolidation or qualification, and
 the live specimen of the class §8 step 1's refusal arm makes loud under the flip.
 

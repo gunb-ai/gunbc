@@ -68,16 +68,16 @@ import std.optional { Absent, Present }
 // §3c, STATED SO A GREEN WITNESS IS NOT READ AS A WORKING MINT. perform_organization_jit_mint is
 // the realization gunbc.runner.runner_jit_perform's old transport frontier asked for, and it is
 // consumed by NO production route in this change: the caller is the per-attempt lifecycle controller
-// (gunbc.runner_microvm VmmUnderLifecycleController), which is another lane's to land, and the floor
+// (gunbc.runner.runner_microvm VmmUnderLifecycleController), which is another lane's to land, and the floor
 // job does not select the microVM path. Its witnesses supply RestResults and establish the
 // decision, never that GitHub has minted through it. The same holds for
-// gunbc.runner_attempt_launch stage_bootstrap_device. The trigger is the CAPABILITY, not an import.
-data jit_mint_lifecycle_controller_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CONSUMER: the per-attempt lifecycle controller (gunbc.runner_microvm VmmUnderLifecycleController) calling gunbc.github_effect_perform perform_organization_jit_mint and gunbc.runner_attempt_launch stage_bootstrap_device on a host. TRIGGER: one attempt on srv1 mints through it with the controller-custodied App key, stages exactly one device, and a runner registers under the attempt's unit name, with a receipt. SUFFICIENT FOR deleting this row. NOT satisfied by a witness over supplied RestResults, nor by an import of these functions." as NonEmptyStr)
+// gunbc.runner.runner_attempt_launch stage_bootstrap_device. The trigger is the CAPABILITY, not an import.
+data jit_mint_lifecycle_controller_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CONSUMER: the per-attempt lifecycle controller (gunbc.runner.runner_microvm VmmUnderLifecycleController) calling gunbc.github_effect_perform perform_organization_jit_mint and gunbc.runner.runner_attempt_launch stage_bootstrap_device on a host. TRIGGER: one attempt on srv1 mints through it with the controller-custodied App key, stages exactly one device, and a runner registers under the attempt's unit name, with a receipt. SUFFICIENT FOR deleting this row. NOT satisfied by a witness over supplied RestResults, nor by an import of these functions." as NonEmptyStr)
 
 // THE KEY THE MINT SIGNS WITH IS ONE MODELED PATH, NOT A CALLER PARAMETER. It is deliberately NOT
-// gunbc.runner_unit_file runner_host_app_pem_path: that file is owned by the runner user, which is
+// gunbc.runner.runner_unit_file runner_host_app_pem_path: that file is owned by the runner user, which is
 // the principal whose processes run jobs today. The lifecycle controller's copy is root-owned and
-// readable by the controller alone, outside every jail root (gunbc.runner_microvm_attempt roots all
+// readable by the controller alone, outside every jail root (gunbc.runner.runner_microvm_attempt roots all
 // attempt storage under the fabric cell's attempt root, and /etc is not under it). Its delivery and
 // ownership readback are a converge entry, not this module; until that entry lands the path names a
 // file no converge has produced, and perform refuses at the signer (openssl cannot open it) rather
@@ -189,8 +189,8 @@ fn jit_mint_performance_of_generate(
 
 // THE INSTALLATION TOKEN IS MINTED ONCE PER ATTEMPT, BEFORE THE MINT IS PLANNED, because the plan
 // needs a reading only that token can make: the controller reads the organization's runner groups
-// with it (gunbc.runner_microvm_slot_controller mint_attempt_credential) and hands the observed
-// standing to gunbc.runner_jit_mint plan_jit_mint, and the same token then performs the generate.
+// with it (gunbc.runner.runner_microvm_slot_controller mint_attempt_credential) and hands the observed
+// standing to gunbc.runner.runner_jit_mint plan_jit_mint, and the same token then performs the generate.
 // One credential, one mint; reading with a second token would pay the App JWT and the exchange
 // twice for one attempt.
 //

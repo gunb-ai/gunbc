@@ -8,7 +8,7 @@ import std.types { NonEmptyStr, Bool, List, Int }
 //
 // IT DID NOT SURFACE AS A DUPLICATE-DECLARATION DIAGNOSTIC. The bare-name census went from
 // GlobalBareUniqueBinding to GlobalBareAmbiguousBinding, so the pull was dropped, and the error
-// landed on gunbc.host_standup -- an import-free module that resolves this name purely by bare
+// landed on gunbc.host.host_standup -- an import-free module that resolves this name purely by bare
 // scan. CALLING THAT MODULE INNOCENT WAS WRONG and the correction is load-bearing: it carries a
 // pre-existing UNDECLARED BARE TYPE REFERENCE that resolved only because the declaration was
 // globally unique in the module pool -- the class witnessed by
@@ -20,8 +20,8 @@ import std.types { NonEmptyStr, Bool, List, Int }
 // was worth exactly zero as evidence.
 import product.placement_supply { SiteIdentity }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_physical_inventory { operator_site }
-import gunbc.fleet_host_identity { operator_host_srv4 }
+import gunbc.fleet.fleet_physical_inventory { operator_site }
+import gunbc.fleet.fleet_host_identity { operator_host_srv4 }
 import gunbc.spark.dgx_procurement {
   DgxSparkRouterBinding,
   SlotAssigned,
@@ -66,7 +66,7 @@ import extdeps.iana.time_zone_database {
 
 // THE SITE IS NOT RE-DECLARED HERE, AND THE FIRST REVISION GOT THIS WRONG THREE TIMES OVER. It
 // minted its own SiteIdentity, its own PhysicalSite, and a row named
-// "us-east-operator-premises" for a site gunbc.fleet_physical_inventory already authors as
+// "us-east-operator-premises" for a site gunbc.fleet.fleet_physical_inventory already authors as
 // operator_site = "operator-lab". That is not one violation but two stacked: a second TYPE for a
 // modeled concept, and a second NAME for one physical place -- §3's nickname in its literal form.
 //
@@ -224,7 +224,7 @@ data observed_host_zones: List<ObservedHostZone> = [
 // The tempting move -- spell "pi1" as HostIdentity because this module is the first consumer that
 // needs it -- would make fleet_site_locale an incidental second authority for host naming, which
 // is exactly the fork this module was written to remove. Allocating that identity in
-// gunbc.fleet_intent_network is a PREDECESSOR, not this module's business.
+// gunbc.fleet.fleet_intent_network is a PREDECESSOR, not this module's business.
 //
 // The observation is kept rather than dropped: discarding a measurement to make a list typecheck
 // would lose evidence, and an empty gap is indistinguishable from a gap nobody looked for.

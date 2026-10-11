@@ -5,7 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_foreign_grammar_extended_parse_rows }
 
-// DECLARED 4b(3) DROP (v2.test.parse census phase 4, 2026-10-05; ruling stern-bear-500, grammar
+// DECLARED 4b(3) DROP (v2.test.claim.parse census phase 4, 2026-10-05; ruling stern-bear-500, grammar
 // program, after the operator's phase-4 ruling via sharp-raven-357 to keep and gate the foreign
 // grammars). The DECLARATION lives here; the POPULATION's authority is
 // `v2.workflow.floor_eval_step_cost_drop` `floor_eval_step_cost_drop_foreign_grammar_extended_parse_rows`.
@@ -24,7 +24,7 @@ data foreign_grammar_extended_parse_new_witness_eval_step_cost_population: List<
 data foreign_grammar_extended_parse_new_witness_eval_step_cost: RungDrop = RungDrop {
   identity: "foreign_grammar_extended_parse_new_witness_eval_step_cost" as NonEmptyStr,
 
-  subject: "new-witness eval-step cost gate over the kotlin and rust extended-function grammar parse claims (test.claim.parse_test_kotlin_grammar, test.claim.parse_test_rust_grammar): they still execute, eval_steps stay recorded, a semantic red and a wall-clock crossing still block; only the eval-step cost-gate rung is lowered",
+  subject: "new-witness eval-step cost gate over the kotlin and rust extended-function grammar parse claims (v2.test.claim.parse.parse_test_kotlin_grammar, v2.test.claim.parse.parse_test_rust_grammar): they still execute, eval_steps stay recorded, a semantic red and a wall-clock crossing still block; only the eval-step cost-gate rung is lowered",
 
   declared: "2026-10-05",
 

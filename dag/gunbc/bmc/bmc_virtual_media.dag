@@ -1,4 +1,4 @@
-module gunbc.bmc_virtual_media
+module gunbc.bmc.bmc_virtual_media
 
 import std.types { NonEmptyStr, String, Int, Bool, List, Port }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
@@ -28,7 +28,7 @@ import extdeps.bmc.virtual_media {
   ConfigfsGadgetParams,
   ConfigfsGadgetTransport,
 }
-import gunbc.fleet_intent_network { srv1_host_lan_endpoint }
+import gunbc.fleet.fleet_intent_network { srv1_host_lan_endpoint }
 import extdeps.bmc.webui.nbd_proxy_serve { srv3_nbd_proxy_local_port }
 
 type BmcVirtualMediaPlan {

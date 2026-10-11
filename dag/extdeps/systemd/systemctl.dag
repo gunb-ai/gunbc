@@ -412,7 +412,7 @@ type UnitFileState
 //
 // `--kill-whom=all` is the substance rather than a default made explicit: the default reaches the
 // main process only, and a stop that signals only the main process leaves exactly the children
-// gunbc.runner_microvm_lifecycle's CgroupSubtreePopulated exists to catch. systemd.kill(5) documents
+// gunbc.runner.runner_microvm_lifecycle's CgroupSubtreePopulated exists to catch. systemd.kill(5) documents
 // both flags.
 // THE PROPERTY REACHES systemctl AS ITS WIRE SPELLING, NOT AS A VARIANT NAME, AND THE DIFFERENCE IS
 // A SILENT EMPTY READING RATHER THAN A FAILURE.
@@ -887,7 +887,7 @@ fn systemctl_enable_now_command(units: List<String>) -> ArgvCommand {
 }
 
 // DAEMON-RELOAD AND START AS TYPED ARGV, ELEVATED, for the host-effect realizer's staging fold
-// (gunbc.host_effect_realize compile_pool_slice_install_step). The posture is
+// (gunbc.host.host_effect_realize compile_pool_slice_install_step). The posture is
 // systemctl_enable_now_command's own, restated rather than inherited by accident: the unit lives
 // in the system manager, so an unelevated invocation is not a weaker version of this request but a
 // different one that fails; the elevation comes from extdeps.sudo.elevation -- absolute

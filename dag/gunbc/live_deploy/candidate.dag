@@ -6,7 +6,7 @@ import gunbc.output_policy { ExpectSuccess }
 import std.types { Bool, CommitSha, String, List, Int }
 import gunbc.live_deploy.deployed_tree_scope { path_is_deployed }
 import std.content_hash { Fnv1a64Structural }
-import gunbc.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
+import gunbc.roadmap.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
 import gunbc.running_release_identity {
   RunningReleaseIdentity,
   release_revision_text_valid,
@@ -255,7 +255,7 @@ fn observe_candidate_release() -> CandidateObservation {
 // to trust. Reading the status first means a dirty tree never reaches the renderer at all — nothing derived
 // from untrusted bytes is built, so there is no intermediate value a later arm could mistakenly use.
 
-// A FUNCTION AND NOT A TOP-LEVEL data, FOR THE REASON gunbc.stage0_rust_host_observation ALREADY
+// A FUNCTION AND NOT A TOP-LEVEL data, FOR THE REASON gunbc.stage0.stage0_rust_host_observation ALREADY
 // PAID FOR. A top-level data declaration is evaluated by IMPORTING it, so a module that merely
 // named this symbol in an import list would perform Git I/O as a consequence of loading — and that
 // is not hypothetical: a dead import of exactly that shape reached git.Inspect.HeadCommit under the

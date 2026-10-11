@@ -13,7 +13,7 @@ import gunbc.guarantee_rung {
   MechanicallyPreventable,
   StructurallyGuaranteed
 }
-import gunbc.witness_v2_native_route { native_route_universe_member }
+import gunbc.witness.v2_native_route { native_route_universe_member }
 import gunbc.derived_obligation_row {
   WitnessSubject,
   witness_subject,
@@ -66,11 +66,11 @@ import gunbc.derived_obligation_row {
 // rather than authored beside them.
 //
 // THE DISPOSITIONS ARE DERIVED, NOT AUTHORED, AND THE FIRST CUT OF THIS MODULE PROVED WHY. That cut
-// hand-wrote each row's interpreted standing from a reading of gunbc.ci_layer_roots
+// hand-wrote each row's interpreted standing from a reading of gunbc.ci.ci_layer_roots
 // witness_discovery_scan_dirs, and the reading was WRONG: that declaration has exactly one consumer
 // in v1_compiler.cli_run and it is inside a cfg(test) module asserting the authority's own value.
 // The walk that actually discovers witnesses takes every *_test.dag under witness_layer_roots
-// (dag, src/v2) and subtracts gunbc.ci_layer_roots witness_exclusion_frontier by substring. So six
+// (dag, src/v2) and subtracts gunbc.ci.ci_layer_roots witness_exclusion_frontier by substring. So six
 // obligations this census reported as unreachable are discovered and running, and the error was
 // invisible precisely because the disposition was a sentence rather than a question put to the
 // authority that owns it. DESIGN section 3: a fork is a correctness concern, not a style one — and
@@ -190,7 +190,7 @@ data unverified_entry_premise: DeclarationRef = decl_ref(
 // in the only sense the census ever meant.
 //
 // SO THE ROSTER IS ASKED, NOT ASSUMED, exactly like the interpreted column: the lane declares its
-// own universe predicate, gunbc.witness_v2_native_route native_route_universe_member, and this
+// own universe predicate, gunbc.witness.v2_native_route native_route_universe_member, and this
 // module calls it rather than re-deriving the prefix. A census that hand-authored "RouteGapHeld"
 // after the lane landed would have been the stale present-tense coverage claim in reverse — a
 // pessimistic one, which is not more honest, only wrong in the safer direction.
@@ -218,7 +218,7 @@ data unverified_entry_premise: DeclarationRef = decl_ref(
 // was stated in prose while its two sibling premises carried DissolutionConditions, which is the
 // same softer-sentence move, one layer up.
 data witness_dormancy_trigger: DissolutionCondition = unbound_dissolution(
-  description: "the census's derivation is checked by something a required run reaches: either test.claim.v2_compile_obligation_census_witness_test is admitted by a v2.workflow.required_floor required_gate_prefixes row -- which is an operator-priced roster this module may not grow on its own authority, and proposing it from inside the diff that benefits would be the move this census exists to object to -- or the obligation-coverage receipt that consumes census_counts lands on a required lane and takes the derivation with it. Until one of the two, editing the folds without editing the arms that check them is unguarded" as NonEmptyStr
+  description: "the census's derivation is checked by something a required run reaches: either test.claim.v2_compile_obligation_census_witness is admitted by a v2.workflow.required_floor required_gate_prefixes row -- which is an operator-priced roster this module may not grow on its own authority, and proposing it from inside the diff that benefits would be the move this census exists to object to -- or the obligation-coverage receipt that consumes census_counts lands on a required lane and takes the derivation with it. Until one of the two, editing the folds without editing the arms that check them is unguarded" as NonEmptyStr
 )
 
 // THE LANE LANDED AND WAS THEN DELETED, AND THE CENSUS FOLLOWED BOTH MOVES RATHER THAN ONE. gunbc#10882
@@ -243,7 +243,7 @@ data native_route_merge_path_drop: DeclarationRef = decl_ref(
 // first cut of this fold got it wrong in the direction that flatters. native_route_universe_member
 // is the lane's PREDICATE over a module name; the lane's own header states that the population it
 // applies to is "derived by the host harness from the floor's own discovery producer joined against
-// each entry's authored module header". So an entry a gunbc.ci_layer_roots witness_exclusion_frontier
+// each entry's authored module header". So an entry a gunbc.ci.ci_layer_roots witness_exclusion_frontier
 // pattern carves out of discovery never reaches the native harness either, however well its module
 // name matches. Asking only the predicate reported 11 obligations executing natively and two of them
 // — accumulator_copy and mandatory_tag — are exactly the rows carved out by "claim/complexity/
@@ -251,7 +251,7 @@ data native_route_merge_path_drop: DeclarationRef = decl_ref(
 // would have been this census's own headline defect, committed in the column the census exists to
 // make honest, on the first fold written after the lane landed.
 //
-// FREEZE IS DELIBERATELY NOT APPLIED HERE. A gunbc.witness_deferral_freeze row is an admission fact
+// FREEZE IS DELIBERATELY NOT APPLIED HERE. A gunbc.witness.witness_deferral_freeze row is an admission fact
 // about the required floor's execution standing, not about the discovery walk, so there is no
 // warrant to assume the native harness consults it. It happens not to matter today — every frozen
 // subject below is also excluded — and where a fact is not established the narrower claim is the
@@ -307,7 +307,7 @@ data native_door_entry_trigger: NextRungTrigger = climbs_when(capability: "the e
 // THE CLAIMED RUNG IS DOWNGRADED, AND THE EVIDENCE IS THE REASON (gunbc#11004, 2026-09-12). This
 // row claimed MechanicallyPreventable on the strength of the discriminating red named below,
 // `gate_red_quadratic_rejects`. That witness lives in `test/claim/long/`, a
-// `gunbc.ci_layer_roots witness_exclusion_frontier` pattern, so no required run had ever planned
+// `gunbc.ci.ci_layer_roots witness_exclusion_frontier` pattern, so no required run had ever planned
 // it and no verdict existed. gunbc#11073's long-home arm ran it for the first time and it FAILED:
 // measured with a three-way discriminator, the specimen normalizes and the gate ACCEPTS it,
 // because `accumulator_copy_findings` returns no suspect for the fold-append accumulator shape the
@@ -373,31 +373,31 @@ data accumulator_copy_obligation: V2CompileObligation = V2CompileObligation {
   ) },
   claimed_rung: Mitigatable,
   discriminating_red: "a rooted tree threading a copied accumulator through a fold, which the gate must reject with a located diagnostic rather than a widened pass" as NonEmptyStr,
-  positive_control: "the resolved add fixture, which threads no copy and must pass the root-required roster unchanged (src/v2/test/claim/long/accumulator_copy_compile_gate_test.dag)" as NonEmptyStr,
+  positive_control: "the resolved add fixture, which threads no copy and must pass the root-required roster unchanged (src/v2/test/claim/long/accumulator_copy_compile_gate.dag)" as NonEmptyStr,
   witnesses: [
     witness_subject(
-      entry: "src/v2/test/claim/long/accumulator_copy_compile_gate_test.dag",
+      entry: "src/v2/test/claim/long/accumulator_copy_compile_gate.dag",
       function: "gate_red_quadratic_rejects",
-      module_path: "v2.test.long.accumulator_copy_compile_gate"
+      module_path: "v2.test.claim.long.accumulator_copy_compile_gate"
     ),
     witness_subject(
-      entry: "src/v2/test/claim/long/accumulator_copy_compile_gate_test.dag",
+      entry: "src/v2/test/claim/long/accumulator_copy_compile_gate.dag",
       function: "gate_green_identity_accepts_clean",
-      module_path: "v2.test.long.accumulator_copy_compile_gate"
+      module_path: "v2.test.claim.long.accumulator_copy_compile_gate"
     ),
     witness_subject(
-      entry: "src/v2/test/claim/long/accumulator_copy_fold_analysis_test.dag",
+      entry: "src/v2/test/claim/long/accumulator_copy_fold_analysis.dag",
       function: "quadratic_fold_has_suspect",
-      module_path: "v2.test.long.accumulator_copy_fold_analysis"
+      module_path: "v2.test.claim.long.accumulator_copy_fold_analysis"
     ),
     witness_subject(
-      entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_test.dag",
+      entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate.dag",
       function: "roster_machine_code_zero_suspects_within_ratchet",
       module_path: "v2.test.claim.complexity.accumulator_copy_roster_gate"
     ),
   ],
   ceiling: StructurallyGuaranteed,
-  next_trigger: climbs_when(capability: "THREE CAPABILITIES, AND NONE IS A FILE MOVE. First, THE LENS OBSERVES EVERY FOLD THE SOURCE DECLARES, AT EVERY LOWERING SHAPE a fold-family call can take — a step passed BY NAME lowers to neither a substrate Loop nor a surviving surface fold call, so count_fold_sites reports 0 and the lens never sees the site to refuse about, its own ^fold_accumulator_unread arm standing as unreachable code (gunbc.recurring_failure_mode fold_shape_visible_to_no_lens). A copied accumulator inside such a fold is admitted in silence however well the named-argument path reads, so this is the capability that holds the rung down under DESIGN section 4b(1)'s minimum-across-paths and it is named FIRST because it is the binding one. Second, the gate's own witnesses become affordable on the per-PR fold so the gunbc.ci_layer_roots witness_exclusion_frontier patterns 'claim/complexity/accumulator_copy_roster_gate' and 'test/claim/long/' retire on their own dissolution conditions rather than being edited around — the exclusion rows exist because the walks were priced out, so the trigger is the cost, not the pattern. Third, the native lane enters the door. Until the first lands a whole population of folds is outside the wall entirely; until the second lands no required run refuses on a copied-accumulator tree; until the third lands the executed rung stays Mitigatable however green the interpreted side becomes"),
+  next_trigger: climbs_when(capability: "THREE CAPABILITIES, AND NONE IS A FILE MOVE. First, THE LENS OBSERVES EVERY FOLD THE SOURCE DECLARES, AT EVERY LOWERING SHAPE a fold-family call can take — a step passed BY NAME lowers to neither a substrate Loop nor a surviving surface fold call, so count_fold_sites reports 0 and the lens never sees the site to refuse about, its own ^fold_accumulator_unread arm standing as unreachable code (gunbc.recurring_failure_mode fold_shape_visible_to_no_lens). A copied accumulator inside such a fold is admitted in silence however well the named-argument path reads, so this is the capability that holds the rung down under DESIGN section 4b(1)'s minimum-across-paths and it is named FIRST because it is the binding one. Second, the gate's own witnesses become affordable on the per-PR fold so the gunbc.ci.ci_layer_roots witness_exclusion_frontier patterns 'claim/complexity/accumulator_copy_roster_gate' and 'test/claim/long/' retire on their own dissolution conditions rather than being edited around — the exclusion rows exist because the walks were priced out, so the trigger is the cost, not the pattern. Third, the native lane enters the door. Until the first lands a whole population of folds is outside the wall entirely; until the second lands no required run refuses on a copied-accumulator tree; until the third lands the executed rung stays Mitigatable however green the interpreted side becomes"),
   seed_escape: SeedEscapeOpen {
     what_the_seed_does: "the seed's own folds are never presented to this gate, so a copied accumulator authored in stage0 Rust is invisible to the complexity lens that exists to make it unwritable" as NonEmptyStr
   },
@@ -413,17 +413,17 @@ data determinism_obligation: V2CompileObligation = V2CompileObligation {
   positive_control: "a tree over CanonicalOrder and OrderFreeResult primitives, which must still compile" as NonEmptyStr,
   witnesses: [
     witness_subject(
-      entry: "src/v2/test/claim/determinism_contract_test.dag",
+      entry: "src/v2/test/claim/determinism_contract.dag",
       function: "determinism_perturbation_violation_is_nondeterministic",
-      module_path: "v2.test.claim.determinism_contract_test"
+      module_path: "v2.test.claim.determinism_contract"
     ),
     witness_subject(
-      entry: "src/v2/test/claim/determinism_contract_test.dag",
+      entry: "src/v2/test/claim/determinism_contract.dag",
       function: "determinism_perturbation_consistent_is_deterministic",
-      module_path: "v2.test.claim.determinism_contract_test"
+      module_path: "v2.test.claim.determinism_contract"
     ),
     witness_subject(
-      entry: "src/v2/test/lens_determinism/reach_witness_test.dag",
+      entry: "src/v2/test/lens_determinism/reach_witness.dag",
       function: "determinism_flags_map_keys_reach",
       module_path: "v2.test.lens_determinism.reach_witness"
     ),
@@ -442,20 +442,20 @@ data machine_shape_obligation: V2CompileObligation = V2CompileObligation {
   home: HomeAuthority { authority: decl_ref(module_path: "v2.lens.machine_shape", decl_name: "machine_shape_compile_gate") },
   claimed_rung: MechanicallyPreventable,
   discriminating_red: "a tree carrying a flat machine-shape scalar where the modeled carrier is required, which the gate must reject" as NonEmptyStr,
-  positive_control: "the modeled-carrier fixture in src/v2/test/claim/machine_shape_construction_wall_test.dag, which must pass" as NonEmptyStr,
+  positive_control: "the modeled-carrier fixture in src/v2/test/claim/machine_shape_construction_wall.dag, which must pass" as NonEmptyStr,
   witnesses: [
     witness_subject(
-      entry: "src/v2/test/claim/machine_shape_construction_wall_test.dag",
+      entry: "src/v2/test/claim/machine_shape_construction_wall.dag",
       function: "gate_red_synthetic_machine_shape_call",
       module_path: "v2.test.claim.machine_shape_construction_wall"
     ),
     witness_subject(
-      entry: "src/v2/test/claim/machine_shape_construction_wall_test.dag",
+      entry: "src/v2/test/claim/machine_shape_construction_wall.dag",
       function: "gate_green_synthetic_shape_from_catalog_call",
       module_path: "v2.test.claim.machine_shape_construction_wall"
     ),
     witness_subject(
-      entry: "src/v2/test/claim/machine_shape_construction_wall_test.dag",
+      entry: "src/v2/test/claim/machine_shape_construction_wall.dag",
       function: "gate_red_machine_shape_record_literal_outside_its_home",
       module_path: "v2.test.claim.machine_shape_construction_wall"
     ),
@@ -484,23 +484,23 @@ data mandatory_tag_obligation: V2CompileObligation = V2CompileObligation {
   positive_control: "the clean and the off-region fixtures, which must be accepted at both grains" as NonEmptyStr,
   witnesses: [
     witness_subject(
-      entry: "src/v2/test/claim/long/mandatory_tag_gate_witness_test.dag",
+      entry: "src/v2/test/claim/long/mandatory_tag_gate_witness.dag",
       function: "mandatory_tag_enrolled_in_root_roster_rejects_violating_module",
-      module_path: "v2.test.long.mandatory_tag_gate_witness"
+      module_path: "v2.test.claim.long.mandatory_tag_gate_witness"
     ),
     witness_subject(
-      entry: "src/v2/test/claim/long/mandatory_tag_gate_witness_test.dag",
+      entry: "src/v2/test/claim/long/mandatory_tag_gate_witness.dag",
       function: "mandatory_tag_parse_grain_clean_accepts",
-      module_path: "v2.test.long.mandatory_tag_gate_witness"
+      module_path: "v2.test.claim.long.mandatory_tag_gate_witness"
     ),
     witness_subject(
-      entry: "src/v2/test/claim/long/mandatory_tag_extdeps_corpus_test.dag",
+      entry: "src/v2/test/claim/long/mandatory_tag_extdeps_corpus.dag",
       function: "mandatory_tag_extdeps_corpus_wall_holds",
-      module_path: "v2.test.long.mandatory_tag_extdeps_corpus_test"
+      module_path: "v2.test.claim.long.mandatory_tag_extdeps_corpus"
     ),
   ],
   ceiling: StructurallyGuaranteed,
-  next_trigger: climbs_when(capability: "THE CAPABILITY IS AN EXECUTING HOME FOR THIS GATE'S WITNESSES, and it is guarded twice over so a single edit satisfies nothing. The twelve gate functions must leave gunbc.witness_deferral_freeze — a freeze row is a declaration that the identity executes nowhere, and deleting it while the entry stays under the 'test/claim/long/' exclusion pattern would swap one silence for another — AND that exclusion must retire on its own terms, which means the corpus-grain walk these witnesses perform becomes affordable on the fold that would run it. Only then does mandatory_tag_enrolled_in_root_roster_rejects_violating_module refuse on a required run, and only then does the WallNow this row records have any executing evidence at all"),
+  next_trigger: climbs_when(capability: "THE CAPABILITY IS AN EXECUTING HOME FOR THIS GATE'S WITNESSES, and it is guarded twice over so a single edit satisfies nothing. The twelve gate functions must leave gunbc.witness.witness_deferral_freeze — a freeze row is a declaration that the identity executes nowhere, and deleting it while the entry stays under the 'test/claim/long/' exclusion pattern would swap one silence for another — AND that exclusion must retire on its own terms, which means the corpus-grain walk these witnesses perform becomes affordable on the fold that would run it. Only then does mandatory_tag_enrolled_in_root_roster_rejects_violating_module refuse on a required run, and only then does the WallNow this row records have any executing evidence at all"),
   seed_escape: SeedEscapeOpen {
     what_the_seed_does: "stage0 Rust carries no mandatory-tag surface at all, so the seed cannot violate the rule and cannot demonstrate it either" as NonEmptyStr
   },
@@ -519,14 +519,14 @@ data undecidable_verdict_collapse_obligation: V2CompileObligation = V2CompileObl
   positive_control: "a tree keeping the undecided arm distinct, which must compile" as NonEmptyStr,
   witnesses: [
     witness_subject(
-      entry: "src/v2/test/claim/undecidable_verdict_collapse_wall_test.dag",
+      entry: "src/v2/test/claim/undecidable_verdict_collapse_wall.dag",
       function: "gate_red_bare_variant_collapses_to_literal",
-      module_path: "v2.test.claim.undecidable_verdict_collapse_wall_test"
+      module_path: "v2.test.claim.undecidable_verdict_collapse_wall"
     ),
     witness_subject(
-      entry: "src/v2/test/claim/undecidable_verdict_collapse_wall_test.dag",
+      entry: "src/v2/test/claim/undecidable_verdict_collapse_wall.dag",
       function: "gate_green_routing_arm_admits",
-      module_path: "v2.test.claim.undecidable_verdict_collapse_wall_test"
+      module_path: "v2.test.claim.undecidable_verdict_collapse_wall"
     ),
   ],
   ceiling: StructurallyGuaranteed,
@@ -551,12 +551,12 @@ data fact_density_obligation: V2CompileObligation = V2CompileObligation {
   positive_control: "the named fact-bundle fixture in the same directory, which must pass the same roster" as NonEmptyStr,
   witnesses: [
     witness_subject(
-      entry: "src/v2/test/lens_fact_density/hollow_alias_blocked_via_always_required_lenses_test.dag",
+      entry: "src/v2/test/lens_fact_density/hollow_alias_blocked_via_always_required_lenses.dag",
       function: "hollow_alias_blocked_via_always_required_lenses_holds",
       module_path: "v2.test.lens_fact_density.hollow_alias_blocked_via_always_required_lenses"
     ),
     witness_subject(
-      entry: "src/v2/test/lens_fact_density/fact_bundle_compile_lens_passes_test.dag",
+      entry: "src/v2/test/lens_fact_density/fact_bundle_compile_lens_passes.dag",
       function: "fact_bundle_compile_lens_passes_holds",
       module_path: "v2.test.lens_fact_density.fact_bundle_compile_lens_passes"
     ),
@@ -578,12 +578,12 @@ data unit_modeling_obligation: V2CompileObligation = V2CompileObligation {
   positive_control: "the modeled-unit field and the coordinate-index fixtures, which must NOT be flagged — this gate's positive controls are load-bearing because a gate that flagged every scalar would satisfy every red above" as NonEmptyStr,
   witnesses: [
     witness_subject(
-      entry: "src/v2/test/lens_unit_modeling/unit_modeling_blocked_via_always_required_lenses_test.dag",
+      entry: "src/v2/test/lens_unit_modeling/unit_modeling_blocked_via_always_required_lenses.dag",
       function: "unit_modeling_blocked_via_always_required_lenses_holds",
       module_path: "v2.test.lens_unit_modeling.unit_modeling_blocked_via_always_required_lenses"
     ),
     witness_subject(
-      entry: "src/v2/test/lens_unit_modeling/modeled_unit_field_admitted_via_always_required_lenses_test.dag",
+      entry: "src/v2/test/lens_unit_modeling/modeled_unit_field_admitted_via_always_required_lenses.dag",
       function: "modeled_unit_field_admitted_via_always_required_lenses_holds",
       module_path: "v2.test.lens_unit_modeling.modeled_unit_field_admitted_via_always_required_lenses"
     ),
@@ -605,12 +605,12 @@ data lifecycle_carrier_obligation: V2CompileObligation = V2CompileObligation {
   positive_control: "a typed carrier in the same position, which must pass" as NonEmptyStr,
   witnesses: [
     witness_subject(
-      entry: "src/v2/test/lens_lifecycle_carrier/raw_prose_field_flagged_test.dag",
+      entry: "src/v2/test/lens_lifecycle_carrier/raw_prose_field_flagged.dag",
       function: "raw_dissolve_on_string_field_is_rejected",
       module_path: "v2.test.lens_lifecycle_carrier.raw_prose_field_flagged"
     ),
     witness_subject(
-      entry: "src/v2/test/lens_lifecycle_carrier/raw_prose_field_flagged_test.dag",
+      entry: "src/v2/test/lens_lifecycle_carrier/raw_prose_field_flagged.dag",
       function: "typed_dissolution_condition_field_is_accepted",
       module_path: "v2.test.lens_lifecycle_carrier.raw_prose_field_flagged"
     ),
@@ -641,15 +641,15 @@ data compile_door_obligation: V2CompileObligation = V2CompileObligation {
   home: HomeAuthority { authority: decl_ref(module_path: "v2.compiler.compile", decl_name: "validate_then_compile") },
   claimed_rung: MechanicallyPreventable,
   discriminating_red: "a real corpus module carrying a violation of any enrolled lens, handed to the door, which must be Rejected before compile-core" as NonEmptyStr,
-  positive_control: "the same module with the violation removed, which must reach compile-core (src/v2/test/lens_application/rejecting_lens_blocks_before_compile_test.dag holds the fixture-grain pair)" as NonEmptyStr,
+  positive_control: "the same module with the violation removed, which must reach compile-core (src/v2/test/lens_application/rejecting_lens_blocks_before_compile.dag holds the fixture-grain pair)" as NonEmptyStr,
   witnesses: [
     witness_subject(
-      entry: "src/v2/test/lens_application/rejecting_lens_blocks_before_compile_test.dag",
+      entry: "src/v2/test/lens_application/rejecting_lens_blocks_before_compile.dag",
       function: "rejecting_lens_blocks_before_compile_claim_holds",
       module_path: "v2.test.lens_application.rejecting_lens_blocks_before_compile"
     ),
     witness_subject(
-      entry: "src/v2/test/lens_application/empty_required_lenses_skip_gate_test.dag",
+      entry: "src/v2/test/lens_application/empty_required_lenses_skip_gate.dag",
       function: "empty_required_lenses_skip_gate_claim_holds",
       module_path: "v2.test.lens_application.empty_required_lenses_skip_gate"
     ),
@@ -696,12 +696,12 @@ data primitive_map_keys_obligation: V2CompileObligation = V2CompileObligation {
   positive_control: "the same tree calling sorted_map_keys, which must be accepted" as NonEmptyStr,
   witnesses: [
     witness_subject(
-      entry: "src/v2/test/lens_determinism/reach_witness_test.dag",
+      entry: "src/v2/test/lens_determinism/reach_witness.dag",
       function: "determinism_flags_map_keys_reach",
       module_path: "v2.test.lens_determinism.reach_witness"
     ),
     witness_subject(
-      entry: "src/v2/test/lens_determinism/reach_witness_test.dag",
+      entry: "src/v2/test/lens_determinism/reach_witness.dag",
       function: "determinism_holds_sorted_map_keys_sibling",
       module_path: "v2.test.lens_determinism.reach_witness"
     ),
@@ -723,7 +723,7 @@ data primitive_map_values_obligation: V2CompileObligation = V2CompileObligation 
   positive_control: "a tree whose values are read through a sorted key list, which must be accepted" as NonEmptyStr,
   witnesses: [
     witness_subject(
-      entry: "src/v2/test/lens_determinism/reach_witness_test.dag",
+      entry: "src/v2/test/lens_determinism/reach_witness.dag",
       function: "determinism_flags_map_values_reach",
       module_path: "v2.test.lens_determinism.reach_witness"
     ),
@@ -927,7 +927,7 @@ fn obligation_route_coverage_rung(o: V2CompileObligation) -> GuaranteeRung {
 // 3c). Today the six counts have exactly one executing consumer and it is a human running
 // census_counts; the WITNESS consumes the derivation beneath them — witness_subject_survives_every_subtraction,
 // interpreted_standing and obligation_executes_natively are all exercised by
-// test.claim.v2_compile_obligation_census_witness_test, AND THE GRAIN AT WHICH THAT WITNESS RUNS IS
+// test.claim.v2_compile_obligation_census_witness, AND THE GRAIN AT WHICH THAT WITNESS RUNS IS
 // NARROWER THAN TWO EARLIER CUTS OF THIS SENTENCE CLAIMED. It is DeclinedOutsideGateClosure on every
 // required run, because its module matches no row in v2.workflow.required_floor
 // required_gate_prefixes. What selects it otherwise is changed-witness selection, and that is

@@ -1,4 +1,4 @@
-module gunbc.fleet_printer_access
+module gunbc.fleet.fleet_printer_access
 
 import extdeps.cloud.gcp.secret_manager {sm_version_id_is_number,SmResolvedVersionIdentity}
 import gunbc.auth.secret_ref_credential {fetch_secret_ref_credential,SecretCredentialReady,SecretCredentialFetchRefused,SecretCredentialAccessUpsertRequired,SecretCredentialWireDecodeRefused,SecretCredentialResolvedVersionMismatch}
@@ -7,8 +7,8 @@ import product.placement_supply { PhysicalAssetIdentity }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending, secret_ref_secret_resource, gcp_resource_names_this_secret }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_number }
 import extdeps.uri { Uri, uri_https }
-import gunbc.fleet_asset_identity { printer_01, printer_02 }
-import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.fleet.fleet_asset_identity { printer_01, printer_02 }
+import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
 import gunbc.secret_provision_actuator {
   VerifiedVersionForAttempt, verified_version, verified_exact_ref,

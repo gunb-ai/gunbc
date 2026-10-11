@@ -142,7 +142,7 @@ fn glm_group_b_deployment_env() -> List<DockerEnvAssignment> {
 // consumer that wants a unit file calls this and projects the same spec through extdeps.docker.cli's
 // foreground verb. Neither may assemble a launch of its own, and the equality between the two
 // projections is claimed rather than assumed --
-// dag/test/claim/spark/glm_group_b_launch_authority_witness_test.dag.
+// dag/test/claim/spark/glm_group_b_launch_authority_witness.dag.
 fn glm_group_b_launch_plan(intent: ArmIntent) -> ArmLaunchPlan {
   let a = glm_group_b_serving_assignment
   match group_b_restoration_executable() {

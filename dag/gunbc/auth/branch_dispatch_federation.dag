@@ -9,8 +9,8 @@ import gunbc.auth.oidc_claim_pins {
   OidcClaimPin, oidc_equals, claim_pins_attribute_condition, workflow_dispatch_event_name, fleet_converge_workflow_claim_pins,
 }
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, RunScopedImpersonation }
-import gunbc.gcp_estate_observation { role_iam_workload_identity_user }
-import gunbc.hetzner_cloud_acquisition { hetzner_cloud_api_grants }
+import gunbc.gcp.gcp_estate_observation { role_iam_workload_identity_user }
+import gunbc.fleet.hetzner_cloud_acquisition { hetzner_cloud_api_grants }
 
 // ── A FLEET-CONVERGE RUN FROM A BRANCH, ADMITTED ONE RUN AT A TIME ─────────────────────────────
 // The main-only federation (gunbc.auth.fleet_convergence_federation) keeps every account it reaches

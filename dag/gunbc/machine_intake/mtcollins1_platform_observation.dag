@@ -1,10 +1,10 @@
-module gunbc.machine_intake_mtcollins1_platform_observation
+module gunbc.machine_intake.mtcollins1_platform_observation
 
 import std.types { Bool, NonEmptyStr, String }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.measure { rpm, watt }
-import gunbc.machine_intake_power_supply { PowerSupplyStanding, both_supplies_have_ac }
-import gunbc.machine_intake_ethernet {
+import gunbc.machine_intake.power_supply { PowerSupplyStanding, both_supplies_have_ac }
+import gunbc.machine_intake.ethernet {
   AttachmentUnobserved,
   BaseboardOnboard,
   BmcDedicated,
@@ -19,8 +19,8 @@ import gunbc.machine_intake_ethernet {
   ethernet_ports_are_distinct,
   observed_lans_have_distinct_addresses,
 }
-import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_unit_key_standing }
-import gunbc.machine_intake_subject { UnitKeyBound, UnitKeyRefused }
+import gunbc.machine_intake.mtcollins1_bmc_secure_observation { mtcollins1_unit_key_standing }
+import gunbc.machine_intake.subject { UnitKeyBound, UnitKeyRefused }
 import extdeps.network.ipv4 { ipv4_address }
 import extdeps.network.mac { mac_address }
 
@@ -118,7 +118,7 @@ data mtcollins1_power_redundancy_observed_at: NonEmptyStr = "2026-09-06T02:30Z"
 // input are separate fields rather than one health flag. An absent supply is a visible gap in a
 // chassis; a present one with no cord looks correct from the front and reports itself as installed.
 // Redundancy is a property of the POWERED supplies, not the installed ones.
-// The fold lives in gunbc.machine_intake_power_supply so a second dual-PSU platform does not
+// The fold lives in gunbc.machine_intake.power_supply so a second dual-PSU platform does not
 // re-author it.
 
 // THE CONTROLLER HAS TWO NETWORK INTERFACES AND ONLY ONE IS THE ONE WE USE. 192.168.1.228 is the
@@ -133,7 +133,7 @@ data mtcollins1_power_redundancy_observed_at: NonEmptyStr = "2026-09-06T02:30Z"
 // a PXE client identifies itself as PXEClient:Arch:NNNNN and asks for a boot file, while a Linux
 // DHCP client does neither. A second management address that answers to the same credentials is
 // also a second reachable surface, which is a fact an access policy should know about the unit.
-// Bindings inhabit gunbc.machine_intake_ethernet so a second platform does not re-author a Bool.
+// Bindings inhabit gunbc.machine_intake.ethernet so a second platform does not re-author a Bool.
 // Redundancy is a property of independent power paths, not of this fold. This fold
 // only answers whether two distinct sensor rows both report AC.
 

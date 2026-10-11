@@ -116,7 +116,7 @@ data lambda_typing_gate_sites: List<LambdaTypingGateSite> = [
     miss: AbsentFromRoster,
     cause: StringDeclarationSiteAlias,
     cause_receipt: MeasuredByCargoProbe {
-      probe_subject_entry: "src/v2/compiler/01_tokenize.dag",
+      probe_subject_entry: "src/v2/compiler/tokenize.dag",
       emitted_file: "v2_compiler_tokenize.rs",
       emitted_line: 154,
       rustc_code: "E0282",
@@ -149,7 +149,7 @@ data lambda_typing_gate_departed_sites: List<LambdaTypingGateSiteDeparture> = [
     caller_decl: "parse_lexeme_digest",
     cause_at_departure: StringDeclarationSiteAlias,
     receipt_at_departure: MeasuredByCargoProbe {
-      probe_subject_entry: "src/v2/compiler/02_parse.dag",
+      probe_subject_entry: "src/v2/compiler/parse.dag",
       emitted_file: "v2_compiler_parse.rs",
       emitted_line: 532,
       rustc_code: "E0282",
@@ -293,7 +293,7 @@ data lambda_typing_gate_dissolution_trigger: DissolutionCondition = unbound_diss
 // ENROLLMENT PROJECTION — the `caller` refs, exposed so a resolver can reach them. It was
 // `v2.lens.cited_symbol_resolution` until that lens was deleted 2026-08-26; the consumers now
 // are `v1_compiler.declaration_index` at ingestion, which resolves every typed-literal citation
-// corpus-wide on every push, and `test.claim.long.carrier_reference_integrity_witness_test`,
+// corpus-wide on every push, and `test.claim.long.carrier_reference_integrity_witness`,
 // which holds this carrier's population claims. The projection itself is unchanged. This carrier's entire content is citations, so nothing else in it is checkable:
 // rename a cited caller and, before this projection existed, every required check stayed
 // green while the row went quietly false. That is the stale-citation class living inside a

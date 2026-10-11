@@ -416,7 +416,7 @@ fn issue_ref_list_includes(refs: List<IssueRef>, id: Int) -> Bool {
 // THE VISUAL TOKENS, VERIFIED 2026-09-22 (docs/plans/buganizer-visual-contract.md — extracted from
 // the product's own CSS bundle in the owner's session capture). These are the product's actual
 // rendered values, carried here as interface facts with their citation; the dashboard's style
-// layer maps them onto the issue-tracker surface (gunbc.roadmap_style's issue token block) rather
+// layer maps them onto the issue-tracker surface (gunbc.roadmap.roadmap_style's issue token block) rather
 // than re-spelling them. Fonts are the product's stacks in order.
 type IssueTrackerVisualTokens {
   text_primary: Srgb8

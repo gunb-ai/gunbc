@@ -479,7 +479,7 @@ type Milliwatt = Measure<Power, Milli, Nat>
 // the dangerous combination: a reader takes the stated mechanism as a general licence to buy
 // dimensional safety by minting a Quantity arm, and does not get it.
 //
-// THE PROPERTY IS WITNESSED, NOT TRANSCRIBED HERE. test.claim.marker_argument_not_consulted_witness_test
+// THE PROPERTY IS WITNESSED, NOT TRANSCRIBED HERE. test.claim.marker_argument_not_consulted_witness
 // carries it as three enrolled fixtures -- two named aliases over DIFFERENT markers must refuse, two
 // named aliases over the SAME marker must ALSO refuse, and the same two different markers spelled
 // INLINE with no alias must be ACCEPTED. The last two are the load-bearing pair: identical markers
@@ -748,7 +748,7 @@ type RevolutionsPerMinute = Measure<RotationalSpeed, One, Nat>
 // seconds-per-minute. Sibling of RevolutionsPerMinute (whose per-minute period rode into
 // its Quantity) and MegatransfersPerSecond (frequency at Mega): a per-second and a
 // per-minute figure can never be compared or assigned across without a modeled
-// conversion. First consumer: gunbc.memory_stall_refusal's major-fault rate.
+// conversion. First consumer: gunbc.host.memory_stall_refusal's major-fault rate.
 type EventsPerMinute = Measure<Frequency, Sixty, Nat>
 
 fn events_per_minute(count: Nat) -> EventsPerMinute {
@@ -822,7 +822,7 @@ fn gibibyte_grain() -> FiniteByteSize {
 
 // ROUNDING A BYTE COUNT UP TO A GRAIN, ONCE, WITH THE GRAIN A DECLARED INPUT.
 //
-// This is the corpus's one rounder. It replaced gunbc.floor_demand's gibibyte-fixed
+// This is the corpus's one rounder. It replaced gunbc.floor.floor_demand's gibibyte-fixed
 // round_up_to_gibibyte_grain, which now binds this function to gibibyte_grain: a policy whose grain
 // is one of its declared inputs could not reuse a rounder that fixed the grain, and minting a second
 // one beside it was the DESIGN 3 fork. The grain is a FiniteByteSize so the modulus is never zero
@@ -839,7 +839,7 @@ fn gibibyte_grain() -> FiniteByteSize {
 // refused it. Here the pad is derived first, (grain - n mod grain) mod grain, strictly below the
 // grain and computed without leaving the range; the one comparison, n > int_inclusive_max() - pad,
 // is exactly "does the ceiling fit", and n + pad is evaluated only after it has been established
-// to. That is the same subtraction construction gunbc.runner_microvm guest_memory_fits uses and
+// to. That is the same subtraction construction gunbc.runner.runner_microvm guest_memory_fits uses and
 // DESIGN 4b names as rung 4 over a checked-add guard at rung 1. The refusal still carries an
 // IntegerOverflow cause, and it names the operation that was NOT performed: the add of n and pad.
 type GrainRounding
@@ -1791,7 +1791,7 @@ data clock_basis_authority_reachability_note: String = "WHY THIS CARRIER LIVES I
 
 // Two nullary constructors exist so the v1 seed can hand a ClockBasis across the interpreter
 // boundary WITHOUT building a Value in Rust — the same discipline millisecond(count:) and
-// nanosecond(count:) already carry at this seam, and the reason gunbc.witness_row_cost's seed notes
+// nanosecond(count:) already carry at this seam, and the reason gunbc.witness.witness_row_cost's seed notes
 // give for it: a carrier assembled on the Rust side is a second copy of this module's shape, and it
 // drifts silently. WHICH one the seed calls is chosen by matching its own typed BudgetKind, so the
 // clock is never recovered from a label string; the function name is a symbol the seed selects, not

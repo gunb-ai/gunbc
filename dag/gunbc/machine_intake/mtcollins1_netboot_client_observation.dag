@@ -1,4 +1,4 @@
-module gunbc.machine_intake_mtcollins1_netboot_client_observation
+module gunbc.machine_intake.mtcollins1_netboot_client_observation
 
 import std.types { EpochMs, Int, NonEmptyStr, String }
 import extdeps.numeric.base16 { base16_digit_rows }
@@ -11,7 +11,7 @@ import extdeps.provisioning.network_boot { ClientNetworkBootMode, UefiPxe }
 //
 // HOW IT WAS TRIGGERED, which is what makes this an observation of the automation and not of a
 // human at a console: the unit's netboot handoff entry of that day (mtcollins1_netboot_handoff, deleted
-// with gunbc#12101; the unit actuation module itself was dissolved into gunbc.managed_host_boot_handoff
+// with gunbc#12101; the unit actuation module itself was dissolved into gunbc.host.managed_host_boot_handoff
 // by managed-host cut 4a) set the boot device, verified boot parameter 5 read back Force PXE, and
 // power-cycled the unit. The DHCP
 // exchange below is what the host did in response, captured from srv2 on the same /24.

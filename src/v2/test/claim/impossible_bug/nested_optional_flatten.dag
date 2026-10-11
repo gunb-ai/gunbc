@@ -1,4 +1,4 @@
-module v2.test.impossible_bug.nested_optional_flatten
+module v2.test.claim.impossible_bug.nested_optional_flatten
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.diagnostic {

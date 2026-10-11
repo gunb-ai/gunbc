@@ -1,4 +1,4 @@
-module gunbc.fleet_multi_principal_probe
+module gunbc.fleet.fleet_multi_principal_probe
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -6,9 +6,9 @@ import std.algebra { trim }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.typed_argv_exec { typed_argv_probe_over_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
-import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
-import gunbc.fleet_known_hosts_anchor {
+import gunbc.fleet.fleet_known_hosts_anchor {
   FleetSshAttemptIdentity,
   fleet_ssh_attempt_identity,
   FleetSshExecutionContext,
@@ -23,7 +23,7 @@ import gunbc.fleet_known_hosts_anchor {
   fleet_ssh_credential_identity,
   fleet_ssh_credential_locus_label,
 }
-import gunbc.fleet_ssh_credential_verify {
+import gunbc.fleet.fleet_ssh_credential_verify {
   FleetSshCredentialVerification,
   FleetSshCredentialVerified,
   FleetSshCredentialIdentityMismatch,
@@ -39,7 +39,7 @@ import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, 
 import product.host_identity { HostIdentity }
 import gunbc.auth.access_token_source { GcloudPrintToken }
 import gunbc.spark.credential_workflow { run_with_materialized_fleet_ssh_binding, spark_administrator_credential_roster_hosts }
-import gunbc.fleet_ssh_access { fleet_automation_ssh_key, fleet_automation_ssh_key_fingerprint }
+import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_key, fleet_automation_ssh_key_fingerprint }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
 import gunbc.spark.managed_access_bootstrap {
   PrincipalReachObservation,
@@ -63,10 +63,10 @@ import gunbc.spark.managed_grant_reconcile {
   spark_inspect_dropin_shape_wire,
 }
 import gunbc.spark.dgx_procurement { dgx_spark_procurement_intent }
-import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.spark.managed_access_bootstrap { SparkGrantOutcome, GrantEnumerated, GrantAbsent, GrantProbeRefused }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
+import gunbc.fleet.fleet_posix_accounts { fleet_bootstrap_principal_login }
 
 // READ-ONLY measurement (parent msg_e767a783): before anyone grants new access, measure
 // whether the fleet key is already enrolled for SOME pre-existing account on srv3/srv4.
@@ -84,7 +84,7 @@ import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
 // fleet_reach_probe_targets already carries all six, so this row was the only place the Sparks
 // were missing.
 //
-// This is the observation that lets gunbc.fleet_converge_cli's spark_managed_access_standing stop
+// This is the observation that lets gunbc.fleet.fleet_converge_cli's spark_managed_access_standing stop
 // returning a hardcoded SparkManagedAccessAbsent whose cause claims it measured the host. It is
 // safe to widen because the probe is READ-ONLY by construction -- a hostname read and `sudo -n -l`
 // per leg, every outcome classified as data rather than a step failure -- so it manufactures none
@@ -106,7 +106,7 @@ data fleet_multi_principal_probe_receipt_path: String = "target/fleet-multi-prin
 // refuses before the leg rather than being quoted into something the remote shell may re-split.
 //
 // THE ONE PLACE THAT NAMES THE KEY SHAPER ON PURPOSE, and it is a declared exemption from
-// gunbc.fleet_bootstrap_principal_session rather than an unmigrated caller. Every other consumer
+// gunbc.fleet.fleet_bootstrap_principal_session rather than an unmigrated caller. Every other consumer
 // derives its session from the principal, because every other consumer wants to REACH the principal.
 // This one wants to MEASURE whether the fleet key reaches it, per principal, including the bootstrap
 // account -- which is exactly the measurement that established briansrls holds no key on a host this
@@ -219,7 +219,7 @@ fn probe_agent_socket() -> NonEmptyStr? {
 // The verification, replacing `modeled_fleet_automation_credential_identity`. That function hashed
 // the DECLARED material and stamped it onto every `PrincipalReachObservation`, so the receipt's
 // `credential_identity` was an assertion about which key authenticated that nothing had observed --
-// the same defect `gunbc.fleet_ssh_credential_verify` closed on the identity-file route, present a
+// the same defect `gunbc.fleet.fleet_ssh_credential_verify` closed on the identity-file route, present a
 // second time on this one. The identity now comes from a binding that exists only because the agent
 // was observed to hold the declared fingerprint.
 fn probe_agent_credential_verification(attempt: FleetSshAttemptIdentity) -> FleetSshCredentialVerification

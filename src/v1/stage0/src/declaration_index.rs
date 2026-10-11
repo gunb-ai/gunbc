@@ -35,7 +35,7 @@
 //!      another non-fixture module, while no authored import edge reaches that home
 //!
 //! WHAT THIS IS NOT. Not a widening of the required floor's source roots; the objection
-//! `gunbc.ci_layer_roots` `v1_dead_witness_tree_triage_receipt_remainder` raises against that
+//! `gunbc.ci.ci_layer_roots` `v1_dead_witness_tree_triage_receipt_remainder` raises against that
 //! cannot reach it, as it cannot reach the parse sweep it rides on: NOTHING HERE RESOLVES
 //! ACROSS FILES IN THE COMPILER'S SENSE. Each record derives from one file's own tree; the
 //! index maps the module path a file DECLARES to that file's facts. Two roots colliding on a
@@ -52,9 +52,9 @@
 //!
 //! IT WAS OCCUPIED, NOT MERELY REACHABLE, which settled the grain. Measured over the live corpus
 //! through `DAG_PARSE_SWEEP_ROOTS`, the 70 target-keyed rows covered 87 refusing sites, and seven
-//! targets were cited from more than one module: `gunbc.host_effect` `host_effect_apply` from
+//! targets were cited from more than one module: `gunbc.host.host_effect` `host_effect_apply` from
 //! three (`extdeps.github.actions_runner`, `gunbc.executor_privileged_operation`,
-//! `gunbc.runner_slot_provision`), `std.bytes` `builtin_function_registry` from three,
+//! `gunbc.runner.runner_slot_provision`), `std.bytes` `builtin_function_registry` from three,
 //! `extdeps.network.mac` `parse_mac_address` from two (`extdeps.dhcp.v4` and a witness), and
 //! four more from two apiece. (That measurement stands; the `parse_mac_address` example has since
 //! been DISCHARGED, not falsified — the module landed, the witness citations resolve and their
@@ -1919,7 +1919,7 @@ fn citation_is_outside_index(index: &DeclarationIndex, module_path: &str) -> boo
 ///
 /// WHY COUNTED RATHER THAN REFUSED. Refusing changes what the SEED COMPILER ACCEPTS —
 /// `get_exported_names` is the authority and editing it is `NewLanguageBehavior`, which
-/// `gunbc.v1_maintenance_standing` refuses, a refusal dominating every admission. What this
+/// `gunbc.v1.v1_maintenance_standing` refuses, a refusal dominating every admission. What this
 /// may do, and what DESIGN §5 requires of any widening arm, is make the frequency OBSERVABLE:
 /// a bare `continue` zeroes the deficit by construction so the class never ranks for fixing
 /// (§6 prices by displaced cost; a masked cost displaces nothing). Counted, it can be watched,
@@ -2040,9 +2040,9 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// `resolve_declaration_ref` directly — in `v2.std.decl_ref_resolution`, which SURVIVES with
 /// four other consumers — so they are the only executing evidence for a live authority's
 /// five-arm refusal, and §4b(4) keeps them enrolled; they moved to
-/// `test.claim.long.decl_ref_resolution_witness_test`. The remaining 15 are population and
+/// `test.claim.long.decl_ref_resolution_witness`. The remaining 15 are population and
 /// projection claims about the carriers that PROJECT `DeclarationRef`s, moved to
-/// `test.claim.long.carrier_reference_integrity_witness_test`.
+/// `test.claim.long.carrier_reference_integrity_witness`.
 ///
 /// So the disposition is three-way where this comment admitted two: the lens dies, six
 /// witnesses die with it, twelve rehome onto subjects that outlive it.
@@ -2093,7 +2093,7 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// wrong one. Next rung: a witness declaring its planted controls as typed rows, at which point
 /// the deliberate half becomes derivable and only the genuine half survives here as debt.
 ///
-/// ALSO THIS KIND, 2026-09-07: `v2.test.claim.construction_justification.outside_modeled_guarantee_witness_test`
+/// ALSO THIS KIND, 2026-09-07: `v2.test.claim.construction_justification.outside_modeled_guarantee_witness`
 /// `nonexistent_capability_ref` cites `v2.lens.cost` `capability_absent_from_decl_facts`. The
 /// cited name is never a next-rung capability and is never supposed to be authored; the probe
 /// is that the join still treats absence as outside. Same shape as `test.claim.altra_placement_witness`
@@ -2161,44 +2161,44 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
         "",
     ),
     (
-        "test.claim.dissolution_census_mechanism_witness_test",
+        "test.claim.dissolution_census_mechanism_witness",
         "live_discriminator_rows",
-        "test.claim.dissolution_census_mechanism_witness_test",
+        "test.claim.dissolution_census_mechanism_witness",
         "absent_subject_row",
         "",
     ),
     (
-        "test.claim.dissolution_census_mechanism_witness_test",
+        "test.claim.dissolution_census_mechanism_witness",
         "live_discriminator_rows",
-        "test.claim.dissolution_census_mechanism_witness_test",
+        "test.claim.dissolution_census_mechanism_witness",
         "present_subject_row",
         "",
     ),
     (
-        "test.claim.dissolution_census_mechanism_witness_test",
+        "test.claim.dissolution_census_mechanism_witness",
         "live_discriminator_rows",
         "test.fixture.dissolution_live_discriminator.subject",
         "absent_subject_declaration",
         "",
     ),
     (
-        "test.claim.dissolution_census_mechanism_witness_test",
+        "test.claim.dissolution_census_mechanism_witness",
         "planted_bound_ref",
-        "test.claim.dissolution_census_mechanism_witness_test",
+        "test.claim.dissolution_census_mechanism_witness",
         "planted_bound_target",
         "",
     ),
     (
-        "test.claim.dissolution_census_mechanism_witness_test",
+        "test.claim.dissolution_census_mechanism_witness",
         "planted_retires_ref",
-        "test.claim.dissolution_census_mechanism_witness_test",
+        "test.claim.dissolution_census_mechanism_witness",
         "planted_retires_target",
         "",
     ),
     (
-        "test.claim.dissolution_census_mechanism_witness_test",
+        "test.claim.dissolution_census_mechanism_witness",
         "planted_rows",
-        "test.claim.dissolution_census_mechanism_witness_test",
+        "test.claim.dissolution_census_mechanism_witness",
         "planted_unbound_target",
         "",
     ),
@@ -2224,105 +2224,105 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
         "",
     ),
     (
-        "test.claim.long.carrier_reference_integrity_witness_test",
+        "test.claim.long.carrier_reference_integrity_witness",
         "carrier_ref_refusal_count_red_on_dangling_fixture",
         "v2.std.node",
         "NoSuchDecl_G1_RED",
         "",
     ),
     (
-        "test.claim.decl_ref_keyed_read_agreement_witness_test",
+        "test.claim.decl_ref_keyed_read_agreement_witness",
         "keyed_and_population_routes_agree_on_declaration_absent",
         "test.fixture.decl_facts_reflection.specimens",
         "no_such_declaration_KEYED_RED",
         "",
     ),
     (
-        "test.claim.decl_ref_keyed_read_agreement_witness_test",
+        "test.claim.decl_ref_keyed_read_agreement_witness",
         "keyed_and_population_routes_agree_on_field_absent",
         "test.fixture.decl_facts_reflection.specimens",
         "disposition_scaffold",
         "no_such_field_KEYED_RED",
     ),
     (
-        "test.claim.decl_ref_keyed_read_agreement_witness_test",
+        "test.claim.decl_ref_keyed_read_agreement_witness",
         "keyed_and_population_routes_agree_on_module_absent",
         "synthetic.keyed_read_module_absent_RED",
         "anything",
         "",
     ),
     (
-        "test.claim.long.decl_ref_resolution_witness_test",
+        "test.claim.long.decl_ref_resolution_witness",
         "decl_ref_refuses_ambiguous_binding",
         "v2.std.node",
         "g1_ambiguous",
         "",
     ),
     (
-        "test.claim.long.decl_ref_resolution_witness_test",
+        "test.claim.long.decl_ref_resolution_witness",
         "decl_ref_refuses_declaration_absent",
         "v2.std.node",
         "NoSuchDecl_G1_RED",
         "",
     ),
     (
-        "test.claim.long.decl_ref_resolution_witness_test",
+        "test.claim.long.decl_ref_resolution_witness",
         "decl_ref_refuses_module_absent",
         "synthetic.g1_module_absent_RED",
         "any",
         "",
     ),
     (
-        "test.claim.long.decl_ref_resolution_witness_test",
+        "test.claim.long.decl_ref_resolution_witness",
         "decl_ref_refuses_named_field_absent",
         "v2.std.node",
         "NodeKind",
         "NoSuchField_G1_RED",
     ),
     (
-        "test.claim.long.carrier_reference_integrity_witness_test",
+        "test.claim.long.carrier_reference_integrity_witness",
         "instance_gap_carrier_dangling_caller_red_control_refuses",
         "v2.compiler.parse",
         "G1_planted_instance_gap_caller_control_RED",
         "",
     ),
     (
-        "test.claim.long.carrier_reference_integrity_witness_test",
+        "test.claim.long.carrier_reference_integrity_witness",
         "instance_gap_membership_dangling_producer_red_control_refuses",
         "gunbc.publication_policy",
         "G1_planted_instance_gap_producer_control_RED",
         "",
     ),
     (
-        "test.claim.long.v1_complexity_capability_census_resolution_test",
+        "test.claim.long.v1_complexity_capability_census_resolution",
         "census_absent_declaration_refuses",
         "v1.compiler.complexity",
         "this_declaration_does_not_exist_in_the_seed",
         "",
     ),
     (
-        "test.claim.long.v1_complexity_capability_census_resolution_test",
+        "test.claim.long.v1_complexity_capability_census_resolution",
         "census_absent_module_refuses",
         "v1.compiler.this_module_does_not_exist",
         "classify_complexity",
         "",
     ),
     (
-        "test.claim.long.v1_complexity_capability_census_resolution_test",
+        "test.claim.long.v1_complexity_capability_census_resolution",
         "census_prose_only_name_does_not_resolve",
         "v1.compiler.complexity",
         "Derived",
         "",
     ),
     (
-        "test.claim.primitive_identity_join_witness_test",
+        "test.claim.primitive_identity_join_witness",
         "w_unknown_realization_refuses",
         "std.primitive_identity",
         "missing_handler",
         "",
     ),
     (
-        "test.claim.primitive_projection_authority_witness_test",
+        "test.claim.primitive_projection_authority_witness",
         "planted_registry_row",
         "test.fixture",
         "planted",
@@ -2357,7 +2357,7 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
         "",
     ),
     (
-        "v2.test.claim.construction_justification.outside_modeled_guarantee_witness_test",
+        "v2.test.claim.construction_justification.outside_modeled_guarantee_witness",
         "nonexistent_capability_ref",
         "v2.lens.cost",
         "capability_absent_from_decl_facts",
@@ -2371,44 +2371,44 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
         "",
     ),
     (
-        "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+        "v2.test.lens_disposition_redundancy.disposition_redundancy",
         "redundancy_present_successor_locator",
         "std.disposition",
         "Disposition",
         "marker",
     ),
     (
-        "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+        "v2.test.lens_disposition_redundancy.disposition_redundancy",
         "redundancy_red_scaffold",
         "std.disposition",
         "Disposition",
         "marker",
     ),
     (
-        "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+        "v2.test.lens_disposition_redundancy.disposition_redundancy",
         "redundancy_region1_real_successor_present",
         "extdeps.llm.anthropic_messages_api",
         "AnthropicTextBlock",
         "cache_control",
     ),
     (
-        "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+        "v2.test.lens_disposition_redundancy.disposition_redundancy",
         "redundancy_region_budget_per_service_overhead_locator",
-        "gunbc.ci_floor_measurement",
+        "gunbc.ci.ci_floor_measurement",
         "gunbc_ci_managed_host_quiescent_meminfo_read",
         "",
     ),
     (
-        "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+        "v2.test.lens_disposition_redundancy.disposition_redundancy",
         "redundancy_region_bytes_synthetic_present",
         "std.bytes",
         "builtin_function_registry",
         "",
     ),
     (
-        "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+        "v2.test.lens_disposition_redundancy.disposition_redundancy",
         "redundancy_region_rust_gates_synthetic_present",
-        "tools.rust_stage0_gates",
+        "gunbc.instruments.rust_stage0_gates",
         "per_unit_test_selector",
         "",
     ),
@@ -2439,14 +2439,14 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
     (
         "extdeps.github.actions_runner",
         "actions_runner_base_dir_ensure_script_scaffold",
-        "gunbc.host_effect",
+        "gunbc.host.host_effect",
         "host_effect_apply",
         "",
     ),
     (
         "extdeps.github.actions_runner",
         "actions_runner_slot_extract_script_scaffold",
-        "gunbc.host_effect",
+        "gunbc.host.host_effect",
         "host_effect_apply",
         "",
     ),
@@ -2544,49 +2544,49 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
     (
         "gunbc.executor_privileged_operation",
         "executor_privileged_operation_shell_scaffold",
-        "gunbc.host_effect",
+        "gunbc.host.host_effect",
         "host_effect_apply",
         "",
     ),
     (
-        "gunbc.fabric_capacity_class_gap",
+        "gunbc.fabric.fabric_capacity_class_gap",
         "no_class_carrier",
         "product.fabric.supply",
         "Offer",
         "",
     ),
     (
-        "gunbc.fabric_capacity_class_gap",
+        "gunbc.fabric.fabric_capacity_class_gap",
         "protection_has_no_reach",
-        "gunbc.ci_runner_placement",
+        "gunbc.ci.ci_runner_placement",
         "ci_runner_placement_authority",
         "",
     ),
     (
-        "gunbc.fabric_capacity_class_gap",
+        "gunbc.fabric.fabric_capacity_class_gap",
         "protection_has_no_reach",
-        "gunbc.fleet_host_budget",
+        "gunbc.fleet.fleet_host_budget",
         "fleet_host_budget_authority",
         "",
     ),
     (
-        "gunbc.host_budget_source",
+        "gunbc.host.host_budget_source",
         "host_budget_source_seed_mirror_disposition",
-        "gunbc.host_budget_source",
+        "gunbc.host.host_budget_source",
         "host_budget_source_emitted_into_stage0",
         "",
     ),
     (
-        "gunbc.host_memory_observation",
+        "gunbc.host.host_memory_observation",
         "gunbc_ci_legacy_host_fixed_overhead_disposition",
-        "gunbc.ci_floor_measurement",
+        "gunbc.ci.ci_floor_measurement",
         "gunbc_ci_legacy_host_modeled_residents",
         "",
     ),
     (
-        "gunbc.host_memory_observation",
+        "gunbc.host.host_memory_observation",
         "gunbc_ci_managed_host_fixed_overhead_disposition",
-        "gunbc.ci_floor_measurement",
+        "gunbc.ci.ci_floor_measurement",
         "gunbc_ci_managed_host_quiescent_meminfo_read",
         "",
     ),
@@ -2598,16 +2598,16 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
         "",
     ),
     (
-        "gunbc.runner_connectivity_repair_plan",
+        "gunbc.runner.runner_connectivity_repair_plan",
         "runner_jit_installation_token_cache_scaffold",
-        "gunbc.runner_lifecycle",
+        "gunbc.runner.runner_lifecycle",
         "EnsureRunnerJitWrapper",
         "",
     ),
     (
-        "gunbc.runner_slot_provision",
+        "gunbc.runner.runner_slot_provision",
         "runner_slot_provision_scaffold",
-        "gunbc.host_effect",
+        "gunbc.host.host_effect",
         "host_effect_apply",
         "",
     ),
@@ -2619,9 +2619,9 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
         "",
     ),
     (
-        "gunbc.srv3_os_install_actuate_scope",
+        "gunbc.srv3.srv3_os_install_actuate_scope",
         "srv3_os_install_actuate_credential_source_scaffold",
-        "gunbc.roadmap_authority",
+        "gunbc.roadmap.roadmap_authority",
         "roadmap_document",
         "",
     ),
@@ -2689,9 +2689,9 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
         "",
     ),
     (
-        "tools.rust_stage0_gates",
+        "gunbc.instruments.rust_stage0_gates",
         "unit_must_run_staged_note",
-        "tools.rust_stage0_gates",
+        "gunbc.instruments.rust_stage0_gates",
         "per_unit_test_selector",
         "",
     ),
@@ -2777,8 +2777,8 @@ pub fn citation_debt_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// the funeral would have erased the four probes proving this wall's refusal arms are real.
 /// The seven debt rows below were RE-POINTED rather than deleted in the same change: their
 /// citations are deliberately false and moved with their witnesses into
-/// `test.claim.long.decl_ref_resolution_witness_test` and
-/// `test.claim.long.carrier_reference_integrity_witness_test`. A deleted row would be a
+/// `test.claim.long.decl_ref_resolution_witness` and
+/// `test.claim.long.carrier_reference_integrity_witness`. A deleted row would be a
 /// silently dropped obligation; a stale one would refuse, which is how the contract catches
 /// exactly this.
 ///

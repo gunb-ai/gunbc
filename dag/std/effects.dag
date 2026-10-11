@@ -39,7 +39,7 @@ type CreateCause<K>
 // (keyless PUT declared idempotent => Agrees, not DerivationUnknown) is the correct end state -- it
 // changes live verdicts and generate_idempotency_obligations output, so it lands with its own
 // discriminating witness rather than riding this de-conflation. Discriminating control:
-// test.claim.effects_witness_test.effects_keyless_fallback_is_not_post_witnesses.
+// test.claim.effects_witness.effects_keyless_fallback_is_not_post_witnesses.
 
 type KeySource
   = PathParam { param: String }

@@ -1,6 +1,6 @@
 module gunbc.enrolment_dead_band_seed_growth
 
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -29,7 +29,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // roster_envelope_floor_ms parameter and the arm between that floor and the line), run_required_floor
 // (reads the floor out of the model beside the line), and the unit tests whose calls gain that argument.
 //
-// WHY IT IS ADMITTED AGAINST THE v1 FREEZE, BY PURPOSE. gunbc.v1_maintenance_standing
+// WHY IT IS ADMITTED AGAINST THE v1 FREEZE, BY PURPOSE. gunbc.v1.v1_maintenance_standing
 // v1_seed_standing admits a change when it serves the v2 self-host program. The required floor is the
 // instrument guarding that program, and this change keeps it CORRECT: without the arm, a newly enrolled
 // witness whose honest cost lies in (margin, per-subject line] has no standing that holds
@@ -40,7 +40,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // self-staling arms and their causes are v2.workflow.floor_enrolment_margin (enrolment_declared_measured_standing
 // and the standing coproduct), tested by v2.test.floor_enrolment_margin; the identities are
 // v2.workflow.floor_enrolment_dead_band, which the host decodes from the model and never restates.
-// test.claim.enrolment_margin_seed_mirror_witness_test pins the mirror's wire names and causes to
+// test.claim.enrolment_margin_seed_mirror_witness pins the mirror's wire names and causes to
 // the model's, for every arm, so a model arm with no mirror or a drifted spelling reds.
 data enrolment_dead_band_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [

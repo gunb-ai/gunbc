@@ -873,7 +873,7 @@ fn compile_stage0_admitted(
     }
     // EVERY EDGE THE EMITTER WROTE MUST RESOLVE IN THE CRATE ITS MODULE LANDS IN. The emitter
     // returns its use-line and prelude edges beside the text (`gunbc.rust_emitted_edge`), and
-    // `gunbc.stage0_emitted_edge_admission` maps both ends through the supplied partition rows
+    // `gunbc.stage0.stage0_emitted_edge_admission` maps both ends through the supplied partition rows
     // and package graph; a module in neither the rows nor the shell refuses as not covered rather
     // than passing.
     let admission = crate::gunbc_stage0_emitted_edge_admission::stage0_emitted_edge_admission(
@@ -900,10 +900,10 @@ fn compile_stage0_admitted(
 }
 
 /// THE PACKAGE GRAPH THE EMITTED TREE WILL BE BUILT UNDER, READ FROM THAT TREE: its partition rows
-/// and the host shell node (`gunbc.stage0_executable_assembly_generated`) above them.
+/// and the host shell node (`gunbc.stage0.stage0_executable_assembly_generated`) above them.
 ///
 /// The admission above maps each emitted edge through partition rows. The rows it must use are the
-/// ones this emission's own corpus declares -- `gunbc.stage0_crate_partition_generated`
+/// ones this emission's own corpus declares -- `gunbc.stage0.stage0_crate_partition_generated`
 /// `generated_partition_crate_rows`, read from the same source roots `regen_input_sources` walks --
 /// because those are the rows the candidate mirror is rendered from and the crate layout it will be
 /// built under. The rows compiled into THIS binary are the predecessor's: reading them admitted a
@@ -933,7 +933,7 @@ fn emitted_tree_packages(
         .find(|path| path.is_file())
         .ok_or_else(|| {
             format!(
-                "refusal: gunbc.stage0_emitted_edge_admission is under no regen source root \
+                "refusal: gunbc.stage0.stage0_emitted_edge_admission is under no regen source root \
                  {roots:?}, so the emitted tree's package graph cannot be read"
             )
         })?;
@@ -1117,8 +1117,8 @@ fn admit_install_destination(stage0_src: &Path, basename: &str) -> Result<(), St
 /// produced, derived from PATHS rather than from rendered content, so it is total under every
 /// selection and identical to the rendered set when there is none. Reading it here is the
 /// structural inverse of that write, taking both literals from the one authority the writer reads
-/// (`gunbc.stage0_emitted_population_manifest`); the same inverse is spelled in the model at
-/// `gunbc.stage0_rust_host_observation` `emitted_population_paths_from_manifest`, over the
+/// (`gunbc.stage0.stage0_emitted_population_manifest`); the same inverse is spelled in the model at
+/// `gunbc.stage0.stage0_rust_host_observation` `emitted_population_paths_from_manifest`, over the
 /// committed artifact rather than an in-memory emission, and in `cssl_seed_linked_closure_assembly`
 /// `declared_emitted_paths`, over a file on disk. Neither is reachable from here: the first is not
 /// in the seed closure and the second lives in a separate binary's private module.
@@ -1222,7 +1222,7 @@ fn committed_generated_basenames(stage0_src: &Path) -> Result<Vec<String>, Strin
 /// "_" under `rust_source_root()`), so the emitter cannot write into a hand-maintained directory;
 /// the collision needs a module whose bare name equals one of those files. Measured 2026-08-22:
 /// zero collisions in the corpus, required-regen green on main at 90986d19469, and no upstream
-/// guard refuses such a module name (the nearest, `gunbc.stage0_rust_source_lifecycle_scaffold`
+/// guard refuses such a module name (the nearest, `gunbc.stage0.stage0_rust_source_lifecycle_scaffold`
 /// `classified_residue_disjoint_holds` and the generated/hand disposition joins beside it, are
 /// scoped to top-level stage0 paths and cannot see a subdirectory file).
 fn hand_maintained_dir_shadows(stage0_src: &Path) -> Result<BTreeMap<String, Vec<String>>, String> {
@@ -5316,7 +5316,7 @@ where
         build_terminal: RegenConvergenceBuildTerminalReceipt::Passed,
         build_compiled_crates: build.compiled_crates,
         build_packages: build.compiled_packages,
-        assembly_equivalence_authority: "v2.compiler.self_host.stage0_executable_assembly;v2.test.claim.self_host.stage0_executable_assembly_test".to_string(),
+        assembly_equivalence_authority: "v2.compiler.self_host.stage0_executable_assembly;v2.test.claim.self_host.stage0_executable_assembly".to_string(),
         output_seed_digest: seed_after,
         next_generation_receipt_id: format!("generation-{}", ordinal + 1),
     })
@@ -7625,7 +7625,7 @@ diff --git a/src/v1/stage0/src/v1_rt.rs b/src/v1/stage0/src/v1_rt.rs
 // tree produce the same bytes? The regen fixed point asks it of the stage0 Rust surface; nothing
 // asked it of `dag-artifact.json`, and the answer on main was no. It is a RIDER on an existing
 // required phase rather than a sixth phase because the roster of required jobs is closed to
-// growth (`gunbc.witness_floor_workflow` `witness_floor_lane_jobs`), and this check belongs to a
+// growth (`gunbc.witness.witness_floor_workflow` `witness_floor_lane_jobs`), and this check belongs to a
 // phase that already exists.
 //
 // WHAT THE DEFECT WAS, so the control's shape is legible. `v1.compile` `serialize_typed_module`

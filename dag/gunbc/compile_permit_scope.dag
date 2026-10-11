@@ -3,7 +3,7 @@ module gunbc.compile_permit_scope
 import std.types { String, NonEmptyStr, List, Bool, list_length }
 import std.materialization_ladder { string_list_contains }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_runner_connectivity { fleet_hosts }
+import gunbc.fleet.fleet_runner_connectivity { fleet_hosts }
 import std.measure { HardwareThreadCount }
 
 // WHAT A BORROWER'S DEATH DOES TO FUTURE COMPILE CAPACITY. That is the fact gunbc#9789's declared
@@ -201,7 +201,7 @@ fn fleet_cancellation_standing(
   finalize_fleet_standing(acc: acc, eligible_hosts: eligible_hosts)
 }
 
-// THE DENOMINATOR IS THE FLEET'S OWN ROSTER, read from gunbc.fleet_runner_connectivity fleet_hosts
+// THE DENOMINATOR IS THE FLEET'S OWN ROSTER, read from gunbc.fleet.fleet_runner_connectivity fleet_hosts
 // rather than re-minted here. Review 58495 caught the second authoring, and its concrete
 // consequence is that this construction would have defeated itself: a fifth host joining the fleet
 // leaves a hand-written four-name list answering SAFE on a 4/4 observation set while the new host

@@ -1,4 +1,4 @@
-module gunbc.seed_retention_frontier_emit
+module gunbc.stage0.seed_retention_frontier_emit
 
 import std.types { List }
 import extdeps.languages.rust.string_literal { escape_rust_cooked_string_literal_body }
@@ -15,7 +15,7 @@ import v2.std.text { String }
 // PathIncluded Rust const, the same route bootstrap_stage0_crate_layout_generated already uses.
 // Nested crate-relative paths stay in the v2 roster; they have no consumer in the seed host.
 
-// Same concat fold as gunbc.stage0_crate_layout_emit render_rust_str_slice_items.
+// Same concat fold as gunbc.stage0.stage0_crate_layout_emit render_rust_str_slice_items.
 // v2.std.text string_join is a FreeMonoid<Char> join; the wet artifact writer prints
 // that Cons spine, which is what CI heal committed here and which does not parse as Rust.
 fn render_rust_str_slice_items(xs: List<String>) -> String {

@@ -1,10 +1,10 @@
-module gunbc.runner_connectivity_repair_plan
+module gunbc.runner.runner_connectivity_repair_plan
 
 import std.types { String, NonEmptyStr, List, Bool, Int, list_length }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.build_cache_instance { RunnerSlotIdentity, ProcessIdentity }
-import gunbc.runner_connectivity_recovery {
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, ProcessIdentity }
+import gunbc.runner.runner_connectivity_recovery {
   RunnerConnectivityAction,
   RunnerConnectedNoop,
   RunnerIncarnationReplace,
@@ -13,7 +13,7 @@ import gunbc.runner_connectivity_recovery {
   recovery_runner_slot_unit_name,
 }
 
-// REPAIR CHOREOGRAPHY over the shared HostEffect arms still-ram-738 lands on gunbc.host_effect —
+// REPAIR CHOREOGRAPHY over the shared HostEffect arms still-ram-738 lands on gunbc.host.host_effect —
 // NOT a second effect coproduct. RunnerRepairEffectStep names the operator-specified arms
 // (ObserveRunnerLocalState, ObserveGitHubRunnerRegistration, ReplaceRunnerIncarnation) in apply
 // order. This module sequences them; host_effect_realize owns realization cells. ctrl is dead — no
@@ -22,7 +22,7 @@ import gunbc.runner_connectivity_recovery {
 data observe_runner_local_state_host_effect_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
-    module_path: "gunbc.host_effect",
+    module_path: "gunbc.host.host_effect",
     decl_name: "ObserveRunnerLocalState",
     field: WholeDeclaration,
   }
@@ -31,7 +31,7 @@ data observe_runner_local_state_host_effect_scaffold: Disposition = Scaffold {
 data observe_github_runner_registration_host_effect_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
-    module_path: "gunbc.host_effect",
+    module_path: "gunbc.host.host_effect",
     decl_name: "ObserveGitHubRunnerRegistration",
     field: WholeDeclaration,
   }
@@ -40,7 +40,7 @@ data observe_github_runner_registration_host_effect_scaffold: Disposition = Scaf
 data replace_runner_incarnation_host_effect_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
-    module_path: "gunbc.host_effect",
+    module_path: "gunbc.host.host_effect",
     decl_name: "ReplaceRunnerIncarnation",
     field: WholeDeclaration,
   }
@@ -49,7 +49,7 @@ data replace_runner_incarnation_host_effect_scaffold: Disposition = Scaffold {
 data runner_jit_installation_token_cache_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
-    module_path: "gunbc.runner_lifecycle",
+    module_path: "gunbc.runner.runner_lifecycle",
     decl_name: "EnsureRunnerJitWrapper",
     field: WholeDeclaration,
   }
@@ -57,7 +57,7 @@ data runner_jit_installation_token_cache_scaffold: Disposition = Scaffold {
 
 // LIMIT FANOUT (operator ruling 2026-08-06): cache GitHub JIT installation tokens until near expiry
 // rather than minting a fresh token on every two-minute watchdog tick across every host.
-// Realization lives with EnsureRunnerJitWrapper in gunbc.runner_lifecycle — this repair plan names
+// Realization lives with EnsureRunnerJitWrapper in gunbc.runner.runner_lifecycle — this repair plan names
 // the choreography only.
 
 type RunnerRepairEffectStep

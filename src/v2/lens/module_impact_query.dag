@@ -16,7 +16,7 @@ import v2.lens.common.construction_justification {
   WallAfterGrounding,
 }
 import std.disposition { SingleAuthority }
-import gunbc.namespace_reference_derived_closure_admission {
+import gunbc.namespace.namespace_reference_derived_closure_admission {
   ReferenceDerivedClosureAdmission,
   ReferenceDerivedClosureEstablished,
   ReferenceDerivedClosureRefused,

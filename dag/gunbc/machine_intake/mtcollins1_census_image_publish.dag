@@ -1,4 +1,4 @@
-module gunbc.machine_intake_mtcollins1_census_image_publish
+module gunbc.machine_intake.mtcollins1_census_image_publish
 
 import std.types { Bool, NonEmptyStr, String }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
@@ -13,17 +13,17 @@ import gunbc.host_command_binding {
   ScratchOutcome, ScratchAcquired, ScratchNotAcquired, CreationNotRequested,
   scratch_acquisition_of, scratch_removal_of, scratch_removed, render_scratch_outcome,
 }
-import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
-import gunbc.boot_medium { bmc_boot_image_export }
+import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.host.boot_medium { bmc_boot_image_export }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
-import gunbc.machine_intake_mtcollins1_census_member_readback {
+import gunbc.machine_intake.mtcollins1_census_member_readback {
   CensusMemberReadback, census_member_readings_on, census_member_verdict, census_member_readback_holds, render_census_member_readback,
 }
-import gunbc.machine_intake_mtcollins1_census_image {
+import gunbc.machine_intake.mtcollins1_census_image {
   mtcollins1_census_image, mtcollins1_census_pinned_image, Mtcollins1CensusImage,
   Mtcollins1CensusImageDerived, Mtcollins1CensusImageRefused, mtcollins1_census_image_stock_path,
 }
-import gunbc.seeded_install_media_publish {
+import gunbc.provisioning.seeded_install_media_publish {
   BmcExportBoundary, SeededImagePublication, SeededImagePublished, SeededImageAlreadyPublished, SeededImagePublicationRefused, SeededImagePublishedRecordNotWritten,
   SeededImageResolution, SeededImageUnobservable, publish_seeded_image, resolve_seeded_image,
 }
@@ -32,7 +32,7 @@ import gunbc.seeded_install_media_publish {
 // OVER FLEET SSH from whichever runner the dispatch names, because srv2 has had no runner slot since
 // 2026-09-19 (fleet-converge run 36347413355, host=srv2, queued since 2026-09-27 20:16 against a
 // runner that does not exist). It is the SAME publication fold every seeded image uses
-// (gunbc.seeded_install_media_publish), realized on srv2 through gunbc.host_command_binding
+// (gunbc.provisioning.seeded_install_media_publish), realized on srv2 through gunbc.host_command_binding
 // FleetSshCommandHost; the srv2-runner realization this replaces had no other consumer and was retired.
 //
 // ONE PRECONDITION BEFORE ANY PUBLISH: THE srv2-SIDE REGRESSION. The pinned-input derivation
@@ -62,7 +62,7 @@ data mtcollins1_census_hermetic_pinned_rebuild_digest: NonEmptyStr = "eb23f1746e
 // TWO CHECKS, both on srv2, both before any publish: (a) the pinned-input rebuild equals the hermetic
 // receipt; (b) the rebuilt image's kernel and initrd equal the stock medium's, read out of the rebuilt
 // image in the same scratch directory by the member readback's own comparison
-// (gunbc.machine_intake_mtcollins1_census_member_readback census_member_readings_on / census_member_verdict),
+// (gunbc.machine_intake.mtcollins1_census_member_readback census_member_readings_on / census_member_verdict),
 // with grub.cfg as that comparison's in-run control.
 type CensusRegression
   = RegressionReproduced { build_key: NonEmptyStr, digest: NonEmptyStr, chain: CensusMemberReadback, build_work: ScratchOutcome, scratch: ScratchOutcome }
@@ -244,7 +244,7 @@ fn render_census_publish_attempt(a: CensusPublishAttempt) -> String {
 data mtcollins1_census_publish_attempt_raw: String = "mtcollins1-census-image-publish"
 
 // CONSUMPTION (DESIGN §3c): invoked by the fleet-converge mode mtcollins1_census_image_publish, which
-// consumes the fleet SSH key and runs on any runner (gunbc.fleet_converge_workflow, gunbc.ci_spec).
+// consumes the fleet SSH key and runs on any runner (gunbc.fleet.fleet_converge_workflow, gunbc.ci.ci_spec).
 // The receipt is written whatever the outcome and uploaded by the step that follows.
 fn mtcollins1_census_image_publish_wet() -> ProcessExit {
   let attempt = match prepare_fleet_ssh_agent_context(attempt_raw: mtcollins1_census_publish_attempt_raw) {

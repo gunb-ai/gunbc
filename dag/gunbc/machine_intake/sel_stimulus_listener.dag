@@ -1,11 +1,11 @@
-module gunbc.machine_intake_sel_stimulus_listener
+module gunbc.machine_intake.sel_stimulus_listener
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import extdeps.numeric.base16 { base16_digit_rows }
 import extdeps.bmc.ipmi_sel { InitiatedByPowerUp, SystemRestart, OemSelPayload }
-import gunbc.machine_intake_pre_os_bringup_verdict { SelWindowEvent, BootRestart, OtherStandardEvent, OemTimestamped }
+import gunbc.machine_intake.pre_os_bringup_verdict { SelWindowEvent, BootRestart, OtherStandardEvent, OemTimestamped }
 
 // Keep the rendered prefix to detect clear, rollover and replacement when they
 // change it. Prefix equality alone DOES NOT prove source-generation continuity:
@@ -38,7 +38,7 @@ fn sel_field(fields: List<String>, index: Int) -> String {
 
 // A THRESHOLD EVENT CARRIES A SEVENTH FIELD. ipmitool renders a threshold-sensor record with its
 // reading appended ("... | Asserted | Reading 0 < Threshold 0.68 Volts"), and mtcollins1's
-// controller emits exactly those rows -- gunbc.machine_intake_mtcollins1_32dimm_bringup_observation
+// controller emits exactly those rows -- gunbc.machine_intake.mtcollins1_32dimm_bringup_observation
 // transcribes records 1084..1099 in that shape. A reader that admitted only six fields refused the
 // real log from the first threshold row, so a before/after snapshot of this BMC could never be
 // taken. The seventh field is admitted only when it is a rendered reading; any other seven-field

@@ -1,4 +1,4 @@
-module tools.merge_admission_capture
+module gunbc.instruments.merge_admission_capture
 
 import std.algebra { trim }
 
@@ -48,9 +48,9 @@ import gunbc.merge_admission_subject {
 // WHAT IS DORMANT IS THE ENTRY, NOT THE MODULE, and the difference is stated because the first
 // draft of this correction got it wrong in the direction that would have justified a cut. A
 // path-shaped grep (`instruments.merge_admission_walk`) answers a different question from a
-// module-shaped one (`tools.merge_admission_walk`), and only the second finds importers. What the
+// module-shaped one (`gunbc.instruments.merge_admission_walk`), and only the second finds importers. What the
 // second finds, for this pair: capture_walk_attempt_id is imported and called twice by
-// tools.merge_admission_walk; merge_admission_fetch_stall_deadline_seconds is imported by
+// gunbc.instruments.merge_admission_walk; merge_admission_fetch_stall_deadline_seconds is imported by
 // gunbc.instruments.merge_admission_current_context and by the enrolled witness
 // merge_admission_attempt_witness_test, which asserts its value. So the two Bool entries have no
 // callers while the modules around them are referenced and one exported constant is under live
@@ -63,7 +63,7 @@ import gunbc.merge_admission_subject {
 // FAILED is then indistinguishable from the child dying before writing, collapsing two of the three
 // states this wire exists to separate. This is the census's OutcomeSemanticallyRequired class, and
 // its members are NAMED rather than tallied: the pre-clear here, and the pre-clear plus the
-// refusal write in tools.merge_admission_walk. Two of those three sites carry the SAME defect --
+// refusal write in gunbc.instruments.merge_admission_walk. Two of those three sites carry the SAME defect --
 // a pre-clear whose failure lets a prior attempt's cause survive -- which is why two independent
 // readers of this classification reported the class as "two", counting defects where the roster
 // counts sites. Naming the members is what removes that ambiguity; a total would only have

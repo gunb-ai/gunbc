@@ -1,6 +1,6 @@
 module gunbc.claim_unwind_seed_growth
 
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -28,7 +28,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // the evaluator, and the substrate has no representation of a Rust stack unwinding through an
 // interpreter frame. Modeling it would require the .dag side to name the seed's own unwind
 // mechanism, a layer inversion and not a migration -- the boundary
-// gunbc.witness_runtime_cause_seed_growth records one seam over.
+// gunbc.witness.witness_runtime_cause_seed_growth records one seam over.
 //
 // WHAT IS NOT NETTED. Several existing items were MODIFIED rather than added and are
 // ExistingSeedItemModified per gunbc.seed_growth_admission SeedGrowthChangeDisposition, so they

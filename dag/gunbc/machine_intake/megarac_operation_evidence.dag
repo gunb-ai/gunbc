@@ -1,25 +1,25 @@
-module gunbc.machine_intake_megarac_operation_evidence
+module gunbc.machine_intake.megarac_operation_evidence
 
 import std.types { EpochMs, List }
 import std.content_hash { Sha256Digest, Sha256Hash }
 import std.decl_ref { decl_ref }
 import extdeps.bmc.endpoint { AmiMegaRac }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
-import gunbc.machine_intake_receipt { EvidenceRef }
-import gunbc.megarac_operation_standing {
+import gunbc.machine_intake.receipt { EvidenceRef }
+import gunbc.host.megarac_operation_standing {
   MegaRacOperationEvidence, megarac_operation_evidence_of, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming,
   megarac_build_reading, megarac_operation_receipt, megarac_firmware_transition,
 }
-import gunbc.machine_intake_mtcollins1_access_observation {
+import gunbc.machine_intake.mtcollins1_access_observation {
   mtcollins1_endpoint, mtcollins1_firmware, mtcollins1_identity, mtcollins1_evidence_manifest_digest, mtcollins1_observed_at,
 }
-import gunbc.machine_intake_mtcollins1_diskless_boot_receipt {
+import gunbc.machine_intake.mtcollins1_diskless_boot_receipt {
   mtcollins1_diskless_boot_artifact_path, mtcollins1_diskless_boot_capture_digest, mtcollins1_diskless_boot_observed_at,
 }
-import gunbc.machine_intake_mtcollins1_32dimm_bringup_observation { mtcollins1_sdr_capture }
+import gunbc.machine_intake.mtcollins1_32dimm_bringup_observation { mtcollins1_sdr_capture }
 
 // THE COMMITTED EVIDENCE OF WHICH MEGARAC OPERATIONS RAN ON WHICH CONTROLLER BUILD, one row per capture
-// (gunbc.megarac_operation_standing joins them). Every row cites a committed artifact by path and
+// (gunbc.host.megarac_operation_standing joins them). Every row cites a committed artifact by path and
 // digest, except the reflash, whose record is the session that performed it. Adding a controller, or a
 // later build of this one, is a row here beside the capture that grounds it -- never an edit of the
 // join or of the admission.
@@ -40,7 +40,7 @@ import gunbc.machine_intake_mtcollins1_32dimm_bringup_observation { mtcollins1_s
 //     0.45.3 until the build is read.
 
 data mtcollins1_intake_reading_evidence: EvidenceRef = EvidenceRef {
-  label: "mtcollins1 intake capture and write exercise (gunbc.machine_intake_mtcollins1_access_observation mtcollins1_evidence_manifest_digest)",
+  label: "mtcollins1 intake capture and write exercise (gunbc.machine_intake.mtcollins1_access_observation mtcollins1_evidence_manifest_digest)",
   digest: mtcollins1_evidence_manifest_digest,
 }
 

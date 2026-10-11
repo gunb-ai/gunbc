@@ -4,10 +4,10 @@ import std.types { String }
 import gunbc.workspace_commissioning_executor_fence { WorkspaceExecutorControllerPermit, workspace_executor_controller_still_owned }
 import v2.std.algebra { filter }
 import gunbc.workspace_slot_mutation { workspace_commissioning_mutation_held }
-import gunbc.runner_microvm_cell_readiness { StoreRead, StoreRootOwned, CellSettled, record_cell , record_ready_cell_at, StoreNotRootOwned, StoreUnreadable }
-import gunbc.build_cache_instance { runner_slot_instance_name }
+import gunbc.runner.runner_microvm_cell_readiness { StoreRead, StoreRootOwned, CellSettled, record_cell , record_ready_cell_at, StoreNotRootOwned, StoreUnreadable }
+import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 import product.fabric.sanitation { CellId, CellReady, SlotScopedNetwork, cell_readiness_from_observations, CellQuarantined }
-import gunbc.runner_microvm_network { SlotNetworkSanitationSubject }
+import gunbc.runner.runner_microvm_network { SlotNetworkSanitationSubject }
 import gunbc.workspace_initial_sanitation { workspace_observe_initial_sanitation, WorkspaceInitialSanitationReadback, WorkspaceInitialSanitationUnavailable }
 import std.decl_ref { decl_ref }
 import gunbc.workspace_commissioning_admission_observe { workspace_commissioning_no_hold_refusal }
@@ -24,7 +24,7 @@ import gunbc.workspace_commissioning_store {
   WorkspaceCommissioningStorePublicationRefused, workspace_commissioning_store_admit_supply,
   WorkspaceCommissioningSupplyReady, WorkspaceCommissioningSupplyRefused,
 }
-import gunbc.runner_microvm_cell_readiness_store {
+import gunbc.runner.runner_microvm_cell_readiness_store {
   read_cell_readiness_store, persist_cell_readiness_write, StorePersisted, StorePersistCellNotAddressable, StorePersistReadbackFailed, StorePersistReadbackMismatch, StorePersistRefusedByStore, StorePersistWriteFailed,
 }
 
@@ -39,7 +39,7 @@ type WorkspaceCommissioningReconciliation
 // durable phase. Every successful effect is followed by a fresh read on the next step.
 fn workspace_commissioning_reconcile(admitted: WorkspaceCommissionedSlot,
   provenance: WorkspaceCommissioningProvenance, network: SlotNetworkSanitationSubject, execution: WorkspaceExecutorControllerPermit) -> WorkspaceCommissioningReconciliation
-  admit_callers: [decl_ref(module_path: "gunbc.runner_microvm_slot_controller", decl_name: "workspace_slot_dispatch_directive")]
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_microvm_slot_controller", decl_name: "workspace_slot_dispatch_directive")]
 {
   let result = [0, 1, 2, 3] |> fold(init: WorkspaceCommissioningProgress, f: (prior, phase) => match prior {
     WorkspaceCommissioningProgress => workspace_commissioning_controller_step(admitted: admitted, provenance: provenance, network: network, execution: execution)

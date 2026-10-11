@@ -11,7 +11,7 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // obligation instead: a class below its ceiling naming what it waits on.
 //
 // THE SUBJECT, AND THE FIXTURE THAT DEMONSTRATES IT RATHER THAN A DESCRIPTION OF IT.
-// gunbc.tools.reference_binding_provenance_calibration declares two coproducts,
+// gunbc.instruments.reference_binding_provenance_calibration declares two coproducts,
 // CalibrationObservationKind and CalibrationResolutionArm, and two authored data lists that are
 // supposed to enumerate their variants. NOTHING BINDS EITHER LIST TO ITS TYPE. Measured on the
 // admission path, not argued: empty the arm list, supply cells = [], and every conjunct of the
@@ -85,8 +85,8 @@ data axis_list_re_enumerates_its_variant_type_stall: GuaranteeStall = GuaranteeS
   },
   population: BoundedPopulation {
     members: [
-      "gunbc.tools.reference_binding_provenance_calibration calibration_observation_kinds",
-      "gunbc.tools.reference_binding_provenance_calibration calibration_resolution_arms",
+      "gunbc.instruments.reference_binding_provenance_calibration calibration_observation_kinds",
+      "gunbc.instruments.reference_binding_provenance_calibration calibration_resolution_arms",
     ],
   },
   next_rung_trigger: climbs_when(capability: "constructor enumeration for a declared coproduct, sufficient that an axis list is DERIVED from its variant type rather than authored -- at which point a list short of its type has no constructor, because there is no list to omit a variant from. Stated as ENUMERATION OF THE TYPE and not as a completeness check over the list, because a check comparing the list to any other authored artifact is satisfied by editing that artifact while the axis stays short, which is DESIGN section 4b(3)'s trigger naming less than the capability it restores"),

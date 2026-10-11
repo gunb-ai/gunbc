@@ -98,7 +98,7 @@ import v2.workflow.floor_eval_step_calibration {
 //
 // THE RUNNER ENVELOPE NO LONGER BELONGS HERE, AND WHAT REPLACES IT (sharp-raven-357 review of
 // gunbc#13352, 2026-10-05). Until that change the margin was the per-subject line inside the p90
-// RUNNER envelope -- 1.653x, measured by `tools.floor_cost_distribution_instrument`
+// RUNNER envelope -- 1.653x, measured by `gunbc.instruments.floor_cost_distribution_instrument`
 // `floor_cost_envelope_report` over twelve green main runs on three hosts, p90 by operator ruling
 // 2026-09-11. That envelope is the spread of identical work ACROSS RUNNERS, and every reading this
 // gate judges is now normalised to the calibration runner's speed by the run's host-speed factor
@@ -247,7 +247,7 @@ fn floor_enrolment_dead_band_envelope_floor_ms_count() -> Int {
 // r > line / p90 -- so the line applied once more to the same measured envelope is where a row stops
 // being a fast runner's reading of a member over the line and becomes a claim cheap enough not to need
 // the row on any runner. Derived from floor_enrolment_margin_envelope_permille, never written.
-// Measured specimen: test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test
+// Measured specimen: test.claim.machine_intake.mtcollins1_boot_acceptance_matrix
 // an_interrupted_attempts_dead_hold_is_recovered_by_the_next_one read 523, 582 and 543 ms on srv1 and
 // srv3 (PR floor runs 36765162766, 36775473983, 36783312538) and 466 ms on srv4 in merge-group run
 // 36793281217, which staled its row and dequeued gunbc#12800.

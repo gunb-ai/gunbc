@@ -1,4 +1,4 @@
-module gunbc.fabric_ci_program
+module gunbc.fabric.fabric_ci_program
 
 import std.types { List, NonEmptyStr }
 

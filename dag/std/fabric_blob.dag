@@ -93,7 +93,7 @@ type FabricBlobReadingOutcome
 
 // THE SOLE MINT. One operation digests the file, measures it and names it, so the three cannot
 // describe different bytes. The handlers are consumed: extdeps.crypto.hash owns SHA-256 and its
-// sha256sum transport (the handler gunbc.fabric_m0_origin_readback mints OriginReading through), and
+// sha256sum transport (the handler gunbc.fabric.fabric_m0_origin_readback mints OriginReading through), and
 // extdeps.tools.coreutils_stat owns st_size. Every non-reading outcome refuses with a located cause.
 fn read_staged_fabric_blob(path: NonEmptyStr) -> FabricBlobReadingOutcome {
   let observed = crypto.Sha256Sum.File(path: path as String)

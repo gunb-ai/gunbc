@@ -24,7 +24,7 @@ import std.reference_binding_observation {
   SubjectModuleProductionRefused,
   structural_binding_resolution_from_candidates,
 }
-import gunbc.namespace_reference_derived_closure_admission {
+import gunbc.namespace.namespace_reference_derived_closure_admission {
   ReferenceDerivedClosureAdmission,
   assess_reference_binding_observation,
 }
@@ -44,7 +44,7 @@ import v1.gunbc.occurrence_binding_parser_walk {
 // subject: the four clauses are read out of a single ordinary compiled file, never out of four
 // sources shaped one per clause. Observation production returns neutral
 // std.reference_binding_observation carriers; the capability judgement is delegated, unchanged, to
-// the one assessment authority (gunbc.namespace_reference_derived_closure_admission), and the
+// the one assessment authority (gunbc.namespace.namespace_reference_derived_closure_admission), and the
 // module path each admission carries is the one THE PARSE DECLARED.
 
 // THE FOUR HARD-CODED FIXTURE SOURCES ARE DELETED, and the deletion is the point rather than
@@ -55,7 +55,7 @@ import v1.gunbc.occurrence_binding_parser_walk {
 // close the row. The per-clause red control the deleted note describes is preserved and
 // strengthened: a caller mutates the ONE subject so that exactly one rule breaks, and the
 // assessment refuses exactly that capability. The subject and its probe spellings are supplied by
-// the caller (gunbc.namespace_structural_observations_contract), so this module knows no fixture
+// the caller (gunbc.namespace.namespace_structural_observations_contract), so this module knows no fixture
 // text.
 
 type NrdfcParsed

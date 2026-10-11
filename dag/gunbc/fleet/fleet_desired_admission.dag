@@ -1,4 +1,4 @@
-module gunbc.fleet_desired_admission
+module gunbc.fleet.fleet_desired_admission
 
 import std.types { String, Bool, FilePath, GitRef, NonEmptyStr, CommitSha, Int }
 import extdeps.transports.rest {
@@ -33,7 +33,7 @@ import extdeps.github.push_event {
 import gunbc.repository { gunbc_repository }
 import extdeps.github.github { max_per_page }
 import extdeps.github.actions { github_event_name_merge_group }
-import gunbc.fleet_revision_acceptance {
+import gunbc.fleet.fleet_revision_acceptance {
   AcceptedFleetRevision,
   RequiredCiSucceeded,
   DefaultBranchRevisionObserved,
@@ -52,8 +52,8 @@ import gunbc.fleet_revision_acceptance {
 }
 import extdeps.git.plumbing { GitWorktreeAt }
 import gunbc.required_ci_epoch_observation { RequiredCiEpochObservation, observe_required_ci_epoch_at_commit }
-import gunbc.fleet_desired_observe { observe_fleet_revision_relation, observe_fleet_desired_revision, local_tree_revision, LocalTreeRevisionObserved, LocalTreeRevisionUnobserved }
-import gunbc.fleet_main_revision {
+import gunbc.fleet.fleet_desired_observe { observe_fleet_revision_relation, observe_fleet_desired_revision, local_tree_revision, LocalTreeRevisionObserved, LocalTreeRevisionUnobserved }
+import gunbc.fleet.fleet_main_revision {
   FleetDesiredAdvanceInput,
   FleetDesiredExpectationRefusedInput,
   FleetDesiredRefAbsentInput,
@@ -80,11 +80,11 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // THIS MODULE IS THE LIVE HALF OF THE ADMISSION GATE, AND IT EXISTS BECAUSE THE GATE HAD
-// NO PRODUCTION CONSUMER. gunbc.fleet_main_revision states the rule in its own header —
+// NO PRODUCTION CONSUMER. gunbc.fleet.fleet_main_revision states the rule in its own header —
 // the desired revision derives from MERGED, FLOOR-GREEN main, never from raw HEAD — and
 // models it as decide_fleet_desired_advance, whose refusal names the prevented class
 // ("raw-HEAD simultaneous fleet-bricking"). Until this module landed that function's ONLY
-// caller was its witness test, while the shell step emitted by gunbc.ci_spec
+// caller was its witness test, while the shell step emitted by gunbc.ci.ci_spec
 // (gunbc_ci_advance_fleet_desired_script) stamped $GITHUB_SHA on every push to main
 // without consulting it. That is specification-without-execution (DESIGN §5) with the
 // unproven path live: the modeled wall stood beside an actuator that walked around it.
@@ -96,13 +96,13 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // admission is keyed to that event and reads the conclusion GitHub delivers, rather than
 // inferring it from the trigger that happened to fire.
 //
-// WHAT THIS BUYS DOWNSTREAM, which is more than a correctly-named ref: gunbc.roadmap_belt_actuate
+// WHAT THIS BUYS DOWNSTREAM, which is more than a correctly-named ref: gunbc.roadmap.roadmap_belt_actuate
 // gates worker DISPATCH on revision standing, and its own note calls a dispatch from an
 // unadmitted tree "a worker spawned from code the fleet never admitted, reported as an
 // ordinary spawn". Advancing desired to whatever last landed makes that comparison agree
 // unconditionally, so the gate passes silently. Gating the advance is what gives the
 // dispatch gate something real to compare against.
-// The live consumer of gunbc.fleet_main_revision decide_fleet_desired_advance. See the annotation
+// The live consumer of gunbc.fleet.fleet_main_revision decide_fleet_desired_advance. See the annotation
 // above it.
 
 // The floor run's event payload, copied to a modeled path by the workflow step so the
@@ -158,7 +158,7 @@ type FleetDesiredAdmissionOutcome
 //
 // fleet_desired_admission_event_trusted and fleet_desired_floor_green are DELETED, not wrapped.
 // They answered "is this event a trustworthy floor result" and "was the floor green" with a String
-// option and a Bool, and gunbc.fleet_revision_acceptance now answers both as two typed
+// option and a Bool, and gunbc.fleet.fleet_revision_acceptance now answers both as two typed
 // propositions over one decoded revision. Keeping the old pair as helpers would have left two
 // authorities for one question -- the fork this lane spends its time removing -- and the Bool in
 // particular bound greenness to no revision at all.
@@ -262,7 +262,7 @@ fn fleet_desired_action_from_decision(
 // ONE SCAFFOLD OBLIGATION COVERS THE RENDERER AND ITS EXECUTOR, because they are one
 // independently removable unit: the renderer exists solely to feed that executor, both dissolve
 // into the same typed git CAS realization, and neither has a useful life without the other. The
-// predecessor this replaces (`gunbc.ci_spec` `gunbc_ci_advance_fleet_desired_script`) carried the
+// predecessor this replaces (`gunbc.ci.ci_spec` `gunbc_ci_advance_fleet_desired_script`) carried the
 // same pair of rows; re-declaring them here is where the remaining shell actually lives.
 //
 // THIS ROW AUTHORIZES NOTHING. `std.disposition.Scaffold` records the temporary construction and
@@ -272,13 +272,13 @@ fn fleet_desired_action_from_decision(
 data fleet_desired_authorized_action_shell_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.fleet_desired_admission",
+    module_path: "gunbc.fleet.fleet_desired_admission",
     decl_name: "fleet_desired_authorized_action_script",
     field: WholeDeclaration
   }
 }
 
-data fleet_desired_authorized_action_shell_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: fleet_desired_authorized_action_script + gunbc.fleet_desired_admission_workflow fleet_desired_admission_action_step — the admitted advance is a model-rendered shell script executed by `sh`. THE PREMISE THIS ROW CARRIED UNTIL 2026-08-21 WAS THAT NO TYPED COMPARE-AND-SWAP CARRIER EXISTED; that is now false and the honest remaining debt is narrower. extdeps.git.publication_transport PushRefUpdateWithLease IS the typed leased-push wire capability, and its own annotation states its rung: it takes `lease` and `refspec` as three independent NonEmptyStr, so nothing at that boundary requires them to have been derived from one GitRemoteRefCasRequest, and it collapses a REFUSED LEASE (an answer — the remote moved, re-observe and retry) into the same nonzero-plus-String as a TRANSPORT FAILURE (no answer at all). It has zero consumers. So what is missing is not the capability but the three things that would make it safe to be its first consumer: the sole request-to-wire binder push_remote_ref_compare_and_swap, a cited decoder for git's push-rejection output that separates a stale lease from a failed push, and an independent remote readback confirming the ref landed where the decision said. DISSOLVES WHEN those three land and this module reaches the remote through the binder instead of through rendered argv, at which point the renderer and the sh step are deleted together — not before, because moving to the typed row today would trade a shell that is honestly untyped for a typed call whose refusal semantics this gate cannot yet read.")
+data fleet_desired_authorized_action_shell_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: fleet_desired_authorized_action_script + gunbc.fleet.fleet_desired_admission_workflow fleet_desired_admission_action_step — the admitted advance is a model-rendered shell script executed by `sh`. THE PREMISE THIS ROW CARRIED UNTIL 2026-08-21 WAS THAT NO TYPED COMPARE-AND-SWAP CARRIER EXISTED; that is now false and the honest remaining debt is narrower. extdeps.git.publication_transport PushRefUpdateWithLease IS the typed leased-push wire capability, and its own annotation states its rung: it takes `lease` and `refspec` as three independent NonEmptyStr, so nothing at that boundary requires them to have been derived from one GitRemoteRefCasRequest, and it collapses a REFUSED LEASE (an answer — the remote moved, re-observe and retry) into the same nonzero-plus-String as a TRANSPORT FAILURE (no answer at all). It has zero consumers. So what is missing is not the capability but the three things that would make it safe to be its first consumer: the sole request-to-wire binder push_remote_ref_compare_and_swap, a cited decoder for git's push-rejection output that separates a stale lease from a failed push, and an independent remote readback confirming the ref landed where the decision said. DISSOLVES WHEN those three land and this module reaches the remote through the binder instead of through rendered argv, at which point the renderer and the sh step are deleted together — not before, because moving to the typed row today would trade a shell that is honestly untyped for a typed call whose refusal semantics this gate cannot yet read.")
 
 // THE REFUSAL AN OPERATOR ACTUALLY READS, FACTORED OUT SO A WITNESS CAN CONSUME IT. This text
 // was twice stronger than the mechanism -- first claiming the run recorded "which code

@@ -18,8 +18,8 @@ data rust_string_literal_grammar_authority: ExternalAuthority = ExternalAuthorit
 // THE RUST COOKED STRING-LITERAL ESCAPE RULE, ONCE.
 //
 // WHY IT LIVES IN extdeps: what must be escaped inside a Rust string literal is decided by the Rust
-// reference, not by us. This body was authored identically in gunbc.v1_interpreter_dispatch_emit and
-// gunbc.stage0_crate_layout_emit -- two copies of one upstream fact, in modules whose subjects are
+// reference, not by us. This body was authored identically in gunbc.v1.v1_interpreter_dispatch_emit and
+// gunbc.stage0.stage0_crate_layout_emit -- two copies of one upstream fact, in modules whose subjects are
 // interpreter dispatch and crate layout. A third copy was about to be authored for the
 // evaluation-budget consequence projection; DESIGN section 2's test for a real decomposition is that
 // net concepts must not grow by re-invention, so the concept moved here and both emitters read it.

@@ -39,7 +39,7 @@ fn address_continuity<A>(from: A, to: A, address_eq: fn(A, A) -> Bool) -> Addres
 
 // The LIVE specimen that makes declared intermediates a requirement rather than a nicety: srv4's
 // build-cache server died with its cgroup, never unlinked its socket, and ran uncached for weeks
-// because nobody modeled the intermediate state. gunbc.build_cache_instance already says IN PROSE
+// because nobody modeled the intermediate state. gunbc.build_cache.build_cache_instance already says IN PROSE
 // that a managed unit must clear a stale endpoint on start — and a sentence in prose is the one
 // place no machine can read it (DESIGN §4c: any machine-consumed fact belongs in a typed carrier).
 // StagedIntermediates dissolved: a nonempty sequence of StagedIntermediate is

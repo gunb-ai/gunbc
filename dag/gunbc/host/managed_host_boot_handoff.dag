@@ -1,15 +1,15 @@
-module gunbc.managed_host_boot_handoff
+module gunbc.host.managed_host_boot_handoff
 
 import std.types { List, NonEmptyStr, String }
 import std.decl_ref { decl_ref }
 import std.optional { Present, Absent }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
-import gunbc.managed_host { ManagedHost, ManagedHostBound, ManagedHostAccessUnobserved, ManagedHostNotSecured, ManagedHostEndpointMismatch, OrdinaryMember, MemberUnderDeclaredDrop, managed_host_binding, managed_host_memberships }
-import gunbc.managed_host_unit_hold { UnitHoldProof, unit_hold_proof_refusal }
-import gunbc.managed_host_boot { AdmittedBootSubject, boot_subject_host }
-import gunbc.managed_host_boot_phase_timing { BootStart, BootStartUnobserved, boot_start_of }
-import gunbc.machine_intake_oob_boot_handoff {
+import gunbc.host.managed_host { ManagedHost, ManagedHostBound, ManagedHostAccessUnobserved, ManagedHostNotSecured, ManagedHostEndpointMismatch, OrdinaryMember, MemberUnderDeclaredDrop, managed_host_binding, managed_host_memberships }
+import gunbc.host.managed_host_unit_hold { UnitHoldProof, unit_hold_proof_refusal }
+import gunbc.host.managed_host_boot { AdmittedBootSubject, boot_subject_host }
+import gunbc.host.managed_host_boot_phase_timing { BootStart, BootStartUnobserved, boot_start_of }
+import gunbc.machine_intake.oob_boot_handoff {
   BootControlIssued,
   BootHandoffNotAdmitted,
   BootSelectionFlagInvalid,
@@ -37,7 +37,7 @@ import extdeps.bmc.ipmi_chassis_control { chassis_observation_text }
 // THE BOOT'S DRIVE OF A MANAGED HOST'S CONTROLLER: the selection, the account, the controller and the
 // capability row are all read off one AdmittedBootSubject, so the handoff cannot pair one host's
 // account with another's controller or the reset arm's selection with the boot arm's subject. The
-// operation (gunbc.machine_intake_oob_boot_handoff oob_boot_handoff) takes those as parameters because
+// operation (gunbc.machine_intake.oob_boot_handoff oob_boot_handoff) takes those as parameters because
 // which of them a workflow picks is business policy (DESIGN §3); the policy was decided by the
 // subject's admission, and this module only reads it.
 //
@@ -101,7 +101,7 @@ fn boot_handoff_render_outcome(label: NonEmptyStr, outcome: OobBootHandoffOutcom
 }
 
 // THE HANDOFF'S EXIT AND THE START IT OBSERVED, so the boot's phase timing can say whether the
-// attempt was a cold or a warm boot (gunbc.managed_host_boot_phase_timing) without a second chassis
+// attempt was a cold or a warm boot (gunbc.host.managed_host_boot_phase_timing) without a second chassis
 // read.
 type BootHandoffResult {
   outcome: ProcessExit
@@ -139,7 +139,7 @@ fn boot_drive_handoff(
   password_file_raw: String,
 ) -> BootHandoffResult
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_handoff_when_media_ready"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_handoff_when_media_ready"),
   ]
 {
   match unit_hold_proof_refusal(proof: proof, host: boot_subject_host(subject: subject), label: label as String) {

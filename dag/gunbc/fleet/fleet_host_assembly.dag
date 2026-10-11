@@ -1,4 +1,4 @@
-module gunbc.fleet_host_assembly
+module gunbc.fleet.fleet_host_assembly
 
 import std.types { List, NonEmptyStr, Bool }
 import std.list { list_cover }
@@ -22,8 +22,8 @@ import product.inventory {
   inventory_lot_identities_contain,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
-import gunbc.fleet_asset_identity {
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_asset_identity {
   chassis_srv1,
   chassis_srv2,
   chassis_srv3,
@@ -33,7 +33,7 @@ import gunbc.fleet_asset_identity {
 }
 // THE CATALOG REFERENCES COME FROM THE CENSUS, THEY ARE NOT MINTED AGAIN HERE. This module used to
 // declare altrad8ud_catalog_ref and cooler_catalog_ref naming the exact declarations
-// that gunbc.fleet_acquisition_census already names as altrad8ud_catalog_ref and
+// that gunbc.fleet.fleet_acquisition_census already names as altrad8ud_catalog_ref and
 // cooler_catalog_ref - two names for one concept, authored in the same change, which is the
 // nicknaming DESIGN section 3 calls the recurring violation. The failure is silent and delayed:
 // rename the upstream catalog declaration and whichever copy the author happened to grep for gets
@@ -42,8 +42,8 @@ import gunbc.fleet_asset_identity {
 //
 // The inline copies elsewhere in this tree - fleet_physical_inventory and fleet_fan_wiring - are
 // the same debt and not a precedent for adding more; they are a separate cleanup, not cover.
-import gunbc.fleet_physical_inventory { installed_cooler_containments }
-import gunbc.fleet_acquisition_census {
+import gunbc.fleet.fleet_physical_inventory { installed_cooler_containments }
+import gunbc.fleet.fleet_acquisition_census {
   altrad8ud_board_lot_identity,
   fleet_ledger_identities,
   altrad8ud_catalog_ref,
@@ -221,7 +221,7 @@ data srv_assembly_components: List<AssembledComponent> = [
   lot_component(host: operator_host_srv4, component: cooler_srv4, catalog: CatalogRowExact { row: cooler_catalog_ref }, lot: cooler_srv4_lot_identity),
 ]
 
-// Cooler-to-host containments for srv3/srv4 already live in gunbc.fleet_physical_inventory
+// Cooler-to-host containments for srv3/srv4 already live in gunbc.fleet.fleet_physical_inventory
 // installed_cooler_containments. CONSUME those same edges here rather than merely noting they
 // exist elsewhere, so the join actually checks the cooler rows against the authority owning them.
 data srv_assembly_containments: List<PhysicalContainment> = concat([
@@ -253,7 +253,7 @@ data srv_assembly_containments: List<PhysicalContainment> = concat([
 
 // ADMISSION IS A QUESTION FOR THE CENSUS, NOT A LIST TYPED HERE. This predicate used to answer it
 // by comparing against three hand-named lot identities, which is a second source for a fact
-// gunbc.fleet_acquisition_census already owns in fleet_ledger_identities - the nicknaming DESIGN
+// gunbc.fleet.fleet_acquisition_census already owns in fleet_ledger_identities - the nicknaming DESIGN
 // section 3 calls the recurring violation, and section 5's tell that a check is re-stating a
 // constraint the model already carries. The failure was silent and delayed in the worst direction:
 // drop or rename a lot in the census and this kept answering TRUE under a name claiming census
@@ -345,7 +345,7 @@ fn containment_has_component(containments: List<PhysicalContainment>, host: Host
 // EITHER direction, and a chassis discharges through the edge it actually has.
 //
 // THE COOLER EXEMPTION IS GONE BECAUSE ITS STATED REASON HAD BECOME FALSE. It read "a cooler is
-// exempt because no containment edge is modeled for it at all", and gunbc.fleet_physical_inventory
+// exempt because no containment edge is modeled for it at all", and gunbc.fleet.fleet_physical_inventory
 // installed_cooler_containments models exactly those edges - HostContainsComponent for the srv3
 // and srv4 coolers - which the comment above srv_assembly_containments already pointed at. A
 // divergence admitted under DESIGN section 3b stays admitted only while its stated reason holds;

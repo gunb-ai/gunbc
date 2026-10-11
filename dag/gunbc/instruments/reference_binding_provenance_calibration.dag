@@ -1,4 +1,4 @@
-module gunbc.tools.reference_binding_provenance_calibration
+module gunbc.instruments.reference_binding_provenance_calibration
 
 import std.types { Bool, Int, List, SourceSpan, String, list_length }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
@@ -47,7 +47,7 @@ import std.reference_binding_observation {
   RepeatedMentionDependencyObservation,
   UnrelatedLoadedFileObservation,
 }
-import gunbc.namespace_reference_derived_closure_admission {
+import gunbc.namespace.namespace_reference_derived_closure_admission {
   ReferenceDerivedClosureAdmission,
   ReferenceDerivedClosureEstablished,
   ReferenceDerivedClosureRefused,
@@ -511,7 +511,7 @@ fn cell_distinguishability(
   if list_length(items: colliding) > 0 {
     ProvenanceCollapsed {
       collapses_with: join_labels(labels: colliding),
-      mechanism: "gunbc.namespace_reference_derived_closure_admission.binding_outcome_from_resolution maps every non-Resolved arm to Absent, and each consumer arm maps Absent to the same refused(capability, failure) as a structural non-match",
+      mechanism: "gunbc.namespace.namespace_reference_derived_closure_admission.binding_outcome_from_resolution maps every non-Resolved arm to Absent, and each consumer arm maps Absent to the same refused(capability, failure) as a structural non-match",
     }
   } else {
     ProvenanceDistinguished { admission: cell_render(kind: kind, arm: arm) }
@@ -588,7 +588,7 @@ fn consumer_standing_for(
                   "fixture transport: three declarations spelled \"x\" (oids 1,2,3), one reference (oid 10); arm ",
                   concat(resolution_arm_label(a: intended_arm),
                     concat(" carried by a ", concat(observation_kind_label(k: intended_kind),
-                      concat(" observation, EXECUTED through gunbc.namespace_reference_derived_closure_admission.assess_reference_binding_observation, which returned ",
+                      concat(" observation, EXECUTED through gunbc.namespace.namespace_reference_derived_closure_admission.assess_reference_binding_observation, which returned ",
                         admission_render(a: assess_reference_binding_observation(observation: observation))))))),
               }
             }
@@ -706,7 +706,7 @@ fn calibration_body_of(cells: List<ProvenanceCell>) -> String {
   fold(cells, init: concat(
     "reference-occurrence binding provenance -- Step 0 calibration matrix\n",
     concat("observation kind x resolution arm, on controlled fixtures, judged by the real consumer\n",
-      concat("gunbc.namespace_reference_derived_closure_admission.assess_reference_binding_observation\n\n",
+      concat("gunbc.namespace.namespace_reference_derived_closure_admission.assess_reference_binding_observation\n\n",
         concat("The axes are the vocabulary std DECLARES, bound by the exhaustive matches\n",
           concat("arm_of_resolution and kind_of_observation -- not the cases this run produced.\n",
             "A count of populated cells is NOT reported and is not a completeness figure.\n\n"))))),

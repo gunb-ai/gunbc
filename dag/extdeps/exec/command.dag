@@ -69,7 +69,7 @@ type ArgvCommand sole_constructor {
 // command_over_transport cannot compose an SshExec without naming them. Moving them out would leave
 // the transport unable to build its own outer invocation, or force an import cycle to get it back.
 // If a second ssh realization ever lands, that is the moment this becomes a real product
-// enumeration and the pair moves to extdeps.ssh with the transport dispatching over them.
+// enumeration and the pair moves to extdeps.ssh.keys with the transport dispatching over them.
 //
 // No test declaration is admitted. A witness obtains an ArgvCommand through a production builder,
 // the same way production does -- the rule extdeps.shell.exec transport_script_seal already sets.
@@ -153,8 +153,8 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.printing.orca_slicer", decl_name: "orca_version_probe_command"),
     decl_ref(module_path: "extdeps.cadquery.cadquery", decl_name: "cadquery_run_program_command"),
     decl_ref(module_path: "extdeps.cadquery.cadquery", decl_name: "cadquery_import_probe_command"),
-    decl_ref(module_path: "extdeps.dpkg", decl_name: "dpkg_query_status_command"),
-    decl_ref(module_path: "extdeps.cargo_build", decl_name: "cargo_clippy_command"),
+    decl_ref(module_path: "extdeps.package_managers.dpkg", decl_name: "dpkg_query_status_command"),
+    decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_clippy_command"),
     decl_ref(module_path: "extdeps.tools.sed", decl_name: "sed_in_place_command"),
     decl_ref(module_path: "extdeps.tools.xorriso", decl_name: "xorriso_extract_command"),
     decl_ref(module_path: "extdeps.tools.xorriso", decl_name: "xorriso_extract_tree_command"),
@@ -283,7 +283,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_test_command"),
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_run_command"),
     decl_ref(module_path: "gunbc.claim_executor_cli", decl_name: "claim_executor_command"),
-    decl_ref(module_path: "gunbc.repo_local_git_config", decl_name: "reconcile_install_command"),
+    decl_ref(module_path: "gunbc.repo.repo_local_git_config", decl_name: "reconcile_install_command"),
   ]
   = ArgvCommand { program: program, arguments: arguments }
 
@@ -318,7 +318,7 @@ data sshpass_authority: ExternalAuthority = ExternalAuthority {
 // accepted interim because the targets are LAN-scoped fleet members and BMCs whose host keys are
 // not yet provisioned facts. sshpass (its own upstream, anchor above) feeds the password via -e
 // (SSHPASS env), never argv. DISSOLVES WHEN known-hosts provisioning lands on
-// gunbc.fleet_ssh_access (pinned host key per fleet member) and these options drop both overrides
+// gunbc.fleet.fleet_ssh_access (pinned host key per fleet member) and these options drop both overrides
 // in favor of a pinned UserKnownHostsFile.
 
 // The transport's own program, split from its flags for the same reason ArgvCommand splits them:
@@ -385,7 +385,7 @@ fn shell_command_render(command: ArgvCommand) -> String {
   join(map(argv_words(command: command), a => shell_quote(arg: a)), " ")
 }
 
-data program_spelling_is_an_observation_claim: String = "WHICH SPELLING OF A PROGRAM A BUILDER CARRIES IS A CLAIM, AND THE TWO FORMS ANSWER DIFFERENT QUESTIONS (still-seal-394, 2026-08-22 -- recorded here once rather than repeated at every row it governs). An ABSOLUTE PATH is a claim that this repository has OBSERVED the target's filesystem, and where that claim is true it is the STRONGER form and the one to prefer: it is what a sudoers NOPASSWD rule can name and what a preflight can test for. extdeps.tools.mkdir, extdeps.tools.chmod, extdeps.tools.stat, extdeps.tools.id, extdeps.tools.chown and extdeps.sudo.elevation carry absolute paths for exactly that reason, each with a consumer that needs the path. PATH RESOLUTION is correct where the host is UNOBSERVED -- a BMC, a fleet member, a runner image nobody has read -- because there an absolute path fabricates a host fact (DESIGN section 5), and it is what the hand-spelled call sites this seal converted were already doing. THE RULE IS NOT 'BARE IS THE SAFE DEFAULT', and an earlier revision of this lane got that backwards in both directions within one afternoon: nine new rows were first written with invented absolute paths on the reasoning that a bare name declines to say which binary, then reverted wholesale on the reasoning that PATH is safer. Neither is the rule. Each row states which question it answers, and a row is only as good as the observation behind it. THE COUNTER-EXAMPLE THAT MAKES THIS LOAD-BEARING, and it is why a wrong absolute path is not merely cosmetic: gunbc.roadmap_dashboard_instance_apply carried /usr/bin/chmod both as the program its install step execs and in the required-executable roster its preflight tests, while extdeps.tools.chmod records /bin/chmod for the same fleet -- so the preflight gated a path no sanctioned caller runs, and passed only because those hosts are usrmerged. NEXT-RUNG TRIGGER for every PATH-resolved row this lane landed: a real filesystem observation of the target -- a preflight receipt or a provisioning fact naming the binary -- at which point that row becomes an absolute path with the observation as its citation, and the class climbs from 'we did not look' to 'we looked and this is where it is'."
+data program_spelling_is_an_observation_claim: String = "WHICH SPELLING OF A PROGRAM A BUILDER CARRIES IS A CLAIM, AND THE TWO FORMS ANSWER DIFFERENT QUESTIONS (still-seal-394, 2026-08-22 -- recorded here once rather than repeated at every row it governs). An ABSOLUTE PATH is a claim that this repository has OBSERVED the target's filesystem, and where that claim is true it is the STRONGER form and the one to prefer: it is what a sudoers NOPASSWD rule can name and what a preflight can test for. extdeps.tools.mkdir, extdeps.tools.chmod, extdeps.tools.stat, extdeps.tools.id, extdeps.tools.chown and extdeps.sudo.elevation carry absolute paths for exactly that reason, each with a consumer that needs the path. PATH RESOLUTION is correct where the host is UNOBSERVED -- a BMC, a fleet member, a runner image nobody has read -- because there an absolute path fabricates a host fact (DESIGN section 5), and it is what the hand-spelled call sites this seal converted were already doing. THE RULE IS NOT 'BARE IS THE SAFE DEFAULT', and an earlier revision of this lane got that backwards in both directions within one afternoon: nine new rows were first written with invented absolute paths on the reasoning that a bare name declines to say which binary, then reverted wholesale on the reasoning that PATH is safer. Neither is the rule. Each row states which question it answers, and a row is only as good as the observation behind it. THE COUNTER-EXAMPLE THAT MAKES THIS LOAD-BEARING, and it is why a wrong absolute path is not merely cosmetic: gunbc.roadmap.roadmap_dashboard_instance_apply carried /usr/bin/chmod both as the program its install step execs and in the required-executable roster its preflight tests, while extdeps.tools.chmod records /bin/chmod for the same fleet -- so the preflight gated a path no sanctioned caller runs, and passed only because those hosts are usrmerged. NEXT-RUNG TRIGGER for every PATH-resolved row this lane landed: a real filesystem observation of the target -- a preflight receipt or a provisioning fact naming the binary -- at which point that row becomes an absolute path with the observation as its citation, and the class climbs from 'we did not look' to 'we looked and this is where it is'."
 
 // Typed ArgvCommand builders (§2): each derives the argv for one tool operation so the opaque flags
 // (dash-f, dash-p, --strip-components, ...) live in ONE place, not hand-spelled per call site. A

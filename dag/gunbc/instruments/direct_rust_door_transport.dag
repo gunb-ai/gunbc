@@ -1,6 +1,6 @@
-module tools.direct_rust_door_transport
+module gunbc.instruments.direct_rust_door_transport
 
-import extdeps.cargo_build
+import extdeps.rust.cargo_build
 import extdeps.shell
 import v2.compiler.self_host.fixture_synthetic_emission {
   advance_written_synthetic_emitted_artifact_cargo_green,

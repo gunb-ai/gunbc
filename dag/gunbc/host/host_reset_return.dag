@@ -1,4 +1,4 @@
-module gunbc.host_reset_return
+module gunbc.host.host_reset_return
 
 import std.types { Bool, EpochMs, Int, List, Milliseconds, NonEmptyStr, String, list_length }
 import std.algebra { trim }
@@ -539,7 +539,7 @@ fn reset_downtime(observation: HostReturnObservation) -> Measured<Milliseconds> 
 // own output certifies nothing against that run -- it only protects the bytes from LATER mutation,
 // which is a property of the committed artifact and not of the execution. So the split is between
 // what a machine observed and what a committed artifact says, and it is the same split
-// gunbc.machine_intake_mtcollins1_access_observation already draws: the unit answered, the bytes were
+// gunbc.machine_intake.mtcollins1_access_observation already draws: the unit answered, the bytes were
 // committed, and the digest is a row over the committed file.
 //
 // AND IT HAS NO CONSTRUCTOR OUTSIDE THIS MODULE. sole_constructor is enforced at the module boundary

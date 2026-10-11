@@ -1,18 +1,18 @@
-module gunbc.runner_activation
+module gunbc.runner.runner_activation
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import product.host_identity { HostIdentity }
 import extdeps.exec.command { ArgvCommand }
-import gunbc.runner_host_deploy {
+import gunbc.runner.runner_host_deploy {
   RunnerHostDeploy, RunnerHostAdmission, RunnerHostEnrolled, RunnerHostUnenrolled,
   RunnerCommandOrRefusal, RunnerCommandReady, RunnerCommandRefused,
   runner_enable_command_argv, runner_instance_names,
 }
-import gunbc.host_layout {
+import gunbc.host.host_layout {
   CompilePoolSliceDeclared, CompilePoolInRunnerSlots,
 }
-import gunbc.build_cache_instance {
+import gunbc.build_cache.build_cache_instance {
   BuildCacheInstance, BuildCacheServerPlacement,
   ServerManagedUnitOwned, ServerRunnerOwned, ServerUnsupervised,
   ServerPlacementAbsent, ServerPlacementUnknown,
@@ -29,7 +29,7 @@ data runner_activation_scope_disposition: ConstructionMechanism = SingleAuthorit
 // its first cache-miss compile will connect-or-start, and if no managed endpoint owner exists that
 // start happens inside the runner's own cgroup, where it survives as the host's de facto build
 // cache under one slot's memory ceiling.\n\nSo the prerequisite belongs on ACTIVATION and nowhere
-// else. This module owns that moment; gunbc.runner_host_deploy keeps materialization and no longer
+// else. This module owns that moment; gunbc.runner.runner_host_deploy keeps materialization and no longer
 // offers an enable path at all. The two live in different modules because the dependency has to run
 // one way: activation needs the deployed-instance model, materialization does not, and a single
 // module owning both would have to import the cache authority into the installer's own
@@ -58,7 +58,7 @@ data runner_activation_scope_disposition: ConstructionMechanism = SingleAuthorit
 // So the receipt does not hold a placement at all. A managed unit name is the ONLY ownership fact
 // it can express, and there is no way to write 'ready but runner-owned' or 'ready but placement
 // unknown' into it, because those states have no field to occupy. The placement coproduct stays
-// where it belongs — on the observation — and gunbc.build_cache_instance_readiness is the single
+// where it belongs — on the observation — and gunbc.build_cache.build_cache_instance_readiness is the single
 // producer that joins every required positive observation before constructing this proof-shaped
 // receipt.
 
@@ -72,7 +72,7 @@ type BuildCacheInstanceReady {
 // into a managed unit relocates where every cache-miss compiler's memory is charged. A managed
 // server inside no declared pool is not an improvement on a runner-owned one; it is the same
 // unbounded charge under a different parent. The two receipts are therefore both required and
-// neither implies the other. gunbc.host_compile_pool derives this receipt from the declared
+// neither implies the other. gunbc.host.host_compile_pool derives this receipt from the declared
 // topology, sizing and slice observation; under today's CompilePoolInRunnerSlots topology it
 // correctly produces not-ready for every host.
 
@@ -194,7 +194,7 @@ fn admit_runner_activation(
 // RunnerHostAdmission, and yields an enable command. runner_activate_command consumes
 // RunnerActivationAdmission, and its refusal arm carries no command at all — so 'enable a runner
 // without a grounded managed cache' is unrepresentable rather than discouraged.
-// gunbc.runner_host_deploy's readiness-blind runner_enable_command is deleted rather than
+// gunbc.runner.runner_host_deploy's readiness-blind runner_enable_command is deleted rather than
 // deprecated; leaving it would leave the old path constructible, and a wall with a door beside it
 // is a sign.\n\nHONEST RESIDUAL, inherited from the enrollment wall this mirrors and stated for the
 // same reason: .dag has no visibility modifiers yet, so a caller can hand-write
@@ -212,7 +212,7 @@ fn runner_activate_command(admission: RunnerActivationAdmission) -> RunnerComman
   }
 }
 
-// RED-control fixture modeling the arm this module exists to delete: an activation builder that consumes the host admission and ignores cache readiness entirely. It is not hypothetical — it is a faithful copy of gunbc.runner_host_deploy's runner_enable_command as it stood on main, which is the path every host in the fleet was actually activated through, and therefore the path that produced srv1's stranded server, srv2's and srv3's runner-owned ones, and srv4's stale-socket trap. runner_activation_gate_accepts rejects it on exactly the inputs the fleet hit live.
+// RED-control fixture modeling the arm this module exists to delete: an activation builder that consumes the host admission and ignores cache readiness entirely. It is not hypothetical — it is a faithful copy of gunbc.runner.runner_host_deploy's runner_enable_command as it stood on main, which is the path every host in the fleet was actually activated through, and therefore the path that produced srv1's stranded server, srv2's and srv3's runner-owned ones, and srv4's stale-socket trap. runner_activation_gate_accepts rejects it on exactly the inputs the fleet hit live.
 fn runner_activation_readiness_blind_widen_sketch(
   host_admission: RunnerHostAdmission,
 ) -> RunnerCommandOrRefusal {
@@ -244,7 +244,7 @@ fn runner_activation_gate_accepts(
 
 // This projection remains deliberately PARTIAL. Given any endpoint observation, it answers only
 // whether its placement could support activation at all — and only ServerManagedUnitOwned can. It
-// does not build a BuildCacheInstanceReady: gunbc.build_cache_instance_readiness owns that
+// does not build a BuildCacheInstanceReady: gunbc.build_cache.build_cache_instance_readiness owns that
 // construction and also requires executable, principal, storage, capacity and exact compile-pool
 // nesting. Manufacturing the receipt from placement alone would fabricate those independent
 // observations.

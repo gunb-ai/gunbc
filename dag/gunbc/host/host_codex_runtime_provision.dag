@@ -1,4 +1,4 @@
-module gunbc.host_codex_runtime_provision
+module gunbc.host.host_codex_runtime_provision
 
 import std.types { String, NonEmptyStr, Bool, FilePath }
 import std.disposition { ConstructionMechanism, Disposition, Scaffold, RealizationDispatch, Terminal, SingleAuthority }
@@ -6,9 +6,9 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io
 import product.host_identity { HostIdentity }
-import gunbc.host_toolchain_ensure { host_toolchain_ensure, CodexRuntime }
-import gunbc.host_effect { HostEffect, ProvisionCodexRuntime }
-import gunbc.host_layout {
+import gunbc.host.host_toolchain_ensure { host_toolchain_ensure, CodexRuntime }
+import gunbc.host.host_effect { HostEffect, ProvisionCodexRuntime }
+import gunbc.host.host_layout {
   provider_runtime_placement_for_host,
   srv1_gunbc_repo_root,
   srv1_gunbc_serve_binary,
@@ -25,7 +25,7 @@ import gunbc.package_delivery {
 data host_codex_runtime_provision_scope_disposition: ConstructionMechanism = SingleAuthority
 
 // Assimilation (host_standup P1c) plus recurring reconcile: fleet_converge_policy registers
-// codex_runtime_bundle on every fleet compute host, and gunbc.fleet_converge_cli
+// codex_runtime_bundle on every fleet compute host, and gunbc.fleet.fleet_converge_cli
 // converge_provider_runtime_codex_receipt runs ProvisionCodexRuntime on every `gunbc converge` for
 // srv1–srv4 after slice1/knob-frontier work (converge_cli_run_host_knobs) and before
 // converge-receipt publication. Standup alone would not heal already-assimilated hosts; the
@@ -34,7 +34,7 @@ data host_codex_runtime_provision_scope_disposition: ConstructionMechanism = Sin
 data host_codex_runtime_provision_realize_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
-    module_path: "gunbc.host_effect_realize",
+    module_path: "gunbc.host.host_effect_realize",
     decl_name: "realize_provision_codex_runtime",
     field: WholeDeclaration,
   }
@@ -45,19 +45,19 @@ fn provision_codex_runtime_effect() -> HostEffect {
 }
 
 // The observe/read-back argv builder (codex_runtime_observe_argv) lives in
-// gunbc.host_codex_runtime_provision_verdict, not here — this module imports
-// gunbc.host_toolchain_ensure, and host_toolchain_ensure imports gunbc.host_effect_realize, so an
+// gunbc.host.host_codex_runtime_provision_verdict, not here — this module imports
+// gunbc.host.host_toolchain_ensure, and host_toolchain_ensure imports gunbc.host.host_effect_realize, so an
 // argv builder consumed by host_effect_realize cannot live in this module without a
-// gunbc.host_effect_realize -> gunbc.host_codex_runtime_provision -> gunbc.host_toolchain_ensure ->
-// gunbc.host_effect_realize cycle. gunbc.host_effect_realize runs observe, materialize, then
+// gunbc.host.host_effect_realize -> gunbc.host.host_codex_runtime_provision -> gunbc.host.host_toolchain_ensure ->
+// gunbc.host.host_effect_realize cycle. gunbc.host.host_effect_realize runs observe, materialize, then
 // read-back as three typed single-command steps: LocalShell dispatches through the existing typed
 // argv services gunbc.WitnessBin.Run (observe/read-back) and gunbc.Cli.Run (materialize, argv built
 // inline from gunbc.cli_invoke gunbc_run_transport_argv against
 // materialize_codex_runtime_on_local_host below); SshShell/FleetSsh dispatch
 // codex_runtime_observe_argv (and the equivalent materialize argv) through
 // run_typed_argv_transport. Branching (does the version match? did materialize fail?) is decided in
-// .dag from the typed exec result (exit code, stdout) by gunbc.host_effect_realize /
-// gunbc.host_codex_runtime_provision_verdict, not by shell if/grep/printf receipt markers. There is
+// .dag from the typed exec result (exit code, stdout) by gunbc.host.host_effect_realize /
+// gunbc.host.host_codex_runtime_provision_verdict, not by shell if/grep/printf receipt markers. There is
 // no standalone mkdir-release-parent argv: materialize_codex_runtime_bundle's own call chain
 // (release_codex_runtime_bundle_immutable) already runs shell.Mkdir.Parents on release_parent, so a
 // duplicate pre-step would be redundant work.
@@ -68,7 +68,7 @@ fn provision_codex_runtime_routes_through_host_effect_apply() -> Bool {
       dissolves_to: RealizationDispatch,
       bind: DeclarationRef { module_path: m, decl_name: n, field: _ },
     } =>
-      m == "gunbc.host_effect_realize" && n == "realize_provision_codex_runtime"
+      m == "gunbc.host.host_effect_realize" && n == "realize_provision_codex_runtime"
     Terminal { reason: _ } => false
     Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
     Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false

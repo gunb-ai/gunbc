@@ -2,7 +2,7 @@ module gunbc.red_lib_population_seed_growth
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { String }
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 
 // Hand src/v1 Rust added while greening the v1-compiler --lib population on main. Every item

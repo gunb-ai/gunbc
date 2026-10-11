@@ -1,4 +1,4 @@
-module gunbc.host_boot_attempt_admission
+module gunbc.host.host_boot_attempt_admission
 
 import v2.std.algebra { any }
 import std.types { Bool, FilePath, GitRef, Int, List, NonEmptyStr, String }
@@ -18,7 +18,7 @@ import gunbc.durable_cas_file_store {
 import extdeps.git.inspect
 import extdeps.git
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_stdin_digest_via_shell }
-import gunbc.namespace_step0_subject_collector { Step0TreeEntryDecoded, Step0TreeEntryUndecodable, step0_decode_tree_entry, step0_entry_is_regular_blob, step0_subject_entries_at }
+import gunbc.namespace.namespace_step0_subject_collector { Step0TreeEntryDecoded, Step0TreeEntryUndecodable, step0_decode_tree_entry, step0_entry_is_regular_blob, step0_subject_entries_at }
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
 import extdeps.languages.json.parse {
   JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text,
@@ -29,13 +29,13 @@ import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.ampere.mt_collins_getting_started_guide.dimm_layout { MtCollinsDimmFigureBank, dimm_figure_banks, dimm_figure_connector_label_prefix }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_before }
 import gunbc.actions_run_binding { ActionsVariableRead, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_read }
-import gunbc.fleet_intent_network { operator_host_mtcollins1 }
-import gunbc.managed_host {
+import gunbc.fleet.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.host.managed_host {
   ManagedHost, ManagedHostBinding, managed_host_binding,
   ManagedHostBound, ManagedHostAccessUnobserved, ManagedHostNotSecured, ManagedHostEndpointMismatch,
 }
-import gunbc.managed_host_unit_hold { UnitHoldProof, UnitHoldStoreExecutor, UnitHoldOnStoreHost, UnitHoldNotOnStoreHost, unit_hold_store_executor }
-import gunbc.machine_intake_mtcollins1_power_on_account {
+import gunbc.host.managed_host_unit_hold { UnitHoldProof, UnitHoldStoreExecutor, UnitHoldOnStoreHost, UnitHoldNotOnStoreHost, unit_hold_store_executor }
+import gunbc.machine_intake.mtcollins1_power_on_account {
   AttemptConfigurationReceipt, digest_label, ExpectedTopology, ExpectedSockets, ExpectedTopologyNotRecorded,
   StimulusRequest, StimulusRequested, NoStimulusRequested, StimulusRequestNotRecorded,
   StimulusApplication, StimulusAppliedByReceipt, StimulusApplicationNotRecorded,
@@ -44,7 +44,7 @@ import gunbc.machine_intake_mtcollins1_power_on_account {
 }
 import extdeps.bmc.ipmitool_hpm_check { HpmCheckTable, HpmCheckRead, HpmCheckUpgradeVariant, HpmCheckUnreadable, hpm_version_cell_text }
 
-// THE ADMISSION OF ONE BOOT ATTEMPT'S CONFIGURATION RECEIPT, host-generic over a gunbc.managed_host
+// THE ADMISSION OF ONE BOOT ATTEMPT'S CONFIGURATION RECEIPT, host-generic over a gunbc.host.managed_host
 // ManagedHostBinding (docs/plans/power-on-sequence-model.md section 12; Q5 decided by eager-gull-22
 // 2026-10-03; Q6 decided by the operator, escalation msg_1b57e749 approved by default after 15
 // minutes without an answer). It sits BEHIND the boot's existing refusals -- boot admission, boot
@@ -68,7 +68,7 @@ import extdeps.bmc.ipmitool_hpm_check { HpmCheckTable, HpmCheckRead, HpmCheckUpg
 //
 // ── THE PER-HOST ROUTE ──────────────────────────────────────────────────────────────────────────
 // THE VARIABLES A DISPATCH NAMES ITS RECEIPT AND NONCE THROUGH ARE POLICY, beside the operation they
-// feed (the gunbc.host_maintenance_hold_reason pattern). A host with no row has no receipt route and
+// feed (the gunbc.host.host_maintenance_hold_reason pattern). A host with no row has no receipt route and
 // refuses rather than deriving variable names from its label.
 data boot_attempt_receipt_env_name: NonEmptyStr = "GUNBC_BOOT_ATTEMPT_RECEIPT"
 
@@ -114,7 +114,7 @@ data boot_attempt_inspection_step: HumanIntervention = HumanIntervention {
   subject: "a managed host's CPU and DIMM population and the physical change applied before one boot attempt",
   instruction: "After making the planned change, inspect the machine and commit the attempt's plan and inspection under artifacts/receipts/, naming the dispatch transaction_nonce as the attempt; dispatch the boot with that file as attempt_receipt.",
   completion_evidence: DischargedAt {
-    evidence: decl_ref(module_path: "gunbc.host_boot_attempt_admission", decl_name: "validate_attempt_receipt"),
+    evidence: decl_ref(module_path: "gunbc.host.host_boot_attempt_admission", decl_name: "validate_attempt_receipt"),
   },
 }
 
@@ -693,8 +693,8 @@ fn slot_consumption_payload(receipt: AttemptInspectionReceipt) -> NonEmptyStr {
 // against a temporary root.
 fn consume_attempt_slot(root: NonEmptyStr, key: NonEmptyStr, payload: NonEmptyStr) -> SlotConsumption
   admit_callers: [
-    decl_ref(module_path: "gunbc.host_boot_attempt_admission", decl_name: "admit_named_receipt"),
-    decl_ref(module_path: "test.claim.host_boot_attempt_admission_wet_witness", decl_name: "attempt_slot_controls"),
+    decl_ref(module_path: "gunbc.host.host_boot_attempt_admission", decl_name: "admit_named_receipt"),
+    decl_ref(module_path: "test.claim.host.host_boot_attempt_admission_wet_witness", decl_name: "attempt_slot_controls"),
   ]
 {
   match admit_cas_attempt_for_derived_payload(key: key, expected: ExpectSlotAbsent, proposed: payload) {
@@ -714,7 +714,7 @@ fn consume_attempt_slot(root: NonEmptyStr, key: NonEmptyStr, payload: NonEmptySt
 
 // ── THE ADMISSION ───────────────────────────────────────────────────────────────────────────────
 // TAKEN UNDER THE UNIT HOLD, FROM ITS PROOF: the host is the hold's admitted subject, never a label,
-// and the store-host executor is minted from that subject by gunbc.managed_host_unit_hold's own read
+// and the store-host executor is minted from that subject by gunbc.host.managed_host_unit_hold's own read
 // of this process's hostname. THE ORDER IS THE CONTRACT: route, receipt variable (absent clears as
 // NotNamed and touches nothing), executor, binding, nonce, slot-safety, path, read, every check on the
 // file, and only then the slot.
@@ -750,7 +750,7 @@ fn admit_boot_attempt(proof: UnitHoldProof, revision: NonEmptyStr) -> BootAttemp
 
 // REACHABLE ONLY FROM admit_boot_attempt, which established the store-host executor for this host.
 fn admit_named_receipt(host: HostIdentity, nonce: String, path: String, revision: NonEmptyStr, slots: List<RosterSlot>) -> BootAttemptAdmission
-  admit_callers: [decl_ref(module_path: "gunbc.host_boot_attempt_admission", decl_name: "admit_boot_attempt")]
+  admit_callers: [decl_ref(module_path: "gunbc.host.host_boot_attempt_admission", decl_name: "admit_boot_attempt")]
 {
   match named_receipt_validation(host: host, nonce: nonce, path: path, revision: revision, slots: slots) {
     ReceiptRefused { cause: c } => BootAttemptRefused { cause: c }
@@ -863,7 +863,7 @@ fn attempt_configuration_refused(host: NonEmptyStr, attempt: NonEmptyStr, cause:
 
 fn attempt_receipt_refusal_text(cause: AttemptReceiptRefusal) -> String {
   match cause {
-    ReceiptHostHasNoRoute { host: h } => join(["managed host '", h as String, "' has no attempt receipt route in gunbc.host_boot_attempt_admission"], "")
+    ReceiptHostHasNoRoute { host: h } => join(["managed host '", h as String, "' has no attempt receipt route in gunbc.host.host_boot_attempt_admission"], "")
     ReceiptExecutorForAnotherHost { executor_host: e, bound: b } => join(["the store-host executor was admitted for '", e as String, "' and the boot is bound to '", b as String, "'"], "")
     ReceiptExecutorNotOnStoreHost { reason: r } => r as String
     ReceiptHostUnbound { detail: d } => join(["the managed host does not bind (", d as String, "), so a named receipt cannot be joined to it"], "")
@@ -944,7 +944,7 @@ fn cleared_attempt(clearance: BootAttemptClearance, run_attempt: NonEmptyStr) ->
 // THE PRODUCTION READ'S BINDING: the reading belongs to the host and attempt the clearance admitted.
 fn pre_power_firmware_observed(clearance: BootAttemptClearance, run_attempt: NonEmptyStr, table: HpmCheckTable, source: NonEmptyStr) -> PrePowerFirmware
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle", decl_name: "mtcollins1_boot_hpm_check"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle", decl_name: "mtcollins1_boot_hpm_check"),
   ]
 {
   pre_power_firmware_minted(host: clearance.host, attempt: cleared_attempt(clearance: clearance, run_attempt: run_attempt), table: table, source: source)
@@ -954,8 +954,8 @@ fn pre_power_firmware_observed(clearance: BootAttemptClearance, run_attempt: Non
 // that exercises the join's cross-attempt refusal.
 fn pre_power_firmware_minted(host: HostIdentity, attempt: NonEmptyStr, table: HpmCheckTable, source: NonEmptyStr) -> PrePowerFirmware
   admit_callers: [
-    decl_ref(module_path: "gunbc.host_boot_attempt_admission", decl_name: "pre_power_firmware_observed"),
-    decl_ref(module_path: "test.claim.host_boot_attempt_admission_witness", decl_name: "a_firmware_reading_joins_only_the_attempt_it_was_taken_for"),
+    decl_ref(module_path: "gunbc.host.host_boot_attempt_admission", decl_name: "pre_power_firmware_observed"),
+    decl_ref(module_path: "test.claim.host.host_boot_attempt_admission_witness", decl_name: "a_firmware_reading_joins_only_the_attempt_it_was_taken_for"),
   ]
 {
   match hpm_firmware_projection(table: table) {

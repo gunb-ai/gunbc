@@ -1,4 +1,4 @@
-module gunbc.host_diagnostic_channel
+module gunbc.host.host_diagnostic_channel
 
 import std.types { Bool, EpochMs, List, NonEmptyStr }
 import std.nat { Nat }

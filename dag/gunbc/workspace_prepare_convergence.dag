@@ -15,7 +15,7 @@ import product.fabric.provider_admission { RouteScopeSanction, ProviderUseScope 
 import product.fabric.offer_route { OfferRouteRow }
 import product.fabric.route_readiness { RouteExercise, RouteReadinessRequirement }
 import product.fabric.candidate_field { FieldRequest }
-import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.workspace_allocation { WorkspaceRequest }
 import gunbc.workspace_allocation_reservation { workspace_demand }
 import gunbc.workspace_allocation_supply { workspace_candidate_field, workspace_supply_from_field }

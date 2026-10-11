@@ -1,10 +1,10 @@
-module gunbc.hetzner_cloud_acquisition
+module gunbc.fleet.hetzner_cloud_acquisition
 
 import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
 import std.types { List, NonEmptyStr }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.cloud.hetzner_cloud_api { HetznerTokenPermission, HetznerTokenRead, HetznerTokenReadWrite }
-import gunbc.provider_acquisition { ProviderApiAccount, ProviderResourceAcquisition, OperatorPerformed }
+import gunbc.fleet.provider_acquisition { ProviderApiAccount, ProviderResourceAcquisition, OperatorPerformed }
 import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_accessor_grant }
 
 // THE HETZNER CLOUD PROJECT THE FLEET'S GUESTS ARE HELD UNDER. A Hetzner Cloud API token is scoped to

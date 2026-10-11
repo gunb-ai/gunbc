@@ -18,7 +18,7 @@ import gunbc.site.element.palette {
 }
 import gunbc.site.element.text { element_text_decls, ElementLabel }
 import gunbc.site.element.touch_target { touch_target_rule, TouchTargetCentredLink }
-import gunbc.roadmap_workflow_stage {
+import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegmentKind, WorkflowSegmentState, workflow_segment_kind_label, workflow_segment_state_key,
 }
 import gunbc.workflow_reconcile { WorkflowFactKey }

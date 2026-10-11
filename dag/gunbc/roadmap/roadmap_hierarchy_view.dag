@@ -2,8 +2,8 @@ module gunbc.roadmap.roadmap_hierarchy_view
 
 import std.types { String, Int, Bool, List }
 import v2.std.collection { Map }
-import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, RoadmapNodeId, roadmap_parent_ids }
-import gunbc.roadmap_nesting { roadmap_memberships_of }
+import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapEdge, RoadmapNodeId, roadmap_parent_ids }
+import gunbc.roadmap.roadmap_nesting { roadmap_memberships_of }
 import gunbc.roadmap.roadmap_lineage {
   LineageWalk, LineageRooted, LineageNoParent, LineageUndeclared, LineageCyclic,
   lineage_walk_in, lineage_index, lineage_lookup, lineage_refusal_detail,
@@ -12,27 +12,27 @@ import gunbc.roadmap.roadmap_project {
   RoadmapMembershipIndex, membership_index, node_project_membership_in, project_member_ids_in,
   MembershipStandalone, MembershipMember, MembershipAmbiguous,
 }
-import gunbc.roadmap_priority { DerivedPriority, issue_priority_of }
-import gunbc.roadmap_presentation { row_headline, dependency_cycle_touches }
-import gunbc.roadmap_issue_status { IssueDisplayStatus, issue_display_status_is_closed }
-import gunbc.roadmap_issue_location { issue_page_path }
+import gunbc.roadmap.roadmap_priority { DerivedPriority, issue_priority_of }
+import gunbc.roadmap.roadmap_presentation { row_headline, dependency_cycle_touches }
+import gunbc.roadmap.roadmap_issue_status { IssueDisplayStatus, issue_display_status_is_closed }
+import gunbc.roadmap.roadmap_issue_location { issue_page_path }
 
 // WHERE A NODE SITS AND WHAT RELATES TO IT, ANSWERED ONCE. The issue page's chain, its relation
 // sections and its rail all read this one projection, so no two of them can name a different
 // parent, a different status or a different address for the same node.
 //
 // The vocabulary is fixed by the authority each relation is read from. PARENT and SUB-ISSUE are
-// membership: the parent each row declares (gunbc.roadmap_model NodeParent, projected by
-// gunbc.roadmap_nesting). BLOCKED BY and BLOCKING are dependency: the edges
-// (gunbc.roadmap_model RoadmapEdge). Neither stands in for the other, and a node that is both a
+// membership: the parent each row declares (gunbc.roadmap.roadmap_model NodeParent, projected by
+// gunbc.roadmap.roadmap_nesting). BLOCKED BY and BLOCKING are dependency: the edges
+// (gunbc.roadmap.roadmap_model RoadmapEdge). Neither stands in for the other, and a node that is both a
 // sub-issue and a blocker appears under both relations as the same NodePresentation -- the relation
 // carries the meaning, the presentation does not change with it.
 
 // A STATUS IS DERIVED OR IT IS UNAVAILABLE, never guessed. The derived arm carries two facts the
 // producer establishes separately: the status the node is shown with
-// (gunbc.roadmap_presentation issue_display_status over its decided row, or
+// (gunbc.roadmap.roadmap_presentation issue_display_status over its decided row, or
 // omitted_node_display_status for a declared node the plan omits), and whether the node is
-// CLOSED, which is its lifecycle's answer (gunbc.roadmap_presentation work_lifecycle_is_closed)
+// CLOSED, which is its lifecycle's answer (gunbc.roadmap.roadmap_presentation work_lifecycle_is_closed)
 // and not a reading of the status word. They can differ: a done node whose standing cannot be
 // observed is shown as Unknown and is still closed. Unavailable is reserved for a node whose
 // state the producer cannot establish at all, and says why.
@@ -48,7 +48,7 @@ type NodeStatus
   | NodeStatusUnavailable { reason: String }
 
 // A derived status with no lifecycle beside it: closed is what the status vocabulary says of that
-// status (gunbc.roadmap_issue_status issue_display_status_is_closed). The specimen's planted nodes
+// status (gunbc.roadmap.roadmap_issue_status issue_display_status_is_closed). The specimen's planted nodes
 // are built this way; a producer that holds a lifecycle states `closed` from it instead.
 fn node_status_derived(status: IssueDisplayStatus) -> NodeStatus {
   NodeStatusDerived { status: status, closed: issue_display_status_is_closed(status: status) }
@@ -65,7 +65,7 @@ fn node_status_is_closed(status: NodeStatus) -> Bool {
 }
 
 // ONE NODE AS SHOWN, wherever it is shown. `route` is the node's canonical address
-// (gunbc.roadmap_issue_location issue_page_path); `slug` is its id.
+// (gunbc.roadmap.roadmap_issue_location issue_page_path); `slug` is its id.
 type NodePresentation {
   slug: String
   title: String
@@ -188,7 +188,7 @@ fn membership_view(node_id: String, universe: HierarchyUniverse, status_of: fn(R
 }
 
 // THE NODES THIS ONE BLOCKS: every edge naming it as the prerequisite, in edge order -- the
-// converse read of gunbc.roadmap_model roadmap_parent_ids over the same edges. (RoadmapEdge spells
+// converse read of gunbc.roadmap.roadmap_model roadmap_parent_ids over the same edges. (RoadmapEdge spells
 // its ends `child` and `parent`; they are the dependent and its prerequisite, not membership.)
 fn dependency_blocking_ids(edges: List<RoadmapEdge>, node_id: String) -> List<String> {
   edges |> filter(e => (e.parent as String) == node_id) |> map(e => e.child as String)

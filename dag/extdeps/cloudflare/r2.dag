@@ -517,7 +517,7 @@ fn r2_account_storage_create_request(
 // spelled there.
 //
 // THE KEY IS CARRIED AS GIVEN. No percent-encoding is applied: the keys this repository writes are
-// the commit-slot keys gunbc.fabric_m0_commit derives (a namespace, a slash, an attempt identity)
+// the commit-slot keys gunbc.fabric.fabric_m0_commit derives (a namespace, a slash, an attempt identity)
 // and content-hash names, none of which carries a character that needs escaping in a URL path. A
 // key that did would need a modeled encoder, not a heuristic here, and until one exists a caller
 // that passes one gets a signature the store refuses rather than an object at a different name.

@@ -1,0 +1,886 @@
+module test.claim.fabric.fabric_grant_issuance_witness
+
+import test.claim.fabric.provider_use_fixture {
+  fixture_admitted_use, fixture_unadmitted_use, fixture_route, fixture_route_sibling_region,
+  fixture_posture_revision, fixture_route_facts_revision,
+}
+import product.fabric.provider_route { provider_route_eq }
+import product.fabric.provider_admission { ProviderUseAdmission }
+import std.types { NonEmptyStr, Bool, Int, List }
+import std.measure { Count, One, MoneyRate, money_amount_micro, money_amount_micro_count, hardware_thread_count, second }
+import std.nat { Nat }
+import std.content_hash { content_hash_of_value }
+import extdeps.currency.currency { Usd }
+import extdeps.accounting.budget { Appropriation }
+import extdeps.accounting.encumbrance { EncumbranceLedger }
+import product.fabric.identity { FabricIdentity, GrantKey, DemandKey, WorkKey }
+import product.fabric.isolation { shared_kernel_sandbox_profile }
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.work { MaterializedProgram,
+  Work, WorkContract, WorkStep, ReceiptSatisfiable, ExecutionRequirements,
+  Shape, HardRequirements, CapacityClass, ControlPlaneCapacity, work_for,
+  declared_artifact_obligations,
+}
+import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.supply { SupplierOffer, QuotedPerSecond, ObservedSupply }
+import product.fabric.execution {
+  Attempt, InitialAttempt, ExecutionGrant, LeaseIdentity, FabricGrantEvidence,
+  grant_admitting_posture_revision, grant_admitting_route_facts_revision, grant_admitting_route,
+}
+import product.fabric.budget { MoneyAccount, MoneyReservationRequest }
+import product.fabric.selection { SelectedOffer, CandidateOffer }
+import test.claim.fabric.selected_offer_fixture { selected_under, selected_from_population, bound }
+import product.fabric.grant_issue {
+  GrantIssue, GrantCommitted, GrantRefused, GrantIssueRefusal,
+  AttemptNamesAnotherWork, AttemptPrincipalIsNotTheWorkPrincipal,
+  OfferNotFungibleForWork, OfferCapacityExhausted,
+  GrantAlreadyIssuedForAttempt, MoneyReservationRefused, ResourceReservationRefused,
+  PermitNamesAnotherOffer, PermitNamesAnotherRoute,
+  PermitNamesAnotherWork, PermitNamesAnotherDemand,
+  derive_grant_key, issue_grant,
+}
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { Cons, Empty }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// FCI-2's acceptance evidence: selection, reservation and commitment yield EXACTLY ONE fenced
+// ExecutionGrant for the exact Work.
+//
+// Every refusal test names the ARM it expects rather than asserting that something refused. A
+// boolean "did it refuse" is satisfied by a work mismatch, an exhausted offer and a ledger
+// ceiling alike, so a test written against it passes against an implementation that refuses for
+// entirely the wrong reason -- which is the defect product.fabric.budget's witness file records
+// having shipped once already.
+
+data fixture_shape: Shape = Shape {
+  hard: HardRequirements { threads: hardware_thread_count(8) },
+  envelope: unstated_envelope(),
+}
+
+data fixture_requirements: ExecutionRequirements = ExecutionRequirements {
+  capacity_class: ControlPlaneCapacity,
+  shape: fixture_shape,
+  capabilities: "linux-x86_64-cargo",
+  trust_domain: "gunbc-ci",
+  isolation: shared_kernel_sandbox_profile(),
+}
+
+data fixture_contract: WorkContract = WorkContract {
+  execution: MaterializedProgram { program: "gunbc.required-witnesses-build.program:1", source: "source:1", runtime_closure: "runtime:1" },
+  steps: [WorkStep { step_id: "required-witnesses-build", resumability: ReceiptSatisfiable }],
+  inputs: "inputs:1",
+  effect_contract: "effects:1",
+  output_contract: "outputs:1",
+  output_obligations: declared_artifact_obligations(ids: ["outputs:1"]),
+}
+
+data owning_principal: NonEmptyStr = "gunbc"
+
+data foreign_principal: NonEmptyStr = "other-tenant"
+
+data subject_work: Work<NonEmptyStr> = work_for(principal: owning_principal, contract: fixture_contract, requirements: fixture_requirements)
+
+data other_contract: WorkContract = WorkContract {
+  execution: MaterializedProgram { program: "gunbc.required-witnesses-build.program:2", source: "source:2", runtime_closure: "runtime:1" },
+  steps: [WorkStep { step_id: "required-witnesses-build", resumability: ReceiptSatisfiable }],
+  inputs: "inputs:1",
+  effect_contract: "effects:1",
+  output_contract: "outputs:1",
+  output_obligations: declared_artifact_obligations(ids: ["outputs:1"]),
+}
+
+data other_work: Work<NonEmptyStr> = work_for(principal: owning_principal, contract: other_contract, requirements: fixture_requirements)
+
+// Same contract, DIFFERENT principal. FabricIdentity equality is over the pair, so this work is
+// not the subject work even though the derived key half is identical -- the cross-tenant case.
+data foreign_work: Work<NonEmptyStr> = work_for(principal: foreign_principal, contract: fixture_contract, requirements: fixture_requirements)
+
+data first_attempt: Attempt<NonEmptyStr> = Attempt {
+  id: FabricIdentity { principal: "gunbc", key: "attempt-1" },
+  work: subject_work.id,
+  lineage: InitialAttempt { initiating_demand: FabricIdentity { principal: "gunbc", key: "demand-1" } },
+  created_at: "2026-09-04T00:00:00Z",
+}
+
+data second_attempt: Attempt<NonEmptyStr> = Attempt {
+  id: FabricIdentity { principal: "gunbc", key: "attempt-2" },
+  work: subject_work.id,
+  lineage: InitialAttempt { initiating_demand: FabricIdentity { principal: "gunbc", key: "demand-1" } },
+  created_at: "2026-09-04T00:05:00Z",
+}
+
+data misdirected_attempt: Attempt<NonEmptyStr> = Attempt {
+  id: FabricIdentity { principal: "gunbc", key: "attempt-3" },
+  work: other_work.id,
+  lineage: InitialAttempt { initiating_demand: FabricIdentity { principal: "gunbc", key: "demand-1" } },
+  created_at: "2026-09-04T00:06:00Z",
+}
+
+// The isolating fixture for the second principal relation. It names the SUBJECT Work, so
+// attempt.work == work.id holds and the work-mismatch wall does not fire; only the principal on
+// the attempt's OWN identity differs. Varying both relations at once, as foreign_attempt below
+// does, cannot establish which one refused.
+data sponsored_attempt: Attempt<NonEmptyStr> = Attempt {
+  id: FabricIdentity { principal: foreign_principal, key: "attempt-1" },
+  work: subject_work.id,
+  lineage: InitialAttempt { initiating_demand: FabricIdentity { principal: owning_principal, key: "demand-1" } },
+  created_at: "2026-09-04T00:08:00Z",
+}
+
+data foreign_attempt: Attempt<NonEmptyStr> = Attempt {
+  id: FabricIdentity { principal: "other-tenant", key: "attempt-1" },
+  work: foreign_work.id,
+  lineage: InitialAttempt { initiating_demand: FabricIdentity { principal: "other-tenant", key: "demand-1" } },
+  created_at: "2026-09-04T00:07:00Z",
+}
+
+data admitted_offer: SupplierOffer<NonEmptyStr> = SupplierOffer {
+  id: FabricIdentity { principal: "supplier", key: "offer-1" },
+  executor: "srv3",
+  route: fixture_route(),
+  shape: fixture_shape,
+  capabilities: "linux-x86_64-cargo",
+  trust_domain: "gunbc-ci",
+  isolation: shared_kernel_sandbox_profile(),
+  quantity_bound: 1,
+  ready_at: "2026-09-04T00:00:00Z",
+  quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(count: 100), currency: Usd }),
+  billing_quantum: second(count: 1),
+  evidence: ObservedSupply { observed_at: "2026-09-04T00:00:00Z", receipt: "supply-observation-1" },
+}
+
+data foreign_domain_offer: SupplierOffer<NonEmptyStr> = SupplierOffer {
+  id: FabricIdentity { principal: "supplier", key: "offer-2" },
+  executor: "srv4",
+  route: fixture_route(),
+  shape: fixture_shape,
+  capabilities: "linux-x86_64-cargo",
+  trust_domain: "public-untrusted",
+  isolation: shared_kernel_sandbox_profile(),
+  quantity_bound: 4,
+  ready_at: "2026-09-04T00:00:00Z",
+  quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(count: 100), currency: Usd }),
+  billing_quantum: second(count: 1),
+  evidence: ObservedSupply { observed_at: "2026-09-04T00:00:00Z", receipt: "supply-observation-1" },
+}
+
+data funded_account: MoneyAccount = MoneyAccount {
+  account: "fleet-ci",
+  currency: Usd,
+  ledger: EncumbranceLedger {
+    appropriation: Appropriation { ceiling: money_amount_micro(count: 1000000) },
+    entries: [],
+  },
+  leases: [],
+}
+
+data exhausted_account: MoneyAccount = MoneyAccount {
+  account: "fleet-ci",
+  currency: Usd,
+  ledger: EncumbranceLedger {
+    appropriation: Appropriation { ceiling: money_amount_micro(count: 1) },
+    entries: [],
+  },
+  leases: [],
+}
+
+data money_request: MoneyReservationRequest = MoneyReservationRequest {
+  reference: "reservation-money-1",
+  generation: 9,
+  maximum_liability: money_amount_micro(count: 1000),
+  currency: Usd,
+}
+
+data thread_appropriation: EncumbranceLedger<Count, One> = EncumbranceLedger {
+  appropriation: Appropriation { ceiling: hardware_thread_count(64) },
+  entries: [],
+}
+
+data exhausted_threads: EncumbranceLedger<Count, One> = EncumbranceLedger {
+  appropriation: Appropriation { ceiling: hardware_thread_count(1) },
+  entries: [],
+}
+
+data fixture_lease: LeaseIdentity = LeaseIdentity {
+  lease_key: "lease-attempt-1",
+  resource_fingerprint: content_hash_of_value(value: "srv3-slot-7"),
+  generation: 9,
+}
+
+data fixture_evidence: FabricGrantEvidence = FabricGrantEvidence {
+  fungibility_receipt: "fungibility-1",
+  offer_authority: "offer-authority-1",
+  resource_conservation: "resource-conservation-1",
+  budget_conservation: "budget-conservation-1",
+  principal_authority: "principal-authority-1",
+}
+
+// The demand every issuance in this witness is for. Named once so the permit and the grant cannot
+// drift apart: issuance now refuses a permit whose demand is not this one.
+fn subject_demand() -> FabricIdentity<NonEmptyStr, DemandKey> {
+  FabricIdentity { principal: "gunbc", key: "demand-1" }
+}
+
+// THE SELECTED OFFER ISSUANCE NOW REQUIRES. Issuance takes a SelectedOffer, and the only
+// constructor of one is select_supply's winning arm, so the witness obtains it by binding the
+// offer under a REAL admission (ProviderUsePermit is sole_constructor too) and running the ranking.
+// The list is empty when admission denies or binding refuses, so a witness that expected an issue
+// and got none goes red rather than quietly skipping the call.
+fn selected_for_use(
+  offer: SupplierOffer<NonEmptyStr>,
+  work: FabricIdentity<NonEmptyStr, WorkKey>,
+  demand: FabricIdentity<NonEmptyStr, DemandKey>,
+) -> List<SelectedOffer<NonEmptyStr>> {
+  selected_under(
+    offer: offer,
+    admission: fixture_admitted_use(route: offer.route, offer: offer.id, demand: demand, work: work),
+    demand: demand,
+    work: work,
+  )
+}
+
+fn selected_for(offer: SupplierOffer<NonEmptyStr>) -> List<SelectedOffer<NonEmptyStr>> {
+  selected_for_use(offer: offer, work: subject_work.id, demand: subject_demand())
+}
+
+fn issue(
+  work: Work<NonEmptyStr>,
+  attempt: Attempt<NonEmptyStr>,
+  offer: SupplierOffer<NonEmptyStr>,
+  outstanding: List<ExecutionGrant<NonEmptyStr>>,
+  account: MoneyAccount,
+  ledger: EncumbranceLedger<Count, One>,
+) -> List<GrantIssue<NonEmptyStr, Count, One>> {
+  map(selected_for(offer: offer), selected => issue_grant(
+    work: work,
+    attempt: attempt,
+    selected: selected,
+    outstanding: outstanding,
+    account: account,
+    money_request: money_request,
+    ledger: ledger,
+    resource_reference: "reservation-threads-1",
+    resource_liability: hardware_thread_count(8),
+    lease: fixture_lease,
+    demand: subject_demand(),
+    evidence: fixture_evidence,
+    issued_at: "2026-09-04T00:10:00Z",
+  ))
+}
+
+fn outcome_label(o: GrantIssue<NonEmptyStr, Count, One>) -> NonEmptyStr {
+  match o {
+    GrantCommitted { grant: _, account: _, ledger: _ } => "committed"
+    GrantRefused { refusal: r } =>
+      match r {
+        AttemptNamesAnotherWork { attempt_work: _, subject_work: _ } => "attempt-names-another-work"
+        AttemptPrincipalIsNotTheWorkPrincipal { attempt: _, subject_work: _ } => "attempt-principal-is-not-the-work-principal"
+        OfferNotFungibleForWork { fungibility: _ } => "offer-not-fungible"
+        OfferCapacityExhausted { offer: _, quantity_bound: _, grants_outstanding: _ } => "offer-capacity-exhausted"
+        GrantAlreadyIssuedForAttempt { existing: _ } => "grant-already-issued"
+        MoneyReservationRefused { refusal: _ } => "money-refused"
+        ResourceReservationRefused { refusal: _ } => "resource-refused"
+        PermitNamesAnotherOffer { offer: _, permit_names: _ } => "permit-names-another-offer"
+        PermitNamesAnotherRoute { offer: _ } => "permit-names-another-route"
+        PermitNamesAnotherWork { permit_work: _, subject_work: _ } => "permit-names-another-work"
+        PermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => "permit-names-another-demand"
+      }
+  }
+}
+
+// THE HELPER RETURNS A LIST AND THESE READ IT, which is the idiom this corpus already uses for
+// exactly this problem: product.fabric.selection's witness says a fixture helper may not invent a
+// candidate on the seal's refusal arm, so it returns a list that is empty on refusal. An empty
+// issue list means no admitted permit existed, and "no-permit-issued" is that answer spelled in
+// the witness rather than as an arm on a production coproduct.
+fn outcome_label_of(os: List<GrantIssue<NonEmptyStr, Count, One>>) -> NonEmptyStr {
+  fold(map(os, o => outcome_label(o: o)), init: "no-permit-issued", f: fn(acc, l) { l })
+}
+
+fn committed_grants_of(
+  os: List<GrantIssue<NonEmptyStr, Count, One>>,
+) -> List<ExecutionGrant<NonEmptyStr>> {
+  fold(os, init: [], f: fn(acc, o) { concat(acc, committed_grants(o: o)) })
+}
+
+fn committed_grants(o: GrantIssue<NonEmptyStr, Count, One>) -> List<ExecutionGrant<NonEmptyStr>> {
+  match o {
+    GrantCommitted { grant: g, account: _, ledger: _ } => [g]
+    GrantRefused { refusal: _ } => []
+  }
+}
+
+// The positive control. One admitted offer yields one committed grant.
+test fn one_admitted_offer_yields_one_committed_grant() -> Bool {
+  outcome_label_of(os: issue(
+    work: subject_work,
+    attempt: first_attempt,
+    offer: admitted_offer,
+    outstanding: [],
+    account: funded_account,
+    ledger: thread_appropriation,
+  )) == "committed"
+}
+
+// The grant a committed issuance produces names the exact subject Work and the exact attempt, and
+// its principal is the WORK's. Asserting "committed" alone would pass against an issuer that
+// grants the wrong thing.
+test fn the_committed_grant_names_the_exact_work_and_attempt() -> Bool {
+  let issued = committed_grants_of(os: issue(
+    work: subject_work,
+    attempt: first_attempt,
+    offer: admitted_offer,
+    outstanding: [],
+    account: funded_account,
+    ledger: thread_appropriation,
+  ))
+  issued.length() == 1 && (issued |> all(g =>
+    g.context.work.key == subject_work.id.key
+      && g.context.work.principal == "gunbc"
+      && g.id.principal == "gunbc"
+      && g.context.attempt.key == "attempt-1"
+  ))
+}
+
+// DUPLICATE-GRANT. A second issuance for one attempt is refused by that name.
+test fn a_second_grant_for_one_attempt_is_refused() -> Bool {
+  let first = committed_grants_of(os: issue(
+    work: subject_work,
+    attempt: first_attempt,
+    offer: admitted_offer,
+    outstanding: [],
+    account: funded_account,
+    ledger: thread_appropriation,
+  ))
+  outcome_label_of(os: issue(
+    work: subject_work,
+    attempt: first_attempt,
+    offer: admitted_offer,
+    outstanding: first,
+    account: funded_account,
+    ledger: thread_appropriation,
+  )) == "grant-already-issued"
+}
+
+// WORK-MISMATCH. An attempt that names another Work cannot be authorized under this one.
+test fn an_attempt_naming_another_work_is_refused() -> Bool {
+  outcome_label_of(os: issue(
+    work: subject_work,
+    attempt: misdirected_attempt,
+    offer: admitted_offer,
+    outstanding: [],
+    account: funded_account,
+    ledger: thread_appropriation,
+  )) == "attempt-names-another-work"
+}
+
+// The cross-tenant reading of the same wall. The foreign attempt's work key is byte-identical to
+// the subject's -- same contract, same requirements -- and only the principal half differs, so a
+// comparison on the key alone admits it.
+test fn an_attempt_under_another_principal_is_refused() -> Bool {
+  foreign_work.id.key == subject_work.id.key
+    && outcome_label_of(os: issue(
+      work: subject_work,
+      attempt: foreign_attempt,
+      offer: admitted_offer,
+      outstanding: [],
+      account: funded_account,
+      ledger: thread_appropriation,
+    )) == "attempt-names-another-work"
+}
+
+// Selection precedes reservation: an offer that cannot run the work is refused for that reason,
+// not for a downstream one, and nothing is reserved on the way.
+test fn an_offer_outside_the_trust_domain_is_refused_before_any_reservation() -> Bool {
+  outcome_label_of(os: issue(
+    work: subject_work,
+    attempt: first_attempt,
+    offer: foreign_domain_offer,
+    outstanding: [],
+    account: funded_account,
+    ledger: thread_appropriation,
+  )) == "offer-not-fungible"
+}
+
+// Supply conservation. The offer's bound is 1, so a second attempt against it is refused even
+// though that attempt has no grant of its own.
+test fn a_second_attempt_against_a_single_bound_offer_is_refused() -> Bool {
+  let first = committed_grants_of(os: issue(
+    work: subject_work,
+    attempt: first_attempt,
+    offer: admitted_offer,
+    outstanding: [],
+    account: funded_account,
+    ledger: thread_appropriation,
+  ))
+  outcome_label_of(os: issue(
+    work: subject_work,
+    attempt: second_attempt,
+    offer: admitted_offer,
+    outstanding: first,
+    account: funded_account,
+    ledger: thread_appropriation,
+  )) == "offer-capacity-exhausted"
+}
+
+// THE ATOMIC JOIN, MONEY SIDE. The budget ledger refuses; no grant exists and therefore no
+// resource reservation was committed under one.
+test fn a_refused_budget_yields_no_grant() -> Bool {
+  let os = issue(
+    work: subject_work,
+    attempt: first_attempt,
+    offer: admitted_offer,
+    outstanding: [],
+    account: exhausted_account,
+    ledger: thread_appropriation,
+  )
+  outcome_label_of(os: os) == "money-refused" && committed_grants_of(os: os).length() == 0
+}
+
+// THE ATOMIC JOIN, RESOURCE SIDE. This is the arm the model calls unreachable only if the join is
+// atomic: the budget ledger ADMITS and the resource ledger refuses. The advanced account is a
+// component of the committed arm alone, so it reaches no caller -- there is no partial state to
+// compensate for, because the refusal carries no advanced ledger at all.
+test fn a_budget_that_admitted_beside_a_refused_resource_yields_no_grant() -> Bool {
+  let os = issue(
+    work: subject_work,
+    attempt: first_attempt,
+    offer: admitted_offer,
+    outstanding: [],
+    account: funded_account,
+    ledger: exhausted_threads,
+  )
+  outcome_label_of(os: os) == "resource-refused" && committed_grants_of(os: os).length() == 0
+}
+
+// The key is DERIVED, so identical coordinates yield one key and a changed attempt yields another.
+// Without the second half the first passes against a derivation that ignores every input.
+test fn identical_coordinates_derive_one_grant_key() -> Bool {
+  derive_grant_key(
+    work: subject_work.id,
+    attempt: first_attempt.id,
+    offer: admitted_offer.id,
+    lease: fixture_lease,
+  ) == derive_grant_key(
+    work: subject_work.id,
+    attempt: first_attempt.id,
+    offer: admitted_offer.id,
+    lease: fixture_lease,
+  )
+}
+
+test fn a_different_attempt_derives_a_different_grant_key() -> Bool {
+  derive_grant_key(
+    work: subject_work.id,
+    attempt: first_attempt.id,
+    offer: admitted_offer.id,
+    lease: fixture_lease,
+  ) != derive_grant_key(
+    work: subject_work.id,
+    attempt: second_attempt.id,
+    offer: admitted_offer.id,
+    lease: fixture_lease,
+  )
+}
+
+test fn a_different_offer_derives_a_different_grant_key() -> Bool {
+  derive_grant_key(
+    work: subject_work.id,
+    attempt: first_attempt.id,
+    offer: admitted_offer.id,
+    lease: fixture_lease,
+  ) != derive_grant_key(
+    work: subject_work.id,
+    attempt: first_attempt.id,
+    offer: foreign_domain_offer.id,
+    lease: fixture_lease,
+  )
+}
+
+// The lease participates in IDENTITY. This is deliberately not the gate's expired-reservation
+// mutation and must not be cited as covering it: two epochs having different identities says
+// nothing about whether an expired epoch can authorize, and issuance has no arm that could refuse
+// one. That subject arrives with FCI-1's lifetime-held reservation.
+test fn a_different_lease_derives_a_different_grant_key() -> Bool {
+  derive_grant_key(
+    work: subject_work.id,
+    attempt: first_attempt.id,
+    offer: admitted_offer.id,
+    lease: fixture_lease,
+  ) != derive_grant_key(
+    work: subject_work.id,
+    attempt: first_attempt.id,
+    offer: admitted_offer.id,
+    lease: LeaseIdentity {
+      lease_key: "lease-attempt-1-regenerated",
+      resource_fingerprint: content_hash_of_value(value: "srv3-slot-7"),
+      generation: 10,
+    },
+  )
+}
+
+// The second principal relation, isolated. attempt.work equals the subject Work, so the
+// work-mismatch wall is not what refuses here; the attempt's own principal is.
+test fn an_attempt_whose_own_principal_is_foreign_is_refused() -> Bool {
+  outcome_label_of(os: issue(
+    work: subject_work,
+    attempt: sponsored_attempt,
+    offer: admitted_offer,
+    outstanding: [],
+    account: funded_account,
+    ledger: thread_appropriation,
+  )) == "attempt-principal-is-not-the-work-principal"
+}
+
+// The refusal above is not the work-mismatch wall wearing another name: this fixture agrees with
+// the subject Work on the very comparison that fires for foreign_attempt.
+test fn the_two_principal_relations_refuse_by_different_names() -> Bool {
+  outcome_label_of(os: issue(
+    work: subject_work,
+    attempt: sponsored_attempt,
+    offer: admitted_offer,
+    outstanding: [],
+    account: funded_account,
+    ledger: thread_appropriation,
+  )) != outcome_label_of(os: issue(
+    work: subject_work,
+    attempt: misdirected_attempt,
+    offer: admitted_offer,
+    outstanding: [],
+    account: funded_account,
+    ledger: thread_appropriation,
+  ))
+}
+
+// SAME OFFER KEY, DIFFERENT SUPPLIER. The grant's own identity carries the GRANTEE principal, so
+// it cannot also account for the supplier's; without the supplier principal in the material, two
+// suppliers posting one offer key derive one grant key and the duplicate check reads two
+// authorizations as one.
+test fn one_offer_key_under_two_suppliers_derives_two_grant_keys() -> Bool {
+  derive_grant_key(
+    work: subject_work.id,
+    attempt: first_attempt.id,
+    offer: FabricIdentity { principal: "supplier-a", key: "offer-1" },
+    lease: fixture_lease,
+  ) != derive_grant_key(
+    work: subject_work.id,
+    attempt: first_attempt.id,
+    offer: FabricIdentity { principal: "supplier-b", key: "offer-1" },
+    lease: fixture_lease,
+  )
+}
+
+// SAME LEASE KEY, DIFFERENT SLOT. The fingerprint names the exact reserved claim rather than the
+// host, which is what keeps two admitted slices of one machine distinguishable at the fence.
+test fn one_lease_key_over_two_slots_derives_two_grant_keys() -> Bool {
+  derive_grant_key(
+    work: subject_work.id,
+    attempt: first_attempt.id,
+    offer: admitted_offer.id,
+    lease: LeaseIdentity {
+      lease_key: "lease-attempt-1",
+      resource_fingerprint: content_hash_of_value(value: "srv3-slot-7"),
+      generation: 9,
+    },
+  ) != derive_grant_key(
+    work: subject_work.id,
+    attempt: first_attempt.id,
+    offer: admitted_offer.id,
+    lease: LeaseIdentity {
+      lease_key: "lease-attempt-1",
+      resource_fingerprint: content_hash_of_value(value: "srv3-slot-8"),
+      generation: 9,
+    },
+  )
+}
+
+// SAME LEASE KEY AND SLOT, DIFFERENT GENERATION -- the fence alone. The lease witness below varies
+// the key and the generation together, so it cannot establish that the generation participates.
+test fn one_lease_at_two_generations_derives_two_grant_keys() -> Bool {
+  derive_grant_key(
+    work: subject_work.id,
+    attempt: first_attempt.id,
+    offer: admitted_offer.id,
+    lease: LeaseIdentity {
+      lease_key: "lease-attempt-1",
+      resource_fingerprint: content_hash_of_value(value: "srv3-slot-7"),
+      generation: 9,
+    },
+  ) != derive_grant_key(
+    work: subject_work.id,
+    attempt: first_attempt.id,
+    offer: admitted_offer.id,
+    lease: LeaseIdentity {
+      lease_key: "lease-attempt-1",
+      resource_fingerprint: content_hash_of_value(value: "srv3-slot-7"),
+      generation: 10,
+    },
+  )
+}
+
+// ONE LIABILITY, NOT TWO. issue_grant used to take maximum_liability as its own argument beside
+// the reservation request that books it, so the amount actually reserved and the amount the grant
+// RECORDS were two writable representations of one fact, free to disagree with nothing able to
+// notice. The argument is gone and the field is derived from the committed request; this asserts
+// the equality that the removal makes structural, so a future re-introduction reds here.
+test fn the_recorded_liability_is_the_booked_liability() -> Bool {
+  let issued = committed_grants_of(os: issue(
+    work: subject_work,
+    attempt: first_attempt,
+    offer: admitted_offer,
+    outstanding: [],
+    account: funded_account,
+    ledger: thread_appropriation,
+  ))
+  issued.length() == 1 && (issued |> all(g =>
+    money_amount_micro_count(m: g.context.maximum_liability)
+      == money_amount_micro_count(m: money_request.maximum_liability)
+  ))
+}
+
+
+// THE PROVIDER-USE WALL AT THE SECOND ENTRANCE. Selection cannot RANK an unadmitted offer because
+// the permit sits inside the sealed candidate; issuance is the other way in, and these rows are why
+// closing only one of them would have been a wall with a door beside it.
+fn issue_selected(
+  selected: SelectedOffer<NonEmptyStr>,
+  account: MoneyAccount,
+) -> GrantIssue<NonEmptyStr, Count, One> {
+  issue_grant(
+    work: subject_work,
+    attempt: first_attempt,
+    selected: selected,
+    outstanding: [],
+    account: account,
+    money_request: money_request,
+    ledger: thread_appropriation,
+    resource_reference: "reservation-threads-1",
+    resource_liability: hardware_thread_count(8),
+    lease: fixture_lease,
+    demand: subject_demand(),
+    evidence: fixture_evidence,
+    issued_at: "2026-09-04T00:10:00Z",
+  )
+}
+
+// The same issuance path over an UNADMITTED use. Admission denies, so binding refuses, so there is
+// no candidate to rank, no SelectedOffer to hand issue_grant, and no grant can be produced.
+fn issue_unadmitted(
+  offer: SupplierOffer<NonEmptyStr>,
+  account: MoneyAccount,
+) -> List<GrantIssue<NonEmptyStr, Count, One>> {
+  map(
+    selected_under(
+      offer: offer,
+      admission: fixture_unadmitted_use(
+        route: offer.route, offer: offer.id, demand: subject_demand(), work: subject_work.id),
+      demand: subject_demand(),
+      work: subject_work.id,
+    ),
+    selected => issue_selected(selected: selected, account: account),
+  )
+}
+
+// RED - AN UNADMITTED USE YIELDS NO GRANT, ASSERTED THROUGH ISSUANCE AND NOT THROUGH LIST LENGTHS.
+// This runs the same helper the committed rows run, with a funded account so no economic cause can
+// be doing the work, and asserts that NO grant comes back - and the positive control beside it is
+// the identical call on an admitted use, which does commit.
+test fn w_an_unadmitted_use_yields_no_grant() -> Bool {
+  count(issue_unadmitted(offer: admitted_offer, account: funded_account)) == 0
+    && outcome_label_of(os: issue_unadmitted(offer: admitted_offer, account: funded_account))
+      == "no-permit-issued"
+    && committed_grants_of(
+      os: issue_unadmitted(offer: admitted_offer, account: funded_account)).length() == 0
+    && outcome_label_of(os: issue(
+      work: subject_work,
+      attempt: first_attempt,
+      offer: admitted_offer,
+      outstanding: [],
+      account: funded_account,
+      ledger: thread_appropriation,
+    )) == "committed"
+}
+
+// RED - A PERMIT DOES NOT OVERRIDE AN EXHAUSTED BUDGET. The selection is admitted in both halves and
+// the only thing that moves is the account, so this says what a permit IS: authority to use a
+// route, never authority to spend money that is not there.
+test fn w_a_permit_does_not_override_an_exhausted_budget() -> Bool {
+  fold(
+    selected_for(offer: admitted_offer),
+    init: false,
+    f: fn(acc, sel) {
+      outcome_label(o: issue_selected(selected: sel, account: funded_account)) == "committed"
+        && outcome_label(o: issue_selected(selected: sel, account: exhausted_account)) == "money-refused"
+    },
+  )
+}
+
+// A cheaper admitted offer than admitted_offer, fungible for the subject work, with room for a grant.
+data cheaper_offer: SupplierOffer<NonEmptyStr> = SupplierOffer {
+  id: FabricIdentity { principal: "supplier", key: "offer-cheaper" },
+  executor: "srv5",
+  route: fixture_route(),
+  shape: fixture_shape,
+  capabilities: "linux-x86_64-cargo",
+  trust_domain: "gunbc-ci",
+  isolation: shared_kernel_sandbox_profile(),
+  quantity_bound: 1,
+  ready_at: "2026-09-04T00:00:00Z",
+  quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(count: 10), currency: Usd }),
+  billing_quantum: second(count: 1),
+  evidence: ObservedSupply { observed_at: "2026-09-04T00:00:00Z", receipt: "supply-observation-1" },
+}
+
+fn bound_for_subject(offer: SupplierOffer<NonEmptyStr>) -> List<CandidateOffer<NonEmptyStr>> {
+  bound(
+    offer: offer,
+    admission: fixture_admitted_use(
+      route: offer.route, offer: offer.id, demand: subject_demand(), work: subject_work.id),
+    demand: subject_demand(),
+    work: subject_work.id,
+  )
+}
+
+fn granted_offer_keys(os: List<GrantIssue<NonEmptyStr, Count, One>>) -> List<NonEmptyStr> {
+  map(committed_grants_of(os: os), g => (g.object.offer.key as NonEmptyStr))
+}
+
+// THE ISSUED OFFER IS THE ONE THE RANKING CHOSE, asserted over the ROUTE and not only the answer.
+// Two offers, both admitted, both fungible for the Work, both with room: before issuance took a
+// SelectedOffer, a caller could hand issue_grant either, and the dearer one committed exactly as
+// the cheaper did. Now the only value issuance accepts is select_supply's winner, so the grants
+// obtainable from this population name the cheaper offer and never the dearer - in either roster
+// order, so the answer cannot be the roster's first element standing in for the ranking.
+//
+// The discriminating red for the capability itself is a COMPILE refusal, not a runtime answer: a
+// SelectedOffer written by hand, or a SupplierOffer handed where one is demanded, is refused by
+// the sole_constructor wall whose own fixture corpus is dag/test/fixture/sole_constructor_sealed.
+// What executes here is the inhabitance claim that the real producer emits the value issuance
+// consumes and that the grant is its winner.
+test fn w_the_grant_is_for_the_offer_the_ranking_chose() -> Bool {
+  let dear_first = concat(bound_for_subject(offer: admitted_offer), bound_for_subject(offer: cheaper_offer))
+  let cheap_first = concat(bound_for_subject(offer: cheaper_offer), bound_for_subject(offer: admitted_offer))
+  let issued_dear_first = map(
+    selected_from_population(requirements: fixture_requirements, candidates: dear_first),
+    sel => issue_selected(selected: sel, account: funded_account),
+  )
+  let issued_cheap_first = map(
+    selected_from_population(requirements: fixture_requirements, candidates: cheap_first),
+    sel => issue_selected(selected: sel, account: funded_account),
+  )
+  dear_first.length() == 2
+    && granted_offer_keys(os: issued_dear_first) == ["offer-cheaper"]
+    && granted_offer_keys(os: issued_cheap_first) == ["offer-cheaper"]
+}
+
+// POSITIVE CONTROL FOR THE ROW ABOVE: the dearer offer is not unissuable in itself - ranked alone
+// it wins and commits. So the row above is the ranking at work, not the dearer offer failing some
+// other screen.
+test fn w_the_dearer_offer_ranked_alone_commits() -> Bool {
+  granted_offer_keys(os: map(
+    selected_from_population(requirements: fixture_requirements, candidates: bound_for_subject(offer: admitted_offer)),
+    sel => issue_selected(selected: sel, account: funded_account),
+  )) == ["offer-1"]
+}
+
+// RED - A REAL PERMIT FOR ANOTHER OFFER OR ANOTHER REGION YIELDS NO SELECTED OFFER. Before issuance
+// took a SelectedOffer these refused AT issuance; now the permit reaches issuance only inside a
+// candidate, and bind_candidate refuses a permit about another offer or another route, so the
+// wiring fault stops one step earlier and there is nothing to issue.
+fn selected_with_admission(
+  offer: SupplierOffer<NonEmptyStr>,
+  admission: ProviderUseAdmission<NonEmptyStr>,
+) -> List<SelectedOffer<NonEmptyStr>> {
+  selected_under(offer: offer, admission: admission, demand: subject_demand(), work: subject_work.id)
+}
+
+test fn w_a_permit_for_another_offer_or_region_selects_nothing() -> Bool {
+  count(selected_with_admission(
+    offer: admitted_offer,
+    admission: fixture_admitted_use(
+      route: admitted_offer.route, offer: foreign_domain_offer.id,
+      demand: subject_demand(), work: subject_work.id),
+  )) == 0
+    && count(selected_with_admission(
+      offer: admitted_offer,
+      admission: fixture_admitted_use(
+        route: fixture_route_sibling_region(), offer: admitted_offer.id,
+        demand: subject_demand(), work: subject_work.id),
+    )) == 0
+}
+
+// POSITIVE CONTROL FOR THE ROW ABOVE: the same helper, handed the offer's own id and route,
+// selects the offer and it commits.
+test fn w_the_same_helper_on_the_offers_own_route_commits() -> Bool {
+  fold(
+    selected_with_admission(
+      offer: admitted_offer,
+      admission: fixture_admitted_use(
+        route: admitted_offer.route, offer: admitted_offer.id,
+        demand: subject_demand(), work: subject_work.id),
+    ),
+    init: false,
+    f: fn(acc, sel) {
+      outcome_label(o: issue_selected(selected: sel, account: funded_account)) == "committed"
+    },
+  )
+}
+
+// RED - A SELECTION MADE FOR ANOTHER WORK REFUSES AT ISSUANCE. The candidate was bound, and won,
+// for a different unit of work; its permit is genuine and about the right offer and route.
+// Admission is granted FOR a customer profile and a data-handling profile, and both are properties
+// of the work, so accepting this would run work B under the scope somebody admitted for work A.
+// Selection does not know the issuing Work, so this check stays at issuance.
+test fn w_a_permit_for_another_work_refuses_at_issuance() -> Bool {
+  fold(
+    selected_for_use(
+      offer: admitted_offer,
+      work: FabricIdentity { principal: "gunbc", key: "work-somewhere-else" },
+      demand: subject_demand(),
+    ),
+    init: false,
+    f: fn(acc, sel) {
+      outcome_label(o: issue_selected(selected: sel, account: funded_account)) == "permit-names-another-work"
+    },
+  )
+}
+
+// RED - A SELECTION MADE FOR ANOTHER DEMAND REFUSES, for the same reason one level across: the
+// demand is who is being served, and a permit that named a different one is authority for
+// somebody else.
+test fn w_a_permit_for_another_demand_refuses_at_issuance() -> Bool {
+  fold(
+    selected_for_use(
+      offer: admitted_offer,
+      work: subject_work.id,
+      demand: FabricIdentity { principal: "gunbc", key: "demand-somewhere-else" },
+    ),
+    init: false,
+    f: fn(acc, sel) {
+      outcome_label(o: issue_selected(selected: sel, account: funded_account)) == "permit-names-another-demand"
+    },
+  )
+}
+
+// THE GRANT NAMES ITS OWN ADMISSION. The projections are read off the committed grant, not off
+// the permit issue_grant was handed and not off any candidate: an auditor holding only the grant
+// can re-derive the posture revision, the route-facts revision and the route. The expected
+// revisions are read off fx_posture / fx_facts, the same constructors that minted the permit,
+// so a second seed string cannot drift from what admission actually recorded.
+test fn w_a_committed_grant_names_its_admitting_posture_and_route() -> Bool {
+  let issued = committed_grants_of(os: issue(
+    work: subject_work,
+    attempt: first_attempt,
+    offer: admitted_offer,
+    outstanding: [],
+    account: funded_account,
+    ledger: thread_appropriation,
+  ))
+  issued.length() == 1 && (issued |> all(g =>
+    provider_route_eq(a: grant_admitting_route(g: g), b: fixture_route())
+      && grant_admitting_posture_revision(g: g) == fixture_posture_revision()
+      && grant_admitting_route_facts_revision(g: g) == fixture_route_facts_revision()
+  ))
+}

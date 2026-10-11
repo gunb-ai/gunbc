@@ -602,7 +602,7 @@ fn approval_broker_respond_as(
   }
 }
 
-// THE REQUEST-SECURITY CONTEXT, built the way the roadmap entry builds its own (gunbc.roadmap_serve
+// THE REQUEST-SECURITY CONTEXT, built the way the roadmap entry builds its own (gunbc.roadmap.roadmap_serve
 // roadmap_serve_request_security) so there is one request shape. The tailnet login is TRANSPORT
 // METADATA (2026-09-25 ruling): an input to the access-path modeling, which vouches for it only
 // behind a serve-status readback this entry does not perform, so it reaches the handlers as an

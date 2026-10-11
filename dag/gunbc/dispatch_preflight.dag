@@ -2,8 +2,8 @@ module gunbc.dispatch_preflight
 
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.host_layout { belt_spawn_workdir_env_var }
-import gunbc.roadmap_dashboard_instance {
+import gunbc.host.host_layout { belt_spawn_workdir_env_var }
+import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
   srv1_live_dashboard_instance,
   DashboardInstanceLookup,
@@ -11,18 +11,18 @@ import gunbc.roadmap_dashboard_instance {
   DashboardInstanceRootUnknown,
   dashboard_instance_for_repo_root,
 }
-import gunbc.roadmap_execution_contract {
+import gunbc.roadmap.roadmap_execution_contract {
   DispatchHostEnvironment,
   CapabilityRealization,
 }
-import gunbc.roadmap_dispatch_environment {
+import gunbc.roadmap.roadmap_dispatch_environment {
   CapabilityEnsureReceipt,
   CapabilityGrounded,
   CapabilityNotGrounded,
   capability_ensure_observe,
   capability_ensure_receipt_json,
 }
-import gunbc.fleet_desired_observe {
+import gunbc.fleet.fleet_desired_observe {
   LocalTreeRevision,
   LocalTreeRevisionObserved,
   LocalTreeRevisionUnobserved,
@@ -42,8 +42,8 @@ import extdeps.languages.json.emit {
 import extdeps.shell
 
 // THE CAPABILITY ADMISSION ONLY RUNS INSIDE A SPAWN, AND WHILE THE BELT REFUSES THERE IS NO SPAWN.
-// gunbc.roadmap_dispatch_environment observes every declared CapabilityRealization and grounds it,
-// but its only production caller is the per-attempt spawn path in gunbc.roadmap_belt_actuate.
+// gunbc.roadmap.roadmap_dispatch_environment observes every declared CapabilityRealization and grounds it,
+// but its only production caller is the per-attempt spawn path in gunbc.roadmap.roadmap_belt_actuate.
 // belt_tick_for_instance evaluates the fleet revision standing BEFORE it reaches any spawn, so a
 // host whose deployed tree has drifted from refs/fleet/desired refuses spawn and reap and never
 // once probes an executable. Measured on srv1 2026-08-28: the belt had been answering that refusal
@@ -74,7 +74,7 @@ import extdeps.shell
 data dispatch_preflight_schema: String = "roadmap-dispatch-preflight/v1"
 
 // PROVIDER AUTHENTICATION IS NOT AN AXIS HERE, AND NAMING IT AS A PERMANENTLY-UNOBSERVED ONE WOULD
-// BE WORSE THAN OMITTING IT. gunbc.roadmap_dispatch_environment's own header already draws this
+// BE WORSE THAN OMITTING IT. gunbc.roadmap.roadmap_dispatch_environment's own header already draws this
 // line — cached OAuth and upstream quota are provider protocol facts, not executable identity — and
 // gunbc.provider_standing already models the shape the answer would take
 // (ProviderAuthenticationStanding), while gunbc.claude_setup_token_enrollment models the
@@ -160,7 +160,7 @@ fn preflight_capability_receipts(
 // The revision axis names the code the host would dispatch from, so it is reported beside the
 // capabilities rather than ahead of them: a reader needs both facts at once. It refuses only when
 // HEAD cannot be read. Drift from the admitted fleet ref is no longer an axis (operator ruling,
-// 2026-09-05; `gunbc.roadmap_launch_admission` `launch_revision_outcome` carries the argument):
+// 2026-09-05; `gunbc.roadmap.roadmap_launch_admission` `launch_revision_outcome` carries the argument):
 // convergence is the deploy path's fact, and the deployed-tree report renders it.
 fn revision_axis_verdict(standing: LocalTreeRevision) -> PreflightAxisVerdict {
   match standing {
@@ -334,11 +334,11 @@ fn dispatch_preflight_cli_for_instance(instance: HostDashboardInstance) -> Proce
   }
 }
 
-// The repo-root -> instance resolution is CONSUMED from gunbc.roadmap_dashboard_instance,
+// The repo-root -> instance resolution is CONSUMED from gunbc.roadmap.roadmap_dashboard_instance,
 // which owns the instances. The first cut of this module copied the belt's private
 // spelling and said so in a comment; a declared fork is still a fork (review 57110), and
 // the authority moved to the instance module rather than being imported from the belt --
-// importing gunbc.roadmap_belt_actuate for one lookup would put spawn, reap, verify and
+// importing gunbc.roadmap.roadmap_belt_actuate for one lookup would put spawn, reap, verify and
 // publish behind a read-only probe.
 fn dispatch_preflight_cli_in(spawn_workdir: String) -> ProcessExit {
   match dashboard_instance_for_repo_root(repo_root: spawn_workdir) {

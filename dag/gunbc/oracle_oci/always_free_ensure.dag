@@ -16,7 +16,7 @@ import gunbc.oracle_oci.instance_ensure { oci_free_instances }
 // nothing above it. Run it until it exits 0. From an empty tenancy that takes a few runs, because
 // each newly created resource is provisioning when it is first read back.
 //
-// It runs on srv1, which holds the custodied API key (gunbc.host_credential_custody_converge
+// It runs on srv1, which holds the custodied API key (gunbc.fleet.host_credential_custody_converge
 // OracleOciApiSigningKey). The receipt is written whatever the outcome.
 
 data oci_always_free_ensure_receipt_path: String = "target/oci-always-free-ensure-receipt.txt"

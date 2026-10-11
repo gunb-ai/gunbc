@@ -1,18 +1,18 @@
 module test.claim.roadmap.roadmap_node_fixture
 
 import std.types { String, Int, List, Bool, NonEmptyStr }
-import gunbc.roadmap_model {
+import gunbc.roadmap.roadmap_model {
   RoadmapNode, RoadmapNodeIdentity, NodeParent, AdmittedRoot, PrsMerged, ManualAcceptance, Dispatchable,
 }
-import gunbc.roadmap_status {
+import gunbc.roadmap.roadmap_status {
   RoadmapItem, AuthoredLine, DerivableLine, SupersededLine, TicketLine, TicketFields,
   Signoff, SignedOff, RedControlEvidence, HandbackEvidence,
 }
-import gunbc.roadmap_authority { roadmap_node }
-import gunbc.roadmap_launch_canary { roadmap_launch_canary_execution_contract }
+import gunbc.roadmap.roadmap_authority { roadmap_node }
+import gunbc.roadmap.roadmap_launch_canary { roadmap_launch_canary_execution_contract }
 
 // FIXTURE CONSTRUCTORS FOR ROADMAP WITNESSES, built on the one production constructor
-// (gunbc.roadmap_authority roadmap_node). Production has a single node constructor with optional
+// (gunbc.roadmap.roadmap_authority roadmap_node). Production has a single node constructor with optional
 // dispatch facts; witnesses that plant many rows name the shapes they plant here instead of
 // repeating every field. Two families, and the difference is the readiness they plant:
 // - the unbound shapes (fx_authored, fx_ticket_row, fx_superseded) supply no dispatch facts, so the

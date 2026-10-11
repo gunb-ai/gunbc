@@ -1,7 +1,7 @@
 module gunbc.roadmap.roadmap_attempt_exit_spool
 
 import std.types { String, NonEmptyStr, List, Bool, Int }
-import gunbc.host_layout { attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir }
+import gunbc.host.host_layout { attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir }
 import extdeps.systemd.service_exec {
   ServiceStopVariable, InvocationIdVariable, ServiceResultVariable, ExitCodeVariable, ExitStatusVariable,
   ServiceResult, service_result_of_wire, ServiceExitCode, service_exit_code_of_wire,
@@ -252,7 +252,7 @@ fn attempt_exit_record_from_listings(
 }
 
 // THE SAME DECISION OVER ANY SUBJECT PREDICATE: the placement settlement knows a worker by its unit
-// name, and the unit name is minted above this module (gunbc.roadmap_dispatch_actuator
+// name, and the unit name is minted above this module (gunbc.roadmap.roadmap_dispatch_actuator
 // dispatch_attempt_unit_name), so the caller supplies the predicate rather than this module
 // re-deriving the name.
 fn attempt_exit_record_matching(

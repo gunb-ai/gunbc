@@ -63,7 +63,7 @@ import gunbc.instruments.layout_migration_map {
 // its reason (see RunDisposition). The census reports a reference with no row as undecided and a row
 // no reference uses as unused; the sweep refuses to run on either.
 //
-// v2.test.long: the namespace vanishes because its 66 modules are placed by path and land under three
+// v2.test.claim.long: the namespace vanishes because its 66 modules are placed by path and land under three
 // parents (v2.test.claim.long, v2.test.claim.execution.long, v2.test.manual.long), so no single
 // successor exists. The references that remain are the roster of long-home prefixes (required_floor
 // long_home_prefixes and the seed mirror of it) and synthetic probe module names in witnesses and seed
@@ -71,20 +71,20 @@ import gunbc.instruments.layout_migration_map {
 // entries it makes redundant, and the two prefixes the roster lacks, are the one hand edit that follows
 // the sweep (a roster is a set of prefixes, which no single replacement text can express).
 //
-// extdeps.fixture: its two modules (plant fixtures for the external-authority lens) are placed under
+// v2.test.fixture.extdeps_external_authority: its two modules (plant fixtures for the external-authority lens) are placed under
 // one directory, so the prefix has exactly one successor and the exemption keeps the same two modules.
 data layout_dispositions: List<RunDisposition> = [
   RunDisposition {
     kind: "namespace-vanished-unmapped",
-    subject: "v2.test.long",
+    subject: "v2.test.claim.long",
     outcome: DispositionTo { to: "v2.test.claim.long" },
     reason: "66 modules land under three parents; 57 under v2.test.claim.long, which keeps probe and fixture module names valid; the long-home roster is corrected by hand after the sweep"
   },
   RunDisposition {
     kind: "namespace-vanished-unmapped",
-    subject: "extdeps.fixture",
+    subject: "v2.test.fixture.extdeps_external_authority",
     outcome: DispositionTo { to: "v2.test.fixture.extdeps_external_authority" },
-    reason: "both extdeps.fixture modules are placed under v2.test.fixture.extdeps_external_authority and nothing else lives there, so the exempt prefix keeps its exact population"
+    reason: "both v2.test.fixture.extdeps_external_authority modules are placed under v2.test.fixture.extdeps_external_authority and nothing else lives there, so the exempt prefix keeps its exact population"
   }
 ]
 
@@ -184,17 +184,17 @@ data name_wins_namespaces: List<String> = ["product"]
 // beside a helper module under the claim they hold, and the fixture module under the name it
 // describes. Operator decision, this cutover.
 data suffix_decisions: List<SuffixDecision> = [
-  SuffixDecision { module: "v2.lens.registry.completeness_test", takes: "v2.test.claim.lens.registry.completeness" },
-  SuffixDecision { module: "v2.workflow.ci_floor_peak_emit_test", takes: "v2.test.claim.workflow.ci_floor_peak_emit" },
-  SuffixDecision { module: "v2.workflow.ci_heal_revalidation_preflight_emit_test", takes: "v2.test.claim.workflow.ci_heal_revalidation_preflight_emit" },
-  SuffixDecision { module: "v2.workflow.ci_materialization_emit_test", takes: "v2.test.claim.workflow.ci_materialization_emit" },
-  SuffixDecision { module: "v2.workflow.floor_purpose_standing_test", takes: "v2.test.claim.workflow.floor_purpose_standing" },
-  SuffixDecision { module: "v2.workflow.floor_subject_seed_test", takes: "v2.test.claim.workflow.floor_subject_seed" },
-  SuffixDecision { module: "v2.workflow.floor_terminal_ledger_test", takes: "v2.test.claim.workflow.floor_terminal_ledger" },
-  SuffixDecision { module: "v2.workflow.floor_terminal_ledger_wire_test", takes: "v2.test.claim.workflow.floor_terminal_ledger_wire" },
-  SuffixDecision { module: "v2.test.extdeps_shape_transport_policy.coverage_domain_equivalence_test", takes: "v2.test.claim.extdeps_shape_transport_policy.coverage_domain_equivalence_holds" },
-  SuffixDecision { module: "v2.test.round_trip.source_authority_contract_test", takes: "v2.test.claim.round_trip.source_authority_contract_serializer_section_law_holds" },
-  SuffixDecision { module: "v2.extdeps.languages.rust_test", takes: "v2.extdeps.languages.rust_fixtures" }
+  SuffixDecision { module: "v2.test.claim.lens.registry.completeness", takes: "v2.test.claim.lens.registry.completeness" },
+  SuffixDecision { module: "v2.test.claim.workflow.ci_floor_peak_emit", takes: "v2.test.claim.workflow.ci_floor_peak_emit" },
+  SuffixDecision { module: "v2.test.claim.workflow.ci_heal_revalidation_preflight_emit", takes: "v2.test.claim.workflow.ci_heal_revalidation_preflight_emit" },
+  SuffixDecision { module: "v2.test.claim.workflow.ci_materialization_emit", takes: "v2.test.claim.workflow.ci_materialization_emit" },
+  SuffixDecision { module: "v2.test.claim.workflow.floor_purpose_standing", takes: "v2.test.claim.workflow.floor_purpose_standing" },
+  SuffixDecision { module: "v2.test.claim.workflow.floor_subject_seed", takes: "v2.test.claim.workflow.floor_subject_seed" },
+  SuffixDecision { module: "v2.test.claim.workflow.floor_terminal_ledger", takes: "v2.test.claim.workflow.floor_terminal_ledger" },
+  SuffixDecision { module: "v2.test.claim.workflow.floor_terminal_ledger_wire", takes: "v2.test.claim.workflow.floor_terminal_ledger_wire" },
+  SuffixDecision { module: "v2.test.claim.extdeps_shape_transport_policy.coverage_domain_equivalence_holds", takes: "v2.test.claim.extdeps_shape_transport_policy.coverage_domain_equivalence_holds" },
+  SuffixDecision { module: "v2.test.claim.round_trip.source_authority_contract_serializer_section_law_holds", takes: "v2.test.claim.round_trip.source_authority_contract_serializer_section_law_holds" },
+  SuffixDecision { module: "v2.extdeps.languages.rust_fixtures", takes: "v2.extdeps.languages.rust_fixtures" }
 ]
 
 // The instrument namespace and the folder R10 places every member of it in.

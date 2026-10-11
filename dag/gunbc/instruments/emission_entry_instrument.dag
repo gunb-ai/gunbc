@@ -1,4 +1,4 @@
-module tools.emission_entry_instrument
+module gunbc.instruments.emission_entry_instrument
 
 import std.types { Bool, Int, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -6,9 +6,9 @@ import extdeps.shell
 import extdeps.gunbc
 import extdeps.git
 import extdeps.git.inspect
-import extdeps.cargo_build
-import extdeps.rustc
-import extdeps.rustc { rustc_version_verbose_field }
+import extdeps.rust.cargo_build
+import extdeps.rust.rustc
+import extdeps.rust.rustc { rustc_version_verbose_field }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.crypto.hash { Digest }
 import extdeps.tools.rustfmt
@@ -21,7 +21,7 @@ import extdeps.tools.sha256sum {
 }
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_repository }
 import gunbc.whole_corpus_compile_demand_projection { whole_corpus_compile_demand_projection_path }
-import tools.host_prelude {
+import gunbc.instruments.host_prelude {
   witness_bin,
   witness_bin_program_readiness,
   witness_bin_refusal_cause,
@@ -30,7 +30,7 @@ import tools.host_prelude {
   WitnessBinRefused,
   WitnessBinRefusalReason
 }
-import tools.emitted_crate_harness_manifest {
+import gunbc.instruments.emitted_crate_harness_manifest {
   derive_harness_manifest_in_place,
   harness_manifest_derived,
   ProbeLibTarget,
@@ -60,7 +60,7 @@ import gunbc.emit_diagnostic_observation {
   emit_diagnostic_read_refusal_reason,
   gunbc_diagnostic_row
 }
-import extdeps.cargo_diagnostic {
+import extdeps.rust.cargo_diagnostic {
   RustcCodedDiagnostic,
   RustcCoded,
   RustcUncoded,
@@ -793,7 +793,7 @@ fn measure_entry_emission(entry: String) -> EmissionMeasurement {
 //
 // THE SCRATCH CRATE STAGES OUTSIDE THE WORKSPACE, AND MOVING IT INSIDE FAILS AS AN EMISSION
 // ERROR WOULD. Mktemp.Dir puts out_dir under /tmp, which reads like an arbitrary choice next to
-// tools.self_host_logic_behavioral_transport, whose own note argues at length for staging under
+// gunbc.instruments.self_host_logic_behavioral_transport, whose own note argues at length for staging under
 // target/ instead -- so target/ is the natural place for the next person to move this, and the two
 // notes disagree for a reason worth writing down rather than leaving to be rediscovered.
 //
@@ -802,8 +802,8 @@ fn measure_entry_emission(entry: String) -> EmissionMeasurement {
 // not a member of. The hand-authored probe manifest this route used on 2026-09-04
 // carried no [workspace] table, so under target/ cargo stopped with "current package believes it's
 // in a workspace when it's not" and exited before compiling anything (measured while taking the
-// first cargo reading of the src/v2/compiler/00_compile.dag closure). The manifest is now derived
-// from the emitted one (tools.emitted_crate_harness_manifest), which does carry [workspace]; the
+// first cargo reading of the src/v2/compiler/compile.dag closure). The manifest is now derived
+// from the emitted one (gunbc.instruments.emitted_crate_harness_manifest), which does carry [workspace]; the
 // output crate still stages outside the repository.
 //
 // The reason it costs more than the ten minutes it costs: cargo's refusal arrives with zero
@@ -813,7 +813,7 @@ fn measure_entry_emission(entry: String) -> EmissionMeasurement {
 // the cause legible before someone re-derives it.
 // The instrument invokes the compiler it is measuring as a subprocess, so an unready binary is a
 // refusal and never a clean measurement. The cause carries WHICH binary refused, WHERE it was
-// looked for and WHY (tools.host_prelude WitnessBinRefusalReason), so an unbuilt gunbc reads
+// looked for and WHY (gunbc.instruments.host_prelude WitnessBinRefusalReason), so an unbuilt gunbc reads
 // differently from a failed cssl_assemble build.
 fn emission_binaries_unestablished(
   entry: String,

@@ -1,4 +1,4 @@
-module gunbc.machine_intake_mtcollins1_smpro_error_reading
+module gunbc.machine_intake.mtcollins1_smpro_error_reading
 
 import v2.std.algebra { filter }
 import std.types { Int, List, NonEmptyStr, String }
@@ -11,12 +11,12 @@ import extdeps.ampere.smpro_register {
   smpro_err_pmpro_data_lo_reg, smpro_err_pmpro_data_hi_reg,
 }
 import extdeps.ampere.smpro_internal_error { SmproInternalRecord, SmproRecordGate, SmproProcessorPmpro, smpro_internal_error_of, smpro_record_gate }
-import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
-import gunbc.machine_intake_ampere_smpro_observation { SmproSiteAdmitted, SmproSiteRefused, smpro_site_targets }
+import gunbc.machine_intake.mtcollins1_smpro_observation { mtcollins1_smpro_site }
+import gunbc.machine_intake.ampere_smpro_observation { SmproSiteAdmitted, SmproSiteRefused, smpro_site_targets }
 
 // ONE RAW SMpro ERROR-REGISTER READING FROM mtcollins1, 2026-10-03, AS RECEIVED: the operator's
 // hand-run read-only pass during the boot loop (eager-gull-22 msg_12ab1f39), before the collector in
-// gunbc.machine_intake_mtcollins1_smpro_observation read these registers itself. Method, as relayed:
+// gunbc.machine_intake.mtcollins1_smpro_observation read these registers itself. Method, as relayed:
 // `ipmitool -I lanplus raw 0x06 0x52 0x05 <0x9e|0x9c> 0x02 <reg>` -- I2C master write-read, no
 // register writes. Stamps are srv1 CLOCK_REALTIME seconds, kept as the text the capture printed.
 //

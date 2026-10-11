@@ -1,11 +1,11 @@
-module gunbc.bmc_fan_program_observation_witness
+module gunbc.bmc.bmc_fan_program_observation_witness
 
 import std.types { Bool }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { String }
-import gunbc.bmc_fan_program_capture { srv3_captured_program, srv4_captured_program }
-import gunbc.bmc_fan_program_observation {
+import gunbc.bmc.bmc_fan_program_capture { srv3_captured_program, srv4_captured_program }
+import gunbc.bmc.bmc_fan_program_observation {
   ArtifactByteCountDisagrees,
   ArtifactJsonValueObserved,
   ArtifactNotParseable,

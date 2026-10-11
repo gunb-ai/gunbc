@@ -1,12 +1,12 @@
-module gunbc.fabric_storage_placement
+module gunbc.fabric.fabric_storage_placement
 
-import gunbc.fabric_storage_address { fabric_storage_route_prefix, fabric_storage_state_suffix, fabric_storage_state_root, fabric_storage_state_file_root }
+import gunbc.fabric.fabric_storage_address { fabric_storage_route_prefix, fabric_storage_state_suffix, fabric_storage_state_root, fabric_storage_state_file_root }
 
 import std.types { String, NonEmptyStr, FilePath, Int, Bool, Port, List }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_intent_network { fleet_intent_network }
-import gunbc.fleet_host_identity { operator_host_srv1 }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, srv1_live_dashboard_instance, dashboard_instance_child }
+import gunbc.fleet.fleet_intent_network { fleet_intent_network }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, srv1_live_dashboard_instance, dashboard_instance_child }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryManaged }
 import std.effect_grant { Read, Write, Execute }
 import extdeps.tailscale.serve { tailscale_serve_unix_proxy_peer }
@@ -15,8 +15,8 @@ import gunbc.managed_directory {
   ManagedDirectory, DirectoryDependent, srv1_dashboard_service_principal,
   EntriesUnmanaged, EntriesReadableByDependents, managed_directory_entry_mode, ManagedEntryModeDerived, ManagedEntryModeRefused,
 }
-import gunbc.fleet_posix_accounts { fleet_posix_ci_runner_user }
-import gunbc.fabric_storage_file_store { FabricStorageFileRoot, fabric_storage_file_root, fabric_storage_file_root_with }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_user }
+import gunbc.fabric.fabric_storage_file_store { FabricStorageFileRoot, fabric_storage_file_root, fabric_storage_file_root_with }
 import extdeps.access.posix { FileMode, file_mode_bits }
 
 // WHERE THE FABRIC DB IS: one host holds the store's files and answers the endpoint. This is the
@@ -34,7 +34,7 @@ type FabricStoragePlacement
 
 // The endpoint is the placed host's tailnet name on the store's own HTTPS listener, derived from the
 // fleet network's tailnet domain rather than spelled: an unset domain leaves the store unplaced
-// instead of guessing an address. (gunbc.fleet_tailnet tailnet_base_url_from
+// instead of guessing an address. (gunbc.fleet.fleet_tailnet tailnet_base_url_from
 // derives the same URL shape but answers an undeclared domain with a fabricated .invalid address; a
 // placement must refuse there instead, so it is not reused.)
 //
@@ -68,7 +68,7 @@ data fabric_storage_door_proxy_peer: NonEmptyStr = tailscale_serve_unix_proxy_pe
 
 
 // THE FABRIC DB ROOT: where the fabric DB's files live on the instance that holds the placement
-// (gunbc.fabric_storage_file_store). It is this module's fact -- the placement decides where the store
+// (gunbc.fabric.fabric_storage_file_store). It is this module's fact -- the placement decides where the store
 // is -- and the deployment creates exactly the directories fabric_storage_directory_demands declares
 // from it. It replaced the per-instance event-log mirror root: no executor keeps a copy of the log any
 // more, so only the placement's host holds a root at all.
@@ -110,9 +110,9 @@ fn fabric_storage_placement() -> FabricStoragePlacement {
 // live_deploy_fabric_storage_unit_file), running as the dashboard service principal. Every writer --
 // a remote host through tailscale serve, and the placed host's own jobs and operator through the
 // door socket -- reaches the files only as a request to that process, so the door's admission
-// (gunbc.fabric_storage_serve) is the one wall over every writer. Until 2026-09-27 the CI job
+// (gunbc.fabric.fabric_storage_serve) is the one wall over every writer. Until 2026-09-27 the CI job
 // principal ALSO wrote the files directly (FabricStorageLocalFiles, bound for the placed host by
-// gunbc.fabric_storage_binding fabric_storage_binding_for), and the areas were group ghrunner so it
+// gunbc.fabric.fabric_storage_binding fabric_storage_binding_for), and the areas were group ghrunner so it
 // could; that in-process route is retired (operator ruling relayed by proud-deer-538), and with it
 // the group. A writer now needs no filesystem grant on the store at all: it needs to reach the door.
 //
@@ -148,7 +148,7 @@ fn fabric_storage_directory(member: NonEmptyStr, path: NonEmptyStr, writes: Bool
 
 // THE DOOR'S DIRECTORY IS THE LOCAL WRITER ROSTER. A local process reaches the socket only by
 // traversing this directory, and the door's handler admits a local peer only if it is one of these
-// dependents (gunbc.fabric_storage_serve fabric_storage_door_local_writers) -- one declaration read
+// dependents (gunbc.fabric.fabric_storage_serve fabric_storage_door_local_writers) -- one declaration read
 // twice, by the kernel and by the handler. The service owns it; the CI runner (fleet-converge jobs on
 // the placed host) is its group and needs only to traverse to connect: the socket itself is opened
 // to every class by `gunbc serve --unix-socket`, so its directory is the whole filesystem wall.

@@ -1,0 +1,18 @@
+module test.claim.self_host_body_producer_behavioral_witness
+
+import gunbc.instruments.self_host_module_behavioral_transport_roster { compiler_module_behavioral_receipt_for }
+
+// Wet self-host behavioral receipt (03_body_producer): the rendered driver (the roster row's contract, also run interpreted) checks the
+// .dag contract on the EMITTED module with no seed oracle -- body_producer_dispatch_structured_body
+// accepts a behavior-rooted (Transform) body and refuses a type-rooted (Atom) one AS
+// body_producer_reason_resolved_shape (the cause is asserted, not just the verdict), and
+// produce_arrow_with_structured_body inherits that refusal; --inject-fault asserts only that the
+// Atom body is wrongly accepted. It used to require the same verdicts from a hand copy in
+// v1_compiler (gunbc.recurring_failure_mode hand_shim_shadows_an_emitted_module). Nothing runs
+// this receipt on a schedule: std.witness_admission witness_cadence_has_scheduled_route answers
+// FalsifierSelfHostWet false (censused as PremiseInvalidated in
+// gunbc.deleted_cadence_reference_census).
+
+test fn self_host_body_producer_behavioral_receipt_holds() -> Bool {
+  compiler_module_behavioral_receipt_for(module_path: "src/v2/compiler/body_producer.dag")
+}

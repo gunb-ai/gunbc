@@ -185,7 +185,7 @@ data heal_publisher_wif_runner_environment: String = "github-hosted"
 // THAT WOULD JUSTIFY WIDENING IT EXISTS (operator 2026-09-29; review 72445). GitHub's
 // runner_environment claim is only github-hosted or self-hosted, so pinning self-hosted admits every
 // self-hosted runner, including the srv slots that execute pull-request code. What would keep
-// pull-request code off the machine is the runner group gunbc.runner_group_restriction_ensure
+// pull-request code off the machine is the runner group gunbc.runner.runner_group_restriction_ensure
 // private_heal_publisher_runner_group_subject -- restricted to exactly this workflow and repository
 // -- together with a controller that mints one guest per job into that group only after reading the
 // restriction back. The group is modelled; the minting path is not. So the field is per record and

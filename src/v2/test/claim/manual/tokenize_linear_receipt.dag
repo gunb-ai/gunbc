@@ -1,4 +1,4 @@
-module v2.test.manual.tokenize_linear_receipt
+module v2.test.claim.manual.tokenize_linear_receipt
 
 
 data tlr_path: String = "src/v1/01_tokenize.dag"

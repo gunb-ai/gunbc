@@ -182,7 +182,7 @@ dependency into one migration.
 
 **X1 — `product.compute_fabric` is dead.** `Fabric`, `Shape`, `Program`, `ComputeNeed`,
 `Opportunity`, `Connection = Bound | Pending | Unmet`, `connect`. Verified: its only non-plan-doc
-mentions on main are **inside string literals** — `gunbc.host_standup` names
+mentions on main are **inside string literals** — `gunbc.host.host_standup` names
 `product.compute_fabric.connect` in a `refusal:` message and an `authority_or_interim:` field:
 prose, not a code dependency. No production *decision* consumer, so it is deleted outright with no
 terminal market Y first — only #8413 must stop importing its `Shape`.
@@ -209,8 +209,8 @@ asked of it, and its output was reported as a structural fact.
 and changes the cut's shape:
 
 ```
-dag/gunbc/product/fabric/supply.dag:6                              import product.compute_fabric { Shape }
-dag/gunbc/product/fabric/work.dag:5                                import product.compute_fabric { Shape }
+dag/product/fabric/supply.dag:6                              import product.compute_fabric { Shape }
+dag/product/fabric/work.dag:5                                import product.compute_fabric { Shape }
 dag/test/claim/fabric_terminal_contract_witness_test.dag:7   import product.compute_fabric { Shape, HardRequirements }
 ```
 
@@ -230,7 +230,7 @@ as the available alternatives; **neither exists on main**, and naming unavailabl
 sanctioned path is how a brief pushes an implementer toward minting one inside a deletion.
 
 *The rest of the census:* five witnesses inside the production module; a separate witness file;
-two `gunbc.host_standup` prose strings that become false on deletion; five plan documents, several
+two `gunbc.host.host_standup` prose strings that become false on deletion; five plan documents, several
 citing types the module no longer has (`WorkDemand`, `ParallelismShape`, `ResourceEnvelope`) which
 its own `compute_fabric_resource_model_dissolution_receipt` records as dissolved in #5904; and
 DESIGN §2, fixed separately in #8559. One coverage obligation must survive the cut: that receipt
@@ -252,7 +252,7 @@ make anything compile. At the terminal-carrier grain use `ExecutionClassRef` / `
 until the resource-envelope replacement lands; a new incomplete resource record in #8413 merely to
 make the deletion compile is the scaffold arm.
 
-**X2 — `gunbc.ci_fleet.ComputeOffer` is live**, and is the real replacement migration.
+**X2 — `gunbc.ci.ci_fleet.ComputeOffer` is live**, and is the real replacement migration.
 
 **The workflow edge is itself wrong**, which is the finding that reorders everything:
 
@@ -262,7 +262,7 @@ ComputeOffer -> runner_spec_from_offer -> RunnerSpec -> witnesses.yml
 
 `runner_spec_from_offer` derives GitHub labels from the *physical host*, so the customer-facing
 execution class depends on physical supply — every supply migration is a workflow migration.
-`gunbc.ci_runner_target` already claims to be the single "which machine runs CI" authority and is a
+`gunbc.ci.ci_runner_target` already claims to be the single "which machine runs CI" authority and is a
 smaller interception point (verified present; consumers in `ci_budget_tree` and
 `fleet_workflow_steps`), though its fleet arm still delegates to `runner_spec_from_offer`.
 
@@ -283,7 +283,7 @@ smaller interception point (verified present; consumers in `ci_budget_tree` and
 ### Cut C, as measured rather than as assumed
 
 Cut C was specified as *building* a seam, on the claim that "every supply migration is a workflow
-migration". **The seam already exists and is already the authority.** `gunbc.ci_runner_target`
+migration". **The seam already exists and is already the authority.** `gunbc.ci.ci_runner_target`
 declares `CiRunnerTarget = FleetSelfHosted | UbicloudRunner | GithubHostedRunner`, projects
 `ci_runner_target_spec` and `ci_runner_target_memory_regime` from one selection, and its
 `FleetSelfHosted` arm delegating to `runner_spec_from_offer` is **correct and deliberate** — a
@@ -503,7 +503,7 @@ avoid), or drop the derivation and let the labels come from somewhere less groun
 **The honest options, none of which Cut D may pick unilaterally:**
 
 1. **The label derivation stops reading an offer at all** and reads the fleet host directly —
-   `gunbc.fleet_intent` already owns `compute_host_primary_cpu`, and a self-hosted runner's labels
+   `gunbc.fleet.fleet_intent` already owns `compute_host_primary_cpu`, and a self-hosted runner's labels
    are a fact about the fleet host, not a commercial offer. The favoured arm at the time: it makes
    the dependency honest rather than relocating it.
 2. **`CiRunnerTarget.FleetSelfHosted` carries the host reference**, so the physical fact enters

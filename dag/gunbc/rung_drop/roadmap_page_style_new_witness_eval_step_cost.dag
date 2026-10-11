@@ -16,7 +16,7 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_page_st
 //
 // WHY A DROP AND NOT A SUPPLIED STYLESHEET. DESIGN section 3's witness rule lets every other page
 // claim supply its inputs only while ONE claim still runs the real path; this claim is that one --
-// the only route by which the emitted page carries `gunbc.roadmap_style` `roadmap_css` as actually
+// the only route by which the emitted page carries `gunbc.roadmap.roadmap_style` `roadmap_css` as actually
 // derived. Supplying the stylesheet here would remove the last execution of the real path.
 //
 // THE COPIED ACCUMULATORS WERE FIXED, AND ARE NOT PART OF THIS CASE. `band_var_decls` and
@@ -41,6 +41,6 @@ data roadmap_page_style_new_witness_eval_step_cost: RungDrop = RungDrop {
       replacement: "the derived roadmap stylesheet reaching a claim frame as a served value rather than being re-derived inside it",
     },
     population: roadmap_page_style_new_witness_eval_step_cost_population,
-    restoration_trigger: "THE CAPABILITY, BOTH CLAUSES. (i) gunbc.roadmap_style roadmap_css is served across claim frames by v2.workflow.floor_pure_producer_share on the acceptance path, or its derivation itself fits the budget; WHAT THAT MUST BE SUFFICIENT FOR: a required-floor claim asserting the emitted page carries the real derived stylesheet does not re-derive it inside its own frame. A share row not covering this identity's demand does not satisfy this clause. (ii) AND this identity measures under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives, while still executing the real stylesheet path. Deleting the identity, supplying the stylesheet as a fixture, or relocating it to a home that does not execute it satisfies neither clause.",
+    restoration_trigger: "THE CAPABILITY, BOTH CLAUSES. (i) gunbc.roadmap.roadmap_style roadmap_css is served across claim frames by v2.workflow.floor_pure_producer_share on the acceptance path, or its derivation itself fits the budget; WHAT THAT MUST BE SUFFICIENT FOR: a required-floor claim asserting the emitted page carries the real derived stylesheet does not re-derive it inside its own frame. A share row not covering this identity's demand does not satisfy this clause. (ii) AND this identity measures under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives, while still executing the real stylesheet path. Deleting the identity, supplying the stylesheet as a fixture, or relocating it to a home that does not execute it satisfies neither clause.",
   }
 }

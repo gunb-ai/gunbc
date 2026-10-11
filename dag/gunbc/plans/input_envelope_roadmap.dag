@@ -22,7 +22,7 @@ fn input_envelope_roadmap_body() -> List<MarkdownBlock> {
     ]),
     h2(text: "P2 (follow-on, operator sign-off before landing) — ceiling derivation"),
     ul(items: [
-      li(text: "Derive the WitnessCount ceiling from the marker-driven corpus discovery roster (gunbc.ci_layer_roots witness_discovery_scan_dirs scan; count is known at CI-spec emit time)"),
+      li(text: "Derive the WitnessCount ceiling from the marker-driven corpus discovery roster (gunbc.ci.ci_layer_roots witness_discovery_scan_dirs scan; count is known at CI-spec emit time)"),
       li(text: "Derive SourceNodeCount and CorpusNodeCount from the measured per-file / per-tree node counts (the ci_floor_measurement infrastructure)"),
       li(text: "Replace the Scaffold ceiling rows in gunbc_ci_corpus_envelope with derived values; the Scaffold disposition dissolves on this replacement"),
       li(text: "Wire input_admitted into the scheduler / admission path as a fail-closed gate (operator controls timing; this PR's gate is a wall on WorkDemand construction, not a runtime check yet)"),

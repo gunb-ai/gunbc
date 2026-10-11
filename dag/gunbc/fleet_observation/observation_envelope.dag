@@ -1,11 +1,11 @@
-module gunbc.fleet_observation_observation_envelope
+module gunbc.fleet_observation.observation_envelope
 
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef }
 import std.measure { ObservationInstant }
 import std.content_hash { ContentHash }
-import gunbc.fleet_observation_collector_ownership {
+import gunbc.fleet_observation.collector_ownership {
   CollectorSessionId,
   ownership_generation,
   EndpointOwnership,
@@ -17,7 +17,7 @@ import gunbc.fleet_observation_collector_ownership {
   NotTheRecordingOwner,
   recording_owner,
 }
-import gunbc.fleet_observation_capture_chunk {
+import gunbc.fleet_observation.capture_chunk {
   CaptureChunk,
   SourceStreamId,
   source_stream_eq,

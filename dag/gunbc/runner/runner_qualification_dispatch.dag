@@ -28,7 +28,7 @@ import extdeps.github.workflow_runs {
   WorkflowRun, WorkflowRunStatus, Completed, WorkflowRunConclusion, WorkflowJobRun, WorkflowJobRunList,
 }
 import gunbc.repository { gunbc_repository }
-import gunbc.fleet_converge_workflow { fleet_converge_workflow, fleet_converge_dispatch_inputs }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow, fleet_converge_dispatch_inputs }
 import gunbc.auth.github_apps { DeclaredGitHubApp, GitHubAppControlPlaneState }
 import gunbc.auth.github_credential {
   GitHubCredentialAuthority, CredentialCapability, credential_authorizes, unsatisfied_capabilities,
@@ -36,12 +36,12 @@ import gunbc.auth.github_credential {
 import gunbc.runner.jit_registration_subject { host_unit_slot_subject }
 import gunbc.runner.runner_jit_perform { AuthorizedJitMintDispatch, JitMintDispatchAuthorized, JitCredentialDelivery, JitCredentialBoundToAttempt, authority_installation }
 import gunbc.runner.runner_jit_deregistration { JitRegistration, jit_registration_of }
-import gunbc.managed_host_unit_hold { UnitHoldProof }
+import gunbc.host.managed_host_unit_hold { UnitHoldProof }
 import gunbc.github_effect_perform {
   ControllerInstallationToken, dispatch_workflow_with, read_run_with, read_attempt_jobs_with,
   WorkflowJobLogRead, read_job_log_with, list_run_artifacts_with, download_artifact_with,
 }
-import gunbc.runner_throughput_qualification_route {
+import gunbc.runner.runner_throughput_qualification_route {
   QualificationInstrument, qualification_instruments,
   FloorPhaseRows, FloorCgroupRows, ClaimCostArtifactEvalSteps, CalibrationSpecimenWitnessLine,
   GuestIdleMeminfoAndNproc, ConcurrentCohortSeatWindows,
@@ -50,11 +50,11 @@ import gunbc.required_ci_phase_roster {
   FloorPhaseRow, FloorPhaseTimed, FloorPhaseUntimed, FloorPhaseRowReading, FloorPhaseRowRead, FloorPhaseRowGarbled,
   read_floor_phase_row,
 }
-import gunbc.host_budget_source {
+import gunbc.host.host_budget_source {
   FloorCgroupLevelRow, FloorCgroupRowReading, FloorCgroupLevelRead, FloorCgroupRowGarbled,
   read_floor_cgroup_level_row,
 }
-import gunbc.witness_floor_workflow { required_floor_claim_cost_artifact_name }
+import gunbc.witness.witness_floor_workflow { required_floor_claim_cost_artifact_name }
 import extdeps.github.actions_artifacts { ActionsArtifact, ActionsArtifactList }
 import gunbc.runner.runner_host_unit_slot { HostUnitSlot }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
@@ -65,7 +65,7 @@ import gunbc.runner.runner_qualification_ref_pin {
 // THE DISPATCH LEG OF THE QUALIFICATION ROUTE, AND THE COLLECT STAGE THAT READS ITS RUN BACK.
 //
 // The route registers one ephemeral JIT runner whose label set carries a per-boot attempt label
-// (gunbc.runner_throughput_qualification_route ephemeral_slot_labels). Dispatching the floor to it is
+// (gunbc.runner.runner_throughput_qualification_route ephemeral_slot_labels). Dispatching the floor to it is
 // a workflow_dispatch whose input IS that attempt label, read by the floor job's runs-on, so no other
 // registration can serve the job. This module is the production caller of extdeps.github.workflows
 // github.Workflows CreateDispatch.
@@ -80,7 +80,7 @@ import gunbc.runner.runner_qualification_ref_pin {
 //     the attempt is the slot's own and the runner the collection joins on is that registration's;
 //   - the qualification workflow, which is not a parameter of the request: its path is the generated
 //     fleet-converge artifact (gunbc.generated_artifact FleetConvergeYamlArtifact) and production
-//     supplies its model as gunbc.fleet_converge_workflow fleet_converge_workflow, where the route's
+//     supplies its model as gunbc.fleet.fleet_converge_workflow fleet_converge_workflow, where the route's
 //     mode lands with the boot leg. A slot restricted to any other workflow refuses;
 //   - a floor job in that workflow whose runs-on is exactly the declared attempt input, so the job
 //     can be served by the attempt's runner and nothing else. A literal label, another input, or a
@@ -94,7 +94,7 @@ import gunbc.runner.runner_qualification_ref_pin {
 // operator confirmed on 2026-10-05 to cover this dispatch (gunbc.auth.privileged_effect_census
 // runner_lifecycle_scope_ruling), stands only beside its interlock:
 // dispatch_qualification_floor takes the host-generic unit hold proof
-// (gunbc.managed_host_unit_hold UnitHoldProof) and refuses unless it is the slot's own host's.
+// (gunbc.host.managed_host_unit_hold UnitHoldProof) and refuses unless it is the slot's own host's.
 
 data qualification_attempt_dispatch_input: DispatchInput = DispatchInput {
   name: "runner_attempt_label",
@@ -333,8 +333,8 @@ fn qualification_dispatch_subject_over(
 ) -> QualificationSubjectStanding
   admit_callers: [
     decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "qualification_dispatch_subject"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_real_mint_admits_the_attempt_through_the_sealed_subject"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_delivery_from_another_dispatch_on_the_same_slot_refuses"),
+    decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "the_real_mint_admits_the_attempt_through_the_sealed_subject"),
+    decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "a_delivery_from_another_dispatch_on_the_same_slot_refuses"),
   ]
 {
   match jit_registration_of(dispatch: JitMintDispatchAuthorized { dispatch: dispatch }) {
@@ -384,7 +384,7 @@ fn qualification_dispatch_subject_over(
 // THE PRODUCTION MINT: the qualification workflow is the generated fleet-converge model.
 //
 // THE DECLARED INPUTS ARE READ BEFORE THE WORKFLOW IS BUILT. The model's workflow_dispatch inputs are
-// their own declaration (gunbc.fleet_converge_workflow fleet_converge_dispatch_inputs), and the jobs
+// their own declaration (gunbc.fleet.fleet_converge_workflow fleet_converge_dispatch_inputs), and the jobs
 // are built by fleet_converge_jobs(); evaluating the whole fleet_converge_workflow builds every job of
 // every mode, ~600k eval steps measured by the required floor, and the first check the mint makes
 // reads only the inputs. So the wrapper asks that check of the inputs declaration directly and builds
@@ -708,7 +708,7 @@ fn token_names_registration(token_app: DeclaredGitHubApp, token_installation: Gi
 // THE COLLECTION'S ADMISSION IS A PLAN, DECIDED WITHOUT I/O: the reads it will make, or the refusal
 // that makes none. collect_qualification_run performs exactly the planned reads and nothing else, so
 // "a token for another App or installation reads nothing" is a claim about this pure function a
-// witness executes over a really minted subject (test.claim.runner_qualification_dispatch_witness
+// witness executes over a really minted subject (test.claim.runner.runner_qualification_dispatch_witness
 // the_real_mint_admits_the_attempt_through_the_sealed_subject), not a property of an effectful path
 // no test can reach.
 type QualificationCollectionRead
@@ -777,7 +777,7 @@ fn collect_qualification_run(dispatched: DispatchedQualificationRun, token: Cont
 // ── EXTRACT: THE INSTRUMENTS READ FROM THE COLLECTED RUN ──────────────────────────────────────
 //
 // WHERE EACH INSTRUMENT IS READ FROM IS A TOTAL MATCH, so adding an instrument to
-// gunbc.runner_throughput_qualification_route QualificationInstrument refuses to compile here until it
+// gunbc.runner.runner_throughput_qualification_route QualificationInstrument refuses to compile here until it
 // says where its reading comes from. Two are the designated floor job's log; two are this run's
 // required-floor-claim-cost artifact, whose read is attempted on every collection and today ends in a
 // typed refusal (read_claim_cost_artifact); two are not outputs of this run at all. Each of the
@@ -928,7 +928,7 @@ fn designated_job_log(designated_job_id: Int, log: AttemptJobLog) -> DesignatedJ
 // have to trust rows detached from the job and the bytes that produced them. The decoder above is
 // open; this record is not.
 //
-// THE SEAL IS ENROLLED AS EXECUTED REDS. test.claim.qualification_job_log_receipt_forged_probe_witness
+// THE SEAL IS ENROLLED AS EXECUTED REDS. test.claim.runner.qualification_job_log_receipt_forged_probe_witness
 // compiles test.probe.qualification_job_log_receipt_forged_probe -- a receipt written from invented
 // readings, and job_log_standing called from outside the collect stage -- and requires a
 // SoleConstructorViolation at QualificationJobLogReceipt and a ConstructorCallAdmissionRefused at
@@ -987,7 +987,7 @@ fn attempt_job_log_of(read: WorkflowJobLogRead) -> AttemptJobLog {
 }
 
 // THE CLAIM-COST ARTIFACT, READ AS FAR AS ANY BOUND REALIZATION CAN READ IT. It is looked up by the
-// name the floor workflow uploads it under (gunbc.witness_floor_workflow
+// name the floor workflow uploads it under (gunbc.witness.witness_floor_workflow
 // required_floor_claim_cost_artifact_name), downloaded through GitHub's redirect, and every way that
 // can fail is its own arm. An archive that DID arrive is still not a reading: it is a zip, and no
 // inflate reader exists to take the TSV out of it, so that arm says so instead of passing bytes on
@@ -1113,7 +1113,7 @@ fn read_claim_cost_artifact(token: ControllerInstallationToken, owner: NonEmptyS
 // collection's, the floor job is the one collect_qualification_run joined to the minted runner, and
 // the slot is that registration's own host-unit slot. It reads the floor job's log and the claim-cost
 // artifact and returns a standing per instrument source. Its consumer is the route's collect stage
-// (gunbc.runner_throughput_qualification_route CollectInstruments, standing mtcollins1_collect_leg),
+// (gunbc.runner.runner_throughput_qualification_route CollectInstruments, standing mtcollins1_collect_leg),
 // which does not invoke it yet: that edge is the row below.
 type QualificationCollectOutcome
   = QualificationCollected { stage: QualificationCollectStage }
@@ -1195,17 +1195,17 @@ fn collect_qualification_instruments_under(collected: CollectedQualificationRun,
 data qualification_instrument_extraction_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "collect_qualification_instruments"),
-    reason: "FloorPhaseRows and FloorCgroupRows have an implemented extraction authority and no production consumer. collect_qualification_instruments reads the designated floor job's log and mints the sealed QualificationJobLogReceipt, but nothing on the route calls it: the collect stage's standing is gunbc.runner_throughput_qualification_route mtcollins1_collect_leg, LegAuthorityImplemented, and only witnesses reach the decoder. Its input is the CollectedQualificationRun the dispatch leg's collect_qualification_run returns, whose floor job is already joined to the minted runner",
+    reason: "FloorPhaseRows and FloorCgroupRows have an implemented extraction authority and no production consumer. collect_qualification_instruments reads the designated floor job's log and mints the sealed QualificationJobLogReceipt, but nothing on the route calls it: the collect stage's standing is gunbc.runner.runner_throughput_qualification_route mtcollins1_collect_leg, LegAuthorityImplemented, and only witnesses reach the decoder. Its input is the CollectedQualificationRun the dispatch leg's collect_qualification_run returns, whose floor job is already joined to the minted runner",
     dissolution: unbound_dissolution(description: "the qualification route's collect stage invokes collect_qualification_instruments with the CollectedQualificationRun collect_qualification_run returned and the controller token, on an executed route, so mtcollins1_collect_leg is LegWired and FloorPhaseRows and FloorCgroupRows are read from a real run's designated job. NOT satisfied by a witness calling the decoder or the subject join, nor by the collector compiling"),
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.floor_cost_distribution", decl_name: "parse_claim_cost_tsv"),
-    reason: "ClaimCostArtifactEvalSteps and CalibrationSpecimenWitnessLine are both read from the required-floor-claim-cost TSV (gunbc.floor_cost_distribution parse_claim_cost_tsv; the calibration specimen's row is joined there by calibration_specimen_grounding). Neither is on the job log: on the recorded required-floor log of run 35048059968 / job 104642384772 (test.fixture recorded_required_floor_log_excerpt) there are zero [witness] lines and zero occurrences of the specimen identity, and eval_steps appear only on the [over-cost] preview, a 25-row truncated view that is not the instrument. The required floor job uploads the artifact (gunbc.witness_floor_workflow required_floor_claim_cost_upload_bound_step, bound by gunbc.compiler_gate_workflow), and read_claim_cost_artifact lists it under the registration's installation token, refuses zero or several same-name artifacts, binds the listing to the collected attempt by re-reading the run after it (ClaimCostRunAdvancedPastAttempt), and downloads the one artifact. What does not exist is the reading after the download: an uploaded artifact is always a zip, the REST handler reads every body as UTF-8 text (extdeps.transports.rest RestBodyObservation body: String), so DownloadArtifact answers RestBodyUndecodable today and a body that did arrive is ClaimCostArchiveNotInflatable",
+    reason: "ClaimCostArtifactEvalSteps and CalibrationSpecimenWitnessLine are both read from the required-floor-claim-cost TSV (gunbc.floor_cost_distribution parse_claim_cost_tsv; the calibration specimen's row is joined there by calibration_specimen_grounding). Neither is on the job log: on the recorded required-floor log of run 35048059968 / job 104642384772 (test.fixture recorded_required_floor_log_excerpt) there are zero [witness] lines and zero occurrences of the specimen identity, and eval_steps appear only on the [over-cost] preview, a 25-row truncated view that is not the instrument. The required floor job uploads the artifact (gunbc.witness.witness_floor_workflow required_floor_claim_cost_upload_bound_step, bound by gunbc.witness.compiler_gate_workflow), and read_claim_cost_artifact lists it under the registration's installation token, refuses zero or several same-name artifacts, binds the listing to the collected attempt by re-reading the run after it (ClaimCostRunAdvancedPastAttempt), and downloads the one artifact. What does not exist is the reading after the download: an uploaded artifact is always a zip, the REST handler reads every body as UTF-8 text (extdeps.transports.rest RestBodyObservation body: String), so DownloadArtifact answers RestBodyUndecodable today and a body that did arrive is ClaimCostArchiveNotInflatable",
     dissolution: unbound_dissolution(description: "the REST transport carries a binary response body, AND an inflate reader takes the exact required_floor_claim_cost.tsv member out of one upload-artifact zip, AND that member is parsed by parse_claim_cost_tsv into a reading bound to this collected run -- the artifact downloaded is the one listed for the sealed run id at the collected attempt, carried with its artifact id beside the parsed rows in the sealed receipt -- SUFFICIENT FOR collect_qualification_instruments to read ClaimCostArtifactEvalSteps and CalibrationSpecimenWitnessLine from the same run as the job log, and for qualification_instrument_source to place both on that read. NOT satisfied by the binary transport or the inflate reader alone, by reading any other member, by the [over-cost] preview or any other truncated view, by a new print of eval_steps into the log, or by an artifact downloaded outside this route"),
   ),
   frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.runner_throughput_qualification_route", decl_name: "mtcollins1_boot_leg"),
-    reason: "GuestIdleMeminfoAndNproc is not a run output: the guest's idle MemTotal, MemAvailable (extdeps.linux.proc_meminfo), nproc and uname -m are read before the job starts, by the boot leg's runner-host-up readback, and that leg is gunbc.runner_throughput_qualification_route mtcollins1_boot_leg, still LegAwaitingAuthority",
+    ref: decl_ref(module_path: "gunbc.runner.runner_throughput_qualification_route", decl_name: "mtcollins1_boot_leg"),
+    reason: "GuestIdleMeminfoAndNproc is not a run output: the guest's idle MemTotal, MemAvailable (extdeps.linux.proc_meminfo), nproc and uname -m are read before the job starts, by the boot leg's runner-host-up readback, and that leg is gunbc.runner.runner_throughput_qualification_route mtcollins1_boot_leg, still LegAwaitingAuthority",
     dissolution: unbound_dissolution(description: "the boot leg's terminal is the runner host observed up and its readback carries the guest's idle meminfo, nproc and machine word, SUFFICIENT FOR this route to hand that readback to the qualification receipt beside this run's extraction. NOT satisfied by a meminfo read inside the floor job, which is a loaded guest rather than an idle one"),
   ),
   frontier_row_decl(

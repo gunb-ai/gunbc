@@ -1,4 +1,4 @@
-module gunbc.fabric_m0_job_ending
+module gunbc.fabric.fabric_m0_job_ending
 
 import std.types { List, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -13,7 +13,7 @@ import extdeps.github.checks {
   Failure,
   ActionRequired,
 }
-import gunbc.fabric_m0_completion {
+import gunbc.fabric.fabric_m0_completion {
   ComputationOutcome,
   CommittedOutput,
   OriginObservation,
@@ -25,14 +25,14 @@ import gunbc.fabric_m0_completion {
   PublishPendingReconciliation,
   PublishObligationsUnreadable,
 }
-import gunbc.fabric_m0_commit {
+import gunbc.fabric.fabric_m0_commit {
   CommitNamespace,
   CommitTransportOutcome,
   ManifestReadbackObservation,
 }
-import gunbc.fabric_m0_publication { publish_work }
+import gunbc.fabric.fabric_m0_publication { publish_work }
 
-// THE PRODUCTION CONSUMER NAMED ON gunbc.fabric_m0_commit publish_after_commit.
+// THE PRODUCTION CONSUMER NAMED ON gunbc.fabric.fabric_m0_commit publish_after_commit.
 //
 // That trigger is a CAPABILITY: a job-ending that already holds the run's Work, the attempt's
 // commit transport, and an independent origin readback of the commit manifest, and that decides
@@ -56,7 +56,7 @@ import gunbc.fabric_m0_publication { publish_work }
 // work.id.key, and work_for derives that key from the same contract and requirements, so
 // WorkKeyDoesNotMatchContract has no producer on this path; the mapping over that arm is
 // witnessed on the value directly (Failure, not ActionRequired). Every hermetic arm runs under a
-// mock that digests every path to one constant, so tools.fabric_m0_origin_readback_probe drives
+// mock that digests every path to one constant, so gunbc.instruments.fabric_m0_origin_readback_probe drives
 // end_required_job over real bytes with a mutation control -- the same record read from the wrong
 // fixture file concludes Failure -- which is the half the mock cannot show.
 // stamp_floor_receipt_with_conclusion can take the CheckConclusion this fold returns; it is not

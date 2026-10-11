@@ -1,7 +1,7 @@
 module gunbc.kernel_grounding_interpreter_seed_growth
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 
 // Seed-growth obligation for the hand-authored interpreter items the Nat de-fork modifies (operator

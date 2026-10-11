@@ -459,7 +459,7 @@ data mt_jade_bmc_management_network: MtJadeBmcManagementNetwork = MtJadeBmcManag
 }
 
 // FEATURE LIST "BMC AMI MegaRAC, OpenBMC" IS A DISJUNCTION, NOT A DEFAULT. The specification
-// names both stacks. A unit's family is a workflow observation (gunbc.machine_intake_access),
+// names both stacks. A unit's family is a workflow observation (gunbc.machine_intake.access),
 // never this row. megaRAC_* folds may run only after AmiMegaRac is observed.
 data mt_jade_cited_bmc_firmware_options: List<BmcFirmwareFamily> = [
   AmiMegaRac,

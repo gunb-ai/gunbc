@@ -216,7 +216,7 @@ type SparkServingRoute
 // production producer returns it any more -- the standing below refuses with the uncovered-host or
 // unreadable-membership obligation instead, which say WHICH group is not covered rather than that
 // nobody observes regions at all. Its one consumer is the binder fixture in
-// test.claim.spark.spark_serving_offer_route_witness_test, where it is the spelling of "this route's
+// test.claim.spark.spark_serving_offer_route_witness, where it is the spelling of "this route's
 // region rests on nothing" that drives the binder's refusing arm. That is a real consumer and the
 // row stays; calling it "the refusal a caller reaches" would claim a live role it no longer has
 // (review 64014).

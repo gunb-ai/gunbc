@@ -43,7 +43,7 @@ fn section_2() -> List<MarkdownBlock> {
   [
     h2(text: "2. Where the wall is — and why no green check has ever shown it"),
     p(text: "**Emission is not the wall. cargo is.** Modules already emit Rust; they then fail `cargo build`. That correction is the one load-bearing inheritance from the superseded document."),
-    p(text: "**No required check measures rustc.** The required-CI v2-emission phase classifies `CompileDisposition` — Completed / Refused / NotExecuted — and NEVER INVOKES CARGO. `gunbc.ci_layer_roots` `required_v2_emission_dissolution` says so in its own words: the receipt carries this emission boundary, *same producer, stopping before cargo*."),
+    p(text: "**No required check measures rustc.** The required-CI v2-emission phase classifies `CompileDisposition` — Completed / Refused / NotExecuted — and NEVER INVOKES CARGO. `gunbc.ci.ci_layer_roots` `required_v2_emission_dissolution` says so in its own words: the receipt carries this emission boundary, *same producer, stopping before cargo*."),
     p(text: "So a green v2-emission phase means the v2 root EMITS. It carries no information about whether the emitted Rust compiles. A reader who takes it as a self-host signal is wrong, and that misreading is why the rustc population has been invisible to every green run. Verified 2026-08-26 by reading the phase's call site and the dissolution row — not inferred from a run."),
   ]
 }
@@ -70,7 +70,7 @@ fn section_3() -> List<MarkdownBlock> {
 fn section_4() -> List<MarkdownBlock> {
   [
     h2(text: "4. The measurement"),
-    p(text: "The instrument is `tools.emission_entry_instrument` `measure_entry_emission`: emit, assemble, cargo under JSON message format, returning a typed measurement carrying per-member identity and location — so two runs JOIN rather than merely differ, and an unreached stage renders as its own variant instead of as zero."),
+    p(text: "The instrument is `gunbc.instruments.emission_entry_instrument` `measure_entry_emission`: emit, assemble, cargo under JSON message format, returning a typed measurement carrying per-member identity and location — so two runs JOIN rather than merely differ, and an unreached stage renders as its own variant instead of as zero."),
     h3(text: "Two subjects, and they are different quantities"),
     ul(items: [
       li(text: "**per-entry** — errors in the closure of entry E. Fits any host. NOT a lower bound on the corpus figure in any statable way: the corpus records a narrow `--entry` run that reported clean while twelve real sites sat outside its closure."),
@@ -89,7 +89,7 @@ fn section_4() -> List<MarkdownBlock> {
 fn section_5() -> List<MarkdownBlock> {
   [
     h2(text: "5. The ratchet — and why a count must not be the gate"),
-    p(text: "The mechanism EXISTS and is correctly designed: `gunbc.emit_subject_clean_frontier` with its runner `tools.emit_subject_clean_ratchet`. Its own header already argues against the naive form, and that argument is preserved here because it is the thing most likely to be re-proposed: **no cardinality is a gate oracle**, but emptiness is not nothing — it decides whether a population is inhabited or evaluated, including the essential distinction between an empty roster and an identified roster with no failures. Roster membership is admitted PER IDENTITY, and the roster DIGEST, not its count, is its identity. An earlier revision of this clause said counts are display-only and decide nothing; the ratchet owner measured that as literally false, and the corrected form is theirs."),
+    p(text: "The mechanism EXISTS and is correctly designed: `gunbc.emit_subject_clean_frontier` with its runner `gunbc.instruments.emit_subject_clean_ratchet`. Its own header already argues against the naive form, and that argument is preserved here because it is the thing most likely to be re-proposed: **no cardinality is a gate oracle**, but emptiness is not nothing — it decides whether a population is inhabited or evaluated, including the essential distinction between an empty roster and an identified roster with no failures. Roster membership is admitted PER IDENTITY, and the roster DIGEST, not its count, is its identity. An earlier revision of this clause said counts are display-only and decide nothing; the ratchet owner measured that as literally false, and the corrected form is theirs."),
     p(text: "**Why a count must not gate.** DESIGN section 5 forbids a merge-blocking literal grounded in a measurement copied from the current tree. Worse here, the incentive INVERTS: the cheapest way to make a count fall is to LOSE SUBJECTS — narrow the entry set, drop a module — and a count-gate rewards exactly that. A discovery that loses subjects makes it fall furthest of all. Identity-grain rows cannot be gamed that way."),
     p(text: "**The working template**, landed 2026-08-26 in the declaration index: an enumerated debt roster whose rows REFUSE once their subject stops failing, plus the inverse arm for planted controls that stop discriminating. The roster can only shrink, and both directions are wired."),
     p(text: "**Enrolment status: nothing runs it.** The ratchet runner's cadence is `NoConsumer`; no workflow, phase or required lane reaches it. That was stated as independent of the enrolment question and of the operator agreement gating it. **The operator gave that agreement 2026-08-26.**"),
@@ -164,16 +164,16 @@ fn section_9() -> List<MarkdownBlock> {
 data v2_corpus_self_host_ratchet_bindings: List<DeclarationRef> = [
   decl_ref(module_path: "gunbc.emit_subject_clean_frontier", decl_name: "RatchetUniverse"),
   decl_ref(module_path: "gunbc.emit_subject_clean_frontier", decl_name: "roster_identity_derived"),
-  decl_ref(module_path: "tools.emit_subject_clean_ratchet", decl_name: "emit_ratchet_roster"),
-  decl_ref(module_path: "tools.dag_compile_clean_shard_roster", decl_name: "compile_clean_shard_entry_discovery"),
-  decl_ref(module_path: "tools.emission_entry_instrument", decl_name: "measure_entry_emission"),
+  decl_ref(module_path: "gunbc.instruments.emit_subject_clean_ratchet", decl_name: "emit_ratchet_roster"),
+  decl_ref(module_path: "gunbc.instruments.dag_compile_clean_shard_roster", decl_name: "compile_clean_shard_entry_discovery"),
+  decl_ref(module_path: "gunbc.instruments.emission_entry_instrument", decl_name: "measure_entry_emission"),
   decl_ref(module_path: "gunbc.whole_corpus_compile_admission", decl_name: "whole_corpus_compile_admission_at_budget"),
   decl_ref(module_path: "gunbc.compiler_frontend_program_interlock", decl_name: "milestone_prerequisites"),
   decl_ref(module_path: "gunbc.compiler_frontend_program_interlock", decl_name: "ProgramMilestone"),
   decl_ref(module_path: "gunbc.compiler_frontend_program_status", decl_name: "milestone_status"),
   decl_ref(module_path: "gunbc.compiler_frontend_program_status", decl_name: "report"),
-  decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "required_v2_emission_entries"),
-  decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "required_v2_emission_dissolution"),
+  decl_ref(module_path: "gunbc.ci.ci_layer_roots", decl_name: "required_v2_emission_entries"),
+  decl_ref(module_path: "gunbc.ci.ci_layer_roots", decl_name: "required_v2_emission_dissolution"),
 ]
 
 fn v2_corpus_self_host_body() -> List<MarkdownBlock> {

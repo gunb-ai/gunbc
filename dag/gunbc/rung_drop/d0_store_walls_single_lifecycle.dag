@@ -33,13 +33,13 @@ data d0_store_walls_single_lifecycle: RungDrop = RungDrop {
   standing: Superseded {
     ruling: "Group A decommissioned (operator, 2026-10-07, relayed by valiant-crab-775): srv5-srv8 were sold, so this drop's whole population -- D0 lifecycles for FabricGroupA -- no longer exists, and D0 itself (gunbc.spark.pair_serving_d0 and its door) was deleted with the group it was the only lifecycle of" as NonEmptyStr,
     decision_record: "dashboard messages msg_5d88338f (the removal, operator-approved) and msg_9e5a2fee (the arm path and D0 with it), both 2026-10-07" as NonEmptyStr,
-    loss_holder: "none: with D0 gone, gunbc.fabric_store_operation_admission operation_requirement admits no scope for any operation D0 performed, so every such store write now refuses as NoApprovalFlowForOperation -- stricter than the walls this drop suspended, not weaker" as NonEmptyStr,
+    loss_holder: "none: with D0 gone, gunbc.fabric.fabric_store_operation_admission operation_requirement admits no scope for any operation D0 performed, so every such store write now refuses as NoApprovalFlowForOperation -- stricter than the walls this drop suspended, not weaker" as NonEmptyStr,
   },
 
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
-    reason: ReplacementStaged { replacement: "the fabric store door verifies each protected advance's credential per operation (gunbc.fabric_store_operation_admission, gunbc#12537 and the d0_store_operation_wall PR chain), and the served/local writer roster is live on srv1" },
+    reason: ReplacementStaged { replacement: "the fabric store door verifies each protected advance's credential per operation (gunbc.fabric.fabric_store_operation_admission, gunbc#12537 and the d0_store_operation_wall PR chain), and the served/local writer roster is live on srv1" },
     population: [
       "exactly one D0 lifecycle: gunbc.spark.pair_serving_d0 pair_serving_d0 for FabricGroupA under the escalation id gunbc.spark.pair_serving_d0 d0_single_lifecycle_escalation_id, including reruns of that same lifecycle (same escalation id, the frozen filing's execution revision)",
       "exactly one more D0 lifecycle (operator-ruled 2026-10-03, relayed by valiant-crab-775, dashboard message msg_eb268a0a): the Group A release-to-fleet for FabricGroupA under the escalation id gunbc.spark.pair_serving_d0 d0_release_lifecycle_escalation_id, including its reruns, on the same terms; that id moved once (the first release lifecycle froze at a revision that could not reach the broker and is inert), within the operator's standing Group A ruling of 2026-10-03 (gunbc.auth.standing_operator_grant group_a_dev_standing_grant)",

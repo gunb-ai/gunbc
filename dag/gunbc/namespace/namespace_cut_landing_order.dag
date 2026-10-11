@@ -1,4 +1,4 @@
-module gunbc.namespace_cut_landing_order
+module gunbc.namespace.namespace_cut_landing_order
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }

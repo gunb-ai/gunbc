@@ -25,7 +25,7 @@ data store_refusal_reported_as_contention: RecurringFailureMode = RecurringFailu
 
     "CEILING: mechanically preventable at the external store boundary; the internal occupied-versus-refused partition is construction in cas_outcome_from_create. Crash-durable directory metadata is a different class.",
 
-    "FABRIC CONSUMER: gunbc.fabric_control_plane reserve_selected_cell maps CasPreconditionFailed to ReservationLost and CasStoreRefused to StoreUnavailable. Before this repair an unwritable store reported ReservationLost. After it, operational faults are StoreUnavailable. A genuine occupied slot is still ReservationLost. That is the observable change, and it is the defect closing rather than a silent shift of a correct race.",
+    "FABRIC CONSUMER: gunbc.fabric.fabric_control_plane reserve_selected_cell maps CasPreconditionFailed to ReservationLost and CasStoreRefused to StoreUnavailable. Before this repair an unwritable store reported ReservationLost. After it, operational faults are StoreUnavailable. A genuine occupied slot is still ReservationLost. That is the observable change, and it is the defect closing rather than a silent shift of a correct race.",
 
     "CONSUMPTION: the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster includes this per-class declaration.",
   ],

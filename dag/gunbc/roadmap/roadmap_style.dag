@@ -1,6 +1,6 @@
-module gunbc.roadmap_style
+module gunbc.roadmap.roadmap_style
 import gunbc.design.typography { interface_text_decls, InterfaceBody, InterfaceLabel, InterfaceMetadata, InterfaceHeading, InterfaceSectionHeading }
-import gunbc.roadmap_surface_style { roadmap_surface_rules }
+import gunbc.roadmap.roadmap_surface_style { roadmap_surface_rules }
 import gunbc.site.document { SiteStyles, SiteThemeDecls, site_styles_css }
 
 import gunbc.site.robot_mark { robot_mark_badge_background, robot_mark_ink }
@@ -11,7 +11,7 @@ import gunbc.design.material {
 }
 import gunbc.design.material { AmbientRule, MotionCycle, Keyframe, RunOnce, RunForever, TimingToken }
 import extdeps.languages.css.properties { Transform, TransformOrigin, AnimationDelay, AnimationDuration, FontSize, FontFamily, BorderRadius, Padding, MaxWidth, Overflow, TextOverflow, WhiteSpace, Background, Color }
-import gunbc.roadmap_component { activity_round_live_class, activity_round_remaining_class, standing_chip_class }
+import gunbc.roadmap.roadmap_component { activity_round_live_class, activity_round_remaining_class, standing_chip_class }
 import extdeps.languages.css.properties { Cursor, CustomProperty, BorderStyle, Opacity, GridColumn, Outline, Flex, Position, Inset, Width, Height, RawProperty }
 import extdeps.languages.css.values { CssLength, css_px, css_length_wire }
 import gunbc.design.scale {
@@ -27,7 +27,7 @@ import gunbc.design.theme {
   FigureRole, FigureHaloRole, FocusRole, BoundaryRole,
 }
 import gunbc.site.moodboard { figure_rules }
-import gunbc.roadmap_interaction {
+import gunbc.roadmap.roadmap_interaction {
   roadmap_behavior_rules, roadmap_behaviors,
   dispatch_state_family, dispatch_stateful_channels,
 }
@@ -36,14 +36,14 @@ import gunbc.design.state_response {
   state_var_name, state_var_ref, state_rest_decl, state_paint_rules,
   RestBinding, StateClassBinding,
 }
-import gunbc.fleet_hardware_standing_panel {
+import gunbc.fleet.fleet_hardware_standing_panel {
   hardware_subject_reserved_width, hardware_axis_reserved_width,
   hardware_standing_reserved_width,
 }
-import gunbc.fleet_capacity_panel {
+import gunbc.fleet.fleet_capacity_panel {
   capacity_subject_reserved_width, capacity_metric_reserved_width,
 }
-import gunbc.roadmap_component { dispatch_reserved_width, disclosure_mark_class, swatch_toggle_class, swatch_toggle_reserved_width, roadmap_row_height, roadmap_row_gutter, workflow_controls_class, node_activity_class, activity_summary_class, activity_detail_class, activity_ledger_class, activity_obligation_class, activity_evidence_class, activity_evidence_row_class, activity_round_strip_class, activity_round_read_class, activity_round_write_class, activity_round_unmeasured_class, activity_round_reason_class, activity_located_reason_class, session_facts_class, stage_strip_class, stage_segment_class, stage_live_class, activity_throughput_class, activity_line_prefix_class, dashboard_instance_class, node_attempt_stale_class }
+import gunbc.roadmap.roadmap_component { dispatch_reserved_width, disclosure_mark_class, swatch_toggle_class, swatch_toggle_reserved_width, roadmap_row_height, roadmap_row_gutter, workflow_controls_class, node_activity_class, activity_summary_class, activity_detail_class, activity_ledger_class, activity_obligation_class, activity_evidence_class, activity_evidence_row_class, activity_round_strip_class, activity_round_read_class, activity_round_write_class, activity_round_unmeasured_class, activity_round_reason_class, activity_located_reason_class, session_facts_class, stage_strip_class, stage_segment_class, stage_live_class, activity_throughput_class, activity_line_prefix_class, dashboard_instance_class, node_attempt_stale_class }
 import extdeps.color.srgb { Srgb8 }
 import extdeps.google.issue_tracker { issue_results_row_tracks }
 import gunbc.site.element.palette { palette_decls }
@@ -380,7 +380,7 @@ fn standing_chip_rules() -> List<BuildRule> {
 }
 
 // The round strip's GEOMETRY and MOTION stay on the per-kind classes; the COLOR moved to the
-// semantic activity-line vocabulary (operator request 2026-09-21, gunbc.roadmap_presentation
+// semantic activity-line vocabulary (operator request 2026-09-21, gunbc.roadmap.roadmap_presentation
 // ActivityLineClass): read dims, write takes the figure role, a no-tool-call round is the provider
 // round-trip (figure halo), unmeasured stays outlined-never-filled. The paint values are unchanged
 // — this is a re-homing to one vocabulary, proven byte-mapped by the digest re-pin.

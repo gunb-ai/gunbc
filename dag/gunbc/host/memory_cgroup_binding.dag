@@ -1,9 +1,9 @@
-module gunbc.memory_cgroup_binding
+module gunbc.host.memory_cgroup_binding
 
 import std.types { NonEmptyStr, String, Bool }
 import std.measure { ByteSize, byte_size_count }
 import std.disposition { Disposition, Terminal }
-import gunbc.host_budget_source {
+import gunbc.host.host_budget_source {
   HostBudgetSource,
   HostBudgetObservation,
   HostBudgetObserved,
@@ -12,14 +12,14 @@ import gunbc.host_budget_source {
 }
 
 data memory_cgroup_binding_authority_disposition: Disposition = Terminal {
-  reason: "Single authority for the decision to CREATE the memory bound this process runs under, which is the question gunbc.host_budget_source cannot ask. That module answers what limit is OBSERVED and refuses when none is; this one answers whether an executor holding no limit may bind itself one before it begins. The two are strictly ordered and must not be conflated: binding happens first and supplies no number to anybody, and every consumer afterwards still reads its budget through host_budget_source's ordinary cgroup read. A bind that succeeded is therefore invisible except as an observation that now exists."
+  reason: "Single authority for the decision to CREATE the memory bound this process runs under, which is the question gunbc.host.host_budget_source cannot ask. That module answers what limit is OBSERVED and refuses when none is; this one answers whether an executor holding no limit may bind itself one before it begins. The two are strictly ordered and must not be conflated: binding happens first and supplies no number to anybody, and every consumer afterwards still reads its budget through host_budget_source's ordinary cgroup read. A bind that succeeded is therefore invisible except as an observation that now exists."
 }
 
 // WHY THIS EXISTS, MEASURED RATHER THAN ARGUED. The remote-execution route this repository
 // dispatches developer builds through (ctrl-build --remote, BuildBuddy, ctrl-session image)
 // places the action in the cgroup2 ROOT: /proc/self/cgroup reads 0::/ and the root cgroup has
 // no memory.max and no memory.high, because cgroup-v2 does not give its root those files at
-// all. So gunbc.host_budget_source correctly answers HostBudgetUnreadable there, and the
+// all. So gunbc.host.host_budget_source correctly answers HostBudgetUnreadable there, and the
 // generated-artifact adjudication cannot execute on that route -- the refusal is right and the
 // route is unusable, which is a capability gap and not a defect in the refusal.
 //
@@ -36,7 +36,7 @@ data memory_cgroup_binding_authority_disposition: Disposition = Terminal {
 // one-artifact peak at 8.37 GiB. The requirement is a full gigabyte OUTSIDE the whole machine,
 // so the honest range for GUNBC_MEMORY_BUDGET_BYTES on the default runner is not tight, it is
 // EMPTY: a truthful declaration thrashes and an admitting one is killed, which is exactly the
-// pair gunbc.memory_stall_refusal already rosters from both sides. The deficit is a SIZING one.
+// pair gunbc.host.memory_stall_refusal already rosters from both sides. The deficit is a SIZING one.
 // This module is therefore only half of the remedy -- it makes a limit exist and be observed --
 // and the other half is that the machine must be sized larger than the bound by whoever
 // dispatches the action.
@@ -150,7 +150,7 @@ fn cgroup_bind_decision(
 
 // THE NO-OP ARM MUST PROVE THE SUBJECT IT CLAIMS, and the first revision proved a different one
 // (review 5117628699). It treated ANY HostBudgetResolved observation as "a limit already binds
-// this process" -- but gunbc.host_budget_source itself says otherwise:
+// this process" -- but gunbc.host.host_budget_source itself says otherwise:
 // host_budget_source_bounds_this_process is TRUE only for memory.max, and FALSE for memory.high
 // (a reclaim throttle allocations may cross) and for Darwin physical memory (a fact about the
 // machine). So a run under a memory.high slice, or on a Mac, had its requested KERNEL bind
@@ -262,7 +262,7 @@ fn cgroup_bind_refusal_cause_text(c: CgroupBindRefusalCause) -> NonEmptyStr {
   }
 }
 
-// THE NON-REFUSING ARMS RENDER NOTHING, for the reason gunbc.memory_stall_refusal gives at its
+// THE NON-REFUSING ARMS RENDER NOTHING, for the reason gunbc.host.memory_stall_refusal gives at its
 // own text projection: a consumer that logs a cause unconditionally must not be handed
 // fabricated prose for a decision that did not refuse.
 fn cgroup_bind_decision_refusal_text(d: CgroupBindDecision) -> String {

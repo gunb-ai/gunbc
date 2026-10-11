@@ -326,7 +326,7 @@ data dag_comment_wall_deletion_receipt: LegacyTestDeletionReceipt = LegacyTestDe
     "src/v1/tests/src/dag_comment_wall_test.rs (four line-anchored behaviors, deleted with their four CoveredByWitness rows at gunbc#7690)",
   ],
   replacement_witness_population: [
-    "src/v2/test/claim/round_trip/dag_comment_wall_test.dag (four probes: dag_comment_wall_line_comment_refused, dag_comment_wall_block_comment_refused, dag_comment_wall_slash_slash_inside_string_compiles, dag_comment_wall_clean_source_compiles)",
+    "src/v2/test/claim/round_trip/dag_comment_wall.dag (four probes: dag_comment_wall_line_comment_refused, dag_comment_wall_block_comment_refused, dag_comment_wall_slash_slash_inside_string_compiles, dag_comment_wall_clean_source_compiles)",
   ],
   execution_receipt_at_decision_time: PastExecutionReceipt {
     cadence: FalsifierSubstrateLongLane,
@@ -425,7 +425,7 @@ data legacy_discovery_known_positive: String = "src/v1/tests/src/class_b_trim_sp
 
 // Deliberately a witness with no relationship to test migration, so that
 // draining the retained kernel to zero cannot silently drain this control too.
-data witness_discovery_known_positive: String = "dag/test/claim/content_hash_family_grounded_witness_test.dag::content_hash_cited_sha256_literals_validate"
+data witness_discovery_known_positive: String = "dag/test/claim/content_hash_family_grounded_witness.dag::content_hash_cited_sha256_literals_validate"
 
 fn legacy_discovery_known_positive_present(discovered_legacy: List<String>) -> Bool {
   discovered_legacy |> any(id => id == legacy_discovery_known_positive)

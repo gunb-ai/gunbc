@@ -1,4 +1,4 @@
-module gunbc.runner_label_resolution
+module gunbc.runner.runner_label_resolution
 
 import std.types { Bool, List, NonEmptyStr, String }
 
@@ -10,7 +10,7 @@ import extdeps.time.rfc3339 {
   Rfc3339Comparison, Rfc3339Precedes, Rfc3339Follows, Rfc3339Simultaneous, Rfc3339OrderUndecidable,
   rfc3339_compare,
 }
-import gunbc.runner_provider_survey { runs_on_label_catalogs }
+import gunbc.runner.runner_provider_survey { runs_on_label_catalogs }
 import extdeps.github.actions { github_actions_runs_on_surface }
 
 // WHAT A `runs-on` LABEL IS, ANSWERED FROM THE VENDOR CATALOGS RATHER THAN FROM ITS SPELLING.
@@ -66,7 +66,7 @@ import extdeps.github.actions { github_actions_runs_on_surface }
 // each provider's own module, which is this class's next-rung trigger and is not built here.
 // THREE WAYS TO REFUSE A MULTIPLICITY, AND THEY HAVE THREE OWNERS. A label appearing twice in ONE
 // catalog is a defect in that provider module's projection of its own published surface. A label
-// claimed by TWO catalogs is a defect in gunbc.runner_provider_survey's roster. A match on another
+// claimed by TWO catalogs is a defect in gunbc.runner.runner_provider_survey's roster. A match on another
 // CI system's selection surface is neither - it is a caller asking a resource_class value as a
 // runs-on question, and the repair is at the call site.
 //
@@ -78,7 +78,7 @@ import extdeps.github.actions { github_actions_runs_on_surface }
 // A CALLER CATEGORY ERROR IS NOT A ROSTER DEFECT, which is why the last arm below exists. A match
 // on the wrong selection surface means somebody asked a resource_class value as a runs-on question
 // and the repair is at the CALL SITE; ambiguity means two surveyed catalogs both carry a label and
-// the repair is in gunbc.runner_provider_survey's ROSTER. An earlier revision reported the first as
+// the repair is in gunbc.runner.runner_provider_survey's ROSTER. An earlier revision reported the first as
 // the second, leaving the English cause as the only discriminator - the exact shape this module
 // declares a defect in its own SnapshotStanding note below. A materially different contract needs a
 // materially different name (DESIGN section 3's meaning fork).
@@ -169,7 +169,7 @@ fn surveyed_matches(label: String) -> List<LabelMatch> {
 // about provider or architecture the disagreement resolved silently, in favour of a line's
 // position in a list nobody thinks of as ordered.
 //
-// It is a live growth surface rather than a hypothetical. gunbc.runner_provider_survey says in so
+// It is a live growth surface rather than a hypothetical. gunbc.runner.runner_provider_survey says in so
 // many words that adding a provider is one line in each list, and two of the catalogs already
 // enrolled - the larger-runner families and the standard hosted labels - share one provider
 // identity and one label namespace. They are disjoint TODAY. Nothing structural keeps them
@@ -215,7 +215,7 @@ fn resolve_from_matches(
         label: label,
         matches: matches,
         cause: join(["the label '", label, "' is carried by ", to_string(count(matches)),
-          " DIFFERENT surveyed catalogs. One label on one selection surface is one authority's fact, so there is no answer to give: taking either row would make the result depend on which catalog is enrolled first. The repair is to gunbc.runner_provider_survey's roster, not to any provider module."], ""),
+          " DIFFERENT surveyed catalogs. One label on one selection surface is one authority's fact, so there is no answer to give: taking either row would make the result depend on which catalog is enrolled first. The repair is to gunbc.runner.runner_provider_survey's roster, not to any provider module."], ""),
       }
     }
   } else {

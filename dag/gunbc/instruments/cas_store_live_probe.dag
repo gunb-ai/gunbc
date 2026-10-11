@@ -1,4 +1,4 @@
-module tools.cas_store_live_probe
+module gunbc.instruments.cas_store_live_probe
 
 import std.types { NonEmptyStr, String, Bool, Int }
 import std.process { ProcessExit, ExitSuccess, exit_failure }

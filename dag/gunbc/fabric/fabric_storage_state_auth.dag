@@ -1,6 +1,6 @@
-module gunbc.fabric_storage_state_auth
+module gunbc.fabric.fabric_storage_state_auth
 
-import gunbc.fabric_storage_state_location { fabric_state_key_host_path }
+import gunbc.fabric.fabric_storage_state_location { fabric_state_key_host_path }
 
 import std.types { String, NonEmptyStr, Timestamp, Bool }
 import extdeps.crypto.mac { MacKey, MacKeyId, MacSigned, MacKeyMaterialNotHex, MacVerified, MacTagMismatch, MacKeyUnknown, MacKeyRetired, MacSuiteMismatch, MacTagMalformed, mac_sign, mac_verify }

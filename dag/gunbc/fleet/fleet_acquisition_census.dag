@@ -1,4 +1,4 @@
-module gunbc.fleet_acquisition_census
+module gunbc.fleet.fleet_acquisition_census
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
@@ -18,7 +18,7 @@ import product.inventory {
   ReceiptHeldPrivately,
   mint_inventory_lot_identity,
 }
-import gunbc.fleet_physical_inventory {
+import gunbc.fleet.fleet_physical_inventory {
   dimm_lot_64gib_32x,
   dimm_lot_64gib_32x_ledger,
   dgx_spark_micro_center_lot,
@@ -55,7 +55,7 @@ import extdeps.tax.new_york_city_sales_and_use {
 }
 
 // ONE JOIN of procurement lots the operator owns. Spark lots stay in
-// gunbc.fleet_physical_inventory; this module continues that allocator and adds the
+// gunbc.fleet.fleet_physical_inventory; this module continues that allocator and adds the
 // remaining completed purchases plus tax standing. Completeness is this list, not a count.
 //
 // THIS POPULATION IS A FLOOR. Closing it requires: (1) dredged component receipts for

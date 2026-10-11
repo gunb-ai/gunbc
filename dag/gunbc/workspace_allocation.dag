@@ -8,13 +8,13 @@ import std.content_hash { content_hash_of_value, serialize_content_hash }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.measure { ByteSize, byte_size, finite_byte_size, positive_measure_count, hardware_thread_count, Minute, minute, minutes_per_hour, minute_to_second, second_count }
 import gunbc.principal_projection { PrincipalRef, principal_ref_label, principal_ref_parse_label }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import product.host_identity { HostIdentity }
 import product.fabric.identity { FabricIdentity, WorkKey, ExecutionAttemptKey, DemandKey, OfferKey, fabric_identity_eq }
 import product.fabric.budget { MoneyAccount }
 import gunbc.workspace_money_codec { workspace_money_json, workspace_money_from_json }
 import product.fabric.memory_grant { MemoryGrant }
-import gunbc.fabric_memory_grant_policy { MicroVmMemoryGrantAuthority, MicroVmMemoryGrantPolicy, MicroVmMemoryGrantIssue, MemoryGrantIssued, GrantRefusedUnrepresentable, GrantRefusedUnstatedAxisWithoutPermit, GrantRefusedByLaw, microvm_memory_grant }
+import gunbc.fabric.fabric_memory_grant_policy { MicroVmMemoryGrantAuthority, MicroVmMemoryGrantPolicy, MicroVmMemoryGrantIssue, MemoryGrantIssued, GrantRefusedUnrepresentable, GrantRefusedUnstatedAxisWithoutPermit, GrantRefusedByLaw, microvm_memory_grant }
 import product.fabric.work { ExecutionRequirements, Shape, HardRequirements, CustomerExecutableCapacity, Work, WorkContract, MaterializedProgram, SourceManifestRef, ArtifactManifestRef, declared_terminal_obligations, work_for }
 import product.fabric.envelope { ResourceEnvelope, CpuRequirement, MemoryRequirement }
 import product.fabric.isolation { tenant_workload_isolation_requirement }

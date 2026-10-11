@@ -1,12 +1,12 @@
-module gunbc.fabric_executor_class
+module gunbc.fabric.fabric_executor_class
 
 import std.types { Bool, List, NonEmptyStr, String }
 import product.fabric.work {
   CapacityClass, ControlPlaneCapacity, CustomerExecutableCapacity,
   ExecutionRequirements, capacity_class_eq, capacity_class_wire,
 }
-import gunbc.runner_slot_allocation { identity_is_workspace_execution_member }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.runner.runner_slot_allocation { identity_is_workspace_execution_member }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 
 // WHAT AN EXECUTOR IS SANCTIONED FOR IS OUR FACT, NOT THE SUPPLIER'S.
 //
@@ -15,7 +15,7 @@ import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_nam
 // executor is permitted to serve. The two are deliberately in different
 // authorities, and the reason is the whole point of the class.
 //
-// gunbc.fabric_capacity_class_gap ruled out asking the SUPPLIER, because that
+// gunbc.fabric.fabric_capacity_class_gap ruled out asking the SUPPLIER, because that
 // asks the party with the least knowledge and the most incentive to say yes to
 // make a safety assertion, and the claim is unfalsifiable from this side. So
 // the classification cannot live on SupplierOffer, and it cannot live on Shape

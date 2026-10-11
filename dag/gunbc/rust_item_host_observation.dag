@@ -4,9 +4,9 @@ import extdeps.git
 import std.decimal { decimal_digit_char }
 import extdeps.git.inspect
 import gunbc.output_policy { ExpectSuccess }
-import gunbc.repo_identity { gunbc_merge_target_ref }
+import gunbc.repo.repo_identity { gunbc_merge_target_ref }
 import gunbc.generated_artifact_registry { committed_generated_artifact_paths }
-import gunbc.stage0_rust_host_observation {
+import gunbc.stage0.stage0_rust_host_observation {
   EmitPopulationConfirmed,
   EmitPopulationEvidence,
   EmitPopulationUnobserved,
@@ -57,7 +57,7 @@ import v2.std.algebra { HeadAbsent, HeadFound, any, filter, fold_list, length, l
 // Supplies RustItemChangeObservation over merge-base-to-HEAD (added, modified and deleted hand
 // items plus generated-path changes) and LiveHandRustObservation over the current hand-Rust
 // surface. Item extraction is gunbc.rust_item_scan; generated-versus-hand classification derives
-// from gunbc.stage0_rust_source_lifecycle_scaffold's emitted population and
+// from gunbc.stage0.stage0_rust_source_lifecycle_scaffold's emitted population and
 // gunbc.generated_artifact, never hand-listed. Every arm that cannot attribute a changed hand-Rust
 // region is a typed, located refusal; none returns an empty delta.
 
@@ -73,7 +73,7 @@ type RustSourceNamespaceRow {
 }
 
 // THE HAND-RUST SOURCE PREFIXES LIVE HERE, BESIDE THE NAMESPACE TABLE THAT KEYS ON THEM. Authored
-// in gunbc.stage0_rust_source_lifecycle_scaffold as discovery hints; the tooling namespace row needs
+// in gunbc.stage0.stage0_rust_source_lifecycle_scaffold as discovery hints; the tooling namespace row needs
 // the same prefix, importing it from the scaffold would close a cycle (scaffold ->
 // seed_growth_admission -> this module), and restating the literal is the second representation
 // DESIGN section 3 forbids. So the four constants live in the layer that owns "where hand Rust
@@ -89,8 +89,8 @@ data rust_source_prefix_tooling: String = "dag/gunbc/instruments/"
 // THE TOOLING ROW IS A CONSEQUENCE OF WHAT THE DIRECTORY IS, NOT A PATH EXCEPTION. The tree the
 // scaffold classifies as rust_source_prefix_tooling holds the self-host shim crates: hand Rust
 // standing in for primitive arms the emitted v2 closure does not yet realize, reaching v1_rt, and
-// assembled by tools.self_host_curated_seed_linked_harness into ONE Cargo package named
-// `v1_compiled` (tools.emitted_crate_harness_manifest harness_lib_target_table). The namespace root is the crate name, by
+// assembled by gunbc.instruments.self_host_curated_seed_linked_harness into ONE Cargo package named
+// `v1_compiled` (gunbc.instruments.emitted_crate_harness_manifest harness_lib_target_table). The namespace root is the crate name, by
 // the rule that gives src/v1/stage0/src/ the `v1_compiler` root -- the package the path compiles
 // into, spelled as Rust spells it. It is deliberately NOT `tools.`, the root the .dag instruments
 // beside these files declare: the citation gate (v1_compiler.declaration_index
@@ -98,8 +98,8 @@ data rust_source_prefix_tooling: String = "dag/gunbc/instruments/"
 // an absent module under it, so a Rust namespace sharing a .dag root would make every Rust item
 // citation under it refuse. `v1_compiler` and `v1_compiled` sit outside the .dag index for that
 // reason. Before this row the four shim crates reaching v1_rt were consumers
-// gunbc.v1_consumer_census could see and the exact cut vocabulary could not spell; removing it
-// returns them to that uncitable state, which test.claim.self_host_v1_consumer_census_witness_test
+// gunbc.v1.v1_consumer_census could see and the exact cut vocabulary could not spell; removing it
+// returns them to that uncitable state, which test.claim.self_host_v1_consumer_census_witness
 // executes as the falsifier.
 data rust_source_namespace_rows: List<RustSourceNamespaceRow> = [
   RustSourceNamespaceRow { repo_prefix: "src/v1/stage0/src/bin/", namespace_prefix: "v1_compiler.bin." },
@@ -914,7 +914,7 @@ fn projected_refused_keys(projections: List<ItemDeclarationRefProjection>) -> Li
 }
 
 // THE WET HALF, A FUNCTION RATHER THAN A TOP-LEVEL data for the reason
-// gunbc.stage0_rust_host_observation records: top-level data is EVALUATED WHEN A MODULE IMPORTS IT,
+// gunbc.stage0.stage0_rust_host_observation records: top-level data is EVALUATED WHEN A MODULE IMPORTS IT,
 // so a dead import alone would perform Git I/O under the hermetic envelope and fail a whole
 // discovery batch. As a function the effect is reachable only by calling it, and every type and fold
 // above may be imported and exercised without it.
@@ -925,7 +925,7 @@ data rust_item_change_repository_path: String = "."
 // the stage0 mirrors the compiler writes. Consulting only the registry would classify every
 // regenerated mirror as hand-authored and report the whole emit as unjustified additions -- so an
 // UNOBSERVED emit population is a refusal here, not a smaller generated set, as
-// gunbc.stage0_rust_host_observation's own carrier requires of its consumers.
+// gunbc.stage0.stage0_rust_host_observation's own carrier requires of its consumers.
 type GeneratedPopulation
   = GeneratedPopulationObserved { repo_paths: List<String> }
   | GeneratedPopulationUnobserved { detail: String }
@@ -1152,7 +1152,7 @@ fn observe_current_live_hand_rust() -> LiveHandRustObservation {
 // THE REFERENCE POPULATION: EVERY HAND-RUST ITEM WHOSE TEXT NAMES ONE OF THE SUPPLIED TOKENS, EACH
 // PROJECTED TO A DeclarationRef THROUGH THE SAME TABLE THE OTHER PRODUCERS USE.
 //
-// gunbc.v1_consumer_census needs "who in Rust reaches v1_rt / v1_interpreter" at consumer x
+// gunbc.v1.v1_consumer_census needs "who in Rust reaches v1_rt / v1_interpreter" at consumer x
 // consumed-authority grain, and until this producer existed it answered with four hand-named crate
 // roots (v1_shim_items) -- a measurement copied from the tree, which DESIGN section 5 refuses as an
 // oracle. What was missing was not a new authority (the scan, the identity and the projection all

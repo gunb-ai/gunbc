@@ -83,7 +83,7 @@ import gunbc.auth.secret_ref_credential {
 }
 import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
 import gunbc.secret_provision { SecretProvisionAttemptIdentity, fleet_secret_ref }
-import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.secret_provision_actuator {
   snapshot_minted_secret,
   CredentialSnapshotTaken, CredentialSnapshotRefused, CredentialSnapshotRefusedResidueRemains,
@@ -1063,7 +1063,7 @@ fn origin_credential_already_pinned(profile: R2OriginTokenProfile, origin: R2Ori
 // artifact that may not exist is not located (§5), so the id is put where nothing can swallow it:
 // the process's own typed failure. The file is the convenience; the diagnostic is the guarantee.
 //
-// BOTH ARMS WRITE TO THE SAME PATH BECAUSE THE UPLOADER GLOBS ONE PATH. gunbc.fleet_converge_workflow
+// BOTH ARMS WRITE TO THE SAME PATH BECAUSE THE UPLOADER GLOBS ONE PATH. gunbc.fleet.fleet_converge_workflow
 // uploads /tmp/r2-*-object-write-mint-receipt.txt with always(), and an orphan receipt written
 // somewhere else would be invisible to exactly the run it was written for.
 // THE FILENAME CONVENTION IS ONE FACT AND THE UPLOADER READS IT RATHER THAN RE-SPELLING IT.

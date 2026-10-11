@@ -1,15 +1,15 @@
-module gunbc.machine_intake_host_capture_historical_binding
+module gunbc.machine_intake.host_capture_historical_binding
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.content_hash { ContentHash }
 import std.measure { ByteSize }
 import std.optional { Present }
-import gunbc.machine_intake_host_capture_envelope {
+import gunbc.machine_intake.host_capture_envelope {
   HostCaptureStage,
   host_capture_argv_open,
 }
-import gunbc.machine_intake_mtcollins1_boot_milestone { mtcollins1_census_stages }
-import gunbc.machine_intake_mtcollins1_memory_census_observation {
+import gunbc.machine_intake.mtcollins1_boot_milestone { mtcollins1_census_stages }
+import gunbc.machine_intake.mtcollins1_memory_census_observation {
   mtcollins1_host_capture_artifact_path,
   mtcollins1_host_capture_byte_count,
   mtcollins1_host_capture_digest,
@@ -35,7 +35,7 @@ type HistoricalCaptureIdentity {
 }
 
 // The capture this producer is constrained by, by its committed identity rather than by its name:
-// the three rows are gunbc.machine_intake_mtcollins1_memory_census_observation's, consumed here
+// the three rows are gunbc.machine_intake.mtcollins1_memory_census_observation's, consumed here
 // rather than re-minted, so a re-captured artifact moves both readings at once.
 data census_historical_capture: HistoricalCaptureIdentity = HistoricalCaptureIdentity {
   path: mtcollins1_host_capture_artifact_path,
@@ -134,7 +134,7 @@ data census_historical_stage_bindings: List<HistoricalStageBinding> = [
     name: "workload",
     disposition: HistoricalStageAuthoredFromDescription {
       original: "4 x 16GiB tmpfs chunks, urandom-seeded, sha256 x2 passes, compare",
-      reason: "attempt=3's ARGV line is PROSE, not a command, so no source exists to carry over: the body in gunbc.machine_intake_host_capture_envelope host_capture_workload_command is written from that description and from the capture's output tokens, and shares no line with whatever ran. It is the stage least constrained by the historical bytes, which is why its own execution controls carry the weight" as NonEmptyStr,
+      reason: "attempt=3's ARGV line is PROSE, not a command, so no source exists to carry over: the body in gunbc.machine_intake.host_capture_envelope host_capture_workload_command is written from that description and from the capture's output tokens, and shares no line with whatever ran. It is the stage least constrained by the historical bytes, which is why its own execution controls carry the weight" as NonEmptyStr,
     },
   },
   HistoricalStageBinding {
@@ -311,7 +311,7 @@ fn binding_holds_against_present_section(historical: String?, carried: HostCaptu
 // THE SAME MAP, READ AGAINST THE CAPTURE'S BYTES WITHOUT RE-BINDING THEM (DESIGN §3, a witness
 // discriminates at one interface). This map's subject is the ARGV line each section of attempt=3
 // carries against the roster; binding the capture -- one begin, the matching end, one run -- is a
-// different fact, established on the real file by test.claim.mtcollins1_census_image_local_wet
+// different fact, established on the real file by test.claim.machine_intake.mtcollins1_census_image_local_wet
 // the_attempt_three_capture_binds_and_reads_by_real_execution (the inhabitance claim this reader
 // pairs with), and re-executing that bind was ~98% of this claim's cost. The line is read as the
 // text after `----ARGV <name>: ` up to its newline; a name that appears twice or not at all is not

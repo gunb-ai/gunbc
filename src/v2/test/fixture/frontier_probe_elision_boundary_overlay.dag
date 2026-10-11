@@ -150,27 +150,27 @@ data frontier_probe_elision_boundary_closure_refs: List<SourceRef> = Cons {
   tail: Cons {
   head: SourceRef { path: "dag/std/verification.dag", source_root: DagTree, content_hash: Fnv1a64(Fnv1a64Structural { digest: "09fc60f19db1f037" }) },
   tail: Cons {
-  head: SourceRef { path: "src/v2/compiler/00_compile.dag", source_root: V2Tree, content_hash: Fnv1a64(Fnv1a64Structural { digest: "5f3cc4ebf14e733c" }) },
+  head: SourceRef { path: "src/v2/compiler/compile.dag", source_root: V2Tree, content_hash: Fnv1a64(Fnv1a64Structural { digest: "5f3cc4ebf14e733c" }) },
   tail: Cons {
-  head: SourceRef { path: "src/v2/compiler/01_tokenize.dag", source_root: V2Tree, content_hash: Fnv1a64(Fnv1a64Structural { digest: "bc747a7e3ba4bcb5" }) },
+  head: SourceRef { path: "src/v2/compiler/tokenize.dag", source_root: V2Tree, content_hash: Fnv1a64(Fnv1a64Structural { digest: "bc747a7e3ba4bcb5" }) },
   tail: Cons {
-  head: SourceRef { path: "src/v2/compiler/02_parse.dag", source_root: V2Tree, content_hash: Fnv1a64(Fnv1a64Structural { digest: "8496734b331fd5b3" }) },
+  head: SourceRef { path: "src/v2/compiler/parse.dag", source_root: V2Tree, content_hash: Fnv1a64(Fnv1a64Structural { digest: "8496734b331fd5b3" }) },
   tail: Cons {
-  head: SourceRef { path: "src/v2/compiler/03_name_resolve.dag", source_root: V2Tree, content_hash: Fnv1a64(Fnv1a64Structural { digest: "127a9f48e2229cce" }) },
+  head: SourceRef { path: "src/v2/compiler/name_resolve.dag", source_root: V2Tree, content_hash: Fnv1a64(Fnv1a64Structural { digest: "127a9f48e2229cce" }) },
   tail: Cons {
-  head: SourceRef { path: "src/v2/compiler/03_normalize.dag", source_root: V2Tree, content_hash: Fnv1a64(Fnv1a64Structural { digest: "5053c910ef195b1c" }) },
+  head: SourceRef { path: "src/v2/compiler/normalize.dag", source_root: V2Tree, content_hash: Fnv1a64(Fnv1a64Structural { digest: "5053c910ef195b1c" }) },
   tail: Cons {
-  head: SourceRef { path: "src/v2/compiler/03_resolve.dag", source_root: V2Tree, content_hash: Fnv1a64(Fnv1a64Structural { digest: "b46ee6d371335834" }) },
+  head: SourceRef { path: "src/v2/compiler/resolve.dag", source_root: V2Tree, content_hash: Fnv1a64(Fnv1a64Structural { digest: "b46ee6d371335834" }) },
   tail: Cons {
-  head: SourceRef { path: "src/v2/compiler/04_infer.dag", source_root: V2Tree, content_hash: Fnv1a64(Fnv1a64Structural { digest: "dceef5f2e2665453" }) },
+  head: SourceRef { path: "src/v2/compiler/infer.dag", source_root: V2Tree, content_hash: Fnv1a64(Fnv1a64Structural { digest: "dceef5f2e2665453" }) },
   tail: Cons {
-  head: SourceRef { path: "src/v2/compiler/05_emit.dag", source_root: V2Tree, content_hash: Fnv1a64(Fnv1a64Structural { digest: "60c0f27455220ac9" }) },
+  head: SourceRef { path: "src/v2/compiler/emit.dag", source_root: V2Tree, content_hash: Fnv1a64(Fnv1a64Structural { digest: "60c0f27455220ac9" }) },
   tail: Cons {
-  head: SourceRef { path: "src/v2/compiler/05_eval.dag", source_root: V2Tree, content_hash: Fnv1a64(Fnv1a64Structural { digest: "90ce5382ae759fdf" }) },
+  head: SourceRef { path: "src/v2/compiler/eval.dag", source_root: V2Tree, content_hash: Fnv1a64(Fnv1a64Structural { digest: "90ce5382ae759fdf" }) },
   tail: Cons {
-  head: SourceRef { path: "src/v2/compiler/06_translate.dag", source_root: V2Tree, content_hash: Fnv1a64(Fnv1a64Structural { digest: "fd8487bc3d52b840" }) },
+  head: SourceRef { path: "src/v2/compiler/translate.dag", source_root: V2Tree, content_hash: Fnv1a64(Fnv1a64Structural { digest: "fd8487bc3d52b840" }) },
   tail: Cons {
-  head: SourceRef { path: "src/v2/compiler/07_target_carriers.dag", source_root: V2Tree, content_hash: Fnv1a64(Fnv1a64Structural { digest: "3523bc70ac9133b2" }) },
+  head: SourceRef { path: "src/v2/compiler/target_carriers.dag", source_root: V2Tree, content_hash: Fnv1a64(Fnv1a64Structural { digest: "3523bc70ac9133b2" }) },
   tail: Cons {
   head: SourceRef { path: "src/v2/compiler/body_lowering_fold.dag", source_root: V2Tree, content_hash: Fnv1a64(Fnv1a64Structural { digest: "a5d6c6248a50ff4d" }) },
   tail: Cons {

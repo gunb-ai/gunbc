@@ -1,12 +1,12 @@
-module v2.test.long.s1_closure_receipt_support
+module v2.test.claim.long.s1_closure_receipt_support
 
 
 data s1_closure_paths: List<String> = [
   "dag/std/algebra.dag",
   "dag/std/error_primitives.dag",
-  "src/v2/compiler/01_tokenize.dag",
-  "src/v2/compiler/02_parse.dag",
-  "src/v2/compiler/03_normalize.dag",
+  "src/v2/compiler/tokenize.dag",
+  "src/v2/compiler/parse.dag",
+  "src/v2/compiler/normalize.dag",
   "src/v2/extdeps/languages/dag.dag",
   "src/v2/extdeps/languages/fidelity.dag",
   "src/v2/std/algebra.dag",

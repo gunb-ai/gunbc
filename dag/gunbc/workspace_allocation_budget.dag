@@ -1,7 +1,7 @@
 module gunbc.workspace_allocation_budget
 
 import std.types { String }
-import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.workspace_allocation { WorkspaceRequest, WorkspaceReservation }
 import gunbc.workspace_allocation_store { workspace_read_owner, WorkspaceStoreReadOk, WorkspaceStoreUnreadable, WorkspaceReleased, WorkspaceRecorded }
 import gunbc.workspace_allocation_release { workspace_release_read, WorkspaceReleasePrepared, WorkspaceReleaseRefused }

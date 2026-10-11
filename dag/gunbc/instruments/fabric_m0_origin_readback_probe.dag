@@ -1,4 +1,4 @@
-module tools.fabric_m0_origin_readback_probe
+module gunbc.instruments.fabric_m0_origin_readback_probe
 
 import std.types { Bool, NonEmptyStr, String }
 import std.content_hash { Sha256Digest, Sha256DigestHex, content_hash_eq_cryptographic }
@@ -18,7 +18,7 @@ import product.fabric.work { MaterializedProgram,
   Work, work_for,
 }
 import std.durable_compare_and_set { CasStoreRefused, CasSlotObservationRefused, CasUnreadableReadRefused }
-import gunbc.fabric_m0_completion {
+import gunbc.fabric.fabric_m0_completion {
   ObligationSubject,
   ComputationSucceeded,
   CommittedOutput,
@@ -29,7 +29,7 @@ import gunbc.fabric_m0_completion {
   PublishFinalizationFailed,
   origin_readback_of,
 }
-import gunbc.fabric_m0_commit {
+import gunbc.fabric.fabric_m0_commit {
   CommitNamespace,
   CommitTransportOutcome,
   StoreAnswered,
@@ -37,8 +37,8 @@ import gunbc.fabric_m0_commit {
   publish_after_commit,
 }
 import extdeps.github.checks { CheckConclusion, Success, Failure }
-import gunbc.fabric_m0_job_ending { end_required_job }
-import gunbc.fabric_m0_origin_readback {
+import gunbc.fabric.fabric_m0_job_ending { end_required_job }
+import gunbc.fabric.fabric_m0_origin_readback {
   OriginReadingOutcome,
   OriginReadingTaken,
   OriginReadingUnavailable,
@@ -140,7 +140,7 @@ fn an_absent_file_refuses_instead_of_producing_a_digest() -> Bool {
 }
 
 // THE WHOLE CHAIN, END TO END, ON REAL BYTES. This is what makes the two mint folds
-// (gunbc.fabric_m0_commit manifest_read_of and gunbc.fabric_m0_completion origin_readback_of)
+// (gunbc.fabric.fabric_m0_commit manifest_read_of and gunbc.fabric.fabric_m0_completion origin_readback_of)
 // CONSUMED BY EXECUTION rather than declared: a job publishes success only when the digest computed
 // over the file the readback staged equals the digest the commit record claims, and every value on
 // the confirming side of that comparison came out of the read.
@@ -250,7 +250,7 @@ fn a_readback_of_the_wrong_file_cannot_publish_success() -> Bool {
 }
 
 // THE JOB-ENDING OVER REAL BYTES, WITH ITS MUTATION CONTROL. test.claim.fabric_m0_job_ending_witness
-// drives gunbc.fabric_m0_job_ending end_required_job under the hermetic mock, which replays ONE
+// drives gunbc.fabric.fabric_m0_job_ending end_required_job under the hermetic mock, which replays ONE
 // constant digest for every path -- so there an ending that ignored the read would green the
 // positive control. Here the only input that varies between the two arms is WHICH FIXTURE FILE the
 // manifest observation was digested from. The positive arm reads the manifest the record names and

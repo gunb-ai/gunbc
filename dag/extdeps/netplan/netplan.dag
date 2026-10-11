@@ -17,7 +17,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 // netplan was entirely unmodeled before this — zero occurrences corpus-wide — and its absence is
 // why the fleet model can RECORD an address without saying whether a host holds it.
-// gunbc.fleet_intent_network carries srv1..srv4's addresses as NetworkEndpoint rows, topology
+// gunbc.fleet.fleet_intent_network carries srv1..srv4's addresses as NetworkEndpoint rows, topology
 // facts: what the address IS, not that the host has it. netplan decides the latter, so the ensure
 // side of host networking has nowhere to live until this module exists. This is the applier half
 // of the writer/applier pair whose fusion produced a wrong diagnosis on srv4 (see
@@ -51,7 +51,7 @@ fn netplan_file_is_applied(f: NetplanConfigFile) -> Bool {
 // proposition the srv4 misdiagnosis denied: presence in /etc/netplan is sufficient for application,
 // and the writer is irrelevant. Writing it as a total function makes the writer-dependent version
 // unwritable in any consumer routing through here, and gives the RED control in
-// gunbc.host_network_diagnosis something concrete to contradict. If netplan ever gains a genuine
+// gunbc.host.host_network_diagnosis something concrete to contradict. If netplan ever gains a genuine
 // non-application case — a malformed file the renderer rejects, say — this becomes a real fold with
 // a typed refusal, a change to THIS module rather than to every consumer with its own rule.
 

@@ -1,4 +1,4 @@
-module gunbc.namespace_cut_subject_observation
+module gunbc.namespace.namespace_cut_subject_observation
 
 import std.types { String, NonEmptyStr, Bool, Int, List, list_length }
 import std.render_repeat_string_bootstrap { repeat_string }
@@ -16,7 +16,7 @@ import v2.std.decl_ref_resolution {
   DeclarationRefAmbiguous,
   resolve_declaration_ref,
 }
-import gunbc.namespace_cut_stage { namespace_cut_stage_label }
+import gunbc.namespace.namespace_cut_stage { namespace_cut_stage_label }
 import gunbc.rust_item_identity { RustItemIdentity, rust_item_identity_qualified_name }
 import gunbc.rust_item_host_observation {
   LiveHandRustObservation,
@@ -24,7 +24,7 @@ import gunbc.rust_item_host_observation {
   LiveHandRustHostRefused,
   observe_current_live_hand_rust,
 }
-import gunbc.namespace_cut_subject_roster {
+import gunbc.namespace.namespace_cut_subject_roster {
   NamespaceCutSubjectIdentity,
   NamespaceCutSubjectProbe,
   DagDeclarationProbe,
@@ -218,7 +218,7 @@ fn host_probe_over_items(
         why: concat(
           concat(concat("host Rust item: STALE CITATION -- this probe cites ", path),
                  concat(", where no item of this name exists, but the scanned population holds it at ", found_at)),
-          ". The item MOVED; it was not deleted. Refusing rather than answering, because the cited file still exists and the file-scoped question would otherwise fold a relocation into ABSENT -- and ABSENT is this instrument's success verdict, so answering would report an authority deleted while it is still live. Repair the citation in gunbc.namespace_cut_subject_roster subject_probes; do not repoint the reading."
+          ". The item MOVED; it was not deleted. Refusing rather than answering, because the cited file still exists and the file-scoped question would otherwise fold a relocation into ABSENT -- and ABSENT is this instrument's success verdict, so answering would report an authority deleted while it is still live. Repair the citation in gunbc.namespace.namespace_cut_subject_roster subject_probes; do not repoint the reading."
         ),
       }
     } else {

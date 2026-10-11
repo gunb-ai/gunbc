@@ -36,8 +36,8 @@ import gunbc.os_install_actuator_selection {
   srv3_os_install_actuator_selection, OsInstallActuatorSelection,
   ActuatorSelected, ActuatorUnsatisfiable,
 }
-import gunbc.fleet_intent { srv3_host, ComputeHost }
-import gunbc.seeded_install_media_publish {
+import gunbc.fleet.fleet_intent { srv3_host, ComputeHost }
+import gunbc.provisioning.seeded_install_media_publish {
   SeededImageResolution,
   SeededImageResolved,
   SeededImageNotBuilt,
@@ -57,7 +57,7 @@ import gunbc.os_install_mechanism {
   srv3_install_mechanism_solution,
   install_boot_target_for,
 }
-import gunbc.host_effect {
+import gunbc.host.host_effect {
   RedfishAction,
   BmcController,
   HostOs,
@@ -66,7 +66,7 @@ import gunbc.host_effect {
   HostEffectIntent,
   LocalShell,
 }
-import gunbc.srv3_nbd_proxy_serve_intent { srv3_nbd_proxy_lease_key }
+import gunbc.srv3.srv3_nbd_proxy_serve_intent { srv3_nbd_proxy_lease_key }
 
 type OsInstallActuatorStep
   = ActuatorNbdProxyServe {

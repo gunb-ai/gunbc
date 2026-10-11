@@ -8,7 +8,7 @@ import extdeps.dns.domain_name { HostName, DomainName, DnsLabel, PartiallyQualif
 import extdeps.access.posix { PosixLoginName }
 import extdeps.toolchain.types { Architecture, Aarch64 }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import extdeps.automation.playwright { PlaywrightBuild, playwright_1_62_1 }
 import extdeps.browser.chromium { ChromiumBuild, chromium_151_0_7922_34 }
 import gunbc.spark.oobe_screen_observation {
@@ -51,7 +51,7 @@ import extdeps.ssh.openssh_port_forwarding {
 // and never asked whether the VALUES had authorities, so it certified as clean a file that
 // re-coined PlaywrightPackageVersion beside extdeps.automation.playwright's PlaywrightVersion,
 // authored a raw browser-cache label where extdeps.browser.chromium owns ChromiumBuild, and recast
-// the bare strings "srv1".."srv4" that gunbc.fleet_intent_network already binds. A census that
+// the bare strings "srv1".."srv4" that gunbc.fleet.fleet_intent_network already binds. A census that
 // reports on the wrong population is worse than none, because the paragraph asserting it was
 // performed is what stopped the next reader from performing it.
 //
@@ -318,7 +318,7 @@ type ObservedLegUse {
 // the same login as srv1's.
 //
 // THE FLEET HOSTS ARE IMPORTED, NOT RESPELLED. operator_host_srv1..srv4 are bound by
-// gunbc.fleet_intent_network; the first revision recast the bare strings per row, which is the
+// gunbc.fleet.fleet_intent_network; the first revision recast the bare strings per row, which is the
 // value-level half of the §3 fork its own census missed.
 // ------------------------------------------------------------------------------------------
 
@@ -340,7 +340,7 @@ data machine_srv4: ObservedMachineIdentity = FleetAllocatedMachine { host: opera
 // Half of an allocation is not a smaller allocation, it is a claim with no consumer. So the whole
 // apparatus is withdrawn and ratification becomes ONE coherent act rather than a row that already
 // exists waiting to be believed: on the operator's word, `operator_host_pi1` lands in
-// gunbc.fleet_intent_network, an allocation receipt lands with an operator decider, and this row
+// gunbc.fleet.fleet_intent_network, an allocation receipt lands with an operator decider, and this row
 // becomes FleetAllocatedMachine. Until then the honest state is an observed label and a refusal.
 //
 // WHAT THE REFUSAL COSTS, stated so nobody has to rediscover it: pi1 owns the only radio in reach

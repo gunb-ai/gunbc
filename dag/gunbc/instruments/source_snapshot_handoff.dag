@@ -1,15 +1,15 @@
-module tools.source_snapshot_handoff
+module gunbc.instruments.source_snapshot_handoff
 
 // THE WET DRIVER FOR THE SOURCE-SNAPSHOT HANDOFF, AND WHAT IT IS EVIDENCE OF.
 //
-// gunbc.fabric_source_snapshot is a join between two closed things -- std.fabric_storage's
+// gunbc.fabric.fabric_source_snapshot is a join between two closed things -- std.fabric_storage's
 // content-addressed objects and a source tree -- and a join is exactly the shape that typechecks
 // while establishing nothing. DESIGN section 5 names the trap: a typecheck and a grep are not
 // consumers. So the subject here is a REQUEST that runs, and the question each scenario answers is
 // whether the executor received the source that was intended.
 //
 // WHAT MAKES IT A REAL REQUEST RATHER THAN A DEMONSTRATION. The argv is not authored here. It is
-// gunbc.roadmap_execution_contract validation_operation_command over a GunbcClaimValidation, bound
+// gunbc.roadmap.roadmap_execution_contract validation_operation_command over a GunbcClaimValidation, bound
 // to the same PinnedPublicPlusLocalRoot layout that contract already spells for a pinned public
 // checkout beside a local root -- so the words this driver hands a child process are the words the
 // dispatch path hands a worker, derived from one authority. If that spelling changes, this
@@ -24,7 +24,7 @@ module tools.source_snapshot_handoff
 // executor on ONE HOST reading a store on that host's disk. It establishes that the bytes travel by
 // content identity and that the caller's repository is never read or written -- which is what makes
 // the route serviceable across a boundary -- and it does NOT establish that a remote executor works,
-// because no remote one ran. The fabric's transport is gunbc.fabric_storage_client's served store,
+// because no remote one ran. The fabric's transport is gunbc.fabric.fabric_storage_client's served store,
 // and binding this route to it is the next step, not this one.
 
 // THE INSTRUMENT IS NAMED RATHER THAN ITS OUTPUT TRANSCRIBED (DESIGN section 6). Re-derive every
@@ -53,7 +53,7 @@ import std.fabric_storage {
   fabric_object_ref_of,
   fabric_object_ref_wire,
 }
-import gunbc.fabric_storage_file_store {
+import gunbc.fabric.fabric_storage_file_store {
   FabricStorageFileRoot,
   fabric_storage_file_root,
   fabric_storage_file_root_ensure,
@@ -63,7 +63,7 @@ import gunbc.fabric_storage_file_store {
   FabricStorageRootReady,
   FabricStorageRootRefused,
 }
-import gunbc.fabric_source_snapshot {
+import gunbc.fabric.fabric_source_snapshot {
   SourceComposition,
   PublicOnlyComposition,
   PublicAndPrivateComposition,
@@ -121,7 +121,7 @@ import gunbc.fabric_source_snapshot {
   source_composition_wire,
 }
 import gunbc.ensure { EnsurePolicy, EnsureObserveOnly }
-import gunbc.roadmap_execution_contract {
+import gunbc.roadmap.roadmap_execution_contract {
   ValidationOperation,
   GunbcClaimValidation,
   ClaimSourceRootLayout,
@@ -133,7 +133,7 @@ import gunbc.roadmap_execution_contract {
   ModeledValidationCommand,
   validation_operation_command,
 }
-import tools.scm_acceptance_binary {
+import gunbc.instruments.scm_acceptance_binary {
   ScmAcceptanceBinary,
   ScmAcceptanceBinaryAcquisition,
   ScmAcceptanceBinaryReady,
@@ -199,7 +199,7 @@ fn snapshot_handoff_validation() -> ValidationOperation {
 // ── THE SCENARIO ROSTER ──────────────────────────────────────────────────────────────────────
 //
 // A CLOSED VARIANT, AND THE REPORTABLE SUCCESS IS SEALED BEHIND IT for the reason
-// tools.scm_acceptance records at length: .dag has no module privacy, so every function here is a
+// gunbc.instruments.scm_acceptance records at length: .dag has no module privacy, so every function here is a
 // live entry point, and a runner that accepted a caller-supplied scenario list would let any caller
 // mint a pass from the empty list or from the positive control alone. The roster is the vocabulary,
 // and each member derives its own sequence.
@@ -264,7 +264,7 @@ fn snapshot_outcome_line(outcome: SnapshotScenarioOutcome) -> String {
 
 // ── THE WORKSPACE ────────────────────────────────────────────────────────────────────────────
 //
-// THE PATH IS TRIMMED, and the bug that rule exists for is recorded at tools.scm_acceptance
+// THE PATH IS TRIMMED, and the bug that rule exists for is recorded at gunbc.instruments.scm_acceptance
 // prepare_scm_scenario: mktemp prints a trailing newline, mkdir -p obligingly creates a directory
 // literally named with one, and the whole scenario then goes green against a sibling while the real
 // temporary directory stays empty and is leaked. Green with a leak is the worst shape a defect can
@@ -414,7 +414,7 @@ type CapturedSnapshot
   | SnapshotNotReady { detail: String }
 
 // THE CAPTURE FAMILY IS DISCRIMINATED HERE, AND ITS ABSENCE WAS THE CONFLATION THIS MODULE'S OWN
-// AUTHORITY ARGUES AGAINST. gunbc.fabric_source_snapshot keeps seven capture refusals apart
+// AUTHORITY ARGUES AGAINST. gunbc.fabric.fabric_source_snapshot keeps seven capture refusals apart
 // precisely so that "the file is not there", "the file is empty", "this path is not under a root
 // you declared" and "the store would not take it" do not arrive at one place -- and the only
 // consumer in the corpus answered all seven with the constant "the capture refused", naming neither

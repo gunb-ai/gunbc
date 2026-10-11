@@ -188,7 +188,7 @@ fn consumer(name: String, disposition: ConsumerDisposition) -> LegacyConsumerSur
 fn retired_with_x() -> List<LegacyConsumerSurveyRow> {
   [
     consumer(
-      name: "gunbc.v1_interpreter_primitive_surface",
+      name: "gunbc.v1.v1_interpreter_primitive_surface",
       disposition: Retire { reason: nes(s: "its entire subject is X's primitive dispatch arms") },
     ),
     consumer(
@@ -196,7 +196,7 @@ fn retired_with_x() -> List<LegacyConsumerSurveyRow> {
       disposition: Retire { reason: nes(s: "generated projection of X's dispatch table; no authority survives it") },
     ),
     consumer(
-      name: "gunbc.v1_interpreter_dispatch_emit",
+      name: "gunbc.v1.v1_interpreter_dispatch_emit",
       disposition: Retire { reason: nes(s: "the emitter whose only output is X's dispatch table") },
     ),
   ]
@@ -289,8 +289,8 @@ fn interpreter_cut_region() -> List<NonEmptyStr> {
   [
     nes(s: "v1_compiler.v1_interpreter"),
     nes(s: "v1_compiler.v1_interpreter_dispatch_generated"),
-    nes(s: "gunbc.v1_interpreter_primitive_surface"),
-    nes(s: "gunbc.v1_interpreter_dispatch_emit"),
+    nes(s: "gunbc.v1.v1_interpreter_primitive_surface"),
+    nes(s: "gunbc.v1.v1_interpreter_dispatch_emit"),
   ]
 }
 

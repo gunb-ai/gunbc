@@ -1,4 +1,4 @@
-module gunbc.roadmap_inline_assignment
+module gunbc.roadmap.roadmap_inline_assignment
 
 import gunbc.auth.session { AuthenticatedSession }
 import gunbc.auth.profile_projection { PrincipalProfile }
@@ -7,9 +7,9 @@ import gunbc.roadmap.roadmap_event_log {
   EventPrincipal, EventPrincipalAuthenticated, LegacyEmailPrincipal, RoadmapEventEnvelope,
   event_principal_label,
 }
-import gunbc.roadmap_page { issue_chain_head_id, event_principal_display_with_profile, issue_assign_suggestions, issue_assignee_chip_node, issue_assign_form_nodes }
+import gunbc.roadmap.roadmap_page { issue_chain_head_id, event_principal_display_with_profile, issue_assign_suggestions, issue_assignee_chip_node, issue_assign_form_nodes }
 import std.markup { Fragment }
-import gunbc.roadmap_issue_command { IssueFormContext }
+import gunbc.roadmap.roadmap_issue_command { IssueFormContext }
 import gunbc.site.markup { el_class }
 import extdeps.languages.json.emit { serialize_json }
 import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }

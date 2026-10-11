@@ -1,11 +1,11 @@
-module v2.test.manual.gha_workflow_yaml_fold_runner
+module v2.test.claim.manual.gha_workflow_yaml_fold_runner
 
 import std.types { List }
 import std.realization_schedule { Runnable, RunnableSingleClaim, runnable_resource_profile_negligible }
 
-data gha_fold_structural_test_entry: String = "src/v2/test/claim/gha_workflow_yaml_fold_structural_test.dag"
+data gha_fold_structural_test_entry: String = "src/v2/test/claim/gha_workflow_yaml_fold_structural.dag"
 
-data gha_fold_serialize_test_entry: String = "src/v2/test/claim/gha_workflow_yaml_fold_serialize_test.dag"
+data gha_fold_serialize_test_entry: String = "src/v2/test/claim/gha_workflow_yaml_fold_serialize.dag"
 
 fn gha_workflow_yaml_fold_plan() -> List<List<Runnable>> {
   [

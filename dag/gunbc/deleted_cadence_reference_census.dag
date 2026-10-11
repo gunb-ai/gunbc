@@ -46,7 +46,7 @@ import v2.std.algebra { fold_list, any }
 //
 // THE STRONGEST RECEIPT IN THIS SUBJECT IS A ROW THAT WAS RIGHT, and it is placed first
 // because it is the only one that argues for the sweep itself rather than for its shape.
-// `gunbc.ci_layer_roots` `witness_exclusion_frontier`, in the excluded-store-effects reason,
+// `gunbc.ci.ci_layer_roots` `witness_exclusion_frontier`, in the excluded-store-effects reason,
 // records: "this reason formerly cited falsifier_self_host_wet_cadence_active as false; that
 // flag is deleted, and it in fact read TRUE, so the reason was right about the state and wrong
 // about its evidence."
@@ -73,7 +73,7 @@ import v2.std.algebra { fold_list, any }
 // days without anything refusing, and fed a fork that would have reclassified its rows from
 // uncovered to COVERED had anyone set it to its honest value -- an honesty edit wired to
 // produce coverage inflation. It was cut at the root rather than corrected.
-// `gunbc.ci_layer_roots` `witness_exclusion_row_mentions_wet_lane_dark_state_note` records the
+// `gunbc.ci.ci_layer_roots` `witness_exclusion_row_mentions_wet_lane_dark_state_note` records the
 // follow-on and the hazard this census had to check itself against: a predicate keyed on the
 // deleted symbol could never fire on a real row, and re-pointing it at the surviving authority
 // left the broader net blind to the authority's own CamelCase vocabulary -- caught by a positive
@@ -225,7 +225,7 @@ data bin_wet_template_coverage: CoverageNotEstablished = CoverageNotEstablished 
 // below. The twelve before them are authority rows that RELIED on the cadence for a coverage claim;
 // these five are witness tests whose own annotations asserted the cadence EXECUTES them, which is
 // the same subject reached from the other side -- the row's coverage rests on a dark cadence either
-// way. The precedent is `tools.namespace_import_closure_behavioral_transport` `nic_doc`, already
+// way. The precedent is `gunbc.instruments.namespace_import_closure_behavioral_transport` `nic_doc`, already
 // censused here and already carrying the exact correction these five now match, so this is
 // enrollment in an existing subject rather than a widening of it. The site is the declaration the
 // annotation is attached to, because §4c annotations have no symbol of their own for a
@@ -281,7 +281,7 @@ data bin_wet_template_coverage: CoverageNotEstablished = CoverageNotEstablished 
 // covers spans THREE cadences, and a row is restored by ITS OWN cadence regaining a route, which is
 // what each `CoverageNotEstablished` carries. So the plural is wrong for the MAJORITY of its own
 // population, not for one new member. The two rows carrying `bin_wet_template_coverage` --
-// `gunbc.ci_layer_roots` `bin_witness_wet_note` and `test.claim.long.dag_compile_clean_perturb_corpus`
+// `gunbc.ci.ci_layer_roots` `bin_witness_wet_note` and `test.claim.long.dag_compile_clean_perturb_corpus`
 // `perturb_cross_tree_import_corpus_green_holds` -- sit under it today, so the mismatch predates this
 // row and is not repaired here. THIS row does not join them: it carries
 // `frontier_wet_terminal_coverage`, whose trigger names the capability at the grain the floor
@@ -293,7 +293,7 @@ data bin_wet_template_coverage: CoverageNotEstablished = CoverageNotEstablished 
 fn deleted_cadence_references() -> List<DeletedCadenceReference> {
   [
     DeletedCadenceReference {
-      site: decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "falsifier_self_host_wet_note"),
+      site: decl_ref(module_path: "gunbc.ci.ci_layer_roots", decl_name: "falsifier_self_host_wet_note"),
       standing: HistoricalReceipt {
         event: PastExecutionReceipt {
           cadence: FalsifierSelfHostWet,
@@ -333,9 +333,9 @@ fn deleted_cadence_references() -> List<DeletedCadenceReference> {
       },
     },
     DeletedCadenceReference {
-      site: decl_ref(module_path: "gunbc.ci_materialization", decl_name: "ci_floor_materialization_receipt_note"),
+      site: decl_ref(module_path: "gunbc.ci.ci_materialization", decl_name: "ci_floor_materialization_receipt_note"),
       standing: PremiseInvalidated {
-        affected_decision: decl_ref(module_path: "gunbc.ci_materialization", decl_name: "ci_floor_materialization_receipt_path"),
+        affected_decision: decl_ref(module_path: "gunbc.ci.ci_materialization", decl_name: "ci_floor_materialization_receipt_path"),
         current_coverage: materialization_count_pin_coverage,
       },
     },
@@ -361,21 +361,21 @@ fn deleted_cadence_references() -> List<DeletedCadenceReference> {
       },
     },
     DeletedCadenceReference {
-      site: decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "enforcement_coverage_exclusion_note"),
+      site: decl_ref(module_path: "gunbc.ci.ci_layer_roots", decl_name: "enforcement_coverage_exclusion_note"),
       standing: PremiseInvalidated {
-        affected_decision: decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "witness_exclusion_frontier"),
+        affected_decision: decl_ref(module_path: "gunbc.ci.ci_layer_roots", decl_name: "witness_exclusion_frontier"),
         current_coverage: cost_locality_backstop_coverage,
       },
     },
     DeletedCadenceReference {
-      site: decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "bin_witness_wet_note"),
+      site: decl_ref(module_path: "gunbc.ci.ci_layer_roots", decl_name: "bin_witness_wet_note"),
       standing: PremiseInvalidated {
-        affected_decision: decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "witness_exclusion_frontier"),
+        affected_decision: decl_ref(module_path: "gunbc.ci.ci_layer_roots", decl_name: "witness_exclusion_frontier"),
         current_coverage: bin_wet_template_coverage,
       },
     },
     DeletedCadenceReference {
-      site: decl_ref(module_path: "tools.namespace_import_closure_behavioral_transport", decl_name: "nic_doc"),
+      site: decl_ref(module_path: "gunbc.instruments.namespace_import_closure_behavioral_transport", decl_name: "nic_doc"),
       standing: PremiseInvalidated {
         affected_decision: decl_ref(module_path: "v2.compiler.self_host.wet_receipt_enrollment", decl_name: "falsifier_self_host_wet_enrollment_note"),
         current_coverage: self_host_wet_roster_coverage,
@@ -412,14 +412,14 @@ fn deleted_cadence_references() -> List<DeletedCadenceReference> {
     DeletedCadenceReference {
       site: decl_ref(module_path: "test.claim.expectation_frontier_witness", decl_name: "undeclared_effects_emit_the_frontier_receipt_holds"),
       standing: PremiseInvalidated {
-        affected_decision: decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "falsifier_rehomed_bin_wet_rows"),
+        affected_decision: decl_ref(module_path: "gunbc.ci.ci_layer_roots", decl_name: "falsifier_rehomed_bin_wet_rows"),
         current_coverage: frontier_wet_terminal_coverage,
       },
     },
     DeletedCadenceReference {
       site: decl_ref(module_path: "test.claim.long.dag_compile_clean_perturb_corpus", decl_name: "perturb_cross_tree_import_corpus_green_holds"),
       standing: PremiseInvalidated {
-        affected_decision: decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "falsifier_rehomed_bin_wet_rows"),
+        affected_decision: decl_ref(module_path: "gunbc.ci.ci_layer_roots", decl_name: "falsifier_rehomed_bin_wet_rows"),
         current_coverage: bin_wet_template_coverage,
       },
     },

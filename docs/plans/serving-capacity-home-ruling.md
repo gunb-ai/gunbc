@@ -17,7 +17,7 @@ domain's home authorities and omits the authorities both subjects actually inhab
 
 `product.capacity.*` and `product.fabric.*` hold the admission concept once, generically. (Those are
 the module paths, which is what a citation names; the files happen to live under
-`dag/gunbc/product/`, and §3 is explicit that a fact's home is its layer, not its file.)
+`dag/product/`, and §3 is explicit that a fact's home is its layer, not its file.)
 
 - `product.capacity.lease` — `LeasePolicy`, `LeaseGrant`, `LeaseFence`, `fence_verdict`,
   `ReleaseLaw`, `capacity_after_expiry`. This is the **serving** side's lease algebra. It is *not*
@@ -30,17 +30,17 @@ the module paths, which is what a citation names; the files happen to live under
   affinity-keyed rendezvous. Note the `<P>` — the selection fold is *already* parameterised over the
   provider subject, which is precisely the shape a shared authority takes.
 - `product.fabric.work` — `ExecutionRequirements`, `ControlPlaneCapacity`, `TrustDomainRef`.
-- `gunbc.fabric_event_log` — `fabric_seat_acquire`, `fabric_seat_observe`, `event_log_append`,
+- `gunbc.fabric.fabric_event_log` — `fabric_seat_acquire`, `fabric_seat_observe`, `event_log_append`,
   `event_log_observe_head`. The seat race lives here, in a **fabric** module — but it is the
   **serving** occupancy producer, not the compute one (§1b).
 
 ### Subject A — compute cells (`gunbc.fabric_*`, `gunbc.compute.*`)
 
-`gunbc.fabric_control_plane` (`CellReservation`, `reserve_selected_cell`, `partition_cell_roster`,
+`gunbc.fabric.fabric_control_plane` (`CellReservation`, `reserve_selected_cell`, `partition_cell_roster`,
 `end_cell_hold`, `free_cell_slot`; the held/free occupancy state is the shared
 `std.durable_exclusive_hold::DurableHoldState`, realized over the file store by
-`gunbc.durable_exclusive_hold_file_store`), `gunbc.fabric_executor_class`
-(`CapacityClassAdmission`, `ExecutorSanction`), `gunbc.fabric_quota` (`QuotaLease` over
+`gunbc.durable_exclusive_hold_file_store`), `gunbc.fabric.fabric_executor_class`
+(`CapacityClassAdmission`, `ExecutorSanction`), `gunbc.fabric.fabric_quota` (`QuotaLease` over
 `product.capacity.lease`), `gunbc.compute.work_request` (`WorkOperation`, `WorkSubject = ExactTree`,
 `WorkOutcome`). Subject identity: an **exact source tree** to be built by some runner slot.
 
@@ -59,7 +59,7 @@ by a loaded model replica.
 EqualCostTieUnresolved }`, `product.fabric.work { ExecutionRequirements, ControlPlaneCapacity }`,
 `product.fabric.supply { EstimatedGrantDuration, AffinityKeyedRendezvous, PlacementAffinityKey }`,
 `product.capacity.lease { LeasePolicy, LeaseGrant, GrantIdentity }`, `product.capacity.pool`,
-`product.capacity.pool_events`, and `gunbc.fabric_event_log { fabric_seat_acquire }`. Its own comment
+`product.capacity.pool_events`, and `gunbc.fabric.fabric_event_log { fabric_seat_acquire }`. Its own comment
 says it: *"product.fabric.selection ranks the survivors, and fabric_seat_acquire settles the race."*
 
 So for **selection**, the vocabulary coincidence is not an alias: it is one fold with two consumers,
@@ -70,7 +70,7 @@ and §2's decompose→map→reduce has already run there. For **occupancy** it h
 An earlier revision of this document claimed "one lease algebra, one pool, one seat race". That was
 wrong, and it was wrong in an instructive way: the evidence was the *serving consumer's* imports,
 and the claim was about *both producers*. The compute-allocation producer was never read. Measured
-in `gunbc.fabric_control_plane`:
+in `gunbc.fabric.fabric_control_plane`:
 
 - it does **not** import `product.capacity.lease` at all;
 - `fabric_seat_acquire` / `SeatRequest` occurrences: **zero**;
@@ -89,7 +89,7 @@ verdict derived from a deadline." `LeaseGrant` carries `granted_at`, `expires_at
 | linearization | `fabric_seat_acquire` over an append-only event chain | `file_compare_and_set` over a file-backed CAS |
 | selection | `select_supply` | `select_supply` via `floor_supply_selection` |
 
-`gunbc.fabric_quota` does consume `LeaseGrant` and `fabric_seat_acquire` — but its subject is
+`gunbc.fabric.fabric_quota` does consume `LeaseGrant` and `fabric_seat_acquire` — but its subject is
 upstream **API rate-limit** quota, so it proves the capacity algebra has a second consumer, not that
 `broker_reserve_for_demand` inhabits it.
 
@@ -118,7 +118,7 @@ happen — one occupancy producer under two subjects — rather than asserting i
 ### The "third home for the address fact" — dissolved
 
 `gunbc.fleet.fleet_intent_network` is the host-address authority and is consumed by
-`harness_seat`, `harness_backend`, `harness_wire` **and** `gunbc.fabric_event_log`. It is one home
+`harness_seat`, `harness_backend`, `harness_wire` **and** `gunbc.fabric.fabric_event_log`. It is one home
 for one fact (where a host answers), not a second home for capacity. An address is not a capacity.
 
 ## 2. The three-valued answer (DESIGN §3b)
@@ -132,7 +132,7 @@ two subjects" either — it is shared where it is shared, and separate where it 
 own question already reads "a machine, **a serving head**, a build slot, a budget" — serving is
 already in scope by the question's text. What is wrong is the `homes` roster: it names
 `gunbc.compute.work_request::WorkOperation`, `gunbc.compute.work_provider_local::ComputeLayout`,
-`gunbc.fabric_control_plane::CellReservation`, `gunbc.fabric_executor_class::CapacityClassAdmission`
+`gunbc.fabric.fabric_control_plane::CellReservation`, `gunbc.fabric.fabric_executor_class::CapacityClassAdmission`
 — four declarations, all of them **Subject A consumers**. A reviewer handed that roster and a
 serving diff has nothing to conform it to, and would reasonably conclude serving is a separate
 kingdom. That is how this question gets re-litigated.

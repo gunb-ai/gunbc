@@ -1,4 +1,4 @@
-module gunbc.machine_intake_mtcollins1_power_on_account
+module gunbc.machine_intake.mtcollins1_power_on_account
 
 import v2.std.algebra { any, filter }
 import std.types { Bool, Int, List, NonEmptyStr, String }
@@ -22,38 +22,38 @@ import extdeps.bmc.ipmi_sel {
 import extdeps.bmc.ipmi_sdr { SdrTypeLine }
 import extdeps.bmc.redfish_memory_inventory { RedfishMemoryMember, RedfishProcessorMember }
 import extdeps.bootloader.grub { grub_console_report, GrubConsoleReport, GrubNothingStated, GrubBannerOnly, GrubStillTrying, GrubBootFailed, GrubError, grub_error_text }
-import gunbc.machine_intake_pre_os_bringup_verdict {
+import gunbc.machine_intake.pre_os_bringup_verdict {
   SelWindowEvent, BootRestart, FirmwareProgressRecord, OemTimestamped, OtherStandardEvent,
   firmware_console_report, FirmwareConsoleReport, NoTerminalStated, UndecodedErrorCodesOnly, FirmwareErrorStatementUnrecognized, TrainingRefusedByFirmware,
 }
-import gunbc.machine_intake_ampere_smpro_observation { SmproProbeOutcome, SmproPassObservation, SmproSocketRecords, SmproRecordSet, smpro_socket_word, smpro_outcome_word, smpro_socket_records, outcome_socket }
+import gunbc.machine_intake.ampere_smpro_observation { SmproProbeOutcome, SmproPassObservation, SmproSocketRecords, SmproRecordSet, smpro_socket_word, smpro_outcome_word, smpro_socket_records, outcome_socket }
 import extdeps.ampere.smpro_internal_error {
   SmproInternalRecord, SmproProcessor, SmproProcessorSmpro, SmproProcessorPmpro,
   SmproRecordGate, PendingAndDecoded, NotPending, GpiUnavailable, PendingWithClearOrMissingType, TypePresentWithoutPending,
   smpro_internal_record_text, smpro_record_gate_lines,
 }
-import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
+import gunbc.machine_intake.mtcollins1_socket1_investigation_observation {
   MtCollins1SecondaryJoinReading, MtCollins1SecondaryJoinOutcome, SecondaryJoined, SecondaryJoinTimeout, SecondaryJoinUnclassified,
   secondary_join_outcome,
 }
-import gunbc.machine_intake_ampere_dram_console_observation {
+import gunbc.machine_intake.ampere_dram_console_observation {
   AmpereDramConsoleObservation, AmpereDramBlockNotPrinted, AmpereDramBlockObserved, ampere_dram_untrained_sockets,
 }
-import gunbc.machine_intake_ampere_checkpoint_console_observation {
+import gunbc.machine_intake.ampere_checkpoint_console_observation {
   AmpereCheckpointConsoleObservation, AmpereCheckpointSpan, AmpereCheckpointRelation, AmpereCheckpointToken,
   ampere_checkpoint_relation_text, ampere_checkpoint_last_token, ampere_console_span_lines,
 }
-import gunbc.machine_intake_mtcollins1_console_milestone_observation {
+import gunbc.machine_intake.mtcollins1_console_milestone_observation {
   ConsoleMilestone, ConsoleMilestoneObservation, ConsoleMilestoneSighting, ConsoleFailureLine, ConsoleFailureSighting,
   FirmwareErrorStatementLine, GrubFailureLine, InitrdLoadFailureLine, KernelPanicLine, ModuleDecompressionRefusalLine,
   DramFirmwareBannerObserved, FirmwareSummaryObserved, UefiConsolePromptObserved, UefiShellObserved, GrubBannerObserved, EfiStubLineObserved, KernelBannerObserved,
   console_milestone_name, console_milestone_sighting_text,
 }
-import gunbc.machine_intake_ampere_socket_console_observation { AmpereSocketConsoleObservation, AmpereSummaryNotPrinted, AmpereSummaryObserved }
-import gunbc.machine_intake_linux_boot_console_observation {
+import gunbc.machine_intake.ampere_socket_console_observation { AmpereSocketConsoleObservation, AmpereSummaryNotPrinted, AmpereSummaryObserved }
+import gunbc.machine_intake.linux_boot_console_observation {
   LinuxBootConsoleObservation, InitrdFailureNotPrinted, InitrdLoadFailed, EfiStubStatus, KernelPanicNotPrinted, KernelPanicked, efi_stub_status_text, initrd_reading_of, panic_reason_of,
 }
-import gunbc.machine_intake_kernel_module_decompression_observation {
+import gunbc.machine_intake.kernel_module_decompression_observation {
   KernelModuleDecompressionObservation, NoRefusalRecorded, RefusalRecorded, kernel_module_decompression_text, kernel_module_decompression_observation,
 }
 
@@ -64,7 +64,7 @@ import gunbc.machine_intake_kernel_module_decompression_observation {
 // THREE STANDINGS THAT NEVER STAND IN FOR ONE ANOTHER. What the HOST did (cycles, milestones, socket
 // progress, the ending, degradations, errors); what we OBSERVED (one coverage standing per carrier);
 // and whether our WORKFLOW worked (media, handoff, override, bundle write -- the bundle's typed
-// HarnessFinding, composed beside this account in gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle,
+// HarnessFinding, composed beside this account in gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle,
 // which owns those records). A coverage gap or a workflow defect never chooses the host ending: an
 // empty SOL beside a census END marker is ReachedCensus plus an SOL gap.
 //
@@ -178,14 +178,14 @@ type PowerOnHandoff
   | HandoffNotConfirmed { reason: NonEmptyStr }
 
 // One SMpro pass as read: the observation keeps the subject (host, controller, site) its outcomes
-// were read for (gunbc.machine_intake_ampere_smpro_observation SmproPassObservation).
+// were read for (gunbc.machine_intake.ampere_smpro_observation SmproPassObservation).
 type SmproPassEvidence {
   label: NonEmptyStr
   observation: SmproPassObservation
 }
 
 // WHAT ONE CONSOLE SPAN STATED, by the owning readers run over that span's lines alone (the bundle runs
-// them over gunbc.machine_intake_ampere_checkpoint_console_observation ampere_console_span_lines), so a
+// them over gunbc.machine_intake.ampere_checkpoint_console_observation ampere_console_span_lines), so a
 // statement printed in two spans is two statements, each in its own span.
 type SpanConsoleReading {
   span: Int
@@ -230,7 +230,7 @@ type BmcWatchdogDisposition
   | WatchdogUnobserved { reason: NonEmptyStr }
 
 // THE ANOMALIES THE BMC'S OWN VIEW REPORTS. Each is decided by the module that owns its reading
-// (the sensor rule in gunbc.machine_intake_megarac_sensor_observation megarac_sensor_anomalies;
+// (the sensor rule in gunbc.machine_intake.megarac_sensor_observation megarac_sensor_anomalies;
 // the inventory and SEL rules in the bundle) and only placed here.
 type BmcAnomaly
   = ProcessorMissingOnExpectedSocket { socket: Int }
@@ -315,7 +315,7 @@ type MilestoneEvidence {
 
 // THE READER, NAMED BY DECLARATION: a citation the namespace tree can resolve, so a renamed reader is
 // a resolution defect rather than a stale string.
-data mtcollins1_console_milestone_reader: DeclarationRef = decl_ref(module_path: "gunbc.machine_intake_mtcollins1_console_milestone_observation", decl_name: "mtcollins1_console_milestones")
+data mtcollins1_console_milestone_reader: DeclarationRef = decl_ref(module_path: "gunbc.machine_intake.mtcollins1_console_milestone_observation", decl_name: "mtcollins1_console_milestones")
 
 type BootCycleAccount {
   index: Int

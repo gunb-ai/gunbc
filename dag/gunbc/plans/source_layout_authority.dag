@@ -76,7 +76,7 @@ fn source_layout_authority_opening() -> List<MarkdownBlock> {
     h2(text: "2. How we got here"),
     p(text: "This plan came out of one planning conversation that started from the memory audit of the self-host step. Each subsection is one link of that chain."),
     h3(text: "2.1 The memory question"),
-    p(text: "The memory composition audit of the self-host step (`GUNBC_MEMORY_COMPOSITION=1`, the seed's readout; receipt at `7792ce6f013` in the instrument's PR) separated the seed's resident set into whole-tree structures (the token pool, the resolve index and name census, the parsed heads of every module) and a closure-scale working set (closure ASTs, resolution and typecheck environments, emission buffers) that the instrument does not release and so does not measure. The step is judged against the fleet slot's memory envelope (`gunbc.runner_slot_desired`), and the whole-tree share grows with the repository. gunb-ai/gunbc#13674 (release the token pool before resolution) lowers the seed's resident set but leaves the whole-tree index in place."),
+    p(text: "The memory composition audit of the self-host step (`GUNBC_MEMORY_COMPOSITION=1`, the seed's readout; receipt at `7792ce6f013` in the instrument's PR) separated the seed's resident set into whole-tree structures (the token pool, the resolve index and name census, the parsed heads of every module) and a closure-scale working set (closure ASTs, resolution and typecheck environments, emission buffers) that the instrument does not release and so does not measure. The step is judged against the fleet slot's memory envelope (`gunbc.runner.runner_slot_desired`), and the whole-tree share grows with the repository. gunb-ai/gunbc#13674 (release the token pool before resolution) lowers the seed's resident set but leaves the whole-tree index in place."),
     p(text: "The question was why the step that emits only the v2 compiler reads the whole repository at all."),
     h3(text: "2.2 Why the seed reads everything"),
     p(text: "The emission transaction (`v1_compiler.cli_run` `compile_emission_over`) builds one index over both source roots, loads the entry's closure (`load_sources_for_entry_with_pool`), and passes every module outside the closure in as census-only input (`compile_clean_pipeline_options_for_sources`) — deliberately: its own comment says this is what makes a parse break anywhere under the roots fail the step. It resolves and emits only the closure, which an import-and-dotted-reference walk derives."),
@@ -159,7 +159,7 @@ fn source_layout_authority_design_and_plan() -> List<MarkdownBlock> {
       li(text: "Record R1–R11 and the decision table in a typed carrier (`gunbc.source_layout_rulings`; DESIGN §4c); add the `gunbc.plan_governance` row (governed by `v2-compiler-architecture`, role `CompilerStageAuthority`) and regenerate banners."),
       li(text: "Amend DESIGN §3 through `gunbc.design_document`: the storage rule is §3's single authority for the name⇄path mapping. Acyclicity stays the import graph's only structural law; the rule fixes where a file is stored, not which way imports point."),
       li(text: "Add the generic layout and exact-read types, and `gunbc.source_layout` declaring the **target** layout."),
-      li(text: "Build the deterministic move/rename generator (extending `tools.source_reference_repoint`, run from the pre-sweep tree). It refuses the whole sweep on any collision — two sources to one target, a target that exists and is not moving away, case-fold equal targets, or a new module name already declared — and on any occurrence it cannot classify. It distinguishes typed module references from real file paths; a `.dag`-looking string is not automatically a module reference."),
+      li(text: "Build the deterministic move/rename generator (extending `gunbc.instruments.source_reference_repoint`, run from the pre-sweep tree). It refuses the whole sweep on any collision — two sources to one target, a target that exists and is not moving away, case-fold equal targets, or a new module name already declared — and on any occurrence it cannot classify. It distinguishes typed module references from real file paths; a `.dag`-looking string is not automatically a module reference."),
       li(text: "Measure the R11 population: the closures of every compile route being cut over."),
     ]),
     h3(text: "C1 — Generated repository sweep"),
@@ -199,7 +199,7 @@ fn source_layout_authority_design_and_plan() -> List<MarkdownBlock> {
     ul(items: [
       li(text: "**Conflicts.** The sweep touches the repository broadly; conflicts are resolved by re-running C1 after merging main, not by hand."),
       li(text: "**Strings outside the generator's classification** refuse the sweep rather than going stale."),
-      li(text: "**Seed edits** (path constants, the seed mirrors) are admitted under `gunbc.v1_maintenance_standing` `v1_seed_standing`; nothing else in v1 changes."),
+      li(text: "**Seed edits** (path constants, the seed mirrors) are admitted under `gunbc.v1.v1_maintenance_standing` `v1_seed_standing`; nothing else in v1 changes."),
       li(text: "**Outside consumers.** gunbc-private imports gunbc modules through its composed root and breaks on the renames; census it and land its repoint alongside. Census other external references (roadmap rows, saved links)."),
       li(text: "**R11's size** may be most of the tree; that is the ruling, not a reason to narrow it."),
     ]),
@@ -216,7 +216,7 @@ fn source_layout_authority_design_and_plan() -> List<MarkdownBlock> {
     h2(text: "Appendix — The move-and-rename procedure"),
     p(text: "For each file with `module M` at path `P`, let `R = path(M)`:"),
     ul(items: [
-      li(text: "**A — same folder as R:** rename the file to R. This includes the numbered stage files (`src/v2/compiler/00_compile.dag` → `src/v2/compiler/compile.dag`)."),
+      li(text: "**A — same folder as R:** rename the file to R. This includes the numbered stage files (`src/v2/compiler/compile.dag` → `src/v2/compiler/compile.dag`)."),
       li(text: "**B — R's folder lies below P's:** move the file down to R."),
       li(text: "**C — P's folder lies below R's:** the folder carries structure, so rename the module to include it (R6): `gunbc.x` at `dag/gunbc/host/x.dag` → `gunbc.host.x`. Exception: `x/x.dag`, where the folder only repeats the module's own name → move the file up to R."),
       li(text: "**D — different branch:** decided by group. The largest groups and the proposed outcome:"),
@@ -227,15 +227,15 @@ fn source_layout_authority_design_and_plan() -> List<MarkdownBlock> {
       rows: [
         row(cells: [cell(text: "`v2.test.manual` @ `src/v2/test/claim/manual/`"), cell(text: "rename to `v2.test.claim.manual.*`")]),
         row(cells: [cell(text: "`tools` @ `dag/gunbc/instruments/`"), cell(text: "rename to `gunbc.instruments.*` (R10)")]),
-        row(cells: [cell(text: "`v2.test.long` @ `src/v2/test/claim/long/`"), cell(text: "rename to `v2.test.claim.long.*`")]),
-        row(cells: [cell(text: "`v2.test.execution` @ `src/v2/test/claim/execution/`"), cell(text: "rename to `v2.test.claim.execution.*`")]),
-        row(cells: [cell(text: "`v2.test.emit` @ `src/v2/test/claim/emit/`"), cell(text: "rename to `v2.test.claim.emit.*`")]),
-        row(cells: [cell(text: "`product.printed_chassis` @ `dag/gunbc/product/printed_chassis/`"), cell(text: "move to `dag/product/printed_chassis/`")]),
-        row(cells: [cell(text: "`product` @ `dag/gunbc/product/`"), cell(text: "move to `dag/product/`")]),
+        row(cells: [cell(text: "`v2.test.claim.long` @ `src/v2/test/claim/long/`"), cell(text: "rename to `v2.test.claim.long.*`")]),
+        row(cells: [cell(text: "`v2.test.claim.execution` @ `src/v2/test/claim/execution/`"), cell(text: "rename to `v2.test.claim.execution.*`")]),
+        row(cells: [cell(text: "`v2.test.claim.emit` @ `src/v2/test/claim/emit/`"), cell(text: "rename to `v2.test.claim.emit.*`")]),
+        row(cells: [cell(text: "`product.printed_chassis` @ `dag/product/printed_chassis/`"), cell(text: "move to `dag/product/printed_chassis/`")]),
+        row(cells: [cell(text: "`product` @ `dag/product/`"), cell(text: "move to `dag/product/`")]),
         row(cells: [cell(text: "`test.claim` @ `src/v2/test/claim/parse/`"), cell(text: "rename to `v2.test.claim.parse.*`")]),
       ],
     },
-    p(text: "Smaller groups follow the same reading; for example `gunbc.test.*` and `dag.test.*` modules under `dag/test/` are renamed to `test.*`, joining their `test.claim.*` siblings. The C0 generator computes the complete table; collisions refuse the whole sweep (C0). Anything not covered by A–C or by a confirmed group outcome stops the sweep for a decision; it is never guessed."),
+    p(text: "Smaller groups follow the same reading; for example `test.*` and `test.*` modules under `dag/test/` are renamed to `test.*`, joining their `test.claim.*` siblings. The C0 generator computes the complete table; collisions refuse the whole sweep (C0). Anything not covered by A–C or by a confirmed group outcome stops the sweep for a decision; it is never guessed."),
   ]
 }
 

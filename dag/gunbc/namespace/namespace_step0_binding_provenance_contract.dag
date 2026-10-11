@@ -1,4 +1,4 @@
-module gunbc.namespace_step0_binding_provenance_contract
+module gunbc.namespace.namespace_step0_binding_provenance_contract
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef }
@@ -11,7 +11,7 @@ import std.decl_ref { DeclarationRef }
 // specification-without-execution DESIGN section 5 names, which is why the standing is stated here
 // rather than left to be inferred from the absence of a caller.
 //
-// WHY IT IS WRITTEN NOW, BEFORE ITS PRODUCER. gunbc.namespace_step0_canary_v2's receipt must say,
+// WHY IT IS WRITTEN NOW, BEFORE ITS PRODUCER. gunbc.namespace.namespace_step0_canary_v2's receipt must say,
 // in a typed field rather than in prose, that import dependence was NOT judged and WHAT would judge
 // it; naming a successor honestly means citing a declaration, and a citation resolves only against
 // something that exists. So the citation target is this contract -- a specification of the
@@ -41,7 +41,7 @@ data step0_census_denominator_law: NonEmptyStr = "the census denominator is the 
 // of WRITING a reference at all -- it is a shape of the NAME POOL the reference resolves against.
 // Holding both on one axis made the roster unable to say the true and more alarming thing, which is
 // that a homonym can occur under ANY family. It now lives on the binding-topology axis in
-// gunbc.namespace_step0_census_calibration, where it composes with all ten rows below rather than
+// gunbc.namespace.namespace_step0_census_calibration, where it composes with all ten rows below rather than
 // standing beside six of them.
 //
 // AND THE ROSTER IS NEVER INFERRED FROM OBSERVED ROWS. A roster derived from what the diagnostics
@@ -213,10 +213,10 @@ data step0_census_no_policy_promotion_rule: NonEmptyStr = "a census producer may
 // denominator derived from the observation walk.
 //
 // THE STANDING IS CITED AND NOT TRANSCRIBED. The verdict, the per-family observation table and the
-// defect roster live in gunbc.namespace_step0_census_calibration, and the executing instrument that
+// defect roster live in gunbc.namespace.namespace_step0_census_calibration, and the executing instrument that
 // re-derives them is step0_calibration_probe in that module's witness. Copying its numbers here
 // would put a second authority beside the one that measures them.
-data step0_census_candidate_producer_standing: NonEmptyStr = "the reference-occurrence producer's coverage of the family roster is REFUTED, not merely unestablished: gunbc.namespace_step0_census_calibration records families for which it emits no denominator row and a non-reference for which it emits one, and that module's step0_calibration_standing is the sole authority for the verdict" as NonEmptyStr
+data step0_census_candidate_producer_standing: NonEmptyStr = "the reference-occurrence producer's coverage of the family roster is REFUTED, not merely unestablished: gunbc.namespace.namespace_step0_census_calibration records families for which it emits no denominator row and a non-reference for which it emits one, and that module's step0_calibration_standing is the sole authority for the verdict" as NonEmptyStr
 
 // A STATEMENT COUNT IS NOT AN EDGE COUNT, AND THE DIFFERENCE IS NOT ROUNDING. The strip reports
 // removed STATEMENTS, and a braced list binds several names in one statement -- so an edge or

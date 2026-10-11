@@ -17,7 +17,7 @@ import std.primitive_projection {
 }
 import gunbc.rust_emitted_crate { EmittedRustCrate, EmittedCrateDependencyDemand }
 import gunbc.rust_emitted_edge { EmittedEdge, rust_module_emit_filename, rust_prelude_emitted_edges, emitted_edge_target_module, semantic_source_reference_edge, declared_import_edge, inline_path_reference_edge, service_runtime_surface_edge, RuntimePrelude, ReexportFacade }
-import gunbc.reference_derived_candidate {
+import gunbc.namespace.reference_derived_candidate {
   ReferenceDerivedCandidateDisposition,
   CandidateSurvived,
   CandidateOwnModule,
@@ -87,16 +87,16 @@ import extdeps.languages.rust.emit {
   rust_value_binding_candidate, fresh_rust_value_binding_name,
   rust_refusing_int_target_type, rust_refusing_int_operator_helper, rust_refusing_int_negation_helper
 }
-import extdeps.cargo_version { render_cargo_package_header_prefix }
-import gunbc.stage0_crate_layout_generated { generated_pub_mod_block }
-import gunbc.stage0_crate_partition_generated {
+import extdeps.rust.version { render_cargo_package_header_prefix }
+import gunbc.stage0.stage0_crate_layout_generated { generated_pub_mod_block }
+import gunbc.stage0.stage0_crate_partition_generated {
   GeneratedPartitionCrateRow,
   generated_partition_crate_rows
 }
-import gunbc.stage0_executable_assembly_generated {
+import gunbc.stage0.stage0_executable_assembly_generated {
   generated_host_shell_partition_dependencies
 }
-import gunbc.stage0_partition_package_graph {
+import gunbc.stage0.stage0_partition_package_graph {
   stage0_partition_row_is_module_bearing_package
 }
 import gunbc.rust_decl_type_overlay { rust_decl_type_container_overlay_is_admitted }
@@ -132,7 +132,7 @@ import gunbc.cli_dispatch_surface {
   modeled_subcommand_bound_fields
 }
 import std.measure { millisecond_count }
-import gunbc.stage0_emitted_population_manifest {
+import gunbc.stage0.stage0_emitted_population_manifest {
   emitted_population_manifest_basename,
   emitted_population_manifest_line_prefix,
   emitted_population_manifest_line_separator
@@ -145,7 +145,7 @@ import v1.compiler.languages {
   is_string_like
 }
 import v1.compiler.runtime_rust { rust_runtime_source, rust_runtime_cargo_features }
-import extdeps.cargo { CargoFeature }
+import extdeps.rust.cargo { CargoFeature }
 import v1.compiler.compiler_tests_rust { compiler_tests_source }
 import v1.compiler.closure_stub_v2_std_integer_rust { closure_stub_v2_std_integer_source }
 import v1.compiler.closure_stub_v2_std_text_rust { closure_stub_v2_std_text_source }
@@ -778,7 +778,7 @@ fn rust_opaque_kernel_alias_carrier(name: String) -> String? {
 // declaration with a row takes the kernel-alias route: `pub type X = <row spelling>`.
 // rust_exact_binding_spelling renders an ambiguous row, or a row with no realization, as a located
 // compile_error!, so there is no silent choice. The phantom struct stays only where no row exists.
-// Ruled by deep-bee-18 (2026-09-30); admitted under gunbc.v1_maintenance_standing v1_seed_standing
+// Ruled by deep-bee-18 (2026-09-30); admitted under gunbc.v1.v1_maintenance_standing v1_seed_standing
 // because it serves the v2 self-host (the emitted compiler closure must build).
 fn rust_opaque_declaration_has_exact_row(module_path: String, name: String) -> Bool {
   match rust_lookup_exact_binding(source: Present { value: decl_ref(module_path: module_path, decl_name: name) }) {
@@ -1445,7 +1445,7 @@ fn type_param_is_collection_element_in_values(param_name: String, value_params: 
 // bound to two owners IN ONE FILE is a VariantCollision refused at env construction. So ownership
 // is a PER-FILE fact. derive_variant_to_enum folds the whole TRANSITIVE closure, where no such
 // owner exists. The two populations disagree by construction, and that is exactly what is observed:
-// emitting src/v2/compiler/05_emit.dag reports NO collision and 92 clean files, while the same run
+// emitting src/v2/compiler/emit.dag reports NO collision and 92 clean files, while the same run
 // records Optional as ambiguously owned 68 times and Absent 91 times. A fixture that imports both
 // claimants DIRECTLY does refuse, which is the wall working correctly on the population it owns.
 // Honoring the sentinel is therefore right but is not the terminal fix: a per-file relation was
@@ -1672,7 +1672,7 @@ fn rust_carrier_realizes_as_machine_scalar(n: Node, type_name: String) -> Bool {
 //
 // Those are not four readings of one authority, they are four authorities, and they disagree in
 // BOTH DIRECTIONS on a single carrier. MEASURED on the emitted closure rooted at
-// src/v2/compiler/03_ingest.dag (177 files) at 1ebac31a099: v2.std.nat.Nat -- a Peano coproduct,
+// src/v2/compiler/ingest.dag (177 files) at 1ebac31a099: v2.std.nat.Nat -- a Peano coproduct,
 // Zero | Succ, NOT the natively-realizing dag/std/nat.dag declaration -- appears 18 times as
 // "expected Nat, found Rc<Nat>" and 20 times as "expected Rc<Nat>, found Nat" in the same board.
 // One inconsistency, two error directions; the specimen is Nat's own recursive field, declared
@@ -3484,7 +3484,7 @@ fn merged_module_source_indices(modules: List<TypedModule>) -> Map<String, Newli
 // diffing a single pair.
 //
 // WHAT IS ACTUALLY HAPPENING, measured on one binary compiling one unchanged corpus six consecutive
-// times (scoped emit of src/v2/compiler/00_compile.dag, 175 files, roots dag + src/v2):
+// times (scoped emit of src/v2/compiler/compile.dag, 175 files, roots dag + src/v2):
 //   - the differing-file count VARIES BY RUN: 2, 0, 1, 0, 2 against the first run;
 //   - exactly two files ever differ, v2_lens_enforcement_vocab.rs and v2_std_cross_tree_resolution.rs;
 //   - each has EXACTLY TWO distinct outputs across the six runs;
@@ -4815,7 +4815,7 @@ fn imported_names_in_use_line(line: String) -> List<String> {
   }
 }
 
-data reference_derived_use_lines_note: String = "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line; (3) TYPE-surface refs on item signatures come from collect_item_emit_surface_names (collect_item_type_surface_names + collect_value_emit_type_surface_names over data bodies) over each item's type_annotation, param types, inferred Resolved return/signature, AND value-position record-literal / variant-parent-enum surfaces the emitter will qualify (e.g. UriScheme::Https in a data anchor) — covering masked-at-resolve TYPE positions (e.g. partial-import return type PilotWidget) that never enter UnlistedImportUse and are not ExprVar/ExprCall harvests. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. CONSTRUCTION WALL (ROOT 3, §5): a candidate that registry-resolves to a provider module MUST also pass provider_proven_exports_symbol (name_in_transitive_export_surface) before any use-line is synthesized — never a plausible guess from the bare-name registry alone (the v1_rt::member fabrication class: registry homonym without export proof). NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then LOCAL-DECL filtered (any name the module itself declares — local_decl_names from authored_name_at over items, plus local_type_names aliases/phantoms — is never an import candidate: the containment tree binds a bare ref to the module's own declaration before any cross-module lookup, and the bare-name registry is last-write-wins, so a dual-tree homonym — dag/std List/Map/GroupCompletion vs their src/v2/std twins — steals the registry row and would otherwise synthesize a SELF-COLLIDING pub-use, the E0255 std_dup class measured on the 2026-07-22 curated 4-module baseline), then cross-module registry-resolved (a ref the registry maps to this same module is skipped), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider AND export-proven). A candidate that registry-resolves to nothing, or resolves but fails export proof, is left unsynthesized, and it never fabricates a use-line. STEP 2 HAS LANDED: the reason is no longer silent. Each such candidate carries a ReferenceDerivedCandidateDisposition -- CandidateRegistryAbsent or CandidateExportProofFailed, distinct because the remedies are opposite -- and CandidateExportProofFailed emits the typed, located, counted ReferenceDerivedImportExportUnproven. THE EMISSION IS NOT REFUSED, and the distinction matters because a reader of the phrase typed refusal will otherwise expect one: the diagnostic is ADVISORY, so emission completes and produces its files beside it. Measured on the required build lane at this branch head, entry:src/v2/compiler/00_compile.dag: emitted=175 blocking=0 -- so what step 2 closed is the SILENCE, not the emission. Whether the line stops is the severity question, and v1.compiler.core reference_derived_import_refusal_severity_note owns it, including why the blocking flip was executed and then falsified by its own first run over a second closure. SCOPE (emit_module_full): import-free modules run the full union (TYPE unlisted + VALUE refs) — the namespace-resolution case the post-PR-6848 regression is about. SUPERSEDED-MECHANISM, THIS CUT (eager-deer-389): the two sentences that follow describe the corpus_repr_is_faithful / HostNative gate, which NO LONGER EXISTS -- RustCorpusRepr and both its variants are deleted and the gate is gone, so import-bearing modules are no longer split by corpus mode. They are retained as the history of WHY the walk was gated at all (the spurious-use-line and seed zero-drift hazards below are real and still constrain any future gating), not as a live description; reference_use_lines_representation_invariant_note in this module carries the post-cut statement. Read them as quarry. AS WRITTEN BEFORE THE CUT: Import-bearing modules run reference_derived_use_lines ONLY when corpus_repr_is_faithful (FaithfulFreeMonoid / v2 namespace corpus): a partial-import namespace module (e.g. v2.std.node_query importing Outcome but calling outcome_with_diagnostics, or importing Outcome but annotating NamedEdgeTargetLookup) must synthesize BOTH the missing fn-value use-line AND the missing type use-line without duplicating names emit_imports already owns. HostNative import-bearing modules (v1 seed) get [] — running the walk there adds spurious/wrong use-lines (registry homonyms like kernel_span/is_type_variable) and breaks zero-drift seed regen."
+data reference_derived_use_lines_note: String = "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line; (3) TYPE-surface refs on item signatures come from collect_item_emit_surface_names (collect_item_type_surface_names + collect_value_emit_type_surface_names over data bodies) over each item's type_annotation, param types, inferred Resolved return/signature, AND value-position record-literal / variant-parent-enum surfaces the emitter will qualify (e.g. UriScheme::Https in a data anchor) — covering masked-at-resolve TYPE positions (e.g. partial-import return type PilotWidget) that never enter UnlistedImportUse and are not ExprVar/ExprCall harvests. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. CONSTRUCTION WALL (ROOT 3, §5): a candidate that registry-resolves to a provider module MUST also pass provider_proven_exports_symbol (name_in_transitive_export_surface) before any use-line is synthesized — never a plausible guess from the bare-name registry alone (the v1_rt::member fabrication class: registry homonym without export proof). NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then LOCAL-DECL filtered (any name the module itself declares — local_decl_names from authored_name_at over items, plus local_type_names aliases/phantoms — is never an import candidate: the containment tree binds a bare ref to the module's own declaration before any cross-module lookup, and the bare-name registry is last-write-wins, so a dual-tree homonym — dag/std List/Map/GroupCompletion vs their src/v2/std twins — steals the registry row and would otherwise synthesize a SELF-COLLIDING pub-use, the E0255 std_dup class measured on the 2026-07-22 curated 4-module baseline), then cross-module registry-resolved (a ref the registry maps to this same module is skipped), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider AND export-proven). A candidate that registry-resolves to nothing, or resolves but fails export proof, is left unsynthesized, and it never fabricates a use-line. STEP 2 HAS LANDED: the reason is no longer silent. Each such candidate carries a ReferenceDerivedCandidateDisposition -- CandidateRegistryAbsent or CandidateExportProofFailed, distinct because the remedies are opposite -- and CandidateExportProofFailed emits the typed, located, counted ReferenceDerivedImportExportUnproven. THE EMISSION IS NOT REFUSED, and the distinction matters because a reader of the phrase typed refusal will otherwise expect one: the diagnostic is ADVISORY, so emission completes and produces its files beside it. Measured on the required build lane at this branch head, entry:src/v2/compiler/compile.dag: emitted=175 blocking=0 -- so what step 2 closed is the SILENCE, not the emission. Whether the line stops is the severity question, and v1.compiler.core reference_derived_import_refusal_severity_note owns it, including why the blocking flip was executed and then falsified by its own first run over a second closure. SCOPE (emit_module_full): import-free modules run the full union (TYPE unlisted + VALUE refs) — the namespace-resolution case the post-PR-6848 regression is about. SUPERSEDED-MECHANISM, THIS CUT (eager-deer-389): the two sentences that follow describe the corpus_repr_is_faithful / HostNative gate, which NO LONGER EXISTS -- RustCorpusRepr and both its variants are deleted and the gate is gone, so import-bearing modules are no longer split by corpus mode. They are retained as the history of WHY the walk was gated at all (the spurious-use-line and seed zero-drift hazards below are real and still constrain any future gating), not as a live description; reference_use_lines_representation_invariant_note in this module carries the post-cut statement. Read them as quarry. AS WRITTEN BEFORE THE CUT: Import-bearing modules run reference_derived_use_lines ONLY when corpus_repr_is_faithful (FaithfulFreeMonoid / v2 namespace corpus): a partial-import namespace module (e.g. v2.std.node_query importing Outcome but calling outcome_with_diagnostics, or importing Outcome but annotating NamedEdgeTargetLookup) must synthesize BOTH the missing fn-value use-line AND the missing type use-line without duplicating names emit_imports already owns. HostNative import-bearing modules (v1 seed) get [] — running the walk there adds spurious/wrong use-lines (registry homonyms like kernel_span/is_type_variable) and breaks zero-drift seed regen."
 
 fn expand_variant_payload_struct_imports(names: List<String>, type_summaries: TypeSummaryIndex, variant_to_enum: Map<String, String>) -> List<String> {
   names |> flat_map(n =>
@@ -5062,7 +5062,7 @@ fn local_coproduct_variant_names(items: List<Node>, source_indices: Map<String, 
 // live in v1.tests.claim.reference_derived_disposition_census_witness_test -- five rows, four
 // naming the decision's four arms and one pinning the census to being a projection of retained
 // rows. Their RED is authorable at the fixture boundary and all five pass when run directly on
-// 2026-08-27. They are NOT run by CI: gunbc.ci_layer_roots records that the scoped witness batch
+// 2026-08-27. They are NOT run by CI: gunbc.ci.ci_layer_roots records that the scoped witness batch
 // was deleted with the 2026-08-15 floor cut and that every entry under src/v1/tests/claim has no
 // executing consumer, since ordinary discovery's roots are dag plus src/v2 and could not resolve
 // an import of v1.compiler.emit_rust in any case. Direct execution is evidence the assertions
@@ -5072,7 +5072,7 @@ fn local_coproduct_variant_names(items: List<Node>, source_indices: Map<String, 
 // fail-closed wall -- the resolver refusing an unlisted value use, or emitting the use-line
 // intent directly -- at which point this census, the synthesis pass it counts and this row retire
 // together. (2) For the evidence: one prepared subject spanning dag, src/v1 and src/v2, the
-// restoration gunbc.ci_layer_roots already names for the deleted batch, at which point the
+// restoration gunbc.ci.ci_layer_roots already names for the deleted batch, at which point the
 // witness above executes and that paragraph deletes.
 //
 // SECOND, AND SEPARATELY: THE CENSUS HAS NO EXECUTABLE ROUTE TO A CORPUS FIGURE, so this row
@@ -5089,10 +5089,10 @@ fn local_coproduct_variant_names(items: List<Node>, source_indices: Map<String, 
 // only route: a nested-compile builtin would route around the refusal, while construction supplying
 // every declared field would remove it. That
 // is why the two nested-compile instruments the corpus already has
-// (gunbc.compile_diagnostic_census, tools.multi_module_compile_fixture) both route through a host
+// (gunbc.compile_diagnostic_census, gunbc.instruments.multi_module_compile_fixture) both route through a host
 // builtin. A CLI or builtin surface that hands the census a graph is capability growth in a
 // frozen seed and is not taken here. THIRD NEXT-RUNG TRIGGER, therefore: a nested-compile builtin
-// returning the resolved graph -- the shape tools.multi_module_compile_fixture already has,
+// returning the resolved graph -- the shape gunbc.instruments.multi_module_compile_fixture already has,
 // widened to carry these rows -- at which point a figure becomes producible and this paragraph is
 // replaced by the producer's name. Until then the population is COUNTABLE BY CONSTRUCTION AND
 // UNCOUNTED IN FACT, and saying otherwise would be the rung inflation this row exists to avoid.
@@ -5952,7 +5952,7 @@ fn is_import_graph_type_name(name: String, import_module: String, typed_modules:
 // for a join.
 //
 // TRIGGER, AND IT IS AUTHORABLE TODAY, WHICH IS WHY THIS IS 4b(2) AND NOT AN UNTRACKED STALL:
-// `tools.multi_module_compile_fixture` compiles authored sources, and
+// `gunbc.instruments.multi_module_compile_fixture` compiles authored sources, and
 // `v2.test.claim.local_binding_shadow_compile` already uses it to make two modules declare one
 // spelling. So the RED is expressible in a fixture even though an ambiguous leaf is not authorable
 // in the ACCEPTED corpus, and declining to write it would be specification-without-execution by
@@ -6848,7 +6848,7 @@ fn rust_use_line_edges(from: String, lines: List<RustUseLine>) -> List<EmittedEd
 // Measured 2026-09-22: `import std.integer { UInt8 }` lost its line whenever v2.std.integer (whose
 // StandardIntegerType carries a `UInt8` variant) reached the closure through a module the consumer
 // did not import; a second ALIAS declarer of the spelling kept the line and a second VARIANT declarer
-// dropped it (test.claim.authored_import_variant_spelling_witness_test
+// dropped it (test.claim.authored_import_variant_spelling_witness
 // v_same_spelled_variant_keeps_the_use_line, against v_second_alias_declarer_keeps_the_use_line),
 // so the discriminating fact is the variant and not the fork (gunbc.recurring_failure_mode
 // an_authored_import_emits_no_use_line_when_its_spelling_is_forked).
@@ -8246,7 +8246,7 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
 // parameters' -- the state-space conflation DESIGN section 5 names, failing open into the widened
 // applied form rather than refusing. Every one of this function's callers already holds the TypeEnv
 // it was discarding, so the fix is to stop discarding it: the peel authority stays the single
-// authority and is simply answered truthfully. Measured on the src/v2/compiler/03_ingest.dag
+// authority and is simply answered truthfully. Measured on the src/v2/compiler/ingest.dag
 // closure. The next rung is upstream and not taken here: an alias reference that preserved its
 // AUTHORED arity would make the bad shape unwritable rather than merely refused, at which point no
 // renderer would need to ask at all.
@@ -8304,7 +8304,7 @@ fn render_rust_field_type_with_applied_binding(field: Node, generic_param_names:
 // VARIANT RECORD FIELD position was not among them and kept a needs_box_wrapping-only rule, so it
 // rendered a shared cross-module carrier BARE while every other position -- the constructor, the
 // destructuring, the callee signature -- rendered it Rc-wrapped. MEASURED at d72ffe8708b on the
-// src/v2/compiler/03_ingest.dag closure: SymbolicCost::ConstantCost declared `value: Nat` while
+// src/v2/compiler/ingest.dag closure: SymbolicCost::ConstantCost declared `value: Nat` while
 // constant_cost took Rc<Nat>, constructed it with an Rc, and passed the destructured field to
 // nat_dominates(Rc<Nat>); the nested-pattern lowering then emitted `value.as_ref()` against a bare
 // &Nat, which is 18 of that board's 41 E0599 (9 sites x guard + prelude), all in v2_lens_cost.rs.
@@ -11808,7 +11808,7 @@ fn rust_runtime_bridge_passes_receiver_by_ref(function_name: String) -> Bool {
 // name. So the guard is stronger than it was: the name reaching this function is
 // a primitive's own identity rather than whatever the author happened to spell.
 // Registry-vs-derivation agreement is held by
-// test.claim.rt_bridge_registry_witness_test
+// test.claim.rt_bridge_registry_witness
 // rt_bridge_name_agrees_with_registry_on_every_row.
 fn rust_runtime_bridge_name(function_name: String) -> String {
   match map_get(rt_bridge_function_names(), function_name) {
@@ -12246,7 +12246,7 @@ fn emit_rust_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferS
 // on the spelling alone. Ordinary variants are untouched: is_optional_variant_name is false for
 // them, so the guard collapses and the peel proceeds unchanged. The variant identity is preserved
 // rather than inferred from the payload type. Evidence:
-// dag/test/claim/emitter_optional_payload_cast_witness_test.dag, whose cast poles flip from
+// dag/test/claim/emitter_optional_payload_cast_witness.dag, whose cast poles flip from
 // known-red to green with this repair, alongside the ordinary-enum Wrap::Holds control that must
 // stay green. A SECOND, independently required narrowing landed beside the peel guard (review on
 // gunbc#7480, 2026-08-01): the optional classification in emit_typed_record_lit briefly carried a
@@ -13923,7 +13923,7 @@ fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List
 // never a call into a binding that does not exist. The realized arm is INHABITED by a service
 // reached through its bare name (`Filesystem.Read`), which the predicate accepts since
 // infer_var_binding_kind recognizes the service-root local; its positive control is
-// test.claim.self_host_emitted_call_target_realization_witness_test
+// test.claim.self_host_emitted_call_target_realization_witness
 // w_a_service_op_through_its_bare_name_is_realized_against_a_bound_service_parameter. THIS REFUSAL
 // IS STILL REACHABLE, and its discriminating red is enrolled beside that row
 // (w_a_service_op_through_an_aliased_service_value_refuses_instead_of_awaiting_an_unbound_binding).
@@ -16107,7 +16107,7 @@ fn typed_interp_format_part(part: StringPart, registry: Map<String, ItemInfo>, s
 // no Display -- so before this refusal the program died in rustc as an untyped E0277 and, had a
 // Display been added naively, it would have rendered in per-process RandomState order. Building
 // an emitted canonical rendering is a declared frontier, not done here: no v2 source renders a
-// map (none could compile), so it fails the v1 admission test (gunbc.v1_maintenance_standing).
+// map (none could compile), so it fails the v1 admission test (gunbc.v1.v1_maintenance_standing).
 // Trigger: a v2 source renders a compound value. Ruling: deep-ferret-305, node
 // adhoc-77383faf-d07.
 fn emitted_map_rendering_refusal(site: String) -> String {
@@ -17795,7 +17795,7 @@ fn data_def_annotation_is_named_refinement(annotation: Node, source_indices: Map
 // A NAMED REFINEMENT ROW KEEPS ITS DECLARED `?`. A where-refinement such as std.types NonEmptyStr
 // resolves to a Conj carrying its base as one child, so it fails preserves_declared_brand's
 // childless test and is rendered by the named-refinement arm -- the one arm that rendered through
-// coerce_primitive_type without rust_carrier_optional_wrap. gunbc.fleet_tailnet
+// coerce_primitive_type without rust_carrier_optional_wrap. gunbc.fleet.fleet_tailnet
 // fleet_tailnet_domain (`NonEmptyStr? = Present { .. }`) was emitted `-> NonEmptyStr` and its
 // consumer refused E0308. The control is gunbc.instruments.native_emission_controls
 // optional_data_row_cases.

@@ -31,7 +31,7 @@ data execution_chain: List<NonEmptyStr> = [
 
 // ── the artifact that ran, which was NOT the one the model named ───────────────────────────────
 
-// THE CANARY EXECUTED RUNNER 2.337.0 WHILE gunbc.runner_microvm's GUEST IMAGE ROW SAID 2.336.0.
+// THE CANARY EXECUTED RUNNER 2.337.0 WHILE gunbc.runner.runner_microvm's GUEST IMAGE ROW SAID 2.336.0.
 // An earlier revision of this receipt recorded "a 446MB runner" and nothing else. SIZE IS NOT
 // IDENTITY: that figure cannot distinguish the release that was intended from another of similar
 // extracted size, and it was the only thing said about the artifact at the centre of the run.
@@ -44,7 +44,7 @@ data execution_chain: List<NonEmptyStr> = [
 //
 // NOTHING IN THIS REPOSITORY CAUGHT IT, and that is the finding rather than the version number. A
 // human read it out of a job log. The comparator that would decide it already exists --
-// gunbc.runner_microvm_boot_probe's boot_probe_verdict takes a modeled release and an observed
+// gunbc.runner.runner_microvm_boot_probe's boot_probe_verdict takes a modeled release and an observed
 // console and refuses a mismatch -- and the Mt. Collins path never invoked it, because that path is
 // a hand-built image rather than the modeled guest image.
 type RunnerArtifactIdentity
@@ -56,7 +56,7 @@ data runner_artifact_that_ran: RunnerArtifactIdentity = RunnerArtifactVerifiedAg
   upstream_digest: "9b1dc70626422526e3c94767cf024896beb15da5342a3f4819bf2feac13e0393",
 }
 
-data runner_artifact_model_disagreement: NonEmptyStr = "gunbc.runner_microvm named 2.336.0 while 2.337.0 ran; the row is now pinned to 2.337.0 and the fleet's host-slot pin deliberately still reads 2.336.0, a divergence that module declares and this receipt does not close"
+data runner_artifact_model_disagreement: NonEmptyStr = "gunbc.runner.runner_microvm named 2.336.0 while 2.337.0 ran; the row is now pinned to 2.337.0 and the fleet's host-slot pin deliberately still reads 2.336.0, a divergence that module declares and this receipt does not close"
 
 // ── what the job saw ───────────────────────────────────────────────────────────────────────────
 
@@ -157,7 +157,7 @@ data not_yet_established: List<NonEmptyStr> = [
 ]
 
 // AND THE WORKFLOW THAT PROVIDED THE JOB IS A SCAFFOLD BY ITS OWN ADMISSION. It is hand-authored
-// YAML beside gunbc.witness_floor_workflow, which is the modeled carrier every other workflow here
+// YAML beside gunbc.witness.witness_floor_workflow, which is the modeled carrier every other workflow here
 // is emitted from. It makes no standing claim on a paid runner -- the trigger is a push to one
 // branch -- and its dissolution is stated in the file: delete it when the host image is built from
 // the model and the canary is a row in that carrier.

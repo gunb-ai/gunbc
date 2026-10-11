@@ -1,4 +1,4 @@
-module gunbc.accelerator_demo_float_eval
+module gunbc.accelerator_demo.accelerator_demo_float_eval
 
 
 fn float_relu(x: Float) -> Float {

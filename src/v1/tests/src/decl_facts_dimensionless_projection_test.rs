@@ -1,6 +1,6 @@
 //! Source-order invariance for decl_facts initializer projection marshalling.
 //!
-//! Merge-blocking projection behavior lives in `dag/test/claim/decl_facts_initializer_projection_witness_test.dag`.
+//! Merge-blocking projection behavior lives in `dag/test/claim/decl_facts_initializer_projection_witness.dag`.
 //! This module retains only the seam those witnesses cannot reach: `compile_to_resolved` source-file
 //! order must not change projection kind or constructor parent identity for the same specimen QN.
 

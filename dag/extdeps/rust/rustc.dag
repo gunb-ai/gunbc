@@ -1,4 +1,4 @@
-module extdeps.rustc
+module extdeps.rust.rustc
 
 import std.types { Bool, Int, Unit }
 import std.algebra { trim }
@@ -16,7 +16,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
-      module_path: "extdeps.rustc",
+      module_path: "extdeps.rust.rustc",
       decl_name: "rustc.Check",
       field: WholeDeclaration
     }

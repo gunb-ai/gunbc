@@ -1,4 +1,4 @@
-module tools.prose_citation_census
+module gunbc.instruments.prose_citation_census
 
 import std.types { Bool, Int, String, GitRef, List, Map }
 import std.algebra { trim }
@@ -9,7 +9,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git.inspect
 import gunbc.prose_row_frontier { ProseRowRef, prose_row_decl_name, prose_row_decl_suffix }
-import tools.opaque_realization_census { is_identifier_code_point }
+import gunbc.instruments.opaque_realization_census { is_identifier_code_point }
 
 // THE PROSE-CITATION CENSUS.
 //
@@ -101,7 +101,7 @@ import tools.opaque_realization_census { is_identifier_code_point }
 //
 // THE ADMITTED SCOPE, exactly:
 //   git.Inspect.GrepMatchesAtRevision
-//   tools.prose_citation_census's raw-source text acquisition
+//   gunbc.instruments.prose_citation_census's raw-source text acquisition
 //   the pure citation recognizer, join, carrier, and report
 //   the current executing witness population
 //   manual/on-demand invocation with caller-supplied baseline and report

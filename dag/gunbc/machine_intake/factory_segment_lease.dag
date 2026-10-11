@@ -1,4 +1,4 @@
-module gunbc.machine_intake_factory_segment_lease
+module gunbc.machine_intake.factory_segment_lease
 
 import std.types { Bool, NonEmptyStr }
 import std.measure { ObservationInstant, InstantAfter, InstantBefore, InstantIncomparable, InstantSame, compare_instants }

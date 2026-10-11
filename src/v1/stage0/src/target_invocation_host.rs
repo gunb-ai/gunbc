@@ -1180,7 +1180,7 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
 /// roster, which a reviewed pull request may carry (the required native-route lane publishes it). An owned
 /// correctness flip (`grew-by-owned-correctness-flip`) holds for the same reason: every added
 /// identity is owed debt under a declared, owned cause, and it too prints a proposed roster.
-/// (v1 PURPOSE admission, `gunbc.v1_maintenance_standing`: this arm only maps a v2 frontier
+/// (v1 PURPOSE admission, `gunbc.v1.v1_maintenance_standing`: this arm only maps a v2 frontier
 /// verdict word to its termination; the verdict itself is decided in `.dag`, so no seed growth.)
 /// `lost` and `unminted` are the observation
 /// not holding. `unminted` is a complete run with nothing to hold it to, and an empty roster read as
@@ -1967,7 +1967,7 @@ fn render_target_pattern(pattern: &TargetPattern) -> String {
     }
 }
 
-/// `gunbc.witness_v2_native_route` `native_route_default_pattern`, mirrored: the native test
+/// `gunbc.witness.v2_native_route` `native_route_default_pattern`, mirrored: the native test
 /// route's whole universe, `//v2/test/...`. An operand CONTAINED in it belongs to that route.
 ///
 /// THIS IS THE ONLY SEED-SIDE SPELLING OF THAT UNIVERSE, and it is `pub` for exactly that reason.
@@ -2533,11 +2533,11 @@ fn observe_binary_inputs() -> BinaryInputObservation {
 /// rather than inside it so the routing tests stay a function of the operand alone.
 pub fn test_verb_checked(operand: &str) -> InvocationOutcome {
     // THE SECOND ACT, BEFORE ANY PRODUCER: bind this process to a kernel memory limit when the
-    // invocation asked for one (`GUNBC_BIND_MEMORY_CGROUP_BYTES`, gunbc.memory_cgroup_binding --
+    // invocation asked for one (`GUNBC_BIND_MEMORY_CGROUP_BYTES`, gunbc.host.memory_cgroup_binding --
     // the same bind claim_executor and claim_batch take) at gunbc.emitted_subject_build_gate
     // native_step_memory_trip, the slot's MemoryHigh less a declared headroom. The required
     // `witnesses` job passes that input only where a job owns a bounded cgroup
-    // (gunbc.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership decides; today a fleet job
+    // (gunbc.runner.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership decides; today a fleet job
     // is the deprivileged job user under a root unit and the governor's leaf lives at the cgroup
     // root, and the climb is gunbc.guarantee_stall native_step_trip_awaits_fleet_job_cgroup_stall).
     // A refused bind stops the line: the run asked to be bounded and is not.
@@ -2590,13 +2590,13 @@ pub fn test_verb_checked(operand: &str) -> InvocationOutcome {
 }
 
 /// Authority: `gunbc.emitted_subject_build_gate` `native_step_memory_envelope_env_name` and
-/// `native_step_memory_envelope_slot_value` (the latter the projection of `gunbc.memory_envelope`
-/// `EnvelopeSlotRequired`), pinned by `test.claim.compiler_gate_emit_build_lane_witness_test`
+/// `native_step_memory_envelope_slot_value` (the latter the projection of `gunbc.host.memory_envelope`
+/// `EnvelopeSlotRequired`), pinned by `test.claim.compiler_gate_emit_build_lane_witness`
 /// `the_seed_envelope_requirement_inputs_are_the_dag_rows`.
 const MEMORY_ENVELOPE_REQUIRED_ENV: &str = "GUNBC_MEMORY_ENVELOPE_REQUIRED";
 const MEMORY_ENVELOPE_SLOT_VALUE: &str = "slot";
 
-/// Authority: `gunbc.memory_envelope` `MemoryEnvelopeRequirement`. Absent and unreadable are
+/// Authority: `gunbc.host.memory_envelope` `MemoryEnvelopeRequirement`. Absent and unreadable are
 /// different answers, exactly as for the bind request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum MemoryEnvelopeRequirement {
@@ -2605,7 +2605,7 @@ enum MemoryEnvelopeRequirement {
     Unreadable { raw: String },
 }
 
-/// Authority: `gunbc.memory_envelope` `MemoryEnvelopeGrain` / `memory_envelope_grain_label`.
+/// Authority: `gunbc.host.memory_envelope` `MemoryEnvelopeGrain` / `memory_envelope_grain_label`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MemoryEnvelopeGrain {
     Leaf,
@@ -2623,14 +2623,14 @@ impl MemoryEnvelopeGrain {
     }
 }
 
-/// Authority: `gunbc.memory_envelope` `MemoryEnvelopeRefusalCause`.
+/// Authority: `gunbc.host.memory_envelope` `MemoryEnvelopeRefusalCause`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum MemoryEnvelopeRefusalCause {
     GrainUnknown { raw: String },
     Absent { grain: MemoryEnvelopeGrain },
 }
 
-/// Authority: `gunbc.memory_envelope` `MemoryEnvelopeDecision`.
+/// Authority: `gunbc.host.memory_envelope` `MemoryEnvelopeDecision`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum MemoryEnvelopeDecision {
     NotRequired,
@@ -2638,7 +2638,7 @@ enum MemoryEnvelopeDecision {
     Refused { cause: MemoryEnvelopeRefusalCause },
 }
 
-/// Mirror of `gunbc.memory_envelope` `memory_envelope_requirement_from_text`.
+/// Mirror of `gunbc.host.memory_envelope` `memory_envelope_requirement_from_text`.
 fn memory_envelope_requirement_from_text(raw: Option<&str>) -> MemoryEnvelopeRequirement {
     match raw {
         None => MemoryEnvelopeRequirement::NotRequested,
@@ -2647,7 +2647,7 @@ fn memory_envelope_requirement_from_text(raw: Option<&str>) -> MemoryEnvelopeReq
     }
 }
 
-/// THE PURE DECISION, mirroring `gunbc.memory_envelope` `memory_envelope_decision` arm for arm:
+/// THE PURE DECISION, mirroring `gunbc.host.memory_envelope` `memory_envelope_decision` arm for arm:
 /// every input is a parameter so the discriminating cases -- above all a slot requirement over a
 /// process no numeric memory.max binds, which must refuse -- are reachable from a test on any
 /// machine. `numeric_max_binds` is the governor's `binding_cap_cgroup_dir` walk, read once by the
@@ -2698,7 +2698,7 @@ fn memory_envelope_decision(
     }
 }
 
-/// THE PURE VERDICT, mirroring `gunbc.memory_envelope` `memory_envelope_verdict`: violated on any
+/// THE PURE VERDICT, mirroring `gunbc.host.memory_envelope` `memory_envelope_verdict`: violated on any
 /// OOM kill the step added, any swap resident at exit, an unreadable swap gauge, a swap peak that
 /// rose during the step, or a swap peak that could not be observed (`None`: no memory.swap.peak on
 /// this kernel) under a cgroup whose memory.swap.max is not zero -- unobservable is not "did not
@@ -3190,7 +3190,7 @@ fn floor_memory_qualification_lane() -> String {
 /// itself emits, which is the class
 /// `gunbc.recurring_failure_mode.suppressed_precondition_failure_runs_the_workload_unconstrained`.
 /// THE MEASURED RUN BY PHASE: the child's seam beats, transcribed by the supervisor and folded by
-/// `gunbc.floor_demand` `floor_phase_attribution`, one line per phase in the order the run entered
+/// `gunbc.floor.floor_demand` `floor_phase_attribution`, one line per phase in the order the run entered
 /// them. `entry` is the held set the phase inherited, `peak` the largest over its own beats, and
 /// `left` what it left resident -- the next phase's entry, read from that row, so this renderer
 /// does no arithmetic of its own. A phase whose held set could not be represented prints the arm.
@@ -3320,7 +3320,7 @@ fn floor_phase_attribution_rendered(
     };
     let rows: Vec<&Value> = rows.iter().collect();
     let mut out = vec![format!(
-        "floor-phase-attribution: phases={} beats={} (held set per gunbc.floor_demand beat_held_set, bytes)",
+        "floor-phase-attribution: phases={} beats={} (held set per gunbc.floor.floor_demand beat_held_set, bytes)",
         rows.len(),
         beats.len()
     )];
@@ -3469,7 +3469,7 @@ fn typed_graph_exclusive_bytes_over(
             }
         }
     }
-    // THE HOST TRANSCRIBES, THE .dag FOLD DECIDES (gunbc.typed_graph_exclusive_bytes). Every
+    // THE HOST TRANSCRIBES, THE .dag FOLD DECIDES (gunbc.floor.typed_graph_exclusive_bytes). Every
     // reading crosses as primitives; a count past i64 refuses rather than clamping.
     const ENTRY: &str = "dag/gunbc/floor/typed_graph_exclusive_bytes.dag";
     let roots = vec!["dag".to_string(), "src/v2".to_string()];
@@ -3603,7 +3603,7 @@ fn typed_graph_exclusive_bytes_over(
         None => "<absent>".to_string(),
     };
     lines.push(format!(
-        "{label} graph_total={} sum_of_exclusives={} shared_or_unlisted={residual} (gunbc.typed_graph_exclusive_bytes; graph_total from the first run, every class from its own fresh resolve)",
+        "{label} graph_total={} sum_of_exclusives={} shared_or_unlisted={residual} (gunbc.floor.typed_graph_exclusive_bytes; graph_total from the first run, every class from its own fresh resolve)",
         bytes(ctx.field(fields, "graph_total")),
         bytes(ctx.field(fields, "sum_of_exclusives")),
     ));
@@ -3956,7 +3956,7 @@ mod native_route_termination_tests {
     #[test]
     fn a_refused_qualification_clamps_a_pass_to_unreached() {
         let out = native_member_outcome(
-            "//v2/test/parse:all",
+            "//v2/test/claim/parse:all",
             cli_run::NativeMemberTermination::ObservationHeld,
             false,
             "refused",
@@ -3971,7 +3971,7 @@ mod native_route_termination_tests {
     #[test]
     fn a_qualified_route_passes_a_pass_through() {
         let out = native_member_outcome(
-            "//v2/test/parse:all",
+            "//v2/test/claim/parse:all",
             cli_run::NativeMemberTermination::ObservationHeld,
             true,
             "held",
@@ -3985,7 +3985,7 @@ mod native_route_termination_tests {
     #[test]
     fn a_refused_qualification_does_not_demote_a_failure() {
         let out = native_member_outcome(
-            "//v2/test/parse:all",
+            "//v2/test/claim/parse:all",
             cli_run::NativeMemberTermination::ObservationDidNotHold,
             false,
             "refused",
@@ -4291,7 +4291,7 @@ fn run_generic_identity_census(source_roots: &[String]) -> InvocationOutcome {
     use crate::v1_tests_claim_generic_identity_census as census;
     use std::rc::Rc;
     const FIXTURE: &str = "fixtures/generic_identity_census/a.dag";
-    const REPORT_ENTRY: &str = "src/v2/compiler/00_compile.dag";
+    const REPORT_ENTRY: &str = "src/v2/compiler/compile.dag";
     let unreached = |detail: String| InvocationOutcome {
         termination: Termination::SubjectUnreached,
         message: format!("generic-identity-census: subject unreached: {detail}"),

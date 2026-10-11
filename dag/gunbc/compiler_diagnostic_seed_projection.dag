@@ -1,7 +1,7 @@
 module gunbc.compiler_diagnostic_seed_projection
 
 import gunbc.capability_origin { CapabilityOrigin, ModeledCapability, NoNewCapability }
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { List, NonEmptyStr, String }
 import v2.std.algebra { list_map }
@@ -33,7 +33,7 @@ import std.algebra { list_append }
 //      sets of such figures, and the sixth lane's paragraph records the fifth's commands measuring
 //      the WRONG FILE after a split. That is the argument winning against the row that made it.
 //   4. RESTATEMENTS of facts other authorities own -- that v1_std_core.rs and compiler_tests.rs are
-//      generated rather than hand-Rust. Not carried here: gunbc.stage0_rust_source_lifecycle_scaffold
+//      generated rather than hand-Rust. Not carried here: gunbc.stage0.stage0_rust_source_lifecycle_scaffold
 //      derives that population, and restating it is the second representation DESIGN section 3
 //      forbids. The dispositions below simply do not name generated files.
 //
@@ -190,7 +190,7 @@ data compiler_diagnostic_extension_obligations: List<CoproductExtensionObligatio
 //
 // WHAT REPLACES THEM IS AN INSTRUMENT AND NOT A NUMBER. The measurement the figures were making --
 // "did this change grow hand Rust" -- is derivable at item grain today by
-// tools.rust_item_census_instrument over gunbc.rust_item_host_observation, which reads
+// gunbc.instruments.rust_item_census_instrument over gunbc.rust_item_host_observation, which reads
 // item identities from the live tree through gunbc.rust_item_scan rather than by grepping a fn
 // keyword. That is strictly stronger than what was transcribed: a grep for '^fn ' cannot see an item
 // added inside an existing function, which is the arm gunbc.seed_growth_admission exists to refuse.
@@ -206,7 +206,7 @@ data compiler_diagnostic_seed_projection_withdrawn_figures: TranscribedFigureWit
   withdrawn: "EIGHT lanes' hand-Rust census figures for the CompilerDiagnostic seed projection: per-lane fn counts over the subject file at base and head (747, 884, 890, 895, 896, 38, and the eighth lane's three-file reading cli_run.rs 643 -> 645, compile_clean.rs 38 -> 38, declaration_index.rs 46 -> 46), per-lane numstat added/removed (23, 4, 8, 2, 2, 4, and the eighth lane's 108/15, 8/0, 9/0), and per-lane counts of added lines declaring a fn (0 in every lane but the eighth, which reads 3)." as NonEmptyStr,
   reason: "Every figure is unreachable rather than merely stale. Four were measured against origin/main, a MOVING ref, so the command reports a different number without anyone touching the change it certifies -- the fourth lane measured that drift happening, 2 added / 0 removed becoming 6 added / 64 removed within hours, the 64 removals being main's work. The four measured against a named merge-base name commits on squash-merged branches that no longer exist, the eighth lane's 1e51ea99bb among them, and that lane recorded its own base moving from 2857b3b11c mid-branch -- a STABLE base is stable for a branch, not across a merge. Two more name cli_run.rs, which stopped carrying the subject at the sixth lane's file split. WHAT THE FIGURES ASSERTED IS NOT ONE CLAIM ACROSS THE EIGHT LANES, and stating it as one would be the false quantifier this migration exists to stop carrying: seven asserted the hand-Rust carrier census was FLAT, which is preserved as the NoNewCapability disposition above -- a claim about the change rather than a number about a tree. THE EIGHTH ASSERTS THE OPPOSITE AND IS RIGHT TO: it grows two declarations plus one host enum in cli_run.rs, having first certified flatness over a file that did not move while omitting the one that did (review 61647). That growth is a different subject from this anchor, which is why the disposition is unchanged: it is the lane's own seed growth, owed to gunbc.seed_growth_admission by the lane that wrote it, not a capability originated by extending the coproduct." as NonEmptyStr,
   instrument: DeclarationRef {
-    module_path: "tools.rust_item_census_instrument" as NonEmptyStr,
+    module_path: "gunbc.instruments.rust_item_census_instrument" as NonEmptyStr,
     decl_name: "census" as NonEmptyStr,
     field: WholeDeclaration
   }

@@ -3,10 +3,10 @@ module gunbc.workspace_commissioning_history
 import std.types { String, NonEmptyStr }
 import std.algebra { trim }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.runner_microvm_slot_unit { microvm_slot_controller_receipt_dir }
-import gunbc.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
-import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.runner.runner_microvm_slot_unit { microvm_slot_controller_receipt_dir }
+import gunbc.runner.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
+import gunbc.runner.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
 
 // A receipt which says the controller never acquired a reservation carries no attempt subject.
 // Any executed attempt, unknown receipt or unreadable file requires recovery, not generation zero.

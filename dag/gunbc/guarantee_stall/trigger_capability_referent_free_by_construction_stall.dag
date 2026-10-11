@@ -23,6 +23,6 @@ data trigger_capability_referent_free_by_construction_stall: GuaranteeStall = Gu
   current: MechanicallyPreventable,
   ceiling: StructurallyGuaranteed,
   blocker: ClimbableButUnbuilt,
-  population: BoundedPopulation { members: Cons { head: "test.claim.guarantee_stall_witness_test.every_live_stall_trigger_is_admitted", tail: Cons { head: "test.claim.guarantee_stall_witness_test.a_trigger_resting_on_a_lifecycle_bounded_referent_refuses_by_cause", tail: Empty {} } } },
+  population: BoundedPopulation { members: Cons { head: "test.claim.guarantee_stall_witness.every_live_stall_trigger_is_admitted", tail: Cons { head: "test.claim.guarantee_stall_witness.a_trigger_resting_on_a_lifecycle_bounded_referent_refuses_by_cause", tail: Empty {} } } },
   next_rung_trigger: climbs_when(capability: "the where-refinement vocabulary carries a decidable does-not-contain predicate over a declared spelling, and NextRungTrigger.capability is refined by it, SUFFICIENT FOR a capability naming a dashboard-node URI at a literal site to fail to compile rather than to be refused by a fold at witness time. A wider fold, a second consumer, or a lint over the same text does not fire this trigger: each is another validator, and the state stays writable")
 }

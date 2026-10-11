@@ -21,7 +21,7 @@ module gunbc.filesystem_create_new_admission
 // layer inversion DESIGN section 3 names, and it was explicitly rejected in review 5085479276 on
 // gunbc#9864 before this row was written.
 import std.symbols { Ascii }
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { String, List }

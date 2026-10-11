@@ -1,4 +1,4 @@
-module tools.approval_store_live_probe
+module gunbc.instruments.approval_store_live_probe
 
 import std.types { Bool, NonEmptyStr, String, Timestamp, Secret }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -23,7 +23,7 @@ import gunbc.auth.approval_decision_store {
 import extdeps.ietf.http_semantics { POST }
 
 // THE LIVE RECEIPT FOR THE EFFECTFUL HALF OF THE APPROVAL DECISION STORE, which the hermetic
-// witness (test.claim.approval_decision_store_witness_test) cannot reach: a request filed into a
+// witness (test.claim.approval_decision_store_witness) cannot reach: a request filed into a
 // real slot, an approve tap that wins generation 2, a deny tap that then loses the race and changes
 // nothing, a second approve tap that reports the standing decision, and the workflow-side join that
 // turns the stored decision into an OperatorGrant for the exact intent. Run it as
@@ -71,7 +71,7 @@ fn probe_request() -> StoredApprovalRequest {
 fn probe_redeem(root: NonEmptyStr, decision_segment: NonEmptyStr, identity: String) -> String {
   store_redemption_reason(r: redeem_over_store(
     root: root,
-    trust: IdentityHeaderTrustEstablished { evidence: "tools.approval_store_live_probe fixture: exercising the store, not the deployment" },
+    trust: IdentityHeaderTrustEstablished { evidence: "gunbc.instruments.approval_store_live_probe fixture: exercising the store, not the deployment" },
     keyring: ApprovalKeyLoaded { key: probe_key() },
     method: POST,
     segment: decision_segment as String,

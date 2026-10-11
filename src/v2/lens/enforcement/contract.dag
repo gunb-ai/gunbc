@@ -103,7 +103,7 @@ data lens_contract_cost: LensContract = {
   claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: BoundConsumerWitness {
     witness: ScheduleWitnessEntry {
-      entry: "src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag",
+      entry: "src/v2/test/claim/complexity_gate/budget_roster_completeness.dag",
       function: "complexity_budget_roster_family_gate_holds",
       kind: CorpusWitnessKind
     }
@@ -141,7 +141,7 @@ data lens_contract_emitted_binary_effect_confinement: LensContract = {
   claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: BoundConsumerWitness {
     witness: ScheduleWitnessEntry {
-      entry: "src/v2/test/claim/emitted_binary_effect_confinement_red_control_test.dag",
+      entry: "src/v2/test/claim/emitted_binary_effect_confinement_red_control.dag",
       function: "emitted_binary_effect_confinement_authority_points_at_host_transport",
       kind: CorpusWitnessKind
     }
@@ -515,7 +515,7 @@ data lens_contract_vacuity: LensContract = {
   claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: BoundConsumerWitness {
     witness: ScheduleWitnessEntry {
-      entry: "src/v2/test/claim/long/vacuity_consumer_witness_long_test.dag",
+      entry: "src/v2/test/claim/long/vacuity_consumer_witness_long.dag",
       function: "vacuity_consumer_witness_real_test_fn_gap_stays_unknown_by_execution",
       kind: CorpusWitnessKind
     }

@@ -17,7 +17,7 @@ import gunbc.spark.pair_serving_authority {
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
 import gunbc.spark.pair_serving_authority_log { CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authorities }
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
-import gunbc.fabric_event_log_host { now_epoch_seconds }
+import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import gunbc.spark.vllm_kv_layout_observe {
   VllmKvLayoutReceipt, admit_kv_layout,
 }

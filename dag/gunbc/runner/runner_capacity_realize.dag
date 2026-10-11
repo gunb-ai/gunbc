@@ -1,8 +1,8 @@
-module gunbc.runner_capacity_realize
+module gunbc.runner.runner_capacity_realize
 
 import std.types { String, Int, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.runner_capacity_plan {
+import gunbc.runner.runner_capacity_plan {
   RunnerCapacityPlan,
   PlanReady,
   PlanRefused,
@@ -17,19 +17,19 @@ import gunbc.runner_capacity_plan {
   runner_capacity_add_count,
   addition_actions,
 }
-import gunbc.runner_slot_allocation {
+import gunbc.runner.runner_slot_allocation {
   committed_slot_identities,
   CommittedSlotPopulation, CommittedPopulationDerived, CommittedPopulationWidthUnresolved,
 }
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_live_read }
-import gunbc.runner_lifecycle {
+import gunbc.runner.runner_lifecycle {
   runner_width_disk_preflight,
   DiskHeadroomSufficient,
   DiskHeadroomInsufficient,
   DiskHeadroomUnobserved,
 }
-import gunbc.host_disk_observation { host_disk_observation }
-import gunbc.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+import gunbc.host.host_disk_observation { host_disk_observation }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
 import product.host_identity { HostIdentity }
 
 // PR C seam: wires gunbc.apply mode=apply to runner_capacity_plan + per-host disk preflight +
@@ -43,8 +43,8 @@ import product.host_identity { HostIdentity }
 
 // DECISION 4 inventory (historical ctrl citations OUTSIDE this closure, later lane):
 // runner_host_deploy runner_host_prereq_note, extdeps.jobserver, extdeps.cache.sccache,
-// gunbc.build_cache_instance, gunbc.host_converge, gunbc.ci_runner_placement,
-// gunbc.fleet_host_budget, gunbc.host_build_cache_provision_script,
+// gunbc.build_cache.build_cache_instance, gunbc.host.host_converge, gunbc.ci.ci_runner_placement,
+// gunbc.fleet.fleet_host_budget, gunbc.host_build_cache_provision_script,
 // gunbc.plans.fleet_subsumption_manual_gaps. None imported by runner_capacity_plan/realize.
 
 type RunnerCapacityHostApplyOutcome

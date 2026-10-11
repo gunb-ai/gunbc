@@ -7,7 +7,7 @@ data a_tag_dispatch_cannot_find_its_own_cache_entry: RecurringFailureMode = Recu
   identity: "a_tag_dispatch_cannot_find_its_own_cache_entry" as NonEmptyStr,
 
   receipts: [
-    "INVALID STATE: the release-bins lookup (gunbc.fleet_release_bins_key release_bins_lookup_refs) admits an entry under refs/heads/main or under 'the ref this dispatch runs on', and matched the latter as .ref == GITHUB_REF. For a workflow_dispatch on a TAG the cache API lists that scope as refs/heads/<GITHUB_REF>, so the lookup reads ABSENT for the dispatch's own entry while actions/cache restores it as an exact hit.",
+    "INVALID STATE: the release-bins lookup (gunbc.fleet.fleet_release_bins_key release_bins_lookup_refs) admits an entry under refs/heads/main or under 'the ref this dispatch runs on', and matched the latter as .ref == GITHUB_REF. For a workflow_dispatch on a TAG the cache API lists that scope as refs/heads/<GITHUB_REF>, so the lookup reads ABSENT for the dispatch's own entry while actions/cache restores it as an exact hit.",
 
     "HARM, 2026-09-30: the #12482 door roll-forward on tag deploy/door-8e0c1fad16. Plan run 36652280985 built and saved release-bins-25f14b25... (API ref=refs/heads/refs/tags/deploy/door-8e0c1fad16); apply runs 36653382960 and 36653490246 on the same tag both refused StoreTransportDisagreeAbsentHit in the build job, so no tag-pinned deploy at a sha main had not already cached could proceed. The apply on tag deploy/12482-178fb76c71 (run 36581756988) passed only because that sha's bins were already admitted under refs/heads/main.",
 

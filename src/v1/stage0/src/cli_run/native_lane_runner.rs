@@ -1,4 +1,4 @@
-//! The v2-native ROUTE's host harness (route authority: `gunbc.witness_v2_native_route`),
+//! The v2-native ROUTE's host harness (route authority: `gunbc.witness.v2_native_route`),
 //! reached as `claim_executor --v2-native-route`.
 //!
 //! IT IS NOT A REQUIRED LANE, and the prefixes below say so. The required-v2-native CI job was
@@ -48,7 +48,7 @@ use std::process::Command;
 
 /// THE FAULT-EXPERIMENT INPUT, joined to `gunbc.emitted_subject_build_gate`
 /// `native_fault_experiment_env_name` / `native_fault_experiment_skip_value` by
-/// `test.claim.compiler_gate_emit_build_lane_witness_test` `the_seed_fault_experiment_input_is_the_dag_rows`.
+/// `test.claim.compiler_gate_emit_build_lane_witness` `the_seed_fault_experiment_input_is_the_dag_rows`.
 const FAULT_EXPERIMENT_ENV: &str = "GUNBC_NATIVE_FAULT_EXPERIMENT";
 const FAULT_EXPERIMENT_SKIP_VALUE: &str = "skip_pull_request";
 
@@ -67,7 +67,7 @@ const PRODUCT_REUSE_FRESH_VALUE: &str = "fresh";
 /// `compiler_pipeline_entry` is `SourceRootEvalDriver`, so the emitted crate's `main.rs` is the
 /// whole-source-root Eval driver this lane exists to route through — and, since the admission
 /// authority is now inside that closure, the binary judges its own receipt.
-const NATIVE_COMPILE_ENTRY: &str = "src/v2/compiler/00_compile.dag";
+const NATIVE_COMPILE_ENTRY: &str = "src/v2/compiler/compile.dag";
 
 /// THE V2-EXCLUSIVE CLI'S ENTRY, AND WHY IT IS A SECOND CONSTANT RATHER THAN A SECOND ROUTE.
 ///
@@ -231,7 +231,7 @@ struct EmittedPreparation {
 }
 
 /// The emitted compiler's build as the receipt records it — mirror of
-/// `gunbc.witness_v2_native_route` `NativeRouteEmittedBuild`. Every field is read from the
+/// `gunbc.witness.v2_native_route` `NativeRouteEmittedBuild`. Every field is read from the
 /// spawn that ran or the toolchain that answered, never composed from what was intended.
 struct EmittedBuildObserved {
     cargo_argv: Vec<String>,
@@ -716,7 +716,7 @@ fn prepare_emitted_compiler_for_entry(
         .map_err(|cause| format!("V2-NATIVE REFUSAL cause=EntryModuleUnreadable — {cause}"))?;
     // THE FAULT EXPERIMENT IS SKIPPED ONLY WHEN THE WORKFLOW SAYS SO, and says so in the log. The
     // input is `gunbc.emitted_subject_build_gate` `native_fault_experiment_env_name`, set by
-    // `gunbc.compiler_gate_workflow` from the event: pull_request passes `skip_pull_request`,
+    // `gunbc.witness.compiler_gate_workflow` from the event: pull_request passes `skip_pull_request`,
     // merge_group and workflow_dispatch pass `run`. Absent or any other value RUNS it. The skip is
     // the declared drop `gunbc.rung_drop` `native_fault_experiment_off_pull_requests`.
     let mut red_completed = false;
@@ -1655,7 +1655,7 @@ fn write_host_facts(
         ),
     ];
     // THE EMITTED BUILD CROSSES AS ROWS TOO: the six facts of NativeRouteEmittedBuild
-    // (gunbc.witness_v2_native_route) are the host's own spawn observations, so they are host
+    // (gunbc.witness.v2_native_route) are the host's own spawn observations, so they are host
     // facts by the same rule as the identities above. The argv is one row per word under a
     // length row, because a word is opaque bytes and the TSV grammar has one value per key --
     // no separator is smuggled into a value.
@@ -1964,7 +1964,7 @@ pub struct V2NativeCliHeld {
 /// walked here is `fixture.native_cli_door.door_probe`, a single import-free module. What the walk
 /// establishes is that argv parsing, the source-root read, ingest, resolution, emission and the
 /// process exit all execute in the built artifact — the inhabitance obligation beside
-/// `v2.test.cli.v2_native_cli`, whose rows supply their argv and their ingest and are claims about
+/// `v2.test.claim.cli.v2_native_cli`, whose rows supply their argv and their ingest and are claims about
 /// the folds rather than about the program.
 /// SPAWN THE BUILT CLI ONCE, BY EXPLICIT PATH, AND CARRY WHAT IT DID.
 ///
@@ -2426,7 +2426,7 @@ fn cli_emit_probe_refusal(verdict: &CliEmitProbeVerdict, run: &CliDoorRun) -> St
 /// WHAT THIS CLOSES. Before it, `//gunbc/instruments:v2-native-cli` emitted the CLI's closure and
 /// built it, and stopped — the door compiled and nothing ever opened it. DESIGN section 5 names
 /// that exactly: a typecheck is not a consumer, and "done" is a real consumer green BY EXECUTION
-/// plus a discriminating input that goes red. `v2.test.cli.v2_native_cli` executes the door's
+/// plus a discriminating input that goes red. `v2.test.claim.cli.v2_native_cli` executes the door's
 /// FOLDS over supplied argv and a supplied ingest, which is the right subject for those claims and
 /// is not this one; the inhabitance obligation beside them is that the REAL PATH runs, and the real
 /// path is the built process reading real argv and real files.
@@ -2449,7 +2449,7 @@ fn cli_emit_probe_refusal(verdict: &CliEmitProbeVerdict, run: &CliDoorRun) -> St
 /// does establish is that THE BUILT BINARY'S ENTRYPOINT EXECUTES: the `cli_no_entry` arm reaches a
 /// LOCATED refusal that only this program's own `.dag` fold can produce, which means the process
 /// started, read argv, parsed it, decided, rendered its own cause and set its own exit status.
-/// That is the inhabitance claim `v2.test.cli.v2_native_cli` cannot make, because its rows supply
+/// That is the inhabitance claim `v2.test.claim.cli.v2_native_cli` cannot make, because its rows supply
 /// argv and ingest rather than running the program.
 ///
 /// TWO SPAWNS, ONE BINARY, DIFFERING IN ONE ARGUMENT. The emit probe hands the door a complete
@@ -3180,7 +3180,7 @@ fn native_serve_start(
 /// of a decision this function already holds, free to disagree with it.
 ///
 /// THE ARMS ARE NAMED FOR WHAT THE BIT ACTUALLY DECIDES, AND THE NAMING IS THE WHOLE POINT. It is
-/// `gunbc.witness_v2_native_route` `native_route_admission_with`'s WHOLE-ROUTE LANE QUALIFICATION
+/// `gunbc.witness.v2_native_route` `native_route_admission_with`'s WHOLE-ROUTE LANE QUALIFICATION
 /// -- a conjunction over roughly twenty clauses including `JobNameMismatch`,
 /// `PreparationSeedUnrecorded`, `EmittedBuildNotClean`, `MalformedControlAcceptedByRoute`,
 /// `PositivePopulationEmpty` and `RequiredNativePassRegressed`. It is NOT "the targets the operator
@@ -3328,7 +3328,7 @@ pub fn run_v2_native_census(source_roots: &[String]) -> Result<NativeCensusRun, 
 }
 
 /// WHERE THE RUN'S MEMORY BUDGET CAME FROM, IN THE RECEIPT. A whole-tree census is admitted against a
-/// declared demand (`gunbc.instrument_dispatch_workflow` `instrument_dispatch_memory_demands`), and
+/// declared demand (`gunbc.instruments.instrument_dispatch_workflow` `instrument_dispatch_memory_demands`), and
 /// the budget this process actually runs under is a separate fact. A receipt that does not say
 /// which source answered cannot tell an observed cgroup bound from an operator's unverified
 /// declaration, or from no bound at all. The line renders the one typed resolution
@@ -3545,7 +3545,7 @@ fn run_required_v2_native_inner(
     let lane_started = std::time::Instant::now();
     let workspace = super::process_workspace_root();
     // THE TESTED TREE IS OBSERVED OR THE RUN REFUSES (review 64210). This defaulted to the literal
-    // "local", and `tested_tree` is not telemetry: `gunbc.witness_v2_native_route`
+    // "local", and `tested_tree` is not telemetry: `gunbc.witness.v2_native_route`
     // `native_route_tested_tree_recorded` admits on `tested_tree != ""`, so the default SATISFIED
     // its own admission clause and the receipt then asserted it described a tree named `local`.
     // That is the defect the rendered main fixes for its sibling field in this same change, and
@@ -3629,7 +3629,7 @@ fn run_required_v2_native_inner(
     // derives the universe, executes it, mints the receipt and judges it.
     eprintln!("v2-native-route: adjudicating through the emitted compiler");
     // THE PATTERN IS THE CALLER'S, AND THAT IS WHAT MAKES A FOCUSED RUN POSSIBLE. The lane passes
-    // `gunbc.witness_v2_native_route` `native_route_default_pattern` (`//v2/test/...`, which
+    // `gunbc.witness.v2_native_route` `native_route_default_pattern` (`//v2/test/...`, which
     // narrows nothing within the floor's universe); `gunbc test <operand>` passes the operand's own
     // pattern, already admitted by `extdeps.bazel.target_pattern` and rendered by its own renderer.
     // This runner does not parse it, default it, or widen it: a pattern that reached here was
@@ -3676,7 +3676,7 @@ fn run_required_v2_native_inner(
     // the slot cgroup's memory.current/memory.peak (peak spans the runner service's lifetime,
     // not this run), and the lane's wall. It re-derives the run's cost; it decides nothing.
     // Resource preflight (predicted critical path and memory envelope against
-    // gunbc.runner_slot_allocation's slot rows) is std.realization cost vocabulary and lands
+    // gunbc.runner.runner_slot_allocation's slot rows) is std.realization cost vocabulary and lands
     // with route integration, not here.
     let (cgroup_current, cgroup_peak) = super::p1_cohort::p1_cohort_cgroup_memory();
     eprintln!(
@@ -3887,7 +3887,7 @@ mod tests {
     /// byte-for-byte verified. All 3992 carried `NativeTestRefused`. So this is a reading of the
     /// shape the real producer emits, not a hypothesis about it, and it needs no closure to run --
     /// which is the point: a decoder over rows must be reddable by handing it rows.
-    const REAL_REFUSED_ROW: &str = r#"{"identity":{"module":"v2.test.v2_native_route","declaration":"a_divergence_is_refused"},"verdict":{"_variant":"NativeTestRefused","stage":{"_variant":"NativeTestStageContext"},"diagnostics":{"head":{"reason":"parse_g0_tokens_remain","at":{"_variant":"Textual","file":"src/v2/test/v2_native_route_test.dag","extent":{"_variant":"WholeFile"}},"correction":{"_variant":"Unavailable","reason":{"_variant":"UserInputBoundary"}}},"tail":[]}}}"#;
+    const REAL_REFUSED_ROW: &str = r#"{"identity":{"module":"v2.test.v2_native_route","declaration":"a_divergence_is_refused"},"verdict":{"_variant":"NativeTestRefused","stage":{"_variant":"NativeTestStageContext"},"diagnostics":{"head":{"reason":"parse_g0_tokens_remain","at":{"_variant":"Textual","file":"src/v2/test/v2_native_route.dag","extent":{"_variant":"WholeFile"}},"correction":{"_variant":"Unavailable","reason":{"_variant":"UserInputBoundary"}}},"tail":[]}}}"#;
 
     #[test]
     fn a_real_refused_row_decodes_and_folds_to_subject_unreached() {

@@ -5,7 +5,7 @@ import v2.std.algebra { Cons, Empty, length, list_reverse }
 
 // THE CLAIM A PROJECTED LEDGER MAY NOT MAKE ABOUT A LANE THAT GATES.
 //
-// gunbc#10078 promoted `rust-unit-tests` into `gunbc.witness_floor_workflow`
+// gunbc#10078 promoted `rust-unit-tests` into `gunbc.witness.witness_floor_workflow`
 // `required_lanes_roster`. Ten sites across five authorities went on asserting the opposite, and
 // three of them were the DESIGN ledgers -- the documents every session loads. One of the ten was a
 // declared rung drop whose restoration trigger the promotion had FIRED, so the repository carried
@@ -23,7 +23,7 @@ import v2.std.algebra { Cons, Empty, length, list_reverse }
 // SERIALIZED LEDGER TEXT -- what `gunbc.design_ledgers` and `gunbc.design_document` actually emit --
 // so the check costs one projection fold and no corpus reflection at all. The alternative, a
 // `v2.std.decl_index` `decl_facts` walk over the tree, is the cost this repository has already
-// adjudicated against itself: `test.claim.long.host_identity_single_authoring_witness_test` sits
+// adjudicated against itself: `test.claim.long.host_identity_single_authoring_witness` sits
 // outside the merge path under a declared drop naming exactly "a corpus-scale reflection cost with
 // no lane that both admits it and runs it". Reading the projection is also the STRONGER question:
 // the bytes a reader will read are the bytes checked.
@@ -111,7 +111,7 @@ fn document_sites_for_lane(doc: ProjectedDocument, job_id: String) -> List<Requi
       excerpt: concat(
         "the projection of ", doc.document,
         " states that `", job_id,
-        "` is not a `needs` of the required aggregate, and `gunbc.witness_floor_lanes` `required_lanes_roster` says it is. ",
+        "` is not a `needs` of the required aggregate, and `gunbc.witness.witness_floor_lanes` `required_lanes_roster` says it is. ",
         "The roster is the authority the emitted workflow is derived from, so the DOCUMENT is what is wrong. ",
         "Correct the sentence at its authority and regenerate; do not widen this check. ",
         "If the false half is one clause of a claim whose conclusion still holds, DELETE the clause rather than softening it -- ",

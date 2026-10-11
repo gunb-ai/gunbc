@@ -1,6 +1,6 @@
-module gunbc.fabric_event_log
+module gunbc.fabric.fabric_event_log
 
-import gunbc.fabric_storage_binding { fabric_storage_binding_for }
+import gunbc.fabric.fabric_storage_binding { fabric_storage_binding_for }
 
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat, nat_range_inclusive }
@@ -14,8 +14,8 @@ import std.fabric_storage {
   FabricHeadAdvanced, FabricHeadMoved, FabricHeadAdvanceRefused,
   FabricClosureRead, FabricClosureBudgetExhausted, FabricClosureRefused, FabricStoredObject,
 }
-import gunbc.fabric_storage_placement { fabric_storage_placement }
-import gunbc.fabric_storage_client { FabricStorageBinding, fabric_storage_head, fabric_storage_put, fabric_storage_advance, fabric_storage_closure }
+import gunbc.fabric.fabric_storage_placement { fabric_storage_placement }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding, fabric_storage_head, fabric_storage_put, fabric_storage_advance, fabric_storage_closure }
 import product.capacity.pool { Pool, PoolReading, PoolRead, PoolReadingRefused, pool_reading_at, PoolOutcome, PoolAdvanced, PoolRefused, pool_release, pool_refusal_wire }
 import product.capacity.event_chain {
   PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, HeadAbsent, HeadAt, head_expectation_eq,
@@ -37,7 +37,7 @@ import product.capacity.redemption {
 // THE FABRIC EVENT LOG: THE CARRIER FOR EVERY CAPACITY TRANSACTION, REALIZED ON THE FABRIC DB.
 // One immutable object per event, addressed by its content; one named head per partition, advanced
 // by a compare-and-set on the expected head; no chain-wide head. The store is std.fabric_storage, reached
-// through the binding gunbc.fabric_storage_client derives for the executing host -- in process on the
+// through the binding gunbc.fabric.fabric_storage_client derives for the executing host -- in process on the
 // placed host, over its served endpoint everywhere else. Nothing here names a host or a transport.
 //
 // THE PARENT IS A LINK THE STORE HOLDS. An event object links to its parent's object, derived from
@@ -355,7 +355,7 @@ fn fabric_seat_acquire<Q, S>(store: FabricStorageBinding, partition: PartitionId
 //
 // WHY IT IS HERE AND NOT AT EACH CALLER. Acquisition already lived here because it has to fold the
 // pool to decide; settlement and release decide nothing, so each caller wrote its own
-// observe/append/retry loop and gunbc.fabric_quota had the only copy. A second consumer
+// observe/append/retry loop and gunbc.fabric.fabric_quota had the only copy. A second consumer
 // (gunbc.compute.host_capacity, releasing a compute reservation) would have made it two spellings
 // of one transaction, free to disagree about how many times a contended head is retried -- so the
 // loop moves to the carrier that owns partition appends and both consumers call it.

@@ -51,7 +51,7 @@ import extdeps.shell.exec
 import extdeps.llm.codex_app_server { CodexAppServerExecutable }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.npm
-import gunbc.host_cli_dependency {
+import gunbc.host.host_cli_dependency {
   observe_host_cli_dependency,
   host_dependency_absent_wire,
   first_absent_codex_wet_materialization_host_cli_dependency,
@@ -950,7 +950,7 @@ fn admitted_and_executed_lock_bytes_agree(
 // FULL cryptographic CodexRuntimeBundleReceipt: installed manifest+lock digests + target +
 // digest-only admitted rows + installed-tree identity + native executable digest + npm+node
 // toolchain + canonical protocol-schema bundle identity. Bundle root is content-addressed under
-// gunbc.host_layout.ProviderRuntimePlacement.runtime_release_root/<receipt-hex> (srv1 via
+// gunbc.host.host_layout.ProviderRuntimePlacement.runtime_release_root/<receipt-hex> (srv1 via
 // srv1_provider_runtime_placement; not /tmp). Mutable Codex state lives under
 // runtime_mutable_state_root — never equate a content-derived path with immutability. Reuse
 // requires sidecar + native digest + full rematerialized-tree identity match.
@@ -1949,7 +1949,7 @@ type UniquePublishingRelocateOutcome
 // holding a copy is four ledgers to maintain by hand. What a reader needs instead is the SELECTOR,
 // which is the instrument: `let _ = shell.<Op>` OR `let _ = Filesystem.<Op>`, the wider of the two
 // readings, because the defect is an IGNORED EFFECT OUTCOME and not a property of which service
-// produced it -- the narrow shell-only reading silently drops tools.merge_admission_walk's
+// produced it -- the narrow shell-only reading silently drops gunbc.instruments.merge_admission_walk's
 // Filesystem.Write. Run it and the population re-derives itself at any ref.
 //
 // MEMBERSHIP IS BY IDENTITY -- module, enclosing declaration, and the arm each sweep follows --
@@ -2776,7 +2776,7 @@ data protocol_schema_largest_file_rel: NonEmptyStr = "codex_app_server_protocol.
 // parse-only and parse+canonicalize both pin 8 GiB without completion (~16,500x input) —
 // indistinguishable curves. Defect is parse_json / JsonValue construction, not
 // canonicalize_json_value or .dag caller shape. Witness + claim_batch recipe:
-// dag/test/claim/json_protocol_schema_memory_split_wet_witness_test.dag witness_note. Substrate
+// dag/test/claim/json_protocol_schema_memory_split_wet_witness.dag witness_note. Substrate
 // design review precedes fix.
 
 fn finish_bisect_observe_sha512_file(path: FilePath) -> Bool {

@@ -1,4 +1,4 @@
-module gunbc.provider_guest_adoption
+module gunbc.host.provider_guest_adoption
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
@@ -25,7 +25,7 @@ import gunbc.host_command_binding {
   host_command,
   host_command_outcome_text,
 }
-import gunbc.fleet_host_backing {
+import gunbc.fleet.fleet_host_backing {
   GuestEntitlement,
   HostBacking,
   OwnedMachine,
@@ -34,14 +34,14 @@ import gunbc.fleet_host_backing {
   ProviderResourceAcquired,
   backing_microvm_forbidding_offer,
 }
-import gunbc.fleet_enrollment { HostEnrollmentIntent }
+import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent }
 
 // ADOPTING A RENTED GUEST INTO THE FLEET. An owned machine arrives through its own provisioning --
 // BMC credential convergence and a virtual-media OS install -- and a provider guest arrives already
 // installed from the provider's image, so it owes none of that and owes this instead: the exact
 // provider resource is bound, the guest is reached, and what it actually exposes is observed and
 // checked against what the provider's offer entitles. The adoption is the guest's PREFIX in the
-// standup spine (gunbc.host_standup ProviderGuestAdopted); everything after it -- identity, reach,
+// standup spine (gunbc.host.host_standup ProviderGuestAdopted); everything after it -- identity, reach,
 // service roles -- is the same shared path every host walks.
 //
 // Two answers come out and they are kept apart. Whether the guest is ADOPTED (it is the host we

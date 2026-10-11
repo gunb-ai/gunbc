@@ -159,7 +159,7 @@ pub(crate) fn whole_tree_strict_resolve_exclusion_substrings_from_source(
     )
 }
 
-/// Whole-tree strict-resolve probe exclusions — `gunbc.ci_layer_roots.whole_tree_strict_resolve_exclusion_substrings`.
+/// Whole-tree strict-resolve probe exclusions — `gunbc.ci.ci_layer_roots.whole_tree_strict_resolve_exclusion_substrings`.
 pub fn whole_tree_strict_resolve_exclusion_substrings() -> Vec<String> {
     static EXCLUDES: OnceLock<Vec<String>> = OnceLock::new();
     EXCLUDES
@@ -171,7 +171,7 @@ pub fn whole_tree_strict_resolve_exclusion_substrings() -> Vec<String> {
         .clone()
 }
 
-/// Floor discovery ∪ whole-tree probe pattern policy — `gunbc.ci_layer_roots.whole_tree_resolve_exclusion_substrings`.
+/// Floor discovery ∪ whole-tree probe pattern policy — `gunbc.ci.ci_layer_roots.whole_tree_resolve_exclusion_substrings`.
 pub fn whole_tree_resolve_exclusion_substrings() -> Vec<String> {
     let mut excludes = witness_exclusion_substrings();
     excludes.extend(whole_tree_strict_resolve_exclusion_substrings());
@@ -880,7 +880,7 @@ pub fn load_sources_for_entry_with_pool_index(
 // ── THE V2 EMISSION TRANSACTION: ONE PRODUCER, TWO CONSUMERS ─────────────────
 //
 // WHY THIS EXISTS AT ALL. On 2026-08-23 `gunbc compile --source-root dag --source-root
-// src/v2 --entry src/v2/compiler/03_ingest.dag` refused outright on main -- no emitted
+// src/v2 --entry src/v2/compiler/ingest.dag` refused outright on main -- no emitted
 // tree, no cargo log -- while every required phase stayed green for hours. The required
 // run parses `src/v1` .dag, compares the regen mirrors, and folds the witness floor;
 // NONE OF THE THREE COMPILES A v2 ENTRY, so the emission path had no observer at all.
@@ -913,7 +913,7 @@ pub fn load_sources_for_entry_with_pool_index(
 // of magnitude more, so the extra minutes are free rather than added. They buy exactly what
 // the old paragraph said they buy and declined: emission coverage of the v2 compiler's own
 // closure. The roster row and the one file of coverage the change gives up are in
-// `gunbc.ci_layer_roots` `required_v2_emission_entries`; the durations are not restated
+// `gunbc.ci.ci_layer_roots` `required_v2_emission_entries`; the durations are not restated
 // here, because the producer named above re-derives them and a transcribed number rots.
 //
 // WHAT THE INVARIANT IS, AND WHAT IT IS NOT. NOT a file count: a legitimate compiler
@@ -1072,7 +1072,7 @@ thread_local! {
 /// Canonical spelling for the shared-index roots — both the key AND the build
 /// inputs: an absolute root under the workspace normalizes to its repo-relative
 /// form, so the executor's CLI `$ROOT/dag` and the plan's declared `dag`
-/// (`gunbc.ci_layer_roots` witness_layer_roots) address ONE index. Without this,
+/// (`gunbc.ci.ci_layer_roots` witness_layer_roots) address ONE index. Without this,
 /// the compile-clean receipt (armed from CLI roots) and batch-2 discovery (plan
 /// roots) keyed two separate typed universes in CI and the gate's warm store was
 /// silently replaced before the corpus read it (review 39118 on PR #6783). Order
@@ -2730,7 +2730,7 @@ pub(crate) fn process_resolve_store_graphs() -> Vec<(String, Rc<v1_compiler_comp
 /// → `emit_on_demand_family_crate_pr_native_agreement_failure_receipt`.
 ///
 /// Both corpus naming conventions are normalized away — `_holds` (claim witnesses) and
-/// `_passes` (the cheap-floor gate witnesses in `tools.floor_effect_gate_witness`) — and so
+/// `_passes` (the cheap-floor gate witnesses in `gunbc.instruments.floor_effect_gate_witness`) — and so
 /// is neither: a name carrying no suffix projects to its own stem. That is the 2026-08-24
 /// change. Recognizing only `_holds` once left the gate witnesses unreachable from this
 /// channel, which is why ten consecutive `extdeps_scope_placement_gate_passes` reds reported
@@ -2809,7 +2809,7 @@ pub(crate) fn source_root_ref_variant_for_root(root: &str) -> Result<String, Str
         "dag" => Ok("DagTree".to_string()),
         other => Err(format!(
             "source_root tagging: unknown --source-root '{other}' \
-             (authority gunbc.ci_layer_roots.witness_layer_roots = [src/v2, dag] -> \
+             (authority gunbc.ci.ci_layer_roots.witness_layer_roots = [src/v2, dag] -> \
              SourceRootRef {{V2Tree, DagTree}})"
         )),
     }
@@ -4241,7 +4241,7 @@ impl TypedModuleClass {
 /// One leave-one-out drop, as raw readings: the allocator's live bytes with every class held,
 /// after dropping ONE class first, and after dropping the rest. What they mean -- the class's
 /// exclusive bytes, the graph's total, what the classes share -- is decided by
-/// `gunbc.typed_graph_exclusive_bytes` `typed_graph_exclusive_report`; this reader only reads. A
+/// `gunbc.floor.typed_graph_exclusive_bytes` `typed_graph_exclusive_report`; this reader only reads. A
 /// graph or module list another owner keeps refuses, because dropping it would free nothing.
 pub(crate) struct ExclusiveBytesReading {
     /// How many classes were dropped together: 1 for a single class, more for a joint set.

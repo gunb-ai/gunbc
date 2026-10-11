@@ -84,7 +84,7 @@ import v2.extdeps.languages.dag {
 // is infer, before lenses, and is not inhabitance (DESIGN §3). The member-kind channel
 // that would classify the spine is gunbc#13513.
 // Corpus grain: the same fold is consumed at parse grain by the live witness in
-// src/v2/test/claim/long/mandatory_tag_extdeps_corpus_test.dag over dag/extdeps/** via
+// src/v2/test/claim/long/mandatory_tag_extdeps_corpus.dag over dag/extdeps/** via
 // filesystem_list_dag_files + filesystem_read + the v2 grammar - the Node-tree projection that
 // supersedes the host module parse (the dissolution trigger named by the deleted cli_run.rs
 // scaffold block).
@@ -141,7 +141,7 @@ type MandatoryTagRegion {
 
 // Region membership mirrors the dissolved host roster exactly: extdeps.uri and
 // extdeps.external_authority are the anchor machinery itself (a module cannot cite the citation
-// vocabulary it defines - the old machinery_exempt roster); extdeps.fixture.* are deliberate
+// vocabulary it defines - the old machinery_exempt roster); v2.test.fixture.extdeps_external_authority.* are deliberate
 // red-control plants; *.mock_corpus modules are synthetic corpora. The drained backfill queue
 // (dag/extdeps/external_authority_backfill_pending.txt, deleted with this row) is not carried
 // forward: coverage was whole-tree at dissolution time, so no backfill concept survives.
@@ -153,7 +153,7 @@ data extdeps_external_authority_region: MandatoryTagRegion = MandatoryTagRegion 
   value_vocabulary: [^Http, ^Https, ^File, ^Ftp],
   value_accepted: [^Http, ^Https],
   exempt_modules: ["extdeps.uri", "extdeps.external_authority"],
-  exempt_module_prefixes: ["extdeps.fixture."],
+  exempt_module_prefixes: ["v2.test.fixture.extdeps_external_authority."],
   exempt_module_suffixes: [".mock_corpus"]
 }
 

@@ -18,19 +18,19 @@
 | --- | --- | --- | --- |
 | Workspace & repo paths | `gunbc.cli_run_workspace_root_scaffold` · `gunbc.cli_run_repo_grant` · [effect-namespace-grants.md](effect-namespace-grants.md) | emit-when | Chunk F → GENERATED `host_effect_apply`; grant presets land |
 | CLI argv & bin dispatch | `gunbc` bins + `src/v2/workflow/*` orchestration rows | seed-kernel-retained | Wave 4 pinned bootstrap (~8–15k LOC) |
-| Corpus discovery & file walk | `gunbc.ci_spec` discovery_scan_dirs (NOTE: `gunbc.ci_floor_plan` was DELETED by the 2026-08-15 floor cut; discovery now runs inside the required fold, so this row has no plan-node authority to subsume onto and needs re-derivation) | emit-when | CI native routing (#7069) + witness-realization |
+| Corpus discovery & file walk | `gunbc.ci.ci_spec` discovery_scan_dirs (NOTE: `gunbc.ci_floor_plan` was DELETED by the 2026-08-15 floor cut; discovery now runs inside the required fold, so this row has no plan-node authority to subsume onto and needs re-derivation) | emit-when | CI native routing (#7069) + witness-realization |
 | Resolve / typecheck entry orchestration | v2.compiler pipeline (GENERATED) · [cli-run-reconcile-defork.md](cli-run-reconcile-defork.md) | emit-when | Reconcile-defork Phase 1–3 + closure equivalence receipt |
 | Reconcile & env merge | `v2.compiler` reconcile stage (GENERATED) | already-subsumed | Orchestration wrapper deletes with Chunk F |
 | Typed module cache / memo | `std.materialize` / duplicate-work lattice ([duplicate-work-graph-lens-design.md](duplicate-work-graph-lens-design.md)) | emit-when | ComputationIdentity qualifier lands on materialize spine |
 | Import & module-graph host facts | `v2.lens.module_graph` · `import_resolution_facts` host seam | emit-when | Reconcile-defork Phase 1 repoint + namespace SymbolIndex |
 | Reference / cross-tree edges | `v2.std.cross_tree.resolution` · [namespace-resolution-design.md](namespace-resolution-design.md) | emit-when | Reference-deps B3 + import grammar deletion (B4) |
-| Affected-set & diff provenance | `gunbc.ci_spec` selection · `v2.lens.effect_reach` · [module-identity-storage-binding-design.md](module-identity-storage-binding-design.md) | emit-when | Declared `SourceRef` boundary + provenance ingest |
+| Affected-set & diff provenance | `gunbc.ci.ci_spec` selection · `v2.lens.effect_reach` · [module-identity-storage-binding-design.md](module-identity-storage-binding-design.md) | emit-when | Declared `SourceRef` boundary + provenance ingest |
 | Floor / witness execution | `v2.workflow.required_floor` policy + `v1_compiler.cli_run` `run_required_floor` (NOTE: `src/v2/workflow/ci_floor_plan.dag` was DELETED by the 2026-08-15 floor cut and `claim_executor` is itself being deleted by the move-off-claim-executor lane, so BOTH former subsumption targets are gone) · [witness-realization-plan.md](witness-realization-plan.md) | emit-when | Workflow `host_effect_apply` replaces HAND driver |
-| Compile-clean shard scope | `tools.dag_compile_clean_scope` · `v2.compiler.compile` | partial | Import-closure authority unified on `module_graph` |
+| Compile-clean shard scope | `gunbc.instruments.dag_compile_clean_scope` · `v2.compiler.compile` | partial | Import-closure authority unified on `module_graph` |
 | Regen oracle & self-host scope | `v2.workflow.required_regen` / `v1_compiler.required_regen_host` (NOTE: the `regen_stage0` binary this row named was DELETED at the root by the regen cut; the fixed point is now answered by `claim_executor --required-regen-fixed-point` and by nothing else, which is itself on the deletion path) | delete-with-v1 | Wave 4 real-fixpoint cutover (`5-real-fixpoint`) |
 | Host builtin bridge (interpreter seam) | `v1_interpreter` builtins · per-lens `*_live` projections | seed-kernel-retained | Node-tree readers dissolve seams (#5364 class); kernel keeps physics |
 | Lens census / hygiene host feeds | `v2.lens.*` tables · `non_fold_residue` · `fact_cardinality` | emit-when | Each lens lands node-tree reader or explicit host row retires |
-| Floor observability & width | `gunbc.floor_materialization` · `dag/std/realization_width.dag` | partial | Scheduler emits receipts; HAND timing deletes with floor native routing |
+| Floor observability & width | `gunbc.floor.floor_materialization` · `dag/std/realization_width.dag` | partial | Scheduler emits receipts; HAND timing deletes with floor native routing |
 | Test-migration debt builtins | `v2.lens.test_migration_debt` | delete-with-v1 | v1 `src/v1/tests` deleted at collapse (census §5) |
 
 ## 2. Functional areas (plain language)
@@ -45,7 +45,7 @@
 
 ### 2.3 Corpus discovery & file walk
 
-**Today:** walks `dag/` + `src/v2/` for `*_test.dag`, roster entries, and compile-clean shard inputs (`collect_dag_files`, discovery skip arms). **Subsumes:** `gunbc.ci_spec` + floor plan nodes. **Disposition:** emit-when. **Trigger:** CI onto v2 native routing (#7069) + witness realization scheduling. **In motion (2026-07-22+):** native bulk-machine arc (ROADMAP group 2a) and #7090 floor DECISIONS repoint (discovery producer + compile-clean scope) reduce HAND discovery/scope arms.
+**Today:** walks `dag/` + `src/v2/` for `*_test.dag`, roster entries, and compile-clean shard inputs (`collect_dag_files`, discovery skip arms). **Subsumes:** `gunbc.ci.ci_spec` + floor plan nodes. **Disposition:** emit-when. **Trigger:** CI onto v2 native routing (#7069) + witness realization scheduling. **In motion (2026-07-22+):** native bulk-machine arc (ROADMAP group 2a) and #7090 floor DECISIONS repoint (discovery producer + compile-clean scope) reduce HAND discovery/scope arms.
 
 ### 2.4 Resolve / typecheck entry orchestration
 
@@ -69,7 +69,7 @@
 
 ### 2.9 Affected-set & diff provenance
 
-**Today:** git-diff observation, import-closure shard compile, `ReadsLiveTree` inference bridge, declared-source-ref selection — decides what the floor runs on a PR. **Subsumes:** `gunbc.ci_spec` selection + `v2.lens.effect_reach`. **Disposition:** emit-when. **Trigger:** module-identity-storage-binding Phase 0 enrollment + provenance ingest (`affected_set_reading_from_git_diff_provenance`).
+**Today:** git-diff observation, import-closure shard compile, `ReadsLiveTree` inference bridge, declared-source-ref selection — decides what the floor runs on a PR. **Subsumes:** `gunbc.ci.ci_spec` selection + `v2.lens.effect_reach`. **Disposition:** emit-when. **Trigger:** module-identity-storage-binding Phase 0 enrollment + provenance ingest (`affected_set_reading_from_git_diff_provenance`).
 
 ### 2.10 Floor / witness execution
 
@@ -77,7 +77,7 @@
 
 ### 2.11 Compile-clean shard scope
 
-**Today:** decides whole-tree vs import-closure compile for `dag_compile_clean_gate` on PR diffs. **Subsumes:** `tools.dag_compile_clean_scope` + compile gate in `v2.compiler.compile`. **Disposition:** partial — policy modeled, HAND still executes scope walk. **Trigger:** single `module_graph` closure authority end-to-end.
+**Today:** decides whole-tree vs import-closure compile for `dag_compile_clean_gate` on PR diffs. **Subsumes:** `gunbc.instruments.dag_compile_clean_scope` + compile gate in `v2.compiler.compile`. **Disposition:** partial — policy modeled, HAND still executes scope walk. **Trigger:** single `module_graph` closure authority end-to-end.
 
 ### 2.12 Regen oracle & self-host scope
 
@@ -93,7 +93,7 @@
 
 ### 2.15 Floor observability & adaptive width
 
-**Today:** floor materialization receipts, slowest-witness attribution, cgroup/memory governor hooks for parallel width. **Subsumes:** `gunbc.floor_materialization`, `realization_width`, measurement-loop plan. **Disposition:** partial. **Trigger:** scheduler emits receipts natively; HAND stderr-only timing deletes.
+**Today:** floor materialization receipts, slowest-witness attribution, cgroup/memory governor hooks for parallel width. **Subsumes:** `gunbc.floor.floor_materialization`, `realization_width`, measurement-loop plan. **Disposition:** partial. **Trigger:** scheduler emits receipts natively; HAND stderr-only timing deletes.
 
 ### 2.16 Test-migration debt builtins
 

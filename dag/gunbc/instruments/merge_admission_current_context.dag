@@ -1,4 +1,4 @@
-module tools.merge_admission_current_context
+module gunbc.instruments.merge_admission_current_context
 
 import std.algebra { trim }
 
@@ -8,7 +8,7 @@ import extdeps.git { git_remote_ref_parts }
 import extdeps.git.inspect
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
-import tools.merge_admission_walk { merge_admission_fetch_stall_deadline_seconds }
+import gunbc.instruments.merge_admission_walk { merge_admission_fetch_stall_deadline_seconds }
 import gunbc.merge_admission {
   MergeAdmissionVerdict,
   MergeAdmitted,

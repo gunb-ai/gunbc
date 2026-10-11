@@ -3,12 +3,12 @@ module gunbc.workspace_allocation_store
 
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_before }
-import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import std.types { String, NonEmptyStr, Bool, Int, List, Timestamp }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import std.decl_ref { decl_ref }
 import std.durable_compare_and_set { CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent, CasCommitted, CasPreconditionFailed, CasStoreRefused }
-import gunbc.durable_cas_fabric_storage { fabric_storage_observe_cas_slot, fabric_storage_compare_and_set }
+import gunbc.fabric.durable_cas_fabric_storage { fabric_storage_observe_cas_slot, fabric_storage_compare_and_set }
 import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable }
 import gunbc.principal_projection { PrincipalRef, principal_ref_eq, principal_ref_label }
 import extdeps.languages.json.emit { JsonValue, JsonArray, JsonNull, JsonString, json_object, json_array, json_kv, json_string, serialize_json }

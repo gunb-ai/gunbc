@@ -39,7 +39,7 @@ import gunbc.model.publication {
 // measurements DO establish is the finer split: at the same 400k floor, DeepSeek V4 Flash 0731 at
 // IQ2_XXS carries a retrieval receipt and is admissible, while the SAME release at UD-IQ3_S carries
 // none and is UNANSWERABLE. The witness is gunbc.model.ollama_choice, exercised by
-// test.claim.model.serving_choice_witness_test; the verdicts are re-derived by running it, never
+// test.claim.model.serving_choice_witness; the verdicts are re-derived by running it, never
 // read from this sentence.
 //
 // A `List<ModelRelease>` cannot retain that distinction, so a stage keyed here would answer
@@ -122,7 +122,7 @@ type ReleaseDiscoverySource {
 // its defining module`.
 //
 // THE POSITIVE CONTROL IS ENROLLED AND IS NOT A SECOND FIXTURE:
-// test.claim.model.model_population_narrowing_witness_test obtains populations FROM THE MINTS,
+// test.claim.model.model_population_narrowing_witness obtains populations FROM THE MINTS,
 // cross-module, and reads their members and provenance throughout -- so the refusal above is the
 // construction being confined and not the type being unusable.
 //

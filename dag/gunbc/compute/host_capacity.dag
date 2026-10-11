@@ -9,18 +9,18 @@ import product.capacity.pool { Pool, pool_of, NoReplenishment, PoolReading, Pool
 import product.capacity.event_chain { PartitionId }
 import product.capacity.pool_events { SeatRequest, PoolReleased, pool_full_wire }
 import product.capacity.lease { LeasePolicy, LeaseGrant, QuiescenceRequired }
-import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
-import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootStanding, FabricStorageRootReady, FabricStorageRootRefused }
-import gunbc.fabric_event_log {
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootStanding, FabricStorageRootReady, FabricStorageRootRefused }
+import gunbc.fabric.fabric_event_log {
   SeatAcquisition, SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, SeatStoreRefused,
   fabric_seat_acquire, seat_acquisition_wire,
   SeatStandingObservation, SeatRoomObserved, SeatFullObserved, SeatStandingUnobserved, SeatStandingStoreRefused, fabric_seat_observe,
   SeatRelease, SeatReleased, SeatNotHeld, SeatReleaseContended, SeatReleaseRefused, fabric_seat_release, seat_release_wire,
   PoolEventAppend, PoolEventAppended, PoolEventContended, PoolEventAppendRefused, fabric_pool_event_append, pool_event_append_wire,
 }
-import gunbc.fabric_event_log_host { now_epoch_seconds }
+import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
-import gunbc.roadmap_dashboard_instance {
+import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, dashboard_instance_shared_directory,
   DashboardInstanceByHost, DashboardInstanceForHost, DashboardInstanceHostUnknown, dashboard_instance_for_host,
 }
@@ -45,7 +45,7 @@ import gunbc.roadmap_dashboard_instance {
 //
 // WHAT THIS IS NOT A SECOND AUTHORITY FOR. product.capacity.pool owns the appropriation, the
 // encumbrance, the term and the release law; product.capacity.pool_events owns the transitions;
-// gunbc.fabric_event_log owns the linearization -- one compare-and-set per append against the
+// gunbc.fabric.fabric_event_log owns the linearization -- one compare-and-set per append against the
 // partition's head, which is what makes the reservation atomic across competing requests rather
 // than merely checked. This module declares WHICH pool (the host's compute appropriation), WHERE it
 // is linearized (this host, not the fleet), and joins it to the observation. It coins no capacity
@@ -53,14 +53,14 @@ import gunbc.roadmap_dashboard_instance {
 
 // ── WHERE THE LEDGER LIVES, AND WHY NOT THE FLEET'S ────────────────────────────────────────────
 //
-// gunbc.fabric_storage_placement places the fabric DB on ONE host and every other host reaches it
+// gunbc.fabric.fabric_storage_placement places the fabric DB on ONE host and every other host reaches it
 // over its served endpoint, which is correct for a fact the FLEET contends on -- an upstream's rate
 // limit is metered on the credential, so every host must linearize against one partition.
 //
 // A HOST'S OWN MEMORY IS NOT SUCH A FACT. The contenders for it are all local, and routing their
 // reservation through another machine would mean a local build refusing because a remote host was
 // unreachable -- a fail-open in the other direction, since the refusal would not be about capacity
-// at all. So the store is the SAME realization (gunbc.fabric_storage_file_store, whose exclusive
+// at all. So the store is the SAME realization (gunbc.fabric.fabric_storage_file_store, whose exclusive
 // create supplies the linearization) rooted under this host's own compute root. The partition names
 // the host so a ledger copied between machines does not silently answer for the wrong one.
 // THE SUBJECT OF A RESERVATION: which ledger, which partition, how much the pool appropriates and
@@ -85,7 +85,7 @@ type ComputeCapacitySubject {
 // compare-and-set provides is perfect and is about the wrong subject.
 //
 // So both halves are keyed by the HOST. The partition names the host identity, and the ledger is
-// rooted under the instance THAT HOST resolves to -- gunbc.roadmap_dashboard_instance
+// rooted under the instance THAT HOST resolves to -- gunbc.roadmap.roadmap_dashboard_instance
 // dashboard_instance_for_host, the same host-to-instance authority the fabric event log already
 // uses to decide where a host's log lives. Two instances on one host therefore resolve to one
 // partition at one root, which is the single host-scoped authority this fact needs; inventing a new
@@ -130,7 +130,7 @@ fn compute_memory_partition(host: NonEmptyStr) -> PartitionId {
 // authority, two subjects, not a second authority.
 //
 // THE SESSION POOL'S SLOT COUNT IS SUPPLIED, NOT DECLARED HERE, because its authority is the
-// belt's admission count (gunbc.roadmap_session_placement passes it) and this module may not import
+// belt's admission count (gunbc.roadmap.roadmap_session_placement passes it) and this module may not import
 // the belt. A count supplied by the caller is a fact of the subject, exactly like the request.
 //
 // DECLARED FRONTIER (DESIGN 3c): the two pools are adjudicated separately against the machine's
@@ -222,7 +222,7 @@ fn observe_host_memory() -> HostMemoryObservation {
 //
 // DECLARED FRONTIER (DESIGN 3c), STATED BECAUSE IT IS THE HONEST LIMIT OF THIS ROW: charging this
 // appropriation against the host's OTHER commitments -- the runner slice, the sessions slice, the
-// fixed overhead -- is gunbc.ci_runner_placement's conservation wall, and this appropriation is
+// fixed overhead -- is gunbc.ci.ci_runner_placement's conservation wall, and this appropriation is
 // DECLARED rather than derived from it. What keeps that from being fail-open is the pair of
 // observations below: an appropriation larger than the machine refuses outright, and a request is
 // refused when the machine's live availability cannot back it whatever the ledger says.

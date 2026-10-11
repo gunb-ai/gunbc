@@ -54,7 +54,7 @@ transcribe its output). It was also one level up from the very class this PR fil
 `gunbc.recurring_failure_mode.subject_and_its_digest_as_independent_parameters`.
 
 Receipt module: `dag/gunbc/machine_intake/mtcollins1_memory_census_observation.dag`.
-Witness: `dag/test/claim/machine_intake/mtcollins1_memory_census_witness_test.dag`.
+Witness: `dag/test/claim/machine_intake/mtcollins1_memory_census_witness.dag`.
 
 **The artifacts retain the BMC credential in `argv`, deliberately.** Two `----ARGV`
 lines in `mtcollins1-attempt3-srv2-side.txt` record `ipmitool … -U admin -P admin`. I

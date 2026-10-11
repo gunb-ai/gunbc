@@ -3,7 +3,7 @@ module gunbc.auth.oidc_claim_pins
 import std.types { Bool, List, NonEmptyStr, String }
 import gunbc.repository { gunbc_repository, gunbc_repository_numeric_identity }
 import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
-import gunbc.repo_identity { gunbc_default_branch_name }
+import gunbc.repo.repo_identity { gunbc_default_branch_name }
 
 // ── ONE LIST OF PINS, TWO PROJECTIONS ───────────────────────────────────────────────────────────
 // A dedicated federation's membership rule is a list of GitHub OIDC claims pinned to values. The CEL

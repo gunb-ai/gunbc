@@ -23,7 +23,7 @@ import gunbc.spark.bootstrap_provision {
 }
 import gunbc.cloudflare.r2_token_mint { cloudflare_account_token_bootstrap_intervention }
 import gunbc.github_app_acquisition { census_app_registration_submit_step }
-import gunbc.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.auth.managed_host_boot_federation {
   BootFederationProvisioned, BootFederationProvisionedUnderDeclaredDrop, BootFederationUnprovisioned,
   boot_federation_for, boot_federation_service_account_member,
@@ -56,9 +56,9 @@ import gunbc.auth.authorization_pattern_selection {
 // THE POPULATION IS THE SITES THAT CHOOSE A CREDENTIAL. Kernels parameterized by a token source
 // (gunbc.auth.gcp_secret_access secret_access_ensure_for, gunbc.auth.secret_ref_credential
 // fetch_secret_ref_credential, gunbc.auth.secret_rotation, gunbc.secret_provision_actuator,
-// gunbc.fleet_printer_access) choose nothing and are not rows; the entries that bind their
+// gunbc.fleet.fleet_printer_access) choose nothing and are not rows; the entries that bind their
 // token_source are. Module names below were read from each file's `module` line, not from its path
-// (gunbc.fleet_printer_access lives under dag/gunbc/fleet/ and is not gunbc.fleet.*).
+// (gunbc.fleet.fleet_printer_access lives under dag/gunbc/fleet/ and is not gunbc.fleet.*).
 //
 // COMPLETENESS IS NOT CLAIMED BY THIS ROSTER. The population was enumerated by grepping every
 // gcp.SecretManager.*, gcp.STS.*, gcp.IAM.*, shell.GCloud.*, cloudflare.AccountTokens.* and
@@ -256,12 +256,12 @@ fn accessor_grant(subject: NonEmptyStr) -> PrivilegedEffect {
 data mtcollins1_operator_ruling: StandingDestructiveAuthorization = StandingDestructiveAuthorization {
   ruling_text: "the fleet-converge mtcollins1_boot and host_reset_return modes, dispatched from gunb-ai/gunbc main under their workload identity, may attach media to, set the boot device of, power-cycle and capture the console of Mt. Collins unit 1 on every dispatch with no per-run or standing approval, provided each run first takes the unit's maintenance hold. Operator chat rulings 2026-09-23 ('we technically don't even need my approval - would you mind getting rid of that step or making WIF just trust this workflow') and 2026-09-25 ('no I don't want that - can you just remove that check asap')" as NonEmptyStr,
   effect_subject: "mtcollins1 destructive controller effect: BMC virtual-media attach, one-shot boot-device set, power cycle and SOL capture" as NonEmptyStr,
-  interlock: InterlockedBy { hold: decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "UnitHoldProof") },
+  interlock: InterlockedBy { hold: decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "UnitHoldProof") },
 }
 
 data mtcollins1_operator_ruling_roots: List<DeclarationRef> = [
-  decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
-  decl_ref(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
+  decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
+  decl_ref(module_path: "gunbc.host.host_reset_return_run", decl_name: "host_reset_return_wet"),
 ]
 
 // ONE EFFECT SHAPE PER ROOT OF THE RULING, differing only in the root's own identity: both are the
@@ -407,25 +407,25 @@ type InterlockRoot {
 
 data mtcollins1_hold_owning_roots: List<InterlockRoot> = [
   InterlockRoot {
-    root: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
-    acquires_at: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_under_live_unit_hold"),
+    root: site(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
+    acquires_at: site(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_under_live_unit_hold"),
     operations: ["SOL deactivate/activate" as NonEmptyStr, "virtual-media attach" as NonEmptyStr, "boot-device set" as NonEmptyStr, "power cycle" as NonEmptyStr],
     sealed_by: [
-      site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_sol_release"),
-      site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_sol_activate_held"),
-      site(module_path: "gunbc.machine_intake_megarac_boot_media_attach", decl_name: "megarac_attach_boot_image"),
-      site(module_path: "gunbc.machine_intake_megarac_media_attach", decl_name: "megarac_attach_remote_image"),
-      site(module_path: "gunbc.managed_host_boot_handoff", decl_name: "boot_drive_handoff"),
-      site(module_path: "gunbc.machine_intake_oob_boot_handoff", decl_name: "oob_boot_handoff"),
+      site(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_sol_release"),
+      site(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_sol_activate_held"),
+      site(module_path: "gunbc.machine_intake.megarac_boot_media_attach", decl_name: "megarac_attach_boot_image"),
+      site(module_path: "gunbc.machine_intake.megarac_media_attach", decl_name: "megarac_attach_remote_image"),
+      site(module_path: "gunbc.host.managed_host_boot_handoff", decl_name: "boot_drive_handoff"),
+      site(module_path: "gunbc.machine_intake.oob_boot_handoff", decl_name: "oob_boot_handoff"),
     ],
   },
   InterlockRoot {
-    root: site(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
-    acquires_at: site(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
+    root: site(module_path: "gunbc.host.host_reset_return_run", decl_name: "host_reset_return_wet"),
+    acquires_at: site(module_path: "gunbc.host.host_reset_return_run", decl_name: "host_reset_return_wet"),
     operations: ["boot-device set" as NonEmptyStr, "power cycle" as NonEmptyStr],
     sealed_by: [
-      site(module_path: "gunbc.machine_intake_oob_boot_handoff", decl_name: "oob_boot_handoff"),
-      site(module_path: "gunbc.machine_intake_oob_boot_handoff", decl_name: "oob_power_cycle_after_confirmed_selection"),
+      site(module_path: "gunbc.machine_intake.oob_boot_handoff", decl_name: "oob_boot_handoff"),
+      site(module_path: "gunbc.machine_intake.oob_boot_handoff", decl_name: "oob_power_cycle_after_confirmed_selection"),
     ],
   },
 ]
@@ -439,38 +439,38 @@ data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
     hold_owning_roots: [] as List<InterlockRoot>,
   },
   PrivilegedEffectInterlock {
-    site: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
+    site: site(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
     hold: privileged_effect_interlock_hold(interlock: mtcollins1_operator_ruling.interlock),
-    refusal: site(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
+    refusal: site(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
     premise: "the boot takes the unit's one durable exclusive hold before any BMC write and refuses FileHoldOccupied naming the holder" as NonEmptyStr,
     hold_owning_roots: mtcollins1_hold_owning_roots,
   },
   PrivilegedEffectInterlock {
-    site: site(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
+    site: site(module_path: "gunbc.host.host_reset_return_run", decl_name: "host_reset_return_wet"),
     hold: privileged_effect_interlock_hold(interlock: mtcollins1_operator_ruling.interlock),
-    refusal: site(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
+    refusal: site(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
     premise: "host reset-return takes the same unit hold before it sets the boot device or power-cycles the unit" as NonEmptyStr,
     hold_owning_roots: mtcollins1_hold_owning_roots,
   },
   PrivilegedEffectInterlock {
-    site: site(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "plan_bmc_account_action"),
-    hold: Present { value: decl_ref(module_path: "gunbc.machine_intake_bmc_rotation_route", decl_name: "admit_rotation_apply") },
-    refusal: site(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "grant_discharges_bmc_secure_account_write"),
+    site: site(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "plan_bmc_account_action"),
+    hold: Present { value: decl_ref(module_path: "gunbc.machine_intake.bmc_rotation_route", decl_name: "admit_rotation_apply") },
+    refusal: site(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "grant_discharges_bmc_secure_account_write"),
     premise: "BmcSecure Apply discharges the mtjade1 standing ruling only when admit_rotation_apply is rostered against this site; InterlockPending never discharges, and a named hold that is not this site's rostered interlock does not discharge" as NonEmptyStr,
     hold_owning_roots: [] as List<InterlockRoot>,
   },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.auth.mtjade1_arrival_federation", decl_name: "mtjade1_arrival_archive_effect"),
-    hold: Present { value: decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "arrival_archive_slot_acquire") },
-    refusal: site(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "arrival_archive_slot_acquire"),
+    hold: Present { value: decl_ref(module_path: "gunbc.machine_intake.arrival_interlock", decl_name: "arrival_archive_slot_acquire") },
+    refusal: site(module_path: "gunbc.machine_intake.arrival_interlock", decl_name: "arrival_archive_slot_acquire"),
     premise: "the wet arrival door takes the subject's exclusive slot (file_hold_acquire) and, while ArrivalArchiveSlotHeld, calls arrival_wet_prefix_from_unobserved_world which refuses; it does not fold converge_mtjade1_arrival_prefix or write the prior-life archive until an observed BMC/archive world is bound" as NonEmptyStr,
     hold_owning_roots: [
       InterlockRoot {
-        root: site(module_path: "gunbc.machine_intake_arrival_run", decl_name: "arrival_converge_wet"),
-        acquires_at: site(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "arrival_archive_slot_acquire"),
+        root: site(module_path: "gunbc.machine_intake.arrival_run", decl_name: "arrival_converge_wet"),
+        acquires_at: site(module_path: "gunbc.machine_intake.arrival_interlock", decl_name: "arrival_archive_slot_acquire"),
         operations: ["typed refusal of unobserved PriorLifeBoundary" as NonEmptyStr],
         sealed_by: [
-          site(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "arrival_archive_slot_release"),
+          site(module_path: "gunbc.machine_intake.arrival_interlock", decl_name: "arrival_archive_slot_release"),
         ],
       },
     ],
@@ -588,12 +588,12 @@ data eager_bootstrap_fork_declared: DivergenceReason = DivergenceReason {
 // write, and the store does not see that approval: any writer reaching the DB performs the same
 // advance without it, so D0's row realizes RealizedUnauthorized like the rest (review 71933).
 // THE DISSOLUTION IS UNBOUND ON PURPOSE. The store-operation wall (now named at its home,
-// gunbc.fabric_store_operation_admission, since D0 was deleted) is not retired when the capability
+// gunbc.fabric.fabric_store_operation_admission, since D0 was deleted) is not retired when the capability
 // lands -- it is flipped to StoreOperationWallRestored -- so retires_dissolution over it would fire
 // on the row's deletion, an artifact, while the capability stayed dead (§4b(3)).
 data fabric_store_write_unverified: DivergenceReason = DivergenceReason {
   statement: "the fabric DB admits an advance of a pair-serving authority partition, the host-placement partition or a consent slot on the writer's host access alone: the placed host writes in process (FabricStorageLocalFiles) and the served door carries no grant, so the pattern selected for this writer is not the one the store enforces" as NonEmptyStr,
-  dissolution: unbound_dissolution(description: "one fabric store door every writer passes, the placed host included, that admits an advance of a protected head only under the credential this writer's selected pattern names, verified by the store for that operation -- that is, gunbc.fabric_store_operation_admission admit_store_operation enforcing on every write path, the placed host's in-process writes included (D0, which first named this wall, was deleted with Group A on 2026-10-07; the per-operation door it named is that module)" as NonEmptyStr),
+  dissolution: unbound_dissolution(description: "one fabric store door every writer passes, the placed host included, that admits an advance of a protected head only under the credential this writer's selected pattern names, verified by the store for that operation -- that is, gunbc.fabric.fabric_store_operation_admission admit_store_operation enforcing on every write path, the placed host's in-process writes included (D0, which first named this wall, was deleted with Group A on 2026-10-07; the per-operation door it named is that module)" as NonEmptyStr),
 }
 
 // THE DECLARATIONS THE BOUND TRIGGERS NAME, PRESENT BY CITATION. Each decl_ref here is checked by
@@ -624,7 +624,7 @@ fn present_trigger_declarations() -> List<DeclarationRef> {
 // the scoped-grant pattern. What it mints is resource-scoped: one exact argv, as one account, for
 // one release. Annotations sit here rather than
 // beside the rows because §4c admits them only at module-item grain.
-// THE RUNNER-GROUP CREATE (gunbc.runner_group_restriction_ensure_run microvm_runner_group_after_gate)
+// THE RUNNER-GROUP CREATE (gunbc.runner.runner_group_restriction_ensure_run microvm_runner_group_after_gate)
 // IS THE FIRST SITE REALIZED THROUGH THE APPROVAL CAPABILITY. The reach is the performing credential's:
 // a gunbai-ci installation token holding organization self-hosted-runners write, which administers
 // every runner group in the organization. That the dispatch_jit_mint row classifies the same token
@@ -667,12 +667,12 @@ data printer_operator_token_transition: DivergenceReason = DivergenceReason {
 // is listed for its branch create; the group pin it performs in the same function is authorized by
 // its own federated standing -- the census row's own parameters, selected without any discharge --
 // and the 10-03 and 10-05 rulings say nothing about it (eager-gull-22, 2026-10-05). The interlock is the
-// host-generic unit hold (gunbc.managed_host_unit_hold UnitHoldProof): the dispatch takes the proof
+// host-generic unit hold (gunbc.host.managed_host_unit_hold UnitHoldProof): the dispatch takes the proof
 // and refuses unless it is the slot's own host's.
 data runner_lifecycle_operator_ruling: StandingDestructiveAuthorization = StandingDestructiveAuthorization {
   ruling_text: "Runner registration and deregistration are PRE-APPROVED. Approval moves up to the workflow dispatcher (the fleet-converge run's own authorization). There is no per-registration approval step. Classify this through gunbc.auth.authorization_pattern_selection, recording that ruling rather than a per-effect ntfy approval. (operator decision, 2026-10-03)" as NonEmptyStr,
   effect_subject: "ephemeral JIT runner lifecycle: registration and deregistration" as NonEmptyStr,
-  interlock: decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "UnitHoldProof"),
+  interlock: decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "UnitHoldProof"),
 }
 
 type OperatorScopeRuling {
@@ -721,7 +721,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       frequency: EveryProvision,
       reversibility: ReversibleByReapply,
       surface: ApiSurface,
-      workload_identity: WorkloadIdentityBindable { member: "ghrunner on srv1, the dispatched dark-install run's host principal (gunbc.ci_deploy_access ci_deploy_srv1_local_access)" as NonEmptyStr },
+      workload_identity: WorkloadIdentityBindable { member: "ghrunner on srv1, the dispatched dark-install run's host principal (gunbc.ci.ci_deploy_access ci_deploy_srv1_local_access)" as NonEmptyStr },
       minted_reach: MintsResourceScopedCredential,
       billing: NoBillingConsequence,
       witness_discharge: NoWitnessDischarge,
@@ -814,7 +814,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.runner_group_restriction_ensure_run", decl_name: "microvm_runner_group_after_gate"),
+    site: site(module_path: "gunbc.runner.runner_group_restriction_ensure_run", decl_name: "microvm_runner_group_after_gate"),
     effect: PrivilegedEffect {
       subject: "create the microVM runner group restricted to the shakedown workflow, under an org-admin installation token" as NonEmptyStr,
       frequency: FleetOnce,
@@ -835,13 +835,13 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.hetzner_cloud_server_control", decl_name: "read"),
+    site: site(module_path: "gunbc.fleet.hetzner_cloud_server_control", decl_name: "read"),
     effect: recurring_credential_read(subject: "as the run-scoped hetzner-cloud-control account, after the operator approved this run attempt (gunbc.auth.branch_run_grant), read the Hetzner Cloud default project's Read-only API token (Hetzner refuses it any write) and GET /v1/servers/\{id\} for every acquired server; changes nothing" as NonEmptyStr),
     realized: RealizedFederatedGrant,
     divergence_reason: none,
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.host_credential_custody_converge", decl_name: "host_credential_custody_converge_ci_wet"),
+    site: site(module_path: "gunbc.fleet.host_credential_custody_converge", decl_name: "host_credential_custody_converge_ci_wet"),
     effect: recurring_credential_read(subject: "read one rostered custody credential over WIF -- the gunbai-ci App key for the microVM lifecycle controller, the approval ntfy publisher token, the fabric state writer key, the Claude Code subscription OAuth token the roadmap belt's explicit Claude dispatch reads, or a worker-turn credential (cursor-api-key-harness, codex-auth-harness) -- and place it on one fleet host at its row's owner, group and mode; for the host-authoritative codex row, read the placed file back and add it to codex-auth-harness as a new version when codex rotated its refresh token" as NonEmptyStr),
     realized: RealizedFederatedGrant,
     divergence_reason: none,
@@ -874,19 +874,19 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.machine_intake_bmc_rotation_route", decl_name: "admit_password_route_qualification"),
+    site: site(module_path: "gunbc.machine_intake.bmc_rotation_route", decl_name: "admit_password_route_qualification"),
     effect: route_qualification_effect(),
     realized: RealizedApprovalCapability,
     divergence_reason: none,
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.machine_intake_bmc_rotation_route", decl_name: "admit_privilege_limit_route_qualification"),
+    site: site(module_path: "gunbc.machine_intake.bmc_rotation_route", decl_name: "admit_privilege_limit_route_qualification"),
     effect: route_qualification_channel_access_effect(),
     realized: RealizedApprovalCapability,
     divergence_reason: none,
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "plan_bmc_account_action"),
+    site: site(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "plan_bmc_account_action"),
     effect: bmc_secure_account_rotation_effect(),
     realized: RealizedApprovalCapability,
     divergence_reason: none,
@@ -904,13 +904,13 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: Present { value: firmware_qualification_writer_unlanded },
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
+    site: site(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
     effect: mtcollins1_boot_effect(),
     realized: RealizedFederatedGrant,
     divergence_reason: none,
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
+    site: site(module_path: "gunbc.host.host_reset_return_run", decl_name: "host_reset_return_wet"),
     effect: mtcollins1_host_reset_effect(),
     realized: RealizedFederatedGrant,
     divergence_reason: none,
@@ -1030,13 +1030,13 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.bmc_fan_converge", decl_name: "bmc_fan_run"),
+    site: site(module_path: "gunbc.bmc.bmc_fan_converge", decl_name: "bmc_fan_run"),
     effect: recurring_credential_read(subject: "BMC credential read for the fan converge" as NonEmptyStr),
     realized: RealizedOperatorSession { arm: GcloudInteractive },
     divergence_reason: none,
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.srv3_bmc_credential_resolve", decl_name: "materialize_bmc_login_password"),
+    site: site(module_path: "gunbc.srv3.srv3_bmc_credential_resolve", decl_name: "materialize_bmc_login_password"),
     effect: recurring_credential_read(subject: "srv3 BMC login password read" as NonEmptyStr),
     realized: RealizedOperatorSession { arm: GcloudInteractive },
     divergence_reason: none,
@@ -1057,13 +1057,13 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.fleet_multi_principal_probe", decl_name: "fleet_multi_principal_probe_with_attempt"),
+    site: site(module_path: "gunbc.fleet.fleet_multi_principal_probe", decl_name: "fleet_multi_principal_probe_with_attempt"),
     effect: recurring_credential_read(subject: "read the in-run fleet key for a read-only multi-principal probe" as NonEmptyStr),
     realized: RealizedOperatorSession { arm: GcloudInteractive },
     divergence_reason: none,
   },
   PrivilegedEffectSite {
-    site: site(module_path: "tools.fabric_m0_origin_object_probe", decl_name: "probe_token_source"),
+    site: site(module_path: "gunbc.instruments.fabric_m0_origin_object_probe", decl_name: "probe_token_source"),
     effect: recurring_credential_read(subject: "read the R2 origin credential for the M0 origin-object probe" as NonEmptyStr),
     realized: RealizedOperatorSession { arm: OperatorTokenFile },
     divergence_reason: none,
@@ -1096,7 +1096,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.gcp_estate_read_instrument", decl_name: "gcloud_read_argv"),
+    site: site(module_path: "gunbc.gcp.gcp_estate_read_instrument", decl_name: "gcloud_read_argv"),
     effect: PrivilegedEffect {
       subject: "estate reads: projects, services, IAM policies, pools, providers, keys" as NonEmptyStr,
       frequency: FleetOnce,
@@ -1271,15 +1271,15 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
 // admitted debt shape -- an independently enumerated, closed subject universe, membership at
 // identity grain, every removal carried by the change that earns it -- and not a count.
 data follow_up_sites: List<DeclarationRef> = [
-  site(module_path: "gunbc.gcp_estate_read_instrument", decl_name: "gcloud_read_argv"),
+  site(module_path: "gunbc.gcp.gcp_estate_read_instrument", decl_name: "gcloud_read_argv"),
   site(module_path: "gunbc.auth.credentials", decl_name: "gcp_secret_credential"),
-  site(module_path: "gunbc.bmc_fan_converge", decl_name: "bmc_fan_run"),
-  site(module_path: "gunbc.srv3_bmc_credential_resolve", decl_name: "materialize_bmc_login_password"),
+  site(module_path: "gunbc.bmc.bmc_fan_converge", decl_name: "bmc_fan_run"),
+  site(module_path: "gunbc.srv3.srv3_bmc_credential_resolve", decl_name: "materialize_bmc_login_password"),
   site(module_path: "gunbc.tools.bmc_onboard", decl_name: "srv3_converge_credential"),
   site(module_path: "gunbc.spark.managed_access_apply", decl_name: "spark_managed_access_apply_wet"),
-  site(module_path: "gunbc.fleet_multi_principal_probe", decl_name: "fleet_multi_principal_probe_with_attempt"),
+  site(module_path: "gunbc.fleet.fleet_multi_principal_probe", decl_name: "fleet_multi_principal_probe_with_attempt"),
   site(module_path: "gunbc.fleet.printer_delivery_wet_run", decl_name: "run"),
-  site(module_path: "tools.fabric_m0_origin_object_probe", decl_name: "probe_token_source"),
+  site(module_path: "gunbc.instruments.fabric_m0_origin_object_probe", decl_name: "probe_token_source"),
 ]
 
 // ── Consumers ────────────────────────────────────────────────────────────────────────────────

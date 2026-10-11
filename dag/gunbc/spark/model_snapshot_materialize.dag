@@ -7,7 +7,7 @@ import std.content_hash { content_hash_atom, content_hash_of_value, serialize_co
 import product.host_identity { HostIdentity }
 import std.algebra { trim }
 import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun, ArgvLegMayHaveRun }
-import gunbc.fleet_bootstrap_principal_session {
+import gunbc.fleet.fleet_bootstrap_principal_session {
   exec_as_fleet_principal_trusting_with_stdin,
   BootstrapCredentialFileHeld,
   FleetPrincipalLegRan,
@@ -16,10 +16,10 @@ import gunbc.fleet_bootstrap_principal_session {
 import extdeps.exec.command { shell_quote }
 import extdeps.ssh.session { ssh_client_error_exit_status }
 import gunbc.spark.remote_leg_began { remote_leg_began_payload_line, remote_leg_reported_began, remote_leg_stdout_without_began, remote_stdout_as_one_word }
-import gunbc.fleet_known_hosts_anchor {
+import gunbc.fleet.fleet_known_hosts_anchor {
   FleetOpenSshTrustPolicy, SshTarget, portable_remote_words,
 }
-import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
+import gunbc.fleet.fleet_posix_accounts { fleet_bootstrap_principal_login }
 import gunbc.spark.fabric_reach { SparkReachPath, spark_reach_endpoint, spark_reach_path_wire }
 import gunbc.spark.pair_serving_realization { spark_pair_container_name }
 import gunbc.artifact_acquisition {
@@ -139,7 +139,7 @@ fn spark_remote_run_of_session(endpoint: String, exit_code: Int, stdout: String,
 // command ran and exited non-zero" are different facts with different remedies, and collapsing them
 // is what would make an unreachable host read as a corrupt download.
 // THE SESSION IS DERIVED, NOT NAMED HERE. This leg was already a password leg and stays one;
-// what changed is that gunbc.fleet_bootstrap_principal_session derives that from the principal,
+// what changed is that gunbc.fleet.fleet_bootstrap_principal_session derives that from the principal,
 // so this module and the grant installer can no longer disagree about how briansrls is reached.
 fn spark_remote_run(ctx: SparkMaterializeContext, argv: List<String>) -> SparkRemoteRun {
   match portable_remote_words(raws: ["sudo", "-S", "sh", "-s"]) {

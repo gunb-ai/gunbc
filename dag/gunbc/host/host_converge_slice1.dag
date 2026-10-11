@@ -1,7 +1,7 @@
-module gunbc.host_converge_slice1
+module gunbc.host.host_converge_slice1
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
-import gunbc.host_effect { LocalShell }
+import gunbc.host.host_effect { LocalShell }
 import std.disposition { Disposition, Terminal }
 import product.host_identity { HostIdentity }
 import extdeps.systemd {
@@ -22,15 +22,15 @@ import gunbc.systemctl_show_read {
   SystemdPropertyBlank,
   SystemdPropertyCaptureRefused,
 }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
-import gunbc.runner_unit { runner_slot_unit_name }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner_slot_allocation {
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
+import gunbc.runner.runner_unit { runner_slot_unit_name }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner.runner_slot_allocation {
   gunbc_runner_committed_width,
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
   runner_width_unresolved_cause_text,
 }
-import gunbc.host_converge {
+import gunbc.host.host_converge {
   ConvergeKnob,
   ConvergeVerdict,
   VerdictConverged, VerdictAbsent,
@@ -44,26 +44,26 @@ import gunbc.host_converge {
   host_converge_for_identity,
   runner_instance_glob,
 }
-import gunbc.runner_unit_live_read {
+import gunbc.runner.runner_unit_live_read {
   RunnerUnitLiveReadRow,
   RunnerUnitMemoryLiveRead,
   gunbc_srv1_runner_unit_live_read_fixture,
   runner_unit_live_read_typed,
 }
-import gunbc.fleet_show_effective_read {
+import gunbc.fleet.fleet_show_effective_read {
   per_slot_memory_cap_verdict_from_unit_read,
 }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.systemctl_set_property { systemctl_set_property_local }
 import gunbc.systemctl_list_units { systemctl_list_units_active_services }
-import gunbc.host_axis_caps { control_shadow_unit, control_shadow_revert_script, control_shadow_revert_script_matches_extdeps_argv }
+import gunbc.host.host_axis_caps { control_shadow_unit, control_shadow_revert_script, control_shadow_revert_script_matches_extdeps_argv }
 
 data gunbc_host_converge_slice1_scope_disposition: Disposition = Terminal {
-  reason: "Host-converge realized knob: per_slot_tasks_max from fleet_converge_policy through typed systemctl show/set-property/list-units and clock_now_probed_at (LocalShell on-host, operator principal briansrls on srv1). MemoryMax/MemoryHigh drop-in authoring and system.control shadow teardown are deploy-time only (gunbc.host_axis_caps at live_deploy apply under ghrunner sudo) — convergence does NOT write /etc/systemd drop-ins, daemon-reload, set-property MemoryMax, or systemctl revert on the operator principal (operator privilege hold 2026-08-13). Ordering invariant (author derived drop-ins before shadow revert) is modeled in host_axis_caps for the deploy path. srv1 TasksMax on probe unit; srv3 multi-unit enumerated via runner_instance_glob. Per-unit outcomes are independent (DESIGN section 5 per-cause refusal / siblings continue). srv2 and other knobs stay on host_converge_realize frontier."
+  reason: "Host-converge realized knob: per_slot_tasks_max from fleet_converge_policy through typed systemctl show/set-property/list-units and clock_now_probed_at (LocalShell on-host, operator principal briansrls on srv1). MemoryMax/MemoryHigh drop-in authoring and system.control shadow teardown are deploy-time only (gunbc.host.host_axis_caps at live_deploy apply under ghrunner sudo) — convergence does NOT write /etc/systemd drop-ins, daemon-reload, set-property MemoryMax, or systemctl revert on the operator principal (operator privilege hold 2026-08-13). Ordering invariant (author derived drop-ins before shadow revert) is modeled in host_axis_caps for the deploy path. srv1 TasksMax on probe unit; srv3 multi-unit enumerated via runner_instance_glob. Per-unit outcomes are independent (DESIGN section 5 per-cause refusal / siblings continue). srv2 and other knobs stay on host_converge_realize frontier."
 }
 
 // Operator ruling 2026-08-13: MemoryMax single authority is deploy-time drop-in authoring
-// (gunbc.host_axis_caps). Convergence must not re-apply it.
+// (gunbc.host.host_axis_caps). Convergence must not re-apply it.
 //
 // TWO `data ...: Bool = true` FLAGS USED TO SIT HERE and are deleted rather than moved. They
 // claimed the converge-side apply was suppressed; their only readers were two witnesses
@@ -71,15 +71,15 @@ data gunbc_host_converge_slice1_scope_disposition: Disposition = Terminal {
 // them, and the arm they described stayed wired the whole time (gunbc.host_converge_realize
 // interpreted a PerSlotMemoryCap knob into a shell body and host_effect_realize ran it). The
 // hold is now carried by the absence of that code path, the construction move the flags stood
-// in for — see gunbc.host_effect_realize converge_in_process_apply_withdrawn_reason.
-// MemoryMax is authored at deploy through gunbc.host_axis_caps cap membership reconcile and drop-in
+// in for — see gunbc.host.host_effect_realize converge_in_process_apply_withdrawn_reason.
+// MemoryMax is authored at deploy through gunbc.host.host_axis_caps cap membership reconcile and drop-in
 // upsert — not re-applied by gunbc converge. Dual authority (deploy drop-in vs converge
 // set-property) is forbidden.
 
 // Aug-11 root-era set-property wrote /etc/systemd/system.control/<unit>.d/50-MemoryMax.conf and
 // 50-MemoryHigh.conf; those drop-ins shadow deploy-authored files until removed. Teardown ordering
-// is author derived drop-ins from gunbc.runner_slot_allocation THEN systemctl revert MemoryMax
-// MemoryHigh — modeled in gunbc.host_axis_caps for the deploy apply path (ghrunner sudo), not gunbc
+// is author derived drop-ins from gunbc.runner.runner_slot_allocation THEN systemctl revert MemoryMax
+// MemoryHigh — modeled in gunbc.host.host_axis_caps for the deploy apply path (ghrunner sudo), not gunbc
 // converge on briansrls. Revert-before-author on stale 16/15GiB on-disk deploy drop-ins raises
 // effective caps to the superseded regime.
 
@@ -90,14 +90,14 @@ fn host_converge_slice1_shadow_revert_script_matches_authority(unit: NonEmptyStr
 }
 
 // The probe unit is srv1 slot 1 DERIVED, not spelled. Same reason as every other site: the name
-// this row must equal is the one gunbc.host_converge writes drop-ins for.
+// this row must equal is the one gunbc.host.host_converge writes drop-ins for.
 data host_converge_slice1_probe_unit: NonEmptyStr = runner_slot_unit_name(slot: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 })
 
 data host_converge_slice1_knob_name: String = "per_slot_memory_max_bytes"
 
 data host_converge_slice1_tasks_knob_name: String = "per_slot_tasks_max"
 
-// TasksMax (gunbc.runner_slot_desired gunbc_runner_slot_desired, 16384 — the 2026-06-21
+// TasksMax (gunbc.runner.runner_slot_desired gunbc_runner_slot_desired, 16384 — the 2026-06-21
 // incident REPAIR value; 512 was the diagnosed EAGAIN outage value, per the operator ruling on
 // PR 8045) is the second knob realized on this circuit: same typed systemctl show/set-property
 // transports, same fail-closed order (live read -> Drifted verdict -> pre-apply TasksCurrent

@@ -1,4 +1,4 @@
-module gunbc.machine_intake_megarac_kvm_observer_observe
+module gunbc.machine_intake.megarac_kvm_observer_observe
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decl_ref { decl_ref }
@@ -7,14 +7,14 @@ import std.process { ExitSuccess, ExitFailure, ProcessExit, exit_failure }
 import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import product.host_identity { HostIdentity }
-import gunbc.runner_browser_toolchain { runner_browser_toolchain_here_wet }
+import gunbc.runner.runner_browser_toolchain { runner_browser_toolchain_here_wet }
 import gunbc.owned_process { OwnedRelease, OwnedReleased, OwnedAlreadyGone, OwnedReleaseNotOwned, OwnedNotRecorded, OwnedForeign, owned_process_release, owned_release_text }
-import gunbc.megarac_managed_host { AdmittedMegaRacHost, admitted_megarac_host_identity }
-import gunbc.managed_host_unit_hold {
+import gunbc.host.megarac_managed_host { AdmittedMegaRacHost, admitted_megarac_host_identity }
+import gunbc.host.managed_host_unit_hold {
   UnitHeld, UnitHoldRefused, kvm_observer_acquire_unit_hold, unit_hold_release,
   kvm_observer_release_unit_hold, probe_hold_release_outcome_text, probe_hold_release_step_exit,
 }
-import gunbc.machine_intake_megarac_kvm_still {
+import gunbc.machine_intake.megarac_kvm_still {
   KvmObserverRecord, KvmObserverStart, KvmObserverStarted, KvmObserverNotStarted,
   KvmHandoffAdmitted, KvmHandoffRefused, kvm_handoff_admission,
   KvmStillHashed, KvmTeardownRecorded, KvmTeardownNotNeeded, KvmTerminalStillAnswered,
@@ -26,19 +26,19 @@ import gunbc.machine_intake_megarac_kvm_still {
 
 // THE REAL KVM OBSERVER AGAINST AN ADMITTED MEGARAC CONTROLLER, WITH NO BOOT (operator-approved brief,
 // 2026-09-30; re-rooted onto the admitted carrier by managed-host cut 5). The observer
-// (gunbc.machine_intake_megarac_kvm_still) is the boot's; this probe drives the SAME functions the boot
+// (gunbc.machine_intake.megarac_kvm_still) is the boot's; this probe drives the SAME functions the boot
 // drives -- megarac_kvm_observer_start, the handoff admission that waits for establishment, and
 // megarac_kvm_observer_finish, which asks one terminal still, requests the stop, releases the web
 // session and the browser and hashes the still -- and nothing else.
 //
-// MEGARAC-SCOPED BY REFUSAL: the probe takes gunbc.megarac_managed_host AdmittedMegaRacHost, which a host
+// MEGARAC-SCOPED BY REFUSAL: the probe takes gunbc.host.megarac_managed_host AdmittedMegaRacHost, which a host
 // of another family or an unobserved one never mints, and megarac_kvm_observer_start refuses a carrier
 // admitted for any operation but the KVM canvas still. The controller, its account and the host whose
 // unit hold the probe takes all come off that carrier; the artifact directory is the caller's.
 //
 // NOTHING IS WRITTEN TO THE CONTROLLER'S MEDIA, POWER, BOOT DEVICE OR SEL. The web session it opens is
 // its own and is DELETEd on every reachable exit; the only other effect is the KVM viewer seat, which
-// is why the probe holds the unit (gunbc.managed_host_unit_hold kvm_observer_acquire_unit_hold): the
+// is why the probe holds the unit (gunbc.host.managed_host_unit_hold kvm_observer_acquire_unit_hold): the
 // boot takes that seat under the same hold and refuses its handoff when the seat is busy, so an unheld
 // probe could make a concurrent boot refuse.
 //
@@ -155,7 +155,7 @@ type KvmProbeHeldRun {
 
 fn megarac_kvm_observer_observe_held(host: AdmittedMegaRacHost, password_file: NonEmptyStr, run_id: NonEmptyStr, paths: KvmObserverProbePaths) -> KvmProbeHeldRun
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_megarac_kvm_observer_observe", decl_name: "megarac_kvm_observer_observe"),
+    decl_ref(module_path: "gunbc.machine_intake.megarac_kvm_observer_observe", decl_name: "megarac_kvm_observer_observe"),
   ]
 {
   let attempt = megarac_kvm_observer_probe_attempt(run_id: run_id)
@@ -179,7 +179,7 @@ fn megarac_kvm_observer_observe_held(host: AdmittedMegaRacHost, password_file: N
 // managed host's row to it; it returns a ProcessExit, never a carrier.
 fn megarac_kvm_observer_observe(host: AdmittedMegaRacHost, password_file: NonEmptyStr, run_id: NonEmptyStr, paths: KvmObserverProbePaths) -> ProcessExit
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_kvm_observer_observe", decl_name: "mtcollins1_kvm_observer_observe_wet"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_kvm_observer_observe", decl_name: "mtcollins1_kvm_observer_observe_wet"),
   ]
 {
   match kvm_observer_acquire_unit_hold(host: admitted_megarac_host_identity(host: host), run_id: run_id) {
@@ -250,13 +250,13 @@ fn kvm_probe_seat_gap_from_journal(journal: KvmJournalRead, process: OwnedReleas
 // THE always() RELEASE (a separate step after the probe's, run whatever the probe step did: success,
 // failure, cancel or its own timeout). First the observer process this run started, by its recorded
 // (pid, start time) -- so the viewer seat and the web session it holds are let go -- then the unit hold
-// on `host`, only if THIS run holds it (gunbc.managed_host_unit_hold kvm_observer_release_unit_hold). A
+// on `host`, only if THIS run holds it (gunbc.host.managed_host_unit_hold kvm_observer_release_unit_hold). A
 // probe that finished cleanly left nothing, and both halves report that as a no-op. It fails loudly only
 // when something this run owns stays held. It contacts no controller, so it takes the host's identity
 // rather than an admitted carrier: a release must still run when the host no longer admits the probe.
 fn megarac_kvm_observer_release(host: HostIdentity, run_id: NonEmptyStr, paths: KvmObserverProbePaths) -> ProcessExit
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_kvm_observer_observe", decl_name: "mtcollins1_kvm_observer_release_wet"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_kvm_observer_observe", decl_name: "mtcollins1_kvm_observer_release_wet"),
   ]
 {
   let dir = megarac_kvm_observer_dir(paths: paths, attempt: megarac_kvm_observer_probe_attempt(run_id: run_id))

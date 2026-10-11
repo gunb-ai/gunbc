@@ -19,7 +19,7 @@ import gunbc.session_reservation_policy {
   SessionReservationBytesResolution,
   ReservationBytes, ReservationBytesNotApplicable, ReservationBytesUnestablished,
 }
-import gunbc.ci_floor_measurement {
+import gunbc.ci.ci_floor_measurement {
   OomdEnforcementEvidence,
   OomdEnforced,
   OomdUnverified,
@@ -27,7 +27,7 @@ import gunbc.ci_floor_measurement {
   CapEffective,
   CapUnbounded,
 }
-import extdeps.apt { package_systemd_oomd_defaults }
+import extdeps.package_managers.apt { package_systemd_oomd_defaults }
 import extdeps.systemd.oomd {
   OomdGlobalConfig,
   oomd_default_global_config,

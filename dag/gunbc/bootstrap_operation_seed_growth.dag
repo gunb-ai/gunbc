@@ -2,7 +2,7 @@ module gunbc.bootstrap_operation_seed_growth
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.seed_growth { SeedGrowthJustification }
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 
 // ENUMERATED BOOTSTRAP RESIDUE, at declaration grain. This is reducible debt, never host physics.
 // Purpose: cross the frozen seed/successor import-closure boundary without importing or mirroring

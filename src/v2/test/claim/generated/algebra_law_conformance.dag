@@ -1,4 +1,4 @@
-module v2.test.generated.algebra_law_conformance
+module v2.test.claim.generated.algebra_law_conformance
 
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }

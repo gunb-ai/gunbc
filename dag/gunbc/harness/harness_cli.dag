@@ -3,7 +3,7 @@ module gunbc.harness.harness_cli
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
 import std.nat { Nat, nat_range_inclusive }
 import std.checked_arithmetic { checked_int_to_nat }
-import gunbc.fabric_event_log_host { now_epoch_seconds }
+import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import product.capacity.event_chain { PartitionId }
 import extdeps.deepseek.deepseek_v4 { DeepseekV4ReasoningMode, DeepseekV4ThinkMax }
 import gunbc.harness.harness_reasoning_wire { HarnessReasoningLevel, ReasoningMaximum, harness_reasoning_level_wire }
@@ -698,7 +698,7 @@ fn harness_worker_system_prompt_at(worktree: String, repo_root: String, gunbc_pr
 // each step, so the total wall bound grows with the count rather than being replaced by it.
 data harness_worker_step_budget: Int = harness_round_budget_steps
 
-// THE SEAT THIS PROCESS BOUND, NAMED FOR THE PER-ATTEMPT METERING (gunbc.roadmap_attempt_metering).
+// THE SEAT THIS PROCESS BOUND, NAMED FOR THE PER-ATTEMPT METERING (gunbc.roadmap.roadmap_attempt_metering).
 // A turn whose seat cannot be named does not run: the seat is released and the process exits with
 // the write's cause, because metering an unnamed seat would leave its held time unattributable.
 type HarnessSeatPointerWrite
@@ -725,7 +725,7 @@ fn harness_seat_pointer_refused_exit(binding: HarnessSeatBinding, detail: String
 // satisfies the node is decided by the belt's pinned verification against the attempt head, which
 // is the separation DCH-2 requires and the reason there is nothing here that inspects the diff.
 // THE ATTEMPT IDENTITY ARRIVES MINTED, because it is consumed as a PATH SEGMENT by the fleet ssh
-// context (gunbc.fleet_known_hosts_anchor fleet_ssh_attempt_identity refuses anything that is not
+// context (gunbc.fleet.fleet_known_hosts_anchor fleet_ssh_attempt_identity refuses anything that is not
 // a safe segment) as well as by the seat ledger. Building it here from the worktree and events
 // paths -- both absolute -- made every bind on a host that needs the fleet context fail before any
 // ssh leg: measured 2026-09-16 on srv2, "attempt identity ... is not a safe path segment". The

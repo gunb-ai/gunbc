@@ -1,4 +1,4 @@
-module gunbc.host_identity_converge
+module gunbc.host.host_identity_converge
 
 import std.types { String, NonEmptyStr, Bool }
 import std.access { AccessDecision, Deny }
@@ -11,7 +11,7 @@ import std.effects {
   IdempotencyEvidence,
   LatticeEffect,
 }
-import gunbc.host_effect {
+import gunbc.host.host_effect {
   HostEffect,
   SetHostnameCas,
   NodeControlPlane,
@@ -19,13 +19,13 @@ import gunbc.host_effect {
   HostEffectIntent,
   HostEffectEvidence,
 }
-import gunbc.host_effect_realize { host_effect_apply_gated }
-import gunbc.host_identity_observation {
+import gunbc.host.host_effect_realize { host_effect_apply_gated }
+import gunbc.host.host_identity_observation {
   HostIdentityObservation,
   host_identity_observation_apply,
   host_identity_observation_from_apply,
 }
-import gunbc.host_identity_knob {
+import gunbc.host.host_identity_knob {
   HostIdentityLeafVerdict,
   host_identity_patch_from_intents,
 }
@@ -40,8 +40,8 @@ import std.change {
 }
 import gunbc.deployed_intent_v0 { DeployedIntentV0, deployed_intent_observed_short_hostname }
 import gunbc.deployed_intent_v1 { DeployedIntentV1 }
-import gunbc.host_identity_access { host_identity_srv1_access, host_identity_hostnamectl_path }
-import gunbc.ci_deploy_access {
+import gunbc.host.host_identity_access { host_identity_srv1_access, host_identity_hostnamectl_path }
+import gunbc.ci.ci_deploy_access {
   DeployAccess,
   DeployAccessActor,
   deploy_access_decision_reason,

@@ -15,7 +15,7 @@ data exact_duplicate_match_arm_not_refused: RecurringFailureMode = RecurringFail
 
     "THE SPECIMEN IS MINE AND IS MEASURED (gunbc#9981, 2026-09-03).",
 
-    "`probe_owner_is_wet_lib_module` in `v2.test.claim.self_host.stage0_executable_assembly_test` carried `WetActuatorLibModuleOwner` twice -- once as the matching arm binding `module_basename` and `declaration_route`, and again in the trailing list of `=> false` arms, where I had added it while enumerating the coproduct for exhaustiveness.",
+    "`probe_owner_is_wet_lib_module` in `v2.test.claim.self_host.stage0_executable_assembly` carried `WetActuatorLibModuleOwner` twice -- once as the matching arm binding `module_basename` and `declaration_route`, and again in the trailing list of `=> false` arms, where I had added it while enumerating the coproduct for exhaustiveness.",
 
     "The compiler accepted it in every lane it reached.",
 

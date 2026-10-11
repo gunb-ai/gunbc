@@ -1,4 +1,4 @@
-module synthetic.parse_mechanism.nest_d2
+module v2.test.fixture.parse_mechanism.nest_d2
 
 
 type Bit = B0 | B1

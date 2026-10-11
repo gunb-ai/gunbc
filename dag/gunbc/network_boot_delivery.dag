@@ -19,8 +19,8 @@ import extdeps.provisioning.dhcp_client_arch {
 }
 import extdeps.provisioning.network_boot { ClientNetworkBootMode, DhcpBootDirection, UefiHttpBoot, UefiPxe, LegacyBiosPxe }
 import product.placement_supply { SiteIdentity, site_identity_eq }
-import gunbc.machine_intake_access { BootDeliveryTarget, same_boot_delivery_target }
-import gunbc.machine_intake_subject { UnitKey, IntakeAttemptId }
+import gunbc.machine_intake.access { BootDeliveryTarget, same_boot_delivery_target }
+import gunbc.machine_intake.subject { UnitKey, IntakeAttemptId }
 
 // THE NETWORK-BOOT ESTABLISHMENT VOCABULARY, in its own authority (machine-intake ruling 3,
 // namespace ruling). Its four evidence axes have independent producers — client firmware mode,
@@ -36,7 +36,7 @@ import gunbc.machine_intake_subject { UnitKey, IntakeAttemptId }
 //
 // So a network-boot delivery is established only by naming every requirement it rests on. An
 // authored chain or serve plan is NOT such an establishment: gunbc.os_install
-// srv3_pxe_network_boot_chain and gunbc.bmc_netboot_serve srv4_bmc_netboot_serve_plan describe
+// srv3_pxe_network_boot_chain and gunbc.bmc.bmc_netboot_serve srv4_bmc_netboot_serve_plan describe
 // what a network boot WOULD look like, and neither is an observation that the host performed
 // one. Citing them as evidence would be the same substitution one layer up.
 type NetworkBootRequirement

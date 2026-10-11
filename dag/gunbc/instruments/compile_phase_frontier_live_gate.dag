@@ -1,11 +1,11 @@
-module tools.compile_phase_frontier_live_gate
+module gunbc.instruments.compile_phase_frontier_live_gate
 
 import std.types { Bool, Int, String, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.rustc
-import extdeps.rustc { rustc_version_verbose_release_line, rustc_version_verbose_field }
-import extdeps.cargo_build
+import extdeps.rust.rustc
+import extdeps.rust.rustc { rustc_version_verbose_release_line, rustc_version_verbose_field }
+import extdeps.rust.cargo_build
 import gunbc.self_host_compile_phase_frontier {
   TargetPinnedOnInvocation,
   CompilePhaseInvocation,
@@ -22,7 +22,7 @@ import gunbc.self_host_compile_phase_live_gate {
   live_tree_verdict_for_measurement,
   live_frontier_verdict_text
 }
-import tools.emission_entry_instrument {
+import gunbc.instruments.emission_entry_instrument {
   EmissionMeasurement,
   measure_entry_emission,
   emission_report_text
@@ -37,7 +37,7 @@ import tools.emission_entry_instrument {
 //     --arg report=/tmp/live-frontier.tsv
 //
 // THE EXIT STATUS ANSWERS ABOUT THE SUBJECT, WHICH IS THE ONE PLACE THIS DIFFERS FROM THE
-// INSTRUMENT IT CALLS. `tools.emission_entry_instrument` `measure` deliberately reports whether the
+// INSTRUMENT IT CALLS. `gunbc.instruments.emission_entry_instrument` `measure` deliberately reports whether the
 // INSTRUMENT completed, because an observation that found errors is a successful observation. A
 // gate is the other question, so here a regression, a non-validating series and a measurement that
 // could not be taken ALL exit nonzero. Nothing about being unable to measure widens to a pass.
@@ -52,13 +52,13 @@ import tools.emission_entry_instrument {
 // host triple while the measured `cargo check` passed no `--target`, so the environment could select
 // another target through `CARGO_BUILD_TARGET` or cargo configuration and the receipt would still
 // record the host. Two censuses taken under different effective targets then compare as equal epochs
-// and this gate could report Held across them. `tools.emission_entry_instrument measure_cargo_half`
+// and this gate could report Held across them. `gunbc.instruments.emission_entry_instrument measure_cargo_half`
 // now PINS the triple on the invocation and refuses when it cannot read one, so the host reading
 // below names the target that was actually compiled rather than assuming the two agree. Found by
 // review on gunbc#9857.
 data live_gate_invocation_profile: String = "check/dev"
 
-data live_gate_entry: String = "src/v2/compiler/00_compile.dag"
+data live_gate_entry: String = "src/v2/compiler/compile.dag"
 
 type ToolchainReadingAttempt
   = ToolchainRead { reading: LiveToolchainReading }

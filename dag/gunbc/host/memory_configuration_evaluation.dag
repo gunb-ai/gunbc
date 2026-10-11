@@ -1,4 +1,4 @@
-module gunbc.memory_configuration_evaluation
+module gunbc.host.memory_configuration_evaluation
 
 import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
 import std.types { Bool, List, NonEmptyStr }
@@ -10,17 +10,17 @@ import extdeps.ampere.mt_collins_product_brief.memory_population {
   MtCollinsPopulationRoleRefusal, MtCollinsChannelPopulationRoleStanding,
   PopulationRolesResolved, PopulationRolesRefused, mt_collins_channel_population_roles, mt_collins_socket_dimm_sizes_supported,
 }
-import gunbc.mtcollins_memory_placement { mtcollins_memory_position }
+import gunbc.host.mtcollins_memory_placement { mtcollins_memory_position }
 import std.goal_assessment { GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused, ObservationEstablished, ObservationRefused }
-import gunbc.memory_configuration {
+import gunbc.host.memory_configuration {
   CatalogMemoryModule, ObservedMemoryModule, MemoryCatalogBinding, memory_module_capacity,
   MemoryConfiguration, MemoryPosition, PositionedMemoryModule,
   MemoryOperatingObligation, MemoryPlacement, MemorySocketCapacity, MemoryFirmwareScopeCoverage, MemoryPackageMixture, MemoryClassSupport,
   MemorySpecificPartQualification, MemoryTraining, MemoryBoot, MemoryTrainingFailureScreen,
   AdditionalMemoryRequirement, memory_operating_obligations,
 }
-import gunbc.memory_observation { MemoryEvaluationEvidence, MemoryMixtureFinding, memory_collector_refusal, memory_capture_covers_population }
-import gunbc.host_memory_qualification {
+import gunbc.host.memory_observation { MemoryEvaluationEvidence, MemoryMixtureFinding, memory_collector_refusal, memory_capture_covers_population }
+import gunbc.host.host_memory_qualification {
   HostMemoryStanding, PartImplication, PartEvidenceUnresolved, PartNotImplicated,
   PartSampleQualificationRequired, PartImplicatedByFailingStep, part_implication,
   ClassSupportedByBoard, ClassUnsupportedByBoard, ClassSupportUnobserved,

@@ -1,4 +1,4 @@
-module tools.cross_pr_contradiction_instrument
+module gunbc.instruments.cross_pr_contradiction_instrument
 
 import std.types { Bool, FilePath, GitRef, Int, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }

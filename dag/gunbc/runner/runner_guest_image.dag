@@ -1,6 +1,6 @@
-module gunbc.runner_guest_image
+module gunbc.runner.runner_guest_image
 
-import gunbc.microvm_guest_artifacts {
+import gunbc.runner.microvm_guest_artifacts {
   GuestArtifactDigestProvenance, PublishedByUpstream, FirstObservedOnFetch,
   GuestArtifactIntegrity, ArtifactDigestPinned, ArtifactDigestUnpinned, ArtifactDigestNotPinnable,
   GuestBaseArtifact, runner_guest_kernel_artifact, runner_guest_base_rootfs_artifact,
@@ -52,7 +52,7 @@ import extdeps.systemd.unit_file {
   ServiceStandardOutput, ServiceStandardError, OutputJournalAndConsole,
   WantedBy, serialize_systemd_unit_file, serialize_systemd_drop_in, ServiceTasksMax,
 }
-import gunbc.runner_microvm {
+import gunbc.runner.runner_microvm {
   RunnerGuestImage, gunbc_runner_guest_image, gunbc_runner_microvm_task_ceiling,
   JitDriveDeviceResolution, JitDriveDevice, JitDriveNotAttached, jit_drive_guest_device,
 }
@@ -63,7 +63,7 @@ import gunbc.command_runner {
 data runner_guest_image_disposition: ConstructionMechanism = SingleAuthority
 
 // THE GUEST IMAGE AS A BUILT ARTIFACT, WHICH IS A DIFFERENT FACT FROM THE GUEST IMAGE AS AN
-// IDENTITY. gunbc.runner_microvm RunnerGuestImage already says WHAT makes two images the same image
+// IDENTITY. gunbc.runner.runner_microvm RunnerGuestImage already says WHAT makes two images the same image
 // -- the distribution, its release series, the architecture and the cited runner release. It says
 // nothing about how bytes answering to that identity come to exist, and it must not: a build is a
 // procedure over a host, and an identity that carried one would be two facts in one row.
@@ -181,7 +181,7 @@ data runner_guest_agent_drop_in_suffix: String = ".conf"
 
 // THE CHANNEL IS THE SERIAL CONSOLE, NOT vsock, AND THE CHOICE IS WHAT THE HOST ALREADY READS.
 // extdeps.virtualization.firecracker delivers ttyS0 on the VMM's stdout, and
-// gunbc.runner_microvm_boot_probe already judges a boot from exactly that stream. vsock would need
+// gunbc.runner.runner_microvm_boot_probe already judges a boot from exactly that stream. vsock would need
 // a second device in the VM configuration, a listener on the host side and a writer in the guest --
 // three new mechanisms to carry four lines -- and it would still not replace the console, which is
 // where the kernel and systemd report a failure that happens before any agent runs.
@@ -285,7 +285,7 @@ fn guest_observation_of_console_line(line: String) -> GuestObservationRead {
   }
 }
 
-// THE WHOLE CONSOLE, READ LINE BY LINE, AS THE HOST'S ONE READER. gunbc.runner_microvm_boot_probe
+// THE WHOLE CONSOLE, READ LINE BY LINE, AS THE HOST'S ONE READER. gunbc.runner.runner_microvm_boot_probe
 // consumes it today to require GuestBooted; the lifecycle controller consumes the same fold for the
 // rest.
 fn guest_console_observations(console: String) -> List<GuestObservationKind> {
@@ -298,7 +298,7 @@ fn guest_console_observations(console: String) -> List<GuestObservationKind> {
 }
 
 // THE LABELS A READER OUTSIDE THIS MODULE JOINS ON, DERIVED HERE FROM THE CONSTRUCTORS. The host's
-// bring-up progression (gunbc.runner_microvm_lifecycle) names its own phases GuestBooted and
+// bring-up progression (gunbc.runner.runner_microvm_lifecycle) names its own phases GuestBooted and
 // RunnerListening, and a closure cannot hold two types with the same variant names, so that module
 // cannot import GuestObservationKind. It reads these instead: the ordered labels of the console's
 // observations, and the label of each kind it maps -- all three computed by this module's own
@@ -329,7 +329,7 @@ fn guest_console_carries(console: String, kind: GuestObservationKind) -> Bool {
 // credential would be the out-of-band actuation DESIGN section 6 names, so the run waits for the
 // real path.
 data guest_agent_real_job_acceptance_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: gunbc.runner_guest_image runner_guest_agent_unit, credential arm. TRIGGER: the modeled host path -- gunbc.github_effect_perform perform_organization_jit_mint and gunbc.runner_attempt_launch stage_bootstrap_device, which writes gunbc.runner_microvm jit_drive_content to the attempt's credential drive -- is executed by the lifecycle controller (gunbc.github_effect_perform jit_mint_lifecycle_controller_consumer_frontier). SUFFICIENT FOR deleting this row only together with one real job run on srv1 under a test label whose console shows GuestBooted, RunnerStarted, the listener's Listening line, RunnerExited, and a VMM that exited. NOT satisfied by the boot probe, by a hand-staged credential, or by a floor-label job." as NonEmptyStr,
+  description: "NAMED CONSUMER: gunbc.runner.runner_guest_image runner_guest_agent_unit, credential arm. TRIGGER: the modeled host path -- gunbc.github_effect_perform perform_organization_jit_mint and gunbc.runner.runner_attempt_launch stage_bootstrap_device, which writes gunbc.runner.runner_microvm jit_drive_content to the attempt's credential drive -- is executed by the lifecycle controller (gunbc.github_effect_perform jit_mint_lifecycle_controller_consumer_frontier). SUFFICIENT FOR deleting this row only together with one real job run on srv1 under a test label whose console shows GuestBooted, RunnerStarted, the listener's Listening line, RunnerExited, and a VMM that exited. NOT satisfied by the boot probe, by a hand-staged credential, or by a floor-label job." as NonEmptyStr,
 )
 
 // --- the agent ---
@@ -341,7 +341,7 @@ data guest_agent_real_job_acceptance_frontier: DissolutionCondition = unbound_di
 // service's exit, whatever the code. `Restart=no` is written rather than defaulted so a later author
 // adding a restart policy has to delete a declaration to do it.
 //
-// THE CREDENTIAL IS READ BY systemd FROM THE READ-ONLY DEVICE (gunbc.runner_microvm
+// THE CREDENTIAL IS READ BY systemd FROM THE READ-ONLY DEVICE (gunbc.runner.runner_microvm
 // jit_drive_guest_device, passed in as credential_device) as an environment file whose single assignment is the listener's own
 // argument variable. No `--jitconfig <blob>` appears on any command line.
 fn runner_guest_version_readback_command() -> NonEmptyStr {
@@ -369,7 +369,7 @@ fn runner_guest_listener_command() -> NonEmptyStr {
 // THE VERSION READBACK STAYS, AND IT IS THE runner_first_job_receipt LESSON. The Mt. Collins canary
 // ran 2.337.0 while the model said 2.336.0 and nothing here caught it. `Runner.Listener --version`
 // prints the release actually baked into the image on the console the host reads, where
-// gunbc.runner_microvm_boot_probe boot_probe_verdict compares it with the modeled release.
+// gunbc.runner.runner_microvm_boot_probe boot_probe_verdict compares it with the modeled release.
 // `poweroff-force` skips the orderly stop of other units but still kills every process and unmounts
 // before powering off -- a one-job VM has nothing else whose orderly stop matters.
 data runner_guest_agent_end_action: SystemdUnitStateAction = UnitActionPoweroffForce
@@ -378,7 +378,7 @@ data runner_guest_agent_end_action: SystemdUnitStateAction = UnitActionPoweroffF
 // ACTUALLY LIVE. In the lifecycle-controller topology the host cell's TasksMax bounds only the
 // VMM's threads; the runner and everything it spawns are behind the guest kernel, so the ceiling is
 // re-applied on this unit as its own TasksMax= -- which systemd realizes as pids.max on the unit's
-// cgroup -- reading gunbc.runner_microvm gunbc_runner_microvm_task_ceiling, the one row. It is NOT
+// cgroup -- reading gunbc.runner.runner_microvm gunbc_runner_microvm_task_ceiling, the one row. It is NOT
 // kernel.pid_max: that is the PID-number wrap ceiling, a different fact. READBACK IS A FRONTIER:
 // the value applied inside the guest is observable only from inside it, and no guest event
 // establishes anything on the host, so the receipt that pids.max holds what this directive says
@@ -559,7 +559,7 @@ fn runner_guest_tree_commands(root: String, image: RunnerGuestImage, artifact: A
 }
 
 // THE GUEST'S RESOLVER IS THE KERNEL'S dns0, READ THROUGH ONE LINK, AND THE LINK IS WHAT UPSTREAM
-// DOCUMENTS. The host boots the guest with `ip=...:<dns0>` (gunbc.runner_microvm_network
+// DOCUMENTS. The host boots the guest with `ip=...:<dns0>` (gunbc.runner.runner_microvm_network
 // runner_slot_guest_ip_boot_arg, whose dns0 is runner_microvm_guest_resolver -- the one address the
 // egress grant admits on port 53). The kernel does not write /etc/resolv.conf; it exports dns0 to
 // /proc/net/pnp under the prefix "nameserver " and says in its own words that /etc/resolv.conf is

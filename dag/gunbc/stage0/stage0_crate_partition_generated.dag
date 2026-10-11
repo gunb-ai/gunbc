@@ -1,4 +1,4 @@
-module gunbc.stage0_crate_partition_generated
+module gunbc.stage0.stage0_crate_partition_generated
 
 import std.types { Bool, List, String }
 

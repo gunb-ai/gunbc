@@ -131,7 +131,7 @@ type HttpMethodParse
 // selects from the SAME rows backward -- the structural inverse, not a second emitter).
 //
 // IT WAS SPELLED THREE TIMES BEFORE THIS (review 68357): gunbc.node_http_server_emit
-// emit_http_method_label, gunbc.roadmap_serve http_method_label_join, and -- copied out of the
+// emit_http_method_label, gunbc.roadmap.roadmap_serve http_method_label_join, and -- copied out of the
 // roadmap during the approval-broker extraction -- gunbc.auth.approval_broker_serve
 // broker_http_method_label_join. All three inlined the same seven arms while the forward reading
 // was already consumed from here, in the same files. The broker's copy was the sharpest: that
@@ -545,7 +545,7 @@ fn serve_select_route<H>(table: ServedRouteTable<H>, method: HttpMethod, path: S
 
 // ── Building a table from authored route literals, fail-closed ───────────────────────────────
 // THIS FOLD USED TO HAVE ONE INSTANTIATION AND WAS SPELLED AT IT. It lived in
-// gunbc.roadmap_serve, monomorphic over that module's handler vocabulary, and the moment a second
+// gunbc.roadmap.roadmap_serve, monomorphic over that module's handler vocabulary, and the moment a second
 // serving process needed the same fail-closed construction the choice was to copy it or to lift
 // it. Copying would have been DESIGN section 2's duplicated work at the exact seam where a divergence
 // is invisible: two builds agree about malformed literals until one of them is edited.

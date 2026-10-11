@@ -23,7 +23,7 @@ import extdeps.llm.anthropic_messages_api {
   ModelContextWindowExceeded,
 }
 import extdeps.ollama.api { ollama_default_port }
-import gunbc.fleet_intent_network { host_lan_address }
+import gunbc.fleet.fleet_intent_network { host_lan_address }
 import gunbc.serving.serving_enrollment { ServingRouteEndpoint, serving_route_endpoint_wire }
 import product.host_identity { HostIdentity }
 
@@ -631,7 +631,7 @@ fn harness_backend_url(address: String, shape: HarnessWireShape) -> String {
 // says outright that this is an observation with a shelf life. Selecting a backend from observed
 // serving standing is DCH-0's subject and dissolves all of these functions when it lands.
 //
-// WHY NOT AN ENDPOINT ROW BESIDE srv5/srv6. In gunbc.fleet_intent_network, membership in
+// WHY NOT AN ENDPOINT ROW BESIDE srv5/srv6. In gunbc.fleet.fleet_intent_network, membership in
 // `endpoints` IS enrollment -- that module says so about itself -- and enrolling srv7/srv8 needs a
 // fact that does not exist in data: WHICH unit takes which slot. The second pair is described in
 // prose there as spark-c2b1 at .232 and spark-ac79 at .233, but unlike srv5/srv6 -- whose

@@ -131,7 +131,7 @@ data host_image_store: StoreStanding = StoreStanding {
 // THE TERMINAL FORM IS THE BUILD PUBLISHING ITS OWN OUTPUT under a digest-derived name, with the
 // human label carried as an attribute and the retention rule evaluated on every publish rather than
 // when someone remembers. That is the same shape the rest of this lane keeps arriving at: the
-// hand-built image tree under /var/tmp is parallel authority to gunbc.runner_guest_image, and this
+// hand-built image tree under /var/tmp is parallel authority to gunbc.runner.runner_guest_image, and this
 // store is parallel authority to whatever will eventually own artifact publication.
 data publication_standing: NonEmptyStr = "publication is still an out-of-band copy performed by an author; the reap manages deletion only, and a store with modeled deletes and unmodeled writes is half unmanaged"
 

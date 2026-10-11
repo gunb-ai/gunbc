@@ -548,7 +548,7 @@ fn emit_produced_module_step(
 // CONS-LIST SPELLING of a string rather than the native one: `==` and `concat` still behave, which
 // is why every golden over this fold stayed green for as long as goldens were all that read it --
 // but a builtin that requires a native string REFUSES it. Measured 2026-09-10 as `split expects a
-// string, got Variant` from v2.test.self_host.stage0_production_target's two contains-controls,
+// string, got Variant` from v2.test.claim.self_host.stage0_production_target's two contains-controls,
 // the first consumers to read this fold's output through `split`. Nothing on the production door
 // reached this fold until the door started routing every nonempty population through it, so the
 // defect was latent rather than new, and the equality-only readers could never have found it.

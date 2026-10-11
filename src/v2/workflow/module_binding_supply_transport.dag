@@ -4,9 +4,9 @@ import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc
 import extdeps.shell
-import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import std.logic { Bool }
-import tools.host_prelude {
+import gunbc.instruments.host_prelude {
   ClaimRun,
   WitnessBinReady,
   WitnessBinRefused,
@@ -33,9 +33,9 @@ Per-run mktemp plus unconditional cleanup makes the collision UNWRITABLE rather 
 data mbs_source_root: String = "src/v2"
 data mbs_oracle_scan_dir: String = "src/v2/test/fixture/program_assembly"
 data mbs_overlay_template: String = "/target/module-binding-supply-XXXXXX"
-data mbs_entry: String = "src/v2/test/claim/long/module_binding_host_consistency_test.dag"
+data mbs_entry: String = "src/v2/test/claim/long/module_binding_host_consistency.dag"
 
-data mbs_layout_entry: String = "src/v2/test/claim/self_host/crate_layout_witness_test.dag"
+data mbs_layout_entry: String = "src/v2/test/claim/self_host/crate_layout_witness.dag"
 
 data mbs_layout_claims_note: String = "The crate-layout witnesses run HERE, in the same overlay, because task 3 made them projections off the derived binding index instead of readers of a 27-row hand table. They need the real index, and the real index exists only inside this overlay — so this transport is their executing consumer.
 

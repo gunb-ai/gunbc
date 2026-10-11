@@ -1,10 +1,10 @@
-module gunbc.machine_intake_mtcollins1_spare_screen_prediction
+module gunbc.machine_intake.mtcollins1_spare_screen_prediction
 
 import std.types { Bool, CommitSha, FilePath, List, Milliseconds, NonEmptyStr }
 import std.claim_evidence { Claim, ClaimId, RecordedFact, RecordedFactId }
 import std.decl_ref { decl_ref }
 import gunbc.cli_wire { CliWireResponse }
-import gunbc.machine_intake_predictive_review_render { predictive_review_cli }
+import gunbc.machine_intake.predictive_review_render { predictive_review_cli }
 import std.measure { Milliwatt, milliwatt, milliwatt_count }
 import extdeps.ampere.mt_collins_product_brief.memory_population {
   MtCollinsDimmPopulationRow, mt_collins_population_16_dimms,
@@ -93,7 +93,7 @@ fn spare_screen_archive_receipt() -> PostOutcomePredictionArchive {
     artifact: spare_screen_prediction_artifact,
     archive_ref: "refs/tags/evidence/mtcollins1-spare-screen-a47ce298890",
     identity_history: concat("Originally cited identity was detached and unpublished; amended published identity is ", spare_screen_identity_correction.amended_published_commit),
-    report: decl_ref(module_path: "gunbc.machine_intake_mtcollins1_spare_screen_prediction", decl_name: "spare_screen_identity_correction"),
+    report: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_spare_screen_prediction", decl_name: "spare_screen_identity_correction"),
   }
 }
 
@@ -108,7 +108,7 @@ data original_screen_configuration: SpareScreenConfiguration = SpareScreenConfig
 }
 
 data spare_screen_testing_obligation: AdversarialTestingObligation = AdversarialTestingObligation {
-  owner: decl_ref(module_path: "gunbc.machine_intake_mtcollins1_spare_screen_prediction", decl_name: "spare_screen_prediction_review"),
+  owner: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_spare_screen_prediction", decl_name: "spare_screen_prediction_review"),
   next_discriminator: "Commit the next exact module selection and its falsifier before changing hardware; vary one module against the reported original-set baseline. Retain independently witnessed recording/start/outcome order. A faulty spare and an intolerant cross-channel combination remain alternatives; sixteen simultaneous substitutions identify neither. Re-test the narrowed original-set prediction rather than treating its prior clean run as a prospective test of the new revision.",
 }
 
@@ -129,8 +129,8 @@ fn spare_screen_prediction() -> Prediction<SpareScreenConfiguration, SpareScreen
   Prediction {
     claim: Claim {
       id: "mtcollins1-supported-shape-suffices-v1" as ClaimId,
-      subject: decl_ref(module_path: "gunbc.machine_intake_mtcollins1_access_observation", decl_name: "mtcollins1_identity"),
-      target: decl_ref(module_path: "gunbc.machine_intake_mtcollins1_spare_screen_prediction", decl_name: "SpareScreenOutcome"),
+      subject: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_access_observation", decl_name: "mtcollins1_identity"),
+      target: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_spare_screen_prediction", decl_name: "SpareScreenOutcome"),
       proposition: TrainingAndPostObserved,
       scope: [PredictionRestriction {
         reason: "The same Table 11 16-DIMM shape: odd connectors, one module per channel, eight channels per socket.",
@@ -171,7 +171,7 @@ fn spare_screen_model_from_report(report: SpareScreenOutcomeReport) -> Predictiv
         value: spare_screen_restart_outcome(report: report, window: model.prediction.claim.bound),
       },
       archive: spare_screen_archive_receipt(),
-      source: decl_ref(module_path: "gunbc.machine_intake_mtcollins1_spare_screen_prediction", decl_name: "spare_screen_outcome_report"),
+      source: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_spare_screen_prediction", decl_name: "spare_screen_outcome_report"),
       discrimination: ConfoundedMechanisms {
         first_confound: "Sixteen modules change at once; the committed prediction explicitly says failure does not identify which module.",
         further_confounds: [

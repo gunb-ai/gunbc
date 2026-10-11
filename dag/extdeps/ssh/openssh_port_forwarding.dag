@@ -78,7 +78,7 @@ type ForwardDirection
 // has made is not a request that was refused, and collapsing them would report an unmeasured relay
 // as a refusing one -- a wrong answer wearing conservative clothes.
 //
-// THE REPOSITORY ALREADY HOLDS A MEASURED PROHIBITION. gunbc.fleet_reach records srv2 refusing TCP
+// THE REPOSITORY ALREADY HOLDS A MEASURED PROHIBITION. gunbc.fleet.fleet_reach records srv2 refusing TCP
 // forwarding, which is why the srv3 ProxyJump reach realizes by NESTED EXEC rather than -J. That is
 // the counter-example that makes asking mandatory.
 // WHO ASKED, DECOMPOSED RATHER THAN LEFT AS A STRING. The subject's principal was a bare

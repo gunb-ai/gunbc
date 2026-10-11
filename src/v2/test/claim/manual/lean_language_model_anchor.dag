@@ -1,4 +1,4 @@
-module v2.test.manual.lean_language_model_anchor
+module v2.test.claim.manual.lean_language_model_anchor
 
 import v2.extdeps.languages.lean { lean_language_model, lean_inhabitant_int32_node }
 

@@ -75,7 +75,7 @@ de-fork — that sequence, not the {node,coercion} exemption, gates activation.
 The machinery to import `dag/` from `src/v2/` is **wired and on**, proven by execution:
 
 - Grounded `source_root` tagging landed (#5473 `source_root: SourceRootRef` on `DagSourceReadWitness`; #5486 grounded cross-tree admission — the QualifiedName-prefix fallback is **deleted**, and `tree_fundamentality_order(V2Tree, DagTree) = MoreFundamental` is derived, not guessed).
-- `src/v2/compiler/03_name_resolve.dag` no longer carries `FundamentalityUnknown`; `admit_import_entry` calls the grounded `cross_tree_edge_decision`.
+- `src/v2/compiler/name_resolve.dag` no longer carries `FundamentalityUnknown`; `admit_import_entry` calls the grounded `cross_tree_edge_decision`.
 - **Activation arbiter witness** (#5506, `src/v2/test/claim/cross_tree_real_ingest_activation_test.dag`) feeds a host-tagged `SourceRootIngest` through the *real* grounding machinery (`program_assembly_fold_ingest` builds the QN→`SourceRootRef` index; `source_root_set_from_ingest` builds the active-root set) and runs the real per-edge decision: v2→dag ⟹ `EdgeCrossAdmitted`, tags-reversed dag→v2 ⟹ `EdgeCrossDenied`. So cross-tree import is **live on main, carrier consumed, no operator flip pending**.
 - The source-root admission abs-vs-rel host bug (#5473's `source_root_ref_token_for_path`) that blocked the rust gate is **fixed** (#5504): file paths and `--source-root` values are grounded through `repo_relative_dag_path` before matching, so admission is invocation-independent.
 

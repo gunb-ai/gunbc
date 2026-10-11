@@ -48,17 +48,17 @@ import extdeps.llm.cursor_cli { CursorModelId, cursor_model_auto }
 import gunbc.cursor_harness_credential { cursor_api_key_harness_secret_ref }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import gunbc.claude_code_credential { claude_code_oauth_harness_secret_ref }
-import gunbc.roadmap_sizing {
+import gunbc.roadmap.roadmap_sizing {
   NodeSizing, NodeSizingDerivation, SizingDerived, SizingNotDerivable,
   IntricacyHigh, VolumeMedium,
 }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_capacity_control {
+import gunbc.fleet.fleet_capacity_control {
   fleet_capacity_admission, fleet_capacity_admission_in, fleet_capacity_admission_admits,
   HostCapacityWithdrawal, ProviderCapacityWithdrawal,
   withdrawn_hosts, withdrawn_providers,
 }
-import gunbc.roadmap_dashboard_instance {
+import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
   DashboardExistingProviderState,
   DashboardActuating,
@@ -87,7 +87,7 @@ import gunbc.provider_account {
 // function and recorded it on the receipt, and the note here claimed volume and intricacy never
 // flow into model or effort. The claim was true and the parameter was unread by every branch and by
 // every consumer of the receipt -- a passenger, which is the shape that lets a later edit quietly
-// start reading an authored guess. Sizing is derived now (gunbc.roadmap_sizing), and this module is
+// start reading an authored guess. Sizing is derived now (gunbc.roadmap.roadmap_sizing), and this module is
 // the consumer that legitimately wants one, because choosing an execution profile is exactly the
 // decision a size would inform. So the passenger becomes a DECLARED, TWO-ARM-HONEST input:
 // SizingProfileExpectation is either a derived cell or the explicit absence of one, and there is no
@@ -439,7 +439,7 @@ data dispatch_claude_default_credential_root: FilePath = "~/.claude" as FilePath
 // carries OfferClaude, appended AFTER Codex, credential claude_dispatch_credential(), at declared
 // inventory-unobserved standing. That standing admits no draw, so the automatic path still cannot
 // pick Claude; the only route that reaches it is the operator's explicit executor request
-// (gunbc.roadmap_dispatch_actuator DispatchExecutorRequest), which observes the credential first and
+// (gunbc.roadmap.roadmap_dispatch_actuator DispatchExecutorRequest), which observes the credential first and
 // selects over inventory_with_observed_standing. The custody file the attempt snapshots exists on
 // srv1 only, so the row is offered on srv1's live instance only.
 
@@ -1724,7 +1724,7 @@ fn resolved_process_fingerprint(resolved: ResolvedProviderSelection) -> NonEmpty
 }
 
 // THE PROJECTION THAT CLOSES THE DROP, sibling to resolved_process_fingerprint and to
-// gunbc.roadmap_dispatch_actuator dispatch_applied_effort. The actuator read applied_effort and
+// gunbc.roadmap.roadmap_dispatch_actuator dispatch_applied_effort. The actuator read applied_effort and
 // process_fingerprint off the receipt and NOTHING for the model, so a resolved selection reached
 // the spawn with its model gone; there was no projection to read, and the argv rows had no
 // parameter to read it into. Cursor's arm pins rather than defaulting because it always transmits

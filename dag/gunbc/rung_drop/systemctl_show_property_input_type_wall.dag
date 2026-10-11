@@ -35,8 +35,8 @@ data systemctl_show_property_input_type_wall: RungDrop = RungDrop {
     population: [
     "extdeps.systemd.systemctl ShowProperty",
     "extdeps.systemd.systemctl ShowUserProperty",
-    "gunbc.runner_microvm_lifecycle_realize observe_unit_attempt_invocation",
-    "gunbc.runner_microvm_lifecycle_realize observe_unit_exit_status",
+    "gunbc.runner.runner_microvm_lifecycle_realize observe_unit_attempt_invocation",
+    "gunbc.runner.runner_microvm_lifecycle_realize observe_unit_exit_status",
     "gunbc.live_deploy.unit_standing unit_standing_property",
     "gunbc.live_deploy.member_observe member_needs_daemon_reload",
     "gunbc.live_deploy.member_observe member_active_state",

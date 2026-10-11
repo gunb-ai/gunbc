@@ -916,7 +916,7 @@ fn registration_assessment_wire(a: GoalAssessment<GitHubAppId, RegistrationDevia
 fn app_control_plane_inspect_wet() -> ProcessExit {
   let header_file = shell.Env.Get(name: app_jwt_header_file_env_name)
   match header_file.value {
-    Absent => exit_failure(reason: "AppJwtHeaderFileMissing: GUNBC_APP_JWT_HEADER_FILE is absent -- GET /app and GET /app/hook/config authenticate as the APP and an installation access token reaches neither. The fleet-converge step mints a short-lived App JWT in-run from the gunbai-ci key (gunbc.ci_spec gunbc_ci_app_jwt_prelude); outside that step there is no credential to read")
+    Absent => exit_failure(reason: "AppJwtHeaderFileMissing: GUNBC_APP_JWT_HEADER_FILE is absent -- GET /app and GET /app/hook/config authenticate as the APP and an installation access token reaches neither. The fleet-converge step mints a short-lived App JWT in-run from the gunbai-ci key (gunbc.ci.ci_spec gunbc_ci_app_jwt_prelude); outside that step there is no credential to read")
     Present { value: jwt_header_file } => {
       let request = AppJwtReadRequest { jwt_header_file: jwt_header_file }
       let registration: RegistrationInspection = inspect_goal(

@@ -39,7 +39,7 @@ import std.types { Bool, Int, String }
 // THE RUNG IS `mitigatable` AND THE CEILING IS NAMED. This is an advisory reader over open pull
 // requests; it gates nothing and it cannot make the contradiction unwritable. The structural move
 // -- requiring every branch to be up to date with its base before merge, which makes the merged
-// tree the tree CI observed -- is a repository ruleset fact (`gunbc.repo_ruleset`), not an
+// tree the tree CI observed -- is a repository ruleset fact (`gunbc.repo.repo_ruleset`), not an
 // instrument, and it costs every branch a rebase and a full floor run before landing. That
 // tradeoff is an operator decision and is deliberately not taken here. NEXT-RUNG TRIGGER: that
 // ruleset decision.

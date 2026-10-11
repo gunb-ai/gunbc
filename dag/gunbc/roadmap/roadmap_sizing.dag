@@ -1,4 +1,4 @@
-module gunbc.roadmap_sizing
+module gunbc.roadmap.roadmap_sizing
 
 import std.types { String, Bool, NonEmptyStr, brand }
 
@@ -46,7 +46,7 @@ import std.types { String, Bool, NonEmptyStr, brand }
 //
 // WHAT THE DERIVER CONSUMES IS THE SUBJECT, AND NOTHING ELSE. derive_task_sizing takes a
 // SizingSubject: identity, title, description, exit criterion. An earlier draft said the deriver
-// would consume gunbc.roadmap_forecast's calibrated per-node work and dependency-closure facts;
+// would consume gunbc.roadmap.roadmap_forecast's calibrated per-node work and dependency-closure facts;
 // that is a DIFFERENT question and the confusion mattered. roadmap_forecast's own note calls
 // remaining-cost-to-complete a FOLLOW-ON DERIVED READ and says in terms that it is "never an
 // authored field on RoadmapNode or NodeSizing" -- so closure cost is computed FROM sizes and
@@ -82,7 +82,7 @@ type Volume
 
 // NodeSizing is now a RECORD carrying only size. The name is kept because the concept is the one
 // the coproduct used to hide; what left is everything that was never a size -- the repository and
-// the acceptance route, which are now gunbc.roadmap_model WorkItemDispatch, and the
+// the acceptance route, which are now gunbc.roadmap.roadmap_model WorkItemDispatch, and the
 // is-this-dispatchable-at-all discriminant, which was never sizing either.
 type NodeSizing {
   intricacy: Intricacy

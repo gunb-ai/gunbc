@@ -1,4 +1,4 @@
-module v2.test.nat_semiring.rung_8
+module v2.test.claim.nat_semiring.rung_8
 
 
 fn rung8_tier1_eval_run(claim: TestClaim) -> TestClaimRun<Node, RuntimeValue> {

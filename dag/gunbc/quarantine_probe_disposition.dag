@@ -22,7 +22,7 @@ import std.algebra { Cons, Empty }
 // and only the arrow between them is missing.
 //
 // THE LIVE INSTANCE THIS MODULE WAS BUILT AGAINST, and it is the reason the guard is a JOIN
-// rather than a membership test: test.claim.legacy_test_behavior_disposition_acceptance_test
+// rather than a membership test: test.claim.legacy_test_behavior_disposition_acceptance
 // legacy_test_behavior_unclassified_frontier_is_zero carried a known-red admission row and was
 // PASSING on main. Nothing was red, nothing named it for removal, and the claim went quietly
 // true -- the quarantine's own removal path (a rostered row that passes reds the build) never
@@ -45,7 +45,7 @@ import std.algebra { Cons, Empty }
 // actually built on. The lane's acceptance target was that the legacy row is PASSING and
 // therefore stale. It is not: its entry declares ReadsLiveTree, so the floor DECLINES it -- it
 // is never planned, never executed, and never in `passed`. Run directly
-// (`claim_batch --entry dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag
+// (`claim_batch --entry dag/test/claim/legacy_test_behavior_disposition_acceptance.dag
 // --function legacy_test_behavior_unclassified_frontier_is_zero`) it returns FAIL, exactly as
 // its admission row says. The deduction that made it look stale was sound in every step except
 // an unstated premise -- that a discovered identity is either planned or long-declined -- and
@@ -108,7 +108,7 @@ import std.algebra { Cons, Empty }
 // floor's exclusion list decides which modules ENTER the prepared subject, so a list evaluated
 // from inside that subject cannot be consulted before the subject exists. The one list the
 // floor consults is the Rust literal `floor_prepared_subject_exclusions` in `cli_run.rs`, whose
-// own comment records that adding rows to gunbc.ci_layer_roots witness_exclusion_frontier had
+// own comment records that adding rows to gunbc.ci.ci_layer_roots witness_exclusion_frontier had
 // no effect at all. Mirroring that literal here would be a second representation of one fact
 // (DESIGN section 3) that drifts silently, which is worse than an arm with no production
 // producer, so the substrings stay a PARAMETER.
@@ -139,8 +139,8 @@ type QuarantineProbeHolder =
 // THE SUBJECT: one probe, named the way the floor names it.
 //
 // `module` is the entry file's AUTHORED module declaration, never derived from its path -- the
-// two disagree in this corpus (src/v2/test/claim/manual/english_emit_add_test.dag declares
-// v2.test.manual.english_emit_add), and a path-shaped guess would silently miss the roster it
+// two disagree in this corpus (src/v2/test/claim/manual/english_emit_add.dag declares
+// v2.test.claim.manual.english_emit_add), and a path-shaped guess would silently miss the roster it
 // is joining against. The caller supplies it from the same declaration the floor reads.
 type QuarantineProbeSubject {
   module: String

@@ -1,4 +1,4 @@
-module gunbc.host_reach_identity_probe
+module gunbc.host.host_reach_identity_probe
 
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.id { id_user_name_argv }
@@ -12,7 +12,7 @@ import gunbc.typed_argv_exec {
   TypedArgvExecRefused,
 }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
-import gunbc.fleet_reach_endpoint {
+import gunbc.fleet.fleet_reach_endpoint {
   fleet_reach_probe_targets,
   fleet_probe_target_for,
   fleet_probe_ready_ssh_target,
@@ -23,7 +23,7 @@ import gunbc.fleet_reach_endpoint {
   PrincipalUnobserved,
   EndpointUnobserved,
 }
-import gunbc.fleet_host_key_enrollment { enrolled_fingerprint_for, fleet_host_key_enroll_apply }
+import gunbc.fleet.fleet_host_key_enrollment { enrolled_fingerprint_for, fleet_host_key_enroll_apply }
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -139,7 +139,7 @@ data probe_receipts_run_provenance: ProbeRunProvenance = ProbeRunProvenance {
 data probe_receipt_ledger_transcription_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host_reach_identity_probe",
+    module_path: "gunbc.host.host_reach_identity_probe",
     decl_name: "host_reach_identity_probe_receipts",
     field: WholeDeclaration,
   }
@@ -320,7 +320,7 @@ type FleetReachProbeRun {
   receipts: List<HostReachIdentityProbeReceipt>
 }
 
-// The probe transports to the host's RESOLVED ENDPOINT (gunbc.fleet_reach_endpoint:
+// The probe transports to the host's RESOLVED ENDPOINT (gunbc.fleet.fleet_reach_endpoint:
 // Sparks probe at their modeled reservation address, everyone else by name) while the
 // receipt stays keyed by fleet IDENTITY — addressing is transport, never identity.
 // Repairs #1 + #2: consult fleet_probe_target_for FIRST. A refused target (unobserved

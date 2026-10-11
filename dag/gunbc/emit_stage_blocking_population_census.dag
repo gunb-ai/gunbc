@@ -430,7 +430,7 @@ data layer_two_census: CensusReading = PopulationRead {
       cause: "ambiguous anonymous record literal shape matches 4 structs: FirmwareSemanticVersion, GitReleaseVersion, MercurialUpstreamVersion, OllamaSemanticVersion" as NonEmptyStr
     },
     BlockingSite {
-      subject: SiteInDeclaration { declaration: decl_ref(module_path: "test.claim.cache_retention_axes_witness_test", decl_name: "scope_exit_runtime_derived_replace_existing") },
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "test.claim.cache_retention_axes_witness", decl_name: "scope_exit_runtime_derived_replace_existing") },
       origin: ProducedByEmit,
       cause: "ambiguous anonymous record literal shape matches 2 structs: DeclarationRef, RustItemDeclarationRef" as NonEmptyStr
     },
@@ -461,7 +461,7 @@ data layer_two_census: CensusReading = PopulationRead {
 // and 2 ran gate checks and returned having emitted NOTHING; layer 3 is the first run that
 // generated any code at all. Three runs that did different work are not three points on one curve,
 // and reading them as one would be a cost-shape claim with no measurement under it. What emit's
-// cost curve actually looks like is answered by tools.emission_entry_instrument
+// cost curve actually looks like is answered by gunbc.instruments.emission_entry_instrument
 // measure_entry_emission across entries of increasing closure size, which is a controlled
 // measurement this receipt has not taken.
 
@@ -650,7 +650,7 @@ data src_v2_root_census: CensusReading = PopulationRead {
       cause: "undefined variable 'Consumed'" as NonEmptyStr
     },
     BlockingSite {
-      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.fixture.meta_exec_confinement_scan.leak_plant", decl_name: "planted_meta_exec_import_leak") },
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.fixture.meta_exec_confinement_scan.leak.plant", decl_name: "planted_meta_exec_import_leak") },
       origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
       cause: "sole_constructor type 'TransportScript' cannot be constructed outside its defining module" as NonEmptyStr
     }

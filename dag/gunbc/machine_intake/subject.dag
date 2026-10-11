@@ -1,4 +1,4 @@
-module gunbc.machine_intake_subject
+module gunbc.machine_intake.subject
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length, brand }
 import std.content_hash {

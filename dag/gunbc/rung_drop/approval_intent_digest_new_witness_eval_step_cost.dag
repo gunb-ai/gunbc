@@ -19,7 +19,7 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_approva
 // with SHA-256, which the seed interpreter realizes as Word32 folds because it reifies no machine
 // width -- the same realization the app-attest interpreted-crypto drop prices. The claims' subjects
 // were split first: the intent is derived once (gunbc.auth.approved_secret_grants
-// secret_grants_intent, gunbc.fabric_storage_state_provision fabric_state_provision_intent), and
+// secret_grants_intent, gunbc.fabric.fabric_storage_state_provision fabric_state_provision_intent), and
 // every binding and separation claim reads the intent as a supplied value inside the budget. What
 // remains here is ONE inhabitance claim per constructor: the real digest, and the gate admitting
 // exactly that revision while refusing another. Supplying the digest as a fixture would remove the

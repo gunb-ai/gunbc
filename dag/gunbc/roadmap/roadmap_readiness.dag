@@ -1,9 +1,9 @@
 module gunbc.roadmap.roadmap_readiness
 
 import std.types { String, Int, Bool, List }
-import gunbc.roadmap_model { RoadmapNode, NotDispatchable, Dispatchable }
-import gunbc.roadmap_status { item_superseded_by, signoff_accepts, item_is_done }
-import gunbc.roadmap_execution_contract {
+import gunbc.roadmap.roadmap_model { RoadmapNode, NotDispatchable, Dispatchable }
+import gunbc.roadmap.roadmap_status { item_superseded_by, signoff_accepts, item_is_done }
+import gunbc.roadmap.roadmap_execution_contract {
   NonAgentWorkMode,
   contract_closure,
   ContractDeclaresNoValidation,
@@ -24,9 +24,9 @@ import gunbc.roadmap.roadmap_lineage {
 // READINESS IS ONE PREDICATE (operator ruling, 2026-09-30). A node is ReadyToDispatch exactly when every
 // dispatch fact it could carry is present and satisfied; otherwise it is NotReady and the value
 // names every missing or unsatisfied fact, in one fixed order. The dispatcher's launch admission
-// refuses with this value (gunbc.roadmap_launch_admission LaunchNotReady), the page renders it
+// refuses with this value (gunbc.roadmap.roadmap_launch_admission LaunchNotReady), the page renders it
 // ("not ready: missing centering, contract") and hides NotReady leaves by it, and the derived
-// closing-contract minting (gunbc.roadmap_authority) mints only for a node whose ONLY gap is its
+// closing-contract minting (gunbc.roadmap.roadmap_authority) mints only for a node whose ONLY gap is its
 // contract. Three surfaces, one value: none of them re-derives a fact this module decides.
 //
 // The inputs a pure node cannot supply are the caller's: the lineage walk over the caller's node

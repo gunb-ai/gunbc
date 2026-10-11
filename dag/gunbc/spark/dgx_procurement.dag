@@ -1,7 +1,7 @@
 module gunbc.spark.dgx_procurement
 
 import std.types { NonEmptyStr, String, List, Int, Bool }
-import gunbc.fleet_lifecycle_observation {
+import gunbc.fleet.fleet_lifecycle_observation {
   FleetLifecycleObservation,
   ObservationSelection,
   ObservationMissing,
@@ -35,9 +35,9 @@ import extdeps.dhcp.v4 { MacAddress, StaticDhcpReservation, Active }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseRow }
 
-// SPARK-0 (2026-08-05). Three deliberately separate fact classes: (1) the vendor catalog (extdeps.systems.nvidia) -- what NVIDIA documents the product to be; (2) operator procurement intent (this module) -- that two units were ordered and that srv5/srv6 are RESERVED identities for them; (3) deployment observation -- physical binding evidence that must never be fabricated. A reserved identity is explicitly NOT enrollment: srv5/srv6 do not appear in gunbc.fleet_intent_network's endpoint list, gunbc.fleet_intent's ComputeHost list, or any phase matrix/compute offer.
-// SPARK-LANE-A (2026-08-06) moved the identities to gunbc.fleet_intent_network, the single authority for a host's fleet identity (§3 -- SPARK-0 forked them privately here only because that file was mid-refactor at the time).
-// SPARK-LANE-A revision (2026-08-07), operator review of #7952. Two identity defects and one staleness, repaired below and in gunbc.fleet_lifecycle_observation. The staleness: BOTH UNITS ARRIVED and hold Static, Active CR1000A reservations, so the earlier "not yet arrived / no MAC exists / no address chosen" rows were false. Arrival is DERIVED from the observed reservation rows (dgx_spark_arrival_standing) rather than asserted in prose that can drift. SPARK-ALLOC-LAND-0 (2026-08-07): the slot allocation was delegated by the operator ("the 5, 6 decision is arbitrary - just make it yourself") and decided on ascending address order; it is recorded as an OperatorAllocation receipt, never as an observation.
+// SPARK-0 (2026-08-05). Three deliberately separate fact classes: (1) the vendor catalog (extdeps.systems.nvidia) -- what NVIDIA documents the product to be; (2) operator procurement intent (this module) -- that two units were ordered and that srv5/srv6 are RESERVED identities for them; (3) deployment observation -- physical binding evidence that must never be fabricated. A reserved identity is explicitly NOT enrollment: srv5/srv6 do not appear in gunbc.fleet.fleet_intent_network's endpoint list, gunbc.fleet.fleet_intent's ComputeHost list, or any phase matrix/compute offer.
+// SPARK-LANE-A (2026-08-06) moved the identities to gunbc.fleet.fleet_intent_network, the single authority for a host's fleet identity (§3 -- SPARK-0 forked them privately here only because that file was mid-refactor at the time).
+// SPARK-LANE-A revision (2026-08-07), operator review of #7952. Two identity defects and one staleness, repaired below and in gunbc.fleet.fleet_lifecycle_observation. The staleness: BOTH UNITS ARRIVED and hold Static, Active CR1000A reservations, so the earlier "not yet arrived / no MAC exists / no address chosen" rows were false. Arrival is DERIVED from the observed reservation rows (dgx_spark_arrival_standing) rather than asserted in prose that can drift. SPARK-ALLOC-LAND-0 (2026-08-07): the slot allocation was delegated by the operator ("the 5, 6 decision is arbitrary - just make it yourself") and decided on ascending address order; it is recorded as an OperatorAllocation receipt, never as an observation.
 type HardwareProcurementIntent {
   vendor_catalog: IntegratedComputeSystemCatalogRow
   unit_count: Int
@@ -61,7 +61,7 @@ type HardwareProcurementIntent {
 
 data observed_dgx_spark_router_reservations: List<Cr1000aDhcpLeaseRow> = []
 
-// SPARK-LANE-A. The router-side half of a slot: a DHCP static reservation is the act that turns "a slot we intend to use" into "an address the fleet can reach", and gunbc.fleet_intent_network's endpoint note recorded that this act had no carrier anywhere in the tree. It has one here. The reservation is NOT re-modeled: it is the cited extdeps.router.verizon_cr1000a Cr1000aDhcpLeaseRow, the same row gunbc.network_identity_subsumption consumes for srv3 -- minting a second mac/address pair beside it would be the §3 nickname failure.
+// SPARK-LANE-A. The router-side half of a slot: a DHCP static reservation is the act that turns "a slot we intend to use" into "an address the fleet can reach", and gunbc.fleet.fleet_intent_network's endpoint note recorded that this act had no carrier anywhere in the tree. It has one here. The reservation is NOT re-modeled: it is the cited extdeps.router.verizon_cr1000a Cr1000aDhcpLeaseRow, the same row gunbc.network_identity_subsumption consumes for srv3 -- minting a second mac/address pair beside it would be the §3 nickname failure.
 //
 // THE JOIN IS A DECISION, NOT AN OBSERVATION, and the carrier says so structurally rather than in
 // prose: an assignment cannot be authored without naming the authority that made it. The two boxes
@@ -134,7 +134,7 @@ data dgx_spark_router_bindings: List<DgxSparkRouterBinding> = []
 // fleet slot it held; the slot's identity row itself was deleted with every consumer.
 //
 // WHICH PROCUREMENT LOT A SOLD UNIT CAME FROM IS NOT OBSERVED: the inventory's asset labels do not claim
-// host-slot order (gunbc.fleet_physical_inventory), so no serial is joined to these router labels, and
+// host-slot order (gunbc.fleet.fleet_physical_inventory), so no serial is joined to these router labels, and
 // recording the sale as an inventory QuantitySold would invent that attribution. The open obligation: join
 // each sold router label to its physical serial and lot, then record the sale against that lot.
 type DgxSparkAssetDisposition

@@ -1,4 +1,4 @@
-module gunbc.build_cache_instance
+module gunbc.build_cache.build_cache_instance
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.nat { Nat }
@@ -7,8 +7,8 @@ import std.cache_identity { CacheInterfaceId }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import product.host_identity { HostIdentity }
 import extdeps.cache.sccache { SccacheServerEndpoint, SccacheServerUnixSocket, sccache_local_id }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
-import gunbc.host_layout {
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.host.host_layout {
   gunbc_managed_compile_pool_slice,
   CompilePoolPlacement, CompilePoolSliceDeclared, CompilePoolInRunnerSlots,
   gunbc_compile_pool_placement,
@@ -18,7 +18,7 @@ data build_cache_instance_scope_disposition: ConstructionMechanism = SingleAutho
 
 // CATALOG IDENTITY IS NOT DEPLOYED-INSTANCE IDENTITY, and conflating them is why a host carrying
 // two differently-configured uses of one implementation could not be described.
-// gunbc.host_build_cache_provision speaks of provisioning `the sccache_local catalog` on a host;
+// gunbc.host.host_build_cache_provision speaks of provisioning `the sccache_local catalog` on a host;
 // extdeps.cache.sccache.sccache_local_id names sccache's cache SEMANTICS and its pinned binary.
 // Neither identifies a running daemon. srv1 and srv2 each run TWO sccache servers from that one
 // catalog row — a CI server (principal ghrunner, /var/lib/ctrl/sccache-ci, endpoint
@@ -67,16 +67,16 @@ type BuildCacheInstance {
 // configuration.
 //
 // CAPACITY ALSO RETAINS CONFIGURED TEXT THAT CANNOT YET BE GROUNDED AS BYTES.
-// gunbc.build_cache_unit emits a plain decimal byte count, which has one exact decoding. sccache
+// gunbc.build_cache.build_cache_unit emits a plain decimal byte count, which has one exact decoding. sccache
 // also accepts suffixed text such as its documented 10G default, but this repository has no cited
 // rule deciding whether G denotes 10^9 or 2^30. Choosing either would fabricate a magnitude whose
 // seven-percent difference could silently pass or refuse convergence.
 // BuildCacheCapacityConfiguredUngrounded therefore carries the text verbatim; it narrows when
 // extdeps.cache.sccache cites and models the accepted size grammar. The instance itself retains
-// whether capacity intent is declared, so gunbc.build_cache_instance_readiness refuses
+// whether capacity intent is declared, so gunbc.build_cache.build_cache_instance_readiness refuses
 // intended_capacity Absent rather than freezing a vendor default as a decision.
 //
-// These carriers are consumed by gunbc.build_cache_instance_readiness, whose producer preserves
+// These carriers are consumed by gunbc.build_cache.build_cache_instance_readiness, whose producer preserves
 // unavailable separately from observed mismatch and is the only function that mints the
 // proof-shaped BuildCacheInstanceReady receipt.
 
@@ -169,14 +169,14 @@ type RunnerSlotIdentity {
 // IT WRONG IN OPPOSITE DIRECTIONS. The first dated the risk to the commit that first lets a rented
 // host exist, which names a future event and the wrong subject. The second, correcting it, said srv5
 // and srv6 reach the arm right now -- also false, and false in the more dangerous direction, because
-// it reads as a live defect. Measured: gunbc.fleet_intent_network declares six host rows, but every
-// call that reaches this table draws its argument from gunbc.fleet_runner_connectivity fleet_hosts,
+// it reads as a live defect. Measured: gunbc.fleet.fleet_intent_network declares six host rows, but every
+// call that reaches this table draws its argument from gunbc.fleet.fleet_runner_connectivity fleet_hosts,
 // which enumerates four. srv5 and srv6 are the DGX Spark inference pair; nothing on the runner path
 // ever hands them to a width function, so they are not answered zero -- they are not asked.
 //
 // THE CORRECTION THAT MATTERS IS THAT ZERO IS THE WRONG ANSWER SHAPE, NOT THAT IT IS REACHED.
 // Were srv5 to arrive here it would be told it has a CI capacity of zero, when the truth is that the
-// question does not apply to an inference appliance. gunbc.fleet_enrollment fleet_enrollments
+// question does not apply to an inference appliance. gunbc.fleet.fleet_enrollment fleet_enrollments
 // already carries that distinction as a participation per host, so the fact exists and this table
 // cannot see it.
 //
@@ -184,7 +184,7 @@ type RunnerSlotIdentity {
 // the first width read whose host argument is not drawn from a closed roster.
 // Until such a read exists the arm is unreachable in practice; the moment one does, it answers zero
 // for a real host and that zero is indistinguishable from a measured one. The nearest candidate is
-// gunbc.build_cache_endpoint_observe runner_slot_lifecycle_for, whose host arrives on an observed
+// gunbc.build_cache.build_cache_endpoint_observe runner_slot_lifecycle_for, whose host arrives on an observed
 // instance identity rather than from an enumeration -- NOT VERIFIED to be open, named here so the
 // next reader checks it instead of re-deriving that it is the place to look.
 //
@@ -194,7 +194,7 @@ type RunnerSlotIdentity {
 //
 // THIS FUNCTION IS TOTAL ON PURPOSE AND ITS TOTALITY IS NOT A MISSING BOUND. Index 99 gets a
 // well-formed name here, for a slot that should not exist, and that is CORRECT: whether index 99
-// exists is the ADMISSION CEILING's question, answered by gunbc.runner_slot_allocation from the
+// exists is the ADMISSION CEILING's question, answered by gunbc.runner.runner_slot_allocation from the
 // host's memory and disk admissions. Naming names; admission admits. A bound added here would be a
 // second representation of the ceiling, free to disagree with it, and it would re-create in this
 // function exactly the fall-through this change removed -- because any bound needs an else arm, and
@@ -205,7 +205,7 @@ fn runner_slot_index_suffix(index: Nat) -> String {
 }
 
 // THE HOST PREFIX IS SPLIT OUT SO THE ONE CONSUMER THAT NEEDS IT DOES NOT RE-SPELL THE SEPARATOR.
-// gunbc.fleet_runner_connectivity attributes a registration to a host whose width does not resolve
+// gunbc.fleet.fleet_runner_connectivity attributes a registration to a host whose width does not resolve
 // -- there is no enumeration of that host's slots to match against, so the name is all there is --
 // and spelling "<host>-" there would be a second authority for this name's shape, readable in the
 // opposite direction from this one and free to disagree with it.
@@ -214,8 +214,8 @@ fn runner_slot_instance_name_prefix(host: HostIdentity) -> String {
 }
 
 // ONE RELATION FOR "COULD THIS OBSERVED NAME BE A SLOT OF THIS HOST", because two consumers ask it
-// and an earlier revision of this change answered it twice: gunbc.fleet_runner_connectivity with
-// `starts_with` over the prefix and gunbc.fabric_cell_observe with `string_contains` over the same
+// and an earlier revision of this change answered it twice: gunbc.fleet.fleet_runner_connectivity with
+// `starts_with` over the prefix and gunbc.fabric.fabric_cell_observe with `string_contains` over the same
 // prefix. One concept, two implementations, and they disagree observably -- `backup-srv2-01` is a
 // candidate under `contains` and is not under `starts_with`. Minting the PREFIX as a single
 // authority and then forking the RELATION over it is the fork DESIGN 3 names, with the second
@@ -317,7 +317,7 @@ type BuildCacheEndpointObservation
       reason: EndpointObservationUnavailableReason
     }
 
-// THE SINGLE PLACEMENT AUTHORITY, homed here rather than in gunbc.host_build_cache_provision because placement is derived from an OBSERVATION of a deployed instance, and the verdict fold is a CONSUMER of it. Keeping the type beside the observation it is derived from means there is exactly one definition of what 'correctly placed' is, and the provisioning fold cannot drift a second opinion. Placement is a verdict axis and not a detail because extdeps.cache.sccache.sccache_server_process_facts cites that cache-miss compiles execute as CHILDREN OF THE SERVER PROCESS: the server's cgroup is the cgroup every compile on the host runs in, so the server's caps bound every compile on the host and not merely the caps of the job that issued them. A responsive daemon proves nothing about where it runs.
+// THE SINGLE PLACEMENT AUTHORITY, homed here rather than in gunbc.host.host_build_cache_provision because placement is derived from an OBSERVATION of a deployed instance, and the verdict fold is a CONSUMER of it. Keeping the type beside the observation it is derived from means there is exactly one definition of what 'correctly placed' is, and the provisioning fold cannot drift a second opinion. Placement is a verdict axis and not a detail because extdeps.cache.sccache.sccache_server_process_facts cites that cache-miss compiles execute as CHILDREN OF THE SERVER PROCESS: the server's cgroup is the cgroup every compile on the host runs in, so the server's caps bound every compile on the host and not merely the caps of the job that issued them. A responsive daemon proves nothing about where it runs.
 type BuildCacheServerPlacement
   = ServerManagedUnitOwned { unit: NonEmptyStr }
   | ServerRunnerOwned { slot: RunnerSlotIdentity, lifecycle: RunnerSlotLifecycle }
@@ -456,7 +456,7 @@ fn session_cache_instance(host: HostIdentity) -> BuildCacheInstance {
 //
 // The reachability was never the blocker it looked like. srv4 carries exactly the two declared
 // fleet keys and deliberately NOT the session-bootstrap keys other hosts were hand-keyed with, so
-// it is the CONVERGED control of gunbc.host_authorized_keys_reconcile, not a mis-keyed host; the
+// it is the CONVERGED control of gunbc.host.host_authorized_keys_reconcile, not a mis-keyed host; the
 // missing piece was materializing the fleet-automation private key for a session, which is the A1
 // gap in gunbc.plans.fleet_subsumption_manual_gaps. Once the operator supplied it the read took
 // under a minute over the ordinary route.

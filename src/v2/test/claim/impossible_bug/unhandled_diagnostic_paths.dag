@@ -1,4 +1,4 @@
-module v2.test.impossible_bug.unhandled_diagnostic_paths
+module v2.test.claim.impossible_bug.unhandled_diagnostic_paths
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.diagnostic {

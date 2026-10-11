@@ -1,4 +1,4 @@
-module v2.test.grounding_go.subject_roster
+module v2.test.claim.grounding_go.subject_roster
 
 
 data grounding_go_subject_rows: List<TestClaimEvalSubject<Node>> = [

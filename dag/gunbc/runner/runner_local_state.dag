@@ -1,4 +1,4 @@
-module gunbc.runner_local_state
+module gunbc.runner.runner_local_state
 
 import std.types { String, NonEmptyStr, Bool, List, Timestamp }
 import std.nat { Nat }
@@ -12,8 +12,8 @@ import extdeps.systemd {
   Reloading,
   Failed,
 }
-import gunbc.build_cache_instance { ProcessIdentity, RunnerSlotIdentity }
-import gunbc.runner_slot_allocation {
+import gunbc.build_cache.build_cache_instance { ProcessIdentity, RunnerSlotIdentity }
+import gunbc.runner.runner_slot_allocation {
   RunnerSlotPurpose,
   SlotServesGitHubActions,
   SlotServesFabricExecution,
@@ -60,7 +60,7 @@ type RunnerMaterializationObservation
 //
 // THE RESOLVED ARM CARRIES A ProcessIdentity, NOT A pid, AND AN EARLIER REVISION CARRIED A pid.
 // That was this module forking its own doctrine: the block below states that a pid is an identity
-// only relative to a boot and a start time, and gunbc.build_cache_instance already owns that rule.
+// only relative to a boot and a start time, and gunbc.build_cache.build_cache_instance already owns that rule.
 // Holding the manager's pid at a WEAKER grain than the listeners it is compared against defeats
 // the comparison this module exists to make -- deciding whether a listener descends from the main
 // process is exactly where a reused pid reads as a survivor. Caught in review on this PR, and it is
@@ -96,14 +96,14 @@ type RunnerUnitObservation
 
 // THE POPULATION KEEPS EVERY PROCESS IDENTITY AND DOES NOT REDUCE TO "OCCUPIED".
 //
-// gunbc.host_hygiene_reaper_observe already folds a slot's pids down to a CgroupOccupant -- empty,
+// gunbc.host.host_hygiene_reaper_observe already folds a slot's pids down to a CgroupOccupant -- empty,
 // a build-cache server, or something else. That is the right answer to ITS question, which is
 // whether an inactive slot still holds anything worth reaping. It is the wrong answer to this one:
 // a reader that learns a slot is "occupied" cannot tell one listener from three, cannot say WHICH
 // process outlived a restart, and cannot compare a population before and after a convergence. Those
 // are the only questions this lane has.
 //
-// A ProcessIdentity rather than a pid, for the reason gunbc.build_cache_instance already fixes: a
+// A ProcessIdentity rather than a pid, for the reason gunbc.build_cache.build_cache_instance already fixes: a
 // pid is an identity only relative to a boot and a start time. Comparing bare pids across a
 // restart is how a reused pid reads as a survivor.
 
@@ -271,7 +271,7 @@ fn busy_standing_of_workers(workers: List<ProcessIdentity>) -> RunnerSlotBusySta
 // provider's own view is wanted and unavailable, which is the honest answer today for every
 // question about assignment.
 // THE OBSERVATION TIME IS A Timestamp AND NOT A RAW STRING, which is a smaller point than it looks.
-// std.types names this concept, gunbc.runner_connectivity_recovery already carries its observations
+// std.types names this concept, gunbc.runner.runner_connectivity_recovery already carries its observations
 // on it, and that module's scaffold row records the corpus-wide state honestly: Timestamp is String
 // today and comparisons are equality-only until a parsed observation clock lands. Spelling this
 // field NonEmptyStr would have put it OUTSIDE that scaffold -- a second raw carrier for a concept

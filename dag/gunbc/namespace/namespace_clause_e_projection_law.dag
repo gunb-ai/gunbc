@@ -1,4 +1,4 @@
-module gunbc.namespace_clause_e_projection_law
+module gunbc.namespace.namespace_clause_e_projection_law
 
 import std.types { Int, List }
 import std.occurrence_binding_candidates {

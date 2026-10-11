@@ -1,0 +1,431 @@
+module v2.test.claim.namespace_graft.graft_shape
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.algebra { Cons, Empty }
+import v2.extdeps.languages.dag {
+  dag_grammar_atom,
+  dag_named_edge,
+  emit_module_header_emitted_node,
+  namespace_graft_node_is_module_body,
+  qualified_name_from_graft_spine,
+  dag_surface_edge,
+}
+import v2.std.algebra { fold_list_node }
+import v2.std.collection { Absent, Present, list_at_optional }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.compiler.namespace_graft {
+  module_header_containment_graft,
+  namespace_graft_is_metadata_edge,
+  namespace_graft_is_module_shell,
+  namespace_graft_strip_provenance_marker
+}
+import v2.std.node_query { find_named_child }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, ComputationNode, well_formed, StructuralLabel }
+import v2.std.qualified_name {
+  QualifiedName,
+  qualified_name_from_dotted_string,
+  qualified_name_to_dotted_string
+}
+import v2.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+
+fn ng_sym_node(sym: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: sym } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn ng_qn_spine(segments: FreeMonoid<Symbol>) -> Node {
+  fold_list_node(
+    xs: segments,
+    item_node: fn(sym) { ng_sym_node(sym: sym) }
+  )
+}
+
+fn ng_pre_graft_module_root(
+  qn: QualifiedName,
+  body_edges: List<Edge>
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: concat(
+      [
+        dag_surface_edge(edge: ^dag_surface_module_header,
+          target: dag_grammar_atom(id: ^dag_surface_module_header)
+        ),
+        dag_surface_edge(edge: ^dag_surface_module_header_qualified_name,
+          target: ng_qn_spine(segments: qn)
+        )
+      ],
+      body_edges
+    ),
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn ng_export_edge(name: Symbol) -> Edge {
+  Edge {
+    label: Authored { name: name },
+    target: ng_sym_node(sym: name)
+  }
+}
+
+data ng_module_qn: QualifiedName = qualified_name_from_dotted_string(dotted: "v2.test.namespace_graft.alpha")
+
+data ng_pre_graft_root: Node = ng_pre_graft_module_root(
+  qn: ng_module_qn,
+  body_edges: [
+    ng_export_edge(name: ^NgPilotType),
+    ng_export_edge(name: ^NgPilotFn)
+  ]
+)
+
+fn ng_outcome_accepted(out: Outcome<Node>) -> Bool {
+  match out {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn ng_qn_eq(out: Outcome<QualifiedName>, expected: QualifiedName) -> Bool {
+  match out {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: actual, diagnostics: _ } => actual == expected
+  }
+}
+
+data ng_grafted_root: Node = match module_header_containment_graft(root: ng_pre_graft_root) {
+  Accepted { value: grafted, diagnostics: _ } => grafted
+  Rejected { diagnostics: _ } => ng_pre_graft_root
+}
+
+test fn namespace_graft_shape_accepts_well_formed_module_holds() -> Bool {
+  ng_outcome_accepted(out: module_header_containment_graft(root: ng_pre_graft_root))
+}
+
+test fn namespace_graft_shape_wraps_module_shell_holds() -> Bool {
+  namespace_graft_is_module_shell(root: ng_grafted_root)
+}
+
+test fn namespace_graft_qn_round_trip_holds() -> Bool {
+  ng_qn_eq(
+    out: qualified_name_from_graft_spine(root: ng_grafted_root),
+    expected: ng_module_qn
+  )
+}
+
+test fn namespace_graft_output_has_zero_metadata_edges_holds() -> Bool {
+  namespace_graft_grafted_tree_has_no_metadata_edges(node: ng_grafted_root)
+}
+
+test fn namespace_graft_body_edges_survive_holds() -> Bool {
+  match module_header_containment_graft(root: ng_pre_graft_root) {
+    Accepted { value: grafted, diagnostics: _ } =>
+      match find_named_child(root: grafted, name: ^grammar_production_captured_node_projection) {
+        Accepted { value: captured, diagnostics: _ } =>
+          match qualified_name_from_graft_spine(root: grafted) {
+            Accepted { value: module_qn, diagnostics: _ } => {
+              let innermost = namespace_graft_walk_spine_to_body(captured: captured)
+              match find_named_child(root: innermost, name: ^NgPilotType) {
+                Accepted { value: _, diagnostics: _ } =>
+                  match find_named_child(root: innermost, name: ^NgPilotFn) {
+                    Accepted { value: _, diagnostics: _ } =>
+                      qualified_name_to_dotted_string(qn: module_qn) == "v2.test.namespace_graft.alpha"
+                    Rejected { diagnostics: _ } => false
+                  }
+                Rejected { diagnostics: _ } => false
+              }
+            }
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn namespace_graft_walk_spine_to_body(captured: Node) -> Node {
+  match captured.kind {
+    TypeNode { connective: Conj } =>
+      if count(captured.children) == 1 {
+        match list_at_optional(xs: captured.children, index: 0) {
+          Present { value: edge } =>
+            match edge.label {
+              Authored { name: _ } => namespace_graft_walk_spine_to_body(captured: edge.target)
+              StructuralLabel { label: _ } => captured
+              Positional => captured
+            }
+          Absent => captured
+        }
+      } else {
+        captured
+      }
+    _ => captured
+  }
+}
+
+fn namespace_graft_grafted_tree_has_no_metadata_edges(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      fold(
+        node.children,
+        init: true,
+        f: fn(ok, edge) {
+          if !ok {
+            false
+          } else {
+            if namespace_graft_is_metadata_edge(e: edge) { false } else { namespace_graft_grafted_tree_has_no_metadata_edges(node: edge.target) }
+          }
+        }
+      )
+    ComputationNode { behavior: _ } => true
+    _ => true
+  }
+}
+
+data ng_empty_qn_node: Node = emit_module_header_emitted_node(
+  qualified_name: Node {
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+)
+
+data claim_namespace_graft_empty_qn_refused: TestClaim = EqualsClaim {
+  label: "namespace_graft RED: empty module header QN refuses graft",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: ng_sym_node(sym: ^ng_bool_true),
+  rhs: ng_sym_node(
+    sym: if ng_outcome_accepted(out: module_header_containment_graft(root: ng_empty_qn_node)) {
+      ^ng_bool_false
+    } else {
+      ^ng_bool_true
+    }
+  ),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+test fn namespace_graft_empty_qn_refused_holds() -> Bool {
+  !ng_outcome_accepted(out: module_header_containment_graft(root: ng_empty_qn_node))
+}
+
+data ng_dual_position_root: Node = ng_pre_graft_module_root(
+  qn: Cons {
+    head: ^NgAlpha,
+    tail: Cons { head: ^NgBeta, tail: Empty }
+  },
+  body_edges: [
+    Edge {
+      label: Authored { name: ^NgAlpha },
+      target: Node {
+        kind: TypeNode { connective: Conj },
+        children: [ng_export_edge(name: ^NgDualPilot)],
+        occurrence_id: OccurrenceSynthetic
+      }
+    }
+  ]
+)
+
+data claim_namespace_graft_dual_position_refused: TestClaim = EqualsClaim {
+  label: "namespace_graft RED: dual header+brace position refuses graft",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: ng_sym_node(sym: ^ng_bool_true),
+  rhs: ng_sym_node(
+    sym: if ng_outcome_accepted(out: module_header_containment_graft(root: ng_dual_position_root)) {
+      ^ng_bool_false
+    } else {
+      ^ng_bool_true
+    }
+  ),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+test fn namespace_graft_dual_position_refused_holds() -> Bool {
+  !ng_outcome_accepted(out: module_header_containment_graft(root: ng_dual_position_root))
+}
+
+fn ng_production_identity_shell(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^grammar_production_identity_node_projection,
+        target: dag_grammar_atom(id: id)
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn ng_projection_edge(target: Node) -> Edge {
+  Edge {
+    label: Authored { name: ^grammar_production_captured_node_projection },
+    target: target
+  }
+}
+
+data ng_type_decl_unit_root: Node = ng_pre_graft_module_root(
+  qn: ng_module_qn,
+  body_edges: [
+    ng_projection_edge(
+      target: ng_production_identity_shell(id: ^dag_surface_type_decl)
+    )
+  ]
+)
+
+data ng_lost_body_root: Node = ng_pre_graft_module_root(
+  qn: ng_module_qn,
+  body_edges: [
+    ng_projection_edge(
+      target: ng_production_identity_shell(id: ^dag_surface_top_level_item)
+    )
+  ]
+)
+
+fn ng_graft_reason_is(root: Node, reason: Symbol) -> Bool {
+  match module_header_containment_graft(root: root) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == reason
+  }
+}
+
+fn ng_is_type_decl_atom(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => id == ^dag_surface_type_decl
+    _ => false
+  }
+}
+
+fn ng_has_type_decl_identity_projection(n: Node) -> Bool {
+  fold(
+    n.children,
+    init: false,
+    f: fn(acc, e) {
+      acc || ng_edge_carries_type_decl_identity(e: e)
+    }
+  )
+}
+
+fn ng_edge_carries_type_decl_identity(e: Edge) -> Bool {
+  match e.label {
+    StructuralLabel { label: _ } => ng_has_type_decl_identity_projection(n: e.target)
+    Authored { name: sym } =>
+      if (sym == ^grammar_production_identity_node_projection) && ng_is_type_decl_atom(n: e.target) {
+        true
+      } else {
+        ng_has_type_decl_identity_projection(n: e.target)
+      }
+    Positional => ng_has_type_decl_identity_projection(n: e.target)
+  }
+}
+
+test fn namespace_graft_type_decl_unit_is_not_dissolved_holds() -> Bool {
+  match module_header_containment_graft(root: ng_type_decl_unit_root) {
+    Accepted { value: grafted, diagnostics: _ } =>
+      well_formed(n: grafted) && ng_has_type_decl_identity_projection(n: grafted)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn namespace_graft_lost_top_level_item_without_unit_refuses_RED() -> Bool {
+  ng_graft_reason_is(
+    root: ng_lost_body_root,
+    reason: ^namespace_graft_body_dissolved_refused
+  )
+}
+
+data ng_types_and_fn_root: Node = ng_pre_graft_module_root(
+  qn: ng_module_qn,
+  body_edges: [
+    ng_projection_edge(
+      target: ng_production_identity_shell(id: ^dag_surface_type_decl)
+    ),
+    ng_projection_edge(
+      target: ng_production_identity_shell(id: ^dag_surface_data_decl)
+    ),
+    ng_export_edge(name: ^NgPilotFn)
+  ]
+)
+
+test fn namespace_graft_nonempty_flatten_stays_well_formed_holds() -> Bool {
+  match module_header_containment_graft(root: ng_types_and_fn_root) {
+    Accepted { value: grafted, diagnostics: _ } => well_formed(n: grafted)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// ONE-MEMBER BODY VERSUS ONE MORE SEGMENT. A body whose only member is a Named
+// edge to a Conj has the spine's own shape, so before the producer marked the
+// body this module read as `v2.test.namespace_graft.alpha.NgOnly` -- the
+// declaration was eaten as a segment (resolve_module_not_found on every
+// type-only module; CI declarations: unresolved-module-identities). RED without
+// the marker: this row asserts the single authored identity.
+fn ng_conj_member_edge(name: Symbol) -> Edge {
+  Edge {
+    label: Authored { name: name },
+    target: Node {
+      kind: TypeNode { connective: Conj },
+      children: [ng_export_edge(name: ^NgInner)],
+      occurrence_id: OccurrenceSynthetic
+    }
+  }
+}
+
+data ng_one_conj_member_root: Node = ng_pre_graft_module_root(
+  qn: ng_module_qn,
+  body_edges: [ng_conj_member_edge(name: ^NgOnly)]
+)
+
+test fn namespace_graft_one_conj_member_body_is_not_a_segment_RED() -> Bool {
+  match module_header_containment_graft(root: ng_one_conj_member_root) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: grafted, diagnostics: _ } =>
+      ng_qn_eq(out: qualified_name_from_graft_spine(root: grafted), expected: ng_module_qn)
+  }
+}
+
+// THE OTHER DIRECTION: a genuine two-segment path with the same one-Conj-member
+// body still reads as exactly two segments. Without this control a marker could
+// "fix" the row above by ending every spine after one segment.
+data ng_two_segment_qn: QualifiedName = qualified_name_from_dotted_string(dotted: "ngtwo.beta")
+
+data ng_two_segment_one_conj_member_root: Node = ng_pre_graft_module_root(
+  qn: ng_two_segment_qn,
+  body_edges: [ng_conj_member_edge(name: ^NgOnly)]
+)
+
+test fn namespace_graft_two_segment_path_still_reads_two_segments_holds() -> Bool {
+  match module_header_containment_graft(root: ng_two_segment_one_conj_member_root) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: grafted, diagnostics: _ } =>
+      ng_qn_eq(out: qualified_name_from_graft_spine(root: grafted), expected: ng_two_segment_qn)
+  }
+}
+
+// The marker is the producer's: the innermost node of the spine carries
+// namespace_graft_module_body_identity, and the member survives beside it.
+test fn namespace_graft_body_carries_producer_marker_holds() -> Bool {
+  match module_header_containment_graft(root: ng_one_conj_member_root) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: grafted, diagnostics: _ } =>
+      match find_named_child(root: grafted, name: ^grammar_production_captured_node_projection) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: captured, diagnostics: _ } =>
+          let body = namespace_graft_walk_spine_to_body(captured: captured)
+          namespace_graft_node_is_module_body(node: body)
+            && match find_named_child(root: body, name: ^NgOnly) {
+              Accepted { value: _, diagnostics: _ } => true
+              Rejected { diagnostics: _ } => false
+            }
+      }
+  }
+}

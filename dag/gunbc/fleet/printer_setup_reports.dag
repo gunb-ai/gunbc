@@ -3,7 +3,7 @@ import v2.std.algebra {filter,length}
 
 import std.types { String, NonEmptyStr, List }
 import extdeps.printing.fdm { FilamentMaterial, Pla }
-import gunbc.fleet_asset_identity { PhysicalAssetIdentity, printer_01, printer_02 }
+import gunbc.fleet.fleet_asset_identity { PhysicalAssetIdentity, printer_01, printer_02 }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import std.process { ExitSuccess }
 

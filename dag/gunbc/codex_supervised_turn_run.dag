@@ -18,8 +18,8 @@ import gunbc.provider_interface_binding {
 }
 import gunbc.package_delivery { CodexRuntimeBundle }
 import extdeps.shell
-import gunbc.fleet_intent { srv1_host, ComputeHost }
-import gunbc.host_effect {
+import gunbc.fleet.fleet_intent { srv1_host, ComputeHost }
+import gunbc.host.host_effect {
   CodexSupervisedWorkerTurn,
   HostOs,
   LocalShell,
@@ -28,7 +28,7 @@ import gunbc.host_effect {
   ConvergePlanApplied,
 }
 import std.temporal_effect { HeldSessionLease, LeaseRunningExpected }
-import gunbc.host_effect_realize { host_effect_apply }
+import gunbc.host.host_effect_realize { host_effect_apply }
 import extdeps.llm.codex_app_server_stdio_session { CodexAppServerStdioSessionIntent }
 import extdeps.llm.codex_app_server {
   codex_app_server_initialize_request_line,
@@ -39,7 +39,7 @@ import extdeps.llm.codex_app_server {
   codex_supervised_thread_start_id,
   codex_supervised_turn_start_wire_id,
 }
-import gunbc.roadmap_workflow_command { WorkerTurn }
+import gunbc.roadmap.roadmap_workflow_command { WorkerTurn }
 import gunbc.codex_supervised_turn {
   CodexSupervisedTurnBinding,
   CodexSupervisedTurnOutcome,

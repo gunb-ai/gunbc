@@ -2500,7 +2500,7 @@ pub fn emit_module_storage_binding_manifest(
     rows.sort_by(|a, b| a.module_path.cmp(&b.module_path));
 
     let mut out = String::new();
-    out.push_str("module v2.test.workflow.host_module_binding_manifest\n\n\n");
+    out.push_str("module v2.test.claim.workflow.host_module_binding_manifest\n\n\n");
     out.push_str("import v2.compiler.source_authority {\n");
     out.push_str("  ModuleStorageIndex,\n");
     out.push_str("  module_storage_parsed_binding\n");
@@ -2634,7 +2634,7 @@ pub fn emit_source_root_ingest_manifest(
     let read_count = records.len();
 
     let mut out = String::new();
-    out.push_str("module v2.test.workflow.host_source_root_ingest_manifest\n\n\n");
+    out.push_str("module v2.test.claim.workflow.host_source_root_ingest_manifest\n\n\n");
     out.push_str("import v2.compiler.source_authority {\n");
     out.push_str("  DagSourceReadWitness,\n");
     out.push_str("  DiscoveredSourceRefsDigestFromList,\n");
@@ -3254,7 +3254,7 @@ pub(crate) fn fixture_closure_union_emit_receipt_staged(
 
 /// The red control's member: a non-tail effectful self-call, which the rust emitter refuses
 /// (`EffectfulSelfRecursionUnrealized`, the derived form exercised by
-/// `test.claim.effectful_item_kind_collapse_witness_test`).
+/// `test.claim.effectful_item_kind_collapse_witness`).
 const FIXTURE_CLOSURE_UNION_RED_MEMBER: &str = "module efr_member\nimport extdeps.filesystem.filesystem_io { Filesystem }\nfn walk(n: Int) -> Int {\n  let listed = Filesystem.List(path: \".\")\n  if n == 0 { 0 } else if listed.success { n + walk(n: n - 1) } else { 0 }\n}\n";
 
 /// The positive control's member: the same closure with the self-call in tail position, which is
@@ -3655,7 +3655,7 @@ mod fixture_closure_union_tests {
             shared.source_files.clone(),
             &shared.source_roots,
         );
-        let rel = "dag/test/claim/host/megarac_managed_host_forged_probe_witness_test.dag";
+        let rel = "dag/test/claim/host/megarac_managed_host_forged_probe_witness.dag";
         let content = std::fs::read_to_string(process_workspace_root().join(rel))
             .unwrap_or_else(|e| panic!("read {rel}: {e}"));
         let source = Rc::new(v1_compiler_compile::SourceFile {

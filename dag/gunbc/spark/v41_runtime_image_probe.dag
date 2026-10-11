@@ -20,14 +20,14 @@ import extdeps.vllm.deepseek_v4_1_sm12 {
   v41_sm12_kv_layout, v41_sparse_mla_backend_class, v41_device_capability_class,
 }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
-import gunbc.fleet_known_hosts_anchor {
+import gunbc.fleet.fleet_known_hosts_anchor {
   FleetSshExecutionContext, SshTarget,
   fleet_ssh_attempt_identity,
   materialize_fleet_known_hosts_anchor, known_hosts_materialization_receipt,
   fleet_ssh_execution_context_of, fleet_ssh_credential_identity, fleet_ssh_credential_locus_label,
   fleet_openssh_trust_policy_of,
 }
-import gunbc.fleet_ssh_credential_verify {
+import gunbc.fleet.fleet_ssh_credential_verify {
   FleetSshCredentialVerified, FleetSshCredentialIdentityMismatch, FleetSshCredentialDerivationRefused,
   fleet_ssh_credential_verification_refusal_reason,
 }
@@ -42,7 +42,7 @@ import gunbc.spark.grant_privileged_operation {
 import gunbc.auth.materialized_secret {
   with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused,
 }
-import gunbc.fleet_multi_principal_probe {
+import gunbc.fleet.fleet_multi_principal_probe {
   probe_agent_credential_verification,
   SparkConvergeTargetSelection, SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly,
   SparkConvergeTargetRefused, spark_converge_target_selection,

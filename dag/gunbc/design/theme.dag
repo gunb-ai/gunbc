@@ -223,7 +223,7 @@ fn theme_var_decls(t: Theme) -> List<CssDecl> {
 // ONE THEME-SELECTOR GRAMMAR, N VAR FAMILIES. The three-block shape below — :root for the base
 // theme, :root[data-theme=NAME] for the alternate, and the same alternate again under
 // prefers-color-scheme for readers who never touched the toggle — is what makes a theme switchable
-// at all, and it was written out longhand once here for role vars and again in gunbc.roadmap_style
+// at all, and it was written out longhand once here for role vars and again in gunbc.roadmap.roadmap_style
 // band_root_css for band vars. A second copy of a selector grammar is a second place for the toggle
 // to break in only one of them, which is precisely the failure a reader would never think to look
 // for: the day/night switch would keep working for colors and silently stop working for bands. The

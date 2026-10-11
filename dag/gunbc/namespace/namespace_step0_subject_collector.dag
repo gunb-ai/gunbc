@@ -1,4 +1,4 @@
-module gunbc.namespace_step0_subject_collector
+module gunbc.namespace.namespace_step0_subject_collector
 
 import std.types { Bool, GitRef, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
@@ -7,10 +7,10 @@ import extdeps.git
 import extdeps.git.inspect
 import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex, git_sha1_object_id }
 import std.decl_ref { decl_ref }
-import tools.multi_module_compile_fixture { FixtureSource }
+import gunbc.instruments.multi_module_compile_fixture { FixtureSource }
 
 // THE SUBJECT VECTOR AND THE TREE IT WAS READ FROM GET ONE PRODUCER, WHICH IS THIS MODULE'S WHOLE
-// CONTENT. gunbc.namespace_step0_strip_producer strips and compiles the (path, content) vector it
+// CONTENT. gunbc.namespace.namespace_step0_strip_producer strips and compiles the (path, content) vector it
 // is HANDED, and says so: "that the handed vector is the whole of the tree the receipt names is the
 // caller's obligation ... nothing here can check it." Its next-rung trigger is exactly this
 // capability. Until it exists, a receipt naming the frozen manifest over a hand-supplied vector is
@@ -173,7 +173,7 @@ fn step0_mint_subject_vector(
   members: List<Step0SubjectMember>
 ) -> Step0SubjectVector
   admit_callers: [
-    decl_ref(module_path: "gunbc.namespace_step0_subject_collector", decl_name: "collect_step0_subject_vector_at")
+    decl_ref(module_path: "gunbc.namespace.namespace_step0_subject_collector", decl_name: "collect_step0_subject_vector_at")
   ]
   = Step0SubjectVector {
     contract_identity: "step0-subject-vector-v1" as NonEmptyStr,

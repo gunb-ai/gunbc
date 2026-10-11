@@ -68,7 +68,7 @@ fn harness_serving_unit_wire(unit: HarnessServingUnit) -> NonEmptyStr {
 // HOW A TURN ON THIS UNIT IS ADMITTED. A fleet unit is served by an engine this repository launches, so a
 // turn takes a seat on a serving group (gunbc.harness.harness_seat harness_bind_seat). A hosted unit has no
 // group, no replica and no loaded state to share: what bounds it is the upstream's per-request quota, so a
-// turn leases that quota (gunbc.fabric_quota) before each request instead. The two are different capacity
+// turn leases that quota (gunbc.fabric.fabric_quota) before each request instead. The two are different capacity
 // facts, which is why this is a closed choice and not a flag.
 type HarnessUnitPlacement
   = PlacedOnFleetSeat

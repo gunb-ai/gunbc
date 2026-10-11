@@ -38,10 +38,10 @@ data meta_exec_realization_edge_path_prefixes: List<String> = [
 // shrink-only end state: with no rows, every intent-layer import of the confined module is a leak
 // with no exception to grant, so meta_exec_confinement_holds_canonical alone gates the tree. Adding
 // a row back is a conspicuous, reviewable event BY EXECUTION, not by diligence:
-// meta_exec_roster_shrunk_to_empty_holds (v2.test.meta_exec_confinement.roster_soundness, enrolled
+// meta_exec_roster_shrunk_to_empty_holds (v2.test.claim.meta_exec_confinement.roster_soundness, enrolled
 // per-PR) reds in the same PR that adds one. That wall is what runs on the fast lane, NOT
 // meta_exec_roster_sound_live — the live receipt costs 13.5s cold against a 5s budget (measured
-// 2026-07-25) and lives in v2.test.long.meta_exec_confinement_clean_tree as a backstop on a lane
+// 2026-07-25) and lives in v2.test.claim.long.meta_exec_confinement_clean_tree as a backstop on a lane
 // that is still dark. The wall is affordable because it needs no scan at all: stale_count is
 // bounded above by roster length, so length 0 proves soundness outright. A future justified row
 // must therefore land WITH a live soundness receipt on a real cadence — the wall relaxes to that

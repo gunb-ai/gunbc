@@ -1,4 +1,4 @@
-module gunbc.ci_gate
+module gunbc.ci.ci_gate
 
 import std.types { NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -75,7 +75,7 @@ fn gate_receipt_exit(r: GateReceipt) -> ProcessExit {
 
 // THE COMPANION PROJECTION, a String only because its consumer is. claim_executor derives a
 // <witness>_failure_receipt companion from a Bool witness's own name and evaluates it to explain a
-// red (tools.floor_effect_gate_witness floor_gate_failure_receipt_note is that mechanism's
+// red (gunbc.instruments.floor_effect_gate_witness floor_gate_failure_receipt_note is that mechanism's
 // authority), so the two CI gates must still hand back a located line. What changes is its source:
 // PROJECTED from the same receipt that produced the verdict, instead of read out of a second
 // builtin over the same process global. That is the §3 half of this retype -- one authority, two

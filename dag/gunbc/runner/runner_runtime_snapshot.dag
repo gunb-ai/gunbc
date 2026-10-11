@@ -1,7 +1,7 @@
 module gunbc.runner.runner_runtime_snapshot
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import gunbc.build_cache_instance { ProcessIdentity }
+import gunbc.build_cache.build_cache_instance { ProcessIdentity }
 
 // WHAT A RUNNING HOST ACTUALLY IS, recorded before anything decides whether it is correct. This
 // module is deliberately only the OBSERVATION half: it carries what /proc said and takes no view on

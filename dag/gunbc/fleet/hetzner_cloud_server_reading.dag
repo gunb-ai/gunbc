@@ -1,14 +1,14 @@
-module gunbc.hetzner_cloud_server_reading
+module gunbc.fleet.hetzner_cloud_server_reading
 
 import std.types { Bool, Int, String }
 import std.optional { Present, Absent }
 import extdeps.transports.rest { RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cloud.hetzner_cloud_api { HetznerServerResponse, HetznerServerRead, HetznerServerObserved, HetznerServerReadRefused }
-import gunbc.provider_acquisition { ProviderResourceAcquisition }
+import gunbc.fleet.provider_acquisition { ProviderResourceAcquisition }
 
 // ONE ACQUIRED SERVER AS THE CLOUD API ANSWERED ABOUT IT, judged against its acquisition row. Pure:
-// the exchange is gunbc.hetzner_cloud_server_control's, and this is what both it and the control
-// route (gunbc.host_control_route) read, so the route does not import the transport.
+// the exchange is gunbc.fleet.hetzner_cloud_server_control's, and this is what both it and the control
+// route (gunbc.host.host_control_route) read, so the route does not import the transport.
 
 // THE SERVER THE API ANSWERED ABOUT MUST BE THE ONE ACQUIRED. A resource id that does not parse, or an
 // answer about another id, refuses: the acquisition row is the only authority for which server a

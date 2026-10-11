@@ -22,7 +22,7 @@ import gunbc.ensure { EnsurePolicy, EnsureMayApply, EnsureObserveOnly }
 import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
 import extdeps.google.drive { drive_serviceusage_api_id }
 import extdeps.google.sheets { sheets_serviceusage_api_id }
-import gunbc.gcp_estate_observation {
+import gunbc.gcp.gcp_estate_observation {
   sheets_calling_home,
   SheetsCallingHomeUnresolved,
   SheetsCallingHomeSelected,

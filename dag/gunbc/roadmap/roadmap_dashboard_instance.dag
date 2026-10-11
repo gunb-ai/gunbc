@@ -1,10 +1,10 @@
-module gunbc.roadmap_dashboard_instance
+module gunbc.roadmap.roadmap_dashboard_instance
 
 import extdeps.tools.env { env_absolute_program }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef }
-import gunbc.srv1_dashboard_bind { srv1_dashboard_host_identity, srv1_dashboard_listen_host }
+import gunbc.roadmap.srv1_dashboard_bind { srv1_dashboard_host_identity, srv1_dashboard_listen_host }
 import std.measure { ByteSize }
-import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import extdeps.tmux { TmuxServerScope, DefaultTmuxServer, NamedTmuxServer }
 import gunbc.ensure { EnsureObserveOnly }
 import extdeps.posix.identity { PosixOwnerNames }
@@ -22,7 +22,7 @@ import gunbc.deployment_risk {
   srv2_lab_v1_deletion_deployment,
   macbook_local_deployment,
 }
-import gunbc.fleet_main_revision { fleet_desired_ref_name }
+import gunbc.fleet.fleet_main_revision { fleet_desired_ref_name }
 import gunbc.provider_account {
   AdmittedAccountBinding,
   CodexAccountSelection,
@@ -40,7 +40,7 @@ import extdeps.languages.json.emit {
   json_string,
   serialize_json_object_prefix,
 }
-import gunbc.roadmap_execution_contract {
+import gunbc.roadmap.roadmap_execution_contract {
   GitWorkspaceCapability,
   TmuxSessionCapability,
   TmuxPipeShellCapability,
@@ -59,7 +59,7 @@ import gunbc.roadmap_execution_contract {
   dispatch_host_realization,
   dispatch_platform_required_capabilities,
 }
-import gunbc.host_layout {
+import gunbc.host.host_layout {
   srv1_gunbc_repo_root,
   srv1_gunbc_serve_binary,
   srv1_dispatch_worktree_root,
@@ -525,10 +525,10 @@ type DashboardToolchain {
 // merely happened to share a number would have to stay separate; these share the measurement.
 //
 // WHERE THIS IS POINTED, and it is deliberately NOT built yet. A per-attempt ceiling is one half of
-// a concurrency question whose other half already exists: gunbc.runner_slot_allocation derives
+// a concurrency question whose other half already exists: gunbc.runner.runner_slot_allocation derives
 // host_memory_admitted_width, host_cpu_admitted_width and host_disk_admitted_width and commits the
 // MINIMUM over those axes, which is exactly "the most concurrent fraction this host admits", and
-// gunbc.fleet_host_budget already expresses shares as fractions over a measure
+// gunbc.fleet.fleet_host_budget already expresses shares as fractions over a measure
 // (measure_scale_fraction_floor) and charges control-plane residency against what a host may
 // commit. Dispatch consumes none of it: nothing today asks how many attempts this host admits
 // before starting one, so concurrency is bounded by whoever is clicking rather than by the budget.
@@ -690,7 +690,7 @@ fn dashboard_execution_environment(
 }
 
 // THE repo_root -> INSTANCE RESOLUTION LIVES WITH THE INSTANCES, NOT WITH ONE CONSUMER. It was
-// authored inside gunbc.roadmap_belt_actuate as belt_dashboard_instance_lookup_for_spawn_workdir,
+// authored inside gunbc.roadmap.roadmap_belt_actuate as belt_dashboard_instance_lookup_for_spawn_workdir,
 // which was correct while the belt tick was the only caller and stopped being correct the moment a
 // second one existed: the mapping is a fact about which host instances this repository declares,
 // and a consumer that re-derives it forks an authority rather than consuming one (DESIGN 3, consume
@@ -993,7 +993,7 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
 // was declared observe-only and never provisioned.\n\nTaking the whole layout row instead of a bare
 // host_identity makes the mismatch unwritable: there is no longer a way to name a host without also
 // supplying the three facts that belong to it, because the name IS a field of the row that carries
-// them. gunbc.host_layout owns those rows.
+// them. gunbc.host.host_layout owns those rows.
 
 // EACH INSTANCE OWNS ITS BINARY, BECAUSE THE PROCESSES ARE MUTUALLY EXCLUSIVE (operator ruling,
 // 2026-07-30). The serve binary used to come from the host layout, so every isolated instance on
@@ -1111,7 +1111,7 @@ fn srv2_preview_dashboard_instance() -> HostDashboardInstance {
 // THE ACTUATING srv2 INSTANCE, added because the preview one could never have worked and its
 // failure mode was silent until someone ran it. srv2_preview above is DashboardObserveOnly, so its
 // dispatch endpoint refuses by construction — correct, and invisible on a page whose buttons simply
-// read disabled. It also had no entry in gunbc.roadmap_dashboard_instance_apply, which contained
+// read disabled. It also had no entry in gunbc.roadmap.roadmap_dashboard_instance_apply, which contained
 // zero srv2 references, so nothing in the tree could provision the directories its observations
 // refuse against. Declared, servable, and unreachable in the same value.\n\nThis row is the
 // actuating peer: same isolated layout, its own root and named tmux server, DashboardActuating so
@@ -1636,7 +1636,7 @@ fn dashboard_instances_dispatch_state_is_consistent(
 // the auth stores, the bundle inbox, the event worktree -- is a demand its consumer declares, composed
 // by gunbc.roadmap.dashboard_instance_directories dashboard_instance_directory_demands and ensured by
 // the one owned-directory provider (gunbc.owned_directory owned_directory_ensure) BEFORE this plan
-// runs (gunbc.roadmap_dashboard_instance_apply dashboard_apply_directories_then_plan). The two
+// runs (gunbc.roadmap.roadmap_dashboard_instance_apply dashboard_apply_directories_then_plan). The two
 // directory ops this type carried were a second creator beside live_deploy's, with a different
 // meaning: a mkdir as whoever ran it, with no owner, no mode and no readback of most of what it made.
 

@@ -15,12 +15,12 @@ import v2.workflow.required_floor {
 // READ FROM THE FLOOR'S OWN RECORD RATHER THAN RECOMPUTED. The floor decides, per qualified witness
 // identity, whether its module is in the prepared gate closure; an identity whose module is not is
 // written to required_floor_disposition.tsv with the disposition declined_outside_gate_closure
-// (gunbc.witness_floor_workflow required_floor_disposition_upload_bound_step publishes it as the
+// (gunbc.witness.witness_floor_workflow required_floor_disposition_upload_bound_step publishes it as the
 // `required-floor-disposition` artifact). Recomputing the closure here would be a second authority
 // for one fact, so this module only folds rows the floor wrote.
 //
 // EVERY FUNCTION HERE IS PURE AND TAKES ITS LINES AS AN ARGUMENT. Reading the artifact off disk is
-// the instrument's fact (tools.gate_closure_decline_census_instrument).
+// the instrument's fact (gunbc.instruments.gate_closure_decline_census_instrument).
 
 data gate_closure_decline_disposition: String = required_floor_disposition_name(d: DeclinedOutsideGateClosure)
 
@@ -37,7 +37,7 @@ data required_floor_disposition_names: List<String> = map([
 
 // The grammar lane owns this population (gunbc#13374), so the census leaves it out by module
 // prefix rather than double-counting it.
-data gate_closure_decline_census_excluded_prefixes: List<String> = ["v2.test.parse."]
+data gate_closure_decline_census_excluded_prefixes: List<String> = ["v2.test.claim.parse."]
 
 type ModuleDeclineCount {
   module: String

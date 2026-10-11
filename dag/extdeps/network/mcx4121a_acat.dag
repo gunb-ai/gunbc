@@ -16,7 +16,7 @@ import extdeps.standards.nic_attachment { NicAttachmentClass, PcieCem }
 // THIS IS NOT IBM FRU 01FT753. That FRU is IBM's independently governed Power feature
 // (FC EC2T/EC2U, CCIN 58FB) in extdeps.network.ibm_01ft753. Same silicon class and the same
 // host-link and port facts; two independently versioned products. DESIGN section 3's external
-// upstream decomposition forbids collapsing them. Consumer: gunbc.machine_intake_mtcollins1_expansion_candidates.candidate_verdicts.
+// upstream decomposition forbids collapsing them. Consumer: gunbc.machine_intake.mtcollins1_expansion_candidates.candidate_verdicts.
 // SFP28 names the port connector; no Ethernet link mode or aggregate is inferred.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority { uri: Uri {
   scheme: Https,

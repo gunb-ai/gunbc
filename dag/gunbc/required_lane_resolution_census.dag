@@ -9,7 +9,7 @@ import extdeps.languages.json.emit { serialize_json_string }
 // DESIGN section 3 states the hazard as a warning: outside the required gate the substrate still
 // refuses and nothing asks it to, so a product-layer dependent can stop resolving, stay broken,
 // and let every required lane report SUCCESS. On 2026-09-20 it was the live state --
-// gunbc.site_pxe_edge_converge did not resolve on main while all four required lanes were green,
+// gunbc.fleet.site_pxe_edge_converge did not resolve on main while all four required lanes were green,
 // with four approvals and a place in the merge queue (gunbc#11607) -- and the question "which
 // modules can do that" had no instrument, only the warning. This module is the instrument's fold:
 // pure, over supplied populations, so its claims discriminate at one interface and its live

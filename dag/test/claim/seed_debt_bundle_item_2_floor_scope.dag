@@ -1,6 +1,6 @@
 module test.claim.seed_debt_bundle_item_2_floor_scope
 
-import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import std.realization_schedule {
   Runnable,
   RunnableDiscoveryBatch,
@@ -14,7 +14,7 @@ import std.types { List }
 fn seed_debt_witness_entries() -> List<ScheduleWitnessEntry> {
   [
     ScheduleWitnessEntry {
-      entry: "dag/test/claim/compile_source_model_witness_test.dag",
+      entry: "dag/test/claim/compile_source_model_witness.dag",
       function: "",
       kind: CorpusWitnessKind
     }

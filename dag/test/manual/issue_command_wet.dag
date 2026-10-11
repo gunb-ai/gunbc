@@ -3,10 +3,10 @@ module test.manual.issue_command_wet
 import std.types { String, NonEmptyStr, FilePath, Bool }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.principal_projection { PrincipalRef }
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_event_log { EventPrincipalAuthenticated, roadmap_event_envelope, roadmap_issue_comments, roadmap_event_heads, roadmap_node_standing, roadmap_node_standing_key }
 import gunbc.roadmap.roadmap_event_carrier { carrier_snapshot_close_failures, RoadmapEventAppend, roadmap_event_carrier_layout, roadmap_events_read, EventsRead, EventAppended, EventAlreadyPresent, EventAppendRefused }
-import gunbc.roadmap_issue_command { IssueCommandSubject, CreateComment, issue_command_event, issue_command_apply }
+import gunbc.roadmap.roadmap_issue_command { IssueCommandSubject, CreateComment, issue_command_event, issue_command_apply }
 
 // Local throwaway Git remote only. Drives the command -> conditional carrier -> fold -> readback.
 fn issue_command_wet(repo: String, mode: String = "sequential", git_program: String = "/usr/bin/git") -> ProcessExit {

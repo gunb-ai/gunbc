@@ -19,8 +19,8 @@ import gunbc.auth.github_credential {
 }
 import gunbc.runner.runner_jit_admission { JitAdmissionAxisStanding }
 import gunbc.runner.jit_registration_subject { JitRegistrationSubject, JitRegistrationSubjectStanding, JitRegistrationSubjectRefusal }
-import gunbc.runner_group_restriction_observation { MicrovmRunnerGroupStanding, RunnerGroupRestrictionRefusal }
-import gunbc.runner_jit_mint {
+import gunbc.runner.runner_group_restriction_observation { MicrovmRunnerGroupStanding, RunnerGroupRestrictionRefusal }
+import gunbc.runner.runner_jit_mint {
   JitMintRefusedSubject,
   JitMintPlan, JitMintAuthorized, JitMintRefusedRunnerGroupForAnotherWorkflow, JitMintRefusedCredential,
   JitMintRefusedAttemptUnbound, JitMintRefusedRunnerGroupUnrestricted, plan_jit_mint,
@@ -28,7 +28,7 @@ import gunbc.runner_jit_mint {
 
 data runner_jit_perform_disposition: ConstructionMechanism = SingleAuthority
 
-// THIS MODULE IS THE NAMED CONSUMER OF gunbc.runner_jit_mint.plan_jit_mint, and landing it is what
+// THIS MODULE IS THE NAMED CONSUMER OF gunbc.runner.runner_jit_mint.plan_jit_mint, and landing it is what
 // deleted that module's consumer frontier. It performs no I/O and claims none: the two folds below
 // sit on either side of the transport, which gunbc.github_effect_perform performs.
 //
@@ -39,19 +39,19 @@ data runner_jit_perform_disposition: ConstructionMechanism = SingleAuthority
 // endpoint: it is that no endpoint exists to ask. A credential is minted control-plane-side, against
 // a cell whose ownership was already proven, and it is bound to the attempt the proving arm itself
 // named. WHERE that attempt's device lives is one fact with one owner --
-// gunbc.runner_attempt_launch, which derives it inside the jail it launches; this module carried a
+// gunbc.runner.runner_attempt_launch, which derives it inside the jail it launches; this module carried a
 // second, out-of-jail path once and the VMM could never have opened it.
 //
 // So the ordering has to be unwritable rather than documented. dispatch_jit_mint is the only way to
 // obtain a JitMintDispatchAuthorized, and it produces one only from JitMintAuthorized -- which
-// gunbc.runner_jit_mint produces only after BOTH cell ownership and the credential's organization
+// gunbc.runner.runner_jit_mint produces only after BOTH cell ownership and the credential's organization
 // self-hosted-runners write capability hold. receive_jit_mint then requires that value to reach a
 // delivered credential. A caller therefore cannot mint first and prove ownership afterwards: the
 // value that names where the credential may go does not exist until both facts are established.
 //
 // A SINGLE FOLD TAKING THE MINT OUTCOME AS A PARAMETER WOULD HAVE INVERTED EXACTLY THAT. Its
 // caller would have had to call GitHub before the fold ran, which is mint-first-check-after with
-// the check moved after the spend -- the ordering gunbc.runner_jit_mint exists to make unwritable.
+// the check moved after the spend -- the ordering gunbc.runner.runner_jit_mint exists to make unwritable.
 //
 // THE INSTALLATION TOKEN IS NAMED, NEVER CARRIED. The dispatch holds the App and installation
 // identity the token is minted FOR (gunbc.github_effect_perform mints it, uses it, and drops it
@@ -62,7 +62,7 @@ data runner_jit_perform_disposition: ConstructionMechanism = SingleAuthority
 
 // WHY THE REFUSALS ARE RE-PROJECTED RATHER THAN PASSED THROUGH AS A JitMintPlan.
 //
-// The decision stays in gunbc.runner_jit_mint and is not re-derived here -- these arms report which
+// The decision stays in gunbc.runner.runner_jit_mint and is not re-derived here -- these arms report which
 // PLANNED refusal stopped the push, carrying that arm's own payload unchanged. Passing the plan
 // itself would make JitMintAuthorized representable inside a value whose name says nothing was
 // dispatched, which is a writable contradiction (DESIGN §4b). The projection is produced by an
@@ -134,14 +134,14 @@ fn dispatch_jit_mint(
   runner_group: MicrovmRunnerGroupStanding,
   attempt_binding: JitAdmissionAxisStanding
 ) -> JitMintDispatch admit_callers: [
-  decl_ref(module_path: "gunbc.runner_microvm_slot_controller", decl_name: "attempt_dispatch"),
+  decl_ref(module_path: "gunbc.runner.runner_microvm_slot_controller", decl_name: "attempt_dispatch"),
   decl_ref(module_path: "test.claim.github_app_registry", decl_name: "dispatched"),
   decl_ref(module_path: "test.claim.github_app_registry", decl_name: "witness_jit_dispatch_refuses_when_the_attempt_binding_is_deferred"),
-  decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_real_mint_admits_the_attempt_through_the_sealed_subject"),
-  decl_ref(module_path: "test.claim.runner_attempt_launch_witness", decl_name: "planned_with"),
-  decl_ref(module_path: "test.claim.runner.runner_microvm_slot_controller_witness_test", decl_name: "delivered_mint"),
-  decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_delivery_from_another_dispatch_on_the_same_slot_refuses"),
-  decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_production_mint_over_todays_fleet_converge_workflow_refuses_at_the_attempt_input"),
+  decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "the_real_mint_admits_the_attempt_through_the_sealed_subject"),
+  decl_ref(module_path: "test.claim.runner.runner_attempt_launch_witness", decl_name: "planned_with"),
+  decl_ref(module_path: "test.claim.runner.runner_microvm_slot_controller_witness", decl_name: "delivered_mint"),
+  decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "a_delivery_from_another_dispatch_on_the_same_slot_refuses"),
+  decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "the_production_mint_over_todays_fleet_converge_workflow_refuses_at_the_attempt_input"),
 ] {
   match plan_jit_mint(
     subject: subject,
@@ -192,7 +192,7 @@ fn dispatch_jit_mint(
 //
 // An EncodedJitConfig is obtainable from this module only alongside the attempt the ownership proof
 // produced, so there is no value here that hands a caller a credential it may send anywhere it
-// likes: gunbc.runner_attempt_launch refuses a delivery bound to any other attempt. That is the structural form of "there is no endpoint a host may ask": the credential is
+// likes: gunbc.runner.runner_attempt_launch refuses a delivery bound to any other attempt. That is the structural form of "there is no endpoint a host may ask": the credential is
 // not addressable independently of the attempt it belongs to.
 //
 // THE NOT-CREATED ARM CARRIES GitHub's OWN OUTCOME VALUE UNCHANGED. Re-coining upstream's four
@@ -241,11 +241,11 @@ fn receive_jit_mint(
   decl_ref(module_path: "test.claim.github_app_registry", decl_name: "witness_a_refused_dispatch_delivers_nothing_even_from_a_minted_credential"),
   decl_ref(module_path: "test.claim.github_app_registry", decl_name: "witness_an_authorized_dispatch_delivers_nothing_when_the_mint_was_not_created"),
   decl_ref(module_path: "test.claim.github_app_registry", decl_name: "witness_a_minted_credential_is_bound_to_the_dispatched_attempt"),
-  decl_ref(module_path: "test.claim.runner.runner_microvm_slot_controller_witness_test", decl_name: "delivered_mint"),
-  decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_real_mint_admits_the_attempt_through_the_sealed_subject"),
-  decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_production_mint_over_todays_fleet_converge_workflow_refuses_at_the_attempt_input"),
-  decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_delivery_from_another_dispatch_on_the_same_slot_refuses"),
-  decl_ref(module_path: "test.claim.runner_attempt_launch_witness", decl_name: "planned_with"),
+  decl_ref(module_path: "test.claim.runner.runner_microvm_slot_controller_witness", decl_name: "delivered_mint"),
+  decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "the_real_mint_admits_the_attempt_through_the_sealed_subject"),
+  decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "the_production_mint_over_todays_fleet_converge_workflow_refuses_at_the_attempt_input"),
+  decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "a_delivery_from_another_dispatch_on_the_same_slot_refuses"),
+  decl_ref(module_path: "test.claim.runner.runner_attempt_launch_witness", decl_name: "planned_with"),
 ] {
   match dispatch {
     JitMintDispatchRefused { refusal: r } => JitCredentialNotDispatched { refusal: r }

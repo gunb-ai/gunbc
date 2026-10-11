@@ -1,4 +1,4 @@
-module v2.test.manual.refinement_nonempty_list
+module v2.test.claim.manual.refinement_nonempty_list
 
 type NonEmptyList<T> = Refined<List<T>>
 fn witness_non_empty_list<T>(xs: List<T>, at: Locus) -> Outcome<NonEmptyList<T>> {

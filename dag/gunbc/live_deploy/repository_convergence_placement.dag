@@ -58,7 +58,7 @@ import extdeps.systemd.unit_file {
 }
 import std.measure { Second, second, second_count }
 import extdeps.access.posix_effective_principal_read_op { effective_posix_principal_read }
-import gunbc.host_layout { instance_receipts_dir }
+import gunbc.host.host_layout { instance_receipts_dir }
 import gunbc.live_deploy.spec {
   deployment_slice_unit_name, DeploymentSpec,
   gunbc_approval_broker_slice_unit_name,
@@ -88,7 +88,7 @@ import v2.std.collection { Present, Absent }
 // once by measurement: the first flip deploy (run 29822498755, 2026-07-21) died on bare-rsync
 // EACCES and chgrp EPERM into that exact tree, and the repair was to stop having the runner write it.
 //
-// THE PLACEMENT IS DERIVED FROM THE GRANT ROSTER, NOT CHOSEN FOR TASTE. gunbc.fleet_posix_accounts
+// THE PLACEMENT IS DERIVED FROM THE GRANT ROSTER, NOT CHOSEN FOR TASTE. gunbc.fleet.fleet_posix_accounts
 // grants the deploy principal exactly six NOPASSWD commands -- apt-get, install, visudo, systemctl,
 // tailscale, rm. `git` is not among them and neither is any `sudo -u` form, so THERE IS NO PRIMITIVE
 // IN THE ADMITTED SET THAT RUNS AN ARBITRARY COMMAND AS ANOTHER USER. What is granted is `install`
@@ -576,7 +576,7 @@ fn convergence_exec_start(
 //
 // THE VALUE IS BOUNDED ABOVE BY THE STEP THAT WAITS ON IT, not measured from the convergence: no
 // receipt yet records this unit's duration (the instrument is its journal's start/finish lines).
-// gunbc.fleet_workflow_steps gunbc_ci_live_deploy_step_timeout_minutes is the ceiling of the step
+// gunbc.fleet.fleet_workflow_steps gunbc_ci_live_deploy_step_timeout_minutes is the ceiling of the step
 // that contains the restart, and that step also typechecks, derives the plan and polls readiness,
 // so the bound must leave room for them or the step ceiling fires first and the diagnosis is lost.
 // Half the ceiling is that reservation stated as a policy, not a derivation; the witness pins the

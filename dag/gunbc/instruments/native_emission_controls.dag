@@ -250,7 +250,7 @@ fn filter_in_branch_condition_cases() -> List<NativeEmissionCase> {
 // RULE: a data row keeps its declared `?`, in its signature and in its body (v1.compiler.emit_rust
 // emit_data_def's named-refinement arm; v1.compiler.emit emit_optional_data_value_json). A
 // where-refinement such as NonEmptyStr took the one arm of emit_data_def with no optional wrap, so
-// gunbc.fleet_tailnet fleet_tailnet_domain (`NonEmptyStr? = Present { .. }`) was emitted
+// gunbc.fleet.fleet_tailnet fleet_tailnet_domain (`NonEmptyStr? = Present { .. }`) was emitted
 // `-> NonEmptyStr`; and the JSON body spelled Present as a tagged map the native option cannot
 // parse.
 // Both optional rows pass through a `T?`-typed parameter, so a dropped `?` stops this closure

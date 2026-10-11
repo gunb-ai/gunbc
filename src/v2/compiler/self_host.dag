@@ -81,7 +81,7 @@ type SourceModels {
 //
 // Function and test identities under this module still read `self_host_*` while gating
 // staleness. Renaming them is the remaining half and is blocked, not deferred by taste:
-// `gunbc.witness_deferral_freeze` enumerates
+// `gunbc.witness.witness_deferral_freeze` enumerates
 // `self_host_fixed_point_validate_accepts_matching_regen_bytes` and
 // `self_host_fixed_point_validate_rejects_perturbed_regen_bytes` at identity grain, and
 // a frozen row the tree no longer carries refuses. A rename is a removal plus an

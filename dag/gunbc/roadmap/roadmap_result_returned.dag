@@ -2,20 +2,20 @@ module gunbc.roadmap.roadmap_result_returned
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.principal_projection { fabric_workflow_principal }
-import gunbc.roadmap_dashboard_instance {
+import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, DashboardObserveOnly, DashboardActuating,
   dashboard_instance_for_repo_root, DashboardInstanceResolved, DashboardInstanceRootUnknown,
 }
-import gunbc.roadmap_dispatch_actuator { DispatchAttemptRef }
+import gunbc.roadmap.roadmap_dispatch_actuator { DispatchAttemptRef }
 import gunbc.roadmap.roadmap_submission {
   CandidateHandoffState, HandoffAwaitingWorker, HandoffYielded, HandoffEvidenceRefused, HandoffDeclaredBlocked,
   HandoffSubmitted, HandoffVerificationFailed, HandoffAwaitingIntegration, HandoffBlockedOnIntegration,
   HandoffPublicationOwed, HandoffBlockedOnPublication, HandoffPublished,
   candidate_handoff_state_key, submission_readiness_key,
 }
-import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress, workflow_attempt_progress }
+import gunbc.roadmap.roadmap_workflow_progress { WorkflowAttemptProgress, workflow_attempt_progress }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent, RoadmapEventEnvelope, RoadmapEventId, EventPrincipal, EventPrincipalAuthenticated,
   Claimed, Released, Progress, Blocked, HandedBack, ReceiptReferenced, CommentCreated, CommentEdited, CommentDeleted,
@@ -37,7 +37,7 @@ import gunbc.roadmap.roadmap_attempt_request_record {
   AttemptRequestBindingRead, RequestBindingRead, RequestBindingAbsent, RequestBindingUnreadable,
   attempt_request_binding_read_for_instance,
 }
-import gunbc.roadmap_belt_actuate {
+import gunbc.roadmap.roadmap_belt_actuate {
   belt_attempts_observe_for_instance, AttemptsObserved, AttemptsRefused,
   BeltAttemptPanes, belt_attempt_panes_observe_for_instance, belt_workflow_attempt_evidence_for_key,
 }
@@ -303,14 +303,14 @@ type ResultReturnPass
 
 // THE PASS AS RUN: the pass, and the standing of every event-log snapshot it owned -- the one
 // whole-log read and one per result it appended. The pass is unchanged by them; the tick's exit is
-// where a snapshot left behind is stated (gunbc.roadmap_belt_tick_cli
+// where a snapshot left behind is stated (gunbc.roadmap.roadmap_belt_tick_cli
 // belt_tick_exit_with_snapshot_closes).
 type ResultReturnPassRun {
   pass: ResultReturnPass
   closes: List<CarrierSnapshotClose>
 }
 
-// THE BELT'S RESULT-RETURN RECONCILIATION, run by every tick (gunbc.roadmap_belt_tick_cli
+// THE BELT'S RESULT-RETURN RECONCILIATION, run by every tick (gunbc.roadmap.roadmap_belt_tick_cli
 // belt_run_once_cli_in) whether or not the tick's other passes ran: an outstanding result is a
 // durable obligation, and a launch or authority refusal elsewhere does not discharge it. It reads
 // the event log once and the attempt refs once, and considers every keyed attempt of the history.
@@ -466,7 +466,7 @@ fn result_returned_observation_of(read: RoadmapEventsRead, binding: AttemptReque
 
 // ONE ATTEMPT'S RESULT, READ FOR ITS EXACT IDENTITY: the attempt's launch binding from its attempt
 // state and its issue's history from the event log. Its consumers are result_returned_report, the
-// operator's entry, and gunbc.roadmap_service_evidence service_evidence_inputs_for_attempt, which
+// operator's entry, and gunbc.roadmap.roadmap_service_evidence service_evidence_inputs_for_attempt, which
 // binds completion_time and failure_attribution from it for the dogfood route's service evidence.
 fn result_returned_observe_for_attempt(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> CarrierClosed<ResultReturnedObservation> {
   if attempt_key == "" || node_id == "" {

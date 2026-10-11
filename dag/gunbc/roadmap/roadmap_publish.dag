@@ -1,4 +1,4 @@
-module gunbc.roadmap_publish
+module gunbc.roadmap.roadmap_publish
 
 import std.algebra { trim }
 
@@ -144,7 +144,7 @@ type RemoteBranchReadFailure
   | AdvertisedRefProjectsEmptyBranch { remote: NonEmptyStr, ref_names: List<String> }
 
 data ls_remote_operation: OperationRef = OperationRef {
-  path: "dag/extdeps/git/git.dag",
+  path: "dag/extdeps/git.dag",
   service: "git.Core",
   operation: "LsRemoteHeads",
 }

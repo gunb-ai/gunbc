@@ -1,7 +1,7 @@
 module gunbc.spark.pair_serving_apply
 
 import std.types { String, Bool, List, NonEmptyStr, Secret, FilePath, EpochSecs }
-import gunbc.fabric_event_log_host { now_epoch_seconds }
+import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import std.algebra { trim }
 import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -10,7 +10,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, shell_quote }
 import extdeps.ssh.session { SshSessionExecResult, ssh_client_error_exit_status }
 import gunbc.spark.remote_leg_began { remote_leg_began_word, remote_leg_began_payload_line, remote_leg_lines, remote_leg_reported_began }
-import gunbc.fleet_bootstrap_principal_session {
+import gunbc.fleet.fleet_bootstrap_principal_session {
   exec_as_fleet_principal_trusting_with_stdin,
   BootstrapCredentialFileHeld,
   FleetPrincipalLegRan,
@@ -25,12 +25,12 @@ import gunbc.spark.pair_serving_authority_log {
 import gunbc.auth.materialized_secret { with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.spark.fabric_reach { SparkReachPath, ReachManagementLan, ReachFabricRail, spark_reach_path_wire, spark_reach_endpoint, ExecutorReach, ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
-import gunbc.fleet_known_hosts_anchor {
+import gunbc.fleet.fleet_known_hosts_anchor {
   FleetOpenSshTrustPolicy, fleet_ssh_attempt_identity, materialize_fleet_known_hosts_anchor,
   fleet_openssh_trust_policy_of, known_hosts_materialization_receipt,
   SshTarget, portable_remote_words,
 }
-import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
+import gunbc.fleet.fleet_posix_accounts { fleet_bootstrap_principal_login }
 import gunbc.spark.grant_privileged_operation { read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized }
 import gunbc.spark.pair_serving_realization {
   SparkPairRealization, SparkPairRealized, SparkPairRealizationRefused,

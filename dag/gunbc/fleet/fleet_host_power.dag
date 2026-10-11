@@ -59,7 +59,7 @@ data srv1_power: HostPowerProfile = HostPowerProfile {
   },
 }
 
-data similar_build_basis: NonEmptyStr = "same asrock_altrad8ud_1l2t baseboard catalog as srv1 in gunbc.fleet_intent, same Ampere Altra class part; operator direction 2026-09-05 to carry srv1's figure across the fleet pending per-host access"
+data similar_build_basis: NonEmptyStr = "same asrock_altrad8ud_1l2t baseboard catalog as srv1 in gunbc.fleet.fleet_intent, same Ampere Altra class part; operator direction 2026-09-05 to carry srv1's figure across the fleet pending per-host access"
 
 data srv2_power: HostPowerProfile = HostPowerProfile {
   host: "srv2",

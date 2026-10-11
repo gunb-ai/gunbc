@@ -61,7 +61,7 @@ import extdeps.filesystem.filesystem_io {
 import extdeps.gunbc
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.principal_projection { google_oidc_issuer }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_private_directory }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_private_directory }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
 
 // ── The Google endpoints and cache policy ──────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-module gunbc.roadmap_verification_receipt
+module gunbc.roadmap.roadmap_verification_receipt
 
 import std.algebra { trim }
 
@@ -37,8 +37,8 @@ import extdeps.languages.json.parse {
   JsonMemberDuplicated,
   JsonMemberNotAnObject,
 }
-import gunbc.roadmap_model { RoadmapNodeIdentity }
-import gunbc.roadmap_execution_contract {
+import gunbc.roadmap.roadmap_model { RoadmapNodeIdentity }
+import gunbc.roadmap.roadmap_execution_contract {
   ValidationOperation,
   ModeledValidationCommand,
   GunbcClaimValidation,
@@ -47,7 +47,7 @@ import gunbc.roadmap_execution_contract {
   ClosingContractAuthoringValidation,
   validation_operation_identity_json,
 }
-import gunbc.roadmap_validation_oracle {
+import gunbc.roadmap.roadmap_validation_oracle {
   ValidationVerdict,
   ValidationPassed,
   ValidationFailed,
@@ -108,7 +108,7 @@ import gunbc.git_diff_change_window { git_diff_window_absent_identity }
 // change-window identity. None of those six fields is Optional: a receipt that cannot name any one
 // of them cannot state which question it answered and therefore cannot be constructed as
 // VerificationReceipt. The node's durable identity is RoadmapNodeIdentity rather than its editable
-// slug; criteria_digest is the Fnv1a64Structural value derived by gunbc.roadmap_model
+// slug; criteria_digest is the Fnv1a64Structural value derived by gunbc.roadmap.roadmap_model
 // node_criteria_digest; head_sha is std.types CommitSha rather than an anonymous revision string;
 // change_window_identity is the Fnv1a64Structural content hash over target, target_generation,
 // base, head, and relation from gunbc.git_diff_change_window (git_diff_window_absent_identity when
@@ -730,7 +730,7 @@ type ValidationExecution {
 // is subject-generic, while the criteria digest stays on its actual structural family rather than
 // widening to the union.
 //
-// ValidationVerdict remains owned by gunbc.roadmap_validation_oracle. Its current
+// ValidationVerdict remains owned by gunbc.roadmap.roadmap_validation_oracle. Its current
 // command/detail-bearing arms are the compatibility surface the live attempt-level belt producer
 // still constructs; they are not a second execution authority here. When the belt wiring migrates,
 // it constructs executions from the declared operation, realized argv and process result and
@@ -745,7 +745,7 @@ type VerificationReceipt {
 
 // A READABLE RECEIPT ABOUT ANOTHER SUBJECT IS NOT EVIDENCE. The comparison is total over all six
 // required fields and returns the first differing field with both values, mirroring
-// gunbc.roadmap_publish publication_receipt_subject_match. In particular, an old head's passed
+// gunbc.roadmap.roadmap_publish publication_receipt_subject_match. In particular, an old head's passed
 // receipt cannot move the lamp for a new head merely because node, criteria, attempt and branch
 // still agree; nor can an old window identity answer after the target branch advances.
 
@@ -809,22 +809,22 @@ fn verification_subject_match(
 }
 
 // DECLARED LEGACY STATE — DISSOLVE-ON: belt verification writes and reads
-// gunbc.roadmap_verification_receipt VerificationReceipt at
+// gunbc.roadmap.roadmap_verification_receipt VerificationReceipt at
 // dispatch_attempt_verification_receipt_path_for_instance. Before exact-head receipts,
-// gunbc.roadmap_validation_oracle validation_receipt_decode recovered only an attempt-level verdict
+// gunbc.roadmap.roadmap_validation_oracle validation_receipt_decode recovered only an attempt-level verdict
 // key from validation-receipt.json. That document carries no node identity, criteria digest,
 // attempt key, branch or head, so it cannot be upgraded or guessed into a VerificationSubject. Such
 // files decode as LegacyAttemptValidationReceipt, classify as
 // VerificationEvidenceLegacyAttemptLevel, and refuse to move Verify; RetryVerification is the
 // machine-owned clear path once command handling lands. Pre-receipt attempts without modeled
-// admission are a separate axis: gunbc.roadmap_workflow_command LegacyAttemptDisposition and
+// admission are a separate axis: gunbc.roadmap.roadmap_workflow_command LegacyAttemptDisposition and
 // legacy_attempt_supersedable_label, cleared only through StartNewAttempt{supersedes}. The srv1
 // evidence-unreadable loop becomes this typed disposition rather than an endlessly retried parse
 // failure.
 
 data legacy_validation_receipt_detail: String = "legacy attempt-level validation receipt cannot establish exact-head verification evidence; RetryVerification is the machine-owned clear path"
 
-// P2 HANDOFF TO THE BELT WIRING LANE. gunbc.roadmap_belt_actuate belt_verify_attempt_for_instance
+// P2 HANDOFF TO THE BELT WIRING LANE. gunbc.roadmap.roadmap_belt_actuate belt_verify_attempt_for_instance
 // derives the exact VerificationSubject, publishes verification/<head>.current-selection.json,
 // addresses the immutable receipt at verification/<head>.<window_identity>.json through
 // exact_verification_address_for, and persists roadmap-verification-receipt/v2 documents.
@@ -834,7 +834,7 @@ data legacy_validation_receipt_detail: String = "legacy attempt-level validation
 // when the selection was unreadable. belt_verification_decision separates
 // BeltVerificationEvidenceUnreadable from BeltVerificationRefuse; belt_verify maps the former to
 // VerifyEvidenceUnreadable and the latter to VerifyRefused, which belt_verify_pass_outcome_from
-// projects as BeltPassRefused rather than BeltPassFailed. gunbc.roadmap_workflow_progress
+// projects as BeltPassRefused rather than BeltPassFailed. gunbc.roadmap.roadmap_workflow_progress
 // verification_segment treats SelectionAbsent as pending and SelectionUnreadable or
 // SelectionMalformed as refused before subject or receipt adjudication. validation_receipt_json and
 // validation_receipt_decode remain the legacy attempt-level codec until that migration dissolves.

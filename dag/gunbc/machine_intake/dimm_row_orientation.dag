@@ -1,4 +1,4 @@
-module gunbc.machine_intake_dimm_row_orientation
+module gunbc.machine_intake.dimm_row_orientation
 
 import v2.std.algebra { filter }
 import std.types { Bool, NonEmptyStr, String, List, list_length }
@@ -18,14 +18,14 @@ import gunbc.mt_collins_dimm_physical_identity {
   PopulationDiagramResolved, PopulationDiagramRefused, PopulationCountDisagrees, PopulationConnectorRepeated,
   resolve_dimm_diagram_identity, population_diagram_identity,
 }
-import gunbc.baseboard_dimm_figure {
+import gunbc.host.baseboard_dimm_figure {
   BaseboardDimmFigure, MtCollinsGettingStartedGuideFigures, figure_chassis_orientation,
 }
 
 // THE PHYSICAL ORIENTATION OF A DIMM ROW, AS LOGIC OVER A BOARD FIGURE: the vocabulary a unit's
 // placement readings are written in, and the folds that resolve which way the row is read. Every fold
 // takes the figure it reads as a parameter. Which figure a HOST has is not decided here:
-// gunbc.machine_intake_dimm_physical_orientation selects it from the baseboard its bound controller
+// gunbc.machine_intake.dimm_physical_orientation selects it from the baseboard its bound controller
 // reported. This module imports no managed-host seam and names no unit, so a unit's receipt module can
 // write its readings in this vocabulary without depending on the roster that lists the unit. The
 // vendor's figure facts stay in their extdeps authorities and nothing here edits them.

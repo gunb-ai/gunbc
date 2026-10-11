@@ -1,16 +1,16 @@
-module gunbc.machine_intake_mtcollins1_console_milestone_observation
+module gunbc.machine_intake.mtcollins1_console_milestone_observation
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
 import std.optional { Present }
 import extdeps.bootloader.grub { grub_console_banner_prefix, grub_failed_default_and_fallback, grub_error_prefix }
 import extdeps.linux.module_decompress { linux_module_zstd_decompress_failed_stem }
-import gunbc.machine_intake_pre_os_bringup_verdict { is_firmware_error_line, is_firmware_err_code_line }
+import gunbc.machine_intake.pre_os_bringup_verdict { is_firmware_error_line, is_firmware_err_code_line }
 import extdeps.linux.efi_stub { linux_efi_stub_line_prefix, linux_efi_stub_initrd_load_failed_prefix }
 import extdeps.linux.boot_console { linux_banner_prefix, linux_kernel_panic_prefix, linux_kernel_panic_end_marker }
-import gunbc.machine_intake_ampere_dram_console_observation { ampere_dram_fw_version_marker, ampere_dram_console_line }
-import gunbc.machine_intake_ampere_socket_console_observation { ampere_summary_rc_marker }
-import gunbc.machine_intake_ampere_checkpoint_console_observation { AmpereCheckpointFold, AmpereCheckpointSpan, checkpoint_fold_step, empty_span }
+import gunbc.machine_intake.ampere_dram_console_observation { ampere_dram_fw_version_marker, ampere_dram_console_line }
+import gunbc.machine_intake.ampere_socket_console_observation { ampere_summary_rc_marker }
+import gunbc.machine_intake.ampere_checkpoint_console_observation { AmpereCheckpointFold, AmpereCheckpointSpan, checkpoint_fold_step, empty_span }
 
 // THE CONSOLE MILESTONES ONE mtcollins1 CAPTURE SHOWS, as an observation receipt of this repository
 // (docs/plans/power-on-sequence-model.md, ruling Q1).
@@ -18,13 +18,13 @@ import gunbc.machine_intake_ampere_checkpoint_console_observation { AmpereCheckp
 // A MILESTONE IS AN EXACT, COMPONENT-OWNED LINE, AND IT ESTABLISHES ONLY THAT THAT COMPONENT'S CODE
 // RAN FAR ENOUGH TO PRINT IT. It never establishes an extdeps.ampere.scp_diagnostic AmpereBootStage,
 // a stage's completion, the component's health, or a successful handoff to the next one: those come
-// from an SMpro register reading (gunbc.machine_intake_mtcollins1_power_on_account) or not at all.
+// from an SMpro register reading (gunbc.machine_intake.mtcollins1_power_on_account) or not at all.
 // Each milestone carries the exact line, which parser recognised it (the marker it matched), its
 // index in the capture and the console span it falls in, so a later reader can re-derive it.
 //
 // THE MARKERS ARE THE OWNING MODULES' OWN DATA, imported rather than restated: the DRAM firmware
-// banner (gunbc.machine_intake_ampere_dram_console_observation), the firmware summary's first line
-// (gunbc.machine_intake_ampere_socket_console_observation), the GRUB banner (extdeps.bootloader.grub),
+// banner (gunbc.machine_intake.ampere_dram_console_observation), the firmware summary's first line
+// (gunbc.machine_intake.ampere_socket_console_observation), the GRUB banner (extdeps.bootloader.grub),
 // the EFI stub's prefix and the kernel banner (extdeps.linux.efi_stub, extdeps.linux.boot_console).
 // The two UEFI lines below have no other home in this corpus:
 //
@@ -60,7 +60,7 @@ type ConsoleMilestoneSighting {
 }
 
 // THE SPAN A MILESTONE FALLS IN IS THE CHECKPOINT READER'S, NOT A SECOND COUNT: the fold below runs
-// gunbc.machine_intake_ampere_checkpoint_console_observation checkpoint_fold_step itself and reads
+// gunbc.machine_intake.ampere_checkpoint_console_observation checkpoint_fold_step itself and reads
 // the span index it is in after each line, so a milestone and a checkpoint token in one span are in
 // one span by construction, whatever rule that reader uses for the span before the first banner.
 // WHERE A STATED FAILURE WAS PRINTED. The whole-capture readers (pre_os firmware statements, GRUB, the

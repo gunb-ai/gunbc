@@ -1,11 +1,11 @@
-module gunbc.bmc_fan_program_observation
+module gunbc.bmc.bmc_fan_program_observation
 
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.types { Bool, Int, NonEmptyStr, String }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.json.emit { JsonValue, serialize_json }
 import extdeps.languages.json.parse { JsonDocumentParsed, parse_json_document }
-import gunbc.bmc_fan_program_capture {
+import gunbc.bmc.bmc_fan_program_capture {
   CapturedFanProgram,
   srv3_captured_program,
   srv4_captured_program,

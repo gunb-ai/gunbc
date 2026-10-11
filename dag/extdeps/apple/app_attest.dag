@@ -121,7 +121,7 @@ data app_attest_nonce_extension_oid: NonEmptyStr = "1.2.840.113635.100.8.2"
 // key; ecdsa-with-SHA384 self-signature. Step 1 of the validation chains x5c to THIS certificate
 // and no other; a rotation is a new pinned row, never a fetch. ITS IDENTITY IS A DATA ROW, NOT
 // PROSE: apple_app_attestation_root_ca_sha256_hex below is the SHA-256 of the DER these lines
-// decode to, and test.claim.x509_rfc5280_witness_test computes the digest over the decoded PEM and
+// decode to, and test.claim.x509_rfc5280_witness computes the digest over the decoded PEM and
 // compares (review 69660 of gunbc#11975), so an edited line reds a claim rather than a comment.
 data apple_app_attestation_root_ca_pem_lines: List<String> = [
   "-----BEGIN CERTIFICATE-----",
@@ -178,11 +178,11 @@ type AttestationVerification
   | AttestationRefused { cause: AttestationRefusal }
 
 // THE SUCCESS MINT IS SEALED (review 5289941544). Its admitted callers are ITS ONE REAL SUPPLIER
-// and, beside it, the named fixture declarations of test.claim.approval_device_redemption_witness_test,
+// and, beside it, the named fixture declarations of test.claim.approval_device_redemption_witness,
 // which supply verified evidence to redemption admission at THAT interface (DESIGN section 3). Every
 // non-supplier entry is a test.* declaration; a module not on this roster cannot mint a success at
 // all, and is refused at compile time. THE PAIRING OBLIGATION, stated so a reader sees that supplying
-// the evidence did not remove the last real execution: the attestation's real path runs in test.claim.app_attest_verifier_witness_test the_sample_passes_every_step_before_the_extension_steps (Apple's object through verify_attestation), and the chain's P-384 signatures are the declared frontier gunbc.auth.approval_device_redemption ecdsa_verification_realization_frontier, triggered by MachineWidth<N> reification letting this closure emit.
+// the evidence did not remove the last real execution: the attestation's real path runs in test.claim.app_attest_verifier_witness the_sample_passes_every_step_before_the_extension_steps (Apple's object through verify_attestation), and the chain's P-384 signatures are the declared frontier gunbc.auth.approval_device_redemption ecdsa_verification_realization_frontier, triggered by MachineWidth<N> reification letting this closure emit.
 fn attestation_verification_from_implementation(
   key_id: AttestKeyId,
   public_key_point_b64url: NonEmptyStr,
@@ -193,9 +193,9 @@ fn attestation_verification_from_implementation(
 ) -> AttestationVerification
   admit_callers: [
     decl_ref(module_path: "extdeps.apple.app_attest", decl_name: "verify_attestation"),
-    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "fx_attestation"),
-    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_enrolment_refuses_a_refused_attestation"),
-    decl_ref(module_path: "test.claim.approval_enrolment_handshake_witness_test", decl_name: "fx_attestation"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness", decl_name: "fx_attestation"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness", decl_name: "witness_enrolment_refuses_a_refused_attestation"),
+    decl_ref(module_path: "test.claim.approval_enrolment_handshake_witness", decl_name: "fx_attestation"),
   ]
 {
   match refusal {
@@ -242,11 +242,11 @@ type AssertionVerification
   | AssertionRefused { cause: AssertionRefusal }
 
 // THE SUCCESS MINT IS SEALED (review 5289941544). Its admitted callers are ITS ONE REAL SUPPLIER
-// and, beside it, the named fixture declarations of test.claim.approval_device_redemption_witness_test,
+// and, beside it, the named fixture declarations of test.claim.approval_device_redemption_witness,
 // which supply verified evidence to redemption admission at THAT interface (DESIGN section 3). Every
 // non-supplier entry is a test.* declaration; a module not on this roster cannot mint a success at
 // all, and is refused at compile time. THE PAIRING OBLIGATION, stated so a reader sees that supplying
-// the evidence did not remove the last real execution: the assertion's real path runs in test.claim.app_attest_verifier_witness_test the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions (Apple's object through verify_assertion); its P-256 signature verification is the declared frontier gunbc.auth.approval_device_redemption ecdsa_verification_realization_frontier, triggered by MachineWidth<N> reification letting this closure emit.
+// the evidence did not remove the last real execution: the assertion's real path runs in test.claim.app_attest_verifier_witness the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions (Apple's object through verify_assertion); its P-256 signature verification is the declared frontier gunbc.auth.approval_device_redemption ecdsa_verification_realization_frontier, triggered by MachineWidth<N> reification letting this closure emit.
 fn assertion_verification_from_implementation(
   key_id: AttestKeyId,
   public_key_point_b64url: NonEmptyStr,
@@ -256,9 +256,9 @@ fn assertion_verification_from_implementation(
 ) -> AssertionVerification
   admit_callers: [
     decl_ref(module_path: "extdeps.apple.app_attest", decl_name: "verify_assertion"),
-    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "assertion_over"),
-    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_an_assertion_under_another_public_key"),
-    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_a_refused_assertion"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness", decl_name: "assertion_over"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness", decl_name: "witness_device_admission_refuses_an_assertion_under_another_public_key"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness", decl_name: "witness_device_admission_refuses_a_refused_assertion"),
   ]
 {
   match refusal {
@@ -440,8 +440,8 @@ fn app_attest_root() -> X509Certificate? {
 // subject's signature algorithm names. `none` is an encoding refusal -- an algorithm or curve the
 // verifier does not carry, or a signature that is not an ECDSA-Sig-Value for the issuer's width --
 // and never a verdict. ITS EVIDENCE: the refusing arms are claimed cheaply over the real leaf
-// (test.claim.app_attest_verifier_witness_test); the two verifying links are enrolled there and in
-// test.claim.p384_dag_ecdsa_witness_test and are NOT executed on the interpreter: a P-384
+// (test.claim.app_attest_verifier_witness); the two verifying links are enrolled there and in
+// test.claim.p384_dag_ecdsa_witness and are NOT executed on the interpreter: a P-384
 // verification at 16 limbs exceeds what a session container holds, by the instrument the roadmap
 // row v1-interpreter-p256-verify-cost-shape names; their executing route is the native gunbc test
 // row the frontier names.

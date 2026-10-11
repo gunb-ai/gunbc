@@ -1,4 +1,4 @@
-module tools.rust_stage0_gates
+module gunbc.instruments.rust_stage0_gates
 
 import std.types { List }
 import std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }
@@ -28,7 +28,7 @@ type ConsumedInputUnit {
 
 data coproduct_reflection_conformance_consumed_unit: ConsumedInputUnit = ConsumedInputUnit {
   unit: "coproduct_reflection_conformance_test",
-  entry_path: "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag"
+  entry_path: "src/v2/test/claim/manual/coproduct_reflection_conformance.dag"
 }
 
 data declared_consumed_input_units: List<ConsumedInputUnit> = [
@@ -70,7 +70,7 @@ data unit_must_run_failclosed_note: Disposition = Terminal {
 data unit_must_run_staged_note: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "tools.rust_stage0_gates",
+    module_path: "gunbc.instruments.rust_stage0_gates",
     decl_name: "per_unit_test_selector",
     field: WholeDeclaration
   }

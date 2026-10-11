@@ -59,11 +59,11 @@ data e0616_on_the_carried_field: EmittedRecordDeserializeEvidence = RustcRefusal
 // is this shape before building it, rather than recognising it from a rustc code after the fact.
 data minimal_reproducing_shape: EmittedRecordDeserializeEvidence = AuthoredShape {
   outer_record_field_type: decl_ref(
-    module_path: "gunbc.namespace_reference_derived_closure_admission",
+    module_path: "gunbc.namespace.namespace_reference_derived_closure_admission",
     decl_name: "ReferenceDerivedClosureAdmission",
   ),
   unforgeable_carrier: decl_ref(
-    module_path: "gunbc.namespace_reference_derived_closure_admission",
+    module_path: "gunbc.namespace.namespace_reference_derived_closure_admission",
     decl_name: "ReferenceDerivedClosureAcceptanceReceipt",
   ),
   why_unrepresentable: "an ordinary record with a field of the coproduct type -- for example { compiled_module: String, admission: ReferenceDerivedClosureAdmission } -- is accepted as .dag and refuses in emitted Rust",
@@ -135,7 +135,7 @@ data emitted_record_deserialize_gap_rung: String = "mitigatable"
 // a seed-closure entry", so adding one could never carry a module the seed does not import. THAT
 // PREMISE IS FALSE, and it was false when written. Computing the transitive IMPORT closure from
 // every module under src/v1 over src/v1 + dag -- the most generous seeding available, so an OUTSIDE
-// answer is robust -- three of the eight rostered entries are OUTSIDE it: gunbc.ci_layer_roots,
+// answer is robust -- three of the eight rostered entries are OUTSIDE it: gunbc.ci.ci_layer_roots,
 // gunbc.scm.load_standing and std.abi. A second and independent instrument agrees exactly: those
 // three are the three with no committed mirror under src/v1/stage0/src, while extdeps.uri and
 // std.logic are inside and have one.
@@ -145,8 +145,8 @@ data emitted_record_deserialize_gap_rung: String = "mitigatable"
 // mirror of the DESIGN 4b(3) failure -- a trigger that cannot be satisfied while the capability is
 // alive, failing as quietly as one satisfied while it is dead, because a row that never retires
 // reads as diligence.
-// Measured 2026-08-28 on this branch: of the eight entries in gunbc.ci_layer_roots
-// required_emit_compile_entries, three -- gunbc.ci_layer_roots, gunbc.scm.load_standing, std.abi --
+// Measured 2026-08-28 on this branch: of the eight entries in gunbc.ci.ci_layer_roots
+// required_emit_compile_entries, three -- gunbc.ci.ci_layer_roots, gunbc.scm.load_standing, std.abi --
 // are outside the transitive import closure from src/v1 over src/v1 + dag, corroborated by their
 // having no committed mirror under src/v1/stage0/src. The emit-compile phase therefore compiles
 // non-seed modules already.

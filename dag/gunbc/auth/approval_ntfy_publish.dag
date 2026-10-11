@@ -5,8 +5,8 @@ import extdeps.ntfy.ntfy { NtfyTopic, NtfyPublishReceipt, NtfyErrorShape }
 import extdeps.transports.rest { RestResult }
 import extdeps.ietf.http_semantics { POST }
 import std.resources { Network }
-import gunbc.fleet_host_identity { operator_host_srv1 }
-import gunbc.fleet_tailnet { fleet_tailnet_domain, tailnet_base_url_from }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain, tailnet_base_url_from }
 
 // ── The publish binding: transport and address, in the layer that owns them ──────────────────
 // DESIGN §3 puts the interface shape in extdeps and the TRANSPORT in realization -- "one of N,
@@ -27,13 +27,13 @@ import gunbc.fleet_tailnet { fleet_tailnet_domain, tailnet_base_url_from }
 // CONSUMED BY EXECUTION TODAY: the publish operation and the outcome fold are exercised against
 // the live self-hosted server by a wet probe (NtfyPublished { message_id: znjShbquiXow }), and
 // every arm of the fold plus every intervention property is exercised by
-// test.claim.ntfy_publish_outcome_witness_test and
-// test.claim.approval_ntfy_deployment_witness_test. That is execution, not a typecheck -- but a
+// test.claim.ntfy_publish_outcome_witness and
+// test.claim.approval_ntfy_deployment_witness. That is execution, not a typecheck -- but a
 // witness is not a production consumer and this note does not claim it is.
 //
 // THE NAMED CONSUMER, AND ITS TRIGGER: the approval broker publishes a notification for a pending
 // AccessRequest. It lands when the request-minting path exists -- an AccessRequest produced from a
-// real refusal, its capability signed, and gunbc.roadmap_serve's ApprovalDecideHandler redeeming
+// real refusal, its capability signed, and gunbc.roadmap.roadmap_serve's ApprovalDecideHandler redeeming
 // it rather than answering 501, which it does today. Until that lands, nothing in production has a
 // reason to publish, and manufacturing an intermediate caller would only move the danglingness up
 // one level rather than remove it.

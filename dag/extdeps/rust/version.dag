@@ -1,4 +1,4 @@
-module extdeps.cargo_version
+module extdeps.rust.version
 
 import extdeps.version.semver { SemVerIdentity, SemVerConstraint }
 

@@ -4,9 +4,9 @@ import extdeps.shell
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc
-import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import std.logic { Bool }
-import tools.host_prelude {
+import gunbc.instruments.host_prelude {
   ClaimRun,
   WitnessBinReady,
   WitnessBinRefused,
@@ -17,10 +17,10 @@ import tools.host_prelude {
 }
 
 data closure_source_root: String = "src/v2"
-data closure_entry: String = "src/v2/compiler/00_compile.dag"
-data closure_boundary_entry: String = "src/v2/compiler/07_target_carriers.dag"
-data closure_test_entry: String = "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag"
-data closure_boundary_test_entry: String = "src/v2/test/claim/self_host/compiler_closure_ingest_boundary_witness_test.dag"
+data closure_entry: String = "src/v2/compiler/compile.dag"
+data closure_boundary_entry: String = "src/v2/compiler/target_carriers.dag"
+data closure_test_entry: String = "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest.dag"
+data closure_boundary_test_entry: String = "src/v2/test/claim/self_host/compiler_closure_ingest_boundary_witness.dag"
 data closure_witness_module_count: String = "compiler_closure_scoped_ingest_module_count_ok_holds"
 data closure_witness_receipt: String = "compiler_closure_ingest_receipt_describes_carrier_holds"
 data closure_boundary_witness: String = "compiler_closure_ingest_boundary_exact_cap_transport_holds"
@@ -33,7 +33,7 @@ data closure_overflow_witness: String = "compiler_closure_ingest_overflow_refuse
 // never zero rows with a positive read count. compiler_closure_scoped_ingest_module_count_ok_holds
 // un-quarantined from explicit_witness_admission when the completeness witness greened.
 data closure_witness_layer_roots: String = "self_host_closure_witness_layer_roots_reexports_authority_holds"
-data closure_gap4_entry: String = "src/v2/test/claim/long/gap4_parse_tokens_remain_test.dag"
+data closure_gap4_entry: String = "src/v2/test/claim/long/gap4_parse_tokens_remain.dag"
 data closure_gap4_witness: String = "gap4_match_arm_let_stmt_parses_holds"
 
 fn closure_manifest_emit_args(entry: String, manifest_dir: String) -> List<String> {

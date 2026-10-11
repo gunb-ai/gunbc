@@ -1,4 +1,4 @@
-module gunbc.fleet_fan_wiring
+module gunbc.fleet.fleet_fan_wiring
 
 import std.types { Bool, Int, List, NonEmptyStr, range }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -8,7 +8,7 @@ import gunbc.operator_fan_declaration {
   arctic_p8_2u_chassis_declaration,
   declaration_reach,
 }
-import gunbc.fleet_fan_tach_expectation {
+import gunbc.fleet.fleet_fan_tach_expectation {
   ChassisBayHeader,
   FanHeaderExpectationRow,
   HostFanTachExpectation,
@@ -21,11 +21,11 @@ import gunbc.fleet_fan_tach_expectation {
   srv3_fan_tach_expectation,
   srv4_fan_tach_expectation,
 }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 
 // THREE POPULATIONS, NOT ONE, AND THIS MODULE IS THE MIDDLE ONE.
 //
-// gunbc.fleet_fan_tach_expectation answers WHERE ROTATION IS EXPECTED - one entry per board
+// gunbc.fleet.fleet_fan_tach_expectation answers WHERE ROTATION IS EXPECTED - one entry per board
 // header, operator-declared and corroborated by observation. It is deliberately silent about
 // everything below that, and the silence was load-bearing enough to be worth its own module
 // rather than more fields on that one:

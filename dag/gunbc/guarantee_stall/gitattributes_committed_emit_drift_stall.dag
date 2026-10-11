@@ -4,7 +4,7 @@ import v2.std.algebra { Cons, Empty }
 import gunbc.guarantee_rung { OutsideTheLadder, MechanicallyPreventable }
 import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when_awaiting }
 import gunbc.lifecycle_bounded_referent { dashboard_work_item_referent }
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 
 // REQUIRED-FLOOR RUN 32942047138 first executed this ReadsLiveTree carrier after #9284 landed.
 // The direct byte-equality witness and its aggregate both returned false: one underlying fact,

@@ -2996,7 +2996,7 @@ mod function_grain_admission_tests {
     ///
     /// The specimen is gunbc#8704, which tripped both in a single run:
     /// `v2.compiler.self_host.stage0_crate_layout` (a wet-actuator mirror the emit never writes)
-    /// and `gunbc.stage0_crate_layout_generated` (zero declared functions). A fix closing one
+    /// and `gunbc.stage0.stage0_crate_layout_generated` (zero declared functions). A fix closing one
     /// half leaves a live red reachable by the motivating change, so the assertions are stated
     /// together rather than in two separately satisfiable tests.
     #[test]

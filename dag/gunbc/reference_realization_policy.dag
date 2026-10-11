@@ -14,7 +14,7 @@ import std.coercion { TypeRealizationDecision }
 import std.types { List, NonEmptyStr, String }
 
 // THE CENSUS THIS CARRIER ANSWERS IS CITED IN PROSE AND NOT AS A TYPED DeclarationRef, deliberately:
-// tools.opaque_realization_census is gunbc#9419 and is not merged, so a typed citation to it would
+// gunbc.instruments.opaque_realization_census is gunbc#9419 and is not merged, so a typed citation to it would
 // name a declaration that does not resolve -- the exact class the ingestion-time citation wall
 // refuses. When that PR lands, this citation becomes authorable as a typed row.
 //

@@ -1,4 +1,4 @@
-module gunbc.fleet_host_budget
+module gunbc.fleet.fleet_host_budget
 
 import std.types { Int, List, String, Bool }
 import std.measure {
@@ -17,11 +17,11 @@ import std.realization_schedule {
 import extdeps.accounting.budget { Appropriation, LineItem }
 import product.budget_tree { BudgetNode, BudgetClaim, Guaranteed, node_conserves }
 import product.host_identity { HostIdentity }
-import gunbc.host_layout {
+import gunbc.host.host_layout {
   CompilePoolPlacement, CompilePoolSliceDeclared, CompilePoolInRunnerSlots,
   gunbc_compile_pool_placement,
 }
-import gunbc.fabric_control_plane_charge {
+import gunbc.fabric.fabric_control_plane_charge {
   HostFabricControlPlaneClaim,
   ControlPlaneNotPlaced,
   ControlPlaneClaimResolved,
@@ -33,8 +33,8 @@ import gunbc.live_deploy.served_slice_charge {
   ServedDeploymentClaimResolved,
   ServedDeploymentClaimUnmeasured,
 }
-import gunbc.ci_fleet { ComputeOffer }
-import gunbc.fleet_intent { compute_host_primary_cpu }
+import gunbc.ci.ci_fleet { ComputeOffer }
+import gunbc.fleet.fleet_intent { compute_host_primary_cpu }
 import extdeps.cpu { cpu_facts_threads }
 import extdeps.jobserver {
   JobserverConfig,
@@ -45,7 +45,7 @@ import extdeps.jobserver {
   derive_jobserver_tokens,
   jobserver_build_pool_bytes,
 }
-import gunbc.fleet_container {
+import gunbc.fleet.fleet_container {
   FleetContainerType,
   BaselineResolution,
   BaselineResolved,
@@ -53,7 +53,7 @@ import gunbc.fleet_container {
   container_baseline_bytes,
   gha_runner_container,
 }
-import gunbc.ci_floor_measurement {
+import gunbc.ci.ci_floor_measurement {
   OomdEnforcementEvidence,
   OomdEnforced,
   OomdUnverified,
@@ -61,7 +61,7 @@ import gunbc.ci_floor_measurement {
   CapEffective,
   CapUnbounded,
 }
-import gunbc.host_memory_observation {
+import gunbc.host.host_memory_observation {
   oomd_actuation_floor,
   gunbc_fleet_oomd_floor_basis,
   HostUsableRam,
@@ -71,7 +71,7 @@ import gunbc.host_memory_observation {
   gunbc_ci_host_usable_ram_for,
   host_usable_ram_ceiling_bytes,
 }
-import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.session_admission_policy {
   gunbc_session_admission_policy, session_admission_oomd_ceiling,
 }
@@ -224,7 +224,7 @@ data gunbc_per_runner_memory_cap: ByteSize = gunbc_runner_slot_desired().memory_
 // WHY IT GOES, stated without claiming it nicknamed anything. It had no provenance — a bare literal
 // with no note and no citation, in a module where every other figure carries its derivation. It had
 // no production consumer: the census at deletion found only
-// test.claim.host_allocation_conservation. And its two helpers merely multiplied and divided by it,
+// test.claim.host.host_allocation_conservation. And its two helpers merely multiplied and divided by it,
 // so the only witness over them divided by the same constant it had just multiplied by and held for
 // every value of that constant, including the wrong one it was reading.
 //
@@ -240,7 +240,7 @@ data gunbc_per_runner_memory_cap: ByteSize = gunbc_runner_slot_desired().memory_
 // production answer. The claim is counterfactual: had a budget consumed it, a 1 GiB per-session
 // charge would have undercharged against the per-session peaks cited at this seam (min 0.28 /
 // median ~2.06 / max 8.27 GiB) — below the median. The live sessions aggregate is and remains the
-// Regime-2 row in gunbc.ci_floor_measurement, untouched by this change.
+// Regime-2 row in gunbc.ci.ci_floor_measurement, untouched by this change.
 
 // fabric_control_plane_pool IS A NAMED CHILD RATHER THAN AN ADDITION TO fixed_overhead, because the
 // resident it charges has an exact identity, an exact placement, an explicit lifecycle, a measurable
@@ -289,11 +289,11 @@ type HostAllocationVerdict
 // different remedies -- the first is a capacity decision, the second is a measurement someone has to
 // go and take -- and a shared false merges them into a plan that looks oversubscribed when it is
 // merely unmeasured. A Bool projection over this verdict used to sit beside it
-// and is DELETED rather than kept: gunbc.ci_runner_placement, its only production caller, now
+// and is DELETED rather than kept: gunbc.ci.ci_runner_placement, its only production caller, now
 // matches the verdict directly, and a spare yes/no left in this module is how the collapse would
 // come back -- the next caller wanting a Bool would find one already written and would silently
 // drop the remedy again. The witnesses that legitimately ask a yes/no question declare their own
-// projection in test.claim.host_allocation_conservation, where a production import of it would be
+// projection in test.claim.host.host_allocation_conservation, where a production import of it would be
 // visibly wrong.
 fn host_allocation_verdict(
   host: ByteSize,
@@ -388,7 +388,7 @@ fn host_allocation_verdict_charged(
 // and the ones that cannot say so stop compiling -- which is the census, not an inconvenience.
 
 // This still divides the declared pool by the declared per-slot cap rather than reading
-// gunbc.runner_slot_allocation gunbc_runner_committed_width directly, and the redundancy is now
+// gunbc.runner.runner_slot_allocation gunbc_runner_committed_width directly, and the redundancy is now
 // GONE rather than merely tolerated. The pool is derived as slots × MemoryMax
 // (gunbc_runner_slice_cap_for_width), so floor(pool ÷ MemoryMax) returns that same slot count by
 // construction — the two agree because one is the other's inverse, not because an author kept them

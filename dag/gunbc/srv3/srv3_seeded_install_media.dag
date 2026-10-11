@@ -1,4 +1,4 @@
-module gunbc.srv3_seeded_install_media
+module gunbc.srv3.srv3_seeded_install_media
 
 
 data gunbc_srv3_seeded_install_media_scope_disposition: Disposition = std.disposition.Terminal {
@@ -20,7 +20,7 @@ data install_media_remaster_toolchain_ensure_dissolution_trigger: Disposition = 
 data srv3_seeded_install_media_unattended_not_proven_marker: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.srv3_os_install_actuate_scope",
+    module_path: "gunbc.srv3.srv3_os_install_actuate_scope",
     decl_name: "srv3_autoinstall_seed_delivery_refusal",
     field: WholeDeclaration
   }

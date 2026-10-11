@@ -4,9 +4,9 @@ import std.types { NonEmptyStr, String, Bool, Int, List }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_mtcollins1 }
-import gunbc.fleet_enrollment { InteractiveSessionParticipation, hosts_enrolled_for }
-import gunbc.fleet_shell_transport_observation {
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_mtcollins1 }
+import gunbc.fleet.fleet_enrollment { InteractiveSessionParticipation, hosts_enrolled_for }
+import gunbc.fleet.fleet_shell_transport_observation {
   fleet_shell_transport_observation,
   ShellTransportSucceeded,
   ShellTransportReachRefused,
@@ -18,8 +18,8 @@ data session_residency_authority_disposition: Disposition = Terminal {
 }
 
 // THE PROXY THIS REPLACES WAS ONE EDIT FROM CAUSING THE BUG IT WAS WRITTEN TO PREVENT, and the
-// near-miss is the argument for the row. gunbc.ci_runner_placement decided whether a host owes a
-// sessions reservation by asking whether gunbc.build_cache_instance.build_cache_desired_instances
+// near-miss is the argument for the row. gunbc.ci.ci_runner_placement decided whether a host owes a
+// sessions reservation by asking whether gunbc.build_cache.build_cache_instance.build_cache_desired_instances
 // listed an InteractiveSessionCompiles instance for it. That correlated — srv1 and srv2 had session
 // sccache instances, srv3 and srv4 did not — and correlation was the whole of it.
 //
@@ -53,7 +53,7 @@ type SessionResidency
 // IT MATTERS BECAUSE THE TWO NEGATIVE ARMS GRANT CAPACITY. A host classified session-free is
 // charged no reservation and is admitted more runner slots, so the difference between a counted
 // zero and an unobserved zero is the difference between a derived width and a borrowed premise —
-// the same distinction gunbc.ci_floor_measurement enforces when it refuses to lend one host's
+// the same distinction gunbc.ci.ci_floor_measurement enforces when it refuses to lend one host's
 // overhead measurement to another. SessionsOperatorDeclaredAbsent is an override, honestly named as
 // one; SessionsObservedAbsent is a receipt; and SessionsUnobserved is neither, which is why it
 // charges.
@@ -124,8 +124,8 @@ fn host_session_residency(host: HostIdentity) -> SessionResidency {
 
 // THE UNKNOWN ARM CHARGES RATHER THAN EXEMPTS, and it is the one place in this lane where the
 // fail-closed direction is the OPPOSITE of the usual one. Everywhere else an unclassified host
-// refuses — gunbc.host_memory_observation returns HostFixedOverheadUnmeasured,
-// gunbc.runner_slot_allocation returns zero slots — because refusing to derive is safer than
+// refuses — gunbc.host.host_memory_observation returns HostFixedOverheadUnmeasured,
+// gunbc.runner.runner_slot_allocation returns zero slots — because refusing to derive is safer than
 // deriving from a borrowed premise.
 //
 // Here refusing is not available: this function answers a Bool-shaped question with no third state,
@@ -136,7 +136,7 @@ fn host_session_residency(host: HostIdentity) -> SessionResidency {
 // OOM shape and is not recoverable inside CI. The expensive direction is the safe default, so an
 // unclassified host is charged until someone classifies it.
 //
-// A host that never appears here is also not enrolled in gunbc.fleet_intent and takes no fleet work
+// A host that never appears here is also not enrolled in gunbc.fleet.fleet_intent and takes no fleet work
 // at all, so this arm is unreachable in practice today. It is written for the enrollment that has
 // not happened yet.
 
@@ -160,7 +160,7 @@ fn host_carries_interactive_sessions(host: HostIdentity) -> Bool {
 // srv1 and srv2 in quantity — which is stable in a way the number is not. A consumer wanting a live
 // count should observe it.
 
-data session_residency_scaffold_bind_note: String = "A SCAFFOLD BIND IS A FORWARD REFERENCE, and getting that backwards cost this row two revisions. v2.lens.disposition_redundancy reads the bind as the SUCCESSOR: a scaffold whose bind target is present is redundant debt that must dissolve, and an absent target is the normal outstanding state. So binding to anything already in this module — the observation list, or the count function below — declares the debt paid while it plainly is not.\n\nThe first draft got the direction right by accident and the name wrong: session_container_observations_srv3_srv4 named nothing anyone had planned to author, which is a forward reference to a fiction rather than to a successor.\n\nWHAT ACTUALLY CLOSES THIS is a MODELED PRODUCER of session-residency observations — the same thing gunbc.host_swap_backing is waiting for and refuses to fake, on the same reasoning: a probe run by a person is not a producer, and hand-entering the result would rebuild the parallel ledger rather than close the gap. session_residency_observed_producer is that successor, deliberately not authored here, and when it exists srv3 and srv4 stop being SessionsOperatorDeclaredAbsent and this scaffold dissolves. operator_declared_absent_host_count is the observable proxy for the same condition — 2 today, 0 when closed — and the witness pins it; it is NOT the bind, precisely because it exists."
+data session_residency_scaffold_bind_note: String = "A SCAFFOLD BIND IS A FORWARD REFERENCE, and getting that backwards cost this row two revisions. v2.lens.disposition_redundancy reads the bind as the SUCCESSOR: a scaffold whose bind target is present is redundant debt that must dissolve, and an absent target is the normal outstanding state. So binding to anything already in this module — the observation list, or the count function below — declares the debt paid while it plainly is not.\n\nThe first draft got the direction right by accident and the name wrong: session_container_observations_srv3_srv4 named nothing anyone had planned to author, which is a forward reference to a fiction rather than to a successor.\n\nWHAT ACTUALLY CLOSES THIS is a MODELED PRODUCER of session-residency observations — the same thing gunbc.host.host_swap_backing is waiting for and refuses to fake, on the same reasoning: a probe run by a person is not a producer, and hand-entering the result would rebuild the parallel ledger rather than close the gap. session_residency_observed_producer is that successor, deliberately not authored here, and when it exists srv3 and srv4 stop being SessionsOperatorDeclaredAbsent and this scaffold dissolves. operator_declared_absent_host_count is the observable proxy for the same condition — 2 today, 0 when closed — and the witness pins it; it is NOT the bind, precisely because it exists."
 
 fn host_absence_is_operator_declared(host: HostIdentity) -> Bool {
   match host_session_evidence(host: host) {
@@ -197,7 +197,7 @@ fn operator_declared_absent_host_count() -> Int {
 data session_residency_negative_rows_dissolve_on: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host_effect",
+    module_path: "gunbc.host.host_effect",
     decl_name: "HostEffectTransport",
     field: WholeDeclaration,
   }

@@ -1,6 +1,6 @@
 module gunbc.declaration_lookup_index_seed_growth
 
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -38,7 +38,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // and gunbc.keyed_declaration_read_seed_growth record one and two seams over.
 //
 // WHAT IT DOES NOT CLAIM. It closes no currently-red gate. gunbc#10741's keyed read took the three
-// v2.test.claim.construction_justification.outside_modeled_guarantee_witness_test identities inside
+// v2.test.claim.construction_justification.outside_modeled_guarantee_witness identities inside
 // their line by narrowing ONE path off the population read; it deleted no population read, and the
 // remaining decl_facts(pool_roots:) population call sites across v2.lens and v2.workflow still pay
 // this marshal. Re-derive the cost from the floor's per-claim cost receipt rather than transcribing

@@ -1,12 +1,12 @@
-module gunbc.runner_incarnation
+module gunbc.runner.runner_incarnation
 
 import std.types { String, NonEmptyStr, Bool }
 import std.nat { Nat }
 import std.disposition { ConstructionMechanism, Disposition, SingleAuthority, Terminal }
 import product.host_identity { HostIdentity }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_index_suffix }
-import gunbc.runner_unit { runner_unit_name_of_registration }
-import gunbc.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_index_suffix }
+import gunbc.runner.runner_unit { runner_unit_name_of_registration }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
 
 data runner_incarnation_authority_disposition: ConstructionMechanism = SingleAuthority
 
@@ -17,7 +17,7 @@ data runner_incarnation_authority_disposition: ConstructionMechanism = SingleAut
 // modeled fields survive HostEffect projection.
 //
 // THE CARRIER THIS ROW NAMES AS ITS TRIGGER NOW EXISTS, AND THE TRIGGER IS STILL NOT FIRED.
-// gunbc.runner_local_state models the observation this note was waiting for:
+// gunbc.runner.runner_local_state models the observation this note was waiting for:
 // RunnerListenerPopulationObservation carries the listener and worker ProcessIdentity lists for a
 // slot, and join_runner_local_standing decides a slot's local standing from them together with the
 // unit's own state. So the SHAPE of the missing fact is settled, and it is deliberately settled in
@@ -26,7 +26,7 @@ data runner_incarnation_authority_disposition: ConstructionMechanism = SingleAut
 // and hanging a pid on this record would refuse them back into one carrier.
 //
 // WHAT IS STILL MISSING IS THE LIVE READ, AND THIS ROW MUST NOT BE READ AS SAYING OTHERWISE.
-// gunbc.runner_local_state is a pure decode, following the split gunbc.build_cache_endpoint_observe
+// gunbc.runner.runner_local_state is a pure decode, following the split gunbc.build_cache.build_cache_endpoint_observe
 // already established: the transport-bearing reads live where a transport exists, and no such reads
 // are wired to it yet. So this field stays absent for exactly the reason it was absent before -- a
 // process identity on this record would still be a value nothing on a host produced. It becomes
@@ -70,7 +70,7 @@ data runner_incarnation_authority_disposition: ConstructionMechanism = SingleAut
 //
 // THE OPERATIVE CORRECTION: the overwrite is not the defect and must still not fork the plan or
 // block activation. Overlapping incarnations are the defect, and they are what
-// gunbc.runner_local_state MultipleListenersInOneSlot exists to make refusable. This row is kept
+// gunbc.runner.runner_local_state MultipleListenersInOneSlot exists to make refusable. This row is kept
 // rather than deleted because its measurement is still correct and still the reason the overlap is
 // destructive rather than merely wasteful.
 

@@ -8,8 +8,8 @@ import std.contract_identity { ContractEpoch }
 // answers rather than between an observation and a requirement.
 //
 // WHY THIS IS ITS OWN MODULE AND NOT A ROW IN EITHER CONSUMER. Two modules need this value for
-// opposite reasons: gunbc.witness_floor_workflow EMITS it into the workflow the required run
-// executes, so the epoch is observable at the exact commit that ran; gunbc.fleet_revision_acceptance
+// opposite reasons: gunbc.witness.witness_floor_workflow EMITS it into the workflow the required run
+// executes, so the epoch is observable at the exact commit that ran; gunbc.fleet.fleet_revision_acceptance
 // REQUIRES it, so fleet admission can refuse a contract whose obligations were revised under an
 // unchanged name. Putting the value in either consumer would make the other import its peer for a
 // single datum and would give the emitting side authority over what the judging side requires --
@@ -33,7 +33,7 @@ import std.contract_identity { ContractEpoch }
 // context also meant the v1 interpreter had folded the rostered witnesses, the stage0 mirrors and the
 // registry-rostered generated artifacts matched their authorities, and the v1 unit tests passed. From
 // this epoch it means only that the seed emitted the two retained v2 closures and the emitted crates built and
-// started (gunbc.compiler_gate_workflow header; the loss is gunbc.rung_drop
+// started (gunbc.witness.compiler_gate_workflow header; the loss is gunbc.rung_drop
 // v1_required_lanes_withdrawn). That is a change in what a success entitles a consumer to conclude.
 data required_ci_contract_epoch: ContractEpoch = "2026-10-09.1" as ContractEpoch
 

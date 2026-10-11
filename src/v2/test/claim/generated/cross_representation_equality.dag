@@ -1,4 +1,4 @@
-module v2.test.generated.cross_representation_equality
+module v2.test.claim.generated.cross_representation_equality
 
 import v2.std.node { symbol_intern_lexeme }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

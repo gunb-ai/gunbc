@@ -9,9 +9,9 @@ import product.capacity.event_chain {
   HeadExpectation, HeadAbsent, HeadAt,
 }
 import product.capacity.pool_events { PoolEvent, pool_event_wire_text }
-import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageServed, FabricStorageLocalFiles }
-import gunbc.fabric_storage_file_store { fabric_storage_file_root }
-import gunbc.fabric_event_log {
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageServed, FabricStorageLocalFiles }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }
+import gunbc.fabric.fabric_event_log {
   PartitionRead, PartitionReadOk, PartitionReadRefused, event_log_read_partition, event_log_refusal_wire, event_log_read_budget,
 }
 
@@ -29,7 +29,7 @@ import gunbc.fabric_event_log {
 //
 // IT TAKES NO POOL AND REPORTS NO SEAT STANDING. Whether a pool has room is a question about a
 // ceiling and a fold over these events (product.capacity.pool_events), and answering it here would
-// be a second spelling of gunbc.fabric_event_log fabric_seat_observe. This answers only what the log
+// be a second spelling of gunbc.fabric.fabric_event_log fabric_seat_observe. This answers only what the log
 // holds: the head, and the chain from it, oldest first.
 
 type PartitionReadout {

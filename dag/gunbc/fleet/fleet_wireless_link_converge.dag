@@ -1,11 +1,11 @@
-module gunbc.fleet_wireless_link_converge
+module gunbc.fleet.fleet_wireless_link_converge
 
 import std.types { String, Bool, NonEmptyStr, Secret }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
-import gunbc.fleet_known_hosts_anchor {
+import gunbc.fleet.fleet_known_hosts_anchor {
   fleet_ssh_attempt_identity, materialize_fleet_known_hosts_anchor, known_hosts_materialization_receipt,
   fleet_openssh_trust_policy_of,
 }
@@ -14,11 +14,11 @@ import gunbc.spark.grant_privileged_operation { read_bootstrap_credential, Boots
 import gunbc.auth.materialized_secret {
   with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused,
 }
-import gunbc.fleet_multi_principal_probe {
+import gunbc.fleet.fleet_multi_principal_probe {
   SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused, spark_converge_target_selection,
 }
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
-import gunbc.fleet_wireless_link {
+import gunbc.fleet.fleet_wireless_link {
   WirelessLinkDesired, wireless_link_desired_for, wireless_link_converge, wireless_link_converged, wireless_link_receipt_body,
 }
 
@@ -63,7 +63,7 @@ fn spark_wireless_link_converge_ci_wet() -> ProcessExit
       exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: this mode changes one host's wireless link, so it refuses rather than choosing one")
     SparkConvergeTargetSingle { host: target_host } =>
       match wireless_link_desired_for(host: target_host) {
-        Absent => exit_failure(reason: join(["no wireless link row is declared for ", target_host as String, " in gunbc.fleet_wireless_link wireless_link_desired_rows, so there is nothing to converge it to"], ""))
+        Absent => exit_failure(reason: join(["no wireless link row is declared for ", target_host as String, " in gunbc.fleet.fleet_wireless_link wireless_link_desired_rows, so there is nothing to converge it to"], ""))
         Present { value: desired } =>
           match observe_executor_reach() {
             ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["spark_wireless_link_converge: ", c], ""))

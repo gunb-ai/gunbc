@@ -3,7 +3,7 @@ module gunbc.live_deploy.revision
 import std.types { NonEmptyStr }
 
 // WHAT THIS MODULE IS NOW: the ancestry RELATION between two revisions, and nothing about deploys.
-// gunbc.fleet_main_revision is its consumer: it projects a merge-base observation into
+// gunbc.fleet.fleet_main_revision is its consumer: it projects a merge-base observation into
 // revision_relation_from_ancestry_facts. It does not consume a probe fold; there is none here.
 //
 // IT USED TO GATE DEPLOYS AND NO LONGER DOES (operator ruling 2026-09-07). The prose that stood
@@ -56,11 +56,11 @@ type DeployRevisionRelation
 // decided for the whole release from ANCESTRY -- and when the two disagreed the coarse one won.
 //
 // WHAT SURVIVES HERE is the relation itself and revision_relation_from_ancestry_facts, which
-// gunbc.fleet_main_revision consumes via a merge-base observation. That consumer is unaffected: it
+// gunbc.fleet.fleet_main_revision consumes via a merge-base observation. That consumer is unaffected: it
 // asks how two revisions relate, not whether a deploy may proceed.
 
 // THE CLASSIFICATION IS ONE AUTHORITY. The decision takes ANCESTRY FACTS and the merge-base
-// evidence shape in gunbc.fleet_main_revision projects into it. A deleted probe-pair projection
+// evidence shape in gunbc.fleet.fleet_main_revision projects into it. A deleted probe-pair projection
 // used to sit beside this fold; keeping both would have been the §3 fork of two places computing
 // one decision. Reusing the variant names was never enough -- the vocabulary was shared while the
 // policy was copied.

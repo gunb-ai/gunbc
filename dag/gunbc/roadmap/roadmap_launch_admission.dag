@@ -1,30 +1,30 @@
-module gunbc.roadmap_launch_admission
+module gunbc.roadmap.roadmap_launch_admission
 
 import std.types { String, Int, List, Bool, NonEmptyStr }
 import std.content_hash { Fnv1a64Structural, Sha1Digest, Sha1DigestHex, content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural }
-import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapEdge }
-import gunbc.roadmap_document { RoadmapDocument }
-import gunbc.roadmap_spawner { doc_all_nodes, doc_all_edges, ReadinessGraph, readiness_graph, node_readiness_in_graph }
+import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapEdge }
+import gunbc.roadmap.roadmap_document { RoadmapDocument }
+import gunbc.roadmap.roadmap_spawner { doc_all_nodes, doc_all_edges, ReadinessGraph, readiness_graph, node_readiness_in_graph }
 import gunbc.roadmap.roadmap_lineage { lineage_lookup }
 import gunbc.roadmap.roadmap_readiness {
   ReadinessGap, GapCentering, NodeReadiness, ReadyToDispatch, NotReady,
   node_readiness, readiness_text, readiness_reason_text,
 }
-import gunbc.roadmap_authority {
+import gunbc.roadmap.roadmap_authority {
   RoadmapAuthorityProjection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
 }
-import gunbc.roadmap_dashboard_instance { DashboardActuationPosture, DashboardObserveOnly, DashboardActuating }
+import gunbc.roadmap.roadmap_dashboard_instance { DashboardActuationPosture, DashboardObserveOnly, DashboardActuating }
 import gunbc.roadmap.roadmap_attempt_occurrence {
   DispatchAttemptOccurrence, AttemptOccurrenceObserved, AttemptOccurrenceUnclassified,
   AttemptOccurrenceForeign, AttemptOccurrenceMalformed, attempt_container_name,
 }
 import gunbc.deploy_transition { ActuationAdmission, ActuationAdmitted, ActuationRefused }
-import gunbc.fleet_desired_observe { LocalTreeRevision, LocalTreeRevisionObserved, LocalTreeRevisionUnobserved }
+import gunbc.fleet.fleet_desired_observe { LocalTreeRevision, LocalTreeRevisionObserved, LocalTreeRevisionUnobserved }
 import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, git_object_id_wire_hex, git_object_id_from_untagged_hex }
 import gunbc.worker_lifecycle {
   WorkerProcessEvidence, WorkerProcessRunning, WorkerProcessExited, WorkerProcessAbsent, WorkerProcessUnobserved,
 }
-import gunbc.roadmap_belt { SpawnMode, Paused, ManualReady, AutomaticReady, spawn_mode_label, spawn_mode_of_label, BeltCapacity, belt_free_slots_int }
+import gunbc.roadmap.roadmap_belt { SpawnMode, Paused, ManualReady, AutomaticReady, spawn_mode_label, spawn_mode_of_label, BeltCapacity, belt_free_slots_int }
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonKeyValue, json_string, json_object, json_kv }
 import extdeps.languages.json.parse {
   json_object_unique_member,
@@ -36,7 +36,7 @@ import extdeps.languages.json.parse {
 // /dispatch/<node_id> and the periodic belt tick each derived launch eligibility on their own --
 // the page and the belt read the Ready frontier, the manual route ignored dependencies entirely
 // (the AvailableAsOverride path) and checked capacity never, and an ExecutionContractUnspecified
-// node was Ready to the spawner while gunbc.roadmap_dispatch_environment refused it later (RLM-0
+// node was Ready to the spawner while gunbc.roadmap.roadmap_dispatch_environment refused it later (RLM-0
 // finding). Three authorities, one question (DESIGN 3). Now every surface projects
 // launch_admission: the page renders its availability, the route returns it, the tick folds over
 // it. The decision is PURE over observed facts -- the caller observes the host once
@@ -255,7 +255,7 @@ fn launch_identity_exemplar() -> LaunchIdentity {
 
 // LaunchNoPlacementGrant (G5, dogfood route) is the one arm decided at ACTUATION rather than by the
 // pure gate ledger: the session's placement is a reservation in the host's agent-session pool
-// (gunbc.roadmap_session_placement), and taking it is an effect that cannot run inside the pure
+// (gunbc.roadmap.roadmap_session_placement), and taking it is an effect that cannot run inside the pure
 // fold. It is still a launch refusal and not a spawn failure, because it is taken before any host
 // step runs -- nothing is created -- and the belt returns it as SpawnNotAdmitted with this arm.
 type LaunchRefusal
@@ -428,7 +428,7 @@ type LaunchHostStanding
   | LaunchHostUnobserved { reason: String }
 
 // OBSERVATION IS STAGED IN THE GATE ORDER, and this arm is where it stopped. The observer that
-// builds a standing for a real driver (gunbc.roadmap_belt_actuate
+// builds a standing for a real driver (gunbc.roadmap.roadmap_belt_actuate
 // belt_launch_host_standing_for_instance -- the ONE observer behind the page, POST /dispatch and
 // the timer) reads the transition file only for an actuating instance, reads the fleet revision
 // only under an admitted transition, and lists tmux only under an observed revision. When an
@@ -523,7 +523,7 @@ type LaunchGraphStanding
 // The graph is FLATTENED ONCE per standing (launch_graph_of_document), not once per row: a page
 // render asks the decision for every row, and re-walking the document's sections for each would be
 // a quadratic re-derivation of one fact (DESIGN 6 bare-minimum cost, review 57491). It is INDEXED
-// once too (gunbc.roadmap_spawner readiness_graph): the per-row node find is a lookup in its lineage
+// once too (gunbc.roadmap.roadmap_spawner readiness_graph): the per-row node find is a lookup in its lineage
 // index, and the readiness gate reads the same indexed graph the page's scheduling reads, so a row's
 // readiness costs lookups rather than a scan of every edge and node.
 
@@ -740,7 +740,7 @@ type LaunchRevisionOutcome
 // that cannot be read. It used to refuse on drift from the admitted fleet ref as well; that made
 // admissibility a race the host could not win -- desired advances on every green merge, a deploy
 // takes minutes -- and, because the belt tick shared the gate, a lagging host stopped verifying,
-// reviewing and publishing too. Convergence is the deploy path's fact (`gunbc.fleet_desired_observe`
+// reviewing and publishing too. Convergence is the deploy path's fact (`gunbc.fleet.fleet_desired_observe`
 // `FleetRevisionStanding`, the deployed-tree report), never an admission input here.
 fn launch_revision_outcome(revision: LocalTreeRevision) -> LaunchRevisionOutcome {
   match revision {
@@ -866,7 +866,7 @@ fn launch_running_count(sessions: LaunchSessionsStanding) -> Int {
   }
 }
 
-// Capacity is ONE arithmetic, gunbc.roadmap_belt belt_free_slots_int over the belt's BeltCapacity,
+// Capacity is ONE arithmetic, gunbc.roadmap.roadmap_belt belt_free_slots_int over the belt's BeltCapacity,
 // read here for both causes: the timer's reconcile plan reports the same arithmetic as its backlog,
 // and the operator's click now respects it too (before this module the manual route checked
 // capacity never). `occupied` is the count of OCCUPYING sessions (launch_occupying_count: running,

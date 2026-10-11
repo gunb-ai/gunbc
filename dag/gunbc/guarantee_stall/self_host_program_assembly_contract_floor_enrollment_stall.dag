@@ -15,7 +15,7 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 //
 // WHAT STILL HOLDS FOR THIS CONTRACT. Its module is typechecked on every change against the real
 // declarations, so an API cut refuses at the cut. Its interpreted and emitted runs both execute in
-// the self-host behavioral receipt (tools.self_host_curated_seed_linked_harness
+// the self-host behavioral receipt (gunbc.instruments.self_host_curated_seed_linked_harness
 // cssl_driver_claim_runs names the function by derivation from the roster row), which is
 // dispatch-only. What is missing is the per-change interpreted run: a change that made
 // assemble_program_from_ingest accept an unparseable ingest would not refuse on the merge path, and

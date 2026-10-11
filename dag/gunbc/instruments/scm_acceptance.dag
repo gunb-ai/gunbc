@@ -1,4 +1,4 @@
-module tools.scm_acceptance
+module gunbc.instruments.scm_acceptance
 
 // THE ACCEPTANCE DRIVER FOR THE NATIVE WRITE SPINE, AND WHY IT IS A .dag INSTRUMENT RATHER THAN THE
 // SHELL SCRIPT IT REPLACES.
@@ -46,7 +46,7 @@ import gunbc.cli_invoke {
   admit_named_argument,
   gunbc_run_transport_argv_with_arguments,
 }
-import tools.scm_acceptance_binary {
+import gunbc.instruments.scm_acceptance_binary {
   ScmAcceptanceBinary,
   ScmAcceptanceBinaryAcquisition,
   ScmAcceptanceBinaryReady,

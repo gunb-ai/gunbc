@@ -508,7 +508,7 @@ fn ct_native_bool_variant_fixture_closure_discrimination_test() -> String {
     "    /// compiles two emitted crates. It is RUNNABLE ON DEMAND -- `cargo test --release -p\n",
     "    /// v1-compiler --lib native_bool_variant_fixture_closure_discrimination -- --ignored`. No CI\n",
     "    /// path invokes it (gunbc.rung_drop rust_unit_tests_off_the_merge_path); the emitted-bytes\n",
-    "    /// half that does run on the floor is test.claim.native_variant_realization_witness_test.\n",
+    "    /// half that does run on the floor is test.claim.native_variant_realization_witness.\n",
     "    #[test]\n",
     "    #[ignore]\n",
     "    fn native_bool_variant_fixture_closure_discrimination() {\n",
@@ -1899,13 +1899,13 @@ fn ct_type_reference_identity_split_test() -> String {
     "        let legacy = |n: std::rc::Rc<crate::v1_std_core::Node>| (*crate::v1_std_core::type_reference_provenance(n)).clone();\n",
     "\n",
     "        // (1) THE RED: a field-position reference with no resolution, sitting outside its declaring module.\n",
-    "        let unresolved = node(\"String\", \"src/v2/compiler/01_tokenize.dag\", Ref, None);\n",
+    "        let unresolved = node(\"String\", \"src/v2/compiler/tokenize.dag\", Ref, None);\n",
     "        assert!(\n",
     "            matches!(identity(unresolved.clone()), Id::ReferenceIdentityUnavailable { cause } if matches!(cause, Cause::NoResolutionBoundAtReference)),\n",
     "            \"an unresolved reference must refuse, never key on the file it sits in\"\n",
     "        );\n",
     "        assert!(\n",
-    "            matches!(legacy(unresolved), Prov::CorpusDeclared { decl_file } if decl_file == \"src/v2/compiler/01_tokenize.dag\"),\n",
+    "            matches!(legacy(unresolved), Prov::CorpusDeclared { decl_file } if decl_file == \"src/v2/compiler/tokenize.dag\"),\n",
     "            \"the legacy read keys that same reference on its own location -- the answer the split refuses\"\n",
     "        );\n",
     "\n",
@@ -2368,7 +2368,7 @@ fn ct_renderer_hop_identity_keying_test() -> String {
 // functions called here are std.nat's own, as the seed EMITTER rendered them into the stage0 mirror
 // this test binary links: the eliminator's constructor match under a tail call, the divisor match
 // and successor rebuild in division, and the difference crossing back into the naturals. The
-// INTERPRETED half is test.claim.std_nat_realization_agreement_witness_test, which evaluates the
+// INTERPRETED half is test.claim.std_nat_realization_agreement_witness, which evaluates the
 // same functions on the same arguments under the seed interpreter. Both halves hold the same
 // expected values, which are arithmetic facts about small naturals rather than a reading of either
 // route, so a route that realized a constructor, a match or the eliminator differently fails its own
@@ -5233,10 +5233,10 @@ fn ct_function_value_adapter_bound_alignment_control_test() -> String {
 //
 // THIS BLOCK CALLED ITSELF A WALL "ENROLLED WHERE IT ACTUALLY EXECUTES" AND THE STEP IT NAMED DOES
 // NOT EXIST. It said both halves ride the required `cargo test --release -p v1-compiler --lib`
-// step (`gunbc.repo_self_build` `repo_self_test_command`) "on every push and pull request". The
+// step (`gunbc.repo.repo_self_build` `repo_self_test_command`) "on every push and pull request". The
 // 2026-09-04 runner-capacity ruling deleted the job that ran it; `.github/workflows/witnesses.yml`
 // contains ZERO occurrences of `cargo test`, and the loss is a declared drop, `gunbc.rung_drop`
-// `rust_unit_tests_off_the_merge_path`. Read `gunbc.witness_floor_workflow` `witness_floor_lane_jobs`
+// `rust_unit_tests_off_the_merge_path`. Read `gunbc.witness.witness_floor_workflow` `witness_floor_lane_jobs`
 // for which jobs exist rather than any sentence here.
 //
 // SO THE CLAIM WAS DESIGN 4b(1) RUNG INFLATION, WHICH IS WHY IT IS CORRECTED RATHER THAN SOFTENED.

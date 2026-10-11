@@ -1,8 +1,8 @@
-module gunbc.srv1_dashboard_bind
+module gunbc.roadmap.srv1_dashboard_bind
 
 import std.types { NonEmptyStr }
 
-// THE SRV1 DASHBOARD INSTANCE'S HOST AND BIND, as a leaf. gunbc.roadmap_dashboard_instance
+// THE SRV1 DASHBOARD INSTANCE'S HOST AND BIND, as a leaf. gunbc.roadmap.roadmap_dashboard_instance
 // srv1_live_dashboard_instance reads both, and so do the approval modules that derive a standing
 // from them (gunbc.auth.approval_decision_store approval_identity_trust, gunbc.auth.approval_broker_endpoint
 // approval_broker_host_identity). They are facts of the instance row, kept in a module of their own so

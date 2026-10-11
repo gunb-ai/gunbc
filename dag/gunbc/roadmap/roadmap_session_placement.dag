@@ -1,4 +1,4 @@
-module gunbc.roadmap_session_placement
+module gunbc.roadmap.roadmap_session_placement
 
 import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
 import std.nat { Nat }
@@ -7,8 +7,8 @@ import std.measure { Kibibyte, kibibyte, kibibyte_count, millicore }
 import std.durable_compare_and_set { CasGeneration }
 import product.capacity.lease { LeaseGrant }
 import product.capacity.event_chain { PartitionId }
-import gunbc.fabric_storage_client { FabricStorageBinding }
-import gunbc.fabric_event_log_host { now_epoch_seconds }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import gunbc.durable_cas_file_store { CasSlotKeys, CasSlotKeysListed, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused, cas_slot_keys }
 import gunbc.compute.attempt_lifecycle {
   AttemptRecord, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptRecovered,
@@ -32,9 +32,9 @@ import gunbc.compute.work_class_grant {
   WorkClassAgentSession, WorkClassGrant, work_class_grant, work_class_grant_rows, work_class_grant_amount, work_class_grant_wire,
 }
 import gunbc.compute.unit_bounds { UnitProcessBounds }
-import gunbc.roadmap_belt { roadmap_belt_default_capacity }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
-import gunbc.roadmap_dispatch_actuator {
+import gunbc.roadmap.roadmap_belt { roadmap_belt_default_capacity }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
+import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_attempt_unit_name,
   AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable, attempt_unit_observation,
   AttemptUnitStartStanding, AttemptUnitStartRecorded, AttemptUnitNeverStarted, AttemptUnitStartUnread,
@@ -881,7 +881,7 @@ fn session_observe_unit_lifecycle(unit: NonEmptyStr) -> UnitLifecycle {
 }
 
 // THE SETTLEMENT'S READ OF A WORKER UNIT, now that the unit is collected when its process ends
-// (gunbc.roadmap_dispatch_actuator dispatch_worker_unit_properties). A loaded unit is read as before;
+// (gunbc.roadmap.roadmap_dispatch_actuator dispatch_worker_unit_properties). A loaded unit is read as before;
 // a collected one is read from its exit record, so a worker that exited 0 settles as SUCCESS rather
 // than as cause-unknown. A collected unit with NO record keeps the arm it had: the manager has no such
 // unit, its lifetime is over, the cause is unknown -- the one arm safe to free on without a verdict,
@@ -920,7 +920,7 @@ fn session_worker_unit_lifecycle_for_instance(instance: HostDashboardInstance, u
   }
 }
 
-// THE START RECEIPT THE PROCESS OBSERVER NEEDS (gunbc.roadmap_dispatch_actuator
+// THE START RECEIPT THE PROCESS OBSERVER NEEDS (gunbc.roadmap.roadmap_dispatch_actuator
 // AttemptUnitStartStanding): this attempt's placement record. It is written immediately before the
 // worker unit is started, so its presence means dispatch committed to a unit; its absence means the
 // attempt never had one.

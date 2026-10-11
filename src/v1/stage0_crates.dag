@@ -5,9 +5,9 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v1.std.core { TextFile }
 import v1.compiler.emit_rust { emit_non_empty_wrappers, emit_cargo_dep, emit_cargo_dep_no_default_features, emit_cargo_features_section, generated_rust_lint_relaxations }
 import v1.compiler.runtime_rust { rust_runtime_cargo_features }
-import extdeps.cargo { CargoDependency, CargoFeature, RegistryDep, LocalPathDep }
+import extdeps.rust.cargo { CargoDependency, CargoFeature, RegistryDep, LocalPathDep }
 import gunbc.rust_emitted_crate { EmittedCrateDependencyDemand }
-import extdeps.cargo_version { render_cargo_package_header_prefix }
+import extdeps.rust.version { render_cargo_package_header_prefix }
 import gunbc.rust_crate_package_ident {
   PackageIdentBinding,
   PackageIdentRefusalCause,
@@ -17,11 +17,11 @@ import gunbc.rust_crate_package_ident {
   PackageIdentSetRefused,
   rust_crate_package_idents
 }
-import gunbc.stage0_partition_package_graph {
+import gunbc.stage0.stage0_partition_package_graph {
   partition_package_dependency_names_over
 }
-import gunbc.stage0_emitted_edge_admission { partition_module_owner_packages_over }
-import gunbc.stage0_crate_partition_generated {
+import gunbc.stage0.stage0_emitted_edge_admission { partition_module_owner_packages_over }
+import gunbc.stage0.stage0_crate_partition_generated {
   GeneratedEmitCoreCrate,
   GeneratedFacadeCrate,
   GeneratedFoundationCrate,
@@ -55,7 +55,7 @@ type Stage0CratePlan {
   crates: List<Stage0CrateSpec>
 }
 
-// Derived from v2.workflow.rust_crate_partition via gunbc.stage0_crate_partition_generated
+// Derived from v2.workflow.rust_crate_partition via gunbc.stage0.stage0_crate_partition_generated
 // (HandExplicit ~8-crate interim partition). Dissolve-on: rust_crate_partition_interim_explicit
 // when PolicyPartition lands.
 
@@ -361,7 +361,7 @@ fn stage0_partition_row_header_doc(row: GeneratedPartitionCrateRow) -> String {
 
 // EVERY PARTITION CRATE'S MANIFEST IS THE SAME TWO PARTS: the registry dependencies every stage0
 // crate carries, then one LocalPathDep per package edge. Which packages those are is not decided
-// here -- gunbc.stage0_partition_package_graph owns the edges, and this function is the transport
+// here -- gunbc.stage0.stage0_partition_package_graph owns the edges, and this function is the transport
 // that turns each package name into the sibling path cargo reads. The three kinds used to fork
 // here with the emit shell's rule written out a second time; they no longer differ at all, which
 // is what having one graph means.

@@ -1,4 +1,4 @@
-module gunbc.machine_intake_mtcollins1_bmc_secure_observation
+module gunbc.machine_intake.mtcollins1_bmc_secure_observation
 
 import std.types { EpochMs, List, NonEmptyStr }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
@@ -18,13 +18,13 @@ import extdeps.bmc.ipmi_channel {
 }
 import extdeps.network.ipv4 { ipv4_address }
 import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
-import gunbc.machine_intake_mtcollins1_access_observation {
+import gunbc.machine_intake.mtcollins1_access_observation {
   mtcollins1_endpoint,
   mtcollins1_firmware,
   mtcollins1_controller_fru_identity,
 }
-import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_subject_binding }
-import gunbc.machine_intake_subject {
+import gunbc.machine_intake.mtcollins1_memory_census_observation { mtcollins1_subject_binding }
+import gunbc.machine_intake.subject {
   AssemblyManifest,
   BmcFru,
   BoardSerialObservation,
@@ -42,10 +42,10 @@ import gunbc.machine_intake_subject {
   bind_unit_key,
   qualification_subject_of,
 }
-import gunbc.machine_intake_receipt { EvidenceRef }
+import gunbc.machine_intake.receipt { EvidenceRef }
 import gunbc.deployment_risk { TestRisk }
-import gunbc.machine_intake_phase { machine_qualification_policy }
-import gunbc.machine_intake_bmc_secure {
+import gunbc.machine_intake.phase { machine_qualification_policy }
+import gunbc.machine_intake.bmc_secure {
   BmcCredentialRotationObservation,
   BmcSecured,
   BmcSecureRefused,
@@ -61,13 +61,13 @@ import gunbc.machine_intake_bmc_secure {
 }
 
 // UNIT-1 INTAKE SUBJECT ON THE PUBLIC PATH. The unit key is minted only by
-// gunbc.machine_intake_subject bind_unit_key from the FRU board serial and the host SMBIOS
+// gunbc.machine_intake.subject bind_unit_key from the FRU board serial and the host SMBIOS
 // board serial already observed (same spelling, two sources). Assembly carries the observed
 // chassis part number as a chassis component; DIMM and other electronic identities are not
 // restated here because this module is not the memory-census authority and fabricating serials
 // is refused. Firmware carries the BMC release the controller reported (0.32); BIOS/UEFI and
 // configuration digests stay off the manifest until an observation names them. Consumer:
-// derive_bmc_secure, and gunbc.managed_host managed_hosts, whose binding carries the account.
+// derive_bmc_secure, and gunbc.host.managed_host managed_hosts, whose binding carries the account.
 
 data mtcollins1_intake_attempt: IntakeAttemptId = "intake-20260913-bmc-secure" as IntakeAttemptId
 
@@ -252,7 +252,7 @@ fn mtcollins1_bmc_secure_standing() -> BmcSecureStanding? {
 }
 
 // WET FETCH OF THE MANAGED SECRET IS THE NEXT CONSUMER. The username every controller write uses is
-// the bound managed host's account (gunbc.managed_host ManagedHostBinding account, which this module's
+// the bound managed host's account (gunbc.host.managed_host ManagedHostBinding account, which this module's
 // BmcSecured standing feeds through managed_hosts). Boot CLI names stay mtcollins1_netboot_handoff / mtcollins1_cdrom_handoff; they still take
 // password as a caller-supplied path. Wiring fetch_secret_ref_credential over
 // mtcollins1_managed_credential.secret is a separate change (needs token + Network, the srv3

@@ -13,7 +13,7 @@ import extdeps.standards.ocp_nic_3_0 { OcpNic3PhysicalVariant }
 // specification Rev 3.0 names the conventional add-in-card interface. OCP's
 // independently versioned mechanical variants stay in their own standard modules.
 // Vendor daughter cards name their own authority, never a generic vendor enum.
-// Consumer: gunbc.machine_intake_mtcollins1_expansion_attachment. This fold
+// Consumer: gunbc.machine_intake.mtcollins1_expansion_attachment. This fold
 // distinguishes attachment families only; it does not negotiate Ethernet modes.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority { uri: Uri {
   scheme: Https, locator: "pcisig.com/specifications?order=title&sort=asc",

@@ -1,4 +1,4 @@
-module v2.test.workflow.host_source_root_ingest_manifest
+module v2.test.claim.workflow.host_source_root_ingest_manifest
 
 import std.types { List }
 import v2.compiler.name_resolve {

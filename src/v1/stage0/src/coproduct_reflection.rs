@@ -1592,7 +1592,7 @@ fn data_init_decl_record(
 // Corpus-wide data-init reflection: sibling of `eval_fn_arrow_decl_facts_live` and
 // `eval_concept_decl_facts_live`. Yields one `DataInitDecl` per `ItemKind::DataItem` whose
 // initializer is a literal, carrying `literal_fp` for literal-mirror detection in
-// `v2.lens.no_dual_representation_test`. Host SOURCE half; dissolves with
+// `v2.lens.no_dual_representation`. Host SOURCE half; dissolves with
 // `fn_arrow_decl_facts_live` / `concept_decl_facts_live` on the same gunbc#5364
 // corpus-as-node accessor widen trigger named in `v2.lens.wiring_liveness`'s
 // construction_justification. Fingerprint encoding spec: `v2.std.data_index`

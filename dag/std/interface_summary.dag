@@ -129,7 +129,7 @@ data typed_module_key_note: NonEmptyStr = "A typed module's content-key = its in
 // CENSUS SHRINK — one call site (typed_module_content_key); no parallel key authority. EXPLICIT
 // DEFERRAL — dissolves when cross-entry typed-module memo routes through emitted typed_module_key
 // end-to-end without cli_run string wrapping; ROADMAP row 'Make native materialization the shared
-// execution kernel' (docs/plans/witness-realization-plan.md P3/P6) and gunbc.v1_deletion_plan
+// execution kernel' (docs/plans/witness-realization-plan.md P3/P6) and gunbc.v1.v1_deletion_plan
 // ^witness_realization_kernel; aligns with docs/plans/cross-entry-typed-module-memo-sketch.md Half
 // B.
 

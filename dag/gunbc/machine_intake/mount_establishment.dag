@@ -1,4 +1,4 @@
-module gunbc.machine_intake_mount_establishment
+module gunbc.machine_intake.mount_establishment
 
 import std.types { Bool, EpochMs, Int, List, Milliseconds }
 import std.content_hash { ContentHash }

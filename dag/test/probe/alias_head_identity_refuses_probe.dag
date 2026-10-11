@@ -1,6 +1,6 @@
 module test.probe.alias_head_identity_refuses_probe
 
-// THIS MODULE MUST NOT RESOLVE (test.claim.alias_head_identity_probe_witness_test enrolls each
+// THIS MODULE MUST NOT RESOLVE (test.claim.alias_head_identity_probe_witness enrolls each
 // refusal by class and subject). A head that agrees only when the alias's right-hand side IS the
 // argument's declaration must still refuse a different record into either alias, and a literal whose
 // head agrees must still be judged per field.

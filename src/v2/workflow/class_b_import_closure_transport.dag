@@ -3,7 +3,7 @@ module v2.workflow.class_b_import_closure_transport
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.shell
-import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.class_b_import_closure_overlay {
   class_b_materialize_stripped_entry_overlay,
   class_b_declared_import_pool_roots,
@@ -37,7 +37,7 @@ import std.types { String, List, NonEmptyStr }
 // witness_exclusion_frontier, and the falsifier cadence died in the floor cut, so neither had an
 // executing consumer. Rows 1-2 SHAPE AND CALL are relocated to class_b_import_closure_probe (this
 // module imports them back) because their own resolve closure does not need extdeps.git /
-// extdeps.git.inspect / gunbc.ci_layer_roots -- only rows 3-4 below do, for stripped-entry
+// extdeps.git.inspect / gunbc.ci.ci_layer_roots -- only rows 3-4 below do, for stripped-entry
 // pool-coincidence pressure -- and a witness entry's resolve context is driven by its whole
 // transitive import closure, not by which of a module's functions its test bodies call (the same
 // signature extdeps_scope_placement_gate_loudness_witness's 718-to-62-module repair fixed). Rows

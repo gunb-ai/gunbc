@@ -1,4 +1,4 @@
-module gunbc.machine_intake_mtcollins1_census_member_readback
+module gunbc.machine_intake.mtcollins1_census_member_readback
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
@@ -10,11 +10,11 @@ import extdeps.tools.xorriso { xorriso_extract_command, xorriso_list_long_comman
 import extdeps.tools.gnu_coreutils { mktemp_directory_command, rm_recursive_force_one_file_system_command }
 import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.exec.command { ArgvCommand, argv_words }
-import gunbc.fleet_host_identity { operator_host_srv2 }
-import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
-import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
-import gunbc.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
-import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
+import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
+import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh }
 import gunbc.host_command_binding {
   CommandHost, FleetSshCommandHost, HostLeg, LegNotDispatched, LegAnswered, HostTransportKind, FleetSshTransport, host_run,
@@ -22,10 +22,10 @@ import gunbc.host_command_binding {
   CreationNotRequested,
 }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
-import gunbc.boot_medium { BootImageExport, BootMedium }
-import gunbc.machine_intake_mtcollins1_census_image { CensusMediumQualified, CensusMediumNotCensus, CensusMediumExporterUnsupported, mtcollins1_census_medium_qualification, boot_image_export_text, mtcollins1_boot_medium, mtcollins1_census_image_stock_path, mtcollins1_census_nocloud_dir }
+import gunbc.host.boot_medium { BootImageExport, BootMedium }
+import gunbc.machine_intake.mtcollins1_census_image { CensusMediumQualified, CensusMediumNotCensus, CensusMediumExporterUnsupported, mtcollins1_census_medium_qualification, boot_image_export_text, mtcollins1_boot_medium, mtcollins1_census_image_stock_path, mtcollins1_census_nocloud_dir }
 import extdeps.provisioning.ubuntu_seeded_install_media_remaster { install_media_remaster_grub_cfg_on_iso }
-import gunbc.machine_intake_mtcollins1_census_medium_readback { mtcollins1_census_medium_served_path, RemoteAnswer, remote_answer_of }
+import gunbc.machine_intake.mtcollins1_census_medium_readback { mtcollins1_census_medium_served_path, RemoteAnswer, remote_answer_of }
 
 // THE PUBLISHED IMAGE'S BOOT CHAIN, READ BACK MEMBER BY MEMBER AGAINST THE STOCK MEDIUM IT WAS
 // REMASTERED FROM. The census remaster (extdeps.provisioning.ubuntu_seeded_install_media_remaster)
@@ -258,7 +258,7 @@ fn render_census_member_readback(readback: CensusMemberReadback) -> String {
 
 // ---- the one producer: read-only legs on srv2 over fleet SSH, like the medium readback ----
 //
-// srv2 has had no runner slots since 2026-09-19 (gunbc.boot_medium bmc_boot_image_export),
+// srv2 has had no runner slots since 2026-09-19 (gunbc.host.boot_medium bmc_boot_image_export),
 // so this reaches the host that serves /srv/bmc the way the boot's medium readback does, as the fleet
 // principal over typed argv. ONE TRANSACTION PER ATTEMPT:
 //   1. measure both ISOs; a pin refusal ends the attempt before any extraction;

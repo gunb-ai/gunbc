@@ -1,4 +1,4 @@
-module gunbc.githooks_pre_push_plan
+module gunbc.githooks.githooks_pre_push_plan
 
 import gunbc.commit_workflow {
   commit_gate_roster,
@@ -17,8 +17,8 @@ import gunbc.local_tidy_spec {
   local_tidy_fmt_outcome_blocks,
   local_tidy_fmt_pre_push_drift_recipe,
 }
-import gunbc.ci_layer_roots { witness_layer_roots }
-import tools.rust_stage0_gates { path_is_rust_monolith }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import gunbc.instruments.rust_stage0_gates { path_is_rust_monolith }
 import extdeps.git.hooks { pre_push_zero_sha }
 
 type PrePushGateKind
@@ -33,7 +33,7 @@ type PrePushGateBinding {
 data pre_push_check_only_note: String = "Pre-push gates refuse with a fix recipe on drift (no auto-commit / auto-stage). Aligns with commit-hook check-only policy: failure arms refuse instead of mutating the tree silently."
 
 // CargoFmtCheck previously carried a pre-baked fail_recipe field holding a byte-identical copy of
-// the row in gunbc.githooks_pre_push_emit — one string, two authorities (DESIGN section 3). The
+// the row in gunbc.githooks.githooks_pre_push_emit — one string, two authorities (DESIGN section 3). The
 // payload is deleted rather than repointed: a failure message is not a property of WHICH gate
 // fired, it is a projection of the outcome that gate OBSERVED, so pre_push_fmt_outcome_recipe
 // derives it from the exit status through the single authority in gunbc.local_tidy_spec. A

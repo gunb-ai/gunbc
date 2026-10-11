@@ -277,7 +277,7 @@ fn on_success_stages_eq(
 // member must have the modeled std.realization_schedule on_success_runnable_disposition
 // OnSuccessRunnableAdmitted. Duplicate runnable identity (entry + function + full profile) refuses
 // until duplication has an explicit model. Finalization is deliberately outside this lens:
-// gunbc.ci_materialization finalization witnesses and the strict runtime parser own it. Complete
+// gunbc.ci.ci_materialization finalization witnesses and the strict runtime parser own it. Complete
 // WalkPlan coverage composes this ordinary schedule check, success-stage structure and
 // admissibility, the finalization witness, and executor-semantics controls.
 

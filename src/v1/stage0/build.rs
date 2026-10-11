@@ -46,7 +46,7 @@ fn watch_git_path(path: &str) {
 
 /// The crates the executable links, read from the projection of the partition authority
 /// (`v2.compiler.self_host.stage0_executable_assembly` closed over
-/// `v2.workflow.rust_crate_partition`, rendered by `gunbc.stage0_executable_assembly_emit` and held
+/// `v2.workflow.rust_crate_partition`, rendered by `gunbc.stage0.stage0_executable_assembly_emit` and held
 /// to the model by the generated-artifact gate). The build script does not infer this set from
 /// manifest text: a scan recognises one spelling and treats every other -- `{path=..}`, a literal
 /// string, workspace inheritance -- as absence, and an absence here is a stale-stamp hole.
@@ -71,7 +71,7 @@ fn watch_linked_partition_crates(manifest_dir: &Path) {
     let listing = std::fs::read_to_string(&projection).unwrap_or_else(|error| {
         panic!(
             "gunbc build cannot read the linked-partition-crates projection at {}: {error}; \
-             regenerate it (gunbc.stage0_executable_assembly_emit) rather than building without it",
+             regenerate it (gunbc.stage0.stage0_executable_assembly_emit) rather than building without it",
             projection.display()
         )
     });

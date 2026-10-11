@@ -1,8 +1,8 @@
-module gunbc.fleet_fan_wiring_witness
+module gunbc.fleet.fleet_fan_wiring_witness
 
 import std.types { Bool, List, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.fleet_fan_tach_expectation {
+import gunbc.fleet.fleet_fan_tach_expectation {
   expected_tach_headers,
   HostFanTachExpectationAbsent,
   HostFanTachExpectationDuplicate,
@@ -26,7 +26,7 @@ import gunbc.operator_fan_declaration {
   declared_header_count,
   declaration_establishes_one_fan_per_header,
 }
-import gunbc.fleet_fan_wiring {
+import gunbc.fleet.fleet_fan_wiring {
   chassis_bay_wiring_2u,
   FanHeaderIdentity,
   FanHeaderWiring,

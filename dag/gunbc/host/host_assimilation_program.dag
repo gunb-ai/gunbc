@@ -1,7 +1,7 @@
-module gunbc.host_assimilation_program
+module gunbc.host.host_assimilation_program
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
-import gunbc.host_standup {
+import gunbc.host.host_standup {
   HostStandupStep,
   HostStandupPhase,
   Prefix,
@@ -43,8 +43,8 @@ import gunbc.host_standup {
   assimilation_complete_input_eq,
   assimilation_input_is_required,
 }
-import gunbc.fleet_host_backing { HostBacking, OwnedMachine, BmcVirtualMediaInstall, ApplianceFirstBoot, ProviderGuest }
-import gunbc.fleet_enrollment {
+import gunbc.fleet.fleet_host_backing { HostBacking, OwnedMachine, BmcVirtualMediaInstall, ApplianceFirstBoot, ProviderGuest }
+import gunbc.fleet.fleet_enrollment {
   FleetParticipation,
   CiRunnerParticipation,
   InferenceServingParticipation,
@@ -55,7 +55,7 @@ import gunbc.fleet_enrollment {
   ci_runner_enrollment_participation,
 }
 
-// WHY THIS EXISTS: host_standup_spine is ONE universal list, and gunbc.host_phase_status crossed
+// WHY THIS EXISTS: host_standup_spine is ONE universal list, and gunbc.host.host_phase_status crossed
 // every enrolled host with all of it. That was correct while every enrolled host was the same kind
 // of thing -- srv1 through srv4 are Ampere Altra CI runner hosts, provisioned through BMC and
 // virtual media, hosting GitHub Actions runner slots and a build cache. It stops being correct the
@@ -336,7 +336,7 @@ fn default_unsatisfied_witness_for_input(input: AssimilationCompleteInput) -> As
     GreenPlacePinCoherent =>
       assimilation_input_witness_from_green_place(w: host_standup_p3_green_place_input_witness())
     RunnerSlotHealthy =>
-      InputGap { input: RunnerSlotHealthy, interim_realization: "gunbc.runner_slot_enforcement until P1 converged" }
+      InputGap { input: RunnerSlotHealthy, interim_realization: "gunbc.runner.runner_slot_enforcement until P1 converged" }
   }
 }
 

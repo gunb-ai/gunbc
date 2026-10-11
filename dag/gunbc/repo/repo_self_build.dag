@@ -1,9 +1,9 @@
-module gunbc.repo_self_build
+module gunbc.repo.repo_self_build
 
 import std.types { String, List, NonEmptyStr }
-import gunbc.stage0_crate_partition_generated { generated_partition_crate_rows }
-import gunbc.repo_self_warning_policy { repo_self_warning_denial, repo_self_warning_denial_rustflags }
-import extdeps.cargo_build { cargo_clippy_command }
+import gunbc.stage0.stage0_crate_partition_generated { generated_partition_crate_rows }
+import gunbc.repo.repo_self_warning_policy { repo_self_warning_denial, repo_self_warning_denial_rustflags }
+import extdeps.rust.cargo_build { cargo_clippy_command }
 import extdeps.exec.command { argv_words }
 
 // THE SINGLE POINT THROUGH WHICH THIS REPOSITORY BUILDS ITS OWN BINARIES.
@@ -142,7 +142,7 @@ fn repo_self_slice_cost_control_command() -> String {
 // partition-crates command below closes for the build.
 // NO CARGO ARGV WORD IS SPELLED HERE, which repo_self_build_authority_note requires of any NEW
 // command this module renders: the verb, the program and the `--` lint separator come from
-// extdeps.cargo_build cargo_clippy_command, and this module contributes only the two facts that are
+// extdeps.rust.cargo_build cargo_clippy_command, and this module contributes only the two facts that are
 // genuinely its own -- that the lint pass covers every target, and that a warning is an error. The
 // String is the workflow-text realization of that node, derived by the shared argv_words fold, not
 // a second spelling of it.
@@ -155,8 +155,8 @@ fn repo_self_clippy_command() -> String {
   )
 }
 
-// The warning-denial policy row moved to gunbc.repo_self_warning_policy so a consumer wanting
-// only the policy does not link this module's transport (extdeps.cargo_build,
+// The warning-denial policy row moved to gunbc.repo.repo_self_warning_policy so a consumer wanting
+// only the policy does not link this module's transport (extdeps.rust.cargo_build,
 // extdeps.exec.command). It is imported above and still spelled once.
 
 // THE DERIVED STAGE0 PARTITION CRATES, WHICH THE PACKAGE-AS-DATA DECISION ABOVE DOES NOT REACH.
@@ -178,7 +178,7 @@ fn repo_self_clippy_command() -> String {
 // for "every crate:: reference in a rostered module resolves inside its crate's reexport
 // closure". A module dropped from a roster reds with E0432 naming the module and the referrer; a
 // roster entry naming no file reds with E0583 naming the entry. That class has no hermetic
-// witness available: gunbc.stage0_rust_product_reachability declares the Rust module dependency
+// witness available: gunbc.stage0.stage0_rust_product_reachability declares the Rust module dependency
 // graph unmodeled in rust_module_dependency_graph_unresolved_edge, and a joining witness that
 // read the tree instead would declare ReadsLiveTree and be declined by the required floor. So
 // this build IS the wall, and the modeled dependency graph is the trigger for climbing off it.

@@ -5,10 +5,10 @@ import std.types { String, NonEmptyStr, Int, List, Bool }
 import std.measure { ByteSize, HardwareThreadCount, byte_size_count, hardware_thread_count_value }
 import gunbc.workspace_commissioning_evidence { WorkspaceInitialReadinessPermit, workspace_initial_readiness_permit }
 import gunbc.workspace_allocation { workspace_profile_vcpus, LargeWorkspace }
-import gunbc.runner_slot_allocation { gunbc_microvm_shakedown_slot_memory_max, gunbc_runner_slot_desired_for }
-import gunbc.runner_slot_desired { CpuQuotaResolved, SlotCpuQuotaUnbounded }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.fleet_host_budget { HostAllocationVerdict, HostAllocationConserves, HostAllocationOversubscribed, HostAllocationUnchargeable }
+import gunbc.runner.runner_slot_allocation { gunbc_microvm_shakedown_slot_memory_max, gunbc_runner_slot_desired_for }
+import gunbc.runner.runner_slot_desired { CpuQuotaResolved, SlotCpuQuotaUnbounded }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.fleet.fleet_host_budget { HostAllocationVerdict, HostAllocationConserves, HostAllocationOversubscribed, HostAllocationUnchargeable }
 import product.fabric.sanitation { CellId, CellReady, CellQuarantined, SanitationObservation, SlotScopedNetwork, cell_readiness_from_observations, cell_readiness_line }
 
 // This is administrator commissioning intent bound to an existing convergence artifact. It is

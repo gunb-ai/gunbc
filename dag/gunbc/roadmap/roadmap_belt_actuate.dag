@@ -1,25 +1,25 @@
-module gunbc.roadmap_belt_actuate
+module gunbc.roadmap.roadmap_belt_actuate
 
-import gunbc.roadmap_runtime_plan { roadmap_plan_projection }
+import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }
 import gunbc.roadmap.roadmap_attempt_request_binding {
   AttemptLaunchRequest, LaunchForClaim, LaunchAutonomous, attempt_launch_request_for_origin,
   attempt_request_binding_commit_for_instance, RequestBindingCommitted, RequestBindingCommitRefused,
 }
-import gunbc.roadmap_nesting { roadmap_memberships }
+import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
 
 import std.algebra { trim }
 
 import gunbc.output_policy { OutcomeIsData }
 import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, CommitSha, GitRef, EpochSecs }
-import gunbc.roadmap_attempt_metering {
+import gunbc.roadmap.roadmap_attempt_metering {
   MeteringPersist, MeteringPersisted, MeteringAlreadyFinal, MeteringNotDue, MeteringPersistRefused, metering_persist_for_attempt,
   RosterAdmitted, RosterAdmissionRefused, MeteredReviewer, MeteredAuditor, MeteredSupervisor, metering_roster_admit,
   MeteredRole, metered_role_eq, metering_roster_for_attempt, metering_roster_launches, RosterRefused,
   MeteredAttemptsObserved, MeteredAttemptsRefused, metering_attempt_index, metering_attempt_index_admit,
 }
-import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, node_criteria_digest, node_sizing_derivation }
-import gunbc.roadmap_spawner { SpawnFrontier, spawn_frontier, doc_all_nodes }
-import gunbc.roadmap_status { signoff_accepts, line_ticket, node_title }
+import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapNodeId, node_criteria_digest, node_sizing_derivation }
+import gunbc.roadmap.roadmap_spawner { SpawnFrontier, spawn_frontier, doc_all_nodes }
+import gunbc.roadmap.roadmap_status { signoff_accepts, line_ticket, node_title }
 import gunbc.roadmap.roadmap_review_role {
   ReviewReceiptSource, ReviewReceiptAbsent, ReviewReceiptPresent, ReviewReceiptUnreadable,
   CriterionReviewEvidence, criterion_standing, criterion_standing_text, review_verdict_instruction,
@@ -30,8 +30,8 @@ import gunbc.roadmap.roadmap_review_function {
 }
 import gunbc.roadmap.roadmap_review_criteria { ReviewCriterion }
 import gunbc.roadmap.roadmap_goal_audit_role { goal_audit_criterion_key, goal_audit_approved, goal_audit_reconcile, goal_audit_brief }
-import gunbc.roadmap_dispatch_actuator { dispatch_events_projection_argv_at, dispatch_current_attempt_events_path_for_instance }
-import gunbc.roadmap_dispatch_actuator {
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_events_projection_argv_at, dispatch_current_attempt_events_path_for_instance }
+import gunbc.roadmap.roadmap_dispatch_actuator {
   DispatchExecutorRequest, ExecutorDefault, dispatch_actuator_selection_for_request,
   RecordedAttemptFingerprint, dispatch_tmux_session_scope_for_recorded,
   dispatch_credential_snapshot_path_for_instance, dispatch_credential_snapshot_discard,
@@ -45,12 +45,12 @@ import gunbc.roadmap_dispatch_actuator {
 }
 import extdeps.systemd.systemd_run { systemd_run_option_words_refused_cause_detail }
 import extdeps.git { shape_git_merge_base_args }
-import gunbc.roadmap_authority {
+import gunbc.roadmap.roadmap_authority {
   RoadmapAuthorityProjection,
   RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
   authored_merged_prs,
 }
-import gunbc.roadmap_belt {
+import gunbc.roadmap.roadmap_belt {
   SpawnMode, Paused, ManualReady, AutomaticReady, spawn_mode_label, spawn_mode_of_label,
   BeltCapacity,
   BeltReconcile,
@@ -61,7 +61,7 @@ import gunbc.roadmap_belt {
   DispatchMember, DesiredMember, ObservedMember, dispatch_member_key,
   belt_reconcile_upsert_count,
 }
-import gunbc.roadmap_launch_admission {
+import gunbc.roadmap.roadmap_launch_admission {
   LaunchCause, Operator, Timer,
   LaunchRefusal,
   LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
@@ -116,7 +116,7 @@ import gunbc.harness.harness_backend {
   HarnessBackendRoster, HarnessRosterServing, HarnessRosterNoneServing,
   harness_observe_roster, harness_declines_detail,
 }
-import gunbc.roadmap_dispatch_actuator {
+import gunbc.roadmap.roadmap_dispatch_actuator {
   HostExecArgv,
   DispatchLiveSession,
   DispatchSpawnCommands,
@@ -223,7 +223,7 @@ import gunbc.worker_lifecycle {
   terminal_outcome_evidence_label,
 }
 import gunbc.dispatch_selection { default_provider_selection_request, SizingProfileExpectation, NoDerivedSizingExpectation, sizing_profile_expectation }
-import gunbc.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var, instance_receipts_dir }
+import gunbc.host.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var, instance_receipts_dir }
 import extdeps.systemd.systemd_run { systemd_run_user_transient_command, SystemdRunProperty, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
 import extdeps.systemd { ExecStopPostProperty, WorkingDirectoryProperty, RuntimeMaxSecProperty, CollectModeProperty, MemoryMax, systemd_time_span_of_seconds }
 import std.measure { byte_size_count }
@@ -234,7 +234,7 @@ import gunbc.deploy_transition {
   actuation_admission,
   transition_actuation_standing,
 }
-import gunbc.roadmap_dashboard_instance {
+import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
   DashboardObserveOnly,
   DashboardActuating,
@@ -251,13 +251,13 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_for_repo_root,
   dispatch_base_branch,
 }
-import gunbc.roadmap_dispatch_environment {
+import gunbc.roadmap.roadmap_dispatch_environment {
   EnvironmentAdmitted,
   EnvironmentRefused,
   dispatch_environment_admit,
   dispatch_environment_admission_json,
 }
-import gunbc.roadmap_execution_contract {
+import gunbc.roadmap.roadmap_execution_contract {
   AttemptStateDirectoryCapability,
   EnvironmentBindingCapability,
   GitWorkspaceCapability,
@@ -279,12 +279,12 @@ import gunbc.roadmap_execution_contract {
   contract_source_roots,
 }
 import gunbc.repository { gunbc_repository }
-import gunbc.roadmap_publication_helper {
+import gunbc.roadmap.roadmap_publication_helper {
   PublicationAnswerStanding,
   AnswerReady, AnswerAwaited, AnswerSpoolRefused,
   publication_answer_standing,
 }
-import gunbc.roadmap_publish {
+import gunbc.roadmap.roadmap_publish {
   RoadmapPublicationSubject,
   PublicationSubjectObservation,
   PublicationSubjectObserved, PublicationSubjectUnobserved,
@@ -299,12 +299,12 @@ import gunbc.roadmap_publish {
   publication_receipt_outcome_key,
   publication_receipt_offers_the_expected_head,
 }
-import gunbc.roadmap_publish_observe {
+import gunbc.roadmap.roadmap_publish_observe {
   WorktreeRepositoryBinding,
   WorktreeBoundToRepository, WorktreeBoundElsewhere, WorktreeRemoteUnreadable,
   observe_worktree_repository_binding,
 }
-import gunbc.roadmap_verification_receipt { verification_file_evidence_for, VerificationFileDecoded, VerificationFileUnreadable, VerificationFileAbsent,
+import gunbc.roadmap.roadmap_verification_receipt { verification_file_evidence_for, VerificationFileDecoded, VerificationFileUnreadable, VerificationFileAbsent,
   VerificationEvidence, VerificationEvidenceForSubject,
   VerificationSubject,
   VerificationSubjectObservation,
@@ -349,7 +349,7 @@ import gunbc.roadmap_verification_receipt { verification_file_evidence_for, Veri
   verification_directory_segment,
 }
 import extdeps.github.github { Repository }
-import gunbc.roadmap_dispatch_destination {
+import gunbc.roadmap.roadmap_dispatch_destination {
   DispatchDestinationResolved,
   DispatchDestinationMissing,
   node_dispatch_destination,
@@ -359,7 +359,7 @@ import gunbc.roadmap_dispatch_destination {
   DispatchSpawnOrigin,
   dispatch_spawn_origin_json,
 }
-import gunbc.roadmap_validation_oracle {
+import gunbc.roadmap.roadmap_validation_oracle {
   ValidationOracleRef,
   OracleObservation,
   OraclePinScope,
@@ -419,7 +419,7 @@ import gunbc.git_diff_change_window {
   git_diff_window_absent_identity,
 }
 import extdeps.git.object_store { git_object_id_from_untagged_hex, git_object_id_wire_hex }
-import gunbc.fleet_desired_observe {
+import gunbc.fleet.fleet_desired_observe {
   local_tree_revision,
   FleetRevisionStanding,
   LocalTreeRevisionObserved, LocalTreeRevisionUnobserved,
@@ -499,7 +499,7 @@ import gunbc.roadmap.roadmap_fanin {
   IntegrationReceiptObservation,
   IntegrationReceiptForHead, IntegrationReceiptAbsent, IntegrationReceiptUnreadable,
 }
-import gunbc.roadmap_authority { declared_roadmap_edges }
+import gunbc.roadmap.roadmap_authority { declared_roadmap_edges }
 import gunbc.roadmap.roadmap_attempt_occurrence {
   DispatchAttemptOccurrence, AttemptOccurrenceObserved, AttemptOccurrenceUnclassified,
   AttemptOccurrenceForeign, AttemptOccurrenceMalformed,
@@ -523,7 +523,7 @@ import gunbc.roadmap.roadmap_submission {
 }
 import gunbc.scm.object_table_json { object_id_key }
 import gunbc.roadmap.roadmap_publish_admission { PublishAdmission, PublishAdmitted, PublishWithheld, publish_admission }
-import gunbc.roadmap_dispatch_actuator {
+import gunbc.roadmap.roadmap_dispatch_actuator {
   host_exec_argv,
   dispatch_attempt_continuation_turn_path_for_instance, dispatch_attempt_continuation_turn_basename,
   dispatch_attempt_alignment_binding_path_for_instance, dispatch_attempt_alignment_binding_basename,
@@ -544,7 +544,7 @@ import gunbc.roadmap.roadmap_supervisor {
   SupervisorEscalation,
 }
 import gunbc.harness.harness_supervisor_guidance { SupervisorCheckpoint, supervisor_brief_for }
-import gunbc.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, ProviderBudgetSpent, ProviderRunning, ProviderStarting, ProviderAwaitingSeat, ProviderNotStarted, ProviderExecutionState, ProviderCompleted, provider_execution_activity }
+import gunbc.roadmap.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, ProviderBudgetSpent, ProviderRunning, ProviderStarting, ProviderAwaitingSeat, ProviderNotStarted, ProviderExecutionState, ProviderCompleted, provider_execution_activity }
 import extdeps.version { VersionIdentity }
 import std.content_hash {
   content_hash_tagged_structural,
@@ -574,12 +574,12 @@ import extdeps.tools.gnu_coreutils { mv_exact_destination_command }
 import extdeps.tools.stat { stat_mtime_epoch_command }
 import gunbc.live_deploy.belt_cadence { belt_tick_run_bound }
 import gunbc.actions_run_binding { json_required_string_member, JsonStringMemberFound, JsonStringMemberRefused }
-import gunbc.roadmap_dispatch_actuator {
+import gunbc.roadmap.roadmap_dispatch_actuator {
   AttemptUnitStartStanding, AttemptUnitStartRecorded, AttemptUnitNeverStarted, AttemptUnitStartUnread,
   attempt_worker_unit_observation_of,
   AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable,
 }
-import gunbc.roadmap_session_placement {
+import gunbc.roadmap.roadmap_session_placement {
   attempt_worker_unit_observe_for_instance,
   SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores,
   session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused,
@@ -588,19 +588,19 @@ import gunbc.roadmap_session_placement {
   session_placement_observe_for_attempt, SessionPlacementUnreadable,
   session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire,
 }
-import gunbc.roadmap_workflow_command {
+import gunbc.roadmap.roadmap_workflow_command {
   WorkflowModeledStateStanding, WorkflowModeledStateObserved, WorkflowModeledStateAbsent, WorkflowModeledStateUnreadable,
 }
 import gunbc.roadmap.roadmap_build_meter { attempt_view_revision }
 import gunbc.site.element.build_meter { build_meter_wire_revision_member }
-import gunbc.roadmap_workflow_progress {
+import gunbc.roadmap.roadmap_workflow_progress {
   AttemptWorktreeObservation, AttemptWorktreePresent, AttemptWorktreeAbsent, AttemptWorktreeUnobserved, attempt_worktree_observation_of,
   WorkflowAttemptEvidence,
   WorkflowAttemptProgress,
   workflow_attempt_progress,
   workflow_attempt_progress_json_members,
 }
-import gunbc.roadmap_workflow_stage {
+import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegment,
   WorkflowSegmentState,
   WorkflowSegmentPending,
@@ -615,7 +615,7 @@ import gunbc.roadmap_workflow_stage {
   PublicationWorkflowSegment,
   workflow_segment_of_kind,
 }
-import gunbc.roadmap_presentation {
+import gunbc.roadmap.roadmap_presentation {
   activity_view_from_progress,
   activity_view_json_value,
   session_facts_view,
@@ -664,9 +664,9 @@ import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 
-// Slice 2b actuation: the belt DECISION (gunbc.roadmap_belt.belt_reconcile) is CLOSED against the
+// Slice 2b actuation: the belt DECISION (gunbc.roadmap.roadmap_belt.belt_reconcile) is CLOSED against the
 // host by three single-authorities — the actuator's HostExecArgv argv model
-// (gunbc.roadmap_dispatch_actuator, the one place git/tmux/provider argv is shaped),
+// (gunbc.roadmap.roadmap_dispatch_actuator, the one place git/tmux/provider argv is shaped),
 // gunbc.WitnessBin.Run (typed-argv exec, no shell string) and shell.PosixCommandV.Check (presence
 // probe; migrated off shell.Which.Check, crisp-wren-896, PR #8590 — srv1's OperatingSystemSurface
 // carries no package-set authority, so the weaker POSIX-shell assumption dominates). Provider is a
@@ -677,7 +677,7 @@ import std.dissolution { unbound_dissolution }
 data belt_actuate_placement_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
-    module_path: "gunbc.roadmap_dispatch_actuator",
+    module_path: "gunbc.roadmap.roadmap_dispatch_actuator",
     decl_name: "classify_dispatch_lease_upsert",
     field: WholeDeclaration
   }
@@ -686,13 +686,13 @@ data belt_actuate_placement_dissolution_trigger: Disposition = Scaffold {
 data belt_actuate_fingerprint_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
-    module_path: "gunbc.roadmap_dispatch_actuator",
+    module_path: "gunbc.roadmap.roadmap_dispatch_actuator",
     decl_name: "dispatch_tmux_process_fingerprint_observation_dissolution_trigger",
     field: WholeDeclaration
   }
 }
 
-data belt_actuate_workdir_note: String = "Two DISTINCT workdirs, because the belt's two host verbs bind to different roots (a §5 fail-open otherwise: observing from a repo path that may not exist on an arbitrary host would make `tmux ls` fail and — before this split — get widened to an empty session set). belt_actuate_workdir is the SPAWN root: `git worktree add` must run inside the gunbc repo — a PROJECTION of gunbc.host_layout.srv1_gunbc_repo_root (the single path authority; its former private copy deleted, DESIGN §3): the same tree `gunbc serve` loads, which is why dispatch works in-process. belt_observe_workdir is the host-global root '/': `tmux ls` and `tmux kill-session` act on the per-user tmux server (a host singleton, not a repo), so they must run from a directory guaranteed to exist on the host — never the repo path, which may be absent (fake-claude test box, a freshly-enrolled srvN). Observe/teardown therefore carry no workdir parameter; only spawn is workdir-parameterized."
+data belt_actuate_workdir_note: String = "Two DISTINCT workdirs, because the belt's two host verbs bind to different roots (a §5 fail-open otherwise: observing from a repo path that may not exist on an arbitrary host would make `tmux ls` fail and — before this split — get widened to an empty session set). belt_actuate_workdir is the SPAWN root: `git worktree add` must run inside the gunbc repo — a PROJECTION of gunbc.host.host_layout.srv1_gunbc_repo_root (the single path authority; its former private copy deleted, DESIGN §3): the same tree `gunbc serve` loads, which is why dispatch works in-process. belt_observe_workdir is the host-global root '/': `tmux ls` and `tmux kill-session` act on the per-user tmux server (a host singleton, not a repo), so they must run from a directory guaranteed to exist on the host — never the repo path, which may be absent (fake-claude test box, a freshly-enrolled srvN). Observe/teardown therefore carry no workdir parameter; only spawn is workdir-parameterized."
 
 data belt_actuate_workdir: FilePath = srv1_gunbc_repo_root
 
@@ -1254,7 +1254,7 @@ fn belt_oracle_pin_not_observable_reason(tree: String) -> String {
 }
 
 data belt_spawn_oracle_pin_standing_production_consumer_frontier: FrontierRow = frontier_row_decl(
-  ref: decl_ref(module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_spawn_oracle_pin_standing"),
+  ref: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_spawn_oracle_pin_standing"),
   reason: "live spawn refuses via belt_attempt_oracle_pin_capture_for_instance after worktree-add; belt_spawn_oracle_pin_standing is not on that path",
   dissolution: unbound_dissolution(
     description: "a production fold on the POST /dispatch or belt-intent-admission path calls belt_spawn_oracle_pin_standing with observations of the exact admitted-base Git objects. Not satisfied by belt_dispatch_node existing, nor by a witness constructing OracleMissing / OracleFound, nor by re-binding spawn to instance.repo_root"
@@ -1448,7 +1448,7 @@ fn belt_session_container_create(
 // G5: A UNIT CONTAINER ACQUIRES ITS PLACEMENT BEFORE ANY HOST STEP RUNS, so a refusal leaves no
 // worktree, no attempt state and no current pointer behind -- it is a launch refusal
 // (LaunchNoPlacementGrant), not a spawn that failed halfway. The session slot it opens first is what
-// makes every later crash recoverable (gunbc.roadmap_session_placement). A tmux container holds no
+// makes every later crash recoverable (gunbc.roadmap.roadmap_session_placement). A tmux container holds no
 // placement: its panes escape any unit's cgroup, which is that module's declared frontier.
 type BeltHeldPlacement {
   grant: SessionPlacementGrant
@@ -2108,7 +2108,7 @@ fn belt_footprint_admission_for_instance(
 // closed, sitting on the one route where the model actually reaches a process, and this module's own
 // rule is that the fix is the carrier rather than the call.
 // ONE OWNER FOR THE CREDENTIAL SNAPSHOT'S LIFECYCLE AFTER SELECTION (side-chat finding, 2026-10-05).
-// A vendor selection may take a per-attempt credential snapshot (gunbc.roadmap_dispatch_actuator
+// A vendor selection may take a per-attempt credential snapshot (gunbc.roadmap.roadmap_dispatch_actuator
 // dispatch_credential_snapshot_path_for_instance). Exactly one path consumes it: the launched child,
 // whose wrapper removes it before exec. Every other way out of the spawn after selection -- a refused
 // provider preflight, no spawn route, a supervisor route, a placement refusal, any SpawnFailed --
@@ -2668,7 +2668,7 @@ fn belt_supervisor_convene(
   provider_wire_label: String,
   launch: LaunchIdentity,
 ) -> BeltSpawnOutcome {
-  let nid = escalation.node_id as gunbc.roadmap_model.RoadmapNodeId
+  let nid = escalation.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
   let unit = dispatch_supervisor_unit_name(node_id: escalation.node_id, attempt_key: escalation.attempt_key, turn: escalation.turn)
   match belt_supervisor_convene_gate(process: worker_process_from_attempt_unit(observation: attempt_unit_observation(unit: unit), unit: unit)) {
     ConveneAlreadyLive =>
@@ -3540,7 +3540,7 @@ type BeltTickReceiptRead
 // on the attempt ledger plus terminal provider/process evidence; publish on exact verified head
 // plus repository observation. A tmux-list refusal may block spawn/reap while verify still examines
 // its own evidence (DESIGN section 5: refuse narrowly, never widen to zeroing sibling passes).
-// Written to the instance's receipts directory (gunbc.host_layout instance_receipts_dir) so
+// Written to the instance's receipts directory (gunbc.host.host_layout instance_receipts_dir) so
 // /workflow.json reads it without re-running the belt. CORRECTED 2026-08-19: this sentence read
 // 'beside the instance's attempt-state root', wrong two ways and recorded rather than reworded. The
 // code wrote <instance_root>/belt-last-tick.json, a root-owned directory, so the receipt was EACCES
@@ -4043,7 +4043,7 @@ fn belt_tick_receipt_write_for_instance(
 // refusal blocks spawn/reap only; verify reads the attempt ledger and terminal provider/process
 // evidence on its own authority (operator P1, 2026-08-02).
 // The tick's node-independent launch refusal, when the host refused before any node reached its own
-// gates: the same LaunchRefusal (gunbc.roadmap_launch_admission launch_host_refusal over the staged
+// gates: the same LaunchRefusal (gunbc.roadmap.roadmap_launch_admission launch_host_refusal over the staged
 // standing) every per-node SpawnNotAdmitted in spawn_outcomes carries, so the receipt's spawn_pass
 // reason and the per-row refusals are one spelling. Absent when the host admitted observation
 // through to the session set (a per-node refusal may still stand in spawn_outcomes). Replaces the
@@ -4384,7 +4384,7 @@ fn belt_tick_for_instance(
 }
 
 // THE TIMER CONSUMES THE SAME ADMISSION AS THE CLICK (RLM-1). Every upsert the reconcile plans is
-// folded through gunbc.roadmap_launch_admission with cause Timer, in order, `reserved` = the
+// folded through gunbc.roadmap.roadmap_launch_admission with cause Timer, in order, `reserved` = the
 // launches this tick already admitted, so capacity is decided once and a tick cannot overshoot. A
 // refusal is carried whole as SpawnNotAdmitted; only an admitted candidate reaches
 // belt_actuate_spawn_member. The stale / liveness-unobserved / multiplicity partition the tick
@@ -4589,7 +4589,7 @@ fn belt_tick_teardown_ok_count(t: BeltTickResult) -> Int {
 
 // One belt tick against the LIVE roadmap reads the roadmap authority + merged PRs, builds the ready
 // frontier, and reconciles it in the production spawn mode (ManualReady) at the default capacity.
-// gunbc.roadmap_belt_tick_cli belt_run_once_cli is the executable entrypoint (`gunbc run --function belt_run_once_cli`, wet):
+// gunbc.roadmap.roadmap_belt_tick_cli belt_run_once_cli is the executable entrypoint (`gunbc run --function belt_run_once_cli`, wet):
 // it requires the deployment's GUNBC_BELT_SPAWN_WORKDIR, resolves that root to its dashboard
 // instance, ticks against it, and persists the BeltTickReceipt and the served observation. belt_run_once and
 // belt_run_once_json are non-executable projections (typed BeltTickResult for the production
@@ -5225,7 +5225,7 @@ fn belt_occurrence_record_from_launch_observation(attempt: DispatchAttemptRef, l
 }
 
 fn belt_occurrence_record_for_attempt(instance: HostDashboardInstance, attempt: DispatchAttemptRef) -> AttemptOccurrenceRecordRead {
-  let node_id = attempt.node_id as gunbc.roadmap_model.RoadmapNodeId
+  let node_id = attempt.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
   let directory = filesystem_entry_presence_of_path(
     path: dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt.attempt_key),
   )
@@ -5320,7 +5320,7 @@ fn belt_attempt_occurrences_observe_for_instance(instance: HostDashboardInstance
 // not-found, finds no exit record and no placement record, and answers WorkerProcessAbsent exactly as
 // before -- so this adds a population without changing the answer for the one that already worked. A
 // harness attempt whose unit has been collected is read from its exit record
-// (gunbc.roadmap_session_placement attempt_worker_unit_observe_for_instance).
+// (gunbc.roadmap.roadmap_session_placement attempt_worker_unit_observe_for_instance).
 fn attempt_process_for_node(
   instance: HostDashboardInstance,
   panes: BeltAttemptPanes,
@@ -5332,7 +5332,7 @@ fn attempt_process_for_node(
       WorkerProcessUnobserved { reason: reason as NonEmptyStr }
     BeltAttemptPanesObserved { panes: observed } => {
       let session_name = dispatch_tmux_session_name(
-        node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+        node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
       )
       let matched = observed |> filter(pane =>
         pane.session_name == session_name)
@@ -5384,7 +5384,7 @@ type ProviderEventProjectionObservation
 
 fn belt_provider_event_projection_observe_for_instance(
   instance: HostDashboardInstance,
-  node_id: gunbc.roadmap_model.RoadmapNodeId,
+  node_id: gunbc.roadmap.roadmap_model.RoadmapNodeId,
 ) -> ProviderEventProjectionObservation {
   belt_provider_event_projection_observe_at(
     instance: instance,
@@ -5868,7 +5868,7 @@ fn belt_workflow_attempt_evidence_for_ref(
   let key_read = Filesystem.Read(
     path: dispatch_current_attempt_key_path_for_instance(
       instance: instance,
-      node_id: attempt.node_id as gunbc.roadmap_model.RoadmapNodeId,
+      node_id: attempt.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
     ),
   )
   match filesystem_read_outcome(content: key_read.content, success: key_read.success, error: key_read.error) {
@@ -5899,7 +5899,7 @@ type BeltAttemptRecordPaths {
   spawn_failure: String
 }
 
-fn belt_attempt_record_paths(instance: HostDashboardInstance, node_id: gunbc.roadmap_model.RoadmapNodeId, attempt_key: String) -> BeltAttemptRecordPaths {
+fn belt_attempt_record_paths(instance: HostDashboardInstance, node_id: gunbc.roadmap.roadmap_model.RoadmapNodeId, attempt_key: String) -> BeltAttemptRecordPaths {
   BeltAttemptRecordPaths {
     admission: dispatch_attempt_admission_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
     events: dispatch_attempt_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
@@ -5909,7 +5909,7 @@ fn belt_attempt_record_paths(instance: HostDashboardInstance, node_id: gunbc.roa
 
 // THE EVIDENCE OF ONE NAMED ATTEMPT. belt_workflow_attempt_evidence_for_ref resolves the node's
 // CURRENT attempt through its state pointer and then reads it here; a reader of attempt HISTORY
-// (gunbc.roadmap_dogfood_route) names the attempt by its own key and reads it here directly, so
+// (gunbc.roadmap.roadmap_dogfood_route) names the attempt by its own key and reads it here directly, so
 // both read one evidence builder. EVERY attempt-varying read below is addressed by the supplied key
 // (admission, provider events, spawn failure, worktree, submission, verification, publication,
 // review, integration, session placement) -- never through a dispatch_current_attempt_* projection, which would mix the
@@ -5921,7 +5921,7 @@ fn belt_workflow_attempt_evidence_for_key(
   attempt: DispatchAttemptRef,
   current_key: String,
 ) -> WorkflowAttemptEvidence {
-  let node_id = attempt.node_id as gunbc.roadmap_model.RoadmapNodeId
+  let node_id = attempt.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
   let paths = belt_attempt_record_paths(instance: instance, node_id: node_id, attempt_key: current_key)
   let admission = Filesystem.Read(path: paths.admission)
   let events = belt_provider_event_projection_observe_at(instance: instance, events_path: paths.events)
@@ -6100,7 +6100,7 @@ fn belt_workflow_attempt_evidence_for_key(
 // THE ATTEMPT'S TYPED EVIDENCE AND ITS PROGRESS ARE ONE READ. The evidence (submission capture,
 // verification and publication receipt sources, review report, ...) is the record set the
 // progress projection reduces to segments; exposing it lets a consumer that needs the typed
-// records (gunbc.roadmap_dogfood_route) read the same observation instead of re-reading the files.
+// records (gunbc.roadmap.roadmap_dogfood_route) read the same observation instead of re-reading the files.
 fn belt_workflow_progress_for_attempt_ref(
   instance: HostDashboardInstance,
   panes: BeltAttemptPanes,
@@ -7787,7 +7787,7 @@ fn belt_commit_outcome_persist(
       path: join([
         dispatch_attempt_state_path_for_instance(
           instance: instance,
-          node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+          node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
           attempt_key: attempt_key,
         ),
         "/", belt_commit_outcome_last_basename as String,
@@ -7800,7 +7800,7 @@ fn belt_commit_outcome_persist(
   }
 }
 
-// THE PER-ATTEMPT METERING RECORD (gunbc.roadmap_attempt_metering). Every attempt in the workflow
+// THE PER-ATTEMPT METERING RECORD (gunbc.roadmap.roadmap_attempt_metering). Every attempt in the workflow
 // ledger is entered in the metering attempt index and, once its worker is terminal, metered against
 // its open roster -- a Provisional record, rewritten each tick so later reviewer, auditor and
 // supervisor rounds and late seat releases are folded in. An indexed attempt that has LEFT the ledger
@@ -8494,7 +8494,7 @@ fn belt_verify_attempt_for_instance(
   instance: HostDashboardInstance,
   progress: WorkflowAttemptProgress,
 ) -> BeltVerifyOutcome {
-  let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
+  let node_id = progress.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
   if belt_provider_is_terminal(provider: progress.provider) {
       match belt_lookup_node(node_id: progress.node_id) {
         AuthorityProjectionRefused { detail: detail } =>
@@ -8771,7 +8771,7 @@ fn belt_verify_run_and_persist(
   diff_window_path: String?,
   change_window_refusal: ChangeWindowPreparationRefusal?,
 ) -> BeltVerifyOutcome {
-  let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
+  let node_id = progress.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
   let identity_hex = git_diff_window_identity_hex(
     identity: subject.change_window_identity,
   )
@@ -9017,7 +9017,7 @@ fn belt_progress_for_one_attempt(instance: HostDashboardInstance, node_id: Strin
     panes: belt_attempt_panes_observe_for_instance(instance: instance),
     attempt: DispatchAttemptRef {
       node_id: node_id as NonEmptyStr,
-      branch: dispatch_branch_name(node_id: node_id as gunbc.roadmap_model.RoadmapNodeId, attempt_key: attempt_key) as NonEmptyStr,
+      branch: dispatch_branch_name(node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId, attempt_key: attempt_key) as NonEmptyStr,
       attempt_key: attempt_key,
     },
   )
@@ -9081,7 +9081,7 @@ type BeltVerifyOneResult
 // only an absent receipt runs the shared verify machinery (belt_verify_attempt_for_instance,
 // unchanged). The operation touches no sibling attempt and no envelope.
 fn belt_verify_one_for_instance(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> BeltVerifyOneResult {
-  let nid = node_id as gunbc.roadmap_model.RoadmapNodeId
+  let nid = node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
   let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: nid, attempt_key: attempt_key)
   match belt_worktree_head_observe(instance: instance, worktree: worktree) {
     WorktreeHeadUnobserved { reason } =>
@@ -9337,8 +9337,8 @@ fn belt_workflow_attempts_observe_scoped(
 // attempt (gunbc.roadmap.roadmap_build_meter attempt_view_revision), for a page that already shows
 // it. Its staleness is the caller's revision comparison; a caller that made none passes none.
 // The wire join of the two authorities the client must never re-derive: the attempt's progress
-// members (gunbc.roadmap_workflow_progress, unchanged) plus the DECIDED activity view
-// (gunbc.roadmap_presentation) appended as one 'activity' member. The seam reads process and
+// members (gunbc.roadmap.roadmap_workflow_progress, unchanged) plus the DECIDED activity view
+// (gunbc.roadmap.roadmap_presentation) appended as one 'activity' member. The seam reads process and
 // current activity from INSIDE the progress carrier (one_progress_authority_note — the belt cannot
 // pass a disagreeing process beside it), so the join is one call on one value. It lives here
 // because progress cannot import presentation without a cycle; the member-list seam
@@ -9926,7 +9926,7 @@ fn belt_transition_admission_for_instance(instance: HostDashboardInstance) -> Ac
 // the observers: posture from the instance, the transition admission, the fleet revision standing,
 // the tmux session set, the capacity and the spawn mode. The served daily page, POST /dispatch and
 // (inline, after the tick-wide transition and revision refusals) the belt tick all hand this to
-// gunbc.roadmap_launch_admission, so `drift refuses UI availability and backend actuation with the
+// gunbc.roadmap.roadmap_launch_admission, so `drift refuses UI availability and backend actuation with the
 // same reason` holds by construction: one standing, one decision.
 // THE ONE STAGED OBSERVER behind the page, POST /dispatch and the timer. It reads in gate order and
 // stops at the first refusal: instance posture is a model fact (no effect); the transition file is
@@ -10054,7 +10054,7 @@ fn belt_launch_host_standing(instance: HostDashboardInstance) -> LaunchHostStand
 }
 
 // POST /dispatch/<node_id> IS A PROJECTION OF THE SHARED ADMISSION (RLM-1). The route observes the
-// host once, asks gunbc.roadmap_launch_admission with cause Operator, and actuates only on
+// host once, asks gunbc.roadmap.roadmap_launch_admission with cause Operator, and actuates only on
 // LaunchAdmitted — so a blocked child is refused DependenciesBlocked before any worktree, provider
 // preflight or clock read; a second click on a live node answers AlreadyLive with the existing
 // session; and the old route's manual out-of-order override (no dependency, capacity or contract
@@ -10308,7 +10308,7 @@ fn belt_dispatch_label_band_key(wire_label: String) -> String {
 // is the single manual enumeration the closed variant set forces — the same one
 // witness_dispatch_status_labels_pin_wire_contract pins — and is fail-closed twice: a NEW variant
 // makes belt_dispatch_status_label's match non-exhaustive (compiler-caught), and
-// gunbc.roadmap_component derives the DispatchButton's terminal states from THIS list and
+// gunbc.roadmap.roadmap_component derives the DispatchButton's terminal states from THIS list and
 // cross-checks totality both directions (label with no state row, state with no label — each red),
 // so the button's state set cannot drift from the served contract. This is what the dispatch-button
 // incident (2026-07-23) needed: one authority for the wire vocabulary, consumed by the JSON body,
@@ -10340,7 +10340,7 @@ fn belt_dispatch_label_is_ok(wire_label: String) -> Bool {
 
 // The dispatch route prefix, part of the wire contract (the click POSTs to prefix+NODE_ID; belt B
 // answers at the /dispatch/ NODE_ID route). Homed with the rest of the wire vocabulary (§3) so the
-// client script builder (gunbc.roadmap_component) and the emitted server (node_http_server_emit)
+// client script builder (gunbc.roadmap.roadmap_component) and the emitted server (node_http_server_emit)
 // read one authority; moved off roadmap_page to break the page-to-component import cycle the
 // TsProgram builder would otherwise create.
 data belt_dispatch_path_prefix: String = "/dispatch/"
@@ -10450,7 +10450,7 @@ fn belt_dispatch_node_cli() -> ProcessExit {
 // the publication helper across a Unix-principal boundary, and writes the receipt the helper
 // answered with. The three-effect decomposition is unchanged in shape, but the middle effect is a
 // spool write and read rather than a network call, because a process that spawns provider sessions
-// must not hold a publication token. gunbc.roadmap_publication_helper carries that argument;
+// must not hold a publication token. gunbc.roadmap.roadmap_publication_helper carries that argument;
 // PublishRequested is the state between the two, a named outcome rather than a silence for the same
 // reason every other arm here is.
 type BeltPublishOutcome
@@ -10471,7 +10471,7 @@ type BeltPublishOutcome
 // in the receipt, and is compared when a consumer checks it.
 //
 // THE BASE IS THE INSTANCE'S DISPATCH BASE, read from the one row that already decides where attempts
-// branch from (gunbc.roadmap_dashboard_instance dispatch_base_branch), never the repository default:
+// branch from (gunbc.roadmap.roadmap_dashboard_instance dispatch_base_branch), never the repository default:
 // a srv2 attempt dispatched from origin/srv2-deploy was offered against main with the whole deploy
 // branch in its diff before this (2026-09-05). Every caller passes the instance's derivation, not a
 // literal, so there is still one authority; the receipt records what was used.
@@ -10623,13 +10623,13 @@ fn belt_publish_admission_for(
 ) -> PublishAdmission {
   let selection = belt_verification_selection_observe(
     instance: instance,
-    node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+    node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
     attempt_key: attempt_key,
     head_sha: subject.expected_head as String,
   )
   let source = belt_verification_receipt_source(
     instance: instance,
-    node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+    node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
     attempt_key: attempt_key,
     selection: selection,
   )
@@ -10660,7 +10660,7 @@ fn belt_publish_admission_for(
                 PublishAdmitted =>
                   belt_review_admission(
                     instance: instance,
-                    node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+                    node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
                     attempt_key: attempt_key,
                     head_sha: subject.expected_head as String,
                   )
@@ -10746,7 +10746,7 @@ fn belt_audit_attempt_for_instance(instance: HostDashboardInstance, progress: Wo
 }
 
 fn belt_audit_verified_attempt(instance: HostDashboardInstance, progress: WorkflowAttemptProgress, verification_detail: String) -> BeltReviewOutcome {
-  let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
+  let node_id = progress.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
   let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key)
   let git = dispatch_capability_program(environment: instance.execution_environment, cap: GitWorkspaceCapability)
   match belt_exec(cmd: host_exec_argv(program: git, args: shape_git_rev_parse_head_args()), workdir: worktree) {
@@ -10775,7 +10775,7 @@ fn belt_audit_verified_attempt(instance: HostDashboardInstance, progress: Workfl
 }
 
 fn belt_audit_spawn(instance: HostDashboardInstance, progress: WorkflowAttemptProgress, worktree: String, head: String, verification_detail: String) -> BeltReviewOutcome {
-  let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
+  let node_id = progress.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
   match belt_lookup_node(node_id: progress.node_id) {
     AuthorityProjectionRefused { detail } => ReviewDeferred { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: join(["roadmap authority projection refused: ", detail], "") }
     NodeMissing => ReviewDeferred { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: "the roadmap authority declares no node with this id, so there is no approved goal to audit against" }
@@ -10950,7 +10950,7 @@ fn belt_review_process(instance: HostDashboardInstance, node_id: String, attempt
 }
 
 // A REVIEWER'S OR AUDITOR'S PROCESS, now that its unit is collected when it ends (the exit record
-// replaced RemainAfterExit, gunbc.roadmap_dispatch_actuator dispatch_review_unit_properties): the
+// replaced RemainAfterExit, gunbc.roadmap.roadmap_dispatch_actuator dispatch_review_unit_properties): the
 // manager while the unit is loaded, else the launch's exit record, else -- only when both are silent
 // -- whether the launch was ever admitted. The launch's START RECEIPT is its metering roster entry,
 // which belt_review_spawn and the audit spawn commit before the unit is started, so a launch with a
@@ -10976,7 +10976,7 @@ fn belt_launch_process(instance: HostDashboardInstance, node_id: String, attempt
 }
 
 fn belt_launch_start_standing(instance: HostDashboardInstance, node_id: String, attempt_key: String, metered: MeteredRole) -> AttemptUnitStartStanding {
-  let roster = metering_roster_for_attempt(instance: instance, node_id: node_id as gunbc.roadmap_model.RoadmapNodeId, attempt_key: attempt_key)
+  let roster = metering_roster_for_attempt(instance: instance, node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId, attempt_key: attempt_key)
   match roster {
     RosterRefused { cause } => AttemptUnitStartUnread { reason: join(["the launch roster could not be read: ", cause], "") }
     RosterOpen { launches: _ } =>
@@ -11018,10 +11018,10 @@ fn belt_review_verified_attempt(instance: HostDashboardInstance, progress: Workf
 }
 
 // REVIEW ONE ATTEMPT'S HEAD: the one path the tick takes after verification and the operator takes on
-// demand (gunbc.roadmap_belt_tick_cli belt_review_head_cli). It reads the head, builds the plan, reports
+// demand (gunbc.roadmap.roadmap_belt_tick_cli belt_review_head_cli). It reads the head, builds the plan, reports
 // a superseded earlier roster, and realizes plan.calls; nothing here enumerates criteria.
 fn belt_review_head_for_instance(instance: HostDashboardInstance, node_id: String, attempt_key: String, verification_detail: String) -> List<BeltReviewOutcome> {
-  let nid = node_id as gunbc.roadmap_model.RoadmapNodeId
+  let nid = node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
   let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: nid, attempt_key: attempt_key)
   let git = dispatch_capability_program(environment: instance.execution_environment, cap: GitWorkspaceCapability)
   match belt_exec(cmd: host_exec_argv(program: git, args: shape_git_rev_parse_head_args()), workdir: worktree) {
@@ -11043,7 +11043,7 @@ fn belt_review_head_for_instance(instance: HostDashboardInstance, node_id: Strin
 
 // THE REPORT FOR ONE ATTEMPT'S CURRENT HEAD, for the operator entry and the board alike.
 fn belt_review_report_for_instance(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> ReviewReport {
-  let nid = node_id as gunbc.roadmap_model.RoadmapNodeId
+  let nid = node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
   let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: nid, attempt_key: attempt_key)
   match belt_worktree_head_observe(instance: instance, worktree: worktree) {
     WorktreeHeadUnobserved { reason } => review_report_absent(reason: join(["the attempt head is unobserved: ", reason], ""))
@@ -11076,7 +11076,7 @@ fn belt_review_supersession(
 }
 
 fn belt_review_call(instance: HostDashboardInstance, node_id: String, attempt_key: String, worktree: String, head: String, plan: ReviewPlan, call: ReviewCall) -> BeltReviewOutcome {
-  let nid = node_id as gunbc.roadmap_model.RoadmapNodeId
+  let nid = node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
   let key = belt_review_call_key(plan: plan, call: call)
   match belt_review_receipt_source(instance: instance, node_id: nid, attempt_key: attempt_key, head_sha: head, criterion_key: key) {
     ReviewReceiptPresent { text: _ } => ReviewSkipped { node_id: node_id, criterion: call.id, reason: "a verdict is recorded for this head, plan revision and criterion" }
@@ -11094,7 +11094,7 @@ fn belt_review_call(instance: HostDashboardInstance, node_id: String, attempt_ke
 }
 
 fn belt_review_spawn(instance: HostDashboardInstance, node_id: String, attempt_key: String, worktree: String, head: String, plan: ReviewPlan, call: ReviewCall) -> BeltReviewOutcome {
-  let nid = node_id as gunbc.roadmap_model.RoadmapNodeId
+  let nid = node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
   let key = belt_review_call_key(plan: plan, call: call)
   match instance.toolchain.systemd_run {
     Absent => ReviewDeferred { node_id: node_id, criterion: call.id, reason: "the toolchain declares no systemd-run; the reviewer needs a transient unit" }
@@ -11319,13 +11319,13 @@ fn belt_candidate_verification_passed(
     NodeFound { node } => {
       let selection = belt_verification_selection_observe(
         instance: instance,
-        node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+        node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
         attempt_key: attempt_key,
         head_sha: head_sha,
       )
       let source = belt_verification_receipt_source(
         instance: instance,
-        node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+        node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
         attempt_key: attempt_key,
         selection: selection,
       )
@@ -11333,7 +11333,7 @@ fn belt_candidate_verification_passed(
         node: node,
         attempt_key: attempt_key,
         branch: dispatch_branch_name(
-          node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+          node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
           attempt_key: attempt_key,
         ),
         head: head_sha as CommitSha,
@@ -11621,7 +11621,7 @@ fn belt_legacy_capture_base(instance: HostDashboardInstance, source: RepositoryC
     Present { value: subject } =>
       belt_scm_base_sha_observe(
         instance: instance,
-        node_id: subject.node_id as gunbc.roadmap_model.RoadmapNodeId,
+        node_id: subject.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
         attempt_key: subject.attempt_key,
       )
   }
@@ -12355,7 +12355,7 @@ fn belt_integrate_candidate_core_for_instance(
 
   let worktree = dispatch_worktree_path_for_instance(
     instance: instance,
-    node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+    node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
     attempt_key: attempt_key,
   )
   match belt_worktree_head_observe(instance: instance, worktree: worktree) {
@@ -12366,7 +12366,7 @@ fn belt_integrate_candidate_core_for_instance(
         worktree: worktree,
         dir: belt_attempt_integration_dir_for_instance(
           instance: instance,
-          node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+          node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
           attempt_key: attempt_key,
         ),
         head_sha: revision as String,
@@ -12384,7 +12384,7 @@ fn belt_integrate_candidate_core_for_instance(
         worktree: worktree,
         dir: belt_attempt_submission_dir_for_instance(
           instance: instance,
-          node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+          node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
           attempt_key: attempt_key,
         ),
         head_sha: revision as String,
@@ -12419,7 +12419,7 @@ fn belt_integrate_candidate_core_for_instance(
                     project_key: project_key,
                     dir: belt_attempt_integration_dir_for_instance(
                       instance: instance,
-                      node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+                      node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
                       attempt_key: attempt_key,
                     ),
                   ) {
@@ -12487,7 +12487,7 @@ fn belt_integration_census(instance: HostDashboardInstance, member_ids: List<Str
               instance: instance,
               worktree: dispatch_worktree_path_for_instance(
                 instance: instance,
-                node_id: member as gunbc.roadmap_model.RoadmapNodeId,
+                node_id: member as gunbc.roadmap.roadmap_model.RoadmapNodeId,
                 attempt_key: progress.attempt_key,
               ),
             ) {
@@ -12497,12 +12497,12 @@ fn belt_integration_census(instance: HostDashboardInstance, member_ids: List<Str
                   instance: instance,
                   worktree: dispatch_worktree_path_for_instance(
                     instance: instance,
-                    node_id: member as gunbc.roadmap_model.RoadmapNodeId,
+                    node_id: member as gunbc.roadmap.roadmap_model.RoadmapNodeId,
                     attempt_key: progress.attempt_key,
                   ),
                   dir: belt_attempt_integration_dir_for_instance(
                     instance: instance,
-                    node_id: member as gunbc.roadmap_model.RoadmapNodeId,
+                    node_id: member as gunbc.roadmap.roadmap_model.RoadmapNodeId,
                     attempt_key: progress.attempt_key,
                   ),
                   head_sha: revision as String,
@@ -12635,7 +12635,7 @@ fn belt_publish_project_subject_repository(
         node: node,
         attempt_key: attempt_key,
         branch: dispatch_branch_name(
-          node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+          node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
           attempt_key: attempt_key,
         ),
         base_branch: dispatch_base_branch(instance: instance),
@@ -12643,7 +12643,7 @@ fn belt_publish_project_subject_repository(
           instance: instance,
           worktree: dispatch_worktree_path_for_instance(
             instance: instance,
-            node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+            node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
             attempt_key: attempt_key,
           ),
         ),
@@ -12679,7 +12679,7 @@ fn belt_path_parent_dir(path: String) -> String {
 //
 // The realization is one function over the git and install programs, so production
 // (belt_publish_project_materialize, the instance's capability programs) and the real-repository
-// witness (test.claim.roadmap.roadmap_belt_publish_realization_wet_witness_test) drive the same code.
+// witness (test.claim.roadmap.roadmap_belt_publish_realization_wet_witness) drive the same code.
 //
 // One note on the fold arms below, kept at declaration grain (the annotation channel admits no
 // in-body comments): NO POISON IS BORN IN MATERIALIZATION (its refusals are all exec/write I/O),
@@ -13162,7 +13162,7 @@ fn belt_publish_attempt_adjudicate(
 ) -> BeltPublishOutcome {
   let attempt_worktree = dispatch_worktree_path_for_instance(
     instance: instance,
-    node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+    node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
     attempt_key: attempt_key,
   )
   match belt_lookup_node(node_id: node_id) {
@@ -13181,7 +13181,7 @@ fn belt_publish_attempt_adjudicate(
     node: node,
     attempt_key: attempt_key,
     branch: dispatch_branch_name(
-      node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+      node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
       attempt_key: attempt_key,
     ),
     base_branch: dispatch_base_branch(instance: instance),
@@ -13216,7 +13216,7 @@ fn belt_publish_attempt_adjudicate(
         WorktreeBoundToRepository => {
           let path = dispatch_attempt_publication_receipt_path_for_instance(
             instance: instance,
-            node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+            node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
             attempt_key: attempt_key,
             head_sha: subject.expected_head as String,
           )
@@ -13234,7 +13234,7 @@ fn belt_publish_attempt_adjudicate(
               subject: subject,
               existing: belt_publication_receipt_source(
                 instance: instance,
-                node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+                node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
                 attempt_key: attempt_key,
                 subject: PublicationSubjectObserved { subject: subject },
               ),
@@ -13449,7 +13449,7 @@ fn belt_tick_receipt_from_result(
   }
 }
 
-data belt_publish_pass_note: String = "PUBLICATION IS THE ATTEMPT'S LAST OBLIGATION, run by the attempt's own unit once its head is reviewed (gunbc.roadmap.roadmap_belt_obligation PublishObligation; dogfood intervention #6 moved it off the tick). It is still a desired obligation reconciled against an observed one, and a producer nobody calls is still the defect this lane keeps producing, so the wiring is the deliverable, not the type.\\n\\nIT IS AN OBSERVATION OF THE REMOTE AS WELL AS AN EFFECT: running it records the true state - the branch is not published yet - and its next run revises it. The gate is what makes repetition safe, since only a receipt saying the head is on offer stops the revisions, and one PR per work item is ensured, never created twice.\\n\\nTHE TICK HOLDS NO CREDENTIAL AT ALL, and that is what this pass gave up in exchange for the publication boundary. It used to probe GITHUB_TOKEN once per tick and hand the source to every attempt; it now writes a typed request per attempt and reads the answer the publication helper wrote under its own principal. The cost is that a head is published on the SECOND run of its obligation rather than the first: the first writes the request, and the helper's answer arriving is the event that runs it again (the deployment's publication-answer path unit). The gain is that no process holding this token spawns a provider session. See gunbc.roadmap_publication_helper for the boundary argument."
+data belt_publish_pass_note: String = "PUBLICATION IS THE ATTEMPT'S LAST OBLIGATION, run by the attempt's own unit once its head is reviewed (gunbc.roadmap.roadmap_belt_obligation PublishObligation; dogfood intervention #6 moved it off the tick). It is still a desired obligation reconciled against an observed one, and a producer nobody calls is still the defect this lane keeps producing, so the wiring is the deliverable, not the type.\\n\\nIT IS AN OBSERVATION OF THE REMOTE AS WELL AS AN EFFECT: running it records the true state - the branch is not published yet - and its next run revises it. The gate is what makes repetition safe, since only a receipt saying the head is on offer stops the revisions, and one PR per work item is ensured, never created twice.\\n\\nTHE TICK HOLDS NO CREDENTIAL AT ALL, and that is what this pass gave up in exchange for the publication boundary. It used to probe GITHUB_TOKEN once per tick and hand the source to every attempt; it now writes a typed request per attempt and reads the answer the publication helper wrote under its own principal. The cost is that a head is published on the SECOND run of its obligation rather than the first: the first writes the request, and the helper's answer arriving is the event that runs it again (the deployment's publication-answer path unit). The gain is that no process holding this token spawns a provider session. See gunbc.roadmap.roadmap_publication_helper for the boundary argument."
 
 // THE PRODUCER NEEDS A LIVE TRIGGER, AND belt_tick IS NOT ONE. belt_tick is the belt's actuation
 // pass and nothing calls it — not the serve routes, a timer or the CLI. A pre-existing gap shared
@@ -13493,7 +13493,7 @@ fn belt_publish_node_for_instance(
       let key_read = Filesystem.Read(
         path: dispatch_current_attempt_key_path_for_instance(
           instance: instance,
-          node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+          node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
         ),
       )
       match filesystem_read_outcome(content: key_read.content, success: key_read.success, error: key_read.error) {
@@ -13839,9 +13839,9 @@ fn belt_attempt_obligation_receipt_write(instance: HostDashboardInstance, run: B
 // AN OBLIGATION IS QUEUED BY STARTING ITS UNIT, and the caller returns at once: discovery, the exit
 // drain and the attempt run's own tail never wait on the work they hand off. The unit is a transient
 // unit in the service user's manager -- the manager that already runs every worker, reviewer and
-// auditor this belt launches -- running one `gunbc run` entry of gunbc.roadmap_belt_tick_cli, with
+// auditor this belt launches -- running one `gunbc run` entry of gunbc.roadmap.roadmap_belt_tick_cli, with
 // the deployment's spawn root passed in the same variable the belt service is given
-// (gunbc.host_layout belt_spawn_workdir_env_var), so the unit resolves the same instance.
+// (gunbc.host.host_layout belt_spawn_workdir_env_var), so the unit resolves the same instance.
 //
 // RuntimeMaxSec IS THE OBLIGATION'S DEADLINE: past it the manager stops the unit, it ends failed, and
 // the line stops for that attempt only, loudly. It is the per-tick watchdog's bound
@@ -14487,7 +14487,7 @@ fn belt_exit_queued_sweep_at(root: String, skip: List<String>, enqueue: fn(Strin
 }
 
 // THE EXIT SPOOL'S UNCONSUMED ENTRIES WITH THEIR MODIFICATION TIMES, for the launch receipt's event
-// backlog row (gunbc.roadmap_launch_deployment_observe event_backlog_judge). An entry's directory is
+// backlog row (gunbc.roadmap.roadmap_launch_deployment_observe event_backlog_judge). An entry's directory is
 // created by the stop hook and never written after, so its mtime is the instant the exit was recorded.
 // Inbox and queued only: done and refused are not a backlog -- one is consumed, the other is a refusal
 // the drain already reported. Any unreadable listing or unparseable time refuses the read whole.

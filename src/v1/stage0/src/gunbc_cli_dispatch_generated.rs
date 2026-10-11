@@ -274,7 +274,7 @@ pub fn dispatch<H: CliDispatchHost>(
         ) => crate::cli_run::run_bootstrap_dag_operation(
             &["dag".to_string(), "src/v2".to_string()],
             "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
-            "gunbc.fleet_converge_plan_cli",
+            "gunbc.fleet.fleet_converge_plan_cli",
             "fleet_converge_operator_cli_entry",
             vec![
                 ("host".to_string(), host),

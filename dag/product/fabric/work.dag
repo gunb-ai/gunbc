@@ -1,0 +1,677 @@
+module product.fabric.work
+
+import product.fabric.isolation { IsolationProfile, isolation_guarantee_label }
+import extdeps.toolchain.types { architecture_diagnostic_name }
+import product.fabric.envelope {
+  ResourceEnvelope, CpuRequirement, MemoryRequirement,
+}
+
+import std.types { NonEmptyStr, List, String, brand }
+import std.nat { Nat }
+import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
+import std.measure { HardwareThreadCount, hardware_thread_count_value, byte_size_count }
+import product.fabric.identity { FabricIdentity, WorkKey }
+
+// Work is WHAT is computed, and it is provider-neutral by construction: no field
+// here can name a repository, a pull request, a branch or a commit, because those
+// are facts about who asked and where to report, which live on Demand.
+
+// No field on Work or WorkContract may carry a provider identifier. This is
+// not a naming preference: it is what makes a second SCM binding a new
+// authority plus a new binding rather than an edit to the core. Two bindings
+// that normalize to the same source manifest, program, runtime closure, effect
+// contract and output contract produce the SAME Work, so one execution serves
+// demands arriving from different providers. They produce DIFFERENT Work when
+// the declared inputs genuinely differ - one testing a pull-request head and
+// another a synthesized merge tree, history or merge base consumed as input,
+// submodule or large-file materialization differing, available effects
+// differing, or provenance itself declared as an input. The decision is made
+// by the declared inputs, never by a global rule that repository always
+// matters or that tree bytes are always sufficient.
+// Source identity is a canonical MANIFEST, not a bare tree digest. It covers
+// path, content digest, file mode where semantically relevant, symlink target,
+// submodule object identity and large-file object identity wherever those are
+// consumed by the contract. A Git tree object id is a valid BINDING-level
+// source identity and may be sufficient for a first Git-based implementation;
+// it is not the universal fabric source type, because a fabric that assumes
+// Git tree semantics has assumed an SCM. The binding produces two separate
+// facts - a source content manifest and a provenance receipt - and Work always
+// consumes the manifest, consuming provenance only where provenance is a
+// declared input.
+type ProgramRef = NonEmptyStr where brand("ProgramRef")
+
+type ArtifactManifestRef = NonEmptyStr where brand("ArtifactManifestRef")
+
+type EffectContractRef = NonEmptyStr where brand("EffectContractRef")
+
+// OPAQUE CONTRACT IDENTITY ONLY. A prior meaning fork let this brand carry either a
+// plain name or a content-serialised obligation roster (framed outputs stuffed into
+// the same NonEmptyStr). Both inhabited one type, so no consumer could tell which it
+// held — DESIGN section 3. The opaque name survives; obligations live on
+// DeclaredOutputObligations and reach a gate only through resolve_output_obligations.
+//
+// A content-addressed digest (e.g. training_work_contract's serialize_content_hash
+// wire) is THIS same opaque shape: derived from content, but opaque to every reader
+// and carrying no decodable payload — not a third contract and not content-serialised.
+type OutputContractRef = NonEmptyStr where brand("OutputContractRef")
+
+type SourceManifestRef = NonEmptyStr where brand("SourceManifestRef")
+
+// Stable subject identity for one owed output. Commit manifests and committed rows
+// key by this id; inventing a fresh spelling at the gate is how one job discharged
+// another's obligations.
+type OutputObligationId = NonEmptyStr where brand("OutputObligationId")
+
+// Declared roster on the Work. Empty is a legitimate declaration (a job that owes
+// nothing), never an unsupplied one — that distinction belongs to resolution below.
+// One roster of typed obligations — not two lists. Kind is part of identity
+// material, so the same id as an output artifact versus a terminal result is a
+// different owed subject (required-build used to frame those groups separately
+// in OutputContractRef; concatenating ids dropped the boundary).
+type OutputObligationKind
+  = OutputArtifactObligation {}
+  | TerminalResultObligation {}
+
+type OutputObligation {
+  id: OutputObligationId
+  kind: OutputObligationKind
+}
+
+type DeclaredOutputObligations {
+  required: List<OutputObligation>
+}
+
+fn output_obligation_id(raw: NonEmptyStr) -> OutputObligationId {
+  raw as OutputObligationId
+}
+
+fn output_obligation_kind_material(kind: OutputObligationKind) -> NonEmptyStr {
+  match kind {
+    OutputArtifactObligation {} => "artifact"
+    TerminalResultObligation {} => "terminal"
+  }
+}
+
+fn declared_artifact_obligations(ids: List<NonEmptyStr>) -> DeclaredOutputObligations {
+  DeclaredOutputObligations {
+    required: map(ids, id => OutputObligation {
+      id: output_obligation_id(raw: id),
+      kind: OutputArtifactObligation {},
+    }),
+  }
+}
+
+fn declared_terminal_obligations(ids: List<NonEmptyStr>) -> DeclaredOutputObligations {
+  DeclaredOutputObligations {
+    required: map(ids, id => OutputObligation {
+      id: output_obligation_id(raw: id),
+      kind: TerminalResultObligation {},
+    }),
+  }
+}
+
+fn declared_output_obligations_from_manifests(
+  artifacts: List<NonEmptyStr>,
+  terminals: List<NonEmptyStr>,
+) -> DeclaredOutputObligations {
+  DeclaredOutputObligations {
+    required: map(artifacts, id => OutputObligation {
+      id: output_obligation_id(raw: id),
+      kind: OutputArtifactObligation {},
+    }) + map(terminals, id => OutputObligation {
+      id: output_obligation_id(raw: id),
+      kind: TerminalResultObligation {},
+    }),
+  }
+}
+
+fn empty_output_obligations() -> DeclaredOutputObligations {
+  DeclaredOutputObligations { required: [] }
+}
+
+// Revision of a declared roster — identity of WHICH roster was resolved.
+// Branded NonEmptyStr (same shape as WorkKey): ContentHash is a sum, so
+// `ContentHash where brand(...)` cannot be minted by casting a variant (§3 / §6
+// still hold — a foreign digest string is ill-typed as this brand).
+type OutputObligationsRevision = NonEmptyStr where brand("OutputObligationsRevision")
+
+// WHICH policy a sealed result answers under. Warm-moth-142: revision identity
+// alone does not say whether a job is judged against the roster it started on or
+// the current one; that answer must be IN the value or two readers will differ
+// and both look right. The caller names the policy at resolve time; the sealed
+// result carries it. This module does not pick a global default.
+type OutputObligationsJudgment
+  = ObligationsJudgedAtJobStart
+  | ObligationsJudgedAtAdmissionGate
+
+// Sealed on the source→.dag acceptance path: the only mint is
+// resolve_output_obligations in this module. A caller that needs a
+// terminal-success-eligible roster must resolve; constructing the resolved arm
+// by hand is SoleConstructorViolation (fixture RED).
+//
+// RUNG HONESTY, PATH-SCOPED (DESIGN 4b(1); gunbc.model.population): structurally
+// impossible on source→.dag. The emitted Rust mirror of a sole_constructor type is
+// a public struct with public fields, so a consumer writing Rust against the seed
+// is OUTSIDE this guarantee. Fabric-M0 has no such Rust consumer today, so rung 4
+// holds NOW with a named degradation condition: the first Rust consumer of the
+// seed against this carrier. Claiming "unwritable" unqualified would be the
+// inflation 4b(1) forbids.
+//
+// CONSUMPTION FRONTIER (DESIGN §3c): this sealed family is not yet read by a
+// job-ending on a run path. Named join: gunbc.fabric.fabric_m0_publication
+// publish_work resolves here and passes the sealed result to
+// admit_job_publication. That join is reached only by enrolled witnesses until
+// the trigger on gunbc.fabric.fabric_m0_commit publish_after_commit fires. Until then,
+// DeclaredOutputObligations in work_identity_material is the live production
+// consumer of the roster half; the seal exists so the gate cannot mint
+// terminal-success without resolving.
+// required is the typed roster (id AND kind). Projecting to ids at this seal
+// would make artifact "a" and terminal "a" indistinguishable to #10641.
+type ResolvedOutputObligations sole_constructor {
+  contract: OutputContractRef
+  revision: OutputObligationsRevision
+  judgment: OutputObligationsJudgment
+  work_key: WorkKey
+  required: List<OutputObligation>
+}
+
+// Causes resolve_output_obligations can produce today. WorkKeyDoesNotMatchContract
+// is the binding warm-moth asked for: a foreign work_key cannot seal this contract's
+// roster. Extend the coproduct when a new readable refusal exists — never invent an
+// Unreadable by hand outside this module's resolve.
+type OutputObligationsUnreadableCause
+  = WorkKeyDoesNotMatchContract {}
+
+type OutputObligationsResolution
+  = OutputObligationsResolved { value: ResolvedOutputObligations }
+  | OutputObligationsUnreadable {
+      contract: OutputContractRef
+      cause: OutputObligationsUnreadableCause
+    }
+
+// Resumability is a property of what a step DECLARES, never of the fabric. A step
+// whose effects are undeclared cannot be resumed by any mechanism, so the tier is
+// carried on the contract and the fabric refuses to claim checkpointing it cannot
+// honor.
+
+// Three tiers, ordered by what the step declares rather than by how it is
+// implemented. ReceiptSatisfiable: inputs declared and outputs are content-
+// addressed artifacts, so an accepted receipt whose outputs remain
+// materializable lets the step be skipped entirely. IdempotentUnderKey: the
+// step has external effects but re-running under the same idempotency key is
+// safe, so it is never skippable by content yet is safely repeatable.
+// OpaqueEffects: effects are undeclared, so the step is not resumable at all
+// and its only sound treatment is rerun from a clean boundary. An arbitrary
+// shell step in a foreign CI workflow is OpaqueEffects unless its contract
+// says otherwise, and that is the honest degradation: the fabric runs it and
+// declines to promise resume, rather than inventing a checkpoint where no
+// state was captured. A long compiler invocation is ONE step at
+// ReceiptSatisfiable grain - twenty minutes into it there is no accepted
+// receipt, so interruption reruns it; a mutable build directory or a compiler
+// cache is a materialization provider that may accelerate the rerun, never
+// proof the step completed.
+type ResumabilityTier
+  = ReceiptSatisfiable
+  | IdempotentUnderKey { idempotency_key: ContentHash }
+  | OpaqueEffects { reason: NonEmptyStr }
+
+type WorkStep {
+  step_id: NonEmptyStr
+  resumability: ResumabilityTier
+}
+
+// WorkContract.output_contract is opaque identity of the output contract — never
+// the obligation roster. output_obligations is the structured roster the work
+// owes; identity material includes it, so changing what is owed changes the
+// work key without stuffing the roster into the contract name.
+// WHAT EXECUTES THE WORK IS ONE OF TWO THINGS, AND THE CONTRACT USED TO ADMIT ONLY THE FIRST.
+//
+// A materialized program is identified by what it consumes: the program, the source manifest and the
+// runtime closure are the answer-changing facts, so they are identity. An offered service is a
+// different request: the caller asks an interface for a result and does not name, and cannot know
+// before selection, the implementation that will answer. Forcing a service request through the
+// program shape made the requester's identity depend on the SUPPLIER's realization -- a serving turn
+// could not construct Work until the selected engine's loaded weights, tokenizer and runtime were
+// observed, which put identity beneath supplier enumeration and refused every turn (DESIGN 3:
+// interface, realization and policy are three facts). Realization facts of an offered service are
+// offer provenance and admission policy; a demand that genuinely requires one states it as a
+// requirement rather than every service request inheriting it.
+//
+// The arm is part of identity material, so a program and a service sharing every other field are
+// never the same Work.
+type ServiceInterfaceRef = NonEmptyStr where brand("ServiceInterfaceRef")
+
+type WorkExecution
+  = MaterializedProgram {
+      program: ProgramRef,
+      source: SourceManifestRef,
+      runtime_closure: ArtifactManifestRef,
+    }
+  | OfferedService { interface: ServiceInterfaceRef }
+
+type WorkContract {
+  execution: WorkExecution
+  steps: List<WorkStep>
+  inputs: ArtifactManifestRef
+  effect_contract: EffectContractRef
+  output_contract: OutputContractRef
+  output_obligations: DeclaredOutputObligations
+}
+
+// Scheduling facts that do not change the promised answer live BESIDE the
+// contract, never inside it, so that revising a resource estimate cannot mint a
+// new semantic Work.
+
+// Capability and trust-domain references are declared HERE, on the
+// requirement side, and imported by supply rather than redeclared there.
+// Fungibility - selection's first and load-bearing step - compares a Work's
+// requirements against a SupplierOffer's capabilities, so the two sides of that
+// comparison are two readings of one fact. Typing them separately would make
+// the comparison need a coercion, and a coercion between two spellings of one
+// concept is where the divergence starts.
+
+type CapabilityManifestRef = NonEmptyStr where brand("CapabilityManifestRef")
+
+type TrustDomainRef = NonEmptyStr where brand("TrustDomainRef")
+
+// Shape and HardRequirements moved here when product.compute_fabric was deleted at
+// the root. They are the only load-bearing content that module had: what a WorkSpec
+// requires and what a SupplierOffer offers is a work-side fact, and shape_material below
+// already destructures the axis deliberately, so the axis wall lives beside the
+// carrier rather than one module away. The rest of that module -- Fabric, Program,
+// ComputeNeed, Opportunity, Connection, connect -- had no decision consumer and was
+// deleted rather than moved.
+
+type HardRequirements { threads: HardwareThreadCount }
+
+// A SHAPE CARRIED ONLY A THREAD COUNT, AND THAT MADE FUNGIBILITY GIVE WRONG ANSWERS.
+//
+// Until this field existed, offer_covers_shape compared threads and nothing else, so an 8 GiB x64
+// workload was declared FUNGIBLE with a 6 GiB arm offer whenever the thread counts and the textual
+// capability ref happened to match. That is a wrong answer, not a missing annotation: the broker
+// would route the work to a machine that cannot run it, and no downstream refusal would fire
+// because fungibility had already said yes. Reported from the first production supplier binding
+// (neat-heron-312, product.supplier.ubicloud), where memory and disk surfaced as
+// UnexpressedSupplyFact -- honest diagnosis that could not repair the decision, because a sidecar
+// saying "memory was dropped" cannot route work.
+//
+// THE ENVELOPE IS CONSUMED, NOT RESTATED. product.fabric.envelope owns the requirement vocabulary
+// (moved there from gunbc.fleet.fleet_container, which now consumes it too), so threads keep their own
+// cited home in HardRequirements while every other axis arrives through the one envelope authority
+// rather than growing this record an axis at a time.
+type CapacityClass
+  = ControlPlaneCapacity
+  | CustomerExecutableCapacity
+
+fn capacity_class_eq(left: CapacityClass, right: CapacityClass) -> Bool {
+  match left {
+    ControlPlaneCapacity =>
+      match right {
+        ControlPlaneCapacity => true
+        CustomerExecutableCapacity => false
+      }
+    CustomerExecutableCapacity =>
+      match right {
+        ControlPlaneCapacity => false
+        CustomerExecutableCapacity => true
+      }
+  }
+}
+
+fn capacity_class_wire(c: CapacityClass) -> NonEmptyStr {
+  match c {
+    ControlPlaneCapacity => "control-plane"
+    CustomerExecutableCapacity => "customer-executable"
+  }
+}
+
+type Shape { hard: HardRequirements, envelope: ResourceEnvelope }
+
+// THE CAPACITY CLASS, AND WHY IT IS HERE RATHER THAN ON Shape.
+//
+// Without it nothing structurally prevents CONTROL-PLANE capacity -- the cells
+// running our own scheduler, reconciliation, admission and receipt work -- from
+// satisfying customer-executable demand, or the reverse. That was a measured gap
+// (gunbc.fabric.fabric_capacity_class_gap), and the state was not merely unguarded: it
+// sat BELOW mitigatable, the invalid state simply representable and unremarked.
+//
+// TWO PLACEMENTS WERE RULED OUT AND A THIRD LOOKED RIGHT AND IS NOT. On
+// SupplierOffer alone it asks the party with the least knowledge and the most
+// incentive to say yes to make the safety assertion. Encoded in TrustDomainRef
+// it is a magic string agreed between producer and consumer. And on `Shape` --
+// which the gap carrier's own trigger text names -- it becomes the FIRST of
+// those by accident, because Shape is one type carried by BOTH
+// ExecutionRequirements and SupplierOffer, so the supplier would state its own
+// class. The rationale governs over the name: we originate the DEMAND, so the
+// fact lives on the demand's requirement carrier and nowhere a supplier can
+// author it.
+//
+// A SECOND, INDEPENDENT REASON Shape WAS WRONG: shape_material renders threads
+// and envelope and does not enumerate fields structurally, so a class added
+// there would be SILENTLY ABSENT from the material identity -- two shapes of
+// different class sharing one identity, with the collapse-guard witness varying
+// the envelope and staying green over it. A field missing from an identity
+// render is worse than an absent one, because it reads as carried.
+//
+// WHAT THIS FIELD IS NOT: it is not the executor's class. It is what THIS WORK
+// REQUIRES. What a given executor is sanctioned for is our own fleet knowledge,
+// never a supplier claim, and it is joined against this at admission.
+type ExecutionRequirements {
+  capacity_class: CapacityClass
+  shape: Shape
+  capabilities: CapabilityManifestRef
+  trust_domain: TrustDomainRef
+  isolation: IsolationProfile
+}
+
+type Work<P> {
+  id: FabricIdentity<P, WorkKey>
+  contract: WorkContract
+  requirements: ExecutionRequirements
+}
+
+// The key is DERIVED here rather than accepted from a caller, and that is the
+// difference between a claim and a mechanism. Before this function existed the
+// comment below already said the key derives from the semantic contract, but
+// nothing computed it: a Work took an arbitrary branded key beside an arbitrary
+// contract, so one contract could carry two keys, two contracts could carry one
+// key, and a binding could let a provider fact influence the key with the core
+// unable to notice. The witness that was supposed to prove neutrality authored
+// one constant and placed it in both demands, so it would have passed against a
+// key that ignored every input.
+//
+// Every field of the contract and of the requirements feeds the digest, and
+// nothing else can: the function takes no other argument, so excluding
+// scheduling facts is a property of its signature rather than of an author's
+// discipline. Requirements are included because a Work that needs a different
+// architecture or trust domain does not promise the same answer.
+
+fn output_obligations_material(declared: DeclaredOutputObligations) -> NonEmptyStr {
+  fold(
+    declared.required,
+    init: concat("output-obligations:", concat(to_string(declared.required.count()), ":")),
+    f: (acc, ob) => concat(
+      acc,
+      "\u{1e}",
+      ob.id,
+      "\u{1f}",
+      output_obligation_kind_material(kind: ob.kind),
+    ),
+  )
+}
+
+// FAMILY-FIXED MINT. content_hash_of_value is Fnv1a64 structural only;
+// serialize_content_hash of that arm is the bare 16-hex digest. Roster revision
+// is computation identity, not byte integrity — Sha256Digest remains a different
+// question (warm-moth-142 completion module). serialize_content_hash is
+// family-asymmetric (two arms tagged, two bare); this mint never enters those
+// other arms, so the incidental width discriminator is not load-bearing here.
+fn output_obligations_revision(declared: DeclaredOutputObligations) -> OutputObligationsRevision {
+  serialize_content_hash(
+    hash: content_hash_of_value(value: output_obligations_material(declared: declared))
+  ) as OutputObligationsRevision
+}
+
+// The only route to a terminal-success-eligible roster on the .dag path. Empty
+// required is a Resolved value produced here, never an arm a gate caller can
+// invent without having resolved. work_key must equal derive_work_key for this
+// contract+requirements — a foreign key refuses as Unreadable so one job cannot
+// seal another's roster. judgment is required and stamped so start-vs-gate
+// policy is readable from the value.
+//
+// Named join: gunbc.fabric.fabric_m0_publication publish_work, consumed by
+// gunbc.fabric.fabric_m0_job_ending end_required_job (required-CI wire still a frontier).
+// Witnesses below exercise both arms.
+fn resolve_output_obligations(
+  contract: WorkContract,
+  requirements: ExecutionRequirements,
+  work_key: WorkKey,
+  judgment: OutputObligationsJudgment,
+) -> OutputObligationsResolution {
+  let expected = derive_work_key(contract: contract, requirements: requirements)
+  if work_key != expected {
+    OutputObligationsUnreadable {
+      contract: contract.output_contract,
+      cause: WorkKeyDoesNotMatchContract {},
+    }
+  } else {
+    OutputObligationsResolved {
+      value: ResolvedOutputObligations {
+        contract: contract.output_contract,
+        revision: output_obligations_revision(declared: contract.output_obligations),
+        judgment: judgment,
+        work_key: work_key,
+        required: contract.output_obligations.required,
+      }
+    }
+  }
+}
+
+// ── THE IDENTITY PREIMAGE IS LENGTH-FRAMED, AND IT CARRIES ITS SCHEMA ──────────────────────────
+//
+// Every field that feeds the key is authored text refining NonEmptyStr, and a brand does not
+// forbid a separator byte. A preimage that joined fields with U+001F therefore let two contracts
+// differing only in WHERE a separator fell -- program "a", source "b<sep>c" against program
+// "a<sep>b", source "c" -- derive one key: two works deduplicated onto each other with no
+// refusal anywhere. Framing each field as label:length:bytes makes the concatenation injective
+// in the field tuple whatever bytes the fields carry; nothing is escaped and nothing is
+// forbidden, the length says where each field ends.
+//
+// SCHEMA 2 IS A DIFFERENT KEY SPACE FROM SCHEMA 1, AND SAYS SO IN ITS FIRST BYTES. Every
+// materialized-program contract derives a different key under this framing than it did under the
+// joined preimage, even with every field unchanged. That is declared as work_identity_schema
+// below rather than left for a consumer to discover, and it is safe for the reason the census
+// there gives: no production site rehydrates a WorkKey from stored text (`as WorkKey` has no
+// production occurrence), so a key persisted under schema 1 -- in a publication, an event, a
+// grant, a receipt -- is a write-only record and is never compared with a key derived under
+// schema 2. Every comparison of keys in the corpus is between keys derived in one process from
+// the contracts in hand, and a foreign key on any of those joins is a typed refusal
+// (WorkKeyDoesNotMatchContract, AttemptWorkOutsideSubject, the grant_issue permit and attempt
+// mismatches), never a silent match.
+data work_identity_schema: WorkIdentitySchema = WorkIdentitySchema {
+  version: 2,
+  tag: "product.fabric.work/identity/2" as NonEmptyStr,
+  supersedes: "a U+001F-joined preimage of the same fields, program first, which was not injective and carried no schema tag" as NonEmptyStr,
+  transition: "keys derived under the joined preimage are not comparable with keys derived here. Census of WorkKey carriers at the transition: derive_work_key is the only mint; work_for the only constructor; no production `as WorkKey` rehydration exists, so no persisted key re-enters a comparison; publications (gunbc.fabric.fabric_m0_publication), attempt graphs (product.training.attempt_graph), grants (product.fabric.grant_issue) and completion (gunbc.fabric.fabric_m0_completion) compare keys derived in the same process and refuse a foreign one with a typed cause" as NonEmptyStr,
+}
+
+type WorkIdentitySchema {
+  version: Nat
+  tag: NonEmptyStr
+  supersedes: NonEmptyStr
+  transition: NonEmptyStr
+}
+
+fn identity_frame(label: NonEmptyStr, value: String) -> NonEmptyStr {
+  concat(label, ":", to_string(value.length()), ":", value)
+}
+
+fn work_execution_material(execution: WorkExecution) -> NonEmptyStr {
+  match execution {
+    MaterializedProgram { program, source, runtime_closure } =>
+      concat(
+        identity_frame(label: "execution", value: "materialized-program"),
+        identity_frame(label: "program", value: program as String),
+        identity_frame(label: "source", value: source as String),
+        identity_frame(label: "runtime-closure", value: runtime_closure as String),
+      )
+    OfferedService { interface } =>
+      concat(
+        identity_frame(label: "execution", value: "offered-service"),
+        identity_frame(label: "interface", value: interface as String),
+      )
+  }
+}
+
+fn work_identity_material(contract: WorkContract, requirements: ExecutionRequirements) -> NonEmptyStr {
+  concat(
+    identity_frame(label: "schema", value: work_identity_schema.tag as String),
+    work_execution_material(execution: contract.execution),
+    work_steps_material(steps: contract.steps),
+    identity_frame(label: "inputs", value: contract.inputs as String),
+    identity_frame(label: "effect-contract", value: contract.effect_contract as String),
+    identity_frame(label: "output-contract", value: contract.output_contract as String),
+    identity_frame(label: "output-obligations", value: output_obligations_material(declared: contract.output_obligations) as String),
+    identity_frame(label: "capacity-class", value: capacity_class_wire(c: requirements.capacity_class) as String),
+    identity_frame(label: "capabilities", value: requirements.capabilities as String),
+    identity_frame(label: "trust-domain", value: requirements.trust_domain as String),
+    identity_frame(label: "isolation", value: isolation_material(profile: requirements.isolation) as String),
+    identity_frame(label: "shape", value: shape_material(shape: requirements.shape) as String),
+  )
+}
+
+// ISOLATION IS A SEMANTIC INPUT, AND OMITTING IT WAS THE SAME DIVERGENCE THE SHAPE NOTE BELOW
+// DESCRIBES -- COMMITTED BY ME, ONE FIELD LATER.
+//
+// The isolation profile landed on ExecutionRequirements without landing here, so two works
+// differing ONLY in what they require of their executor -- one needing a fresh writable root and
+// attempt-scoped secrets, one needing nothing -- derived the SAME key and deduplicated onto each
+// other. Fungibility in product.fabric.supply compares isolation, so identity and matching would
+// have disagreed about whether two things were the same work: exactly the failure the shape note
+// records, reproduced by the next author to add a field.
+//
+// The guarantees are rendered in the order the profile carries them rather than sorted, which is a
+// LIMITATION and not a design: two profiles listing the same guarantees in different orders derive
+// different keys. That is safe in the conservative direction -- it over-distinguishes rather than
+// collapsing two different requirements onto one identity -- and the constructors in
+// product.fabric.isolation all emit a fixed order, so no production caller can currently reach it.
+// Sorting wants a total order on the coproduct, which is a separate carrier.
+fn isolation_material(profile: IsolationProfile) -> NonEmptyStr {
+  concat("isolation:", join(map(profile.guarantees, g => isolation_guarantee_label(g: g)), ","))
+}
+
+// The shape feeds the digest, and leaving it out was a real divergence rather
+// than an omission of a decorative field. Two works needing different thread
+// counts would have derived the SAME key while carrying different shapes --
+// and fungibility in product.fabric.supply compares shape, so deduplication
+// identity and matching constraints would have disagreed about whether two
+// things were the same work. A machine that cannot run one of them is not an
+// interchangeable executor for both.
+//
+// It is rendered through the cited accessor rather than by reaching into the
+// record, so a shape that grows an axis fails to compile here instead of
+// silently dropping the new axis out of the identity.
+
+fn shape_material(shape: Shape) -> NonEmptyStr {
+  concat(
+    "threads:",
+    to_string(hardware_thread_count_value(t: shape.hard.threads)),
+    "\u{1f}",
+    envelope_material(envelope: shape.envelope)
+  )
+}
+
+// THE ARCHITECTURE TOKEN USES architecture_diagnostic_name, AND THAT NEEDS A WORD BECAUSE THAT
+// FUNCTION'S OWN ANNOTATION SAYS IT IS DELIBERATELY NOT A WIRE LABEL.
+//
+// Its objection is to publishing that name OUTWARD -- every upstream spells architectures
+// differently, and each of those projections refuses the arches its upstream does not publish, so
+// reusing one internal name as a wire label would re-coin those authorities and defeat their
+// fail-closed arms. A work-key material is not published to any upstream: it is an internal
+// discriminator hashed into an identity, and what it needs is totality and injectivity, both of
+// which that function has. No upstream projection is bypassed because no upstream ever sees it.
+//
+// THE ENVELOPE AXES FEED THE DIGEST, EACH RENDERED AS PRESENT-WITH-VALUE OR EXPLICITLY ABSENT.
+//
+// An unstated axis renders as a distinct token rather than as an empty string, because "no memory
+// requirement" and "a memory requirement of zero" are different works and an empty rendering would
+// collapse them. Only the axes fungibility actually compares are rendered; adding an axis to the
+// comparison without adding it here would re-open the identity/matching divergence, which is the
+// obligation the note above records and which no mechanism currently enforces.
+fn envelope_axis_material(label: NonEmptyStr, value: NonEmptyStr?) -> NonEmptyStr {
+  match value {
+    Present { value: v } => concat(label, ":", v)
+    Absent => concat(label, ":unstated")
+  }
+}
+
+fn envelope_material(envelope: ResourceEnvelope) -> NonEmptyStr {
+  concat(
+    envelope_axis_material(
+      label: "min-threads",
+      value: match envelope.cpu {
+        Present { value: c } =>
+          Present { value: to_string(hardware_thread_count_value(t: c.min_threads)) as NonEmptyStr }
+        Absent => none
+      },
+    ),
+    "\u{1f}",
+    envelope_axis_material(
+      label: "architecture",
+      value: match envelope.cpu {
+        Present { value: c } =>
+          match c.architecture {
+            Present { value: a } => Present { value: architecture_diagnostic_name(arch: a) }
+            Absent => none
+          }
+        Absent => none
+      },
+    ),
+    "\u{1f}",
+    envelope_axis_material(
+      label: "min-memory",
+      value: match envelope.memory {
+        Present { value: m } =>
+          Present { value: to_string(byte_size_count(b: m.min_bytes)) as NonEmptyStr }
+        Absent => none
+      },
+    )
+  )
+}
+
+fn work_step_material(step: WorkStep) -> NonEmptyStr {
+  concat(
+    identity_frame(label: "step", value: step.step_id as String),
+    identity_frame(label: "resumability", value: resumability_material(tier: step.resumability) as String),
+  )
+}
+
+fn resumability_material(tier: ResumabilityTier) -> NonEmptyStr {
+  match tier {
+    ReceiptSatisfiable => "receipt-satisfiable"
+    IdempotentUnderKey { idempotency_key: k } =>
+      concat("idempotent-under-key:", serialize_content_hash(hash: k))
+    OpaqueEffects { reason: _ } => "opaque-effects"
+  }
+}
+
+fn work_steps_material(steps: List<WorkStep>) -> NonEmptyStr {
+  fold(
+    steps,
+    init: identity_frame(label: "steps", value: to_string(steps.count())),
+    f: (acc, step) => concat(acc, work_step_material(step: step))
+  )
+}
+
+// The work key is derived from the semantic contract alone. Excluded, each for
+// the same reason - it changes how work is scheduled or attempted, never what
+// answer the work promises: priority, queue position, chosen host, cache
+// presence, attempt number, resource prediction, monetary quote, budget
+// account, reservation price. Including any of them forks one computation into
+// many identities and destroys the deduplication the key exists to provide.
+// Conversely a property that can change the ANSWER - toolchain, architecture,
+// available effects - belongs in the runtime closure or effect contract and
+// therefore DOES participate. The test is not whether a fact is important; it
+// is whether two runs differing only in that fact could legitimately produce
+// different output.
+fn derive_work_key(contract: WorkContract, requirements: ExecutionRequirements) -> WorkKey {
+  serialize_content_hash(
+    hash: content_hash_of_value(
+      value: work_identity_material(contract: contract, requirements: requirements)
+    )
+  )
+}
+
+// The public constructor. A Work cannot be built with a key someone chose,
+// because this is the only place a key comes from.
+
+fn work_for<P>(principal: P, contract: WorkContract, requirements: ExecutionRequirements) -> Work<P> {
+  Work {
+    id: FabricIdentity {
+      principal: principal,
+      key: derive_work_key(contract: contract, requirements: requirements),
+    },
+    contract: contract,
+    requirements: requirements,
+  }
+}

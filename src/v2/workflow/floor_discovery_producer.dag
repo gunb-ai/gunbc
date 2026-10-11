@@ -237,7 +237,7 @@ fn discover_floor_corpus_rows_from_host_facts(
 }
 
 // The per-PR discovery roster is shrunk by TWO independent facts, checked at their own grains. The
-// exclude_substrings parameter carries PATH POLICY (gunbc.ci_layer_roots
+// exclude_substrings parameter carries PATH POLICY (gunbc.ci.ci_layer_roots
 // witness_exclusion_frontier) and is applied to whole files while walking, because a directory home
 // is a statement about a place. explicit_witness_admission_covers carries EXACT ADMISSION
 // (gunbc.explicit_witness_admission) and is applied per test declaration as rows are appended,

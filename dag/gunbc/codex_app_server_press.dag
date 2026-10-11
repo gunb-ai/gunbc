@@ -202,7 +202,7 @@ fn codex_press_method_itinerary() -> CodexPressItinerary {
 // result bodies AND retained wire evidence. Incomplete is refused (RED). Login/quota are typed
 // arms. methods_attempted is the typed itinerary, never a free-form string that can disagree with
 // the outcome. Production placement supplies
-// gunbc.host_layout.ProviderRuntimePlacement.wire_evidence_root (srv1 via
+// gunbc.host.host_layout.ProviderRuntimePlacement.wire_evidence_root (srv1 via
 // srv1_provider_runtime_placement) and GunbcHostLayout.roadmap_codex_home.
 
 // AccountTripMissing MEANS THE RESPONSE WAS NOT THERE. AccountTripResultUnusable means it WAS

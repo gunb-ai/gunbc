@@ -114,7 +114,7 @@ data retained_whole_tree_wiring_enum: RetainedLegacyRustTestModule = RetainedLeg
 // resolve_cross_process_cache_test.rs and resolved_graph_cache_size_bound_test.rs
 // were restored here as the executing evidence for three Delivered clauses in
 // gunbc.materialization_kernel_closing_frontier_audit and for
-// gunbc.ci_cost_arc_closeout_receipt warm_hit_settle, on the DESIGN §4b(4)
+// gunbc.ci.ci_cost_arc_closeout_receipt warm_hit_settle, on the DESIGN §4b(4)
 // principle that a climb keeps its evidence enrolled.
 //
 // Then the kernel was executed, and the premise did not survive it:

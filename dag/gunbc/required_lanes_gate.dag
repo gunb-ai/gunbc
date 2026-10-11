@@ -16,7 +16,7 @@ import v2.extdeps.languages.bash_build {
 }
 import v2.std.algebra { FreeSemigroup, fold_list, list_flat_map }
 import std.algebra { list_append }
-import gunbc.floor_attempt_standing {
+import gunbc.floor.floor_attempt_standing {
   floor_attempt_receipt_prefix,
   floor_attempt_receipt_measured_head_label,
   floor_attempt_receipt_run_id_label,
@@ -33,10 +33,10 @@ import gunbc.floor_attempt_standing {
   floor_rendered_verdict_unestablished_name,
   floor_rendered_verdict_environment_name
 }
-import gunbc.ci_failure_class { floor_outcome_wire_infra, floor_outcome_wire_structural }
+import gunbc.ci.ci_failure_class { floor_outcome_wire_infra, floor_outcome_wire_structural }
 import v2.std.node { Node }
 import std.types { String, List }
-import gunbc.witness_floor_lanes { RequiredLane }
+import gunbc.witness.witness_floor_lanes { RequiredLane }
 
 // THE REQUIRED AGGREGATOR'S REFUSAL, CONSTRUCTED AS NODES RATHER THAN SPELLED AS TEXT.
 //
@@ -56,11 +56,11 @@ import gunbc.witness_floor_lanes { RequiredLane }
 // language-layer gap without enumerating the language is the failure DESIGN records in its own
 // §6 receipt, and this is that failure repeated. Raised in review 55836.
 //
-// THE SPLIT FOLLOWS THE PRECEDENT ALREADY IN THE TREE: `tools.build_step` constructs Nodes and
+// THE SPLIT FOLLOWS THE PRECEDENT ALREADY IN THE TREE: `gunbc.instruments.build_step` constructs Nodes and
 // the workflow layer serializes them through `v2.workflow.bash_command_fold_serialize`
 // `bash_fold_serialize_program` (the serializer module that used to sit beside it,
 // `v2.workflow.build_step_emit`, lost its production consumer to the typed transport flip
-// recorded in `tools.build_step_transport` `bst_typed_transport_doc` and was deleted). Node
+// recorded in `gunbc.instruments.build_step_transport` `bst_typed_transport_doc` and was deleted). Node
 // construction lives here; the workflow authority serializes and REFUSES emission if
 // serialization does not accept, so a gate that cannot be rendered cannot be published as an
 // empty step.
@@ -71,7 +71,7 @@ import gunbc.witness_floor_lanes { RequiredLane }
 // enumerated guard would have admitted it and published the required context green over two
 // lanes that never ran.
 
-// THE SUCCESS SPELLING IS NOT DECLARED HERE ANY MORE. It is `gunbc.floor_attempt_standing`
+// THE SUCCESS SPELLING IS NOT DECLARED HERE ANY MORE. It is `gunbc.floor.floor_attempt_standing`
 // `floor_lane_result_success`, which is also what that module's lane decode reads, so the shell
 // realization and the modeled composition branch on one authority rather than on two literals
 // that happen to agree today.
@@ -97,7 +97,7 @@ fn required_lanes_echo(words: List<Node>) -> Node {
 
 // THE TWO AXES, RENDERED AS SHELL.
 //
-// `gunbc.floor_attempt_standing` owns the composition; everything below is its realization at
+// `gunbc.floor.floor_attempt_standing` owns the composition; everything below is its realization at
 // the one boundary GitHub gives us, a `run:` script reading `needs.*.result`. The state names
 // are imported from that module rather than spelled here, so the shell branches on the same
 // literals the modeled decode branches on.
@@ -124,7 +124,7 @@ fn required_lane_var_equals_lit_test(var_name: String, text: String) -> Node {
   )
 }
 
-// Shell realization of `gunbc.floor_attempt_standing` `class_wire_is_environment`: the CLASS
+// Shell realization of `gunbc.floor.floor_attempt_standing` `class_wire_is_environment`: the CLASS
 // job output equals `floor_outcome_wire_infra`. The modeled decode does not mint a POSIX
 // signature from class alone (`ClassWireOnly`).
 fn required_lane_is_infra_class_test(var_name: String) -> Node {
@@ -340,7 +340,7 @@ fn required_lanes_verdict_stmts(
 // Two `needs.*.result` words establish NEITHER AXIS, and the earlier cut of this function which
 // answered `workflow-cancelled` for a cancelled lane was measured wrong: 27 of 27 never-assigned
 // jobs -- `runner_id=0`, `runner_name=""`, `steps=[]` -- reported cancelled on PUSH events where
-// supersession is impossible by construction. `gunbc.floor_attempt_standing`
+// supersession is impossible by construction. `gunbc.floor.floor_attempt_standing`
 // `floor_lane_interruption` carries the measurement and the assignment-standing trigger that
 // would occupy the established arm.
 //

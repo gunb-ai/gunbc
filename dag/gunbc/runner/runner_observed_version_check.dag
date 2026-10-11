@@ -5,8 +5,8 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.shell.exec { ProcessObservation, process_observation }
 import extdeps.tools.gnu_coreutils { cat_command }
 import gunbc.command_runner { run_shell_command_observe, LocalExec }
-import gunbc.runner_microvm { gunbc_runner_guest_image }
-import gunbc.runner_microvm_boot_probe {
+import gunbc.runner.runner_microvm { gunbc_runner_guest_image }
+import gunbc.runner.runner_microvm_boot_probe {
   BootProbeVerdict, BootPrintedRunnerVersion, BootConsoleLacksRunnerVersion,
   BootProducedNoConsole, BootVmmFailed, BootExceededHostDeadline,
   boot_probe_verdict, boot_probe_verdict_text,
@@ -14,9 +14,9 @@ import gunbc.runner_microvm_boot_probe {
 
 // THE COMPARATOR ALREADY EXISTED AND NOTHING CALLED IT.
 //
-// gunbc.runner_microvm_boot_probe's boot_probe_verdict takes a modeled runner release and an observed
+// gunbc.runner.runner_microvm_boot_probe's boot_probe_verdict takes a modeled runner release and an observed
 // console and refuses when the console does not carry that version. It is exactly the check that
-// would have caught the Mt. Collins guest running 2.337.0 while gunbc.runner_microvm's image row
+// would have caught the Mt. Collins guest running 2.337.0 while gunbc.runner.runner_microvm's image row
 // said 2.336.0 -- and the Mt. Collins path never invoked it, because that path is a hand-built image
 // with its own shell rather than the modeled guest image.
 //

@@ -1,4 +1,4 @@
-module v2.test.extdeps_shape_transport_policy.coverage_domain_equivalence
+module v2.test.claim.extdeps_shape_transport_policy.coverage_domain_equivalence
 
 
 data violation_kind_policy_leak: String = "policy leak in argv"

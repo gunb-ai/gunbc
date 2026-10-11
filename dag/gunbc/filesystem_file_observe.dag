@@ -22,8 +22,8 @@ type FilesystemPathDecomposition
 // channels through filesystem_file_observation, so a could-not-look arrives as its own typed
 // refusal instead of masquerading as an established absence. This spelling was carried verbatim in
 // five wet readers (review 74161 finding 2, extended by review 74191 to the fifth) and is owned
-// here now: gunbc.codex_supervised_turn, gunbc.host_effect_nbd_proxy_serve,
-// tools.merge_admission_walk, tools.opaque_realization_census, and
+// here now: gunbc.codex_supervised_turn, gunbc.host.host_effect_nbd_proxy_serve,
+// gunbc.instruments.merge_admission_walk, gunbc.instruments.opaque_realization_census, and
 // v2.workflow.product_receipt_stage call it instead of re-spelling the composition. A consumer
 // whose question is not this question composes the filesystem_io folds itself rather than varying
 // a copy of this one -- in particular a consumer that already holds an admitted directory and an
@@ -43,7 +43,7 @@ type FilesystemPathDecomposition
 // directory rather than an entry in one; and an entry name that is the "." or ".." directory
 // cursor. A "./token" operand decomposes to directory "." and entry name "token", which list and
 // read the same subject the operand names. The controls in
-// test.claim.filesystem_file_observe_witness_test execute the authority for /tmp/token, /token,
+// test.claim.filesystem_file_observe_witness execute the authority for /tmp/token, /token,
 // target/token, and token, and for the refused shapes.
 //
 // WHY THE HELPER IS HERE AND NOT IN extdeps.filesystem.filesystem_io: that module is pure over

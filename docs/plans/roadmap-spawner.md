@@ -50,7 +50,7 @@ A consumer that checks the schema string has what it needs to refuse a v2 payloa
 an absent tier; making sure yours does is the ctrl-side action this section asks for.
 
 **What changed:** sizing stopped being a field an author types on a roadmap node and became a fact
-derived from the task (`gunbc.roadmap_sizing`). Its deriver is a stub that currently refuses for
+derived from the task (`gunbc.roadmap.roadmap_sizing`). Its deriver is a stub that currently refuses for
 every subject, so `intricacy` and `volume` are absent from **every** object today. They are never
 defaulted or substituted — a substituted cell would publish the stub's silence as if it were a
 measurement.
@@ -95,7 +95,7 @@ A gunbc CLI entry evaluates `next_spawnable` over the authority at HEAD and writ
 - `node_id` — the `ProcessNodeId` from the roadmap authority. Stable dedup key.
 - `intricacy` ∈ {low,medium,high}, `volume` ∈ {small,medium,large} — drive ctrl's tier grid.
   **v2: PRESENT ONLY WHEN A SIZE WAS DERIVED, and absent together or not at all.** Sizing stopped
-  being an authored field on the roadmap node and became a derived one (`gunbc.roadmap_sizing`);
+  being an authored field on the roadmap node and became a derived one (`gunbc.roadmap.roadmap_sizing`);
   while its deriver is a stub that refuses, these two keys are absent from every object. The schema
   string moved v1 → v2 for exactly this reason: v1 entitles a consumer to read them, so emitting
   objects without them under the v1 name would be the DESIGN §3 meaning fork — one spelling, one

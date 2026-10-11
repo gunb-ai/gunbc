@@ -29,7 +29,7 @@ type OccurrenceIdentityReceiptEnrollmentDebt {
 // PR 7530 rehomed five rows from namespace-canonical-binding to namespace-reference-derived-closure
 // by their actual acceptance boundary. Four receipts are green by local execution in
 // v1.tests.claim.occurrence_identity_debt_receipt_test, but their consumer debt rows remain until
-// gunbc.ci_layer_roots.parser_transport_witness_entries exists on main and executes them per PR.
+// gunbc.ci.ci_layer_roots.parser_transport_witness_entries exists on main and executes them per PR.
 // rebuilt-reference-identity-preservation has a deliberately split load-bearing receipt:
 // w_rebuilt_reference_identity_preservation_executes_holds proves identity reaches the canonical
 // sidecar consumer, while the generated pipeline_occurrence_sidecar_serde_round_trip assertion
@@ -53,7 +53,7 @@ data occurrence_identity_consumer_red_debts: List<OccurrenceIdentityConsumerRedD
     id: "rebuilt-reference-identity-preservation",
     required_receipt: occurrence_identity_acceptance_law_rebuilt_reference.required_receipt,
     owner: "namespace-reference-derived-closure",
-    dissolution: unbound_dissolution(description: "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main, executes w_rebuilt_reference_identity_preservation_executes_holds per PR, and the rebuilt-reference production RED executes through the sidecar-consuming canonical binding boundary; delete this row in the same PR."),
+    dissolution: unbound_dissolution(description: "DISSOLVE-ON: gunbc.ci.ci_layer_roots.parser_transport_witness_entries exists on main, executes w_rebuilt_reference_identity_preservation_executes_holds per PR, and the rebuilt-reference production RED executes through the sidecar-consuming canonical binding boundary; delete this row in the same PR."),
   },
   OccurrenceIdentityConsumerRedDebt {
     id: "one-occurrence-collector-dedupe",
@@ -65,13 +65,13 @@ data occurrence_identity_consumer_red_debts: List<OccurrenceIdentityConsumerRedD
     id: "structurally-equal-distinct-occurrences",
     required_receipt: occurrence_identity_acceptance_law_distinct_occurrences.required_receipt,
     owner: "namespace-reference-derived-closure",
-    dissolution: unbound_dissolution(description: "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main, executes w_structurally_equal_distinct_occurrences_execute_holds per PR, and the distinct-authored-occurrences RED executes against the sidecar consumer; delete this row in the same PR."),
+    dissolution: unbound_dissolution(description: "DISSOLVE-ON: gunbc.ci.ci_layer_roots.parser_transport_witness_entries exists on main, executes w_structurally_equal_distinct_occurrences_execute_holds per PR, and the distinct-authored-occurrences RED executes against the sidecar consumer; delete this row in the same PR."),
   },
   OccurrenceIdentityConsumerRedDebt {
     id: "pattern-declaration-reachability",
     required_receipt: occurrence_identity_acceptance_law_pattern_reachability.required_receipt,
     owner: "namespace-reference-derived-closure",
-    dissolution: unbound_dissolution(description: "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main, executes w_pattern_declaration_reachability_executes_holds per PR, and the pattern-declaration reachability RED executes through the production occurrence collector; delete this row in the same PR."),
+    dissolution: unbound_dissolution(description: "DISSOLVE-ON: gunbc.ci.ci_layer_roots.parser_transport_witness_entries exists on main, executes w_pattern_declaration_reachability_executes_holds per PR, and the pattern-declaration reachability RED executes through the production occurrence collector; delete this row in the same PR."),
   },
   OccurrenceIdentityConsumerRedDebt {
     id: "inferred-target-anchor-identity",
@@ -83,7 +83,7 @@ data occurrence_identity_consumer_red_debts: List<OccurrenceIdentityConsumerRedD
     id: "same-spelling-parser-declaration-isolation",
     required_receipt: occurrence_identity_acceptance_law_parser_isolation.required_receipt,
     owner: "namespace-reference-derived-closure",
-    dissolution: unbound_dissolution(description: "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main, executes w_same_spelling_parser_declaration_isolation_executes_holds per PR, and the full same-spelling parser-to-binding RED matrix executes at the canonical binding boundary; delete this row in the same PR."),
+    dissolution: unbound_dissolution(description: "DISSOLVE-ON: gunbc.ci.ci_layer_roots.parser_transport_witness_entries exists on main, executes w_same_spelling_parser_declaration_isolation_executes_holds per PR, and the full same-spelling parser-to-binding RED matrix executes at the canonical binding boundary; delete this row in the same PR."),
   },
 ]
 
@@ -99,7 +99,7 @@ data occurrence_identity_receipt_enrollment_debts: List<OccurrenceIdentityReceip
     ],
     owner: "witness-scheduling-source-root-surface",
     cause: "The four DAG receipts and the generated Rust rebuild assertion are green by execution and discriminating under planted defects, but none is executed per PR on main. The DAG receipts require the scoped dag and src/v1 parser-transport batch whose parser_transport_witness_entries roster is not yet on main. The Rust test crate containing pipeline_occurrence_sidecar_serde_round_trip is cargo-checked but its tests are not executed.",
-    dissolution: unbound_dissolution(description: "DISSOLVE-ON: gunbc.ci_layer_roots.parser_transport_witness_entries exists on main and executes the four DAG functions per PR, and pipeline_occurrence_sidecar_serde_round_trip executes per PR or its rebuild assertion migrates into an enrolled witness; prove both enrollment surfaces and narrow or delete this row in the same PR."),
+    dissolution: unbound_dissolution(description: "DISSOLVE-ON: gunbc.ci.ci_layer_roots.parser_transport_witness_entries exists on main and executes the four DAG functions per PR, and pipeline_occurrence_sidecar_serde_round_trip executes per PR or its rebuild assertion migrates into an enrolled witness; prove both enrollment surfaces and narrow or delete this row in the same PR."),
   },
 ]
 

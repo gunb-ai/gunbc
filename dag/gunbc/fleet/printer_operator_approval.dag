@@ -22,12 +22,12 @@ import extdeps.languages.json.emit { JsonString, JsonNumber }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_object_unique_member, JsonMemberFound }
 import extdeps.shell.exec { ProcessOutputPresent }
 import gunbc.fleet.printer_report { report_using_session }
-import gunbc.fleet_asset_identity { PhysicalAssetIdentity }
+import gunbc.fleet.fleet_asset_identity { PhysicalAssetIdentity }
 import gunbc.fleet.printer_selection { select_printer, PrinterSelected, PrinterSelectionRefused, print_inputs_admitted }
 import gunbc.fleet.printer_start_reconciliation {StartObservationPolicy,ConfirmBeforeReturn,ObserveOnFleetTicks,record_publication}
 import gunbc.fleet.printer_workflow_artifact {printer_start_claim_directory}
 import gunbc.fleet.printer_execution_hold {PrinterExecutionHold,hold_current,with_execution_hold}
-import gunbc.fleet_printer_access {PrinterCredentialSession,session_printer,session_version,read_existing_printer_session,PrinterSessionReady,PrinterSessionRefused}
+import gunbc.fleet.fleet_printer_access {PrinterCredentialSession,session_printer,session_version,read_existing_printer_session,PrinterSessionReady,PrinterSessionRefused}
 import gunbc.fleet.printer_project_delivery {
   PrinterProjectPayload, identify_project_payload, PayloadIdentified, PayloadIdentificationRefused,
   PayloadIdentificationRefusedResidueRemains, project_payload_digest, abandon_payload,

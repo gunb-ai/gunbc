@@ -21,7 +21,7 @@ data hedged_benefit_leaves_the_harm_axis_unexamined: RecurringFailureMode = Recu
 
     "The manager verified the reasoning and endorsed it as `the only lever any of us actually has`, generalising it.",
 
-    "Both were wrong, and the authority that settles it was one grep away: gunbc.witness_floor_workflow emits cancel-in-progress false with running NeverSupersedeRunning, because the fleet's builds are bounded by a host-persistent GNU jobserver whose permits are returned COOPERATIVELY -- a cancelled run SIGKILLs cargo mid-build, so every borrowed permit is lost for the daemon's lifetime and the pool decays monotonically toward zero.",
+    "Both were wrong, and the authority that settles it was one grep away: gunbc.witness.witness_floor_workflow emits cancel-in-progress false with running NeverSupersedeRunning, because the fleet's builds are bounded by a host-persistent GNU jobserver whose permits are returned COOPERATIVELY -- a cancelled run SIGKILLs cargo mid-build, so every borrowed permit is lost for the daemon's lifetime and the pool decays monotonically toward zero.",
 
     "So the act did not merely fail to help; it is the mechanism that produces the exhaustion symptom it was taken to relieve, and the stale runs it reclaimed are that policy's DECLARED cost rather than waste.",
 

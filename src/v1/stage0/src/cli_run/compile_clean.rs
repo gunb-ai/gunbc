@@ -414,7 +414,7 @@ pub(crate) fn compile_clean_scope_plan_from_touched_paths(
     }
 }
 
-/// `gunbc.ci_layer_roots.compile_clean_source_roots` — witness pool + `src/v1` for cross-tree
+/// `gunbc.ci.ci_layer_roots.compile_clean_source_roots` — witness pool + `src/v1` for cross-tree
 /// import resolution in compile-clean scope disposition (not the gate receipt pool).
 pub(crate) fn compile_clean_source_roots() -> Vec<String> {
     let mut roots = witness_layer_roots();
@@ -424,7 +424,7 @@ pub(crate) fn compile_clean_source_roots() -> Vec<String> {
     roots
 }
 
-/// Host realization of `tools.dag_compile_clean_shard_roster.compile_clean_shard_entry_paths`
+/// Host realization of `gunbc.instruments.dag_compile_clean_shard_roster.compile_clean_shard_entry_paths`
 /// without resolving `dag_compile_clean_scope.dag` (the interpreter path cold-scans ~minutes).
 ///
 /// INTERIM hand-Rust scaffold (`CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER` / §7):
@@ -433,7 +433,7 @@ pub(crate) fn compile_clean_source_roots() -> Vec<String> {
 /// parallel duplicate-key policy. Duplicate path keys refuse (terminal `Refused` disposition),
 /// never sort/dedup absorption.
 /// Entry roots are ALL of `witness_layer_roots` — the same tree the whole-tree gate
-/// compiles — mirroring `tools.dag_compile_clean_partition.compile_clean_partition_boundary`
+/// compiles — mirroring `gunbc.instruments.dag_compile_clean_partition.compile_clean_partition_boundary`
 /// (see its note: a roster that is a strict subset of the compiled tree both widened
 /// src/v2-only diffs to whole-tree and left affected src/v2 importers unselected on
 /// scoped runs).
@@ -472,7 +472,7 @@ pub(crate) fn compile_clean_shard_entry_paths_fast() -> Result<Vec<String>, Stri
 }
 
 /// Floor CI hot path: mirrors `compile_clean_scope_disposition_from_diff`
-/// (`tools.dag_compile_clean_scope`, module-graph import-closure grain — channel 2 of
+/// (`gunbc.instruments.dag_compile_clean_scope`, module-graph import-closure grain — channel 2 of
 /// operator fork (c) 2026-07-10) without the Wet interpreter fold over
 /// `compile_clean_shard_entry_paths()`. Selection reuses the SAME certified realization
 /// as the discovery-corpus channel (`entry_file_touched_via_import_closure`); every arm
@@ -1143,7 +1143,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
 /// because the census's subject closure CANNOT carry the authority: the whole-tree roots are
 /// `dag` and `src/v2`, and admitting `src/v1` into that shared flat subject would rebind the
 /// twelve last-segment module collisions the non-executing-prefix roster exists to survive
-/// (`gunbc.ci_layer_roots`). The derivation is the resolver's own `get_variant_names` over the
+/// (`gunbc.ci.ci_layer_roots`). The derivation is the resolver's own `get_variant_names` over the
 /// declaration's `Disj` node — the same projection the duplicate checks consume — and the
 /// schema digest binds the derived projection, so a schema change is a digest change. Zero or
 /// two declarations of the coproduct refuse rather than pick.

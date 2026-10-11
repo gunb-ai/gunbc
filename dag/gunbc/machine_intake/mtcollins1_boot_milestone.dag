@@ -1,11 +1,11 @@
-module gunbc.machine_intake_mtcollins1_boot_milestone
+module gunbc.machine_intake.mtcollins1_boot_milestone
 
 import std.types { List }
 import std.nat { Nat }
 import std.measure { HardwareThreadCount, gibibyte, hardware_thread_count, hardware_thread_count_value }
-import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_nproc }
-import gunbc.managed_host_boot_milestone { BootTopologyExpectation }
-import gunbc.machine_intake_host_capture_envelope { HostCaptureStage, HostCaptureWorkloadShape, host_capture_census_stages }
+import gunbc.machine_intake.mtcollins1_memory_census_observation { mtcollins1_nproc }
+import gunbc.host.managed_host_boot_milestone { BootTopologyExpectation }
+import gunbc.machine_intake.host_capture_envelope { HostCaptureStage, HostCaptureWorkloadShape, host_capture_census_stages }
 
 // THE MACHINE'S FIGURE AND THE BOOT'S MILESTONE ARE TWO FACTS, NOT ONE ROW. mtcollins1_nproc stays
 // 160: that is what the machine IS, read on it with both sockets populated (the census capture
@@ -42,7 +42,7 @@ data mtcollins1_one_socket_workload: HostCaptureWorkloadShape = HostCaptureWorkl
   chunk_size: gibibyte(2),
 }
 
-// The placement premise this row states for gunbc.managed_host_boot_milestone boot_placement_reading:
+// The placement premise this row states for gunbc.host.managed_host_boot_milestone boot_placement_reading:
 // mtcollins1's census capture observed 2 nodes of 80 for 2 sockets, i.e. monolithic, so node N is
 // socket N on this machine.
 data mtcollins1_one_socket_milestone: BootTopologyExpectation = BootTopologyExpectation {

@@ -1,4 +1,4 @@
-module extdeps.cargo_message
+module extdeps.rust.cargo_message
 
 import std.types { Bool, FilePath, Int, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -34,24 +34,24 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
-      module_path: "extdeps.cargo_message",
+      module_path: "extdeps.rust.cargo_message",
       decl_name: "cargo_artifact_reason",
       field: WholeDeclaration
     }
   },
-  first_citation: extdeps.cargo_message.extdeps_external_authority_anchor,
-  further_citations: [extdeps.cargo_build.extdeps_external_authority_anchor]
+  first_citation: extdeps.rust.cargo_message.extdeps_external_authority_anchor,
+  further_citations: [extdeps.rust.cargo_build.extdeps_external_authority_anchor]
 }
 
 // WHY THIS MODULE EXISTS, stated as the defect it closes rather than the feature it adds. service
-// cargo.Build in extdeps.cargo_build reports exactly three outputs on every operation — success,
+// cargo.Build in extdeps.rust.cargo_build reports exactly three outputs on every operation — success,
 // stdout, stderr — and none of them reports the PATH of the artifact the build produced. A consumer
 // that needs the built binary therefore has to assemble the path by convention (target dir,
 // profile, binary name), and a stale binary sitting at that conventional location satisfies the
 // observation completely: the digest downstream would be honestly computed over real bytes that are
 // the wrong bytes, with nothing in the chain able to tell. Cargo will name the artifact itself if
 // asked, which is what --message-format=json is for, so the honest route is to read the path cargo
-// REPORTED rather than the path we predicted. This module owns that reading; extdeps.cargo_build
+// REPORTED rather than the path we predicted. This module owns that reading; extdeps.rust.cargo_build
 // owns the invocation shape.
 
 // SCOPE, deliberately narrow. This decodes ONE fact out of cargo's message stream: which executable
@@ -67,7 +67,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 // The scan parses each line with the shared RFC 8259 parser and looks members up by NAME, rather
 // than searching the raw text for a reason or executable fragment. The distinction is load-bearing
-// and the corpus has already paid for learning it: gunbc.roadmap_provider_events documents a
+// and the corpus has already paid for learning it: gunbc.roadmap.roadmap_provider_events documents a
 // fragment scan that let an agent message quoting a type token reclassify a pane, and repaired it
 // to an anchored walk. A member-name lookup is stronger than an anchored walk here because it does
 // not depend on cargo emitting members in any particular order — cargo documents the members a

@@ -6,11 +6,11 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceApt }
-import extdeps.apt { apt_bin_dir, package_gh }
+import extdeps.package_managers.apt { apt_bin_dir, package_gh }
 
 // THE TOOL ROW FOR THE GITHUB CLI, so that the binary every `transport shell` operation in
 // extdeps.github spawns (argv word "gh") is a declared executor prerequisite that
-// gunbc.host_cli_dependency can PROBE for before a read, rather than an exec error discovered
+// gunbc.host.host_cli_dependency can PROBE for before a read, rather than an exec error discovered
 // mid-read. The argv templates in extdeps.github carry the literal program word because a
 // service transport template cannot reference a data row; this row names that same word.
 //

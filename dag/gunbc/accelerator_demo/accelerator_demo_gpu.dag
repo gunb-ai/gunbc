@@ -1,4 +1,4 @@
-module gunbc.accelerator_demo_gpu
+module gunbc.accelerator_demo.accelerator_demo_gpu
 
 
 fn wgsl_device_precision_fidelity(contract: NumericalContract) -> DecodeFidelity {

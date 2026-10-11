@@ -1,4 +1,4 @@
-module gunbc.runner_qemu_host_standing
+module gunbc.runner.runner_qemu_host_standing
 
 import std.types { Bool, List, NonEmptyStr, String, FilePath }
 import std.algebra { trim }
@@ -14,15 +14,15 @@ import gunbc.command_runner {
   ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, run_shell_command_capture,
   process_outcome_admitted, LocalExec,
 }
-import gunbc.runner_microvm_host_ready { KvmDeviceStanding, KvmDeviceWritable, kvm_standing_of, kvm_standing_text }
+import gunbc.runner.runner_microvm_host_ready { KvmDeviceStanding, KvmDeviceWritable, kvm_standing_of, kvm_standing_text }
 import gunbc.hostname_read { HostnameShortCapture, HostnameShortCaptured, HostnameShortCaptureRefused }
 import extdeps.tools.ldd { ldd_command, ldd_reading_of, LddReading, LddAllResolved, LddUnresolved, LddUnreadable }
-import gunbc.runner_qemu_toolchain { qemu_toolchain_rooted, qemu_toolchain_cleared_command }
+import gunbc.runner.runner_qemu_toolchain { qemu_toolchain_rooted, qemu_toolchain_cleared_command }
 
 // WHAT AN EXECUTOR HOST CARRIES FOR A QEMU BOOT UNDER KVM, READ AND NOTHING WRITTEN. This is an
 // EXECUTOR-HOST reading (managed-host cut 4b): its subject is the machine the job runs on, KEYED BY
 // THAT HOST'S OWN READING OF ITS NAME, which the caller supplies -- the dispatch-bound host where the
-// caller sealed one (gunbc.runner_microvm_host_ready microvm_host_binding_wet), the host's own
+// caller sealed one (gunbc.runner.runner_microvm_host_ready microvm_host_binding_wet), the host's own
 // `hostname -s` capture otherwise -- and never by any host a booted image describes. Which image the
 // boot will run, which unit it is for, and where the receipt lands are the caller's. Before any
 // toolchain is installed, this reads what is there, because what to install -- and whether an
@@ -38,7 +38,7 @@ import gunbc.runner_qemu_toolchain { qemu_toolchain_rooted, qemu_toolchain_clear
 //             extdeps.firmware.tianocore_edk2.aavmf -- a present file with a different digest is a
 //             different firmware and is reported as such, never as present
 //
-// WHERE: UNDER THE JOB USER'S INSTALL ROOT (gunbc.runner_qemu_toolchain),
+// WHERE: UNDER THE JOB USER'S INSTALL ROOT (gunbc.runner.runner_qemu_toolchain),
 // never the host's /usr. Every packaged path -- the binary and both AAVMF images -- is read at
 // <root><packaged path>, and the binary is run, and ldd is run over it, under the toolchain's one
 // declared environment (env -i, LD_LIBRARY_PATH at the root's library directories, a fixed PATH), so

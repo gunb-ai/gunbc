@@ -1,17 +1,17 @@
-module tools.source_reference_repoint
+module gunbc.instruments.source_reference_repoint
 
 import std.types { Bool, Int, List, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized }
 import v2.std.compilers.lexing { Token }
-import gunbc.parsed_import_statement_production { parsed_import_observation_live }
+import gunbc.namespace.parsed_import_statement_production { parsed_import_observation_live }
 import gunbc.source_root_read { source_root_walk, source_root_read_file, SourceRootWalkTask, SourceRootPathsRead, SourceRootPathsRefused }
 
 // A SOURCE REWRITE IS EDITS BY POSITION, PRODUCED FROM THE SEED'S OWN READING OF THE FILE. A module
 // that moves takes every reference to it along, and those references are found in the seed's token
 // stream rather than by a text search: a comment is not a token, and a path spelled inside a
 // string is one string token, so neither is a reference and neither is touched. The tokens come
-// through gunbc.parsed_import_statement_production, the one crossing by which a module under dag
+// through gunbc.namespace.parsed_import_statement_production, the one crossing by which a module under dag
 // reaches the seed's lexer (the floor resolves dag and src/v2 only), and they are produced
 // natively: tokenizing through the interpreter did not finish 901 files in forty minutes. The producer
 // returns edits; apply_source_edits splices them. A second producer (a literal rewrite over the

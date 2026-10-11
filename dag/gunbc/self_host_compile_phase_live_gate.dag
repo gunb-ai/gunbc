@@ -3,7 +3,7 @@ module gunbc.self_host_compile_phase_live_gate
 import std.types { Bool, Int, String, NonEmptyStr }
 import std.content_hash { Fnv1a64Structural }
 import extdeps.languages.rust.compiler_phases { RustcPhase, rustc_phase_name }
-import tools.emission_entry_instrument {
+import gunbc.instruments.emission_entry_instrument {
   RustfmtParseObservation,
   EmissionMeasurement,
   EmissionMeasured,
@@ -48,7 +48,7 @@ import gunbc.self_host_compile_phase_frontier {
 // `measure() == measure()`, because nothing here compares a measurement to a transcription.
 //
 // SCOPE, STATED SO IT CANNOT BE READ WIDER THAN IT IS. The subject is ONE ENTRY CLOSURE -- the
-// closure the persisted receipts name in their producer row, `src/v2/compiler/00_compile.dag`.
+// closure the persisted receipts name in their producer row, `src/v2/compiler/compile.dag`.
 // It is not the corpus, and `gunbc.compiler_frontend_program_status` records why the two are
 // different questions: the union of per-entry closures is not the corpus. A verdict from this
 // module answers for the compiler's own entry closure and for nothing else.
@@ -358,16 +358,16 @@ fn live_frontier_verdict_text(verdict: LiveFrontierVerdict) -> String {
 // THE TREE IS NOT YET GATED BY IT. What executes on every required run is the LOGIC; what does not
 // execute there is the MEASUREMENT. So a reader who sees eight passing required witnesses must not
 // conclude the compile-phase frontier is walled: it is walled against its own regressions, and the
-// live population still reaches it only when `tools.compile_phase_frontier_live_gate` `check` is
+// live population still reaches it only when `gunbc.instruments.compile_phase_frontier_live_gate` `check` is
 // invoked by hand.
 //
 // WHY, AND IT IS NOT COST. The wet measurement was priced by one dispatch of
-// `tools.emission_entry_instrument` `measure` over the entry named above, on an amd64 runner with
+// `gunbc.instruments.emission_entry_instrument` `measure` over the entry named above, on an amd64 runner with
 // eleven cores and a twenty-gigabyte budget, and it returned inside the floor lane's wall clock.
 // Re-derive that with the same instrument rather than quoting a figure from here.
 //
 // The blocker is the COMPARISON EPOCH, and it generalises past this gate. Every persisted receipt
-// names host x86_64-unknown-linux-gnu; every required lane of `gunbc.witness_floor_workflow` runs
+// names host x86_64-unknown-linux-gnu; every required lane of `gunbc.witness.witness_floor_workflow` runs
 // on self-hosted arm64. A measurement taken where the gate would be enrolled is therefore not in
 // the latest receipt's epoch, the frontier already refuses to count across one without a
 // reclassified predecessor, and this gate answers Unmeasured and exits nonzero there. A required
@@ -388,6 +388,6 @@ type LiveGateEnrolment
   | LiveGateDeclaredNotEnrolled { blocker: NonEmptyStr, trigger: NonEmptyStr }
 
 data self_host_compile_phase_live_gate_enrolment: LiveGateEnrolment = LiveGateDeclaredNotEnrolled {
-  blocker: "the live measurement of the tree is not enrolled in any required lane. The fold and its refusals ARE enrolled, through the required floor's existing test.claim.self_host_ prefix; what no required run performs is the measurement that would supply the tree as the current row. The cause is not wall clock: every persisted receipt names host x86_64-unknown-linux-gnu while every required lane of gunbc.witness_floor_workflow runs on self-hosted linux/arm64, so a measurement taken on a required runner falls outside the latest receipt's comparison epoch, this gate answers Unmeasured there, and a required phase wired today would be permanently red" as NonEmptyStr,
-  trigger: "a VALIDATED compile-phase frontier receipt in the required runners' own comparison epoch, SUFFICIENT FOR enrolling the live measurement as a required phase -- which is more than an arm64 row existing. Sufficiency is decided by execution, not by inspection: the receipt's rustc_identity, cargo_identity and invocation.target must equal what the self-hosted arm64 runners actually report, and the check is that live_tree_frontier_verdict returns Held on an UNPERTURBED run of tools.compile_phase_frontier_live_gate check ON ONE OF THOSE RUNNERS. A receipt that leaves the gate answering Unmeasured there does not retire this row, a measurement taken anywhere the gate will not be enrolled does not retire it, and neither does the required-phase edit itself. Because this is an epoch transition, that receipt also owes the reclassified predecessor the frontier's fold demands, joined to the x86_64 population at identity grain -- file, code and label -- and never by position: the arm64 population will differ from the x86_64 one in ways that are real rather than regressions" as NonEmptyStr
+  blocker: "the live measurement of the tree is not enrolled in any required lane. The fold and its refusals ARE enrolled, through the required floor's existing test.claim.self_host_ prefix; what no required run performs is the measurement that would supply the tree as the current row. The cause is not wall clock: every persisted receipt names host x86_64-unknown-linux-gnu while every required lane of gunbc.witness.witness_floor_workflow runs on self-hosted linux/arm64, so a measurement taken on a required runner falls outside the latest receipt's comparison epoch, this gate answers Unmeasured there, and a required phase wired today would be permanently red" as NonEmptyStr,
+  trigger: "a VALIDATED compile-phase frontier receipt in the required runners' own comparison epoch, SUFFICIENT FOR enrolling the live measurement as a required phase -- which is more than an arm64 row existing. Sufficiency is decided by execution, not by inspection: the receipt's rustc_identity, cargo_identity and invocation.target must equal what the self-hosted arm64 runners actually report, and the check is that live_tree_frontier_verdict returns Held on an UNPERTURBED run of gunbc.instruments.compile_phase_frontier_live_gate check ON ONE OF THOSE RUNNERS. A receipt that leaves the gate answering Unmeasured there does not retire this row, a measurement taken anywhere the gate will not be enrolled does not retire it, and neither does the required-phase edit itself. Because this is an epoch transition, that receipt also owes the reclassified predecessor the frontier's fold demands, joined to the x86_64 population at identity grain -- file, code and label -- and never by position: the arm64 population will differ from the x86_64 one in ways that are real rather than regressions" as NonEmptyStr
 }

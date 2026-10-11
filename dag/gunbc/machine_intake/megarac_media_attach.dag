@@ -1,4 +1,4 @@
-module gunbc.machine_intake_megarac_media_attach
+module gunbc.machine_intake.megarac_media_attach
 
 import std.decl_ref { decl_ref }
 import std.types { Bool, EpochMs, Int, List, Milliseconds, NonEmptyStr, String }
@@ -10,7 +10,7 @@ import extdeps.bmc.megarac { megarac_firmware_0_32 }
 import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_name_digest_prefix }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
-import gunbc.machine_intake_mount_establishment {
+import gunbc.machine_intake.mount_establishment {
   MediaImageAbsentFromListing,
   MediaImageListed,
   MountEstablished,
@@ -46,7 +46,7 @@ import extdeps.languages.json.parse {
 // made the surface reachable; this module is the caller that makes it reached.
 //
 // EVERY STEP READS BACK, AND THAT IS FORCED BY THE CONTROLLER'S OWN BEHAVIOUR rather than chosen for
-// rigour. gunbc.machine_intake_mtcollins1_diskless_boot_receipt records two measured cases of this
+// rigour. gunbc.machine_intake.mtcollins1_diskless_boot_receipt records two measured cases of this
 // firmware answering HTTP 500 WHILE THE WRITE TOOK EFFECT: PUT media/general (code 16425) with the
 // share re-mounting anyway, and stop-media (code 1411) with the following attach succeeding. An
 // operation that treated a non-zero exit as refusal would refuse a write that worked, and the caller
@@ -189,7 +189,7 @@ type MegaRacPresentationEvidence {
 //   effect uncertain  -- any other exit: a timeout (28), a transport failure, an abort -- with the
 //                        exit code and every byte that did arrive kept, never read as a complete answer.
 // The verdict is keyed on curl's TYPED exit code, the same fact
-// gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle bmc_curl_read_cause keys on (review 71971);
+// gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle bmc_curl_read_cause keys on (review 71971);
 // stderr is kept as evidence, never parsed for the verdict. In every case the read-back decides the
 // effect.
 type MegaRacWriteAnswer
@@ -639,9 +639,9 @@ fn megarac_attach_remote_image(
   task: MegaRacSessionTask,
 ) -> MegaRacAttachResult
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_megarac_boot_media_attach", decl_name: "megarac_attach_boot_image"),
-    decl_ref(module_path: "gunbc.machine_intake_megarac_boot_media_attach", decl_name: "megarac_observe_boot_presentation"),
-    decl_ref(module_path: "gunbc.machine_intake_megarac_boot_media_attach", decl_name: "megarac_stale_power_off"),
+    decl_ref(module_path: "gunbc.machine_intake.megarac_boot_media_attach", decl_name: "megarac_attach_boot_image"),
+    decl_ref(module_path: "gunbc.machine_intake.megarac_boot_media_attach", decl_name: "megarac_observe_boot_presentation"),
+    decl_ref(module_path: "gunbc.machine_intake.megarac_boot_media_attach", decl_name: "megarac_stale_power_off"),
   ]
 {
   session = megarac.Media.OpenSession(
@@ -1143,7 +1143,7 @@ fn stop_media_body(image_name: String, media_index: String) -> NonEmptyStr {
   ], "") as NonEmptyStr
 }
 
-// THE RE-ENUMERATION IS A BOUNDED ESTABLISHMENT, folded by gunbc.machine_intake_mount_establishment
+// THE RE-ENUMERATION IS A BOUNDED ESTABLISHMENT, folded by gunbc.machine_intake.mount_establishment
 // rather than polled until green: the window is declared before the first look, each look is an
 // evidenced observation, and a close at the deadline is terminal. The budget is the controller's
 // configured retry cadence with margin: rmedia_retry_count 3 at rmedia_retry_interval 15s is 45s,

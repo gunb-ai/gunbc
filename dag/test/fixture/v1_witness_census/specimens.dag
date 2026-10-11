@@ -3,7 +3,7 @@ module test.fixture.v1_witness_census.specimens
 import std.types { List, String }
 import std.decl_ref { DeclarationRef, decl_ref }
 import v2.workflow.required_floor { RequiredFloorDisposition, Planned, DeclinedLongModule, DeclinedFixtureMember }
-import gunbc.v1_witness_census {
+import gunbc.v1.v1_witness_census {
   V1ClaimCutoverRow, ClaimCutoverDisposition, ClaimPopulation, ClaimRosterComplete, ClaimRosterUnmeasured,
   Retired, ReplacedByStronger, StillRequired
 }

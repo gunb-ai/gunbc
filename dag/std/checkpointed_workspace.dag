@@ -51,7 +51,7 @@ import std.fabric_storage {
 //     restores through workspace_head_entry_decode, workspace_stored_entry_of and
 //     workspace_restore_point over the R2 head's closure. It is the pairing claim the witness rule
 //     demands, and it REFUSES before any advance until the R2 head's CAS ground is cited
-//     (gunbc.fabric_storage_r2_head r2_head_cas_admission) and the workspace credentials are pinned
+//     (gunbc.fabric.fabric_storage_r2_head r2_head_cas_admission) and the workspace credentials are pinned
 //     (gunbc.cloudflare.r2_origin fabric_workspace_standing); until both hold the supplied-value
 //     witnesses remain the only execution of the commit and restore arms;
 //   * the control-plane reconciler that publishes WorkspaceFence entries (docs/plans/

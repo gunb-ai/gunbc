@@ -1,9 +1,9 @@
-module gunbc.machine_intake_bmc_firmware_family_discriminator
+module gunbc.machine_intake.bmc_firmware_family_discriminator
 
 import std.types { Bool, List, NonEmptyStr, String }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
-import gunbc.machine_intake_bmc_first_contact_standing {
+import gunbc.machine_intake.bmc_first_contact_standing {
   BmcFirmwareFamilyStanding,
   FamilyObserved,
   FamilyUnobserved,

@@ -43,16 +43,16 @@ import extdeps.github.ci_runner {
   org_self_hosted_runners_first_page_target
 }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
-import gunbc.host_cli_dependency { HostCliDependencyAbsence, first_absent_gh_cli_operation_host_cli_dependency, host_dependency_absent_wire }
-import gunbc.runner_slot_allocation { runner_label_sets_equal }
-import gunbc.runner_host_deploy { github_app_runner_org, gunbc_ci_github_app }
+import gunbc.host.host_cli_dependency { HostCliDependencyAbsence, first_absent_gh_cli_operation_host_cli_dependency, host_dependency_absent_wire }
+import gunbc.runner.runner_slot_allocation { runner_label_sets_equal }
+import gunbc.runner.runner_host_deploy { github_app_runner_org, gunbc_ci_github_app }
 import gunbc.fleet.org_actions_inspection {
   org_admin_token_env_name,
   json_member_string,
   json_member_int,
   json_member_bool
 }
-import gunbc.fleet_runner_connectivity {
+import gunbc.fleet.fleet_runner_connectivity {
   OrganizationRunnerRosterEvidence,
   RosterObserved,
   RosterObservedPartial,
@@ -62,14 +62,14 @@ import gunbc.fleet_runner_connectivity {
 
 // THE LIVE ORGANIZATION RUNNER ROSTER. This is the producer the planner's roster parameter was
 // waiting for: GET /orgs/{org}/actions/runners, read through the gh CLI under the gunbai-ci App
-// installation token that gunbc.ci_spec gunbc_ci_org_admin_app_token_prelude mints in-run into
+// installation token that gunbc.ci.ci_spec gunbc_ci_org_admin_app_token_prelude mints in-run into
 // GUNBC_ORG_ADMIN_TOKEN and GH_TOKEN -- the same credential route and custody
 // gunbc.fleet.org_actions_inspection already reads runner groups through. Nothing here holds a key,
 // mints a token, or places one on an argv.
 //
 // WITHOUT THAT CREDENTIAL THE ANSWER IS RosterReadUnavailable, NEVER THE PINNED CORPUS. The
 // 2026-08-06 incident corpus survives only as the dated witness fixture
-// gunbc.fleet_runner_connectivity incident_2026_08_06_roster_fixture; a production caller that
+// gunbc.fleet.fleet_runner_connectivity incident_2026_08_06_roster_fixture; a production caller that
 // cannot read the organization is told so, and the planner refuses on that arm rather than planning
 // from a month-old population.
 
@@ -336,7 +336,7 @@ fn roster_request_target(listing: OrganizationRunnerListing, cursor: PageCursor)
 // host's cause instead of a fabricated empty stdout. A record with a nullable stdout would have
 // made every reader unwrap an Optional to learn a fact the discriminator already states. This is
 // where a gh that disappears MID-WALK becomes a page failure rather than an aborted evaluation --
-// the executor prerequisite gunbc.host_cli_dependency observes before the first request is an
+// the executor prerequisite gunbc.host.host_cli_dependency observes before the first request is an
 // earlier reading, not the result of the spawn that failed later.
 type RosterTransportResponse
   = RosterTransportAnswered { stdout: String, stderr: String }
@@ -394,7 +394,7 @@ fn gh_runner_transport(org: NonEmptyStr, runner_id: Int) -> RosterTransportRespo
 // that fold -- advance, the cycle check, the page budget, closure -- and keeps its OWN copy of the
 // pages read so far, because the carrier it feeds has a typed partial arm that the fold's outcome
 // does not: RosterObservedPartial names its observed_count beside the authority's total_count, and
-// gunbc.fleet_runner_connectivity already decides per question whether a prefix may answer. A later
+// gunbc.fleet.fleet_runner_connectivity already decides per question whether a prefix may answer. A later
 // page failing therefore keeps the pages already read and reports Partial, instead of discarding a
 // population that was observed and reporting none. This is a stated divergence from the fold's
 // outcome shape, not a second pager: the fold state is the only thing that decides whether another
@@ -462,7 +462,7 @@ type OrganizationRunnerRosterReport {
 
 // TWO READINGS OF ONE ID AGREE WHEN EVERY FIELD AGREES, compared as typed values: optional presence
 // is compared as presence, not through a sentinel spelling, and labels through the established
-// label-equivalence authority (gunbc.runner_slot_allocation runner_label_sets_equal), which compares
+// label-equivalence authority (gunbc.runner.runner_slot_allocation runner_label_sets_equal), which compares
 // label SETS rather than a joined rendering -- so ["blue,green"] and ["blue", "green"] differ.
 fn optional_bool_agrees(a: Bool?, b: Bool?) -> Bool {
   match a {
@@ -631,7 +631,7 @@ fn classify_roster_walk(walk: OrganizationRunnerRosterWalk, observed_on: NonEmpt
 }
 
 // THE ADMITTED CREDENTIAL ROUTE, AND THE ONE BINDING IT REQUIRES. gh authenticates from GH_TOKEN
-// before any stored configuration, and gunbc.ci_spec gunbc_ci_org_admin_app_token_prelude exports
+// before any stored configuration, and gunbc.ci.ci_spec gunbc_ci_org_admin_app_token_prelude exports
 // the one minted installation token as BOTH GUNBC_ORG_ADMIN_TOKEN and GH_TOKEN. The route is admitted
 // only when both bindings are present AND AGREE: two present but different values would let gh
 // authenticate with a credential other than the one the prelude minted while the route claimed the
@@ -648,7 +648,7 @@ data gh_token_env_name: NonEmptyStr = "GH_TOKEN"
 
 fn org_runner_route_from_bindings(admin_token: String?, gh_token: String?) -> OrgRunnerRouteAdmission {
   match admin_token {
-    Absent => OrgRunnerRouteRefused { reason: "GUNBC_ORG_ADMIN_TOKEN is absent: the org runner read runs only under the installation token gunbc.ci_spec gunbc_ci_org_admin_app_token_prelude mints in-run; no pinned population is substituted" }
+    Absent => OrgRunnerRouteRefused { reason: "GUNBC_ORG_ADMIN_TOKEN is absent: the org runner read runs only under the installation token gunbc.ci.ci_spec gunbc_ci_org_admin_app_token_prelude mints in-run; no pinned population is substituted" }
     Present { value: admin } => match gh_token {
       Absent => OrgRunnerRouteRefused { reason: "GH_TOKEN is absent, so gh would not authenticate with the prelude's installation token" }
       Present { value: gh } =>
@@ -695,7 +695,7 @@ fn organization_runner_read_route() -> OrgRunnerRouteAdmission {
 
 // WHICH ORGANIZATION IS READ IS NOT AUTHORED HERE. The token is minted for the gunbai-ci App's
 // installation, so the organization it can answer for is that App row's owner login -- the same
-// derivation gunbc.runner_host_deploy uses for every host's registrations.
+// derivation gunbc.runner.runner_host_deploy uses for every host's registrations.
 fn organization_runner_roster_org() -> NonEmptyStr {
   github_app_runner_org(config: gunbc_ci_github_app)
 }
@@ -750,7 +750,7 @@ fn organization_runner_roster_report(org: NonEmptyStr, page_size: PageSize) -> O
   }
 }
 
-// THE PRODUCTION ROSTER. gunbc.apply and gunbc.runner_capacity_realize plan from this.
+// THE PRODUCTION ROSTER. gunbc.apply and gunbc.runner.runner_capacity_realize plan from this.
 fn organization_runner_roster_live_read() -> OrganizationRunnerRosterEvidence {
   organization_runner_roster_report(org: organization_runner_roster_org(), page_size: github_max_page_size).evidence
 }

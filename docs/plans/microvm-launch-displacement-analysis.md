@@ -14,7 +14,7 @@ The verdict below is *medium and gap-intolerant*, and a reader who stops there w
 
 ## Why this document and not the executor
 
-`gunbc.fabric_ci_program` FCI-3 asks *what causes the target process*, and its exit predicate is that a persistent executor **re-reads the committed Grant before starting**, so an absent, corrupt or expired Grant yields **zero** target processes.
+`gunbc.fabric.fabric_ci_program` FCI-3 asks *what causes the target process*, and its exit predicate is that a persistent executor **re-reads the committed Grant before starting**, so an absent, corrupt or expired Grant yields **zero** target processes.
 
 The tempting next move is to build that executor. It is the wrong move while the live hand-authored path keeps starting real jobs, because a modeled executor that cannot yet take over is X and Y coexisting — the state §3's replacement-migration doctrine forbids, and precisely the class already filed. It would give the modeled home a consumer (itself) and still leave the live path unmodeled: two homes, both now substantial, and the one that runs still outside the substrate.
 
@@ -60,7 +60,7 @@ Within that, the executor must own three things it cannot delegate:
 
 1. **The ordering.** Authorization first, actuation last. The FCI-2 half is **proposed on #10674 and not merged** — `gunbc.runner.runner_microvm_execution_authorization`, whose `grant_authorizes_reservation` refuses on the money fence and on Work/Demand/Offer disagreement (`seal_execution_binding` is declared there as a §3c frontier with no consumer yet). Those names do not resolve on `main` today, so they are named as proposed work. What does not exist **anywhere, proposed or landed**, is the thing that **re-reads a committed grant** and refuses to reach step 9 without one.
 2. **The credential as a consequence of the grant, not a precondition.** The mint must happen *after* the grant is re-read, so a credential is never in existence for a launch that will not be authorized. The live path mints first and validates in the guest, which is the receipted fail-open.
-3. **Durable grant state.** Per ruling, this **extends `gunbc.fabric_allocation_store_substrate`** — which today models durable presence, ownership, mode and prestate for the allocation store — rather than forking a second store. If a grant fact genuinely cannot inhabit that shape, that is a finding to raise, not a licence to fork.
+3. **Durable grant state.** Per ruling, this **extends `gunbc.fabric.fabric_allocation_store_substrate`** — which today models durable presence, ownership, mode and prestate for the allocation store — rather than forking a second store. If a grant fact genuinely cannot inhabit that shape, that is a finding to raise, not a licence to fork.
 
 ## What the hand-authored tooling would have to lose
 

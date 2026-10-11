@@ -28,7 +28,7 @@ import gunbc.action_use_admission { checkout_action, google_auth_action }
 import extdeps.languages.yaml.types { YamlKeyValue, kv, yaml_string }
 import extdeps.languages.yaml.emit { emit_yaml, YamlEmitResult }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
-import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
+import gunbc.runner.runner_spec_from_offer { gunbc_ci_runner_spec }
 import std.types { NonEmptyStr }
 import v2.compiler.emit_orchestration { orch_emit_pipeline }
 import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }

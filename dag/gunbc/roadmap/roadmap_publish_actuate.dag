@@ -5,7 +5,7 @@ import std.credentials { CredentialSource }
 import extdeps.git
 import extdeps.github.pulls
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
-import gunbc.roadmap_publish { PublicationReceiptOutcome, ReceiptBound }
+import gunbc.roadmap.roadmap_publish { PublicationReceiptOutcome, ReceiptBound }
 
 // PUBLICATION ACTUATION: the two host effects that turn a verified attempt head into a bound pull
 // request, kept thin so that everything decidable is decided elsewhere. The push is the NON-FORCED

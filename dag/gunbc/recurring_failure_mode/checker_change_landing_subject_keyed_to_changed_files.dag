@@ -30,8 +30,8 @@ data checker_change_landing_subject_keyed_to_changed_files: RecurringFailureMode
     DeclarationRef { module_path: "v2.workflow.floor_subject_seed", decl_name: "CheckerSubjectRule", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.workflow.floor_subject_seed", decl_name: "checker_widening_standing", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.rung_drop_amendment.checker_edge_withheld_over_the_per_pr_runner_class", decl_name: "checker_edge_withheld_over_the_per_pr_runner_class", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.workflow.floor_subject_seed_test", decl_name: "a_checker_edit_seeds_every_admitted_module", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.workflow.floor_subject_seed_test", decl_name: "a_change_outside_the_checker_keeps_the_narrow_subject", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.workflow.floor_subject_seed_test", decl_name: "an_unobservable_checker_refuses_rather_than_narrowing_or_widening", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.workflow.floor_subject_seed", decl_name: "a_checker_edit_seeds_every_admitted_module", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.workflow.floor_subject_seed", decl_name: "a_change_outside_the_checker_keeps_the_narrow_subject", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.workflow.floor_subject_seed", decl_name: "an_unobservable_checker_refuses_rather_than_narrowing_or_widening", field: WholeDeclaration },
   ],
 }

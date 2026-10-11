@@ -12,14 +12,14 @@ module test.probe.file_hold_plan_forged_probe
 // forgery to author there -- the route does not exist rather than being refused.
 //
 // THE FABRIC SIDE HAS THREE SEALED ROUTES, AND THE LAST THREE FUNCTIONS CALL EACH ONE FROM OUTSIDE.
-// gunbc.fabric_control_plane end_cell_hold, commit_hold_end and free_cell_slot each reach
+// gunbc.fabric.fabric_control_plane end_cell_hold, commit_hold_end and free_cell_slot each reach
 // file_hold_release_commit while taking a MoneyOutcome or a MoneyAccount -- values anyone can
 // construct, not receipts that release_money or settle_money ran. Called from here with an authored
 // AccountAdvanced (or a genuine plan and an authored account), each would free a cell while its
 // encumbrance stands. They are admit_callers-sealed to release_reserved_cell_at /
 // settle_reserved_cell_at -> end_cell_hold -> commit_hold_end -> free_cell_slot, so each call below
 // refuses as ConstructorCallAdmissionRefused. The witness
-// test.claim.file_hold_plan_refusal_probe_witness_test enrolls this probe and asserts every refusal
+// test.claim.file_hold_plan_refusal_probe_witness enrolls this probe and asserts every refusal
 // class at its subject.
 
 import std.types { NonEmptyStr, Int }
@@ -29,7 +29,7 @@ import extdeps.accounting.budget { Appropriation }
 import extdeps.accounting.encumbrance { EncumbranceLedger }
 import product.fabric.budget { MoneyAccount, MoneyOutcome, AccountAdvanced }
 import product.fabric.execution { ReservationRef }
-import gunbc.fabric_control_plane { CellHoldEnd, end_cell_hold, commit_hold_end, free_cell_slot }
+import gunbc.fabric.fabric_control_plane { CellHoldEnd, end_cell_hold, commit_hold_end, free_cell_slot }
 import std.durable_compare_and_set { ExpectSlotGeneration }
 import std.durable_exclusive_hold { DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldHeld, DurableHoldFree }
 import gunbc.durable_exclusive_hold_file_store { FileHoldAcquirePlan, FileHoldReleasePlan, hold_slot_payload }

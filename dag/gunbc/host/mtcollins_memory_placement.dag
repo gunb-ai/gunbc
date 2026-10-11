@@ -1,4 +1,4 @@
-module gunbc.mtcollins_memory_placement
+module gunbc.host.mtcollins_memory_placement
 
 import std.types { Bool }
 import std.decl_ref { decl_ref }
@@ -7,7 +7,7 @@ import extdeps.ampere.mt_collins_getting_started_guide.dimm_layout {
   dimm_figure_connector_label_prefix, one_dpc_diagram_legend, additional_two_dpc_diagram_legend,
 }
 import product.installed_bom_reconcile { DimmSlotLocator }
-import gunbc.memory_configuration { MemoryPosition }
+import gunbc.host.memory_configuration { MemoryPosition }
 
 // Only a resolved population role can construct a position. Callers must retain
 // the population-role authority's refusal before they reach this projection.

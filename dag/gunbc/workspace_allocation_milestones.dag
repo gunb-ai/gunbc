@@ -3,9 +3,9 @@ module gunbc.workspace_allocation_milestones
 import std.types { String, NonEmptyStr, Timestamp, Bool }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import std.durable_compare_and_set { ExpectSlotAbsent, CasCommitted, CasPreconditionFailed, CasObservedReadable, CasReadablePresent }
-import gunbc.durable_cas_fabric_storage { fabric_storage_compare_and_set, fabric_storage_observe_cas_slot }
+import gunbc.fabric.durable_cas_fabric_storage { fabric_storage_compare_and_set, fabric_storage_observe_cas_slot }
 import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted }
-import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceReleased }
 import gunbc.workspace_allocation { WorkspaceReservation, workspace_reservation_json }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_before, utc_instant_seconds_after }

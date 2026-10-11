@@ -1,0 +1,213 @@
+module test.claim.printed_chassis_export_profile_witness
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { micrometer, nanometer }
+import extdeps.cadquery.cadquery { StlExportKnobs, stl_export_knobs, RelativeDeflection }
+import product.printed_chassis.export_profile {
+  ChordSubject, chord_subject, ChordObservation, chord_observation,
+  ChordRequirement, DistinctionDeclared, DistinctionUndeclared,
+  ChordStanding, WithinRequiredDistinction, ExceedsRequiredDistinction,
+  RequiredDistinctionUndeclared, ChordSubjectMismatch,
+  adjudicate_chord, admit_export_profile,
+  ExportProfileAdmission, ExportProfileAdmitted, ExportProfileRefusedUnsettled,
+  exercised_stl_knobs, coupon_top_rung_subject, fan_bore_subject, fan_mounting_hole_subject,
+  export_profile_subject_roster, ExportProfileRefusedIncomplete,
+  ExportProfileRefusedRequirementPopulation, ExportProfileRefusedSubjectRoster,
+  ExportProfileRefusedProfileDisagreement, exercised_export_profile_admission,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE PROFILE HAD NO CONSUMER, and a module that typechecks is not one. Every witness below names a
+// mutation that must flip it, because the four refusal arms are exactly where a green profile would
+// be manufactured rather than earned.
+
+fn standing_name(s: ChordStanding) -> String {
+  match s {
+    WithinRequiredDistinction { judgment: _ } => "within"
+    ExceedsRequiredDistinction { observation: _, requirement: _ } => "exceeds"
+    RequiredDistinctionUndeclared { observation: _, requirement: _ } => "undeclared"
+    ChordSubjectMismatch { observation: _, requirement: _ } => "mismatch"
+  }
+}
+
+fn admission_name(a: ExportProfileAdmission) -> String {
+  match a {
+    ExportProfileAdmitted { knobs: _, standings: _ } => "admitted"
+    ExportProfileRefusedIncomplete { coverage: _ } => "incomplete"
+    ExportProfileRefusedProfileDisagreement { standings: _ } => "disagreement"
+    ExportProfileRefusedUnsettled { unsettled: _ } => "unsettled"
+    ExportProfileRefusedRequirementPopulation { coverage: _ } => "requirement-population"
+    ExportProfileRefusedSubjectRoster { coverage: _ } => "subject-roster"
+  }
+}
+
+fn probe_observation(subject: ChordSubject, undersize: Nat) -> ChordObservation {
+  chord_observation(
+    subject: subject,
+    nominal_diameter: micrometer(count: 4000),
+    measured_undersize: nanometer(count: undersize),
+    measured_under: exercised_stl_knobs,
+    instrument: "fixture",
+  )
+}
+
+// A SECOND PROFILE, USED ONLY TO PROVE THE ADMISSION NOTICES. It differs from the exercised profile
+// in the deflection interpretation, which is exactly the field whose omission made the earlier
+// measurement mean something other than what the model said.
+fn probe_observation_under(subject: ChordSubject, undersize: Nat, k: StlExportKnobs) -> ChordObservation {
+  chord_observation(
+    subject: subject,
+    nominal_diameter: micrometer(count: 4000),
+    measured_undersize: nanometer(count: undersize),
+    measured_under: k,
+    instrument: "fixture",
+  )
+}
+
+data other_profile: StlExportKnobs = stl_export_knobs(
+  linear_tolerance: micrometer(count: 1),
+  angular_tolerance_text: "0.1",
+  deflection: RelativeDeflection,
+)
+
+data coupon_requirement: ChordRequirement = DistinctionDeclared {
+  subject: coupon_top_rung_subject,
+  smallest: micrometer(count: 100),
+  authority: "fixture",
+}
+
+// The measured 1243 nm diameter undersize clears a 100 um rung at safety factor 20. Flip the observation past
+// 5000 nm and this must stop reading "within" -- see the paired witness below, which does exactly
+// that and is the reason this one is not satisfiable by a constructor that always answers within.
+test fn w_the_measured_coupon_deviation_clears_its_authored_rung() -> Bool {
+  standing_name(s: adjudicate_chord(
+    o: probe_observation(subject: coupon_top_rung_subject, undersize: 993),
+    r: coupon_requirement,
+  )) == "within"
+}
+
+// THE DISCRIMINATOR FOR THE ONE ABOVE. 5000 nm * 20 == 100000 nm, exactly the rung, so it still
+// clears; 5001 must not. A criterion that answered "within" here would be a decoration.
+test fn w_a_deviation_one_nanometre_over_the_budget_is_refused() -> Bool {
+  standing_name(s: adjudicate_chord(
+    o: probe_observation(subject: coupon_top_rung_subject, undersize: 5000),
+    r: coupon_requirement,
+  )) == "within"
+  && standing_name(s: adjudicate_chord(
+    o: probe_observation(subject: coupon_top_rung_subject, undersize: 5001),
+    r: coupon_requirement,
+  )) == "exceeds"
+}
+
+// AN UNDECLARED REQUIREMENT IS NOT A PASS, and it is not an exceedance either. The fan bore has no
+// measured clearance obligation, so borrowing the coupon's rung -- which was this module's first
+// shape -- would have refused a profile that is fine, and defaulting to something generous would
+// have admitted one nobody had judged.
+test fn w_an_undeclared_distinction_is_its_own_verdict() -> Bool {
+  standing_name(s: adjudicate_chord(
+    o: probe_observation(subject: fan_bore_subject, undersize: 993),
+    r: DistinctionUndeclared { subject: fan_bore_subject, because: "fixture" },
+  )) == "undeclared"
+}
+
+// A MIS-JOIN IS NOT A GEOMETRY FINDING. Judging one feature's deviation against another feature's
+// requirement can produce either verdict by luck, and reporting that as "exceeds" would attribute a
+// bookkeeping error to the mesh.
+test fn w_judging_one_subject_against_anothers_requirement_refuses_as_a_mismatch() -> Bool {
+  standing_name(s: adjudicate_chord(
+    o: probe_observation(subject: fan_bore_subject, undersize: 993),
+    r: coupon_requirement,
+  )) == "mismatch"
+}
+
+
+// THE DENOMINATOR IS THE ROSTER, NOT THE EVIDENCE. This replaces a witness that asserted the
+// opposite: the previous pairing removed the undeclared feature from the ARGUMENT and watched the
+// call flip to admitted, which exhibited the writable state rather than closing it. Dropping a
+// rostered subject must now refuse as MISSING, and it must be distinguishable from a subject that
+// was measured and failed -- those have different remedies.
+test fn w_omitting_a_rostered_subject_refuses_as_missing_not_as_admitted() -> Bool {
+  admission_name(a: admit_export_profile(observations: [coupon_observation()])) == "incomplete"
+}
+
+// THE PAIRED ADMISSION IS DELETED, NOT MANUFACTURED, and its absence is the finding rather than a
+// gap. The previous control authored a flattering DistinctionDeclared for both fan subjects --
+// features production calls UNDECLARED -- ran them through the legitimate adjudicator, and handed
+// the resulting real sealed passes to production admission. Nothing was forged and every seal was
+// genuine; the CRITERION was caller-selected, which is the same defect one layer deeper.
+//
+// Admission now closes over the canonical requirements, so a fixture cannot supply a policy at all.
+// The honest production state is that two of three rostered subjects have no measured requirement,
+// so production admission REFUSES -- which the roster witness below asserts. A positive control
+// therefore cannot exist until those requirements are authored, exactly as the slicing Ready arm has
+// no positive control until a real process runs. Inventing one here would be the same fabrication.
+//
+// NEXT-RUNG TRIGGER: author the fan fastener and bore distinctions from a measured fit, at which
+// point the admitted arm becomes reachable on canonical policy and this witness returns as a real
+// pairing rather than a fixture's opinion of itself.
+
+// A FOREIGN SUBJECT CANNOT STAND IN FOR A MISSING ONE, ASSERTED THROUGH PRODUCTION ADMISSION. The
+// previous version of this witness called a local cover_roster helper directly, and that helper is
+// now deleted -- it was a second copy of std.observation_completeness. Worse, while it existed the
+// witness could stay green over the copy after production had moved to a different join, which is
+// the tell that a discriminator is bound to a mechanism rather than to the behaviour that ships.
+//
+// Equal cardinality is the substitution most likely to happen and least likely to be seen, so this
+// supplies THREE observations for a three-subject roster with one subject measured twice and another
+// not at all. The count matches and admission still refuses.
+test fn w_a_foreign_subject_of_equal_count_does_not_cover_the_roster() -> Bool {
+  admission_name(a: admit_export_profile(observations: [
+    probe_observation(subject: coupon_top_rung_subject, undersize: 993),
+    probe_observation(subject: coupon_top_rung_subject, undersize: 993),
+    probe_observation(subject: fan_bore_subject, undersize: 993),
+  ])) == "incomplete"
+}
+
+// THE FULL DECLARED ROSTER REFUSES TODAY, and that is the honest state rather than a failure: two of
+// its three subjects have no measured requirement. If this ever reads "admitted" without those
+// requirements being authored, the roster or the adjudication has been weakened.
+test fn w_the_declared_roster_refuses_while_two_subjects_have_no_requirement() -> Bool {
+  admission_name(a: admit_export_profile(observations: [
+    coupon_observation(),
+    probe_observation(subject: fan_mounting_hole_subject, undersize: 1368),
+    probe_observation(subject: fan_bore_subject, undersize: 993),
+  ])) == "unsettled"
+}
+
+
+// EVIDENCE CANNOT BE MEASURED UNDER ONE PROFILE AND USED TO BLESS ANOTHER. The admission derives the
+// profile it authorizes FROM the standings, so a set that disagrees about which profile it ran under
+// has no answer to derive and refuses. This is the measure-under-P1 then admit-P2 hole, and the OCC
+// cache incident is why it is not hypothetical: a number here can be about a different export than
+// the one being authorized with nothing looking wrong.
+test fn w_observations_measured_under_different_profiles_refuse() -> Bool {
+  admission_name(a: admit_export_profile(observations: [
+    probe_observation(subject: coupon_top_rung_subject, undersize: 993),
+    probe_observation(subject: fan_mounting_hole_subject, undersize: 993),
+    probe_observation_under(subject: fan_bore_subject, undersize: 993, k: other_profile),
+  ])) == "disagreement"
+  && admission_name(a: admit_export_profile(observations: [
+    probe_observation(subject: coupon_top_rung_subject, undersize: 993),
+    probe_observation(subject: fan_mounting_hole_subject, undersize: 993),
+    probe_observation(subject: fan_bore_subject, undersize: 993),
+  ])) == "unsettled"
+}
+
+fn coupon_observation() -> ChordObservation {
+  probe_observation(subject: coupon_top_rung_subject, undersize: 993)
+}
+
+// THE RECORDED EVIDENCE IS ADJUDICATED, NOT MERELY STORED. This is the witness that makes the
+// measurements load-bearing: it asserts the module's verdict on its OWN rows rather than on a
+// fixture's. Before this, admission was reachable only with observations a caller supplied, so the
+// recorded numbers could drift from the roster or the profile with nothing refusing.
+//
+// It reads UNSETTLED today because two of the three measured features have no authored requirement.
+// That is the honest current state, and it is the same assertion as the declared-roster witness made
+// against the real rows instead of probe fixtures -- so if the measurements are edited to disagree
+// with the profile they were taken under, or a subject is dropped, this goes red where the fixture
+// version would not.
+test fn w_the_recorded_measurements_are_adjudicated_by_the_module() -> Bool {
+  admission_name(a: exercised_export_profile_admission) == "unsettled"
+}

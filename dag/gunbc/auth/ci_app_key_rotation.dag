@@ -124,7 +124,7 @@ fn ci_app_key_rotation_intent(
 
 // The verifier is the restore test the contract owes and the consumer evidence the rotation needs,
 // and it is ONE thing because both ask the same question of the same bytes. The mint itself runs in
-// the fleet-converge mint step (gunbc.ci_spec gunbc_ci_app_key_version_verify_mint_script, whose
+// the fleet-converge mint step (gunbc.ci.ci_spec gunbc_ci_app_key_version_verify_mint_script, whose
 // spec is app_key_version_verify_mint and whose verdict half is
 // gunbc_ci_app_key_version_verify_verdict_invoke) through the same prelude the org-admin step mints
 // with — there is one place key material is written, and this module never touches it. What arrives here is an OBSERVATION RECORD: the HTTP status Secret
@@ -141,7 +141,7 @@ data app_key_version_env_name: NonEmptyStr = "APP_KEY_VERSION"
 data app_key_verify_record_env_name: NonEmptyStr = "APP_KEY_VERIFY_RECORD"
 data app_key_verify_receipt_path: String = "target/app-key-version-verify-receipt.txt"
 
-// The record's keys, spelled once and read by the step that writes them (gunbc.ci_spec).
+// The record's keys, spelled once and read by the step that writes them (gunbc.ci.ci_spec).
 data app_key_record_key_status_key: String = "key_http_status"
 data app_key_record_resolved_name_key: String = "resolved_name"
 data app_key_record_token_status_key: String = "token_status_line"

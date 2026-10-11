@@ -72,7 +72,7 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutRep
 // across. AND `interrupted_before_verdict` IS A DISPOSITION SHARED
 // ACROSS UNRELATED SUBJECTS, NOT A NAME FOR THIS POPULATION: the same cause appears on main-tip
 // floor receipts for outside_modeled_guarantee_witness_test and for
-// test.claim.long.carrier_reference_integrity_witness_test, which have nothing to do with this
+// test.claim.long.carrier_reference_integrity_witness, which have nothing to do with this
 // walk. A reader must not infer from the cause alone that it describes one subject.
 //
 // AND THE WITNESS BLOCKS INTERMITTENTLY, WHICH IS THE WORD THAT SURVIVED TWO WRONG ONES. On main

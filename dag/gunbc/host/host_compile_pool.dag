@@ -1,24 +1,24 @@
-module gunbc.host_compile_pool
+module gunbc.host.host_compile_pool
 
 import std.types { String, NonEmptyStr, Bool }
 import std.measure { ByteSize, byte_size_count }
 import std.disposition { ConstructionMechanism, SingleAuthority }
-import gunbc.build_cache_instance { CgroupMemoryLimits, EndpointObservationUnavailableReason, unavailable_reason_detail }
-import gunbc.host_layout {
+import gunbc.build_cache.build_cache_instance { CgroupMemoryLimits, EndpointObservationUnavailableReason, unavailable_reason_detail }
+import gunbc.host.host_layout {
   CompilePoolPlacement, CompilePoolSliceDeclared, CompilePoolInRunnerSlots,
   gunbc_compile_pool_placement,
 }
-import gunbc.fleet_host_budget {
+import gunbc.fleet.fleet_host_budget {
   CompilePoolResolution, CompilePoolDerived, CompilePoolUnresolved,
 }
-import gunbc.runner_activation { HostCompilePoolReady }
+import gunbc.runner.runner_activation { HostCompilePoolReady }
 import product.host_identity { HostIdentity }
 
 data host_compile_pool_scope_disposition: ConstructionMechanism = SingleAuthority
 
 // THE PRODUCER FOR HostCompilePoolReady, AND DELIBERATELY NOT A SECOND COMPILE-POOL MODEL.
 // Everything about how large the pool is and where compile RSS is charged already has an authority:
-// gunbc.fleet_host_budget owns CompilePoolPlacement and derives the size through
+// gunbc.fleet.fleet_host_budget owns CompilePoolPlacement and derives the size through
 // compile_pool_bytes_for from extdeps.jobserver's jobserver_build_pool_bytes, which is the same
 // cited knob that bounds build concurrency. Minting a HostCompilePool record with its own
 // memory_high, memory_max and token_count fields beside that would fork the sizing authority and
@@ -26,7 +26,7 @@ data host_compile_pool_scope_disposition: ConstructionMechanism = SingleAuthorit
 // carrier that decides whether a runner may take work.
 //
 // So this module adds no sizing and no topology. It adds exactly the missing half:
-// gunbc.runner_activation's HostCompilePoolReady had no producer, so every construction of it in
+// gunbc.runner.runner_activation's HostCompilePoolReady had no producer, so every construction of it in
 // the tree was hand-authored, which is precisely the forgeable-receipt residual that carrier's own
 // note names. derive_host_compile_pool_ready is the one derivation, taking the declared topology
 // and a host observation and returning the receipt.
@@ -81,7 +81,7 @@ type CompilePoolNotReadyReason
 // carries a ceiling that can hold the derived size, and a sibling witness pins the undersized case.
 
 // THE TWO NOT-READY REASONS THAT LOOK ALIKE AND ARE NOT. PoolNotDeclaredInTopology means
-// gunbc.fleet_host_budget's placement row still says CompilePoolInRunnerSlots — nobody has decided
+// gunbc.fleet.fleet_host_budget's placement row still says CompilePoolInRunnerSlots — nobody has decided
 // this fleet HAS a managed pool, so there is nothing to look for on the host and an observation
 // would be meaningless. PoolSliceAbsentOnHost means the topology declares one and this particular
 // host does not have it — a convergence gap on a decided intent. Their remedies are different and
@@ -173,7 +173,7 @@ fn pool_is_declared(reason: CompilePoolNotReadyReason) -> Bool {
 }
 
 // THE RECEIPT IS A LOSSY PROJECTION OF THE READINESS, AND THAT IS THE HONEST DIRECTION FOR THE
-// LOSS. HostCompilePoolReady carries two Bools because that is the shape gunbc.runner_activation
+// LOSS. HostCompilePoolReady carries two Bools because that is the shape gunbc.runner.runner_activation
 // reviewed and consumes; CompilePoolReadiness carries the located reason. Projecting readiness DOWN
 // to the receipt discards the reason, which is acceptable because the receipt's only job is to
 // gate, and every not-ready projection sets pool_observed false so no not-ready state can produce

@@ -11,11 +11,11 @@ import extdeps.systemd.unit_file {
 }
 import extdeps.systemd.systemctl { systemctl_binary_path }
 import extdeps.languages.bash.invocation { bash_script_argv }
-import gunbc.runner_microvm_slot_unit {
+import gunbc.runner.runner_microvm_slot_unit {
   microvm_controller_owner, microvm_controller_slice_unit_name,
   microvm_slot_lifecycle_intent, microvm_slot_unit_instance_name,
 }
-import gunbc.runner_unit_file { runner_unit_teardown_directives }
+import gunbc.runner.runner_unit_file { runner_unit_teardown_directives }
 
 data workspace_executor_template_name: NonEmptyStr = "gunbc-workspace-commissioning@.service"
 

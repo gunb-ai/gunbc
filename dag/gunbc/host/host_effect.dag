@@ -1,6 +1,6 @@
-module gunbc.host_effect
+module gunbc.host.host_effect
 
-import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import std.types { String, Int, NonEmptyStr, List }
 import std.content_hash { ContentHash }
 import std.access { AccessDecision }
@@ -15,14 +15,14 @@ import extdeps.sudo.nopasswd_execute_probe {
 }
 import extdeps.bmc.webui.nbd_proxy_serve { NbdProxyServeTransportIntent }
 import extdeps.llm.codex_app_server_stdio_session { CodexAppServerStdioSessionIntent }
-import gunbc.fleet_intent { ComputeHost }
-import gunbc.host_converge { HostConverge }
+import gunbc.fleet.fleet_intent { ComputeHost }
+import gunbc.host.host_converge { HostConverge }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep }
 import extdeps.tailscale.serve { TailscaleServeEndpoint }
-import gunbc.build_cache_instance { RunnerSlotIdentity, BuildCacheInstance }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, BuildCacheInstance }
 import extdeps.github.actions_runner { ActionsRunnerRelease, ActionsRunnerBinaryArtifact }
-import gunbc.runner_incarnation { LocalRunnerSlotIncarnation }
-import gunbc.runner_lifecycle { RunnerReplacementCause }
+import gunbc.runner.runner_incarnation { LocalRunnerSlotIncarnation }
+import gunbc.runner.runner_lifecycle { RunnerReplacementCause }
 import gunbc.auth.github_apps { gunbai_ci_declared }
 import gunbc.live_deploy.candidate_identity { CandidateRelease }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
@@ -48,7 +48,7 @@ import std.effects {
 // CONTROLLER: the live_deploy release locus (owned by root) plus the VMM and jailer, the template
 // unit gunbc-microvm-slot@.service, and a daemon-reload -- additive, starting no instance. It carries
 // no DeploymentSpec because the controller is not a member of the dashboard deployment: its locus
-// root and owner are gunbc.runner_microvm_slot_unit's, which is the one section 3b divergence.
+// root and owner are gunbc.runner.runner_microvm_slot_unit's, which is the one section 3b divergence.
 type HostEffect =
     RedfishAction { action: RedfishSystemAction }
   | ConvergePlan { policy: HostConverge }
@@ -166,7 +166,7 @@ type HostEffectTransport =
 // invocation was a List<String> that portable_remote_words could admit or refuse, so routing them
 // through the sealed context was a change of producer and nothing else.
 //
-// CORRECTED (2026-08-19, gunbc.host_effect_realize migration): this doc block previously read "the
+// CORRECTED (2026-08-19, gunbc.host.host_effect_realize migration): this doc block previously read "the
 // ten that remain (all in host_effect_realize, plus one in ci_deploy_target_host) call ssh_session_exec
 // with a CONCATENATED SHELL COMMAND STRING" -- that population claim was already stale when found (a
 // grep against the live tree turned up exactly five call sites, all in host_effect_realize, and
@@ -199,7 +199,7 @@ data bootstrap_fragment_script_carrier_scaffold: Disposition = Terminal {
 }
 
 data thin_invocation_argv_carrier_scaffold: Disposition = Terminal {
-  reason: "the thin invocation stopped authoring argv: gunbc.fleet_converge_apply fleet_converge_thin_invocation derives every word from the ONE gunbc converge shape authority (gunbc.cli_invoke gunbc_converge_invocation_words), composing only the program word through gunbc_bin_name — the caller names semantics and the shape has one home (shell-to-dag section 0c: argv is never the authority); the realize_converge_on_host fresh-standup EmitArtifactThenThinRun leg dispatches the typed invocation in-process and refuses hand-spelled bootstrap literals typed"
+  reason: "the thin invocation stopped authoring argv: gunbc.fleet.fleet_converge_apply fleet_converge_thin_invocation derives every word from the ONE gunbc converge shape authority (gunbc.cli_invoke gunbc_converge_invocation_words), composing only the program word through gunbc_bin_name — the caller names semantics and the shape has one home (shell-to-dag section 0c: argv is never the authority); the realize_converge_on_host fresh-standup EmitArtifactThenThinRun leg dispatches the typed invocation in-process and refuses hand-spelled bootstrap literals typed"
 }
 
 

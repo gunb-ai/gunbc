@@ -1,4 +1,4 @@
-module gunbc.roadmap_dispatch_environment
+module gunbc.roadmap.roadmap_dispatch_environment
 
 import std.types { String, Bool, List, FilePath, NonEmptyStr }
 import std.upsert_decision {
@@ -23,7 +23,7 @@ import gunbc.ensure {
   EnsurePlanUnavailable,
   ensure_reconcile,
 }
-import gunbc.roadmap_execution_contract {
+import gunbc.roadmap.roadmap_execution_contract {
   ExecutionCapability,
   WorkItemExecutionContract,
   ExecutionContractUnspecified,
@@ -237,7 +237,7 @@ fn capability_ensure_receipt(
   identity_matches: Bool,
 ) -> CapabilityEnsureReceipt
   admit_callers: [
-    decl_ref(module_path: "gunbc.roadmap_dispatch_environment", decl_name: "capability_ensure_observe"),
+    decl_ref(module_path: "gunbc.roadmap.roadmap_dispatch_environment", decl_name: "capability_ensure_observe"),
     decl_ref(module_path: "test.claim.capability_ensure_fixture", decl_name: "grounded_capability_ensure_witness_fixture"),
     decl_ref(module_path: "test.claim.capability_ensure_fixture", decl_name: "refused_capability_ensure_witness_fixture"),
   ]

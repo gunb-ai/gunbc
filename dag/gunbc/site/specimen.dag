@@ -10,11 +10,11 @@ import extdeps.google.issue_tracker {
   IssueActionButtonIdiom, IssueButtonContainedPrimary, IssueButtonOutlined, IssueButtonText,
   IssueActionAvailability, IssueActionEnabled, IssueActionDisabled,
 }
-import gunbc.roadmap_issue_status {
+import gunbc.roadmap.roadmap_issue_status {
   issue_display_statuses, DisplayReady, DisplayActive, DisplayReview, DisplayBlocked, DisplayDone, DisplaySuperseded,
 }
-import gunbc.roadmap_priority { RoadmapPriority, DerivedPriority, PriorityP0, PriorityP1, PriorityP2, PriorityP3 }
-import gunbc.roadmap_issue_location { issue_page_path }
+import gunbc.roadmap.roadmap_priority { RoadmapPriority, DerivedPriority, PriorityP0, PriorityP1, PriorityP2, PriorityP3 }
+import gunbc.roadmap.roadmap_issue_location { issue_page_path }
 import gunbc.roadmap.roadmap_lineage { LineageNoParent }
 import gunbc.roadmap.roadmap_hierarchy_view {
   NodePresentation, NodeStatus, NodeStatusDerived, NodeStatusUnavailable, node_status_derived,
@@ -57,10 +57,10 @@ import gunbc.site.element.build_meter {
 import gunbc.roadmap.roadmap_build_meter { build_meter_view_of, compact_work_summary_of_view, BuildMeterToolCount, BuildMeterRoundOperations }
 import gunbc.harness.harness_tool { RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool }
 import gunbc.harness.harness_throughput { HarnessRoundLedger, RoundObservation, RoundsObserved, RoundsUnobserved }
-import gunbc.roadmap_provider_events { ProviderExecutionState, ProviderRunning, ProviderAwaitingSeat, ProviderCompleted, ProviderNotStarted, ProviderBudgetSpent, ProviderEventsRefused, ProviderFailed }
+import gunbc.roadmap.roadmap_provider_events { ProviderExecutionState, ProviderRunning, ProviderAwaitingSeat, ProviderCompleted, ProviderNotStarted, ProviderBudgetSpent, ProviderEventsRefused, ProviderFailed }
 import gunbc.site.build_meter_client { build_meter_dwell_ms }
 import gunbc.site.specimen_meter_client { specimen_hand_attribute, specimen_flap_attribute, specimen_target_attribute, specimen_flap_ms }
-import gunbc.roadmap_workflow_stage {
+import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegment, WorkflowSegmentKind, WorkflowSegmentState, WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
   WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentStopped,
   EnvironmentWorkflowSegment, WorkspaceWorkflowSegment, AgentWorkflowSegment, SubmissionWorkflowSegment,

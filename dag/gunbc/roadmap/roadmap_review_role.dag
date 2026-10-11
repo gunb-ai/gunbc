@@ -6,7 +6,7 @@ import extdeps.languages.json.parse {
   json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
 }
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonArray, JsonObject }
-import gunbc.roadmap_workflow_stage {
+import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegmentState, WorkflowSegmentComplete, WorkflowSegmentFailed, WorkflowSegmentRefused,
   WorkflowSegmentPending, WorkflowSegmentActive,
 }

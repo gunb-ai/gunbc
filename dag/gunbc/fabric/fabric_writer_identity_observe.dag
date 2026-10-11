@@ -1,6 +1,6 @@
-module gunbc.fabric_writer_identity_observe
+module gunbc.fabric.fabric_writer_identity_observe
 
-import gunbc.fabric_storage_binding { fabric_storage_binding_for }
+import gunbc.fabric.fabric_storage_binding { fabric_storage_binding_for }
 
 import std.types { String, NonEmptyStr, List, Bool }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -8,11 +8,11 @@ import std.fabric_storage { fabric_storage_fault_wire }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tailscale.identity { TailnetIdentity, TailnetUser, TailnetIdentityAbsent }
 import product.host_identity { HostIdentity, host_identity_eq }
-import gunbc.fabric_storage_placement { fabric_storage_placement, FabricStoragePlaced, FabricStorageUnplaced }
-import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles, FabricStorageDoorSocket, FabricStorageServed, FabricStorageBindingUnplaced, FabricStorageBindingRefused, fabric_storage_presented_identity }
-import gunbc.fabric_storage_wire { FabricIdentityRead, FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused, FabricIdentityLocalPeer, FabricIdentityUnattested }
+import gunbc.fabric.fabric_storage_placement { fabric_storage_placement, FabricStoragePlaced, FabricStorageUnplaced }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles, FabricStorageDoorSocket, FabricStorageServed, FabricStorageBindingUnplaced, FabricStorageBindingRefused, fabric_storage_presented_identity }
+import gunbc.fabric.fabric_storage_wire { FabricIdentityRead, FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused, FabricIdentityLocalPeer, FabricIdentityUnattested }
 import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
-import gunbc.host_effect { LocalShell }
+import gunbc.host.host_effect { LocalShell }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
 
@@ -24,15 +24,15 @@ import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent
 // refuse every real writer or admit every one.
 //
 // This mode takes that reading from the one place it can be true: the fleet host itself, through
-// the served door its writes take (gunbc.fabric_storage_client fabric_storage_presented_identity ->
-// gunbc.fabric_storage_serve's `identity` operation). One dispatch per fleet host, one receipt per
+// the served door its writes take (gunbc.fabric.fabric_storage_client fabric_storage_presented_identity ->
+// gunbc.fabric.fabric_storage_serve's `identity` operation). One dispatch per fleet host, one receipt per
 // dispatch, naming the host, the binding it resolved to, the identity that came back and what it
 // grounds. It reads nothing else and writes nothing on any host but the runner's own receipt file.
 //
 // THE PLACED HOST READS THE SAME DOOR THROUGH ITS SOCKET. srv1 writes through the door's unix
 // socket (FabricStorageDoorSocket), so dispatched there this mode reads the ACCOUNT the kernel
 // attested for the job -- `local <user>` -- the principal the door's local roster admits or refuses
-// (gunbc.fabric_writer_roster). Before 2026-09-27 srv1 wrote the files in process and read
+// (gunbc.fabric.fabric_writer_roster). Before 2026-09-27 srv1 wrote the files in process and read
 // Unproxied; that arm now arises only for an explicitly in-process binding.
 //
 // THE HOST THE DISPATCH NAMES MUST BE THE HOST THE JOB RUNS ON. The runner label selects the

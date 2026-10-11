@@ -173,7 +173,7 @@ fn filed_request_of(filing: CasGenerationRead) -> FiledRequestReading {
 
 // ── THE STORE'S SIDE ──────────────────────────────────────────────────────────────────────────
 //
-// CONSUMED BY THE STORE'S DECISION: gunbc.fabric_store_operation_admission admit_store_operation
+// CONSUMED BY THE STORE'S DECISION: gunbc.fabric.fabric_store_operation_admission admit_store_operation
 // verifies every presented receipt through verify_store_receipt before it reads the approved intent
 // (d0_store_operation_wall PR 4; moved here from the mint's change so the verifier lands with its
 // consumer, proud-deer-538 option D).

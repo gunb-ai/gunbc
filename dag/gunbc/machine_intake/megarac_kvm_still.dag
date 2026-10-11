@@ -1,4 +1,4 @@
-module gunbc.machine_intake_megarac_kvm_still
+module gunbc.machine_intake.megarac_kvm_still
 
 import std.types { Bool, Int, List, NonEmptyStr, Unit }
 import std.algebra { trim }
@@ -6,11 +6,11 @@ import std.measure { Second, second, second_count, Millisecond, millisecond, mil
 import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
 import extdeps.crypto.hash { Digest }
-import gunbc.runner_browser_toolchain {
+import gunbc.runner.runner_browser_toolchain {
   RunnerBrowserToolchainResolution,
 }
-import gunbc.megarac_managed_host { AdmittedMegaRacHost }
-import gunbc.megarac_operation_standing { MegaRacKvmCanvasStill, MegaRacVirtualMediaAttach, MegaRacSdrSocketNaming }
+import gunbc.host.megarac_managed_host { AdmittedMegaRacHost }
+import gunbc.host.megarac_operation_standing { MegaRacKvmCanvasStill, MegaRacVirtualMediaAttach, MegaRacSdrSocketNaming }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.owned_process { OwnedRelease, OwnedProcessStanding, OwnedRunning, owned_process_release, owned_release_text, owned_process_standing, owned_process_standing_text }
 import std.optional { Present, Absent }
@@ -32,7 +32,7 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 // readers below read the committed journal of an observer run that did execute (the receipt cited by
 // gunbc.megarac_operation_evidence), so what was observed stays readable.
 //
-// THE CONTROLLER IS AN ADMITTED MEGARAC HOST (gunbc.megarac_managed_host AdmittedMegaRacHost, operation
+// THE CONTROLLER IS AN ADMITTED MEGARAC HOST (gunbc.host.megarac_managed_host AdmittedMegaRacHost, operation
 // MegaRacKvmCanvasStill).
 
 // THE OBSERVER'S JOURNAL VOCABULARY IS DECLARED HERE ONCE. The observer script receives it as the
@@ -155,7 +155,7 @@ fn kvm_polls_within(wait: Second) -> Int {
 }
 
 // The owned release that follows a stop wait with no stopped line: TERM, a two-second grace, KILL and
-// the confirming reads (gunbc.machine_intake_sol_hold mtcollins1_sol_hold_release_script), rounded up.
+// the confirming reads (gunbc.machine_intake.sol_hold mtcollins1_sol_hold_release_script), rounded up.
 data megarac_kvm_observer_release_allowance: Second = second(count: 5)
 
 // What the boot step's timeout must carry for the observer: the establishment wait, the terminal

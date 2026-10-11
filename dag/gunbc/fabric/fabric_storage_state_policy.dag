@@ -1,4 +1,4 @@
-module gunbc.fabric_storage_state_policy
+module gunbc.fabric.fabric_storage_state_policy
 
 import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
 

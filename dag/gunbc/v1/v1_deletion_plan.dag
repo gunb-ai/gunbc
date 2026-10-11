@@ -1,13 +1,13 @@
-module gunbc.v1_deletion_plan
+module gunbc.v1.v1_deletion_plan
 
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 
 // COMPACT V1 EXIT MODEL (operator verdict 2026-07-28, retiring this file's second-mutable-roadmap
 // role). This file owns exactly one thing: the identity and meaning of the four v1 finish lines and
 // the roadmap node each binds to. It owns nothing else. The dependency graph is
-// gunbc.roadmap_authority (RoadmapEdge rows); per-node acceptance criteria live on the roadmap
+// gunbc.roadmap.roadmap_authority (RoadmapEdge rows); per-node acceptance criteria live on the roadmap
 // tickets themselves (TicketFields red_control/handback — restating them here would be a second
-// representation); acceptance is a gunbc.roadmap_model RoadmapAcceptanceReceipt row in the
+// representation); acceptance is a gunbc.roadmap.roadmap_model RoadmapAcceptanceReceipt row in the
 // authority, so a finish line is reached exactly when its bound node is accepted, never by an
 // assertion in this file. The prior three-gate brick ledger
 // (PlanGate/PlanMilestone/BrickState/ConfidenceBasis rows, lane_state execution prose, day

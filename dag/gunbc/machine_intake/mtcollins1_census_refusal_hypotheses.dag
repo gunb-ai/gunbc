@@ -1,4 +1,4 @@
-module gunbc.machine_intake_mtcollins1_census_refusal_hypotheses
+module gunbc.machine_intake.mtcollins1_census_refusal_hypotheses
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
@@ -8,7 +8,7 @@ import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import extdeps.linux.xhci_hcd { linux_xhci_host_controller_product_desc, linux_xhci_hcd_driver_name, linux_xhci_pci_module_name, linux_xhci_pci_renesas_module_name }
 import extdeps.linux.module_decompress { ZstdCorruptionDetected, ZstdErrorCodeOther, zstd_error_code_name }
-import gunbc.machine_intake_kernel_module_decompression_observation {
+import gunbc.machine_intake.kernel_module_decompression_observation {
   KernelModuleDecompressionObservation, ModuleDecompressionRefusal, NoRefusalRecorded, RefusalRecorded,
   RefusalIdentityReading, RefusalIdentityUnread, RefusalIdentityCandidates,
   kernel_module_decompression_observation, stamped,
@@ -23,7 +23,7 @@ import gunbc.machine_intake_kernel_module_decompression_observation {
 //     window too large, an incomplete header -- prints a different line, and a checksum mismatch is
 //     status 22; so no frame-parameter defect produces the observed line.
 //   * The module FILES are sound as stored. The census initrd is the stock 24.04.3 /casper/initrd by
-//     the publish gate (gunbc.machine_intake_mtcollins1_census_image_publish); every one of its 2479
+//     the publish gate (gunbc.machine_intake.mtcollins1_census_image_publish); every one of its 2479
 //     .ko.zst members passes `zstd -t` and is a single-segment frame with the checksum flag and no
 //     dictionary (off-boot scan, crisp-moth-31, 2026-09-30, on the stock ISO sha256 2ee2163c...).
 //   * On the real host the SAME media decode on one boot and refuse on another: run 36253081549
@@ -336,7 +336,7 @@ fn census_qemu_probe_verdict(capture: CensusBootCapture) -> CensusQemuProbeVerdi
 // DECLARED FRONTIER (DESIGN 3c): the verdict's production consumer is the PR3 boot mode.
 data census_qemu_probe_verdict_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.machine_intake_mtcollins1_census_refusal_hypotheses", decl_name: "census_qemu_probe_verdict"),
+    ref: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_census_refusal_hypotheses", decl_name: "census_qemu_probe_verdict"),
     reason: "census_qemu_probe_verdict|consumer:mtcollins1_census_qemu_probe-boot-mode",
     dissolution: unbound_dissolution(description: "the mtcollins1_census_qemu_probe fleet-converge mode (PR3 of work item adhoc-a576cc2a-bfe) boots the digest-verified census ISO under QEMU and reads each arm's retained serial log through this verdict"),
   ),
@@ -345,11 +345,11 @@ data census_qemu_probe_verdict_frontier_rows: List<FrontierRow> = [
 // DECLARED FRONTIER (DESIGN 3c). The production consumer of this reading is the mtcollins1 boot
 // route's retained SOL captures, read ACROSS attempts; that route retains one capture per run and
 // does not yet collect them, so today the reading is exercised by
-// test.claim.machine_intake.mtcollins1_census_refusal_hypotheses_witness_test over the two real
+// test.claim.machine_intake.mtcollins1_census_refusal_hypotheses_witness over the two real
 // receipts. It is consumed in production when repeated census boots are read together.
 data census_refusal_hypotheses_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.machine_intake_mtcollins1_census_refusal_hypotheses", decl_name: "census_refusal_hypotheses_text"),
+    ref: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_census_refusal_hypotheses", decl_name: "census_refusal_hypotheses_text"),
     reason: "census_refusal_hypotheses_text|consumer:repeated-mtcollins1-census-boot-captures",
     dissolution: unbound_dissolution(description: "the mtcollins1 boot route reads the retained SOL captures of repeated census boots together and reports this reading beside its verdict"),
   ),

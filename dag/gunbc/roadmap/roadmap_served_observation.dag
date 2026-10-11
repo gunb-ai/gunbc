@@ -1,7 +1,7 @@
-module gunbc.roadmap_served_observation
+module gunbc.roadmap.roadmap_served_observation
 
-import gunbc.roadmap_runtime_plan { roadmap_plan_projection }
-import gunbc.roadmap_page { issue_query_snapshot_for_projection }
+import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }
+import gunbc.roadmap.roadmap_page { issue_query_snapshot_for_projection }
 import gunbc.site.markup { page_render_refusal_body }
 
 import gunbc.roadmap.roadmap_event_log { RoadmapStandings }
@@ -30,23 +30,23 @@ import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
   json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
 }
-import gunbc.host_layout { instance_receipts_dir }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.host.host_layout { instance_receipts_dir }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.auth.profile_projection { profile_store_layout_for_instance, profile_store_read_all, ProfileStoreRead, ProfileStoreUnread, PrincipalProfile }
-import gunbc.roadmap_page { roadmap_daily_workspace_page_for_projection_observed, roadmap_daily_workspace_page_for_projection_observed_stale }
-import gunbc.roadmap_authority { RoadmapAuthorityProjection }
-import gunbc.roadmap_site_surface_render { site_artifact_digest }
-import gunbc.roadmap_dispatch_actuator { dispatch_attempt_launch_path_for_instance }
-import gunbc.roadmap_launch_admission {
+import gunbc.roadmap.roadmap_page { roadmap_daily_workspace_page_for_projection_observed, roadmap_daily_workspace_page_for_projection_observed_stale }
+import gunbc.roadmap.roadmap_authority { RoadmapAuthorityProjection }
+import gunbc.roadmap.roadmap_site_surface_render { site_artifact_digest }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_attempt_launch_path_for_instance }
+import gunbc.roadmap.roadmap_launch_admission {
   LaunchHostStanding, LaunchHostObserved, LaunchHostObserveOnly, LaunchHostHalted, LaunchHostUnobserved,
   launch_identity_of_json, LaunchIdentityDecoded, LaunchIdentityUnreadable, launch_identity_revision_hex,
 }
-import gunbc.fleet_desired_observe { LocalTreeRevisionObserved, LocalTreeRevisionUnobserved }
+import gunbc.fleet.fleet_desired_observe { LocalTreeRevisionObserved, LocalTreeRevisionUnobserved }
 import extdeps.git.object_store { git_object_id_wire_hex }
-import gunbc.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
-import gunbc.roadmap_presentation { AttemptRevisionObservation, stale_attempt_nodes }
-import gunbc.roadmap_belt_actuate {
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_workflow_progress { WorkflowAttemptProgress }
+import gunbc.roadmap.roadmap_presentation { AttemptRevisionObservation, stale_attempt_nodes }
+import gunbc.roadmap.roadmap_belt_actuate {
   BeltPassOutcome, BeltPassRecorded, BeltPassFailed,
   belt_launch_host_standing_for_page_over,
   belt_sessions_observe_for_instance, belt_sessions_observed_json, belt_sessions_http_status,
@@ -196,7 +196,7 @@ fn served_observation_status_of_label(label: String) -> ServedObservationStatusD
 // attempt's recorded launch identity (written by the actuation path beside the admission receipt);
 // comparing its revision to the deployed-tree head the launch host standing observed decides which
 // attempts answer a superseded question. The DECISION lives in
-// gunbc.roadmap_presentation.stale_attempt_nodes; what lives here is only the effectful read of the
+// gunbc.roadmap.roadmap_presentation.stale_attempt_nodes; what lives here is only the effectful read of the
 // two facts. An unreadable or undecodable launch record yields an empty observation — never a
 // fabricated revision — and the decision arm for an empty fact dims nothing.
 fn served_current_revision_hex(launch: LaunchHostStanding) -> String {

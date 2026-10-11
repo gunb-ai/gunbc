@@ -1,4 +1,4 @@
-module gunbc.fleet_hardware_standing_panel
+module gunbc.fleet.fleet_hardware_standing_panel
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.markup { Fragment }
@@ -13,7 +13,7 @@ import product.installed_bom_reconcile {
   ProcessorObservationHostMismatch, ProcessorModelUnconfirmed,
   DimmCountMatches, DimmCountDiffers,
 }
-import gunbc.fleet_physical_inventory { fleet_dimm_verdicts, fleet_processor_verdicts }
+import gunbc.fleet.fleet_physical_inventory { fleet_dimm_verdicts, fleet_processor_verdicts }
 
 // WHAT THE FLEET IS BELIEVED TO CONTAIN, BESIDE WHAT WAS ACTUALLY READ OFF IT.
 //
@@ -26,7 +26,7 @@ import gunbc.fleet_physical_inventory { fleet_dimm_verdicts, fleet_processor_ver
 // failed training and was reverted, so the tree asserted a memory population the machine did not
 // have, and the slot widths computed from it were wrong on the one host that differed. The verdict
 // existed the whole time and said so. Nobody could see it.
-// Daily-workspace panel over gunbc.fleet_physical_inventory's per-host reconcile verdicts. Renders
+// Daily-workspace panel over gunbc.fleet.fleet_physical_inventory's per-host reconcile verdicts. Renders
 // expectation-versus-observation standing for memory and processor; reads the verdicts directly
 // rather than re-deriving them.
 

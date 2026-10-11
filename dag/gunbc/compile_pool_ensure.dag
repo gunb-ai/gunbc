@@ -3,23 +3,23 @@ module gunbc.compile_pool_ensure
 import std.types { String, NonEmptyStr, Bool, List }
 import std.measure { ByteSize, byte_size_count }
 import std.disposition { ConstructionMechanism, SingleAuthority }
-import gunbc.host_layout {
+import gunbc.host.host_layout {
   CompilePoolPlacement, CompilePoolSliceDeclared, CompilePoolInRunnerSlots,
   gunbc_compile_pool_placement, gunbc_managed_compile_pool_slice }
-import gunbc.build_cache_unit { compile_pool_slice_unit_file }
+import gunbc.build_cache.build_cache_unit { compile_pool_slice_unit_file }
 import extdeps.systemd.unit_file { SystemdUnitFile }
-import gunbc.host_compile_pool {
+import gunbc.host.host_compile_pool {
   CompilePoolObservation,
   CompilePoolSliceObserved,
   CompilePoolSliceAbsent,
   CompilePoolObservationUnavailable,
 }
-import gunbc.fleet_host_budget {
+import gunbc.fleet.fleet_host_budget {
   CompilePoolResolution,
   CompilePoolDerived,
   CompilePoolUnresolved,
 }
-import gunbc.build_cache_instance {
+import gunbc.build_cache.build_cache_instance {
   BuildCacheServerPlacement,
   ServerManagedUnitOwned,
   ServerRunnerOwned,
@@ -207,7 +207,7 @@ fn ensure_yields_slice(admission: EnsureCompilePoolAdmission) -> Bool {
 }
 
 // Named for its admission type, not generically. This was `ensure_is_converged` and collided with
-// gunbc.build_cache_ensure's identically-spelled helper over EnsureBuildCacheAdmission, which both witness
+// gunbc.build_cache.build_cache_ensure's identically-spelled helper over EnsureBuildCacheAdmission, which both witness
 // modules reference bare — see that module's annotation on build_cache_ensure_is_converged for the full
 // account, including the selection-invariance defect that hid the collision from this PR's own CI.
 fn compile_pool_ensure_is_converged(admission: EnsureCompilePoolAdmission) -> Bool {

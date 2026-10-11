@@ -10,7 +10,7 @@ import extdeps.uri { Uri, Https }
 // documentation. This module owns the driver's name, not a PCI device-id table and not any
 // observation of a particular card. A seated ConnectX-4 Lx that Linux has not yet enumerated stays
 // unobserved in the machine-intake receipt; this row is the instrument that receipt names.
-// Consumer: gunbc.machine_intake_mtcollins1_connectx4lx_observation.connectx4lx_host_observation.
+// Consumer: gunbc.machine_intake.mtcollins1_connectx4lx_observation.connectx4lx_host_observation.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,

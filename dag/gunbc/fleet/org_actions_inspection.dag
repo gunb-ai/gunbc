@@ -28,7 +28,7 @@ import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStat
 import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
-import gunbc.host_cli_dependency { first_absent_gh_cli_operation_host_cli_dependency, host_dependency_absent_wire }
+import gunbc.host.host_cli_dependency { first_absent_gh_cli_operation_host_cli_dependency, host_dependency_absent_wire }
 import gunbc.fleet.org_actions_standing {
   ObservedGroupAccess,
   OrgActionsGoal,
@@ -82,7 +82,7 @@ fn render_org_actions_read_refusal(cause: OrgActionsReadRefusal) -> String {
 
 // restricted_to_workflows and selected_workflows are decoded, not skipped: they are the group's
 // WORKFLOW restriction (extdeps.github.org_actions OrgRunnerGroup), and
-// gunbc.runner_group_restriction_observation reads them to decide whether a microVM mint may use
+// gunbc.runner.runner_group_restriction_observation reads them to decide whether a microVM mint may use
 // the group. Both are required members of every element GitHub returns, so an element missing
 // either refuses the whole list rather than reading as unrestricted.
 type RunnerGroupIdentity {
@@ -153,7 +153,7 @@ fn json_member_bool(v: JsonValue, key: String) -> Bool? {
 }
 
 // THE ORGANIZATION'S RUNNER GROUPS HAVE ONE READ, and every consumer goes through it: this
-// inspection, gunbc.runner_group_restriction_ensure_run and the microVM slot controller. It is the
+// inspection, gunbc.runner.runner_group_restriction_ensure_run and the microVM slot controller. It is the
 // REST operation extdeps.github.org_actions github.OrgRunnerGroupsRest ListOrganizationRunnerGroups
 // under a bearer token the caller holds, and one pure fold over what came back -- so there is one
 // page contract (per_page at the documented maximum), one completeness refusal (fewer groups than
@@ -326,7 +326,7 @@ fn org_actions_receipt_text(organization: NonEmptyStr, assessment: GoalAssessmen
 fn org_actions_inspect_wet() -> ProcessExit {
   let credential = env_credential(env_var: org_admin_token_env_name)
   match credential.token {
-    Absent => exit_failure(reason: "OrgActionsCredentialMissing: GUNBC_ORG_ADMIN_TOKEN is absent -- the org-actions workflow step mints it in-run from the gunbai-ci App key (gunbc.ci_spec gunbc_ci_org_admin_app_token_prelude); outside that step there is no credential to read")
+    Absent => exit_failure(reason: "OrgActionsCredentialMissing: GUNBC_ORG_ADMIN_TOKEN is absent -- the org-actions workflow step mints it in-run from the gunbai-ci App key (gunbc.ci.ci_spec gunbc_ci_org_admin_app_token_prelude); outside that step there is no credential to read")
     Present { value: _ } => match first_absent_gh_cli_operation_host_cli_dependency() {
       Present { value: a } =>
         exit_failure(reason: concat("OrgActionsExecutorPrerequisiteAbsent: ", host_dependency_absent_wire(tool: a.tool, hint: a.hint)))

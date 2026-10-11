@@ -1,9 +1,9 @@
 module gunbc.roadmap.roadmap_attempt_continuation
 
-import gunbc.roadmap_nesting { RoadmapMembership }
+import gunbc.roadmap.roadmap_nesting { RoadmapMembership }
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
-import gunbc.roadmap_model { RoadmapEdge }
+import gunbc.roadmap.roadmap_model { RoadmapEdge }
 import gunbc.roadmap.roadmap_submission {
   SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureUnreadable,
   SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
@@ -14,7 +14,7 @@ import gunbc.roadmap.roadmap_supervisor {
   SupervisorVerdictObservation, SupervisorVerdictAbsent, SupervisorVerdictBound, SupervisorVerdictUnreadable,
   SupervisorTarget, SupervisorEscalation, supervisor_target_for,
 }
-import gunbc.roadmap_workflow_stage {
+import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegment,
   WorkflowSegmentState, WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
   WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentStopped,

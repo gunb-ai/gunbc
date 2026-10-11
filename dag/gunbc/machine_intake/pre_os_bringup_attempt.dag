@@ -1,4 +1,4 @@
-module gunbc.machine_intake_pre_os_bringup_attempt
+module gunbc.machine_intake.pre_os_bringup_attempt
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
 import std.measure { ByteSize }
@@ -12,7 +12,7 @@ import std.human_intervention {
   NoDischargeSiteModeled,
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import gunbc.machine_intake_pre_os_observation_capabilities {
+import gunbc.machine_intake.pre_os_observation_capabilities {
   ManagedAcActuatorDeclared,
   NoManagedAcActuator,
   PreOsObservationCapabilities,
@@ -23,7 +23,7 @@ import gunbc.machine_intake_pre_os_observation_capabilities {
 
 // ONE PRE-OS BRING-UP ATTEMPT: THE COLLECTORS ARE A CONSTRUCTOR INPUT TO THE ACTUATION, NOT A
 // CHECKLIST BESIDE IT. The receipt that shaped this module (Mt. Collins unit 1, 2026-09-11, evidence
-// gunbc.machine_intake_mtcollins1_32dimm_bringup_observation): the observer armed a watcher for a
+// gunbc.machine_intake.mtcollins1_32dimm_bringup_observation): the observer armed a watcher for a
 // controller down-transition that had already happened, and two stale SOL capture processes were
 // left competing for the one session the controller allows, so the capture that was believed to
 // be watching the reset was watching nothing. Neither was carelessness. Both are ORDERING defects:
@@ -43,7 +43,7 @@ import gunbc.machine_intake_pre_os_observation_capabilities {
 // mint is control-plane only: PowerActuationIssued says the controller ACKNOWLEDGED, which by
 // gunbc.recurring_failure_mode.control_plane_acknowledgement_minted_as_effect cannot construct a
 // terminal about the host. The subject-level reading lives in
-// gunbc.machine_intake_pre_os_bringup_verdict and is built from independent observations only.
+// gunbc.machine_intake.pre_os_bringup_verdict and is built from independent observations only.
 
 // ── the actuations, four and not interchangeable ───────────────────────────────────────────────
 
@@ -79,7 +79,7 @@ type CollectorKind
 // activation, under an explicit deadline that will terminate it -- because a correctly held
 // client never exits on its own, and a collector that only waits on it never returns. THIS PROOF
 // IS A SUMMARY OF AN ATTEMPT OBSERVATION: the per-attempt carrier (activation, coverage,
-// termination, host payload) is gunbc.machine_intake_sol_collector_observation on gunbc#11127, and
+// termination, host payload) is gunbc.machine_intake.sol_collector_observation on gunbc#11127, and
 // deriving this arm from a SolCollectorObservation whose activation is acknowledged and whose
 // termination is not yet decided is the declared join between the two, in whichever change lands
 // second.

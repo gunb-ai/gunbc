@@ -38,7 +38,7 @@ import std.algebra { Cons, Empty }
 // THE AGENT SESSION IS A CLASS AND NOT AN OPERATION. A dispatched worker session holds memory for its
 // whole lifetime and reserves it from its own pool (gunbc.compute.host_capacity AgentSessionPool), so
 // it is resolved by the same grant rule -- rows, sample floor, ceiling fallback -- without being a
-// WorkOperation: work_class_of never yields it, and gunbc.roadmap_session_placement names it
+// WorkOperation: work_class_of never yields it, and gunbc.roadmap.roadmap_session_placement names it
 // directly. It has no rows today, so it reserves the ceiling, which is the amount the worker unit's
 // MemoryMax already carried.
 type WorkClass

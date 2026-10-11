@@ -1,4 +1,4 @@
-module gunbc.fleet_wireless_link
+module gunbc.fleet.fleet_wireless_link
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.algebra { trim }

@@ -1,4 +1,4 @@
-module gunbc.fleet_main_revision
+module gunbc.fleet.fleet_main_revision
 
 import std.types { String, NonEmptyStr, Bool, Int }
 import extdeps.git.object_store { GitObjectId, git_object_id_eq, git_object_id_from_untagged_hex, git_object_id_wire_hex }
@@ -24,7 +24,7 @@ import gunbc.live_deploy.revision {
   DivergedHistories,
   RelationUnverifiable,
 }
-import gunbc.fleet_revision_acceptance { AcceptedFleetRevision }
+import gunbc.fleet.fleet_revision_acceptance { AcceptedFleetRevision }
 
 // fleet-main-revision-authority (arc item 3, operator directive 2026-08-08): the fleet's
 // desired revision derives from MERGED, FLOOR-GREEN main — never from a CLI argument, a
@@ -326,7 +326,7 @@ type FleetDesiredAdvanceInput<E, M>
 // capability. Inferring the second from the first is how a workflow that was only ever authorized
 // to ADVANCE an existing ref silently acquires the power to mint one.
 //
-// The live path (gunbc.fleet_desired_admission) refuses first creation today, deliberately, so
+// The live path (gunbc.fleet.fleet_desired_admission) refuses first creation today, deliberately, so
 // admitting a create here would also have widened live policy under the label "consumer port".
 // When first creation is authorized it arrives as its own positive carrier and only the
 // CONJUNCTION -- ref observed absent AND creation authorized -- may admit; the arm returns then,

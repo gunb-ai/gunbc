@@ -170,7 +170,7 @@ mod heads_reading_item_boundary_tests {
     use super::*;
 
     fn heads_names(content: &str) -> Vec<String> {
-        let path = "dag/test/fixture/heads_after_data_provider_test.dag".to_string();
+        let path = "dag/test/fixture/heads_after_data_provider.dag".to_string();
         let tokens = v1_compiler_tokenize::tokenize(
             content.to_string(),
             path.clone(),

@@ -1,4 +1,4 @@
-module v2.test.generated.idempotent_operation_conformance
+module v2.test.claim.generated.idempotent_operation_conformance
 
 import std.types { List }
 import v2.compiler.eval {

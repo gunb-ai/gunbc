@@ -230,7 +230,7 @@ fn serialize_ssh_client_options(options: List<SshClientOption>) -> List<String> 
 //
 // Still only a builder, not the wall: a caller may prepend its own option and OpenSSH takes the
 // FIRST obtained value per keyword, so an earlier StrictHostKeyChecking=no silently outranks
-// everything here. The wall is gunbc.fleet_known_hosts_anchor FleetOpenSshTrustPolicy — sealed,
+// everything here. The wall is gunbc.fleet.fleet_known_hosts_anchor FleetOpenSshTrustPolicy — sealed,
 // constructible only from a successful materialization, and what consumers accept. This builder
 // exists separately because it is PURE and directly assertable by a witness; the sealed policy
 // requires an executed materialization.

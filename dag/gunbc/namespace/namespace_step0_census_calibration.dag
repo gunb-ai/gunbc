@@ -1,4 +1,4 @@
-module gunbc.namespace_step0_census_calibration
+module gunbc.namespace.namespace_step0_census_calibration
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.occurrence_identity {
@@ -11,7 +11,7 @@ import std.occurrence_identity {
   FieldOccurrence,
   MethodOccurrence
 }
-import gunbc.namespace_step0_binding_provenance_contract {
+import gunbc.namespace.namespace_step0_binding_provenance_contract {
   Step0ReferenceFamily,
   TypeAnnotationReference,
   GenericTypeArgumentReference,
@@ -112,7 +112,7 @@ type Step0OccurrenceMultiplicity
 
 // THE PRODUCER'S EXECUTABLE BRANCHES, ENUMERATED, because "each row names the exact producer branch
 // it claims to cover" is only checkable against a closed roster of branches. This is a model of
-// tools.reference_occurrence_binding_census's realization, and it is the one thing here that can go
+// gunbc.instruments.reference_occurrence_binding_census's realization, and it is the one thing here that can go
 // stale silently: a branch added to the host with no arm added below is invisible. Its next rung is
 // the branch roster being PROJECTED from the realization rather than authored beside it, which needs
 // the realization carrier to be inhabited rather than staged.

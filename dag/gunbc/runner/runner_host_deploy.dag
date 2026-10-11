@@ -1,4 +1,4 @@
-module gunbc.runner_host_deploy
+module gunbc.runner.runner_host_deploy
 
 import std.types { NonEmptyStr, String, Int, List }
 import extdeps.exec.command { ArgvCommand, shell_command_render, env_prefixed_command }
@@ -17,24 +17,24 @@ import gunbc.auth.github_apps {
 import extdeps.cache.sccache { SccacheBinaryRelease, sccache_release_0_15_0, sccache_install_script }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.container.docker_ce { docker_ce_apt_repo_noble_arm64, docker_ce_packages, docker_ce_repo_install_script }
-import gunbc.fleet_intent { fleet_intent_known_hosts }
+import gunbc.fleet.fleet_intent { fleet_intent_known_hosts }
 import product.host_identity { HostIdentity }
-import gunbc.build_cache_instance { runner_slot_index_suffix, RunnerSlotIdentity }
-import gunbc.runner_unit { runner_unit_name_of_registration }
-import gunbc.runner_slot_allocation {
+import gunbc.build_cache.build_cache_instance { runner_slot_index_suffix, RunnerSlotIdentity }
+import gunbc.runner.runner_unit { runner_unit_name_of_registration }
+import gunbc.runner.runner_slot_allocation {
   gunbc_runner_committed_width,
   host_fleet_slot_indices,
   host_committed_identities_at,
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
   runner_width_unresolved_cause_text,
 }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
-import gunbc.fleet_enrollment { CiRunnerParticipation, hosts_enrolled_for }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_enrollment { CiRunnerParticipation, hosts_enrolled_for }
 import std.algebra { Cons, Empty }
 
 // VOID CITATION RETIRED (operator ruling 2026-08-06): ctrl:scripts/session-dashboard/host/* path
 // literals and void_note twins were deleted — ctrl is a dead repo, not a live upstream. Runner slot
-// materialization is owned in gunbc.runner_slot_provision / gunbc.runner_lifecycle on
+// materialization is owned in gunbc.runner.runner_slot_provision / gunbc.runner.runner_lifecycle on
 // host_effect_apply. runner_host_installer_command_argv remains a legacy argv builder taking
 // installer_path as a parameter; it is not an authority row citing ctrl.
 
@@ -110,8 +110,8 @@ data runner_job_user_env_name: String = "CTRL_RUNNER_JOB_USER"
 
 // srv4's historical five-slot pin is RETIRED (operator ruling 2026-08-06) and runner_count on
 // srv4_runner_host_spec names the materialization target, DERIVED from
-// gunbc.runner_slot_allocation gunbc_runner_committed_width rather than authored here. Disk binding lives in APPLY-TIME preflight
-// in gunbc.runner_lifecycle runner_width_disk_preflight -- not a silent row pin, and never an
+// gunbc.runner.runner_slot_allocation gunbc_runner_committed_width rather than authored here. Disk binding lives in APPLY-TIME preflight
+// in gunbc.runner.runner_lifecycle runner_width_disk_preflight -- not a silent row pin, and never an
 // absorbing fallback to 5 when disk is unobservable.
 //
 // THE WIDTH AND THE DISK ARITHMETIC IN THIS NOTE WERE BOTH SIX AND ARE NOW TWENTY-ONE, AND THE
@@ -126,7 +126,7 @@ data runner_job_user_env_name: String = "CTRL_RUNNER_JOB_USER"
 // committed width it cannot materialize. Nothing here lowers the commitment to hide that --
 // absorbing to a width the disk happens to permit is the fallback that ruling removed.
 //
-// WHETHER THE REFUSAL IS REAL IS UNRESOLVED, because the charge is circular. gunbc.runner_lifecycle
+// WHETHER THE REFUSAL IS REAL IS UNRESOLVED, because the charge is circular. gunbc.runner.runner_lifecycle
 // runner_slot_disk_budget_per_slot_note derives 40.96 GB from "about 38GB per slot at width 7 on
 // 500GB class disk" -- disk size divided by desired width, so the number was computed FROM a width
 // and is now used to constrain one. A live observation of per-slot usage under an active reclaimer
@@ -137,19 +137,19 @@ data runner_job_user_env_name: String = "CTRL_RUNNER_JOB_USER"
 // question is genuinely open. DISSOLVE-ON: a measured per-slot disk series on srv4.
 
 // runner_count IS DERIVED, NOT AUTHORED, AND THAT CLOSES A FORK THAT WOULD HAVE SILENTLY EATEN A
-// WIDTH CHANGE. These rows carried a literal 6 while gunbc.runner_slot_allocation
+// WIDTH CHANGE. These rows carried a literal 6 while gunbc.runner.runner_slot_allocation
 // gunbc_runner_committed_width independently answered the same question -- how many slots does this
 // host carry -- so one concept had two authorings and the deploy side was the one nobody
 // re-derived. The cost was not hypothetical: the 2026-08-23 CPU-axis change moved committed width
 // to 21 on srv3 and srv4, and with the literal in place PROVISIONING WOULD STILL HAVE STOOD UP SIX.
 // The allocation model and the materialization path would have disagreed about the fleet with no
 // diagnostic anywhere, which is exactly the roster-versus-prose failure
-// gunbc.runner_slot_allocation width_is_a_minimum_over_axes_note records for srv4.
+// gunbc.runner.runner_slot_allocation width_is_a_minimum_over_axes_note records for srv4.
 //
 // THE DIRECTION IS DELIBERATE. Width is decided by the conservation and admission axes and
 // materialization CONSUMES that decision; a deploy row is not a place to re-decide it. The disk
 // question that the old srv4 note worried about is unaffected and still lives where it belongs --
-// apply-time gunbc.runner_lifecycle runner_width_disk_preflight refuses on insufficient or
+// apply-time gunbc.runner.runner_lifecycle runner_width_disk_preflight refuses on insufficient or
 // unobservable headroom rather than lowering the count here.
 //
 // srv1 AND srv2 NOW HAVE ROWS, closing the gap this note declared on 2026-08-23. All four hosts are
@@ -179,7 +179,7 @@ data runner_job_user_env_name: String = "CTRL_RUNNER_JOB_USER"
 // -- which was false, and false in the direction that reads as a measurement. That five came from
 // subtracting a session reservation that is UNESTABLISHED on srv2, so no memory axis ever measured
 // it; with the axis honestly unmeasured nothing sits at srv2's committed width and the five is a
-// HELD allocation, reached by a held arm that gunbc.runner_slot_allocation has since deleted. The distinction
+// HELD allocation, reached by a held arm that gunbc.runner.runner_slot_allocation has since deleted. The distinction
 // is operationally load-bearing here, in the module that hands a width to a provisioning target: a
 // memory bound is relieved by buying DIMMs, and a held width is relieved by nothing except
 // re-grounding the denominator. Two rows that look identical here still resolve to very different
@@ -309,7 +309,7 @@ type RunnerHostDeployResolution
 // deploy, so a caller cannot proceed by accident; the four enrolled hosts are the whole population
 // and a fifth is a row someone must author, not a default someone inherits.
 //
-// This mirrors gunbc.runner_slot_allocation gunbc_runner_committed_width, which answers
+// This mirrors gunbc.runner.runner_slot_allocation gunbc_runner_committed_width, which answers
 // RunnerWidthUnresolved for an unknown host on the same reasoning: an unclassified machine is
 // unknown, not typical. An earlier revision of this sentence said that authority "answers zero
 // slots for an unknown host" -- which was true of the deleted Int API and is the exact conflation
@@ -325,7 +325,7 @@ fn runner_host_deploy_for(host: HostIdentity) -> RunnerHostDeployResolution {
 }
 
 // THE ROSTER IS THE ENROLLED CI POPULATION, EVERY HOST THROUGH THE SAME RESOLUTION. It is read off
-// gunbc.fleet_enrollment rather than listed here, so a host enrolled for CI appears with whatever
+// gunbc.fleet.fleet_enrollment rather than listed here, so a host enrolled for CI appears with whatever
 // disposition it has: a refused width stays a member rather than an absence, and an enrolled host
 // with no runner spec -- a provider guest whose runner role is not modeled -- appears as Unmodeled,
 // so a fleet total that walks this roster cannot look complete while one host cannot be deployed.
@@ -396,9 +396,9 @@ data fleet_runner_host_deploy_resolutions: List<RunnerHostDeployResolution> = fl
 
 // runner_count names slots via runner_instance_names / runner_index_seq but does NOT reach
 // runner_host_installer_command_argv — install-actions-runner.sh has no slot-count parameter
-// (per-host handler only). Width realization lives in gunbc.runner_slot_provision.
+// (per-host handler only). Width realization lives in gunbc.runner.runner_slot_provision.
 
-// Execution-surface prereqs the runner host must satisfy (gunbc.fleet_intent
+// Execution-surface prereqs the runner host must satisfy (gunbc.fleet.fleet_intent
 // fleet_intent_execution_surface declares container_engine: the cited Docker Engine row deployed
 // rootless (extdeps.container.docker_engine, extdeps.container.engine) + toolchains: [sccache], so
 // the surface no longer lies). These two scripts provision that surface on a fresh host BEFORE
@@ -423,7 +423,7 @@ fn runner_host_sccache_provision_aarch64() -> String {
 }
 
 // THE ENROLLMENT WALL, and it is CONSTRUCTION rather than a check (DESIGN §5). A host takes no
-// fleet work until it is a row in gunbc.fleet_intent.fleet_intent_known_hosts. This is the standing
+// fleet work until it is a row in gunbc.fleet.fleet_intent.fleet_intent_known_hosts. This is the standing
 // rule the srv4 host-convergence OOM priced (gunbc.plans.fleet_subsumption_manual_gaps section C):
 // converge emitted against an unenrolled host derives NOTHING for it — or worse, stamps template
 // drop-ins carrying ANOTHER host's widths — and the enrolled intent row is exactly where
@@ -467,7 +467,7 @@ fn admit_runner_host(deploy: RunnerHostDeploy) -> RunnerHostAdmission {
       host_label: deploy.host_label,
       reason: concat(
         concat("runner_host_deploy: host '", deploy.host_label as String),
-        "' is absent from gunbc.fleet_intent.fleet_intent_known_hosts; it takes no fleet work until it is an intent row with a converge receipt. Enrolling it is what gives runner_deployment_plan the host RAM to check the slot caps against. Fail-closed, no unenrolled install.",
+        "' is absent from gunbc.fleet.fleet_intent.fleet_intent_known_hosts; it takes no fleet work until it is an intent row with a converge receipt. Enrolling it is what gives runner_deployment_plan the host RAM to check the slot caps against. Fail-closed, no unenrolled install.",
       ) as NonEmptyStr,
     }
   }
@@ -526,7 +526,7 @@ fn runner_index_seq(n: Int) -> List<Int> {
 
 // THE ACTIONS RUNNER UNITS ARE THE FLEET RANGE, NOT 1..runner_count. On the host carrying the
 // microVM shakedown slot, runner_count includes that slot at its authored index, so the Actions
-// units stop one below the count (gunbc.runner_slot_allocation host_fleet_slot_indices).
+// units stop one below the count (gunbc.runner.runner_slot_allocation host_fleet_slot_indices).
 fn runner_instance_names(deploy: RunnerHostDeploy) -> List<String> {
   map(
     host_fleet_slot_indices(host: deploy.host_label as HostIdentity, committed: deploy.runner_count),
@@ -535,7 +535,7 @@ fn runner_instance_names(deploy: RunnerHostDeploy) -> List<String> {
 }
 
 // EVERY COMMITTED SLOT IDENTITY ON THE DEPLOY'S HOST: the fleet range plus any authored member
-// above it (gunbc.runner_slot_allocation host_committed_identities_at), one answer for every
+// above it (gunbc.runner.runner_slot_allocation host_committed_identities_at), one answer for every
 // consumer that enumerates a host's slots from its deploy row.
 fn runner_slot_identities_of(deploy: RunnerHostDeploy) -> List<RunnerSlotIdentity> {
   host_committed_identities_at(host: deploy.host_label as HostIdentity, committed: deploy.runner_count)
@@ -557,7 +557,7 @@ fn runner_enable_command_argv(deploy: RunnerHostDeploy) -> ArgvCommand {
 // through, and it produced four different broken states: srv1 stranded in a retired slot, srv2 and
 // srv3 runner-owned in active ones, srv4 trapped behind a stale socket.
 //
-// Activation now lives in gunbc.runner_activation and consumes a readiness receipt. This module
+// Activation now lives in gunbc.runner.runner_activation and consumes a readiness receipt. This module
 // keeps MATERIALIZATION — the installer command, the slot names, the argv builder — because writing
 // a slot's files cannot spawn a cache server; only letting it accept work can.
 // runner_enable_command_argv stays exported precisely because it is the inert half: an ArgvCommand

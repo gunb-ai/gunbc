@@ -38,7 +38,7 @@ fn declaration_ref_is_type_parameter(ref: DeclarationRef) -> Bool {
 // constructor from the type's own module, never re-mints it.
 
 // WHETHER A TRUE CITATION IS EVEN ASKABLE OF THE RESOLVER. Distinct from whether it resolves:
-// `v2.std.decl_index` `decl_facts` SKIPS TEST .dag FILES DELIBERATELY (gunbc.ci_layer_roots records
+// `v2.std.decl_index` `decl_facts` SKIPS TEST .dag FILES DELIBERATELY (gunbc.ci.ci_layer_roots records
 // the exclusion in the row that exists because a second walk must NOT skip them), so a declaration
 // authored in a witness module is absent from the index while its MODULE is present in
 // `module_declaration_facts_live`. A reference to it is TRUE and UNRESOLVABLE at once: resolution

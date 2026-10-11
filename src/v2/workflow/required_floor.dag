@@ -562,12 +562,12 @@ fn long_home_storage_agreement(path_is_long: Bool, module_is_long: Bool) -> Long
 //
 // THREE PREFIXES, NOT ONE, and the count is what found that. A single `test.claim.long.` test
 // excluded 42 rows of an expected ~310, because the long home is not one namespace: 64 modules
-// there declare `v2.test.long.`, 10 declare `test.claim.long.`, and one declares
+// there declare `v2.test.claim.long.`, 10 declare `test.claim.long.`, and one declares
 // `v2.test.claim.long.`. The directory looks uniform and the authored names are not.
 //
 // One file in that directory declares no long namespace at all —
 // `qualified_declaration_reference_emit_cross_module_witness_test.dag` declares
-// `test.claim.qualified_declaration_reference_emit_cross_module_witness` — so it stays in the
+// `test.claim.long.qualified_declaration_reference_emit_cross_module_witness` — so it stays in the
 // floor. That is the honest consequence of reading the declaration instead of the path, and it
 // is the right consequence: the file sits in a directory claiming one thing while its module
 // says another, and only one of those is a fact the program can read.
@@ -594,7 +594,7 @@ fn long_home_prefixes() -> List<String> {
   Cons {
     head: "test.claim.long.",
     tail: Cons {
-      head: "v2.test.long.",
+      head: "v2.test.claim.long.",
       tail: Cons {
         head: "v2.test.claim.long.",
         tail: Empty {}
@@ -690,12 +690,12 @@ fn fixture_home_prefixes() -> List<String> {
 // A ROW IS ADDED HERE AND NOWHERE ELSE, and adding one is a wall-clock decision: the floor's
 // per-claim cost receipt names what each row costs.
 //
-// test.claim.if_join_pool_binding_witness_test IS ADMITTED AT EXACT MODULE GRAIN, and it is a
+// test.claim.if_join_pool_binding_witness IS ADMITTED AT EXACT MODULE GRAIN, and it is a
 // compiler-floor row by the same test as the rows above: its subject is NAME RESOLUTION -- which
 // declaration a bare reference binds to -- which is the `test.claim.namespace_` family's subject
 // under a different perturbation axis. It is the executing consumer for `fixtures.if_join_pool_binding`.
 // The nested compiles are denominated in a two- or three-module manifest with no corpus roots.
-// Preparation growth is this module's import closure: `tools.multi_module_compile_fixture`, which
+// Preparation growth is this module's import closure: `gunbc.instruments.multi_module_compile_fixture`, which
 // the admitted `test.claim.namespace_` and `test.claim.match_exhaustiveness_coproduct_witness`
 // rows already carry, plus `extdeps.filesystem.filesystem_io` and `v2.std.live_tree`.
 //
@@ -723,22 +723,22 @@ fn fixture_home_prefixes() -> List<String> {
 // This annotation is its receipt, not its declaration: no `//` line can be read by anything.
 //
 // WITHDRAWN, AND NAMED SO THE WIDENING IS A DIFF RATHER THAN A MEMORY: "v2.test.",
-// "test.claim.self_host_", "test.claim.import_admission_closure_membership_witness_test",
-// "test.claim.import_shadowed_by_local_definition_witness_test",
+// "test.claim.self_host_", "test.claim.import_admission_closure_membership_witness",
+// "test.claim.import_shadowed_by_local_definition_witness",
 // "test.claim.class_b_import_closure_binding_refusal_witness",
-// "test.claim.floor_resolve_realization_witness",
-// "test.claim.resolved_call_emission_identity_witness_test",
-// "test.claim.dag_parse_continuation_operator_witness_test",
+// "test.claim.floor.floor_resolve_realization_witness",
+// "test.claim.resolved_call_emission_identity_witness",
+// "test.claim.dag_parse_continuation_operator_witness",
 // "test.claim.generic_lambda_parameter_binding_witness",
 // "test.claim.arity_zero_import_refusal_witness", "test.claim.prose_citation_census_witness",
 // "test.claim.bare_name_", "test.claim.legacy_binding_",
 // "test.claim.compiler_frontend_program_status_witness",
 // "test.claim.discovery_census_witness_test",
-// "test.claim.witness_floor_workflow_consolidation_witness_test",
+// "test.claim.witness_floor_workflow_consolidation_witness",
 // "test.claim.typed_module_cache_capacity_witness",
 // "test.claim.whole_corpus_compile_admission_witness",
-// "test.claim.memory_stall_refusal_witness", "test.claim.docs_projection_gate_test",
-// "test.claim.if_join_pool_binding_witness_test", "test.claim.runner_slot_provision".
+// "test.claim.host.memory_stall_refusal_witness", "test.claim.docs_projection_gate",
+// "test.claim.if_join_pool_binding_witness", "test.claim.runner.runner_slot_provision_witness".
 fn required_gate_prefixes() -> List<String> {
   [
     "test.claim.printer_",
@@ -748,13 +748,13 @@ fn required_gate_prefixes() -> List<String> {
     "test.claim.declared_type_",
     "test.claim.type_reference_",
     "test.claim.namespace_",
-    "test.claim.parse_test",
+    "test.claim.parse",
     "test.claim.v1_dag_parse_witness",
     "test.claim.match_exhaustiveness_coproduct_witness",
-    "test.claim.coproduct_payload_soundness_witness_test",
+    "test.claim.coproduct_payload_soundness_witness",
     "test.claim.action_use_admission_witness",
-    "test.claim.host_budget_source_witness",
-    "test.claim.text_boundary_identity_wall_witness_test",
+    "test.claim.host.host_budget_source_witness",
+    "test.claim.text_boundary_identity_wall_witness",
   ]
 }
 
@@ -764,7 +764,7 @@ fn required_gate_prefixes() -> List<String> {
 // not a segment, and `v2.test.` admits a whole family. That is the right rule for a family and
 // the wrong rule for a single module -- a row spelled as a module name admits every module whose
 // name merely begins with it, so "admitted at exact module grain" was never what the selector
-// enforced (review on gunbc#11708, RF-1): `test.claim.runner_slot_provision` also admits a
+// enforced (review on gunbc#11708, RF-1): `test.claim.runner.runner_slot_provision_witness` also admits a
 // `test.claim.runner_slot_provision_extra`, and the two rows this change first added the same way
 // would have too. Switching the matcher to equality would repair those rows by silently
 // narrowing every family selector beside them, which is the shape review 11256 already refused
@@ -791,8 +791,8 @@ fn required_gate_prefixes() -> List<String> {
 // registrations stopped decoding, the planner refused every whole-org plan, and nothing asked.
 // A partial climb under `gunbc.rung_drop` `required_gate_bankruptcy`, not its retirement; the
 // drop's trigger is unchanged. Preparation growth beyond what `runner_slot_provision` already
-// carries is `gunbc.runner_capacity_plan`, `gunbc.runner_capacity_realize` and
-// `gunbc.fleet_runner_connectivity`; both modules declare SubstrateInputsOnly and their controls
+// carries is `gunbc.runner.runner_capacity_plan`, `gunbc.runner.runner_capacity_realize` and
+// `gunbc.fleet.fleet_runner_connectivity`; both modules declare SubstrateInputsOnly and their controls
 // run against authored rosters. The first required run after admission is the priced receipt,
 // and its identity-grained disposition -- not its overall verdict -- is what shows them executed.
 //
@@ -847,7 +847,7 @@ fn required_gate_prefixes() -> List<String> {
 // silent capacity lie until the kernel OOM-kills something, so its wall has to run where merges are
 // decided. Every claim in the module was measured under the new-witness step ceiling with a local
 // claim_batch run over the module (its [witness] eval_steps lines re-derive the figures, which are
-// not transcribed here). Preparation growth is gunbc.fleet_host_budget, gunbc.ci_runner_placement and
+// not transcribed here). Preparation growth is gunbc.fleet.fleet_host_budget, gunbc.ci.ci_runner_placement and
 // gunbc.live_deploy.served_slice_charge beyond what the runner-capacity rows already carry. The module
 // declares SubstrateInputsOnly. The first required run after admission is the priced receipt; read
 // its identity-grained disposition.
@@ -915,31 +915,31 @@ fn required_gate_prefixes() -> List<String> {
 //
 // THE CALIBRATION SPECIMEN (node adhoc-c9504740-637; sharp-raven-357 ruling with the operator's
 // go-ahead, 2026-10-05). The enrolment margin is judged in calibrated CPU ms, and the factor comes
-// ONLY from `test.claim.floor_eval_step_calibration_specimen_test` measured in the same run on the
+// ONLY from `test.claim.floor_eval_step_calibration_specimen` measured in the same run on the
 // same runner (`v2.workflow.floor_eval_step_calibration` `HostSpeedCalibration`). Outside the gate it
 // dispositions DeclinedOutsideRequiredGate and every gated run would refuse
 // host_speed_specimen_not_measured, so it is admitted here, at exact module grain. One claim of about
 // 55,011 eval steps with no imports beyond std.types; it adds nothing to preparation.
 fn required_gate_authored_modules() -> List<String> {
   [
-    "test.claim.runner_capacity_plan_witness",
-    "test.claim.runner_capacity_realize_witness",
-    "test.claim.corpus_census_allowance_witness_test",
-    "test.claim.stage0_emitted_edge_admission_witness",
-    "test.claim.emitted_crate_workspace_witness",
+    "test.claim.runner.runner_capacity_plan_witness",
+    "test.claim.runner.runner_capacity_realize_witness",
+    "test.claim.corpus_census_allowance_witness",
+    "v2.test.claim.stage0_emitted_edge_admission_witness",
+    "v2.test.claim.emitted_crate_workspace_witness",
     "v2.test.claim.body_lowering.statement_let_bind",
     "v2.test.claim.namespace_xl0.reference_conservation",
-    "test.claim.host_allocation_conservation",
+    "test.claim.host.host_allocation_conservation",
     "v2.test.claim.coercion.identity_cast_emission_route",
-    "v2.test.execution.self_host_candidate_generation_stage_verdicts",
-    "v2.test.manual.cross_language_add_python_to_typescript",
-    "test.claim.deleted_lanes_countable_witness_test",
+    "v2.test.claim.execution.self_host_candidate_generation_stage_verdicts",
+    "v2.test.claim.manual.cross_language_add_python_to_typescript",
+    "test.claim.deleted_lanes_countable_witness",
     "test.claim.discovery_census_witness",
-    "v2.test.claim.effect_demand.effect_demand_floor_join_test",
+    "v2.test.claim.effect_demand.effect_demand_floor_join",
     "test.claim.test_reference_wall_witness",
     "test.claim.seed_growth_admission_witness",
     "test.claim.route_gap_partition_witness",
-    "test.claim.floor_eval_step_calibration_specimen_test",
+    "test.claim.floor_eval_step_calibration_specimen",
   ]
 }
 
@@ -1016,15 +1016,15 @@ fn required_gate_admits(module_path: String) -> Bool {
 // laws about slot provisioning -- ownership, grammar membership, retirement-gated teardown -- and
 // carrying one identity into the gate while its siblings stay outside would make the seam's coverage
 // depend on which single row someone remembered to enroll.
-data required_gate_allocation_deploy_seam_note: String = "test.claim.runner_slot_provision is admitted to the required gate because no_deploy_row_out_commits_the_memory_budget is the executable statement of the positive-width law at the allocation-to-deploy seam; it was declined_outside_required_gate at 890c264be36 while srv2 carried a zero-width operational deploy row"
+data required_gate_allocation_deploy_seam_note: String = "test.claim.runner.runner_slot_provision_witness is admitted to the required gate because no_deploy_row_out_commits_the_memory_budget is the executable statement of the positive-width law at the allocation-to-deploy seam; it was declined_outside_required_gate at 890c264be36 while srv2 carried a zero-width operational deploy row"
 
 // THE DELETED-LANES COUNTABLE IS ADMITTED AT EXACT MODULE GRAIN, AS ITS OWN MODULE. Four declared
-// rung drops cite `test.claim.deleted_lanes_countable_witness_test` `w_RED_the_deleted_lanes_do_not_return`
+// rung drops cite `test.claim.deleted_lanes_countable_witness` `w_RED_the_deleted_lanes_do_not_return`
 // as the countable refusal if a cut CI lane returns. It lived in
-// `test.claim.witness_floor_workflow_consolidation_witness_test`, whose import closure is the whole
+// `test.claim.witness_floor_workflow_consolidation_witness`, whose import closure is the whole
 // workflow emitter; the 2026-09-19 nominal roster withdrew that module for its preparation cost and
 // the countable stopped running on any required path. The countable reads only the lane rosters, so
-// those moved to `gunbc.witness_floor_lanes` and the claim to its own module: re-admitting it adds
+// those moved to `gunbc.witness.witness_floor_lanes` and the claim to its own module: re-admitting it adds
 // the rosters' closure, not the emitter's. The history below is the consolidation module's.
 //
 // (HISTORY) THE WORKFLOW-CONSOLIDATION MODULE WAS ADMITTED AT EXACT MODULE GRAIN. Three declared rung
@@ -1055,7 +1055,7 @@ data required_gate_allocation_deploy_seam_note: String = "test.claim.runner_slot
 // producers in the same change. The green receipt from run 33907907019 prices the resulting four
 // executions at 1ms, 59ms, 457ms, and 451ms CPU; all four were planned and passed.
 
-// test.claim.memory_stall_refusal_witness JOINS THE SAME FAMILY BY THE SAME TEST: it judges
+// test.claim.host.memory_stall_refusal_witness JOINS THE SAME FAMILY BY THE SAME TEST: it judges
 // the arm that stops a resolve which is thrashing instead of computing (gunbc.
 // memory_stall_refusal), which is the state the three modules below cannot see -- budget
 // readable and admitted, cap derived and enforced, and the machine still unable to deliver
@@ -1063,7 +1063,7 @@ data required_gate_allocation_deploy_seam_note: String = "test.claim.runner_slot
 // treadmill: four whole-closure runs holding 2-4.5 hours with no diagnostic and no exit.
 // Same exact-module-name rule as below, for the same reason.
 //
-// test.claim.docs_projection_gate_test is the same family: two cheap ProcessExit fixtures over
+// test.claim.docs_projection_gate is the same family: two cheap ProcessExit fixtures over
 // injected bytes, so a stale docs/*.md projection has a floor-discovered RED that does not
 // resolve gunbc.generated_artifact_emit. Exact module name, not `test.claim.docs_`, so it
 // cannot sweep a later wet regen helper into the static gate.
@@ -1076,7 +1076,7 @@ data required_gate_allocation_deploy_seam_note: String = "test.claim.runner_slot
 // roadmap witness. What they judge is whether a compile may BEGIN and what bounds the memory
 // used to RESOLVE the corpus: gunbc.whole_corpus_compile_admission decides admission before
 // anything is indexed, gunbc.typed_module_cache_capacity derives the eviction bound that runs
-// WHILE modules are being resolved, and gunbc.host_budget_source owns the source those two
+// WHILE modules are being resolved, and gunbc.host.host_budget_source owns the source those two
 // admit against. A compiler that cannot bound its own resolution is below the floor, not above
 // it -- and the failure this closed was a rc=137 SIGKILL of the corpus regen with no
 // diagnostic at all.
@@ -1223,7 +1223,7 @@ fn required_floor_site_disposition(
 // Historical receipt (retired 2026-08-18): resolution_divergence_silent_pick_gate_keystone_holds
 // checked whether parent-plan telemetry was captured only AFTER a second whole-corpus resolve —
 // a precondition-ordering defect that cost 526s/+2.66GB every run while enrolled expected-red hid
-// 43% of floor slow time. See gunbc.ci_layer_roots
+// 43% of floor slow time. See gunbc.ci.ci_layer_roots
 // resolution_divergence_silent_pick_gate_retirement_receipt. Wall ceilings exist for I/O-heavy
 // witnesses whose CPU stays under eval budget.
 //
@@ -1696,7 +1696,7 @@ type CorpusCensusAllowancePolicy {
 data corpus_census_allowance_policy: CorpusCensusAllowancePolicy = CorpusCensusAllowancePolicy {
   base_steps: eval_step_count(count: 10000),
   per_entry_steps: eval_step_count(count: 80),
-  reason: "per_entry: the realized-workflow census's MARGINAL cost per YAML entry is read as the slope between two of its own per-file claims over subjects of different size (claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/action_use_admission_witness_test.dag --functions census_witnesses_uses_are_modeled_and_executed_exactly,census_fleet_converge_uses_are_modeled_and_executed_exactly, eval_steps from each [witness] line, entry counts from yaml_entry_count over the same files). 80 was set on 2026-09-23, at gunbc#11730's head, at about 1.3x the slope that instrument read, as headroom for shape variance between workflow files -- enough that the largest file passes with real margin, and tight enough that a reader or traversal regression of about a third per entry turns the claim red on the largest subject. base: the census's fixed work that does not scale with entries (the population join, admission of each distinct use, the claim frame) -- set at 10,000, above the intercept the same two readings imply, and deliberately far below the flat new-witness budget so that the base cannot absorb a per-entry regression." as NonEmptyStr,
+  reason: "per_entry: the realized-workflow census's MARGINAL cost per YAML entry is read as the slope between two of its own per-file claims over subjects of different size (claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/action_use_admission_witness.dag --functions census_witnesses_uses_are_modeled_and_executed_exactly,census_fleet_converge_uses_are_modeled_and_executed_exactly, eval_steps from each [witness] line, entry counts from yaml_entry_count over the same files). 80 was set on 2026-09-23, at gunbc#11730's head, at about 1.3x the slope that instrument read, as headroom for shape variance between workflow files -- enough that the largest file passes with real margin, and tight enough that a reader or traversal regression of about a third per entry turns the claim red on the largest subject. base: the census's fixed work that does not scale with entries (the population join, admission of each distinct use, the claim frame) -- set at 10,000, above the intercept the same two readings imply, and deliberately far below the flat new-witness budget so that the base cannot absorb a per-entry regression." as NonEmptyStr,
   ruling: "stern-carp-604 msg_8be78362, 2026-09-23: operator DEFAULT-approval on a 15-minute timeout, not a deliberated human ruling; host shape per msg_4ba38011 (evaluate through the frame the runner already holds)." as NonEmptyStr,
 }
 
@@ -1781,7 +1781,7 @@ fn corpus_census_eval_step_allowance(identity: String, subject_content: String) 
 }
 
 // THE GROUNDING, AS AN EXECUTING FOLD RATHER THAN AS THE PROSE ABOVE. Its consumer is
-// `test.claim.floor_eval_step_budget_witness_test`, which goes red if the pinned rate stops being
+// `test.claim.floor_eval_step_budget_witness`, which goes red if the pinned rate stops being
 // the floor of the ratio its own sample measured -- so "723 steps is one millisecond of work" is a
 // claim the tree can refuse rather than a comment nobody can check.
 fn required_floor_eval_step_rate_grounding() -> EvalStepRateGrounding {
@@ -2003,9 +2003,9 @@ fn required_floor_claim_wall_safety_limit_ms() -> Int {
 // a safety guarantee that has never held for it.
 //
 // WHAT DECIDES MEMBERSHIP NOW is the mechanism the drop is about, stated as a falsifiable
-// criterion and owned by one authority: `gunbc.v1_interpreter_opaque_host_call` admits a
+// criterion and owned by one authority: `gunbc.v1.v1_interpreter_opaque_host_call` admits a
 // `free_call.*` dispatch arm whose Rust realization synchronously runs a NESTED COMPILE of `.dag`
-// sources, and grounds every member against `gunbc.v1_interpreter_primitive_surface`
+// sources, and grounds every member against `gunbc.v1.v1_interpreter_primitive_surface`
 // `v1_interpreter_primitive_arms` -- the seed's single dispatch-surface authority, itself drift-
 // gated against the generated lookup tables. That module's `opaque_host_call_surface` refuses
 // rather than shortening its list when a member fails to resolve, and names the residue its
@@ -2013,7 +2013,7 @@ fn required_floor_claim_wall_safety_limit_ms() -> Int {
 // not a compile).
 //
 // THIS LIST IS THE V2-TOWER PROJECTION OF THAT AUTHORITY, NOT A SECOND ONE. It is spelled here
-// because `gunbc.v1_interpreter_opaque_host_call` is authored in the `std.types` tower while this
+// because `gunbc.v1.v1_interpreter_opaque_host_call` is authored in the `std.types` tower while this
 // module is v2's (`v2.std.collection` List, `v2.std.logic` Bool) -- the same tower gap
 // `flat_scalar_millisecond_fields_dissolve_on` above already records for this file's millisecond
 // fields. The two spellings are held together by an EXECUTED two-way identity join
@@ -2025,7 +2025,7 @@ fn required_floor_claim_wall_safety_limit_ms() -> Int {
 // them, so adding or retiring a witness moves nothing here; it grows only when an arm is found to
 // meet the criterion, which is a source-verifiable finding against a named Rust entry point.
 data opaque_host_call_population_authority_dissolves_on: DissolutionCondition = unbound_dissolution(
-  description: "dissolve-on: opaque_host_call_grandfather_population is deleted and this module imports gunbc.v1_interpreter_opaque_host_call opaque_host_call_surface directly, once a verified List<String> bridge exists between the std.types tower that module is authored in and v2.std.collection's List -- the same tower gap flat_scalar_millisecond_fields_dissolve_on records for this module's millisecond fields. Until then the two spellings are joined at identity by test.claim.preemption_reachability w_grandfather_population_matches_the_grounded_surface, which is executed evidence rather than a promise." as NonEmptyStr,
+  description: "dissolve-on: opaque_host_call_grandfather_population is deleted and this module imports gunbc.v1.v1_interpreter_opaque_host_call opaque_host_call_surface directly, once a verified List<String> bridge exists between the std.types tower that module is authored in and v2.std.collection's List -- the same tower gap flat_scalar_millisecond_fields_dissolve_on records for this module's millisecond fields. Until then the two spellings are joined at identity by test.claim.preemption_reachability w_grandfather_population_matches_the_grounded_surface, which is executed evidence rather than a promise." as NonEmptyStr,
 )
 
 fn opaque_host_call_grandfather_population() -> List<String> {
@@ -2059,7 +2059,7 @@ fn opaque_host_call_grandfather_population() -> List<String> {
 }
 
 // TWO PROJECTIONS OF THE POPULATION THAT EXIST FOR THE IDENTITY JOIN, NOT FOR REPORTING. The
-// join with `gunbc.v1_interpreter_opaque_host_call` runs in the witness and can only carry values
+// join with `gunbc.v1.v1_interpreter_opaque_host_call` runs in the witness and can only carry values
 // one way across the tower boundary: it can hand each grounded operation to
 // `claim_preemption_admission` and get an answer, which establishes grounded-surface SUBSET-OF
 // this list. It cannot fold this list against a `std.types`-tower predicate. Cardinality plus
@@ -2230,7 +2230,7 @@ fn claim_safety_outcome(
 // under-states the loss, and the arms outside it were describing themselves as protected by a
 // guarantee that had never held for them, which is rung inflation at the population grain rather
 // than at the rung grain. The criterion, the eight members and the join back to the seed's
-// dispatch authority now live in `gunbc.v1_interpreter_opaque_host_call`; the residue that
+// dispatch authority now live in `gunbc.v1.v1_interpreter_opaque_host_call`; the residue that
 // criterion deliberately excludes is named there too, so the next widening is a stated finding and
 // not a silent one.
 //
@@ -2269,7 +2269,7 @@ fn claim_safety_outcome_blocks(outcome: ClaimSafetyOutcome) -> Bool {
 // is memoized once per index -- the census trace reports two misses over two source roots
 // against ONE index address, `edge_index_construction { builds: 1 }` -- so its ~28s is neither
 // duplicated nor repeated. It was simply BILLED to whichever claim resolved an entry first:
-// `test.claim.qualified_spelling_identity_witness_test.qualified_spelling_takes_the_shared_layer`
+// `test.claim.qualified_spelling_identity_witness.qualified_spelling_takes_the_shared_layer`
 // at 57193ms against the 5000ms CPU safety deadline standing at the time, while its sibling
 // reaching the identical computation milliseconds later measured 5ms. Three earlier modules
 // were quarantined down exactly this chain before the pattern was read correctly
@@ -2342,7 +2342,7 @@ type FloorPreparationOutcome =
 // it -- the exact exit the quarantine row's dissolution trigger already forbids.
 //
 // EACH LIMIT IS DERIVED FROM THE RESOURCE IT PROTECTS, NOT FROM WHAT THE BUILD CURRENTLY COSTS.
-// That is what makes the claim limits legitimate -- `gunbc.witness_row_cost`
+// That is what makes the claim limits legitimate -- `gunbc.witness.witness_row_cost`
 // `witness_row_cost_migration_threshold_note` calls 5000ms "a FAIL-STOP PROTECTING THE EXECUTOR",
 // "never a budget, tolerance, or target" -- and it is the only derivation available here, because
 // measured-max-plus-headroom is the oracle the 2026-08-01 operator ruling names directly: a
@@ -2357,7 +2357,7 @@ type FloorPreparationOutcome =
 // RATIFICATION with their derivation visible, so a different ruling changes only the literal and
 // none of the structure.
 
-// THE RESOURCE: the CI job budget. `gunbc.witness_floor_workflow` declares the witnesses job at
+// THE RESOURCE: the CI job budget. `gunbc.witness.witness_floor_workflow` declares the witnesses job at
 // `timeout_minutes: 180` -- 10,800,000ms -- and a job that exceeds it is killed by the runner with
 // no ledger at all, which is the harm this limit exists to preempt with a typed, located refusal
 // instead. THE POLICY: no single shared preparation build may consume more than ONE TENTH of that

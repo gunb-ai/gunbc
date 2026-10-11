@@ -46,7 +46,7 @@ import v2.std.namespace_alias { ModuleBindingSource, module_binding_source_roots
 
 // NAMESPACE-XL STAGE XL-0: THE REPAIR-INPUT ORIGIN DENOMINATOR, ON THE v2 ROUTE.
 //
-// gunbc.namespace_cut_stage StageXL0Denominator asks for source-declaration carriers plus rendered
+// gunbc.namespace.namespace_cut_stage StageXL0Denominator asks for source-declaration carriers plus rendered
 // target-vocabulary carriers, separately typed, over one base, BEFORE eligibility or repair
 // disposition. This module fills the source-declaration half from the resolver's own answers. It
 // contains no filter: every mention v2.compiler.reference_site_collector finds becomes a row, and
@@ -182,7 +182,7 @@ fn repair_input_origin_roster_is_total(roster: RepairInputOriginRoster) -> Bool 
 // THE WHOLE DENOMINATOR OVER ONE BASE'S MODULE ROOTS: index, roster and sites all derived from the
 // same roots, so no consumer can pair a roster with an index built from a different tree.
 // THE DENOMINATOR IS MEASURED AGAINST THE INDEX PRODUCTION RESOLVES WITH (review 69997 on
-// gunbc#12009). This roster's digest is what gunbc.namespace_cut_stage consumes as
+// gunbc#12009). This roster's digest is what gunbc.namespace.namespace_cut_stage consumes as
 // DenominatorRosterDigest, so an index missing the transmuted import bindings would report every
 // cross-module reference production BINDS as an unbound repair input -- inflating the very
 // denominator the cut is defined by, with no red anywhere to say so.
@@ -202,7 +202,7 @@ fn repair_input_origin_roster_over_roots(
 }
 
 // ---------------------------------------------------------------------------------------------
-// THE DIGEST ENTRY POINT gunbc.namespace_cut_stage ActivationReceiptKind DenominatorRosterDigest
+// THE DIGEST ENTRY POINT gunbc.namespace.namespace_cut_stage ActivationReceiptKind DenominatorRosterDigest
 // CONSUMES. The receipt's digest is taken over THESE LINES and over nothing else, so the rendering
 // is the digest's definition rather than a debug view of it: one line per mention, carrying the
 // position, the authored spelling and the provenance arm, in the order the containment walk
@@ -210,7 +210,7 @@ fn repair_input_origin_roster_over_roots(
 // deterministic over a fixed tree, and re-sorting would hide a change in where a mention sits.
 //
 // NO RECEIPT ROW LANDS FROM THIS MODULE. An activation receipt is this rendering digested against
-// ONE base the manager pins at ACT-0, and gunbc.namespace_cut_stage is explicit that a delivery
+// ONE base the manager pins at ACT-0, and gunbc.namespace.namespace_cut_stage is explicit that a delivery
 // receipt carries no base because it makes no claim about one. This is the producer; pinning is
 // ACT-0's act.
 //

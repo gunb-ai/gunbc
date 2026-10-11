@@ -479,7 +479,7 @@ fn systemd_io_scheduling_class_wire(scheduling_class: SystemdIoSchedulingClass) 
 // anyway with the assignments unset.
 //
 // THE OPTIONAL FORM IS NOT THE POLICY ESCAPE HATCH DESIGN SECTION 5 FORBIDS, and the distinction is
-// what the file CARRIES rather than which directive spells it. `gunbc.host_disk_reclaim_units`
+// what the file CARRIES rather than which directive spells it. `gunbc.host.host_disk_reclaim_units`
 // (reclaim_omitted_environment_file_note) drops `EnvironmentFile=-` precisely because that file
 // would carry THRESHOLDS -- host-local values overriding gates this repository owns, one edit from
 // silently relaxing them. A file carrying a CREDENTIAL overrides no gate: its absence does not let
@@ -620,8 +620,8 @@ type SystemdSliceDirective sole_constructor {
 // own trigger.
 //
 // `slice_cpu_quota` EXISTS BECAUSE ITS CONSUMER DOES. One was written and deleted unused (review
-// 57699) because the only live CPU-quota producer was gunbc.host_converge runner_cpu_boundary_knobs.
-// gunbc.fabric_cell_effect is now that caller: a microVM guest's topology has to be derived from a
+// 57699) because the only live CPU-quota producer was gunbc.host.host_converge runner_cpu_boundary_knobs.
+// gunbc.fabric.fabric_cell_effect is now that caller: a microVM guest's topology has to be derived from a
 // quantity the CELL enforces, and the cell carried CPUWeight alone, which guarantees no amount of
 // anything. The quota the fleet already declares lands on the runner UNIT, a different systemd object
 // from the cell slice.

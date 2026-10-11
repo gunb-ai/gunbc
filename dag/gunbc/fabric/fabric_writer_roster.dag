@@ -1,21 +1,21 @@
-module gunbc.fabric_writer_roster
+module gunbc.fabric.fabric_writer_roster
 
-import gunbc.fabric_storage_binding { fabric_storage_binding_for }
+import gunbc.fabric.fabric_storage_binding { fabric_storage_binding_for }
 import std.types { String, NonEmptyStr, List, Bool }
 import extdeps.tailscale.identity { TailnetIdentity, TailnetUser, TailnetIdentityAbsent, tailnet_identity_of }
 import product.host_identity { HostIdentity }
-import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
-import gunbc.fabric_storage_file_store { fabric_storage_file_root }
-import gunbc.fabric_storage_placement { fabric_storage_placement, fabric_storage_store_root, fabric_storage_door_local_writers, fabric_storage_door_proxy_peer }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }
+import gunbc.fabric.fabric_storage_placement { fabric_storage_placement, fabric_storage_store_root, fabric_storage_door_local_writers, fabric_storage_door_proxy_peer }
 import std.fabric_storage { FabricStoreUnreachable, FabricWriterRefusal, WriterLoginAbsent, WriterLoginUnrostered, WriterPeerUnrostered, WriterPeerUnattested }
-import gunbc.fabric_storage_wire { FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused, FabricDoorPrincipal, DoorProxied, DoorLocalPeer, DoorUnattested }
-import gunbc.fabric_writer_identity_observe {
+import gunbc.fabric.fabric_storage_wire { FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused, FabricDoorPrincipal, DoorProxied, DoorLocalPeer, DoorUnattested }
+import gunbc.fabric.fabric_writer_identity_observe {
   FabricWriterIdentityReceipt, fabric_writer_identity_ground, WriterUserPrincipalObserved, WriterPrincipalUnavailable, WriterLocalPeerObserved, NotAReadingOfTheDoor,
 }
 
 // THE SERVED DOOR'S WRITER ROSTER: the tailnet USER principals admitted to put and advance through
-// gunbc.fabric_storage_serve. IT IS AN AUTHORED ROSTER OF RECORDED READINGS, and says so: each row is
-// the receipt gunbc.fabric_writer_identity_observe printed on one fleet host, transcribed by hand
+// gunbc.fabric.fabric_storage_serve. IT IS AN AUTHORED ROSTER OF RECORDED READINGS, and says so: each row is
+// the receipt gunbc.fabric.fabric_writer_identity_observe printed on one fleet host, transcribed by hand
 // with the run that printed it, and the roster is the fold of those receipts' grounds -- a login
 // enters exactly when a recorded reading presented it, and a host that presented none contributes
 // nothing. WHAT IS NOT MECHANIZED, stated at its rung (DESIGN §4b(1)): nothing checks that a row
@@ -85,7 +85,7 @@ fn fabric_served_writer_roster() -> List<NonEmptyStr> {
 
 // THE DOOR'S TWO ROSTERS, ONE ADMISSION. A proxied request (the peer is the tailscale proxy) is
 // admitted by its login against the served roster above; a local peer is admitted by its account
-// against the door directory's dependents (gunbc.fabric_storage_placement
+// against the door directory's dependents (gunbc.fabric.fabric_storage_placement
 // fabric_storage_door_local_writers), the same declaration the kernel enforces on the socket's
 // directory. A proxied request with no login, a local peer outside that roster, and a peer the
 // kernel did not attest are each refused, and each refusal is its own arm of std.fabric_storage FabricWriterRefusal.
