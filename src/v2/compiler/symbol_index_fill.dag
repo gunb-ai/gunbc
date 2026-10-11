@@ -350,14 +350,14 @@ fn symbol_index_fill_containment_node(
             TypeNode { connective: Atom { identity: _ } } => symbol_index_fill_containment_node(index: index, path: path, node: domain, counts: counts, module_qn: module_qn)
             TypeNode { connective: Disj } => symbol_index_fill_containment_node(index: index, path: path, node: domain, counts: counts, module_qn: module_qn)
             TypeNode { connective: Arrow } => symbol_index_fill_containment_node(index: index, path: path, node: domain, counts: counts, module_qn: module_qn)
-            TypeNode { connective: Cardinality } => symbol_index_fill_containment_node(index: index, path: path, node: domain, counts: counts, module_qn: module_qn)
+            TypeNode { connective: Occupancy } => symbol_index_fill_containment_node(index: index, path: path, node: domain, counts: counts, module_qn: module_qn)
             TypeNode { connective: Instantiation } => symbol_index_fill_containment_node(index: index, path: path, node: domain, counts: counts, module_qn: module_qn)
             ComputationNode { behavior: _ } => symbol_index_fill_containment_node(index: index, path: path, node: domain, counts: counts, module_qn: module_qn)
           }
         FirstPositionalAbsent => index
       }
     TypeNode { connective: Atom { identity: _ } } => symbol_index_fill_containment_children(index: index, path: path, node: node, counts: counts, module_qn: module_qn)
-    TypeNode { connective: Cardinality } => symbol_index_fill_containment_children(index: index, path: path, node: node, counts: counts, module_qn: module_qn)
+    TypeNode { connective: Occupancy } => symbol_index_fill_containment_children(index: index, path: path, node: node, counts: counts, module_qn: module_qn)
     TypeNode { connective: Instantiation } => symbol_index_fill_containment_children(index: index, path: path, node: node, counts: counts, module_qn: module_qn)
     ComputationNode { behavior: _ } => symbol_index_fill_containment_children(index: index, path: path, node: node, counts: counts, module_qn: module_qn)
   }
@@ -395,7 +395,7 @@ fn disj_variant_counts_in_module(root: Node) -> Map<Symbol, Int> {
         TypeNode { connective: Atom { identity: _ } } => counts
         TypeNode { connective: Conj } => counts
         TypeNode { connective: Arrow } => counts
-        TypeNode { connective: Cardinality } => counts
+        TypeNode { connective: Occupancy } => counts
         TypeNode { connective: Instantiation } => counts
         ComputationNode { behavior: _ } => counts
       }

@@ -28,7 +28,7 @@ import v2.std.node {
   Behavior,
   Bind,
   Branch,
-  Cardinality,
+  Occupancy,
   ComputationNode,
   Conj,
   Connective,
@@ -174,7 +174,7 @@ fn base_cost_for_connective(c: Connective, n: Node) -> SymbolicCost {
     Conj => zero_cost()
     Disj => zero_cost()
     Arrow => unit_cost()
-    Cardinality => linear_in_node(n: n)
+    Occupancy => linear_in_node(n: n)
     Instantiation => unit_cost()
   }
 }
@@ -205,7 +205,7 @@ fn cost_mode_for_connective(c: Connective) -> CostCompositionMode {
     Conj => SequentialCost
     Disj => AlternativeCost
     Arrow => SequentialCost
-    Cardinality => IterativeCost
+    Occupancy => IterativeCost
     Instantiation => SequentialCost
   }
 }

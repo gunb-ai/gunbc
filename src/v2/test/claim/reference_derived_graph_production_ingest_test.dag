@@ -13,7 +13,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.node {
   Arrow,
   Atom,
-  Cardinality,
+  Occupancy,
   ComputationNode,
   Conj,
   Disj,
@@ -122,7 +122,7 @@ fn node_atom_is(n: Node, needle: Symbol) -> Bool {
     TypeNode { connective: Conj } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }

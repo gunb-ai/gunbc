@@ -2,7 +2,7 @@ module extdeps.ninfer.qwen3_8_27b_nvfp4
 
 import std.types { NonEmptyStr }
 import std.nat { Nat }
-import std.measure { ByteSize, byte_size }
+import std.measure { TokenCount, token_count, ByteSize, byte_size }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_repo_https_uri }
@@ -34,7 +34,8 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 type NinferNvfp4 {}
 
-type NinferModelQuantization = NinferNvfp4
+type NinferModelQuantization
+  = NinferNvfp4
 
 type NinferArtifactSource {
   repo: HubRepoId
@@ -43,7 +44,7 @@ type NinferArtifactSource {
 
 type NinferModelRow {
   served_id: NonEmptyStr
-  context_tokens: Nat
+  context_tokens: TokenCount
   quantization: NinferModelQuantization
   quantized_from: NinferArtifactSource
   base_model: NinferArtifactSource
@@ -59,7 +60,7 @@ type NinferModelRow {
 // on the pod, not fetched here, so the standing is TranscribedUncited until the sha256 is re-read at the Hub.
 data qwen3_8_27b_nvfp4_row: NinferModelRow = NinferModelRow {
   served_id: "qwen3.8-27b" as NonEmptyStr,
-  context_tokens: 262144,
+  context_tokens: token_count(count: 262144),
   quantization: NinferNvfp4 {},
   quantized_from: NinferArtifactSource {
     repo: HubRepoId { kind: HubModelRepo, path: "unsloth/Qwen3.8-27B-NVFP4" as NonEmptyStr },

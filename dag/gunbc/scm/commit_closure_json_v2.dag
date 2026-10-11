@@ -132,7 +132,7 @@ import v2.std.node {
   Conj,
   Disj,
   Arrow,
-  Cardinality,
+  Occupancy,
   Instantiation,
   Behavior,
   Value,

@@ -14,7 +14,7 @@ import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, Propos
 import gunbc.auth.approval_broker { SubmissionAdmission, SubmissionAdmitted, SubmissionRequesterNotEnrolled, SubmissionAuthorityNotPermittedForRequester, admit_submission, BrokerApproved, BrokerDenied }
 import gunbc.auth.approval_notification { approval_notification }
 import gunbc.auth.approval_ntfy_publish
-import gunbc.auth.approval_broker_endpoint { approval_broker_base_url, approval_broker_confirm_path_prefix }
+import gunbc.auth.approval_broker_endpoint { approval_broker_confirm_path_prefix, ApprovalBrokerAddress, ApprovalBrokerAddressResolved, ApprovalBrokerAddressRefused }
 import std.algebra { trim }
 import gunbc.auth.approval_status_wire {
   FiledApprovalStatus, StatusNotFiled, StatusPending, StatusApproved, StatusDenied, StatusUnreadable,
@@ -200,7 +200,7 @@ fn admit_parsed_submission(tag_hex: NonEmptyStr, request: StoredApprovalRequest,
 // that sentence false while leaving the STRING it produced byte-identical, because the front door
 // keeps the public host and port. A grounding that has gone false while its output stayed right is
 // exactly the fact nothing reads back, so the derivation moved to the authority that now owns the
-// endpoint (gunbc.auth.approval_broker_endpoint approval_broker_base_url) rather than being left
+// endpoint (gunbc.auth.approval_broker_endpoint approval_broker_serving_base_url) rather than being left
 // here with its reason rewritten. The undeclared-domain `.invalid` arm still lives with
 // gunbc.fleet_tailnet tailnet_base_url_from and is not restated at either site.
 
@@ -253,6 +253,7 @@ type SubmissionOutcome
   | SubmissionFiledNotNotified { escalation_id: NonEmptyStr, publish: NtfyPublishOutcome }
   | SubmissionFiledPublisherTokenUnavailable { escalation_id: NonEmptyStr, detail: String }
   | SubmissionFiledLinksNotIssued { escalation_id: NonEmptyStr, key_id: MacKeyId }
+  | SubmissionFiledBrokerAddressRefused { escalation_id: NonEmptyStr, detail: NonEmptyStr }
   | SubmissionAlreadyFiled { escalation_id: NonEmptyStr }
   | SubmissionStoreRefused { detail: NonEmptyStr }
   | SubmissionRefused { refusal: SubmissionRefusal }
@@ -264,6 +265,7 @@ fn submission_outcome_admits_poll(o: SubmissionOutcome) -> Bool {
     SubmissionFiledNotNotified { escalation_id: _, publish: _ } => true
     SubmissionFiledPublisherTokenUnavailable { escalation_id: _, detail: _ } => true
     SubmissionFiledLinksNotIssued { escalation_id: _, key_id: _ } => false
+    SubmissionFiledBrokerAddressRefused { escalation_id: _, detail: _ } => false
     SubmissionAlreadyFiled { escalation_id: _ } => true
     SubmissionFiledCapabilityKeyUnavailable { escalation_id: _, cause: _ } => false
     SubmissionStoreRefused { detail: _ } => false
@@ -281,6 +283,7 @@ fn submission_outcome_reason(o: SubmissionOutcome) -> String {
     SubmissionFiledNotNotified { escalation_id: e, publish: p } => join(["filed ", e as String, " but the notification is not confirmed published (a re-submission re-notifies the same request): ", ntfy_publish_outcome_sentence(o: p)], "")
     SubmissionFiledPublisherTokenUnavailable { escalation_id: e, detail: d } => join(["filed ", e as String, " but the publisher token is unavailable: ", d], "")
     SubmissionFiledLinksNotIssued { escalation_id: e, key_id: k } => join(["filed ", e as String, " but no link could be issued under key ", k as String], "")
+    SubmissionFiledBrokerAddressRefused { escalation_id: e, detail: d } => join(["filed ", e as String, " but no link could be issued: ", d as String], "")
     SubmissionAlreadyFiled { escalation_id: e } => join(["escalation ", e as String, " is already filed"], "")
     SubmissionStoreRefused { detail: d } => join(["approval store refused the filing: ", d as String], "")
     SubmissionRefused { refusal: v } => match v {
@@ -306,10 +309,13 @@ fn notify_filed(
   capability_keyring: ApprovalKeyringRead,
   publisher: PublisherTokenRead,
   request: StoredApprovalRequest,
+  broker: ApprovalBrokerAddress,
 ) -> SubmissionOutcome {
   match capability_keyring {
     ApprovalKeyringRefused { cause: c } => SubmissionFiledCapabilityKeyUnavailable { escalation_id: request.escalation_id, cause: c }
-    ApprovalKeyLoaded { key: key } => match issue_links(capability_key: key, base: approval_broker_base_url(), request: request) {
+    ApprovalKeyLoaded { key: key } => match broker {
+     ApprovalBrokerAddressRefused { detail } => SubmissionFiledBrokerAddressRefused { escalation_id: request.escalation_id, detail: detail }
+     ApprovalBrokerAddressResolved { value: base } => match issue_links(capability_key: key, base: base, request: request) {
       LinksNotIssued { key_id: k } => SubmissionFiledLinksNotIssued { escalation_id: request.escalation_id, key_id: k }
       links => match approval_message(request: request, links: links) {
         Absent => SubmissionFiledLinksNotIssued { escalation_id: request.escalation_id, key_id: key.id }
@@ -323,6 +329,7 @@ fn notify_filed(
           }
         }
       }
+    }
     }
   }
 }
@@ -392,16 +399,17 @@ fn file_and_notify(
   capability_keyring: ApprovalKeyringRead,
   publisher: PublisherTokenRead,
   request: StoredApprovalRequest,
+  broker: ApprovalBrokerAddress,
 ) -> SubmissionOutcome {
   match file_approval_request(root: root, request: request) {
     StoreSlotOccupied =>
       match occupied_slot_standing(slot: observe_escalation(root: root, escalation_id: request.escalation_id), request: request) {
-        OccupiedRenotifiable => notify_filed(capability_keyring: capability_keyring, publisher: publisher, request: request)
+        OccupiedRenotifiable => notify_filed(capability_keyring: capability_keyring, publisher: publisher, request: request, broker: broker)
         OccupiedConflict => SubmissionAlreadyFiled { escalation_id: request.escalation_id }
         OccupiedUnreadable { detail: d } => SubmissionStoreRefused { detail: d }
       }
     StoreRefused { detail: d } => SubmissionStoreRefused { detail: d }
-    StoreWritten => notify_filed(capability_keyring: capability_keyring, publisher: publisher, request: request)
+    StoreWritten => notify_filed(capability_keyring: capability_keyring, publisher: publisher, request: request, broker: broker)
   }
 }
 
@@ -419,9 +427,10 @@ fn submit_parsed_submission(
   publisher: PublisherTokenRead,
   tag_hex: NonEmptyStr,
   request: StoredApprovalRequest,
+  broker: ApprovalBrokerAddress,
 ) -> SubmissionOutcome {
   match admit_parsed_submission(tag_hex: tag_hex, request: request, keyring: submission_keyring) {
-    SubmissionVerified { request: r } => file_and_notify(root: root, capability_keyring: capability_keyring, publisher: publisher, request: r)
+    SubmissionVerified { request: r } => file_and_notify(root: root, capability_keyring: capability_keyring, publisher: publisher, request: r, broker: broker)
     SubmissionNotAdmitted { refusal: refused } => SubmissionRefused { refusal: refused }
   }
 }

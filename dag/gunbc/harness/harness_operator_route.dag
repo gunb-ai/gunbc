@@ -11,10 +11,11 @@ import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable
 import extdeps.network.endpoint { SocketAddress, socket_address, render_network_host, host_by_ipv4 }
 import extdeps.network.ipv4 { ipv4_address }
 import extdeps.ssh.openssh_port_forwarding { PortForwardSpec, LocalForward }
-import extdeps.ninfer.ninfer_serve { ninfer_serve_observed_launch, ninfer_authorization_header_line, ninfer_models_path, ninfer_chat_completions_path, ninfer_health_path }
+import std.measure { millisecond, token_count }
+import extdeps.external_authority { TranscribedUncited }
+import extdeps.ninfer.ninfer_serve { NinferModelsList, NinferModelsAdvertised, NinferModelsUnreadable, ninfer_models_list, NinferServeLaunch, NinferKvFp8, NinferMtp, ninfer_upstream_read_obligation, ninfer_authorization_header_line, ninfer_models_path, ninfer_chat_completions_path, ninfer_health_path }
 import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, Qwen3_8_27bOnNinfer, harness_unit_model_id }
 import gunbc.serving.turn_admission { ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant, serving_co_tenancy_class_wire }
-import gunbc.spark.vllm_observed { vllm_models_advertised_ids }
 import std.list { list_member }
 
 // THE OPERATOR-RUN ENDPOINT: a serving process the OPERATOR runs on a rented GPU pod, reached from the
@@ -85,6 +86,9 @@ type OperatorQualityFloor {
   consequence: NonEmptyStr
 }
 
+// DECLARED GAP (frontier): the ceiling is carried, not yet enforced by an admission step; the server's own
+// 64-deep pending queue is the only bound. Trigger: a route-keyed occupancy pool (serving_enrollment's named
+// growth surface) that counts open turns per route and refuses the ninth with a typed cause.
 type HarnessOperatorRoute {
   unit: HarnessServingUnit
   group_wire: NonEmptyStr
@@ -93,11 +97,26 @@ type HarnessOperatorRoute {
   quality_floor: OperatorQualityFloor
 }
 
+// THIS OPERATOR'S LAUNCH of ninfer-serve on the pod (a consumer-layer observation, not a fact of the upstream): the command line observed (host and port bind loopback; the API key is a flag value that is
+// deliberately NOT a field here -- the key lives in a 0600 file on the consuming host).
+data operator_observed_launch: NinferServeLaunch = NinferServeLaunch {
+  model_id: "qwen3.8-27b" as NonEmptyStr,
+  max_concurrency: 8,
+  max_context: token_count(count: 262144),
+  max_pending_requests: 64,
+  pending_timeout: millisecond(count: 900000),
+  default_max_tokens: token_count(count: 32768),
+  kv_dtype: NinferKvFp8,
+  kv_capacity_auto: true,
+  speculation: NinferMtp { draft_tokens: 3, lm_head_draft: true },
+  standing: TranscribedUncited { read_obligation: ninfer_upstream_read_obligation },
+}
+
 data harness_operator_route: HarnessOperatorRoute = HarnessOperatorRoute {
   unit: Qwen3_8_27bOnNinfer,
   group_wire: "operator:ninfer-gpu-pod" as NonEmptyStr,
   credential_relative_path: ".config/gunbc-gpu-pod/api-key" as NonEmptyStr,
-  concurrency_ceiling: ninfer_serve_observed_launch.max_concurrency,
+  concurrency_ceiling: operator_observed_launch.max_concurrency,
   quality_floor: OperatorQualityFloor {
     admitted_class: BatchQualityTolerant,
     consequence: "the operator route serves a 27B-parameter NVFP4 model, not the fleet's GLM-5.3-Flash: a quality-sensitive (interactive) turn is REFUSED here rather than answered by the smaller model, and a batch turn placed here is answered by it knowingly" as NonEmptyStr,
@@ -185,6 +204,7 @@ fn operator_close_header(header_dir: NonEmptyStr) -> Bool {
 // authorised list is Unreadable and names the key, never "none serving".
 type OperatorModelsReading
   = OperatorHealthUnanswered { url: String }
+  | OperatorHealthUnhealthy { url: String, status: String }
   | OperatorModelsRefused { url: String }
   | OperatorModelsAnswered { body: String }
 
@@ -197,17 +217,22 @@ type OperatorRouteStanding
 fn operator_route_standing(route: HarnessOperatorRoute, reading: OperatorModelsReading) -> OperatorRouteStanding {
   match reading {
     OperatorHealthUnanswered { url: u } => OperatorRouteUnreachable { url: u }
+    OperatorHealthUnhealthy { url: u, status: st } => OperatorRouteUnreadable { cause: join(["the server answered ", u, " with HTTP status ", st, ", so it is not healthy; the key was not tried"], "") }
     OperatorModelsRefused { url: u } => OperatorRouteUnreadable { cause: join(["the server answered /health but refused the authorised ", u, " (the key in the credential file may be rejected)"], "") }
     OperatorModelsAnswered { body: b } =>
       match parse_json_document(s: b) {
         JsonDocumentUnreadable { gap: g } => OperatorRouteUnreadable { cause: json_document_gap_text(gap: g) }
         JsonDocumentParsed { value: doc } => {
-          let ids = vllm_models_advertised_ids(doc: doc)
-          let wanted = harness_unit_model_id(unit: route.unit)
-          if list_member(xs: ids, x: wanted as String, eq: (a, b) => a == b) {
-            OperatorRouteServing { model: wanted }
-          } else {
-            OperatorRouteModelNotAdmitted { advertised: join(ids, ", ") }
+          match ninfer_models_list(doc: doc) {
+            NinferModelsUnreadable { cause: c } => OperatorRouteUnreadable { cause: c as String }
+            NinferModelsAdvertised { ids: ids } => {
+              let wanted = harness_unit_model_id(unit: route.unit)
+              if list_member(xs: ids, x: wanted as String, eq: (a, b) => a == b) {
+                OperatorRouteServing { model: wanted }
+              } else {
+                OperatorRouteModelNotAdmitted { advertised: join(ids, ", ") }
+              }
+            }
           }
         }
       }

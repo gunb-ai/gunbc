@@ -68,6 +68,7 @@ import gunbc.roadmap_dashboard_instance_observe {
 import extdeps.uri { Uri, Http, uri_wire }
 import extdeps.languages.json.parse { json_text_parseable }
 import gunbc.roadmap_dashboard_instance {
+  prod_role_realization,
   dashboard_instance_health_identity_prefix,
   DashboardProvisionTransport,
   DashboardLocalProvision,
@@ -794,7 +795,7 @@ fn dashboard_directory_policy(instance: HostDashboardInstance) -> EnsurePolicy {
 // stat's -- never the install's exit status.
 fn dashboard_apply_owned_directories(instance: HostDashboardInstance) -> DashboardApplyFold {
   fold(
-    dashboard_instance_directory_demands(instance: instance),
+    dashboard_instance_directory_demands(realization: prod_role_realization(), instance: instance),
     init: DashboardApplyFold { running: true, receipts: [], refused_step: "", refused_detail: "" },
     f: (acc, target) =>
       if !acc.running {
@@ -864,7 +865,7 @@ type DashboardDirectoriesObserved {
 
 fn dashboard_observe_owned_directories(instance: HostDashboardInstance) -> DashboardDirectoriesObserved {
   fold(
-    dashboard_instance_directory_demands(instance: instance),
+    dashboard_instance_directory_demands(realization: prod_role_realization(), instance: instance),
     init: DashboardDirectoriesObserved { observation_refusals: [], directory_refusals: [], converged: true },
     f: (acc, target) => {
       let observation = dashboard_owned_directory_observe(instance: instance, path: owned_directory_path(t: target))

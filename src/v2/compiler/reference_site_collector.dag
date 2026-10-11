@@ -258,7 +258,7 @@ fn reference_sites_in_node(
         TypeNode { connective: Conj } => reference_sites_in_children(acc: acc, position: position, node: node)
         TypeNode { connective: Disj } => reference_sites_in_children(acc: acc, position: position, node: node)
         TypeNode { connective: Arrow } => reference_sites_in_children(acc: acc, position: position, node: node)
-        TypeNode { connective: Cardinality } => reference_sites_in_children(acc: acc, position: position, node: node)
+        TypeNode { connective: Occupancy } => reference_sites_in_children(acc: acc, position: position, node: node)
         TypeNode { connective: Instantiation } => reference_sites_in_children(acc: acc, position: position, node: node)
         ComputationNode { behavior: _ } => reference_sites_in_children(acc: acc, position: position, node: node)
       }

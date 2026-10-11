@@ -26,7 +26,9 @@ import gunbc.live_deploy.spec {
   deployment_plan_host_identity,
   deployment_tailnet_door_socket,
 }
+import std.decl_ref { decl_ref }
 import gunbc.live_deploy.desired {
+  DesiredDeployment,
   deployment_spec_srv1,
   desired_deployment_for_instance_id,
   selected_deployment_spec,
@@ -38,6 +40,12 @@ import gunbc.live_deploy.desired {
   DesiredRosterSameHostCollision,
   DesiredRosterDuplicateInstanceId,
 }
+import gunbc.live_deploy.role_singleton_convergence {
+  assess_and_admit, role_singleton_refusal_detail, admitted_spec, admitted_decision,
+  RoleSingletonAdmission, RoleSingletonAdmitted, RoleSingletonNotAdmitted,
+  RoleSingletonNoop, RoleSingletonInPlace, RoleSingletonInstall, RoleSingletonRefused, RoleSingletonConvergence,
+}
+import gunbc.live_deploy.apply_warrant { warrant_live_deploy_apply }
 import std.types { String, CommitSha, NonEmptyStr }
 import gunbc.live_deploy.candidate {
   CandidateRelease,
@@ -160,6 +168,7 @@ import gunbc.live_deploy.apply_receipt {
   read_live_deploy_fleet_provenance, FleetProvenancePresent, FleetProvenanceAbsent, LiveDeployFleetProvenance,
   LiveDeployApplyConverged, LiveDeployApplyNotConverged,
   LiveDeployReadinessObserved, LiveDeployReadinessRefused,
+  LiveDeployRoleSingletonDisposition, RoleSingletonsNoop, RoleSingletonsInPlace, RoleSingletonsInstalled, RoleSingletonsRefusedBeforeApply,
   observe_candidate_root_tree_oid, CandidateTreeOidObserved, CandidateTreeOidUnobservable,
   live_deploy_apply_receipt_json, live_deploy_apply_receipt_dir_for, live_deploy_apply_receipt_artifact_path_for,
 }
@@ -176,7 +185,7 @@ import gunbc.running_release_identity {
 // gated step exists to install. Every other effect installs nothing and is gated on the full roster.
 fn live_deploy_pre_mutation_access(effect: HostEffect, access: DeployAccess) -> DeployAccess {
   match effect {
-    LiveDeployApply { spec: _, candidate: _, plan: _ } => deploy_access_sudoers_install_scope(access: access)
+    LiveDeployApply { warrant: _ } => deploy_access_sudoers_install_scope(access: access)
     LiveDeployRetract { spec: _ } => deploy_access_sudoers_install_scope(access: access)
     RedfishAction { action: _ } => access
     ConvergePlan { policy: _ } => access
@@ -224,6 +233,30 @@ fn live_deploy_preflight_intent(access: DeployAccess) -> HostEffectIntent {
     evidence: host_effect_identity_evidence,
     transport: access.transport,
     privilege_denial: none,
+  }
+}
+
+// THE APPLIED REPORT IS NOT A HOST EFFECT. After live_deploy_fold runs, callers need the spec and
+// candidate without the sole-constructor warrant (review 78624). HostEffectIntent is the thing to
+// realize; this subject is the thing that ran.
+type LiveDeployAppliedSubject {
+  spec: DeploymentSpec
+  candidate: CandidateRelease
+}
+
+fn live_deploy_applied_subject(spec: DeploymentSpec, candidate: CandidateRelease) -> LiveDeployAppliedSubject {
+  LiveDeployAppliedSubject { spec: spec, candidate: candidate }
+}
+
+fn live_deploy_subject_of_fold(
+  r: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  spec: DeploymentSpec,
+  candidate: CandidateRelease,
+) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> {
+  let subject = live_deploy_applied_subject(spec: spec, candidate: candidate)
+  match r {
+    Converged { evidence: e, applied: _ } => Converged { evidence: e, applied: subject }
+    NotConverged { reason: why, applied: _ } => NotConverged { reason: why, applied: subject }
   }
 }
 
@@ -345,25 +378,42 @@ fn live_deploy_ensure_dependency(
 // the same evaluation that decides also acts, and a plan that could not be derived refuses here with
 // every member's cause, installing nothing -- never the whole roster as a fallback.
 fn live_deploy_apply_mutation_via_transport(
+  admission: RoleSingletonAdmission,
+  candidate: CandidateRelease,
+  transport: HostEffectTransport,
+  access: DeployAccess
+) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> admit_callers: [
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_admitted_via_transport"),
+] {
+  live_deploy_apply_member_plan_via_transport(spec: admitted_spec(admission: admission), candidate: candidate, transport: transport, access: access)
+}
+
+fn live_deploy_apply_member_plan_via_transport(
   spec: DeploymentSpec,
   candidate: CandidateRelease,
   transport: HostEffectTransport,
   access: DeployAccess
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> admit_callers: [
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_mutation_via_transport"),
+] {
   match deployment_effect_plan(spec: spec, candidate: candidate, transport: transport) {
     EffectsRefused { refusals } =>
       NotConverged {
         reason: join(["live_deploy: the deployment plan could not be derived from the host: ", join(map(refusals, d => decision_label(d: d)), "; ")], ""),
-        applied: live_deploy_preflight_intent(access: access),
+        applied: live_deploy_applied_subject(spec: spec, candidate: candidate),
       }
     EffectsDerived { plan } =>
-      live_deploy_fold(
+      live_deploy_subject_of_fold(
+        r: live_deploy_fold(
+          spec: spec,
+          effect: LiveDeployApply { warrant: warrant_live_deploy_apply(spec: spec, candidate: candidate, plan: plan) },
+          transport: transport,
+          access: access,
+          fixture_actor: Absent,
+          fixture_host: Absent
+        ),
         spec: spec,
-        effect: LiveDeployApply { spec: spec, candidate: candidate, plan: plan },
-        transport: transport,
-        access: access,
-        fixture_actor: Absent,
-        fixture_host: Absent
+        candidate: candidate,
       )
   }
 }
@@ -373,9 +423,9 @@ fn live_deploy_apply_mutation_via_transport(
 // readiness value into the reason, and the retry decision that consumes the
 // distinction lives in the poll, not in this gate.
 fn readiness_gate_not_converged(
-  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  mutation: Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence>,
   readiness: ServiceReadiness,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> {
   let intent = match mutation {
     Converged { evidence: _, applied: applied_intent } => applied_intent
     NotConverged { reason: _, applied: applied_intent } => applied_intent
@@ -384,9 +434,9 @@ fn readiness_gate_not_converged(
 }
 
 fn live_deploy_apply_readiness_gate_with_readiness(
-  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  mutation: Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence>,
   readiness: ServiceReadiness,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> {
   if !reconciliation_converged(r: mutation) {
     mutation
   } else {
@@ -454,9 +504,9 @@ fn live_deploy_tailnet_door_cutover_effects(
 // was, and anything else is NotConverged carrying the outcome's own account, including what
 // became of the route.
 fn tailnet_door_cutover_reconciliation(
-  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  mutation: Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence>,
   outcome: ServeCutoverOutcome,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> {
   if serve_cutover_outcome_committed(outcome: outcome) {
     mutation
   } else {
@@ -472,7 +522,7 @@ fn tailnet_door_cutover_reconciliation(
 // be put back. What readiness decides is the PERMIT: a mutation that did not converge, or a door
 // that is not ready, yields no permit, so this run re-points nothing and can only resume or roll
 // back.
-fn tailnet_door_cutover_door_standing(mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>, readiness: ServiceReadiness) -> ServiceReadiness {
+fn tailnet_door_cutover_door_standing(mutation: Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence>, readiness: ServiceReadiness) -> ServiceReadiness {
   if reconciliation_converged(r: mutation) {
     readiness
   } else {
@@ -491,9 +541,9 @@ fn live_deploy_tailnet_door_cutover_gate(
   transport: HostEffectTransport,
   access: DeployAccess,
   readiness: ServiceReadiness,
-  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  mutation: Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence>,
   journal: FabricStorageBinding,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> {
   match deployment_tailnet_door_socket(names: spec.names) {
     Absent => mutation
     Present { value: _ } =>
@@ -534,9 +584,9 @@ fn live_deploy_apply_identity_readback_gate(
   spec: DeploymentSpec,
   candidate: CandidateRelease,
   transport: HostEffectTransport,
-  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let intent = match mutation {
+  mutation: Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence>,
+) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> {
+  let subject = match mutation {
     Converged { evidence: _, applied: i } => i
     NotConverged { reason: _, applied: i } => i
   }
@@ -545,12 +595,12 @@ fn live_deploy_apply_identity_readback_gate(
     IdentityReadbackDrift { remaining } =>
       NotConverged {
         reason: join(["live_deploy: the apply completed and readiness held, but the host's member identities still differ from the release: ", join(remaining, "; ")], ""),
-        applied: intent,
+        applied: subject,
       }
     IdentityReadbackRefused { refusals } =>
       NotConverged {
         reason: join(["live_deploy: the apply completed but the member identities could not be read back: ", join(map(refusals, d => decision_label(d: d)), "; ")], ""),
-        applied: intent,
+        applied: subject,
       }
   }
 }
@@ -558,13 +608,36 @@ fn live_deploy_apply_identity_readback_gate(
 // A refused mutation cannot produce this candidate. Skip startup polling, but keep the
 // cutover gate below: it must still recover an interrupted route transaction.
 fn live_deploy_apply_via_transport(
-  spec: DeploymentSpec,
+  deployment: DesiredDeployment,
   candidate: CandidateRelease,
   transport: HostEffectTransport,
   access: DeployAccess
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> admit_callers: [
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_with_access"),
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_transaction_decided"),
+] {
+  match assess_and_admit(deployment: deployment) {
+    RoleSingletonNotAdmitted { cause } =>
+      NotConverged {
+        reason: role_singleton_refusal_detail(cause: cause),
+        applied: live_deploy_applied_subject(spec: selected_deployment_spec(row: deployment), candidate: candidate),
+      }
+    RoleSingletonAdmitted { admission } => live_deploy_apply_admitted_via_transport(admission: admission, candidate: candidate, transport: transport, access: access)
+  }
+}
+
+fn live_deploy_apply_admitted_via_transport(
+  admission: RoleSingletonAdmission,
+  candidate: CandidateRelease,
+  transport: HostEffectTransport,
+  access: DeployAccess
+) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> admit_callers: [
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_via_transport"),
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_transaction_decided"),
+] {
+  let spec = admitted_spec(admission: admission)
   let mutation = live_deploy_apply_mutation_via_transport(
-    spec: spec,
+    admission: admission,
     candidate: candidate,
     transport: transport,
     access: access,
@@ -671,12 +744,12 @@ fn live_deploy_access_preflight() -> Reconciliation<HostEffectIntent, HostEffect
 }
 
 fn live_deploy_apply_with_access(
-  spec: DeploymentSpec,
+  deployment: DesiredDeployment,
   access: DeployAccess,
   candidate: CandidateRelease,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> {
   live_deploy_apply_via_transport(
-    spec: spec,
+    deployment: deployment,
     candidate: candidate,
     transport: access.transport,
     access: access,
@@ -686,9 +759,9 @@ fn live_deploy_apply_with_access(
 fn live_deploy_apply_srv1_with_access(
   access: DeployAccess,
   candidate: CandidateRelease,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> {
   live_deploy_apply_with_access(
-    spec: deployment_spec_srv1(),
+    deployment: srv1_production_desired_deployment(),
     access: access,
     candidate: candidate,
   )
@@ -719,7 +792,7 @@ fn live_deploy_retract_srv1_with_access(
   live_deploy_retract_with_access(spec: deployment_spec_srv1(), access: access)
 }
 
-fn live_deploy_apply_srv1(candidate: CandidateRelease) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn live_deploy_apply_srv1(candidate: CandidateRelease) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> {
   live_deploy_apply_srv1_with_access(access: ci_deploy_srv1_access, candidate: candidate)
 }
 
@@ -727,7 +800,7 @@ fn live_deploy_retract_srv1() -> Reconciliation<HostEffectIntent, HostEffectEvid
   live_deploy_retract_srv1_with_access(access: ci_deploy_srv1_access)
 }
 
-fn live_deploy_reconciliation_exit(r: Reconciliation<HostEffectIntent, HostEffectEvidence>) -> ProcessExit {
+fn live_deploy_reconciliation_exit<A>(r: Reconciliation<A, HostEffectEvidence>) -> ProcessExit {
   if reconciliation_converged(r: r) {
     ExitSuccess
   } else {
@@ -761,19 +834,19 @@ fn live_deploy_reconciliation_exit(r: Reconciliation<HostEffectIntent, HostEffec
 // transition, and a wall that also blocked retraction would strand an operator with a host they
 // could neither converge nor take down -- a refusal with no exit is not fail-closed, it is stuck.
 fn live_deploy_wet_with_access_for_realization(
-  spec: DeploymentSpec,
+  deployment: DesiredDeployment,
   access: DeployAccess,
   realization: RepositoryTransitionRealization,
 ) -> ProcessExit {
   match repository_transition_admission(realization: realization) {
     LegacyGitFileSyncNotAdmitted { reason: why } => exit_failure(reason: why)
-    RepositoryTransitionAdmitted => live_deploy_admitted_wet_with_access(spec: spec, access: access)
+    RepositoryTransitionAdmitted => live_deploy_admitted_wet_with_access(deployment: deployment, access: access)
   }
 }
 
-fn live_deploy_wet_with_access(spec: DeploymentSpec, access: DeployAccess) -> ProcessExit {
+fn live_deploy_wet_with_access(deployment: DesiredDeployment, access: DeployAccess) -> ProcessExit {
   live_deploy_wet_with_access_for_realization(
-    spec: spec,
+    deployment: deployment,
     access: access,
     realization: deployed_tree_repository_transition,
   )
@@ -786,12 +859,12 @@ fn live_deploy_wet_with_access(spec: DeploymentSpec, access: DeployAccess) -> Pr
 // ancestry, on the same grounds the repository-transition admission above states for itself: a
 // wall that also blocked teardown would strand an operator with a host they could neither
 // converge nor take down.
-fn live_deploy_admitted_wet_with_access(spec: DeploymentSpec, access: DeployAccess) -> ProcessExit {
+fn live_deploy_admitted_wet_with_access(deployment: DesiredDeployment, access: DeployAccess) -> ProcessExit {
   match observe_candidate_release() {
     CandidateUnobservable { cause: why } =>
       exit_failure(reason: candidate_unobservable_detail(cause: why))
     CandidateObserved { candidate: candidate } =>
-      live_deploy_candidate_wet_with_access(spec: spec, access: access, candidate: candidate)
+      live_deploy_candidate_wet_with_access(deployment: deployment, access: access, candidate: candidate)
   }
 }
 
@@ -803,7 +876,7 @@ fn live_deploy_admitted_wet_with_access(spec: DeploymentSpec, access: DeployAcce
 // zero-mutation plan rather than a short circuit, and a host whose tree drifted beneath an
 // unchanged announcement is repaired rather than skipped.
 fn live_deploy_candidate_wet_with_access(
-  spec: DeploymentSpec,
+  deployment: DesiredDeployment,
   access: DeployAccess,
   candidate: CandidateRelease,
 ) -> ProcessExit {
@@ -812,7 +885,7 @@ fn live_deploy_candidate_wet_with_access(
     live_deploy_reconciliation_exit(r: preflight)
   } else {
     live_deploy_reconciliation_exit(
-      r: live_deploy_apply_with_access(spec: spec, access: access, candidate: candidate)
+      r: live_deploy_apply_with_access(deployment: deployment, access: access, candidate: candidate)
     )
   }
 }
@@ -1154,7 +1227,7 @@ fn approval_broker_dark_install_srv1_wet() -> ProcessExit {
 // the access reaches refuses: an access is a principal on ONE host, and pointing it at another
 // row would mutate the wrong machine under a correct-looking spec.
 type DesiredApplySelection
-  = DesiredApplySelected { spec: DeploymentSpec }
+  = DesiredApplySelected { deployment: DesiredDeployment }
   | DesiredApplyRefused { reason: String }
 
 fn live_deploy_desired_apply_selection(instance_id: String, access: DeployAccess) -> DesiredApplySelection {
@@ -1172,7 +1245,7 @@ fn live_deploy_desired_apply_selection(instance_id: String, access: DeployAccess
       if (row.target.host.identity as String) != (access.host.identity as String) {
         DesiredApplyRefused { reason: join(["live_deploy apply: DesiredApplyHostMismatch — row '", instance_id, "' targets ", row.target.host.identity as String, " but the access reaches ", access.host.identity as String], "") }
       } else {
-        DesiredApplySelected { spec: selected_deployment_spec(row: row) }
+        DesiredApplySelected { deployment: row }
       }
   }
 }
@@ -1180,7 +1253,7 @@ fn live_deploy_desired_apply_selection(instance_id: String, access: DeployAccess
 fn live_deploy_apply_desired_wet(instance_id: String, access: DeployAccess) -> ProcessExit {
   match live_deploy_desired_apply_selection(instance_id: instance_id, access: access) {
     DesiredApplyRefused { reason } => exit_failure(reason: reason)
-    DesiredApplySelected { spec } => live_deploy_wet_with_access(spec: spec, access: access)
+    DesiredApplySelected { deployment } => live_deploy_wet_with_access(deployment: deployment, access: access)
   }
 }
 
@@ -1266,6 +1339,7 @@ fn live_deploy_transaction_receipt_for(
   candidate: CandidateRelease,
   candidate_tree: String,
   apply_outcome: LiveDeployApplyOutcome,
+  role_singleton_disposition: LiveDeployRoleSingletonDisposition,
   readiness: LiveDeployReadinessOutcome,
   provenance: LiveDeployFleetProvenance,
 ) -> LiveDeployApplyReceipt {
@@ -1278,14 +1352,30 @@ fn live_deploy_transaction_receipt_for(
     candidate_surface_identity: candidate.expected_surface_identity.digest as String,
     candidate_tree_oid: candidate_tree,
     apply_outcome: apply_outcome,
+    role_singleton_disposition: role_singleton_disposition,
     readiness: readiness,
     provenance: provenance,
     completed_at: clock_now_probed_at_or_unknown() as String,
   }
 }
 
+fn role_singleton_disposition_of(admission: RoleSingletonAdmission) -> LiveDeployRoleSingletonDisposition admit_callers: [
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_transaction_decided"),
+] {
+  role_singleton_disposition_of_decision(decision: admitted_decision(admission: admission))
+}
+
+fn role_singleton_disposition_of_decision(decision: RoleSingletonConvergence) -> LiveDeployRoleSingletonDisposition {
+  match decision {
+    RoleSingletonNoop => RoleSingletonsNoop
+    RoleSingletonInPlace { global_unobservable } => RoleSingletonsInPlace { global_unobservable: global_unobservable |> map(h => h as String) }
+    RoleSingletonInstall { holder } => RoleSingletonsInstalled { deployment: holder.instance.deployment.name as String, host: holder.instance.host_identity as String }
+    RoleSingletonRefused { cause } => RoleSingletonsRefusedBeforeApply { detail: role_singleton_refusal_detail(cause: cause) }
+  }
+}
+
 fn live_deploy_transaction_decided(
-  spec: DeploymentSpec,
+  deployment: DesiredDeployment,
   access: DeployAccess,
   run: ActionsRunBinding,
   expected: String,
@@ -1293,28 +1383,41 @@ fn live_deploy_transaction_decided(
   candidate_tree: String,
   provenance: LiveDeployFleetProvenance,
 ) -> ProcessExit {
-      let preflight = live_deploy_access_preflight_for(access: access)
-      if !reconciliation_converged(r: preflight) {
+  let spec = selected_deployment_spec(row: deployment)
+  let preflight = live_deploy_access_preflight_for(access: access)
+  if !reconciliation_converged(r: preflight) {
+    live_deploy_write_transaction_receipt(
+      spec: spec,
+      receipt: live_deploy_transaction_receipt_for(spec: spec, run: run, expected: expected, candidate: candidate, candidate_tree: candidate_tree, apply_outcome: LiveDeployApplyNotConverged { reason: (match preflight { NotConverged { reason: why, applied: _ } => why  Converged { evidence: _, applied: _ } => "preflight" }) }, role_singleton_disposition: RoleSingletonsRefusedBeforeApply { detail: "not assessed: the access preflight refused first" }, readiness: LiveDeployReadinessRefused { detail: "not observed: preflight refused" }, provenance: provenance),
+      exit: live_deploy_reconciliation_exit(r: preflight),
+    )
+  } else {
+    match assess_and_admit(deployment: deployment) {
+      RoleSingletonNotAdmitted { cause } => {
+        let why = role_singleton_refusal_detail(cause: cause)
         live_deploy_write_transaction_receipt(
           spec: spec,
-          receipt: live_deploy_transaction_receipt_for(spec: spec, run: run, expected: expected, candidate: candidate, candidate_tree: candidate_tree, apply_outcome: LiveDeployApplyNotConverged { reason: (match preflight { NotConverged { reason: why, applied: _ } => why  Converged { evidence: _, applied: _ } => "preflight" }) }, readiness: LiveDeployReadinessRefused { detail: "not observed: preflight refused" }, provenance: provenance),
-          exit: live_deploy_reconciliation_exit(r: preflight),
+          receipt: live_deploy_transaction_receipt_for(spec: spec, run: run, expected: expected, candidate: candidate, candidate_tree: candidate_tree, apply_outcome: LiveDeployApplyNotConverged { reason: why }, role_singleton_disposition: RoleSingletonsRefusedBeforeApply { detail: why }, readiness: LiveDeployReadinessRefused { detail: "not observed: the role-singleton assessment refused before any member was planned" }, provenance: provenance),
+          exit: exit_failure(reason: why),
         )
-      } else {
-        let applied = live_deploy_apply_with_access(spec: spec, access: access, candidate: candidate)
+      }
+      RoleSingletonAdmitted { admission } => {
+        let applied = live_deploy_apply_admitted_via_transport(admission: admission, candidate: candidate, transport: access.transport, access: access)
         let outcome = match applied {
           Converged { evidence: _, applied: _ } => LiveDeployApplyConverged
           NotConverged { reason: why, applied: _ } => LiveDeployApplyNotConverged { reason: why }
         }
         live_deploy_write_transaction_receipt(
           spec: spec,
-          receipt: live_deploy_transaction_receipt_for(spec: spec, run: run, expected: expected, candidate: candidate, candidate_tree: candidate_tree, apply_outcome: outcome, readiness: live_deploy_post_apply_readiness(spec: spec, access: access), provenance: provenance),
+          receipt: live_deploy_transaction_receipt_for(spec: spec, run: run, expected: expected, candidate: candidate, candidate_tree: candidate_tree, apply_outcome: outcome, role_singleton_disposition: role_singleton_disposition_of(admission: admission), readiness: live_deploy_post_apply_readiness(spec: spec, access: access), provenance: provenance),
           exit: live_deploy_reconciliation_exit(r: applied),
         )
+      }
+    }
   }
 }
 
-fn live_deploy_transaction_admitted(spec: DeploymentSpec, access: DeployAccess, run: ActionsRunBinding, expected: String, provenance: LiveDeployFleetProvenance) -> ProcessExit {
+fn live_deploy_transaction_admitted(deployment: DesiredDeployment, access: DeployAccess, run: ActionsRunBinding, expected: String, provenance: LiveDeployFleetProvenance) -> ProcessExit {
   match observe_candidate_release() {
     CandidateUnobservable { cause: why } =>
       exit_failure(reason: candidate_unobservable_detail(cause: why))
@@ -1327,7 +1430,7 @@ fn live_deploy_transaction_admitted(spec: DeploymentSpec, access: DeployAccess, 
             exit_failure(reason: join(["live_deploy transaction: CandidateTreeUnobservable — ", d], ""))
           CandidateTreeOidObserved { oid_hex: candidate_tree } =>
             live_deploy_transaction_decided(
-              spec: spec,
+              deployment: deployment,
               access: access,
               run: run,
               expected: expected,
@@ -1340,7 +1443,7 @@ fn live_deploy_transaction_admitted(spec: DeploymentSpec, access: DeployAccess, 
   }
 }
 
-fn live_deploy_transaction_admitted_wet_with_access(spec: DeploymentSpec, access: DeployAccess) -> ProcessExit {
+fn live_deploy_transaction_admitted_wet_with_access(deployment: DesiredDeployment, access: DeployAccess) -> ProcessExit {
   match observe_actions_run_binding() {
     ActionsRunUnbound { variable: v, detail: d } =>
       exit_failure(reason: join(["live_deploy transaction: RunUnbound — ", v, " ", d, "; the transaction entry runs only inside the fleet-converge workflow"], ""))
@@ -1368,7 +1471,7 @@ fn live_deploy_transaction_admitted_wet_with_access(spec: DeploymentSpec, access
                     plan_receipt_identity: fleet_converge_plan_receipt_identity_hex(r: plan_receipt),
                     apply_receipt_identity: fleet_converge_apply_receipt_identity_hex(r: fleet_apply_receipt),
                   }
-                  live_deploy_transaction_admitted(spec: spec, access: access, run: run, expected: admitted, provenance: provenance)
+                  live_deploy_transaction_admitted(deployment: deployment, access: access, run: run, expected: admitted, provenance: provenance)
                   }
                   }
                   }
@@ -1381,24 +1484,24 @@ fn live_deploy_transaction_admitted_wet_with_access(spec: DeploymentSpec, access
 // Keeping realization injectable at this internal seam makes the refusing arm executable in a
 // hermetic witness while the production entry below remains constructed from the one bound row.
 fn live_deploy_transaction_wet_with_access_for_realization(
-  spec: DeploymentSpec,
+  deployment: DesiredDeployment,
   access: DeployAccess,
   realization: RepositoryTransitionRealization,
 ) -> ProcessExit {
   match repository_transition_admission(realization: realization) {
     LegacyGitFileSyncNotAdmitted { reason: why } => exit_failure(reason: why)
-    RepositoryTransitionAdmitted => live_deploy_transaction_admitted_wet_with_access(spec: spec, access: access)
+    RepositoryTransitionAdmitted => live_deploy_transaction_admitted_wet_with_access(deployment: deployment, access: access)
   }
 }
 
-fn live_deploy_transaction_wet_with_access(spec: DeploymentSpec, access: DeployAccess) -> ProcessExit {
+fn live_deploy_transaction_wet_with_access(deployment: DesiredDeployment, access: DeployAccess) -> ProcessExit {
   live_deploy_transaction_wet_with_access_for_realization(
-    spec: spec,
+    deployment: deployment,
     access: access,
     realization: deployed_tree_repository_transition,
   )
 }
 
 fn live_deploy_apply_srv1_transaction_wet() -> ProcessExit {
-  live_deploy_transaction_wet_with_access(spec: deployment_spec_srv1(), access: ci_deploy_srv1_access)
+  live_deploy_transaction_wet_with_access(deployment: srv1_production_desired_deployment(), access: ci_deploy_srv1_access)
 }
