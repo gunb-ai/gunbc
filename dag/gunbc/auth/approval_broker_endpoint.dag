@@ -7,7 +7,8 @@ import extdeps.tailscale.serve {
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
 import gunbc.fleet_tailnet { fleet_tailnet_domain, tailnet_base_url_from, tailnet_host_from }
 import gunbc.serve_liveness { serve_liveness_path }
-import gunbc.srv1_dashboard_bind { srv1_dashboard_host_identity }
+import extdeps.shell
+import v2.std.collection { Present, Absent }
 import gunbc.auth.approval_device_wire { approval_device_request_path_prefix, approval_device_enrollment_path_prefix }
 
 // ── WHERE THE APPROVAL BROKER ANSWERS ────────────────────────────────────────────────────────
@@ -95,12 +96,6 @@ data approval_broker_listen_port: Port = 8085
 // door is the only public path" true rather than merely intended.
 data approval_broker_listen_host: NonEmptyStr = "127.0.0.1"
 
-// THE HOST THE BROKER RUNS ON, derived from the instance that owns its unit rather than spelled: a
-// run that files and polls over the loopback approval client (the GCP IAM converge job) has to run
-// there.
-fn approval_broker_host_identity() -> NonEmptyStr {
-  srv1_dashboard_host_identity
-}
 
 fn approval_broker_loopback_base_url(port: Port) -> NonEmptyStr {
   join(["http://", approval_broker_listen_host as String, ":", to_string(port)], "") as NonEmptyStr
@@ -235,15 +230,43 @@ data approval_broker_front_door_path_preservation: CitedFigureStanding = Transcr
 // (gunbc.approve_ios_project) -- read one port rather than each assuming 443.
 data approval_broker_public_port: Port? = none
 
-fn approval_broker_base_url_from(domain: NonEmptyStr?) -> NonEmptyStr {
-  tailnet_base_url_from(host: approval_broker_host_identity(), domain: domain, port: approval_broker_public_port)
-}
+// THE BROKER'S PUBLIC ADDRESS ON A GIVEN HOST. Which host is a placement fact, not this module's:
+// the prod role decides WHERE the broker is installed (gunbc.auth.approval_broker_placement, over
+// gunbc.live_deploy.spec RoleSingletonHolding), and a broker-side reader receives the host it was
+// installed on rather than resolving the role -- so the broker's closure never reaches the instance
+// roster (#13132).
+type ApprovalBrokerAddress
+  = ApprovalBrokerAddressResolved { value: NonEmptyStr }
+  | ApprovalBrokerAddressRefused { detail: NonEmptyStr }
 
-fn approval_broker_base_url() -> NonEmptyStr {
-  approval_broker_base_url_from(domain: fleet_tailnet_domain)
+fn approval_broker_base_url_on(host: NonEmptyStr, domain: NonEmptyStr?) -> NonEmptyStr {
+  tailnet_base_url_from(host: host, domain: domain, port: approval_broker_public_port)
 }
 
 // THE BARE HOST OF THAT SAME ADDRESS, for a client that composes scheme, host and path itself.
-fn approval_broker_public_host_from(domain: NonEmptyStr?) -> NonEmptyStr {
-  tailnet_host_from(host: approval_broker_host_identity(), domain: domain)
+fn approval_broker_public_host_on(host: NonEmptyStr, domain: NonEmptyStr?) -> NonEmptyStr {
+  tailnet_host_from(host: host, domain: domain)
+}
+
+// THE SERVING BROKER'S OWN ADDRESS IS GIVEN, NOT DISCOVERED. Placement already knows which host the
+// broker is installed on (gunbc.auth.approval_broker_placement, from the prod-role holder token the
+// spec carries), so the emitter binds the base URL into the process's environment: the broker unit's
+// Environment= line (gunbc.live_deploy.emit) and the enrolment verb's env prefix
+// (gunbc.auth.approval_device_enrolment_code_issue). The broker reads the value it was given -- no
+// host-effect read, so its closure never reaches the instance roster (#13132) and there is one
+// authority for where it runs. An unset binding, or one that is not an https URL (the emitter's
+// refusal marker), refuses; it is never replaced by a host.
+data approval_broker_base_url_env_name: NonEmptyStr = "GUNBC_APPROVAL_BROKER_BASE_URL"
+
+fn approval_broker_serving_base_url_of(bound: String?) -> ApprovalBrokerAddress {
+  match bound {
+    Present { value: v } =>
+      if starts_with(s: v, prefix: "https://") { ApprovalBrokerAddressResolved { value: v as NonEmptyStr } }
+      else { ApprovalBrokerAddressRefused { detail: join(["approval broker address unresolved: ", approval_broker_base_url_env_name as String, " is bound to '", v, "', not an https URL"], "") as NonEmptyStr } }
+    Absent => ApprovalBrokerAddressRefused { detail: join(["approval broker address unresolved: ", approval_broker_base_url_env_name as String, " is not bound in this process"], "") as NonEmptyStr }
+  }
+}
+
+fn approval_broker_serving_base_url() -> ApprovalBrokerAddress {
+  approval_broker_serving_base_url_of(bound: shell.Env.Get(name: approval_broker_base_url_env_name).value)
 }

@@ -1,11 +1,11 @@
-module v2.test.claim.compiler.infer_cardinality_type_owes_no_descent_test
+module v2.test.claim.compiler.infer_occupancy_type_owes_no_descent_test
 
 // A type node owes no evaluation descent: v2.std.cardinality connective_multiplicity answers
-// Bounded for every connective, Cardinality (T?) included, and repetition enters a program only
+// Bounded for every connective, Occupancy (T?) included, and repetition enters a program only
 // through the Loop behavior. The discriminating red for T? is
 // v2.test.claim.compiler.infer_application_argument_inhabitance_witness_test
 // infer_optional_formal_reaches_optional_carrier_frontier_holds; this module holds the control
-// that must not move when Cardinality stops owing descent. The tree is SUPPLIED at the infer
+// that must not move when Occupancy stops owing descent. The tree is SUPPLIED at the infer
 // boundary (DESIGN §3, a witness discriminates at one interface).
 
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }

@@ -15,6 +15,7 @@ import extdeps.git {
 }
 import extdeps.github.github { github_https_clone_url }
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.spec {
   OwnedArtifactKind,
   PublicationHelperTimerUnit,
@@ -199,7 +200,7 @@ test fn only_an_exact_read_back_reports_success() -> Bool {
 // ── The prerequisite is ordered before its consumer ─────────────────────────────────────────────
 //
 // Apply walks deployment_owned_steps in order, so member POSITION IS EXECUTION ORDER. The remote
-// is a prerequisite of every belt tick: with no origin, fleet_desired_observe's ls-remote refuses
+// is a prerequisite of every belt tick: with no origin, origin_main_revision_observe's ls-remote refuses
 // and the tick faults. An earlier cut of this change appended the member LAST, after the belt
 // timer, so a candidate belt could fire against the known-broken observation state before the
 // correction ran — a self-inflicted refusal on every fresh deploy, and an inversion of
@@ -251,6 +252,7 @@ fn ordered_tags() -> List<String> {
     deployment_owned_steps(
       instance: srv1_live_dashboard_instance(),
       names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance()),
+      holding: deployment_spec_srv1().role_singletons,
     ),
     init: [],
     f: (acc, step) => {

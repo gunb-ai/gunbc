@@ -36,7 +36,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.node { Arrow, Atom, Bind, Branch, Cardinality, ComputationNode, Conj, Disj, Edge, Instantiation, Loop, Match, Node, Positional, Symbol, Transform, TypeNode, Value, Authored, StructuralLabel }
+import v2.std.node { Arrow, Atom, Bind, Branch, Occupancy, ComputationNode, Conj, Disj, Edge, Instantiation, Loop, Match, Node, Positional, Symbol, Transform, TypeNode, Value, Authored, StructuralLabel }
 
 type WrapDecisionBundleChildLookup
   = WrapDecisionBundleChildMissing
@@ -128,7 +128,7 @@ fn wrap_decision_bundle_optional_child(
     TypeNode { connective: Atom { identity: _ } } => wrap_decision_bundle_malformed_refusal(bundle: target.bundle)
     TypeNode { connective: Disj } => wrap_decision_bundle_malformed_refusal(bundle: target.bundle)
     TypeNode { connective: Arrow } => wrap_decision_bundle_malformed_refusal(bundle: target.bundle)
-    TypeNode { connective: Cardinality } => wrap_decision_bundle_malformed_refusal(bundle: target.bundle)
+    TypeNode { connective: Occupancy } => wrap_decision_bundle_malformed_refusal(bundle: target.bundle)
     TypeNode { connective: Instantiation } => wrap_decision_bundle_malformed_refusal(bundle: target.bundle)
     ComputationNode { behavior: Value } => wrap_decision_bundle_malformed_refusal(bundle: target.bundle)
     ComputationNode { behavior: Transform } => wrap_decision_bundle_malformed_refusal(bundle: target.bundle)

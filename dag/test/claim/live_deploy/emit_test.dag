@@ -17,6 +17,7 @@ import gunbc.fabric_storage_file_store { fabric_storage_file_root }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import v2.std.collection { Present, Absent }
 import gunbc.live_deploy.spec {
+  RoleSingletonHolding, HoldsNoRoleSingleton, HoldsProdRoleSingletons, role_singleton_holding_under,
   DeploymentArtifactStep,
   gunbc_approval_broker_unit_name, gunbc_approval_broker_slice_unit_name,
   gunbc_repository_convergence_slice_unit_name, gunbc_repository_convergence_slice_unit_path,
@@ -61,7 +62,7 @@ import gunbc.live_deploy.spec {
   deployment_step_teardown_disposition,
   gunbc_service_user,
 }
-import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
+import gunbc.live_deploy.desired { prod_role_actuated_realization, deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
 import gunbc.host_layout { srv1_dispatch_attempt_state_root, belt_spawn_workdir_env_var, srv1_attempt_state_directory }
 import gunbc.managed_directory {
   managed_directory_mode_octal,
@@ -407,6 +408,7 @@ test fn witness_apply_pipeline_carries_the_preamble_after_its_frame() -> Bool {
     names: real.names,
     instance_id: real.instance_id,
     directories: real.directories,
+    role_singletons: real.role_singletons,
   }
   match ci_deploy_srv1_access_or_refusal() {
     DeployAccessReady { access: a } =>
@@ -882,9 +884,9 @@ fn spec_owned_paths(spec: DeploymentSpec) -> List<String> {
 // a socket, which the twin's derived route does not, and the twin must own none.
 fn live_host_singleton_paths(live: DeploymentSpec) -> List<String> {
   concat(
-    deployment_fabric_storage_steps(instance: srv1_live_dashboard_instance(), names: live.names),
+    deployment_fabric_storage_steps(holding: srv1_live_holding(), names: live.names),
     concat(
-      deployment_approval_broker_front_door_steps(instance: srv1_live_dashboard_instance()),
+      deployment_approval_broker_front_door_steps(holding: srv1_live_holding()),
       deployment_tailnet_door_steps(names: live.names),
     ),
   ) |> map(s => s.path as String)
@@ -907,8 +909,8 @@ test fn a_twin_deployment_on_one_host_collides_with_nothing() -> Bool {
     && all(singletons, h => any(live_paths, l => l == h))
     && all(live_instance_scoped, l => any(twin_steps, t => t.kind == l.kind))
     && all(twin_steps, t => any(live_instance_scoped, l => l.kind == t.kind))
-    && count(deployment_fabric_storage_steps(instance: srv1_lab_dashboard_instance(), names: twin.names)) == 0
-    && count(deployment_approval_broker_front_door_steps(instance: srv1_lab_dashboard_instance())) == 0
+    && count(deployment_fabric_storage_steps(holding: HoldsNoRoleSingleton, names: twin.names)) == 0
+    && count(deployment_approval_broker_front_door_steps(holding: HoldsNoRoleSingleton)) == 0
     && count(deployment_tailnet_door_steps(names: twin.names)) == 0
     && all(twin_paths, t => !any(live_paths, l => l == t))
 }
@@ -932,6 +934,7 @@ test fn retract_is_the_reverse_of_what_this_spec_applies() -> Bool {
   let twin = srv1_twin_spec()
   let applied = deployment_steps_apply_order(
     instance: srv1_lab_dashboard_instance(),
+    holding: HoldsNoRoleSingleton,
     target: deployment_srv1_target(),
     names: derived_deployment_names(instance: srv1_lab_dashboard_instance()),
   )
@@ -1128,6 +1131,7 @@ fn preserve_removal_client_target() -> DeploymentHostTarget {
 
 fn spec_with_target(target: DeploymentHostTarget) -> DeploymentSpec {
   deployment_spec_for(
+    realization: prod_role_actuated_realization(),
     instance: srv1_live_dashboard_instance(),
     target: target,
     names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance()),
@@ -1156,7 +1160,7 @@ test fn fleet_converge_timer_not_installed_by_deploy_apply() -> Bool {
   let spec = deployment_spec_srv1()
   let live = apply_emitted_steps_text(spec: spec, plan: deploy_witness_full_install_plan(spec: spec))
   !any(
-    deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names),
+    deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names, holding: spec.role_singletons),
     s => match s.kind { FleetConvergeTimerUnit => true  _ => false }
   )
     && !string_contains(s: live, pattern: "OnCalendar=*:0/15")
@@ -1388,7 +1392,7 @@ fn srv1_demands_directory(path: String) -> Bool {
 
 // The fabric DB's store is created on the placement host's apply path, as an owned-directory demand.
 test fn the_fabric_storage_store_root_reaches_the_srv1_apply_path() -> Bool {
-  srv1_demands_directory(path: fabric_storage_store_root() as String)
+  srv1_demands_directory(path: fabric_storage_store_root(instance: srv1_live_dashboard_instance()) as String)
 }
 
 // THE AREAS THE STORE WRITES INTO ARE DEMANDED, NOT ONLY THE ROOT. The paths are read from the file
@@ -1396,7 +1400,7 @@ test fn the_fabric_storage_store_root_reaches_the_srv1_apply_path() -> Bool {
 // the deployment ensures the root alone, which is the state that refused fleet-converge run
 // 35818578751's host-effect claim with `object publication refused: not_found`.
 test fn the_fabric_storage_store_areas_reach_the_srv1_apply_path() -> Bool {
-  let files = fabric_storage_file_root(root: fabric_storage_store_root())
+  let files = fabric_storage_file_root(root: fabric_storage_store_root(instance: srv1_live_dashboard_instance()))
   srv1_demands_directory(path: files.objects as String) && srv1_demands_directory(path: files.heads as String)
 }
 
@@ -1419,10 +1423,10 @@ fn srv1_fabric_area_ensure(path: String) -> String {
 }
 
 test fn the_fabric_storage_areas_are_the_services_and_the_door_admits_the_claim_principal() -> Bool {
-  let files = fabric_storage_file_root(root: fabric_storage_store_root())
+  let files = fabric_storage_file_root(root: fabric_storage_store_root(instance: srv1_live_dashboard_instance()))
   let objects = srv1_fabric_area_ensure(path: files.objects as String)
   let heads = srv1_fabric_area_ensure(path: files.heads as String)
-  let door = srv1_fabric_area_ensure(path: fabric_storage_door_directory_path() as String)
+  let door = srv1_fabric_area_ensure(path: fabric_storage_door_directory_path(instance: srv1_live_dashboard_instance()) as String)
   string_contains(s: objects, pattern: "0700") && string_contains(s: objects, pattern: "briansrls") && !string_contains(s: objects, pattern: "ghrunner") && !string_contains(s: objects, pattern: "REFUSED")
     && string_contains(s: heads, pattern: "0700") && !string_contains(s: heads, pattern: "ghrunner") && !string_contains(s: heads, pattern: "REFUSED")
     && string_contains(s: door, pattern: "2710") && string_contains(s: door, pattern: "ghrunner") && !string_contains(s: door, pattern: "REFUSED")
@@ -1432,7 +1436,7 @@ test fn the_fabric_storage_areas_are_the_services_and_the_door_admits_the_claim_
 // install alone, no repair. Red if a repair reappears, which would mean some other principal is again
 // expected to write the store's files.
 test fn the_fabric_storage_area_ensure_leaves_the_services_own_entries_alone() -> Bool {
-  let files = fabric_storage_file_root(root: fabric_storage_store_root())
+  let files = fabric_storage_file_root(root: fabric_storage_store_root(instance: srv1_live_dashboard_instance()))
   count(srv1_fabric_area_install_steps(path: files.objects as String)) == 1
     && count(srv1_fabric_area_install_steps(path: files.heads as String)) == 1
 }
@@ -1442,7 +1446,7 @@ test fn the_fabric_storage_area_ensure_leaves_the_services_own_entries_alone() -
 // the refusal when a directory grants o+x, are witnessed on synthetic principals in
 // test.claim.managed_directory_witness.
 test fn the_placed_fabric_store_derives_entry_mode_0400() -> Bool {
-  match fabric_storage_entry_mode() {
+  match fabric_storage_entry_mode(store_root: fabric_storage_store_root(instance: srv1_live_dashboard_instance())) {
     FabricStorageEntryModeDerived { mode } => file_mode_octal(mode: mode) == "0400"
     FabricStorageEntryModeRefused { detail: _ } => false
   }
@@ -1453,9 +1457,9 @@ test fn the_placed_fabric_store_derives_entry_mode_0400() -> Bool {
 // A retract tears down owned steps only, so the store is safe exactly when it is demanded and no owned
 // step names it.
 test fn no_retract_can_remove_the_fabric_storage_store() -> Bool {
-  srv1_demands_directory(path: fabric_storage_store_root() as String)
+  srv1_demands_directory(path: fabric_storage_store_root(instance: srv1_live_dashboard_instance()) as String)
     && !any(deployment_spec_srv1().steps, st => match st {
-      ArtifactStep { step: art } => (art.path as String) == (fabric_storage_store_root() as String)
+      ArtifactStep { step: art } => (art.path as String) == (fabric_storage_store_root(instance: srv1_live_dashboard_instance()) as String)
       Dependency { step: _ } => false
     })
 }
@@ -1836,15 +1840,20 @@ test fn the_receipt_command_substitutes_the_digest_rather_than_splicing_it() -> 
 // port any local account could reach with a forged identity header), and its route is tailscale
 // serve's 10000 listener at the root mount, proxying to exactly that socket.
 test fn the_fabric_storage_unit_binds_its_door_socket_and_its_route_proxies_to_it() -> Bool {
-  let unit = serialize_systemd_unit_file(file: live_deploy_fabric_storage_unit_file(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }))
-  let route = deployment_fabric_storage_serve_endpoint()
+  let unit = serialize_systemd_unit_file(file: live_deploy_fabric_storage_unit_file(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }, door_socket: fabric_storage_door_socket(instance: srv1_live_dashboard_instance())))
+  let route = deployment_fabric_storage_serve_endpoint(door_socket: fabric_storage_door_socket(instance: srv1_live_dashboard_instance()))
   unit.contains("--function fabric_storage_serve_handle")
-    && unit.contains(join(["--unix-socket ", fabric_storage_door_socket() as String], ""))
+    && unit.contains(join(["--unix-socket ", fabric_storage_door_socket(instance: srv1_live_dashboard_instance()) as String], ""))
     && !unit.contains("--host")
     && !unit.contains("--port")
     && route.https_port == fabric_storage_https_port
-    && (route.backend as String) == join(["unix:", fabric_storage_door_socket() as String], "")
+    && (route.backend as String) == join(["unix:", fabric_storage_door_socket(instance: srv1_live_dashboard_instance()) as String], "")
     && (match route.mount { ServeRootMount => true  ServeSetPath { path: _ } => false })
 }
 
 
+
+
+fn srv1_live_holding() -> RoleSingletonHolding {
+  role_singleton_holding_under(realization: prod_role_actuated_realization(), instance: srv1_live_dashboard_instance())
+}

@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.variant_arm_position_admits_a_type_name
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data variant_arm_position_admits_a_type_name: RecurringFailureMode = RecurringFailureMode {
+  identity: "variant_arm_position_admits_a_type_name" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a variant ARM position whose spelling is already a TYPE name in the same module graph. v2 single-module resolve admits it -- a v2.std.node Connective arm spelled `Cardinality` while `type Cardinality = Required | Optional` is declared elsewhere raised no refusal -- so one name carried two meanings (DESIGN section 3, the meaning fork) and a bare `Cardinality` reference bound whichever declaration the reader's scope reached first. gunbc#13377 answered it by qualifying Cardinality/Optional at the v2 lens call sites, a symptom-link patch that left both declarations standing and made the ambiguity worse.",
+
+    "HARM: a lens or consumer that names the arm and the type with one spelling reads the wrong declaration with no diagnostic, and the repair then lands at every call site instead of at the declaration. FOUND AT: mitigatable -- nothing refuses at resolve; the only barrier is a reader noticing, and the live reflection claim scoped_type_reflection_conformance_test unique_type_spelling_still_resolves, which was the discriminating red for the rename that removed the fork (arm Cardinality became Occupancy, gunbc re-derivation of #13377).",
+
+    "CEILING: structurally guaranteed. Whether an arm spelling is also a type name is decidable from the resolved declaration graph, so resolve can refuse it with a typed located diagnostic; it is not structurally impossible because the source can still write the arm. NEXT-RUNG TRIGGER, at capability grain: v2 resolve refuses a variant-arm declaration whose short name is also a type declaration visible in the module graph it resolves against, WITH NAMESPACED REUSE ADMITTED -- two unrelated modules each declaring a same-named type stay legal, so the grain is the arm-versus-type collision, not the duplicate declaration (see a_bare_type_name_binds_the_wrong_declaration for why a global duplicate-name wall was removed). Its discriminating red is fixture source handed to the compiler: one module declaring `type T = A | B` and a coproduct with an arm spelled `T`, expected to refuse; the positive control is the renamed arm accepted. Tried and dropped from the re-derivation PR because v2 single-module resolve ACCEPTED the fixture, which is the finding.",
+  ],
+
+  evidence: [],
+}

@@ -88,7 +88,7 @@ test fn unique_type_spelling_still_resolves() -> Bool {
       pool_roots: scoped_reflection_pool_roots,
       type_name: ^Connective
     ),
-    expected: [^Atom, ^Conj, ^Disj, ^Arrow, ^Cardinality, ^Instantiation]
+    expected: [^Atom, ^Conj, ^Disj, ^Arrow, ^Occupancy, ^Instantiation]
   )
 }
 

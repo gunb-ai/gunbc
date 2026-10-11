@@ -1,0 +1,18 @@
+module gunbc.live_deploy.apply_warrant
+
+import std.decl_ref { decl_ref }
+import gunbc.live_deploy.spec { DeploymentSpec }
+import gunbc.live_deploy.candidate_identity { CandidateRelease }
+import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
+
+type AdmittedLiveDeployApply sole_constructor {
+  spec: DeploymentSpec
+  candidate: CandidateRelease
+  plan: ReleaseEffectPlan
+}
+
+fn warrant_live_deploy_apply(spec: DeploymentSpec, candidate: CandidateRelease, plan: ReleaseEffectPlan) -> AdmittedLiveDeployApply admit_callers: [
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_member_plan_via_transport"),
+] {
+  AdmittedLiveDeployApply { spec: spec, candidate: candidate, plan: plan }
+}
