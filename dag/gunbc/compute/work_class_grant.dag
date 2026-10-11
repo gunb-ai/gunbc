@@ -51,7 +51,7 @@ fn work_class_of(op: WorkOperation) -> WorkClass {
   match op {
     BuildGunbcBinaries { profile, bins: _ } => WorkClassBuild { profile: profile }
     CompileEntry { entry: _ } => WorkClassCompile
-    RunClaims { entry: _, functions: _, hermetic: _ } => WorkClassClaims
+    RunClaims { entry: _, functions: _, hermetic: _, window: _ } => WorkClassClaims
   }
 }
 

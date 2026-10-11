@@ -114,6 +114,12 @@ data output_compute_work_log: ArtifactOutputId = "compute_work_log"
 
 data output_compute_work_outputs: ArtifactOutputId = "compute_work_outputs"
 
+// ONE DECLARED OUTPUT PER COMPUTE BINARY (gunbc.compute.work_request GunbcBinary): the set is closed,
+// so each binary part has its own row rather than an id recovered from a name.
+data output_compute_work_gunbc_binary: ArtifactOutputId = "compute_work_gunbc_binary"
+
+data output_compute_work_claim_batch_binary: ArtifactOutputId = "compute_work_claim_batch_binary"
+
 
 type DeclaredInput {
   ref: NonEmptyStr

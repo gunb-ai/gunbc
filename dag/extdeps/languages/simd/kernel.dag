@@ -9,7 +9,7 @@ import std.numerical_contract {
   FmaContractionRefused,
   FmaContractionPermitted,
 }
-import std.bytes { pure_dag_seam_unreachable, pure_dag_seam_unreachable_float }
+import std.error_primitives { pure_dag_seam_unreachable, pure_dag_seam_unreachable_float }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 

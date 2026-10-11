@@ -37,6 +37,7 @@ import gunbc.roadmap_verification_receipt {
   VerificationReceiptDecoded,
   VerificationReceiptUndecodable,
   verification_receipt_schema,
+  SharedComputationCitation, ComputationAttached, ComputationComputed,
 }
 import gunbc.git_diff_change_window {
   git_diff_window_absent_identity,
@@ -86,6 +87,7 @@ fn exact_head_receipt(head: CommitSha) -> VerificationReceipt {
         exit_code: 0,
         stdout: "true\n",
         stderr: "",
+        computation: none,
       },
     ],
     verdict: ValidationPassed {
@@ -218,4 +220,48 @@ test fn change_window_refused_verdict_round_trips_through_json_codec() -> Bool {
 
 test fn verification_receipt_schema_is_v2() -> Bool {
   (verification_receipt_schema as String) == "roadmap-verification-receipt/v2"
+}
+
+fn cited_receipt(head: CommitSha) -> VerificationReceipt {
+  let base = exact_head_receipt(head: head)
+  VerificationReceipt {
+    subject: base.subject,
+    oracle_identity: base.oracle_identity,
+    executions: map(base.executions, e => ValidationExecution {
+      validation: e.validation, command: e.command, exit_code: e.exit_code, stdout: e.stdout, stderr: e.stderr,
+      computation: Present { value: SharedComputationCitation {
+        request_key: "0123456789abcdef" as NonEmptyStr,
+        outcome_identity: "0123456789abcdef",
+        subject_tree: "1111111111111111111111111111111111111111" as NonEmptyStr,
+        origin: ComputationAttached,
+      } },
+    }),
+    verdict: base.verdict,
+  }
+}
+
+// THE RECEIPT CARRIES THE SHARED COMPUTATION THROUGH ITS CODEC. RED against a codec that drops the
+// citation (the head and the compute subject would no longer be joined in what is persisted) or that
+// reads a present-but-broken citation as no citation.
+test fn a_compute_citation_round_trips_and_a_broken_one_makes_the_receipt_unreadable() -> Bool {
+  let wire = verification_receipt_json(receipt: cited_receipt(head: head_a))
+  let round_trips = match verification_receipt_decode(receipt: wire) {
+    VerificationReceiptDecoded { receipt: decoded } =>
+      all(decoded.executions, e => match e.computation {
+        Present { value: c } => (c.request_key as String) == "0123456789abcdef" && (c.subject_tree as String) == "1111111111111111111111111111111111111111"
+          && (match c.origin { ComputationAttached => true  ComputationComputed => false })
+        Absent => false
+      }) && count(decoded.executions) > 0
+    VerificationReceiptUndecodable { reason: _ } => false
+  }
+  let broken = wire.replace(from: "\"origin\": \"attached\"", to: "\"origin\": \"borrowed\"")
+  let refuses_broken = match verification_receipt_decode(receipt: broken) {
+    VerificationReceiptDecoded { receipt: _ } => false
+    VerificationReceiptUndecodable { reason: _ } => true
+  }
+  let uncited = match verification_receipt_decode(receipt: verification_receipt_json(receipt: exact_head_receipt(head: head_a))) {
+    VerificationReceiptDecoded { receipt: decoded } => all(decoded.executions, e => match e.computation { Present { value: _ } => false  Absent => true })
+    VerificationReceiptUndecodable { reason: _ } => false
+  }
+  round_trips && broken != wire && refuses_broken && uncited
 }

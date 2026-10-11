@@ -58,6 +58,7 @@ import std.fabric_blob { fabric_blob_reading_path }
 import std.cache_identity { native_module_verdict_bundle_artifact_kind, typed_module_artifact_kind }
 import gunbc.materialization_store_budgets {
   materialization_store_host_ceiling_bytes, materialization_store_typed_module_budget_policy, materialization_store_durable_family_budgets,
+  materialization_store_compute_work_budget_policy,
 }
 import std.measure { byte_size }
 import std.measure { measure_count }
@@ -598,7 +599,8 @@ test fn recency_is_recorded_once_and_never_fails_by_real_execution() -> Bool {
 // the typed-module policy figure alone.
 test fn the_host_ceiling_is_the_declared_sum_of_family_budgets() -> Bool {
   measure_count(m: materialization_store_host_ceiling_bytes) == measure_count(m: local_store_budget_sum(budgets: materialization_store_durable_family_budgets))
-    && measure_count(m: materialization_store_host_ceiling_bytes) == measure_count(m: materialization_store_typed_module_budget_policy)
+    && measure_count(m: materialization_store_host_ceiling_bytes)
+      == measure_count(m: materialization_store_typed_module_budget_policy) + measure_count(m: materialization_store_compute_work_budget_policy)
 }
 
 // Two artifacts that each fit the 4096-byte witness family alone and do not fit together.
