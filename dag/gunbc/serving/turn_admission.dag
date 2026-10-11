@@ -183,8 +183,8 @@ type ServingSeatStanding
 // as though it were, and nothing is admitted beside it.
 //
 // WHAT MAKES A TURN COLD-RISK, AND WHERE THE WARM ARM LIVES (serving_session_residency, below). A turn is cold-risk when the
-// prefix it would prefill is not established to be resident on the candidate. Nothing in this
-// repository observes prefix residency, so a session whose standing is unread is cold-risk, and the class above is
+// prefix it would prefill is not established to be resident on the candidate. The production caller
+// holds no session record yet (see ServingSessionRecord), so every session's standing reads unread and is cold-risk, and the class above is
 // about who is HARMED rather than about whether this turn prefills. A warm standing is an observed prefix-hit
 // interval on the owning launch, never configuration.
 type ServingGroupAdmission
@@ -292,6 +292,13 @@ type ServingPrefixFields
 // What the caller remembers about a session between turns. No store of these exists yet, so the
 // production caller supplies NoSessionRecord and every session reads unread -- warmth is never
 // assumed for a session nobody recorded.
+//
+// DECLARED FRONTIER (DESIGN.md 3c): the consumer of SessionRecord is the harness session store, which
+// records, per session, the owner launch key, the prior prefix-counter fields (this module's
+// ServingPrefixFields as read by harness_observe_engine_at) and prefix_intact (whether the next turn's
+// token prefix extends the last). Trigger: the first harness path that persists a session identity
+// across turns (the multi-turn agent-session seat). Until then the placement and residency arms are
+// exercised by the claims and by harness_collect_candidates' owner filter, and read Unread in production.
 type ServingSessionRecord
   = NoSessionRecord
   | SessionRecord { owner_launch: NonEmptyStr, prefix_intact: Bool, prior_queries_field: NonEmptyStr, prior_hits_field: NonEmptyStr }
