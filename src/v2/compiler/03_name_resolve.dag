@@ -5,7 +5,12 @@ import v2.std.language_model { LanguageModel }
 import v2.std.member_declaration_kind { MemberKindChannel, no_member_declaration_kinds }
 
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations, symbol_index_fill_module_roots }
-import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_binding_sources }
+import v2.compiler.normalized_tree {
+  NormalizedTree,
+  normalized_tree_record_declarations,
+  normalized_tree_resource_declarations,
+  normalized_tree_roots_to_binding_sources
+}
 import v2.std.declaration_marker { TestCodeIndex, test_code_index_add_module, test_code_index_empty }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
 import v2.compiler.resolve {
@@ -1032,7 +1037,15 @@ fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations
               match walked.walk {
                 ResolveWalkAccepted { value: resolved, diagnostics: _, lexical: _ } =>
                   ClosureDeclarationsFold {
-                    index: symbol_index_fill_module_declarations(index: acc.index, root: resolved, record_declarations: Empty, resource_declarations: Empty),
+                    // THE DECLARED-PAYLOAD KIND RIDES THE CARRIER CAPTURED AT NORMALIZE (symbol_index_fill_module_declarations): a
+                    // fill handed Empty marks no record, so symbol_index_declared_payload_at answered Absent for every
+                    // record in resolved_declarations and v2.compiler.infer read each construct as not a record.
+                    index: symbol_index_fill_module_declarations(
+                      index: acc.index,
+                      root: resolved,
+                      record_declarations: normalized_tree_record_declarations(t: nt),
+                      resource_declarations: normalized_tree_resource_declarations(t: nt)
+                    ),
                     refused: acc.refused,
                     context: next_context
                   }
