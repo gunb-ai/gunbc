@@ -98,7 +98,7 @@ type ConnectiveCoproductVariant
   | ConnectiveConjArm
   | ConnectiveDisjArm
   | ConnectiveArrowArm
-  | ConnectiveCardinalityArm
+  | ConnectiveOccupancyArm
   | ConnectiveInstantiationArm
 
 fn connective_coproduct_variant_keys() -> List<ConnectiveCoproductVariant> {
@@ -107,7 +107,7 @@ fn connective_coproduct_variant_keys() -> List<ConnectiveCoproductVariant> {
     ConnectiveConjArm,
     ConnectiveDisjArm,
     ConnectiveArrowArm,
-    ConnectiveCardinalityArm,
+    ConnectiveOccupancyArm,
     ConnectiveInstantiationArm,
   ]
 }
@@ -121,7 +121,7 @@ fn connective_from_coproduct_variant(
     ConnectiveConjArm => Conj
     ConnectiveDisjArm => Disj
     ConnectiveArrowArm => Arrow
-    ConnectiveCardinalityArm => Occupancy
+    ConnectiveOccupancyArm => Occupancy
     ConnectiveInstantiationArm => Instantiation
   }
 }
