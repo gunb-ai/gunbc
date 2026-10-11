@@ -27,16 +27,54 @@ fn origin_event_from_source(locus: Locus) -> OriginEvent {
   FromSource { locus: locus }
 }
 
+// A SOURCE EXTENT IS A THIRD FACT BESIDE ORIGIN AND DIAGNOSTIC FOCUS. `entries` says how an
+// occurrence came about; for a node the parser composed, that is lineage (DerivedBy), and lineage
+// resolves to the FIRST source token under it -- the right focus for a diagnostic and the wrong
+// answer to "does this node contain that position". `extents` records the whole range a parser
+// consumed while building the node, written once when the production completes, from the first
+// consumed token's start to the last consumed token's end. A terminal's extent is its FromSource
+// locus and is not recorded twice. Consumers that need containment read span_index_extent; nobody
+// reconstructs a range from descendants (DESIGN 6b: the parser held it, so the parser publishes it).
 type SpanIndex {
   entries: Map<OccurrenceId, OriginEvent>
+  extents: Map<OccurrenceId, Locus>
 }
 
 fn span_index_empty() -> SpanIndex {
-  SpanIndex { entries: empty_map() }
+  SpanIndex { entries: empty_map(), extents: empty_map() }
+}
+
+fn span_index_record_extent(index: SpanIndex, id: OccurrenceId, extent: Locus) -> SpanIndex {
+  SpanIndex {
+    entries: index.entries,
+    extents: map_insert(m: index.extents, key: id, value: extent)
+  }
+}
+
+// THE WHOLE RANGE AN OCCURRENCE COVERS IN ITS SOURCE. A composed node answers with the extent its
+// parser recorded; a terminal answers with its own FromSource locus. Anything else -- a node a later
+// stage derived, a generated node, a production that consumed no token -- answers Absent, because
+// no producer recorded a range for it and inventing one from its causes is the reconstruction the
+// extents table exists to replace.
+fn span_index_extent(index: SpanIndex, id: OccurrenceId) -> Optional<Locus> {
+  match index.extents.lookup(id) {
+    Present { value: extent } => Present { value: extent }
+    Absent =>
+      match index.entries.lookup(id) {
+        Present { value: event } =>
+          match event {
+            FromSource { locus } => Present { value: locus }
+            DerivedBy { producer: _, from: _ } => Absent
+            GeneratedBy { generator: _, from: _ } => Absent
+          }
+        Absent => Absent
+      }
+  }
 }
 
 fn span_index_record(index: SpanIndex, id: OccurrenceId, event: OriginEvent) -> SpanIndex {
   SpanIndex {
+    extents: index.extents,
     entries: map_insert(m: index.entries, key: id, value: event)
   }
 }
@@ -64,6 +102,20 @@ fn span_index_merge(base: SpanIndex, incoming: SpanIndex) -> SpanIndex {
           Absent =>
             match incoming.entries.lookup(id) {
               Present { value: event } => map_insert(m: acc, key: id, value: event)
+              Absent => acc
+            }
+        }
+      }
+    ),
+    extents: fold_list(
+      xs: map_keys(incoming.extents),
+      empty: base.extents,
+      cons: fn(acc, id) {
+        match acc.lookup(id) {
+          Present { value: _ } => acc
+          Absent =>
+            match incoming.extents.lookup(id) {
+              Present { value: extent } => map_insert(m: acc, key: id, value: extent)
               Absent => acc
             }
         }

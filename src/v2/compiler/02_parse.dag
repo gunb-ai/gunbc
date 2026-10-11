@@ -64,7 +64,8 @@ import v2.std.provenance {
   SpanIndex,
   origin_event_from_source,
   span_index_empty,
-  span_index_record
+  span_index_record,
+  span_index_record_extent
 }
 import v2.std.collection {
   Map,
@@ -145,9 +146,15 @@ import v2.std.grammar {
 // path: an id minted on an abandoned attempt is minted again by the next one and recorded once.
 // Nothing is served across paths -- the packrat memo that did so was deleted (operator ruling R2,
 // 2026-10-08; gunbc.recurring_failure_mode parse_memo_hit_serves_occurrences_minted_on_an_abandoned_path).
+// `consumed_end` is the end offset of the last token this path consumed, Absent before the first.
+// It rides in the provenance state because that state is exactly one path's: a failed attempt
+// restores it with the allocator and index, so a production's extent never counts tokens an
+// abandoned alternative read. Every consumed token is minted by parse_mint_from_source, which is
+// the one place it advances.
 type ParseProvenanceState {
   alloc: OccurrenceIdAllocator
   index: v2.std.provenance.SpanIndex
+  consumed_end: Optional<Int>
 }
 
 // THE ALLOCATOR RIDES BESIDE THE INDEX BECAUSE THEY ARE ONE FACT. `span_index` says where each
@@ -712,7 +719,8 @@ fn parse_non_empty_diagnostics_to_list(ned: NonEmptyDiagnostics) -> List<Diagnos
 fn parse_prov_seeded(seed: OccurrenceIdAllocator) -> ParseProvenanceState {
   ParseProvenanceState {
     alloc: seed,
-    index: span_index_empty()
+    index: span_index_empty(),
+    consumed_end: optional_absent()
   }
 }
 
@@ -737,7 +745,8 @@ fn parse_mint_from_source(
     id: minted.id,
     prov: ParseProvenanceState {
       alloc: minted.alloc,
-      index: index
+      index: index,
+      consumed_end: optional_present(value: end)
     }
   }
 }
@@ -840,7 +849,8 @@ fn parse_stamp_derived_conj(
     ),
     prov: ParseProvenanceState {
       alloc: minted.alloc,
-      index: index
+      index: index,
+      consumed_end: prov.consumed_end
     }
   }
 }
@@ -869,7 +879,8 @@ fn parse_stamp_infix_application(
     ),
     prov: ParseProvenanceState {
       alloc: minted.alloc,
-      index: index
+      index: index,
+      consumed_end: prov.consumed_end
     }
   }
 }
@@ -889,7 +900,8 @@ fn parse_stamp_derived_repeat(
     ),
     prov: ParseProvenanceState {
       alloc: minted.alloc,
-      index: index
+      index: index,
+      consumed_end: prov.consumed_end
     }
   }
 }
@@ -916,9 +928,13 @@ fn parse_tree_projection_edge(name: Symbol) -> Bool {
     || (name == ^grammar_infix_right_node_projection)
 }
 
+// `first` is the first token the production was handed and `before` the consumed end when it began;
+// with the consumed end it finished at, they are the production's extent (parse_production_extent).
 fn parse_wrap_production_captured(
   production: GrammarProduction,
   captured: Node,
+  first: Optional<Token>,
+  before: Optional<Int>,
   prov: ParseProvenanceState
 ) -> ParseStampResult {
   let minted = alloc_occurrence_id(alloc: prov.alloc)
@@ -936,8 +952,54 @@ fn parse_wrap_production_captured(
     ),
     prov: ParseProvenanceState {
       alloc: minted.alloc,
-      index: index
+      index: parse_production_extent(
+        index: index,
+        id: minted.id,
+        first: first,
+        before: before,
+        after: prov.consumed_end
+      ),
+      consumed_end: prov.consumed_end
     }
+  }
+}
+
+// A COMPLETED PRODUCTION PUBLISHES ITS EXTENT HERE, ONCE, from what the parse already holds: the
+// first token it was handed and the end of the last token its path consumed. Nothing is
+// recomputed from the node's descendants. A production that consumed no token (a nullable one that
+// matched empty) has no extent, detected by the consumed end not having moved -- token ends
+// strictly increase along a path -- and is recorded as nothing rather than as a zero-width range at
+// a guessed position.
+fn parse_production_extent(
+  index: SpanIndex,
+  id: OccurrenceId,
+  first: Optional<Token>,
+  before: Optional<Int>,
+  after: Optional<Int>
+) -> SpanIndex {
+  match first {
+    Absent => index
+    Present { value: tok } =>
+      match after {
+        Absent => index
+        Present { value: end } =>
+          if parse_consumed_end_moved(before: before, end: end) {
+            span_index_record_extent(
+              index: index,
+              id: id,
+              extent: Textual { file: tok.file, extent: ByteRange { start: tok.start, end: end } }
+            )
+          } else {
+            index
+          }
+      }
+  }
+}
+
+fn parse_consumed_end_moved(before: Optional<Int>, end: Int) -> Bool {
+  match before {
+    Absent => true
+    Present { value: b } => end > b
   }
 }
 
@@ -1001,6 +1063,8 @@ fn parse_nonterminal(
           let stamped = parse_wrap_production_captured(
             production: production,
             captured: captured,
+            first: parse_token_first(tokens: tokens),
+            before: prov.consumed_end,
             prov: inner_prov
           )
           ParseExprAccepted {
@@ -4870,7 +4934,7 @@ fn parse_production_prepared_ordered(
       match parse_expr_result_table(result: parsed).refusal {
         Present { value: refusal } =>
           Rejected { diagnostics: diagnostics_singleton(d: refusal) }
-        Absent => parse_production_unrefused(parsed: parsed, production: production, root: root)
+        Absent => parse_production_unrefused(parsed: parsed, production: production, root: root, tokens: tokens)
       }
     Violates { diagnostic: d } =>
       Rejected { diagnostics: diagnostics_singleton(d: d) }
@@ -4884,7 +4948,8 @@ fn parse_production_prepared_ordered(
 fn parse_production_unrefused(
   parsed: ParseExprResult,
   production: GrammarProduction,
-  root: GrammarRoot
+  root: GrammarRoot,
+  tokens: List<Token>
 ) -> Outcome<ParseArtifact> {
   match parsed {
     ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov, table: final_table } =>
@@ -4892,6 +4957,8 @@ fn parse_production_unrefused(
         let stamped = parse_wrap_production_captured(
           production: production,
           captured: captured,
+          first: parse_token_first(tokens: tokens),
+          before: optional_absent(),
           prov: inner_prov
         )
         Accepted {
