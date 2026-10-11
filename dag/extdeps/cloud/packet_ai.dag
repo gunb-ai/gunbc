@@ -97,10 +97,33 @@ type PacketAiProduct {
 // dynamic when every pool shares its GPUs, dedicated when none does; otherwise the stored value."
 // launch-options products carry no allocation, so a consumer joins the two by product name. gpuCount
 // is the storefront's per-product GPU count.
+//
+// THE ALLOCATION IS A CLOSED SET HERE ON THE DOCUMENT'S OWN WORDS ("dedicated or dynamic"), though the
+// OpenAPI schema types it a bare string and its "otherwise the stored value" leaves room for words the
+// document does not name. So the field is `PacketAiAllocation?`: the wire word parses by EXACT match
+// (packet_ai_allocation_from_wire) and anything else, including a case variant, is none = unread, never a
+// guessed arm. Case-folding would be this module inventing a vendor rule.
+type PacketAiAllocation
+  = Dedicated
+  | Dynamic
+
+fn packet_ai_allocation_wire_label(allocation: PacketAiAllocation) -> String {
+  match allocation {
+    Dedicated => "dedicated"
+    Dynamic => "dynamic"
+  }
+}
+
+fn packet_ai_allocation_from_wire(label: String) -> PacketAiAllocation? {
+  if label == "dedicated" { Present { value: Dedicated } }
+  else if label == "dynamic" { Present { value: Dynamic } }
+  else { none }
+}
+
 type PacketAiStorefrontProduct {
   id: String
   name: String
-  allocation: String
+  allocation: PacketAiAllocation?
   gpuCount: Int
 }
 
@@ -137,4 +160,38 @@ service packet_ai.LaunchOptions {
 type PacketAiLaunchOptions {
   pools: List<PacketAiPool>
   products: List<PacketAiProduct>
+}
+
+// The public storefront catalogue (GET /api/products on the vendor's server root, https://dash.packet.ai
+// per the OpenAPI `servers`, so NOT under the /api/v1 base the launch-options service uses). Response
+// envelope: {"data": [product, ...]}. No auth is documented for it.
+data packet_ai_storefront_base: NonEmptyStr = "https://dash.packet.ai/api"
+
+service packet_ai.Storefront {
+  config {
+    endpoint: packet_ai_storefront_base
+  }
+
+  operation ListProducts {
+    requires Network
+    input {
+    }
+    output {
+      products: List<PacketAiStorefrontProduct> from "data"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/products"
+    }
+    response {
+      200 => PacketAiStorefrontProducts
+      429 => PacketAiApiError
+      5xx => PacketAiApiError
+    }
+  }
+}
+
+type PacketAiStorefrontProducts {
+  products: List<PacketAiStorefrontProduct>
 }

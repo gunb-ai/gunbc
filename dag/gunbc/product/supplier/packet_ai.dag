@@ -21,7 +21,7 @@ import product.supplier.ubicloud {
 }
 import extdeps.gpu.types { Cuda }
 import extdeps.currency.currency { Usd }
-import extdeps.cloud.packet_ai { PacketAiProduct, PacketAiPool, PacketAiStorefrontProduct }
+import extdeps.cloud.packet_ai { Dedicated, Dynamic, PacketAiProduct, PacketAiPool, PacketAiStorefrontProduct }
 
 // PACKET.AI AS A SUPPLIER: BINDING OVER extdeps.cloud.packet_ai, NOTHING RESTATED AND NO POLICY. What a demand
 // may rent is negotiated on each offer's shape, quote and isolation, never on which supplier made it.
@@ -51,9 +51,13 @@ fn packet_ai_tier(product: PacketAiProduct, storefront: PacketAiStorefrontProduc
     Absent => TierNotEstablished
     Present { value: row } =>
       if row.name != product.name { TierNotEstablished }
-      else if row.allocation == "dedicated" { TierWholeCard }
-      else if row.allocation == "dynamic" { TierShared }
-      else { TierNotEstablished }
+      else {
+        match row.allocation {
+          Absent => TierNotEstablished
+          Present { value: Dedicated } => TierWholeCard
+          Present { value: Dynamic } => TierShared
+        }
+      }
   }
 }
 

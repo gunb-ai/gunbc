@@ -38,7 +38,7 @@ import product.supplier.packet_ai {
   PacketAiTierFact, packet_ai_tier, TierNotEstablished, TierShared, TierWholeCard,
   packet_ai_vram_unstated_obligation, packet_ai_pool_region, packet_ai_unexpressed,
 }
-import extdeps.cloud.packet_ai { PacketAiProduct, PacketAiRegion, PacketAiPool, PacketAiStorefrontProduct }
+import extdeps.cloud.packet_ai { PacketAiAllocation, Dedicated, Dynamic, packet_ai_allocation_from_wire, PacketAiProduct, PacketAiRegion, PacketAiPool, PacketAiStorefrontProduct }
 import extdeps.cloud.vast_ai { VastAiOffer }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -206,8 +206,8 @@ test fn w_packet_pool_without_region_refuses() -> Bool {
 // The vendor's storefront row for the product; the tier is what its `allocation` string says.
 fn storefront_for(tier: PacketAiTierFact) -> PacketAiStorefrontProduct? {
   match tier {
-    TierWholeCard => Present { value: PacketAiStorefrontProduct { id: "p1", name: "RTX 6000 Pro 96GB", allocation: "dedicated", gpuCount: 2 } }
-    TierShared => Present { value: PacketAiStorefrontProduct { id: "p1", name: "RTX 6000 Pro 96GB", allocation: "dynamic", gpuCount: 2 } }
+    TierWholeCard => Present { value: PacketAiStorefrontProduct { id: "p1", name: "RTX 6000 Pro 96GB", allocation: Present { value: Dedicated }, gpuCount: 2 } }
+    TierShared => Present { value: PacketAiStorefrontProduct { id: "p1", name: "RTX 6000 Pro 96GB", allocation: Present { value: Dynamic }, gpuCount: 2 } }
     TierNotEstablished => none
   }
 }
@@ -453,8 +453,8 @@ test fn w_vast_dedicated_only_when_observed_on_demand() -> Bool {
 // RED: a storefront row naming another product, or an unrecognised allocation, is not an established tier.
 test fn w_packet_tier_is_read_from_the_wire_or_unestablished() -> Bool {
   let product = packet_product(vram: Present { value: 96 })
-  let other = PacketAiStorefrontProduct { id: "p2", name: "other", allocation: "dedicated", gpuCount: 2 }
-  let odd = PacketAiStorefrontProduct { id: "p1", name: "RTX 6000 Pro 96GB", allocation: "weird", gpuCount: 2 }
+  let other = PacketAiStorefrontProduct { id: "p2", name: "other", allocation: Present { value: Dedicated }, gpuCount: 2 }
+  let odd = PacketAiStorefrontProduct { id: "p1", name: "RTX 6000 Pro 96GB", allocation: none, gpuCount: 2 }
   (match packet_ai_tier(product: product, storefront: Present { value: other }) { TierNotEstablished => true TierShared => false TierWholeCard => false })
     && (match packet_ai_tier(product: product, storefront: Present { value: odd }) { TierNotEstablished => true TierShared => false TierWholeCard => false })
     && (match packet_ai_tier(product: product, storefront: none) { TierNotEstablished => true TierShared => false TierWholeCard => false })
@@ -479,4 +479,28 @@ test fn w_packet_isolation_not_observed_only_when_tier_unestablished() -> Bool {
   (packet_ai_unexpressed(tier: TierWholeCard).any(is_not_observed) == false)
     && (packet_ai_unexpressed(tier: TierShared).any(is_not_observed) == false)
     && packet_ai_unexpressed(tier: TierNotEstablished).any(is_not_observed)
+}
+
+fn allocation_is_whole_card(label: String) -> Bool {
+  match packet_ai_tier(
+    product: packet_product(vram: Present { value: 96 }),
+    storefront: Present { value: PacketAiStorefrontProduct {
+      id: "p1", name: "RTX 6000 Pro 96GB", allocation: packet_ai_allocation_from_wire(label: label), gpuCount: 2,
+    } },
+  ) {
+    TierWholeCard => true
+    TierShared => false
+    TierNotEstablished => false
+  }
+}
+
+// RED: only the exact wire word "dedicated" parses to the whole-card tier; a case variant, padded or
+// unknown word is unread. Control: the exact word does produce it.
+test fn w_only_the_exact_dedicated_wire_word_yields_whole_card() -> Bool {
+  allocation_is_whole_card(label: "dedicated")
+    && (allocation_is_whole_card(label: "Dedicated") == false)
+    && (allocation_is_whole_card(label: "DEDICATED") == false)
+    && (allocation_is_whole_card(label: "dedicated ") == false)
+    && (allocation_is_whole_card(label: "dynamic") == false)
+    && (allocation_is_whole_card(label: "") == false)
 }
