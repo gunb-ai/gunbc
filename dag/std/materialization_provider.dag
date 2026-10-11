@@ -16,6 +16,7 @@ import std.content_hash {
   content_hash_tagged_structural,
   as_content_hash_structural,
   as_content_hash_cryptographic,
+  Sha256Digest,
   content_hash_of_value,
   Fnv1a64,
   Sha256Hash,
@@ -66,6 +67,8 @@ import std.judgment_contract {
   IdentityComponent,
   IdentityText,
   IdentityDigest,
+  IdentityUpstreamObject,
+  identity_upstream_object_component,
   identity_component_canonical,
   identity_digest_component,
   identity_structural_component,
@@ -120,7 +123,7 @@ import gunbc.compute.work_request {
   GunbcBinary, GunbcDriver, ClaimBatchRunner, gunbc_binary_name,
   CargoRelease, CargoDebug,
 }
-import extdeps.git.object_store { git_object_id_wire_hex, git_object_id_content_hash }
+import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex, git_object_id_content_hash }
 import extdeps.crypto.sha2 { sha256_computed_digest }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 
@@ -394,6 +397,7 @@ fn identity_component_index_fingerprint(component: IdentityComponent) -> Fnv1a64
         Sha1Hash(_) => content_hash_atom(value: identity_component_canonical(component: component) as NonEmptyStr)
         Sha512Hash(_) => content_hash_atom(value: identity_component_canonical(component: component) as NonEmptyStr)
       }
+    IdentityUpstreamObject { relation: _, hash: _ } => content_hash_atom(value: identity_component_canonical(component: component) as NonEmptyStr)
   }
 }
 
@@ -449,6 +453,7 @@ type IdentityComponentScopeStanding
   = ComponentAdmittedForScope
   | ComponentUpstreamObjectIdentity
   | ComponentStructuralFingerprintRefused
+  | ComponentFamilyNotAdmitted
 
 fn identity_component_persistent_standing(component: IdentityComponent) -> IdentityComponentScopeStanding {
   match component {
@@ -457,10 +462,32 @@ fn identity_component_persistent_standing(component: IdentityComponent) -> Ident
       match content_hash_family(hash: h) {
         Sha256Family => ComponentAdmittedForScope
         Sha512Family => ComponentAdmittedForScope
-        Sha1Family => ComponentUpstreamObjectIdentity
+        Sha1Family => ComponentFamilyNotAdmitted
         Fnv1a64StructuralFamily => ComponentStructuralFingerprintRefused
       }
+    IdentityUpstreamObject { relation: r, hash: h } =>
+      if (r as String) == (git_object_identity_relation as String) {
+        match content_hash_family(hash: h) {
+          Sha256Family => ComponentUpstreamObjectIdentity
+          Sha1Family => ComponentUpstreamObjectIdentity
+          Sha512Family => ComponentFamilyNotAdmitted
+          Fnv1a64StructuralFamily => ComponentStructuralFingerprintRefused
+        }
+      } else {
+        ComponentFamilyNotAdmitted
+      }
   }
+}
+
+// GIT'S OBJECT IDENTITY, ADMITTED AS GIT'S AND AS NOTHING WIDER. The one production mint takes a
+// GitObjectId, which extdeps.git.object_store constructs only through its validating readers, so
+// the relation name is attached where the value is known to be a git object id. The arm is not
+// sealed: a caller that labels some other digest with this relation has made a false statement
+// about provenance in so many words, which a reviewer can find by the relation's name.
+data git_object_identity_relation: NonEmptyStr = "git.object_id"
+
+fn git_object_identity_component(oid: GitObjectId) -> IdentityComponent {
+  identity_upstream_object_component(relation: git_object_identity_relation, hash: git_object_id_content_hash(oid: oid))
 }
 
 fn identity_component_scope_standing(component: IdentityComponent, scope: KeyingScope) -> IdentityComponentScopeStanding {
@@ -490,6 +517,7 @@ fn identity_component_refused_for_scope(component: IdentityComponent, scope: Key
     ComponentAdmittedForScope => false
     ComponentUpstreamObjectIdentity => false
     ComponentStructuralFingerprintRefused => true
+    ComponentFamilyNotAdmitted => true
   }
 }
 
@@ -498,6 +526,7 @@ fn identity_component_is_upstream_object_identity(component: IdentityComponent) 
     ComponentAdmittedForScope => false
     ComponentUpstreamObjectIdentity => true
     ComponentStructuralFingerprintRefused => false
+    ComponentFamilyNotAdmitted => false
   }
 }
 
@@ -522,9 +551,7 @@ fn persist_evaluation_store_address(bucket: EvaluationBucket) -> EvaluationStore
     Admitted {
       address: EvaluationStoreAddress {
         identity: bucket.identity,
-        digest: as_content_hash_cryptographic(
-          digest: sha256_computed_digest(message: bytes_octets(b: utf8_encode_bytes(s: bucket.canonical_preimage as String)))
-        ),
+        digest: as_content_hash_cryptographic(digest: canonical_preimage_sha256(preimage: bucket.canonical_preimage)),
         canonical_preimage: bucket.canonical_preimage,
         standing: EvaluationStoreAddressStanding {
           family: Sha256Family,
@@ -533,6 +560,18 @@ fn persist_evaluation_store_address(bucket: EvaluationBucket) -> EvaluationStore
       }
     }
   }
+}
+
+// THE DIGEST OF A REQUEST'S CANONICAL PREIMAGE, WITHOUT THE ADMISSION. It names the demand as
+// stated and claims nothing about whether its components may key a store: a request with a refused
+// component still has a name -- a record, a lease or a refusal has to call it something -- and no
+// persistent address. evaluation_store_address is this digest PLUS the judgment of every component.
+fn canonical_preimage_sha256(preimage: NonEmptyStr) -> Sha256Digest {
+  sha256_computed_digest(message: bytes_octets(b: utf8_encode_bytes(s: preimage as String)))
+}
+
+fn request_canonical_digest(req: ArtifactRequest) -> Sha256Digest {
+  canonical_preimage_sha256(preimage: evaluation_identity_canonical(evaluation: request_evaluation_identity(req: req)))
 }
 
 fn evaluation_store_address(req: ArtifactRequest) -> EvaluationStoreAddressAdmission {
@@ -747,7 +786,7 @@ fn module_verdict_bundle_judgment_contract(subject: NativeModuleVerdictBundleSub
 
 fn compute_work_subject_component(subject: WorkSubject) -> IdentityComponent {
   match subject {
-    ExactTree { tree } => identity_digest_component(hash: git_object_id_content_hash(oid: tree))
+    ExactTree { tree } => git_object_identity_component(oid: tree)
   }
 }
 
@@ -766,14 +805,10 @@ fn compute_work_operation_preimage(operation: WorkOperation) -> NonEmptyStr {
       ), "") as NonEmptyStr
     CompileEntry { entry } =>
       join([length_prefixed_encode(s: "compile"), length_prefixed_encode(s: entry as String)], "") as NonEmptyStr
-    RunClaims { entry, functions, hermetic, window } =>
+    RunClaims { entry, functions, hermetic, window: _ } =>
       join([
         length_prefixed_encode(s: "claims"), length_prefixed_encode(s: entry as String),
         length_prefixed_encode(s: functions as String), length_prefixed_encode(s: if hermetic { "hermetic" } else { "wet" }),
-        match window {
-          Present { value: w } => join([length_prefixed_encode(s: "window"), length_prefixed_encode(s: w.identity.digest as String)], "")
-          Absent => length_prefixed_encode(s: "no-window")
-        },
       ], "") as NonEmptyStr
   }
 }
@@ -781,6 +816,23 @@ fn compute_work_operation_preimage(operation: WorkOperation) -> NonEmptyStr {
 // The binaries a build materializes are REQUIRED OUTPUTS of its record, one per declared bin, carried
 // as byte parts (extdeps.realization.materialization_store_local LocalStoreStagedPart). The checking
 // operations materialize none.
+// THE CLAIM WINDOW IS ITS OWN DECLARED INPUT, NOT A FIELD OF THE OPERATION TEXT. Its identity is a
+// structural fingerprint (gunbc.roadmap.roadmap_verification_receipt change_window_identity), and
+// written into the operation's text it would have been a fingerprint wearing text's standing: the
+// scope rule would have read text and admitted it. As a component it is judged as what it is, so a
+// windowed request has no persistent address until the window carries its own facts.
+fn compute_work_window_component(operation: WorkOperation) -> IdentityComponent {
+  match operation {
+    BuildGunbcBinaries { profile: _, bins: _ } => identity_text_component(content: "no-window")
+    CompileEntry { entry: _ } => identity_text_component(content: "no-window")
+    RunClaims { entry: _, functions: _, hermetic: _, window } =>
+      match window {
+        Present { value: w } => identity_structural_component(digest: w.identity)
+        Absent => identity_text_component(content: "no-window")
+      }
+  }
+}
+
 fn compute_work_binary_output(b: GunbcBinary) -> ArtifactOutputId {
   match b {
     GunbcDriver => output_compute_work_gunbc_binary
@@ -818,11 +870,12 @@ fn compute_work_judgment_contract(
           ref: "compute_work.operation",
           component: identity_text_component(content: compute_work_operation_preimage(operation: operation))
         },
+        DeclaredInput { ref: "compute_work.operation.claim_diff_window", component: compute_work_window_component(operation: operation) },
         DeclaredInput { ref: "compute_work.execution.rustc_verbose", component: identity_text_component(content: toolchain.rustc_verbose) },
         DeclaredInput { ref: "compute_work.execution.target_triple", component: identity_text_component(content: toolchain.target_triple) },
         DeclaredInput { ref: "compute_work.execution.cargo_version", component: identity_text_component(content: toolchain.cargo_version) },
         DeclaredInput { ref: "compute_work.execution.cache_release", component: identity_text_component(content: toolchain.cache_release) },
-        DeclaredInput { ref: "compute_work.execution.provider_revision", component: identity_text_component(content: toolchain.provider_revision) }
+        DeclaredInput { ref: "compute_work.execution.provider_revision", component: git_object_identity_component(oid: toolchain.provider_revision) }
       ]
     },
     result: ResultContract {

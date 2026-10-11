@@ -69,8 +69,7 @@ import gunbc.compute.host_capacity {
   compute_capacity_subject, compute_capacity_store, compute_release_on, compute_root,
 }
 import std.measure { kibibyte }
-import std.content_hash { serialize_content_hash }
-import std.materialization_provider { ArtifactRequest, ComputeWorkRequest, request_key, request_kind, request_judgment_contract, compute_work_binary_output }
+import std.materialization_provider { ArtifactRequest, ComputeWorkRequest, request_canonical_digest, request_kind, request_judgment_contract, compute_work_binary_output }
 import std.cache_identity { ArtifactKindId }
 import std.judgment_contract { output_compute_work_outcome, output_compute_work_log, output_compute_work_outputs }
 import std.materialization_ladder {
@@ -216,16 +215,20 @@ fn compute_toolchain_decide(rustc: ComputeExec, cargo: ComputeExec, cache: Compu
                   match rustc_verbose_host_triple(verbose: verbose) {
                     Absent => ToolchainObservationRefused { detail: "rustc -vV reported no host: line, so the target triple is unobserved" }
                     Present { value: triple } =>
-                      if trim(s: verbose) == "" || triple == "" || trim(s: cargo_line) == "" || trim(s: cache_line) == "" || trim(s: provider_tree) == "" {
-                        ToolchainObservationRefused { detail: "an execution-identity reading was empty (rustc -vV, its host triple, cargo, sccache or the provider revision)" }
+                      if trim(s: verbose) == "" || triple == "" || trim(s: cargo_line) == "" || trim(s: cache_line) == "" {
+                        ToolchainObservationRefused { detail: "an execution-identity reading was empty (rustc -vV, its host triple, cargo or sccache)" }
                       } else {
-                        ToolchainObserved { toolchain: work_toolchain_observed(
-                          rustc_verbose: trim(s: verbose) as NonEmptyStr,
-                          target_triple: triple as NonEmptyStr,
-                          cargo_version: trim(s: cargo_line) as NonEmptyStr,
-                          cache_release: trim(s: cache_line) as NonEmptyStr,
-                          provider_revision: trim(s: provider_tree) as NonEmptyStr,
-                        ) }
+                        match git_object_id_from_untagged_hex(hex: trim(s: provider_tree)) {
+                          Absent => ToolchainObservationRefused { detail: join(["the provider's source revision is not a git object id: ", trim(s: provider_tree)], "") }
+                          Present { value: provider_oid } =>
+                            ToolchainObserved { toolchain: work_toolchain_observed(
+                              rustc_verbose: trim(s: verbose) as NonEmptyStr,
+                              target_triple: triple as NonEmptyStr,
+                              cargo_version: trim(s: cargo_line) as NonEmptyStr,
+                              cache_release: trim(s: cache_line) as NonEmptyStr,
+                              provider_revision: provider_oid,
+                            ) }
+                        }
                       }
                   }
               }
@@ -1957,13 +1960,15 @@ fn compute_store_commit_refusal_detail(r: StoreCommitRefusal) -> String {
   }
 }
 
-// THE WORK'S IDENTITY IS THE MATERIALIZATION PROVIDER'S KEY, not a second one. It is derived from
-// the ComputeWorkRequest family's judgment contract (std.materialization_provider), so the tree,
-// the operation and the observed execution identity are the only things that move it, and the key a
-// store will be asked for at the cutover is byte-for-byte the name this provider already files the
-// work under.
+// THE WORK'S IDENTITY IS THE MATERIALIZATION PROVIDER'S DIGEST OF THE REQUEST, not a second one. It
+// is the SHA-256 of the ComputeWorkRequest family's canonical preimage
+// (std.materialization_provider request_canonical_digest), so the tree, the operation and the
+// observed execution identity are the only things that move it, and it is the same digest the
+// store address carries when the request is admitted to a store. It names work that is never
+// stored too -- a windowed claim run is a fresh effect with no persistent address -- which is why
+// it is the request's digest and not the admission's.
 fn compute_work_identity(subject: WorkSubject, op: WorkOperation, toolchain: WorkToolchainIdentity) -> String {
-  serialize_content_hash(hash: request_key(req: ComputeWorkRequest { subject: subject, operation: op, toolchain: toolchain })) as String
+  request_canonical_digest(req: ComputeWorkRequest { subject: subject, operation: op, toolchain: toolchain }).hex as String
 }
 
 // THE DEMAND IDENTITY AND THE EXECUTION IDENTITY ARE TWO FACTS (ruling on gunbc#13072, item 2). The

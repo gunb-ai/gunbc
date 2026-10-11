@@ -136,9 +136,16 @@ data output_compute_work_claim_batch_binary: ArtifactOutputId = "compute_work_cl
 // families may key a persistent or cross-run store is NOT decided here -- this module knows no store.
 // std.materialization_provider judges each component's family against the scope it is asked to
 // address, and a structural fingerprint that reaches a persistent address is refused there by name.
+//
+// A THIRD ARM, BECAUSE A DIGEST'S FAMILY DOES NOT SAY WHOSE IDENTITY IT IS. Git names a tree by a
+// SHA-1, and that name is admissible as GIT'S identity of that object -- an upstream relation with
+// its own collision disposition -- while an arbitrary SHA-1 digest is not an admissible key at
+// all. So an upstream object identity names its relation, and the scope rule admits the relation,
+// never the bare family.
 type IdentityComponent
   = IdentityText { content: NonEmptyStr }
   | IdentityDigest { hash: ContentHash }
+  | IdentityUpstreamObject { relation: NonEmptyStr, hash: ContentHash }
 
 fn identity_text_component(content: NonEmptyStr) -> IdentityComponent {
   IdentityText { content: content }
@@ -146,6 +153,10 @@ fn identity_text_component(content: NonEmptyStr) -> IdentityComponent {
 
 fn identity_digest_component(hash: ContentHash) -> IdentityComponent {
   IdentityDigest { hash: hash }
+}
+
+fn identity_upstream_object_component(relation: NonEmptyStr, hash: ContentHash) -> IdentityComponent {
+  IdentityUpstreamObject { relation: relation, hash: hash }
 }
 
 fn identity_structural_component(digest: Fnv1a64Structural) -> IdentityComponent {
@@ -294,6 +305,39 @@ fn identity_component_canonical(component: IdentityComponent) -> String {
         ),
         length_prefixed_encode(s: serialize_content_hash(hash: h) as String)
       )
+    IdentityUpstreamObject { relation: r, hash: h } =>
+      concat(
+        concat(length_prefixed_encode(s: "upstream"), length_prefixed_encode(s: r as String)),
+        concat(
+          length_prefixed_encode(s: hash_family_identity_tag(family: content_hash_family(hash: h))),
+          length_prefixed_encode(s: serialize_content_hash(hash: h) as String)
+        )
+      )
+  }
+}
+
+type DecodedIdentityDigest {
+  hash: ContentHash
+  rest: String
+}
+
+fn identity_family_tagged_digest_decode(encoded: String) -> DecodedIdentityDigest? {
+  match length_prefixed_decode(s: encoded) {
+    Absent => none
+    Present { value: family } =>
+      match length_prefixed_decode(s: family.rest) {
+        Absent => none
+        Present { value: wire } =>
+          match parse_content_hash(wire: wire.value) {
+            Absent => none
+            Present { value: h } =>
+              if hash_family_identity_tag(family: content_hash_family(hash: h)) == family.value {
+                Present { value: DecodedIdentityDigest { hash: h, rest: wire.rest } }
+              } else {
+                none
+              }
+          }
+      }
   }
 }
 
@@ -317,23 +361,28 @@ fn identity_component_decode(encoded: String) -> DecodedIdentityComponent? {
             }
         }
       } else if tag.value == "digest" {
+        match identity_family_tagged_digest_decode(encoded: tag.rest) {
+          Absent => none
+          Present { value: d } =>
+            Present { value: DecodedIdentityComponent { component: IdentityDigest { hash: d.hash }, rest: d.rest } }
+        }
+      } else if tag.value == "upstream" {
         match length_prefixed_decode(s: tag.rest) {
           Absent => none
-          Present { value: family } =>
-            match length_prefixed_decode(s: family.rest) {
-              Absent => none
-              Present { value: wire } =>
-                match parse_content_hash(wire: wire.value) {
-                  Absent => none
-                  Present { value: h } =>
-                    if hash_family_identity_tag(family: content_hash_family(hash: h)) == family.value {
-                      Present {
-                        value: DecodedIdentityComponent { component: IdentityDigest { hash: h }, rest: wire.rest }
-                      }
-                    } else {
-                      none
+          Present { value: relation } =>
+            if relation.value == "" {
+              none
+            } else {
+              match identity_family_tagged_digest_decode(encoded: relation.rest) {
+                Absent => none
+                Present { value: d } =>
+                  Present {
+                    value: DecodedIdentityComponent {
+                      component: IdentityUpstreamObject { relation: relation.value as NonEmptyStr, hash: d.hash },
+                      rest: d.rest
                     }
-                }
+                  }
+              }
             }
         }
       } else {
