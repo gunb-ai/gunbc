@@ -32,15 +32,55 @@ test fn test_module_hygiene_file_grain_empty_function_holds() -> Bool {
 test fn test_module_hygiene_file_grain_expand_refuses_empty_test_decls() -> Bool {
   match expand_explicit_pairs_or_refuse(inputs: [
     ExplicitExpandInput {
-      entry: "empty_grain_test.dag",
+      entry: "empty_grain.dag",
       function: "",
-      content: "module empty_grain\n\nfn plain_only() -> Bool { true }\n"
+      marked: []
     }
   ]) {
     Refused { reason: reason } =>
       string_contains(s: reason, pattern: "has no test fn / test data declarations")
-        && string_contains(s: reason, pattern: "empty_grain_test.dag")
+        && string_contains(s: reason, pattern: "empty_grain.dag")
     _ => false
+  }
+}
+
+// The positive control that keeps the real route: a file-grain entry expands to exactly the SUPPLIED
+// marked names, in order, and an explicit function passes through untouched. No file text reaches
+// this fold -- the entry is a path that does not exist -- so the names can only have come from the
+// supply, and the pairing the claim executor consumes is the supply's.
+test fn test_module_hygiene_file_grain_expand_yields_supplied_marked_names() -> Bool {
+  match expand_explicit_pairs_or_refuse(inputs: [
+    ExplicitExpandInput {
+      entry: "__gunbc_supplied_only__.dag",
+      function: "",
+      marked: ["alpha", "beta"]
+    },
+    ExplicitExpandInput {
+      entry: "__gunbc_supplied_only__.dag",
+      function: "gamma",
+      marked: []
+    }
+  ]) {
+    Expanded { pairs: pairs } =>
+      length(xs: pairs) == 3
+        && any(xs: pairs, predicate: fn(p) { p.function == "alpha" })
+        && any(xs: pairs, predicate: fn(p) { p.function == "beta" })
+        && any(xs: pairs, predicate: fn(p) { p.function == "gamma" })
+    Refused { reason: _ } => false
+  }
+}
+
+// A pairing is a set: a supplier naming one declaration twice yields one pair, not two.
+test fn test_module_hygiene_file_grain_expand_dedupes_repeated_pairs() -> Bool {
+  match expand_explicit_pairs_or_refuse(inputs: [
+    ExplicitExpandInput {
+      entry: "__gunbc_supplied_only__.dag",
+      function: "",
+      marked: ["alpha", "alpha"]
+    }
+  ]) {
+    Expanded { pairs: pairs } => length(xs: pairs) == 1
+    Refused { reason: _ } => false
   }
 }
 

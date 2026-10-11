@@ -1,11 +1,16 @@
 module gunbc.test_module_hygiene
 
 import std.types { String, Bool, List }
-import v2.workflow.floor_naming_hygiene { floor_discovery_scan_test_decl_names }
 
 // U3 file-grain expand authority, plus the failure-receipt companion naming convention
 // claim_executor invokes. Host realizes the interpreter transport
 // (cli_run/test_module_hygiene_bridge.rs).
+//
+// WHICH NAMES ARE TESTS IS SUPPLIED, NOT SCANNED. A test is a declaration carrying the authored
+// `test` marker, and the file-grain expansion below receives the marked names of each entry as a
+// value (ExplicitExpandInput `marked`, taken by the host from the canonical parse's marker capture).
+// This module neither reads file text nor decides what a test is: it holds no text scan, and an entry
+// with no marked name refuses rather than expanding to nothing.
 //
 // WHAT THIS MODULE NO LONGER DOES (gunbc#8155): the U2 orphan enroll-or-refuse census is DELETED.
 // It walked every *_test.dag in the corpus, parsed each one, projected DeclSurface/ModuleSurface
@@ -58,7 +63,7 @@ fn witness_verdict_diagnostic_companion(function: String) -> String {
 type ExplicitExpandInput {
   entry: String
   function: String
-  content: String
+  marked: List<String>
 }
 
 type ExplicitEntryPair {
@@ -94,7 +99,7 @@ fn expand_explicit_pairs_or_refuse(inputs: List<ExplicitExpandInput>) -> ExpandE
         Refused { reason: reason } => Refused { reason: reason }
         Expanded { pairs: acc_pairs } => {
           if is_file_grain_function(function: inp.function) {
-            let names = floor_discovery_scan_test_decl_names(content: inp.content)
+            let names = inp.marked
             if length(xs: names) == 0 {
               Refused { reason: file_grain_empty_refusal(entry: inp.entry) }
             } else {
@@ -117,8 +122,4 @@ fn expand_explicit_pairs_or_refuse(inputs: List<ExplicitExpandInput>) -> ExpandE
       }
     }
   )
-}
-
-fn enumerate_entry_test_names(content: String) -> List<String> {
-  floor_discovery_scan_test_decl_names(content: content)
 }
