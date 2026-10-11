@@ -11,7 +11,9 @@ import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable
 import extdeps.network.endpoint { SocketAddress, socket_address, render_network_host, host_by_ipv4 }
 import extdeps.network.ipv4 { ipv4_address }
 import extdeps.ssh.openssh_port_forwarding { PortForwardSpec, LocalForward }
-import extdeps.ninfer.ninfer_serve { ninfer_serve_observed_launch, ninfer_authorization_header_line, ninfer_models_path, ninfer_chat_completions_path, ninfer_health_path }
+import std.measure { millisecond }
+import extdeps.external_authority { TranscribedUncited }
+import extdeps.ninfer.ninfer_serve { NinferServeLaunch, NinferKvFp8, NinferMtp, ninfer_upstream_read_obligation, ninfer_authorization_header_line, ninfer_models_path, ninfer_chat_completions_path, ninfer_health_path }
 import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, Qwen3_8_27bOnNinfer, harness_unit_model_id }
 import gunbc.serving.turn_admission { ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant, serving_co_tenancy_class_wire }
 import gunbc.spark.vllm_observed { vllm_models_advertised_ids }
@@ -89,15 +91,33 @@ type HarnessOperatorRoute {
   unit: HarnessServingUnit
   group_wire: NonEmptyStr
   credential_relative_path: NonEmptyStr
+  // DECLARED GAP (frontier): the ceiling is carried, not yet enforced by an admission step; the server's own
+  // 64-deep pending queue is the only bound. Trigger: a route-keyed occupancy pool (serving_enrollment's named
+  // growth surface) that counts open turns per route and refuses the ninth with a typed cause.
   concurrency_ceiling: Nat
   quality_floor: OperatorQualityFloor
+}
+
+// THIS OPERATOR'S LAUNCH of ninfer-serve on the pod (a consumer-layer observation, not a fact of the upstream): the command line observed (host and port bind loopback; the API key is a flag value that is
+// deliberately NOT a field here -- the key lives in a 0600 file on the consuming host).
+data operator_observed_launch: NinferServeLaunch = NinferServeLaunch {
+  model_id: "qwen3.8-27b" as NonEmptyStr,
+  max_concurrency: 8,
+  max_context: 262144,
+  max_pending_requests: 64,
+  pending_timeout: millisecond(count: 900000),
+  default_max_tokens: 32768,
+  kv_dtype: NinferKvFp8,
+  kv_capacity_auto: true,
+  speculation: NinferMtp { draft_tokens: 3, lm_head_draft: true },
+  standing: TranscribedUncited { read_obligation: ninfer_upstream_read_obligation },
 }
 
 data harness_operator_route: HarnessOperatorRoute = HarnessOperatorRoute {
   unit: Qwen3_8_27bOnNinfer,
   group_wire: "operator:ninfer-gpu-pod" as NonEmptyStr,
   credential_relative_path: ".config/gunbc-gpu-pod/api-key" as NonEmptyStr,
-  concurrency_ceiling: ninfer_serve_observed_launch.max_concurrency,
+  concurrency_ceiling: operator_observed_launch.max_concurrency,
   quality_floor: OperatorQualityFloor {
     admitted_class: BatchQualityTolerant,
     consequence: "the operator route serves a 27B-parameter NVFP4 model, not the fleet's GLM-5.3-Flash: a quality-sensitive (interactive) turn is REFUSED here rather than answered by the smaller model, and a batch turn placed here is answered by it knowingly" as NonEmptyStr,

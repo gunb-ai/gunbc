@@ -2,7 +2,7 @@ module extdeps.ninfer.ninfer_serve
 
 import std.types { NonEmptyStr, String, Bool, List, Int }
 import std.nat { Nat }
-import std.measure { Millisecond, millisecond }
+import std.measure { Millisecond }
 import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -19,7 +19,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "github.com/Neroued/ninfer" as NonEmptyStr }
 }
 
-data ninfer_pod_checkout_revision: NonEmptyStr = "81c8ce093b2c1646a87566a8e59d807fcf0ec95c" as NonEmptyStr
 
 data ninfer_serve_program: NonEmptyStr = "ninfer-serve" as NonEmptyStr
 
@@ -45,12 +44,9 @@ data ninfer_upstream_read_obligation: NonEmptyStr = "Read ninfer's source and do
 data ninfer_models_path: NonEmptyStr = "/v1/models" as NonEmptyStr
 data ninfer_chat_completions_path: NonEmptyStr = "/v1/chat/completions" as NonEmptyStr
 data ninfer_health_path: NonEmptyStr = "/health" as NonEmptyStr
-data ninfer_models_standing: CitedFigureStanding = TranscribedUncited { read_obligation: ninfer_upstream_read_obligation }
 
 // The member of a /v1/models entry that reports the context window. Contrast with vLLM, whose entries carry
 // a `root` member this server was observed not to need; the field name is the observed one.
-data ninfer_max_model_len_member: NonEmptyStr = "max_model_len" as NonEmptyStr
-data ninfer_invalid_api_key_code: NonEmptyStr = "invalid_api_key" as NonEmptyStr
 
 fn ninfer_authorization_header_line(key: NonEmptyStr) -> String {
   join(["Authorization: Bearer ", key as String, "\n"], "")
@@ -80,21 +76,6 @@ type NinferServeLaunch {
   standing: CitedFigureStanding
 }
 
-// The command line observed on the pod (host and port bind loopback; the API key is a flag value that is
-// deliberately NOT a field here -- the key lives in a 0600 file on the consuming host).
-data ninfer_serve_observed_launch: NinferServeLaunch = NinferServeLaunch {
-  model_id: "qwen3.8-27b" as NonEmptyStr,
-  max_concurrency: 8,
-  max_context: 262144,
-  max_pending_requests: 64,
-  pending_timeout: millisecond(count: 900000),
-  default_max_tokens: 32768,
-  kv_dtype: NinferKvFp8,
-  kv_capacity_auto: true,
-  speculation: NinferMtp { draft_tokens: 3, lm_head_draft: true },
-  standing: TranscribedUncited { read_obligation: ninfer_upstream_read_obligation },
-}
-
 // ── THE CHAT-COMPLETIONS READING, observed live 2026-10-11 (qwen3.8-27b through the srv1 tunnel) ───
 // One non-streaming request with one function tool: finish_reason `tool_calls`; message.content null;
 // reasoning in message.reasoning_content (not `reasoning`, no inline think tags); message.tool_calls[] with
@@ -104,9 +85,6 @@ data ninfer_serve_observed_launch: NinferServeLaunch = NinferServeLaunch {
 // are launch flags, and no per-request switch has been read. An observation receipt, one request, not a
 // published contract.
 data ninfer_message_reasoning_field: NonEmptyStr = "reasoning_content" as NonEmptyStr
-data ninfer_tool_calls_finish_reason: NonEmptyStr = "tool_calls" as NonEmptyStr
-data ninfer_thinking_on_by_default: Bool = true
-data ninfer_chat_reading_standing: CitedFigureStanding = TranscribedUncited { read_obligation: ninfer_upstream_read_obligation }
 
 // The inline closer is NOT OBSERVED: the reading above showed reasoning split server-side with no inline tags,
 // so no decoder reads this while that holds. It is the closer harness_unit_thinking_end_token must answer
