@@ -27,6 +27,7 @@ import gunbc.toolchain_home_standing {
 }
 import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain_pin_rustup_default_step }
 import gunbc.witness_floor_workflow { witness_floor_toolchain_step, witness_floor_build_step }
+import gunbc.ci_materialization { step_display_name }
 import gunbc.repo_self_build { repo_self_build_command }
 import gunbc.heal_workflow {
   heal_workflow_name, heal_job_holds_publication_credential, step_uses_action, job_permissions_carry_write
@@ -336,7 +337,6 @@ fn heal_publisher_condition_and(existing: String?, owed: String) -> String {
 type HealPublisherBoundStep {
   step: Step
   role: StepCapabilityRole
-  step_name: String
 }
 
 fn heal_publisher_bound_steps() -> List<HealPublisherBoundStep> {
@@ -344,57 +344,46 @@ fn heal_publisher_bound_steps() -> List<HealPublisherBoundStep> {
     HealPublisherBoundStep {
       step: heal_publisher_candidate_probe_step(),
       role: capability_neutral,
-      step_name: "Ask the triggering run whether it sealed a candidate",
     },
     HealPublisherBoundStep {
       step: heal_publisher_checkout_step(),
       role: capability_neutral,
-      step_name: "Checkout the default branch this publisher runs from",
     },
     HealPublisherBoundStep {
       step: heal_publisher_download_step(),
       role: capability_neutral,
-      step_name: "Download the candidate the triggering heal run produced",
     },
     HealPublisherBoundStep {
       step: heal_publisher_only_when_repair_owed(step: toolchain_home_isolation_step()),
       role: capability_neutral,
-      step_name: "Isolate toolchain homes",
     },
     HealPublisherBoundStep {
       step: heal_publisher_only_when_repair_owed(step: witness_floor_toolchain_step()),
       role: provides_only(capabilities: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability]),
-      step_name: "Install Rust toolchain",
     },
     HealPublisherBoundStep {
       step: heal_publisher_only_when_repair_owed(step: toolchain_pin_rustup_default_step()),
       role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
-      step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
     },
     HealPublisherBoundStep {
       step: heal_publisher_only_when_repair_owed(step: witness_floor_build_step(step_name: heal_publisher_build_step_name, build_script: repo_self_build_command(bins: heal_publisher_required_bins))),
       role: consumes_only(capabilities: [CargoCapability]),
-      step_name: heal_publisher_build_step_name,
     },
     HealPublisherBoundStep {
       step: heal_publisher_admit_step(),
       role: capability_neutral,
-      step_name: "Admit the candidate against this checkout's policy, with no publication credential",
     },
     HealPublisherBoundStep {
       step: heal_publisher_wif_auth_step(),
       role: capability_neutral,
-      step_name: "Federate to the publisher's own identity (access token only, five minutes)",
     },
     HealPublisherBoundStep {
       step: heal_publisher_publish_step(),
       role: capability_neutral,
-      step_name: "Publish the admitted repair, fast-forward only, and read it back",
     },
     HealPublisherBoundStep {
       step: heal_publisher_receipt_comment_step(),
       role: capability_neutral,
-      step_name: "Post the publication receipt on the pull request",
     },
   ]
 }
@@ -404,7 +393,7 @@ fn heal_publisher_capability_closure_holds() -> Bool {
     v: workflow_job_capability_closure(
       steps: list_map(
         xs: heal_publisher_bound_steps(),
-        f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+        f: fn(b) { CapabilityAnnotatedStep { step_name: step_display_name(s: b.step), role: b.role } },
       )
     ),
   )
