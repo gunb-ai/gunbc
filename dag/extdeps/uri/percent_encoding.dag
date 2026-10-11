@@ -207,39 +207,21 @@ fn uri_percent_octet_wire(octet: UriUtf8Octet) -> UriPercentOctetWire {
   }
 }
 
-fn uri_percent_encode_two_octets(lead: UriUtf8Octet, trail: UriUtf8Octet) -> UriPercentEncodeFoldState {
-  match uri_percent_octet_wire(octet: lead) {
-    UriPercentOctetEncoded { wire: w0 } =>
-      match uri_percent_octet_wire(octet: trail) {
-        UriPercentOctetEncoded { wire: w1 } => UriPercentEncodeBuilding { wire: concat(w0, w1) }
-        UriPercentOctetNibbleOutOfRange { digit: d } =>
-          UriPercentEncodeRefused { cause: UriPercentEncodeHexNibbleOutOfRange { digit: d } }
-      }
-    UriPercentOctetNibbleOutOfRange { digit: d } =>
-      UriPercentEncodeRefused { cause: UriPercentEncodeHexNibbleOutOfRange { digit: d } }
-  }
-}
-
-fn uri_percent_encode_three_octets(b0: UriUtf8Octet, b1: UriUtf8Octet, b2: UriUtf8Octet) -> UriPercentEncodeFoldState {
-  match uri_percent_encode_two_octets(lead: b0, trail: b1) {
-    UriPercentEncodeRefused { cause: cause } => UriPercentEncodeRefused { cause: cause }
+// One octet of a scalar's UTF-8 form (from the one UTF-8 encoder, std.bytes utf8_encode_bytes) appended
+// to the accumulated wire as "%" HEXDIG HEXDIG; a refused state stays refused.
+fn uri_percent_encode_octet_step(state: UriPercentEncodeFoldState, o: Int) -> UriPercentEncodeFoldState {
+  match state {
+    UriPercentEncodeRefused { cause: k } => UriPercentEncodeRefused { cause: k }
     UriPercentEncodeBuilding { wire: prefix } =>
-      match uri_percent_octet_wire(octet: b2) {
-        UriPercentOctetEncoded { wire: w2 } => UriPercentEncodeBuilding { wire: concat(prefix, w2) }
-        UriPercentOctetNibbleOutOfRange { digit: d } =>
-          UriPercentEncodeRefused { cause: UriPercentEncodeHexNibbleOutOfRange { digit: d } }
-      }
-  }
-}
-
-fn uri_percent_encode_four_octets(b0: UriUtf8Octet, b1: UriUtf8Octet, b2: UriUtf8Octet, b3: UriUtf8Octet) -> UriPercentEncodeFoldState {
-  match uri_percent_encode_three_octets(b0: b0, b1: b1, b2: b2) {
-    UriPercentEncodeRefused { cause: cause } => UriPercentEncodeRefused { cause: cause }
-    UriPercentEncodeBuilding { wire: prefix } =>
-      match uri_percent_octet_wire(octet: b3) {
-        UriPercentOctetEncoded { wire: w3 } => UriPercentEncodeBuilding { wire: concat(prefix, w3) }
-        UriPercentOctetNibbleOutOfRange { digit: d } =>
-          UriPercentEncodeRefused { cause: UriPercentEncodeHexNibbleOutOfRange { digit: d } }
+      match uri_utf8_octet_construction(byte: o) {
+        UriUtf8OctetOutOfRangeRefused { value: v } =>
+          UriPercentEncodeRefused { cause: UriPercentEncodeUtf8OctetOutOfRangeRefused { value: v } }
+        UriUtf8OctetConstructed(octet) =>
+          match uri_percent_octet_wire(octet: octet) {
+            UriPercentOctetEncoded { wire: w } => UriPercentEncodeBuilding { wire: concat(prefix, w) }
+            UriPercentOctetNibbleOutOfRange { digit: d } =>
+              UriPercentEncodeRefused { cause: UriPercentEncodeHexNibbleOutOfRange { digit: d } }
+          }
       }
   }
 }
@@ -263,66 +245,12 @@ fn uri_percent_encode_admitted_scalar_wire(scalar: UriValidatedScalar) -> UriPer
   let cp = uri_validated_scalar_code_point(scalar: scalar)
   if uri_component_is_unreserved(cp: cp) {
     UriPercentEncodeBuilding { wire: from_code_point(cp: cp) }
-  } else if cp < 128 {
-    match uri_utf8_octet_construction(byte: cp) {
-      UriUtf8OctetOutOfRangeRefused { value: v } =>
-        UriPercentEncodeRefused { cause: UriPercentEncodeUtf8OctetOutOfRangeRefused { value: v } }
-      UriUtf8OctetConstructed(octet) =>
-        match uri_percent_octet_wire(octet: octet) {
-          UriPercentOctetEncoded { wire: w } => UriPercentEncodeBuilding { wire: w }
-          UriPercentOctetNibbleOutOfRange { digit: d } =>
-            UriPercentEncodeRefused { cause: UriPercentEncodeHexNibbleOutOfRange { digit: d } }
-        }
-    }
-  } else if cp < 2048 {
-    match uri_utf8_octet_construction(byte: 192 + (cp / 64)) {
-      UriUtf8OctetOutOfRangeRefused { value: v } =>
-        UriPercentEncodeRefused { cause: UriPercentEncodeUtf8OctetOutOfRangeRefused { value: v } }
-      UriUtf8OctetConstructed(b0) =>
-        match uri_utf8_octet_construction(byte: 128 + (cp % 64)) {
-          UriUtf8OctetOutOfRangeRefused { value: v } =>
-            UriPercentEncodeRefused { cause: UriPercentEncodeUtf8OctetOutOfRangeRefused { value: v } }
-          UriUtf8OctetConstructed(b1) => uri_percent_encode_two_octets(lead: b0, trail: b1)
-        }
-    }
-  } else if cp < 65536 {
-    match uri_utf8_octet_construction(byte: 224 + (cp / 4096)) {
-      UriUtf8OctetOutOfRangeRefused { value: v } =>
-        UriPercentEncodeRefused { cause: UriPercentEncodeUtf8OctetOutOfRangeRefused { value: v } }
-      UriUtf8OctetConstructed(b0) =>
-        match uri_utf8_octet_construction(byte: 128 + ((cp / 64) % 64)) {
-          UriUtf8OctetOutOfRangeRefused { value: v } =>
-            UriPercentEncodeRefused { cause: UriPercentEncodeUtf8OctetOutOfRangeRefused { value: v } }
-          UriUtf8OctetConstructed(b1) =>
-            match uri_utf8_octet_construction(byte: 128 + (cp % 64)) {
-              UriUtf8OctetOutOfRangeRefused { value: v } =>
-                UriPercentEncodeRefused { cause: UriPercentEncodeUtf8OctetOutOfRangeRefused { value: v } }
-              UriUtf8OctetConstructed(b2) => uri_percent_encode_three_octets(b0: b0, b1: b1, b2: b2)
-            }
-        }
-    }
   } else {
-    match uri_utf8_octet_construction(byte: 240 + (cp / 262144)) {
-      UriUtf8OctetOutOfRangeRefused { value: v } =>
-        UriPercentEncodeRefused { cause: UriPercentEncodeUtf8OctetOutOfRangeRefused { value: v } }
-      UriUtf8OctetConstructed(b0) =>
-        match uri_utf8_octet_construction(byte: 128 + ((cp / 4096) % 64)) {
-          UriUtf8OctetOutOfRangeRefused { value: v } =>
-            UriPercentEncodeRefused { cause: UriPercentEncodeUtf8OctetOutOfRangeRefused { value: v } }
-          UriUtf8OctetConstructed(b1) =>
-            match uri_utf8_octet_construction(byte: 128 + ((cp / 64) % 64)) {
-              UriUtf8OctetOutOfRangeRefused { value: v } =>
-                UriPercentEncodeRefused { cause: UriPercentEncodeUtf8OctetOutOfRangeRefused { value: v } }
-              UriUtf8OctetConstructed(b2) =>
-                match uri_utf8_octet_construction(byte: 128 + (cp % 64)) {
-                  UriUtf8OctetOutOfRangeRefused { value: v } =>
-                    UriPercentEncodeRefused { cause: UriPercentEncodeUtf8OctetOutOfRangeRefused { value: v } }
-                  UriUtf8OctetConstructed(b3) =>
-                    uri_percent_encode_four_octets(b0: b0, b1: b1, b2: b2, b3: b3)
-                }
-            }
-        }
-    }
+    fold(
+      bytes_octets(b: utf8_encode_bytes(s: from_code_point(cp: cp))),
+      init: UriPercentEncodeBuilding { wire: "" },
+      f: (acc, o) => uri_percent_encode_octet_step(state: acc, o: o)
+    )
   }
 }
 
