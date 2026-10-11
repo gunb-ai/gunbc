@@ -8,7 +8,7 @@ import v2.extdeps.languages.swift.rows { SwiftRowEmitted, SwiftRowEmissionRefuse
 import gunbc.approve_ios_swift_wire { expected_approve_ios_wire_swift }
 import gunbc.approve_ios_swift_protocol_vector_tests { expected_approve_ios_protocol_vector_tests_swift }
 import product.printed_chassis.cadquery_realization { CouponProgramGeneration, CouponProgramGenerated, CouponProgramRefused, expected_coupon_cadquery_program }
-import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, BranchRunGrantBrokerWorkflowYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, RunnerDeployArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact, FileTransportRealizationGeneratedRsArtifact, Fci1BoundedExecutionContextArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact, ApproveIosProjectYmlArtifact, ApproveIosProtocolSwiftArtifact, ApproveIosWireSwiftArtifact, ApproveIosProtocolVectorTestsSwiftArtifact, artifact_path, artifact_commit_policy, CommitRequired, NotCommitted, GitProtocol, CargoToolchain, GithubActionsWorkflow, ProjectDocumentation, HostReconciler, CompilerRunInput, CrossLanguageClientTest, XcodeProjectGenerator, SwiftCompiler }
+import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, DriftWatchWorkflowYamlArtifact, BranchRunGrantBrokerWorkflowYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, RunnerDeployArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact, FileTransportRealizationGeneratedRsArtifact, Fci1BoundedExecutionContextArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact, ApproveIosProjectYmlArtifact, ApproveIosProtocolSwiftArtifact, ApproveIosWireSwiftArtifact, ApproveIosProtocolVectorTestsSwiftArtifact, artifact_path, artifact_commit_policy, CommitRequired, NotCommitted, GitProtocol, CargoToolchain, GithubActionsWorkflow, ProjectDocumentation, HostReconciler, CompilerRunInput, CrossLanguageClientTest, XcodeProjectGenerator, SwiftCompiler }
 import gunbc.generated_artifact_registry { committed_generated_artifacts, heal_regenerated_after_provisional_merge_paths }
 import gunbc.whole_corpus_compile_demand_projection { expected_whole_corpus_compile_measured_root_demands_json }
 import gunbc.generated_workflow_provenance {
@@ -25,6 +25,7 @@ import gunbc.branch_run_grant_broker_workflow { expected_branch_run_grant_broker
 import gunbc.witness_floor_workflow { WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused }
 import gunbc.compiler_gate_workflow { expected_compiler_gate_yml }
 import gunbc.ci_yaml_validate { ci_yml_parses }
+import gunbc.tier_o_artifact_emit { tier_o_unadorned_body, TierOArtifactProduced, TierOArtifactRefused, TierOArtifactNotTierO }
 import gunbc.seed_build_artifact_emit { seed_build_artifact_body, SeedBuildArtifactProduced, SeedBuildArtifactRefused, SeedBuildArtifactNotSeedBuild }
 import gunbc.gitignore_emit { expected_gitignore }
 import gunbc.gitattributes_emit { GitattributesGenerated, GitattributesGenerationRefused, expected_gitattributes }
@@ -56,6 +57,14 @@ fn artifact_generated(content: String) -> ArtifactGenerationOutcome {
   ArtifactGenerated { content: content }
 }
 
+fn tier_o_outcome(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
+  match tier_o_unadorned_body(a: a) {
+    TierOArtifactProduced { content } => artifact_generated(content: content)
+    TierOArtifactRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    TierOArtifactNotTierO => ArtifactGenerationRefused { reason: "REFUSED gunbc.generated_artifact_emit: an artifact delegated to gunbc.tier_o_artifact_emit is absent from its roster" }
+  }
+}
+
 fn seed_build_outcome(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
   match seed_build_artifact_body(a: a) {
     SeedBuildArtifactProduced { content } => artifact_generated(content: content)
@@ -66,46 +75,11 @@ fn seed_build_outcome(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
 
 fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
   match a {
-    WitnessFloorYamlArtifact => match expected_compiler_gate_yml() {
-      WitnessFloorGenerated { content } => artifact_generated(content: content)
-      WitnessFloorGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
-    }
-    FleetConvergeYamlArtifact => match expected_fleet_converge_yml() {
-      FleetConvergeYamlGenerated { content } => artifact_generated(content: content)
-      FleetConvergeYamlGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
-    }
-    MicrovmShakedownYamlArtifact => match expected_microvm_shakedown_yml() {
-      MicrovmShakedownWorkflowGenerated { content } => artifact_generated(content: content)
-      MicrovmShakedownWorkflowGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
-    }
-    InstrumentDispatchYamlArtifact => match expected_instrument_dispatch_yml() {
-      InstrumentDispatchWorkflowGenerated { content } => artifact_generated(content: content)
-      InstrumentDispatchWorkflowGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
-    }
-    HealPublisherWorkflowYamlArtifact => match expected_heal_publisher_workflow_yml() {
-      HealPublisherWorkflowGenerated { content } => artifact_generated(content: content)
-      HealPublisherWorkflowGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
-    }
-    HealWorkflowYamlArtifact => match expected_heal_workflow_yml() {
-      HealWorkflowGenerated { content } => artifact_generated(content: content)
-      HealWorkflowGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
-    }
-    BranchRunGrantBrokerWorkflowYamlArtifact => match expected_branch_run_grant_broker_workflow_yml() {
-      BranchRunGrantBrokerWorkflowGenerated { content } => artifact_generated(content: content)
-      BranchRunGrantBrokerWorkflowGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
-    }
-    GitignoreArtifact => artifact_generated(content: expected_gitignore())
-    GitattributesArtifact => match expected_gitattributes() {
-      GitattributesGenerated { content } => artifact_generated(content: content)
-      GitattributesGenerationRefused => ArtifactGenerationRefused { reason: "generated projection path population refused" }
-    }
     RoadmapArtifact => artifact_generated(content: expected_roadmap_md())
     DesignArtifact => artifact_generated(content: expected_design_md())
     DesignFailureModesArtifact => artifact_generated(content: expected_design_failure_modes_md())
     DesignRungDropsArtifact => artifact_generated(content: expected_design_rung_drops_md())
     ContributorOnboardingArtifact => artifact_generated(content: expected_contributor_onboarding_md())
-    GithooksPrePushArtifact => artifact_generated(content: expected_githooks_pre_push_sh())
-    GithooksPreCommitArtifact => artifact_generated(content: expected_githooks_pre_commit_sh())
     GeneratedArtifactMergeDriverArtifact => artifact_generated(content: expected_generated_artifact_merge_driver_sh(
       regen_command: generated_artifact_author_regen_command,
       heal_regenerated_paths: heal_regenerated_after_provisional_merge_paths()
@@ -144,46 +118,24 @@ fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcom
     EvaluationBudgetConsequenceGeneratedRsArtifact => seed_build_outcome(a: a)
     ReleaseLocusSeedConstantsGeneratedRsArtifact => seed_build_outcome(a: a)
     FileTransportRealizationGeneratedRsArtifact => seed_build_outcome(a: a)
-    Fci1BoundedExecutionContextArtifact => match expected_fci1_bounded_execution_context_env() {
-      Fci1BoundedExecutionContextEmitted { content } => artifact_generated(content: content)
-      Fci1BoundedExecutionContextEmissionRefused { reason } =>
-        ArtifactGenerationRefused { reason: reason }
-    }
     AutoinstallUserDataArtifact { spec } => match autoinstall_user_data(payload: spec.payload) {
       AutoinstallUserDataRendered { content } => artifact_generated(content: content)
       AutoinstallUserDataRefused { reason } => ArtifactGenerationRefused { reason: reason }
     }
-    RunnerHostSudoersArtifact { host } => match runner_host_deploy_for(host: host) {
-      RunnerHostDeployFound { deploy } =>
-        artifact_generated(
-          content: runner_host_sudoers_content(
-            deploy: deploy,
-            artifact_path: artifact_path(a: a),
-          )
-        )
-      RunnerHostDeployUnmodeled { host: unmodeled } =>
-        ArtifactGenerationRefused {
-          reason: concat(
-            "no runner host deploy row for enrolled host ",
-            unmodeled as String
-          )
-        }
-      RunnerHostDeployRefused { host: refused, cause: why } =>
-        match runner_host_spec_for(host: refused) {
-          RunnerHostSpecFound { spec: spec } =>
-            artifact_generated(
-              content: runner_host_refused_sudoers_content(
-                spec: spec,
-                cause: why,
-                artifact_path: artifact_path(a: a),
-              )
-            )
-          RunnerHostSpecAbsent { host: h } =>
-            ArtifactGenerationRefused {
-              reason: concat("runner host refused with no spec: ", h as String),
-            }
-        }
-    }
+    RunnerHostSudoersArtifact { host: _ } => tier_o_outcome(a: a)
+    WitnessFloorYamlArtifact => tier_o_outcome(a: a)
+    FleetConvergeYamlArtifact => tier_o_outcome(a: a)
+    MicrovmShakedownYamlArtifact => tier_o_outcome(a: a)
+    InstrumentDispatchYamlArtifact => tier_o_outcome(a: a)
+    HealPublisherWorkflowYamlArtifact => tier_o_outcome(a: a)
+    HealWorkflowYamlArtifact => tier_o_outcome(a: a)
+    BranchRunGrantBrokerWorkflowYamlArtifact => tier_o_outcome(a: a)
+    GitignoreArtifact => tier_o_outcome(a: a)
+    GitattributesArtifact => tier_o_outcome(a: a)
+    GithooksPrePushArtifact => tier_o_outcome(a: a)
+    GithooksPreCommitArtifact => tier_o_outcome(a: a)
+    Fci1BoundedExecutionContextArtifact => tier_o_outcome(a: a)
+    DriftWatchWorkflowYamlArtifact => tier_o_outcome(a: a)
     PlanArtifact { plan } => match plan_generation(p: plan) {
       PlanGenerated { content } => artifact_generated(content: content)
       PlanGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
@@ -237,6 +189,7 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
     InstrumentDispatchYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     HealWorkflowYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     HealPublisherWorkflowYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
+    DriftWatchWorkflowYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     BranchRunGrantBrokerWorkflowYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     GitignoreArtifact => true
     GitattributesArtifact => true

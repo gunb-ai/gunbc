@@ -1,0 +1,43 @@
+module tools.tier_o_drift_check
+
+import std.types { String, List }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.optional { Present, Absent }
+import gunbc.generated_artifact { GeneratedArtifact, artifact_path }
+import gunbc.tier_o_artifact_emit { tier_o_artifacts, tier_o_artifact_body, TierOArtifactProduced, TierOArtifactRefused, TierOArtifactNotTierO }
+import gunbc.ci_spec { generated_artifact_author_regen_command }
+
+// READ-ONLY: COMPARE EACH TIER O ARTIFACT'S COMMITTED BYTES WITH ITS AUTHORITY, WRITE NOTHING.
+// This judges no revision and gates no merge; it names where the tree has drifted from the .dag that
+// emits it so the drift is found on a schedule instead of by the next unrelated author. Every
+// artifact is examined (a finding does not stop the fold), and each finding is typed, located by
+// path, and names the remedy. The exit is non-zero when any finding exists, which is what the
+// scheduled run turns into a failed, visible run; nothing is pushed.
+fn tier_o_finding(a: GeneratedArtifact) -> String? {
+  let path = artifact_path(a: a)
+  match tier_o_artifact_body(a: a) {
+    TierOArtifactNotTierO => Present { value: concat("OUTSIDE-ROSTER ", concat(path, ": the artifact is in tier_o_artifacts but has no tier_o_artifact_body arm; add the arm to gunbc.tier_o_artifact_emit")) }
+    TierOArtifactRefused { reason } => Present { value: concat("GENERATION-REFUSED ", concat(path, concat(": ", concat(reason, "; remedy: fix the authority that refused, then regenerate"))) ) }
+    TierOArtifactProduced { content } => {
+      let r = Filesystem.Read(path: path)
+      if !r.success {
+        Present { value: concat("UNREADABLE ", concat(path, concat(": ", concat(r.error, "; remedy: restore the committed file or regenerate it")))) }
+      } else if r.content == content { none }
+      else {
+        Present { value: concat("DRIFT ", concat(path, concat(": committed bytes differ from the authority's emission; remedy: ", generated_artifact_author_regen_command))) }
+      }
+    }
+  }
+}
+
+fn main() -> ProcessExit {
+  let findings = fold(tier_o_artifacts(), init: [], f: fn(acc, a) {
+    match tier_o_finding(a: a) {
+      Present { value: f } => concat(acc, [f])
+      Absent => acc
+    }
+  })
+  if findings.length() == 0 { ExitSuccess }
+  else { exit_failure(reason: join(findings, "\n")) }
+}
