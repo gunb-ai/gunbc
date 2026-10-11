@@ -116,7 +116,6 @@ import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, SystemdServiceDirective, ExecStart,
   systemd_unit_file_lines,
 }
-import v2.std.algebra { any }
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_host }
 import gunbc.host_layout { srv1_gunbc_approval_broker_root, srv1_gunbc_repo_root }
 import gunbc.live_deploy.spec { approval_broker_serve_binary_is_per_release_poison, deployment_directory_demands }
