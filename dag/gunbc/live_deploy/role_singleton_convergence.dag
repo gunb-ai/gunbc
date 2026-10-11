@@ -268,6 +268,12 @@ fn target_host_of(rows: List<DesiredDeployment>, deployment: DeploymentId) -> No
 // deployment realized off its own target; two deployments realized on one host; two deployments
 // realized anywhere; a broker on a host where no store is realized. Only then are realizations formed,
 // each (deployment, host) with the members seen for it, broker included from the same host.
+// THE HOST-LEVEL BROKER (gunbc_approval_broker_unit_path) is SightedBroker: it carries no
+// DeploymentId. Attribution is derived, never guessed. The broker joins the ObservedRealization of
+// the unique store deployment on the same host. Two store deployments on one host refuse as
+// RoleSingletonTwoOnOneHost before realizations form. A broker with no store refuses as
+// RoleSingletonBrokerWithoutStore. A co-hosted non-holder therefore sees the holder's broker
+// attributed to the holder, never to itself.
 fn role_singleton_observation_of(readings: List<HostRoleSingletonReading>, rows: List<DesiredDeployment>) -> RoleSingletonObservation {
   let unobservable = readings |> flat_map(r => match r {
     HostRoleSingletonsUnobservable { host, cause } => [RoleSingletonHostUnobservable { host: host, cause: cause }]
@@ -293,12 +299,6 @@ fn role_singleton_observation_of(readings: List<HostRoleSingletonReading>, rows:
     let here = distinct_ids(ids: sightings |> filter(s => (sighting_host(s: s) as String) == (h as String)) |> flat_map(s => match sighting_deployment(s: s) { Present { value: d } => [d]  Absent => [] }))
     if count(here) > 1 { [RoleSingletonTwoOnOneHost { host: h, deployments: here }] } else { [] }
   })
-  // THE HOST-LEVEL BROKER (gunbc_approval_broker_unit_path) is SightedBroker: it carries no
-  // DeploymentId. Attribution is derived, never guessed. The broker joins the ObservedRealization of
-  // the unique store deployment on the same host. Two store deployments on one host refuse as
-  // RoleSingletonTwoOnOneHost before realizations form. A broker with no store refuses as
-  // RoleSingletonBrokerWithoutStore. A co-hosted non-holder therefore sees the holder's broker
-  // attributed to the holder, never to itself.
   let brokers = broker_hosts(readings: readings)
   let broker_alone = brokers |> flat_map(h => if any(store_hosts, s => (s as String) == (h as String)) { [] } else { [RoleSingletonBrokerWithoutStore { host: h }] })
   let first_refusal = concat(concat(concat(concat(unobservable, mismatched), two_hosts), concat(misplaced, two_on_one)), concat(if count(ids) > 1 { [RoleSingletonHoldersAmbiguous { observed: ids }] } else { [] }, broker_alone)) |> first
