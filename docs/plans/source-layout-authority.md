@@ -122,7 +122,7 @@ Decisions recorded with the rulings (no open decisions remain):
 - **Generic, in `v2.compiler.source_authority`:** layout types, the rule, file-backed lookup (`module_file(name)`), namespace enumeration, the layout check. It is expressed over a logical `SourceRootRef` and a relative path, never a host path.
 - **Repository policy, in a new import-free module** (`gunbc.source_layout`): the namespace-root map and the namespace rows only: a row is just a declared namespace, one per namespace that directly contains modules, parents derived, and it carries no authored-or-generated kind. It is supplied at the entry boundary, not imported by the generic compiler.
 - **Runtime binding:** the native CLI binds each `SourceRootRef` to the host root it is given, through the filesystem handler it already binds. No new Rust harness.
-- **Generated files** stay in `gunbc.generated_artifact_registry`, which alone says what is generated; nothing in the layout restates it. The check joins the registry at file level, both ways: every registered `.dag` artifact exists at its rule position, and every file the registry names is treated as generated, so it takes no hand edits.
+- **Generated files** stay in `gunbc.generated_artifact_registry`, which alone says what is generated; nothing in the layout restates it. The layout check neither reads nor restates the registry: a generated module is held to its rule position like any other, and the registry's own closure is far larger than the compiler's CLI. The converse obligation -- every registered `.dag` artifact is committed, equals what its producer emits, and declares the module its registered location is the rule position of -- is a claim beside the registry (`v2.test.claim.generated_dag_artifacts_at_rule_position`), mitigation only: no required compile reaches those artifacts, so `gunbc.rung_drop` `v1_required_lanes_withdrawn` names them.
 
 Lookup chain: module name → `SourceRootRef` + relative path → bound host root → exact read → `module` line agrees with the name → `SourceRef`.
 
@@ -134,11 +134,13 @@ Cross-tree direction is preserved at this layer: today's grounding (`v2.std.cros
 
 ### 4.4 The layout check
 
-Run by the binary the `v2-native-cli` step builds, as a step on the required `witnesses` job. It has one mode: hold or refuse. Refusals are typed and located: `UndeclaredNamespace`, `NotAtRulePosition`, `ModuleLineMissing`, `DuplicateModule` (including case-fold duplicates), `RegistryArtifactMissing`. It reads headers, not bodies.
+Run by the binary the `v2-native-cli` step builds, as a step on the required `witnesses` job. It has one mode: hold or refuse. Refusals are typed and located: `UndeclaredNamespace`, `NotAtRulePosition`, `ModuleLineMissing`, `DuplicateModule` (including case-fold duplicates). It reads headers, not bodies.
 
 ### 4.5 Closure by demand
 
 Entry module → parse → requested names → `module_file` → parse → repeat. This is the "parse-then-derive" mechanism of `docs/plans/namespace-cut-replacement-plan.md`. A bare name is not requestable and refuses under R1; the diagnostic names the spelling, the local module and its visible imports, and nothing scans the repository. The ingest receipt asserts files read = requested closure exactly.
+
+**What a request is.** Only a candidate module reference may probe storage. A dotted spelling whose head a visible binder binds (a parameter, a `let` binder, a module-level value) is a field projection off that binder, so it requests nothing: reading `<root>/x/y.dag` for `x.y` would make a program's verdict depend on a file it does not mention. Whether a head is bound is decided from the lexical frames at the site by one pure fold over the module (`v2.compiler.lexical_scope`), which resolution and acquisition both consume, never from the spelling's shape. The frames acquisition reads are a subset of resolution's: a match arm's pattern binder, a loop carrier, a type parameter and an imported value need the resolution namespace to decide binder versus constructor or kind, so a head only one of those binds is still a candidate here. The collision that leaves is exact: such a binder spelled like the first segment of a module name AND that module existing and being unreadable or malformed. It is held by the walked controls of the native emit verb (an identical emission over a tree without the same-named module, with a malformed one, and with a well-formed one; the qualified spelling refusing over the malformed one) and by the request-level claims of `v2.test.claim.module_acquisition`.
 
 ### 4.6 The one dual representation that remains
 
@@ -146,7 +148,7 @@ The `module` line, read by the seed. It stays until the seed retires, written by
 
 ### 4.7 Out of scope
 
-Changing v1's resolver; the July design's markdown and Rust write-back; non-`.dag` files beyond the registry; the seed's memory (R9; gunb-ai/gunbc#13674 is independent work); deleting the `module` line.
+Changing v1's resolver; the July design's markdown and Rust write-back; non-`.dag` files; the seed's memory (R9; gunb-ai/gunbc#13674 is independent work); deleting the `module` line.
 
 ## 5. Plan: one branch, one PR
 
@@ -178,8 +180,10 @@ One generated commit, re-runnable after merging main:
 ### C3 — Acquisition replaced at the root
 
 - Entry APIs take root bindings and an entry module, not a whole-tree `SourceRootIngest`. CLI `emit`, the native lane and `v2.compiler.program_assembly` callers all load by request.
-- Deleted: the parse-everything phase of `closure_ingest`; `native_lane_source_facts` and `native_lane_closure_modules`; compile-time use of `source_root_read`'s recursive walk; `module_storage_bindings_for_source_roots` and its host manifest emitter (consumers enumerated by name first); the failure-path reverse lookup. No selector, no fallback.
+- Deleted: the parse-everything phase of `closure_ingest`; `native_lane_closure_modules`; compile-time use of `source_root_read`'s recursive walk; `module_storage_bindings_for_source_roots` and its host manifest emitter (consumers enumerated by name first); the failure-path reverse lookup. No selector, no fallback.
+- Replaced at the root rather than deleted: `native_lane_source_facts` keeps its name and takes the acquired modules, not an ingest; the import and malformed-import facts it carried for the retired closure walk are gone with `native_lane_closure_modules`.
 - Inside the branch only: a differential of old reference-derived closure vs new demand-derived closure on both real entries, run before the old route is deleted.
+- **No-live-bypass census.** `SourceRootIngest` survives as the pure in-memory carrier of an already-acquired closure, so the question is not whether compiler APIs accept it but where non-test values of it are produced. Every producer is one of: (1) a completed verified acquisition, `v2.compiler.module_acquisition` `acquisition_ingest`, called by `v2.cli.compile_cli` (CLI `emit`) and by the native lane in `v2.compiler.compile`; (2) an explicit population enumeration, which is a census job and never a side effect of compiling one entry: `v2.compiler.compile` `native_lane_census_ingest` and its readers through `read_population`, `v2.lens.module_graph` `load_reference_derived_pool` through `source_root_ingest_from_source_refs`, and `gunbc.namespace_cut.namespace_xl2_rehearsal_census` `xl2_stripped_ingest` over a pinned object-store tree; (3) an in-memory fixture, `v2.compiler.self_host.direct_rust_door_fixture` `direct_rust_door_ingest` and the claim fixtures. One producer fits none: `v2.workflow.compile_door_ledger` `closure_ingest` derives a closure from the module-graph lens census and reads its files by path. It is an audit-only ledger whose entry point `door_ledger_over_affected_set` has no caller outside its own module and claims on main or on this branch, so the cutover neither routes through it nor changes it; it is named here as an unconsumed audit route, not accepted as a second door. No production entry point constructs a `SourceRootIngest` by walking a source root, and no production caller reaches `v2_cli_run` with an independently assembled ingest.
 
 ### C4 — Final adjudication (the PR head must show)
 
@@ -192,7 +196,7 @@ One generated commit, re-runnable after merging main:
 7. Seed emission of both self-host closures is identical before and after the sweep, modulo the rename map (v1 binds bare names by ancestor chain, which renames move).
 8. The seed and all renamed mirrors build; both native entry closures emit and build.
 9. The migration generator and every artifact generator are idempotent on the final head.
-10. Deleted producers have no consumers; no compiler API takes the whole-repository ingest.
+10. Deleted producers have no consumers; every non-test `SourceRootIngest` producer is classified in the C3 census, and none is a second acquisition door.
 
 ## 6. Risks
 
@@ -209,7 +213,7 @@ One generated commit, re-runnable after merging main:
 - `docs/plans/demand-engine-program.md` — §1's unruled next derivation ("an authority cheaper than full ingestion … a source-root manifest … the module dependency closure of the requested targets") and M3a's context-assembly note are C3.
 - `docs/plans/replacement-migration-doctrine.md` — the whole PR is one replacement migration; it deletes what it replaces.
 - gunb-ai/gunbc#13674 — independent of this plan (R9).
-- `gunbc.generated_artifact_registry` — unchanged; consulted by the check.
+- `gunbc.generated_artifact_registry` — unchanged; not consulted by the check.
 
 ---
 
