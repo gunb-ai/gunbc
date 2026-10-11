@@ -4,7 +4,7 @@ import std.judgment_contract { identity_structural_component, identity_digest_co
 import std.cache_identity { native_module_verdict_bundle_artifact_kind }
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.content_hash {
-  ContentHash, Fnv1a64Structural, Sha256Digest, Sha256DigestHex, content_hash_atom, content_hash_of_value, serialize_content_hash, parse_content_hash,
+  ContentHash, Fnv1a64Structural, Sha256Digest, Sha256DigestHex, content_hash_equal, content_hash_atom, content_hash_of_value, serialize_content_hash, parse_content_hash,
   sha256_hex_digest, sha512_hex_digest, as_content_hash_cryptographic, as_content_hash_sha512,
   content_hash_family, Sha256Family, Sha512Family, Sha1Family, Fnv1a64StructuralFamily
 }
@@ -19,6 +19,7 @@ import std.materialization_provider {
   request_key, request_kind, request_required_outputs, request_declared_inputs,
   request_judgment_contract, evaluation_store_address, evaluation_store_admitted_address,
   AddressedRequest, AddressedRequestAdmission, RequestAddressed, RequestAddressRefused, EvaluationStoreAddress,
+  evaluation_store_address_digest, request_evaluation_identity, evaluation_store_refused_component_refs, PersistentStoreScope,
   addressed_request_with_supplied_digest,
   evaluation_store_address_preimage,
   evaluation_identity_canonical, ResultContentIdentity, result_content_identity,
@@ -136,6 +137,15 @@ fn witness_commit_prepare(req: ArtifactRequest, payloads: List<ArtifactPayload>,
     RequestAddressed { addressed: a } => store_commit_prepare_addressed(addressed: a, payloads: payloads, blobs: blobs)
     RequestAddressRefused { family: f, scope: sc } =>
       StoreCommitNotPrepared { commit: StoreCommitRefused { key: request_key(req: req), refusal: StoreCommitStoreFamilyRefused { family: f, scope: sc } } }
+  }
+}
+
+// THE KEY A STORED OBJECT IS FILED UNDER is the admitted store address's digest, not the in-process
+// request key: the two are different families over one canonical preimage.
+fn witness_store_key(req: ArtifactRequest) -> ContentHash {
+  match witness_supplied_addressed(req: req) {
+    RequestAddressed { addressed: a } => evaluation_store_address_digest(address: a.address)
+    RequestAddressRefused { family: _, scope: _ } => request_key(req: req)
   }
 }
 
@@ -262,7 +272,7 @@ test fn a_committed_object_reads_back_as_a_hit_with_its_payloads() -> Bool {
   }
   let receipt_ok = store_lookup_fold(
     l: l,
-    hit: (a, ps, bs, r) => r.request_key == request_key(req: bundle_req())
+    hit: (a, ps, bs, r) => content_hash_equal(left: r.request_key, right: witness_store_key(req: bundle_req()))
       && r.provider == materialization_store_local_id
       && match r.disposition { RealizationServed => true, RealizationCommitted => false, RealizationConvergedOnPriorCommit => false },
     miss: k => false,
@@ -327,9 +337,9 @@ test fn an_object_for_another_request_of_the_same_kind_refuses_as_wrong_artifact
   let lookup = bundle_req()
   let good = prepared_object(req: lookup, payloads: bundle_payloads())
   let foreign_key = serialize_content_hash(
-    hash: request_key(req: NativeModuleVerdictBundleRequest(subject(module: "v2.test.beta")))
+    hash: witness_store_key(req: NativeModuleVerdictBundleRequest(subject(module: "v2.test.beta")))
   ) as String
-  let ours = serialize_content_hash(hash: request_key(req: lookup)) as String
+  let ours = serialize_content_hash(hash: witness_store_key(req: lookup)) as String
   let forged = replace(good, ours, foreign_key)
   (forged == good) == false
     && store_lookup_refusal_tag(l: lookup_present(req: lookup, object: forged)) == "contract_wrong_artifact"
@@ -340,7 +350,7 @@ test fn an_object_missing_a_required_part_refuses_as_incomplete() -> Bool {
   let incomplete = encode_store_object(
     manifest: ArtifactManifest {
       kind: request_kind(req: bundle_req()),
-      request_key: request_key(req: bundle_req()),
+      request_key: witness_store_key(req: bundle_req()),
       parts: [payload_part(payload: verdicts)]
     },
     payloads: [verdicts],
@@ -649,31 +659,27 @@ test fn the_declared_input_projection_carries_the_required_lens_contract() -> Bo
   named_present && named_moved && others_unmoved && same_row_count
 }
 
-// AND THE PROVIDER IS NOT IN THAT KEY. The same compiler request served from two different stores
-// keys identically and yields the same content digest; only the receipt differs. A provider or store
-// instance in the computation key would give one artifact as many identities as it has homes.
-test fn a_compiler_request_key_ignores_which_store_serves_it() -> Bool {
+// THE NATIVE COMPILER ARTIFACT IS NOT PERSISTABLE YET, AND SAYS WHY. Its generation identity
+// (v2.compiler.self_host.generation PreMaterializationIdentity) is six structural fingerprints and a
+// fingerprint fold of them, so the persistent scope refuses the request an address and names all
+// seven components; lookup and commit both answer the typed family refusal, never a miss -- a miss
+// would invite recomputing past a store that was never asked. The last conjunct is the positive
+// control: an admissible request over the same store is an ordinary miss. This replaces a claim
+// that the compiler's key ignored which store served it, which held only while a fingerprint
+// could key a store; it returns with the generation identity's migration (demand-m1c).
+test fn a_compiler_request_has_no_persistent_address_while_its_generation_axes_are_fingerprints() -> Bool {
+  let identity = request_evaluation_identity(req: compiler_req())
+  let refused = evaluation_store_refused_component_refs(identity: identity, scope: PersistentStoreScope)
   let payloads = [
     ArtifactPayload { id: output_native_compiler_executable, content: "ELF-bytes-fixture" },
     ArtifactPayload { id: output_native_compiler_build_diagnostics, content: "" },
   ]
-  let object = prepared_object(req: compiler_req(), payloads: payloads)
-  let other_store = OpenedMaterializationStore { provider: "some_other_realization" as CacheInterfaceId, instance: content_hash_of_value(value: "other-instance") }
-  let a = witness_lookup_decide(store: witness_store(), req: compiler_req(), read: StoreObjectPresent { content: object })
-  let b = witness_lookup_decide(store: other_store, req: compiler_req(), read: StoreObjectPresent { content: object })
-  match a {
-    StoreLookupHit { artifact: _, payloads: _, blobs: _, receipt: ra, evaluation_identity: _ } =>
-      match b {
-        StoreLookupHit { artifact: _, payloads: _, blobs: _, receipt: rb, evaluation_identity: _ } =>
-          ra.request_key == rb.request_key && ra.content_digest == rb.content_digest
-            && ra.request_key == request_key(req: compiler_req())
-            && (ra.provider == rb.provider) == false
-        StoreLookupMiss { key: _ } => false
-        StoreLookupRefused { key: _, refusal: _ } => false
-      }
-    StoreLookupMiss { key: _ } => false
-    StoreLookupRefused { key: _, refusal: _ } => false
-  }
+  (refused |> count()) == 7
+    && (refused |> any(r => (r as String) == "generation.source_closure"))
+    && (refused |> any(r => (r as String) == "generation.producer_compiler"))
+    && store_lookup_refusal_tag(l: witness_lookup_decide(store: witness_store(), req: compiler_req(), read: StoreObjectAbsent)) == "store_family_refused"
+    && preparation_tag(p: witness_commit_prepare(req: compiler_req(), payloads: payloads, blobs: [])) == "store_family_refused"
+    && store_lookup_is_miss(l: witness_lookup_decide(store: witness_store(), req: bundle_req(), read: StoreObjectAbsent))
 }
 
 test fn store_hit_requires_evaluation_preimage() -> Bool {

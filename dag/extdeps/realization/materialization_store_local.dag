@@ -2316,6 +2316,22 @@ fn local_store_commit_addressed(capability: LocalStoreCapability, addressed: Add
   }
 }
 
+// A COMMIT UNDER A HOLD THE CALLER ALREADY HAS, FROM A REQUEST. A session that brackets several
+// commits under one hold enters here once per commit: the request's address is derived here, once,
+// and the commit below carries it.
+fn local_store_commit_under_request(
+  held: LocalStoreFamilyHeld,
+  req: ArtifactRequest,
+  payloads: List<ArtifactPayload>,
+  parts: List<LocalStoreStagedPart>
+) -> LocalStoreCommit {
+  match addressed_request(req: req) {
+    RequestAddressRefused { family: f, scope: sc } =>
+      local_store_commit_refused(commit: StoreCommitRefused { key: request_key(req: req), refusal: StoreCommitStoreFamilyRefused { family: f, scope: sc } })
+    RequestAddressed { addressed: a } => local_store_commit_under(held: held, addressed: a, payloads: payloads, parts: parts)
+  }
+}
+
 // A COMMIT UNDER A GIVEN HOLD. The hold carries the store root and the family; nothing here takes either
 // separately, so authority for one root or family cannot write another. The hold is re-observed first,
 // so a value smuggled out of a finished bracket is refused as stale rather than used. The staged parts

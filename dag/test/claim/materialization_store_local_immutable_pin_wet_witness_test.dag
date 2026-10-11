@@ -23,7 +23,7 @@ import extdeps.realization.materialization_store_local {
   LocalStoreInitialization, LocalStoreInitialized, LocalStoreInitializationRefused,
   local_store_initialize, local_store_lookup, store_path,
   LocalStoreFamilyBudget,
-  local_store_with_family, LocalStoreBracket, LocalStoreBracketRan, LocalStoreBracketRefused, local_store_commit_under,
+  local_store_with_family, LocalStoreBracket, LocalStoreBracketRan, LocalStoreBracketRefused, local_store_commit_under_request,
   LocalStoreHoldStale, LocalStoreHoldNamedWindowHeadMoved, LocalStoreHoldWrongFamily,
   local_store_hold_key,
   LocalStoreHoldRefusal, LocalStoreFamilyBusy,
@@ -156,7 +156,7 @@ test fn a_leaked_hold_stays_stale_when_reclaim_cannot_remove_its_generation_by_r
             LocalStoreBracketRefused { refusal: _ } => false
             LocalStoreBracketRan { value: ok, hold_release: _ } => ok
           }
-          let c = local_store_commit_under(held: leaked, req: rs, payloads: verdicts(text: "s pass"), parts: [])
+          let c = local_store_commit_under_request(held: leaked, req: rs, payloads: verdicts(text: "s pass"), parts: [])
           let _unlock = pin_generation_unlink(path: pinned, on: false)
           immutable && advanced
             && commit_tag(c: c.commit) == "occupancy_unavailable"
