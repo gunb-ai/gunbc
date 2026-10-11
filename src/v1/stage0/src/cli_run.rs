@@ -7104,8 +7104,8 @@ fn entry_eligible_for_discovery_skip_before_resolve(
 
 /// The closure-node definition SHARED by the falsifier/floor calibration emission and the
 /// space-lens memory predictor (THIS function is the single authority — the predictor binds to
-/// it, never re-derives; predictor design in flight on PR #6442, landed parent-lane authorities
-/// docs/plans/compute-envelope-model.md (fleet envelope) and docs/plans/input-envelope-roadmap.md
+/// it, never re-derives; predictor design in flight on PR #6442, landed parent-lane authority
+/// docs/plans/input-envelope-roadmap.md
 /// (admission)): the deduped transitive import-closure of every roster row plus the given
 /// prefix-context entries, counted at authored-module-name grain via the LOADER's both-closure
 /// source set (`load_sources_for_entry_with_pool`) — the exact set
@@ -14907,7 +14907,7 @@ fn build_v1_attribution_multi_entry_index() -> MultiEntryIndex {
 }
 
 /// Per-entry stage attribution for the one-lump `resolve_nanos` (run-stability
-/// throughline, docs/plans/v1-run-stability-throughline.md): per-entry resolve cost
+/// throughline): per-entry resolve cost
 /// was a single undifferentiated number, so which stage to memoize at module grain
 /// could not be chosen by receipt. Filled per entry by `resolve_entry_with_parse_cache`
 /// (reconcile internals accumulate their own rows) through a worker-local slot — each
@@ -14938,11 +14938,8 @@ pub struct ResolveStageNanos {
     // undifferentiated number covering ~96% of the discovery-corpus resolve wall — the same
     // condition this struct's own doc-comment was written to end one level up, so the split
     // is the same move applied to its own residue. These rows located
-    // `rewire_type_env_import_str_binding_identity` as 58% of the wall (see
-    // docs/plans/floor-time-namespace-walk-regression-diagnosis.md §7). Same dissolution
-    // trigger as `[gantt]` / `phase_profile`: a `.dag` `PerformanceReceipt` per-stage carrier
-    // (realization_measurement_loop Phase 0) consumed by a floor witness makes this the
-    // model's own attribution rather than a host-side stderr projection.
+    // `rewire_type_env_import_str_binding_identity` as 58% of the wall.
+    // Like `[gantt]` / `phase_profile`, this is a host-side stderr projection.
     /// `module_schedule_batches` — antichain schedule build over the closure.
     pub assembly_schedule: u128,
     /// `try_reconcile_all_cache_hits` pass 1: per-module content key + store probe.
@@ -15289,18 +15286,11 @@ fn nanos_net_of_pool_parse<T>(f: impl FnOnce() -> T) -> (T, u128) {
 
 // SCAFFOLD (§7 HAND-RUST — `cli_run_exclusive_cost_partition_probe`):
 // ROADMAP lane §2 *Minimal work — caching by realization* (gunbc.roadmap_authority /
-// ROADMAP.md; docs/plans/realization-measurement-loop.md **Phase 0 — Measured cost**, the
-// keystone) — host-side stage attribution for the per-entry resolve, and the accounting
-// law over it. Same lane and same trigger the `ResolveStageNanos` rows it partitions
-// already declare; this scaffold does not add a second measurement authority, it makes
-// the existing rows' denominator honest.
-// Unblock: Phase 0 lands the `.dag`-native measurement carrier — a
-// `gunbc.fleet_intent.PerformanceReceipt { cost, sample_count, confidence }` keyed by the
-// cache-subject hash, rolled up by `gunbc.fleet_intent.cost_account_from_performance_receipts`
-// into a `std.realization_schedule.CostAccount` whose `CostBasis` is `Measured` — consumed
-// by a floor witness. At that point the partition is a lens over those rows and the
-// exclusive law is a property of the model, not of this host-side projection.
-// DELETE WHEN dissolved: `ResolveSpanAccount`, `RESOLVE_SPAN_ACCOUNT`,
+// ROADMAP.md) — host-side stage attribution for the per-entry resolve, and the accounting
+// law over it. Same lane as the `ResolveStageNanos` rows it partitions; this scaffold
+// does not add a second measurement authority, it makes the existing rows' denominator
+// honest.
+// Scaffold members: `ResolveSpanAccount`, `RESOLVE_SPAN_ACCOUNT`,
 // `RESOLVE_SPAN_BY_ENTRY`, `RESOLVE_STAGE_BY_ENTRY`, `resolve_span_account`,
 // `resolve_span_rows_by_entry`, `resolve_stage_rows_by_entry`, `resolve_span_enter`,
 // `resolve_span_exit`, the `resolve_entry_with_parse_cache` timing wrapper (fold back into
@@ -20899,8 +20889,8 @@ fn capture_scoped_run_stderr<T>(_f: impl FnOnce() -> T) -> Result<(T, Vec<u8>), 
 /// that the operator's Phase-2 trace specifies, and this is the seam that work extends rather than
 /// a substitute for it.
 
-/// `gunbc serve` — the thin host seam for the gunbc-served dashboard
-/// (docs/plans/gunbc-served-dashboard-design.md). Compile the entry closure
+/// `gunbc serve` — the thin host seam for the gunbc-served dashboard.
+/// Compile the entry closure
 /// ONCE, then answer each HTTP request by calling ONE .dag function
 /// `fn(method, path, body) -> ServeWireResponse`. The seam is socket
 /// accept + minimal HTTP/1.1 parse + response write ONLY — routing and
@@ -27474,11 +27464,10 @@ fn collect_declared_source_ref_paths_for_closure(closure_paths: &HashSet<String>
 // SCAFFOLD (§7 HAND-RUST — `cli_run_affected_set_stop_line_bridge`):
 // Lane: 7933A temporary safety stop-line (calm-fox-44) — any non-docs .dag touch blocks
 // discovery skip for compile-clean shard_a and scope witness entries. BROAD interim rule,
-// not precise self-confirmation; rationale/cost receipt in `gunbc.affected_set_stop_line`,
-// 7933B plan in `gunbc.plans.affected_set_self_confirmation`.
+// not precise self-confirmation; rationale/cost receipt in
+// `gunbc.affected_set_stop_line`.
 // Sole executable authority for 7933A: the consts and helpers below (no .dag path twin).
-// 7933B replaces this scaffold with symbolic refs + generated/direct host projection.
-// DELETE WHEN dissolved: `COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY`,
+// Scaffold members: `COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY`,
 // `COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY`, `compile_clean_touched_path_norm`,
 // `compile_clean_touched_path_is_docs_only`, `compile_clean_touched_path_is_dag_source`,
 // `compile_clean_verdict_affecting_touch`, `compile_clean_broad_stop_line_blocks_skip`,
@@ -27819,7 +27808,7 @@ pub fn expand_explicit_witness_entries(
     test_module_hygiene_bridge::expand_explicit_entries(explicit_entries)
 }
 
-// SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): the floor-observability cluster
+// SCAFFOLD (§7 hand-Rust shrink-to-zero): the floor-observability cluster
 // below — `floor_verbose` / `floor_ts` / `floor_stream_enabled` / `floor_color_enabled`,
 // `ShardStyle`, and `eprintln_affected_set_categorization` — is seed-side NARRATION wrapped
 // around the existing affected-set selection. It adds no selection authority: the fail-closed
@@ -27827,11 +27816,7 @@ pub fn expand_explicit_witness_entries(
 // live in Rust because the v1 evaluator narrates its own floor walk (the same seed-side reason as
 // `phase_profile.rs` and `GUNBC_FLOOR_GANTT`). The *rendering* they emit is the same class of
 // output already migrating into `dag/gunbc/ci/ci_render.dag` (the timing histogram + slowest-witness
-// rollup render there today). Full dissolution: when v2 emit-host owns floor observability — a
-// `.dag` floor-event carrier a witness consumes by execution, the retirement event shared with
-// `phase_profile.rs` (`docs/plans/realization-measurement-loop.md` Phase 0) and the fractal Gantt
-// (`ci-floor-fractal-gantt (plan doc deleted 2026-08-28)` § dissolution) — this narration collapses into that
-// carrier and is deleted. Until then it is counted seed Rust, not a new authority; do not accrete
+// rollup render there today). It is counted seed Rust, not a new authority; do not accrete
 // further floor logic here — extend the `.dag` render/observability surface instead.
 
 #[derive(Clone, Copy)]

@@ -14,8 +14,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // walk visited last (or held by the first, under a precedence order). The loser's own calls then
 // execute the winner's body with no diagnostic anywhere.
 //
-// THE SILENT FACE IS THE WHOLE POINT, AND IT SHIPPED. `docs/plans/import-namespace-program.md` and
-// `docs/plans/v2-corpus-self-host.md` are emitted from two plan carriers that each declare
+// THE SILENT FACE IS THE WHOLE POINT, AND IT SHIPPED. The `import-namespace-program` and
+// `v2-corpus-self-host` plan documents were emitted from two plan carriers that each declare
 // `status_block` and `section_1` .. `section_9`, each calling them bare from its own body fold.
 // One carrier won every slot, so the other plan's document was emitted carrying the winner's
 // ENTIRE BODY under its own title and slug -- a well-formed markdown file, byte-stable across

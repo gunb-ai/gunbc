@@ -1519,7 +1519,7 @@ fn dag_grammar_arrow_lambda_name_head_expr() -> GrammarExpr {
 
 // A BLOCK IN EXPRESSION POSITION NEVER BEGINS AS A BRACE LITERAL DOES: `{}`, `{ name :` or
 // `{ "key" :`. `{}` in expression position is the empty brace literal, record or map by expected type
-// (operator ruling 2026-10-03, A; docs/plans/map-literal-introduction-design.md reads a headless brace
+// (operator ruling 2026-10-03, A; a headless brace is read
 // by expected type, and the corpus writes `body: { }`, `= {}` and `automatic: {}` as values), and an
 // empty block as a value refuses. Positions with a block production of their own -- a fn body, an
 // if or else arm, a loop, a fn literal's body, a match arm (dag_grammar_empty_block_body_expr) -- do
@@ -1614,8 +1614,8 @@ fn dag_grammar_additive_newline_minus_guard() -> GrammarExpr {
   )
 }
 
-// ONE TREE NODE PER OPERATOR APPLICATION (v2.std.grammar InfixTable;
-// docs/plans/precedence-climbing-tree-contract.md). An operand with no operator after it is captured
+// ONE TREE NODE PER OPERATOR APPLICATION (v2.std.grammar InfixTable).
+// An operand with no operator after it is captured
 // as itself; `a + b * c` is one application of `+` whose right operand is one application of `*`.
 fn dag_grammar_binary_expr_expr() -> GrammarExpr {
   grammar_expr_infix_table(

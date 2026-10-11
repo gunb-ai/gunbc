@@ -114,7 +114,7 @@ import std.language_target_identity {
 // TargetVocabulary — the confined module list and prefix list
 // v2.lens.realization_vocabulary_containment enforces; (5) RuntimeChecker — external toolchains a
 // support claim would execute against; (6) LegacyFrontier —
-// gunbc.plans.language_target_self_host_frontier's prose rows. ALL SIX authorities are
+// the prose rows of the self-host frontier plan, since deleted, so this authority has no row. ALL SIX authorities are
 // HAND-DECLARED at this revision — authority 4 was intended to be derived and is a counted scaffold
 // with a stated trigger (language_target_registry_vocabulary_scaffold_note); nothing in this module
 // is derived from the live tree. GRAIN, because it decides whether a row can be checked: a locus is
@@ -654,18 +654,13 @@ data runtime_checker_rows: List<LanguageTargetSurfaceRow> = [
   identified_module_row(authority: RuntimeChecker, module_path: "extdeps.python", subject: python_language_subject_ref),
 ]
 
-// The legacy frontier surface stays unidentified because it is a MULTI-TARGET prose table, not a
-// surface belonging to one subject: gunbc.plans.language_target_self_host_frontier carries a row
-// per target for a dozen targets at once. It cannot join a single subject, and the join kernel is
-// right to report it. Its dissolution is the migration of those prose rows onto per-subject
-// carriers — now possible for the first time, because until this change there were no subjects to
-// migrate them ONTO. That migration is not done here; what this change removes is the reason it was
-// blocked. The projections below carry legacy_frontier_label so each prose row can be matched to
-// its canonical subject by name rather than by eye when that work happens.
+// The legacy frontier surface was one unidentified row: the self-host frontier plan was a
+// MULTI-TARGET prose table carrying a row per target for a dozen targets at once, so it could not
+// join a single subject. That plan module is deleted, so the row naming it is gone and this
+// authority's population is empty. The projections below still carry legacy_frontier_label, the
+// frontier table's spelling for each target.
 
-data legacy_frontier_rows: List<LanguageTargetSurfaceRow> = [
-  unidentified_module_row(authority: LegacyFrontier, module_path: "gunbc.plans.language_target_self_host_frontier"),
-]
+data legacy_frontier_rows: List<LanguageTargetSurfaceRow> = []
 
 fn identified_decl_row(
   authority: LanguageTargetSurfaceAuthority,

@@ -2512,7 +2512,7 @@ pub fn whole_tree_resolved_ctx(
 /// size (`retained`, what is resident if each module's spine were its own allocation) and each
 /// distinct `Rc` spine once (`distinct`, what is actually allocated). `dup = retained/distinct`
 /// is the per-module materialization factor; a factor well above 1 on the ancestry maps is the
-/// quadratic retention the M0 probe (v1-run-stability-throughline) was written to locate, and
+/// quadratic retention the M0 probe was written to locate, and
 /// this is that probe moved onto the graphs the floor really holds instead of a second whole-tree
 /// resolve nobody called.
 ///

@@ -248,7 +248,7 @@ data known_frontier_causes: List<CauseOwnership> = [
   CauseOwnership {
     cause: ^resolve_anonymous_map_no_expected_type,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "a headless string-keyed map literal reached by an edge no authored annotation types (a call argument, an unannotated let, a match-arm body), so v2.compiler.resolve's map arm has no Map<K, V> to elaborate from and refuses rather than guess (docs/plans/map-literal-introduction-design.md). Not a frontier: each occurrence flips when its source writes an annotation"
+    flip_trigger: "a headless string-keyed map literal reached by an edge no authored annotation types (a call argument, an unannotated let, a match-arm body), so v2.compiler.resolve's map arm has no Map<K, V> to elaborate from and refuses rather than guess. Not a frontier: each occurrence flips when its source writes an annotation"
   },
   CauseOwnership {
     cause: ^resolve_anonymous_map_expected_type_not_map,
@@ -288,7 +288,7 @@ data known_frontier_causes: List<CauseOwnership> = [
   CauseOwnership {
     cause: ^body_lowering_reason_brace_key_kind_mismatch,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "a brace no key-kind choice could type: a constructor head over string keys, or a headless brace mixing name keys and string keys. Refused at lowering at the first item of the offending kind (docs/plans/map-literal-introduction-design.md); flips per site when the source writes one kind"
+    flip_trigger: "a brace no key-kind choice could type: a constructor head over string keys, or a headless brace mixing name keys and string keys. Refused at lowering at the first item of the offending kind; flips per site when the source writes one kind"
   },
   CauseOwnership {
     cause: ^resolve_anonymous_record_alias_cycle,

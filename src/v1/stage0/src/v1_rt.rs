@@ -334,10 +334,10 @@ pub fn utf8_encode_bytes(s: String) -> Vec<u8> {
     s.into_bytes().into_iter().collect()
 }
 
-/// std.bytes pure_dag_seam_unreachable: bottom. Reached only if an arm its author proved
+/// std.error_primitives pure_dag_seam_unreachable: bottom. Reached only if an arm its author proved
 /// unreachable was evaluated, and then it diverges, as the interpreter's arm refuses.
 pub fn pure_dag_seam_unreachable() -> i64 {
-    panic!("std.bytes pure_dag_seam_unreachable reached: an arm declared unreachable was evaluated")
+    panic!("std.error_primitives pure_dag_seam_unreachable reached: an arm declared unreachable was evaluated")
 }
 
 /// See `char_at`: the ASCII fast path is bounded by `end`, not by the whole string.
@@ -1365,15 +1365,15 @@ pub fn trace_process_tree_cpu_ms() -> Option<u64> {
 /// process-absolute millis field. RSS stays on heartbeat/measurement (`ci_event_line` does
 /// not project `event.rss` — explicit divergence from the deleted rss-mib field).
 ///
-/// **Dissolution trigger (DESIGN §6):** delete this fn, the `trace_mark` registry row in
-/// `04_method.dag` (+ generated mirror `v1_compiler_infer_method.rs`), the nine
-/// `trace_mark(...)` marks in `compile.dag` (+ generated mirror `v1_compiler_compile.rs`), and
-/// the interpreter arm in `v1_interpreter.rs` when realization_measurement_loop **Phase 0**
-/// (`docs/plans/realization-measurement-loop.md`) lands a `.dag` `PerformanceReceipt`
-/// per-stage carrier that a floor witness consumes by execution (the same retirement event
-/// as `phase_profile.rs` / `GUNBC_FLOOR_GANTT`, per `ci-floor-fractal-gantt (plan doc deleted 2026-08-28)`
-/// § dissolution). Receipt = that witness green with these marks deleted and stage walls
-/// still attributable from the model path.
+/// **Scaffold members (DESIGN §6), deleted together:**
+/// this fn;
+/// the `trace_mark` registry row in `04_method.dag`
+/// (+ generated mirror `v1_compiler_infer_method.rs`);
+/// the nine `trace_mark(...)` marks in `compile.dag`
+/// (+ generated mirror `v1_compiler_compile.rs`);
+/// the interpreter arm in `v1_interpreter.rs`.
+/// Same seed-side host transport class as
+/// `phase_profile.rs` / `GUNBC_FLOOR_GANTT`.
 pub fn trace_mark(label: String) {
     use std::sync::{Mutex, OnceLock};
     use std::time::Instant;

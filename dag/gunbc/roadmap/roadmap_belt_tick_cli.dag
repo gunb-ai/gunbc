@@ -378,8 +378,8 @@ fn belt_integrate_one_cli(repo_root: String, node_id: String, attempt_key: Strin
 
 
 // ------------------------------------------------------------------------------------------------
-// THE OBLIGATION ENTRIES (dogfood interventions #6 and #4, gunbc#13124;
-// docs/plans/belt-event-driven-obligations.md). The belt tick is demoted to launch: admission, spawn,
+// THE OBLIGATION ENTRIES (dogfood interventions #6 and #4, gunbc#13124).
+// The belt tick is demoted to launch: admission, spawn,
 // teardown and discovery. Everything it used to run after those is an obligation with its own unit,
 // started by the event that made it owed:
 //   - belt_attempt_obligations_cli  one attempt's capture, verify, review, audit and publish
