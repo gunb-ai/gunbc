@@ -2750,7 +2750,16 @@ fn native_lane_candidate_entries(pattern: TargetPattern, population: List<String
   }
 }
 
-// WHAT THE ADJUDICATING RUN HOLDS AFTER ACQUIRING: the universe it adjudicates, the ingest the later
+// WHAT THE ACQUIRER HANDS BACK: the modules of the requested closure, verified exact (R9), and the
+// names of the population the pattern selected within. It is the whole output of the effectful part of
+// the adjudicating run, so the driver can time reading and request detection (which are one
+// dependency-driven walk and cannot be separated) apart from the universe derivation that follows.
+type NativeLaneAcquisition {
+  modules: List<AcquiredModule>
+  population: List<String>
+}
+
+// WHAT THE ADJUDICATING RUN HOLDS AFTER DERIVING: the universe it adjudicates, the ingest the later
 // stages read (exactly the acquired modules, carrying the bytes the acquirer read), and the size of
 // the population the pattern selected within -- the one number a receipt can say about the namespace
 // without having read it.
@@ -2760,33 +2769,31 @@ type NativeLaneAcquired {
   population: Int
 }
 
-fn native_lane_acquired(
-  modules: List<AcquiredModule>,
-  population: List<String>,
-  pattern: TargetPattern
-) -> Outcome<NativeLaneAcquired> {
-  match native_lane_universe_selected(modules: modules, population: population, pattern: pattern) {
+// A PURE FOLD over the acquisition: no byte is read here, so a witness supplies hand-built modules and
+// a driver times this apart from the reads.
+fn native_lane_acquired(acquisition: NativeLaneAcquisition, pattern: TargetPattern) -> Outcome<NativeLaneAcquired> {
+  match native_lane_universe_selected(
+    modules: acquisition.modules,
+    population: acquisition.population,
+    pattern: pattern
+  ) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: universe, diagnostics: _ } =>
       outcome_accepted(value: NativeLaneAcquired {
         universe: universe,
-        ingest: acquisition_ingest(modules: modules),
-        population: length(xs: population)
+        ingest: acquisition_ingest(modules: acquisition.modules),
+        population: length(xs: acquisition.population)
       })
   }
 }
 
 // AN ACQUISITION THAT IS NOT THE REQUESTED CLOSURE, EXACTLY, IS A REFUSAL with the acquirer's own
 // reason and located cause (R9): never a smaller set and never a wider one.
-fn native_lane_acquire_verified(
-  verified: VerifiedAcquisition,
-  population: List<String>,
-  pattern: TargetPattern
-) -> Outcome<NativeLaneAcquired> {
+fn native_lane_acquire_verified(verified: VerifiedAcquisition, population: List<String>) -> Outcome<NativeLaneAcquisition> {
   match verified {
     AcquisitionNotVerified { reason: reason, cause: cause } => native_lane_refused(reason: reason, detail: cause)
     AcquisitionVerified { modules: modules, reads: _, absent_probes: _ } =>
-      native_lane_acquired(modules: modules, population: population, pattern: pattern)
+      outcome_accepted(value: NativeLaneAcquisition { modules: modules, population: population })
   }
 }
 
@@ -2794,19 +2801,18 @@ fn native_lane_acquire_listed(
   bindings: List<SourceRootBinding>,
   population: List<String>,
   pattern: TargetPattern
-) -> Outcome<NativeLaneAcquired> {
+) -> Outcome<NativeLaneAcquisition> {
   native_lane_acquire_verified(
     verified: acquire_verified(
       layout: repository_storage_layout(),
       bindings: bindings,
       entries: native_lane_candidate_entries(pattern: pattern, population: population)
     ),
-    population: population,
-    pattern: pattern
+    population: population
   )
 }
 
-fn native_lane_acquire_bound(bindings: List<SourceRootBinding>, pattern: TargetPattern) -> Outcome<NativeLaneAcquired> {
+fn native_lane_acquire_bound(bindings: List<SourceRootBinding>, pattern: TargetPattern) -> Outcome<NativeLaneAcquisition> {
   match enumerate_namespace_modules(
     layout: repository_storage_layout(),
     bindings: bindings,
@@ -2829,8 +2835,9 @@ fn native_lane_roots_refusal<T>(bindings: SourceRootBindings) -> Outcome<T> {
 }
 
 // THE ADJUDICATING RUN'S ONE DOOR TO ITS SOURCES: bind the roots, list the test namespace, acquire the
-// closure of the candidate entries, verify it, and derive the universe from what was acquired.
-fn native_lane_acquire(source_roots: FreeMonoid<String>, pattern: TargetPattern) -> Outcome<NativeLaneAcquired> {
+// closure of the candidate entries and verify it. The universe is derived from what was acquired by
+// native_lane_acquired, a separate pure fold.
+fn native_lane_acquire(source_roots: FreeMonoid<String>, pattern: TargetPattern) -> Outcome<NativeLaneAcquisition> {
   let resolved = source_root_bindings(roots: source_roots)
   match resolved {
     SourceRootsBound { bindings: bindings } => native_lane_acquire_bound(bindings: bindings, pattern: pattern)

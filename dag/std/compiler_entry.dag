@@ -265,9 +265,10 @@ data native_claim_route_denominator: NativeEffectDenominator = NativeEffectDenom
 // does not have, and that zero is a fact about the driver rather than a gap in the law: the sum
 // and the tolerance check are unchanged by a zero row, so one law folds every driver. The route
 // that DERIVES its universe from source roots pays two phases a driver handed a universe file
-// cannot have -- universe_derivation (discovery, the import-closure walk, and the ingest
-// identity join, whose scanned-versus-ingested populations are what closure-scoped ingest is
-// judged by) and receipt_admission (minting the receipt and adjudicating it). They are members
+// cannot have -- universe_derivation (discovery over the acquired modules' marked declarations and
+// the pattern's label universe; the acquisition itself is the load row, because reading and request
+// detection are one walk, and the acquirer judges its own read set against the requested closure) and
+// receipt_admission (minting the receipt and adjudicating it). They are members
 // of the exclusive sum like any other row, so an over-attribution routed through either is
 // caught by native_driver_cost_account and not by a second check.
 //

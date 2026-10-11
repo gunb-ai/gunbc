@@ -84,8 +84,10 @@ const V2_NATIVE_CLI_ENTRY: &str = "src/v2/cli/compile_cli.dag";
 /// tokenize. THE COMMITTED CARRIER IS NOT A `.dag` FILE — the bytes are not a dag program, and
 /// carrying the extension put them in the changed-witness observation's parse path, where the
 /// deliberate tokenize failure refused the whole floor lane (run 34471447387). The harness
-/// materializes the specimen as `poison.dag` under the lane's scratch root, and only that
-/// materialized copy ever enters an ingest — the control run's own source root.
+/// materializes the specimen under the lane's scratch root at the position the storage rule gives
+/// the module `gunbc.malformed_specimen` (a census reads the modules a tree's declared namespaces
+/// hold, so a file at any other position would never be read), and only that materialized copy ever
+/// enters an ingest — the control run's own source root.
 const MALFORMED_SPECIMEN_COMMITTED: &str = "fixtures/native_lane_malformed/poison.dag.poisoned";
 /// The control run's scratch source root and the materialized specimen's path under it,
 /// workspace-relative like every path this harness hands the binary (its working directory is
@@ -93,7 +95,7 @@ const MALFORMED_SPECIMEN_COMMITTED: &str = "fixtures/native_lane_malformed/poiso
 /// requires it non-empty, and this harness requires it to name the materialized specimen.
 const MALFORMED_CONTROL_ROOT: &str = "target/v2-native-lane/malformed-control-root/dag";
 const MALFORMED_MATERIALIZED_PATH: &str =
-    "target/v2-native-lane/malformed-control-root/dag/poison.dag";
+    "target/v2-native-lane/malformed-control-root/dag/gunbc/malformed_specimen.dag";
 
 /// THE TWO DOORS' CONTROL INPUTS, AS THE THREE FACTS THEIR ARGV IS BUILT FROM.
 ///
