@@ -1,0 +1,829 @@
+module v2.compiler.module_acquisition
+
+import std.types { Bool, Int, List }
+import std.algebra { Cons, Empty, list_snoc_item }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import extdeps.filesystem.filesystem_io {
+  FilesystemExactPathAbsent,
+  FilesystemExactPathKindUnrecognized,
+  FilesystemExactPathRead,
+  FilesystemExactPathUnreadable,
+  filesystem_failure_kind_name
+}
+import gunbc.source_root_read {
+  SourceRootPathsRead,
+  SourceRootPathsRefused,
+  SourceRootWalkTask,
+  SourceRootWalkedPath,
+  source_root_child_path,
+  source_root_read_file,
+  source_root_walk
+}
+import v2.compiler.name_resolve { Import }
+import v2.compiler.normalize { normalize }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.parse { PreparedGrammar, parse_module_prepared, prepare_grammar }
+import v2.compiler.reference_site_collector { collect_module_reference_sites, reference_site_collection_is_total }
+import v2.compiler.source_authority {
+  ModuleFileAbsent,
+  ModuleFileDerived,
+  ModuleFilePresent,
+  ModuleFileProbe,
+  ModuleFileRef,
+  ModuleFileRefused,
+  ModuleNameUnderivable,
+  DagSourceReadWitness,
+  ReferenceContinue,
+  ReferenceCrossTreeDenied,
+  ReferenceDecided,
+  ReferenceLookup,
+  ReferenceModuleLineDisagrees,
+  ReferenceModuleLineMissing,
+  ReferenceNextReadDenied,
+  ReferenceNextReadFile,
+  ReferenceNextReadNone,
+  ReferenceRefused,
+  ReferenceResolved,
+  ReferenceUnknownModule,
+  SourceRootIngest,
+  SourceStorageLayout,
+  module_file,
+  module_file_key,
+  reference_after_probe,
+  reference_next_read,
+  reference_prefixes,
+  segment_count,
+  source_root_ref_label,
+  text_set_has,
+  text_set_of
+}
+import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules, tokenize_prepared }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.lens.reference_deps { admission_from_module_root }
+import v2.std.algebra {
+  HeadAbsent,
+  HeadFound,
+  fold_list,
+  list_find_first,
+  list_head,
+  list_map,
+  list_reverse,
+  skip
+}
+import v2.std.collection { Map, empty_map, map_insert }
+import v2.std.cross_tree.import_model { SourceRootRef }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, bind_outcome, outcome_accepted }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.node { Node, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.qualified_name { qualified_name_init, qualified_name_to_dotted_string }
+import v2.std.text { String }
+import extdeps.communication.medium { Lossless, Medium }
+
+// MODULES ARE ACQUIRED BY DEMAND, ONE EXACT READ PER REQUESTED MODULE (source layout authority R9).
+// The compiler starts from an entry module, parses it, takes every module its imports and qualified
+// references name, resolves each name to a file through the storage layout, reads that file, and
+// repeats. The closure is whatever was requested: no directory is walked, no file is read that a
+// request did not name, and a file that is malformed but not requested changes neither the verdict
+// nor the read set. Whole-population jobs (the layout check, the population parse) are explicit
+// enumerations of the layout; they are never a side effect of compiling one entry.
+//
+// WHAT IS REQUESTABLE. An import names a module exactly. A qualified reference of two or more
+// segments names a module and a member, split by the storage lookup's longest-prefix probe. A BARE
+// NAME IS NOT REQUESTABLE (R1): nothing here derives a module from one, so a bare name that no import
+// or local declaration binds reaches the resolver unbound and refuses there, naming the spelling.
+// A qualified spelling that names no module requests nothing -- it may be a member access on a
+// local, which the resolver judges -- while an import or entry that names no module refuses at once.
+//
+// THE DECISIONS ARE v2.compiler.source_authority's, THE READS ARE THIS MODULE'S. That module owns the
+// pure decisions (which file a name is stored at, the prefix order, the tri-state probe, the
+// cross-tree direction, the `module` line agreement); this module drives them through the filesystem
+// handler it is bound to, so the read set is exactly the probes the decisions asked for. A probe that
+// finds the file absent is not a read of any module and falls back to a shorter prefix; a probe that
+// finds the file unreadable refuses the request and never falls back (DESIGN section 5). Under the
+// storage rule every module file is `<name>.dag` and every directory is a bare segment, so a probe
+// never walks THROUGH a file: a not-a-directory answer is a real anomaly of the tree and refuses
+// with the host's kind named, never an absence.
+//
+// ONE FRONT-END PASS PER MEMBER FOR ITS REQUESTS, AND WHY IT IS NOT THE LAST. A qualified reference is
+// only visible once the module is lowered (the retired parse-tree walker missed postfix call
+// sites), so each acquired member is tokenized, parsed and normalized here to read its requests with
+// an isolated occurrence allocator. The emission phase then parses the closure again with the
+// ingest-wide allocator that keeps projected occurrence identities from colliding across files
+// (v2.compiler.self_host.closure_emission ClosureIngest). That second pass is inherent -- the final
+// allocator's seed is the end of the last file's ids, which is unknown until every member is read --
+// and the work is bounded by the closure, where the retired route paid it for the whole tree.
+
+type SourceRootBinding {
+  tree: SourceRootRef
+  host_directory: String
+}
+
+type AcquisitionKind
+  = AcquireEntry
+  | AcquireImportedModule
+  | AcquireImportedMember
+  | AcquireQualifiedReference
+
+type AcquisitionRequest {
+  from_module: String
+  from_tree: SourceRootRef
+  spelling: String
+  kind: AcquisitionKind
+}
+
+// `test_markers` is the declaration names carrying the authored `test` marker, read from the member's
+// own normalized tree (v2.compiler.normalize test_markers). Discovery receives them as supplied values.
+type AcquiredModule {
+  name: String
+  file: ModuleFileRef
+  host_directory: String
+  content: String
+  requests: List<AcquisitionRequest>
+  test_markers: List<String>
+}
+
+type AcquisitionRefusal
+  = AcquisitionGrammarUnprepared { diagnostics: NonEmptyDiagnostics }
+  | AcquisitionEntryUnderivable { entry: String, cause: String }
+  | AcquisitionTreeUnbound { tree: String, request: AcquisitionRequest }
+  | AcquisitionUnknownModule { request: AcquisitionRequest }
+  | AcquisitionLookupRefused { request: AcquisitionRequest, lookup: ReferenceLookup }
+  | AcquisitionMemberRefused { module: String, file: ModuleFileRef, diagnostics: NonEmptyDiagnostics }
+  | AcquisitionMemberSitesUnreadable { module: String, file: ModuleFileRef }
+
+// The receipt: `reads` is the key of every file whose content was read, in the order read. Probes
+// that found a file absent are not in it -- they read no module -- and are carried as `absent_probes`
+// so the lookup's work is countable beside its reads.
+type Acquisition
+  = AcquisitionComplete { entries: List<String>, modules: List<AcquiredModule>, reads: List<String>, absent_probes: Int }
+  | AcquisitionRefused { refusal: AcquisitionRefusal, reads: List<String> }
+
+type AcquisitionEnv {
+  layout: SourceStorageLayout
+  bindings: List<SourceRootBinding>
+  lex: PreparedLexRules
+  grammar: PreparedGrammar
+}
+
+// The pending requests are a stack (a member's requests are pushed in front), so a push costs the
+// size of the push and not of the queue. `known` is the modules already acquired and `absent` the
+// file keys already probed absent.
+type AcquisitionState {
+  pending: List<AcquisitionRequest>
+  modules: List<AcquiredModule>
+  known: Map<String, Bool>
+  absent: Map<String, Bool>
+  absent_probes: Int
+  reads: List<String>
+}
+
+type CandidateVerdict
+  = CandidateKnown { module: String }
+  | CandidateFresh { module: String, file: ModuleFileRef, host_directory: String, content: String }
+  | CandidateUnknown
+  | CandidateRefusedBy { lookup: ReferenceLookup }
+  | CandidateTreeUnbound { tree: SourceRootRef }
+
+type CandidateLookup {
+  state: AcquisitionState
+  verdict: CandidateVerdict
+}
+
+type AcquisitionStep
+  = AcquisitionAdvanced { state: AcquisitionState }
+  | AcquisitionStepRefused { refusal: AcquisitionRefusal, state: AcquisitionState }
+
+// What one member asks for, as module spellings.
+type MemberRequests {
+  imports: List<String>
+  members: List<String>
+  references: List<String>
+}
+
+type AcquisitionFrontEnd {
+  parse_root: Node
+  tree: NormalizedTree
+}
+
+type AcquisitionMemberRead
+  = AcquisitionMemberReadOk { requests: MemberRequests, test_markers: List<String> }
+  | AcquisitionMemberReadRefused { refusal: AcquisitionRefusal }
+
+type AcquisitionSeen {
+  order: List<String>
+  seen: Map<String, Bool>
+}
+
+fn acquisition_host_directory(bindings: List<SourceRootBinding>, tree: SourceRootRef) -> Optional<String> {
+  match list_find_first(xs: bindings, predicate: fn(b) { source_root_ref_label(tree: b.tree) == source_root_ref_label(tree: tree) }) {
+    Present { value: binding } => optional_present(value: binding.host_directory)
+    Absent => optional_absent()
+  }
+}
+
+// One exact read of one candidate file, answered as the lookup's tri-state. A host failure other
+// than not-found is a refusal of the file and never an absence.
+fn acquisition_probe(host_directory: String, file: ModuleFileRef) -> ModuleFileProbe {
+  match source_root_read_file(path: source_root_child_path(directory: host_directory, name: file.relative_path)) {
+    FilesystemExactPathRead { path: _, content: content } => ModuleFilePresent { file: file, content: content }
+    FilesystemExactPathAbsent { path: _ } => ModuleFileAbsent { file: file }
+    FilesystemExactPathUnreadable { path: _, kind: kind, error: cause } =>
+      ModuleFileRefused { file: file, cause: concat(filesystem_failure_kind_name(kind: kind), ": ", cause) }
+    FilesystemExactPathKindUnrecognized { path: _, observed: kind, error: cause } =>
+      ModuleFileRefused { file: file, cause: concat("unrecognized filesystem failure kind ", kind, ": ", cause) }
+  }
+}
+
+fn acquisition_request_exact(request: AcquisitionRequest) -> Bool {
+  match request.kind {
+    AcquireEntry => true
+    AcquireImportedModule => true
+    AcquireImportedMember => false
+    AcquireQualifiedReference => false
+  }
+}
+
+// An entry or an import names its module whole; a member or a qualified reference is split by
+// probing prefixes, longest first.
+fn acquisition_candidates(request: AcquisitionRequest) -> List<String> {
+  if acquisition_request_exact(request: request) {
+    [request.spelling]
+  } else {
+    reference_prefixes(reference: request.spelling)
+  }
+}
+
+fn acquisition_with_absent(state: AcquisitionState, key: String) -> AcquisitionState {
+  AcquisitionState {
+    pending: state.pending,
+    modules: state.modules,
+    known: state.known,
+    absent: map_insert(m: state.absent, key: key, value: true),
+    absent_probes: state.absent_probes + 1,
+    reads: state.reads
+  }
+}
+
+fn acquisition_with_read(state: AcquisitionState, key: String) -> AcquisitionState {
+  AcquisitionState {
+    pending: state.pending,
+    modules: state.modules,
+    known: state.known,
+    absent: state.absent,
+    absent_probes: state.absent_probes,
+    reads: Cons { head: key, tail: state.reads }
+  }
+}
+
+fn acquisition_refused_lookup(state: AcquisitionState, lookup: ReferenceLookup) -> CandidateLookup {
+  CandidateLookup { state: state, verdict: CandidateRefusedBy { lookup: lookup } }
+}
+
+// A decided probe: resolved becomes a fresh read; every other arm is a refusal carried whole.
+fn acquisition_decided(state: AcquisitionState, directory: String, lookup: ReferenceLookup) -> CandidateLookup {
+  match lookup {
+    ReferenceResolved { module: module, member: _, file: file, content: content } =>
+      CandidateLookup {
+        state: acquisition_with_read(state: state, key: module_file_key(file: file)),
+        verdict: CandidateFresh { module: module, file: file, host_directory: directory, content: content }
+      }
+    ReferenceUnknownModule { reference: _ } => acquisition_refused_lookup(state: state, lookup: lookup)
+    ReferenceRefused { module: _, file: _, cause: _ } => acquisition_refused_lookup(state: state, lookup: lookup)
+    ReferenceModuleLineMissing { module: _, file: _ } => acquisition_refused_lookup(state: state, lookup: lookup)
+    ReferenceModuleLineDisagrees { module: _, declared: _, file: _ } => acquisition_refused_lookup(state: state, lookup: lookup)
+    ReferenceCrossTreeDenied { module: _, file: _, reason: _ } => acquisition_refused_lookup(state: state, lookup: lookup)
+  }
+}
+
+// ONE REQUEST'S LOOKUP. The next candidate comes from the pure decision (the layout's file for it
+// and the cross-tree direction, decided before any read). A candidate already acquired is decided
+// without a read, and one already probed absent is skipped without one, so no file is read twice and
+// no absence is probed twice. The cross-tree verdict precedes both shortcuts: a module acquired for a
+// v2 caller is still denied to a dag caller.
+fn acquisition_lookup(
+  env: AcquisitionEnv,
+  state: AcquisitionState,
+  request: AcquisitionRequest,
+  candidates: List<String>
+) -> CandidateLookup {
+  match reference_next_read(
+    layout: env.layout,
+    from_tree: request.from_tree,
+    from_module: request.from_module,
+    reference: request.spelling,
+    candidates: candidates
+  ) {
+    ReferenceNextReadNone { reference: _ } => CandidateLookup { state: state, verdict: CandidateUnknown }
+    ReferenceNextReadDenied { module: module, file: file, reason: reason } =>
+      acquisition_refused_lookup(state: state, lookup: ReferenceCrossTreeDenied { module: module, file: file, reason: reason })
+    ReferenceNextReadFile { module: module, file: file, rest: rest } =>
+      if text_set_has(set: state.known, name: module) {
+        CandidateLookup { state: state, verdict: CandidateKnown { module: module } }
+      } else if text_set_has(set: state.absent, name: module_file_key(file: file)) {
+        acquisition_lookup(env: env, state: state, request: request, candidates: rest)
+      } else {
+        acquisition_probe_candidate(env: env, state: state, request: request, module: module, file: file, rest: rest)
+      }
+  }
+}
+
+fn acquisition_probe_candidate(
+  env: AcquisitionEnv,
+  state: AcquisitionState,
+  request: AcquisitionRequest,
+  module: String,
+  file: ModuleFileRef,
+  rest: List<String>
+) -> CandidateLookup {
+  match acquisition_host_directory(bindings: env.bindings, tree: file.tree) {
+    Absent => CandidateLookup { state: state, verdict: CandidateTreeUnbound { tree: file.tree } }
+    Present { value: directory } =>
+      match reference_after_probe(
+        reference: request.spelling,
+        module: module,
+        rest: rest,
+        probe: acquisition_probe(host_directory: directory, file: file)
+      ) {
+        ReferenceContinue { rest: remaining } =>
+          acquisition_lookup(
+            env: env,
+            state: acquisition_with_absent(state: state, key: module_file_key(file: file)),
+            request: request,
+            candidates: remaining
+          )
+        ReferenceDecided { lookup: lookup } => acquisition_decided(state: state, directory: directory, lookup: lookup)
+      }
+  }
+}
+
+// ---- reading what a member asks for -------------------------------------------------------------
+
+fn acquisition_spelling_is_qualified(spelling: String) -> Bool {
+  segment_count(segments: split(s: spelling, delimiter: ".")) >= 2
+}
+
+fn acquisition_import_texts(rows: List<Import>) -> List<String> {
+  fold_list(xs: rows, empty: [], cons: fn(acc, row) { list_snoc_item(xs: acc, item: qualified_name_to_dotted_string(qn: row.target)) })
+}
+
+// A binding row whose module an import already names is covered by that import; the others (an alias
+// to a member of a module no import names) are requests of their own, split by prefix.
+fn acquisition_uncovered_binding_texts(tree: NormalizedTree, imported: List<String>) -> List<String> {
+  let covered = text_set_of(names: imported)
+  fold_list(xs: tree.import_bindings, empty: [], cons: fn(acc, row) {
+    if text_set_has(set: covered, name: qualified_name_to_dotted_string(qn: qualified_name_init(qn: row.target))) {
+      acc
+    } else {
+      list_snoc_item(xs: acc, item: qualified_name_to_dotted_string(qn: row.target))
+    }
+  })
+}
+
+// A reference site's spelling, kept once per module. A one-segment spelling is a bare name and is not
+// requestable (R1).
+fn acquisition_reference_texts(tree: NormalizedTree) -> List<String> {
+  fold_list(
+    xs: collect_module_reference_sites(root: tree.root).sites,
+    empty: AcquisitionSeen { order: [], seen: empty_map() },
+    cons: fn(acc, site) { acquisition_seen_site(acc: acc, text: qualified_name_to_dotted_string(qn: site.spelling)) }
+  ).order
+}
+
+fn acquisition_seen_site(acc: AcquisitionSeen, text: String) -> AcquisitionSeen {
+  if acquisition_spelling_is_qualified(spelling: text) && !text_set_has(set: acc.seen, name: text) {
+    AcquisitionSeen {
+      order: list_snoc_item(xs: acc.order, item: text),
+      seen: map_insert(m: acc.seen, key: text, value: true)
+    }
+  } else {
+    acc
+  }
+}
+
+fn acquisition_read_requests(front: AcquisitionFrontEnd, module: String, file: ModuleFileRef) -> AcquisitionMemberRead {
+  match admission_from_module_root(root: front.parse_root) {
+    Rejected { diagnostics: d } =>
+      AcquisitionMemberReadRefused { refusal: AcquisitionMemberRefused { module: module, file: file, diagnostics: d } }
+    Accepted { value: admission, diagnostics: _ } =>
+      acquisition_requests_ok(front: front, imported: acquisition_import_texts(rows: admission.imports))
+  }
+}
+
+fn acquisition_requests_ok(front: AcquisitionFrontEnd, imported: List<String>) -> AcquisitionMemberRead {
+  AcquisitionMemberReadOk {
+    requests: MemberRequests {
+      imports: imported,
+      members: acquisition_uncovered_binding_texts(tree: front.tree, imported: imported),
+      references: acquisition_reference_texts(tree: front.tree)
+    },
+    test_markers: list_map(xs: front.tree.test_markers.marked, f: fn(marked) { symbol_lexeme(sym: marked.name) })
+  }
+}
+
+fn acquisition_front_end(env: AcquisitionEnv, file: ModuleFileRef, content: String) -> Outcome<AcquisitionFrontEnd> {
+  bind_outcome(
+    o: tokenize_prepared(text: content, file: symbol_intern_lexeme(lexeme: module_file_key(file: file)), prepared: env.lex),
+    f: fn(tokens) {
+      bind_outcome(
+        o: parse_module_prepared(tokens: tokens, prepared: env.grammar),
+        f: fn(artifact) {
+          bind_outcome(
+            o: normalize(parse_tree: artifact.tree),
+            f: fn(tree) { outcome_accepted(value: AcquisitionFrontEnd { parse_root: artifact.tree, tree: tree }) }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn acquisition_member_requests(env: AcquisitionEnv, module: String, file: ModuleFileRef, content: String) -> AcquisitionMemberRead {
+  match acquisition_front_end(env: env, file: file, content: content) {
+    Rejected { diagnostics: d } =>
+      AcquisitionMemberReadRefused { refusal: AcquisitionMemberRefused { module: module, file: file, diagnostics: d } }
+    Accepted { value: front, diagnostics: _ } =>
+      if reference_site_collection_is_total(collection: collect_module_reference_sites(root: front.tree.root)) {
+        acquisition_read_requests(front: front, module: module, file: file)
+      } else {
+        AcquisitionMemberReadRefused { refusal: AcquisitionMemberSitesUnreadable { module: module, file: file } }
+      }
+  }
+}
+
+fn acquisition_requests_of(module: String, tree: SourceRootRef, texts: List<String>, kind: AcquisitionKind) -> List<AcquisitionRequest> {
+  list_map(xs: texts, f: fn(text) {
+    AcquisitionRequest { from_module: module, from_tree: tree, spelling: text, kind: kind }
+  })
+}
+
+fn acquisition_member_request_list(module: String, tree: SourceRootRef, requests: MemberRequests) -> List<AcquisitionRequest> {
+  concat(
+    acquisition_requests_of(module: module, tree: tree, texts: requests.imports, kind: AcquireImportedModule),
+    acquisition_requests_of(module: module, tree: tree, texts: requests.members, kind: AcquireImportedMember),
+    acquisition_requests_of(module: module, tree: tree, texts: requests.references, kind: AcquireQualifiedReference)
+  )
+}
+
+// ---- one step -----------------------------------------------------------------------------------
+
+fn acquisition_admitted(
+  state: AcquisitionState,
+  module: String,
+  file: ModuleFileRef,
+  host_directory: String,
+  content: String,
+  own: List<AcquisitionRequest>,
+  test_markers: List<String>
+) -> AcquisitionStep {
+  AcquisitionAdvanced {
+    state: AcquisitionState {
+      pending: concat(own, state.pending),
+      modules: Cons {
+        head: AcquiredModule { name: module, file: file, host_directory: host_directory, content: content, requests: own, test_markers: test_markers },
+        tail: state.modules
+      },
+      known: map_insert(m: state.known, key: module, value: true),
+      absent: state.absent,
+      absent_probes: state.absent_probes,
+      reads: state.reads
+    }
+  }
+}
+
+fn acquisition_admit(
+  env: AcquisitionEnv,
+  state: AcquisitionState,
+  module: String,
+  file: ModuleFileRef,
+  host_directory: String,
+  content: String
+) -> AcquisitionStep {
+  match acquisition_member_requests(env: env, module: module, file: file, content: content) {
+    AcquisitionMemberReadRefused { refusal: refusal } => AcquisitionStepRefused { refusal: refusal, state: state }
+    AcquisitionMemberReadOk { requests: requests, test_markers: markers } =>
+      acquisition_admitted(
+        state: state,
+        module: module,
+        file: file,
+        host_directory: host_directory,
+        content: content,
+        own: acquisition_member_request_list(module: module, tree: file.tree, requests: requests),
+        test_markers: markers
+      )
+  }
+}
+
+// An import, member or entry that names no module refuses; a qualified reference that names none
+// requests nothing, because whether it is a module reference at all is the resolver's decision.
+fn acquisition_unknown_step(state: AcquisitionState, request: AcquisitionRequest) -> AcquisitionStep {
+  match request.kind {
+    AcquireQualifiedReference => AcquisitionAdvanced { state: state }
+    AcquireEntry => AcquisitionStepRefused { refusal: AcquisitionUnknownModule { request: request }, state: state }
+    AcquireImportedModule => AcquisitionStepRefused { refusal: AcquisitionUnknownModule { request: request }, state: state }
+    AcquireImportedMember => AcquisitionStepRefused { refusal: AcquisitionUnknownModule { request: request }, state: state }
+  }
+}
+
+fn acquisition_verdict_step(env: AcquisitionEnv, request: AcquisitionRequest, looked: CandidateLookup) -> AcquisitionStep {
+  match looked.verdict {
+    CandidateKnown { module: _ } => AcquisitionAdvanced { state: looked.state }
+    CandidateUnknown => acquisition_unknown_step(state: looked.state, request: request)
+    CandidateRefusedBy { lookup: lookup } =>
+      AcquisitionStepRefused { refusal: AcquisitionLookupRefused { request: request, lookup: lookup }, state: looked.state }
+    CandidateTreeUnbound { tree: tree } =>
+      AcquisitionStepRefused { refusal: AcquisitionTreeUnbound { tree: source_root_ref_label(tree: tree), request: request }, state: looked.state }
+    CandidateFresh { module: module, file: file, host_directory: directory, content: content } =>
+      acquisition_admit(env: env, state: looked.state, module: module, file: file, host_directory: directory, content: content)
+  }
+}
+
+fn acquisition_step(env: AcquisitionEnv, state: AcquisitionState, request: AcquisitionRequest) -> AcquisitionStep {
+  acquisition_verdict_step(
+    env: env,
+    request: request,
+    looked: acquisition_lookup(env: env, state: state, request: request, candidates: acquisition_candidates(request: request))
+  )
+}
+
+fn acquisition_popped(state: AcquisitionState) -> AcquisitionState {
+  AcquisitionState {
+    pending: skip(xs: state.pending, n: 1),
+    modules: state.modules,
+    known: state.known,
+    absent: state.absent,
+    absent_probes: state.absent_probes,
+    reads: state.reads
+  }
+}
+
+fn acquisition_completed(state: AcquisitionState, entries: List<String>) -> Acquisition {
+  AcquisitionComplete {
+    entries: entries,
+    modules: list_reverse(xs: state.modules),
+    reads: list_reverse(xs: state.reads),
+    absent_probes: state.absent_probes
+  }
+}
+
+fn acquisition_loop(env: AcquisitionEnv, state: AcquisitionState, entries: List<String>) -> Acquisition {
+  match list_head(xs: state.pending) {
+    HeadAbsent => acquisition_completed(state: state, entries: entries)
+    HeadFound { value: request } =>
+      match acquisition_step(env: env, state: acquisition_popped(state: state), request: request) {
+        AcquisitionStepRefused { refusal: refusal, state: stopped } =>
+          AcquisitionRefused { refusal: refusal, reads: list_reverse(xs: stopped.reads) }
+        AcquisitionAdvanced { state: next } => acquisition_loop(env: env, state: next, entries: entries)
+      }
+  }
+}
+
+// The initial requests, one entry request per entry in the order given. An entry the layout cannot
+// derive a file for refuses the whole acquisition before any read.
+type AcquisitionEntries
+  = AcquisitionEntriesDerived { requests: List<AcquisitionRequest> }
+  | AcquisitionEntriesRefused { refusal: AcquisitionRefusal }
+
+fn acquisition_entry_requests(
+  layout: SourceStorageLayout,
+  pending: List<String>,
+  acc: List<AcquisitionRequest>
+) -> AcquisitionEntries {
+  match list_head(xs: pending) {
+    HeadAbsent => AcquisitionEntriesDerived { requests: acc }
+    HeadFound { value: entry } =>
+      match module_file(layout: layout, name: entry) {
+        ModuleNameUnderivable { name: name, cause: cause } =>
+          AcquisitionEntriesRefused { refusal: AcquisitionEntryUnderivable { entry: name, cause: cause } }
+        ModuleFileDerived { file: file } =>
+          acquisition_entry_requests(
+            layout: layout,
+            pending: skip(xs: pending, n: 1),
+            acc: list_snoc_item(xs: acc, item: AcquisitionRequest { from_module: "", from_tree: file.tree, spelling: entry, kind: AcquireEntry })
+          )
+      }
+  }
+}
+
+fn acquisition_start(
+  layout: SourceStorageLayout,
+  bindings: List<SourceRootBinding>,
+  entries: List<String>,
+  grammar: PreparedGrammar,
+  lex: PreparedLexRules
+) -> Acquisition {
+  match acquisition_entry_requests(layout: layout, pending: entries, acc: []) {
+    AcquisitionEntriesRefused { refusal: refusal } => AcquisitionRefused { refusal: refusal, reads: [] }
+    AcquisitionEntriesDerived { requests: requests } =>
+      acquisition_loop(
+        env: AcquisitionEnv { layout: layout, bindings: bindings, lex: lex, grammar: grammar },
+        state: AcquisitionState { pending: requests, modules: [], known: empty_map(), absent: empty_map(), absent_probes: 0, reads: [] },
+        entries: entries
+      )
+  }
+}
+
+// THE DOOR: the closure of the entry modules under the layout, read through the bindings. One
+// acquisition for several entries shares its known and absent memos, so a module two entries both
+// reach is read once.
+fn acquire_closure_of(layout: SourceStorageLayout, bindings: List<SourceRootBinding>, entries: List<String>) -> Acquisition {
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: d } => AcquisitionRefused { refusal: AcquisitionGrammarUnprepared { diagnostics: d }, reads: [] }
+    Accepted { value: prepared, diagnostics: _ } =>
+      acquisition_start(
+        layout: layout,
+        bindings: bindings,
+        entries: entries,
+        grammar: prepared,
+        lex: prepare_lex_rules(rules: dag_language_model().lex)
+      )
+  }
+}
+
+fn acquire_closure(layout: SourceStorageLayout, bindings: List<SourceRootBinding>, entry: String) -> Acquisition {
+  acquire_closure_of(layout: layout, bindings: bindings, entries: [entry])
+}
+
+// ---- the acquired set as the compiler's source ingest ----------------------------------------------
+
+fn acquisition_witness(module: AcquiredModule) -> DagSourceReadWitness {
+  let path = source_root_child_path(directory: module.host_directory, name: module.file.relative_path)
+  DagSourceReadWitness {
+    source: Medium { carried: module.content, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: symbol_intern_lexeme(lexeme: path), file_path: path },
+    compilation_unit: symbol_intern_lexeme(lexeme: path),
+    source_root: module.file.tree
+  }
+}
+
+// `pending` is consumed from the back so the result keeps the acquisition's order with one cons per
+// member.
+fn acquisition_ingest_go(pending: List<AcquiredModule>, acc: SourceRootIngest) -> SourceRootIngest {
+  match list_head(xs: pending) {
+    HeadAbsent => acc
+    HeadFound { value: module } =>
+      acquisition_ingest_go(pending: skip(xs: pending, n: 1), acc: Cons { head: acquisition_witness(module: module), tail: acc })
+  }
+}
+
+// The acquired members as the ingest the later stages read: exactly the modules requested, each
+// carrying the bytes the acquirer read.
+fn acquisition_ingest(modules: List<AcquiredModule>) -> SourceRootIngest {
+  acquisition_ingest_go(pending: list_reverse(xs: modules), acc: Empty)
+}
+
+// ---- the read set is the requested closure, exactly (R9) ---------------------------------------------
+//
+// A pure verdict over a completed acquisition's receipt. The requested set is recomputed from the
+// entries and from the requests each acquired member recorded, independently of the probes that
+// produced the reads, and the two are compared at identity grain: every read names a member of the
+// closure, no file is read twice, every member was read, every member is named by an entry or by a
+// request (a reference request names every prefix of its spelling, because the lookup splits a
+// reference by probing prefixes), and every exact request (an entry or an import) names a member.
+// A qualified reference that names no module is not an exact request; it was never owed a read.
+type AcquisitionExactness
+  = AcquisitionExact
+  | AcquisitionReadWithoutMember { key: String }
+  | AcquisitionReadTwice { key: String }
+  | AcquisitionMemberNotRead { key: String }
+  | AcquisitionReadNotRequested { module: String }
+  | AcquisitionRequestedNotRead { spelling: String, from_module: String }
+
+fn acquisition_request_name_into(set: Map<String, Bool>, request: AcquisitionRequest) -> Map<String, Bool> {
+  if acquisition_request_exact(request: request) {
+    map_insert(m: set, key: request.spelling, value: true)
+  } else {
+    fold_list(xs: reference_prefixes(reference: request.spelling), empty: set, cons: fn(acc, name) { map_insert(m: acc, key: name, value: true) })
+  }
+}
+
+fn acquisition_requested_names(entries: List<String>, modules: List<AcquiredModule>) -> Map<String, Bool> {
+  fold_list(xs: modules, empty: text_set_of(names: entries), cons: fn(acc, member) {
+    fold_list(xs: member.requests, empty: acc, cons: fn(inner, request) { acquisition_request_name_into(set: inner, request: request) })
+  })
+}
+
+fn acquisition_first_duplicate(pending: List<String>, seen: Map<String, Bool>) -> Optional<String> {
+  match list_head(xs: pending) {
+    HeadAbsent => optional_absent()
+    HeadFound { value: key } =>
+      if text_set_has(set: seen, name: key) {
+        optional_present(value: key)
+      } else {
+        acquisition_first_duplicate(pending: skip(xs: pending, n: 1), seen: map_insert(m: seen, key: key, value: true))
+      }
+  }
+}
+
+fn acquisition_first_unmet_exact(pending: List<AcquiredModule>, names: Map<String, Bool>) -> Optional<AcquisitionRequest> {
+  match list_head(xs: pending) {
+    HeadAbsent => optional_absent()
+    HeadFound { value: module } =>
+      match list_find_first(xs: module.requests, predicate: fn(request) {
+        acquisition_request_exact(request: request) && !text_set_has(set: names, name: request.spelling)
+      }) {
+        Present { value: request } => optional_present(value: request)
+        Absent => acquisition_first_unmet_exact(pending: skip(xs: pending, n: 1), names: names)
+      }
+  }
+}
+
+fn acquisition_exactness_requests(entries: List<String>, modules: List<AcquiredModule>, names: Map<String, Bool>) -> AcquisitionExactness {
+  match list_find_first(xs: entries, predicate: fn(entry) { !text_set_has(set: names, name: entry) }) {
+    Present { value: entry } => AcquisitionRequestedNotRead { spelling: entry, from_module: "" }
+    Absent =>
+      match acquisition_first_unmet_exact(pending: modules, names: names) {
+        Present { value: request } => AcquisitionRequestedNotRead { spelling: request.spelling, from_module: request.from_module }
+        Absent => AcquisitionExact {}
+      }
+  }
+}
+
+fn acquisition_exactness_named(entries: List<String>, modules: List<AcquiredModule>) -> AcquisitionExactness {
+  let requested = acquisition_requested_names(entries: entries, modules: modules)
+  match list_find_first(xs: modules, predicate: fn(member) { !text_set_has(set: requested, name: member.name) }) {
+    Present { value: module } => AcquisitionReadNotRequested { module: module.name }
+    Absent =>
+      acquisition_exactness_requests(entries: entries, modules: modules, names: text_set_of(names: list_map(xs: modules, f: fn(m) { m.name })))
+  }
+}
+
+fn acquisition_exactness_reads(entries: List<String>, modules: List<AcquiredModule>, reads: List<String>) -> AcquisitionExactness {
+  let read_set = text_set_of(names: reads)
+  match list_find_first(xs: modules, predicate: fn(member) { !text_set_has(set: read_set, name: module_file_key(file: member.file)) }) {
+    Present { value: module } => AcquisitionMemberNotRead { key: module_file_key(file: module.file) }
+    Absent => acquisition_exactness_named(entries: entries, modules: modules)
+  }
+}
+
+fn acquisition_exactness_unique(entries: List<String>, modules: List<AcquiredModule>, reads: List<String>) -> AcquisitionExactness {
+  match acquisition_first_duplicate(pending: reads, seen: empty_map()) {
+    Present { value: key } => AcquisitionReadTwice { key: key }
+    Absent => acquisition_exactness_reads(entries: entries, modules: modules, reads: reads)
+  }
+}
+
+fn acquisition_exactness(entries: List<String>, modules: List<AcquiredModule>, reads: List<String>) -> AcquisitionExactness {
+  let member_keys = text_set_of(names: list_map(xs: modules, f: fn(m) { module_file_key(file: m.file) }))
+  match list_find_first(xs: reads, predicate: fn(key) { !text_set_has(set: member_keys, name: key) }) {
+    Present { value: key } => AcquisitionReadWithoutMember { key: key }
+    Absent => acquisition_exactness_unique(entries: entries, modules: modules, reads: reads)
+  }
+}
+
+// ---- enumerating a namespace (a population job's explicit input) ------------------------------------------
+//
+// Compiling an entry never walks a directory. A job whose input IS a population (a census, the
+// population parse, the native lane's candidate test modules) names the namespace it enumerates and
+// gets the module names the storage rule puts under it. A name follows its path under the rule, so the
+// enumeration is the inverse of module_file for one directory; the acquirer's `module` line check then
+// confirms each name when it is requested.
+type NamespaceModules
+  = NamespaceModulesListed { namespace: String, modules: List<String> }
+  | NamespaceModulesRefused { namespace: String, cause: String }
+
+fn namespace_module_name(namespace: String, directory: String, path: String) -> String {
+  let prefix_length = string_length(s: source_root_child_path(directory: directory, name: ""))
+  concat(namespace, ".", replace(s: substring(s: path, start: prefix_length, end: string_length(s: path) - 4), from: "/", to: "."))
+}
+
+// The directory, relative to the tree's host directory, that holds a namespace: the relative path of
+// a probe module placed directly in it, less the probe's own file name.
+fn namespace_relative_directory(probe_relative_path: String) -> String {
+  if probe_relative_path == "x.dag" {
+    ""
+  } else {
+    substring(s: probe_relative_path, start: 0, end: string_length(s: probe_relative_path) - 6)
+  }
+}
+
+fn namespace_walk(namespace: String, directory: String) -> NamespaceModules {
+  match source_root_walk(pending: [SourceRootWalkTask { path: directory, root: true, origin: directory }], paths: [], suffix: ".dag") {
+    SourceRootPathsRefused { path: path, kind: kind, cause: cause } =>
+      NamespaceModulesRefused { namespace: namespace, cause: concat(path, ": ", kind, ": ", cause) }
+    SourceRootPathsRead { paths: paths } =>
+      NamespaceModulesListed {
+        namespace: namespace,
+        modules: list_map(xs: paths, f: fn(walked) { namespace_module_name(namespace: namespace, directory: directory, path: walked.path) })
+      }
+  }
+}
+
+fn namespace_walk_under(namespace: String, root: String, relative: String) -> NamespaceModules {
+  if relative == "" {
+    namespace_walk(namespace: namespace, directory: root)
+  } else {
+    namespace_walk(namespace: namespace, directory: source_root_child_path(directory: root, name: relative))
+  }
+}
+
+fn enumerate_namespace_modules(layout: SourceStorageLayout, bindings: List<SourceRootBinding>, namespace: String) -> NamespaceModules {
+  match module_file(layout: layout, name: concat(namespace, ".x")) {
+    ModuleNameUnderivable { name: _, cause: cause } => NamespaceModulesRefused { namespace: namespace, cause: cause }
+    ModuleFileDerived { file: file } =>
+      match acquisition_host_directory(bindings: bindings, tree: file.tree) {
+        Absent =>
+          NamespaceModulesRefused { namespace: namespace, cause: concat("tree ", source_root_ref_label(tree: file.tree), " is not bound") }
+        Present { value: root } => namespace_walk_under(namespace: namespace, root: root, relative: namespace_relative_directory(probe_relative_path: file.relative_path))
+      }
+  }
+}

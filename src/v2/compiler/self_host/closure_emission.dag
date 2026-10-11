@@ -20,34 +20,23 @@ import v2.compiler.name_resolve {
   validate_module_roots
 }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
-import v2.compiler.normalize { normalize_census, normalize_scoped }
-import v2.compiler.normalized_tree {
-  CensusTree,
-  NormalizedTree,
-  census_tree_binding_source,
-  normalized_tree_roots_to_binding_sources
-}
+import v2.compiler.normalize { normalize_scoped }
+import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_binding_sources }
 import v2.compiler.parse { PreparedGrammar, parse_module_prepared_seeded, prepare_grammar }
 import v2.compiler.program_assembly { program_assembly_phase_tokenize }
 import v2.compiler.program_partition { emit_for_target_with_declarations }
-import v2.compiler.reference_closure {
-  ReferenceClosureMember,
-  ReferenceClosureNeighboursRead,
-  ReferenceClosureTargetOwnerless,
-  ReferenceClosureVisit,
-  reference_closure_modules,
-  reference_closure_neighbours,
-  reference_derived_closure
-}
+import v2.compiler.reference_closure { ReferenceOwnerless, ReferencesOwned, reference_closure_ownership }
 import v2.compiler.resolve { ResolvedTree, resolved_tree_outcome }
 import v2.compiler.source_authority {
   DagSourceReadWitness,
   SourceRootIngest,
-  source_root_set_from_ingest
+  source_root_set_from_ingest,
+  text_set_of
 }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
 import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
-import v2.std.algebra { contains, fold_list, list_snoc_item }
+import v2.std.algebra { contains, fold_list, list_map, list_reverse }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.cross_tree.import_model { SourceRootRef }
 import v2.std.cross_tree.resolution { SourceRootIndex, source_root_index_empty, source_root_index_insert }
@@ -61,7 +50,6 @@ import v2.std.diagnostic {
   Rejected,
   Unavailable,
   bind_outcome,
-  diagnostics_fatal,
   diagnostics_fatal_reason,
   diagnostics_singleton,
   non_empty_diagnostics_append,
@@ -70,7 +58,6 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import v2.std.language_model { LanguageModel }
-import v2.std.lens_verdict { lens_verdict_diagnostic_locus_text_in_spans }
 import v2.std.node { Node, Symbol, content_hash, symbol_lexeme }
 import v2.std.program_segment { partition_boundary_fail_closed, program_segment_whole_program }
 import v2.std.provenance { SpanIndex, span_index_empty, span_index_merge }
@@ -79,75 +66,63 @@ import v2.std.resolution_policy { default_name_resolution_policy }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
 import v2.std.grammar { ParseTree }
 import v2.std.integer { Int }
-import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present }
 import v2.std.text { String }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 
-// THE DOOR'S EMISSION OF ONE ENTRY'S CLOSURE, IN TWO PHASES, BECAUSE THE TWO HALVES OF THE CORPUS OWE
-// DIFFERENT WORK (DESIGN section 2, demand minimisation). Resolution reads every module's
-// declarations -- a bare or qualified name may bind anywhere -- so every file is parsed and censused
-// (v2.compiler.normalize normalize_census): the census is TOTAL and a file that does not parse or
-// census REFUSES the emission, because a module whose declarations cannot be read may be the one a
-// reference binds to and dropping it would be the absorbing arm of section 5. Only the entry's
-// reference-derived closure (v2.compiler.reference_closure reference_derived_closure) is normalized
-// in full, resolved, inferred and emitted. A body that fails to lower in a module the closure does
-// not reach is work nothing demands, and it no longer stops the emission of a closure that never
-// reads it.
+// THE DOOR'S EMISSION OF ONE ENTRY'S CLOSURE, OVER THE CLOSURE THE ACQUIRER READ AND NOTHING ELSE.
+// The ingest this fold takes is exactly the modules v2.compiler.module_acquisition acquired for the
+// entry -- each one a module somebody's import, member binding or qualified reference requested, read
+// from the file its name derives (v2.compiler.source_authority module_file) -- so there is no census
+// of an unrelated population to take and no second derivation of membership to run after it: the
+// ingest IS the closure, and the acquirer's exactness verdict (acquisition_exactness) is the proof
+// that it is. A module nothing requested was never read, so a body that does not lower in a module
+// the closure does not reach is work nothing demands and nothing reads.
 //
 // EVERY MEMBER IS EMITTED FROM ITS OWN RESOLVED TREE. Resolution answers for the admission subject
 // alone and reads the other modules only through the symbol index, so one resolve of the entry is
 // the entry module and nothing else; the closure is its members, each resolved, inferred and
 // emitted. The per-member outcome is a FACT carried by ClosureEmission -- one typed arm per member,
 // a member's refusal kept beside the others rather than aborting them -- and anything that wants
-// text renders that fact (closure_emission_json).
+// text renders that fact (closure_emission_json). An unbound name therefore surfaces here, as its
+// member's typed refusal, and never as a silent widening of the population.
+//
+// FOUR PHASES, EACH A SINGLE PASS. (1) Every ingest file is parsed with ONE occurrence allocator
+// threaded across the ingest (the seeded front end), so no two files share an authored id. (2) Every
+// parse is normalized from that allocator's FINAL mark, so no occurrence a member's lowering projects
+// can reuse an authored id of any file in the ingest (the ingest merges its span indexes, and a
+// reused id would resolve to another file's location); the module identity each file declares is
+// read here, and a second file declaring one identity is refused at both files. (3) One symbol index
+// is filled from every member's full projection. (4) Each member is resolved once, checked for
+// ownership of what it references (v2.compiler.reference_closure), inferred and emitted.
+//
+// A reference whose declaring module the closure does not hold is the located member refusal
+// `reference_closure_target_ownerless`: it means the acquirer's reading of the member's references and
+// the resolver's answer disagree, which is a defect to be fixed at the earlier of the two, never a
+// module to be read late.
 //
 // IT REPLACES v2.compiler.self_host.compiler_closure_emit emit_compiler_import_closure_from_ingest,
 // which emitted the entry module alone and lowered every file. The door is cut over here; that module
 // is frozen with its remaining consumers enumerated and its retirement trigger declared in
 // compiler_closure_emit_frozen_dissolve_on. The two do not coexist as alternatives.
-//
-// TWO RESOLUTIONS PER MEMBER, AND WHY THE SECOND IS NOT REDUNDANT. The closure phase resolves each
-// member against the census index of every file, which is all that can exist before membership is
-// known. The emission phase resolves against the members' FULL projections plus the non-members'
-// census projections: the two indexes differ where a subtree-wide scan (unique variant aliases)
-// counts a Disj inside a body the census never lowered. The emission phase also checks that every
-// module a member reaches is a closure member, and refuses a member that reaches outside it, so a
-// divergence between the two indexes is a located refusal and never a silently wrong closure. Each
-// member is NORMALIZED once: the closure fold hands its normalized tree back as the visit payload.
 
-type ClosureIngestFile {
-  module: QualifiedName
+// One parsed file. `source_root` is the tree the acquirer read it from.
+type ClosureParsedFile {
   parse_tree: ParseTree
-  census: CensusTree
   source_root: SourceRootRef
 }
 
-// `alloc` is the ingest's allocator mark after the last file it parsed. Every member is normalized
-// from it (closure_member_for_fold), so no projected occurrence a member's lowering allocates can
-// reuse an authored id of ANY file in the ingest -- the ingest merges its span indexes, and a reused
-// id would resolve to another file's location. Members are normalized independently, so their
-// projected ids may repeat across members; each member states their cause in its own tree's scope,
-// and a projected id carries no span to collide on.
-type ClosureIngest {
-  files: FreeMonoid<ClosureIngestFile>
-  index: SourceRootIndex
-  alloc: OccurrenceIdAllocator
-}
+// `alloc` is the allocator mark after the last file parsed; `spans` is the merge of every file's span
+// index. A parse refusal carries the spans of the files that parsed before it.
+type ClosureParse
+  = ClosureParseRefused { diagnostics: NonEmptyDiagnostics, spans: SpanIndex }
+  | ClosureParsed { files: FreeMonoid<ClosureParsedFile>, alloc: OccurrenceIdAllocator, spans: SpanIndex }
 
-// ONE FILE THE CENSUS COULD NOT READ, carried whole: its path and its located chain. The census
-// continues past it so one run names every such file -- the file-grain blocking set -- and the
-// emission still refuses when any exists, because membership cannot be derived while a file's
-// declarations are unreadable (DESIGN section 5).
-type ClosureCensusRefusal {
-  path: String
-  diagnostics: NonEmptyDiagnostics
-}
-
-type ClosureIngestState {
-  ingest: ClosureIngest
-  refusals: FreeMonoid<ClosureCensusRefusal>
-  alloc: OccurrenceIdAllocator
-  spans: SpanIndex
+// One member: the module identity its file declares, its full normalized projection and its tree.
+type ClosureMember {
+  module: QualifiedName
+  tree: NormalizedTree
+  source_root: SourceRootRef
 }
 
 type ClosureMemberEmission
@@ -164,7 +139,6 @@ type ClosureEmission {
 // gives: a refusal needs its file exactly when the outcome carries no value.
 type ClosureEmissionLocated {
   spans: SpanIndex
-  census_refusals: FreeMonoid<ClosureCensusRefusal>
   outcome: Outcome<ClosureEmission>
 }
 
@@ -176,188 +150,98 @@ fn closure_emission_diagnostic(reason: Symbol, at: Node) -> Diagnostic {
   }
 }
 
-fn closure_ingest_refused(
-  state: ClosureIngestState,
-  read: DagSourceReadWitness,
-  d: NonEmptyDiagnostics,
+// PHASE ONE: EVERY FILE PARSED, ONE OCCURRENCE ALLOCATOR THREADED ACROSS THE WHOLE INGEST. A file
+// that does not parse refuses the emission: a module whose text cannot be read cannot be a member.
+// The files accumulate reversed (a cons) and are put back in ingest order once, so the pass is linear.
+fn closure_parse_loop(
+  rest: SourceRootIngest,
+  lex: PreparedLexRules,
+  prepared: PreparedGrammar,
+  files: FreeMonoid<ClosureParsedFile>,
   alloc: OccurrenceIdAllocator,
   spans: SpanIndex
-) -> ClosureIngestState {
-  ClosureIngestState {
-    ingest: state.ingest,
-    refusals: list_snoc_item(xs: state.refusals, item: ClosureCensusRefusal { path: read.artifact.file_path, diagnostics: d }),
-    alloc: alloc,
-    spans: spans
-  }
-}
-
-fn closure_ingest_step(
-  state: ClosureIngestState,
-  read: DagSourceReadWitness,
-  lex: PreparedLexRules,
-  prepared: PreparedGrammar
-) -> ClosureIngestState {
-  let acc = state.ingest
-  match bind_outcome(
-    o: program_assembly_phase_tokenize(read: read, lex: lex),
-    f: fn(tokens) {
-      parse_module_prepared_seeded(
-        tokens: tokens,
-        prepared: prepared,
-        seed: state.alloc
-      )
-    }
-  ) {
-    Rejected { diagnostics: d } =>
-      closure_ingest_refused(state: state, read: read, d: d, alloc: state.alloc, spans: state.spans)
-    Accepted { value: artifact, diagnostics: _ } =>
-      let spans = span_index_merge(base: state.spans, incoming: artifact.span_index)
+) -> ClosureParse {
+  match rest {
+    Empty => ClosureParsed { files: list_reverse(xs: files), alloc: alloc, spans: spans }
+    Cons { head: read, tail: remaining } =>
       match bind_outcome(
-        o: normalize_census(parse_tree: artifact.tree),
-        f: fn(census) {
-          bind_outcome(
-            o: qualified_name_from_module_node(root: census.root),
-            f: fn(module_qn) {
-              match closure_ingest_first_declaring(files: acc.files, member_module: module_qn) {
-                Present { value: first } =>
-                  closure_census_duplicate_module_outcome(
-                    first: first,
-                    second_root: census.root
-                  )
-                Absent =>
-                  outcome_accepted(value: ClosureIngest {
-                    files: list_snoc_item(xs: acc.files, item: ClosureIngestFile {
-                      module: module_qn,
-                      parse_tree: artifact.tree,
-                      census: census,
-                      source_root: read.source_root
-                    }),
-                    index: source_root_index_insert(index: acc.index, module: module_qn, root: read.source_root),
-                    alloc: artifact.alloc
-                  })
-              }
-            }
-          )
+        o: program_assembly_phase_tokenize(read: read, lex: lex),
+        f: fn(tokens) {
+          parse_module_prepared_seeded(tokens: tokens, prepared: prepared, seed: alloc)
         }
       ) {
-        Rejected { diagnostics: d } =>
-          closure_ingest_refused(state: state, read: read, d: d, alloc: artifact.alloc, spans: spans)
-        Accepted { value: next, diagnostics: _ } =>
-          ClosureIngestState { ingest: next, refusals: state.refusals, alloc: artifact.alloc, spans: spans }
+        Rejected { diagnostics: d } => ClosureParseRefused { diagnostics: d, spans: spans }
+        Accepted { value: artifact, diagnostics: _ } =>
+          closure_parse_loop(
+            rest: remaining,
+            lex: lex,
+            prepared: prepared,
+            files: Cons { head: ClosureParsedFile { parse_tree: artifact.tree, source_root: read.source_root }, tail: files },
+            alloc: artifact.alloc,
+            spans: span_index_merge(base: spans, incoming: artifact.span_index)
+          )
       }
   }
 }
 
-// PHASE ONE: EVERY FILE PARSED AND CENSUSED, ONE OCCURRENCE ALLOCATOR THREADED ACROSS THE WHOLE
-// INGEST (the seeded front end). A refused file is recorded and the census continues, so the
-// refusal set is complete. The grammar failing to prepare is NOT a file's refusal -- no file was
-// read -- so it is its own arm and refuses the emission before any census exists (review 71156).
-type ClosureCensus
-  = ClosureGrammarUnprepared { diagnostics: NonEmptyDiagnostics }
-  | ClosureCensusRead { state: ClosureIngestState }
-
-fn closure_ingest(ingest: SourceRootIngest, lm: LanguageModel) -> ClosureCensus {
-  match prepare_grammar(grammar: lm.grammar) {
-    Rejected { diagnostics: d } => ClosureGrammarUnprepared { diagnostics: d }
-    Accepted { value: prepared, diagnostics: _ } =>
-      let lex = prepare_lex_rules(rules: lm.lex)
-      ClosureCensusRead {
-        state: fold_list(
-          xs: ingest,
-          empty: ClosureIngestState {
-            ingest: ClosureIngest { files: Empty, index: source_root_index_empty(), alloc: occurrence_id_allocator_initial() },
-            refusals: Empty,
-            alloc: occurrence_id_allocator_initial(),
-            spans: span_index_empty()
-          },
-          cons: fn(state, read) {
-            closure_ingest_step(state: state, read: read, lex: lex, prepared: prepared)
-          }
-        )
-      }
-  }
-}
-
-// The census admits the ingest only when no file refused; otherwise the emission refuses with every
-// refused file's chain, in ingest order, joined into one located chain.
-fn closure_census_outcome(census: ClosureIngestState) -> Outcome<ClosureIngest> {
-  match census.refusals {
-    Empty => outcome_accepted(value: census.ingest)
-    Cons { head: first, tail: rest } =>
-      Rejected {
-        diagnostics: fold_list(xs: rest, empty: first.diagnostics, cons: fn(acc, r) {
-          non_empty_diagnostics_append(a: acc, b: r.diagnostics)
-        })
-      }
-  }
-}
-
-fn closure_ingest_roster(files: FreeMonoid<ClosureIngestFile>) -> FreeMonoid<QualifiedName> {
-  fold_list(xs: files, empty: Empty, cons: fn(acc, f) { list_snoc_item(xs: acc, item: f.module) })
-}
-
-fn closure_census_index(files: FreeMonoid<ClosureIngestFile>) -> SymbolIndex {
-  symbol_index_fill_module_roots(
-    index: empty_symbol_index(),
-    roots: fold_list(xs: files, empty: Empty, cons: fn(acc, f) {
-      list_snoc_item(xs: acc, item: census_tree_binding_source(t: f.census))
-    })
-  )
-}
-
-// A MODULE IDENTITY IS DECLARED BY EXACTLY ONE FILE, and the census refuses the second file that
-// declares one (closure_census_duplicate_module, located at that file's module node). Resolution
-// would refuse a duplicate too (resolve_duplicate_module_name), but each member is resolved in a
-// context holding only itself, so that wall cannot fire here; the census is where the whole
-// population is in view, so the wall lives there (review of gunbc#12218 at 242b7af).
-fn closure_ingest_first_declaring(
-  files: FreeMonoid<ClosureIngestFile>,
-  member_module: QualifiedName
-) -> Optional<ClosureIngestFile> {
-  fold_list(xs: files, empty: optional_absent(), cons: fn(found, f) {
-    match found {
-      Present { value: _ } => found
-      Absent =>
-        if f.module == member_module {
-          optional_present(value: f)
-        } else {
-          found
-        }
-    }
-  })
-}
-
-// BOTH FILES, because a collision is a two-place fact. Locating only the second file's module
-// node left the first unnamed, and a later resolve diagnostic at an innocent token was then
-// read as the cause.
-fn closure_census_duplicate_module_diagnostics(first: Node, second: Node) -> NonEmptyDiagnostics {
+// A MODULE IDENTITY IS DECLARED BY EXACTLY ONE FILE. Resolution would refuse a duplicate too
+// (resolve_duplicate_module_name), but each member is resolved in a context holding only itself, so
+// that wall cannot fire here; this pass is where the whole population is in view, so the wall lives
+// here (review of gunbc#12218 at 242b7af). BOTH FILES are located, because a collision is a
+// two-place fact: locating only the second left the first unnamed, and a later resolve diagnostic at
+// an innocent token was then read as the cause.
+fn closure_duplicate_module_diagnostics(first: Node, second: Node) -> NonEmptyDiagnostics {
   non_empty_diagnostics_append(
     a: diagnostics_singleton(d: closure_emission_diagnostic(reason: ^closure_census_duplicate_module, at: first)),
     b: diagnostics_singleton(d: closure_emission_diagnostic(reason: ^closure_census_duplicate_module, at: second))
   )
 }
 
-fn closure_census_duplicate_module_outcome(
-  first: ClosureIngestFile,
-  second_root: Node
-) -> Outcome<ClosureIngest> {
-  Rejected {
-    diagnostics: closure_census_duplicate_module_diagnostics(
-      first: first.census.root,
-      second: second_root
-    )
+// A MEMBER NORMALIZED FROM THE INGEST'S FINAL ALLOCATOR, its projected occurrences scoped by the
+// member tree's own structural digest. Members are normalized independently, so their projected ids
+// may repeat across members; each states its cause in its own tree's scope, and a projected id
+// carries no span to collide on.
+fn closure_member_normalized(file: ClosureParsedFile, alloc: OccurrenceIdAllocator) -> Outcome<NormalizedTree> {
+  match normalize_scoped(
+    parse_tree: file.parse_tree,
+    allocator: scoped_occurrence_allocator(alloc: alloc, scope: content_hash(n: file.parse_tree))
+  ) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: scoped, diagnostics: d } => Accepted { value: scoped.tree, diagnostics: d }
   }
 }
 
-// EXACTLY ONE FILE, OR A TYPED REFUSAL. The census makes more than one unreachable, and it is refused
-// here anyway rather than read as its first element.
-fn closure_file_of(files: FreeMonoid<ClosureIngestFile>, member_module: QualifiedName, at: Node) -> Outcome<ClosureIngestFile> {
-  match fold_list(xs: files, empty: Empty, cons: fn(acc, f) {
-    if f.module == member_module { list_snoc_item(xs: acc, item: f) } else { acc }
-  }) {
-    Empty => outcome_rejected(d: closure_emission_diagnostic(reason: ^closure_emission_member_not_ingested, at: at))
-    Cons { head: file, tail: Empty } => outcome_accepted(value: file)
-    Cons { head: _, tail: _ } => outcome_rejected(d: closure_emission_diagnostic(reason: ^closure_census_duplicate_module, at: at))
+// PHASE TWO: EVERY PARSE NORMALIZED IN FULL, ITS DECLARED MODULE IDENTITY READ, DUPLICATES REFUSED.
+// `seen` maps a dotted module name to the module node that declared it first, so the wall is one
+// lookup per file.
+fn closure_normalize_loop(
+  rest: FreeMonoid<ClosureParsedFile>,
+  alloc: OccurrenceIdAllocator,
+  members: FreeMonoid<ClosureMember>,
+  seen: Map<String, Node>
+) -> Outcome<FreeMonoid<ClosureMember>> {
+  match rest {
+    Empty => outcome_accepted(value: list_reverse(xs: members))
+    Cons { head: file, tail: remaining } =>
+      match closure_member_normalized(file: file, alloc: alloc) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: tree, diagnostics: _ } =>
+          match qualified_name_from_module_node(root: tree.root) {
+            Rejected { diagnostics: d } => Rejected { diagnostics: d }
+            Accepted { value: module_qn, diagnostics: _ } =>
+              match map_lookup(m: seen, key: qualified_name_to_dotted_string(qn: module_qn)) {
+                Present { value: first } =>
+                  Rejected { diagnostics: closure_duplicate_module_diagnostics(first: first, second: tree.root) }
+                Absent =>
+                  closure_normalize_loop(
+                    rest: remaining,
+                    alloc: alloc,
+                    members: Cons { head: ClosureMember { module: module_qn, tree: tree, source_root: file.source_root }, tail: members },
+                    seen: map_insert(m: seen, key: qualified_name_to_dotted_string(qn: module_qn), value: tree.root)
+                  )
+              }
+          }
+      }
   }
 }
 
@@ -390,89 +274,13 @@ fn closure_resolve_member(
   )
 }
 
-// A MEMBER NORMALIZED FROM THE INGEST'S FINAL ALLOCATOR (see ClosureIngest `alloc`), its projected
-// occurrences scoped by the member tree's own structural digest.
-fn closure_member_normalized(file: ClosureIngestFile, ingested: ClosureIngest) -> Outcome<NormalizedTree> {
-  match normalize_scoped(
-    parse_tree: file.parse_tree,
-    allocator: scoped_occurrence_allocator(alloc: ingested.alloc, scope: content_hash(n: file.parse_tree))
-  ) {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: scoped, diagnostics: d } => Accepted { value: scoped.tree, diagnostics: d }
-  }
-}
-
-fn closure_member_for_fold(
-  lm: LanguageModel,
-  ingested: ClosureIngest,
-  census_index: SymbolIndex,
-  active_roots: FreeMonoid<SourceRootRef>,
-  member_module: QualifiedName
-) -> Outcome<ReferenceClosureMember<NormalizedTree>> {
-  bind_outcome(
-    o: closure_file_of(
-      files: ingested.files,
-      member_module: member_module,
-      at: v2.std.node.node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^closure_emission_member_lookup } }, children: [])
-    ),
-    f: fn(file) {
-      bind_outcome(
-        o: closure_member_normalized(file: file, ingested: ingested),
-        f: fn(tree) {
-          bind_outcome(
-            o: closure_resolve_member(
-              lm: lm,
-              tree: tree,
-              member_module: member_module,
-              symbol_index: census_index,
-              index: ingested.index,
-              active_roots: active_roots
-            ),
-            f: fn(resolved) {
-              outcome_accepted(value: ReferenceClosureMember {
-                resolved: resolved.root,
-                import_targets: fold_list(xs: tree.import_bindings, empty: Empty, cons: fn(acc, row) {
-                  list_snoc_item(xs: acc, item: row.target)
-                }),
-                payload: tree
-              })
-            }
-          )
-        }
-      )
-    }
-  )
-}
-
-// THE EMISSION-PHASE INDEX: members at full grade, non-members at census grade, one route
-// (ModuleBindingSource) for both.
-fn closure_emission_index(
-  visits: FreeMonoid<ReferenceClosureVisit<NormalizedTree>>,
-  files: FreeMonoid<ClosureIngestFile>
-) -> SymbolIndex {
-  let members = reference_closure_modules(visits: visits)
-  let member_trees = fold_list(xs: visits, empty: Empty, cons: fn(acc, v) { list_snoc_item(xs: acc, item: v.member.payload) })
-  let census_rows = fold_list(xs: files, empty: Empty, cons: fn(acc, f) {
-    if contains(xs: members, item: f.module, eq: fn(a, b) { a == b }) {
-      acc
-    } else {
-      list_snoc_item(xs: acc, item: census_tree_binding_source(t: f.census))
-    }
-  })
-  symbol_index_fill_module_roots(
-    index: empty_symbol_index(),
-    roots: fold_list(xs: census_rows, empty: normalized_tree_roots_to_binding_sources(roots: member_trees), cons: fn(acc, row) {
-      list_snoc_item(xs: acc, item: row)
-    })
-  )
-}
-
+// PHASE FOUR FOR ONE MEMBER. The member is resolved, every module its resolved references and import
+// rows point into is checked to be one the closure holds, and only then is it inferred and emitted.
 fn closure_member_emission(
   lm: LanguageModel,
-  visit: ReferenceClosureVisit<NormalizedTree>,
-  members: FreeMonoid<QualifiedName>,
-  roster: FreeMonoid<QualifiedName>,
-  emission_index: SymbolIndex,
+  member: ClosureMember,
+  roster: Map<String, Bool>,
+  symbol_index: SymbolIndex,
   index: SourceRootIndex,
   active_roots: FreeMonoid<SourceRootRef>,
   target: TargetModel
@@ -480,50 +288,118 @@ fn closure_member_emission(
   let emitted = bind_outcome(
     o: closure_resolve_member(
       lm: lm,
-      tree: visit.member.payload,
-      member_module: visit.module,
-      symbol_index: emission_index,
+      tree: member.tree,
+      member_module: member.module,
+      symbol_index: symbol_index,
       index: index,
       active_roots: active_roots
     ),
     f: fn(resolved) {
-      match reference_closure_neighbours(
-        member: ReferenceClosureMember { resolved: resolved.root, import_targets: visit.member.import_targets, payload: true },
+      match reference_closure_ownership(
+        resolved: resolved.root,
+        import_targets: list_map(xs: member.tree.import_bindings, f: fn(row) { row.target }),
         roster: roster
       ) {
-        ReferenceClosureTargetOwnerless { target: _, at: at } =>
+        ReferenceOwnerless { target: _, at: at } =>
           outcome_rejected(d: closure_emission_diagnostic(reason: ^reference_closure_target_ownerless, at: at))
-        ReferenceClosureNeighboursRead { modules: reached } =>
-          if fold_list(xs: reached, empty: true, cons: fn(ok, m) { ok && contains(xs: members, item: m, eq: fn(a, b) { a == b }) }) {
-            bind_outcome(
-              o: infer_and_discharge(tree: resolved),
-              f: fn(inferred) {
-                emit_for_target_with_declarations(
-                  program: inferred,
-                  segment: program_segment_whole_program(),
-                  target: target,
-                  boundary: partition_boundary_fail_closed(),
-                  kinds: visit.member.payload.type_declaration_kinds
-                )
-              }
-            )
-          } else {
-            outcome_rejected(d: closure_emission_diagnostic(
-              reason: ^closure_emission_member_reaches_outside_closure,
-              at: resolved.root
-            ))
-          }
+        ReferencesOwned =>
+          bind_outcome(
+            o: infer_and_discharge(tree: resolved),
+            f: fn(inferred) {
+              emit_for_target_with_declarations(
+                program: inferred,
+                segment: program_segment_whole_program(),
+                target: target,
+                boundary: partition_boundary_fail_closed(),
+                kinds: member.tree.type_declaration_kinds
+              )
+            }
+          )
       }
     }
   )
   match emitted {
-    Rejected { diagnostics: d } => ClosureMemberRefused { module: visit.module, diagnostics: d }
-    Accepted { value: source, diagnostics: _ } => ClosureMemberEmitted { module: visit.module, text: source.carried }
+    Rejected { diagnostics: d } => ClosureMemberRefused { module: member.module, diagnostics: d }
+    Accepted { value: source, diagnostics: _ } => ClosureMemberEmitted { module: member.module, text: source.carried }
   }
 }
 
-// THE DOOR'S FOLD: census every file, derive the entry's closure, emit every member. A census or
-// closure refusal refuses the whole emission; a member's own refusal is that member's arm.
+// PHASES THREE AND FOUR: one symbol index from every member's full projection, then every member
+// emitted from it. The entry must be one of the members: an ingest the entry is not in was not
+// acquired for it, and that is the located refusal, never an emission of some other module.
+fn closure_emission_of_members(
+  lm: LanguageModel,
+  members: FreeMonoid<ClosureMember>,
+  entry: QualifiedName,
+  entry_locus: Node,
+  active_roots: FreeMonoid<SourceRootRef>,
+  target: TargetModel
+) -> Outcome<ClosureEmission> {
+  let roster = list_map(xs: members, f: fn(m) { m.module })
+  if contains(xs: roster, item: entry, eq: fn(a, b) { a == b }) {
+    let symbol_index = symbol_index_fill_module_roots(
+      index: empty_symbol_index(),
+      roots: normalized_tree_roots_to_binding_sources(roots: list_map(xs: members, f: fn(m) { m.tree }))
+    )
+    let index = fold_list(xs: members, empty: source_root_index_empty(), cons: fn(acc, m) {
+      source_root_index_insert(index: acc, module: m.module, root: m.source_root)
+    })
+    let owned = text_set_of(names: list_map(xs: roster, f: fn(m) { qualified_name_to_dotted_string(qn: m) }))
+    outcome_accepted(value: ClosureEmission {
+      entry: entry,
+      members: roster,
+      modules: list_map(xs: members, f: fn(m) {
+        closure_member_emission(
+          lm: lm,
+          member: m,
+          roster: owned,
+          symbol_index: symbol_index,
+          index: index,
+          active_roots: active_roots,
+          target: target
+        )
+      })
+    })
+  } else {
+    outcome_rejected(d: closure_emission_diagnostic(reason: ^closure_emission_entry_not_acquired, at: entry_locus))
+  }
+}
+
+fn closure_emission_from_parsed(
+  lm: LanguageModel,
+  parsed: ClosureParse,
+  entry: QualifiedName,
+  entry_locus: Node,
+  active_roots: FreeMonoid<SourceRootRef>,
+  target: TargetModel
+) -> ClosureEmissionLocated {
+  match parsed {
+    ClosureParseRefused { diagnostics: d, spans: spans } =>
+      ClosureEmissionLocated { spans: spans, outcome: Rejected { diagnostics: d } }
+    ClosureParsed { files: files, alloc: alloc, spans: spans } =>
+      ClosureEmissionLocated {
+        spans: spans,
+        outcome: bind_outcome(
+          o: closure_normalize_loop(rest: files, alloc: alloc, members: Empty, seen: empty_map()),
+          f: fn(members) {
+            closure_emission_of_members(
+              lm: lm,
+              members: members,
+              entry: entry,
+              entry_locus: entry_locus,
+              active_roots: active_roots,
+              target: target
+            )
+          }
+        )
+      }
+  }
+}
+
+// THE DOOR'S FOLD: parse the acquired closure, normalize it, emit every member. A parse or
+// normalization refusal refuses the whole emission; a member's own refusal is that member's arm. The
+// grammar failing to prepare is NOT a file's refusal -- no file was read -- so it refuses the
+// emission before any parse exists (review 71156).
 fn emit_closure_from_ingest_located(
   ingest: SourceRootIngest,
   entry: QualifiedName,
@@ -531,69 +407,24 @@ fn emit_closure_from_ingest_located(
   target: TargetModel
 ) -> ClosureEmissionLocated {
   let lm = dag_language_model()
-  let active_roots = source_root_set_from_ingest(ingest: ingest)
-  match closure_ingest(ingest: ingest, lm: lm) {
-    ClosureGrammarUnprepared { diagnostics: d } =>
-      ClosureEmissionLocated { spans: span_index_empty(), census_refusals: Empty, outcome: Rejected { diagnostics: d } }
-    ClosureCensusRead { state: census } =>
-      closure_emission_from_census(lm: lm, census: census, entry: entry, entry_locus: entry_locus, active_roots: active_roots, target: target)
-  }
-}
-
-fn closure_emission_from_census(
-  lm: LanguageModel,
-  census: ClosureIngestState,
-  entry: QualifiedName,
-  entry_locus: Node,
-  active_roots: FreeMonoid<SourceRootRef>,
-  target: TargetModel
-) -> ClosureEmissionLocated {
-  ClosureEmissionLocated {
-    spans: census.spans,
-    census_refusals: census.refusals,
-    outcome: bind_outcome(
-      o: closure_census_outcome(census: census),
-      f: fn(ingested) {
-        let roster = closure_ingest_roster(files: ingested.files)
-        let census_index = closure_census_index(files: ingested.files)
-        bind_outcome(
-          o: reference_derived_closure(
-            entry: entry,
-            entry_locus: entry_locus,
-            roster: roster,
-            resolve_member: fn(member_module) {
-              closure_member_for_fold(
-                lm: lm,
-                ingested: ingested,
-                census_index: census_index,
-                active_roots: active_roots,
-                member_module: member_module
-              )
-            }
-          ),
-          f: fn(visits) {
-            let members = reference_closure_modules(visits: visits)
-            let emission_index = closure_emission_index(visits: visits, files: ingested.files)
-            outcome_accepted(value: ClosureEmission {
-              entry: entry,
-              members: members,
-              modules: fold_list(xs: visits, empty: Empty, cons: fn(acc, v) {
-                list_snoc_item(xs: acc, item: closure_member_emission(
-                  lm: lm,
-                  visit: v,
-                  members: members,
-                  roster: roster,
-                  emission_index: emission_index,
-                  index: ingested.index,
-                  active_roots: active_roots,
-                  target: target
-                ))
-              })
-            })
-          }
-        )
-      }
-    )
+  match prepare_grammar(grammar: lm.grammar) {
+    Rejected { diagnostics: d } => ClosureEmissionLocated { spans: span_index_empty(), outcome: Rejected { diagnostics: d } }
+    Accepted { value: prepared, diagnostics: _ } =>
+      closure_emission_from_parsed(
+        lm: lm,
+        parsed: closure_parse_loop(
+          rest: ingest,
+          lex: prepare_lex_rules(rules: lm.lex),
+          prepared: prepared,
+          files: Empty,
+          alloc: occurrence_id_allocator_initial(),
+          spans: span_index_empty()
+        ),
+        entry: entry,
+        entry_locus: entry_locus,
+        active_roots: source_root_set_from_ingest(ingest: ingest),
+        target: target
+      )
   }
 }
 
@@ -627,17 +458,17 @@ fn closure_member_emission_json(m: ClosureMemberEmission) -> JsonValue {
 fn closure_emission_json(emission: ClosureEmission) -> String {
   serialize_json(v: json_object(members: [
     json_kv(key: "entry", value: json_string(s: qualified_name_to_dotted_string(qn: emission.entry))),
-    json_kv(key: "members", value: json_array(elements: fold_list(xs: emission.members, empty: Empty, cons: fn(acc, m) {
-      list_snoc_item(xs: acc, item: json_string(s: qualified_name_to_dotted_string(qn: m)))
+    json_kv(key: "members", value: json_array(elements: list_map(xs: emission.members, f: fn(m) {
+      json_string(s: qualified_name_to_dotted_string(qn: m))
     }))),
-    json_kv(key: "modules", value: json_array(elements: fold_list(xs: emission.modules, empty: Empty, cons: fn(acc, m) {
-      list_snoc_item(xs: acc, item: closure_member_emission_json(m: m))
+    json_kv(key: "modules", value: json_array(elements: list_map(xs: emission.modules, f: fn(m) {
+      closure_member_emission_json(m: m)
     })))
   ]))
 }
 
-// The first member refusal in reach order, for a consumer that must state one located cause (the
-// CLI's failing status); every refusal stays its member's arm in the carrier.
+// The first member refusal in acquisition order, for a consumer that must state one located cause
+// (the CLI's failing status); every refusal stays its member's arm in the carrier.
 fn closure_emission_first_refusal(emission: ClosureEmission) -> Optional<NonEmptyDiagnostics> {
   fold_list(xs: emission.modules, empty: Absent, cons: fn(found, m) {
     match found {
@@ -649,18 +480,4 @@ fn closure_emission_first_refusal(emission: ClosureEmission) -> Optional<NonEmpt
         }
     }
   })
-}
-
-// THE CENSUS REFUSAL SET THROUGH THE SAME CODEC: one row per refused file, its path, its fatal reason
-// and where that fatal sits. This is the file-grain blocking set a gen-two run reports.
-fn closure_census_refusals_json(refusals: FreeMonoid<ClosureCensusRefusal>, spans: SpanIndex) -> String {
-  serialize_json(v: json_object(members: [
-    json_kv(key: "census_refused", value: json_array(elements: fold_list(xs: refusals, empty: Empty, cons: fn(acc, r) {
-      list_snoc_item(xs: acc, item: json_object(members: [
-        json_kv(key: "file", value: json_string(s: r.path)),
-        json_kv(key: "reason", value: json_string(s: symbol_lexeme(sym: diagnostics_fatal_reason(d: r.diagnostics)))),
-        json_kv(key: "at", value: json_string(s: lens_verdict_diagnostic_locus_text_in_spans(d: diagnostics_fatal(d: r.diagnostics), index: spans)))
-      ]))
-    })))
-  ]))
 }
