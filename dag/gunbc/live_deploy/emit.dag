@@ -57,7 +57,7 @@ import gunbc.managed_directory {
   managed_directory_entry_mode, ManagedEntryModeDerived, ManagedEntryModeRefused, entry_mode_add_read_symbolic,
 }
 import extdeps.tools.chmod { chmod_binary_path }
-import extdeps.access.posix { PosixUser }
+import extdeps.access.posix { PosixUser, file_mode_octal }
 import extdeps.tailscale.serve {
   TailscaleServeEndpoint,
   tailscale_serve_enable_argv,
@@ -163,7 +163,7 @@ import gunbc.live_deploy.spec {
   DeploymentSpec,
   DeploymentStep, ArtifactStep, Dependency,
   DeploymentDependencyStep,
-  EnsuredSubject, EnsuredPackage, ensured_subject_identity,
+  EnsuredSubject, EnsuredPackage, EnsuredOwnershipMarker, ensured_subject_identity,
   deployment_directory_demands,
   DeploymentArtifactStep,
   ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit,
@@ -1551,6 +1551,10 @@ fn install_d_owned_command(spec: DeploymentSpec, path: String) -> String {
 fn ensure_dependency_steps(dep: DeploymentDependencyStep, privileged: Bool) -> List<PipelineStep> {
   match dep.subject {
     EnsuredPackage { package } => [ensure_apt_package_step(pkg: package, privileged: privileged)]
+    EnsuredOwnershipMarker { marker } => [
+      deploy_raw(command: deploy_stage_write_command(stage_name: "store-ownership-marker", content: marker.content as String)),
+      deploy_raw(command: deploy_stage_install_owned_command(stage_name: "store-ownership-marker", mode: file_mode_octal(mode: marker.mode) as NonEmptyStr, owner: marker.owner, group: marker.group, dest: marker.path as String)),
+    ]
   }
 }
 
