@@ -363,8 +363,8 @@ fn observe_default_branch_revision<M>(event: WorkflowRunEvent, evidence: M) -> D
 // on the queue's COMPOSED revision before that revision reaches the default branch, and the queue
 // then moves the branch to exactly that revision. So the run that proves RequiredCiSucceeded for R
 // is the merge_group run of the floor on R, and it has concluded by the time the push of R is
-// delivered -- the premise gunbc.fleet_desired_admission_workflow's opening annotation records as
-// false for the workflow_run binding above. This is a second PROVIDER of the same proposition, not
+// delivered -- a premise the withdrawn fleet-desired admission workflow recorded as false for the
+// workflow_run binding above. This is a second PROVIDER of the same proposition, not
 // a new proposition: the carrier, the contract identity and admit_fleet_revision's exact-revision
 // join are unchanged.
 //
@@ -380,8 +380,8 @@ fn observe_default_branch_revision<M>(event: WorkflowRunEvent, evidence: M) -> D
 // WHAT IS NOT CHECKED HERE THAT accept_required_ci_workflow_run CHECKS, AND WHAT THAT MEANS.
 // WorkflowRun carries no repository members, so this producer does not repeat the old producer's
 // repository and head-repository checks per run. Its repository warrant is the API request the
-// caller addresses to gunbc.repository's owner/name (gunbc.fleet_desired_admission
-// admit_fleet_desired_from_push_wet). A bare caller-supplied WorkflowRunList therefore does NOT
+// caller addresses to gunbc.repository's owner/name. The withdrawn admission wet path used to
+// be that caller; this fold is now exercised by its witnesses. A bare caller-supplied WorkflowRunList therefore does NOT
 // independently establish provenance -- a list handed to this fold from anywhere else is judged as
 // if it were that read.
 //

@@ -15,11 +15,8 @@ import gunbc.fleet_ssh_locus {
 }
 import gunbc.host_layout { srv1_gunbc_repo_root }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_desired_observe {
-  observe_fleet_desired_revision,
-  converge_target_revision,
-  FleetDesiredRevision,
-}
+import gunbc.origin_main_revision_observe { observe_origin_main_revision }
+import gunbc.fleet_main_revision { converge_target_revision }
 import gunbc.live_deploy.deployed_tree_observation {
   deployed_tree_locus,
   observe_deployed_tree,
@@ -52,8 +49,8 @@ data deployed_tree_report_attempt_raw: String = "deployed-tree-report-ci"
 // `git worktree add` from, which is precisely why its publication state is worth observing.
 data deployed_tree_report_host: HostIdentity = "srv1" as HostIdentity
 
-// THE VANTAGE FOR THE DESIRED READ IS NOT THE SUBJECT OF IT. `observe_fleet_desired_revision` runs
-// `git ls-remote origin refs/fleet/desired`, so the answer is a fact about ORIGIN and not about the
+// THE VANTAGE FOR THE MAIN READ IS NOT THE SUBJECT OF IT. `observe_origin_main_revision` runs
+// `git ls-remote origin refs/heads/main`, so the answer is a fact about ORIGIN and not about the
 // local tree's contents -- any checkout that names the same origin returns the same revision. This is
 // the one place in the deploy path where reading from the ambient working directory is sound, and it
 // is sound for a stated reason rather than by luck.
@@ -122,11 +119,11 @@ fn deployed_tree_report_for_context(
 ) -> ProcessExit
 {
   match converge_target_revision(
-    observed: observe_fleet_desired_revision(repo: deployed_tree_report_vantage),
+    observed: observe_origin_main_revision(repo: deployed_tree_report_vantage),
   ) {
     Absent =>
       exit_failure(
-        reason: "deployed tree report: origin advertises no admitted fleet revision, so there is nothing to compare a host against",
+        reason: "deployed tree report: origin advertises no refs/heads/main, so there is nothing to compare a host against",
       )
     Present { value: desired } => {
       let locus = deployed_tree_locus(

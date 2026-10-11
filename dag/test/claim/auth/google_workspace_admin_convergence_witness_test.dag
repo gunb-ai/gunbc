@@ -39,7 +39,7 @@ test fn wrong_tenant_expiry_and_unapproved_reader_refuse() -> Bool {
 }
 
 test fn supported_policy_read_is_distinct_from_manual_mutation() -> Bool {
-  let binding = WorkspaceIdentityBinding { customer: "customer-A", project: "project-A", client: "client-A", top_org_unit: "/", redirect_uri: "https://fixture.invalid/callback", desired_revision: "r1" }
+  let binding = WorkspaceIdentityBinding { customer: "customer-A", project: "project-A", client: "client-A", top_org_unit: "/", redirect_uris: ["https://fixture.invalid/callback"], desired_revision: "r1" }
   count(workspace_identity_admin_obligations(binding: binding, discovery: BasicSignInOnly)) == 5
     && match workspace_admin_read_surface(control: ExternalDirectorySharing) { PolicyApiReadSupported { setting_type, documentation: _ } => setting_type == "directory.external_directory_sharing" _ => false }
     && match workspace_admin_write_surface(control: ExternalDirectorySharing) { ManualConsoleAdministration { documentation: _ } => true }

@@ -7,13 +7,11 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import extdeps.git.plumbing { GitRepositoryAddress, GitWorktreeAt }
 import extdeps.github.workflow_runs { WorkflowRunConclusion, Success, WorkflowRun, WorkflowRunList, WorkflowRunStatus, Completed }
-import extdeps.github.push_event { PushRefUpdate }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
 import std.types { CommitSha }
 import extdeps.languages.yaml.types { YamlValue, yaml_mapping, yaml_string, kv }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused }
 import gunbc.generated_artifact { WitnessFloorYamlArtifact, artifact_path }
-import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.witness_floor_workflow { witness_floor_workflow_name }
 import gunbc.required_ci_contract_epoch {
   required_ci_contract_epoch,
@@ -33,12 +31,6 @@ import gunbc.fleet_revision_acceptance {
   RequiredCiRefused,
   CiContractEpochMismatch,
   accept_required_ci_merge_group_runs,
-}
-import gunbc.fleet_desired_admission {
-  FleetDesiredAcceptedRevision,
-  FleetDesiredRevisionAccepted,
-  FleetDesiredRevisionRefused,
-  fleet_desired_accepted_from_push,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -63,7 +55,6 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // required_ci_epoch_verdict, contract_identity_eq and the epoch comparison itself are never called.
 
 data fixture_mismatching_epoch: String = "1999-01-01.0"
-data fixture_repo_full_name: String = "gunb-ai/gunbc"
 
 fn fixture_workflow_source(epoch: String) -> String {
   emitted_yaml_text(v: yaml_mapping(entries: [
@@ -127,7 +118,6 @@ fn build_epoch_fixture(repo: FilePath) -> EpochCommitPair {
 type EpochExperiment {
   observation: RequiredCiEpochObservation
   admission: RequiredCiAdmission
-  desired: FleetDesiredAcceptedRevision
   setup_ok: Bool
 }
 
@@ -137,14 +127,6 @@ type EpochExperiment {
 // -- the observation still comes from a real commit through the production reader, and the fold it
 // is fed to is still the production composition -- but the CI fact now arrives as merge_group runs
 // on the pushed revision rather than as a delivered run-completion event.
-fn fixture_push_at(head_sha: String) -> PushRefUpdate {
-  PushRefUpdate {
-    ref: concat("refs/heads/", gunbc_default_branch_name),
-    after: head_sha,
-    repository_full_name: fixture_repo_full_name,
-  }
-}
-
 fn fixture_merge_group_runs_at(head_sha: String) -> WorkflowRunList {
   let r = WorkflowRun { display_title: none,
     id: 1,
@@ -183,19 +165,16 @@ fn run_epoch_experiment(mismatching: Bool) -> EpochExperiment {
     address: GitWorktreeAt { path: dir.path },
     head_sha: head_sha as GitRef,
   )
-  let push = fixture_push_at(head_sha: head_sha)
   let runs = fixture_merge_group_runs_at(head_sha: head_sha)
   let admission = match git_object_id_from_untagged_hex(hex: head_sha) {
     Present { value: revision } =>
       accept_required_ci_merge_group_runs(revision: revision, runs: runs, observed_epoch: observed)
     none => RequiredCiRefused { cause: CiContractEpochMismatch { observed: "", required: "" } }
   }
-  let desired = fleet_desired_accepted_from_push(push: push, runs: runs, observed_epoch: observed)
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   EpochExperiment {
     observation: observed,
     admission: admission,
-    desired: desired,
     setup_ok: dir.success && fixture.setup_ok && cleaned.success,
   }
 }
@@ -214,10 +193,6 @@ test fn a_run_of_the_contract_at_another_epoch_refuses_naming_both_epochs_by_rea
         o == fixture_mismatching_epoch && r == (required_ci_contract_epoch as String)
       _ => false
     }
-    && match e.desired {
-      FleetDesiredRevisionRefused { cause: _ } => true
-      FleetDesiredRevisionAccepted { accepted: _ } => false
-    }
 }
 
 // THE PAIRED CONTROL. The same experiment at the required epoch admits through the same fold, so
@@ -232,10 +207,6 @@ test fn a_run_of_the_contract_at_the_required_epoch_admits_by_real_execution() -
     && match e.admission {
       RequiredCiAdmitted { succeeded: _ } => true
       RequiredCiRefused { cause: _ } => false
-    }
-    && match e.desired {
-      FleetDesiredRevisionAccepted { accepted: _ } => true
-      FleetDesiredRevisionRefused { cause: _ } => false
     }
 }
 

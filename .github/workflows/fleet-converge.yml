@@ -32,7 +32,7 @@ on:
       credential:
         description: "host_credential_custody_converge only: which rostered custody row to deliver (gunbc.host_credential_custody_converge). A closed choice, never a free-text secret name: each option carries its own SecretRef, path, owner, group, mode and directory, and a row scoped to one host refuses any other"
         required: false
-        options: [controller_app_key, approval_ntfy_publisher_token, fabric_state_writer_key, cursor_worker_turn_api_key, codex_worker_turn_auth, oracle_oci_api_signing_key, claude_code_oauth_harness_token]
+        options: [controller_app_key, approval_ntfy_publisher_token, fabric_state_writer_key, cursor_worker_turn_api_key, codex_worker_turn_auth, oracle_oci_api_signing_key, claude_code_oauth_harness_token, tracker_web_dev_oauth_client_secret]
         type: choice
       app_key_version:
         description: "app_key_version_verify only: the Secret Manager version NUMBER of ci-github-app-private-key to verify. The alias latest is refused -- it names whatever is newest when it resolves, so a mint through it proves nothing about a specific key"
