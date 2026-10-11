@@ -311,7 +311,7 @@ type ParsedNodeIdentityMint {
 // tokens consumed between `from` and `to`. `CompletedLater` is for an identity minted before its
 // syntax ends -- `Int` before a `?` suffix, a binary expression whose start is its left operand --
 // and obliges the completing site to call parse_context_record_extent; the whole-parse coverage
-// control in v1.test.parse.source_extent fails on any occurrence left without a row.
+// control in v1.tests.claim.parse_source_extent_control_test fails on any occurrence left without a row.
 //
 // `FromToken` is the same window stated by its first token's span, for productions entered after
 // their leading keyword was consumed (`parse_type_after_kw`) that carry that keyword's span.
