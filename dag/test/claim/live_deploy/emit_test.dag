@@ -1883,7 +1883,7 @@ test fn apply_retires_leftover_belt_and_publication_timers_and_installs_publicat
   let spec = deployment_spec_srv1()
   let live = apply_emitted_steps_text(spec: spec, plan: deploy_witness_full_install_plan(spec: spec))
   let pub_path = systemd_unit_file_lines(file: live_deploy_publication_path_unit_file(spec: spec))
-  !any(deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names), s => string_contains(s: s.path as String, pattern: ".timer"))
+  !any(deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names, holding: spec.role_singletons), s => string_contains(s: s.path as String, pattern: ".timer"))
     && string_contains(s: live, pattern: deployment_retired_belt_timer_unit_name(names: spec.names) as String)
     && string_contains(s: live, pattern: deployment_publication_timer_unit_name(names: spec.names) as String)
     && string_contains(s: live, pattern: deployment_publication_path_unit_name(names: spec.names) as String)
