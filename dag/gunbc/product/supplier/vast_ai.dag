@@ -57,6 +57,9 @@ fn vast_ai_shape(offer: VastAiOffer, threads: HardwareThreadCount, min_vram: Byt
   }
 }
 
+// dph_total is the TOTAL dollars-per-hour for the whole rented machine (all num_gpus; the search-offers
+// reference at docs.vast.ai/api-reference/search/search-offers names it the total, with per-GPU
+// figures separate), so unlike Packet's per-GPU figure no gpu-count multiplication belongs here.
 // dph_total is a float dollars-per-hour and cannot be coerced to money, so the rate arrives already
 // converted (typed MoneyPerHour); the quote keeps Vast's per-hour framing.
 fn vast_ai_quote(rate: MoneyPerHour) -> OfferQuote {

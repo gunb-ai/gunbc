@@ -69,10 +69,14 @@ fn packet_ai_route(region: ProviderRegionObservation) -> ProviderRouteStanding {
   )
 }
 
-// pricePerHourCents is an integer; one cent is 10_000 micro-dollars, so the conversion is exact.
-fn packet_ai_quote(product: PacketAiProduct) -> OfferQuote {
+// pricePerHourCents is PER GPU-HOUR: the vendor's OpenAPI (dash.packet.ai/api/v1/openapi,
+// /api/v1/launch-options) describes pool price_per_hour as "Customer price per GPU-hour in USD, from
+// the matching Packet product", and the product carries the same figure in integer cents. An offer
+// is one INSTANCE, so its hourly rate is that figure times the pool's gpus_per_instance. One cent is
+// 10_000 micro-dollars, so the conversion is exact integer arithmetic.
+fn packet_ai_quote(product: PacketAiProduct, gpus_per_instance: Int) -> OfferQuote {
   QuotedPerHour(MoneyPerHour {
-    amount: money_amount_micro(count: product.pricePerHourCents * 10000),
+    amount: money_amount_micro(count: product.pricePerHourCents * 10000 * gpus_per_instance),
     currency: Usd,
   })
 }
@@ -144,7 +148,7 @@ fn bind_packet_ai_offer<P>(
                   isolation: IsolationProfile { guarantees: [] },
                   quantity_bound: packet_ai_offer_quantity_bound,
                   ready_at: ready_at,
-                  quote: packet_ai_quote(product: product),
+                  quote: packet_ai_quote(product: product, gpus_per_instance: gpus_per_instance),
                   billing_quantum: billing_quantum,
                   evidence: QuotedSupply { quoted_at: quoted_at, valid_until: valid_until, receipt: receipt },
                 },
