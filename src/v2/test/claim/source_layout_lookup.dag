@@ -21,7 +21,6 @@ import v2.compiler.source_authority {
   ModuleLineMissing,
   NamespaceRowWithoutModules,
   NotAtRulePosition,
-  RegistryArtifactMissing,
   ReferenceCrossTreeDenied,
   ReferenceModuleLineDisagrees,
   ReferenceModuleLineMissing,
@@ -38,8 +37,8 @@ import v2.compiler.source_authority {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// WITNESSES FOR THE GENERIC STORAGE LOOKUP AND LAYOUT CHECK (docs/plans/source-layout-authority.md
-// 4.3, 4.4). Both are folds over SUPPLIED observations -- a probe per candidate file, a header per
+// WITNESSES FOR THE GENERIC STORAGE LOOKUP AND LAYOUT CHECK (gunbc.plans.source_layout_authority).
+// Both are folds over SUPPLIED observations -- a probe per candidate file, a header per
 // enumerated file -- so each control states the shape the host would hand the fold and asserts the
 // fold's decision; nothing here walks a tree. The pairing obligation (DESIGN 3, a witness
 // discriminates at one interface) is carried by the native layout-check and parse-all verbs, which
@@ -234,17 +233,15 @@ fn refusal_kind(refusal: LayoutRefusal) -> String {
     FileNotNamed { file: _, cause: _ } => "file-not-named"
     ModuleLineMissing { file: _ } => "module-line-missing"
     DuplicateModule { module: _, files: _ } => "duplicate-module"
-    RegistryArtifactMissing { artifact: _ } => "registry-artifact-missing"
   }
 }
 
 // The kinds of the check's refusals, in order; empty when the layout holds.
 fn refusal_kinds(
   namespaces: List<String>,
-  registered: List<ModuleFileRef>,
   headers: List<LayoutFileHeader>
 ) -> List<String> {
-  match layout_check(layout: layout(), namespaces: namespaces, registered: registered, headers: headers) {
+  match layout_check(layout: layout(), namespaces: namespaces, headers: headers) {
     LayoutHolds => []
     LayoutRefused { refusals: refusals } => list_map(xs: refusals, f: fn(refusal) { refusal_kind(refusal: refusal) })
   }
@@ -253,24 +250,24 @@ fn refusal_kinds(
 // The positive control: every discriminating red below differs from this input in exactly one
 // fact, so a refusal there is attributable to that fact.
 test fn layout_check_holds_on_a_placed_population() -> Bool {
-  refusal_kinds(namespaces: good_namespaces(), registered: [dag_file(path: "a/b/d.dag")], headers: good_headers()) == []
+  refusal_kinds(namespaces: good_namespaces(), headers: good_headers()) == []
 }
 
 // A file whose namespace has no row: the rows are the written-down namespace roster, and a module
 // in a namespace nobody declared is a new directory born without a decision.
 test fn layout_check_refuses_a_namespace_without_a_row() -> Bool {
-  refusal_kinds(namespaces: ["a.b"], registered: [], headers: good_headers()) == ["undeclared-namespace"]
+  refusal_kinds(namespaces: ["a.b"], headers: good_headers()) == ["undeclared-namespace"]
 }
 
 // The converse: a row that no file occupies is a stale row, not a harmless extra.
 test fn layout_check_refuses_a_row_no_module_occupies() -> Bool {
-  refusal_kinds(namespaces: ["a.b", "v2.std", "q.r"], registered: [], headers: good_headers()) == ["namespace-row-without-modules"]
+  refusal_kinds(namespaces: ["a.b", "v2.std", "q.r"], headers: good_headers()) == ["namespace-row-without-modules"]
 }
 
 // A file whose `module` line names another module than its position implies: the position is the
 // rule, the line is the claim, and a disagreement is neither's authority.
 test fn layout_check_refuses_a_module_line_that_disagrees_with_the_position() -> Bool {
-  refusal_kinds(namespaces: good_namespaces(), registered: [], headers: [
+  refusal_kinds(namespaces: good_namespaces(), headers: [
     header(file: dag_file(path: "a/b/c.dag"), declared: "a.b.zzz"),
     header(file: dag_file(path: "a/b/d.dag"), declared: "a.b.d"),
     header(file: v2_file(path: "std/text.dag"), declared: "v2.std.text")
@@ -278,7 +275,7 @@ test fn layout_check_refuses_a_module_line_that_disagrees_with_the_position() ->
 }
 
 test fn layout_check_refuses_a_file_without_a_module_line() -> Bool {
-  refusal_kinds(namespaces: good_namespaces(), registered: [], headers: [
+  refusal_kinds(namespaces: good_namespaces(), headers: [
     LayoutFileHeader { file: dag_file(path: "a/b/c.dag"), declared_module: Absent },
     header(file: dag_file(path: "a/b/d.dag"), declared: "a.b.d"),
     header(file: v2_file(path: "std/text.dag"), declared: "v2.std.text")
@@ -288,24 +285,17 @@ test fn layout_check_refuses_a_file_without_a_module_line() -> Bool {
 // Two modules differing only by ASCII case collide on a case-insensitive filesystem; the check
 // groups by the case fold so the collision is refused here, not discovered on a developer's laptop.
 test fn layout_check_refuses_modules_that_collide_under_case_folding() -> Bool {
-  refusal_kinds(namespaces: good_namespaces(), registered: [], headers: [
+  refusal_kinds(namespaces: good_namespaces(), headers: [
     header(file: dag_file(path: "a/b/c.dag"), declared: "a.b.c"),
     header(file: dag_file(path: "a/b/C.dag"), declared: "a.b.C"),
     header(file: v2_file(path: "std/text.dag"), declared: "v2.std.text")
   ]) == ["duplicate-module"]
 }
 
-// The registry join (plan 4.2): a generated artifact the registry names that is not in the
-// enumerated population is a refusal, so the registry cannot promise a file the tree lacks.
-test fn layout_check_refuses_a_registered_artifact_that_is_missing() -> Bool {
-  refusal_kinds(namespaces: good_namespaces(), registered: [dag_file(path: "a/b/zzz.dag")], headers: good_headers())
-    == ["registry-artifact-missing"]
-}
-
 // A v2 module placed in the dag tree is one misplacement: its namespace is declared and occupied,
 // so nothing else fires, and the refusal names the rule position the file should hold.
 test fn layout_check_refuses_a_v2_module_in_the_dag_tree() -> Bool {
-  refusal_kinds(namespaces: ["a.b", "v2.std"], registered: [], headers: [
+  refusal_kinds(namespaces: ["a.b", "v2.std"], headers: [
     header(file: dag_file(path: "a/b/c.dag"), declared: "a.b.c"),
     header(file: dag_file(path: "v2/std/text.dag"), declared: "v2.std.text")
   ]) == ["not-at-rule-position"]
@@ -313,7 +303,7 @@ test fn layout_check_refuses_a_v2_module_in_the_dag_tree() -> Bool {
 
 // The refusal carries the position the rule derives, not only a kind.
 test fn layout_check_names_the_rule_position_of_a_misplaced_module() -> Bool {
-  match layout_check(layout: layout(), namespaces: ["a.b", "v2.std"], registered: [], headers: [
+  match layout_check(layout: layout(), namespaces: ["a.b", "v2.std"], headers: [
     header(file: dag_file(path: "a/b/c.dag"), declared: "a.b.c"),
     header(file: dag_file(path: "v2/std/text.dag"), declared: "v2.std.text")
   ]) {
@@ -332,6 +322,5 @@ fn is_misplacement_of_text(refusal: LayoutRefusal) -> Bool {
     FileNotNamed { file: _, cause: _ } => false
     ModuleLineMissing { file: _ } => false
     DuplicateModule { module: _, files: _ } => false
-    RegistryArtifactMissing { artifact: _ } => false
   }
 }

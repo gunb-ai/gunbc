@@ -1026,7 +1026,7 @@ fn module_storage_binding_file_path(binding: ModuleStorageBinding) -> Optional<S
 // parses each module of an ingest and records module, path and provenance -- deliberately no source
 // text, which is why this carrier differs from SourceRootIngest. The host manifest emitter that once
 // supplied the same rows from a whole-repository walk is deleted by the source layout cutover
-// (docs/plans/source-layout-authority.md): a module's file is decided by its name and the layout rule
+// (gunbc.plans.source_layout_authority): a module's file is decided by its name and the layout rule
 // (v2.cli.repository_layout), and a driver acquires only the modules it requests, so no walk exists to
 // enumerate paths and no second supply remains to be reconciled with the derivation.
 
@@ -1462,7 +1462,7 @@ fn source_authority_round_trip(
   )
 }
 
-// ---- the storage rule (docs/plans/source-layout-authority.md, R5) --------------------------------
+// ---- the storage rule (gunbc.plans.source_layout_authority, R5) --------------------------------
 //
 // THE ONE FACT THAT MAPS A MODULE NAME TO ITS FILE. Module `a.b.c` lives at `<root(a)>/b/c.dag`:
 // the namespace root decides which tree holds it and whether the top segment is part of the
@@ -1595,7 +1595,7 @@ fn ascii_case_fold(s: String) -> String {
   join(ascii_case_fold_from(s: s, at: 0, acc: []), "")
 }
 
-// ---- lookup by name (plan 4.3) -------------------------------------------------------------------
+// ---- lookup by name -------------------------------------------------------------------
 //
 // A QUALIFIED REFERENCE IS SPLIT INTO MODULE AND MEMBER BY PROBING PREFIXES, LONGEST FIRST, and each
 // probe is one exact read whose answer is tri-state: the file is present, the file is absent, or
@@ -1807,13 +1807,12 @@ fn resolve_reference_over(
   )
 }
 
-// ---- the layout check (plan 4.4) -----------------------------------------------------------------
+// ---- the layout check -----------------------------------------------------------------
 //
-// ONE MODE: HOLD OR REFUSE. The check is a pure fold over four supplied values -- the storage
-// layout, the namespace rows the repository declares, the generated `.dag` artifacts its registry
-// names, and the header (location and `module` line) of every governed `.dag` file. The population
-// is enumerated by the native CLI through the bound filesystem handler; nothing here reads, and the
-// check reads headers, never bodies. Every refusal is typed and located, and the verdict carries all
+// ONE MODE: HOLD OR REFUSE. The check is a pure fold over three supplied values -- the storage
+// layout, the namespace rows the repository declares, and the header (location and `module` line)
+// of every governed `.dag` file. The population is enumerated by the native CLI through the bound
+// filesystem handler; nothing here reads, and the check reads headers, never bodies. Every refusal is typed and located, and the verdict carries all
 // of them: a line stopped is analyzed whole.
 //
 // A namespace row is a namespace that DIRECTLY contains modules; its ancestors are derived and carry
@@ -1821,9 +1820,12 @@ fn resolve_reference_over(
 // no row is UndeclaredNamespace, a row whose namespace holds no module is NamespaceRowWithoutModules
 // -- never a count, so a swap of one namespace for another cannot pass.
 //
-// Whether a file is generated is NOT a fact of the layout: the registry is that fact's single
-// authority, and the check joins it at file level. A registered artifact must exist at its rule
-// position; the layout adds nothing about it beyond that.
+// Whether a file is generated is NOT a fact of the layout: `gunbc.generated_artifact_registry` is that
+// fact's single authority, and this check neither reads nor restates it -- a generated module is held
+// to its rule position like any other. The registry's converse obligation (a registered `.dag`
+// artifact's producer declares the module its registered location is the rule position of) is
+// owned beside the registry, not here, so the compiler's own CLI closure does not reach the fleet
+// hosts and plans the registry enumerates.
 type LayoutFileHeader {
   file: ModuleFileRef
   declared_module: Optional<String>
@@ -1837,7 +1839,6 @@ type LayoutRefusal
   | FileNotNamed { file: ModuleFileRef, cause: String }
   | ModuleLineMissing { file: ModuleFileRef }
   | DuplicateModule { module: String, files: List<ModuleFileRef> }
-  | RegistryArtifactMissing { artifact: ModuleFileRef }
 
 type LayoutVerdict
   = LayoutHolds
@@ -1981,20 +1982,6 @@ fn headers_duplicate_refusals(headers: List<LayoutFileHeader>) -> List<LayoutRef
   )
 }
 
-fn registry_refusals(present: Map<String, Bool>, registered: List<ModuleFileRef>) -> List<LayoutRefusal> {
-  fold_list(
-    xs: registered,
-    empty: [],
-    cons: fn(refusals, artifact) {
-      if text_set_has(set: present, name: module_file_key(file: artifact)) {
-        refusals
-      } else {
-        list_snoc_item(xs: refusals, item: RegistryArtifactMissing { artifact: artifact })
-      }
-    }
-  )
-}
-
 // The namespaces the observed files actually occupy, by position.
 fn occupied_namespaces(layout: SourceStorageLayout, headers: List<LayoutFileHeader>) -> Map<String, Bool> {
   text_set_of(names: fold_list(
@@ -2026,30 +2013,24 @@ fn namespace_row_refusals(occupied: Map<String, Bool>, namespaces: List<String>)
 fn layout_refusals(
   layout: SourceStorageLayout,
   namespaces: List<String>,
-  registered: List<ModuleFileRef>,
   headers: List<LayoutFileHeader>
 ) -> List<LayoutRefusal> {
   let declared = text_set_of(names: namespaces)
-  let present = text_set_of(names: list_map(xs: headers, f: fn(header) { module_file_key(file: header.file) }))
   concat(
     concat(
       headers_position_refusals(layout: layout, namespaces: declared, headers: headers),
       headers_duplicate_refusals(headers: headers)
     ),
-    concat(
-      namespace_row_refusals(occupied: occupied_namespaces(layout: layout, headers: headers), namespaces: namespaces),
-      registry_refusals(present: present, registered: registered)
-    )
+    namespace_row_refusals(occupied: occupied_namespaces(layout: layout, headers: headers), namespaces: namespaces)
   )
 }
 
 fn layout_check(
   layout: SourceStorageLayout,
   namespaces: List<String>,
-  registered: List<ModuleFileRef>,
   headers: List<LayoutFileHeader>
 ) -> LayoutVerdict {
-  let refusals = layout_refusals(layout: layout, namespaces: namespaces, registered: registered, headers: headers)
+  let refusals = layout_refusals(layout: layout, namespaces: namespaces, headers: headers)
   if is_empty(xs: refusals) {
     LayoutHolds {}
   } else {
