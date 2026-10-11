@@ -5,6 +5,7 @@ import std.types { Int, Bool, NonEmptyStr, String, Secret, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import extdeps.cloud.packet_ai_contracts { packet_ai_allocation_wire_contract }
 
 // PACKET.AI (operated by hosted.ai), THE GPU RENTAL INTERFACE: what its REST API returns about
 // launchable GPU capacity. Read 2026-10-11 from the vendor's own OpenAPI document at
@@ -100,25 +101,14 @@ type PacketAiProduct {
 //
 // THE ALLOCATION IS A CLOSED SET HERE ON THE DOCUMENT'S OWN WORDS ("dedicated or dynamic"), though the
 // OpenAPI schema types it a bare string and its "otherwise the stored value" leaves room for words the
-// document does not name. So the field is `PacketAiAllocation?`: the wire word parses by EXACT match
-// (packet_ai_allocation_from_wire) and anything else, including a case variant, is none = unread, never a
-// guessed arm. Case-folding would be this module inventing a vendor rule.
+// document does not name. The wire spelling is declared once, as the CoproductWireContract row in
+// extdeps.cloud.packet_ai_contracts (SnakeCase: "dedicated", "dynamic"), which the type-directed REST
+// decode of Storefront.ListProducts reads. A word that names no arm, a case variant included, REFUSES the
+// response body at the located field; it is never defaulted to an arm. `allocation: null` or absent is
+// none = unread. Case-folding would be this module inventing a vendor rule.
 type PacketAiAllocation
   = Dedicated
   | Dynamic
-
-fn packet_ai_allocation_wire_label(allocation: PacketAiAllocation) -> String {
-  match allocation {
-    Dedicated => "dedicated"
-    Dynamic => "dynamic"
-  }
-}
-
-fn packet_ai_allocation_from_wire(label: String) -> PacketAiAllocation? {
-  if label == "dedicated" { Present { value: Dedicated } }
-  else if label == "dynamic" { Present { value: Dynamic } }
-  else { none }
-}
 
 type PacketAiStorefrontProduct {
   id: String
