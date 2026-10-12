@@ -26,7 +26,10 @@ import gunbc.serving.caller_backlog {
   cancel_work, snapshot_after_cancel, note_recovery, caller_retry_disposition, lookup_record,
   persist_before_offer_basis, retriable_refusal_basis, stable_turn_identity_basis, idempotent_retry_basis,
   no_expiry_on_long_wait_basis, durable_cancellation_basis, no_double_execution_basis,
+  caller_backlog_basis_refs,
 }
+import std.decl_ref { DeclarationRef }
+import v2.std.decl_index { decl_facts_at }
 import std.optional { Present, Absent }
 import gunbc.serving.caller_retry_contract {
   DurableRetryProperty, PersistBeforeOffer, RetriableRefusal, StableTurnIdentity, IdempotentRetryDuplicateSuppression,
@@ -230,4 +233,15 @@ test fn w_modeled_rows_are_durable_and_the_serving_route_is_not_and_has_no_route
       ForbiddenInRealization { because: _ } => true
       PermittedInRealization => false
     })
+}
+
+fn basis_qualified_name(r: DeclarationRef) -> String {
+  concat(r.module_path as String, concat(".", r.decl_name as String))
+}
+
+test fn w_caller_backlog_bases_name_live_declarations() -> Bool {
+  all(caller_backlog_basis_refs, r => length(xs: decl_facts_at(
+    pool_roots: ["dag"],
+    qualified_name: basis_qualified_name(r: r),
+  )) == 1)
 }

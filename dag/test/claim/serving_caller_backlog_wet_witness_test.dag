@@ -1,0 +1,57 @@
+module test.claim.serving_caller_backlog_wet_witness
+
+import extdeps.shell
+import std.types { Bool, NonEmptyStr, String }
+import product.fabric.execution { ReservationRef }
+import gunbc.serving.caller_backlog {
+  LogicalWorkId, empty_caller_backlog,
+  DurableWaitingPersisted, DurablePersistIdempotent, DurablePersistRefusedTerminal,
+  DurablePersistStoreRefused, DurablePersistKeyNotSlotAddressable,
+  ResumedWaiting, ResumedTerminal, ResumeUnknownWork,
+  persist_waiting_durable, resume_waiting_durable,
+}
+
+// Persist, drop the in-memory snapshot, read the same LogicalWorkId back from the CAS slot.
+// Enrolled on the local-repo wet lane (throwaway temp directory, no network).
+
+fn fresh_root() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_caller_backlog.XXXXXX").path
+}
+
+test fn persist_then_fresh_process_reads_the_same_waiting_work_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let root = root_path as NonEmptyStr
+  let work = "logical-work-a" as LogicalWorkId
+  let reservation = "grant-work-a" as ReservationRef
+  let persisted = persist_waiting_durable(
+    root: root,
+    snapshot: empty_caller_backlog,
+    work: work,
+    reservation: reservation,
+    generation: 2,
+  )
+  let wrote = match persisted {
+    DurableWaitingPersisted { record: r } => (r.work as String) == (work as String) && r.generation == 2
+    DurablePersistIdempotent { record: _ } => false
+    DurablePersistRefusedTerminal { phase: _ } => false
+    DurablePersistStoreRefused { detail: _ } => false
+    DurablePersistKeyNotSlotAddressable { work: _ } => false
+  }
+  let resumed = resume_waiting_durable(root: root, work: work)
+  let same_after_memory_drop = match resumed {
+    ResumedWaiting { record: r } =>
+      (r.work as String) == (work as String)
+        && (r.reservation as String) == (reservation as String)
+        && r.generation == 2
+    ResumedTerminal { phase: _ } => false
+    ResumeUnknownWork => false
+  }
+  let missing = resume_waiting_durable(root: root, work: "logical-work-other" as LogicalWorkId)
+  let other_absent = match missing {
+    ResumeUnknownWork => true
+    ResumedWaiting { record: _ } => false
+    ResumedTerminal { phase: _ } => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  wrote && same_after_memory_drop && other_absent && removed.success
+}
