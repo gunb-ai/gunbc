@@ -693,7 +693,7 @@ data base64_group_fill_carrier_debt_marker: Disposition = Terminal {
 // Octets 0x80..0xFF are NOT ASCII and are NOT read as Latin-1: this route refuses them, naming the
 // first offending position and octet. A byte-to-Latin-1 reading would be a different meaning of
 // "the character for this byte" and is not declared, because no current consumer's upstream
-// specifies it (gunbc.recurring_failure_mode bare_from_code_point_binds_the_total_seed_builtin,
+// specifies it (gunbc#13778, retired row bare_from_code_point_binds_the_total_seed_builtin,
 // kind OCTET-AS-CHAR).
 type AsciiDecodeOutcome
   = AsciiDecoded { text: String }

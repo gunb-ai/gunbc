@@ -23585,7 +23585,7 @@ macro_rules! v1_builtin_arms {
                             Some(ch) => s.push(ch),
                             None => {
                                 return Err(InterpError::TypeError {
-                                    msg: format!("chars_to_string: {cp} is not a Unicode scalar value (std.unicode.scalar NotUnicodeScalar); refusing to drop it silently"),
+                                    msg: format!("chars_to_string: {cp} is not a Unicode scalar value: runtime representation-invariant violation; refusing to drop or substitute it"),
                                 });
                             }
                         },

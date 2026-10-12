@@ -151,7 +151,7 @@ fn semantic_decl_char_identity(c: Char) -> Symbol {
 //
 // The parameter is an ordinary string and its callers are right to pass one -- `semantic_decl_emit`
 // hands it a `text` and a `spelling`. What the BODY needs is the char-list view, because it folds
-// each element through `std.unicode.scalar` `char_text`. `chars` is the conversion between the two, and it is the
+// each element through `std.unicode.scalar` `from_code_point`. `chars` is the conversion between the two, and it is the
 // same one `v2.std.compilers.lexing` already uses when it builds a `LiteralPattern`.
 //
 // WITHOUT IT THE FOLD HAS NO ELEMENT TYPE TO INFER: `String` renders as the target's native string,

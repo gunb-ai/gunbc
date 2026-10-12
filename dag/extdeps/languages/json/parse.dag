@@ -28,7 +28,7 @@ import extdeps.languages.json.grammar {
 // which recombines a UTF-16 surrogate pair (RFC 8259 section 7) and refuses an unpaired surrogate,
 // so a value this parser builds never carries a surrogate code point. There is no interpreted
 // unescaper beside it: the former json_unescape piece decoder had no consumer and spelled each
-// \u through the total seed from_code_point (gunbc.recurring_failure_mode
+// \u through the total seed from_code_point (gunbc#13778, retired row
 // bare_from_code_point_binds_the_total_seed_builtin), so it was deleted rather than migrated.
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {

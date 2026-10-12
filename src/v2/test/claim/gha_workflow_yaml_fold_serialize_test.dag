@@ -1,6 +1,5 @@
 module v2.test.claim.gha_workflow_yaml_fold_serialize
 
-import std.unicode.scalar { char_text }
 
 import extdeps.languages.yaml.types { YamlValue }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused }
@@ -59,8 +58,8 @@ fn gha_fold_fold_matches_oracle(job: Job) -> Bool {
 }
 
 test fn gha_fold_pilot_job_byte_identical_holds() -> Bool {
-  gha_fold_prod_kind_sentinel == char_text(c: 2)
-    && gha_fold_scalar_kind_sentinel == char_text(c: 0)
+  gha_fold_prod_kind_sentinel == "\u{2}"
+    && gha_fold_scalar_kind_sentinel == "\u{0}"
     && gha_fold_fold_matches_oracle(job: gha_fold_pilot_job)
 }
 

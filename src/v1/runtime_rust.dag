@@ -387,7 +387,7 @@ fn rt_collection_ops() -> String {
     "        let cp = *focus.index(i);\n",
     "        match u32::try_from(cp).ok().and_then(char::from_u32) {\n",
     "            Some(ch) => out.push(ch),\n",
-    "            None => panic!(\"chars_to_string: {} is not a Unicode scalar value (std.unicode.scalar NotUnicodeScalar); refusing to drop it silently\", cp),\n",
+    "            None => panic!(\"chars_to_string: {} is not a Unicode scalar value: runtime representation-invariant violation; refusing to drop or substitute it\", cp),\n",
     "        }\n",
     "    }\n",
     "    out\n",

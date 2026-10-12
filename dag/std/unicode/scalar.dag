@@ -36,36 +36,21 @@ fn not_unicode_scalar_code_point(n: NotUnicodeScalar) -> Int {
   }
 }
 
-// THE TOTAL SPELLING: a Char is a scalar by construction, so spelling it as host text cannot
-// refuse, and a caller holding one never handles a refusal (construction over validation, DESIGN
-// section 5). It is realized through the declared text-crossing route std.coercion
-// unicode_scalar_fold over a one-scalar sequence (DESIGN section 4, UnicodeScalarSequenceUnfold).
-//
-// STAGED REPAIR (gunbc.recurring_failure_mode char_brand_admits_any_int): the seed does not yet
-// enforce Char, so a non-scalar Int can reach this fold. The host realization of that fold now
-// REFUSES it loudly, naming NotUnicodeScalar (the same unicode_scalar predicate scalar_of_code_point
-// decides), where it used to drop the value silently. This is a run-time mitigation: the seed does
-// not judge a literal against the refinement either, and every non-literal caller was moved to
-// from_code_point or a rewrite with no Int -> Char crossing.
-fn char_text(c: Char) -> String {
-  unicode_scalar_fold(xs: list_snoc_item(xs: Empty, item: c))
-}
-
 // from_code_point: an Int is spelled as host text only if it is a scalar, otherwise it refuses
 // typed. It replaces the seed builtin of the same name, which was total over Int and answered a
 // different invented value per realization for a non-scalar (the interpreter U+0000, the emitted
 // runtimes the empty string) and wrapped through `cp as u32`, so -1 or 2^32 + 65 spelled a valid
-// scalar. gunbc.recurring_failure_mode bare_from_code_point_binds_the_total_seed_builtin records it.
+// scalar. the retired row is in git history (gunbc#13778).
 fn from_code_point(cp: Int) -> Result<String, NotUnicodeScalar> {
   match scalar_of_code_point(cp: cp) {
-    Ok { value: c } => Ok { value: char_text(c: c) }
+    Ok { value: c } => Ok { value: unicode_scalar_fold(xs: list_snoc_item(xs: Empty, item: c)) }
     Err { value: n } => Err { value: n }
   }
 }
 
 // ASCII CASE FOLDING WITHOUT AN Int -> Char CROSSING. Spelling a shifted code point as text needs a
 // Char, which the seed does not enforce (gunbc.recurring_failure_mode char_brand_admits_any_int), so
-// the three ASCII case folds that were `char_text(c: cp + 32)` are string rewrites over these 26
+// the ASCII case folds are string rewrites over these 26
 // pairs instead: no code point is computed, so no non-scalar can be spelled.
 type AsciiLetterPair { upper: String, lower: String }
 

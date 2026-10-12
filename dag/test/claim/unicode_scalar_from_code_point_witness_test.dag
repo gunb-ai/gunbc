@@ -1,7 +1,7 @@
 module test.claim.unicode_scalar_from_code_point_witness
 
 import std.error_primitives { Ok, Err }
-import std.unicode.scalar { CodePointOutOfRange, SurrogateCodePoint, ascii_lowercase, ascii_uppercase, ascii_uppercase_first, char_text, from_code_point, not_unicode_scalar_code_point }
+import std.unicode.scalar { CodePointOutOfRange, SurrogateCodePoint, ascii_lowercase, ascii_uppercase, ascii_uppercase_first, from_code_point, not_unicode_scalar_code_point }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -32,8 +32,11 @@ test fn from_code_point_RED_past_the_last_scalar_refuses_as_out_of_range() -> Bo
   }
 }
 
-test fn char_text_spells_one_char() -> Bool {
-  char_text(c: 233) == "\u{e9}"
+test fn from_code_point_spells_a_non_ascii_scalar() -> Bool {
+  match from_code_point(cp: 233) {
+    Ok { value: s } => s == "\u{e9}"
+    Err { value: _ } => false
+  }
 }
 
 test fn from_code_point_spells_the_last_scalar() -> Bool {
@@ -59,4 +62,20 @@ test fn ascii_uppercase_folds_letters_and_leaves_the_rest() -> Bool {
 
 test fn ascii_uppercase_first_folds_only_the_first_letter() -> Bool {
   (ascii_uppercase_first(s: "word") == "Word") && (ascii_uppercase_first(s: "") == "") && (ascii_uppercase_first(s: "1ab") == "1ab")
+}
+
+test fn from_code_point_RED_a_negative_int_refuses_as_out_of_range() -> Bool {
+  match from_code_point(cp: 0 - 1) {
+    Ok { value: _ } => false
+    Err { value: CodePointOutOfRange { code_point: n } } => n == 0 - 1
+    Err { value: SurrogateCodePoint { code_point: _ } } => false
+  }
+}
+
+test fn from_code_point_RED_a_wrapping_int_never_spells_the_low_scalar() -> Bool {
+  match from_code_point(cp: 4294967361) {
+    Ok { value: _ } => false
+    Err { value: CodePointOutOfRange { code_point: n } } => n == 4294967361
+    Err { value: SurrogateCodePoint { code_point: _ } } => false
+  }
 }
