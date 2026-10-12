@@ -478,10 +478,11 @@ test fn red_refusal_outcome_mismatch_holds() -> Bool {
 // NFR pool_independence_projection totalization witnesses (D2): assess_pool_independent_projection_equality
 // and assess_file_dependencies_only_equality are now total over every (baseline, perturbed)
 // ReferenceDerivedDependencyProjection variant pair — no wildcard arms remain. The REDs pin the
-// pairs the old `_` arms silently absorbed (Ready vs BindingRefused; FileRefused vs FileRefused;
-// Ready vs FileRefused) to the verdicts those pairs carried before; the positive controls pin the
-// Ready-vs-Ready equal-deps lane (agrees for the deps-only fn, established for the full fn) and
-// would fail if the named arms regressed the behaviour the wildcards were covering.
+// pairs the old `_` arms silently absorbed (Ready vs BindingRefused; Ready vs FileRefused) to the
+// verdicts those pairs carried before; the controls pin the lanes that already had named arms
+// (FileRefused vs FileRefused equal payloads -> established; Ready-vs-Ready equal deps ->
+// established for the full fn, agrees for the deps-only fn) and would fail if the new named
+// arms regressed the behaviour the wildcards were covering.
 
 fn npi_witness_ready_projection() -> ReferenceDerivedDependencyProjection {
   npi_witness_projection(
@@ -530,7 +531,7 @@ test fn pool_independence_projection_ready_vs_binding_refused_absorbed_pair_hold
   }
 }
 
-test fn pool_independence_projection_file_refused_vs_file_refused_absorbed_pair_holds() -> Bool {
+test fn pool_independence_projection_file_refused_vs_file_refused_equal_payloads_control_holds() -> Bool {
   match assess_pool_independent_projection_equality(
     source_subject: npi_witness_consumer_file(),
     baseline: npi_witness_file_refused_projection(),
