@@ -1,7 +1,6 @@
 module gunbc.roadmap_priority
 
 import std.types { String, List, Int }
-import v2.std.algebra { any }
 import gunbc.roadmap.roadmap_project { RoadmapMembershipIndex, node_project_membership_in, MembershipStandalone, MembershipMember, MembershipAmbiguous }
 
 // Provisional display priority, not a scheduler input or an authored Fermi estimate.

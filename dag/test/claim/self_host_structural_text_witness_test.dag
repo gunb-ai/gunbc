@@ -1,7 +1,6 @@
 module test.claim.self_host_structural_text_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.algebra { any }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
