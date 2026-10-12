@@ -39,6 +39,9 @@ type WireUncontractedShape {
 // uses, so a plain-text body must come back as text through dispatch_rest rather than through the
 // JSON decoder. FormatUnrecognized spells it as no WireFormat variant, which must refuse rather than
 // default to Json.
+// StorefrontProductsPage carries the OUTPUT SHAPE and response type of extdeps.cloud.packet_ai
+// Storefront.ListProducts verbatim, so a recorded dash.packet.ai body reaches the same type-directed
+// decode (the allocation wire contract).
 service test.RestReplay {
   config { endpoint: "https://rest-replay.invalid" }
 
@@ -104,8 +107,6 @@ service test.RestReplay {
     response { 200 => WorkflowRunList }
   }
 
-  // The OUTPUT SHAPE and response type of extdeps.cloud.packet_ai Storefront.ListProducts verbatim, so a
-  // recorded dash.packet.ai body reaches the same type-directed decode (allocation wire contract).
   operation StorefrontProductsPage {
     output { products: List<PacketAiStorefrontProduct> from "data" }
     readonly
