@@ -67,7 +67,10 @@ type TargetProducer
 fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Optional<Millisecond> {
   match producer {
     NativeClaimProgramProducer { entry: e, deadline: d } =>
-      if e == want { Present { value: d } } else { Absent }
+      match e == want {
+        true => Present { value: d }
+        false => Absent
+      }
     SelfHostProducer {} => Absent
     RequiredFloorProducer {} => Absent
     BazelProducer {} => Absent

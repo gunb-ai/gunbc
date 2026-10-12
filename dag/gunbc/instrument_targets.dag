@@ -885,6 +885,13 @@ fn native_claim_child_deadline_for_entry(entry: String) -> Optional<Millisecond>
   )
 }
 
+fn native_claim_named_deadline_count_agrees(entry: String, n: Int) -> Bool {
+  match entry == value_position_block_nests_entry() {
+    true => n == value_position_block_nests_child_deadline_count()
+    false => n == native_claim_policy_child_deadline_count()
+  }
+}
+
 // THE HOST READ POINT. Same projection as v2.workflow.floor_enrolment_margin
 // floor_enrolment_margin_budget_ms_count: Int milliseconds via millisecond_count, no
 // arithmetic of its own. Absent or non-positive is NativeClaimDeadlineUngrounded.
@@ -892,13 +899,10 @@ fn native_claim_child_deadline_count(entry: String) -> Optional<Int> {
   match native_claim_child_deadline_for_entry(entry: entry) {
     Absent => Absent
     Present { value: d } =>
-      if entry == value_position_block_nests_entry() {
-        if millisecond_count(m: d) == value_position_block_nests_child_deadline_count() {
-          Present { value: value_position_block_nests_child_deadline_count() }
-        } else { Absent }
-      } else if millisecond_count(m: d) == native_claim_policy_child_deadline_count() {
-        Present { value: native_claim_policy_child_deadline_count() }
-      } else { Absent }
+      match native_claim_named_deadline_count_agrees(entry: entry, n: millisecond_count(m: d)) {
+        true => Present { value: millisecond_count(m: d) }
+        false => Absent
+      }
   }
 }
 
