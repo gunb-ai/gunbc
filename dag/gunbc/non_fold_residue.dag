@@ -196,16 +196,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_binding_outcome_resolution_wildcard,
   },
   FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/namespace/namespace_pool_independence.dag::assess_file_dependencies_only_equality" },
-    reason: nfr_reason_pool_independence_projection,
-    dissolution: nfr_dissolve_pool_independence_projection,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/namespace/namespace_pool_independence.dag::assess_pool_independent_projection_equality" },
-    reason: nfr_reason_pool_independence_projection,
-    dissolution: nfr_dissolve_pool_independence_projection,
-  },
-  FrontierRow {
     subject: PathSubject { path: "dag/gunbc/roadmap/roadmap_dispatch_actuator.dag::live_session_row_with_process" },
     reason: nfr_reason_provider_terminal_absorb,
     dissolution: nfr_dissolve_provider_terminal_absorb,
