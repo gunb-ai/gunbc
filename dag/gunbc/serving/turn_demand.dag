@@ -5,8 +5,10 @@ import std.content_hash { content_hash_of_value, serialize_content_hash }
 import product.fabric.work {
   Work, WorkContract, WorkStep, OpaqueEffects, OfferedService, ServiceInterfaceRef, ArtifactManifestRef,
   EffectContractRef, OutputContractRef, DeclaredOutputObligations, declared_terminal_obligations,
-  ExecutionRequirements, CapacityClass, Shape, CapabilityManifestRef, TrustDomainRef, work_for, identity_frame,
+  ExecutionRequirements, CapacityClass, Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef, work_for, identity_frame,
 }
+import product.fabric.envelope { unstated_envelope }
+import std.measure { hardware_thread_count }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.demand { SatisfactionRequirement }
 
@@ -30,8 +32,8 @@ import product.fabric.demand { SatisfactionRequirement }
 // it (review 62235). A Demand for a serving turn lands with the path that submits one -- the harness
 // asks the fabric for a group through select_supply today, not through the demand queue -- and until
 // that path exists, a constructor for it is a declaration nothing consumes. Its facts are not lost
-// with it: the owned-hardware buy terms were zero against gunbc.spark.serving_offer's zero quote, and
-// that pairing is stated where the quote is.
+// with it: the buy terms of an owned-hardware route are zero, and that pairing is stated where a
+// route's quote is.
 
 // ── A TURN IS AN OFFERED-SERVICE REQUEST, AND ITS IDENTITY EXISTS BEFORE ANY SUPPLIER IS CONSIDERED ──
 //
@@ -155,4 +157,20 @@ fn serving_turn_satisfaction() -> SatisfactionRequirement {
     new_attempt_required: true,
     step_reuse_permitted: false,
   }
+}
+
+// THE ONE TOKEN-SERVING CAPABILITY A REPLICA OFFERS, the same reference on the demand and the supply
+// side because the fabric decides fungibility by exact equality of capability references. The served
+// model is observed evidence and the caller's model requirement is request identity, so neither
+// enters the capability.
+fn serving_token_capability() -> CapabilityManifestRef {
+  "gunbc.capabilities.serving.token-serving" as CapabilityManifestRef
+}
+
+// THE TRUST DOMAIN OF THE RENTED COHORT'S REPLICAS, declared once for the demand and the supply side.
+data serving_replica_trust_domain: TrustDomainRef = "gunbc.trust.rented-replica" as TrustDomainRef
+
+// A REPLICA STATES NO HARD SHAPE: the engine's capacity is read from the engine, not declared here.
+fn serving_unstated_shape() -> Shape {
+  Shape { hard: HardRequirements { threads: hardware_thread_count(count: 0) }, envelope: unstated_envelope() }
 }

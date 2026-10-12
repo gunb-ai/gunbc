@@ -2802,7 +2802,6 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: FrameBinders) ->
                   binder_site: e.target.occurrence_id,
                   standing: match resolve_pattern_binder_declared_type(ctx: ctx, pat: pat, field: e) {
                     PatternBinderFormal { field_type: ft } => LexicalOwedFormal { field_type: ft }
-                    PatternBinderTyped { node: t } => LexicalDeclared { node: t }
                     PatternBinderUntyped => LexicalUntyped
                   }
                 }
@@ -2814,20 +2813,21 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: FrameBinders) ->
   }
 }
 
-// A PATTERN BINDER'S TYPE IS THE VARIANT FIELD IT CAPTURES (v2.compiler.body_lowering_fold
-// body_lower_field_decl_optional). The arm the pattern's tag names declares the field -- positional
-// "0" and named alike, one grammar -- and the binder's declared type is that field's type node, so
-// the body's reference derives from its binding (v2.compiler.infer infer_lexical_reference_facts)
-// instead of staying on the frontier with the match spine. A tag that names no declared arm, or a
-// field the arm does not declare, leaves the binder untyped exactly as before: the match row judges
-// the pattern against the scrutinee's coproduct and refuses the mismatch at the arm row.
+// A PATTERN BINDER'S TYPE IS THE VARIANT FIELD IT CAPTURES, AND RESOLVE DOES NOT WRITE IT. The field type
+// this stage can read is the one in the NAMESPACE index -- the declaring module's spelling, before that
+// module's references are resolved -- so recording it as the binder's declared type minted a second,
+// unresolved authority for a field whose resolved type lives in ResolvedTree.resolved_declarations: a
+// binder of `Rejected { diagnostics: NonEmptyDiagnostics }` carried the bare `NonEmptyDiagnostics` into
+// a construction judged at v2.std.diagnostic.NonEmptyDiagnostics, and refused (the native-seven
+// record_field_value_does_not_inhabit wall). Infer types every payload binder from the arm's RESOLVED
+// declaration, the row a construction of that arm is judged at (v2.compiler.infer
+// infer_match_arm_child_frame), so a concrete field's binder is LexicalUntyped here.
 //
-// A field whose type names the DECLARING TYPE's formal is neither typed nor untyped: it is OWED
-// (LexicalBinderStanding.LexicalOwedFormal carries the field type) and infer pays it from the
-// scrutinee's arguments or refuses.
+// A field whose type names the DECLARING TYPE's formal is OWED (LexicalBinderStanding.LexicalOwedFormal):
+// infer pays it from the scrutinee's arguments or refuses. Detecting that needs only the field's
+// spelling against the declaring type's own parameter list, which this index answers.
 type PatternBinderDeclared
-  = PatternBinderTyped { node: Node }
-  | PatternBinderUntyped
+  = PatternBinderUntyped
   | PatternBinderFormal { field_type: Node }
 
 // A payload field whose type still names the declaring type's formal is detected against the
@@ -2882,7 +2882,7 @@ fn resolve_pattern_binder_declared_type(ctx: ResolveContext, pat: Node, field: E
                   ) {
                     PatternBinderFormal { field_type: f.type_node }
                   } else {
-                    PatternBinderTyped { node: f.type_node }
+                    PatternBinderUntyped
                   }
                 Absent => PatternBinderUntyped
               }

@@ -13,7 +13,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // A PARAMETER MAY REFINE ITS TYPE WITH A WHERE CLAUSE (v2.extdeps.languages.dag
 // dag_grammar_typed_param_expr), as v1 reads it. It PARSES; the fn REFUSES at the clause
 // (body_lowering_reason_parameter_refinement_unmodeled, gunbc.recurring_failure_mode
-// parameter_refinement_has_no_carrier) rather than lowering the base type and dropping the
+// refinement_has_no_carrier) rather than lowering the base type and dropping the
 // refinement. An unrefined parameter is untouched.
 data refined_source: String = "module probe.param_refine\n\nfn wait(seconds: Int where range(min: 1, max: 3600)) -> Int {\n  seconds\n}\n"
 data plain_source: String = "module probe.param_refine\n\nfn wait(seconds: Int) -> Int {\n  seconds\n}\n"

@@ -37,6 +37,7 @@ import v2.std.compilers.lexing {
   lex_rule_set_mode_refusal,
   LineCommentTextChar,
   ModeledLexRules,
+  SingleQuotedStringTextChar,
   StringTextChar,
   Token,
   TokenRule,
@@ -172,6 +173,8 @@ fn char_in_class(c: Char, class: LexCharClass) -> Bool {
       ((c >= 48) && (c <= 57))
     StringTextChar =>
       c != 34 && c != 10
+    SingleQuotedStringTextChar =>
+      c != 39 && c != 10
     LineCommentTextChar =>
       c != 10
     BlockCommentTextChar =>
