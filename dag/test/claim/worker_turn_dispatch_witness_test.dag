@@ -14,6 +14,7 @@ import gunbc.roadmap_dispatch_actuator {
   CodexProviderOffCustodyHost,
   ClaudeProviderCredentialUnbound,
   CredentialSnapshotNotConsumed,
+  CredentialSnapshotForAnotherAttempt,
   CursorDispatchProvider,
   CodexDispatchProvider,
   DispatchCliProvider,
@@ -58,6 +59,7 @@ fn ready_argv(inner: DispatchProviderInnerArgv) -> List<String>? {
     CodexProviderOffCustodyHost { reason: _ } => none
     ClaudeProviderCredentialUnbound { reason: _ } => none
     CredentialSnapshotNotConsumed { reason: _ } => none
+    CredentialSnapshotForAnotherAttempt { reason: _ } => none
   }
 }
 
@@ -85,6 +87,7 @@ test fn a_cursor_turn_on_srv2_with_no_taken_snapshot_refuses() -> Bool {
     CodexProviderOffCustodyHost { reason: _ } => false
     ClaudeProviderCredentialUnbound { reason: _ } => false
     CredentialSnapshotNotConsumed { reason: _ } => false
+    CredentialSnapshotForAnotherAttempt { reason: _ } => false
   }
 }
 
@@ -97,6 +100,7 @@ test fn a_cursor_turn_off_its_custody_host_refuses() -> Bool {
     CodexProviderOffCustodyHost { reason: _ } => false
     ClaudeProviderCredentialUnbound { reason: _ } => false
     CredentialSnapshotNotConsumed { reason: _ } => false
+    CredentialSnapshotForAnotherAttempt { reason: _ } => false
   }
 }
 
@@ -119,6 +123,7 @@ test fn a_codex_turn_on_srv2_runs_under_the_flock_on_the_custody_codex_home() ->
     CodexProviderOffCustodyHost { reason: _ } => false
     ClaudeProviderCredentialUnbound { reason: _ } => false
     CredentialSnapshotNotConsumed { reason: _ } => false
+    CredentialSnapshotForAnotherAttempt { reason: _ } => false
   }
 }
 
@@ -131,6 +136,7 @@ test fn a_codex_turn_off_its_custody_host_refuses() -> Bool {
     CursorProviderCredentialUnbound { reason: _ } => false
     ClaudeProviderCredentialUnbound { reason: _ } => false
     CredentialSnapshotNotConsumed { reason: _ } => false
+    CredentialSnapshotForAnotherAttempt { reason: _ } => false
   }
 }
 

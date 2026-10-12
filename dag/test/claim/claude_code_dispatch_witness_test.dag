@@ -99,6 +99,7 @@ import gunbc.roadmap_dispatch_actuator {
   CursorProviderCredentialUnbound,
   CodexProviderOffCustodyHost,
   CredentialSnapshotNotConsumed,
+  CredentialSnapshotForAnotherAttempt,
   ClaudeProviderCredentialUnbound,
   RecordedAttemptFingerprint,
   DispatchActuatorSelectionOk,
@@ -610,6 +611,7 @@ test fn the_captured_trip_with_no_taken_snapshot_refuses_the_claude_launch() -> 
         CursorProviderCredentialUnbound { reason: _ } => false
         CodexProviderOffCustodyHost { reason: _ } => false
         CredentialSnapshotNotConsumed { reason: _ } => false
+        CredentialSnapshotForAnotherAttempt { reason: _ } => false
       }
   }
 }

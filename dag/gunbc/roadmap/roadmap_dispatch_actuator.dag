@@ -223,6 +223,10 @@ import gunbc.cursor_harness_credential { cursor_worker_turn_api_key_host_path, c
 import gunbc.dispatch_credential_snapshot {
   TakenCredentialSnapshot,
   taken_credential_snapshot_path,
+  taken_credential_snapshot_subject,
+  CredentialSnapshotSubject,
+  credential_snapshot_subjects_agree,
+  credential_snapshot_subject_label,
   DispatchSnapshotTaken,
   DispatchSnapshotRefused,
   dispatch_credential_snapshot_take,
@@ -544,11 +548,15 @@ fn decode_dispatch_executor_request(word: String) -> DispatchExecutorRequestDeco
 // that snapshot and keeps it, and the spawned child reads the SAME snapshot and the shell removes it
 // before exec. A replacement after the copy cannot reach the child, and a missing snapshot exits 78
 // before the provider starts -- the launch refuses; it never falls back to the custody file.
-// THE PATH IS THE IDENTITY OF WHERE THE TAKE WRITES, AND THE SELECTION IS ITS ONLY PRODUCTION CALLER.
-// The spawn and the discard do not re-derive it: they read the sealed TakenCredentialSnapshot the take
-// returned (gunbc.dispatch_credential_snapshot), carried on DispatchActuatorSelectionOk. Re-deriving
-// would let a take at one path license a launch at another, and would let a launch be built for a
-// snapshot no take wrote -- which is what an instance-less spawn route here once did.
+// THE SELECTION IS THE TAKE'S ONLY PRODUCTION CALLER, AND THE SPAWN NEEDS TWO THINGS FROM IT. It needs
+// proof that the take ran -- a path re-derived at the spawn names the file whether or not any take
+// wrote it, which is what an instance-less spawn route here once launched against -- and it needs that
+// take to have been THIS attempt's: a snapshot carried from another selection would otherwise license
+// this launch. So the spawn reads the sealed TakenCredentialSnapshot the take returned
+// (gunbc.dispatch_credential_snapshot), carried on DispatchActuatorSelectionOk, and refuses it unless
+// its subject is the attempt being launched; dispatch_credential_snapshot_subject_for_instance below is
+// the one derivation of that subject, used by the take and by the check. The path here is where the
+// production take writes, derived from the same attempt.
 fn dispatch_credential_snapshot_path_for_instance(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
@@ -559,6 +567,47 @@ fn dispatch_credential_snapshot_path_for_instance(
     dashboard_instance_dispatch_attempt_state_root(instance: instance) as String,
     "/", node_id as String, "-a", attempt_key, ".", dispatch_provider_label(provider: provider), "-credential",
   ], "") as NonEmptyStr
+}
+
+fn dispatch_credential_snapshot_subject_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  provider: DispatchCliProvider,
+) -> CredentialSnapshotSubject {
+  CredentialSnapshotSubject {
+    instance_id: instance.instance_id,
+    host_identity: instance.host_identity,
+    node_id: node_id,
+    attempt_key: attempt_key,
+    provider: dispatch_provider_label(provider: provider) as NonEmptyStr,
+  }
+}
+
+// A held snapshot taken for another attempt, provider or instance answers the refusal naming both;
+// one taken for this attempt answers none.
+fn held_snapshot_for_another_attempt(
+  snapshot: TakenCredentialSnapshot,
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+  provider: DispatchCliProvider,
+) -> NonEmptyStr? {
+  let launching = dispatch_credential_snapshot_subject_for_instance(
+    instance: instance, node_id: node_id, attempt_key: attempt_key, provider: provider,
+  )
+  let held = taken_credential_snapshot_subject(snapshot: snapshot)
+  if credential_snapshot_subjects_agree(a: held, b: launching) {
+    none
+  } else {
+    Present {
+      value: join([
+        "the held credential snapshot was taken for ", credential_snapshot_subject_label(subject: held),
+        ", not for the attempt being launched (", credential_snapshot_subject_label(subject: launching),
+        "); refusing rather than launching under another attempt's credential",
+      ], "") as NonEmptyStr,
+    }
+  }
 }
 
 // THE EXPLICIT CLAUDE DRAW OBSERVES BEFORE IT SELECTS. The declared Claude row's standing admits no
@@ -652,7 +701,13 @@ fn dispatch_actuator_claude_selection_observed(
   match claude_credential_custody_source() {
     ClaudeCustodyUnbound { reason } => DispatchActuatorSelectionRefused { reason: reason }
     ClaudeCustodyFile { path: custody } =>
-      match dispatch_credential_snapshot_take(source: custody, snapshot: snapshot_path) {
+      match dispatch_credential_snapshot_take(
+        subject: dispatch_credential_snapshot_subject_for_instance(
+          instance: instance, node_id: node_id, attempt_key: attempt_key, provider: ClaudeCodeProvider,
+        ),
+        source: custody,
+        snapshot: snapshot_path,
+      ) {
         DispatchSnapshotRefused { reason } => DispatchActuatorSelectionRefused { reason: reason }
         DispatchSnapshotTaken { snapshot } =>
           match resolve_dispatch_selection(
@@ -768,7 +823,13 @@ fn cursor_selection_observed(
     let snapshot_path = dispatch_credential_snapshot_path_for_instance(
       instance: instance, node_id: node_id, attempt_key: attempt_key, provider: CursorDispatchProvider,
     )
-    match dispatch_credential_snapshot_take(source: cursor_worker_turn_api_key_host_path, snapshot: snapshot_path) {
+    match dispatch_credential_snapshot_take(
+      subject: dispatch_credential_snapshot_subject_for_instance(
+        instance: instance, node_id: node_id, attempt_key: attempt_key, provider: CursorDispatchProvider,
+      ),
+      source: cursor_worker_turn_api_key_host_path,
+      snapshot: snapshot_path,
+    ) {
       DispatchSnapshotRefused { reason } => DispatchActuatorSelectionRefused { reason: reason }
       DispatchSnapshotTaken { snapshot } => {
         let selection = worker_turn_selection_of(
@@ -2410,6 +2471,7 @@ type DispatchProviderInnerArgv
   | CodexProviderOffCustodyHost { reason: NonEmptyStr }
   | ClaudeProviderCredentialUnbound { reason: NonEmptyStr }
   | CredentialSnapshotNotConsumed { reason: NonEmptyStr }
+  | CredentialSnapshotForAnotherAttempt { reason: NonEmptyStr }
 
 // THE WORKER-TURN CREDENTIALS LIVE ON ONE HOST EACH (gunbc.cursor_harness_credential,
 // gunbc.codex_harness_credential), so a Cursor or Codex spawn on any other instance host refuses here
@@ -2562,6 +2624,9 @@ fn dispatch_provider_inner_argv_for_instance(
         NoCredentialSnapshot =>
           ClaudeProviderCredentialUnbound { reason: claude_launch_without_snapshot_reason }
         CredentialSnapshotHeld { snapshot } =>
+          match held_snapshot_for_another_attempt(snapshot: snapshot, instance: instance, node_id: node_id, attempt_key: attempt_key, provider: provider) {
+            Present { value: reason } => CredentialSnapshotForAnotherAttempt { reason: reason }
+            Absent =>
       claude_inner_argv_for_credential(
         credential: claude_dispatch_credential(),
         snapshot: snapshot,
@@ -2580,6 +2645,7 @@ fn dispatch_provider_inner_argv_for_instance(
           ),
         ),
       )
+          }
       }
     CodexDispatchProvider =>
       match credential_snapshot {
@@ -2627,13 +2693,17 @@ fn dispatch_provider_inner_argv_for_instance(
           NoCredentialSnapshot =>
             CursorProviderCredentialUnbound { reason: cursor_launch_without_snapshot_reason }
           CredentialSnapshotHeld { snapshot } =>
-            match cursor_worker_turn_argv(
-              snapshot: snapshot,
-              worktree_path: worktree_path,
-              prompt: brief as NonEmptyStr,
-            ) {
-              CursorWorkerTurnArgvReady { argv } => DispatchProviderInnerArgvReady { argv: argv }
-              CursorWorkerTurnRefused { reason } => CursorProviderCredentialUnbound { reason: reason }
+            match held_snapshot_for_another_attempt(snapshot: snapshot, instance: instance, node_id: node_id, attempt_key: attempt_key, provider: provider) {
+              Present { value: reason } => CredentialSnapshotForAnotherAttempt { reason: reason }
+              Absent =>
+                match cursor_worker_turn_argv(
+                  snapshot: snapshot,
+                  worktree_path: worktree_path,
+                  prompt: brief as NonEmptyStr,
+                ) {
+                  CursorWorkerTurnArgvReady { argv } => DispatchProviderInnerArgvReady { argv: argv }
+                  CursorWorkerTurnRefused { reason } => CursorProviderCredentialUnbound { reason: reason }
+                }
             }
         }
       }
@@ -3435,6 +3505,11 @@ fn dispatch_spawn_commands_for_resolved_instance(
     CredentialSnapshotNotConsumed { reason } =>
       DispatchSpawnRefused {
         step: "credential-snapshot-unconsumed" as NonEmptyStr,
+        detail: reason as String,
+      }
+    CredentialSnapshotForAnotherAttempt { reason } =>
+      DispatchSpawnRefused {
+        step: "credential-snapshot-other-attempt" as NonEmptyStr,
         detail: reason as String,
       }
     ClaudeProviderCredentialUnbound { reason } =>

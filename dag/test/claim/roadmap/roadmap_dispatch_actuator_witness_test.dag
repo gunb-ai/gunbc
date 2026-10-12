@@ -86,6 +86,7 @@ import gunbc.roadmap_dispatch_actuator {
   CodexProviderOffCustodyHost,
   CodexProviderExecutableAbsent,
   CredentialSnapshotNotConsumed,
+  CredentialSnapshotForAnotherAttempt,
   ClaudeProviderCredentialUnbound,
   ClaudeCodeProvider,
   CodexDispatchProvider,
@@ -1080,6 +1081,7 @@ fn witness_inner_argv_wire(inner: DispatchProviderInnerArgv) -> String {
     CodexProviderOffCustodyHost { reason: r } => r as String
     CodexProviderExecutableAbsent { reason: r } => r as String
     CredentialSnapshotNotConsumed { reason: r } => r as String
+    CredentialSnapshotForAnotherAttempt { reason: r } => r as String
     ClaudeProviderCredentialUnbound { reason: r } => r as String
   }
 }
