@@ -157,7 +157,7 @@ fn would_share_cell(b: Bool) -> String {
 }
 
 fn collision_report_line(subject: String, row: LeafCollisionRow) -> String {
-  concat([
+  [
     "collision subject=",
     subject,
     " leaf=",
@@ -170,7 +170,7 @@ fn collision_report_line(subject: String, row: LeafCollisionRow) -> String {
     sharing_label(sharing: row.sharing),
     " rustc=",
     rustc_label(grade: row.rustc)
-  ])
+  ] |> join(separator: "")
 }
 
 fn subject_summary_line(kind: String, name: String, rows: List<LeafCollisionRow>) -> String {
@@ -186,7 +186,7 @@ fn subject_summary_line(kind: String, name: String, rows: List<LeafCollisionRow>
       SameSharing => false
     }
   ) |> count
-  concat([
+  [
     "subject kind=",
     kind,
     " name=",
@@ -197,11 +197,11 @@ fn subject_summary_line(kind: String, name: String, rows: List<LeafCollisionRow>
     to_string(same),
     " different_sharing=",
     to_string(different)
-  ])
+  ] |> join(separator: "")
 }
 
 fn control_line(name: String, held: Bool) -> String {
-  concat(["control ", name, " ", if held { "held" } else { "unmet" }])
+  ["control ", name, " ", if held { "held" } else { "unmet" }] |> join(separator: "")
 }
 
 fn fixture_standing(red_rows: List<LeafCollisionRow>, green_rows: List<LeafCollisionRow>) -> String {
