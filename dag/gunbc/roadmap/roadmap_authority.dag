@@ -1237,7 +1237,25 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         first_slice: "A roster projected from one parsed module, with the argument-list control: a comment between two arguments lands before = a, after = b in the call's scope.",
         red_control: "A comment inside f's body never attaches to the next declaration g; a comment between call arguments lands between the argument productions, not on spine nodes; v1 and v2 name the same neighbour SOURCE TEXT for every comment between siblings both trees retain (structural keys are not comparable across the two trees: v1 keys name authored identifiers, v2 keys name productions), with the places the trees differ asserted rather than dropped.",
         out_of_scope: "The attachment rule and the v1 realization (parse-comment-gap-attachment).",
-        handback: "parse_module_authored attaches every capture of a parsed module through attach_annotations, the roster disposition note on AuthoredParseArtifact is deleted, and the v1/v2 neighbour-text agreement control is green."
+        handback: "parse_module_authored attaches every capture of a parsed module through attach_annotations, the roster disposition note on AuthoredParseArtifact is deleted, and the v1/v2 neighbour-text agreement control is green; its production consumer and gating are parse-comment-gap-attachment-v2-consumed."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-compiler-live", contribution: "The v2 compiler keeps authored prose under the same gap rule as the seed."),
+    ),
+
+    roadmap_node(
+      identity: "rn_K7QW3M9TZP4XH2D6VB8NRC5JYE",
+      id: "parse-comment-gap-attachment-v2-consumed",
+      owner: "parse",
+      carriers: carrier(path: "src/v2/compiler/02_parse.dag"),
+      line: ticket(t: fields(
+        headline: "The authored v2 parse has a production consumer and a gated agreement control",
+        boundary: "parse_module_authored attaches comments by the shared gap rule but nothing in the production parse path calls it, and the v1/v2 neighbour-text agreement control (v2.test.manual.annotation_gap_v1_v2_agreement) sits under manual/, so no gated row executes it. A v2-built consumer of AuthoredParseArtifact lands, and the agreement control joins a row the required gate judges.",
+        displaced_cost: "Until consumed, the authored v2 parse is executed only by claims, and a v1/v2 divergence in attachment goes unseen by CI.",
+        first_slice: "One production caller of parse_module_authored, exercised by a gated row.",
+        red_control: "Breaking the v2 roster (dropping infix applications as regions) turns the gated agreement control red.",
+        out_of_scope: "The roster and the gap rule (parse-comment-gap-attachment-v2).",
+        handback: "A production route calls parse_module_authored and the agreement control runs under the required gate."
       )),
       dispatch: dispatchable(),
       parent: in_project(project: "v2-compiler-live", contribution: "The v2 compiler keeps authored prose under the same gap rule as the seed."),

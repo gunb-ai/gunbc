@@ -60,7 +60,6 @@ import std.source_annotation {
   SourceAnnotationGraph,
   attach_annotations
 }
-import std.coercion { unicode_scalar_fold }
 import v2.std.provenance {
   DerivedBy,
   SpanIndex,
@@ -213,8 +212,6 @@ fn authored_parse_annotations(artifact: AuthoredParseArtifact) -> SourceAnnotati
   artifact.annotations
 }
 
-data authored_parse_artifact_v2_roster_disposition: String = "FRONTIER — parse_module_authored projects the region roster from SpanIndex extents (parser scaffolding transparent), the capture row carries the adjacency bits, and it calls attach_annotations, the SAME fold v1 calls. Not yet done: no production path calls parse_module_authored (parse_module stays annotation-blind), and the v1/v2 agreement control (v2.test.manual.annotation_gap_v1_v2_agreement) is manual, so CI never runs it. DISSOLVE-ON: a production consumer of the authored v2 parse lands, and the agreement control is enrolled in a gated row."
-
 // THE REGION ROSTER OF A v2 PARSE (std.source_annotation AnnotationRegion). A region is a grammar
 // production or an infix application (parse_node_is_source_region). Everything between two regions
 // -- sequence and repeat spines, projection edges, the identity atom, terminals -- is parser
@@ -222,7 +219,7 @@ data authored_parse_artifact_v2_roster_disposition: String = "FRONTIER — parse
 // regions nearest beneath it. Each region's
 // extent is the one the parser recorded (v2.std.provenance span_index_extent, roadmap
 // parse-node-source-extent), never rebuilt. A production that consumed nothing has no extent and no
-// region; one whose extent is Unrepresentable is collected so the authored parse refuses rather than
+// region; one whose extent is Unrepresentable, or is recorded as anything but a byte range, is collected so the authored parse refuses rather than
 // silently re-parenting the comments inside it to its parent.
 type AuthoredRegionWalk {
   regions: List<AnnotationRegion>
@@ -285,9 +282,17 @@ fn authored_region_walk(index: SpanIndex, node: Node, parent: AnnotationScope, a
                             }),
                             unrepresentable: acc.unrepresentable
                           })
-                        WholeFile => authored_region_walk_children(index: index, node: node, parent: parent, acc: acc)
+                        WholeFile =>
+                          authored_region_walk_children(index: index, node: node, parent: parent, acc: AuthoredRegionWalk {
+                            regions: acc.regions,
+                            unrepresentable: list_snoc_item(xs: acc.unrepresentable, item: id)
+                          })
                       }
-                    _ => authored_region_walk_children(index: index, node: node, parent: parent, acc: acc)
+                    _ =>
+                      authored_region_walk_children(index: index, node: node, parent: parent, acc: AuthoredRegionWalk {
+                        regions: acc.regions,
+                        unrepresentable: list_snoc_item(xs: acc.unrepresentable, item: id)
+                      })
                   }
               }
           }
@@ -301,7 +306,7 @@ fn authored_regions(artifact: ParseArtifact) -> AuthoredRegionWalk {
 
 fn authored_normalized_capture(capture: UnboundSourceAnnotation, annotation_text: fn(String) -> String) -> NormalizedAnnotationCapture {
   NormalizedAnnotationCapture {
-    text: annotation_text(unicode_scalar_fold(xs: capture.lexeme)),
+    text: annotation_text(capture.lexeme),
     origin: SourceSpan { file: symbol_lexeme(sym: capture.file), start: capture.start, end: capture.end },
     placement: capture.placement,
     preceded_by_blank_line: capture.preceded_by_blank_line,
