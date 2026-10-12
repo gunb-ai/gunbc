@@ -291,7 +291,7 @@ test fn host_identity_converge_step_stays_modeled_not_gap() -> Bool {
 
 // RED (discriminating): distinct coproduct variants must compare UNEQUAL. If the derived
 // `==` were wrong -- e.g. treated as a constant-true or variant-ignoring equality -- this
-// would fail. Covers all four distinct variant pairs.
+// would fail. Covers all six unordered distinct variant pairs (4 variants, C(4,2)=6).
 test fn assimilation_complete_input_eq_red_distinct_variants_unequal() -> Bool {
   NodeRegistered != ResourcesPresent
     && NodeRegistered != GreenPlacePinCoherent
