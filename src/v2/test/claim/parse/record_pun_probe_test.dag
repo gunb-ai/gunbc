@@ -84,8 +84,8 @@ test fn a_block_headed_by_a_value_name_is_still_a_block_holds() -> Bool {
   parsed_ok(tag: "ifb", text: if_block_source())
 }
 
-test fn r_two_ACCEPTED() -> Bool { parse_refusal_reason_of(tag: "two", text: probe(body: "X { s t }")) == "ACCEPTED" }
-test fn r_comma_ACCEPTED() -> Bool { parse_refusal_reason_of(tag: "comma", text: probe(body: "X { s t: t }")) == "ACCEPTED" }
+test fn r_two_accepted() -> Bool { parse_refusal_reason_of(tag: "two", text: probe(body: "X { s t }")) == "ACCEPTED" }
+test fn r_comma_accepted() -> Bool { parse_refusal_reason_of(tag: "comma", text: probe(body: "X { s t: t }")) == "ACCEPTED" }
 test fn r_two_declaration_marker_not_test() -> Bool { parse_refusal_reason_of(tag: "two", text: probe(body: "X { s t }")) == "parse_declaration_marker_not_test" }
 test fn r_comma_declaration_marker_not_test() -> Bool { parse_refusal_reason_of(tag: "comma", text: probe(body: "X { s t: t }")) == "parse_declaration_marker_not_test" }
 test fn r_two_g0_tokens_remain() -> Bool { parse_refusal_reason_of(tag: "two", text: probe(body: "X { s t }")) == "parse_g0_tokens_remain" }
