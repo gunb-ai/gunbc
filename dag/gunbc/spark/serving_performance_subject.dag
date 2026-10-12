@@ -656,7 +656,15 @@ fn subject_axis_is_unknown(s: ServingPerformanceSubject, a: ServingSubjectAxis) 
       match s.accelerator {
         AcceleratorUnread => true
         AcceleratorSparkGb10 => false
-        AcceleratorCited { realization: _ } => false
+        AcceleratorCited { realization: a } =>
+          match a.host_link {
+            HostLinkUnread => true
+            HostLinkNegotiated { link: _ } =>
+              match a.applied_power_limit {
+                Absent => true
+                Present { value: _ } => false
+              }
+          }
       }
   }
 }
