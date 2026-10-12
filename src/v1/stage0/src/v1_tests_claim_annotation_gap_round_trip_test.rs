@@ -858,3 +858,31 @@ pub fn disjoint_absorbed_parentheses_stay_siblings_holds() -> bool {
                 ])))
     }
 }
+
+pub fn parenthesised_argument_source() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "module zqxgap.arg\n\nfn zqx_f(zqx_x: Int) -> Int {\n  zqx_g(( // in a parenthesised argument\n    zqx_x))\n}\n".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn a_comment_in_argument_parentheses_lands_in_the_parentheses_holds() -> bool {
+    {
+        let p = gap_parse(parenthesised_argument_source());
+        (parsed_ok(p.clone())
+            && match key_of(p.clone(), "in a parenthesised argument".to_string()) {
+                std::option::Option::None => false,
+                Some(k) => {
+                    (v1_rt::ends_with(k.scope_key.clone(), ":()".to_string())
+                        && (gap_texts(p.clone(), "in a parenthesised argument".to_string())
+                            == Rc::new(vec![
+                                "( // in a parenthesised argument\n    zqx_x)".to_string(),
+                                "<none>".to_string(),
+                                "zqx_x".to_string(),
+                            ])))
+                }
+            })
+    }
+}

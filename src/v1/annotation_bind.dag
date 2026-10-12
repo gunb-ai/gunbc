@@ -31,7 +31,7 @@ import v1.compiler.parse {
 
 // THE REGION ROSTER IS THE PARSER'S PUBLISHED SOURCE STRUCTURE, read, never rebuilt. Every occurrence the index carries contributes its RECORDED extent (v1.compiler.parse ParsedSourceExtents, roadmap parse-node-source-extent), and every erased scope the parser published -- the parentheses of `(x)`, the braces of a one-statement block -- contributes its own region. Nothing here derives a range from descendants: an occurrence without a recorded extent contributes no region.
 //
-// THE PARENTS COME FROM CONTAINMENT, in one interval sweep, because the semantic tree cannot supply them for erased scopes. An erased scope may sit between a node and its parent (`((x))`), inside an occurrence that absorbed what it enclosed while that occurrence kept other children (`(a.b)(x)` keeps the receiver `a`, which lies INSIDE the parentheses), or beside another erased scope absorbed by the same occurrence (`g((1), (2))()`). The parser's extents nest -- the whole-population control in v1.tests.claim.parse_source_extent_control_test holds every occurrence inside its parent -- so sorting all regions by start, then by end descending, and keeping a stack of the regions still open gives each region the innermost one containing it. Two regions of EQUAL extent are a wrapper and what it wraps (an argument and its expression, a property and its value): the shallower occurrence, by containment depth, is the outer one, and an erased scope is never narrower than what it encloses. One sort and one pass: O(n log n) per source.
+// THE PARENTS COME FROM CONTAINMENT, in one interval sweep, because the semantic tree cannot supply them for erased scopes. An erased scope may sit between a node and its parent (`((x))`), inside an occurrence that absorbed what it enclosed while that occurrence kept other children (`(a.b)(x)` keeps the receiver `a`, which lies INSIDE the parentheses), or beside another erased scope absorbed by the same occurrence (`g((1), (2))()`). The parser's extents nest -- the whole-population control in v1.tests.claim.parse_source_extent_control_test holds every occurrence inside its parent -- so sorting all regions by start, then by end descending, and keeping a stack of the regions still open gives each region the innermost one containing it. Two regions of EQUAL extent are a wrapper and what it wraps (an argument and its expression, a property and its value): the shallower occurrence, by containment depth, is the outer one; an erased scope is wider than what it encloses, so it can only tie with that node's wrappers, and it is inside them. One sort and one pass: O(n log n) per source.
 fn ancestor_depth(entry: OccurrenceIndexEntry) -> Int {
   count(entry.containment.ancestors)
 }
@@ -48,9 +48,19 @@ type RegionSweepAcc {
 }
 
 // The order the sweep reads regions in: by start; at one start the wider first; at one extent the
-// shallower first. Depth is -1 for an erased scope, which encloses what shares its start.
-fn swept_region_order(r: SweptRegion) -> Int {
-  (r.extent.start * 4294967296 + (2147483647 - r.extent.end)) * 1024 + (r.depth + 1)
+// shallower first. Three STABLE sorts, least significant key first, so no key is packed into a
+// shared integer that a large offset could overflow. An erased scope sorts after every occurrence of
+// the same extent: when an argument `(x)` and its parentheses share an extent, the argument wraps
+// the parentheses, which wrap x.
+fn erased_region_depth() -> Int {
+  1000000000
+}
+
+fn swept_region_order(regions: List<SweptRegion>) -> List<SweptRegion> {
+  regions
+    |> sort_by(r => r.depth)
+    |> sort_by(r => 0 - r.extent.end)
+    |> sort_by(r => r.extent.start)
 }
 
 fn close_regions_ending_by(open: List<SweptRegion>, at: Int) -> List<SweptRegion> {
@@ -80,9 +90,9 @@ fn annotation_regions(transport: OccurrenceTransport, extents: ParsedSourceExten
       Present { value: extent } => list_push(acc, SweptRegion { scope: OccurrenceScope { occurrence: entry.projection.occurrence }, extent: extent, depth: ancestor_depth(entry: entry) })
       Absent => acc
     })
-  let erased = extents.erased_scopes |> map(scope => SweptRegion { scope: ErasedSourceRegion { extent: scope.extent }, extent: scope.extent, depth: 0 - 1 })
+  let erased = extents.erased_scopes |> map(scope => SweptRegion { scope: ErasedSourceRegion { extent: scope.extent }, extent: scope.extent, depth: erased_region_depth() })
   let swept = fold(
-    concat(occurrences, erased) |> sort_by(r => swept_region_order(r: r)),
+    swept_region_order(regions: concat(occurrences, erased)),
     init: RegionSweepAcc { open: [], regions: [] },
     f: (acc, region) => region_sweep_step(acc: acc, region: region)
   )

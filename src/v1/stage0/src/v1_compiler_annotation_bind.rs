@@ -40,17 +40,46 @@ pub struct RegionSweepAcc {
     pub regions: Rc<Vec<Rc<AnnotationRegion>>>,
 }
 
-pub fn swept_region_order(r: Rc<SweptRegion>) -> i64 {
-    v1_rt::int_add(
-        v1_rt::int_mul(
-            v1_rt::int_add(
-                v1_rt::int_mul(r.extent.clone().start.clone(), 4294967296),
-                v1_rt::int_sub(2147483647, r.extent.clone().end.clone()),
-            ),
-            1024,
-        ),
-        v1_rt::int_add(r.depth.clone(), 1),
-    )
+pub fn erased_region_depth() -> i64 {
+    1000000000
+}
+
+pub fn swept_region_order(regions: Rc<Vec<Rc<SweptRegion>>>) -> Rc<Vec<Rc<SweptRegion>>> {
+    Rc::new({
+        let mut __sorted: Vec<_> = Rc::new({
+            let mut __sorted: Vec<_> = Rc::new({
+                let mut __sorted: Vec<_> = regions.iter().cloned().collect();
+                __sorted.sort_by(|a: &Rc<SweptRegion>, b: &Rc<SweptRegion>| {
+                    let __ka = (|r: Rc<SweptRegion>| r.depth.clone())(a.clone());
+                    let __kb = (|r: Rc<SweptRegion>| r.depth.clone())(b.clone());
+                    v1_rt::canonical_key_cmp(&__ka, &__kb)
+                });
+                __sorted
+            })
+            .iter()
+            .cloned()
+            .collect();
+            __sorted.sort_by(|a: &Rc<SweptRegion>, b: &Rc<SweptRegion>| {
+                let __ka = (|r: Rc<SweptRegion>| v1_rt::int_sub(0, r.extent.clone().end.clone()))(
+                    a.clone(),
+                );
+                let __kb = (|r: Rc<SweptRegion>| v1_rt::int_sub(0, r.extent.clone().end.clone()))(
+                    b.clone(),
+                );
+                v1_rt::canonical_key_cmp(&__ka, &__kb)
+            });
+            __sorted
+        })
+        .iter()
+        .cloned()
+        .collect();
+        __sorted.sort_by(|a: &Rc<SweptRegion>, b: &Rc<SweptRegion>| {
+            let __ka = (|r: Rc<SweptRegion>| r.extent.clone().start.clone())(a.clone());
+            let __kb = (|r: Rc<SweptRegion>| r.extent.clone().start.clone())(b.clone());
+            v1_rt::canonical_key_cmp(&__ka, &__kb)
+        });
+        __sorted
+    })
 }
 
 pub fn close_regions_ending_by(
@@ -158,34 +187,23 @@ pub fn annotation_regions(
                         extent: scope.extent.clone(),
                     }),
                     extent: scope.extent.clone(),
-                    depth: v1_rt::int_sub(0, 1),
+                    depth: erased_region_depth(),
                 }));
             }
             __result
         });
-        let swept = Rc::new({
-            let mut __sorted: Vec<_> = v1_rt::concat(occurrences.clone(), erased.clone())
-                .iter()
-                .cloned()
-                .collect();
-            __sorted.sort_by(|a: &Rc<SweptRegion>, b: &Rc<SweptRegion>| {
-                let __ka = (|r: Rc<SweptRegion>| swept_region_order(r.clone()))(a.clone());
-                let __kb = (|r: Rc<SweptRegion>| swept_region_order(r.clone()))(b.clone());
-                v1_rt::canonical_key_cmp(&__ka, &__kb)
-            });
-            __sorted
-        })
-        .iter()
-        .cloned()
-        .fold(
-            Rc::new(RegionSweepAcc {
-                open: Rc::new(vec![]),
-                regions: Rc::new(vec![]),
-            }),
-            |acc: Rc<RegionSweepAcc>, region: Rc<SweptRegion>| {
-                region_sweep_step(acc, region.clone())
-            },
-        );
+        let swept = swept_region_order(v1_rt::concat(occurrences.clone(), erased.clone()))
+            .iter()
+            .cloned()
+            .fold(
+                Rc::new(RegionSweepAcc {
+                    open: Rc::new(vec![]),
+                    regions: Rc::new(vec![]),
+                }),
+                |acc: Rc<RegionSweepAcc>, region: Rc<SweptRegion>| {
+                    region_sweep_step(acc, region.clone())
+                },
+            );
         swept.regions.clone()
     }
 }

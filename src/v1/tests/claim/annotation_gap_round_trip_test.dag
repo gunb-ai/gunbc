@@ -389,3 +389,20 @@ test fn disjoint_absorbed_parentheses_stay_siblings_holds() -> Bool {
     && gap_texts(p: p, text: "in first argument") == ["( // in first argument\n    1)", "<none>", "<none>"]
 }
 
+
+// AN ARGUMENT AND ITS PARENTHESES SHARE AN EXTENT, and the argument is the outer one: `g((x))` is a
+// call whose argument wraps `(x)`, whose parentheses wrap `x`. A comment inside the parentheses lands
+// in them, not in the argument -- the two have the same source text, so the scope is told apart by
+// its structural key, whose last step names an erased region `()`.
+data parenthesised_argument_source: String = "module zqxgap.arg\n\nfn zqx_f(zqx_x: Int) -> Int \{\n  zqx_g(( // in a parenthesised argument\n    zqx_x))\n\}\n"
+
+test fn a_comment_in_argument_parentheses_lands_in_the_parentheses_holds() -> Bool {
+  let p = gap_parse(source: parenthesised_argument_source)
+  parsed_ok(p: p)
+    && match key_of(p: p, text: "in a parenthesised argument") {
+      Absent => false
+      Present { value: k } =>
+        ends_with(s: k.scope_key, suffix: ":()")
+          && gap_texts(p: p, text: "in a parenthesised argument") == ["( // in a parenthesised argument\n    zqx_x)", "<none>", "zqx_x"]
+    }
+}
