@@ -41,7 +41,7 @@ import product.fabric.flex_policy {
   exact_ratio_denominator,
 }
 import extdeps.cloud.vast_ai {
-  VastAiOffer, vast_ai_min_bid_money_per_hour,
+  VastAiOffer, vast_ai_min_bid_money_per_hour, vast_ai_dph_total_money_per_hour,
 }
 import test.claim.fabric.provider_use_fixture {
   fixture_admitted_for_offer, fixture_demand_for, fixture_work_for, fixture_route,
@@ -224,6 +224,9 @@ test fn vast_min_bid_rounds_up_a_seventh_fraction_digit() -> Bool {
     DecimalMoneyUnrepresentable { cause: _ } => false
   } && match vast_ai_min_bid_money_per_hour(offer: vast_min_sample()) {
     DecimalMoneyPerHourConverted { rate: r } => money_per_hour_micros(q: r) == 111112
+    DecimalMoneyPerHourRefused { conversion: _ } => false
+  } && match vast_ai_dph_total_money_per_hour(offer: vast_min_sample()) {
+    DecimalMoneyPerHourConverted { rate: r } => money_per_hour_micros(q: r) == 2000000
     DecimalMoneyPerHourRefused { conversion: _ } => false
   }
 }
