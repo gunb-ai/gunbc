@@ -34,9 +34,10 @@ import product.fabric.selection {
 import product.fabric.budget { MoneyAccount }
 import product.fabric.flex_policy {
   ExactRatio, FlexPolicy, FlexBidLedger, FlexAcquisitionWindow, FlexMachineKey, FlexBidAttempt,
-  FlexBidAdmission, FlexBidAdmitted, FlexBidRefused, FlexNoAcquisitionRemaining,
+  FlexScreenedCandidate, FlexBidAdmission, FlexBidAdmitted, FlexBidRefused, FlexNoAcquisitionRemaining,
   FlexRetainedLimitWouldRise, FlexRateCapBelowMin, FlexMoneyRefused, FlexSupplyNotSelected,
   FlexOnDemandFractionExceeded, FlexCurrencyMismatch, FlexDecimalConversionRefused,
+  FlexCandidateMachineMismatch,
   flex_floor_buffer, flex_bid_admission, flex_rebid_at_buffer_of_new_min, flex_buffered_min,
   exact_ratio_denominator,
 }
@@ -186,7 +187,11 @@ fn t_attempt(
     machine: machine,
     min_bid: min_bid,
     quote_currency: vast_ai_quote_currency,
-    candidates: t_bound(offer: t_offer(key: key, rate: quote), revocable: revocable),
+    candidates: fold(
+      t_bound(offer: t_offer(key: key, rate: quote), revocable: revocable),
+      init: [],
+      f: (acc, c) => concat(acc, [FlexScreenedCandidate { machine: machine, candidate: c }]),
+    ),
     requirements: t_reqs(revocation: revocation),
     reservation: reservation,
     generation: 1,
@@ -215,6 +220,7 @@ fn refusal_label(o: FlexBidAdmission) -> NonEmptyStr {
         FlexRateCapBelowMin { cap: _, min_bid: _ } => "rate-cap"
         FlexRetainedLimitWouldRise { retained: _, min_bid: _ } => "retained-would-rise"
         FlexSupplyNotSelected { selection: _ } => "supply"
+        FlexCandidateMachineMismatch { named: _, observed: _ } => "machine-mismatch"
         FlexMoneyRefused { refusal: _ } => "money"
       }
   }
@@ -421,6 +427,34 @@ test fn a_currency_mismatch_is_refused_not_compared() -> Bool {
       revocable: true,
     ),
   )) == "currency"
+}
+
+test fn a_candidate_tagged_for_another_machine_is_refused() -> Bool {
+  let named = t_machine(id: "machine-a")
+  let other = t_machine(id: "machine-b")
+  let bound = t_bound(offer: t_offer(key: "offer-b", rate: one_ten()), revocable: true)
+  refusal_label(o: flex_bid_admission(
+    policy: t_policy(cap_micros: 5000000),
+    ledger: FlexBidLedger { limits: [] },
+    window: t_window(remaining: 1),
+    account: t_account(ceiling: 10000000),
+    attempt: FlexBidAttempt {
+      machine: named,
+      min_bid: one_dollar_wire(),
+      quote_currency: vast_ai_quote_currency,
+      candidates: fold(
+        bound,
+        init: [],
+        f: (acc, c) => concat(acc, [FlexScreenedCandidate { machine: other, candidate: c }]),
+      ),
+      requirements: t_reqs(revocation: RevocationAccepted),
+      reservation: "res-mismatch",
+      generation: 1,
+      delay_valuation: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
+      tie: StableRosterOrder,
+      affinity: "test.flex" as PlacementAffinityKey,
+    },
+  )) == "machine-mismatch"
 }
 
 test fn a_usd_wire_min_bid_is_refused_against_a_eur_cap() -> Bool {
