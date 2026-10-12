@@ -142,9 +142,11 @@ data gunbc_first_party_serving_provider: FirstPartyServingAuthority = FirstParty
   basis: "For self-hosted Spark serving the provider is gunbc itself: the units are operator-owned, they sit at the operator's own site, and the engine is run by us. This is the same principal gunbc.harness.harness_seat already passes as the fabric principal, so the route names the party that is actually serving rather than an upstream vendor whose software happens to be running.",
 }
 
-// THE SERVICE IS THE DEPLOYMENT WE ALREADY DECLARE, cited rather than re-coined: the thing being
-// offered on this route is the Spark pair serving deployment, whose single authority is
-// retired gunbc.spark.pair_serving_desired (deleted #13779). A fresh service anchor beside it would be a second name for it.
+// THE SERVICE ANCHOR IS DISPOSAL, NOT AN OFFERED DEPLOYMENT. Pair serving is retired
+// (gunbc.spark.pair_serving_desired deleted #13779). Posture consumers still need a service
+// DeclarationRef on ProviderRoute; the live authority for what those Spark units are now is
+// gunbc.spark.dgx_procurement dgx_spark_disposed_units. A fresh service name beside that would
+// be a second name for the sold rack.
 fn spark_first_party_service_ref() -> DeclarationRef {
   decl_ref(module_path: "gunbc.spark.dgx_procurement", decl_name: "dgx_spark_disposed_units")
 }
