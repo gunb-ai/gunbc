@@ -346,7 +346,7 @@ fn principal_fact() -> PrincipalFact {
 fn provider_fact(instance: HostDashboardInstance) -> BeltProviderPreflight {
   match dispatch_actuator_selection(sizing_expectation: NoDerivedSizingExpectation) {
     DispatchActuatorSelectionRefused { reason: r } => ProviderPreflightRefused { step: "dispatch-selection", detail: r as String }
-    DispatchActuatorSelectionOk { provider: p, effort: _, model: _, process_fingerprint: _ } => belt_provider_preflight_for_instance(instance: instance, provider: p)
+    DispatchActuatorSelectionOk { provider: p, effort: _, model: _, process_fingerprint: _, credential_snapshot: _ } => belt_provider_preflight_for_instance(instance: instance, provider: p)
   }
 }
 

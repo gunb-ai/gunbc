@@ -176,7 +176,7 @@ test fn worker_turn_draws_on_a_non_custody_instance_refuse() -> Bool {
     sizing_expectation: NoDerivedSizingExpectation,
   ) {
     DispatchActuatorSelectionRefused { reason: _ } => true
-    DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint: _ } => false
+    DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint: _, credential_snapshot: _ } => false
   }
   let cursor = match dispatch_actuator_worker_turn_selection_observed(
     instance: srv1_live_dashboard_instance(),
@@ -186,7 +186,7 @@ test fn worker_turn_draws_on_a_non_custody_instance_refuse() -> Bool {
     sizing_expectation: NoDerivedSizingExpectation,
   ) {
     DispatchActuatorSelectionRefused { reason: _ } => true
-    DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint: _ } => false
+    DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint: _, credential_snapshot: _ } => false
   }
   codex && cursor
 }
