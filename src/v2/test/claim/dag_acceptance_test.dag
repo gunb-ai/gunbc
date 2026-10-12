@@ -478,37 +478,29 @@ test fn acceptance_partition_pins_each_outcome_class() -> Bool {
 }
 
 test fn acceptance_projections_fold_over_the_partition() -> Bool {
-  // passed: no label answers
   (row_rejection_label(row: passed_row_class()) == optional_absent())
     && (row_unfinished_label(row: passed_row_class()) == optional_absent())
     && (row_frontier_label(row: passed_row_class()) == optional_absent())
-  // passed-with-frontier: only the frontier label
     && (row_frontier_label(row: frontier_row_class()) == optional_present(value: ^obligation_infer))
     && (row_rejection_label(row: frontier_row_class()) == optional_absent())
     && (row_unfinished_label(row: frontier_row_class()) == optional_absent())
-  // rejected: only the rejection label
     && (row_rejection_label(row: rejected_row_class()) == optional_present(value: ^obligation_resolve))
     && (row_unfinished_label(row: rejected_row_class()) == optional_absent())
     && (row_frontier_label(row: rejected_row_class()) == optional_absent())
-  // not-required: NOTHING labels it — the split the control exists for
     && (row_rejection_label(row: not_required_row_class()) == optional_absent())
     && (row_unfinished_label(row: not_required_row_class()) == optional_absent())
     && (row_frontier_label(row: not_required_row_class()) == optional_absent())
-  // unfinished via a paid-for stage that the budget left behind
     && (row_unfinished_label(row: budget_row_class()) == optional_present(value: ^obligation_resolve))
     && (row_rejection_label(row: budget_row_class()) == optional_absent())
     && (row_frontier_label(row: budget_row_class()) == optional_absent())
-  // unfinished via an executed stage whose result is unknowable
     && (row_unfinished_label(row: undecided_row_class()) == optional_present(value: ^toolchain_rustc))
     && (row_rejection_label(row: undecided_row_class()) == optional_absent())
     && (row_frontier_label(row: undecided_row_class()) == optional_absent())
 }
 
 test fn acceptance_first_rejection_folds_over_the_partition() -> Bool {
-  // the prior short-circuit is preserved
   (acceptance_first_rejection(prior: optional_present(value: ^obligation_parse), row: rejected_row_class())
       == optional_present(value: ^obligation_parse))
-    // without a prior only the rejected class answers
     && (acceptance_first_rejection(prior: optional_absent(), row: rejected_row_class())
       == optional_present(value: ^obligation_resolve))
     && (acceptance_first_rejection(prior: optional_absent(), row: passed_row_class()) == optional_absent())
@@ -527,7 +519,6 @@ fn partition_receipt(rows: List<StageExecution>) -> DagAcceptanceReceipt {
 }
 
 test fn acceptance_verdict_folds_over_the_partition() -> Bool {
-  // the real consumer, all three branches, precedence rejected > incomplete > satisfied+frontier
   (match acceptance_verdict(receipt: partition_receipt(rows: [passed_row_class(), rejected_row_class(), frontier_row_class()])) {
      AcceptanceContractRejected { first_rejection: f, further_rejections: rest } =>
        (f == ^obligation_resolve) && (length(xs: rest) == 0)
@@ -538,7 +529,6 @@ test fn acceptance_verdict_folds_over_the_partition() -> Bool {
            (f == ^obligation_resolve) && (length(xs: rest) == 0)
          _ => false
        })
-    // not-required alone is satisfied (never incomplete): the split in the verdict fold too
     && (match acceptance_verdict(receipt: partition_receipt(rows: [passed_row_class(), not_required_row_class()])) {
          AcceptanceContractSatisfied { frontier_stages: f } => length(xs: f) == 0
          _ => false
