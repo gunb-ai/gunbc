@@ -9,6 +9,15 @@ for reading convenience; the `results_*.txt` and the raw `*.jsonl` are the autho
 
 ## The instrument (`kit/`)
 
+`kit/` is an **out-of-tree tool captured verbatim for provenance**, not a realization of
+anything in this repository. It ran by hand on rented vast.ai boxes; nothing here
+invokes, builds, tests or maintains it, and it is frozen at the state that produced
+`runs/` (including the `sed`-derived per-run copies of `sample.sh`). Re-deriving a run
+means copying `kit/` to a box with the same GPU, image and checkpoint and running the
+same command; the scripts are kept so that `runs/` names its producer. `*.py` files are
+force-added because the repository `.gitignore` excludes `*.py`.
+
+
 | step | what it does |
 |---|---|
 | `setup_ninfer.sh` | builds NInfer at commit `81c8ce09` and fetches `neroued/Qwen3.8-27B-nvfp4-NInfer` |
@@ -87,6 +96,15 @@ by itself rule out a communication bottleneck.
   `--max-num-batched-tokens 8192`. `*_oom095.log` are the 0.95 attempts.
 - The first `2xpro6000ws` FN run (max N 16 > 11) also thrashed; its results were
   overwritten by the valid re-run and only its driver log under `failed/2247_*` remains.
+
+## Consumer
+
+Nothing in the corpus reads these files yet. The intended consumer is the change that
+models the at-home serving-card selection (candidate cards, measured KV capacity and
+warm throughput per card and power cap) against the existing decision home
+(`std.decision`, `product.capacity`); that change should transcribe the rows it needs
+into typed declarations citing this directory. Until then this is a record, not an
+input.
 
 ## Not established here
 
