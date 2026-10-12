@@ -4,7 +4,7 @@ import std.types { List }
 
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
 import std.kind { Kind, RosterKindIndex, TypeDenotationKind, kind_denoted_by_node, kind_node, roster_kind_index, roster_kind_index_lookup }
-import v2.std.algebra { any, contains, Empty, TailAbsent, TailFound, length, list_map, list_tail, skip, zip_map }
+import v2.std.algebra { contains, Empty, TailAbsent, TailFound, length, list_map, list_tail, skip, zip_map }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import v2.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
@@ -1483,7 +1483,7 @@ fn infer_declaration_callable_evidence(declared: Node) -> Optional<Node> {
 //
 // THE RFM SPECIMENS ARE JUDGED (sunny-wolf-624, production route): Nat, generic Nat, kernel Int and
 // Out<Int> call results at a Bool declared return or argument refuse inhabitance
-// (v2.test.claim.compiler.declared_return_result drr_declared_return_call_results_are_judged). This
+// (v2.test.claim.compiler.declared_return_result drr_the_real_route_judges_a_projected_generic_call_result). This
 // swallow remains for a Rejected grounding of a callee Arrow that is not a program error -- a missing
 // compiler capability must become a named counted frontier, never silent accept. Instantiation
 // grounding of a legitimate derived type is in-scope for that residue; do not weaken
@@ -2044,19 +2044,13 @@ fn infer_operand_declared_type_instantiated(declared: Node, instances: List<Type
           }
       }
     TypeNode { connective: _ } =>
-      if any(
-        xs: node_positional_child_targets(node: declared),
-        predicate: fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) }
-      ) {
+      if node_positional_child_targets(node: declared) |> any(fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) }) {
         optional_absent()
       } else {
         optional_present(value: declared)
       }
     ComputationNode { behavior: _ } =>
-      if any(
-        xs: node_positional_child_targets(node: declared),
-        predicate: fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) }
-      ) {
+      if node_positional_child_targets(node: declared) |> any(fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) }) {
         optional_absent()
       } else {
         optional_present(value: declared)
@@ -2079,15 +2073,9 @@ fn infer_declared_type_mentions_free_formal(declared: Node, instances: List<Type
           }
       }
     TypeNode { connective: _ } =>
-      any(
-        xs: node_positional_child_targets(node: declared),
-        predicate: fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) }
-      )
+      node_positional_child_targets(node: declared) |> any(fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) })
     ComputationNode { behavior: _ } =>
-      any(
-        xs: node_positional_child_targets(node: declared),
-        predicate: fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) }
-      )
+      node_positional_child_targets(node: declared) |> any(fn(c) { infer_declared_type_mentions_free_formal(declared: c, instances: instances) })
   }
 }
 
@@ -2337,7 +2325,7 @@ fn infer_coproduct_coverage_obligation(
   let covered_children = fold(coproduct.variants.children, init: Empty, f: fn(acc, e) {
     match e.label {
       Authored { name: variant_tag } =>
-        if any(xs: rows, predicate: fn(row) {
+        if rows |> any(fn(row) {
           match row.covers {
             CoversAll => true
             CoversVariant { tag: t } => t == variant_tag
@@ -2729,9 +2717,9 @@ fn infer_match(
   match list_tail(xs: positional_targets) {
     TailAbsent => outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
     TailFound { tail: arms } =>
-      if any(xs: arms, predicate: fn(arm) { infer_match_arm_pattern_is_literal(arm: arm) }) {
+      if arms |> any(fn(arm) { infer_match_arm_pattern_is_literal(arm: arm) }) {
         infer_match_bool(node: node, partials: partials, entries: entries, resolved: resolved)
-      } else if any(xs: arms, predicate: fn(arm) { infer_match_arm_pattern_is_constructor(arm: arm) }) {
+      } else if arms |> any(fn(arm) { infer_match_arm_pattern_is_constructor(arm: arm) }) {
         infer_match_coproduct(node: node, partials: partials, entries: entries, resolved: resolved)
       } else {
         infer_match_bool(node: node, partials: partials, entries: entries, resolved: resolved)

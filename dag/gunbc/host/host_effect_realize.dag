@@ -190,7 +190,7 @@ import extdeps.systemd.systemctl {
   systemctl_start_command,
 }
 import gunbc.live_deploy.emit {
-  live_deploy_apply_script_for,
+  live_deploy_apply_script_for_wet,
   live_deploy_retract_script_for,
   deployment_ensure_dependency_script,
   deployment_serve_route_script,
@@ -4487,7 +4487,7 @@ fn realize_live_deploy_apply_on_host(
     let admission = runner_host_deploy_for(host: host)
     realize_shell_on_host(
       script: retained_srvn(
-        body: live_deploy_apply_script_for(
+        body: live_deploy_apply_script_for_wet(
           spec: spec,
           plan: plan,
           cap_authorization: match admission {

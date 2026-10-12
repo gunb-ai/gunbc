@@ -4,7 +4,7 @@ import std.types { Bool, EpochMs, Int, List, NonEmptyStr, Secret, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.scoped_authorization { AttemptIdentity }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.algebra { filter, length }
+import v2.std.algebra { length }
 import extdeps.crypto.mac { MacKeyId }
 import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc, BmcControllerEndpoint }
 import gunbc.auth.approval_capability { ApprovalCapabilityClaims, ProposeApprove, approval_capability_protocol }

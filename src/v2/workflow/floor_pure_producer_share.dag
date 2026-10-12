@@ -16,7 +16,7 @@ import std.materialization_ladder {
 }
 import std.measure { Millisecond, Nanosecond, byte_size, millisecond_count, nanosecond, nanosecond_count }
 import v2.workflow.required_floor { required_floor_new_witness_envelope_ms }
-import v2.std.algebra { any, list_flat_map, list_map }
+import v2.std.algebra { list_flat_map, list_map }
 import v2.std.collection { empty_map, map_get_checked, map_insert }
 import v2.std.diagnostic { Accepted, Rejected, Outcome }
 import std.optional { Absent, Present, Optional }
@@ -895,7 +895,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     module: "v2.test.claim.compiler.declared_return_result",
     claims: [
       SingleClaimFillDebtClaim { claim: "drr_the_real_route_judges_a_projected_generic_call_result", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "drr_declared_return_call_results_are_judged", standing: ActiveFillDebt }
+      SingleClaimFillDebtClaim { claim: "drr_declared_return_call_results_are_judged", standing: RetiredFillDebt { disposition: ClaimDeleted } }
     ]
   },
   SingleClaimFillDebtModule {
@@ -990,7 +990,8 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     module: "v2.test.claim.compiler.collection_callback_realization",
     claims: [
       SingleClaimFillDebtClaim { claim: "ccr_all_head_binds_its_row", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "ccr_declared_any_stays_an_ordinary_call", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "ccr_declared_any_refuses_rather_than_binding_silently", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "ccr_declared_any_stays_an_ordinary_call", standing: RetiredFillDebt { disposition: ClaimDeleted } },
       SingleClaimFillDebtClaim { claim: "ccr_map_undeclared_field_refuses_at_the_field", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "ccr_piped_map_head_binds_its_row", standing: ActiveFillDebt }
     ]

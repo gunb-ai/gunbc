@@ -72,7 +72,6 @@ import extdeps.google.issue_tracker {
 }
 import std.types { list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.algebra { any, filter }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

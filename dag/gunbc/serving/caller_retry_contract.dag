@@ -2,7 +2,7 @@ module gunbc.serving.caller_retry_contract
 
 import std.types { String, NonEmptyStr, List }
 import std.nat { Nat }
-import v2.std.algebra { length, filter, any }
+import v2.std.algebra { length }
 
 // ── THE BACKLOG IS THE CALLER'S, AND WHAT THAT OWES IS A CONTRACT (operator ruling, 2026-10-02) ────────
 //

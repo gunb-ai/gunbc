@@ -6,7 +6,6 @@ import gunbc.commit_workflow {
   commit_gate_roster, enrollment_has_surface,
   witness_entries_from_enrollments, project_ci_floor_witness_entries
 }
-import v2.std.algebra { filter }
 import std.algebra { list_append }
 import v2.std.integer { Int }
 import v2.std.decl_index { DeclFact, decl_facts, logical_qualified_name_from_module }
