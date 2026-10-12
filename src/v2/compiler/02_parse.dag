@@ -51,7 +51,16 @@ import v2.std.occurrence_id {
   occurrence_id_allocator_initial
 }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceIdAllocator, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic, node_occurrence_identity_minted }
-import std.source_annotation { SourceAnnotationGraph }
+import std.source_annotation {
+  AnnotationRegion,
+  AnnotationScope,
+  FileScope,
+  NormalizedAnnotationCapture,
+  OccurrenceScope,
+  SourceAnnotationGraph,
+  attach_annotations
+}
+import std.coercion { unicode_scalar_fold }
 import v2.std.provenance {
   DerivedBy,
   SpanIndex,
@@ -90,6 +99,8 @@ import v2.extdeps.languages.dag {
   dag_string_template_part_node_from_lexeme
 }
 import v2.std.compilers.lexing {
+  LexArtifact,
+  UnboundSourceAnnotation,
   LineBreakAnswer,
   LineBreakInGap,
   LineBreakUnknownWithoutSource,
@@ -105,6 +116,7 @@ import v2.std.compilers.lexing {
 }
 import v2.std.parse_refusal_reason { LayoutUnknownWithoutSource, NonAssociativeOperatorChain, ParseRefusalReason, TokenStartsNotIncreasing, parse_refusal_reason_symbol }
 import v2.std.grammar {
+  parse_production_emitted_identity_optional,
   AfterLineBreak,
   Choice,
   Expect,
@@ -187,8 +199,6 @@ type ParseArtifact {
 
 data authored_parse_artifact_note: String = "The parse-layer twin of LexArtifact: the semantic parse result PLUS what the annotation channel captured, bound to gaps. `authored_parse_semantic` is the erasure boundary — a consumer projecting through it sees exactly the ParseArtifact it saw before this channel existed, which is what lets every existing semantic consumer stay untouched while annotation-aware machinery reads the whole thing. It carries no refusal: attachment by gap (std.source_annotation attach_annotations) places every capture, the file's gap at worst."
 
-data authored_parse_artifact_v2_roster_disposition: String = "SCAFFOLD — v2 carries the carrier, not yet the producer. Attachment needs a region roster (std.source_annotation AnnotationRegion: scope, extent, parent per retained source region); v2 publishes the extents it needs in v2.std.provenance SpanIndex (span_index_extent, roadmap parse-node-source-extent) and the parent of each composite in its parse tree, but no fold projects them into a roster yet. The v2 lexical capture row also does not yet carry the blank-line and annotation-line adjacency bits the fold reads to group a block, and the lexer drops its final source position, which file-scope trivia needs. DISSOLVE-ON: roadmap node parse-comment-gap-attachment-v2 lands -- a roster projected from SpanIndex extents with parser scaffolding transparent, adjacency bits on the capture row, the lexer's final position retained -- and parse_module gains an authored sibling calling attach_annotations, the SAME fold v1 calls."
-
 type AuthoredParseArtifact {
   semantic: ParseArtifact
   annotations: SourceAnnotationGraph
@@ -200,6 +210,115 @@ fn authored_parse_semantic(artifact: AuthoredParseArtifact) -> ParseArtifact {
 
 fn authored_parse_annotations(artifact: AuthoredParseArtifact) -> SourceAnnotationGraph {
   artifact.annotations
+}
+
+// THE REGION ROSTER OF A v2 PARSE (std.source_annotation AnnotationRegion). A region is a GRAMMAR
+// PRODUCTION: the node parse_wrap_production_captured builds, carrying the production's identity
+// edge. Everything between two productions -- sequence and repeat spines, projection edges, the
+// identity atom, terminals -- is parser scaffolding and is projected transparently, so a
+// production's direct source-syntax children are the productions nearest beneath it. Each region's
+// extent is the one the parser recorded (v2.std.provenance span_index_extent, roadmap
+// parse-node-source-extent), never rebuilt. A production that consumed nothing has no extent and no
+// region; one whose extent is Unrepresentable is collected so the authored parse refuses rather than
+// silently re-parenting the comments inside it to its parent.
+type AuthoredRegionWalk {
+  regions: List<AnnotationRegion>
+  unrepresentable: List<OccurrenceId>
+}
+
+
+fn authored_region_walk_children(index: SpanIndex, node: Node, parent: AnnotationScope, acc: AuthoredRegionWalk) -> AuthoredRegionWalk {
+  let targets: List<Node> = node.children |> map(e => e.target)
+  fold_list(xs: targets, empty: acc, cons: fn(walk, child) { authored_region_walk(index: index, node: child, parent: parent, acc: walk) })
+}
+
+fn authored_region_walk(index: SpanIndex, node: Node, parent: AnnotationScope, acc: AuthoredRegionWalk) -> AuthoredRegionWalk {
+  match parse_production_emitted_identity_optional(node: node) {
+    Absent => authored_region_walk_children(index: index, node: node, parent: parent, acc: acc)
+    Present { value: _ } =>
+      match node_occurrence_id_optional(node: node) {
+        Absent => authored_region_walk_children(index: index, node: node, parent: parent, acc: acc)
+        Present { value: id } =>
+          match span_index_extent(index: index, id: id) {
+            Absent => authored_region_walk_children(index: index, node: node, parent: parent, acc: acc)
+            Present { value: recorded } =>
+              match recorded {
+                SourceExtentUnrepresentable =>
+                  authored_region_walk_children(index: index, node: node, parent: parent, acc: AuthoredRegionWalk {
+                    regions: acc.regions,
+                    unrepresentable: list_snoc_item(xs: acc.unrepresentable, item: id)
+                  })
+                SourceExtentKnown { locus: locus } =>
+                  match locus {
+                    Textual { file: f, extent: ext } =>
+                      match ext {
+                        ByteRange { start: st, end: en } =>
+                          authored_region_walk_children(index: index, node: node, parent: OccurrenceScope { occurrence: id }, acc: AuthoredRegionWalk {
+                            regions: list_snoc_item(xs: acc.regions, item: AnnotationRegion {
+                              scope: OccurrenceScope { occurrence: id },
+                              extent: SourceSpan { file: unicode_scalar_fold(xs: symbol_lexeme(sym: f)), start: st, end: en },
+                              parent: parent
+                            }),
+                            unrepresentable: acc.unrepresentable
+                          })
+                        WholeFile => authored_region_walk_children(index: index, node: node, parent: parent, acc: acc)
+                      }
+                    _ => authored_region_walk_children(index: index, node: node, parent: parent, acc: acc)
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn authored_regions(artifact: ParseArtifact) -> AuthoredRegionWalk {
+  authored_region_walk(index: artifact.span_index, node: artifact.tree, parent: FileScope, acc: AuthoredRegionWalk { regions: [], unrepresentable: [] })
+}
+
+fn authored_normalized_capture(capture: UnboundSourceAnnotation, normalize: fn(String) -> String) -> NormalizedAnnotationCapture {
+  NormalizedAnnotationCapture {
+    text: normalize(capture.lexeme),
+    origin: SourceSpan { file: unicode_scalar_fold(xs: symbol_lexeme(sym: capture.file)), start: capture.start, end: capture.end },
+    placement: capture.placement,
+    preceded_by_blank_line: capture.preceded_by_blank_line,
+    preceded_by_annotation_line: capture.preceded_by_annotation_line
+  }
+}
+
+fn authored_parse_region_unrepresentable_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^authored_parse_region_unrepresentable,
+    at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^authored_parse_region_unrepresentable),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// THE AUTHORED SIBLING OF parse_module: the same semantic parse of the artifact's tokens, plus every
+// capture attached to its gap by std.source_annotation attach_annotations -- the SAME fold the v1
+// realization calls. `normalize` is the language's delimiter stripping (for .dag,
+// extdeps.languages.dag.syntax strip_line_comment_delimiter); the parse itself names no annotation
+// syntax. It refuses only when a production consumed input no single range covers, because then the
+// comments inside it would have no region to land in.
+fn parse_module_authored(artifact: LexArtifact, grammar: ParseGrammar, normalize: fn(String) -> String) -> Outcome<AuthoredParseArtifact> {
+  match parse_module(tokens: artifact.tokens, grammar: grammar) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: semantic, diagnostics: d } =>
+      let walk = authored_regions(artifact: semantic)
+      if is_empty(xs: walk.unrepresentable) {
+        Accepted {
+          value: AuthoredParseArtifact {
+            semantic: semantic,
+            annotations: attach_annotations(
+              captures: artifact.annotations |> map(c => authored_normalized_capture(capture: c, normalize: normalize)),
+              regions: walk.regions
+            )
+          },
+          diagnostics: d
+        }
+      } else {
+        Rejected { diagnostics: diagnostics_singleton(d: authored_parse_region_unrepresentable_diagnostic()) }
+      }
+  }
 }
 
 type ParseMintSourceResult {

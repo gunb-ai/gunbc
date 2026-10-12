@@ -7085,13 +7085,6 @@ fn dag_round_trip_authorities_ready() -> Bool {
   dag_round_trip_trivia_fidelity_resolved()
 }
 
-fn parse_production_emitted_identity_optional(node: Node) -> Optional<Symbol> {
-  match named_child_lookup(root: node, name: ^grammar_production_identity_node_projection) {
-    NamedChildFound { target: id_node } => node_atom_identity_optional(node: id_node)
-    NamedChildMissing => Absent
-    NamedChildAmbiguous => Absent
-  }
-}
 
 fn dag_surface_identity_is_top_level_item(id: Symbol) -> Bool {
   fold_list(
