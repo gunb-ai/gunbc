@@ -1,4 +1,4 @@
-module test.claim.v1_escape_json_string_differential_test
+module test.claim.v1_escape_json_string_differential
 
 import v1.compiler.emit_core_support { escape_json_string }
 import test.claim.v1_escape_json_string_authority_view { authority_escape_json_string }

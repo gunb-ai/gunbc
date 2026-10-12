@@ -98,7 +98,7 @@ pub fn json_control_escapes() -> Rc<Vec<Rc<JsonControlEscape>>> {
         }),
         Rc::new(JsonControlEscape {
             delimiter: "".to_string(),
-            replacement: "\\u000b".to_string(),
+            replacement: "\\u000B".to_string(),
         }),
         Rc::new(JsonControlEscape {
             delimiter: "".to_string(),
@@ -110,11 +110,11 @@ pub fn json_control_escapes() -> Rc<Vec<Rc<JsonControlEscape>>> {
         }),
         Rc::new(JsonControlEscape {
             delimiter: "".to_string(),
-            replacement: "\\u000e".to_string(),
+            replacement: "\\u000E".to_string(),
         }),
         Rc::new(JsonControlEscape {
             delimiter: "".to_string(),
-            replacement: "\\u000f".to_string(),
+            replacement: "\\u000F".to_string(),
         }),
         Rc::new(JsonControlEscape {
             delimiter: "".to_string(),
@@ -158,27 +158,27 @@ pub fn json_control_escapes() -> Rc<Vec<Rc<JsonControlEscape>>> {
         }),
         Rc::new(JsonControlEscape {
             delimiter: "".to_string(),
-            replacement: "\\u001a".to_string(),
+            replacement: "\\u001A".to_string(),
         }),
         Rc::new(JsonControlEscape {
             delimiter: "".to_string(),
-            replacement: "\\u001b".to_string(),
+            replacement: "\\u001B".to_string(),
         }),
         Rc::new(JsonControlEscape {
             delimiter: "".to_string(),
-            replacement: "\\u001c".to_string(),
+            replacement: "\\u001C".to_string(),
         }),
         Rc::new(JsonControlEscape {
             delimiter: "".to_string(),
-            replacement: "\\u001d".to_string(),
+            replacement: "\\u001D".to_string(),
         }),
         Rc::new(JsonControlEscape {
             delimiter: "".to_string(),
-            replacement: "\\u001e".to_string(),
+            replacement: "\\u001E".to_string(),
         }),
         Rc::new(JsonControlEscape {
             delimiter: "".to_string(),
-            replacement: "\\u001f".to_string(),
+            replacement: "\\u001F".to_string(),
         }),
     ])
 }

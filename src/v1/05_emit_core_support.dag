@@ -53,7 +53,7 @@ type TestProjection {
 // a stated divergence. Importing the authority adds extdeps_languages_json_emit, json_grammar and
 // numeric_base16 to the stage0 crate partition: the regen refuses with Stage0EmittedEdgesNotCovered
 // (57 emitted edge endpoints), growing the seed it is meant to shrink. The copy dissolves with v1.
-// test.claim.v1_escape_json_string_differential_test holds it equal to the authority.
+// test.claim.v1_escape_json_string_differential holds it equal to the authority.
 type JsonControlEscape { delimiter: String, replacement: String }
 
 fn json_control_escapes() -> List<JsonControlEscape> {
@@ -67,11 +67,11 @@ fn json_control_escapes() -> List<JsonControlEscape> {
     JsonControlEscape { delimiter: "\u{6}", replacement: "\\u0006" },
     JsonControlEscape { delimiter: "\u{7}", replacement: "\\u0007" },
     JsonControlEscape { delimiter: "\u{8}", replacement: "\\b" },
-    JsonControlEscape { delimiter: "\u{b}", replacement: "\\u000b" },
+    JsonControlEscape { delimiter: "\u{b}", replacement: "\\u000B" },
     JsonControlEscape { delimiter: "\u{c}", replacement: "\\f" },
     JsonControlEscape { delimiter: "\u{d}", replacement: "\\r" },
-    JsonControlEscape { delimiter: "\u{e}", replacement: "\\u000e" },
-    JsonControlEscape { delimiter: "\u{f}", replacement: "\\u000f" },
+    JsonControlEscape { delimiter: "\u{e}", replacement: "\\u000E" },
+    JsonControlEscape { delimiter: "\u{f}", replacement: "\\u000F" },
     JsonControlEscape { delimiter: "\u{10}", replacement: "\\u0010" },
     JsonControlEscape { delimiter: "\u{11}", replacement: "\\u0011" },
     JsonControlEscape { delimiter: "\u{12}", replacement: "\\u0012" },
@@ -82,12 +82,12 @@ fn json_control_escapes() -> List<JsonControlEscape> {
     JsonControlEscape { delimiter: "\u{17}", replacement: "\\u0017" },
     JsonControlEscape { delimiter: "\u{18}", replacement: "\\u0018" },
     JsonControlEscape { delimiter: "\u{19}", replacement: "\\u0019" },
-    JsonControlEscape { delimiter: "\u{1a}", replacement: "\\u001a" },
-    JsonControlEscape { delimiter: "\u{1b}", replacement: "\\u001b" },
-    JsonControlEscape { delimiter: "\u{1c}", replacement: "\\u001c" },
-    JsonControlEscape { delimiter: "\u{1d}", replacement: "\\u001d" },
-    JsonControlEscape { delimiter: "\u{1e}", replacement: "\\u001e" },
-    JsonControlEscape { delimiter: "\u{1f}", replacement: "\\u001f" },
+    JsonControlEscape { delimiter: "\u{1a}", replacement: "\\u001A" },
+    JsonControlEscape { delimiter: "\u{1b}", replacement: "\\u001B" },
+    JsonControlEscape { delimiter: "\u{1c}", replacement: "\\u001C" },
+    JsonControlEscape { delimiter: "\u{1d}", replacement: "\\u001D" },
+    JsonControlEscape { delimiter: "\u{1e}", replacement: "\\u001E" },
+    JsonControlEscape { delimiter: "\u{1f}", replacement: "\\u001F" },
   ]
 }
 
