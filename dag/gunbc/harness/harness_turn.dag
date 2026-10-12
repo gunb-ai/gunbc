@@ -1368,13 +1368,38 @@ fn harness_response_headers_path(config: HarnessTurnConfig) -> String {
 // names this as the first recovery an observed failure required). "No response" is exact: the
 // transport failed, no body came back, and no response header was received -- an engine that answered
 // anything, an error included, is never retried, and a hosted route never retries at all
-// (gunbc.harness.hosted_failure). The bound is small and every retry is a recorded event, so a flaky
-// endpoint is visible in the stream rather than absorbed by it. The spacing outlasts an engine reload:
-// the srv1 lab's empty replies were the operator engine restarting under the request, back serving
-// about 27 s later (2026-10-11 23:51:41 -> 23:52:08), so three tries 30 s apart cover one restart.
-data harness_transport_retry_bound: Int = 3
+// (gunbc.harness.hosted_failure). Every retry is a recorded event, so a struggling endpoint is visible
+// in the stream rather than absorbed by it.
+//
+// THE OPERATOR ENGINE IS EXPECTED TO RESTART (operator, 2026-10-12): the srv1 lab's empty replies were
+// the engine reloading under the request, back about 27 s later. So the wait backs off exponentially --
+// 15 s, doubling, capped at 5 min -- inside a total budget, and a session gives up only after the budget
+// passes with no response at all, typed. Each wait is offset by a few seconds derived from the
+// session's own request path, so sessions that lost the engine together do not all return the instant
+// it comes back.
+data harness_transport_retry_first_delay: Int = 15
 
-data harness_transport_retry_delay: Int = 30
+data harness_transport_retry_max_delay: Int = 300
+
+data harness_transport_retry_budget: Int = 1800
+
+fn harness_transport_retry_delay(retries_so_far: Int) -> Int {
+  if retries_so_far <= 0 {
+    harness_transport_retry_first_delay
+  } else {
+    let doubled = 2 * harness_transport_retry_delay(retries_so_far: retries_so_far - 1)
+    if doubled > harness_transport_retry_max_delay { harness_transport_retry_max_delay } else { doubled }
+  }
+}
+
+fn harness_transport_retry_offset(request_path: String) -> Int {
+  fold(chars(s: request_path), init: 0, f: (acc, c) => (acc + c) % 7)
+}
+
+// PURE: whether one more retry fits the budget, given how long this request has already waited.
+fn harness_transport_retry_fits(waited: Int, retries_so_far: Int, offset: Int) -> Bool {
+  waited + harness_transport_retry_delay(retries_so_far: retries_so_far) + offset <= harness_transport_retry_budget
+}
 
 fn harness_post_drew_no_response(posted: HarnessPostOutcome) -> Bool {
   !posted.success && trim(posted.body) == "" && (match posted.headers {
@@ -1393,17 +1418,21 @@ fn harness_post_may_retry(config: HarnessTurnConfig) -> Bool {
 }
 
 fn harness_post_json(config: HarnessTurnConfig, header_file: NonEmptyStr?) -> HarnessPostOutcome {
-  harness_post_json_retrying(config: config, header_file: header_file, retried: [] as List<String>)
+  harness_post_json_retrying(config: config, header_file: header_file, retried: [] as List<String>, waited: 0)
 }
 
-fn harness_post_json_retrying(config: HarnessTurnConfig, header_file: NonEmptyStr?, retried: List<String>) -> HarnessPostOutcome {
+fn harness_post_json_retrying(config: HarnessTurnConfig, header_file: NonEmptyStr?, retried: List<String>, waited: Int) -> HarnessPostOutcome {
   let posted = harness_post_json_once(config: config, header_file: header_file)
-  if harness_post_may_retry(config: config) && harness_post_drew_no_response(posted: posted) && list_length(items: retried) < harness_transport_retry_bound {
-    let waited = sleep_delay_seconds_second_carrier_projection(duration: second(count: harness_transport_retry_delay))
+  let offset = harness_transport_retry_offset(request_path: config.request_scratch_path as String)
+  let n = list_length(items: retried)
+  if harness_post_may_retry(config: config) && harness_post_drew_no_response(posted: posted) && harness_transport_retry_fits(waited: waited, retries_so_far: n, offset: offset) {
+    let delay = harness_transport_retry_delay(retries_so_far: n) + offset
+    let slept = sleep_delay_seconds_second_carrier_projection(duration: second(count: delay))
     harness_post_json_retrying(
       config: config,
       header_file: header_file,
-      retried: concat(retried, [join(["no response to attempt ", to_string(value: list_length(items: retried) + 1), if waited { "" } else { " (the delay before retrying refused)" }], "")]),
+      retried: concat(retried, [join(["no response to attempt ", to_string(value: n + 1), "; retried after ", to_string(value: delay), " s", if slept { "" } else { " (the delay refused)" }], "")]),
+      waited: waited + delay,
     )
   } else {
     HarnessPostOutcome { body: posted.body, success: posted.success, headers: posted.headers, retries: retried }
