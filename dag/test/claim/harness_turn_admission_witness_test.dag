@@ -39,7 +39,6 @@ fn t_buy() -> BuyTerms {
 fn t_admission(objective: DemandObjective) -> AdmissionTerms {
   AdmissionTerms {
     deadline: none,
-    maximum_wait: none,
     buy: t_buy(),
     objective: objective,
   }
@@ -208,7 +207,6 @@ test fn debt_and_latency_demands_reach_select_supply_with_different_delay_valuat
 test fn a_demand_without_delay_valuation_refuses_priced_selection() -> Bool {
   match harness_priced_selection_inputs(admission: AdmissionTerms {
     deadline: none,
-    maximum_wait: none,
     buy: t_buy(),
     objective: DemandObjective { profile: debt_payoff_objective.profile, valuations: [] },
   }) {

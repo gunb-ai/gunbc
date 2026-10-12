@@ -3,7 +3,7 @@ module product.fabric.demand
 import std.types { NonEmptyStr, Timestamp, Bool, List, Int, brand }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
-import std.measure { MoneyAmountMicro, MoneyPerSecond, MoneyRate, Second, money_amount_micro, money_amount_micro_count, second_count }
+import std.measure { MoneyAmountMicro, MoneyPerSecond, MoneyRate, money_amount_micro, money_amount_micro_count }
 import extdeps.currency.currency { CurrencyCode, Usd }
 import product.fabric.identity { fabric_identity_eq, FabricIdentity, DemandKey, WorkKey }
 import std.algebra { Cons, Empty }
@@ -262,7 +262,6 @@ fn demand_delay_valuation(objective: DemandObjective) -> MoneyPerSecond? {
 }
 
 data id_buy_order_constraint: DeclarationRef = decl_ref(module_path: "product.fabric.demand", decl_name: "buy_order_constraint")
-data id_maximum_wait_constraint: DeclarationRef = decl_ref(module_path: "product.fabric.demand", decl_name: "maximum_wait_constraint")
 
 fn buy_order_constraint(buy: BuyTerms) -> HardConstraint {
   HardConstraint {
@@ -272,27 +271,14 @@ fn buy_order_constraint(buy: BuyTerms) -> HardConstraint {
   }
 }
 
-fn maximum_wait_constraint(wait: Second) -> HardConstraint {
-  HardConstraint {
-    identity: id_maximum_wait_constraint,
-    axis: term_delay.identity,
-    bound_micro: second_count(s: wait) as Int,
-  }
-}
-
 // CONSUMERS: test.claim.fabric.valued_objective_witness (d) and any select_realization
 // call that must refuse an over-cap candidate. Caps are not copied onto DemandObjective.
 fn admission_hard_constraints(terms: AdmissionTerms) -> List<HardConstraint> {
-  match terms.maximum_wait {
-    Absent => [buy_order_constraint(buy: terms.buy)]
-    Present { value: wait } =>
-      [buy_order_constraint(buy: terms.buy), maximum_wait_constraint(wait: wait)]
-  }
+  [buy_order_constraint(buy: terms.buy)]
 }
 
 type AdmissionTerms {
   deadline: Timestamp?
-  maximum_wait: Second?
   buy: BuyTerms
   objective: DemandObjective
 }
@@ -300,7 +286,6 @@ type AdmissionTerms {
 fn admission_terms(buy: BuyTerms, deadline: Timestamp?, objective: DemandObjective) -> AdmissionTerms {
   AdmissionTerms {
     deadline: deadline,
-    maximum_wait: none,
     buy: buy,
     objective: objective,
   }

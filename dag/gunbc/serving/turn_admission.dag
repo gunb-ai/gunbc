@@ -528,9 +528,11 @@ fn serving_dispatch_inputs<P>(
   }
 }
 
-// Delay valuation is a demand fact. select_supply's delay_valuation parameter is fed from
-// product.fabric.demand demand_delay_valuation over the demand's objective (latency_sensitive
-// for interactive serving). This module no longer authors a placeholder rate.
+// Delay valuation is a demand fact. select_supply's delay_valuation is
+// demand_delay_valuation over the demand's AdmissionTerms.objective. This
+// module authors no rate and names no serving default. Today every harness
+// caller (harness_cli_admission, including place and the seat probe) states
+// debt_payoff_objective at its call site.
 
 // ── A SERVING TURN IS NOT ISOLATED FROM THE TURNS BESIDE IT ───────────────────────────────────
 //
