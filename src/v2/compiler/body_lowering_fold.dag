@@ -5689,7 +5689,7 @@ fn body_lower_function_value_body(body: FunctionLiteralBody) -> Outcome<Optional
     FunctionLiteralStatementBody { body: b } =>
       match body_lower_exit_outside_tail_optional(node: b, tail: true) {
         Present { value: refused } => body_lower_function_value_lowered_whole(o: refused)
-        Absent => body_lower_function_value_lowered_whole(o: body_lower_stmt_seq(shell: b))
+        Absent => body_lower_function_value_lowered_whole(o: body_term_sealed_outcome(o: body_lower_stmt_seq(shell: b), shape: LoweredStatementSequence))
       }
   }
 }
