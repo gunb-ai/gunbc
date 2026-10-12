@@ -17,7 +17,7 @@ fn durable_work_handoff_body() -> List<MarkdownBlock> {
       li(text: "**How does anyone know it has silently stopped?**"),
     ]),
     p(text: "Today each service answers these with its own mechanism and its own vocabulary (§7). The belt is the most complete, and on 2026-10-12 it failed all four questions in one afternoon (§3). This document proposes one model, realized once per execution substrate and inhabited by every service, so the four answers are the same everywhere. It also proposes a conformance row so that a change which hands work across a boundary is reviewed against that model."),
-    p(text: "This is not a proposal to queue every local function call. The 2026-09-21 ruling draws that line: the contract applies where responsibility crosses an execution boundary, meaning a process, a unit, a host or a principal."),
+    p(text: "This is not a proposal to queue every local function call. The 2026-09-21 ruling draws that line: the contract applies where responsibility crosses an execution boundary, meaning a process, a unit, a host or a principal. Nor does a request being synchronous put it out of scope (owner, 2026-10-12). Most requests are synchronous at their interface. Whether one is answered in-process or handed off durably and awaited is a realization choice this corpus owns. The contract governs that realization, and the caller's interface stays synchronous."),
     h2(text: "2. What is already ruled (not re-decided here)"),
     ul(items: [
       MarkdownListItem { blocks: [
@@ -77,13 +77,14 @@ fn durable_work_handoff_body() -> List<MarkdownBlock> {
         row(cells: [cell(text: "`Running { hold }`"), cell(text: "Claimed by a worker that holds the exclusive hold"), cell(text: "the worker settling it, or its hold being recovered")]),
         row(cells: [cell(text: "`RetryDue { at, cause, attempt }`"), cell(text: "A transient failure under a declared retry law"), cell(text: "the due time")]),
         row(cells: [cell(text: "`Stopped { cause, owner }`"), cell(text: "The line stops: a refusal that needs a decision, or retries exhausted"), cell(text: "an owner's action, recorded")]),
-        row(cells: [cell(text: "`Settled`"), cell(text: "Nothing outstanding"), cell(text: "(terminal)")]),
+        row(cells: [cell(text: "`Settled { Completed }`"), cell(text: "Nothing outstanding: the work is done"), cell(text: "(terminal)")]),
+        row(cells: [cell(text: "`Settled { Cancelled { by } }`"), cell(text: "Nothing outstanding: an attributable cancellation ended it"), cell(text: "(terminal)")]),
       ],
     },
     ul(items: [
       li(text: "**`Waiting` vs `Stopped` is the distinction the `install-owned` specimen lacked.** A cause meaning \"not yet\" (no verification window selected, no capacity, no upstream answer) must name the event it waits on, and that event must be one of the wake-up sources in §5.3. A `Stopped` cause must name an owner. A cause that can name neither is a modeling gap, and the model refuses to construct it."),
       li(text: "**`Stopped` is the dead letter.** The manual-resume ruling keeps it operator-owned. What changes is that it is listed, attributed and counted on the queue, never silent."),
-      li(text: "The standing names line up with the demand engine's availability states (waiting, ready, lease pending, running, suspended, refused, blocked), and the model shares them rather than re-coining them (§8, open question 2)."),
+      li(text: "The standing names line up with the demand engine's availability states (waiting, ready, lease pending, running, suspended, refused, blocked), and the model shares them rather than re-coining them: M0 factors the standings and the dispatch rule into one std home that both import (owner, 2026-10-12; §11)."),
     ]),
     h3(text: "5.3 Wake-ups: hints from a closed set of sources"),
     p(text: "A wake-up carries a key and nothing else. Any number of wake-ups for one key collapse into one queue entry, so duplicates are harmless. A lost wake-up is caught by resync (§5.7). A wake-up that arrives out of order is harmless, because the worker re-derives the item's state from evidence."),
@@ -114,7 +115,7 @@ fn durable_work_handoff_body() -> List<MarkdownBlock> {
     ol(items: [
       li(text: "**Claim** the item under the hold."),
       li(text: "**Re-derive** what is outstanding from evidence."),
-      li(text: "**Run the next eligible obligation** as an ensure, with that obligation's own retry law."),
+      li(text: "**Run the next eligible obligation** as an ensure, with that obligation's own retry law. Where the obligation involves a choice, the loop is select, then ensure, then independent observation (DESIGN §3d): `std.decision` makes the choice, and the queue only wakes the loop and records its settlement. The queue never selects."),
       li(text: "**Persist the result** at the moment it is produced (the 2026-09-21 ruling, clause 1)."),
       li(text: "**Settle** with exactly one outcome:"),
     ]),
@@ -123,9 +124,9 @@ fn durable_work_handoff_body() -> List<MarkdownBlock> {
       alignments: [AlignNone, AlignNone],
       rows: [
         row(cells: [cell(text: "`Advanced`"), cell(text: "Enqueue a `Completion` wake-up for the same key and its dependents")]),
-        row(cells: [cell(text: "`Settled`"), cell(text: "Done")]),
+        row(cells: [cell(text: "`Settled { Completed }` / `Settled { Cancelled { by } }`"), cell(text: "Done; a cancellation names who cancelled")]),
         row(cells: [cell(text: "`Waiting { on }`"), cell(text: "Park until that event or time")]),
-        row(cells: [cell(text: "`RetryAfter { at, cause }`"), cell(text: "Only when the obligation's retry law admits a retry; the law declares the backoff and the attempt bound. Without a law, this becomes `Stopped`.")]),
+        row(cells: [cell(text: "`RetryAfter { at, cause }`"), cell(text: "Only when the obligation's retry law admits a retry. Without a law, this becomes `Stopped`. See the retry law below.")]),
         row(cells: [cell(text: "`Stopped { cause, owner }`"), cell(text: "The line stops, visibly")]),
         row(cells: [cell(text: "`Transferred { to, ref }`"), cell(text: "Responsibility moves durably to another queue: for example, the belt hands a publication request to the publication helper")]),
       ],
@@ -137,6 +138,14 @@ fn durable_work_handoff_body() -> List<MarkdownBlock> {
       li(text: "retention (receipts and history stay)."),
     ]),
     p(text: "A settled step may release its hold. It never erases what recovery would need."),
+    p(text: "**The retry law.** A retry law is declared per obligation implementation (ensure closure). It has one shape everywhere, taken from `gunbc.serving.caller_backlog` (#13789):"),
+    ul(items: [
+      li(text: "The backoff is exponential with jitter, and an upstream delay hint (a provider's retry-after) lengthens it but never shortens it."),
+      li(text: "The bound runs over the item's whole history. A resume, a restart or a new endpoint does not reset it."),
+      li(text: "Only outcomes of the real work count toward the bound. A succeeding probe never resets a failing series of real requests."),
+      li(text: "Exhaustion is a persisted `Stopped`, and cancellation a persisted `Settled { Cancelled }`. Neither is ever inferred from silence."),
+    ]),
+    p(text: "**An unread observation is unknown, never empty.** A standing is derived from evidence. When the evidence cannot be read (an unreadable record, an inventory not observed), the item is not `Ready` and not `Settled`: it is `Waiting` on that observation, or `Stopped` if the unreadability is itself the defect. An empty fleet and an unobserved fleet are different facts."),
     h3(text: "5.6 Transfer between queues"),
     p(text: "A handoff to another queue is itself an item on the receiving queue: durable acceptance first, then the sender records `Transferred` with the receiver's reference. Today the publication spools do this implicitly, through files a separate principal answers. The model makes the transfer a typed settlement, so the sender's view and the receiver's view can be joined. Any request with no answer and no standing becomes visible."),
     h3(text: "5.7 Resync: anti-entropy that is cheap and fair"),
@@ -170,7 +179,7 @@ fn durable_work_handoff_body() -> List<MarkdownBlock> {
         row(cells: [cell(text: "Retry safety"), cell(text: "`std.effects` `IdempotencyEvidence`; per-implementation retry law (ensure closure)")]),
         row(cells: [cell(text: "Convergence"), cell(text: "`std.upsert_decision`, `std.realization_reconcile`, `std.goal_assessment`")]),
         row(cells: [cell(text: "Reporting"), cell(text: "`std.observation` (`ProducerLiveness`, `observation_watchdog`)")]),
-        row(cells: [cell(text: "Standings and dispatch"), cell(text: "shared with `v2.std.demand_engine` (§8, open question 2)")]),
+        row(cells: [cell(text: "Standings and dispatch"), cell(text: "one std home shared with `v2.std.demand_engine`, factored in M0 (§11)")]),
       ],
     },
     p(text: "**Host realization: one module, shared by every host service.** It generalizes what the belt already built:"),
@@ -241,7 +250,7 @@ fn durable_work_handoff_body() -> List<MarkdownBlock> {
           ]),
       ] },
       li(text: "Delete `gunbc.workflow.types`."),
-      li(text: "Decide the shared vocabulary with `v2.std.demand_engine` (open question 2)."),
+      li(text: "Factor the standings and dispatch rule that `v2.std.demand_engine` already uses into one std home, imported by both it and `std.durable_handoff` (owner, 2026-10-12)."),
     ]),
     p(text: "**M1: the belt is the first consumer, on the lab first.**"),
     ul(items: [
@@ -261,7 +270,7 @@ fn durable_work_handoff_body() -> List<MarkdownBlock> {
     p(text: "**M2: the publication helper becomes a queue.** The belt settles with `Transferred`, and the helper's start failure surfaces as `Stopped`. Both publication rung drops are retired by this milestone, by their own triggers."),
     p(text: "**M3: the conformance row lands (§10), and the remaining services migrate one at a time.**"),
     ul(items: [
-      li(text: "Order of migration: compute recovery (`gunbc.compute.attempt_lifecycle`), approved-action execution (`gunbc.auth.approval_broker` `ExecutionObligation`), the workspace consumer (`gunbc.workspace_request_consumer`), runner cells, and fleet converge."),
+      li(text: "Order of migration: compute recovery (`gunbc.compute.attempt_lifecycle`), approved-action execution (`gunbc.auth.approval_broker` `ExecutionObligation`), the workspace consumer (`gunbc.workspace_request_consumer`), runner cells, and fleet converge. `gunbc.serving.caller_backlog` (#13789) inhabits the model by projection from its first landing: `CallerWorkRecord` is the item, its grant generation (`product.fabric.budget` `fence_admits`) is the hold fence, `WorkWaiting` derives `Ready`, `Waiting` or `Running`, `WorkCompleted` and `WorkCancelled` are the two `Settled` terminals, and `WorkRecoveryBoundExceeded` is `Stopped` (agreed with its owner, deep-otter-797, 2026-10-12)."),
       MarkdownListItem { blocks: [
         p(text: "Each migration is a replacement migration under the doctrine:"),
           ul(items: [
@@ -304,12 +313,12 @@ fn durable_work_handoff_body() -> List<MarkdownBlock> {
       li(text: "Recovery by age."),
       li(text: "A new spelling of hold, dedup, dead letter or due time."),
     ]),
-    h2(text: "11. Open questions for the owner"),
+    h2(text: "11. Owner decisions and open questions"),
     ol(items: [
-      li(text: "**Home names.** The ruling named `gunbc.workflow.durable_handoff`. This proposes `std.durable_handoff` for the agnostic model plus a `gunbc` module for the host realization, following DESIGN §3's interface/realization split. Is that acceptable, or should the ruled name stand?"),
-      li(text: "**Shared vocabulary with the demand engine.** Factor the standings and dispatch rule into one std home both import (M0), or let `std.durable_handoff` land first and have the demand engine adopt it at its M3a cut?"),
-      li(text: "**Automatic retry.** The manual-resume ruling stops the line on Failed or Refused. This proposal admits `RetryAfter` only for transient causes under a declared retry law, with exhaustion going to `Stopped`. Does that refine the ruling, or contradict it?"),
-      li(text: "**Scope edge.** Which boundaries are deliberately not queues? The ruling excludes local calls. Should synchronous request/response across a process (serving turns, `gunbc.serving.caller_retry_contract`) be in scope, given its stance that there is no server-side queue?"),
+      li(text: "**Home names. Open.** The ruling named `gunbc.workflow.durable_handoff`. This proposes `std.durable_handoff` for the agnostic model plus a `gunbc` module for the host realization, following DESIGN §3's interface/realization split. The candidate module list went to the owner on 2026-10-12."),
+      li(text: "**Shared vocabulary with the demand engine. Decided (owner, 2026-10-12): now.** M0 factors the standings and the dispatch rule into one std home that `v2.std.demand_engine` and `std.durable_handoff` both import."),
+      li(text: "**Automatic retry. Open, pending the convergence process.** The manual-resume ruling stops the line on Failed or Refused. This proposal admits `RetryAfter` only for transient causes under a declared retry law, with exhaustion going to `Stopped`. The owner (2026-10-12) expects most complex state-based work to move onto a convergence process, so retry and stop semantics are to be aligned with that process's model rather than decided here. The convergence lane has been asked for it."),
+      li(text: "**Scope. Decided (owner, 2026-10-12).** Synchronous requests are always valid, and most requests are logically synchronous. How one is processed mechanically, whether in-process or durably handed off and awaited, is an implementation detail this corpus owns. So the serving path is in scope as a realization question: `gunbc.serving.caller_retry_contract`'s stance that there is no server-side queue is a realization choice to revisit under this contract, not a scope exclusion. Local function calls stay out of scope."),
     ]),
   ]
 }
