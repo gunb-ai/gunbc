@@ -634,9 +634,25 @@ type ConvergenceUnitRendering
   = ConvergenceUnitRendered { text: String }
   | ConvergenceUnitPlacementRefused { reason: String }
 
-fn convergence_slice_refusal_text(slice: NonEmptyStr, serving: NonEmptyStr) -> String {
+// A CONVERGENCE ONESHOT IS ITS OWN WORK UNDER THIS MODULE'S PLACEMENT. What a oneshot does -- its
+// description, principal, working directory, environment and command -- belongs to the member that
+// installs it; where it runs and how long its start may take belong here. Every convergence oneshot a
+// deployment installs renders through convergence_oneshot_rendering, so none spells a slice or a start
+// bound of its own. The tree-remote member (gunbc.live_deploy.emit emit_tree_remote_unit_doc) spelled
+// both until 2026-10-12: it named the serving slice with no start bound, and the srv1 production apply
+// of af66aa62 sat behind it, reclaim-throttled, exactly as the tree-sync oneshot once had (receipt in
+// gunbc.recurring_failure_mode convergence_oneshot_in_a_serving_slice).
+type ConvergenceOneshot {
+  description: NonEmptyStr,
+  principal: NonEmptyStr,
+  working_directory: NonEmptyStr,
+  environment_files: List<NonEmptyStr>,
+  exec_start: NonEmptyStr,
+}
+
+fn convergence_slice_refusal_text(oneshot: ConvergenceOneshot, slice: NonEmptyStr, serving: NonEmptyStr) -> String {
   join([
-    "the repository convergence oneshot may not run in `", slice as String,
+    "the convergence oneshot `", oneshot.description as String, "` may not run in `", slice as String,
     "`: it is inside the serving slice `", serving as String,
     "`, whose bound belongs to the served processes -- a convergence there is reclaim-throttled by",
     " their growth (fleet-converge run 36204703858) rather than bounded by its own demand",
@@ -648,23 +664,74 @@ fn convergence_slice_refusal_text(slice: NonEmptyStr, serving: NonEmptyStr) -> S
 // rather than a unit, in the same shape as gunbc.live_deploy.release_locus release_revision_not_installed_poison:
 // systemd refuses to load it and the restart step's diagnosis prints the reason, so an edit that moved
 // the declared row into a serving slice fails the deploy loudly instead of installing a throttled unit.
+fn convergence_oneshot_unit_text(spec: DeploymentSpec, oneshot: ConvergenceOneshot) -> String {
+  match convergence_oneshot_rendering(spec: spec, slice: gunbc_repository_convergence_slice_unit_name, oneshot: oneshot) {
+    ConvergenceUnitRendered { text: t } => t
+    ConvergenceUnitPlacementRefused { reason: r } =>
+      concat("__GUNBC_DEPLOY_UNREACHABLE__ ", r)
+  }
+}
+
+fn convergence_oneshot_rendering(spec: DeploymentSpec, slice: NonEmptyStr, oneshot: ConvergenceOneshot) -> ConvergenceUnitRendering {
+  match convergence_slice_admission(spec: spec, slice: slice) {
+    ConvergenceSliceInsideServingSlice { name: n, serving: s } =>
+      ConvergenceUnitPlacementRefused { reason: convergence_slice_refusal_text(oneshot: oneshot, slice: n, serving: s) }
+    ConvergenceSliceAdmitted { name: admitted } =>
+      ConvergenceUnitRendered { text: convergence_oneshot_text_in(slice: admitted, oneshot: oneshot) }
+  }
+}
+
+fn convergence_oneshot_text_in(slice: NonEmptyStr, oneshot: ConvergenceOneshot) -> String {
+  serialize_systemd_unit_file(file: ServiceUnitFile {
+    unit: [Description { text: oneshot.description }],
+    service: concat(
+      concat(
+        [
+          ServiceType { mode: OneshotMode },
+          ServiceUser { name: oneshot.principal },
+          ServiceGroup { name: oneshot.principal },
+          ServiceSlice { name: slice },
+          WorkingDirectory { path: oneshot.working_directory },
+        ],
+        oneshot.environment_files |> map(path => EnvironmentFile { path: path }),
+      ),
+      [
+        TimeoutStartSec {
+          duration: to_string(value: second_count(s: convergence_unit_start_timeout)) as NonEmptyStr,
+        },
+        ExecStart { command: oneshot.exec_start },
+      ],
+    ),
+    install: NotInstallable,
+  })
+}
+
+// THE TREE-SYNC ONESHOT: git-native convergence of the deployed repository to the candidate.
+fn tree_sync_convergence_oneshot(
+  spec: DeploymentSpec,
+  candidate: String,
+  receipt_path: String,
+  working_directory: String,
+) -> ConvergenceOneshot {
+  ConvergenceOneshot {
+    description: "gunbc deployed-repository git-native convergence (service-user principal, admitted binary, runner-checkout corpus)" as NonEmptyStr,
+    principal: spec.service.service_user,
+    working_directory: working_directory as NonEmptyStr,
+    environment_files: [spec.names.tree_sync_env_path],
+    exec_start: convergence_exec_start(spec: spec, candidate: candidate, receipt_path: receipt_path) as NonEmptyStr,
+  }
+}
+
 fn convergence_unit_doc(
   spec: DeploymentSpec,
   candidate: String,
   receipt_path: String,
   working_directory: String,
 ) -> String {
-  match convergence_unit_rendering(
+  convergence_oneshot_unit_text(
     spec: spec,
-    slice: gunbc_repository_convergence_slice_unit_name,
-    candidate: candidate,
-    receipt_path: receipt_path,
-    working_directory: working_directory,
-  ) {
-    ConvergenceUnitRendered { text: t } => t
-    ConvergenceUnitPlacementRefused { reason: r } =>
-      concat("__GUNBC_DEPLOY_UNREACHABLE__ ", r)
-  }
+    oneshot: tree_sync_convergence_oneshot(spec: spec, candidate: candidate, receipt_path: receipt_path, working_directory: working_directory),
+  )
 }
 
 fn convergence_unit_rendering(
@@ -674,52 +741,11 @@ fn convergence_unit_rendering(
   receipt_path: String,
   working_directory: String,
 ) -> ConvergenceUnitRendering {
-  match convergence_slice_admission(spec: spec, slice: slice) {
-    ConvergenceSliceInsideServingSlice { name: n, serving: s } =>
-      ConvergenceUnitPlacementRefused { reason: convergence_slice_refusal_text(slice: n, serving: s) }
-    ConvergenceSliceAdmitted { name: admitted } =>
-      ConvergenceUnitRendered { text: convergence_unit_text_in(
-        spec: spec,
-        slice: admitted,
-        candidate: candidate,
-        receipt_path: receipt_path,
-        working_directory: working_directory,
-      ) }
-  }
-}
-
-fn convergence_unit_text_in(
-  spec: DeploymentSpec,
-  slice: NonEmptyStr,
-  candidate: String,
-  receipt_path: String,
-  working_directory: String,
-) -> String {
-  let user = spec.service.service_user
-  serialize_systemd_unit_file(file: ServiceUnitFile {
-    unit: [Description {
-      text: "gunbc deployed-repository git-native convergence (service-user principal, admitted binary, runner-checkout corpus)" as NonEmptyStr,
-    }],
-    service: [
-      ServiceType { mode: OneshotMode },
-      ServiceUser { name: user },
-      ServiceGroup { name: user },
-      ServiceSlice { name: slice },
-      WorkingDirectory { path: working_directory as NonEmptyStr },
-      EnvironmentFile { path: spec.names.tree_sync_env_path },
-      TimeoutStartSec {
-        duration: to_string(value: second_count(s: convergence_unit_start_timeout)) as NonEmptyStr,
-      },
-      ExecStart {
-        command: convergence_exec_start(
-          spec: spec,
-          candidate: candidate,
-          receipt_path: receipt_path,
-        ) as NonEmptyStr,
-      },
-    ],
-    install: NotInstallable,
-  })
+  convergence_oneshot_rendering(
+    spec: spec,
+    slice: slice,
+    oneshot: tree_sync_convergence_oneshot(spec: spec, candidate: candidate, receipt_path: receipt_path, working_directory: working_directory),
+  )
 }
 
 // THE ENTRY POINT THE UNIT INVOKES, AND THE ORDER OF ITS TWO WALLS IS LOAD-BEARING.
