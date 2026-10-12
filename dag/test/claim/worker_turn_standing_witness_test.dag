@@ -39,11 +39,13 @@ import gunbc.cursor_harness_credential { cursor_status_reading }
 import gunbc.worker_turn_standing { cursor_standing_from_status, cursor_entitlement_trip_pending_reason }
 import gunbc.roadmap_dispatch_actuator {
   dispatch_actuator_worker_turn_selection_observed,
-  DispatchActuatorSelectionOk,
-  DispatchActuatorSelectionRefused,
+  DispatchAttemptPrepared,
+  DispatchAttemptSelectionRefused,
   CodexDispatchProvider,
   CursorDispatchProvider,
 }
+import gunbc.dispatch_attempt { DispatchAttempt }
+import test.claim.roadmap_dispatch_actuator { sized_derivable }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -168,25 +170,26 @@ test fn cursor_status_never_makes_the_offer_selectable_before_the_entitlement_tr
 // THE ROUTE, through the production actuator selection: on an instance that does not hold the
 // credentials, both observed draws refuse before any observation runs or any spawn is planned.
 test fn worker_turn_draws_on_a_non_custody_instance_refuse() -> Bool {
-  let codex = match dispatch_actuator_worker_turn_selection_observed(
+  let attempt = DispatchAttempt {
     instance: srv1_live_dashboard_instance(),
-    provider: CodexDispatchProvider,
-    node_id: "node-worker-turn" as NonEmptyStr as RoadmapNodeId,
+    node: sized_derivable(id: "node-worker-turn", prs: [], title: "Worker turn"),
     attempt_key: "0123456789abcdef",
+  }
+  let codex = match dispatch_actuator_worker_turn_selection_observed(
+    attempt: attempt,
+    provider: CodexDispatchProvider,
     sizing_expectation: NoDerivedSizingExpectation,
   ) {
-    DispatchActuatorSelectionRefused { reason: _ } => true
-    DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint: _, credential_snapshot: _ } => false
+    DispatchAttemptSelectionRefused { reason: _ } => true
+    DispatchAttemptPrepared { prepared: _ } => false
   }
   let cursor = match dispatch_actuator_worker_turn_selection_observed(
-    instance: srv1_live_dashboard_instance(),
+    attempt: attempt,
     provider: CursorDispatchProvider,
-    node_id: "node-worker-turn" as NonEmptyStr as RoadmapNodeId,
-    attempt_key: "0123456789abcdef",
     sizing_expectation: NoDerivedSizingExpectation,
   ) {
-    DispatchActuatorSelectionRefused { reason: _ } => true
-    DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint: _, credential_snapshot: _ } => false
+    DispatchAttemptSelectionRefused { reason: _ } => true
+    DispatchAttemptPrepared { prepared: _ } => false
   }
   codex && cursor
 }

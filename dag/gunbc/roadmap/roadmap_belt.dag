@@ -80,7 +80,7 @@ data roadmap_belt_production_spawn_mode: SpawnMode = ManualReady
 // reap, Unchanged -> noop, Paused -> no actions, capacity caps upserts. This SUBSUMED belt_step
 // (spawn-only, observed hardcoded empty), the degenerate slice-1 precursor; the host-effect driver
 // (belt_tick_for_instance: MemberAdded/MemberChanged -> launch admission ->
-// dispatch_spawn_commands_for_resolved_instance, MemberRemoved -> tmux_kill_session_argv) consumes belt_reconcile as the
+// dispatch_spawn_commands_for_launch, MemberRemoved -> tmux_kill_session_argv) consumes belt_reconcile as the
 // sole belt decision, and belt_step was DELETED under RLM-1 because a retired planner still
 // selecting frontier.ready is a second eligibility authority (DESIGN 3 delete-first). The belt is a
 // CONTINUOUS reconciler => SIBLINGS-CONTINUE (product/plan grain: emit doable spawns+reaps,
