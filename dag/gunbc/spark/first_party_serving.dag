@@ -144,7 +144,7 @@ data gunbc_first_party_serving_provider: FirstPartyServingAuthority = FirstParty
 
 // THE SERVICE IS THE DEPLOYMENT WE ALREADY DECLARE, cited rather than re-coined: the thing being
 // offered on this route is the Spark pair serving deployment, whose single authority is
-// gunbc.spark.pair_serving_desired. A fresh service anchor beside it would be a second name for it.
+// retired gunbc.spark.pair_serving_desired (deleted #13779). A fresh service anchor beside it would be a second name for it.
 fn spark_first_party_service_ref() -> DeclarationRef {
   decl_ref(module_path: "gunbc.spark.dgx_procurement", decl_name: "dgx_spark_disposed_units")
 }
@@ -477,7 +477,7 @@ fn spark_first_party_downstream() -> DownstreamProviderPopulation {
 // THE ENDPOINT AND THE INCARNATION ARE THE SERVICE HALF'S EVIDENCE. The endpoint is the process the
 // route answered on; the incarnation standing says whether anything observed which engine launch that
 // process belongs to. The production caller, gunbc.harness.harness_seat harness_serving_realization,
-// takes that standing from gunbc.spark.serving_incarnation_observe -- the producer that binds the
+// takes that standing from retired gunbc.spark.serving_incarnation_observe (deleted #13779) -- the producer that binds the
 // answering endpoint to an engine launch over the fleet key session -- so it carries
 // EndpointIncarnationObserved on a bind that observed and EndpointIncarnationUnobserved (with the
 // specific cause) on one that did not. Only
@@ -583,14 +583,14 @@ data spark_serving_usage_stats_unread_obligation: NonEmptyStr = "gunbc.spark.fir
 // refusal asks for is a re-assessment of the route, not a smaller repair: a reporter carrying
 // request material is route material leaving the site, which is the premise the first-party posture
 // rests on.
-data spark_usage_stats_carrying_request_material_obligation: NonEmptyStr = "extdeps.vllm.usage_stats vllm_usage_stats_reporting now reports CarriesRequestMaterial at its cited source revision, so vLLM's usage-stats reporter no longer carries only host, build and engine configuration. The first-party posture rests on route material staying on site and this is route material leaving it, so the route's telemetry path is unresolved and provider-use admission refuses as ProviderRouteFactsIncomplete. The remedy is NOT to edit the declared launch environment: this module no longer reads gunbc.spark.pair_serving_realization spark_pair_container_env at all, so setting VLLM_NO_USAGE_STATS=1 or DO_NOT_TRACK=1 there changes what the launch is declared to do and changes nothing this decision consults. What resolves the route is evidence of the effective telemetry configuration of the process that answered (spark_serving_usage_stats_declared_environment_obligation); the alternative is to re-assess the posture with the operator, whose 2026-09-11 ruling admitted this path ON the condition that the payload stay metadata-only. Neither remedy makes the telemetry path Absent while the environment is declared rather than read: see spark_serving_usage_stats_declared_environment_obligation."
+data spark_usage_stats_carrying_request_material_obligation: NonEmptyStr = "extdeps.vllm.usage_stats vllm_usage_stats_reporting now reports CarriesRequestMaterial at its cited source revision, so vLLM's usage-stats reporter no longer carries only host, build and engine configuration. The first-party posture rests on route material staying on site and this is route material leaving it, so the route's telemetry path is unresolved and provider-use admission refuses as ProviderRouteFactsIncomplete. The remedy is NOT to edit the declared launch environment: this module no longer reads retired gunbc.spark.pair_serving_realization (deleted #13779) spark_pair_container_env at all, so setting VLLM_NO_USAGE_STATS=1 or DO_NOT_TRACK=1 there changes what the launch is declared to do and changes nothing this decision consults. What resolves the route is evidence of the effective telemetry configuration of the process that answered (spark_serving_usage_stats_declared_environment_obligation); the alternative is to re-assess the posture with the operator, whose 2026-09-11 ruling admitted this path ON the condition that the payload stay metadata-only. Neither remedy makes the telemetry path Absent while the environment is declared rather than read: see spark_serving_usage_stats_declared_environment_obligation."
 
 // WHY NO ARM OF THIS STANDING MAY LOCATE A PROVIDER PATH, WHICH IS A REPAIR OF THIS PR'S OWN
 // DEFECT RATHER THAN OF INHERITED CODE. Until this change the metadata-only arm produced
 // ProviderPathLocated, and product.fabric.provider_route first_unresolved_obligation counts a
 // Located path as RESOLVED -- so a route whose reported model path matched the declared one, on a
 // fully lane-covered host population, ADMITTED. The environment that answer rested on is
-// gunbc.spark.pair_serving_realization spark_pair_container_env, which is the environment a
+// retired gunbc.spark.pair_serving_realization (deleted #13779) spark_pair_container_env, which is the environment a
 // container is CREATED WITH: a construction, not a reading of a running process. So admission was
 // resting on an environment nobody observed THIS deployment to have, which is the fabricated
 // evidence this module exists to refuse.

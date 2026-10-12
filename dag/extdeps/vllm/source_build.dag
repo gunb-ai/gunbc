@@ -177,7 +177,7 @@ data vllm_07b75534_aarch64_release_recipe: VllmContainerBuildRecipe = VllmContai
 // image's recorded build arguments: CUDA_VERSION=13.0.2 (an override -- the Dockerfile default at
 // this revision is 13.0.3), PYTHON_VERSION=3.12, NCCL_VERSION=2.30.7, FLASHINFER_VERSION=0.6.18
 // (the base's install; the serving image then force-reinstalls the 0.7.0.dev20260910 nightly,
-// which gunbc.spark.vllm_runtime_image_build carries as the derived stage), INSTALL_KV_CONNECTORS=false,
+// which retired gunbc.spark.vllm_runtime_image_build (deleted #13779) carries as the derived stage), INSTALL_KV_CONNECTORS=false,
 // torch_cuda_arch_list=12.1, and triton-from-source DISABLED (TRITON_INSTALL_FROM_SOURCE_REPO empty,
 // so the Dockerfile writes the "disabled" build-state and the stock triton 3.7.1 stays).
 // build_base_image is the one field not recorded in the final image's history: it is upstream's own

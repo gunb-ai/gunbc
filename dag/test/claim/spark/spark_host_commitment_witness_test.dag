@@ -317,7 +317,7 @@ test fn each_commitment_cause_renders_distinctly() -> Bool {
 // controlled fixture; deriving it through the same map-and-join composition under test would compare
 // the renderer to itself, which is the oracle defect DESIGN section 5 names -- a measurement taken
 // from the subject is not an oracle for the subject.
-data expected_three_cause_rendering: String = "committed to a Spark cell role; a member of a serving group this repository claims (group-b); a serving arm is placed on it (gunbc.spark.glm_canary_converge::glm_canary_arm)"
+data expected_three_cause_rendering: String = "committed to a Spark cell role; a member of a serving group this repository claims (group-b); a serving arm is placed on it (gunbc.spark.dgx_procurement::dgx_spark_disposed_units)"
 
 test fn a_multi_cause_host_renders_every_cause_with_both_separators() -> Bool {
   match spark_host_standing_in(
@@ -366,7 +366,7 @@ test fn the_per_host_producer_refuses_a_host_outside_the_named_unit_population()
 //
 // srv9-srv12 are the hosts of group B, every one of which carries a placement claim from the native GLM arm converged
 // on that group (gunbc.spark.serving_arm_placement, derived from
-// gunbc.spark.fabric_serving_assignment). So no production unit is UNPLACED, and the UNCOMMITTED set
+// retired gunbc.spark.fabric_serving_assignment (deleted #13779)). So no production unit is UNPLACED, and the UNCOMMITTED set
 // -- no cause of any kind -- is empty.
 //
 // THIS CLAIM USED TO ASSERT THE OPPOSITE FOR srv10-srv12, as "the reserved but idle cage": only srv9

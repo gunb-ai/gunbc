@@ -83,7 +83,7 @@ type ServingCheckpoint
 
 // A PRODUCED RUNTIME CARRIES ITS OWN BYTES, BECAUSE NO ROW CAN BE WRITTEN FOR IT AHEAD OF THE BUILD.
 // Every other variant here names an image somebody pulled or built once and pinned by hand, so its row
-// is data. The V4.1 Engram image is produced by the lane (gunbc.spark.vllm_runtime_image_build under
+// is data. The V4.1 Engram image is produced by the lane (retired gunbc.spark.vllm_runtime_image_build (deleted #13779) under
 // gunbc.spark.v41_runtime_image_converge) and admitted by gunbc.spark.v41_runtime_realized
 // v41_admit_produced_runtime, whose answer is a VALUE read back at run time -- a configuration digest
 // and the source tree the build observed. A static row would have to transcribe that digest, which is
@@ -106,7 +106,7 @@ type ServingRuntime
   | GunbcDeepseekV41EngramProduced { artifact: RuntimeArtifactIdentity, registry_reading: ArchitectureRegistryReading? }
 
 // THE EIGHT-RANK TOPOLOGY IS A CANDIDATE SHAPE, NOT A DEPLOYED ONE, AND ONLY A RANK COUNT. It exists
-// because gunbc.spark.serving_fit_projection screens the RadixArk GLM-5.3 NVFP4 checkpoint against it
+// because retired gunbc.spark.serving_fit_projection (deleted #13779) screens the RadixArk GLM-5.3 NVFP4 checkpoint against it
 // and finds it the smallest degree at which the ideal even split stays within the live budget --
 // with placement unread, which is not a fit. Nothing here claims eight Sparks have been
 // fabric-joined, hold the image and checkpoint, or that an engine has run across them; a deployment
@@ -261,7 +261,7 @@ fn checkpoint_quantization_on_argv(q: CheckpointQuantization) -> NonEmptyStr? {
   }
 }
 
-// THE PARSERS ARE THE CHECKPOINT'S, NOT THE LAUNCHER'S. gunbc.spark.serving_arm_launch spelled GLM's
+// THE PARSERS ARE THE CHECKPOINT'S, NOT THE LAUNCHER'S. retired gunbc.spark.serving_arm_launch (deleted #13779) spelled GLM's
 // tool and reasoning parser names inside its argv renderer, so the one multi-host launcher could only
 // ever launch a GLM model: pointing it at another architecture would have rendered GLM's parsers for
 // it, silently. Which parser decodes a model's tool calls is a fact about the model's output format,
@@ -368,7 +368,7 @@ data glm53_radixark_nvfp4_row: ServingCheckpointRow = ServingCheckpointRow {
   quantization: QuantizationResolvedFromCheckpointConfig { wire: glm_5_3_nvfp4_quantization.quant_method, because: "the checkpoint's own config.json carries quant_method modelopt with quant_algo NVFP4, its group size, its kv_cache_scheme and a 240-entry ignore list; a --quantization flag would replace that structure with a bare scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr },
   parsers: glm_5_3_flash_vllm_parsers,
   resident_beyond_weights: NoResidentBeyondWeights,
-  provenance: "revision and byte population are extdeps.radixark.glm_5_3_nvfp4 glm_5_3_nvfp4_manifest, read from the Hub model API at that exact revision on 2026-09-18; the GiB figure is derived from those bytes. The architecture is extdeps.zhipu.glm_5_3 glm_5_3_architecture_class, the sole entry of `architectures` in the base model's config.json and, diffed on the same day, in this checkpoint's. NOT fetched, NOT launched and NOT measured on this fleet: this row is a projection subject, and gunbc.spark.serving_fit_projection is its consumer" as NonEmptyStr,
+  provenance: "revision and byte population are extdeps.radixark.glm_5_3_nvfp4 glm_5_3_nvfp4_manifest, read from the Hub model API at that exact revision on 2026-09-18; the GiB figure is derived from those bytes. The architecture is extdeps.zhipu.glm_5_3 glm_5_3_architecture_class, the sole entry of `architectures` in the base model's config.json and, diffed on the same day, in this checkpoint's. NOT fetched, NOT launched and NOT measured on this fleet: this row is a projection subject consumed by serving_checkpoint_row in this module" as NonEmptyStr,
 }
 
 // DEEPSEEK V4.1 FLASH AT ITS PINNED REVISION, PLACED WHERE gunbc.spark.v41_checkpoint_materialize
@@ -484,7 +484,7 @@ fn serving_checkpoint_row(c: ServingCheckpoint) -> ServingCheckpointRow? {
 // AND THE INTENT SPLIT MOVED WITH THEM. StaticIntegrationObserved existed so that an inspected-but-unrun
 // image could carry a bounded experiment and not normal serving. That asymmetry now lives in the
 // LAUNCH PLANNER, which reads the measured roster's admission for the exact subject and refuses an
-// intent of normal serving when the roster admits only an experiment -- gunbc.spark.serving_arm_launch
+// intent of normal serving when the roster admits only an experiment -- retired gunbc.spark.serving_arm_launch (deleted #13779)
 // intent_refusal, over gunbc.spark.serving_compatibility measured_admission_for.
 //
 // AN EARLIER REVISION OF THIS PARAGRAPH CLAIMED A DIFFERENT HOME and was wrong in the way DESIGN 4c
@@ -769,7 +769,7 @@ fn serving_runtime_row(r: ServingRuntime) -> ServingRuntimeRow? {
 // utilization split beyond a declared page-cache allowance and no KV, so passing it establishes
 // nothing about fit. That is not hypothetical: the weights-only form of it admitted the native FP8
 // tp4 tuple that OOM-crash-looped from 2026-09-18. Fit is a proof obligation at the planner
-// (gunbc.spark.serving_arm_launch plan_arm_launch_under_memory_fit, through gunbc.spark.arm_memory_fit),
+// (retired gunbc.spark.serving_arm_launch (deleted #13779) plan_arm_launch_under_memory_fit, through gunbc.spark.arm_memory_fit),
 // where it is compositional, per-rank and per-phase, for the arm whose terms that proof models;
 // this fold's admitted arm means "plausible", and the planner's memory wall means "proved".
 type ServingArmVerdict
@@ -936,7 +936,7 @@ fn serving_arm_admits_under(checkpoint: ServingCheckpoint, runtime: ServingRunti
 
 // ── THE LAUNCH PROFILE IS A VALUE, NOT A SCATTER OF ROWS IN THE RENDERER ───────────────────────
 //
-// THE ARGV WAS ASSEMBLED FROM MODULE-LEVEL CONSTANTS IN gunbc.spark.serving_arm_launch, so the deployment
+// THE ARGV WAS ASSEMBLED FROM MODULE-LEVEL CONSTANTS IN retired gunbc.spark.serving_arm_launch (deleted #13779), so the deployment
 // being DECIDED and the deployment being LAUNCHED were two independently authored profiles that happened to
 // describe the same engine. The decision named a Ray executor, 0.82, thirty-two sequences and an fp8 KV
 // request; the renderer separately fixed mp, one sequence and an auto KV request. Nothing made a change to
@@ -1042,7 +1042,7 @@ fn serving_launch_profile(
 // A Bool COULD NOT HAVE BEEN REALIZED ANYWAY. vLLM's --speculative-config needs a method and a
 // draft-token count; "true" names neither. When this arm wants speculation it arrives as the modelled
 // policy that already exists -- extdeps.vllm.engine_args VllmSpeculativePolicy, and the argv shape
-// gunbc.spark.glm_canary_converge renders from SpeculationPolicy -- carrying the basis a Bool drops.
+// retired gunbc.spark.glm_canary_converge (deleted #13779) renders from SpeculationPolicy -- carrying the basis a Bool drops.
 // THE MODALITY REQUEST ENTERS THE KEY ONLY WHEN IT IS MADE, for the Engram request's reason below.
 // THE ENGRAM REQUEST ENTERS THE KEY ONLY WHEN IT IS MADE. An explicit request changes what the engine
 // allocates, so two profiles differing in it are two subjects; an omitted one spells no flag, and
@@ -1102,7 +1102,7 @@ fn serving_launch_profile_key(p: ServingLaunchProfile) -> String {
 // The stock digest's kernel asserts pe_dim == 64 for fp8_ds_mla (cache_kernels.cu:928) and finds
 // no attention backend at all under bfloat16, so THAT build serves this model on no spelling --
 // both crash classes observed on the srv9 head 2026-09-17. The lane-built derived image (vLLM
-// 8d09804 + flashinfer 0.7.0.dev20260910, gunbc.spark.vllm_runtime_image_build) inverts both
+// 8d09804 + flashinfer 0.7.0.dev20260910, retired gunbc.spark.vllm_runtime_image_build (deleted #13779)) inverts both
 // readings: its only backend for this model is FLASHINFER_MLA_SPARSE_SM120, which supports ONLY
 // the fp8 KV cache -- bfloat16 is refused by the selector with "kv_cache_dtype not supported"
 // (smoke on srv10, 2026-09-17) -- and under fp8 it selects that backend, announces the fp8_ds_mla
@@ -1258,7 +1258,7 @@ data glm_native_initial_profile: ServingLaunchProfile = serving_launch_profile(
 //
 // ITS STANDING IS NOT INHERITED FROM THE ROW ABOVE. This subject carries no execution receipt until an
 // engine running THIS profile is observed serving, which is what
-// gunbc.spark.serving_arm_launch intent_refusal will enforce: an unrun subject is admitted for a bounded
+// retired gunbc.spark.serving_arm_launch (deleted #13779) intent_refusal will enforce: an unrun subject is admitted for a bounded
 // experiment and refused for normal serving.
 //
 // THIS ROW'S max_num_seqs IS A CHOSEN BOUND, NOT A MEASURED ONE, and the row says so rather than dressing the
@@ -1273,7 +1273,7 @@ data glm_native_initial_profile: ServingLaunchProfile = serving_launch_profile(
 //
 // AND ITS KV REQUEST IS KvFp8, NOT THE auto THE INITIAL ROW RECORDS, BECAUSE OF THE BUILD-KEYED
 // ADMISSION ABOVE AND NOT A PREFERENCE. This is the profile the live arm launches from
-// (gunbc.spark.native_serving_realization), and after the 2026-09-17 bf16 crash-loop it spells fp8.
+// (retired gunbc.spark.native_serving_realization (deleted #13779)), and after the 2026-09-17 bf16 crash-loop it spells fp8.
 // On the arm's declared build (the lane-built derived image) the only backend the selector admits
 // for this model is FLASHINFER_MLA_SPARSE_SM120, which supports ONLY the fp8 KV cache -- bfloat16
 // is refused by the engine itself (smoke, srv10 2026-09-17) -- and fp8 resolves to fp8_ds_mla,
@@ -1309,7 +1309,7 @@ data glm_native_concurrent_profile: ServingLaunchProfile = serving_launch_profil
 // named row here (the type is sole-constructor and no public mint exists), the profile derived from it
 // carries that checkpoint (serving_launch_profile), and the subject mints read the checkpoint off the
 // profile rather than taking a second one. Where a caller still names a checkpoint -- the arm's fabric
-// assignment in gunbc.spark.serving_arm_launch plan_arm_launch_for, the experiment in
+// assignment in retired gunbc.spark.serving_arm_launch (deleted #13779) plan_arm_launch_for, the experiment in
 // gunbc.spark.arm_memory_fit arm_memory_fit_experiment_plan -- a profile from another checkpoint's row
 // refuses there. A checkpoint with no row has no policy to derive a profile from, so it has no launch.
 type ModelLaunchPolicy sole_constructor {
@@ -1430,7 +1430,7 @@ data glm53_nope_derived_row: ServingRuntimeRow = ServingRuntimeRow {
       "flashinfer_cubin-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
       "flashinfer_jit_cache-0.7.0.dev20260910+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
     ],
-    provenance: "built by gunbc.spark.vllm_runtime_image_build on srv9 2026-09-13 as a derived layer over the GLM NoPE base sha256:8af305a7950f...5eec7, installing the three FlashInfer 0.7.0.dev20260910 wheels with --no-deps --force-reinstall. The base relationship is not asserted from the FROM line, which can only name a tag: the derived image's RootFS layers were read after the build and the base's layers are a prefix of them. The base itself remains AdoptedFromOutOfBandBuild -- this row does not launder that standing, it records a layer built on top of it" as NonEmptyStr,
+    provenance: "built by retired gunbc.spark.vllm_runtime_image_build (deleted #13779) on srv9 2026-09-13 as a derived layer over the GLM NoPE base sha256:8af305a7950f...5eec7, installing the three FlashInfer 0.7.0.dev20260910 wheels with --no-deps --force-reinstall. The base relationship is not asserted from the FROM line, which can only name a tag: the derived image's RootFS layers were read after the build and the base's layers are a prefix of them. The base itself remains AdoptedFromOutOfBandBuild -- this row does not launder that standing, it records a layer built on top of it" as NonEmptyStr,
   ),
   hub_cli_path: Present { value: "/usr/local/bin/hf" as NonEmptyStr },
   vllm_version: Present { value: glm53_nope_derived_vllm_version },
@@ -1443,11 +1443,11 @@ data glm53_nope_derived_row: ServingRuntimeRow = ServingRuntimeRow {
 // ── THE RUNTIME GROUP B SERVES TODAY, WHICH IS NOT THE ROW ABOVE ─────────────────────────────
 //
 // THIS ROW MODELS THE SERVING IMAGE; IT DOES NOT CUT THE ARM'S CONSUMERS OVER TO IT. The launch
-// planner (gunbc.spark.serving_arm_launch), the compatibility standing
+// planner (retired gunbc.spark.serving_arm_launch (deleted #13779)), the compatibility standing
 // (gunbc.spark.serving_compatibility glm_native_on_derived_nope_standing) and the selection still
 // name GunbcGlm53NopeDerivedGb10, so a reader of those authorities is still told the NoPE image
 // serves. That is a declared frontier, not a repair claimed here: the cutover is the arm owner's
-// change (in flight as #11565, which re-derives the pin through gunbc.spark.vllm_runtime_image_build
+// change (in flight as #11565, which re-derives the pin through retired gunbc.spark.vllm_runtime_image_build (deleted #13779)
 // glm53_derived_tag), and until it lands the old ExecutionCompatible receipt stays true only of
 // its exact old subject and must not be read as the current standing.
 //
@@ -1456,10 +1456,10 @@ data glm53_nope_derived_row: ServingRuntimeRow = ServingRuntimeRow {
 // (gunbc-vllm-glm53-gb10, tag derived-c99be081f219d123) and nothing in this module followed. That
 // is the adopted-out-of-band shape one layer up: a converge landed a new image, and the authority
 // that says which image serves kept describing the old one. It was found by an exact-match refusal
-// in gunbc.spark.serving_fit_projection, not by anything watching the arm.
+// in retired gunbc.spark.serving_fit_projection (deleted #13779), not by anything watching the arm.
 //
 // PINNED BY CONFIG ID, the image's only identity: RepoDigests is empty because it was never pushed.
-// The tag it is reached through is the derived tag gunbc.spark.vllm_runtime_image_build
+// The tag it is reached through is the derived tag retired gunbc.spark.vllm_runtime_image_build (deleted #13779)
 // glm53_derived_tag folds from the wheel set, and that fold is the right authority for the TAG; the
 // content id is what a launch and a reading are keyed by, and it is read from the daemon.
 //
@@ -1468,7 +1468,7 @@ data glm53_nope_derived_row: ServingRuntimeRow = ServingRuntimeRow {
 // have. (2) The base image's own build commit is self-declared unknown (VLLM_BUILD_COMMIT=unknown,
 // VLLM_BUILD_PIPELINE=local in its labels), so source_revision below is the version string's commit
 // and not a label the base carries. (3) The FP4 W4A4 path on SM 121 is UNREAD -- the probe's own
-// discriminator is absent from this build (gunbc.spark.serving_runtime_capability_probe
+// discriminator is absent from this build (retired gunbc.spark.serving_runtime_capability_probe (deleted #13779)
 // glm53_derived_probe_rows) -- and registration of GlmMoeDsaForCausalLM says nothing about it.
 //
 // WHAT IT DOES KNOW WAS READ, NOT INHERITED: the registry dump (378 names, inside this config id),
@@ -1496,7 +1496,7 @@ data glm53_derived_row: ServingRuntimeRow = ServingRuntimeRow {
   vllm_version: Present { value: glm53_nope_derived_vllm_version },
   registry_reading: Present { value: glm53_derived_registry_reading },
   reasoning_projection: none,
-  provenance: "read inside this exact image on the Group B head 2026-09-18 by the GLM performance lane: vllm 0.1.dev1+g8d09804c8; flashinfer-python, flashinfer-cubin 0.7.0.dev20260910 and flashinfer-jit-cache 0.7.0.dev20260910+cu130; torch 2.13.0+cu130; Glm5NextForConditionalGeneration registered True (what Group B serves) and GlmMoeDsaForCausalLM registered True, 378 architectures in total (sorted-roster sha256 2e43451e...); a modelopt.py quantization module present in the package; hf at /usr/local/bin/hf. NOT established: any kernel execution, any checkpoint load, the reasoning projection, or the FP4 W4A4 path on SM121 -- the FP4 probe's own discriminator is absent from this build's op namespace, recorded as KernelProbeSymbolUngrounded in gunbc.spark.serving_runtime_capability_probe glm53_derived_probe_rows" as NonEmptyStr,
+  provenance: "read inside this exact image on the Group B head 2026-09-18 by the GLM performance lane: vllm 0.1.dev1+g8d09804c8; flashinfer-python, flashinfer-cubin 0.7.0.dev20260910 and flashinfer-jit-cache 0.7.0.dev20260910+cu130; torch 2.13.0+cu130; Glm5NextForConditionalGeneration registered True (what Group B serves) and GlmMoeDsaForCausalLM registered True, 378 architectures in total (sorted-roster sha256 2e43451e...); a modelopt.py quantization module present in the package; hf at /usr/local/bin/hf. NOT established: any kernel execution, any checkpoint load, the reasoning projection, or the FP4 W4A4 path on SM121 -- the FP4 probe's own discriminator is absent from this build's op namespace, recorded as KernelProbeSymbolUngrounded in retired gunbc.spark.serving_runtime_capability_probe (deleted #13779) glm53_derived_probe_rows" as NonEmptyStr,
   claimed_defaults_revision: Present { value: Vllm8d09804 },
 }
 

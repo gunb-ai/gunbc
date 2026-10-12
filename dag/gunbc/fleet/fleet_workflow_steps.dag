@@ -684,11 +684,11 @@ data gunbc_ci_spark_serving_step_timeout_minutes: Duration = 60
 // The serving budget above is an hour and this step compiles vLLM from source for compute
 // capability 12.1; the one executed cold build of that image took about seventy-five minutes, so an
 // hour cuts it off mid-compile and reports a timeout where the truth is a budget defect -- which is
-// precisely the reason gunbc.spark.vllm_runtime_image_build's dissolve-on gives for its entry having
+// precisely the reason retired gunbc.spark.vllm_runtime_image_build (deleted #13779)'s dissolve-on gives for its entry having
 // had no dispatch mode.
 //
 // WHAT GROUNDS THE NUMBER is not that seventy-five minutes and a margin. It is
-// gunbc.spark.vllm_runtime_image_build vllm_build_host_effect_term, the term the build's own
+// retired gunbc.spark.vllm_runtime_image_build (deleted #13779) vllm_build_host_effect_term, the term the build's own
 // host-effect claim is admitted for: after it an unreleased claim reads OVERDUE and fences the host.
 // A step allowed to run longer than the claim that fences its host would be running in exactly the
 // state that term exists to make visible, so the step budget IS the claim's term, converted once.

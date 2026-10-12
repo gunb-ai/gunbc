@@ -73,7 +73,7 @@ fn awaited_fields(line: String) -> List<String> {
 
 // HOST-CLOCK INSTANTS ARE EpochSecs (std.types; review 76436), never a bare Int. A parsed Int cannot be
 // cast to the refinement, so after the negative check the expected type of Present mints it (the shape
-// gunbc.instruments.fabric_capacity_standing epoch_secs_from_non_negative uses): a negative instant is a
+// retired gunbc.instruments.fabric_capacity_standing (deleted #13779) epoch_secs_from_non_negative uses): a negative instant is a
 // broken clock and is refused as unread, never carried.
 fn awaited_int(text: String) -> EpochSecs? {
   match parse_int(s: trim(s: text)) {

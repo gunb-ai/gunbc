@@ -1331,7 +1331,7 @@ data fleet_converge_spark_native_serving_apply_step_if: String = fleet_converge_
 // protection. Actions concurrency cannot help a direct CLI invocation, which is how this entry is
 // actually run today, and a job carries exactly ONE group -- so keying the native mode to the arm
 // means it no longer queues behind an ordinary converge of a Group-B host, a real and stated trade.
-// The wall is the source-level lock: gunbc.spark.native_serving_apply acquires an O_EXCL fence per
+// The wall is the source-level lock: retired gunbc.spark.native_serving_apply (deleted #13779) acquires an O_EXCL fence per
 // unit carrying a kernel-UUID transaction identity, and every leg that removes an artifact refuses
 // unless it owns that identity.
 // WHICH DOMAIN A MODE MUTATES is one modeled fact per mode, EXHAUSTIVE AND WITHOUT A WILDCARD: a
@@ -3630,7 +3630,7 @@ fn fleet_converge_spark_serving_apply_step() -> Step {
 }
 
 // THE NATIVE ARM'S APPLY, UNDER ITS OWN MODE. The pair step converges the promoted fabric groups'
-// pair units; this step converges group B's native four-rank arm (gunbc.spark.native_serving_apply)
+// pair units; this step converges group B's native four-rank arm (retired gunbc.spark.native_serving_apply (deleted #13779))
 // over the same password session, and it runs exactly when the operator asks for
 // `spark_native_serving_apply` and never otherwise. THE HEAD IS APPLIED BEFORE THE WORKERS, which is
 // what the source does: the head's engine opens the rendezvous store every worker's restart then

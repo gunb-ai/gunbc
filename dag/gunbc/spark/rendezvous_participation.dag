@@ -56,7 +56,7 @@ import std.algebra { Cons, Empty }
 // process, or a rank started with the wrong --node-rank all satisfy the same reading.
 //
 // THE RANK IN EVERY ARM BELOW IS THEREFORE THE DECLARED ONE, AND IT SAYS SO IN THE FIELD NAME. It is
-// the position gunbc.spark.native_serving_realization's roster assigns the host -- what this repository
+// the position retired gunbc.spark.native_serving_realization (deleted #13779)'s roster assigns the host -- what this repository
 // INTENDS that host to be running -- joined to a host-level connectivity reading. An earlier revision
 // named the positive arm `RankAtRendezvous` and carried the same number in a field called `rank`, which
 // asserted an observation about a rank from a reading that had never seen one. That is the fabricated
@@ -84,12 +84,12 @@ import std.algebra { Cons, Empty }
 // THE EPOCH IS THE HEAD'S INVOCATION, because the head's unit start is what creates the store. Two
 // ranks are in the same rendezvous exactly when they are attached to the store one invocation opened,
 // so the invocation id is the epoch's identity rather than a label chosen for it. It is already read
-// on the serving path (gunbc.spark.serving_incarnation_observe reads InvocationID off the head unit),
+// on the serving path (retired gunbc.spark.serving_incarnation_observe (deleted #13779) reads InvocationID off the head unit),
 // so this is a join onto an existing observation and not a second acquisition.
 //
 // THE MASTER ENDPOINT IS CARRIED BESIDE IT because the ranks are told to join an address and port, and
 // that is the peer the participation query filters on. Deriving it here from the head identity would
-// duplicate gunbc.spark.native_serving_realization's launch argv, which is the authority for what the
+// duplicate retired gunbc.spark.native_serving_realization (deleted #13779)'s launch argv, which is the authority for what the
 // ranks were actually pointed at.
 type RendezvousEpoch sole_constructor {
   head: HostIdentity

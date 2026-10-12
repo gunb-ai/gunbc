@@ -116,7 +116,7 @@ fn glm_5_3_routed_expert_params(s: GlmMoeDsaShape) -> Nat {
 
 // THE EXPERTS ONE TOKEN VISITS ACROSS THE WHOLE STACK: num_experts_per_tok in each MoE layer. This
 // is the multiplicity an expert-offload scheme would have to stream per decoded token, and it is
-// the reason such a scheme is refused on unified-memory hardware (gunbc.spark.serving_fit_projection).
+// the reason such a scheme is refused on unified-memory hardware (retired gunbc.spark.serving_fit_projection (deleted #13779)).
 fn glm_5_3_routed_expert_visits_per_token(s: GlmMoeDsaShape) -> Nat? {
   match glm_5_3_moe_layer_count(s: s) {
     Absent => none

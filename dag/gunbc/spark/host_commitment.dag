@@ -67,7 +67,7 @@ import gunbc.spark.serving_subject {
 // forbids -- the copy that goes stale while the original moves. So the inputs are inhabited rather
 // than transcribed: the unit population is gunbc.spark.dgx_procurement's reserved identities; the
 // standing role commitments are gunbc.spark.cell_role's assignments; the hosts of the serving groups
-// this repository actually claims are gunbc.spark.pair_serving_desired's groups read through
+// this repository actually claims are retired gunbc.spark.pair_serving_desired (deleted #13779)'s groups read through
 // gunbc.spark.fabric_switch_observed's observed cage membership; the placed serving arms are
 // gunbc.spark.serving_arm_placement's claims; the held reservations are
 // gunbc.spark.llama_cpp_rpc_observed's undischarged internal-participant hosts; and the rulings that
@@ -75,7 +75,7 @@ import gunbc.spark.serving_subject {
 // owns one fact and one only: that those JOIN, and how.
 //
 // AND THE JOIN ALREADY EXISTED, WHICH IS THE OTHER HALF OF WHY THIS FILE IS HERE.
-// gunbc.spark.vllm_runtime_image_build had authored `spark_build_host_excluded` /
+// retired gunbc.spark.vllm_runtime_image_build (deleted #13779) had authored `spark_build_host_excluded` /
 // `admissible_spark_build_hosts` -- the same subtraction over two of the same authorities, to answer
 // where a container build may run. A second consumer arriving with the same question is precisely the
 // moment the fold stops being one module's private helper. So the fold moved here at its root, the
@@ -175,7 +175,7 @@ import gunbc.spark.serving_subject {
 //
 // THE LINE IS NAMED FOR WHAT IT IS, AND IT IS NOT "OBSERVED VERSUS DECLARED". A first cut called the
 // outer arms Observed and Declared, and the parent lane caught that the name was false for half the
-// members: a claimed serving group is gunbc.spark.pair_serving_desired's DESIRED state, and a cell
+// members: a claimed serving group is retired gunbc.spark.pair_serving_desired (deleted #13779)'s DESIRED state, and a cell
 // role is an operator decision recorded in gunbc.spark.cell_role -- neither is an observation of the
 // host. Only the RPC reservation is observation-minted, and the arm placement is an authored row.
 // What the four actually share is that the AUTHORITY OWNING THE FACT HOLDS A STANDING ON THE HOST --
@@ -774,9 +774,9 @@ fn spark_host_commitment_wire(c: SparkHostCommitment) -> NonEmptyStr {
 
 // THE ONE ADMISSION SEAM, BECAUSE THREE EFFECTFUL ROOTS WERE EACH ASKING IN THEIR OWN WORDS.
 //
-// THE SHAPE THIS REPLACES: gunbc.spark.vllm_runtime_image_build owned a typed `admit_spark_build_host`
+// THE SHAPE THIS REPLACES: retired gunbc.spark.vllm_runtime_image_build (deleted #13779) owned a typed `admit_spark_build_host`
 // that exactly one of its two entries called; the other entry, and the published-image probe in
-// gunbc.spark.v41_runtime_image_probe, each re-wrote the guard as a bare `if !uncommitted` with their
+// retired gunbc.spark.v41_runtime_image_probe (deleted #13779), each re-wrote the guard as a bare `if !uncommitted` with their
 // own refusal sentence. Three roots, one of them typed, and the witness exercised only the typed one
 // -- so a regression in either open-coded guard left the suite green while an effect ran on a claimed
 // host. The seam belongs to the authority that owns the commitment fact rather than to whichever lane

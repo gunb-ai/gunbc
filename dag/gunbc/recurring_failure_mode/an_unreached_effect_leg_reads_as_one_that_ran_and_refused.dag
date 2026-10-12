@@ -9,7 +9,7 @@ data an_unreached_effect_leg_reads_as_one_that_ran_and_refused: RecurringFailure
   receipts: [
     "**an unreached effect leg reads as one that ran and refused** (a remote effect whose transport never reached the host -- ssh could not connect, so no remote shell began -- is reported with the same value as a leg whose script ran and refused, so the caller can neither retry the first without retrying the second nor resume the leftovers the first one strands).",
 
-    "INVALID STATE: gunbc.spark.pair_serving_apply SparkPairHostApplyOutcome had two arms, Applied and Failed, and every non-zero session result became Failed. ssh(1)'s own 255 (extdeps.ssh.session ssh_client_error_exit_status) was folded into the script's refusal exits.",
+    "INVALID STATE: retired gunbc.spark.pair_serving_apply (deleted #13779) SparkPairHostApplyOutcome had two arms, Applied and Failed, and every non-zero session result became Failed. ssh(1)'s own 255 (extdeps.ssh.session ssh_client_error_exit_status) was folded into the script's refusal exits.",
 
     "HARM: fleet-converge run 36918167575 (2026-10-01, mode spark_v41_group_a_launch). One leg to srv7 timed out over Wi-Fi (`ssh: connect to host 192.168.1.232 port 22: Connection timed out`), the whole four-host transaction rolled back, the rollback leg to srv7 timed out too, and srv7 kept `.gunbc-had-no-unit` and `.gunbc-transaction`. Every later run refused at preflight until a human deleted them. A transient link loss cost a full arm abort plus a manual intervention.",
 

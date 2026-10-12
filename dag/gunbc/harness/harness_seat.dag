@@ -217,7 +217,7 @@ fn harness_seat_pool_root(partition: PartitionId, ceiling: Nat) -> Pool<Count, O
 }
 
 // AN UNRESOLVED ROUTE HAS NO CEILING, which is the one way this can fail to establish one. The
-// engine-kind check that used to stand here read gunbc.spark.pair_serving_desired's DESIRED unit and
+// engine-kind check that used to stand here read retired gunbc.spark.pair_serving_desired (deleted #13779)'s DESIRED unit and
 // refused a group served by a runtime whose KV admission is not modelled -- a correct wall over the
 // wrong subject once a second route exists, because that row describes a launch this repository
 // would perform and not the process answering on either front door. Which runtimes may be enrolled
