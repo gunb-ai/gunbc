@@ -1135,9 +1135,9 @@ fn money_per_hour_micros(q: MoneyPerHour) -> Nat {
 // DECLARED ExactDecimal → micro conversion. RFC 8259 numbers are exact decimals; MoneyAmountMicro
 // is Nat micros of a dollar. Implicit Int/Float coercion is refused (DESIGN §4). Bids and
 // liabilities ROUND UP: understating a min_bid or a tariff would admit a cash obligation the
-// wire did not cover. Consumers: extdeps.cloud.vast_ai vast_ai_min_bid_money_per_hour and
-// vast_ai_dph_total_money_per_hour, and product.fabric.flex_policy flex_bid_admission, which
-// converts FlexBidAttempt.min_bid on the admission path.
+// wire did not cover. Consumers in this change: extdeps.cloud.vast_ai vast_ai_min_bid_money_per_hour
+// and vast_ai_dph_total_money_per_hour, and product.fabric.flex_policy flex_bid_admission (those
+// three have a declared §3c frontier; their executing route today is the flex admission witness).
 data money_micro_fraction_digits: Int = 6
 
 type DecimalMoneyConversion

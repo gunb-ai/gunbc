@@ -88,10 +88,16 @@ type VastAiOffer {
 
 data vast_ai_quote_currency: CurrencyCode = Usd
 
+// DECLARED FRONTIER (DESIGN §3c): production consumer is the FlexBidAttempt adapter named on
+// product.fabric.flex_policy. Until that lands, the executing consumer is
+// test.claim.fabric.flex_bid_admission_witness.
 fn vast_ai_min_bid_money_per_hour(offer: VastAiOffer) -> DecimalMoneyPerHourConversion {
   exact_decimal_to_money_per_hour_ceil(d: offer.min_bid, currency: vast_ai_quote_currency)
 }
 
+// DECLARED FRONTIER (DESIGN §3c): production consumer is the on-demand acquisition fold that
+// prices from dph_total rather than min_bid. TRIGGER: that fold calls this wrapper. Until then
+// the executing consumer is the inhabitance arm of vast_min_bid_rounds_up_a_seventh_fraction_digit.
 fn vast_ai_dph_total_money_per_hour(offer: VastAiOffer) -> DecimalMoneyPerHourConversion {
   exact_decimal_to_money_per_hour_ceil(d: offer.dph_total, currency: vast_ai_quote_currency)
 }

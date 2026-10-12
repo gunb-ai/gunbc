@@ -38,7 +38,7 @@ import product.fabric.flex_policy {
   FlexRetainedLimitWouldRise, FlexRateCapBelowMin, FlexMoneyRefused, FlexSupplyNotSelected,
   FlexOnDemandFractionExceeded, FlexCurrencyMismatch, FlexDecimalConversionRefused,
   FlexCandidateMachineMismatch,
-  flex_floor_buffer, flex_bid_admission, flex_rebid_at_buffer_of_new_min, flex_buffered_min,
+  flex_floor_buffer, flex_bid_admission, flex_buffered_min,
   exact_ratio_denominator,
 }
 import extdeps.cloud.vast_ai {
@@ -317,7 +317,7 @@ test fn the_red_rebid_at_one_point_one_times_new_min_is_not_what_admission_does(
     ),
   )
   let new_min = usd_hour(micros: 1200000)
-  let red = flex_rebid_at_buffer_of_new_min(new_min: new_min, buffer: flex_floor_buffer)
+  let red = flex_buffered_min(min_bid: new_min, buffer: flex_floor_buffer)
   match first {
     FlexBidRefused { cause: _ } => false
     FlexBidAdmitted { bid: first_bid, selection: _, account: next_account, ledger: next_ledger, window: next_window } => {

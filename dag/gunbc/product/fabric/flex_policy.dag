@@ -28,7 +28,12 @@ import product.fabric.selection {
   AvailabilityUnobserved, SelectedOffer, select_supply,
 }
 
-// Fleet interruptible-bid policy. Consumer of every declaration below is flex_bid_admission.
+// Fleet interruptible-bid policy. In this change the executing consumer of flex_bid_admission is
+// the witness. DECLARED FRONTIER (DESIGN §3c): the production consumer is the fold that maps a
+// Vast SearchOffers row through vast_ai_min_bid_money_per_hour into FlexBidAttempt (quote_currency
+// = vast_ai_quote_currency) and calls flex_bid_admission. TRIGGER: that adapter exists as a
+// production module (not a test) and deleting the witness still leaves an execution of the real
+// path. Until then this slice is M0 model-only: no effects, no search, no bid PUT.
 
 // Nonzero denominator by construction: the written field is the predecessor, so Zero cannot be
 // a denominator (DESIGN §5). FieldOfFractions<Nat> (and EscalationFraction) still admits denom 0.
@@ -218,12 +223,6 @@ fn advance_window(window: FlexAcquisitionWindow, on_demand: Bool) -> FlexAcquisi
     on_demand_held: if on_demand { window.on_demand_held + 1 } else { window.on_demand_held },
     interruptible_held: if on_demand { window.interruptible_held } else { window.interruptible_held + 1 },
   }
-}
-
-// THE RED: applying the floor buffer to a newly observed min after an outbid, which RAISES the
-// bid. flex_bid_admission never does this. Consumer: the RED witness.
-fn flex_rebid_at_buffer_of_new_min(new_min: MoneyPerHour, buffer: ExactRatio) -> MoneyPerHour {
-  flex_buffered_min(min_bid: new_min, buffer: buffer)
 }
 
 fn refuse_currency(left: CurrencyCode, right: CurrencyCode) -> FlexBidAdmission {
