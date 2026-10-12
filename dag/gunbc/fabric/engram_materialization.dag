@@ -74,9 +74,9 @@ import extdeps.safetensors.format {
 // faithfulness relation joins the two.
 //
 // WHAT THIS MODULE IS NOT. It is not a second decision algebra: route choice is
-// `std.decision.select_realization` over `std.pareto`, exactly as
-// `gunbc.spark.serving_deployment_selection` calls it, and this module declares the subject, the
-// candidates and the evidence rather than a ranking of its own. It is not a second cache-retention
+// `std.decision.select_realization` over `std.pareto`, the same consumption
+// `product.fleet_operating_point` `fleet_operating_point_selection` already exercises, and this
+// module declares the subject, the candidates and the evidence rather than a ranking of its own. It is not a second cache-retention
 // vocabulary: every hop IS a `std.materialization_ladder` `CacheProvider`, so placement and
 // retention are READ OFF the provider rather than restated beside it. And it is not a host
 // scheduler: it never says which host runs what.
@@ -1340,8 +1340,8 @@ fn route_subject_key_render(k: RouteSubjectKey) -> String {
 // feasible. So there is no zero arm, and the unestablished arm keeps the fit result OPEN.
 //
 // THE LOWER-BOUND ARM IS SEPARATE FROM THE UPPER-BOUND ARM because they do opposite work. A lower
-// bound can DISPROVE a fit and can never establish one -- the same asymmetry
-// `gunbc.spark.serving_deployment_selection` `WeightFit` already carries. Collapsing them into one
+// bound can DISPROVE a fit and can never establish one -- the same asymmetry a lower bound versus
+// an upper bound already carries. Collapsing them into one
 // "bounded" arm is how a floor comes to be read as a ceiling.
 type RouteResidentMemoryStanding
   = ResidentMemoryObserved { bytes: ByteSize, receipt: DeclarationRef }
