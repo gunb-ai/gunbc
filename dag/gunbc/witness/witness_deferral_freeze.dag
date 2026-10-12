@@ -69,6 +69,16 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // Re-adding any one falsifier cadence would restore one door; it would not restore
 // the refusal, which needs a required run to enter the discovery path. Both halves
 // are in the restoration trigger for that reason.
+// SHRINK LOG. 2026-10-12 — the source layout cutover (gunbc.plans.source_layout_authority) deleted
+// the transport that ran the whole-tree ingest gate, and with it the OfflineLocalRecipe exclusion
+// rows that existed only to route their files to that transport (gunbc.ci.ci_layer_roots). Every
+// freeze row whose entry those rows excluded left with its file, except one: src/v2/test/claim/
+// self_host/crate_layout_witness.dag [whole] is retired because a consumer now executes it, not
+// exempted. Its exclusion row said hermetic runs read host_module_bindings = Empty and refuse; that
+// stopped being true when the parity witness that read the index was deleted, so the file's one
+// remaining test decl compares the committed generated artifact with the registration rows and
+// runs under discovery. The row deletes (collect_stale_frozen_path_deferrals refuses an entry no
+// OfflineLocalRecipe policy matches), so the required floor runs the file.
 // SHRINK LOG. 2026-10-05 — src/v2/test/claim/long/cwc_resolution_probe.dag [whole],
 // 9 identities, RETIRED because a consumer now executes them, not exempted: gunbc#13333 enrolled
 // cwc_malformed_nary_coproduct_normalize_rejects in v2.workflow.floor_expected_red, and the floor
@@ -1154,12 +1164,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     entry: "src/v2/test/claim/manual/emit_source_store.dag",
     functions: [
       "emit_source_store_provider_gate_holds"
-    ]
-  },
-  FrozenPathDeferral {
-    entry: "src/v2/test/claim/self_host/crate_layout_witness.dag",
-    functions: [
-      "crate_layout_witnesses"
     ]
   },
   FrozenPathDeferral { entry: "src/v2/test/manual/long/grounding_lens_whole_tree.dag", functions: ["grounding_lens_whole_tree_witnesses"] },

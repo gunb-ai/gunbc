@@ -308,6 +308,12 @@ fn reference_conservation_changed_scope_observation_exit(paths_csv: String) -> P
 // in large files is not in it, and the full census is what closes that gap. A listed path the tree
 // no longer holds is reported SamplePathMissing (its absence established by a listing, not inferred
 // from a failed read), so a stale pin is visible in the census rather than a smaller population.
+// SOURCE LAYOUT CUTOVER (gunbc.plans.source_layout_authority): the listed paths are the pinned
+// revision's, mapped to the rule positions the cutover gave those files, so the pairing instrument
+// compares the list with the pin's own pre-cutover paths and reports that difference until a repin
+// at a revision that holds the layout. The one listed file the cutover deleted
+// (gunbc.unimported_bare_provider_gate_seed_growth) is reported SamplePathMissing, as a stale pin
+// is meant to be.
 data reference_conservation_stratified_sample_revision: String = "8fcd8e77b898f8188a281be07119fc5e97d09bef"
 
 data reference_conservation_stratified_sample_paths: List<String> = [

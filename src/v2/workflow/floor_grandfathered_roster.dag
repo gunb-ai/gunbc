@@ -640,6 +640,50 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
     deleted_in: "the product-receipt lane deletion (source layout cutover C3, gunbc.plans.source_layout_authority): v2.workflow.product_receipt and its stage and transport existed only to fold the host whole-tree manifests and the seed bin that emitted them, and no workflow consumed the receipt, so the lane and this claim go with the whole-repository ingest-gate family" as NonEmptyStr
   },
   WitnessDeleted {
+    identity: "v2.test.claim.floor_discovery_source_authority.misplaced_test_decl_refuses_with_the_producer_reason" as NonEmptyStr,
+    deleted_in: "the test-identification convention retirement (source layout cutover operator override, gunbc.plans.source_layout_authority): this pinned the refusal of a `test`-marked declaration outside a `*_test.dag` file, and the file-name convention is retired -- a test is a declaration carrying the authored `test` marker at any path. Its inverse is v2.test.claim.floor_discovery_source_authority.marked_names_enrol_one_row_each_at_any_path" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.floor_discovery_source_authority.sidecar_test_fn_enrolls_one_row" as NonEmptyStr,
+    deleted_in: "the test-identification convention retirement (source layout cutover operator override, gunbc.plans.source_layout_authority): enrolment is no longer a property of the `*_test.dag` place; the control is v2.test.claim.floor_discovery_source_authority.marked_names_enrol_one_row_each_at_any_path, which enrols each supplied marked name at an unsuffixed path" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.floor_discovery_source_authority.sidecar_test_data_enrolls_one_row" as NonEmptyStr,
+    deleted_in: "the test-identification convention retirement (source layout cutover operator override, gunbc.plans.source_layout_authority): enrolment is no longer a property of the `*_test.dag` place; enrolment keys on the supplied marked name rather than on a place, and the control is v2.test.claim.floor_discovery_source_authority.marked_names_enrol_one_row_each_at_any_path" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.floor_discovery_source_authority.barren_sidecar_refuses" as NonEmptyStr,
+    deleted_in: "the test-identification convention retirement (source layout cutover operator override, gunbc.plans.source_layout_authority): the file-name-keyed wall `floor_entry_is_barren_test_sidecar` is deleted with the convention, so a file that declares no marked test is no longer a violation; v2.test.claim.floor_discovery_source_authority.retired_test_suffix_alone_enrols_and_refuses_nothing pins the new state" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.floor_discovery_source_authority.ordinary_module_enrolls_nothing_and_refuses_nothing" as NonEmptyStr,
+    deleted_in: "the test-identification convention retirement (source layout cutover operator override, gunbc.plans.source_layout_authority): it pinned that an ordinary module is neither enrolled nor refused under the naming rule; with nothing marked the same holds for any path, and v2.test.claim.floor_discovery_source_authority.retired_test_suffix_alone_enrols_and_refuses_nothing is the claim that carries it" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.module_storage_binding.module_storage_agreement_holds_when_host_matches_oracle" as NonEmptyStr,
+    deleted_in: "the module-storage comparator deletion (source layout cutover C3, gunbc.plans.source_layout_authority): `module_storage_host_agrees_with_oracle` compared a host manifest of module-to-path rows with the parsed oracle, and the host manifest is deleted with the whole-tree ingest it served -- a module's storage is its name under the layout rule, a lookup rather than a second row set to compare" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.module_storage_binding.module_storage_agreement_reports_divergent_on_wrong_module" as NonEmptyStr,
+    deleted_in: "the module-storage comparator deletion (source layout cutover C3, gunbc.plans.source_layout_authority): the divergence it reported was between a host manifest row and the parsed oracle, and the host manifest is deleted with the whole-tree ingest it served; a path whose declared module is not the module its path derives is a layout refusal, pinned by the layout check" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.module_storage_binding.module_storage_agreement_reports_uncovered_on_missing_row" as NonEmptyStr,
+    deleted_in: "the module-storage comparator deletion (source layout cutover C3, gunbc.plans.source_layout_authority): the uncovered state was a parsed module with no host manifest row, and there is no host manifest after this change; a module the acquirer cannot find at its rule position is an acquisition refusal, not a coverage gap" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.v2_native_route.a_discovery_row_whose_source_declares_no_module_refuses_the_derivation" as NonEmptyStr,
+    deleted_in: "the native lane's universe derivation moved from a whole-tree scan of discovery rows to acquisition by layout (source layout cutover C2, gunbc.plans.source_layout_authority): a row's module is derived from its name, never read back out of its source, so a source declaring no module is no longer a derivation input; the stated module-header reading stays pinned by a_source_with_no_module_header_declares_no_module" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.v2_native_route.a_module_no_universe_member_imports_is_outside_the_closure" as NonEmptyStr,
+    deleted_in: "the native lane's closure derivation was replaced by demand-derived acquisition (source layout cutover C2, gunbc.plans.source_layout_authority): the closure is the acquirer's, and the fixed-point walk over a whole-tree source-facts set this probed is deleted. Exactness of the acquired set is pinned by the_ingest_is_exactly_the_acquired_modules, and the budget by an_exhausted_closure_budget_refuses_the_derivation" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.v2_native_route.the_closure_holds_what_the_universe_needs" as NonEmptyStr,
+    deleted_in: "the native lane's closure derivation was replaced by demand-derived acquisition (source layout cutover C2, gunbc.plans.source_layout_authority): the closure is the acquirer's, and the fixed-point walk over a whole-tree source-facts set this probed is deleted. What the universe needs is pinned by the_universe_is_the_marked_declarations_of_the_namespace_modules_acquired" as NonEmptyStr
+  },
+  WitnessDeleted {
     identity: "v2.test.claim.host_language_transport_script.corpus.migrated_transports_clean.corpus_compiler_closure_ingest_transport_clean_holds" as NonEmptyStr,
     deleted_in: "the whole-repository ingest-gate family deletion (source layout cutover C3, gunbc.plans.source_layout_authority): the host transport this claim held clean (v2.workflow.compiler_closure_ingest_transport / source_root_ingest_transport) no longer exists, because compilation acquires only the requested closure through v2.compiler.module_acquisition and no producer reads the whole tree" as NonEmptyStr
   },
