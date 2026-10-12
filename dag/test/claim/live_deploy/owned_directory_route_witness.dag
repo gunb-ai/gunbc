@@ -1,7 +1,7 @@
 module test.claim.live_deploy.owned_directory_route_witness
 
 import std.types { Bool, String, NonEmptyStr, FilePath, List }
-import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.desired { deployment_spec_srv1, prod_role_actuated_realization }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands }
 import gunbc.live_deploy.emit { owned_directory_apply_steps }
 import gunbc.live_deploy.member_identity {
@@ -117,7 +117,7 @@ fn derived_stat_line(t: OwnedDirectoryTarget) -> String {
 }
 
 fn fabric_tree() -> List<OwnedDirectoryTarget> {
-  fabric_storage_directory_demands(instance: srv1_live_dashboard_instance())
+  fabric_storage_directory_demands(realization: prod_role_actuated_realization(), instance: srv1_live_dashboard_instance())
 }
 
 // The privileged reads of a host holding exactly the fabric tree at its derived identities: a listing

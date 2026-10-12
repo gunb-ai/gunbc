@@ -19,6 +19,9 @@ module gunbc.executor_privileged_operation
 // facts, not one carrier. This module owns exactly the second, and projects from the first.
 
 import std.types { String, NonEmptyStr, List }
+import extdeps.access.posix { FileMode }
+import extdeps.tools.gnu_coreutils { coreutils_install_directory_owned_arguments }
+import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerAllEveryoneTraverse }
 import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.sudo.elevation { ElevatedInvocation, sudo_elevate, sudo_elevate_as, sudo_elevate_argv, sudo_elevate_command, sudo_elevate_as_command }
@@ -67,7 +70,7 @@ type ExecutorPrivilegedOperation
       path: NonEmptyStr
       owner: NonEmptyStr
       group: NonEmptyStr
-      mode: NonEmptyStr
+      mode: FileMode
     }
   | RemoveDirectoryTree { path: NonEmptyStr }
   | SystemdDaemonReload
@@ -153,17 +156,11 @@ fn gunbc_entry_run_argv(
 // exactly one place where an operation becomes words.
 fn executor_privileged_operation_argv(op: ExecutorPrivilegedOperation) -> List<NonEmptyStr> {
   match op {
-    EnsureOwnedDirectory { path: p, owner: o, group: g, mode: m } => [
-      ci_runner_sudo_binary_path(b: SudoInstall),
-      "-d" as NonEmptyStr,
-      "-m" as NonEmptyStr,
-      m,
-      "-o" as NonEmptyStr,
-      o,
-      "-g" as NonEmptyStr,
-      g,
-      p
-    ]
+    EnsureOwnedDirectory { path: p, owner: o, group: g, mode: m } =>
+      concat(
+        [ci_runner_sudo_binary_path(b: SudoInstall)],
+        coreutils_install_directory_owned_arguments(mode: m, owner: o, group: g, path: p as String) |> map(a => a as NonEmptyStr),
+      )
     RemoveDirectoryTree { path: p } => [
       ci_runner_sudo_binary_path(b: SudoRm),
       "-rf" as NonEmptyStr,
@@ -384,7 +381,7 @@ fn executor_privileged_operations_sudoers_body(
 // as /opt/actions-runner/* matches `..` (fnmatch's * declines to cross `/` but `..` contains none),
 // so `rm -rf /opt/actions-runner/..` would be authorized by it. Naming the slots exactly costs a
 // longer generated file and removes the traversal entirely.
-data executor_managed_directory_mode: NonEmptyStr = "755" as NonEmptyStr
+data executor_managed_directory_mode: FileMode = declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse)
 
 fn runner_slot_install_operations(
   slot_dirs: List<NonEmptyStr>,

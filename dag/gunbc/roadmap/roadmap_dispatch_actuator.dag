@@ -1,5 +1,7 @@
 module gunbc.roadmap.roadmap_dispatch_actuator
 
+import extdeps.tools.gnu_coreutils { coreutils_install_directories_arguments }
+import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerOnly }
 import extdeps.tools.env { env_path_resolved_program }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, GitRef }
 import std.optional { Present }
@@ -2818,9 +2820,7 @@ fn attempt_state_prepare_argv_for_instance(
       environment: instance.execution_environment,
       cap: AttemptStateDirectoryCapability,
     ),
-    args: [
-      "-d",
-      "-m", "0700",
+    args: coreutils_install_directories_arguments(mode: declared_directory_mode(m: DirectoryOwnerOnly), paths: [
       dispatch_attempt_state_path_for_instance(
         instance: instance,
         node_id: node_id,
@@ -2851,7 +2851,7 @@ fn attempt_state_prepare_argv_for_instance(
         node_id: node_id,
         attempt_key: attempt_key,
       ),
-    ],
+    ]),
   )
 }
 

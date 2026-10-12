@@ -52,12 +52,12 @@ import gunbc.managed_directory {
   ManagedDirectory,
   managed_directory_admit,
   ManagedDirectoryAdmission, ManagedDirectoryAdmitted, ManagedDirectoryRefused,
-  managed_directory_mode_octal,
+  managed_directory_permissions, declared_directory_mode, DirectoryOwnerAllEveryoneTraverse,
   EntriesUnmanaged, EntriesReadableByDependents,
   managed_directory_entry_mode, ManagedEntryModeDerived, ManagedEntryModeRefused, entry_mode_add_read_symbolic,
 }
 import extdeps.tools.chmod { chmod_binary_path }
-import extdeps.access.posix { PosixUser, file_mode_octal }
+import extdeps.access.posix { PosixUser, file_mode_octal, FileMode, PermissionBits }
 import extdeps.tailscale.serve {
   TailscaleServeEndpoint,
   tailscale_serve_enable_argv,
@@ -138,7 +138,7 @@ import gunbc.runner.runner_microvm_slot_unit {
   microvm_slot_reserve_unit_name, microvm_slot_reserve_unit_path, microvm_slot_reserve_unit_file,
 }
 import extdeps.tools.findutils { find_program, xargs_program, find_owned_regular_files_exec_argv }
-import extdeps.tools.gnu_coreutils { sort_program, cut_program, printf_program, install_program }
+import extdeps.tools.gnu_coreutils { sort_program, cut_program, printf_program, install_program, coreutils_install_directory_owned_arguments }
 import gunbc.live_deploy.slice_bounds {
   live_deploy_slice_memory_max, live_deploy_slice_memory_high, live_deploy_slice_memory_swap_max,
   approval_broker_slice_memory_max, approval_broker_slice_memory_high,
@@ -1039,9 +1039,16 @@ fn leftover_timer_not_found_readback_intent() -> Node {
 // verbs on it. These two are the first members in this emitter whose modes are NOT the shared 0755
 // constant, and they are stated here with the dependents that force them written above -- which is
 // the input that derivation will eventually consume, not a second convention beside it.
-data publication_spool_request_mode: NonEmptyStr = "0730"
+data publication_spool_request_mode: FileMode = FileMode {
+  owner: PermissionBits { read: true, write: true, execute: true },
+  group: PermissionBits { read: false, write: true, execute: true },
+  other: PermissionBits { read: false, write: false, execute: false },
+  setuid: false,
+  setgid: false,
+  sticky: false,
+}
 
-data publication_spool_answer_mode: NonEmptyStr = "0755"
+data publication_spool_answer_mode: FileMode = declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse)
 
 fn apply_publication_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   [
@@ -1684,7 +1691,7 @@ fn path_parent_dir(path: String) -> String {
 // them changes no emitted byte and does not derive them — that derivation is exactly what the
 // paragraph above says is still owed — but it makes the inheritance visible to the reader and gives
 // the eventual derivation one place to land per class.
-data install_d_shared_mode: NonEmptyStr = "0755"
+data install_d_shared_mode: FileMode = declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse)
 
 data install_file_shared_mode: NonEmptyStr = "0644"
 
@@ -1793,7 +1800,7 @@ fn ensure_managed_directory_command(admission: ManagedDirectoryAdmission) -> Str
 // projects it instead of reusing the user's.
 fn install_d_managed_command(dir: ManagedDirectory) -> String {
   install_directory_owned_command(
-    mode: managed_directory_mode_octal(d: dir) as NonEmptyStr,
+    mode: managed_directory_permissions(d: dir).mode,
     owner: dir.owner.name,
     group: dir.group_principal.name,
     path: dir.path as String,
@@ -2287,9 +2294,10 @@ fn release_locus_tree_copy_steps(owner: NonEmptyStr, root: String) -> List<Pipel
 fn privileged_tree_directories_install_command(src_sub: String, root: String, owner: NonEmptyStr) -> String {
   join([
     "(cd \"$PWD\" && ", find_program().invocation as String, " ", src_sub, " -type d -print0) | ",
-    xargs_program as String, " -0 -I{} ", join(sudo_elevate_argv(command: [
-      install_program().invocation as String, "-d", "-m", "0755", "-o", owner as String, "-g", owner as String,
-    ]), " "), " ", root, "/{}",
+    xargs_program as String, " -0 -I{} ", join(sudo_elevate_argv(command: concat(
+      [install_program().invocation as String],
+      coreutils_install_directory_owned_arguments(mode: install_d_shared_mode, owner: owner, group: owner, path: join([root, "/{}"], "")),
+    )), " "),
   ], "")
 }
 

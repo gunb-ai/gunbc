@@ -8,6 +8,7 @@ import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.access.posix { FileMode, file_mode_octal }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -310,14 +311,22 @@ data coreutils_install_owner_flag: NonEmptyStr = "-o"
 data coreutils_install_group_flag: NonEmptyStr = "-g"
 data coreutils_install_binary_name: NonEmptyStr = "install"
 
-fn coreutils_install_directory_argv(mode: NonEmptyStr, path: String) -> List<String> {
-  [
-    coreutils_install_binary_name as String,
-    coreutils_install_directory_flag as String,
-    coreutils_install_mode_flag as String,
-    mode as String,
-    path,
-  ]
+fn coreutils_install_directory_argv(mode: FileMode, path: String) -> List<String> {
+  concat([coreutils_install_binary_name as String], coreutils_install_directories_arguments(mode: mode, paths: [path]))
+}
+
+// THE OPERANDS OF `install -d` FOR DIRECTORIES THE INVOKING PRINCIPAL OWNS, without the program word,
+// for a caller that runs install through its own resolved program; install -d takes a list, and every
+// directory named gets the one mode.
+fn coreutils_install_directories_arguments(mode: FileMode, paths: List<String>) -> List<String> {
+  concat(
+    [
+      coreutils_install_directory_flag as String,
+      coreutils_install_mode_flag as String,
+      coreutils_directory_mode_operand(mode: mode),
+    ],
+    paths,
+  )
 }
 
 fn coreutils_install_file_owned_argv(
@@ -340,23 +349,50 @@ fn coreutils_install_file_owned_argv(
   ]
 }
 
-fn coreutils_install_directory_owned_argv(
-  mode: NonEmptyStr,
+// THE NUMERIC MODE OPERAND FOR A DIRECTORY, spelled so the set-id bits it states are the ones applied.
+// GNU chmod(1) and install(1) keep an existing directory's set-user-ID and set-group-ID bits when the
+// numeric mode has four or fewer octal digits, and a directory created under a set-group-ID parent
+// inherits that bit the same way; a mode written with five digits -- a leading zero before the
+// special digit -- states the set-id bits explicitly (GNU coreutils manual, "Directories and the
+// Set-User-ID and Set-Group-ID Bits"). Observed on srv1, GNU coreutils 9.4, 2026-10-12: on a 2700
+// directory `install -d -m 0700` and `chmod 0700` both leave 2700, and `install -d -m 0700` under a
+// 2770 parent creates 2700; `-m 00700` gives 700 in all three. A regular file is not subject to it
+// (`chmod 0750` clears setgid on a file), so the rule, and this operand, are the directory's.
+fn coreutils_directory_mode_operand(mode: FileMode) -> String {
+  join(["0", file_mode_octal(mode: mode)], "")
+}
+
+// THE OPERANDS OF `install -d` FOR AN OWNED DIRECTORY, without the program word, so a caller that
+// names the program by its own authorized path (an elevated executor's sudoers grant) spells the
+// operands through this one builder rather than beside it.
+fn coreutils_install_directory_owned_arguments(
+  mode: FileMode,
   owner: NonEmptyStr,
   group: NonEmptyStr,
   path: String,
 ) -> List<String> {
   [
-    coreutils_install_binary_name as String,
     coreutils_install_directory_flag as String,
     coreutils_install_mode_flag as String,
-    mode as String,
+    coreutils_directory_mode_operand(mode: mode),
     coreutils_install_owner_flag as String,
     owner as String,
     coreutils_install_group_flag as String,
     group as String,
     path,
   ]
+}
+
+fn coreutils_install_directory_owned_argv(
+  mode: FileMode,
+  owner: NonEmptyStr,
+  group: NonEmptyStr,
+  path: String,
+) -> List<String> {
+  concat(
+    [coreutils_install_binary_name as String],
+    coreutils_install_directory_owned_arguments(mode: mode, owner: owner, group: group, path: path),
+  )
 }
 
 // install(1) WITHOUT OWNER OR GROUP FLAGS: copy SOURCE to DEST setting the mode at creation,

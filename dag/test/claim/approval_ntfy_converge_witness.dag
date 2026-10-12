@@ -18,6 +18,8 @@ import gunbc.executor_privileged_operation {
 }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_nologin_shell_path }
 import gunbc.auth.approval_ntfy_deployment { approval_ntfy_account_command }
+import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerAllGroupTraverse }
+import extdeps.access.posix { file_mode_octal }
 
 // THE DEFECT THIS FAMILY WAS BUILT OVER, pinned so it cannot come back. `useradd` exits 9 when the
 // account exists, so an unguarded EnsureSystemAccount fails on every convergence after the first.
@@ -42,7 +44,7 @@ test fn witness_idempotent_operations_get_no_precondition() -> Bool {
 
 test fn witness_directory_ensure_needs_no_precondition() -> Bool {
   match executor_privileged_operation_precondition(op: EnsureOwnedDirectory {
-    path: "/var/lib/gunbc-ntfy", owner: "gunbc-ntfy", group: "gunbc-ntfy", mode: "0750",
+    path: "/var/lib/gunbc-ntfy", owner: "gunbc-ntfy", group: "gunbc-ntfy", mode: declared_directory_mode(m: DirectoryOwnerAllGroupTraverse),
   }) {
     NoPrecondition => true
     AccountExistsCheck { login: _ } => false
@@ -71,7 +73,7 @@ test fn every_ensured_directory_carries_the_declared_ntfy_mode() -> Bool {
   all(
     flat_map(approval_ntfy_desired_members(), m => ntfy_member_operations(m: m)),
     op => match op {
-      EnsureOwnedDirectory { path: _, owner: _, group: _, mode: mo } => (mo as String) == "0750"
+      EnsureOwnedDirectory { path: _, owner: _, group: _, mode: mo } => file_mode_octal(mode: mo) == "0750"
       _ => true
     })
 }

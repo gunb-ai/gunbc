@@ -3,6 +3,7 @@ module test.claim.fleet.fabric_allocation_store_substrate_witness
 import gunbc.fleet.fleet_converge_scope { FabricAllocationStoreOnly }
 
 import std.types { Bool, String, NonEmptyStr }
+import extdeps.access.posix { file_mode_octal }
 import std.content_hash { serialize_content_hash }
 import std.optional { Optional, Present, Absent }
 import extdeps.filesystem.filesystem_io {
@@ -72,8 +73,8 @@ test fn witness_allocation_store_substrate_is_exact_root_only_desired_state() ->
   let spec = fabric_allocation_store_substrate_spec()
   spec.path as String == "/var/lib/gunbc/fabric/allocation"
     && spec.namespace_path as String == "/var/lib/gunbc/fabric"
-    && spec.mode as String == "0700"
-    && spec.namespace_mode as String == "0700"
+    && file_mode_octal(mode: spec.mode) == "0700"
+    && file_mode_octal(mode: spec.namespace_mode) == "0700"
     && match spec.owner { CellSubstrateRootOwned => true CellAttemptWriterOwned => false }
     && match spec.namespace_owner { CellSubstrateRootOwned => true CellAttemptWriterOwned => false }
     && match spec.writer_standing {
