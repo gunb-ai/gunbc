@@ -273,7 +273,7 @@ fn authored_region_walk(index: SpanIndex, node: Node, parent: AnnotationScope, a
                           authored_region_walk_children(index: index, node: node, parent: OccurrenceScope { occurrence: id }, acc: AuthoredRegionWalk {
                             regions: list_snoc_item(xs: acc.regions, item: AnnotationRegion {
                               scope: OccurrenceScope { occurrence: id },
-                              extent: SourceSpan { file: unicode_scalar_fold(xs: symbol_lexeme(sym: f)), start: st, end: en },
+                              extent: SourceSpan { file: symbol_lexeme(sym: f), start: st, end: en },
                               parent: parent
                             }),
                             unrepresentable: acc.unrepresentable
@@ -294,8 +294,8 @@ fn authored_regions(artifact: ParseArtifact) -> AuthoredRegionWalk {
 
 fn authored_normalized_capture(capture: UnboundSourceAnnotation, annotation_text: fn(String) -> String) -> NormalizedAnnotationCapture {
   NormalizedAnnotationCapture {
-    text: annotation_text(capture.lexeme),
-    origin: SourceSpan { file: unicode_scalar_fold(xs: symbol_lexeme(sym: capture.file)), start: capture.start, end: capture.end },
+    text: annotation_text(unicode_scalar_fold(xs: capture.lexeme)),
+    origin: SourceSpan { file: symbol_lexeme(sym: capture.file), start: capture.start, end: capture.end },
     placement: capture.placement,
     preceded_by_blank_line: capture.preceded_by_blank_line,
     preceded_by_annotation_line: capture.preceded_by_annotation_line
