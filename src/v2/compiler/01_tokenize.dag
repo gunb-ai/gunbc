@@ -11,7 +11,7 @@ import v2.std.algebra { fold_list, is_empty, length, list_reverse }
 import v2.std.text { Char, CharAbsent, CharFound, SourceFold, String, fold_source, string_head, string_is_empty }
 import std.unicode.types { unicode_scalar_utf8_octet_count }
 import std.unicode.char_class { unicode_char_code_point }
-import std.source_annotation { AnnotationPlacement, LeadingAfterLineIndent, TrailingAfterSemanticToken, AnnotationLineState, advance_line_prefix_indent_only, placement_from_line_prefix, annotation_line_state_initial, advance_annotation_line_state, annotation_line_preceded_by_blank, annotation_line_preceded_by_annotation }
+import std.source_annotation { AnnotationPlacement, LeadingAfterLineIndent, TrailingAfterSemanticToken, AnnotationLineState, advance_line_prefix_indent_only, placement_from_line_prefix, annotation_line_state_initial, advance_annotation_line_state, BlankLine, AnnotationOnlyLine }
 import v2.std.compilers.lexing {
   AnnotationRule,
   BlockCommentTextChar,
@@ -1034,8 +1034,8 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                     annotation_class: class,
                     lexeme: unicode_scalar_fold(xs: lexeme),
                     placement: placement_from_line_prefix(indent_only: acc.line_prefix_indent_only),
-                    preceded_by_blank_line: annotation_line_preceded_by_blank(state: acc.line_state),
-                    preceded_by_annotation_line: annotation_line_preceded_by_annotation(state: acc.line_state),
+                    preceded_by_blank_line: acc.line_state.previous == BlankLine,
+                    preceded_by_annotation_line: acc.line_state.previous == AnnotationOnlyLine,
                     file: acc.file,
                     start: acc.pos,
                     end: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme)

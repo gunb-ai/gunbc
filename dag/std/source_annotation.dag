@@ -118,7 +118,9 @@ fn placement_from_line_prefix(indent_only: Bool) -> AnnotationPlacement {
 // annotation alike -- exactly as it threads the line-prefix state above. A line is BLANK while only
 // indentation has been seen on it, ANNOTATION-ONLY when an annotation is its first content, and CODE
 // once anything else is; a trailing annotation after code leaves the line CODE. The file's first line
-// has no previous line, which reads as CODE: neither bit holds.
+// has no previous line, which reads as CODE: neither bit holds. A capture reads `previous` BEFORE its
+// own lexeme is folded in: blank-preceded is `previous == BlankLine`, annotation-preceded is
+// `previous == AnnotationOnlyLine`.
 type AnnotationLineShape
   = BlankLine
   | AnnotationOnlyLine
@@ -152,22 +154,6 @@ fn advance_annotation_line_state(state: AnnotationLineState, code_points: List<I
   )
 }
 
-// The two bits a capture records, read from the state BEFORE its own lexeme is folded in.
-fn annotation_line_preceded_by_blank(state: AnnotationLineState) -> Bool {
-  match state.previous {
-    BlankLine => true
-    AnnotationOnlyLine => false
-    CodeLine => false
-  }
-}
-
-fn annotation_line_preceded_by_annotation(state: AnnotationLineState) -> Bool {
-  match state.previous {
-    AnnotationOnlyLine => true
-    BlankLine => false
-    CodeLine => false
-  }
-}
 
 // The capture after the realization has stripped its delimiter. It exists as a distinct type from UnboundAnnotationCapture precisely because the `lexeme` versus `text` distinction is load-bearing: normalization is language-specific and happens exactly once, at the boundary between the realization's capture and this shared fold, so the fold can never be handed raw syntax by accident.
 type NormalizedAnnotationCapture {

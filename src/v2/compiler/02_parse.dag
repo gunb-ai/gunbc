@@ -212,11 +212,11 @@ fn authored_parse_annotations(artifact: AuthoredParseArtifact) -> SourceAnnotati
   artifact.annotations
 }
 
-// THE REGION ROSTER OF A v2 PARSE (std.source_annotation AnnotationRegion). A region is a GRAMMAR
-// PRODUCTION: the node parse_wrap_production_captured builds, carrying the production's identity
-// edge. Everything between two productions -- sequence and repeat spines, projection edges, the
-// identity atom, terminals -- is parser scaffolding and is projected transparently, so a
-// production's direct source-syntax children are the productions nearest beneath it. Each region's
+// THE REGION ROSTER OF A v2 PARSE (std.source_annotation AnnotationRegion). A region is a grammar
+// production or an infix application (parse_node_is_source_region). Everything between two regions
+// -- sequence and repeat spines, projection edges, the identity atom, terminals -- is parser
+// scaffolding and is projected transparently, so a region's direct source-syntax children are the
+// regions nearest beneath it. Each region's
 // extent is the one the parser recorded (v2.std.provenance span_index_extent, roadmap
 // parse-node-source-extent), never rebuilt. A production that consumed nothing has no extent and no
 // region; one whose extent is Unrepresentable is collected so the authored parse refuses rather than
@@ -227,15 +227,32 @@ type AuthoredRegionWalk {
 }
 
 
+// A SOURCE REGION IS A CONSTRUCT THE GRAMMAR NAMED, recognised by STRUCTURE rather than by what its
+// marker holds: a production wrapper (it carries the production-identity edge, whatever node the
+// grammar emitted as its marker) or an infix application (it carries the infix-left edge -- the node
+// parse_stamp_infix_application builds for `a op b`, which no production wraps). Without the second,
+// `1 + 2 * 3` would have no region for `2 * 3`, and a comment before it would get `2` as its neighbour.
+fn parse_node_has_authored_edge(node: Node, name: Symbol) -> Bool {
+  node.children |> any(e => match e.label {
+    Authored { name: nm } => nm == name
+    _ => false
+  })
+}
+
+fn parse_node_is_source_region(node: Node) -> Bool {
+  parse_node_has_authored_edge(node: node, name: ^grammar_production_identity_node_projection)
+    || parse_node_has_authored_edge(node: node, name: ^grammar_infix_left_node_projection)
+}
+
 fn authored_region_walk_children(index: SpanIndex, node: Node, parent: AnnotationScope, acc: AuthoredRegionWalk) -> AuthoredRegionWalk {
   let targets: List<Node> = node.children |> map(e => e.target)
   fold_list(xs: targets, empty: acc, cons: fn(walk, child) { authored_region_walk(index: index, node: child, parent: parent, acc: walk) })
 }
 
 fn authored_region_walk(index: SpanIndex, node: Node, parent: AnnotationScope, acc: AuthoredRegionWalk) -> AuthoredRegionWalk {
-  match parse_production_emitted_identity_optional(node: node) {
-    Absent => authored_region_walk_children(index: index, node: node, parent: parent, acc: acc)
-    Present { value: _ } =>
+  match parse_node_is_source_region(node: node) {
+    false => authored_region_walk_children(index: index, node: node, parent: parent, acc: acc)
+    true =>
       match node_occurrence_id_optional(node: node) {
         Absent => authored_region_walk_children(index: index, node: node, parent: parent, acc: acc)
         Present { value: id } =>

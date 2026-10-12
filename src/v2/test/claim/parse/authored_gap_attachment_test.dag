@@ -147,3 +147,13 @@ test fn the_walk_observes_block_adjacency_holds() -> Bool {
   }
 }
 
+
+// A NESTED INFIX OPERAND IS A REGION. In `1 + 2 * 3` the product `2 * 3` is an infix application no
+// production wraps; a comment in front of it has the whole product after it, not its first operand.
+data infix_source: String = "module zqx.vinf\n\ndata zqx_e: Int = 1 +\n  // before the product\n  2 * 3\n"
+
+test fn a_nested_infix_operand_is_a_neighbour_holds() -> Bool {
+  let g = gap_texts(source: infix_source, text: "before the product")
+  nth_text(xs: g, i: 1) == "1" && nth_text(xs: g, i: 2) == "2 * 3"
+}
+

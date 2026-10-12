@@ -183,22 +183,6 @@ pub fn advance_annotation_line_state(
         })
 }
 
-pub fn annotation_line_preceded_by_blank(state: Rc<AnnotationLineState>) -> bool {
-    match state.previous.clone() {
-        AnnotationLineShape::BlankLine => true,
-        AnnotationLineShape::AnnotationOnlyLine => false,
-        AnnotationLineShape::CodeLine => false,
-    }
-}
-
-pub fn annotation_line_preceded_by_annotation(state: Rc<AnnotationLineState>) -> bool {
-    match state.previous.clone() {
-        AnnotationLineShape::AnnotationOnlyLine => true,
-        AnnotationLineShape::BlankLine => false,
-        AnnotationLineShape::CodeLine => false,
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NormalizedAnnotationCapture {
     pub text: String,
