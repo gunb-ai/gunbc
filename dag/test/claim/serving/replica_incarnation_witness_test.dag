@@ -17,8 +17,10 @@ import gunbc.serving.replica_incarnation {
   ReplicaIncarnationStanding, ReplicaIncarnationBound, ReplicaIncarnationUnread, replica_incarnation_witness_fixture, bind_digested_executable, exported_start_equals_process_start,
 }
 import gunbc.harness.harness_seat { HarnessCandidates, harness_add_serving_candidate }
+import gunbc.harness.harness_reasoning_wire { Qwen3_8_27bOnNinfer }
+import gunbc.serving.rented_offer_admission { rented_production_sources }
 import test.claim.serving.serving_session_attachment_witness {
-  w_endpoint, w_launch, w_engine_with, w_record, w_own_key,
+  w_endpoint, w_replica, w_subject, w_launch, w_engine_with, w_record, w_own_key,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -49,6 +51,11 @@ fn w_place(session: ServingSessionRecord, incarnation: ReplicaIncarnationStandin
     seats_held: SeatStandingRead { quality_held: 0, tolerant_held: 0 },
     session: session,
     incarnation: incarnation,
+    sources: rented_production_sources(replica: w_replica),
+    subject: w_subject(),
+    model: "witness-model" as NonEmptyStr,
+    unit: Qwen3_8_27bOnNinfer,
+    now: 1789300000,
   )
 }
 
