@@ -1,7 +1,7 @@
 module std.retry_law
 
 import std.types { Int, List, NonEmptyStr, EpochSecs }
-import std.nat { Nat, nat_range_inclusive }
+import std.nat { Nat, nat_range_inclusive, Zero, Succ }
 import std.optional { Present, Absent }
 import std.checked_arithmetic { int_inclusive_max }
 
@@ -63,7 +63,7 @@ fn retry_max_nat(a: Nat, b: Nat) -> Nat {
 fn retry_capped_double(n: Nat, cap: Nat) -> Nat {
   if n >= cap {
     cap
-  } else if n > (int_inclusive_max() / 2) {
+  } else if (n as Int) > (int_inclusive_max() / 2) {
     cap
   } else {
     let doubled = n + n
@@ -72,20 +72,26 @@ fn retry_capped_double(n: Nat, cap: Nat) -> Nat {
 }
 
 fn retry_backoff_seconds(law: RetryLaw, real_work_failures: Nat) -> Nat {
-  if real_work_failures == 0 {
-    0
-  } else {
-    fold(
-      nat_range_inclusive(lo: 1, hi: retry_min_nat(a: real_work_failures, b: 63)),
-      init: retry_min_nat(a: law.initial_delay_seconds, b: law.delay_cap_seconds),
-      f: (acc, i) => if i == 1 { acc } else { retry_capped_double(n: acc, cap: law.delay_cap_seconds) },
-    )
+  match real_work_failures {
+    Zero => Zero
+    Succ { prev: _ } =>
+      fold(
+        nat_range_inclusive(lo: Succ { prev: Zero }, hi: retry_min_nat(a: real_work_failures, b: retry_double_steps_cap)),
+        init: retry_min_nat(a: law.initial_delay_seconds, b: law.delay_cap_seconds),
+        f: (acc, i) => match i {
+          Zero => acc
+          Succ { prev: Zero } => acc
+          Succ { prev: _ } => retry_capped_double(n: acc, cap: law.delay_cap_seconds)
+        },
+      )
   }
 }
 
+data retry_double_steps_cap: Nat = 63
+
 fn retry_count_real_work_failures(history: List<RetryHistoryEvent>) -> Nat {
-  fold(history, init: 0, f: (acc, e) => match e.class {
-    RealWorkFailure => acc + 1
+  fold(history, init: Zero, f: (acc, e) => match e.class {
+    RealWorkFailure => Succ { prev: acc }
     RealWorkSuccess => acc
     ProbeOutcome { succeeded: _ } => acc
     Cancelled { by: _ } => acc

@@ -35,11 +35,6 @@ fn host_spool_stage_wire(stage: HostSpoolStage) -> String {
   }
 }
 
-type HostSpoolEnqueueLaw
-  = CreateOnlyEnqueue
-
-data host_spool_enqueue_law: HostSpoolEnqueueLaw = CreateOnlyEnqueue
-
 type HostSpoolCreateObservation
   = HostSpoolNameAbsent
   | HostSpoolNamePresent

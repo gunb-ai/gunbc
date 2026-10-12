@@ -1,6 +1,6 @@
 module test.claim.temporal_effect_spine
 
-import std.durable_compare_and_set { CasGeneration }
+import std.durable_compare_and_set { CasGeneration, cas_generation_first }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -96,7 +96,7 @@ data absent_lease: HeldLease = held_lease(
     lease_key: witness_lease_key,
     resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
     owner_fingerprint: content_hash_of_value(value: "no-owner" as NonEmptyStr),
-    generation: 0 as CasGeneration,
+    generation: cas_generation_first(),
   },
   observed: LeaseAbsent,
 )
@@ -348,7 +348,7 @@ test fn inaccessible_lease_refuses() -> Bool {
         lease_key: witness_lease_key,
         resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
         owner_fingerprint: content_hash_of_value(value: "no-owner" as NonEmptyStr),
-        generation: 0 as CasGeneration,
+        generation: cas_generation_first(),
       },
       observed: LeaseInaccessible,
     ),
