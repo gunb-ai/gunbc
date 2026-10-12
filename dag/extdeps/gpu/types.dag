@@ -99,29 +99,6 @@ type GpuPackageForm
   | SxmModule
   | IntegratedComputePackage
 
-fn gpu_package_form_eq(a: GpuPackageForm, b: GpuPackageForm) -> Bool {
-  match a {
-    PcieAddInCard =>
-      match b {
-        PcieAddInCard => true
-        SxmModule => false
-        IntegratedComputePackage => false
-      }
-    SxmModule =>
-      match b {
-        PcieAddInCard => false
-        SxmModule => true
-        IntegratedComputePackage => false
-      }
-    IntegratedComputePackage =>
-      match b {
-        PcieAddInCard => false
-        SxmModule => false
-        IntegratedComputePackage => true
-      }
-  }
-}
-
 // figure_citations cites the row's other published figures (bandwidth, power, memory, lane count),
 // each naming the row field it grounds; sm_cache_citations grounds sm_cache only.
 // execution_lane_count is absent when the cited datasheet does not state a CUDA-core / lane
@@ -143,4 +120,12 @@ type GpuModelCatalogRow {
   sm_cache: GpuSmCacheGeometry?
   sm_cache_citations: List<FactCitation>
   figure_citations: List<FactCitation>
+}
+
+// Identity of a catalog row is the cited vendor plus the cited SKU name (NVIDIA's edition
+// spellings distinguish Workstation / Max-Q / Server). Package×VRAM×TDP is not enough: the
+// Workstation and Server PRO 6000 rows share those three and differ in model and bandwidth.
+fn gpu_catalog_row_eq(a: GpuModelCatalogRow, b: GpuModelCatalogRow) -> Bool {
+  (a.vendor.legal_name as String) == (b.vendor.legal_name as String)
+    && (a.model as String) == (b.model as String)
 }
