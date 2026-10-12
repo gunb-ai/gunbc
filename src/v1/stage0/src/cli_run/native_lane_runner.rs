@@ -129,12 +129,11 @@ const CLI_DOOR_ENTRY_MODULE: &str = "gunbc.native_cli_door_probe";
 const NATIVE_PROJECTION_ROOT: &str = "fixtures/native_acquisition_projection/dag";
 const NATIVE_PROJECTION_SAME_NAMED_FILE: &str = "product/y.dag";
 const NATIVE_PROJECTION_PROJECTED_ENTRY: &str = "fixture.native_projection.projected";
-/// The projection entry's emitted function and the field access its body must carry: `product.y` rendered
-/// as the parameter's field, where a module reference would render a call into the same-named module.
-const NATIVE_PROJECTION_PROJECTED_WITNESS: &str = "native_projection_read";
-const NATIVE_PROJECTION_PROJECTED_VALUE: &str = "product.y";
+/// The module the projection entry spells as a field access and the qualified entry names for real: the
+/// closure the door reports holds it for one entry and must not hold it for the other.
+const NATIVE_PROJECTION_SAME_NAMED_MODULE: &str = "product.y";
 const NATIVE_PROJECTION_QUALIFIED_ENTRY: &str = "fixture.native_projection.qualified";
-const NATIVE_PROJECTION_QUALIFIED_WITNESS: &str = "native_projection_qualified_value";
+/// The declaration the same-named module emits, present in the carrier's arm for that module when it is read.
 const NATIVE_PROJECTION_SAME_NAMED_WITNESS: &str = "projection_same_named_value";
 const CLI_DOOR_EMITTED_WITNESS: &str = "native_cli_door_probe_value";
 const CLI_DOOR_EMITTED_VALUE: &str = "606060";
@@ -2130,6 +2129,23 @@ fn cli_door_member_arm(stdout: &str, module: &str) -> Result<CliDoorMemberArm, S
     }
 }
 
+/// The modules the door's `ClosureEmission` carrier reports reading: its `members`, every entry a string.
+fn cli_door_carrier_members(stdout: &str) -> Result<Vec<String>, String> {
+    let carrier: serde_json::Value = serde_json::from_str(stdout)
+        .map_err(|e| format!("stdout is not the door's ClosureEmission carrier: {e}"))?;
+    carrier
+        .get("members")
+        .and_then(|m| m.as_array())
+        .ok_or_else(|| "the carrier has no `members` array".to_string())?
+        .iter()
+        .map(|m| {
+            m.as_str()
+                .map(str::to_string)
+                .ok_or_else(|| format!("the carrier's `members` holds a non-string entry: {m}"))
+        })
+        .collect()
+}
+
 /// What the CLI's refusal rendering decoded to: the determining reason and where it was located.
 struct CliRefusalRendering {
     determining_reason: String,
@@ -2786,16 +2802,18 @@ fn walk_native_ingest_layout_controls(binary: &Path, workspace: &Path) -> Result
 /// and read the requests it makes; these walks are the inhabitance that the built door, over a real source
 /// root, reads no file for a spelling whose head a visible binder binds -- deleting the fixture tree, or
 /// letting acquisition probe `product.y` for the projection `product.y`, makes this control fail. The subject is the
-/// module `product.y`, a two-segment name stored at `product/y.dag` under the root, and the two entries below it:
+/// module `product.y`, a two-segment name stored at `product/y.dag` under the root, and the two entries below it.
+/// THE OBSERVATION IS THE CLOSURE THE DOOR REPORTS (the carrier's `members`: what acquisition read), not the
+/// entry's emission, so the control holds whatever the entry's own verdict is and pins none:
 ///
 /// - `projected` spells `product.y` where `product` is a parameter the function binds: a field projection, no module reference. It is
-///   emitted from three trees that differ only in whether `product/y.dag` is absent, malformed or well-formed,
-///   and the status and the emitted text must be the same in all three. A malformed file that was read would
-///   refuse; a well-formed one that was read would put its declaration in the closure.
+///   walked over three trees that differ only in whether `product/y.dag` is absent, malformed or well-formed;
+///   the closure must be the entry alone, with the same status and the same carrier, in all three. A malformed
+///   file that was read would refuse the closure; a well-formed one that was read would make it a member.
 /// - `qualified` names `product.y.projection_same_named_value`, which no binder binds, so it IS a qualified
-///   reference. The well-formed tree emits it with the module's declaration present and the malformed tree
-///   refuses it, so silence about the file in the first control is the head's binding and not a door that
-///   never reads `product/y.dag`.
+///   reference. The well-formed tree's closure holds the module and carries its declaration, and the malformed
+///   tree refuses naming the file, so silence about the file in the first control is the head's binding and not
+///   a door that never reads `product/y.dag`.
 ///
 /// The scratch trees are rebuilt from the committed one on every run (a tree that kept what an earlier run
 /// left could carry a second file into the closure).
@@ -2864,40 +2882,37 @@ fn walk_native_acquisition_projection_controls(
         )
     };
 
-    let mut projected_stdout: Option<String> = None;
+    let mut projected: Option<(Option<i32>, String)> = None;
     for (label, root) in [
         ("absent", absent.as_path()),
         ("malformed", malformed.as_path()),
         ("well-formed", present.as_path()),
     ] {
         let observation = emit(root, NATIVE_PROJECTION_PROJECTED_ENTRY)?;
-        if observation.status != Some(0)
-            || !observation
-                .stdout
-                .contains(NATIVE_PROJECTION_PROJECTED_WITNESS)
-            || !observation
-                .stdout
-                .contains(NATIVE_PROJECTION_PROJECTED_VALUE)
-            || observation
-                .stdout
-                .contains(NATIVE_PROJECTION_SAME_NAMED_WITNESS)
-        {
+        let members = cli_door_carrier_members(&observation.stdout).map_err(|e| {
+            format!(
+                "V2-NATIVE REFUSAL cause=NativeProjectionReadSameNamedModule — the projection entry over \
+                 the {label} same-named module exited {:?} without the closure carrier a closure that \
+                 read nothing of `{NATIVE_PROJECTION_SAME_NAMED_MODULE}` prints: {e}; stderr={}",
+                observation.status,
+                observation.stderr.trim()
+            )
+        })?;
+        if members != [NATIVE_PROJECTION_PROJECTED_ENTRY] {
             return Err(format!(
                 "V2-NATIVE REFUSAL cause=NativeProjectionReadSameNamedModule — the projection entry over \
-                 the {label} same-named module exited {:?} with {} stdout byte(s) (it must emit its own \
-                 value and nothing of `product.y`); stderr={}",
-                observation.status,
-                observation.stdout.len(),
-                observation.stderr.trim()
+                 the {label} same-named module reported the closure {members:?}; a projection requests no \
+                 module, so the closure it reads is the entry alone"
             ));
         }
-        match &projected_stdout {
-            None => projected_stdout = Some(observation.stdout),
-            Some(first) if *first == observation.stdout => {}
+        match &projected {
+            None => projected = Some((observation.status, observation.stdout)),
+            Some((status, stdout))
+                if *status == observation.status && *stdout == observation.stdout => {}
             Some(_) => {
                 return Err(format!(
-                    "V2-NATIVE REFUSAL cause=NativeProjectionEmissionDependsOnSameNamedModule — the \
-                     projection entry emitted different text over the {label} same-named module than over \
+                    "V2-NATIVE REFUSAL cause=NativeProjectionVerdictDependsOnSameNamedModule — the \
+                     projection entry's status or carrier over the {label} same-named module differs from \
                      the absent one, so a file the program does not mention changed what it means"
                 ))
             }
@@ -2905,39 +2920,54 @@ fn walk_native_acquisition_projection_controls(
     }
 
     let referenced = emit(&present, NATIVE_PROJECTION_QUALIFIED_ENTRY)?;
-    if referenced.status != Some(0)
-        || !referenced
-            .stdout
-            .contains(NATIVE_PROJECTION_QUALIFIED_WITNESS)
-        || !referenced
-            .stdout
-            .contains(NATIVE_PROJECTION_SAME_NAMED_WITNESS)
+    let referenced_members = cli_door_carrier_members(&referenced.stdout).map_err(|e| {
+        format!(
+            "V2-NATIVE REFUSAL cause=NativeQualifiedReferenceDidNotReadNamedModule — the qualified entry \
+             over the well-formed same-named module exited {:?} without the closure carrier: {e}; stderr={}",
+            referenced.status,
+            referenced.stderr.trim()
+        )
+    })?;
+    let mut expected_members = vec![
+        NATIVE_PROJECTION_QUALIFIED_ENTRY.to_string(),
+        NATIVE_PROJECTION_SAME_NAMED_MODULE.to_string(),
+    ];
+    let mut reported_members = referenced_members.clone();
+    expected_members.sort();
+    reported_members.sort();
+    let named_arm = cli_door_member_arm(&referenced.stdout, NATIVE_PROJECTION_SAME_NAMED_MODULE);
+    if reported_members != expected_members
+        || !matches!(&named_arm, Ok(CliDoorMemberArm::Emitted(text)) if text.contains(NATIVE_PROJECTION_SAME_NAMED_WITNESS))
     {
         return Err(format!(
             "V2-NATIVE REFUSAL cause=NativeQualifiedReferenceDidNotReadNamedModule — the qualified entry \
-             over the well-formed same-named module exited {:?} with {} stdout byte(s) and must emit both \
-             its own value and the module's; stderr={}",
-            referenced.status,
-            referenced.stdout.len(),
-            referenced.stderr.trim()
+             over the well-formed same-named module reported the closure {referenced_members:?}; a qualified \
+             reference reads the module it names, so the closure must hold `{NATIVE_PROJECTION_SAME_NAMED_MODULE}` \
+             and carry its `{NATIVE_PROJECTION_SAME_NAMED_WITNESS}` declaration (that module's arm: {})",
+            match &named_arm {
+                Ok(CliDoorMemberArm::Emitted(_)) => "emitted without the declaration".to_string(),
+                Ok(CliDoorMemberArm::Refused(reason)) => format!("refused {reason}"),
+                Err(e) => e.clone(),
+            }
         ));
     }
     let refused = emit(&malformed, NATIVE_PROJECTION_QUALIFIED_ENTRY)?;
     if refused.status != Some(CLI_DOOR_REFUSAL_EXIT)
         || !refused.stdout.is_empty()
         || !refused.stderr.contains(CLI_REFUSAL_PREFIX)
+        || !refused.stderr.contains(NATIVE_PROJECTION_SAME_NAMED_FILE)
     {
         return Err(format!(
             "V2-NATIVE REFUSAL cause=NativeQualifiedReferenceDidNotRefuseMalformedModule — the qualified \
              entry over the malformed same-named module exited {:?} with {} stdout byte(s); a qualified \
              reference reads the module it names, so this must refuse (exit {CLI_DOOR_REFUSAL_EXIT}, empty \
-             stdout, a `{CLI_REFUSAL_PREFIX}` line); stderr={}",
+             stdout, a `{CLI_REFUSAL_PREFIX}` line naming `{NATIVE_PROJECTION_SAME_NAMED_FILE}`); stderr={}",
             refused.status,
             refused.stdout.len(),
             refused.stderr.trim()
         ));
     }
-    eprintln!("v2-native-cli: acquisition-projection controls held (a projection emits identically with the same-named module absent, malformed and well-formed; a qualified reference reads it)");
+    eprintln!("v2-native-cli: acquisition-projection controls held (a projection reads no module, with the same-named module absent, malformed and well-formed, and one carrier in all three; a qualified reference reads it)");
     Ok(())
 }
 

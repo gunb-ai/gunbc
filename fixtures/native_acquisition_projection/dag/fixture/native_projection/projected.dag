@@ -8,11 +8,12 @@ module fixture.native_projection.projected
 // module of that name (product/y.dag beside this root's other files), so the control can tell a compiler
 // that decides what `product.y` means from the lexical frames at the site from one that decides it from which
 // files exist. The walk reads this entry from three trees that differ only in that module (absent,
-// malformed, well-formed) and requires the same verdict and the same emission from all three.
+// malformed, well-formed) and requires the closure the door reports to be this module alone, with the same
+// status and the same carrier, in all three.
 //
-// THE HEAD IS A PARAMETER BECAUSE THAT IS THE SHAPE THE NATIVE ROUTE EMITS. A module-level record value is
-// not groundable there (a record-construct `data` initializer refuses at inference), so a root-bound head is
-// not walkable through this verb; the root-bound arm of the same fact is held by
+// THE OBSERVATION IS THE READ SET, NOT THIS ENTRY'S EMISSION. What the native route's inference makes of the
+// body is another fact, owned by the inference witnesses, so the walk pins no verdict for it beyond its being
+// the same in all three trees. The head is a parameter because the root-bound arm of the same fact is held by
 // v2.test.claim.lexical_scope a_module_level_value_is_bound_at_the_root, and the walk holds the frame arm
 // through the built door.
 type Holder {

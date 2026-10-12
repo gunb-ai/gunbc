@@ -15,13 +15,6 @@ type RefusalClass {
   keys: List<String>
 }
 
-// Field refinements (gunbc.rung_drop population_parse_field_refinement).
-fn field_refinement_keys() -> List<String> {
-  [
-    "dag:std/decimal.dag"
-  ]
-}
-
 // Nested shorthand record initializers (gunbc.rung_drop population_parse_nested_record_shorthand).
 fn nested_record_shorthand_keys() -> List<String> {
   [
@@ -42,6 +35,7 @@ fn indexed_match_scrutinee_keys() -> List<String> {
 // The same construct inside a `test fn`, where the verb reports the marker cause (gunbc.rung_drop population_parse_indexed_match_scrutinee).
 fn indexed_match_scrutinee_in_test_keys() -> List<String> {
   [
+    "dag:test/claim/cause_assertion_census_witness.dag",
     "dag:test/claim/check_removal_residual_witness.dag",
     "dag:test/claim/floor/floor_phase_attribution_witness.dag",
     "dag:test/claim/runner/runner_capacity_operator_access_witness.dag",
@@ -52,11 +46,6 @@ fn indexed_match_scrutinee_in_test_keys() -> List<String> {
 
 fn parse_population_declared_refusal_classes() -> List<RefusalClass> {
   [
-    RefusalClass {
-      drop: "population_parse_field_refinement",
-      cause: "parse_g0_tokens_remain",
-      keys: field_refinement_keys()
-    },
     RefusalClass {
       drop: "population_parse_nested_record_shorthand",
       cause: "parse_g0_tokens_remain",
