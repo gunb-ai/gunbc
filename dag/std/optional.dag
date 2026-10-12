@@ -1,5 +1,7 @@
 module std.optional
 
+import std.types { Bool }
+
 type Optional<T>
   = Absent
   | Present { value: T }
@@ -16,5 +18,16 @@ fn optional_prefer_first_present<T>(left: Optional<T>, right: Optional<T>) -> Op
   match left {
     Present { value: _ } => left
     Absent => right
+  }
+}
+
+fn optional_both_present_unequal<T>(left: Optional<T>, right: Optional<T>) -> Bool {
+  match left {
+    Absent => false
+    Present { value: a } =>
+      match right {
+        Absent => false
+        Present { value: b } => a != b
+      }
   }
 }

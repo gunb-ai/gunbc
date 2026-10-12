@@ -1,7 +1,7 @@
 module gunbc.spark.serving_performance_subject
 
 import std.types { Bool, String, NonEmptyStr, List }
-import std.optional { Present, Absent }
+import std.optional { Present, Absent, optional_both_present_unequal }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value, Watt, watt_count }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
@@ -174,34 +174,6 @@ fn serving_engine_vllm(
     speculative: speculative,
     indexer_kv_dtype: indexer_kv_dtype,
     scheduler_admission: scheduler_admission,
-  }
-}
-
-fn subject_vllm_kv_cache_dtype(s: ServingPerformanceSubject) -> VllmKvCacheDtypeRequest? {
-  match s.engine {
-    EngineVllm { kv_cache_dtype: d, speculative: _, indexer_kv_dtype: _, scheduler_admission: _ } => d
-    EngineNinfer { kv_dtype: _, speculation: _, max_concurrency: _, kv_capacity_auto: _ } => none
-  }
-}
-
-fn subject_vllm_speculative(s: ServingPerformanceSubject) -> VllmSpeculativePolicy? {
-  match s.engine {
-    EngineVllm { kv_cache_dtype: _, speculative: p, indexer_kv_dtype: _, scheduler_admission: _ } => p
-    EngineNinfer { kv_dtype: _, speculation: _, max_concurrency: _, kv_capacity_auto: _ } => none
-  }
-}
-
-fn subject_vllm_indexer_kv_dtype(s: ServingPerformanceSubject) -> VllmIndexerKvDtypeRequest? {
-  match s.engine {
-    EngineVllm { kv_cache_dtype: _, speculative: _, indexer_kv_dtype: d, scheduler_admission: _ } => d
-    EngineNinfer { kv_dtype: _, speculation: _, max_concurrency: _, kv_capacity_auto: _ } => none
-  }
-}
-
-fn subject_vllm_scheduler_admission(s: ServingPerformanceSubject) -> VllmSchedulerAdmissionRequest? {
-  match s.engine {
-    EngineVllm { kv_cache_dtype: _, speculative: _, indexer_kv_dtype: _, scheduler_admission: a } => a
-    EngineNinfer { kv_dtype: _, speculation: _, max_concurrency: _, kv_capacity_auto: _ } => none
   }
 }
 
@@ -629,50 +601,17 @@ fn either_side_unknown_axes(left: ServingPerformanceSubject, right: ServingPerfo
   filter(serving_subject_axes, a => subject_axis_is_unknown(s: left, a: a) || subject_axis_is_unknown(s: right, a: a))
 }
 
-fn both_present_str_differ(left: NonEmptyStr?, right: NonEmptyStr?) -> Bool {
-  match left {
-    Absent => false
-    Present { value: a } =>
-      match right {
-        Absent => false
-        Present { value: b } => (a as String) != (b as String)
-      }
-  }
-}
-
-fn both_present_nat_differ(left: Nat?, right: Nat?) -> Bool {
-  match left {
-    Absent => false
-    Present { value: a } =>
-      match right {
-        Absent => false
-        Present { value: b } => a != b
-      }
-  }
-}
-
-fn both_present_bool_differ(left: Bool?, right: Bool?) -> Bool {
-  match left {
-    Absent => false
-    Present { value: a } =>
-      match right {
-        Absent => false
-        Present { value: b } => a != b
-      }
-  }
-}
-
-fn ninfer_kv_known_wire(d: NinferKvDtype?) -> NonEmptyStr? {
+fn ninfer_kv_known_wire(d: NinferKvDtype?) -> String? {
   match d {
     Absent => none
-    Present { value: x } => Present { value: ninfer_kv_dtype_wire(d: x) }
+    Present { value: x } => Present { value: ninfer_kv_dtype_wire(d: x) as String }
   }
 }
 
-fn ninfer_spec_known_wire(s: NinferSpeculation?) -> NonEmptyStr? {
+fn ninfer_spec_known_wire(s: NinferSpeculation?) -> String? {
   match s {
     Absent => none
-    Present { value: x } => Present { value: ninfer_speculation_wire(s: x) }
+    Present { value: x } => Present { value: ninfer_speculation_wire(s: x) as String }
   }
 }
 
@@ -687,10 +626,10 @@ fn engine_known_parts_differ(left: ServingEngineRequest, right: ServingEngineReq
       match right {
         EngineVllm { kv_cache_dtype: _, speculative: _, indexer_kv_dtype: _, scheduler_admission: _ } => true
         EngineNinfer { kv_dtype: kv2, speculation: sp2, max_concurrency: c2, kv_capacity_auto: auto2 } =>
-          both_present_str_differ(left: ninfer_kv_known_wire(d: kv), right: ninfer_kv_known_wire(d: kv2))
-            || both_present_str_differ(left: ninfer_spec_known_wire(s: sp), right: ninfer_spec_known_wire(s: sp2))
-            || both_present_nat_differ(left: c, right: c2)
-            || both_present_bool_differ(left: auto, right: auto2)
+          optional_both_present_unequal(left: ninfer_kv_known_wire(d: kv), right: ninfer_kv_known_wire(d: kv2))
+            || optional_both_present_unequal(left: ninfer_spec_known_wire(s: sp), right: ninfer_spec_known_wire(s: sp2))
+            || optional_both_present_unequal(left: c, right: c2)
+            || optional_both_present_unequal(left: auto, right: auto2)
       }
   }
 }
@@ -707,14 +646,10 @@ fn host_link_known_parts_differ(left: ServingHostLink, right: ServingHostLink) -
   }
 }
 
-fn power_known_parts_differ(left: Watt?, right: Watt?) -> Bool {
-  match left {
-    Absent => false
-    Present { value: a } =>
-      match right {
-        Absent => false
-        Present { value: b } => watt_count(w: a) != watt_count(w: b)
-      }
+fn watt_count_reading(w: Watt?) -> Nat? {
+  match w {
+    Absent => none
+    Present { value: x } => Present { value: watt_count(w: x) }
   }
 }
 
@@ -735,7 +670,7 @@ fn accelerator_known_parts_differ(left: ServingAcceleratorAxis, right: ServingAc
           !gpu_catalog_row_eq(a: a.sku, b: b.sku)
             || a.count != b.count
             || host_link_known_parts_differ(left: a.host_link, right: b.host_link)
-            || power_known_parts_differ(left: a.applied_power_limit, right: b.applied_power_limit)
+            || optional_both_present_unequal(left: watt_count_reading(w: a.applied_power_limit), right: watt_count_reading(w: b.applied_power_limit))
       }
   }
 }
