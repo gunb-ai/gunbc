@@ -323,6 +323,25 @@ fn route_qualification_effect() -> PrivilegedEffect {
   }
 }
 
+// OPENING AN OPERATOR-KEY SSH LEG TO A RENTED NODE (gunbc.serving.rented_host_grant). The effect runs on a
+// host the fleet has never seen, once per qualification or placement attempt, and is undone by closing
+// the leg: reversible, no credential minted (the private key stays in the operator's ssh-agent), and no
+// bill of its own (the rental is billed by the provider whether or not a leg opens). No dispatched run
+// carries it and the rental host is no cloud principal, so the identity is unbindable and the selection
+// falls to the per-attempt operator approval, realized as a std.scoped_authorization grant.
+fn rented_host_ssh_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "open an operator-key SSH leg to a rented node and run the observation and launch commands of one qualification or placement attempt on it" as NonEmptyStr,
+    frequency: EveryOperatorRequest,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityUnbindable { cause: "a rented host is not a cloud principal and no dispatched run carries the qualification, so no workload identity can be bound to it" as NonEmptyStr },
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
 // ROTATION ROUTE QUALIFICATION, CHANNEL-ACCESS SHAPE (cut O1a-2). The same qualification effect
 // executed for an IPMI Set User Access request: one per controller and build. Its characteristics
 // are stated as they are rather than copied from the password row. IRREVERSIBLE, AND SAID SO: a
@@ -732,21 +751,6 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.heal_publisher_federation", decl_name: "heal_publisher_wif_pool"),
     effect: recurring_credential_read(subject: "heal publisher reads the gunbai-bot App key under its own pool and provider" as NonEmptyStr),
-    realized: RealizedFederatedGrant,
-    divergence_reason: none,
-  },
-  PrivilegedEffectSite {
-    site: site(module_path: "gunbc.heal_publication", decl_name: "heal_publication_publish_for"),
-    effect: PrivilegedEffect {
-      subject: "mint a gunbai-bot installation token down-scoped to contents:write on this repository from the App key read over the publisher's WIF, then fast-forward one pull request's head branch by one admitted bot commit, compare-and-set on the head, read it back and comment the receipt" as NonEmptyStr,
-      frequency: EveryProvision,
-      reversibility: ReversibleByReapply,
-      surface: ApiSurface,
-      workload_identity: convergence_principal(),
-      minted_reach: MintsResourceScopedCredential,
-      billing: NoBillingConsequence,
-      witness_discharge: NoWitnessDischarge,
-    },
     realized: RealizedFederatedGrant,
     divergence_reason: none,
   },
@@ -1274,6 +1278,12 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     },
     realized: RealizedUnauthorized,
     divergence_reason: Present { value: fabric_store_write_unverified },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.serving.rented_host_grant", decl_name: "rented_host_permit"),
+    effect: rented_host_ssh_effect(),
+    realized: RealizedApprovalCapability,
+    divergence_reason: none,
   },
 ]
 
