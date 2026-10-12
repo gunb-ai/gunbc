@@ -2,7 +2,7 @@ module gunbc.rung_drop.match_arm_guard_seed_interpreter_witnesses_deleted
 
 import std.types { NonEmptyStr }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
-import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.guarantee_rung { OutsideTheLadder, MechanicallyPreventable }
 
 // The two witnesses held the seed interpreter's authored match-arm guard behavior at rung 2. v2's
 // grammar admits no arm-guard surface the fixtures could be rewritten onto, and the seed
@@ -19,7 +19,7 @@ data match_arm_guard_seed_interpreter_witnesses_deleted: RungDrop = RungDrop {
 
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
-    temporary: Mitigatable,
+    temporary: OutsideTheLadder,
     reason: DeletedWithoutReplacement,
     population: [
       "test.claim.interpreter_match_guard_witness_test (deleted: every rejecting-guard RED and admitting control)",
