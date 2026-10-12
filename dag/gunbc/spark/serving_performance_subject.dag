@@ -12,7 +12,7 @@ import extdeps.vllm.engine_args {
 import extdeps.nvidia.nccl { NcclRealizedTransport, nccl_realized_transport_wire }
 import extdeps.docker.cli { DockerEnvAssignment }
 import extdeps.storage.types { PcieLink, PcieGeneration, Gen3, Gen4, Gen5 }
-import extdeps.gpu.types { GpuModelCatalogRow }
+import extdeps.gpu.types { GpuModelCatalogRow, gpu_catalog_row_eq }
 import extdeps.ninfer.ninfer_serve {
   NinferKvDtype, NinferSpeculation, NinferMtp,
   NinferKvBf16, NinferKvInt8, NinferKvFp8, NinferKvNvfp4, NinferKvK8V4,
@@ -673,13 +673,152 @@ fn either_side_unknown_axes(left: ServingPerformanceSubject, right: ServingPerfo
   filter(serving_subject_axes, a => subject_axis_is_unknown(s: left, a: a) || subject_axis_is_unknown(s: right, a: a))
 }
 
-// A KNOWN DIFFERENCE IS ONE ON AN AXIS BOTH SIDES ACTUALLY READ. An axis unknown on either side is
-// excluded here rather than counted as differing, because two unread transports project to the same
-// sentinel and would otherwise read as agreement, while an unread against a read one would read as
-// a difference the evidence does not support.
+fn both_present_str_differ(left: NonEmptyStr?, right: NonEmptyStr?) -> Bool {
+  match left {
+    Absent => false
+    Present { value: a } =>
+      match right {
+        Absent => false
+        Present { value: b } => (a as String) != (b as String)
+      }
+  }
+}
+
+fn both_present_nat_differ(left: Nat?, right: Nat?) -> Bool {
+  match left {
+    Absent => false
+    Present { value: a } =>
+      match right {
+        Absent => false
+        Present { value: b } => a != b
+      }
+  }
+}
+
+fn both_present_bool_differ(left: Bool?, right: Bool?) -> Bool {
+  match left {
+    Absent => false
+    Present { value: a } =>
+      match right {
+        Absent => false
+        Present { value: b } => a != b
+      }
+  }
+}
+
+fn ninfer_kv_known_wire(d: NinferKvDtype?) -> NonEmptyStr? {
+  match d {
+    Absent => none
+    Present { value: x } => Present { value: ninfer_kv_dtype_wire(d: x) }
+  }
+}
+
+fn ninfer_spec_known_wire(s: NinferSpeculation?) -> NonEmptyStr? {
+  match s {
+    Absent => none
+    Present { value: x } => Present { value: ninfer_speculation_wire(s: x) }
+  }
+}
+
+fn engine_known_parts_differ(left: ServingEngineRequest, right: ServingEngineRequest) -> Bool {
+  match left {
+    EngineVllm { kv_cache_dtype: _, speculative: _, indexer_kv_dtype: _, scheduler_admission: _ } =>
+      match right {
+        EngineVllm { kv_cache_dtype: _, speculative: _, indexer_kv_dtype: _, scheduler_admission: _ } => false
+        EngineNinfer { kv_dtype: _, speculation: _, max_concurrency: _, kv_capacity_auto: _ } => true
+      }
+    EngineNinfer { kv_dtype: kv, speculation: sp, max_concurrency: c, kv_capacity_auto: auto } =>
+      match right {
+        EngineVllm { kv_cache_dtype: _, speculative: _, indexer_kv_dtype: _, scheduler_admission: _ } => true
+        EngineNinfer { kv_dtype: kv2, speculation: sp2, max_concurrency: c2, kv_capacity_auto: auto2 } =>
+          both_present_str_differ(left: ninfer_kv_known_wire(d: kv), right: ninfer_kv_known_wire(d: kv2))
+            || both_present_str_differ(left: ninfer_spec_known_wire(s: sp), right: ninfer_spec_known_wire(s: sp2))
+            || both_present_nat_differ(left: c, right: c2)
+            || both_present_bool_differ(left: auto, right: auto2)
+      }
+  }
+}
+
+fn host_link_known_parts_differ(left: ServingHostLink, right: ServingHostLink) -> Bool {
+  match left {
+    HostLinkUnread => false
+    HostLinkNegotiated { link: a } =>
+      match right {
+        HostLinkUnread => false
+        HostLinkNegotiated { link: b } =>
+          (pcie_generation_wire(g: a.generation) != pcie_generation_wire(g: b.generation)) || a.lane_count != b.lane_count
+      }
+  }
+}
+
+fn power_known_parts_differ(left: Watt?, right: Watt?) -> Bool {
+  match left {
+    Absent => false
+    Present { value: a } =>
+      match right {
+        Absent => false
+        Present { value: b } => watt_count(w: a) != watt_count(w: b)
+      }
+  }
+}
+
+fn accelerator_known_parts_differ(left: ServingAcceleratorAxis, right: ServingAcceleratorAxis) -> Bool {
+  match left {
+    AcceleratorUnread => false
+    AcceleratorSparkGb10 =>
+      match right {
+        AcceleratorUnread => false
+        AcceleratorSparkGb10 => false
+        AcceleratorCited { realization: _ } => true
+      }
+    AcceleratorCited { realization: a } =>
+      match right {
+        AcceleratorUnread => false
+        AcceleratorSparkGb10 => true
+        AcceleratorCited { realization: b } =>
+          !gpu_catalog_row_eq(a: a.sku, b: b.sku)
+            || a.count != b.count
+            || host_link_known_parts_differ(left: a.host_link, right: b.host_link)
+            || power_known_parts_differ(left: a.applied_power_limit, right: b.applied_power_limit)
+      }
+  }
+}
+
+fn ordinary_axis_known_parts_differ(left: ServingPerformanceSubject, right: ServingPerformanceSubject, a: ServingSubjectAxis) -> Bool {
+  !serving_subject_axis_agrees(left: left, right: right, a: a)
+    && !subject_axis_is_unknown(s: left, a: a)
+    && !subject_axis_is_unknown(s: right, a: a)
+}
+
+fn subject_axis_known_parts_differ(left: ServingPerformanceSubject, right: ServingPerformanceSubject, a: ServingSubjectAxis) -> Bool {
+  match a {
+    AxisEngine => engine_known_parts_differ(left: left.engine, right: right.engine)
+    AxisAccelerator => accelerator_known_parts_differ(left: left.accelerator, right: right.accelerator)
+    AxisCollectiveTransport => ordinary_axis_known_parts_differ(left: left, right: right, a: a)
+    AxisSpeculativePolicy => ordinary_axis_known_parts_differ(left: left, right: right, a: a)
+    AxisCheckpoint => ordinary_axis_known_parts_differ(left: left, right: right, a: a)
+    AxisCheckpointRevision => ordinary_axis_known_parts_differ(left: left, right: right, a: a)
+    AxisRuntime => ordinary_axis_known_parts_differ(left: left, right: right, a: a)
+    AxisRuntimeImageReference => ordinary_axis_known_parts_differ(left: left, right: right, a: a)
+    AxisTopology => ordinary_axis_known_parts_differ(left: left, right: right, a: a)
+    AxisRankPopulation => ordinary_axis_known_parts_differ(left: left, right: right, a: a)
+    AxisContextCeiling => ordinary_axis_known_parts_differ(left: left, right: right, a: a)
+    AxisBatchBudget => ordinary_axis_known_parts_differ(left: left, right: right, a: a)
+    AxisMaxNumSeqs => ordinary_axis_known_parts_differ(left: left, right: right, a: a)
+    AxisKvCacheDtype => ordinary_axis_known_parts_differ(left: left, right: right, a: a)
+    AxisWeightQuantization => ordinary_axis_known_parts_differ(left: left, right: right, a: a)
+    AxisIndexerKvDtype => ordinary_axis_known_parts_differ(left: left, right: right, a: a)
+    AxisSchedulerAdmission => ordinary_axis_known_parts_differ(left: left, right: right, a: a)
+    AxisLaunchProfile => ordinary_axis_known_parts_differ(left: left, right: right, a: a)
+    AxisDeploymentEnv => ordinary_axis_known_parts_differ(left: left, right: right, a: a)
+  }
+}
+
+// A KNOWN DIFFERENCE IS ONE THE READ PORTIONS ALREADY SETTLE. Nested unread on EngineNinfer or
+// AcceleratorCited must not drop a variant-tag or SKU mismatch: those were read. Unread vs unread
+// sentinels still do not count as a difference (review 78844).
 fn serving_subject_known_differing_axes(left: ServingPerformanceSubject, right: ServingPerformanceSubject) -> List<ServingSubjectAxis> {
-  filter(serving_subject_differing_axes(left: left, right: right),
-         a => !subject_axis_is_unknown(s: left, a: a) && !subject_axis_is_unknown(s: right, a: a))
+  filter(serving_subject_axes, a => subject_axis_known_parts_differ(left: left, right: right, a: a))
 }
 
 type ServingSubjectJoin
