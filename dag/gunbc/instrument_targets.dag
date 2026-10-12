@@ -641,10 +641,6 @@ fn native_claim_policy_child_deadline() -> Millisecond {
   millisecond(count: 600000)
 }
 
-fn native_claim_policy_child_deadline_count() -> Int {
-  millisecond_count(m: native_claim_policy_child_deadline())
-}
-
 // Wall budget for //gunbc/instruments:value-position-block-nests, set from the measured child
 // wall of this driver. Producer: `gunbc test //gunbc/instruments:value-position-block-nests`
 // on sunny-carp-272 at 1d1f4cf6d17, cgroup memory.max=25769803776, printed
@@ -654,10 +650,6 @@ fn native_claim_policy_child_deadline_count() -> Int {
 // so one noisy runner cannot false-RED a 1.1 s green.
 fn value_position_block_nests_child_deadline() -> Millisecond {
   millisecond(count: 15000)
-}
-
-fn value_position_block_nests_child_deadline_count() -> Int {
-  millisecond_count(m: value_position_block_nests_child_deadline())
 }
 
 fn native_crypto_vectors_binding() -> TargetBinding {
