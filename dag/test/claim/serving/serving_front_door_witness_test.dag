@@ -29,16 +29,16 @@ import product.capacity.redemption {
   redemption_release_owner, redemption_recovery,
 }
 import gunbc.serving.turn_admission { ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant }
-import gunbc.spark.fabric_switch_observed { FabricGroupB, FabricGroup }
-import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch, vllm_endpoint_process_launch, vllm_endpoint_process_launch_key }
+import gunbc.serving.rented_replica { RentedReplicaIdentity, rented_replica_wire }
+import gunbc.serving.replica_endpoint_launch { ReplicaEndpointLaunch, replica_endpoint_launch, replica_endpoint_launch_key }
 import gunbc.serving.serving_front_door {
   ServingSeatPermit, ServingSeatPermitClaims, FrontDoorIdentity, FrontDoorVerdict, FrontDoorForward, FrontDoorRefused,
-  FrontDoorRefusal, DoorCallerUnauthenticated, DoorPermitAbsent, DoorPermitMacRefused, DoorPermitForAnotherGroup,
+  FrontDoorRefusal, DoorCallerUnauthenticated, DoorPermitAbsent, DoorPermitMacRefused, DoorPermitForAnotherReplica,
   DoorPermitForAnotherLaunch, DoorPermitExpired, DoorSeatReleased, DoorSeatNeverAdmitted, SeatPermitIssued,
   DoorSeatHeldByAnotherCaller, DoorSeatLeaseExpired, DoorPermitPartitionNotThisPool, DoorPermitClassNotServed,
   DoorSeatAmountNotOneSeat, DoorSeatAcquiredMoreThanOnce, DoorSeatFenceGenerationDisagrees, DoorPermitAlreadyRedeemed,
   FrontDoorRedemption, DoorRedeemed, DoorRedemptionRefused,
-  DoorPoolConfiguredTwice, DoorPoolSelected, front_door_pool_for,
+  DoorPoolConfiguredTwice, DoorPoolSelected, DoorPoolOfAnotherReplica, front_door_pool_for,
   PlanLeaveWithHolder, PlanRelease, front_door_recovery_plan,
   SeatGrantCurrency, FrontDoorTally,
   serving_seat_permit_claims, serving_seat_permit_signing_input, issue_serving_seat_permit, serving_seat_permit_key_id,
@@ -60,23 +60,26 @@ data witness_key: MacKey = MacKey {
   material: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f" as Secret,
 }
 
-data quality_pool: HarnessSeatPoolIdentity = harness_seat_pool_identity_at(group: FabricGroupB {}, class: InteractiveQualitySensitive, seats: 1)
-data tolerant_pool: HarnessSeatPoolIdentity = harness_seat_pool_identity_at(group: FabricGroupB {}, class: BatchQualityTolerant, seats: 2)
+data door_replica: RentedReplicaIdentity = RentedReplicaIdentity { node: "rental-1" as NonEmptyStr, device_index: 0, served_name: "qwen-first-row" as NonEmptyStr }
+data other_replica: RentedReplicaIdentity = RentedReplicaIdentity { node: "rental-1" as NonEmptyStr, device_index: 1, served_name: "qwen-first-row" as NonEmptyStr }
+
+data quality_pool: HarnessSeatPoolIdentity = harness_seat_pool_identity_at(replica: door_replica, class: InteractiveQualitySensitive, seats: 1)
+data tolerant_pool: HarnessSeatPoolIdentity = harness_seat_pool_identity_at(replica: door_replica, class: BatchQualityTolerant, seats: 2)
 data witness_partition: PartitionId = quality_pool.partition
 data witness_attempt: NonEmptyStr = "attempt-7" as NonEmptyStr
 data witness_admitting: EventId = "ev-acquire-7" as EventId
 data witness_granted_at: EpochSecs = 1000
 data witness_term: EpochSecs = 600
 
-data group_b_launch: VllmEndpointProcessLaunch = vllm_endpoint_process_launch(
-  group: FabricGroupB {}, endpoint: "http://192.168.1.236:30000" as NonEmptyStr, process_start_field: "launch-1" as NonEmptyStr,
+data group_b_launch: ReplicaEndpointLaunch = replica_endpoint_launch(
+  replica: door_replica, endpoint: "http://192.168.1.236:30000" as NonEmptyStr, process_start_field: "launch-1" as NonEmptyStr,
 )
-data group_b_relaunch: VllmEndpointProcessLaunch = vllm_endpoint_process_launch(
-  group: FabricGroupB {}, endpoint: "http://192.168.1.236:30000" as NonEmptyStr, process_start_field: "launch-2" as NonEmptyStr,
+data group_b_relaunch: ReplicaEndpointLaunch = replica_endpoint_launch(
+  replica: door_replica, endpoint: "http://192.168.1.236:30000" as NonEmptyStr, process_start_field: "launch-2" as NonEmptyStr,
 )
 
-fn seat_for(attempt: NonEmptyStr, launch: VllmEndpointProcessLaunch) -> HarnessSeatReference {
-  harness_seat_reference_record(attempt: attempt, offer_key: vllm_endpoint_process_launch_key(launch: launch), now: 1000, round: 1, head: "empty" as NonEmptyStr)
+fn seat_for(attempt: NonEmptyStr, launch: ReplicaEndpointLaunch) -> HarnessSeatReference {
+  harness_seat_reference_record(attempt: attempt, offer_key: replica_endpoint_launch_key(launch: launch), now: 1000, round: 1, head: "empty" as NonEmptyStr)
 }
 data witness_seat: HarnessSeatReference = seat_for(attempt: witness_attempt, launch: group_b_launch)
 data relaunch_seat: HarnessSeatReference = seat_for(attempt: witness_attempt, launch: group_b_relaunch)
@@ -98,15 +101,15 @@ data witness_grant: LeaseGrant = lease_grant(
   policy: LeasePolicy { maximum_duration_seconds: witness_term, release_law: QuiescenceRequired },
 )
 
-data group_b_door: FrontDoorIdentity = FrontDoorIdentity { group: FabricGroupB {}, launch: group_b_launch, suite: HmacSha256, pools: [quality_pool, tolerant_pool] }
+data group_b_door: FrontDoorIdentity = FrontDoorIdentity { replica: door_replica, launch: group_b_launch, suite: HmacSha256, pools: [quality_pool, tolerant_pool] }
 
 data service_caller: RequestAuthenticationEvidence = FabricServiceEvidence {
   kind: FabricServiceEvidenceSubmissionMac, authenticated_at: "2026-10-03T00:00:00Z",
 }
 
-fn claims_on(launch: VllmEndpointProcessLaunch, group_wire: String) -> ServingSeatPermitClaims {
+fn claims_on(launch: ReplicaEndpointLaunch, replica_wire: String) -> ServingSeatPermitClaims {
   serving_seat_permit_claims(
-    group_wire: group_wire, partition: witness_partition, class: InteractiveQualitySensitive,
+    replica_wire: replica_wire, partition: witness_partition, class: InteractiveQualitySensitive,
     seat: seat_for(attempt: witness_attempt, launch: launch), grant: witness_grant, caller: fabric_service_principal(),
   )
 }
@@ -119,15 +122,15 @@ fn permit_of(claims: ServingSeatPermitClaims) -> ServingSeatPermit? {
 }
 
 fn good_permit() -> ServingSeatPermit? {
-  permit_of(claims: claims_on(launch: group_b_launch, group_wire: "group-b"))
+  permit_of(claims: claims_on(launch: group_b_launch, replica_wire: rented_replica_wire(id: door_replica)))
 }
 
 // A KEY HOLDER'S FORGERY: claims written by hand and signed with the REAL key. Every field is the
 // forger's choice; only the ledger and the redemption chain can refuse it.
 fn forged_with(seat: HarnessSeatReference, partition: PartitionId, class: ServingCoTenancyClass, generation: Nat, expires_at: EpochSecs) -> ServingSeatPermit? {
-  let c = claims_on(launch: group_b_launch, group_wire: "group-b")
+  let c = claims_on(launch: group_b_launch, replica_wire: rented_replica_wire(id: door_replica))
   permit_of(claims: ServingSeatPermitClaims {
-    protocol: c.protocol, group: c.group, partition: partition, class: class,
+    protocol: c.protocol, replica: c.replica, partition: partition, class: class,
     seat: seat, grant: c.grant, generation: generation, caller: c.caller,
     granted_at: c.granted_at, expires_at: expires_at, key_id: c.key_id,
   })
@@ -212,16 +215,16 @@ test fn a_valid_caller_with_no_seat_grant_is_refused_and_the_refusal_is_counted(
   refused && front_door_refused_count(tally: tally, cause: "permit-absent" as NonEmptyStr) == 1 && tally.forwarded == 0
 }
 
-test fn a_permit_granted_on_another_group_is_refused() -> Bool {
-  let v = door_verdict(evidence: service_caller, presented: permit_of(claims: claims_on(launch: group_b_launch, group_wire: "group-not-this-door")), at: 1100, history: held_history)
+test fn a_permit_granted_on_another_replica_is_refused() -> Bool {
+  let v = door_verdict(evidence: service_caller, presented: permit_of(claims: claims_on(launch: group_b_launch, replica_wire: rented_replica_wire(id: other_replica))), at: 1100, history: held_history)
   match v {
-    FrontDoorRefused { cause: DoorPermitForAnotherGroup { permit_group: _, door_group: _ } } => true
+    FrontDoorRefused { cause: DoorPermitForAnotherReplica { permit_replica: _, door_replica: _ } } => true
     _ => false
   }
 }
 
-test fn a_permit_granted_against_another_launch_of_this_group_is_refused() -> Bool {
-  let v = door_verdict(evidence: service_caller, presented: permit_of(claims: claims_on(launch: group_b_relaunch, group_wire: "group-b")), at: 1100, history: held_history)
+test fn a_permit_granted_against_another_launch_of_this_replica_is_refused() -> Bool {
+  let v = door_verdict(evidence: service_caller, presented: permit_of(claims: claims_on(launch: group_b_relaunch, replica_wire: rented_replica_wire(id: door_replica))), at: 1100, history: held_history)
   match v {
     FrontDoorRefused { cause: DoorPermitForAnotherLaunch { permit_launch: _, door_launch: _ } } => true
     _ => false
@@ -276,7 +279,7 @@ test fn a_permit_whose_claims_were_rewritten_after_signing_is_refused_by_the_mac
       let c = p.claims
       let widened = ServingSeatPermit {
         claims: ServingSeatPermitClaims {
-          protocol: c.protocol, group: c.group, partition: c.partition, class: c.class,
+          protocol: c.protocol, replica: c.replica, partition: c.partition, class: c.class,
           seat: c.seat, grant: c.grant, generation: c.generation, caller: c.caller,
           granted_at: c.granted_at, expires_at: c.expires_at + 86400, key_id: c.key_id,
         },
@@ -299,7 +302,7 @@ test fn a_permit_whose_protocol_was_rewritten_after_signing_is_refused_by_the_ma
       let c = p.claims
       let rewritten = ServingSeatPermit {
         claims: ServingSeatPermitClaims {
-          protocol: "gunbc.serving-seat-permit.v0" as NonEmptyStr, group: c.group, partition: c.partition, class: c.class,
+          protocol: "gunbc.serving-seat-permit.v0" as NonEmptyStr, replica: c.replica, partition: c.partition, class: c.class,
           seat: c.seat, grant: c.grant, generation: c.generation, caller: c.caller,
           granted_at: c.granted_at, expires_at: c.expires_at, key_id: c.key_id,
         },
@@ -318,15 +321,15 @@ test fn a_permit_whose_protocol_was_rewritten_after_signing_is_refused_by_the_ma
 // cannot authenticate B.
 test fn two_claim_sets_that_collide_under_a_separator_join_sign_apart() -> Bool {
   let sep = char_text(c: 31)
-  let c = claims_on(launch: group_b_launch, group_wire: "group-b")
+  let c = claims_on(launch: group_b_launch, replica_wire: rented_replica_wire(id: door_replica))
   let a = ServingSeatPermitClaims {
-    protocol: c.protocol, group: c.group, partition: c.partition, class: c.class,
+    protocol: c.protocol, replica: c.replica, partition: c.partition, class: c.class,
     seat: harness_seat_reference_record(attempt: witness_attempt, offer_key: c.seat.offer_key, now: 1000, round: 1, head: "h" as NonEmptyStr),
     grant: join(["g", sep, "x"], "") as GrantIdentity, generation: c.generation, caller: c.caller,
     granted_at: c.granted_at, expires_at: c.expires_at, key_id: c.key_id,
   }
   let b = ServingSeatPermitClaims {
-    protocol: c.protocol, group: c.group, partition: c.partition, class: c.class,
+    protocol: c.protocol, replica: c.replica, partition: c.partition, class: c.class,
     seat: harness_seat_reference_record(attempt: witness_attempt, offer_key: c.seat.offer_key, now: 1000, round: 1, head: join(["h", sep, "g"], "") as NonEmptyStr),
     grant: "x" as GrantIdentity, generation: c.generation, caller: c.caller,
     granted_at: c.granted_at, expires_at: c.expires_at, key_id: c.key_id,
@@ -373,15 +376,15 @@ test fn a_permit_that_extends_its_own_expiry_is_refused_on_the_recorded_term() -
 
 // ── The join is on the exact seat pool, not a partition-name prefix ──────────────────────────
 
-test fn a_permit_naming_a_same_group_partition_that_is_not_a_seat_pool_is_refused() -> Bool {
-  match door_verdict(evidence: service_caller, presented: forged(seat: witness_seat, partition: "group-group-b-not-a-seat" as PartitionId, expires_at: 1600), at: 1100, history: held_history) {
+test fn a_permit_naming_a_same_replica_partition_that_is_not_a_seat_pool_is_refused() -> Bool {
+  match door_verdict(evidence: service_caller, presented: forged(seat: witness_seat, partition: "replica-not-a-seat" as PartitionId, expires_at: 1600), at: 1100, history: held_history) {
     FrontDoorRefused { cause: DoorPermitPartitionNotThisPool { partition: _, pool_partition: _ } } => true
     _ => false
   }
 }
 
-test fn a_permit_naming_another_groups_seat_partition_is_refused() -> Bool {
-  match door_verdict(evidence: service_caller, presented: forged(seat: witness_seat, partition: "group-group-not-this-door-quality-seat-v1" as PartitionId, expires_at: 1600), at: 1100, history: held_history) {
+test fn a_permit_naming_another_replicas_seat_partition_is_refused() -> Bool {
+  match door_verdict(evidence: service_caller, presented: forged(seat: witness_seat, partition: "replica-some-other-replica-quality-seat-v1" as PartitionId, expires_at: 1600), at: 1100, history: held_history) {
     FrontDoorRefused { cause: DoorPermitPartitionNotThisPool { partition: _, pool_partition: _ } } => true
     _ => false
   }
@@ -395,7 +398,7 @@ test fn a_permit_whose_class_and_partition_disagree_is_refused() -> Bool {
 }
 
 test fn a_permit_for_a_class_the_door_serves_no_pool_for_is_refused() -> Bool {
-  let quality_only = FrontDoorIdentity { group: FabricGroupB {}, launch: group_b_launch, suite: HmacSha256, pools: [quality_pool] }
+  let quality_only = FrontDoorIdentity { replica: door_replica, launch: group_b_launch, suite: HmacSha256, pools: [quality_pool] }
   let presented = forged_with(seat: witness_seat, partition: tolerant_pool.partition, class: BatchQualityTolerant, generation: 1, expires_at: 1600)
   match front_door_admit(
     evidence: service_caller, presented: presented, mac_result: mac_for(presented: presented), door: quality_only, observed_at: 1100, request: request_one,
@@ -601,7 +604,7 @@ test fn a_seat_whose_use_ended_but_was_not_released_is_released_by_recovery() ->
 // ── The door's pools belong to the door's group ──────────────────────────────────────────────
 
 fn door_with(pools: List<HarnessSeatPoolIdentity>) -> FrontDoorIdentity {
-  FrontDoorIdentity { group: FabricGroupB {}, launch: group_b_launch, suite: HmacSha256, pools: pools }
+  FrontDoorIdentity { replica: door_replica, launch: group_b_launch, suite: HmacSha256, pools: pools }
 }
 
 fn verdict_at_door(door: FrontDoorIdentity) -> FrontDoorVerdict {
@@ -620,9 +623,9 @@ test fn a_door_configured_with_two_pools_for_one_class_refuses_rather_than_choos
   }
 }
 
-test fn the_pool_derived_for_the_doors_own_group_still_admits() -> Bool {
+test fn the_pool_derived_for_the_doors_own_replica_still_admits() -> Bool {
   let selected = match front_door_pool_for(door: group_b_door, class: InteractiveQualitySensitive) {
-    DoorPoolSelected { pool: p } => (p.partition as String) == (harness_seat_pool_identity_at(group: FabricGroupB {}, class: InteractiveQualitySensitive, seats: 1).partition as String)
+    DoorPoolSelected { pool: p } => (p.partition as String) == (harness_seat_pool_identity_at(replica: door_replica, class: InteractiveQualitySensitive, seats: 1).partition as String)
     _ => false
   }
   let admits = match verdict_at_door(door: group_b_door) {
@@ -630,4 +633,12 @@ test fn the_pool_derived_for_the_doors_own_group_still_admits() -> Bool {
     FrontDoorRefused { cause: _ } => false
   }
   selected && admits
+}
+
+test fn a_pool_of_another_replica_configured_into_a_door_is_refused_naming_that_replica() -> Bool {
+  let foreign = harness_seat_pool_identity_at(replica: other_replica, class: InteractiveQualitySensitive, seats: 1)
+  match front_door_pool_for(door: door_with(pools: [foreign]), class: InteractiveQualitySensitive) {
+    DoorPoolOfAnotherReplica { pool_replica: r } => r == rented_replica_wire(id: other_replica)
+    _ => false
+  }
 }

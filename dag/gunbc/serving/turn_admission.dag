@@ -2,7 +2,7 @@ module gunbc.serving.turn_admission
 
 import std.types { String, NonEmptyStr, Bool }
 import std.nat { Nat }
-import std.measure { second, money_amount_micro, MoneyOnce, MoneyRate, MoneyPerSecond }
+import std.measure { TokenCount, token_count_value, second, money_amount_micro, MoneyOnce, MoneyRate, MoneyPerSecond }
 import extdeps.currency.currency { Usd }
 import product.fabric.identity { FabricIdentity, OfferKey }
 import product.fabric.demand { ObservationReceiptRef }
@@ -13,7 +13,7 @@ import product.fabric.selection {
 }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.work { TrustDomainRef }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, fabric_group_wire }
+import gunbc.serving.rented_replica { RentedReplicaIdentity, rented_replica_wire }
 
 // ── CO-TENANCY IS AN ADMISSION CONSTRAINT, NOT A PRICE ────────────────────────────────────────
 //
@@ -282,7 +282,7 @@ fn serving_admission_on_counts(
 // ReusedAtTurn names cached_tokens, the launch it was observed on and the turn -- and no arm claims
 // the prefix is resident now. A lifetime-counter ratio is likewise refused (prefix_cache_verdict).
 type ServingTurnReuse
-  = TurnReuseRead { cached_tokens: Nat, launch: NonEmptyStr, turn: NonEmptyStr }
+  = TurnReuseRead { cached_tokens: TokenCount, launch: NonEmptyStr, turn: NonEmptyStr }
   | TurnReuseUnread { obligation: NonEmptyStr }
 
 // What the caller remembers about a session between turns. No store of these exists yet, so the
@@ -334,7 +334,7 @@ type ServingMustReconstructCause
   | PrefixMissedAndNotRetained
 
 type ServingSessionResidency
-  = ReusedAtTurn { cached_tokens: Nat, launch: NonEmptyStr, turn: NonEmptyStr }
+  = ReusedAtTurn { cached_tokens: TokenCount, launch: NonEmptyStr, turn: NonEmptyStr }
   | HostRestorable
   | MustReconstruct { cause: ServingMustReconstructCause }
   | ResidencyUnread { obligation: NonEmptyStr }
@@ -362,7 +362,7 @@ fn serving_session_residency(
       TurnReuseRead { cached_tokens: n, launch: l, turn: t } =>
         if l != owner_launch {
           ResidencyUnread { obligation: "the reuse reading was attributed to a different launch than the session's owner" as NonEmptyStr }
-        } else if n > 0 {
+        } else if token_count_value(t: n) > 0 {
           ReusedAtTurn { cached_tokens: n, launch: l, turn: t }
         } else {
           match host {
@@ -416,22 +416,22 @@ fn serving_pin_to_owner(owner: NonEmptyStr, candidate: NonEmptyStr) -> ServingSe
   if (owner as String) == (candidate as String) { PlacementFree } else { OwnedByAnotherReplica { owner: owner } }
 }
 
-fn serving_admission_detail(group: FabricGroup, admission: ServingGroupAdmission) -> String {
+fn serving_admission_detail(replica: RentedReplicaIdentity, admission: ServingGroupAdmission) -> String {
   match admission {
     AdmissibleForClass { class: c, receipt: _ } =>
-      join([fabric_group_wire(g: group) as String, ": admissible for a ", serving_co_tenancy_class_wire(c: c) as String, " turn"], "")
+      join([rented_replica_wire(id: replica) as String, ": admissible for a ", serving_co_tenancy_class_wire(c: c) as String, " turn"], "")
     InadmissibleQualityTurnInFlight { held: h, basis: _ } =>
-      join([fabric_group_wire(g: group) as String, ": ", to_string(h), " quality-sensitive turn(s) held, so a prefill placed here would stall a decode already being read"], "")
+      join([rented_replica_wire(id: replica) as String, ": ", to_string(h), " quality-sensitive turn(s) held, so a prefill placed here would stall a decode already being read"], "")
     InadmissibleGroupNotIdle { occupied_by: n, basis: _ } =>
-      join([fabric_group_wire(g: group) as String, ": ", to_string(n), " turn(s) held or in flight, and a quality-sensitive turn takes an idle route because nothing here observes whether they are past prefill"], "")
+      join([rented_replica_wire(id: replica) as String, ": ", to_string(n), " turn(s) held or in flight, and a quality-sensitive turn takes an idle route because nothing here observes whether they are past prefill"], "")
     InadmissibleRouteHoldingForCapacity { held: h } =>
-      join([fabric_group_wire(g: group) as String, ": the route reports ", to_string(h), " request(s) waiting for scheduling capacity, so it is not taking more work now"], "")
+      join([rented_replica_wire(id: replica) as String, ": the route reports ", to_string(h), " request(s) waiting for scheduling capacity, so it is not taking more work now"], "")
     InadmissibleClassCeilingReached { held: h, ceiling: c } =>
-      join([fabric_group_wire(g: group) as String, ": ", to_string(h), " tolerant turn(s) held against a declared ceiling of ", to_string(c)], "")
+      join([rented_replica_wire(id: replica) as String, ": ", to_string(h), " tolerant turn(s) held against a declared ceiling of ", to_string(c)], "")
     InadmissibleUnexplainedOccupancy { occupants: n, seated: s } =>
-      join([fabric_group_wire(g: group) as String, ": the engine reports ", to_string(n), " occupant(s) while the seat ledger admitted ", to_string(s), "; a turn nobody seated may be one somebody is reading, so nothing is placed beside it"], "")
+      join([rented_replica_wire(id: replica) as String, ": the engine reports ", to_string(n), " occupant(s) while the seat ledger admitted ", to_string(s), "; a turn nobody seated may be one somebody is reading, so nothing is placed beside it"], "")
     AdmissibilityUnread { obligation: o } =>
-      join([fabric_group_wire(g: group) as String, ": occupancy unread, which is not idle -- ", o as String], "")
+      join([rented_replica_wire(id: replica) as String, ": occupancy unread, which is not idle -- ", o as String], "")
   }
 }
 
@@ -561,5 +561,3 @@ data serving_delay_valuation: MoneyPerSecond = MoneyRate {
 fn serving_isolation_profile() -> IsolationProfile {
   IsolationProfile { guarantees: [] }
 }
-
-data spark_serving_trust_domain: TrustDomainRef = "gunbc.trust.spark-fleet" as TrustDomainRef
