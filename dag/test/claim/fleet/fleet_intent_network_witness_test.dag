@@ -82,6 +82,10 @@ data declared_topology_endpoints: List<NetworkEndpoint> = [
   srv2_host_lan_endpoint,
   srv3_host_lan_endpoint,
   srv4_host_lan_endpoint,
+  srv9_host_lan_endpoint,
+  srv10_host_lan_endpoint,
+  srv11_host_lan_endpoint,
+  srv12_host_lan_endpoint,
   srv1_bmc_endpoint,
   srv2_bmc_endpoint,
   srv3_bmc_endpoint,
@@ -122,12 +126,11 @@ test fn fleet_intent_network_srv3_addresses_holds() -> Bool {
     && srv3_bmc_endpoint.role == BmcOutOfBand
 }
 
-// The sold Group B slots are no longer in the topology (rung drop serving_fixtures_name_sold_group_b_hosts), but their
-// endpoint rows stay as fixtures for serving; this pins them against the transcribed reservation values. The Spark host slots were enrolled, each bound to its own identity, at the address its CR1000A
-// static reservation carries in gunbc.spark.dgx_procurement, with the role split asserted so a model
-// that collapses a Spark's host OS onto some other attachment role reds rather than shifting a count.
-// It pins the corpus against the transcribed reservation authority -- a citation check, not a
-// readback from the host.
+// GROUP B'S FOUR HOST LAN ROWS ARE TOPOLOGY MEMBERS, not fixture-only residue. serving_route
+// reads host_lan_address over fleet_intent_network.endpoints; a named row that is not in that
+// list is an unresolved front door. This claim still pins address, role and subject so a collapse
+// of host OS onto another attachment role reds rather than shifting a count. The addresses are
+// the transcribed CR1000A reservations -- a citation check, not a readback from the host.
 
 test fn fleet_intent_network_srv9_to_srv11_enrolled_at_their_reserved_addresses() -> Bool {
   srv9_host_lan_endpoint.address == "192.168.1.236"

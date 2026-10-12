@@ -164,6 +164,14 @@ data srv3_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
   locality: Lan,
 }
 
+// GROUP B'S HEAD IS ASKED THROUGH THIS ROW. gunbc.serving.serving_enrollment serving_route
+// derives the front door from fabric_serving_head then host_lan_address over this topology list.
+// fa44b981025 (#13641, 2026-10-10) kept these four endpoint declarations and dropped them from
+// fleet_intent_network.endpoints, so host_lan_address(srv9) was Absent and serving_route(Group B)
+// unresolved while serving_enrolled_groups still named FabricGroupB. The seat-ceiling witnesses
+// and group_b_is_enrolled_and_its_route_has_its_own_front_door went red; CI does not evaluate
+// them (DESIGN Building & checks; gunbc.rung_drop v1_required_lanes_withdrawn). Restored here:
+// the enrolled route owes an address. The Spark Group B quality-seat ceiling is unchanged.
 data srv9_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
   label: "srv9-host-lan",
   subject: EndpointHost { host: operator_host_srv9 },
@@ -276,6 +284,10 @@ data fleet_intent_network: NetworkTopology = NetworkTopology {
     srv2_host_lan_endpoint,
     srv3_host_lan_endpoint,
     srv4_host_lan_endpoint,
+    srv9_host_lan_endpoint,
+    srv10_host_lan_endpoint,
+    srv11_host_lan_endpoint,
+    srv12_host_lan_endpoint,
     srv1_bmc_endpoint,
     srv2_bmc_endpoint,
     srv3_bmc_endpoint,
