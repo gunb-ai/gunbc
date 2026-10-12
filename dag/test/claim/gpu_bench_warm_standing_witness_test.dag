@@ -3,10 +3,11 @@ module test.claim.gpu_bench_warm_standing_witness
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String }
 import std.optional { Present, Absent }
+import std.algebra { Cons, Empty }
 import std.measure { token_count, token_count_value }
 import extdeps.gpu_bench.request_v2 {
   gpu_bench_parse_jsonl, GpuBenchRequestV2Parsed, GpuBenchRequestV2StreamUnreadable,
-  gpu_bench_request_v2_schema,
+  gpu_bench_request_v2_schema, GpuBenchRequestError, GpuBenchRequestOk,
 }
 import gunbc.serving.gpu_bench_warm_standing {
   gpu_bench_warm_standing, gpu_bench_warm_standing_with_ninfer_log, gpu_bench_capacity_ok_tokens,
@@ -20,6 +21,12 @@ data fx_ok_prime: String = "{\"schema\":\"gpu-bench/request/v2\",\"run\":\"fx\",
 data fx_warm_error: String = "{\"schema\":\"gpu-bench/request/v2\",\"run\":\"fx\",\"phase\":\"prime\",\"round\":0,\"n_active\":1,\"retained\":1,\"session\":0,\"max_tokens\":1,\"t_start\":1.0,\"t_first\":2.0,\"t_end\":2.1,\"prompt_tokens\":50,\"completion_tokens\":1,\"status\":\"ok\",\"error\":null}\n{\"schema\":\"gpu-bench/request/v2\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":1,\"n_active\":1,\"retained\":1,\"session\":0,\"max_tokens\":512,\"t_start\":3.0,\"t_first\":null,\"t_end\":4.0,\"prompt_tokens\":null,\"completion_tokens\":null,\"status\":\"error\",\"error\":\"TimeoutError: timed out\"}\n"
 
 data fx_wrong_schema: String = "{\"schema\":\"gpu-bench/request/v1\",\"run\":\"fx\",\"phase\":\"prime\",\"round\":0,\"n_active\":1,\"retained\":1,\"session\":0,\"max_tokens\":1,\"t_start\":1.0,\"t_first\":2.0,\"t_end\":2.1,\"prompt_tokens\":50,\"completion_tokens\":1,\"status\":\"ok\",\"error\":null}\n"
+
+data fx_prime_prompt_absent: String = "{\"schema\":\"gpu-bench/request/v2\",\"run\":\"fx\",\"phase\":\"prime\",\"round\":0,\"n_active\":1,\"retained\":1,\"session\":0,\"max_tokens\":1,\"t_start\":1.0,\"t_first\":2.0,\"t_end\":2.1,\"prompt_tokens\":null,\"completion_tokens\":1,\"status\":\"ok\",\"error\":null}\n"
+
+data fx_error_detail_absent: String = "{\"schema\":\"gpu-bench/request/v2\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":1,\"n_active\":1,\"retained\":1,\"session\":0,\"max_tokens\":512,\"t_start\":3.0,\"t_first\":null,\"t_end\":4.0,\"prompt_tokens\":null,\"completion_tokens\":null,\"status\":\"error\"}\n"
+
+data fx_error_detail_malformed: String = "{\"schema\":\"gpu-bench/request/v2\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":1,\"n_active\":1,\"retained\":1,\"session\":0,\"max_tokens\":512,\"t_start\":3.0,\"t_first\":null,\"t_end\":4.0,\"prompt_tokens\":null,\"completion_tokens\":null,\"status\":\"error\",\"error\":1}\n"
 
 fn parsed_ok(text: String) -> Bool {
   match gpu_bench_parse_jsonl(text: text) {
@@ -115,4 +122,41 @@ test fn ninfer_replay_rejects_warm() -> Bool {
 
 test fn parsed_ok_prime_fixture() -> Bool {
   parsed_ok(text: fx_ok_prime)
+}
+
+test fn absent_prime_prompt_tokens_rejects() -> Bool {
+  match gpu_bench_parse_jsonl(text: fx_prime_prompt_absent) {
+    GpuBenchRequestV2StreamUnreadable { line: _, cause: _ } => false
+    GpuBenchRequestV2Parsed { records: rs } =>
+      match gpu_bench_warm_standing(records: rs, measured_kv: Present { value: token_count(count: 1000) }) {
+        WarmRejected { cause: c } => (c as String) == "a prime-phase request carries no prompt_tokens"
+        WarmValid { working_set_tokens: _, measured_kv_tokens: _ } => false
+        WarmOverCapacity { working_set_tokens: _, measured_kv_tokens: _ } => false
+        WarmCapacityUnread { cause: _ } => false
+      }
+  }
+}
+
+test fn error_detail_absent_is_typed() -> Bool {
+  match gpu_bench_parse_jsonl(text: fx_error_detail_absent) {
+    GpuBenchRequestV2StreamUnreadable { line: _, cause: _ } => false
+    GpuBenchRequestV2Parsed { records: rs } =>
+      match rs {
+        Empty => false
+        Cons { head: r, tail: _ } => match r.status {
+          GpuBenchRequestOk => false
+          GpuBenchRequestError { detail: d } => match d {
+            Absent => true
+            Present { value: _ } => false
+          }
+        }
+      }
+  }
+}
+
+test fn error_detail_malformed_refuses() -> Bool {
+  match gpu_bench_parse_jsonl(text: fx_error_detail_malformed) {
+    GpuBenchRequestV2StreamUnreadable { line: _, cause: _ } => true
+    GpuBenchRequestV2Parsed { records: _ } => false
+  }
 }
