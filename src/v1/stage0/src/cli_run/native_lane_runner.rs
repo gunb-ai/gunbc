@@ -2884,7 +2884,6 @@ pub fn run_native_claim_program(
     entry: &str,
     deadline: std::time::Duration,
 ) -> Result<NativeClaimProgramAttempt, String> {
-    use std::io::Read;
     let prepared = prepare_emitted_compiler_for_entry(source_roots, entry)?;
     eprintln!(
         "native-claim: {entry} built (closure {}) -- running {} deadline_ms={}",
@@ -2899,6 +2898,27 @@ pub fn run_native_claim_program(
         .map_err(|cause| {
             format!("NATIVE-CLAIM REFUSAL cause=SpawnFailed entry={entry} — {cause}")
         })?;
+    // Drain both pipes on reader threads while the deadline loop waits. `.output()` used to
+    // do this; polling `try_wait` with unread pipes deadlocks once a child fills ~64 KiB and
+    // then looks like a hang (review 78857).
+    let stdout_pipe = child
+        .stdout
+        .take()
+        .ok_or_else(|| format!("NATIVE-CLAIM REFUSAL cause=StdoutPipeMissing entry={entry}"))?;
+    let stderr_pipe = child
+        .stderr
+        .take()
+        .ok_or_else(|| format!("NATIVE-CLAIM REFUSAL cause=StderrPipeMissing entry={entry}"))?;
+    let stdout_join = std::thread::spawn(move || {
+        let mut pipe = stdout_pipe;
+        let mut buf = Vec::new();
+        std::io::Read::read_to_end(&mut pipe, &mut buf).map(|_| buf)
+    });
+    let stderr_join = std::thread::spawn(move || {
+        let mut pipe = stderr_pipe;
+        let mut buf = Vec::new();
+        std::io::Read::read_to_end(&mut pipe, &mut buf).map(|_| buf)
+    });
     let started = std::time::Instant::now();
     let status = loop {
         match child.try_wait() {
@@ -2909,6 +2929,8 @@ pub fn run_native_claim_program(
             Ok(None) => {
                 let _ = child.kill();
                 let _ = child.wait();
+                let _ = stdout_join.join();
+                let _ = stderr_join.join();
                 return Ok(NativeClaimProgramAttempt::DeadlineExceeded {
                     entry: entry.to_string(),
                     budget: deadline,
@@ -2920,20 +2942,27 @@ pub fn run_native_claim_program(
                 });
             }
             Err(cause) => {
+                let _ = child.kill();
+                let _ = stdout_join.join();
+                let _ = stderr_join.join();
                 return Err(format!(
                     "NATIVE-CLAIM REFUSAL cause=WaitFailed entry={entry} — {cause}"
-                ))
+                ));
             }
         }
     };
-    let mut stdout = Vec::new();
-    let mut stderr = Vec::new();
-    if let Some(mut pipe) = child.stdout.take() {
-        let _ = pipe.read_to_end(&mut stdout);
-    }
-    if let Some(mut pipe) = child.stderr.take() {
-        let _ = pipe.read_to_end(&mut stderr);
-    }
+    let stdout = stdout_join
+        .join()
+        .map_err(|_| format!("NATIVE-CLAIM REFUSAL cause=StdoutDrainPanicked entry={entry}"))?
+        .map_err(|cause| {
+            format!("NATIVE-CLAIM REFUSAL cause=StdoutDrainFailed entry={entry} — {cause}")
+        })?;
+    let stderr = stderr_join
+        .join()
+        .map_err(|_| format!("NATIVE-CLAIM REFUSAL cause=StderrDrainPanicked entry={entry}"))?
+        .map_err(|cause| {
+            format!("NATIVE-CLAIM REFUSAL cause=StderrDrainFailed entry={entry} — {cause}")
+        })?;
     Ok(NativeClaimProgramAttempt::Completed(
         NativeClaimProgramRun {
             closure_identity: prepared.closure_identity,

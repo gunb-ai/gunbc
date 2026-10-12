@@ -42,19 +42,19 @@ fn nest_expected_identities() -> List<String> {
   ["single_d14_normalize_completes", "multi_d14_normalize_completes"]
 }
 
-fn lowering_completed(source: String) -> Bool {
+fn lowering_observed(source: String) -> String {
   match prepare_grammar(grammar: dag_grammar()) {
-    Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => "prepare_grammar_refused"
     Accepted { value: prepared, diagnostics: _ } =>
       match lex_walk_artifact(source: chars(s: source), file: ^nest_fixture, rules: dag_lex_rules()) {
-        Rejected { diagnostics: _ } => false
+        Rejected { diagnostics: _ } => "lex_refused"
         Accepted { value: lexed, diagnostics: _ } =>
           match parse_module_prepared(tokens: lex_artifact_semantic_tokens(artifact: lexed), prepared: prepared) {
-            Rejected { diagnostics: _ } => false
+            Rejected { diagnostics: _ } => "parse_refused"
             Accepted { value: parsed, diagnostics: _ } =>
               match normalize(parse_tree: artifact_tree(artifact: parsed)) {
-                Accepted { value: _, diagnostics: _ } => true
-                Rejected { diagnostics: _ } => true
+                Accepted { value: _, diagnostics: _ } => "normalize_accepted"
+                Rejected { diagnostics: _ } => "normalize_refused"
               }
           }
       }
@@ -65,10 +65,9 @@ fn nest_case(identity: String, path: String) -> NestCase {
   let read = Filesystem.Read(path: path)
   if !read.success {
     NestCase { identity: identity, held: false, observed: concat("read_refused:", read.error) }
-  } else if lowering_completed(source: read.content) {
-    NestCase { identity: identity, held: true, observed: "normalize_completed" }
   } else {
-    NestCase { identity: identity, held: false, observed: "frontend_refused_before_normalize" }
+    let observed = lowering_observed(source: read.content)
+    NestCase { identity: identity, held: observed == "normalize_accepted", observed: observed }
   }
 }
 
