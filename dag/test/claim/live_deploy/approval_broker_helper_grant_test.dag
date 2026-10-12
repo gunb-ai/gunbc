@@ -12,6 +12,8 @@ import gunbc.live_deploy.emit {
   approval_broker_helper_sudoers_temp_path,
   approval_broker_helper_grant_steps,
   approval_broker_dark_install_release_steps,
+  approval_device_store_fragments,
+  host_script_fragment_mutate_steps,
   approval_broker_tree_copy_steps,
   approval_broker_helper_snapshot_steps,
   approval_broker_helper_grant_admission,
@@ -242,28 +244,26 @@ test fn only_the_renamed_file_is_ever_included_by_sudo() -> Bool {
     && !string_contains(s: basename(p: approval_broker_helper_sudoers_path as String), pattern: "~")
 }
 
-// THE DARK INSTALL CARRIES THIS RELEASE'S GRANT, inspected at the composition the dark install's
-// intent consumes (gunbc.live_deploy.emit approval_broker_dark_install_release_steps): the device
-// store's ensure (the operator's 0700 directory), the release tree's steps, then exactly the eighteen
-// snapshot and grant steps, ending with retirement of every
-// other release's snapshot. The whole orchestrated script is still rendered by the existing dark-install
-// claims in test.claim.live_deploy.emit, which now carry these steps. Rendering it again here cost
-// more than the new-witness budget (110041 and 100982 eval steps against 72300).
+// THE DARK INSTALL CARRIES THIS RELEASE'S GRANT. Device store, helper grant, and tree copy are
+// each one member case analysis; release_steps is the tree only. Grant mutate is eighteen steps
+// ending in retirement of every other release's snapshot.
 test fn the_dark_install_composes_this_releases_grant() -> Bool {
   let spec = deployment_spec_srv1()
-  let steps = approval_broker_dark_install_release_steps(spec: spec, revision: rev_a())
-  let tree = count(approval_broker_tree_copy_steps(spec: spec, revision: rev_a()))
-  count(steps) == tree + 19
-    && match steps |> first {
+  let tree = approval_broker_tree_copy_steps(spec: spec, revision: rev_a())
+  let grant = approval_broker_helper_grant_steps(spec: spec, revision: rev_a())
+  let store = host_script_fragment_mutate_steps(fragments: approval_device_store_fragments())
+  count(approval_broker_dark_install_release_steps(spec: spec, revision: rev_a())) == count(tree)
+    && count(grant) == 18
+    && match store |> first {
       Present { value: st } => string_contains(s: pipeline_step_text(st: st), pattern: "/var/lib/gunbc/approval-devices")
         && string_contains(s: pipeline_step_text(st: st), pattern: "0700")
       Absent => false
     }
-    && match steps |> skip(n: tree + 14) |> first {
+    && match grant |> skip(n: 14) |> first {
       Present { value: st } => string_contains(s: pipeline_step_text(st: st), pattern: "'/usr/bin/mv' '-T'")
       Absent => false
     }
-    && match steps |> last {
+    && match grant |> last {
       Present { value: st } => string_contains(s: pipeline_step_text(st: st), pattern: "'!' '-name' '0123456789abcdef0123456789abcdef01234567'")
       Absent => false
     }

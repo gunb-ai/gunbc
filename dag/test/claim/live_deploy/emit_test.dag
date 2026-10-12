@@ -153,6 +153,7 @@ import gunbc.live_deploy.emit {
   compose_host_script_mutate_steps,
   host_script_trace_steps,
   HostScriptRefused,
+  HostScriptFragment,
   Decide, Mutate,
   memory_cap_withheld_line,
   deploy_apply_frame_steps,
@@ -1712,19 +1713,14 @@ test fn withheld_cap_report_precedes_and_keeps_binary_tree_and_unit_steps() -> B
 }
 
 // HOLD on this head: cap authoring names the private cap stage and not the apply-fold stage.
-// RED on a cap script emitted from the c22acb7 spec: that producer used deploy_stage_path_word
-// (apply-fold $_gunbc_stage). The supplied c22acb7 spelling is the same word builder still used
-// by helpers, applied to the fleet-width basename the cap member authors.
+// RECEIPT (RED): on a worktree at c22acb7, the real deploy_runner_memory_cap_author_script()
+// contains $_gunbc_stage (the apply-fold stage). The two conjuncts below are the live producer.
+// The former conjuncts 3-4 grepped a hand-built deploy_stage_write_command string and could
+// never fail.
 test fn cap_author_uses_a_private_stage_not_the_apply_fold_stage() -> Bool {
   let current = deploy_runner_memory_cap_author_script()
-  let c22acb7_cap_script = deploy_stage_write_command(
-    stage_name: "20-fleet-width.conf",
-    content: "[Service]\n",
-  )
   string_contains(s: current, pattern: concat("$", deploy_cap_stage_dir_var))
     && !string_contains(s: current, pattern: concat("$", deploy_stage_dir_var))
-    && string_contains(s: c22acb7_cap_script, pattern: concat("$", deploy_stage_dir_var))
-    && !string_contains(s: c22acb7_cap_script, pattern: concat("$", deploy_cap_stage_dir_var))
 }
 
 // DECISIVE DIFF (parent, after the c22acb7 rerun): same spec, CapConvergeWithheld vs authorized.
@@ -1781,12 +1777,19 @@ type UnitFileOrderScan
 
 test fn helper_grant_precedes_the_roadmap_unit_install() -> Bool {
   let spec = deployment_spec_srv1()
-  let steps = emit_release_member_effects(
-    member: UnitFile,
-    plan: deploy_witness_full_install_plan(spec: spec),
-    spec: spec,
-    oidc_now: claim_oidc_now(),
-  )
+  let plan = deploy_witness_full_install_plan(spec: spec)
+  let steps = match ci_deploy_srv1_access_or_refusal() {
+    DeployAccessJobPrincipalRefused { refusal: _ } => []
+    DeployAccessReady { access: a } =>
+      compose_host_script_mutate_steps(fragments: apply_intent_fragments(
+        spec: spec,
+        effects: apply_empty_host_effects(spec: spec),
+        access: a,
+        plan: plan,
+        cap_authorization: CapConvergeWithheld { cause: "claim order scan" },
+        oidc_now: claim_oidc_now(),
+      ))
+  }
   let roadmap = spec.service.unit_name as String
   match fold(steps, init: LookingForHelperGrant, f: (acc, st) =>
     match acc {
@@ -1814,6 +1817,32 @@ test fn helper_grant_precedes_the_roadmap_unit_install() -> Bool {
     LookingForHelperGrant => false
     LookingForRoadmapUnit => false
     RoadmapUnitBeforeHelperGrant => false
+  }
+}
+
+fn host_script_mutate_carries_refused_marker(f: HostScriptFragment) -> Bool {
+  match f {
+    Decide { member: _, standing: _, steps: _ } => false
+    Mutate { member: _, steps: s } => string_contains(s: pipeline_steps_text(steps: s), pattern: "_REFUSED__")
+  }
+}
+
+// Mutate still admits an authored string, so a poison remains writable. This claim is the
+// mechanical preventative: no apply member's Mutate steps contain a __GUNBC_*_REFUSED__ marker.
+test fn no_member_mutate_steps_carry_a_refused_marker() -> Bool {
+  match ci_deploy_srv1_access_or_refusal() {
+    DeployAccessJobPrincipalRefused { refusal: _ } => false
+    DeployAccessReady { access: a } =>
+      let spec = deployment_spec_srv1()
+      let fragments = apply_intent_fragments(
+        spec: spec,
+        effects: apply_empty_host_effects(spec: spec),
+        access: a,
+        plan: deploy_witness_full_install_plan(spec: spec),
+        cap_authorization: CapConvergeWithheld { cause: "mutate-marker census" },
+        oidc_now: claim_oidc_now(),
+      )
+      !any(fragments, f => host_script_mutate_carries_refused_marker(f: f))
   }
 }
 
