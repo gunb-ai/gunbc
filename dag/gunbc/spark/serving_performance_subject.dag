@@ -54,15 +54,19 @@ import gunbc.spark.serving_arm {
 // launches on different Spark pairs and they agreed to the last bit of logprob, so those boxes are
 // interchangeable within a profile and keying on hostnames would refuse joins that are sound.
 // CROSS-HOST EQUIVALENCE BASIS (P2): two subjects may join across hosts only when their
-// ServingAcceleratorRealization agrees (catalog SKU × count, negotiated host PCIe, applied power
-// limit) or both sides left it unread. Unread-on-both is the Spark-GB10 basis that already held;
-// it is not a license to join an unread Spark subject to a cited PRO 6000 realization. The
+// ServingAcceleratorAxis agrees. AcceleratorSparkGb10 is the named Spark-GB10 basis; AcceleratorUnread
+// is unknown and does not join a cited realization or GB10. The
 // launch is not an axis either -- that is what VllmServingLaunch fences, and a subject that carried it
 // could never join two launches of one profile, which is exactly what a repeated arm is.
 //
-// ENGINE REQUESTS ARE A COPRODUCT. vLLM KV / speculative / indexer / scheduler stay on the vLLM
-// fields and `EngineVllm` marks that arm. NInfer carries its own request on `EngineNinfer`. Spark
-// rows keep EngineVllm and unread accelerator so their existing joins do not change meaning.
+// ENGINE REQUESTS ARE A COPRODUCT. vLLM KV / speculative / indexer / scheduler live inside
+// `EngineVllm`. NInfer carries its own request on `EngineNinfer`. A NInfer subject cannot also
+// carry a vLLM kv_cache_dtype field.
+//
+// ACCELERATOR STANDING IS A COPRODUCT TOO. `AcceleratorUnread` is unknown. `AcceleratorSparkGb10`
+// is the named Spark-GB10 join basis (two of those still join). `AcceleratorCited` is a catalog
+// realization. Overloading `none` as GB10 made a NInfer subject with unread hardware join another
+// unread NInfer as the same machine.
 // THE EXACT REVISION AND IMAGE REFERENCE ARE FIELDS, NOT DERIVED FROM THE ENUM. An earlier revision
 // of this record carried only `checkpoint` and `runtime`, and compared them by their static variant
 // wires -- so a REPIN of the image behind `GunbcSparkrunVllmDs4Gb10` kept comparing SameSubject.
@@ -79,28 +83,34 @@ type ServingPerformanceSubject sole_constructor {
   context_ceiling: TokenCount?
   max_num_batched_tokens: TokenCount
   max_num_seqs: Nat?
-  kv_cache_dtype: VllmKvCacheDtypeRequest?
-  speculative: VllmSpeculativePolicy?
   collective_transport: NcclRealizedTransport?
-  indexer_kv_dtype: VllmIndexerKvDtypeRequest?
-  scheduler_admission: VllmSchedulerAdmissionRequest?
   launch_profile_key: String?
   deployment_env_key: String?
   engine: ServingEngineRequest
-  accelerator: ServingAcceleratorRealization?
+  accelerator: ServingAcceleratorAxis
 }
 
 // GAP-INTOLERANT BOUNDARY: serving_subject_for_launch still derives Spark vLLM launches from
 // ServingLaunchProfile (memory fraction, prefix caching, Engram, modality, both KV dtypes stay in
 // launch_profile_key). P2 does not shadow a second subject type.
 type ServingEngineRequest
-  = EngineVllm
+  = EngineVllm {
+      kv_cache_dtype: VllmKvCacheDtypeRequest?
+      speculative: VllmSpeculativePolicy?
+      indexer_kv_dtype: VllmIndexerKvDtypeRequest?
+      scheduler_admission: VllmSchedulerAdmissionRequest?
+    }
   | EngineNinfer {
       kv_dtype: NinferKvDtype?
       speculation: NinferSpeculation?
       max_concurrency: Nat?
       kv_capacity_auto: Bool?
     }
+
+type ServingAcceleratorAxis
+  = AcceleratorUnread
+  | AcceleratorSparkGb10
+  | AcceleratorCited { realization: ServingAcceleratorRealization }
 
 type ServingHostLink
   = HostLinkUnread
@@ -128,15 +138,11 @@ fn serving_performance_subject(
   context_ceiling: TokenCount?,
   max_num_batched_tokens: TokenCount,
   max_num_seqs: Nat?,
-  kv_cache_dtype: VllmKvCacheDtypeRequest?,
-  speculative: VllmSpeculativePolicy?,
   collective_transport: NcclRealizedTransport?,
-  indexer_kv_dtype: VllmIndexerKvDtypeRequest?,
-  scheduler_admission: VllmSchedulerAdmissionRequest?,
   launch_profile_key: String?,
   deployment_env_key: String?,
   engine: ServingEngineRequest,
-  accelerator: ServingAcceleratorRealization?,
+  accelerator: ServingAcceleratorAxis,
 ) -> ServingPerformanceSubject {
   ServingPerformanceSubject {
     checkpoint: checkpoint,
@@ -148,15 +154,53 @@ fn serving_performance_subject(
     context_ceiling: context_ceiling,
     max_num_batched_tokens: max_num_batched_tokens,
     max_num_seqs: max_num_seqs,
-    kv_cache_dtype: kv_cache_dtype,
-    speculative: speculative,
     collective_transport: collective_transport,
-    indexer_kv_dtype: indexer_kv_dtype,
-    scheduler_admission: scheduler_admission,
     launch_profile_key: launch_profile_key,
     deployment_env_key: deployment_env_key,
     engine: engine,
     accelerator: accelerator,
+  }
+}
+
+fn serving_engine_vllm(
+  kv_cache_dtype: VllmKvCacheDtypeRequest?,
+  speculative: VllmSpeculativePolicy?,
+  indexer_kv_dtype: VllmIndexerKvDtypeRequest?,
+  scheduler_admission: VllmSchedulerAdmissionRequest?,
+) -> ServingEngineRequest {
+  EngineVllm {
+    kv_cache_dtype: kv_cache_dtype,
+    speculative: speculative,
+    indexer_kv_dtype: indexer_kv_dtype,
+    scheduler_admission: scheduler_admission,
+  }
+}
+
+fn subject_vllm_kv_cache_dtype(s: ServingPerformanceSubject) -> VllmKvCacheDtypeRequest? {
+  match s.engine {
+    EngineVllm { kv_cache_dtype: d, speculative: _, indexer_kv_dtype: _, scheduler_admission: _ } => d
+    EngineNinfer { kv_dtype: _, speculation: _, max_concurrency: _, kv_capacity_auto: _ } => none
+  }
+}
+
+fn subject_vllm_speculative(s: ServingPerformanceSubject) -> VllmSpeculativePolicy? {
+  match s.engine {
+    EngineVllm { kv_cache_dtype: _, speculative: p, indexer_kv_dtype: _, scheduler_admission: _ } => p
+    EngineNinfer { kv_dtype: _, speculation: _, max_concurrency: _, kv_capacity_auto: _ } => none
+  }
+}
+
+fn subject_vllm_indexer_kv_dtype(s: ServingPerformanceSubject) -> VllmIndexerKvDtypeRequest? {
+  match s.engine {
+    EngineVllm { kv_cache_dtype: _, speculative: _, indexer_kv_dtype: d, scheduler_admission: _ } => d
+    EngineNinfer { kv_dtype: _, speculation: _, max_concurrency: _, kv_capacity_auto: _ } => none
+  }
+}
+
+fn subject_vllm_scheduler_admission(s: ServingPerformanceSubject) -> VllmSchedulerAdmissionRequest? {
+  match s.engine {
+    EngineVllm { kv_cache_dtype: _, speculative: _, indexer_kv_dtype: _, scheduler_admission: a } => a
+    EngineNinfer { kv_dtype: _, speculation: _, max_concurrency: _, kv_capacity_auto: _ } => none
   }
 }
 
@@ -195,15 +239,16 @@ fn serving_subject_for_launch(
     context_ceiling: Present { value: profile.max_model_len },
     max_num_batched_tokens: profile.max_num_batched_tokens,
     max_num_seqs: Present { value: profile.max_num_seqs },
-    kv_cache_dtype: Present { value: profile.kv_cache_dtype },
-    speculative: Present { value: SpeculativeDecodingOff },
     collective_transport: collective_transport,
-    indexer_kv_dtype: Present { value: profile.indexer_kv_dtype },
-    scheduler_admission: Present { value: profile.scheduler_admission },
     launch_profile_key: Present { value: serving_launch_profile_key(p: profile) },
     deployment_env_key: Present { value: serving_deployment_env_key(env: deployment_env) },
-    engine: EngineVllm,
-    accelerator: none,
+    engine: serving_engine_vllm(
+      kv_cache_dtype: Present { value: profile.kv_cache_dtype },
+      speculative: Present { value: SpeculativeDecodingOff },
+      indexer_kv_dtype: Present { value: profile.indexer_kv_dtype },
+      scheduler_admission: Present { value: profile.scheduler_admission },
+    ),
+    accelerator: AcceleratorSparkGb10,
   )
 }
 
@@ -336,12 +381,12 @@ fn serving_subject_axis_value(s: ServingPerformanceSubject, a: ServingSubjectAxi
         Present { value: n } => to_string(n) as NonEmptyStr
       }
     AxisKvCacheDtype =>
-      match s.kv_cache_dtype {
+      match subject_vllm_kv_cache_dtype(s: s) {
         Absent => axis_value_unread_marker
         Present { value: d } => vllm_kv_cache_dtype_wire(request: d)
       }
     AxisSpeculativePolicy =>
-      match s.speculative {
+      match subject_vllm_speculative(s: s) {
         Absent => axis_value_unread_marker
         Present { value: sp } => vllm_speculative_policy_wire(p: sp)
       }
@@ -356,12 +401,12 @@ fn serving_subject_axis_value(s: ServingPerformanceSubject, a: ServingSubjectAxi
         Present { value: w } => w
       }
     AxisIndexerKvDtype =>
-      match s.indexer_kv_dtype {
+      match subject_vllm_indexer_kv_dtype(s: s) {
         Absent => axis_value_unread_marker
         Present { value: d } => vllm_indexer_kv_dtype_key(r: d) as NonEmptyStr
       }
     AxisSchedulerAdmission =>
-      match s.scheduler_admission {
+      match subject_vllm_scheduler_admission(s: s) {
         Absent => axis_value_unread_marker
         Present { value: a } => vllm_scheduler_admission_key(r: a) as NonEmptyStr
       }
@@ -378,15 +423,17 @@ fn serving_subject_axis_value(s: ServingPerformanceSubject, a: ServingSubjectAxi
     AxisEngine => serving_engine_request_wire(e: s.engine)
     AxisAccelerator =>
       match s.accelerator {
-        Absent => axis_value_unread_marker
-        Present { value: a } => serving_accelerator_realization_wire(a: a)
+        AcceleratorUnread => axis_value_unread_marker
+        AcceleratorSparkGb10 => "spark-gb10" as NonEmptyStr
+        AcceleratorCited { realization: a } => serving_accelerator_realization_wire(a: a)
       }
   }
 }
 
 fn serving_engine_request_wire(e: ServingEngineRequest) -> NonEmptyStr {
   match e {
-    EngineVllm => "engine-vllm" as NonEmptyStr
+    EngineVllm { kv_cache_dtype: _, speculative: _, indexer_kv_dtype: _, scheduler_admission: _ } =>
+      "engine-vllm" as NonEmptyStr
     EngineNinfer { kv_dtype: kv, speculation: sp, max_concurrency: c, kv_capacity_auto: auto } =>
       join([
         "engine-ninfer|kv=",
@@ -532,7 +579,7 @@ fn subject_axis_is_unknown(s: ServingPerformanceSubject, a: ServingSubjectAxis) 
     AxisCollectiveTransport =>
       match s.collective_transport { Absent => true, Present { value: _ } => false }
     AxisSpeculativePolicy =>
-      match s.speculative { Absent => true, Present { value: _ } => false }
+      match subject_vllm_speculative(s: s) { Absent => true, Present { value: _ } => false }
     AxisCheckpoint => false
     AxisCheckpointRevision =>
       match s.checkpoint_revision { Absent => true, Present { value: _ } => false }
@@ -548,20 +595,20 @@ fn subject_axis_is_unknown(s: ServingPerformanceSubject, a: ServingSubjectAxis) 
     AxisMaxNumSeqs =>
       match s.max_num_seqs { Absent => true, Present { value: _ } => false }
     AxisKvCacheDtype =>
-      match s.kv_cache_dtype { Absent => true, Present { value: _ } => false }
+      match subject_vllm_kv_cache_dtype(s: s) { Absent => true, Present { value: _ } => false }
     AxisWeightQuantization =>
       match subject_weight_quantization(s: s) { Absent => true, Present { value: _ } => false }
     AxisIndexerKvDtype =>
-      match s.indexer_kv_dtype { Absent => true, Present { value: _ } => false }
+      match subject_vllm_indexer_kv_dtype(s: s) { Absent => true, Present { value: _ } => false }
     AxisSchedulerAdmission =>
-      match s.scheduler_admission { Absent => true, Present { value: _ } => false }
+      match subject_vllm_scheduler_admission(s: s) { Absent => true, Present { value: _ } => false }
     AxisLaunchProfile =>
       match s.launch_profile_key { Absent => true, Present { value: _ } => false }
     AxisDeploymentEnv =>
       match s.deployment_env_key { Absent => true, Present { value: _ } => false }
     AxisEngine =>
       match s.engine {
-        EngineVllm => false
+        EngineVllm { kv_cache_dtype: _, speculative: _, indexer_kv_dtype: _, scheduler_admission: _ } => false
         EngineNinfer { kv_dtype: kv, speculation: sp, max_concurrency: c, kv_capacity_auto: auto } =>
           match kv { Absent => true, Present { value: _ } =>
             match sp { Absent => true, Present { value: _ } =>
@@ -571,35 +618,17 @@ fn subject_axis_is_unknown(s: ServingPerformanceSubject, a: ServingSubjectAxis) 
             }
           }
       }
-    AxisAccelerator => false
-  }
-}
-
-// UNREAD-ON-BOTH IS THE SPARK-GB10 JOIN BASIS, NOT A STANDING GAP. `subject_axis_is_unknown` therefore
-// stays false for an absent accelerator so existing Spark rows remain Established and two unread
-// accelerators still join. A cited realization against an unread Spark subject IS unread-on-one-side:
-// counting it only as a known SKU mismatch reports AxisDeltaOnOneAxis, which hides that one side was
-// never observed. That one-sided unread is folded here so the delta is WithUnreadAxes.
-fn serving_accelerator_unread_on_exactly_one_side(left: ServingPerformanceSubject, right: ServingPerformanceSubject) -> Bool {
-  match left.accelerator {
-    Absent => match right.accelerator {
-      Absent => false
-      Present { value: _ } => true
-    }
-    Present { value: _ } => match right.accelerator {
-      Absent => true
-      Present { value: _ } => false
-    }
+    AxisAccelerator =>
+      match s.accelerator {
+        AcceleratorUnread => true
+        AcceleratorSparkGb10 => false
+        AcceleratorCited { realization: _ } => false
+      }
   }
 }
 
 fn either_side_unknown_axes(left: ServingPerformanceSubject, right: ServingPerformanceSubject) -> List<ServingSubjectAxis> {
-  filter(serving_subject_axes, a =>
-    if (serving_subject_axis_wire(a: a) as String) == (serving_subject_axis_wire(a: AxisAccelerator) as String) {
-      serving_accelerator_unread_on_exactly_one_side(left: left, right: right)
-    } else {
-      subject_axis_is_unknown(s: left, a: a) || subject_axis_is_unknown(s: right, a: a)
-    })
+  filter(serving_subject_axes, a => subject_axis_is_unknown(s: left, a: a) || subject_axis_is_unknown(s: right, a: a))
 }
 
 // A KNOWN DIFFERENCE IS ONE ON AN AXIS BOTH SIDES ACTUALLY READ. An axis unknown on either side is
