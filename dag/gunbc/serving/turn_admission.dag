@@ -2,7 +2,7 @@ module gunbc.serving.turn_admission
 
 import std.types { String, NonEmptyStr, Bool }
 import std.nat { Nat }
-import std.measure { TokenCount, second, money_amount_micro, MoneyOnce, MoneyRate, MoneyPerSecond }
+import std.measure { TokenCount, token_count_value, second, money_amount_micro, MoneyOnce, MoneyRate, MoneyPerSecond }
 import extdeps.currency.currency { Usd }
 import product.fabric.identity { FabricIdentity, OfferKey }
 import product.fabric.demand { ObservationReceiptRef }
@@ -362,7 +362,7 @@ fn serving_session_residency(
       TurnReuseRead { cached_tokens: n, launch: l, turn: t } =>
         if l != owner_launch {
           ResidencyUnread { obligation: "the reuse reading was attributed to a different launch than the session's owner" as NonEmptyStr }
-        } else if n > 0 {
+        } else if token_count_value(t: n) > 0 {
           ReusedAtTurn { cached_tokens: n, launch: l, turn: t }
         } else {
           match host {
