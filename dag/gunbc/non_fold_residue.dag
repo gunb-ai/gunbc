@@ -145,10 +145,6 @@ data nfr_dissolve_acceptance_obligation_partition: DissolutionCondition = unboun
 
 data nfr_reason_acceptance_obligation_eq: String = "structural equality over DagStageObligation (obligation_eq): the three claim-carrying arms compare their claim identities through nested matches with off-variant wildcard false arms, and the outer wildcard compares discriminants for the five unit arms — the eq-row class the structural-equality rows above name, landed with the .dag acceptance harness (#8821, 2026-08-21) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
 
-data nfr_reason_acceptance_row_projection: String = "one-variant label extraction over StageExecution (five arms): each projection names the arm it reads (StageRejected, StagePassedWithFrontier, or StageUndecided plus StageNotRun) and gives every other arm one wildcard Absent; row_unfinished_label additionally matches StageNotRunReason with NotRequiredByContract absent and every other reason present through a nested wildcard. Enumerating the off-variant arms would clone Absent per arm (the DESIGN §2 redundancy, not the DESIGN §4 totality). Landed with the .dag acceptance harness (#8821, 2026-08-21) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
-
-data nfr_dissolve_acceptance_row_projection: DissolutionCondition = unbound_dissolution(description: "StageExecution carries a derived outcome partition from inhabitance (passed / rejected / unfinished, with StageNotRunReason partitioned into not-required vs unfinished) so each label projection folds over the partition with a named arm per class, and the rows delete with the wildcard arms")
-
 data nfr_reason_acceptance_verdict_append: String = "one-variant append over DagAcceptanceVerdict (three arms): verdict_with_further_rejection extends AcceptanceContractRejected and verdict_with_further_unfinished extends AcceptanceContractIncomplete, each returning the other two verdicts unchanged through one wildcard identity arm. Landed with the .dag acceptance harness (#8821, 2026-08-21) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
 
 data nfr_dissolve_acceptance_verdict_append: DissolutionCondition = unbound_dissolution(description: "the verdict is assembled once from the receipt's derived outcome partition (first and further labels computed together) rather than appended one label at a time, so the two append fns have no caller and delete with their rows — or the two matches become total over the three verdict arms")
@@ -238,16 +234,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/gunbc/local_tidy_spec.dag::local_tidy_path_matches_trigger" },
     reason: nfr_reason_local_tidy,
     dissolution: nfr_dissolve_local_tidy,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/lens/enforcement/lens_module_gate.dag::lens_module_gate_remedy_eq" },
-    reason: nfr_reason_structural_eq_backfill,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/lens/enforcement/lens_module_gate.dag::lens_module_gate_verdict_authority_eq" },
-    reason: nfr_reason_structural_eq_backfill,
-    dissolution: nfr_dissolve_derived_equality,
   },
   FrontierRow {
     subject: PathSubject { path: "src/v2/lens/vacuity.dag::vacuity_evidence_eq" },
@@ -410,16 +396,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_arrow_body_form_eval_runtime_equals,
   },
   FrontierRow {
-    subject: PathSubject { path: "src/v2/lens/enforcement/complexity_contract_subject.dag::complexity_derived_kernel_claim_eq" },
-    reason: nfr_reason_structural_eq_mint,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/lens/enforcement/complexity_contract_subject.dag::complexity_optimality_claim_eq" },
-    reason: nfr_reason_structural_eq_mint,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
     subject: PathSubject { path: "src/v2/lens/cost/valuation.dag::multiply_evaluations" },
     reason: nfr_reason_cost_valuation_zero_annihilator,
     dissolution: nfr_dissolve_wildcard_total,
@@ -488,11 +464,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/gunbc/repo/repo_local_git_config.dag::apply_repo_local_git_config_action_at_repo" },
     reason: nfr_reason_legacy_slice1_bridge,
     dissolution: unbound_dissolution(description: "DISSOLVE-ON: membership apply dispatch derives off-variant noop from MemberAction inhabitance (MemberRemoved/MemberRemovalRefused are construction-unreachable for Ensured bindings) and the wildcard arm deletes with the row"),
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/host/host_standup.dag::assimilation_complete_input_eq" },
-    reason: nfr_reason_structural_eq_backfill,
-    dissolution: nfr_dissolve_derived_equality,
   },
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::binding_source_is_listed_import" },
@@ -565,11 +536,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_process_port_upsert_refusal_split,
   },
   FrontierRow {
-    subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::acceptance_first_rejection" },
-    reason: nfr_reason_acceptance_row_projection,
-    dissolution: nfr_dissolve_acceptance_row_projection,
-  },
-  FrontierRow {
     subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::execute_obligation" },
     reason: nfr_reason_acceptance_obligation_partition,
     dissolution: nfr_dissolve_acceptance_obligation_partition,
@@ -588,21 +554,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::obligation_front_end_depth" },
     reason: nfr_reason_acceptance_obligation_partition,
     dissolution: nfr_dissolve_acceptance_obligation_partition,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::row_frontier_label" },
-    reason: nfr_reason_acceptance_row_projection,
-    dissolution: nfr_dissolve_acceptance_row_projection,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::row_rejection_label" },
-    reason: nfr_reason_acceptance_row_projection,
-    dissolution: nfr_dissolve_acceptance_row_projection,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::row_unfinished_label" },
-    reason: nfr_reason_acceptance_row_projection,
-    dissolution: nfr_dissolve_acceptance_row_projection,
   },
   FrontierRow {
     subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::verdict_with_further_rejection" },

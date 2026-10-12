@@ -72,6 +72,8 @@ import gunbc.host_layout { srv1_dispatch_attempt_state_root, belt_spawn_workdir_
 import gunbc.managed_directory {
   managed_directory_mode_octal,
   managed_directory_permissions,
+  declared_directory_mode,
+  DirectoryOwnerAllEveryoneTraverse,
 }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
@@ -329,7 +331,7 @@ test fn witness_apply_provisions_attempt_state_root_owned() -> Bool {
   string_contains(
     s: witness_apply_script(),
     pattern: install_directory_owned_command(
-      mode: managed_directory_mode_octal(d: srv1_attempt_state_directory()) as NonEmptyStr,
+      mode: managed_directory_permissions(d: srv1_attempt_state_directory()).mode,
       owner: gunbc_service_user,
       group: gunbc_service_user,
       path: srv1_dispatch_attempt_state_root as String,
@@ -549,13 +551,13 @@ test fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
   let sh = apply_emitted_steps_text(spec: spec, plan: deploy_witness_full_install_plan(spec: spec))
   !string_contains(s: sh, pattern: "sudo bash")
     && !string_contains(s: witness_apply_preamble_text(), pattern: "sudo bash")
-    && string_contains(s: sh, pattern: install_directory_owned_command(mode: "0755", owner: gunbc_service_user, group: gunbc_service_user, path: "/opt/gunbc/gunbc"))
+    && string_contains(s: sh, pattern: install_directory_owned_command(mode: declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse), owner: gunbc_service_user, group: gunbc_service_user, path: "/opt/gunbc/gunbc"))
     && string_contains(s: sh, pattern: deploy_stage_write_expansion_command(stage_name: "gunbc-tree-sync.env", format: "GUNBC_TREE_SRC=%s\n", expansion_var: "PWD"))
     && string_contains(s: sh, pattern: deploy_stage_install_command(stage_name: "gunbc-tree-sync.env", mode: "0644", dest: "/etc/gunbc-tree-sync.env"))
     && string_contains(s: sh, pattern: deploy_stage_install_command(stage_name: "gunbc-tree-sync.service", mode: "0644", dest: "/etc/systemd/system/gunbc-tree-sync.service"))
     && string_contains(s: sh, pattern: deploy_effect_command(inv: systemctl_restart_effect(unit: spec.names.tree_sync_unit_name)))
     && string_contains(s: sh, pattern: install_file_owned_command(mode: "0755", owner: gunbc_service_user, group: gunbc_service_user, source: "target/release/gunbc", dest: "/opt/gunbc/bin/gunbc"))
-    && string_contains(s: pipeline_steps_text(steps: owned_directory_apply_steps(spec: deploy_witness_spec_with_only_directory(spec: spec, path: "/opt/gunbc/dispatch-worktrees"), plan: deploy_witness_full_install_plan(spec: spec))), pattern: install_directory_owned_command(mode: "0755", owner: gunbc_service_user, group: gunbc_service_user, path: "/opt/gunbc/dispatch-worktrees"))
+    && string_contains(s: pipeline_steps_text(steps: owned_directory_apply_steps(spec: deploy_witness_spec_with_only_directory(spec: spec, path: "/opt/gunbc/dispatch-worktrees"), plan: deploy_witness_full_install_plan(spec: spec))), pattern: install_directory_owned_command(mode: declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse), owner: gunbc_service_user, group: gunbc_service_user, path: "/opt/gunbc/dispatch-worktrees"))
     && string_contains(s: sh, pattern: "[Service]")
     && string_contains(s: sh, pattern: deploy_effect_command(inv: systemctl_restart_effect(unit: gunbc_roadmap_unit_name)))
     && !string_contains(s: sh, pattern: tailscale_enable_command(endpoint: spec.names.tailscale_serve_endpoint))

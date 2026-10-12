@@ -1,0 +1,80 @@
+module gunbc.seed_build_artifact_emit
+
+import std.types { List, String }
+import gunbc.generated_artifact {
+  GeneratedArtifact, CargoConfigArtifact,
+  Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
+  Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact,
+  Stage0LinkedPartitionCratesArtifact, SeedRetentionFrontierGeneratedRsArtifact,
+  V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact,
+  ReleaseLocusSeedConstantsGeneratedRsArtifact, FileTransportRealizationGeneratedRsArtifact
+}
+import gunbc.cargo_config_emit { expected_cargo_config_toml }
+import extdeps.filesystem.rust_realization { expected_gunbc_file_transport_generated_rs }
+import gunbc.stage0_crate_layout_emit { expected_stage0_crate_layout_generated_dag, expected_stage0_crate_layout_generated_rs }
+import gunbc.stage0_crate_partition_emit { expected_stage0_crate_partition_generated_dag }
+import gunbc.stage0_executable_assembly_emit {
+  expected_stage0_executable_assembly_generated_dag, expected_stage0_linked_partition_crates_txt,
+  LinkedPartitionCratesRendered, LinkedPartitionCratesRefused
+}
+import gunbc.seed_retention_frontier_emit { expected_seed_retention_frontier_generated_rs }
+import gunbc.evaluation_budget_consequence_emit { expected_evaluation_budget_consequence_generated_rs }
+import gunbc.release_locus_seed_constants_emit { expected_release_locus_seed_constants_generated_rs }
+import gunbc.v1_interpreter_dispatch_emit {
+  expected_v1_interpreter_dispatch_generated_rs, V1InterpreterDispatchGenerated, V1InterpreterDispatchGenerationRefused
+}
+
+// THE ARTIFACTS THE SEED BUILD READS, PRODUCED WITHOUT THE REGISTRY'S CLOSURE.
+//
+// Eleven registry artifacts are inputs to building the seed itself (the stage0 crate layout and
+// partition, the linked-partition list, the five emitted Rust constants/dispatch files, and the
+// cargo config). Producing one through gunbc.generated_artifact_emit artifact_generate loads every
+// producer the registry names -- a 2,659-file closure, 11m12s and 22.4 GB peak RSS measured on srv1.
+// The producers of THESE eleven import none of that, so a producer that must fit a 22 GiB slot asks
+// them here. gunbc.generated_artifact_emit delegates its eleven arms to this module: the content has
+// one author, and this is the narrow door to it, not a second path beside it.
+type SeedBuildArtifactBody
+  = SeedBuildArtifactProduced { content: String }
+  | SeedBuildArtifactRefused { reason: String }
+  | SeedBuildArtifactNotSeedBuild
+
+// The roster is the set of arms seed_build_artifact_body answers; a witness joins it to the registry
+// by path so a twelfth seed-build artifact added to one and not the other is a located finding.
+fn seed_build_artifacts() -> List<GeneratedArtifact> {
+  [
+    CargoConfigArtifact,
+    Stage0CrateLayoutGeneratedDagArtifact,
+    Stage0CrateLayoutGeneratedRsArtifact,
+    Stage0CratePartitionGeneratedDagArtifact,
+    Stage0ExecutableAssemblyGeneratedDagArtifact,
+    Stage0LinkedPartitionCratesArtifact,
+    SeedRetentionFrontierGeneratedRsArtifact,
+    V1InterpreterDispatchGeneratedRsArtifact,
+    EvaluationBudgetConsequenceGeneratedRsArtifact,
+    ReleaseLocusSeedConstantsGeneratedRsArtifact,
+    FileTransportRealizationGeneratedRsArtifact
+  ]
+}
+
+fn seed_build_artifact_body(a: GeneratedArtifact) -> SeedBuildArtifactBody {
+  match a {
+    CargoConfigArtifact => SeedBuildArtifactProduced { content: expected_cargo_config_toml() }
+    Stage0CrateLayoutGeneratedDagArtifact => SeedBuildArtifactProduced { content: expected_stage0_crate_layout_generated_dag() }
+    Stage0CrateLayoutGeneratedRsArtifact => SeedBuildArtifactProduced { content: expected_stage0_crate_layout_generated_rs() }
+    Stage0CratePartitionGeneratedDagArtifact => SeedBuildArtifactProduced { content: expected_stage0_crate_partition_generated_dag() }
+    Stage0ExecutableAssemblyGeneratedDagArtifact => SeedBuildArtifactProduced { content: expected_stage0_executable_assembly_generated_dag() }
+    Stage0LinkedPartitionCratesArtifact => match expected_stage0_linked_partition_crates_txt() {
+      LinkedPartitionCratesRendered { content } => SeedBuildArtifactProduced { content: content }
+      LinkedPartitionCratesRefused { reason } => SeedBuildArtifactRefused { reason: reason }
+    }
+    SeedRetentionFrontierGeneratedRsArtifact => SeedBuildArtifactProduced { content: expected_seed_retention_frontier_generated_rs() }
+    EvaluationBudgetConsequenceGeneratedRsArtifact => SeedBuildArtifactProduced { content: expected_evaluation_budget_consequence_generated_rs() }
+    ReleaseLocusSeedConstantsGeneratedRsArtifact => SeedBuildArtifactProduced { content: expected_release_locus_seed_constants_generated_rs() }
+    V1InterpreterDispatchGeneratedRsArtifact => match expected_v1_interpreter_dispatch_generated_rs() {
+      V1InterpreterDispatchGenerated { content } => SeedBuildArtifactProduced { content: content }
+      V1InterpreterDispatchGenerationRefused { reason } => SeedBuildArtifactRefused { reason: reason }
+    }
+    FileTransportRealizationGeneratedRsArtifact => SeedBuildArtifactProduced { content: expected_gunbc_file_transport_generated_rs() }
+    _ => SeedBuildArtifactNotSeedBuild
+  }
+}

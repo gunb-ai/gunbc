@@ -52,12 +52,12 @@ import gunbc.managed_directory {
   ManagedDirectory,
   managed_directory_admit,
   ManagedDirectoryAdmission, ManagedDirectoryAdmitted, ManagedDirectoryRefused,
-  managed_directory_mode_octal,
+  managed_directory_permissions, declared_directory_mode, DirectoryOwnerAllEveryoneTraverse,
   EntriesUnmanaged, EntriesReadableByDependents,
   managed_directory_entry_mode, ManagedEntryModeDerived, ManagedEntryModeRefused, entry_mode_add_read_symbolic,
 }
 import extdeps.tools.chmod { chmod_binary_path }
-import extdeps.access.posix { PosixUser, file_mode_octal }
+import extdeps.access.posix { PosixUser, file_mode_octal, FileMode, PermissionBits }
 import extdeps.tailscale.serve {
   TailscaleServeEndpoint,
   tailscale_serve_enable_argv,
@@ -73,6 +73,8 @@ import extdeps.systemd.systemctl {
 }
 import extdeps.systemd { systemd_unit_load_state_not_found_wire, systemd_time_span_of_seconds }
 import gunbc.live_deploy.repository_convergence_placement {
+  ConvergenceOneshot,
+  convergence_oneshot_unit_text,
   convergence_receipt_path,
   convergence_unit_doc,
   convergence_placement_entry_path,
@@ -138,7 +140,7 @@ import gunbc.runner_microvm_slot_unit {
   microvm_slot_reserve_unit_name, microvm_slot_reserve_unit_path, microvm_slot_reserve_unit_file,
 }
 import extdeps.tools.findutils { find_program, xargs_program, find_owned_regular_files_exec_argv }
-import extdeps.tools.gnu_coreutils { sort_program, cut_program, printf_program, install_program }
+import extdeps.tools.gnu_coreutils { sort_program, cut_program, printf_program, install_program, coreutils_install_directory_owned_arguments }
 import gunbc.live_deploy.slice_bounds {
   live_deploy_slice_memory_max, live_deploy_slice_memory_high, live_deploy_slice_memory_swap_max,
   approval_broker_slice_memory_max, approval_broker_slice_memory_high,
@@ -1046,9 +1048,16 @@ fn leftover_timer_not_found_readback_intent() -> Node {
 // verbs on it. These two are the first members in this emitter whose modes are NOT the shared 0755
 // constant, and they are stated here with the dependents that force them written above -- which is
 // the input that derivation will eventually consume, not a second convention beside it.
-data publication_spool_request_mode: NonEmptyStr = "0730"
+data publication_spool_request_mode: FileMode = FileMode {
+  owner: PermissionBits { read: true, write: true, execute: true },
+  group: PermissionBits { read: false, write: true, execute: true },
+  other: PermissionBits { read: false, write: false, execute: false },
+  setuid: false,
+  setgid: false,
+  sticky: false,
+}
 
-data publication_spool_answer_mode: NonEmptyStr = "0755"
+data publication_spool_answer_mode: FileMode = declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse)
 
 fn apply_publication_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   [
@@ -1191,27 +1200,29 @@ fn emit_belt_unit_file_doc(file: SystemdUnitFile) -> Doc {
 //
 // The ExecStart names the tree explicitly rather than deriving it, because a host can run two slots
 // and the unit of one slot must not converge the other's tree.
-fn emit_tree_remote_unit_doc(spec: DeploymentSpec) -> Doc {
+//
+// IT IS A CONVERGENCE ONESHOT, SO ITS SLICE AND START BOUND ARE NOT ITS OWN: this member supplies the
+// work and gunbc.live_deploy.repository_convergence_placement convergence_oneshot_unit_text places it.
+// It used to name the deployment's serving slice with no start bound; the af66aa62 production apply on
+// srv1 (2026-10-12) then waited behind it while the serving members held the slice over MemoryHigh.
+fn tree_remote_convergence_oneshot(spec: DeploymentSpec) -> ConvergenceOneshot {
   let svc = spec.service
-  doc_text(text: serialize_systemd_unit_file(file: ServiceUnitFile {
-    unit: [Description {
-      text: "gunbc deployed tree remote convergence (origin URL for fleet desired observation)" as NonEmptyStr,
-    }],
-    service: [
-      ServiceType { mode: OneshotMode },
-      ServiceUser { name: svc.service_user },
-      ServiceGroup { name: svc.service_user },
-      ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
-      WorkingDirectory { path: svc.repo_root },
-      ExecStart { command: join([
-        svc.serve_binary as String,
-        " run --source-root dag --source-root src/v2",
-        " --entry dag/gunbc/deployed_tree_remote.dag --function ensure_deployed_tree_remote_wet",
-        " --arg repository_path=", svc.repo_root as String,
-      ], "") as NonEmptyStr },
-    ],
-    install: NotInstallable,
-  }))
+  ConvergenceOneshot {
+    description: "gunbc deployed tree remote convergence (origin URL for fleet desired observation)" as NonEmptyStr,
+    principal: svc.service_user,
+    working_directory: svc.repo_root,
+    environment_files: [] as List<NonEmptyStr>,
+    exec_start: join([
+      svc.serve_binary as String,
+      " run --source-root dag --source-root src/v2",
+      " --entry dag/gunbc/deployed_tree_remote.dag --function ensure_deployed_tree_remote_wet",
+      " --arg repository_path=", svc.repo_root as String,
+    ], "") as NonEmptyStr,
+  }
+}
+
+fn emit_tree_remote_unit_doc(spec: DeploymentSpec) -> Doc {
+  doc_text(text: convergence_oneshot_unit_text(spec: spec, oneshot: tree_remote_convergence_oneshot(spec: spec)))
 }
 
 fn apply_tree_remote_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
@@ -1681,7 +1692,7 @@ fn path_parent_dir(path: String) -> String {
 // them changes no emitted byte and does not derive them — that derivation is exactly what the
 // paragraph above says is still owed — but it makes the inheritance visible to the reader and gives
 // the eventual derivation one place to land per class.
-data install_d_shared_mode: NonEmptyStr = "0755"
+data install_d_shared_mode: FileMode = declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse)
 
 data install_file_shared_mode: NonEmptyStr = "0644"
 
@@ -1782,7 +1793,7 @@ data managed_directory_writer_uncovered_poison: String = "__GUNBC_DEPLOY_REFUSED
 // projects it instead of reusing the user's.
 fn install_d_managed_command(dir: ManagedDirectory) -> String {
   install_directory_owned_command(
-    mode: managed_directory_mode_octal(d: dir) as NonEmptyStr,
+    mode: managed_directory_permissions(d: dir).mode,
     owner: dir.owner.name,
     group: dir.group_principal.name,
     path: dir.path as String,
@@ -2481,9 +2492,10 @@ fn release_locus_tree_copy_steps(owner: NonEmptyStr, root: String) -> List<Pipel
 fn privileged_tree_directories_install_command(src_sub: String, root: String, owner: NonEmptyStr) -> String {
   join([
     "(cd \"$PWD\" && ", find_program().invocation as String, " ", src_sub, " -type d -print0) | ",
-    xargs_program as String, " -0 -I{} ", join(sudo_elevate_argv(command: [
-      install_program().invocation as String, "-d", "-m", "0755", "-o", owner as String, "-g", owner as String,
-    ]), " "), " ", root, "/{}",
+    xargs_program as String, " -0 -I{} ", join(sudo_elevate_argv(command: concat(
+      [install_program().invocation as String],
+      coreutils_install_directory_owned_arguments(mode: install_d_shared_mode, owner: owner, group: owner, path: join([root, "/{}"], "")),
+    )), " "),
   ], "")
 }
 

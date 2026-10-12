@@ -528,22 +528,13 @@ fn assimilation_input_witness_from_green_place(w: GreenPlacePinCoherentWitness) 
   }
 }
 
-fn assimilation_complete_input_eq(a: AssimilationCompleteInput, b: AssimilationCompleteInput) -> Bool {
-  match a {
-    NodeRegistered => match b { NodeRegistered => true, _ => false }
-    ResourcesPresent => match b { ResourcesPresent => true, _ => false }
-    GreenPlacePinCoherent => match b { GreenPlacePinCoherent => true, _ => false }
-    RunnerSlotHealthy => match b { RunnerSlotHealthy => true, _ => false }
-  }
-}
-
 fn assimilation_obligation_for_input(
   gate: AssimilationCompleteGate,
   wanted: AssimilationCompleteInput,
 ) -> AssimilationObligation? {
   filter(
     gate.obligations,
-    o => assimilation_complete_input_eq(a: o.input, b: wanted)
+    o => o.input == wanted
   ) |> first
 }
 
@@ -558,7 +549,7 @@ fn assimilation_input_is_required(
       if acc {
         true
       } else {
-        assimilation_complete_input_eq(a: r, b: wanted)
+        r == wanted
       }
     }
   )

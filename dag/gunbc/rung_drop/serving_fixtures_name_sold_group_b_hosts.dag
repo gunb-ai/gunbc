@@ -14,8 +14,8 @@ import gunbc.guarantee_rung { StructurallyGuaranteed, Mitigatable }
 //
 // WHAT FALLS. The witnesses that use FabricGroupB or the srv9-srv12 identity symbols (and the
 // srv9 endpoint literal) purely as TEST DATA were not re-fixtured: they still name sold hosts. The
-// identity and endpoint data symbols are retained for exactly that population and for
-// gunbc.spark.glm_serving_load; nothing rostered reaches them.
+// identity and endpoint data symbols are retained for remaining fixture witnesses; glm_serving_load
+// was deleted with Spark serving production. Nothing rostered reaches the sold hosts.
 //
 // WHAT DOES NOT FALL. No fleet-converge target, host roster, enrolment, binding, reservation or LAN
 // endpoint list names a sold unit, so no mode can dispatch to one. serving_enrolled_groups was the
@@ -36,9 +36,9 @@ data serving_fixtures_name_sold_group_b_hosts: RungDrop = RungDrop {
     reason: LostAsPassenger { carrier: "the live Group B host population (srv9-srv12) that the serving and fabric witnesses' fixtures were authored against" },
     population: [
       "witness fixtures under dag/test/claim that name FabricGroupB or operator_host_srv9 through operator_host_srv12 as inputs",
-      "gunbc.spark.glm_serving_load, which still addresses srv9_host_lan_endpoint",
+      "gunbc.spark.glm_serving_load was deleted with the Spark serving production path (sold hardware)",
       "no rostered fleet target, enrolment, binding, reservation or endpoint list: those are removed, not dropped (serving_enrolled_groups emptied gunbc#13776)",
     ],
-    restoration_trigger: "serving re-fixtured onto a live host population: the serving, harness and fabric witnesses and gunbc.spark.glm_serving_load take their hosts from a live roster (hosts that exist and are reachable) instead of the sold srv9-srv12 symbols, SUFFICIENT FOR the srv9-srv12 identity and endpoint data symbols to be deleted without a witness or serving module resolving them",
+    restoration_trigger: "serving and fabric witnesses that still name FabricGroupB or srv9-srv12 as fixture inputs take their hosts from a live roster (hosts that exist and are reachable) instead of the sold symbols, SUFFICIENT FOR those identity and endpoint data symbols to be deleted without a remaining consumer resolving them",
   },
 }
