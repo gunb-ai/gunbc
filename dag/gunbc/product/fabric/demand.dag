@@ -15,6 +15,11 @@ import std.decision {
   TermValuation, ValuationRate, MoneyValuation, DelayValuation,
   InterruptionValuation, AcceptedWorkValuation,
   HardConstraint, term_set_join,
+  ValuedObjectiveMeasure, NetValue, CostPerAcceptedUnit,
+}
+import std.observation_completeness {
+  ObservationComplete, ObservationRepeatedExpected, ObservationMissingExpected,
+  ObservationForeignObserved, ObservationRepeatedObserved, observation_completeness,
 }
 
 // Demand is WHO currently wants a result and WHERE to report it. Provider facts
@@ -171,6 +176,7 @@ fn fabric_demand_required_term_ids() -> List<DeclarationRef> {
 type DemandObjective {
   profile: DeclarationRef
   valuations: List<TermValuation>
+  measure: ValuedObjectiveMeasure
 }
 
 fn demand_objective_as_measure(objective: DemandObjective) -> ObjectiveMeasure {
@@ -233,6 +239,7 @@ data id_latency_sensitive: DeclarationRef = decl_ref(module_path: "product.fabri
 data debt_payoff_objective: DemandObjective = DemandObjective {
   profile: id_debt_payoff,
   valuations: closed_valuations(money: 1, delay: 0, interruption: 0, accepted_work: 1),
+  measure: CostPerAcceptedUnit,
 }
 
 // Positive delay valuation. Fixture and declared profile only — production reads
@@ -241,14 +248,82 @@ data debt_payoff_objective: DemandObjective = DemandObjective {
 data latency_sensitive_objective: DemandObjective = DemandObjective {
   profile: id_latency_sensitive,
   valuations: closed_valuations(money: 1, delay: 1, interruption: 0, accepted_work: 1),
+  measure: NetValue,
+}
+
+fn rate_inhabits_term(term: DeclarationRef, rate: ValuationRate) -> Bool {
+  if declaration_ref_eq(a: term, b: term_money.identity) {
+    match rate {
+      MoneyValuation { amount: _ } => true
+      DelayValuation { rate: _ } => false
+      InterruptionValuation { amount: _ } => false
+      AcceptedWorkValuation { amount: _ } => false
+    }
+  } else {
+    if declaration_ref_eq(a: term, b: term_delay.identity) {
+      match rate {
+        DelayValuation { rate: _ } => true
+        MoneyValuation { amount: _ } => false
+        InterruptionValuation { amount: _ } => false
+        AcceptedWorkValuation { amount: _ } => false
+      }
+    } else {
+      if declaration_ref_eq(a: term, b: term_interruption.identity) {
+        match rate {
+          InterruptionValuation { amount: _ } => true
+          MoneyValuation { amount: _ } => false
+          DelayValuation { rate: _ } => false
+          AcceptedWorkValuation { amount: _ } => false
+        }
+      } else {
+        if declaration_ref_eq(a: term, b: term_accepted_work.identity) {
+          match rate {
+            AcceptedWorkValuation { amount: _ } => true
+            MoneyValuation { amount: _ } => false
+            DelayValuation { rate: _ } => false
+            InterruptionValuation { amount: _ } => false
+          }
+        } else {
+          false
+        }
+      }
+    }
+  }
+}
+
+type ObjectiveInterpretation
+  = ObjectiveInterpreted { rows: List<TermValuation>, measure: ValuedObjectiveMeasure }
+  | ObjectiveInterpretationRefused { cause: NonEmptyStr }
+
+fn interpret_demand_objective(objective: DemandObjective) -> ObjectiveInterpretation {
+  let observed = map(objective.valuations, v => v.term)
+  match observation_completeness(
+    expected: fabric_demand_required_term_ids(),
+    observed: observed,
+    key_eq: declaration_ref_eq,
+  ) {
+    ObservationRepeatedExpected { keys: _ } =>
+      ObjectiveInterpretationRefused { cause: "required term roster repeats a term" as NonEmptyStr }
+    ObservationMissingExpected { keys: _ } =>
+      ObjectiveInterpretationRefused { cause: "objective is missing a required term" as NonEmptyStr }
+    ObservationForeignObserved { keys: _ } =>
+      ObjectiveInterpretationRefused { cause: "objective declares a foreign term" as NonEmptyStr }
+    ObservationRepeatedObserved { keys: _ } =>
+      ObjectiveInterpretationRefused { cause: "objective repeats a term" as NonEmptyStr }
+    ObservationComplete =>
+      if any(objective.valuations, v => !rate_inhabits_term(term: v.term, rate: v.rate)) {
+        ObjectiveInterpretationRefused { cause: "a TermValuation rate does not inhabit its term" as NonEmptyStr }
+      } else {
+        ObjectiveInterpreted { rows: objective.valuations, measure: objective.measure }
+      }
+  }
 }
 
 fn demand_delay_valuation(objective: DemandObjective) -> MoneyPerSecond? {
-  match demand_objective_join(objective: objective) {
-    ObjectiveUnderModeled { subject: _, missing_from_objective: _ } => none
-    ObjectiveDeclaresUnwarrantedTerms { subject: _, extras: _ } => none
-    TermSetsJoinComplete =>
-      match (filter(objective.valuations, v => declaration_ref_eq(a: v.term, b: term_delay.identity))).first() {
+  match interpret_demand_objective(objective: objective) {
+    ObjectiveInterpretationRefused { cause: _ } => none
+    ObjectiveInterpreted { rows: rows, measure: _ } =>
+      match (filter(rows, v => declaration_ref_eq(a: v.term, b: term_delay.identity))).first() {
         Absent => none
         Present { value: row } =>
           match row.rate {

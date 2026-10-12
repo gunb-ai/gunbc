@@ -750,15 +750,26 @@ type TermValuation {
   rate: ValuationRate
 }
 
+// NetValue is today's linear signed sum. CostPerAcceptedUnit divides valued cost
+// (money, delay, interruption) by accepted-work; zero accepted work is unbounded,
+// never a zero cost. CONSUMERS: apply_policy; product.fabric.demand profiles.
+type ValuedObjectiveMeasure
+  = NetValue
+  | CostPerAcceptedUnit
+
 // ValuedObjective applies AFTER hard constraints and Pareto. It never scalarizes before the
 // frontier, so a dominated candidate cannot win by a weighted sum. Unread evidence on a valued
-// term is SelectionNeedsEvidence, never a zero. Equal sums fall through to identity order.
+// term is SelectionNeedsEvidence, never a zero. Equal scores fall through to identity order.
 // CONSUMERS: apply_policy (this module); product.fabric.demand DemandObjective.valuations and
 // the two profile rows; test.claim.fabric.valued_objective_witness.
 type SelectionPolicy
   = UniqueSurvivorRequired { identity: DeclarationRef }
   | PreferSurvivor { identity: DeclarationRef, preferred: DeclarationRef }
-  | ValuedObjective { identity: DeclarationRef, valuations: List<TermValuation> }
+  | ValuedObjective {
+      identity: DeclarationRef
+      valuations: List<TermValuation>
+      measure: ValuedObjectiveMeasure
+    }
 
 type HardConstraint {
   identity: DeclarationRef
@@ -1284,9 +1295,139 @@ fn valued_sum(entry: ParetoEntry, valuations: List<TermValuation>) -> ValuedSum 
   )
 }
 
+type ValuedObjectiveScore
+  = NetValueScore { micros: Int }
+  | UnitCostScore { cost: Int, accepted: Int }
+  | UnboundedUnitCost
+
+type ValuedScoreStanding
+  = ValuedScoreReady { score: ValuedObjectiveScore }
+  | ValuedScoreNeeds { needs: List<SelectionEvidenceNeed> }
+  | ValuedScoreRefused { defects: List<NonEmptyStr> }
+
+fn is_accepted_work_valuation(rate: ValuationRate) -> Bool {
+  match rate {
+    AcceptedWorkValuation { amount: _ } => true
+    MoneyValuation { amount: _ } => false
+    DelayValuation { rate: _ } => false
+    InterruptionValuation { amount: _ } => false
+  }
+}
+
+fn cost_valuations(valuations: List<TermValuation>) -> List<TermValuation> {
+  filter(valuations, v => !is_accepted_work_valuation(rate: v.rate))
+}
+
+fn accepted_work_point(entry: ParetoEntry, valuations: List<TermValuation>) -> ValuedScoreStanding {
+  match (filter(valuations, v => is_accepted_work_valuation(rate: v.rate))).first() {
+    Absent =>
+      ValuedScoreRefused { defects: ["CostPerAcceptedUnit has no accepted-work TermValuation" as NonEmptyStr] }
+    Present { value: row } =>
+      match reading_for(e: entry, wanted: row.term) {
+        ReadingDuplicated { duplicated_axis: ax } =>
+          ValuedScoreNeeds {
+            needs: [UnfundedAxis { gap: AxisGap { axis: ax, cause: "duplicated accepted-work reading" as NonEmptyStr } }],
+          }
+        ReadingAbsent { absent_axis: ax } =>
+          ValuedScoreNeeds {
+            needs: [UnfundedAxis { gap: AxisGap { axis: ax, cause: "accepted-work reading unread" as NonEmptyStr } }],
+          }
+        ReadingFound { interval_micro: iv } =>
+          if interval_low(interval: iv) != interval_high(interval: iv) {
+            ValuedScoreNeeds {
+              needs: [UnfundedAxis {
+                gap: AxisGap { axis: row.term, cause: "accepted-work reading is an interval, not a point" as NonEmptyStr },
+              }],
+            }
+          } else {
+            if interval_low(interval: iv) <= 0 {
+              ValuedScoreReady { score: UnboundedUnitCost }
+            } else {
+              match valued_sum(entry: entry, valuations: cost_valuations(valuations: valuations)) {
+                ValuedSumNeeds { needs: ns } => ValuedScoreNeeds { needs: ns }
+                ValuedSumRefused { defects: ds } => ValuedScoreRefused { defects: ds }
+                ValuedSumReady { micros: cost } =>
+                  ValuedScoreReady { score: UnitCostScore { cost: cost, accepted: interval_low(interval: iv) } }
+              }
+            }
+          }
+      }
+  }
+}
+
+fn score_valued_entry(entry: ParetoEntry, valuations: List<TermValuation>, measure: ValuedObjectiveMeasure) -> ValuedScoreStanding {
+  match measure {
+    NetValue =>
+      match valued_sum(entry: entry, valuations: valuations) {
+        ValuedSumNeeds { needs: ns } => ValuedScoreNeeds { needs: ns }
+        ValuedSumRefused { defects: ds } => ValuedScoreRefused { defects: ds }
+        ValuedSumReady { micros: total } => ValuedScoreReady { score: NetValueScore { micros: total } }
+      }
+    CostPerAcceptedUnit => accepted_work_point(entry: entry, valuations: valuations)
+  }
+}
+
+fn unit_cost_beats(a_cost: Int, a_work: Int, b_cost: Int, b_work: Int) -> Bool? {
+  match checked_int_multiply(a: a_cost, b: b_work) {
+    CheckedIntOverflow { cause: _ } => none
+    CheckedIntReady { value: left } =>
+      match checked_int_multiply(a: b_cost, b: a_work) {
+        CheckedIntOverflow { cause: _ } => none
+        CheckedIntReady { value: right } => Present { value: left < right }
+      }
+  }
+}
+
+fn score_strictly_better(challenger: ValuedObjectiveScore, incumbent: ValuedObjectiveScore) -> Bool? {
+  match challenger {
+    UnboundedUnitCost => Present { value: false }
+    NetValueScore { micros: a } =>
+      match incumbent {
+        NetValueScore { micros: b } => Present { value: a < b }
+        UnitCostScore { cost: _, accepted: _ } => none
+        UnboundedUnitCost => Present { value: true }
+      }
+    UnitCostScore { cost: a_cost, accepted: a_work } =>
+      match incumbent {
+        UnboundedUnitCost => Present { value: true }
+        NetValueScore { micros: _ } => none
+        UnitCostScore { cost: b_cost, accepted: b_work } =>
+          unit_cost_beats(a_cost: a_cost, a_work: a_work, b_cost: b_cost, b_work: b_work)
+      }
+  }
+}
+
+fn scores_equal(a: ValuedObjectiveScore, b: ValuedObjectiveScore) -> Bool {
+  match a {
+    UnboundedUnitCost =>
+      match b {
+        UnboundedUnitCost => true
+        _ => false
+      }
+    NetValueScore { micros: x } =>
+      match b {
+        NetValueScore { micros: y } => x == y
+        _ => false
+      }
+    UnitCostScore { cost: ac, accepted: aw } =>
+      match b {
+        UnitCostScore { cost: bc, accepted: bw } =>
+          match unit_cost_beats(a_cost: ac, a_work: aw, b_cost: bc, b_work: bw) {
+            Absent => false
+            Present { value: a_better } =>
+              match unit_cost_beats(a_cost: bc, a_work: bw, b_cost: ac, b_work: aw) {
+                Absent => false
+                Present { value: b_better } => !a_better && !b_better
+              }
+          }
+        _ => false
+      }
+  }
+}
+
 type ValuedPickScan {
   pick: DeclarationRef?
-  sum: Int
+  score: ValuedObjectiveScore?
   needs: List<SelectionEvidenceNeed>
   defects: List<NonEmptyStr>
 }
@@ -1295,34 +1436,48 @@ fn scan_valued_survivors(
   remaining: List<ParetoEntry>,
   survivors: List<DeclarationRef>,
   valuations: List<TermValuation>,
+  measure: ValuedObjectiveMeasure,
 ) -> ValuedPickScan {
-  fold(survivors, init: ValuedPickScan { pick: none, sum: 0, needs: [], defects: [] }, f: (acc, sid) =>
+  fold(survivors, init: ValuedPickScan { pick: none, score: none, needs: [], defects: [] }, f: (acc, sid) =>
     if (acc.needs |> count) > 0 || (acc.defects |> count) > 0 {
       acc
     } else {
       match entry_by_identity(field: remaining, wanted: sid) {
         Absent => ValuedPickScan {
           pick: acc.pick,
-          sum: acc.sum,
+          score: acc.score,
           needs: acc.needs,
           defects: concat(acc.defects, ["valued survivor missing from remaining field" as NonEmptyStr]),
         }
         Present { value: entry } =>
-          match valued_sum(entry: entry, valuations: valuations) {
-            ValuedSumNeeds { needs: ns } => ValuedPickScan { pick: acc.pick, sum: acc.sum, needs: concat(acc.needs, ns), defects: acc.defects }
-            ValuedSumRefused { defects: ds } => ValuedPickScan { pick: acc.pick, sum: acc.sum, needs: acc.needs, defects: concat(acc.defects, ds) }
-            ValuedSumReady { micros: total } =>
+          match score_valued_entry(entry: entry, valuations: valuations, measure: measure) {
+            ValuedScoreNeeds { needs: ns } => ValuedPickScan { pick: acc.pick, score: acc.score, needs: concat(acc.needs, ns), defects: acc.defects }
+            ValuedScoreRefused { defects: ds } => ValuedPickScan { pick: acc.pick, score: acc.score, needs: acc.needs, defects: concat(acc.defects, ds) }
+            ValuedScoreReady { score: total } =>
               match acc.pick {
-                Absent => ValuedPickScan { pick: Present { value: sid }, sum: total, needs: acc.needs, defects: acc.defects }
+                Absent => ValuedPickScan { pick: Present { value: sid }, score: Present { value: total }, needs: acc.needs, defects: acc.defects }
                 Present { value: best } =>
-                  if total < acc.sum {
-                    ValuedPickScan { pick: Present { value: sid }, sum: total, needs: acc.needs, defects: acc.defects }
-                  } else {
-                    if total == acc.sum && identity_ref_before(a: sid, b: best) {
-                      ValuedPickScan { pick: Present { value: sid }, sum: total, needs: acc.needs, defects: acc.defects }
-                    } else {
-                      acc
-                    }
+                  match acc.score {
+                    Absent => ValuedPickScan { pick: Present { value: sid }, score: Present { value: total }, needs: acc.needs, defects: acc.defects }
+                    Present { value: incumbent } =>
+                      match score_strictly_better(challenger: total, incumbent: incumbent) {
+                        Absent => ValuedPickScan {
+                          pick: acc.pick,
+                          score: acc.score,
+                          needs: acc.needs,
+                          defects: concat(acc.defects, ["valued-objective score overflowed" as NonEmptyStr]),
+                        }
+                        Present { value: better } =>
+                          if better {
+                            ValuedPickScan { pick: Present { value: sid }, score: Present { value: total }, needs: acc.needs, defects: acc.defects }
+                          } else {
+                            if scores_equal(a: total, b: incumbent) && identity_ref_before(a: sid, b: best) {
+                              ValuedPickScan { pick: Present { value: sid }, score: Present { value: total }, needs: acc.needs, defects: acc.defects }
+                            } else {
+                              acc
+                            }
+                          }
+                      }
                   }
               }
           }
@@ -1401,14 +1556,17 @@ fn apply_policy(
       } else {
         RealizationSelectionRefused { defects: ["policy preferred a dominated, infeasible, unresolved or absent candidate" as NonEmptyStr] }
       }
-    ValuedObjective { identity: pol, valuations: vals } =>
+    ValuedObjective { identity: pol, valuations: vals, measure: measure } =>
       if (survivors |> count) == 0 {
         NoFeasibleRealization {
           causes: ["no non-dominated feasible realization" as NonEmptyStr],
           scope: scope,
         }
       } else {
-        let scanned = scan_valued_survivors(remaining: remaining, survivors: survivors, valuations: vals)
+        if (vals |> count) == 0 {
+          RealizationSelectionRefused { defects: ["ValuedObjective valuations are empty" as NonEmptyStr] }
+        } else {
+        let scanned = scan_valued_survivors(remaining: remaining, survivors: survivors, valuations: vals, measure: measure)
         if (scanned.defects |> count) > 0 {
           RealizationSelectionRefused { defects: scanned.defects }
         } else {
@@ -1436,6 +1594,7 @@ fn apply_policy(
                 }
             }
           }
+        }
         }
       }
   }

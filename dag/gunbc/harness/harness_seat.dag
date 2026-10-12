@@ -57,16 +57,17 @@ import gunbc.harness.harness_hosted_route {
   harness_hosted_release,
 }
 import product.fabric.work { ExecutionRequirements, ControlPlaneCapacity, Work, ServiceInterfaceRef, ArtifactManifestRef, EffectContractRef, OutputContractRef, identity_frame }
-import product.fabric.supply { EstimatedGrantDuration, GrantDuration, AffinityKeyedRendezvous, PlacementAffinityKey }
+import product.fabric.supply { EstimatedGrantDuration, GrantDuration, AffinityKeyedRendezvous, PlacementAffinityKey, EqualCostOfferTieBreak }
 import product.fabric.selection {
   CandidateOffer, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer, OfferNotAdmittedForUse,
   PermitNamesAnotherOffer, PermitNamesAnotherRoute, PermitNamesAnotherWork, PermitNamesAnotherDemand, PayAsYouGo,
   OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, select_supply, affinity_collision_wire,
+  SupplySelection,
 }
 import product.fabric.demand {
   ObservationReceiptRef, AdmissionTerms, demand_delay_valuation,
 }
-import extdeps.currency.currency { Usd }
+import extdeps.currency.currency { CurrencyCode }
 import gunbc.spark.vllm_observed { VllmModelsRouteReadbackStanding }
 import std.algebra { trim }
 import gunbc.serving.turn_admission {
@@ -514,6 +515,7 @@ type HarnessPricedSelectionInputs
   = HarnessPricedSelectionReady {
       delay_valuation: MoneyPerSecond
       maximum_buy_order: MoneyAmountMicro
+      budget_currency: CurrencyCode
       objective_profile: DeclarationRef
     }
   | HarnessPricedSelectionRefused { cause: NonEmptyStr }
@@ -528,7 +530,43 @@ fn harness_priced_selection_inputs(admission: AdmissionTerms) -> HarnessPricedSe
       HarnessPricedSelectionReady {
         delay_valuation: v,
         maximum_buy_order: admission.buy.maximum_buy_order,
+        budget_currency: admission.buy.currency,
         objective_profile: admission.objective.profile,
+      }
+  }
+}
+
+type HarnessSupplySelection<P>
+  = HarnessSupplySelected { selection: SupplySelection<P> }
+  | HarnessSupplyAdmissionRefused { cause: NonEmptyStr }
+
+fn harness_select_supply<P>(
+  admission: AdmissionTerms,
+  requirements: ExecutionRequirements,
+  candidates: List<CandidateOffer<P>>,
+  duration: GrantDuration,
+  tie: EqualCostOfferTieBreak,
+  affinity: PlacementAffinityKey,
+) -> HarnessSupplySelection<P> {
+  match harness_priced_selection_inputs(admission: admission) {
+    HarnessPricedSelectionRefused { cause: c } => HarnessSupplyAdmissionRefused { cause: c }
+    HarnessPricedSelectionReady {
+      delay_valuation: delay_valuation,
+      maximum_buy_order: maximum_buy_order,
+      budget_currency: budget_currency,
+      objective_profile: _,
+    } =>
+      HarnessSupplySelected {
+        selection: select_supply(
+          requirements: requirements,
+          candidates: candidates,
+          duration: duration,
+          maximum_buy_order: maximum_buy_order,
+          budget_currency: budget_currency,
+          delay_valuation: delay_valuation,
+          tie: tie,
+          affinity: affinity,
+        ),
       }
   }
 }
@@ -1092,25 +1130,23 @@ fn harness_placement_round(acc: PlacementRound, session: ServingSessionRecord, c
       let collected = harness_collect_candidates(session: session, routes: routes, class: class, requirement: requirement, subject: subject, store: store, now: now, excluded: acc.excluded)
       let notes = concat(acc.notes, collected.notes)
       let retryable = acc.retryable || collected.retryable
-      match harness_priced_selection_inputs(admission: subject.admission) {
-        HarnessPricedSelectionRefused { cause: c } =>
+      match harness_select_supply(
+        admission: subject.admission,
+        requirements: subject.work.requirements,
+        candidates: map(collected.candidates, c => c.offer),
+        duration: harness_placement_grant_duration(policy: policy),
+        tie: AffinityKeyedRendezvous,
+        affinity: actor as PlacementAffinityKey,
+      ) {
+        HarnessSupplyAdmissionRefused { cause: c } =>
           PlacementRound {
             done: Present { value: HarnessSeatRefused { detail: c as String } },
             excluded: acc.excluded,
             notes: notes,
             retryable: retryable,
           }
-        HarnessPricedSelectionReady { delay_valuation: delay_valuation, maximum_buy_order: maximum_buy_order, objective_profile: _ } =>
-      match select_supply(
-        requirements: subject.work.requirements,
-        candidates: map(collected.candidates, c => c.offer),
-        duration: harness_placement_grant_duration(policy: policy),
-        maximum_buy_order: maximum_buy_order,
-        budget_currency: Usd,
-        delay_valuation: delay_valuation,
-        tie: AffinityKeyedRendezvous,
-        affinity: actor as PlacementAffinityKey,
-      ) {
+        HarnessSupplySelected { selection: sel } =>
+      match sel {
         NoAdmissibleOffer { considered: _ } =>
           PlacementRound {
             done: Present { value: harness_nothing_placed(notes: notes, retryable: retryable) },

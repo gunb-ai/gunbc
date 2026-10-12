@@ -9,7 +9,6 @@ import std.pareto {
 import std.decision {
   HardConstraint,
   ValuedObjective,
-  SelectionPolicy,
   SelectedWithin,
   SelectionNeedsEvidence,
   SelectionNeedsPolicy,
@@ -36,12 +35,16 @@ import std.decision {
   MoneyValuation,
   ObjectiveUnderModeled,
   TermSetsJoinComplete,
+  CostPerAcceptedUnit,
+  NetValue,
+  RealizationSelectionRefused,
 }
 import product.fabric.demand {
   term_money, term_delay, term_interruption, term_accepted_work,
   debt_payoff_objective, latency_sensitive_objective, DemandObjective,
   demand_objective_join, demand_delay_valuation, admission_hard_constraints,
   admission_terms, BuyTerms, fabric_demand_required_term_ids,
+  interpret_demand_objective, ObjectiveInterpreted, ObjectiveInterpretationRefused,
 }
 import std.measure { money_amount_micro, money_rate_micros }
 import extdeps.currency.currency { Usd }
@@ -58,12 +61,10 @@ data id_field: DeclarationRef = decl_ref(module_path: "test.claim.fabric.valued_
 data id_constraints: DeclarationRef = decl_ref(module_path: "test.claim.fabric.valued_objective_witness", decl_name: "id_constraints")
 data id_evidence: DeclarationRef = decl_ref(module_path: "test.claim.fabric.valued_objective_witness", decl_name: "id_evidence")
 data id_var: DeclarationRef = decl_ref(module_path: "test.claim.fabric.valued_objective_witness", decl_name: "var_sel")
-data id_term: DeclarationRef = decl_ref(module_path: "test.claim.fabric.valued_objective_witness", decl_name: "term_sel")
 data id_constraint_cell: DeclarationRef = decl_ref(module_path: "test.claim.fabric.valued_objective_witness", decl_name: "constraint_sel")
 data id_param_cell: DeclarationRef = decl_ref(module_path: "test.claim.fabric.valued_objective_witness", decl_name: "param_sel")
 data id_region: DeclarationRef = decl_ref(module_path: "test.claim.fabric.valued_objective_witness", decl_name: "region_sel")
 data id_domain: DeclarationRef = decl_ref(module_path: "test.claim.fabric.valued_objective_witness", decl_name: "domain_sel")
-data id_objective: DeclarationRef = decl_ref(module_path: "test.claim.fabric.valued_objective_witness", decl_name: "objective_sel")
 data id_coupling: DeclarationRef = decl_ref(module_path: "test.claim.fabric.valued_objective_witness", decl_name: "id_coupling")
 
 data fixture_physical_authority: ExternalAuthority = ExternalAuthority {
@@ -71,46 +72,46 @@ data fixture_physical_authority: ExternalAuthority = ExternalAuthority {
 }
 
 data var_sel: DecisionVariable = DecisionVariable { identity: id_var }
-data term_sel: ObjectiveTerm = ObjectiveTerm {
-  identity: id_term,
-  ground: CitedToAuthority { authority: fixture_physical_authority },
-}
 data constraint_sel: DecisionConstraint = DecisionConstraint { identity: id_constraint_cell }
 data param_sel: ContextParameter = ContextParameter { identity: id_param_cell }
 data region_sel: DecisionRegion = DecisionRegion { identity: id_region }
-
-data objective_sel: ObjectiveMeasure = ObjectiveMeasure {
-  identity: id_objective,
-  goal: LowerIsBetter,
-  terms: [term_sel],
-}
 
 data domain_sel: ChoiceDomain = ChoiceDomain {
   identity: id_domain,
   variables: [var_sel],
 }
 
-data subject_sel: DecisionSubject = DecisionSubject {
-  identity: id_subject,
-  question: "wait on the current replica or pay to move" as NonEmptyStr,
-  parameters: [param_sel],
-  constraints: [constraint_sel],
-  objective: objective_sel,
-  choice_domain: domain_sel,
+fn cited_term(id: DeclarationRef) -> ObjectiveTerm {
+  ObjectiveTerm {
+    identity: id,
+    ground: CitedToAuthority { authority: fixture_physical_authority },
+  }
 }
 
-fn closed_assessment() -> DecisionAssessment {
+fn closed_assessment(objective: DemandObjective) -> DecisionAssessment {
+  let term_ids = fabric_demand_required_term_ids()
   DecisionAssessment {
-    subject: subject_sel,
-    sensitivities: [
+    subject: DecisionSubject {
+      identity: id_subject,
+      question: "wait on the current replica or pay to move" as NonEmptyStr,
+      parameters: [param_sel],
+      constraints: [constraint_sel],
+      objective: ObjectiveMeasure {
+        identity: objective.profile,
+        goal: LowerIsBetter,
+        terms: map(term_ids, id => cited_term(id: id)),
+      },
+      choice_domain: domain_sel,
+    },
+    sensitivities: map(term_ids, id =>
       VariesAlong {
-        term: id_term,
+        term: id,
         variable: id_var,
         region: region_sel,
         relation: MonotoneDecreasing,
         coupling: CitedToAuthority { authority: fixture_physical_authority },
-      },
-    ],
+      }
+    ),
     constraints: [
       ConstraintSatisfied {
         constraint: id_constraint_cell,
@@ -125,16 +126,16 @@ fn closed_assessment() -> DecisionAssessment {
     ],
     selected_candidate: Absent,
     term_drops: [],
-    physical_model: PhysicalModelEstablished { terms: [id_term] },
+    physical_model: PhysicalModelEstablished { terms: term_ids },
     causal_model: CausalModelEstablished {
-      couplings: [
+      couplings: map(term_ids, id =>
         FleetObservedCoupling {
           receipt: id_coupling,
-          term: id_term,
+          term: id,
           variable: id_var,
           subject: id_subject,
-        },
-      ],
+        }
+      ),
     },
   }
 }
@@ -166,26 +167,27 @@ fn replica(id: DeclarationRef, label: NonEmptyStr, money: Int, delay: Int, inter
   }
 }
 
-fn policy_of(objective: DemandObjective) -> SelectionPolicy {
-  ValuedObjective { identity: objective.profile, valuations: objective.valuations }
-}
-
 fn pick(field: List<ParetoEntry>, objective: DemandObjective, constraints: List<HardConstraint>) -> RealizationPick {
-  match select_realization(
-    assessment: closed_assessment(),
-    candidate_field_identity: id_field,
-    field: field,
-    axes: axes(),
-    constraints: constraints,
-    constraint_authority: id_constraints,
-    policy: policy_of(objective: objective),
-    evidence_snapshot: id_evidence,
-  ) {
-    SelectedWithin { candidate: c, receipt: r } => Picked { id: c.identity, policy: r.policy_authority }
-    SelectionNeedsEvidence { needs: _ } => NeedsEvidence
-    SelectionNeedsPolicy { survivors: _ } => NeedsPolicy
-    NoFeasibleRealization { causes: _, scope: _ } => NoneFeasible
-    _ => Other
+  match interpret_demand_objective(objective: objective) {
+    ObjectiveInterpretationRefused { cause: _ } => InterpretationRefused
+    ObjectiveInterpreted { rows: rows, measure: measure } =>
+      match select_realization(
+        assessment: closed_assessment(objective: objective),
+        candidate_field_identity: id_field,
+        field: field,
+        axes: axes(),
+        constraints: constraints,
+        constraint_authority: id_constraints,
+        policy: ValuedObjective { identity: objective.profile, valuations: rows, measure: measure },
+        evidence_snapshot: id_evidence,
+      ) {
+        SelectedWithin { candidate: c, receipt: r } => Picked { id: c.identity, policy: r.policy_authority }
+        SelectionNeedsEvidence { needs: _ } => NeedsEvidence
+        SelectionNeedsPolicy { survivors: _ } => NeedsPolicy
+        NoFeasibleRealization { causes: _, scope: _ } => NoneFeasible
+        RealizationSelectionRefused { defects: _ } => Other
+        _ => Other
+      }
   }
 }
 
@@ -194,6 +196,7 @@ type RealizationPick
   | NeedsEvidence
   | NeedsPolicy
   | NoneFeasible
+  | InterpretationRefused
   | Other
 
 fn tradeoff_field() -> List<ParetoEntry> {
@@ -205,8 +208,8 @@ fn tradeoff_field() -> List<ParetoEntry> {
 
 fn accepted_work_field() -> List<ParetoEntry> {
   [
-    replica(id: id_wait, label: "wait" as NonEmptyStr, money: 50, delay: 100, interruption: 0, work: 5),
-    replica(id: id_move, label: "move" as NonEmptyStr, money: 60, delay: 10, interruption: 0, work: 40),
+    replica(id: id_wait, label: "wait" as NonEmptyStr, money: 50, delay: 0, interruption: 0, work: 5),
+    replica(id: id_move, label: "move" as NonEmptyStr, money: 60, delay: 0, interruption: 0, work: 10),
   ]
 }
 
@@ -246,6 +249,7 @@ test fn profiles_join_complete_and_a_missing_term_is_under_modeled() -> Bool {
                 rate: MoneyValuation { amount: money_amount_micro(count: 1) },
               },
             ],
+            measure: CostPerAcceptedUnit,
           }) {
             ObjectiveUnderModeled { subject: _, missing_from_objective: missing } =>
               (missing |> count) == ((fabric_demand_required_term_ids() |> count) - 1)
@@ -350,5 +354,61 @@ test fn serving_reads_the_demand_delay_valuation() -> Bool {
         Present { value: debt } =>
           (money_rate_micros(q: lat) as Int) > (money_rate_micros(q: debt) as Int)
       }
+  }
+}
+
+fn missing_term_objective() -> DemandObjective {
+  DemandObjective {
+    profile: debt_payoff_objective.profile,
+    valuations: [
+      TermValuation {
+        term: term_money.identity,
+        rate: MoneyValuation { amount: money_amount_micro(count: 1) },
+      },
+    ],
+    measure: CostPerAcceptedUnit,
+  }
+}
+
+fn duplicate_term_objective() -> DemandObjective {
+  DemandObjective {
+    profile: debt_payoff_objective.profile,
+    valuations: concat(debt_payoff_objective.valuations, [
+      TermValuation {
+        term: term_money.identity,
+        rate: MoneyValuation { amount: money_amount_micro(count: 1) },
+      },
+    ]),
+    measure: CostPerAcceptedUnit,
+  }
+}
+
+test fn both_profiles_interpret_complete() -> Bool {
+  match interpret_demand_objective(objective: debt_payoff_objective) {
+    ObjectiveInterpretationRefused { cause: _ } => false
+    ObjectiveInterpreted { rows: r1, measure: m1 } =>
+      match m1 {
+        NetValue => false
+        CostPerAcceptedUnit =>
+          match interpret_demand_objective(objective: latency_sensitive_objective) {
+            ObjectiveInterpretationRefused { cause: _ } => false
+            ObjectiveInterpreted { rows: r2, measure: m2 } =>
+              match m2 {
+                CostPerAcceptedUnit => false
+                NetValue => (r1 |> count) == 4 && (r2 |> count) == 4
+              }
+          }
+      }
+  }
+}
+
+test fn missing_and_duplicate_terms_refuse_before_selection() -> Bool {
+  match pick(field: tradeoff_field(), objective: missing_term_objective(), constraints: []) {
+    InterpretationRefused =>
+      match pick(field: tradeoff_field(), objective: duplicate_term_objective(), constraints: []) {
+        InterpretationRefused => true
+        _ => false
+      }
+    _ => false
   }
 }
