@@ -4320,7 +4320,7 @@ fn retract_intent_fragments(
         member: "frame" as NonEmptyStr,
         steps: [
           deploy_stage_directory_let_step(),
-          deploy_raw(command: "trap 'rm -rf \"$_gunbc_stage\"' EXIT"),
+          deploy_raw(command: deploy_apply_stage_dirs_exit_trap_command()),
         ],
       },
       Mutate { member: "preamble" as NonEmptyStr, steps: deploy_apply_preamble_steps(access: access, spec: spec) },

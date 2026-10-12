@@ -16,6 +16,8 @@ import extdeps.tools.gnu_coreutils {
   coreutils_rm_force_argv,
   coreutils_rm_empty_directory_argv,
   coreutils_rm_force_recursive_argv,
+  coreutils_rm_force_recursive_flags,
+  rm_program,
   coreutils_install_mode_flag,
   coreutils_install_file_owned_argv,
   coreutils_install_directory_owned_argv,
@@ -142,15 +144,29 @@ fn deploy_cap_stage_path_word(stage_name: String) -> Node {
 }
 
 // ONE EXIT TRAP REMOVES BOTH STAGING DIRS. Two traps would race on EXIT; one command names both
-// variables the apply frame binds.
+// variables the apply frame binds. The rm argv and the two expansions are grammar words; trap
+// and EXIT are the builtin and the signal, not a second quoting scheme.
+fn deploy_apply_stage_dirs_rm_both_dirs_command() -> Node {
+  bash_build_command_with_words(words: concat(
+    shell_literal_words(words: [
+      rm_program().invocation as String,
+      coreutils_rm_force_recursive_flags as String,
+    ]),
+    [
+      bash_build_word_var(name: deploy_stage_dir_var),
+      bash_build_word_var(name: deploy_cap_stage_dir_var),
+    ],
+  ))
+}
+
 fn deploy_apply_stage_dirs_exit_trap_command() -> String {
-  join([
-    "trap 'rm -rf \"$",
-    deploy_stage_dir_var,
-    "\" \"$",
-    deploy_cap_stage_dir_var,
-    "\"' EXIT",
-  ], "")
+  shell_command_text_of_node(
+    stmt: bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "trap"),
+      bash_build_word_lit(text: shell_command_text_of_node(stmt: deploy_apply_stage_dirs_rm_both_dirs_command())),
+      bash_build_word_lit(text: "EXIT"),
+    ]),
+  )
 }
 
 // Writing a staged file is `printf %s <content> > <staged path>`, NOT a here-document. A
