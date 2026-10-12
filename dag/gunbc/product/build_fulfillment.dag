@@ -3,6 +3,7 @@ module product.build_fulfillment
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
 import std.optional { Optional, Present, Absent }
+import std.error_primitives { Result, Ok, Err }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import std.measure { MoneyAmountMicro, MoneyOnce, money_amount_micro, money_amount_micro_count, money_once_micros }
 import extdeps.currency.currency { CurrencyCode }
@@ -722,21 +723,17 @@ type CashProjection
   | CashNoPurchaseLines
   | CashRefused { cause: CashRefusalCause }
 
-// DERIVED REFUSED-VS-OPEN PARTITION FROM INHABITANCE (the projection's refused-vs-open standing).
-// It collapses the three-variant projection coproduct to the two regions a fold distinguishes --
-// refused, which short-circuits, and open, which continues the fold -- exactly as derived
-// terminality does. A fold matches on this partition rather than the variant list, so the fold
-// body is written once: naming the open variants in the fold would clone it once per arm (the
-// DESIGN section 2 redundancy, not the section 4 totality).
-type CashPartition
-  = CashPartitionOpen { running: Optional<MoneyOnce> }
-  | CashPartitionRefused { cause: CashRefusalCause }
-
-fn cash_partition(p: CashProjection) -> CashPartition {
+// The accumulator's running sum, or a refusal: std's short-circuiting refusal carrier
+// Result<Optional<R>, C> (std.error_primitives) applied to this coproduct's inhabitance -- the
+// refused variant carries its cause, the running variant carries the running sum, and the
+// not-yet-derived variant carries nothing. The fold matches on the carrier, not the variant list,
+// so the fold body is written once: naming the open variants in the fold would clone it once per
+// arm (the DESIGN section 2 redundancy, not the section 4 totality).
+fn cash_running(p: CashProjection) -> Result<Optional<MoneyOnce>, CashRefusalCause> {
   match p {
-    CashDerived { cash: c } => CashPartitionOpen { running: Present { value: c } }
-    CashNoPurchaseLines => CashPartitionOpen { running: Absent }
-    CashRefused { cause: c } => CashPartitionRefused { cause: c }
+    CashDerived { cash: c } => Ok { value: Present { value: c } }
+    CashNoPurchaseLines => Ok { value: Absent }
+    CashRefused { cause: c } => Err { value: c }
   }
 }
 
@@ -751,15 +748,15 @@ fn cash_first_derivation(declared: CurrencyCode, price: MoneyOnce, q: Nat) -> Ca
   }
 }
 
-// The fold matches on the derived partition, not the variant list: a refused accumulator
+// The fold matches on the std refusal carrier, not the variant list: a refused accumulator
 // short-circuits and the open region runs the fold body once for every open variant. The running
-// vs. first derivation is totalized on the running fact the partition carries (Absent until a
+// vs. first derivation is totalized on the running fact the carrier carries (Absent until a
 // line derives one) -- no arm for a refused accumulator exists inside the fold, so nothing is
-// fabricated for a state the partition already excluded.
+// fabricated for a state the carrier already excluded.
 fn cash_step(acc: CashProjection, declared: CurrencyCode, r: LineResolution) -> CashProjection {
-  match cash_partition(p: acc) {
-    CashPartitionRefused { cause: c } => CashRefused { cause: c }
-    CashPartitionOpen { running: running } =>
+  match cash_running(p: acc) {
+    Err { value: c } => CashRefused { cause: c }
+    Ok { value: running } =>
       match r {
         LineRefused { line: l, cause: _ } => CashRefused { cause: CashLineRefused { part: l.part } }
         LineResolved { line: l, fulfillment: f } =>
@@ -898,29 +895,22 @@ type BasisProjection
   | BasisNoDraws
   | BasisRefused { cause: BasisRefusalCause }
 
-// DERIVED REFUSED-VS-OPEN PARTITION FROM INHABITANCE (the basis projection's refused-vs-open
-// standing). The fold matches on this partition rather than the variant list, so the fold body is
-// written once: a refused accumulator short-circuits and both open variants continue the same
-// step (naming the open variants in the fold would clone the body once per arm, the DESIGN
-// section 2 redundancy).
-// The running basis fact, carried by the open side of the partition: the derived sum, its
-// retained remainder, and the allocation policy that produced it.
+// The running basis fact a fold needs to combine: the derived sum and its retained remainder
+// (the allocation policy of a new draw always replaces the running one, so it is not carried).
 type BasisRunning {
   basis: MoneyOnce
   remainder: MoneyAmountMicro
-  policy: BasisAllocationPolicy
 }
 
-type BasisPartition
-  = BasisPartitionOpen { running: Optional<BasisRunning> }
-  | BasisPartitionRefused { cause: BasisRefusalCause }
-
-fn basis_partition(p: BasisProjection) -> BasisPartition {
+// The accumulator's running basis, or a refusal: std's short-circuiting refusal carrier
+// Result<Optional<R>, C> (std.error_primitives) applied to this coproduct's inhabitance. The
+// fold matches on the carrier, not the variant list, so the fold body is written once.
+fn basis_running(p: BasisProjection) -> Result<Optional<BasisRunning>, BasisRefusalCause> {
   match p {
-    BasisDerived { basis: b, remainder: r, policy: pol } =>
-      BasisPartitionOpen { running: Present { value: BasisRunning { basis: b, remainder: r, policy: pol } } }
-    BasisNoDraws => BasisPartitionOpen { running: Absent }
-    BasisRefused { cause: c } => BasisPartitionRefused { cause: c }
+    BasisDerived { basis: b, remainder: r, policy: _ } =>
+      Ok { value: Present { value: BasisRunning { basis: b, remainder: r } } }
+    BasisNoDraws => Ok { value: Absent }
+    BasisRefused { cause: c } => Err { value: c }
   }
 }
 
@@ -971,15 +961,15 @@ fn basis_for_draw(lot: ProcurementLot, draw: LotDraw) -> BasisProjection {
   }
 }
 
-// The fold matches on the derived partition, not the variant list: a refused accumulator
+// The fold matches on the std refusal carrier, not the variant list: a refused accumulator
 // short-circuits and the open region runs the step once for every open variant. The running vs.
-// first derivation is totalized on the running basis fact the partition carries (Absent until a
+// first derivation is totalized on the running basis fact the carrier carries (Absent until a
 // draw derives one) -- no arm for a refused accumulator exists inside the fold, so nothing is
-// fabricated for a state the partition already excluded.
+// fabricated for a state the carrier already excluded.
 fn basis_step(acc: BasisProjection, lots: List<ProcurementLot>, draw: LotDraw) -> BasisProjection {
-  match basis_partition(p: acc) {
-    BasisPartitionRefused { cause: c } => BasisRefused { cause: c }
-    BasisPartitionOpen { running: running } =>
+  match basis_running(p: acc) {
+    Err { value: c } => BasisRefused { cause: c }
+    Ok { value: running } =>
       match lot_for(lots: lots, identity: draw.lot) {
         LotAbsent => BasisRefused { cause: BasisLotUnknown { lot: draw.lot } }
         LotDuplicated => BasisRefused { cause: BasisLotDuplicated { lot: draw.lot } }
@@ -1123,30 +1113,23 @@ type ConstructibleCeiling
   | CeilingUnconstrainedByAnyLine
   | CeilingRefused { cause: CeilingRefusalCause }
 
-// DERIVED REFUSED-VS-OPEN PARTITION FROM INHABITANCE (the ceiling's refused-vs-open standing). The
-// fold matches on this partition rather than the variant list, so the fold body is written once: a
-// refused ceiling short-circuits and both open variants continue the same step (naming the open
-// variants in the fold would clone the body once per arm, the DESIGN section 2 redundancy).
-// The running ceiling fact, carried by the open side of the partition: the best build ceiling
-// seen so far, the bottleneck lines that produce it, and their unit count.
+// The running ceiling fact a fold needs to compare against: the best build ceiling seen so far,
+// the bottleneck lines that produce it, and their unit count.
 type CeilingRunning {
   builds: Nat
   bottlenecks: List<BomLine>
   bottleneck_units: Nat
 }
 
-type CeilingPartition
-  = CeilingPartitionOpen { running: Optional<CeilingRunning> }
-  | CeilingPartitionRefused { cause: CeilingRefusalCause }
-
-fn ceiling_partition(p: ConstructibleCeiling) -> CeilingPartition {
+// The accumulator's running ceiling, or a refusal: std's short-circuiting refusal carrier
+// Result<Optional<R>, C> (std.error_primitives) applied to this coproduct's inhabitance. The
+// fold matches on the carrier, not the variant list, so the fold body is written once.
+fn ceiling_running(p: ConstructibleCeiling) -> Result<Optional<CeilingRunning>, CeilingRefusalCause> {
   match p {
     CeilingDerived { builds: b, bottlenecks: bs, bottleneck_units: bu } =>
-      CeilingPartitionOpen {
-        running: Present { value: CeilingRunning { builds: b, bottlenecks: bs, bottleneck_units: bu } },
-      }
-    CeilingUnconstrainedByAnyLine => CeilingPartitionOpen { running: Absent }
-    CeilingRefused { cause: c } => CeilingPartitionRefused { cause: c }
+      Ok { value: Present { value: CeilingRunning { builds: b, bottlenecks: bs, bottleneck_units: bu } } }
+    CeilingUnconstrainedByAnyLine => Ok { value: Absent }
+    CeilingRefused { cause: c } => Err { value: c }
   }
 }
 
@@ -1155,15 +1138,15 @@ fn ceiling_first_derivation(line: BomLine, builds: Nat, u: Nat) -> Constructible
   CeilingDerived { builds: builds, bottlenecks: [line], bottleneck_units: u }
 }
 
-// The fold matches on the derived partition, not the variant list: a refused ceiling short-circuits
+// The fold matches on the std refusal carrier, not the variant list: a refused ceiling short-circuits
 // and the open region runs the step once for every open variant. The running vs. first derivation
-// is totalized on the running ceiling fact the partition carries (Absent until a line constrains
+// is totalized on the running ceiling fact the carrier carries (Absent until a line constrains
 // the build) -- no arm for a refused ceiling exists inside the fold, so nothing is fabricated for
-// a state the partition already excluded.
+// a state the carrier already excluded.
 fn ceiling_step(acc: ConstructibleCeiling, line: BomLine, depth: LineDepth) -> ConstructibleCeiling {
-  match ceiling_partition(p: acc) {
-    CeilingPartitionRefused { cause: c } => CeilingRefused { cause: c }
-    CeilingPartitionOpen { running: running } =>
+  match ceiling_running(p: acc) {
+    Err { value: c } => CeilingRefused { cause: c }
+    Ok { value: running } =>
       match depth {
         DepthRefused { cause: c } =>
           CeilingRefused { cause: CeilingLineRefused { part: line.part, cause: c } }
