@@ -1121,7 +1121,7 @@ test fn a_completed_reconciled_against_an_incompatible_exit_is_a_refusal_named_b
     provider: ProviderCompleted { activity: "Codex turn complete" },
     process: WorkerProcessExited { exit_code: 3, last_command: "codex" },
   ) {
-    ProviderEventsRefused { activity, detail: _ } =>
+    ProviderEventsRefused { activity, detail } =>
       activity == "Codex turn complete"
       && detail.contains("turn.completed") && detail.contains("exited 3")
     _ => false
