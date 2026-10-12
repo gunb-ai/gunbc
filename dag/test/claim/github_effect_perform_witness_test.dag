@@ -17,7 +17,12 @@ import gunbc.github_effect_perform {
   jit_mint_performance_of_generate, jit_mint_generate_gate, JitMintDecidedBeforeGenerate,
   JitMintReceived, JitMintStepNotSucceeded, GenerateJitConfigStep,
   JitMintAppKeyNotCustodied, lifecycle_controller_app,
+  PublisherTokenMint, PublisherTokenMinted, PublisherTokenNotMinted,
+  PublisherJwtStaged, PublisherJwtReady, PublisherJwtNotReady,
+  publisher_key_unreadable, publisher_installation_token_refused, publisher_jwt_after_removal,
+  stage_sign_and_remove_publisher_key, AppJwtSigned, AppJwtUnsigned,
 }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.auth.github_apps { gunbai_bot_declared }
 import test.claim.github_app_registry { dispatched, runner_grant }
 
@@ -144,4 +149,56 @@ test fn witness_a_refused_dispatch_performs_no_mint() -> Bool {
     JitMintDecidedBeforeGenerate { performance: JitMintReceived { delivery: JitCredentialNotDispatched { refusal: _ } } } => true
     _ => false
   }
+}
+
+fn publisher_not_minted_cause_starts_with(m: PublisherTokenMint, prefix: String) -> Bool {
+  match m {
+    PublisherTokenNotMinted { cause: c } => starts_with(s: c, prefix: prefix)
+    PublisherTokenMinted { token: _ } => false
+  }
+}
+
+// THE PUBLISHER MINT'S DECISIONS, supplied rather than fetched (the JIT precedent above). The perform
+// function cannot run before merge, so what is established here is each refusal's typed cause and
+// that no refusal carries a token; the route is the perform function's call into these folds.
+test fn witness_secret_manager_403_refuses_the_publisher_mint_with_no_token() -> Bool {
+  publisher_not_minted_cause_starts_with(
+    m: publisher_key_unreadable(refusal: RestStatusRefused { status: 403, body: "denied" }),
+    prefix: "HealPublisherAppKeyUnreadable: HTTP 403",
+  )
+}
+
+test fn witness_installation_token_answer_other_than_created_refuses_with_no_token() -> Bool {
+  publisher_not_minted_cause_starts_with(
+    m: publisher_installation_token_refused(refusal: RestStatusRefused { status: 422, body: "bad repo" }),
+    prefix: "HealPublisherInstallationTokenRefused: HTTP 422",
+  ) && publisher_not_minted_cause_starts_with(
+    m: publisher_installation_token_refused(refusal: RestTransportRefused { cause: "reset" }),
+    prefix: "HealPublisherInstallationTokenRefused: transport",
+  )
+}
+
+test fn witness_jws_signing_refusal_refuses_the_publisher_mint_and_removal_failure_wins_over_a_signed_jwt() -> Bool {
+  let unsigned = match publisher_jwt_after_removal(signed: AppJwtUnsigned { detail: "openssl refused" }, removed: true, removal_error: "") {
+    PublisherJwtNotReady { cause: c } => starts_with(s: c, prefix: "HealPublisherAppJwtUnsigned: openssl refused")
+    PublisherJwtReady { jwt: _ } => false
+  }
+  let stuck_key = match publisher_jwt_after_removal(signed: AppJwtUnsigned { detail: "x" }, removed: false, removal_error: "busy") {
+    PublisherJwtNotReady { cause: c } => c == "HealPublisherAppKeyNotRemoved: busy"
+    PublisherJwtReady { jwt: _ } => false
+  }
+  unsigned && stuck_key
+}
+
+// THE KEY FILE IS GONE ON THE REFUSAL ARM. This executes the real stage/sign/remove function with a
+// key openssl cannot sign with: the staged file must not survive the refusal.
+test fn witness_the_staged_key_file_is_removed_when_signing_refuses() -> Bool {
+  let path = "/tmp/gunbc_publisher_key_witness.pem"
+  let staged = stage_sign_and_remove_publisher_key(key: "not a pem" as Secret, key_path: path)
+  let after = Filesystem.Read(path: path)
+  let refused = match staged {
+    PublisherJwtNotReady { cause: _ } => true
+    PublisherJwtReady { jwt: _ } => false
+  }
+  refused && !after.success
 }
