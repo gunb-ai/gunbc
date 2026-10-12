@@ -1084,9 +1084,6 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         KernelMintShapeMismatch { declaration_name: s(), cause: s(), span: no_span() },
         OptionalCastNotEliminated { source_type: s(), target_type: s(), span: no_span() },
         BareNoneNotAdmittedByFieldType { field: s(), type_name: s(), declared_type: s(), span: no_span() },
-        SourceAnnotationRefused {
-            refusal: Rc::new(crate::std_source_annotation::AnnotationAttachmentRefusal::UnattachedAtScopeEnd { origin: no_span() }),
-        },
         ConstructorCallAdmissionRefused {
             constructor_module_path: s(),
             constructor_decl_name: s(),
@@ -1621,7 +1618,6 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::EqualityMemberUnjudgeable { .. } => "EqualityMemberUnjudgeable",
         CompilerDiagnostic::EqualityOptionalityMismatch { .. } => "EqualityOptionalityMismatch",
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
-        CompilerDiagnostic::SourceAnnotationRefused { .. } => "SourceAnnotationRefused",
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => "ContainerSpellingUnrecognized",
         CompilerDiagnostic::TransportEmissionNotModeled { .. } => "TransportEmissionNotModeled",
         CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => {
@@ -1744,23 +1740,6 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         }
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => {
             "(occurrence-transport-refusal)".to_string()
-        }
-        // The three refusal kinds are separate failure classes — a reader fixing
-        // "prose in the wrong place" needs to know WHICH wrong place, so they stay
-        // distinct in the histogram rather than collapsing to one annotation bucket.
-        CompilerDiagnostic::SourceAnnotationRefused { refusal, .. } => {
-            use crate::std_source_annotation::AnnotationAttachmentRefusal;
-            match refusal.as_ref() {
-                AnnotationAttachmentRefusal::UnattachedAtScopeEnd { .. } => {
-                    "(annotation-unattached)".to_string()
-                }
-                AnnotationAttachmentRefusal::TrailingNotModeled { .. } => {
-                    "(annotation-trailing)".to_string()
-                }
-                AnnotationAttachmentRefusal::BodyGrainNotModeled { .. } => {
-                    "(annotation-body-grain)".to_string()
-                }
-            }
         }
         // The NAME is the full spelling, not its container leaf: the burn-down this
         // histogram feeds is a list of spellings to declare a row for, and every

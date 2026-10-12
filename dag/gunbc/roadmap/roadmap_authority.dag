@@ -1226,6 +1226,24 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
 
     roadmap_node(
+      identity: "rn_J2HQNCTQJGT2X0MTR31TB6HE8F",
+      id: "parse-comment-gap-attachment-v2",
+      owner: "parse",
+      carriers: carrier(path: "src/v2/compiler/02_parse.dag"),
+      line: ticket(t: fields(
+        headline: "The v2 parser attaches comments by the same gap rule as v1",
+        boundary: "v2 projects a std.source_annotation AnnotationRegion roster from its parse: each composite's extent from v2.std.provenance span_index_extent (an Unrepresentable extent contributes no region and is reported, never read as empty) and its parent from the parse tree, with parser scaffolding -- production markers, sequence and repeat spines, projection edges -- projected transparently so a region's children are its ORDERED DIRECT SOURCE-SYNTAX CHILDREN. The v2 capture row gains the preceded_by_blank_line and preceded_by_annotation_line bits the walk can observe from the line-prefix state it already threads. The lexer's final source position is retained in its artifact rather than dropped. parse_module gains an authored sibling that calls attach_annotations, the same fold v1 calls, producing AuthoredParseArtifact.",
+        displaced_cost: "v2 drops every comment at the lexer, so a v2-built tool cannot see, keep or write back authored prose, and the AuthoredParseArtifact carrier has no producer.",
+        first_slice: "A roster projected from one parsed module, with the argument-list control: a comment between two arguments lands before = a, after = b in the call's scope.",
+        red_control: "A comment inside f's body never attaches to the next declaration g; a comment in a sequence-spine position attaches to the source children, not the spine; v1 and v2 agree, by structural key, on the gaps of one corpus file.",
+        out_of_scope: "The attachment rule and the v1 realization (parse-comment-gap-attachment).",
+        handback: "v2 attaches every capture of the corpus, the roster disposition note on AuthoredParseArtifact is deleted, and the v1/v2 agreement control is green."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-compiler-live", contribution: "The v2 compiler keeps authored prose under the same gap rule as the seed."),
+    ),
+
+    roadmap_node(
       identity: "rn_DCHDCNK5Z6GZP693VSZA6MC84T",
       id: "parse-prepared-grammar-analysis-carried",
       owner: "parse",
@@ -6120,6 +6138,7 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
     edge(child: "extended-admission-cardinality", parent: "accepted-floor-obligation-closure"),
     edge(child: "extended-admission-cardinality", parent: "cardinality-vertical-slice"),
     edge(child: "parse-comment-gap-attachment", parent: "parse-node-source-extent"),
+    edge(child: "parse-comment-gap-attachment-v2", parent: "parse-comment-gap-attachment"),
     edge(child: "v2-parse-final-token-retained", parent: "parse-node-source-extent"),
   ]
 }

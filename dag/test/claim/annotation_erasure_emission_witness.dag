@@ -36,3 +36,18 @@ test fn w_semantic_change_is_observable_past_the_erased_prose_test() -> Bool {
   compile_dag_rust_emit_check(annotated_source_alpha_marker_a, "src/emit_probe_one.rs", ["424242"], ["909192"])
     && compile_dag_rust_emit_check(annotated_source_alpha_marker_b, "src/emit_probe_two.rs", ["909192"], ["424242"])
 }
+
+// Arm three (anywhere in a body): comments inside a function body -- between statements, trailing
+// a statement, between call arguments and before the closing brace -- compile through the real
+// v1 pipeline, and none of their prose reaches the emitted program. Until roadmap node
+// parse-comment-gap-attachment these positions were hard compile errors.
+data annotated_body_source: String = "module emit_probe_three\n\nfn helper(a: Int, b: Int) -> Int \{\n  a + b\n\}\n\nfn probe(x: Int) -> Int \{\n  let y = x + 515253 // prose trailing a statement\n  // prose between statements\n  helper(\n    y,\n    // prose between arguments\n    x\n  )\n  // prose before the closing brace\n\}\n"
+
+test fn w_body_annotations_compile_and_are_erased_from_emission_test() -> Bool {
+  compile_dag_rust_emit_check(
+    annotated_body_source,
+    "src/emit_probe_three.rs",
+    ["515253"],
+    ["prose trailing a statement", "prose between statements", "prose between arguments", "prose before the closing brace"]
+  )
+}

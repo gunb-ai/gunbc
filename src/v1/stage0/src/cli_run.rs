@@ -6455,9 +6455,6 @@ mod compile_clean_via_index_verdict_equivalence {
         );
     }
 
-    /// §5 discriminating RED: a `SourceAnnotationRefused` in a module outside the
-    /// scoped compile-clean closure must surface through whole-tree census fill —
-    /// compiling only the affected entry must not hide annotation debt elsewhere.
     /// DISCRIMINATING RED for the regen-closure de-fork.
     ///
     /// A seed module reaching its provider by REFERENCE ONLY -- no `import` line anywhere --
@@ -8303,91 +8300,6 @@ pub fn run_required_v2_emission(source_roots: &[String]) -> Result<Vec<CompileRu
             )
         })
         .collect())
-}
-
-/// THE PHASE'S OWN EVIDENCE, EXECUTED RATHER THAN DESCRIBED.
-///
-/// Two controlled fixture roots, authored to differ in ONE thing: `fixtures/v2_emission_gate/red`
-/// holds the real specimen -- a standalone `//` block trailing a module with no declaration
-/// after it -- and `fixtures/v2_emission_gate/green` holds the same block moved above the
-/// declaration it describes, which is the placement DESIGN §4c admits. The RED must refuse
-/// and the GREEN must complete; either flipping is a failure, because a gate that cannot go
-/// red is a decoration and a gate that cannot go green is not usable.
-///
-/// The fixture roots are their OWN source roots, so this runs in well under a second and
-/// does not depend on the state of the repository corpus -- an oracle authored
-/// independently of the tree it will judge (DESIGN §5, on what may serve as an oracle).
-pub fn run_required_v2_emission_selftest() -> Vec<String> {
-    let mut failures = Vec::new();
-    let red_root = "fixtures/v2_emission_gate/red".to_string();
-    let green_root = "fixtures/v2_emission_gate/green".to_string();
-
-    let red = compile_entry_emission(
-        &[red_root],
-        "fixtures/v2_emission_gate/red/subject.dag",
-        true,
-        crate::v1_compiler_artifact::RenderTarget::Rust,
-    );
-    match &red.disposition {
-        CompileDisposition::Completed { emitted_count } => failures.push(format!(
-            "selftest RED did not refuse: {emitted_count} file(s) emitted from the trailing-annotation fixture"
-        )),
-        // The refusal must be the ANNOTATION one. A fixture that refuses for an unrelated
-        // reason would keep this control permanently green while the class it stands for
-        // went unobserved.
-        //
-        // The expected sentence is ASKED FOR rather than spelled: it comes from the single
-        // message authority, `std_source_annotation` `annotation_attachment_refusal_message`,
-        // keyed on the typed variant `UnattachedAtScopeEnd` that this fixture provokes. A
-        // literal here would have been a positional pointer into a message -- a second
-        // spelling of a sentence one function owns, which a rewording silently invalidates
-        // (DESIGN §3). Grounded this way, a rewording moves both sides together and the
-        // check cannot rot; the variant, not the wording, is the identity being asserted.
-        CompileDisposition::Refused { cause, .. } => {
-            let expected = crate::std_source_annotation::annotation_attachment_refusal_message(
-                Rc::new(
-                    crate::std_source_annotation::AnnotationAttachmentRefusal::UnattachedAtScopeEnd {
-                        origin: Rc::new(crate::std_types::SourceSpan {
-                            file: String::new(),
-                            start: 0,
-                            end: 0,
-                        }),
-                    },
-                ),
-            );
-            if !cause.contains(&expected) {
-                failures.push(format!(
-                    "selftest RED refused for the wrong cause; expected the UnattachedAtScopeEnd refusal ({expected}), got: {cause}"
-                ));
-            }
-        }
-        CompileDisposition::NotExecuted {
-            earlier_phase,
-            cause,
-        } => failures.push(format!(
-            "selftest RED never ran ({earlier_phase}): {cause}"
-        )),
-    }
-
-    let green = compile_entry_emission(
-        &[green_root],
-        "fixtures/v2_emission_gate/green/subject.dag",
-        true,
-        crate::v1_compiler_artifact::RenderTarget::Rust,
-    );
-    match &green.disposition {
-        CompileDisposition::Completed { .. } => {}
-        CompileDisposition::Refused { phase, cause } => {
-            failures.push(format!("selftest GREEN refused at {phase}: {cause}"))
-        }
-        CompileDisposition::NotExecuted {
-            earlier_phase,
-            cause,
-        } => failures.push(format!(
-            "selftest GREEN never ran ({earlier_phase}): {cause}"
-        )),
-    }
-    failures
 }
 
 /// Whether `module_path` is indexed under primary-precedence `pool_roots`.
@@ -12506,19 +12418,11 @@ mod live_read_selection_manifest_producer_tests {
 }
 
 /// Per-file parse memo for `resolved_graph_from_sources_with_index`.
-///
-/// `annotation_diags` is `Some` when this entry was installed by a parse that ran
-/// `admit_source_annotations`. `None` means an annotation-erasing `tokenize`
-/// installed it (attribution). Via-index must still admit on `None`, and must
-/// consume `Some` on every `ResolvedGraphMemoShare` — `handle_serve` resolves
-/// `Memoize`, reads `compile_clean_diags`, and shares `process_shared_index`'s
-/// cache. Gating re-admission on `Ephemeral` made admission depend on cache
-/// state rather than source content.
+
 #[derive(Clone)]
 pub(crate) struct ParseCacheEntry {
     parse_result: Rc<v1_compiler_parse::ParseResult>,
     newline_index: Rc<NewlineIndex>,
-    annotation_diags: Option<Rc<im::Vector<Rc<ErrorNode>>>>,
 }
 
 pub struct MultiEntryIndex {
@@ -15514,36 +15418,6 @@ pub(crate) enum ResolvedGraphMemoShare {
     Ephemeral,
 }
 
-fn join_via_index_stage_refusal(
-    annotation_diags: &im::Vector<Rc<ErrorNode>>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    stage_err: String,
-) -> String {
-    if annotation_diags.is_empty() {
-        return stage_err;
-    }
-    let annotation_err = format_error_nodes(&Rc::new(annotation_diags.clone()), source_indices);
-    if annotation_err.is_empty() {
-        return stage_err;
-    }
-    if stage_err.is_empty() {
-        return annotation_err;
-    }
-    format!("{annotation_err}\n{stage_err}")
-}
-
-fn prepend_via_index_annotation_diags(
-    annotation_diags: im::Vector<Rc<ErrorNode>>,
-    compile_clean_diags: Rc<im::Vector<Rc<ErrorNode>>>,
-) -> Rc<im::Vector<Rc<ErrorNode>>> {
-    if annotation_diags.is_empty() {
-        return compile_clean_diags;
-    }
-    let mut merged = annotation_diags;
-    merged.extend(compile_clean_diags.iter().cloned());
-    Rc::new(merged)
-}
-
 /// Collision-honesty check for the shared typed-module cache (union-resolve receipt §6.3,
 /// resolver-graph-major-design (plan doc deleted 2026-08-28)). The typed cache is keyed by authored module
 /// name and reused across every entry that co-resides in one process's shared index, so a
@@ -17602,23 +17476,11 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
                         return;
                     }
                 };
-                // ONE FILE THROUGH THE FRONTEND'S OWN CENSUS-FILL PARSE, not `parse` alone.
-                //
-                // WHY NOT `tokenize` + `parse`, which is what this walk used to call. Source
-                // annotation GRAIN (DESIGN §4c) is not decided by the parser: `tokenize`
-                // routes `//` blocks into the annotation channel as unbound captures, and
-                // whether a capture attaches to a module item is decided later, by
-                // `admit_source_annotations`. So `parse` returned `error: None` for a file
-                // carrying an in-body or trailing annotation — MEASURED, by planting one in
-                // `dag/std/algebra.dag` and one in `src/v2/std/node.dag` and watching the old
-                // walk report both trees parse-clean. The floor's strict preparation refused
-                // the same files, during PREPARATION, where no witness runs at all.
-                //
-                // `parse_census_fill_sources` is the frontend's own per-source form: it
-                // tokenizes, parses in an occurrence scope, and admits annotations, returning
-                // the parse diagnostics and the annotation refusals in one population. Called
-                // with a single source, so files stay independent and nothing resolves across
-                // them.
+                // ONE FILE THROUGH THE FRONTEND'S OWN CENSUS-FILL PARSE: it tokenizes with the
+                // annotation channel, parses in an occurrence scope and binds every comment to
+                // its gap, exactly as the compile frontend does, so the sweep reads each file the
+                // way a compile would. Called with a single source, so files stay independent
+                // and nothing resolves across them.
                 let path_str = path.to_string_lossy().to_string();
                 let fill = crate::v1_compiler_compile::parse_census_fill_sources(std::rc::Rc::new(
                     vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {

@@ -1,326 +1,238 @@
 module test.claim.source_annotation_attachment_witness
 
-import std.types { Bool, Int, String, SourceSpan, List }
+import std.types { Bool, Int, List, SourceSpan, String }
 import std.occurrence_identity { OccurrenceId }
 import std.source_annotation {
-  AnnotationSubject,
-  AnnotationAttachmentRefusal,
-  BodyGrainNotModeled,
+  AnnotationGap,
+  AnnotationPlacement,
+  AnnotationRegion,
+  AnnotationScope,
+  ErasedSourceRegion,
+  FileScope,
+  KeyedAnnotationRow,
   LeadingAfterLineIndent,
   NormalizedAnnotationCapture,
+  OccurrenceScope,
+  SourceAnnotationDebt,
   SourceAnnotationGraph,
   TrailingAfterSemanticToken,
-  TrailingNotModeled,
-  UnattachedAtScopeEnd,
   attach_annotations,
-  annotation_attachment_result_graph,
-  annotation_attachment_result_refusals,
+  keyed_annotation_rows_agree,
   source_annotation_graph_rows
 }
 
-// OFFLINE LOCAL RECIPE: target/debug/claim_batch --source-root dag --entry
-// dag/test/claim/source_annotation_attachment_witness.dag --functions
-// w_leading_block_attaches_to_the_following_subject,w_consecutive_leading_captures_merge_into_one_block,w_distinct_subjects_produce_distinct_rows,w_body_grain_capture_refuses_rather_than_attaching_to_the_next_subject,w_body_grain_capture_would_otherwise_have_attached,w_trailing_capture_refuses_and_lands_no_row,w_capture_after_the_last_subject_refuses_unattached,w_attachment_refers_to_supplied_identities_and_mints_none,w_no_captures_yields_an_empty_graph_and_no_refusals
+// THE GAP RULE ON A SUPPLIED ROSTER, independent of any parser. One synthetic module, laid out so
+// every position a comment can occupy appears once:
+//
+//   0..20    comment above the module header          -> file scope, after the module
+//   50..900  module M (o1)
+//     80..95   comment above f                        -> M, after f
+//     100..400 fn f (o7)
+//       130..400 f's body block (o8)
+//         140..160 statement s1 (o11)
+//         160..175 trailing comment after s1          -> body, before s1, after the call
+//         200..220 comment between the statements     -> body, before s1, after the call
+//         300..360 call c (o13)
+//           310..315 argument a (o14)
+//             312..315 the expression a wraps (o16) -- a descendant, never a neighbour
+//           320..335 comment between the arguments    -> c, before a, after b
+//           340..345 argument b (o15)
+//         370..390 comment before the closing brace   -> body, before c, no after
+//     500..700 fn g (o9)
+//   950..960 comment after the module                 -> file scope, before the module
+//
+// The rule is applied by attach_annotations exactly as a realization calls it; nothing here
+// restates it.
 
-data source_annotation_attachment_note: String = "Exercises attach_annotations directly on a synthetic roster, so the attachment RULE is proven independently of either tokenizer. That separation is the point: a test that reached the fold only through the v1 lexer would pass on a fold that was wrong in a way the .dag grammar happens never to produce, and the same fold is what the v2 realization will call.
-
-The roster is synthetic offsets rather than parsed source because attachment consumes exactly two facts per subject — an identity and a span — and inventing them directly is what lets the body-grain and scope-end cases be constructed at all. A real .dag file cannot easily be made to exhibit an unattached-at-scope-end capture beside a body-grain capture beside a trailing one in one pass."
-
-data fixture_note: String = "One synthetic source laid out so every arm of the rule fires exactly once.
-
-  10..20   alpha    leading, before subject f      -> attaches to f
-  30..40   beta     leading, before subject f      -> merges into the alpha block
-  100..200          subject f
-  150..160 inner    leading, INSIDE f              -> BodyGrainNotModeled
-  210..220 gamma    leading, between f and g       -> attaches to g
-  250..260 tail     trailing                       -> TrailingNotModeled
-  300..400          subject g
-  500..510 orphan   leading, after every subject   -> UnattachedAtScopeEnd
-
-`inner` is the load-bearing one. Its nearest FOLLOWING subject is g, so a rule that checked proximity without checking containment would silently file a function's body commentary against the next unrelated declaration — a plausible wrong answer rather than a refusal."
-
-fn probe_span(start: Int, end: Int) -> SourceSpan {
+fn span(start: Int, end: Int) -> SourceSpan {
   SourceSpan { file: "probe.dag", start: start, end: end }
 }
 
-fn subject_f() -> AnnotationSubject {
-  AnnotationSubject { occurrence: OccurrenceId { value: 7 }, span: probe_span(start: 100, end: 200), module_root: false }
+fn occ(n: Int) -> AnnotationScope {
+  OccurrenceScope { occurrence: OccurrenceId { value: n } }
 }
 
-fn subject_g() -> AnnotationSubject {
-  AnnotationSubject { occurrence: OccurrenceId { value: 9 }, span: probe_span(start: 300, end: 400), module_root: false }
+fn region(n: Int, start: Int, end: Int, parent: AnnotationScope) -> AnnotationRegion {
+  AnnotationRegion { scope: occ(n: n), extent: span(start: start, end: end), parent: parent }
 }
 
-fn subjects() -> List<AnnotationSubject> {
-  [subject_f(), subject_g()]
-}
-
-fn leading(text: String, start: Int, end: Int) -> NormalizedAnnotationCapture {
-  NormalizedAnnotationCapture {
-    text: text,
-    origin: probe_span(start: start, end: end),
-    placement: LeadingAfterLineIndent,
-    preceded_by_blank_line: false,
-    preceded_by_annotation_line: false,
-  }
-}
-
-fn leading_after_blank(text: String, start: Int, end: Int) -> NormalizedAnnotationCapture {
-  NormalizedAnnotationCapture {
-    text: text,
-    origin: probe_span(start: start, end: end),
-    placement: LeadingAfterLineIndent,
-    preceded_by_blank_line: true,
-    preceded_by_annotation_line: false,
-  }
-}
-
-fn trailing(text: String, start: Int, end: Int) -> NormalizedAnnotationCapture {
-  NormalizedAnnotationCapture {
-    text: text,
-    origin: probe_span(start: start, end: end),
-    placement: TrailingAfterSemanticToken,
-    preceded_by_blank_line: false,
-    preceded_by_annotation_line: false,
-  }
-}
-
-fn captures() -> List<NormalizedAnnotationCapture> {
+fn regions() -> List<AnnotationRegion> {
   [
-    leading(text: "alpha", start: 10, end: 20),
-    leading(text: "beta", start: 30, end: 40),
-    leading(text: "inner", start: 150, end: 160),
-    leading(text: "gamma", start: 210, end: 220),
-    trailing(text: "tail", start: 250, end: 260),
-    leading(text: "orphan", start: 500, end: 510),
+    region(n: 1, start: 50, end: 900, parent: FileScope),
+    region(n: 7, start: 100, end: 400, parent: occ(n: 1)),
+    region(n: 8, start: 130, end: 400, parent: occ(n: 7)),
+    region(n: 11, start: 140, end: 160, parent: occ(n: 8)),
+    region(n: 13, start: 300, end: 360, parent: occ(n: 8)),
+    region(n: 14, start: 310, end: 315, parent: occ(n: 13)),
+    region(n: 16, start: 312, end: 315, parent: occ(n: 14)),
+    region(n: 15, start: 340, end: 345, parent: occ(n: 13)),
+    region(n: 9, start: 500, end: 700, parent: occ(n: 1)),
   ]
 }
 
-fn attached_graph() -> SourceAnnotationGraph {
-  annotation_attachment_result_graph(
-    result: attach_annotations(captures: captures(), subjects: subjects())
+fn capture(text: String, start: Int, end: Int, placement: AnnotationPlacement, after_blank: Bool, after_annotation: Bool) -> NormalizedAnnotationCapture {
+  NormalizedAnnotationCapture {
+    text: text,
+    origin: span(start: start, end: end),
+    placement: placement,
+    preceded_by_blank_line: after_blank,
+    preceded_by_annotation_line: after_annotation,
+  }
+}
+
+fn leading(text: String, start: Int, end: Int) -> NormalizedAnnotationCapture {
+  capture(text: text, start: start, end: end, placement: LeadingAfterLineIndent, after_blank: true, after_annotation: false)
+}
+
+fn gap(scope: AnnotationScope, before: AnnotationScope?, after: AnnotationScope?) -> AnnotationGap {
+  AnnotationGap { scope: scope, before: before, after: after }
+}
+
+// The gap one capture lands in, read through the real fold.
+fn gap_of(c: NormalizedAnnotationCapture, rs: List<AnnotationRegion>) -> AnnotationGap? {
+  match source_annotation_graph_rows(graph: attach_annotations(captures: [c], regions: rs)) |> first {
+    Present { value: row } => Present { value: row.gap }
+    Absent => none
+  }
+}
+
+fn lands(c: NormalizedAnnotationCapture, expected: AnnotationGap) -> Bool {
+  match gap_of(c: c, rs: regions()) {
+    Present { value: g } => g == expected
+    Absent => false
+  }
+}
+
+test fn w_a_comment_above_a_declaration_lands_before_it_in_the_module() -> Bool {
+  lands(c: leading(text: "about f", start: 80, end: 95), expected: gap(scope: occ(n: 1), before: none, after: Present { value: occ(n: 7) }))
+}
+
+// THE CASE THAT WAS A COMPILE ERROR. Prose inside f's body lands in the body between its statements,
+// and in particular never on g, the next declaration -- the misattachment a proximity rule makes.
+test fn w_a_comment_inside_a_body_lands_between_its_statements() -> Bool {
+  lands(c: leading(text: "inside f", start: 200, end: 220), expected: gap(scope: occ(n: 8), before: Present { value: occ(n: 11) }, after: Present { value: occ(n: 13) }))
+}
+
+// The discriminating control for the body case: the SAME capture against a roster without f and
+// its body lands in the module before g. Only the containing regions account for the difference, so
+// the in-body verdict above is the scope rule's, not an accident of the fixture.
+test fn w_without_the_containing_body_the_same_comment_would_land_on_g() -> Bool {
+  let outer_only = [region(n: 1, start: 50, end: 900, parent: FileScope), region(n: 9, start: 500, end: 700, parent: occ(n: 1))]
+  match gap_of(c: leading(text: "inside f", start: 200, end: 220), rs: outer_only) {
+    Present { value: g } => g == gap(scope: occ(n: 1), before: none, after: Present { value: occ(n: 9) })
+    Absent => false
+  }
+}
+
+// THE NEIGHBOURS ARE DIRECT CHILDREN. Between two arguments the scope is the call and the
+// neighbours are the arguments themselves, never a descendant of either: o16 ends closer to the
+// comment than its argument o14 starts, so a rule reading neighbours at any depth picks o16.
+test fn w_a_comment_between_arguments_lands_between_them_in_the_call() -> Bool {
+  lands(c: leading(text: "between args", start: 320, end: 335), expected: gap(scope: occ(n: 13), before: Present { value: occ(n: 14) }, after: Present { value: occ(n: 15) }))
+}
+
+test fn w_a_trailing_comment_lands_after_the_code_it_follows() -> Bool {
+  lands(
+    c: capture(text: "trailing", start: 160, end: 175, placement: TrailingAfterSemanticToken, after_blank: false, after_annotation: false),
+    expected: gap(scope: occ(n: 8), before: Present { value: occ(n: 11) }, after: Present { value: occ(n: 13) })
   )
 }
 
-fn attached_refusals() -> List<AnnotationAttachmentRefusal> {
-  annotation_attachment_result_refusals(
-    result: attach_annotations(captures: captures(), subjects: subjects())
+test fn w_a_comment_before_a_closing_brace_has_no_following_neighbour() -> Bool {
+  lands(c: leading(text: "at the end", start: 370, end: 390), expected: gap(scope: occ(n: 8), before: Present { value: occ(n: 13) }, after: none))
+}
+
+test fn w_a_comment_above_the_module_header_lands_in_file_scope() -> Bool {
+  lands(c: leading(text: "banner", start: 0, end: 20), expected: gap(scope: FileScope, before: none, after: Present { value: occ(n: 1) }))
+}
+
+test fn w_a_comment_after_the_module_lands_in_file_scope() -> Bool {
+  lands(c: leading(text: "epilogue", start: 950, end: 960), expected: gap(scope: FileScope, before: Present { value: occ(n: 1) }, after: none))
+}
+
+// AN ERASED REGION IS A SCOPE. `( x )` with x at 310..315 inside parentheses at 305..320: a comment
+// inside the parentheses lands in the erased region, whose child is x.
+test fn w_a_comment_inside_an_erased_region_lands_in_it() -> Bool {
+  let paren = ErasedSourceRegion { extent: span(start: 305, end: 320) }
+  let rs = [
+    region(n: 1, start: 50, end: 900, parent: FileScope),
+    AnnotationRegion { scope: paren, extent: span(start: 305, end: 320), parent: occ(n: 1) },
+    region(n: 14, start: 310, end: 315, parent: paren),
+  ]
+  match gap_of(c: leading(text: "in parens", start: 306, end: 309), rs: rs) {
+    Present { value: g } => g == gap(scope: paren, before: none, after: Present { value: occ(n: 14) })
+    Absent => false
+  }
+}
+
+// A BLANK LINE SPLITS A BLOCK; adjacency continues it. Both pairs land in the same gap and differ
+// only in the observed bits, so nothing else can account for one row versus two.
+test fn w_adjacent_lines_in_one_gap_merge_into_one_block() -> Bool {
+  let graph = attach_annotations(
+    captures: [leading(text: "one", start: 60, end: 65), capture(text: "two", start: 66, end: 71, placement: LeadingAfterLineIndent, after_blank: false, after_annotation: true)],
+    regions: regions()
   )
+  match source_annotation_graph_rows(graph: graph) |> first {
+    Present { value: row } => (source_annotation_graph_rows(graph: graph) |> count) == 1 && row.text == "one\ntwo"
+    Absent => false
+  }
 }
 
-// Rows render to one delimited string rather than being indexed, because equality against a complete rendering fails on any extra, missing, reordered, or mis-merged row at once. Indexing element by element asserts only what the author remembered to index, and the failure this whole fold could plausibly produce is a row that should not be there.
-fn render_rows(graph: SourceAnnotationGraph) -> String {
-  fold(
-    source_annotation_graph_rows(graph: graph),
-    init: "",
-    f: (acc, row) => concat(acc, concat("|", concat(to_string(row.subject.value), concat(":", row.text))))
+test fn w_a_blank_line_splits_one_gap_into_two_blocks() -> Bool {
+  let graph = attach_annotations(
+    captures: [leading(text: "one", start: 60, end: 65), leading(text: "two", start: 70, end: 75)],
+    regions: regions()
   )
+  (source_annotation_graph_rows(graph: graph) |> count) == 2
 }
 
-fn row_count(graph: SourceAnnotationGraph) -> Int {
-  source_annotation_graph_rows(graph: graph) |> count
+// Attachment REFERS to the supplied identities and mints none: every scope and neighbour on every
+// row is one the roster supplied, or the file.
+fn supplied(scope: AnnotationScope) -> Bool {
+  match scope {
+    FileScope => true
+    _ => regions() |> any(r => r.scope == scope)
+  }
 }
 
-fn count_body_grain(refusals: List<AnnotationAttachmentRefusal>) -> Int {
-  fold(
-    refusals,
-    init: 0,
-    f: (n, refusal) =>
-      match refusal {
-        BodyGrainNotModeled { origin: _ } => n + 1
-        TrailingNotModeled { origin: _ } => n
-        UnattachedAtScopeEnd { origin: _ } => n
-      }
-  )
+fn supplied_optional(scope: AnnotationScope?) -> Bool {
+  match scope {
+    Present { value: s } => supplied(scope: s)
+    Absent => true
+  }
 }
 
-fn count_trailing(refusals: List<AnnotationAttachmentRefusal>) -> Int {
-  fold(
-    refusals,
-    init: 0,
-    f: (n, refusal) =>
-      match refusal {
-        BodyGrainNotModeled { origin: _ } => n
-        TrailingNotModeled { origin: _ } => n + 1
-        UnattachedAtScopeEnd { origin: _ } => n
-      }
-  )
-}
-
-fn count_unattached(refusals: List<AnnotationAttachmentRefusal>) -> Int {
-  fold(
-    refusals,
-    init: 0,
-    f: (n, refusal) =>
-      match refusal {
-        BodyGrainNotModeled { origin: _ } => n
-        TrailingNotModeled { origin: _ } => n
-        UnattachedAtScopeEnd { origin: _ } => n + 1
-      }
-  )
-}
-
-test fn w_leading_block_attaches_to_the_following_subject() -> Bool {
-  render_rows(graph: attached_graph()) == "|7:alpha\nbeta|9:gamma"
-}
-
-test fn w_consecutive_leading_captures_merge_into_one_block() -> Bool {
-  let single = annotation_attachment_result_graph(
-    result: attach_annotations(
-      captures: [leading(text: "alpha", start: 10, end: 20), leading(text: "beta", start: 30, end: 40)],
-      subjects: subjects()
-    )
-  )
-  row_count(graph: single) == 1 && render_rows(graph: single) == "|7:alpha\nbeta"
-}
-
-test fn w_distinct_subjects_produce_distinct_rows() -> Bool {
-  row_count(graph: attached_graph()) == 2
-}
-
-test fn w_body_grain_capture_refuses_rather_than_attaching_to_the_next_subject() -> Bool {
-  count_body_grain(refusals: attached_refusals()) == 1 &&
-    render_rows(graph: attached_graph()) == "|7:alpha\nbeta|9:gamma"
-}
-
-// The discriminating control for the body-grain refusal. It reruns the SAME capture against a roster with f removed, so the capture is no longer inside anything and the nearest following subject is g. It then attaches. That proves the refusal above is produced by the containment rule and not by the capture being dropped, mis-parsed, or filtered somewhere upstream — the two are indistinguishable from the refusal count alone.
-test fn w_body_grain_capture_would_otherwise_have_attached() -> Bool {
-  let result = attach_annotations(
-    captures: [leading(text: "inner", start: 150, end: 160)],
-    subjects: [subject_g()]
-  )
-  render_rows(graph: annotation_attachment_result_graph(result: result)) == "|9:inner" &&
-    count_body_grain(refusals: annotation_attachment_result_refusals(result: result)) == 0
-}
-
-test fn w_trailing_capture_refuses_and_lands_no_row() -> Bool {
-  let result = attach_annotations(
-    captures: [trailing(text: "tail", start: 250, end: 260)],
-    subjects: subjects()
-  )
-  row_count(graph: annotation_attachment_result_graph(result: result)) == 0 &&
-    count_trailing(refusals: annotation_attachment_result_refusals(result: result)) == 1
-}
-
-test fn w_capture_after_the_last_subject_refuses_unattached() -> Bool {
-  count_unattached(refusals: attached_refusals()) == 1 &&
-    count_trailing(refusals: attached_refusals()) == 1
-}
-
-// Attachment REFERS to occurrence identities and never mints one, which is the property that keeps a comment edit from shifting declaration identities here and in every later-parsed module. There is no allocator in scope for the fold to draw from, so this asserts the observable consequence: every subject appearing in the output is one that was supplied on the way in.
-test fn w_attachment_refers_to_supplied_identities_and_mints_none() -> Bool {
-  fold(
-    source_annotation_graph_rows(graph: attached_graph()),
-    init: true,
-    f: (ok, row) => ok && (row.subject.value == 7 || row.subject.value == 9)
-  )
-}
-
-test fn w_no_captures_yields_an_empty_graph_and_no_refusals() -> Bool {
-  let result = attach_annotations(captures: [], subjects: subjects())
-  row_count(graph: annotation_attachment_result_graph(result: result)) == 0 &&
-    (annotation_attachment_result_refusals(result: result) |> count) == 0
-}
-
-data blank_line_split_note: String = "THE discriminating pair for block adjacency. Both cases send two leading captures resolving to the SAME subject, and differ only in whether the second was preceded by a blank line. Adjacent captures merge into one row; separated captures stay two rows.
-
-Without the second claim the model would be untested exactly where it was wrong: same-subject-only grouping passes the first case and silently fails the second, producing one row where the author wrote two blocks. Asserting the rendered rows rather than a count is what makes the failure legible — a merge shows up as `alpha\nbeta` in a single row instead of two rows."
-
-test fn w_blank_line_splits_one_block_into_two() -> Bool {
-  let result = attach_annotations(
+test fn w_attachment_refers_to_supplied_regions_and_mints_none() -> Bool {
+  let graph = attach_annotations(
     captures: [
-      leading(text: "alpha", start: 10, end: 20),
-      leading_after_blank(text: "beta", start: 30, end: 40)
+      leading(text: "banner", start: 0, end: 20),
+      leading(text: "about f", start: 80, end: 95),
+      leading(text: "inside f", start: 200, end: 220),
+      leading(text: "between args", start: 320, end: 335),
+      leading(text: "epilogue", start: 950, end: 960),
     ],
-    subjects: subjects()
+    regions: regions()
   )
-  let graph = annotation_attachment_result_graph(result: result)
-  row_count(graph: graph) == 2 && render_rows(graph: graph) == "|7:alpha|7:beta"
+  let rows = source_annotation_graph_rows(graph: graph)
+  (rows |> count) == 5
+    && (rows |> all(row => supplied(scope: row.gap.scope) && supplied_optional(scope: row.gap.before) && supplied_optional(scope: row.gap.after)))
 }
 
-test fn w_adjacent_captures_still_merge_into_one_block() -> Bool {
-  let result = attach_annotations(
-    captures: [
-      leading(text: "alpha", start: 10, end: 20),
-      leading(text: "beta", start: 30, end: 40)
-    ],
-    subjects: subjects()
-  )
-  let graph = annotation_attachment_result_graph(result: result)
-  row_count(graph: graph) == 1 && render_rows(graph: graph) == "|7:alpha\nbeta"
+test fn w_no_captures_yields_an_empty_graph() -> Bool {
+  (source_annotation_graph_rows(graph: attach_annotations(captures: [], regions: regions())) |> count) == 0
 }
 
-test fn w_empty_unattached_capture_skips_without_refusal() -> Bool {
-  let result = attach_annotations(
-    captures: [leading(text: "", start: 500, end: 510)],
-    subjects: subjects(),
-  )
-  row_count(graph: annotation_attachment_result_graph(result: result)) == 0
-    && count_unattached(refusals: annotation_attachment_result_refusals(result: result)) == 0
+fn keyed(scope: String, before: String?, after: String?, text: String) -> KeyedAnnotationRow {
+  KeyedAnnotationRow { scope_key: scope, before_key: before, after_key: after, text: text }
 }
 
-test fn w_nonempty_unattached_capture_still_refuses() -> Bool {
-  let result = attach_annotations(
-    captures: [leading(text: "orphan", start: 500, end: 510)],
-    subjects: subjects(),
-  )
-  row_count(graph: annotation_attachment_result_graph(result: result)) == 0
-    && count_unattached(refusals: annotation_attachment_result_refusals(result: result)) == 1
-}
-
-// THE MODULE-HEADER ARM HAD NO EXECUTING EVIDENCE UNTIL THESE TWO ROWS. `module_header_gap_subject`
-// is CALLED on every attachment -- `attach_annotations` reaches it through `annotation_attach_step`
-// for each capture -- but the fixtures above declare `module_root: false` on every subject, so
-// `module_root_subject` answers Absent and the function's Present branch never fires. The arm was
-// reached and never exercised, which reads as covered on a call-graph census and establishes
-// nothing. It is the arm that decides whether a block at the top of a file names the MODULE or the
-// first declaration after it, so a wrong answer silently rebinds prose to an unrelated symbol.
-fn hdr_subject_module() -> AnnotationSubject {
-  AnnotationSubject { occurrence: OccurrenceId { value: 1 }, span: probe_span(start: 0, end: 50), module_root: true }
-}
-
-fn hdr_subject_following() -> AnnotationSubject {
-  AnnotationSubject { occurrence: OccurrenceId { value: 7 }, span: probe_span(start: 100, end: 200), module_root: false }
-}
-
-fn hdr_subjects() -> List<AnnotationSubject> {
-  [hdr_subject_module(), hdr_subject_following()]
-}
-
-// Both captures occupy the SAME span, 60..80, which lies in the gap between the module declaration
-// and the first member. The two witnesses differ in exactly one bit, so the pair is discriminating:
-// nothing but `preceded_by_blank_line` can account for a divergence in their verdicts.
-fn hdr_gap_capture() -> NormalizedAnnotationCapture {
-  leading(text: "header", start: 60, end: 80)
-}
-
-fn hdr_gap_capture_after_blank() -> NormalizedAnnotationCapture {
-  leading_after_blank(text: "header", start: 60, end: 80)
-}
-
-fn hdr_attached_graph(capture: NormalizedAnnotationCapture) -> SourceAnnotationGraph {
-  annotation_attachment_result_graph(
-    result: attach_annotations(captures: [capture], subjects: hdr_subjects())
-  )
-}
-
-// Returns -1 rather than 0 when no row is present. Zero is a real OccurrenceId, so a zero sentinel
-// would be indistinguishable from a genuine attachment to occurrence 0 -- the reading and the
-// vacancy would share a value and the witness would pass on an empty graph.
-fn hdr_only_row_subject(capture: NormalizedAnnotationCapture) -> Int {
-  fold(
-    source_annotation_graph_rows(graph: hdr_attached_graph(capture: capture)),
-    init: 0 - 1,
-    f: (acc, row) => row.subject.value
-  )
-}
-
-test fn w_a_header_gap_annotation_attaches_to_the_module_root() -> Bool {
-  row_count(graph: hdr_attached_graph(capture: hdr_gap_capture())) == 1
-    && hdr_only_row_subject(capture: hdr_gap_capture()) == 1
-}
-
-test fn w_a_blank_line_before_a_header_gap_annotation_moves_it_to_the_following_declaration() -> Bool {
-  row_count(graph: hdr_attached_graph(capture: hdr_gap_capture_after_blank())) == 1
-    && hdr_only_row_subject(capture: hdr_gap_capture_after_blank()) == 7
+// Agreement compares scope, both neighbours and text, in order. The negative rows differ in exactly
+// one neighbour key, so a predicate ignoring neighbours would wrongly agree.
+test fn w_keyed_rows_agree_only_on_the_same_gap_and_text() -> Bool {
+  let left = [keyed(scope: "/0:m/0:f", before: Present { value: "/0:m/0:f/0:a" }, after: none, text: "x")]
+  let same = [keyed(scope: "/0:m/0:f", before: Present { value: "/0:m/0:f/0:a" }, after: none, text: "x")]
+  let other_neighbour = [keyed(scope: "/0:m/0:f", before: Present { value: "/0:m/0:f/0:b" }, after: none, text: "x")]
+  keyed_annotation_rows_agree(left: left, right: same)
+    && !keyed_annotation_rows_agree(left: left, right: other_neighbour)
+    && !keyed_annotation_rows_agree(left: left, right: [])
 }
