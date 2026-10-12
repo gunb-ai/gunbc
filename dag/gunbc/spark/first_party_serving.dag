@@ -448,8 +448,8 @@ fn spark_first_party_downstream() -> DownstreamProviderPopulation {
 // ── THE ROUTE FACTS ARE ABOUT THE REALIZATION THAT ANSWERED, NOT ABOUT A DECLARATION ─────────
 //
 // THE DEFECT THIS REPLACES, stated because it was mine and it was latent rather than theoretical.
-// The telemetry fold read gunbc.spark.pair_serving_realization's container environment over the
-// GLOBAL fabric lane roster, and the service reference named gunbc.spark.pair_serving_desired --
+// The telemetry fold read the retired Spark pair-serving realization's container environment over the
+// GLOBAL fabric lane roster, and the service reference named the retired pair_serving_desired --
 // neither of which takes the launch being offered. So a native GLM launch, whose actual environment
 // nobody here models, would have inherited pair-serving's DESIRED answer and been admitted on route
 // facts describing a different deployment. The operator-routed review of #11083 names the repair:
@@ -511,8 +511,7 @@ fn spark_realization_hosts_without_lanes(realization: SparkServingRealization) -
 // WHAT IS LAUNCH-BOUND IS WHAT THE PROCESS ITSELF REPORTED. gunbc.spark.vllm_observed's models-route
 // readback carries the configured_model_path the running engine answered with, and the realization
 // carries the path the GROUP'S launch is declared to serve, derived from its pinned snapshot by the
-// group's own serving authority (gunbc.spark.serving_group_launch: the pair-serving realization for
-// group A, the native arm's for group B). Those two agreeing is evidence ABOUT THE PROCESS rather
+// group's own serving authority (retired Spark serving_group_launch). Those two agreeing is evidence ABOUT THE PROCESS rather
 // than about our intent for it: a different engine serving a different checkpoint answers with a
 // different path, and a readback this repository could not decode answers with none at all.
 //

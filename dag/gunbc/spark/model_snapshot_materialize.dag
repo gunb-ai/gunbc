@@ -130,10 +130,9 @@ fn spark_remote_run_of_session(endpoint: String, exit_code: Int, stdout: String,
 // EVERY LEG IS PRIVILEGED, BECAUSE THE DAEMON IT MUST REACH IS. Acquisition drives docker on the
 // target, and docker's socket is root-owned on these hosts -- an unprivileged run answers
 // `permission denied while trying to connect to the docker API`, which is what the first real
-// acquisition hit. The privilege comes from the shape gunbc.spark.pair_serving_apply already uses for
-// the same hosts -- `sudo -S` with the credential on stdin ahead of the command -- rather than a
-// second mechanism invented here. `sudo -n` was tried first and is wrong: it requires passwordless
-// sudo, which this fleet does not grant.
+// acquisition hit. The privilege is the same `sudo -S` shape gunbc.spark.host_privileged_apply uses
+// -- credential on stdin ahead of the command -- rather than a second mechanism. `sudo -n` was tried
+// first and is wrong: it requires passwordless sudo, which this fleet does not grant.
 //
 // ONE REMOTE EXECUTION, AND THE TWO FAILURES IT KEEPS APART. "the ssh leg never landed" and "the
 // command ran and exited non-zero" are different facts with different remedies, and collapsing them

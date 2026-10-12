@@ -18,8 +18,8 @@ import gunbc.artifact_acquisition {
 // modelled way to bring it there.
 //
 // WHAT THIS REPLACES IS NOTHING, WHICH IS THE POINT. Until this module, no desired row materialised a
-// vLLM group's weights. gunbc.spark.pair_serving_realization binds the operator's Hub cache into the
-// container read-only and assumes what is inside it; group B's weights arrived on 2026-09-05 by a
+// vLLM group's weights. The retired Spark pair-serving realization bound the operator's Hub cache
+// into the container read-only and assumed what is inside it; group B's weights arrived on 2026-09-05 by a
 // hand-run copy over the fabric rail. gunbc.rung_drop spark_serving_local_artifact_not_reproducible
 // has carried that gap since 2026-09-02 and was re-anchored to this exact population on 2026-09-06.
 // The Ollama-era materializer that DID fetch and verify was deleted with its tree.

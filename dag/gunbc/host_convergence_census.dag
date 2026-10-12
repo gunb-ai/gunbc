@@ -375,7 +375,7 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     current_authority: std_decision(),
     persistent_host_effect: DoesNotMutateHost,
     disposition: RetainAuthority,
-    first_consumer: cite(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "select_serving_deployment"),
+    first_consumer: cite(module_path: "product.fleet_operating_point", decl_name: "fleet_operating_point_selection"),
   ),
   census_row(
     identity: std_goal_assessment(),

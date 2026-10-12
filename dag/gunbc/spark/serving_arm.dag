@@ -1505,7 +1505,7 @@ data glm53_derived_row: ServingRuntimeRow = ServingRuntimeRow {
 // A PURE FILE-COPY LAYER OVER glm53_derived_row's CONTENT ID (sha256:c7d63d15...), carrying the two
 // files of dag/extdeps/vllm/patches/kv-allocation-plan-emission-v2-8d09804c8.patch (sha256
 // 8267d86b..., applied INSTEAD of v1, never both) so the engine prints its resolved KV allocation
-// plan at startup. The build and roll-out are docs/runbooks/glm-kv-allocation-plan-image-rebuild.md;
+// plan at startup. The Group B image-rebuild runbook is deleted with the sold serving path;
 // the patched core.py was verified in-image at pin 7ffe8efa... on all four Group B ranks, and the
 // bounded 262144x6 experiment converged under this image on 2026-09-26 (its captured plan line is
 // test.fixture.kv_allocation_plan_emission.real_262144x6_v2_line).
@@ -1531,7 +1531,7 @@ data glm53_derived_kvplan_v2_row: ServingRuntimeRow = ServingRuntimeRow {
   artifact: runtime_artifact_identity(
     pin: PinnedElsewhere {
       reference: glm53_derived_kvplan_v2_tag,
-      pin_authority: "docs/runbooks/glm-kv-allocation-plan-image-rebuild.md: a file-copy layer built per Group B host over the base content id sha256:c7d63d15... from the v2 patch (sha256 8267d86b...), so each host holds its own content id under this tag" as NonEmptyStr,
+      pin_authority: "retired Group B file-copy layer (sold hardware): per-host content id under tag gunbc-vllm-glm53-gb10:derived-kvplan-v2-20260926 over base sha256:c7d63d15...; historical runbook deleted" as NonEmptyStr,
     },
     source: PackageVersionClaimsRevision {
       revision: (defaults_source_revision(r: Vllm8d09804)).full_revision,
@@ -1544,7 +1544,7 @@ data glm53_derived_kvplan_v2_row: ServingRuntimeRow = ServingRuntimeRow {
       "flashinfer_jit_cache-0.7.0.dev20260910+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
       "kv-allocation-plan-emission-v2-8d09804c8.patch" as NonEmptyStr,
     ],
-    provenance: "built per host by the operator from docs/runbooks/glm-kv-allocation-plan-image-rebuild.md (2026-09-26 amendment: v2 instead of v1) as a pure file-copy layer over the recorded base content id sha256:c7d63d15...; post-patch pins core.py 7ffe8efa..., envs.py 239d5093..., verified in-image on all four Group B ranks" as NonEmptyStr,
+    provenance: "historical Group B kvplan-v2 layer (sold 2026-10-10): file-copy over sha256:c7d63d15...; post-patch pins core.py 7ffe8efa..., envs.py 239d5093..., verified in-image on the four then-live ranks" as NonEmptyStr,
   ),
   hub_cli_path: none,
   vllm_version: Present { value: glm53_nope_derived_vllm_version },

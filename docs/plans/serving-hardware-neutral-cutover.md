@@ -66,7 +66,24 @@ Witnesses under `dag/test/claim/spark/` that existed only to inhabit those modul
 
 Reuse: `gunbc.serving.turn_admission`, `serving_availability`, `engine_progress`, `product.fabric.selection`, `product.capacity.{LeaseGrant,SeatRequest}`, `gunbc.harness.harness_seat`, `extdeps/vllm/*`. Replica collection: inventory and model artifact are data; first vertical is rented 1×/2× RTX PRO 6000, Qwen, one replica per fitting device.
 
-## 5. Sequence remaining
+## 5. Why leftover Spark *vocabulary* files survive
+
+These are **not** the deleted production path. Each has a live importer outside Spark serving apply/launch:
+
+| Module | Live consumer (by name) |
+|---|---|
+| `serving_arm` | `gunbc.harness.harness_reasoning_wire` (`ReasoningResponseProjection`); `arm_memory_fit`; `serving_capacity_intent`; `serving_compatibility`; `serving_performance_subject`; `snapshot_rail_replica` checkpoints |
+| `first_party_serving` | `gunbc.workspace_demo_preparation_policy`, `gunbc.runner.runner_fleet_ci_posture` (posture types only) |
+| `serving_rank_observe` | `product.fabric.node_qualification` (GPUDirect receipts) |
+| `serving_performance_subject` | `gunbc.spark.serving_promotion` |
+| `arm_memory_fit` | `serving_promotion`, `kv_roster_group_vocabulary` witness |
+| `model_snapshot_acquisition` / `model_snapshot_materialize` | host snapshot/grant path (`snapshot_rail_replica`, `fabric_blob_peer`, occupancy) — not serving launch |
+| `host_commitment` | host-effect admission; empty serving-claim join |
+| `vllm_observed` | `harness_seat`, `harness_backend`, `frontend_eval.serving_identity` |
+
+Re-homing those types out of `gunbc.spark.*` is a later cut (sequence item 3). Deleting them in this PR would break Y.
+
+## 6. Sequence remaining
 
 1. **This cut** — Spark serving production deleted; this plan records sold-hardware retirement.
 2. **Rented cohort** — continue on `gunbc.serving.*` / `harness_seat` (peer: bright-badger-372). Do not reintroduce `FabricGroup` as a serving key.

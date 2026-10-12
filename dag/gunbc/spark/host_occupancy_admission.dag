@@ -27,11 +27,9 @@ import gunbc.spark.retired_serving_container_names {
 // units a Spark can carry. An effect is admitted only when BOTH hold, so a caller calls both and
 // neither answers for the other.
 //
-// THE UNITS ARE THE REALIZATION'S, NOT RE-SPELLED: the pair head and worker units gunbc.spark
-// pair_serving_realization renders, and the two retired units gunbc.spark.pair_serving_apply still
-// disables on every apply -- a host that never converged could still be running one of those, and a
-// retired unit holding the GPU occupies a host exactly as a current one does. Any other GPU user is
-// caught by the compute-process read without being named here.
+// THE UNITS ARE HISTORICAL NAMES, NOT A LIVE SERVING REALIZATION: gunbc.spark.retired_serving_container_names
+// holds the pair head/worker and retired unit strings a sold host may still have loaded. Occupancy
+// still reads them. Any other GPU user is caught by the compute-process read without being named here.
 fn spark_serving_units() -> List<NonEmptyStr> {
   [spark_pair_head_unit_name, spark_pair_worker_unit_name, spark_pair_retired_head_unit, spark_pair_retired_worker_unit]
 }
