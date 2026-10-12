@@ -2,7 +2,6 @@ module gunbc.machine_intake_dimm_physical_orientation
 
 import extdeps.board_authority { BoardAuthorityRef, BoardAuthorityLookup }
 import gunbc.board_authority_binding { observed_board_authority }
-import v2.std.algebra { filter }
 import std.types { String, List, list_length }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

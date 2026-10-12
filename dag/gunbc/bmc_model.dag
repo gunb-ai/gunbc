@@ -4,7 +4,6 @@ import std.types { Bool, Int, List, NonEmptyStr }
 import std.measure { Second, second, second_count }
 import std.optional { Present, Absent }
 import std.algebra { list_snoc_item }
-import v2.std.algebra { any, filter }
 import extdeps.bmc.ipmi_channel { IpmiChannelNumber, IpmiUserId, IpmiUserChannelAccess, IpmiChannelPrivilegeLimit }
 import extdeps.bmc.redfish_telemetry { RedfishLogEntry, RedfishLogService, RedfishTelemetryPoint }
 import extdeps.bmc.redfish_virtual_media { RedfishVirtualMediaObservation }

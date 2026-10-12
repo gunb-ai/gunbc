@@ -2,7 +2,6 @@ module test.claim.bare_imported_text_reading_witness_test
 
 import std.types { String, Bool, Int, List }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.algebra { filter }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
 }

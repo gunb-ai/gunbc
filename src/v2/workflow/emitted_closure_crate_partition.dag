@@ -18,7 +18,6 @@ import gunbc.crate_partition {
 }
 
 import std.types { List, String, Bool, Int, Map }
-import v2.std.algebra { any }
 import v2.workflow.compiler_closure_ingest_transport { closure_entry }
 import v2.lens.module_graph {
   ModuleDeclarationFact,

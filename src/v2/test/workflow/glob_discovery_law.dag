@@ -2,7 +2,7 @@ module v2.test.workflow.glob_discovery_law
 
 import std.types { List }
 import std.algebra { Cons, Empty }
-import v2.std.algebra { filter, fold_list, length }
+import v2.std.algebra { fold_list, length }
 import v2.compiler.discovery_enumeration {
   OwnedBoolWitnessClaimInit,
   OwnedDataDeclInitializer,
