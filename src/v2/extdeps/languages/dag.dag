@@ -1418,6 +1418,11 @@ fn dag_grammar_field_decl_expr() -> GrammarExpr {
   )
 }
 
+// A FIELD MAY REFINE ITS TYPE WITH A WHERE CLAUSE (`n: Int where range(min: 0)`), in v1 parse_field's
+// order: type, refinement, wire key, default. It PARSES, and every lowering of a field REFUSES at the
+// clause (body_lowering_reason_field_refinement_unmodeled), the parameter precedent
+// (dag_grammar_typed_param_expr): the clause is the first slot of the tail, optional and led by `where`,
+// which neither `from` nor `=` can begin, so the three optional slots are disjoint and left-factored.
 // A field: the general field plus v1 parse_field's `[from "key"] [= default]` tail, which v1 admits on
 // EVERY field. It was once scoped to the service io_block (review 68343), because a record type does
 // lower and nothing then read the tail, so a grammar-only admission would have lowered the type and
@@ -1431,13 +1436,18 @@ fn dag_grammar_io_field_decl_expr() -> GrammarExpr {
     left: dag_grammar_field_decl_expr(),
     right: dag_grammar_sequence(
       left: dag_grammar_optional(
-        element: dag_grammar_sequence(
-          left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: ^from),
-          right: dag_grammar_terminal(token_class: ^dag_token_string_literal)
-        )
+        element: dag_grammar_nonterminal(production: ^dag_production_where_refinement_clause)
       ),
-      right: dag_grammar_optional(
-        element: dag_grammar_nonterminal(production: ^dag_production_default_value)
+      right: dag_grammar_sequence(
+        left: dag_grammar_optional(
+          element: dag_grammar_sequence(
+            left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: ^from),
+            right: dag_grammar_terminal(token_class: ^dag_token_string_literal)
+          )
+        ),
+        right: dag_grammar_optional(
+          element: dag_grammar_nonterminal(production: ^dag_production_default_value)
+        )
       )
     )
   )
