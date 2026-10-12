@@ -9,8 +9,10 @@ import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
 // owns the attempt and names it once per spawn, and that value stays the authority for which work is
 // being launched. Preparation acquires FOR it, and the prepared launch is minted only when what was
 // prepared is this attempt (gunbc.dispatch_attempt_launch prepare_attempt_launch); every leg after
-// that -- the spawn plan, the provider argv, the standing probe and the discard -- reads its identity
-// from the sealed prepared launch, never from an instance, node or key supplied beside it.
+// that -- the spawn plan, the provider argv, the belt's staging and placement, and the discard -- reads
+// its identity from the sealed prepared launch, never from an instance, node or key supplied beside
+// it. The standing probe comes before the mint and borrows the taken snapshot, which carries the same
+// attempt.
 type DispatchAttempt {
   instance: HostDashboardInstance
   node: RoadmapNode

@@ -2363,6 +2363,30 @@ fn belt_spawn_route_for_decision(decision: ContinuationDecision) -> BeltSpawnRou
 // THE SPAWN'S ATTEMPT IS THE PREPARED LAUNCH'S. The instance, node and key every staging step below
 // addresses are read from the sealed value the selection prepared for the belt's attempt, never
 // re-derived beside it, so the state the belt writes and the launch the child runs are one attempt's.
+// THE BELT'S ADDRESSING OF A LAUNCH IS THE PREPARED LAUNCH'S ATTEMPT. Every staging step after
+// selection -- the continuation decision, alignment, the binding gate, placement, the worktree, the
+// attempt state, the session container and the persisted failure -- addresses the instance, node and
+// key projected here from the sealed prepared launch, the same value the spawn plan builds its
+// commands from (gunbc.roadmap_dispatch_actuator dispatch_spawn_commands_for_launch). No helper
+// below receives them beside it, so the state the belt writes and the commands it runs cannot name
+// two attempts.
+type BeltSpawnAddressing {
+  instance: HostDashboardInstance
+  node: RoadmapNode
+  attempt_key: String
+  session_name: String
+}
+
+fn belt_spawn_addressing(prepared: PreparedAttemptLaunch) -> BeltSpawnAddressing {
+  let attempt = prepared_attempt(prepared: prepared)
+  BeltSpawnAddressing {
+    instance: attempt.instance,
+    node: attempt.node,
+    attempt_key: attempt.attempt_key,
+    session_name: dispatch_tmux_session_name(node_id: attempt.node.node),
+  }
+}
+
 fn belt_actuate_spawn_exec_modeled(
   probed_at: String,
   workdir: String,
@@ -2372,11 +2396,9 @@ fn belt_actuate_spawn_exec_modeled(
   prepared: PreparedAttemptLaunch,
   request: AttemptLaunchRequest,
 ) -> BeltSpawnOutcome {
-  let attempt = prepared_attempt(prepared: prepared)
-  let instance = attempt.instance
-  let node = attempt.node
-  let attempt_key = attempt.attempt_key
-  let session_name = dispatch_tmux_session_name(node_id: node.node)
+  let addressing = belt_spawn_addressing(prepared: prepared)
+  let instance = addressing.instance
+  let node = addressing.node
   match belt_spawn_route_for_decision(decision: belt_continuation_decision_for_instance(instance: instance, node: node)) {
     SpawnRouteNone { step, detail } =>
       SpawnFailed {
@@ -2396,9 +2418,9 @@ fn belt_actuate_spawn_exec_modeled(
       )
     SpawnRouteWorker { origin } =>
       belt_actuate_spawn_with_origin(
-        instance: instance, node: node, workdir: workdir, admission_receipt: admission_receipt,
+        workdir: workdir, admission_receipt: admission_receipt,
         provider_wire_label: provider_wire_label, launch: launch, probed_at: probed_at,
-        attempt_key: attempt_key, session_name: session_name, origin: origin,
+        origin: origin,
         prepared: prepared,
         request: attempt_launch_request_for_origin(request: request, predecessor_attempt_key: belt_origin_predecessor_key(origin: origin)),
       )
@@ -2968,19 +2990,19 @@ fn belt_alignment_binding_gate(instance: HostDashboardInstance, node_id: Roadmap
 }
 
 fn belt_actuate_spawn_with_origin(
-  instance: HostDashboardInstance,
-  node: RoadmapNode,
   workdir: String,
   admission_receipt: String,
   provider_wire_label: String,
   launch: LaunchIdentity,
   probed_at: String,
-  attempt_key: String,
-  session_name: String,
   origin: AttemptOrigin,
   prepared: PreparedAttemptLaunch,
   request: AttemptLaunchRequest,
 ) -> BeltSpawnOutcome {
+  let addressing = belt_spawn_addressing(prepared: prepared)
+  let instance = addressing.instance
+  let node = addressing.node
+  let attempt_key = addressing.attempt_key
   let resolution = alignment_resolve(
     node_id: node.node as String,
     turns_elapsed: attempt_origin_turn(origin: origin),
@@ -3035,13 +3057,13 @@ fn belt_actuate_spawn_with_origin(
     BeltPlacementRefused { detail } =>
       SpawnNotAdmitted { node_id: node.node as String, refusal: LaunchNoPlacementGrant { detail: detail } }
     BeltPlacementNotHeld =>
-      belt_spawn_admitted(instance: instance, node: node, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, attempt_key: attempt_key, session_name: session_name, origin: origin, cmds: cmds, binding: binding, placement: none, request: request, process_fingerprint: process_fingerprint)
+      belt_spawn_admitted(prepared: prepared, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, origin: origin, cmds: cmds, binding: binding, placement: none, request: request, process_fingerprint: process_fingerprint)
     BeltPlacementHeld { held } =>
       belt_spawn_release_unless_spawned(
         held: held,
         provider_wire_label: provider_wire_label,
         launch: launch,
-        outcome: belt_spawn_admitted(instance: instance, node: node, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, attempt_key: attempt_key, session_name: session_name, origin: origin, cmds: cmds, binding: binding, placement: Present { value: held }, request: request, process_fingerprint: process_fingerprint),
+        outcome: belt_spawn_admitted(prepared: prepared, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, origin: origin, cmds: cmds, binding: binding, placement: Present { value: held }, request: request, process_fingerprint: process_fingerprint),
       )
   }
   }
@@ -3051,23 +3073,32 @@ fn belt_actuate_spawn_with_origin(
 
 // THE ADMITTED SPAWN'S HOST STEPS, carrying the session's placement grant when its container holds
 // one. Extracted from belt_actuate_spawn_with_origin so the grant's release-unless-spawned rule
-// wraps ONE outcome rather than every SpawnFailed arm separately.
+// wraps ONE outcome rather than every SpawnFailed arm separately. It addresses the prepared launch's
+// attempt (belt_spawn_addressing) and runs the commands the spawn plan built from that same launch;
+// because the commands still arrive beside the launch, the one route that builds both from one
+// value is the only caller admitted.
 fn belt_spawn_admitted(
-  instance: HostDashboardInstance,
-  node: RoadmapNode,
+  prepared: PreparedAttemptLaunch,
   workdir: String,
   admission_receipt: String,
   provider_wire_label: String,
   launch: LaunchIdentity,
-  attempt_key: String,
-  session_name: String,
   origin: AttemptOrigin,
   cmds: DispatchSpawnCommands,
   binding: AlignmentBinding,
   placement: BeltHeldPlacement?,
   request: AttemptLaunchRequest,
   process_fingerprint: NonEmptyStr,
-) -> BeltSpawnOutcome {
+) -> BeltSpawnOutcome
+  admit_callers: [
+    decl_ref(module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_actuate_spawn_with_origin"),
+  ]
+{
+  let addressing = belt_spawn_addressing(prepared: prepared)
+  let instance = addressing.instance
+  let node = addressing.node
+  let attempt_key = addressing.attempt_key
+  let session_name = addressing.session_name
   match belt_exec_steps(
     steps: [
       BeltExecStep { step: "worktree-add", command: cmds.worktree_add },
