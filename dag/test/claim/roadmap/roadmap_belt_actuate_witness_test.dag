@@ -2571,13 +2571,15 @@ test fn the_commit_outcome_receipt_carries_the_failing_attempts_arm_and_detail()
   let r = belt_commit_outcome_receipt(
     o: CommitFailed { node_id: "n1", detail: "status: git exited 128: fatal" },
     attempt_key: "abc",
+    head_sha: Present { value: "bbbb" },
   )
   let wire = serialize_json(v: belt_commit_outcome_receipt_json(r: r))
   r.node_id == "n1"
     && r.attempt_key == "abc"
     && r.outcome == "failed"
     && r.detail == "status: git exited 128: fatal"
-    && string_contains(s: wire, pattern: "\"schema\": \"roadmap-commit-outcome/v1\"")
+    && string_contains(s: wire, pattern: "\"schema\": \"roadmap-commit-outcome/v2\"")
+    && string_contains(s: wire, pattern: "\"head_sha\": \"bbbb\"")
     && string_contains(s: wire, pattern: "\"outcome\": \"failed\"")
     && string_contains(s: wire, pattern: "status: git exited 128: fatal")
 }
@@ -2586,6 +2588,7 @@ test fn the_candidate_receipt_names_the_captured_head() -> Bool {
   let r = belt_commit_outcome_receipt(
     o: CandidateCaptured { node_id: "n1", head_sha: "aaaa", message: "dispatch candidate: n1 aabc" },
     attempt_key: "abc",
+    head_sha: Present { value: "aaaa" },
   )
   r.outcome == "candidate-captured"
     && string_contains(s: r.detail, pattern: "aaaa")
@@ -2646,6 +2649,7 @@ test fn the_poisoned_outcome_is_named_in_the_tick_result_and_the_attempt_receipt
   let r = belt_commit_outcome_receipt(
     o: CommitCapturePoisoned { node_id: "n1", detail: "the recorded base names zero files" },
     attempt_key: "abc",
+    head_sha: none,
   )
   string_contains(s: rendered, pattern: "capture-poisoned")
     && string_contains(s: rendered, pattern: "n1")
@@ -3387,9 +3391,13 @@ fn commit_outcome_key_round_trips(o: BeltCommitOutcome) -> Bool {
   }
 }
 
+fn commit_record_text(o: BeltCommitOutcome, head: String?) -> String {
+  serialize_json(v: belt_commit_outcome_receipt_json(r: belt_commit_outcome_receipt(o: o, attempt_key: "feedfacefeedface", head_sha: head)))
+}
+
 fn commit_record_standing_key(o: BeltCommitOutcome) -> String {
   if !commit_outcome_key_round_trips(o: o) { "unrostered" } else {
-  match belt_commit_record_standing_of_text(content: serialize_json(v: belt_commit_outcome_receipt_json(r: belt_commit_outcome_receipt(o: o, attempt_key: "feedfacefeedface")))) {
+  match belt_commit_record_standing_of_text(content: commit_record_text(o: o, head: Present { value: "h1" }), node_id: "n", attempt_key: "feedfacefeedface", head_sha: "h1") {
     CommitStepSettled => "settled"
     CommitStepOwed { reason: _ } => "owed"
     CommitStepRefused { reason: _ } => "refused"
@@ -3409,7 +3417,23 @@ test fn the_commit_record_settles_owes_or_refuses_the_capture_for_every_outcome(
     && commit_record_standing_key(o: CommitDeferred { node_id: "n", reason: "seat busy" }) == "owed"
     && commit_record_standing_key(o: CommitCapturePoisoned { node_id: "n", detail: "capture names another head" }) == "refused"
     && commit_record_standing_key(o: CommitSubjectUnaddressable { node_id: "n", reason: "no key" }) == "refused"
-    && (match belt_commit_record_standing_of_text(content: "not json") { CommitStepRefused { reason: _ } => true  _ => false })
-    && (match belt_commit_record_standing_of_text(content: "\{\"schema\": \"roadmap-commit-outcome/v0\", \"outcome\": \"recorded\"}") { CommitStepRefused { reason } => reason.contains("v0")  _ => false })
+    && (match belt_commit_record_standing_of_text(content: "not json", node_id: "n", attempt_key: "feedfacefeedface", head_sha: "h1") { CommitStepRefused { reason: _ } => true  _ => false })
+    && (match belt_commit_record_standing_of_text(content: "\{\"schema\": \"roadmap-commit-outcome/v0\", \"outcome\": \"recorded\"}", node_id: "n", attempt_key: "feedfacefeedface", head_sha: "h1") { CommitStepRefused { reason } => reason.contains("v0")  _ => false })
+}
+
+// A SETTLEMENT IS A FACT ABOUT ONE HEAD AND ONE SUBJECT (review 78779): a commit recorded at h1 settles
+// h1's capture and nothing else, so a later head h2 with no capture is owed one; a record that names no
+// head, or predates the head binding, settles nothing; and a record at this attempt's address that names
+// another attempt is unexplained state, refused rather than read as this attempt's settlement.
+test fn a_commit_settlement_binds_only_its_own_head_and_subject() -> Bool {
+  let recorded = CommitRecorded { node_id: "n", message: "dispatch checkpoint" }
+  let at_h1 = commit_record_text(o: recorded, head: Present { value: "h1" })
+  let headless = commit_record_text(o: recorded, head: none)
+  (match belt_commit_record_standing_of_text(content: at_h1, node_id: "n", attempt_key: "feedfacefeedface", head_sha: "h1") { CommitStepSettled => true  _ => false })
+    && (match belt_commit_record_standing_of_text(content: at_h1, node_id: "n", attempt_key: "feedfacefeedface", head_sha: "h2") { CommitStepOwed { reason } => reason.contains("h1")  _ => false })
+    && (match belt_commit_record_standing_of_text(content: headless, node_id: "n", attempt_key: "feedfacefeedface", head_sha: "h1") { CommitStepOwed { reason: _ } => true  _ => false })
+    && (match belt_commit_record_standing_of_text(content: "\{\"schema\": \"roadmap-commit-outcome/v1\", \"node_id\": \"n\", \"attempt_key\": \"feedfacefeedface\", \"outcome\": \"recorded\", \"detail\": \"\"}", node_id: "n", attempt_key: "feedfacefeedface", head_sha: "h1") { CommitStepOwed { reason: _ } => true  _ => false })
+    && (match belt_commit_record_standing_of_text(content: at_h1, node_id: "n", attempt_key: "0000000000000000", head_sha: "h1") { CommitStepRefused { reason: _ } => true  _ => false })
+    && (match belt_commit_record_standing_of_text(content: at_h1, node_id: "other", attempt_key: "feedfacefeedface", head_sha: "h1") { CommitStepRefused { reason: _ } => true  _ => false })
 }
 
