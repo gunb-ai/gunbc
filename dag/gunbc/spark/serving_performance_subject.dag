@@ -584,10 +584,11 @@ fn serving_subject_axes_wire(axes: List<ServingSubjectAxis>) -> String {
   join(map(axes, a => serving_subject_axis_wire(a: a) as String), ", ")
 }
 
-// THE MARKER IS FOR RENDERING AND IS NEVER COMPARED. `serving_subject_known_differing_axes` excludes
-// every axis that is unknown on either side before any string comparison happens, so this string
-// cannot decide agreement the way the old `<transport-unread>` sentinel could. It exists only so a
-// rendered subject line shows which axes were never read.
+// THE MARKERS ARE FOR RENDERING AND ARE NEVER COMPARED. `serving_subject_known_differing_axes`
+// excludes every axis that is unknown OR not-applicable on either side before a string comparison
+// can decide agreement, so neither `<unread>` nor `<not-applicable>` can mint a known difference
+// the way the old `<transport-unread>` sentinel could. They exist only so a rendered subject line
+// shows which axes were never read, or do not apply to this engine.
 data axis_value_unread_marker: NonEmptyStr = "<unread>" as NonEmptyStr
 data axis_value_not_applicable_marker: NonEmptyStr = "<not-applicable>" as NonEmptyStr
 
@@ -784,10 +785,40 @@ fn accelerator_known_parts_differ(left: ServingAcceleratorAxis, right: ServingAc
   }
 }
 
+fn subject_axis_is_not_applicable(s: ServingPerformanceSubject, a: ServingSubjectAxis) -> Bool {
+  if serving_engine_is_ninfer(s: s) {
+    match a {
+      AxisKvCacheDtype => true
+      AxisSpeculativePolicy => true
+      AxisIndexerKvDtype => true
+      AxisSchedulerAdmission => true
+      AxisCollectiveTransport => false
+      AxisCheckpoint => false
+      AxisCheckpointRevision => false
+      AxisRuntime => false
+      AxisRuntimeImageReference => false
+      AxisTopology => false
+      AxisRankPopulation => false
+      AxisContextCeiling => false
+      AxisBatchBudget => false
+      AxisMaxNumSeqs => false
+      AxisWeightQuantization => false
+      AxisLaunchProfile => false
+      AxisDeploymentEnv => false
+      AxisEngine => false
+      AxisAccelerator => false
+    }
+  } else {
+    false
+  }
+}
+
 fn ordinary_axis_known_parts_differ(left: ServingPerformanceSubject, right: ServingPerformanceSubject, a: ServingSubjectAxis) -> Bool {
   !serving_subject_axis_agrees(left: left, right: right, a: a)
     && !subject_axis_is_unknown(s: left, a: a)
     && !subject_axis_is_unknown(s: right, a: a)
+    && !subject_axis_is_not_applicable(s: left, a: a)
+    && !subject_axis_is_not_applicable(s: right, a: a)
 }
 
 fn subject_axis_known_parts_differ(left: ServingPerformanceSubject, right: ServingPerformanceSubject, a: ServingSubjectAxis) -> Bool {
