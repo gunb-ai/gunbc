@@ -10,7 +10,8 @@ import gunbc.auth.request_authentication {
   fabric_service_principal,
 }
 import gunbc.principal_projection { PrincipalRef, principal_ref_label }
-import gunbc.harness.harness_seat { SparkGroup,
+import gunbc.serving.rented_replica { RentedReplicaIdentity }
+import gunbc.harness.harness_seat { SparkGroup, RentedReplicaPool,
   HarnessSeatReference, HarnessSeatPoolIdentity, harness_seat_pool_identity_at,
   harness_seat_reference_record, harness_seat_reference_wire,
 }
@@ -37,7 +38,7 @@ import gunbc.serving.serving_front_door {
   DoorSeatHeldByAnotherCaller, DoorSeatLeaseExpired, DoorPermitPartitionNotThisPool, DoorPermitClassNotServed,
   DoorSeatAmountNotOneSeat, DoorSeatAcquiredMoreThanOnce, DoorSeatFenceGenerationDisagrees, DoorPermitAlreadyRedeemed,
   FrontDoorRedemption, DoorRedeemed, DoorRedemptionRefused,
-  DoorPoolConfiguredTwice, DoorPoolSelected, front_door_pool_for,
+  DoorPoolConfiguredTwice, DoorPoolSelected, DoorPoolIsAReplicaPool, DoorPoolOfAnotherGroup, front_door_pool_for,
   PlanLeaveWithHolder, PlanRelease, front_door_recovery_plan,
   SeatGrantCurrency, FrontDoorTally,
   serving_seat_permit_claims, serving_seat_permit_signing_input, issue_serving_seat_permit, serving_seat_permit_key_id,
@@ -629,4 +630,13 @@ test fn the_pool_derived_for_the_doors_own_group_still_admits() -> Bool {
     FrontDoorRefused { cause: _ } => false
   }
   selected && admits
+}
+
+test fn a_rented_replica_pool_configured_into_a_group_door_is_a_replica_pool_not_another_group() -> Bool {
+  let replica_pool = harness_seat_pool_identity_at(key: RentedReplicaPool { replica: RentedReplicaIdentity { node: "rental-1" as NonEmptyStr, device_index: 0, served_name: "qwen-first-row" as NonEmptyStr } }, class: InteractiveQualitySensitive, seats: 1)
+  match front_door_pool_for(door: door_with(pools: [replica_pool]), class: InteractiveQualitySensitive) {
+    DoorPoolIsAReplicaPool { replica: _ } => true
+    DoorPoolOfAnotherGroup { pool_group: _ } => false
+    _ => false
+  }
 }

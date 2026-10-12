@@ -9,13 +9,13 @@ import gunbc.serving.turn_admission {
   serving_session_standing, HostTierUnread, GpuPrefixUnread,
 }
 import gunbc.serving.session_store {
-  serving_session_entry_after_request, serving_session_record_for_request, ServingSessionEntry,
+  serving_session_entry_after_request, serving_session_record_for_request, CachedTokensObserved, CachedTokensUnobserved, CachedTokensNotANumber, ServingSessionEntry,
 }
 
 fn l1() -> NonEmptyStr { "L1" as NonEmptyStr }
 
 fn after_round_one() -> ServingSessionEntry {
-  serving_session_entry_after_request(launch: l1(), turn: "t1" as NonEmptyStr, cached_tokens: Present { value: 512 }, inputs_and_reply: ["sys", "user", "assistant-1"])
+  serving_session_entry_after_request(launch: l1(), turn: "t1" as NonEmptyStr, reading: CachedTokensObserved { cached_tokens: 512 }, inputs_and_reply: ["sys", "user", "assistant-1"])
 }
 
 fn standing_of(record: ServingSessionRecord) -> ServingSessionResidency {
@@ -41,7 +41,7 @@ test fn a_broken_prefix_reads_must_reconstruct_never_warm() -> Bool {
 }
 
 test fn an_unobserved_cached_tokens_is_unread_not_zero() -> Bool {
-  let e = serving_session_entry_after_request(launch: l1(), turn: "t2" as NonEmptyStr, cached_tokens: Absent, inputs_and_reply: ["a"])
+  let e = serving_session_entry_after_request(launch: l1(), turn: "t2" as NonEmptyStr, reading: CachedTokensUnobserved { cause: CachedTokensNotANumber }, inputs_and_reply: ["a"])
   match standing_of(record: serving_session_record_for_request(entry: Present { value: e }, next_inputs: ["a", "b"])) {
     ResidencyUnread { obligation: _ } => true
     _ => false

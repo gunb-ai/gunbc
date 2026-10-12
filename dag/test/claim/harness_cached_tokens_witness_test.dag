@@ -8,7 +8,9 @@ import gunbc.serving.turn_admission {
   ServingSessionResidency, ReusedAtTurn, MustReconstruct, TokenPrefixBroken, ResidencyUnread, serving_session_standing,
   HostTierUnread, GpuPrefixUnread,
 }
-import gunbc.serving.session_store { serving_session_record_for_request }
+import gunbc.serving.session_store {
+  serving_session_record_for_request, cached_tokens_unobserved_obligation, PromptTokensDetailsNotAnObject, CachedTokensNotANumber,
+}
 
 fn reported_body() -> String {
   "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"ok\"}}],\"usage\":{\"prompt_tokens\":900,\"completion_tokens\":4,\"prompt_tokens_details\":{\"cached_tokens\":768}}}"
@@ -57,5 +59,14 @@ test fn a_body_that_is_not_a_document_records_nothing() -> Bool {
   match harness_chat_completion_session_entry(body: "not json", launch: l1(), turn: "t1" as NonEmptyStr, inputs_and_reply: ["a"]) {
     Absent => true
     Present { value: _ } => false
+  }
+}
+
+test fn an_unread_turn_carries_the_typed_cause_of_the_wire_gap_not_a_flattened_string() -> Bool {
+  match standing_after(body: null_details_body(), next: ["sys", "user", "assistant-1", "tool-result"]) {
+    Present { value: ResidencyUnread { obligation: o } } =>
+      (o as String) == (cached_tokens_unobserved_obligation(cause: PromptTokensDetailsNotAnObject) as String)
+        && (o as String) != (cached_tokens_unobserved_obligation(cause: CachedTokensNotANumber) as String)
+    _ => false
   }
 }

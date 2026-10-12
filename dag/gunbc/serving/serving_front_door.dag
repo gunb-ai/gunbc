@@ -36,7 +36,7 @@ import gunbc.serving.turn_admission { ServingCoTenancyClass, serving_co_tenancy_
 import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, fabric_group_wire }
 import gunbc.harness.harness_seat {
-  HarnessSeatReference, HarnessSeatPoolIdentity, harness_seat_pool_key_wire, harness_seat_reference_wire,
+  HarnessSeatReference, HarnessSeatPoolIdentity, harness_seat_pool_key_wire, harness_seat_reference_wire, SparkGroup, RentedReplicaPool,
   release_retry, HarnessSeatReleased, HarnessHostedCredentialRemoved, HarnessSeatReleaseRefused,
 }
 
@@ -246,13 +246,21 @@ type FrontDoorPoolSelection
   = DoorPoolSelected { pool: HarnessSeatPoolIdentity }
   | DoorPoolNone
   | DoorPoolOfAnotherGroup { pool_group: NonEmptyStr }
+  | DoorPoolIsAReplicaPool { replica: NonEmptyStr }
   | DoorPoolDuplicated { pools: Nat }
 
 fn front_door_pool_for(door: FrontDoorIdentity, class: ServingCoTenancyClass) -> FrontDoorPoolSelection {
   let candidates = filter(door.pools, p => (serving_co_tenancy_class_wire(c: p.class) as String) == (serving_co_tenancy_class_wire(c: class) as String))
-  let foreign = filter(candidates, p => (harness_seat_pool_key_wire(key: p.key) as String) != (fabric_group_wire(g: door.group) as String))
+  let foreign = filter(candidates, p => match p.key {
+    SparkGroup { group: g } => (fabric_group_wire(g: g) as String) != (fabric_group_wire(g: door.group) as String)
+    RentedReplicaPool { replica: _ } => true
+  })
   match first(foreign) {
-    Present { value: p } => DoorPoolOfAnotherGroup { pool_group: harness_seat_pool_key_wire(key: p.key) }
+    Present { value: p } =>
+      match p.key {
+        SparkGroup { group: g } => DoorPoolOfAnotherGroup { pool_group: fabric_group_wire(g: g) }
+        RentedReplicaPool { replica: _ } => DoorPoolIsAReplicaPool { replica: harness_seat_pool_key_wire(key: p.key) }
+      }
     Absent =>
       if length(candidates) > 1 {
         DoorPoolDuplicated { pools: length(candidates) }
@@ -419,6 +427,7 @@ type FrontDoorRefusal
   | DoorPermitForAnotherCaller { permit_caller: PrincipalRef, caller: PrincipalRef }
   | DoorPermitClassNotServed { class: NonEmptyStr }
   | DoorPoolConfiguredForAnotherGroup { class: NonEmptyStr, pool_group: NonEmptyStr }
+  | DoorPoolConfiguredForAReplica { class: NonEmptyStr, replica: NonEmptyStr }
   | DoorPoolConfiguredTwice { class: NonEmptyStr, pools: Nat }
   | DoorPermitPartitionNotThisPool { partition: PartitionId, pool_partition: PartitionId }
   | DoorSeatReleased { reason: NonEmptyStr }
@@ -457,6 +466,7 @@ fn front_door_refusal_wire(r: FrontDoorRefusal) -> NonEmptyStr {
     DoorPermitForAnotherCaller { permit_caller: _, caller: _ } => "permit-for-another-caller" as NonEmptyStr
     DoorPermitClassNotServed { class: _ } => "permit-class-not-served" as NonEmptyStr
     DoorPoolConfiguredForAnotherGroup { class: _, pool_group: _ } => "door-pool-of-another-group" as NonEmptyStr
+    DoorPoolConfiguredForAReplica { class: _, replica: _ } => "door-pool-is-a-replica-pool" as NonEmptyStr
     DoorPoolConfiguredTwice { class: _, pools: _ } => "door-pool-duplicated" as NonEmptyStr
     DoorPermitPartitionNotThisPool { partition: _, pool_partition: _ } => "permit-partition-not-this-pool" as NonEmptyStr
     DoorSeatReleased { reason: _ } => "seat-released" as NonEmptyStr
@@ -490,6 +500,7 @@ fn front_door_refusal_detail(r: FrontDoorRefusal) -> String {
     DoorPermitForAnotherCaller { permit_caller: p, caller: c } => join(["the permit was minted for ", principal_ref_label(p: p), " and presented by ", principal_ref_label(p: c)], "")
     DoorPermitClassNotServed { class: c } => join(["this door serves no seat pool for class ", c as String], "")
     DoorPoolConfiguredForAnotherGroup { class: c, pool_group: g } => join(["this door's configured pool for class ", c as String, " belongs to ", g as String, ", not to the group the door fronts"], "")
+    DoorPoolConfiguredForAReplica { class: c, replica: r } => join(["this door fronts a fabric group, but its configured pool for class ", c as String, " is the rented replica pool ", r as String], "")
     DoorPoolConfiguredTwice { class: c, pools: n } => join(["this door is configured with ", to_string(n), " pools for class ", c as String], "")
     DoorPermitPartitionNotThisPool { partition: p, pool_partition: q } => join(["the permit names partition ", p as String, " but this door's pool for its class is ", q as String], "")
     DoorSeatReleased { reason: why } => join(["the seat this permit names was released: ", why as String], "")
@@ -605,6 +616,7 @@ fn front_door_admit_authenticated(
     match front_door_pool_for(door: door, class: c.class) {
       DoorPoolNone => door_refuse(cause: DoorPermitClassNotServed { class: serving_co_tenancy_class_wire(c: c.class) })
       DoorPoolOfAnotherGroup { pool_group: g } => door_refuse(cause: DoorPoolConfiguredForAnotherGroup { class: serving_co_tenancy_class_wire(c: c.class), pool_group: g })
+      DoorPoolIsAReplicaPool { replica: r } => door_refuse(cause: DoorPoolConfiguredForAReplica { class: serving_co_tenancy_class_wire(c: c.class), replica: r })
       DoorPoolDuplicated { pools: n } => door_refuse(cause: DoorPoolConfiguredTwice { class: serving_co_tenancy_class_wire(c: c.class), pools: n })
       DoorPoolSelected { pool: pool } =>
         if (c.partition as String) != (pool.partition as String) {

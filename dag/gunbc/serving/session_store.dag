@@ -45,22 +45,60 @@ fn serving_prefix_identity(inputs: List<String>) -> ServingPrefixIdentity {
   }
 }
 
-// An absent cached_tokens field is unread, never zero: vLLM reports it only when launched with
-// --enable-prompt-tokens-details, so absence is a missing observation.
-fn serving_turn_reuse_of_usage(cached_tokens: Nat?, launch: NonEmptyStr, turn: NonEmptyStr) -> ServingTurnReuse {
-  match cached_tokens {
-    Present { value: n } => TurnReuseRead { cached_tokens: n, launch: launch, turn: turn }
-    Absent => TurnReuseUnread { obligation: "the response carried no prompt_tokens_details.cached_tokens, so reuse at this turn was not observed" as NonEmptyStr }
+// WHY A TURN'S CACHED-TOKENS COUNT WAS NOT OBSERVED, one arm per place the wire reading can stop. The
+// closed set is declared here, beside the reading it qualifies, so the cause reaches the unread
+// obligation as a value instead of being flattened to a string at the decoder.
+type CachedTokensUnobservedCause
+  = ResponseBodyNotAnObject
+  | UsageObjectAbsent
+  | UsageObjectDuplicated
+  | UsageNotAnObject
+  | PromptTokensDetailsAbsent
+  | PromptTokensDetailsDuplicated
+  | PromptTokensDetailsNotAnObject
+  | CachedTokensMemberAbsent
+  | CachedTokensMemberDuplicated
+  | CachedTokensNegative
+  | CachedTokensNotANumber
+  | CachedTokensNotAnInteger
+
+// The per-request prefix-cache count: observed, or unobserved with its cause. Never zero by omission: a
+// cold turn reports 0, a turn that was not observed reports nothing.
+type ServingCachedTokensReading
+  = CachedTokensObserved { cached_tokens: Nat }
+  | CachedTokensUnobserved { cause: CachedTokensUnobservedCause }
+
+fn cached_tokens_unobserved_obligation(cause: CachedTokensUnobservedCause) -> NonEmptyStr {
+  match cause {
+    ResponseBodyNotAnObject => "the response body is not a JSON object, so reuse at this turn was not observed" as NonEmptyStr
+    UsageObjectAbsent => "response carries no usage object, so reuse at this turn was not observed" as NonEmptyStr
+    UsageObjectDuplicated => "response carries the usage object more than once, so reuse at this turn was not observed" as NonEmptyStr
+    UsageNotAnObject => "usage is not an object, so reuse at this turn was not observed" as NonEmptyStr
+    PromptTokensDetailsAbsent => "usage carries no prompt_tokens_details, so reuse at this turn was not observed" as NonEmptyStr
+    PromptTokensDetailsDuplicated => "usage carries prompt_tokens_details more than once, so reuse at this turn was not observed" as NonEmptyStr
+    PromptTokensDetailsNotAnObject => "usage.prompt_tokens_details is not an object, so reuse at this turn was not observed" as NonEmptyStr
+    CachedTokensMemberAbsent => "usage.prompt_tokens_details carries no cached_tokens, so reuse at this turn was not observed" as NonEmptyStr
+    CachedTokensMemberDuplicated => "usage.prompt_tokens_details carries cached_tokens more than once, so reuse at this turn was not observed" as NonEmptyStr
+    CachedTokensNegative => "usage.prompt_tokens_details.cached_tokens is negative, so reuse at this turn was not observed" as NonEmptyStr
+    CachedTokensNotANumber => "usage.prompt_tokens_details.cached_tokens is not a number (null when the server was not launched with --enable-prompt-tokens-details), so reuse at this turn was not observed" as NonEmptyStr
+    CachedTokensNotAnInteger => "usage.prompt_tokens_details.cached_tokens is not an integer, so reuse at this turn was not observed" as NonEmptyStr
+  }
+}
+
+fn serving_turn_reuse_of_usage(reading: ServingCachedTokensReading, launch: NonEmptyStr, turn: NonEmptyStr) -> ServingTurnReuse {
+  match reading {
+    CachedTokensObserved { cached_tokens: n } => TurnReuseRead { cached_tokens: n, launch: launch, turn: turn }
+    CachedTokensUnobserved { cause: c } => TurnReuseUnread { obligation: cached_tokens_unobserved_obligation(cause: c) }
   }
 }
 
 // Recorded when a request COMPLETES, per request: the first completion creates the entry, a later one
 // replaces it. A cancelled or failed request records nothing, so the previous entry stands.
-fn serving_session_entry_after_request(launch: NonEmptyStr, turn: NonEmptyStr, cached_tokens: Nat?, inputs_and_reply: List<String>) -> ServingSessionEntry {
+fn serving_session_entry_after_request(launch: NonEmptyStr, turn: NonEmptyStr, reading: ServingCachedTokensReading, inputs_and_reply: List<String>) -> ServingSessionEntry {
   ServingSessionEntry {
     owner_launch: launch,
     prefix: serving_prefix_identity(inputs: inputs_and_reply),
-    last_turn: serving_turn_reuse_of_usage(cached_tokens: cached_tokens, launch: launch, turn: turn),
+    last_turn: serving_turn_reuse_of_usage(reading: reading, launch: launch, turn: turn),
   }
 }
 
