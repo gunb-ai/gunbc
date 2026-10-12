@@ -3,7 +3,7 @@ module gunbc.spark.serving_performance_subject
 import std.types { Bool, String, NonEmptyStr, List }
 import std.optional { Present, Absent }
 import std.nat { Nat }
-import std.measure { TokenCount, token_count, token_count_value }
+import std.measure { TokenCount, token_count, token_count_value, Watt, watt_count }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
 import extdeps.vllm.engine_args {
   VllmKvCacheDtypeRequest, vllm_kv_cache_dtype_wire, VllmSpeculativePolicy, vllm_speculative_policy_wire, SpeculativeDecodingOff,
@@ -11,6 +11,12 @@ import extdeps.vllm.engine_args {
 }
 import extdeps.nvidia.nccl { NcclRealizedTransport, nccl_realized_transport_wire }
 import extdeps.docker.cli { DockerEnvAssignment }
+import extdeps.storage.types { PcieLink, PcieGeneration, Gen3, Gen4, Gen5 }
+import extdeps.gpu.types { GpuModelCatalogRow }
+import extdeps.ninfer.ninfer_serve {
+  NinferKvDtype, NinferSpeculation, NinferServeLaunch, NinferMtp,
+  NinferKvBf16, NinferKvInt8, NinferKvFp8, NinferKvNvfp4, NinferKvK8V4,
+}
 import gunbc.spark.serving_arm {
   ServingCheckpoint, ServingRuntime, ServingTopology,
   serving_checkpoint_wire, serving_runtime_wire, serving_topology_wire,
@@ -44,11 +50,19 @@ import gunbc.spark.serving_arm {
 // a model swap. Neither substitutes for the other, and a measurement needs both.
 //
 // WHAT IS AN AXIS AND WHAT IS NOT. An axis is a property whose change makes a prior number
-// inapplicable. Host identity is NOT one: the tensor-parallel comparison placed its two TP=2
-// launches on different Spark pairs and they agreed to the last bit of logprob, so the boxes are
-// interchangeable within a profile and keying on them would refuse joins that are sound. The
-// launch is not one either -- that is what VllmServingLaunch fences, and a subject that carried it
+// inapplicable. A Spark *hostname* is NOT one: the tensor-parallel comparison placed its two TP=2
+// launches on different Spark pairs and they agreed to the last bit of logprob, so those boxes are
+// interchangeable within a profile and keying on hostnames would refuse joins that are sound.
+// CROSS-HOST EQUIVALENCE BASIS (P2): two subjects may join across hosts only when their
+// ServingAcceleratorRealization agrees (catalog SKU × count, negotiated host PCIe, applied power
+// limit) or both sides left it unread. Unread-on-both is the Spark-GB10 basis that already held;
+// it is not a license to join an unread Spark subject to a cited PRO 6000 realization. The
+// launch is not an axis either -- that is what VllmServingLaunch fences, and a subject that carried it
 // could never join two launches of one profile, which is exactly what a repeated arm is.
+//
+// ENGINE REQUESTS ARE A COPRODUCT. vLLM KV / speculative / indexer / scheduler stay on the vLLM
+// fields and `EngineVllm` marks that arm. NInfer carries its own request on `EngineNinfer`. Spark
+// rows keep EngineVllm and unread accelerator so their existing joins do not change meaning.
 // THE EXACT REVISION AND IMAGE REFERENCE ARE FIELDS, NOT DERIVED FROM THE ENUM. An earlier revision
 // of this record carried only `checkpoint` and `runtime`, and compared them by their static variant
 // wires -- so a REPIN of the image behind `GunbcSparkrunVllmDs4Gb10` kept comparing SameSubject.
@@ -72,6 +86,31 @@ type ServingPerformanceSubject sole_constructor {
   scheduler_admission: VllmSchedulerAdmissionRequest?
   launch_profile_key: String?
   deployment_env_key: String?
+  engine: ServingEngineRequest
+  accelerator: ServingAcceleratorRealization?
+}
+
+// GAP-INTOLERANT BOUNDARY: serving_subject_for_launch still derives Spark vLLM launches from
+// ServingLaunchProfile (memory fraction, prefix caching, Engram, modality, both KV dtypes stay in
+// launch_profile_key). P2 does not shadow a second subject type.
+type ServingEngineRequest
+  = EngineVllm
+  | EngineNinfer {
+      kv_dtype: NinferKvDtype?
+      speculation: NinferSpeculation?
+      max_concurrency: Nat?
+      kv_capacity_auto: Bool?
+    }
+
+type ServingHostLink
+  = HostLinkUnread
+  | HostLinkNegotiated { link: PcieLink }
+
+type ServingAcceleratorRealization {
+  sku: GpuModelCatalogRow
+  count: Nat
+  host_link: ServingHostLink
+  applied_power_limit: Watt?
 }
 
 // THE FACTORY IS THE ONLY WAY TO BUILD ONE, which is what `sole_constructor` buys and is the same
@@ -96,6 +135,8 @@ fn serving_performance_subject(
   scheduler_admission: VllmSchedulerAdmissionRequest?,
   launch_profile_key: String?,
   deployment_env_key: String?,
+  engine: ServingEngineRequest,
+  accelerator: ServingAcceleratorRealization?,
 ) -> ServingPerformanceSubject {
   ServingPerformanceSubject {
     checkpoint: checkpoint,
@@ -114,6 +155,8 @@ fn serving_performance_subject(
     scheduler_admission: scheduler_admission,
     launch_profile_key: launch_profile_key,
     deployment_env_key: deployment_env_key,
+    engine: engine,
+    accelerator: accelerator,
   }
 }
 
@@ -159,7 +202,37 @@ fn serving_subject_for_launch(
     scheduler_admission: Present { value: profile.scheduler_admission },
     launch_profile_key: Present { value: serving_launch_profile_key(p: profile) },
     deployment_env_key: Present { value: serving_deployment_env_key(env: deployment_env) },
+    engine: EngineVllm,
+    accelerator: none,
   )
+}
+
+fn ninfer_kv_dtype_wire(d: NinferKvDtype) -> NonEmptyStr {
+  match d {
+    NinferKvBf16 => "ninfer-kv-bf16" as NonEmptyStr
+    NinferKvInt8 => "ninfer-kv-int8" as NonEmptyStr
+    NinferKvFp8 => "ninfer-kv-fp8" as NonEmptyStr
+    NinferKvNvfp4 => "ninfer-kv-nvfp4" as NonEmptyStr
+    NinferKvK8V4 => "ninfer-kv-k8v4" as NonEmptyStr
+  }
+}
+
+fn ninfer_speculation_wire(s: NinferSpeculation) -> NonEmptyStr {
+  match s {
+    NinferMtp { draft_tokens: n, lm_head_draft: h } =>
+      join(["ninfer-mtp-", to_string(n), if h { "-lmhead" } else { "" }], "") as NonEmptyStr
+  }
+}
+
+fn ninfer_launch_profile_key(launch: NinferServeLaunch) -> String {
+  join([
+    "ninfer|", launch.model_id as String,
+    "|conc=", to_string(launch.max_concurrency),
+    "|ctx=", to_string(token_count_value(t: launch.max_context)),
+    "|kv=", ninfer_kv_dtype_wire(d: launch.kv_dtype) as String,
+    "|auto=", if launch.kv_capacity_auto { "1" } else { "0" },
+    "|spec=", ninfer_speculation_wire(s: launch.speculation) as String,
+  ], "")
 }
 
 // THE WEIGHT QUANTIZATION IS AN AXIS BUT NOT A FIELD: it is a fact about the checkpoint row
@@ -211,6 +284,8 @@ type ServingSubjectAxis
   | AxisSchedulerAdmission
   | AxisLaunchProfile
   | AxisDeploymentEnv
+  | AxisEngine
+  | AxisAccelerator
 
 fn serving_subject_axis_wire(a: ServingSubjectAxis) -> NonEmptyStr {
   match a {
@@ -231,6 +306,8 @@ fn serving_subject_axis_wire(a: ServingSubjectAxis) -> NonEmptyStr {
     AxisSchedulerAdmission => "scheduler admission" as NonEmptyStr
     AxisLaunchProfile => "launch profile" as NonEmptyStr
     AxisDeploymentEnv => "deployment env" as NonEmptyStr
+    AxisEngine => "engine" as NonEmptyStr
+    AxisAccelerator => "accelerator" as NonEmptyStr
   }
 }
 
@@ -309,6 +386,84 @@ fn serving_subject_axis_value(s: ServingPerformanceSubject, a: ServingSubjectAxi
         Absent => axis_value_unread_marker
         Present { value: k } => k as NonEmptyStr
       }
+    AxisEngine => serving_engine_request_wire(e: s.engine)
+    AxisAccelerator =>
+      match s.accelerator {
+        Absent => axis_value_unread_marker
+        Present { value: a } => serving_accelerator_realization_wire(a: a)
+      }
+  }
+}
+
+fn serving_engine_request_wire(e: ServingEngineRequest) -> NonEmptyStr {
+  match e {
+    EngineVllm => "engine-vllm" as NonEmptyStr
+    EngineNinfer { kv_dtype: kv, speculation: sp, max_concurrency: c, kv_capacity_auto: auto } =>
+      join([
+        "engine-ninfer|kv=",
+        match kv {
+          Absent => "<unread>"
+          Present { value: d } => ninfer_kv_dtype_wire(d: d) as String
+        },
+        "|spec=",
+        match sp {
+          Absent => "<unread>"
+          Present { value: s } => ninfer_speculation_wire(s: s) as String
+        },
+        "|conc=",
+        match c {
+          Absent => "<unread>"
+          Present { value: n } => to_string(n)
+        },
+        "|auto=",
+        match auto {
+          Absent => "<unread>"
+          Present { value: b } => if b { "1" } else { "0" }
+        },
+      ], "") as NonEmptyStr
+  }
+}
+
+fn pcie_generation_wire(g: PcieGeneration) -> String {
+  match g {
+    Gen3 => "gen3"
+    Gen4 => "gen4"
+    Gen5 => "gen5"
+  }
+}
+
+fn serving_host_link_wire(h: ServingHostLink) -> String {
+  match h {
+    HostLinkUnread => "link-unread"
+    HostLinkNegotiated { link: l } => join(["link-", pcie_generation_wire(g: l.generation), "x", to_string(l.lane_count)], "")
+  }
+}
+
+fn serving_accelerator_realization_wire(a: ServingAcceleratorRealization) -> NonEmptyStr {
+  join([
+    a.sku.vendor.legal_name as String,
+    "|", a.sku.model as String,
+    "|n=", to_string(a.count),
+    "|", serving_host_link_wire(h: a.host_link),
+    "|w=",
+    match a.applied_power_limit {
+      Absent => "<unread>"
+      Present { value: w } => to_string(watt_count(w: w))
+    },
+  ], "") as NonEmptyStr
+}
+
+fn serving_accelerator_realization(
+  sku: GpuModelCatalogRow,
+  count: Nat,
+  host_link: ServingHostLink,
+  applied_power_limit: Watt?,
+) -> ServingAcceleratorRealization {
+  ServingAcceleratorRealization {
+    sku: sku,
+    count: count,
+    host_link: host_link,
+    applied_power_limit: applied_power_limit,
   }
 }
 
@@ -332,6 +487,8 @@ data serving_subject_axes: List<ServingSubjectAxis> = [
   AxisSchedulerAdmission,
   AxisLaunchProfile,
   AxisDeploymentEnv,
+  AxisEngine,
+  AxisAccelerator,
 ]
 
 fn serving_subject_axis_agrees(left: ServingPerformanceSubject, right: ServingPerformanceSubject, a: ServingSubjectAxis) -> Bool {
@@ -413,6 +570,19 @@ fn subject_axis_is_unknown(s: ServingPerformanceSubject, a: ServingSubjectAxis) 
       match s.launch_profile_key { Absent => true, Present { value: _ } => false }
     AxisDeploymentEnv =>
       match s.deployment_env_key { Absent => true, Present { value: _ } => false }
+    AxisEngine =>
+      match s.engine {
+        EngineVllm => false
+        EngineNinfer { kv_dtype: kv, speculation: sp, max_concurrency: c, kv_capacity_auto: auto } =>
+          match kv { Absent => true, Present { value: _ } =>
+            match sp { Absent => true, Present { value: _ } =>
+              match c { Absent => true, Present { value: _ } =>
+                match auto { Absent => true, Present { value: _ } => false }
+              }
+            }
+          }
+      }
+    AxisAccelerator => false
   }
 }
 
