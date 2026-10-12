@@ -1,0 +1,97 @@
+module gunbc.serving.rented_replica
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size_count }
+import std.optional { Present, Absent }
+import product.fabric.work { identity_frame }
+import extdeps.vllm.engine_args {
+  VllmPrefixCachingRequest, PrefixCachingExplicit, vllm_serve_argv, vllm_prefix_caching_argv,
+  VllmPromptTokensDetailsRequest, PromptTokensDetailsReported, vllm_prompt_tokens_details_argv,
+}
+
+// THE RENTED COHORT'S REPLICA, as the unit the seat pool accounts for. One replica is one vLLM process
+// bound to exactly one GPU of one rented node, serving one model whose resident weights fit that
+// card. The identity is (node, device index, served name): a second replica added to a warm node
+// differs from the first in at least the device index, so adding a replica mints a new identity and
+// can never re-key an existing owner's pool (docs/plans/serving-hardware-neutral-cutover.md).
+//
+// INVENTORY IS OBSERVED, NEVER DECLARED HERE. RentedGpuDevice is what the node reported (index, model
+// string, memory); this module does not know which cards exist. The model row is the other half --
+// DATA, with Qwen as the first row -- and the fit test is the only place the two meet.
+type RentedGpuDevice { index: Nat, model: NonEmptyStr, memory: ByteSize }
+
+type RentedNodeInventory { node: NonEmptyStr, devices: List<RentedGpuDevice> }
+
+// What a model needs from ONE card to serve at all. resident_bytes is weights plus the headroom the
+// operating range will be qualified against; it is a row's claim and the qualification procedure is
+// what measures it, so it is not a derived fact here.
+type RentedServedModel { served_name: NonEmptyStr, resident_bytes: ByteSize }
+
+type RentedReplicaIdentity { node: NonEmptyStr, device_index: Nat, served_name: NonEmptyStr }
+
+type RentedReplicaLaunch {
+  visible_device: Nat
+  served_model: NonEmptyStr
+  argv: List<String>
+}
+
+type RentedReplica { identity: RentedReplicaIdentity, launch: RentedReplicaLaunch }
+
+// A device that cannot host a replica is REPORTED, never dropped: an inventory whose card does not
+// fit the model is a different cohort (tensor-parallel is a distinct product), and silence there
+// would read as capacity that is not there.
+type RentedReplicaCollection
+  = ReplicasCollected { replicas: List<RentedReplica>, unfit: List<RentedGpuDevice> }
+  | ReplicaCollectionRefused { cause: NonEmptyStr }
+
+// EACH COMPONENT IS LENGTH-FRAMED (product.fabric.work identity_frame), because node and served_name are
+// unrestricted strings: delimiter-joining them lets two different replicas render one wire and alias one
+// seat pool.
+fn rented_replica_wire(id: RentedReplicaIdentity) -> String {
+  concat(
+    identity_frame(label: "rented-node", value: id.node as String),
+    identity_frame(label: "device", value: to_string(id.device_index)),
+    identity_frame(label: "served", value: id.served_name as String),
+  )
+}
+
+// THE LAUNCH PROFILE CONSUMES THE EXTDEPS RENDERINGS, never a spelling of its own: prefix caching is
+// explicit-on and per-request cached-token reporting is requested, because the warm-trace oracle
+// reads usage.prompt_tokens_details.cached_tokens and that member is null without the flag.
+fn rented_replica_launch(device: RentedGpuDevice, model: RentedServedModel) -> RentedReplicaLaunch {
+  RentedReplicaLaunch {
+    visible_device: device.index,
+    served_model: model.served_name,
+    argv: concat(
+      vllm_serve_argv(model: model.served_name as String),
+      concat(
+        vllm_prefix_caching_argv(r: PrefixCachingExplicit { enabled: true }),
+        vllm_prompt_tokens_details_argv(r: PromptTokensDetailsReported))),
+  }
+}
+
+fn rented_device_fits(device: RentedGpuDevice, model: RentedServedModel) -> Bool {
+  byte_size_count(b: device.memory) >= byte_size_count(b: model.resident_bytes)
+}
+
+// DECLARED FRONTIER (DESIGN.md 3c): rented_replica_collection's consumer is the warm-trace producer
+// and the rented cohort's enrollment (the next PR of docs/plans/serving-hardware-neutral-cutover.md),
+// which builds the pool keys from the collected replicas and drives harness_bind_seat. Trigger: that
+// PR landing; until then only the witnesses call it.
+// ONE REPLICA PER COMPATIBLE GPU. Refuses an empty inventory and an inventory where nothing fits,
+// because an empty cohort is not a cohort that happens to be small.
+fn rented_replica_collection(inventory: RentedNodeInventory, model: RentedServedModel) -> RentedReplicaCollection {
+  let fitting = filter(inventory.devices, d => rented_device_fits(device: d, model: model))
+  if length(fitting) == 0 {
+    ReplicaCollectionRefused { cause: "no device in the inventory has memory for one replica of the model" as NonEmptyStr }
+  } else {
+    ReplicasCollected {
+      replicas: map(fitting, d => RentedReplica {
+        identity: RentedReplicaIdentity { node: inventory.node, device_index: d.index, served_name: model.served_name },
+        launch: rented_replica_launch(device: d, model: model),
+      }),
+      unfit: filter(inventory.devices, d => !rented_device_fits(device: d, model: model)),
+    }
+  }
+}

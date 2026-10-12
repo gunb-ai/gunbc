@@ -214,7 +214,7 @@ checkout_is_clean(checkout) @ srv5/deploy-runner/gunbc-deploy.service
 
 Rebinding `packages` to image-only removes the apt subtree; rebinding `principals` to image-entailed removes the useradd subtree; neither touches `checkout_is_clean`. Four consumers of `PresentPrincipal(deploy-runner)` -- the service's User=, the execute-permission readback, safe.directory's owner comparison, and the login-shell PATH when the launch context is a shell -- reach one node, because identity deduplicates it.
 
-The exec boundary cut that makes the whole thing load-bearing, landable in the corpus before any compiler change because `sole_constructor` and `admit_callers` already exist:
+The exec boundary cut that makes the whole thing load-bearing, landable in the corpus before any compiler change on the route that enforces `sole_constructor` and `admit_callers` today, the seed. The native route checks `admit_callers` and carries `sole_constructor` without checking it (`gunbc.rung_drop.g0_type_decl_modifier_parse_without_sealing_property`), so the cut's structural rung holds on the seed route until the native construction judgment lands:
 
 ```
 type MaterializedProgram sole_constructor { target: ProgramRuntime, executable: AbsolutePath, facts: RuntimeFacts }   -- minted by ensure_mint only
@@ -355,6 +355,8 @@ Today the class -- a program, account or path reaching an effect with nothing es
 - **The seed route.** `gunbc.command_runner` keeps spawning by name under v1's frozen semantics; the drop's trigger is the `host_effect_apply` ExecutableCommand handler. The native route's `v1.compiler.emit_rust` `emit_shell_call` emits a PATH-resolved spawn today and is the same drop's second member.
 - **Dynamic targets.** A program identity computed at runtime (a caller-supplied binary path) has no plan-time target and refuses; a resolver concept is not added until a real consumer needs one.
 - **Selection among families** is one `std.decision` policy declared on the blueprint; automating a per-target choice beyond that preference order is later work under section 3d, and two admissible families with no preference refuse as ambiguous.
+
+**Suppliers under another root: the Cursor credential.** One logical requirement, three executing owners, three lifetimes. The managed access owner applies the accessor binding under the operator's authority -- today a hand-kept row in `gunbc.auth.fleet_secret_accessor_roster` whose Cursor row has no executing route, since `gunbc.auth.gcp_iam_converge` `hand_applied_accessor_grants` names only OpenRouter and OCI; the custody converge (`gunbc.host_credential_custody_converge`) reads Secret Manager as the workload and places the file over ssh; the dispatch on srv2 copies the placed file into a per-attempt snapshot as the host account and launches from it. The binding lives as long as its access owner keeps it, the custody file as long as the deployment does, the snapshot only for its attempt -- ending an attempt retires the snapshot and nothing else. Closure across those roots is the architecture's section 1.3 law and is the declared frontier here; the custody file does not yet carry the Secret Manager version it holds, so the join that law requires is the first modeling obligation. The full Cursor composition is also gated on provider admission: the cursor draw refuses until entitlement is observed (`gunbc.worker_turn_standing` `cursor_entitlement_trip_pending_reason`).
 
 ## 15. Open decisions for the operator
 
