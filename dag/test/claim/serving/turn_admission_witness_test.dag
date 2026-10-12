@@ -5,10 +5,10 @@ import std.types { Bool, String, NonEmptyStr }
 import std.optional { Present, Absent }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.selection { AvailableIndefinitely, NoTransitionRequired, NoFeasibleAlternativeUse }
-import gunbc.spark.fabric_switch_observed { FabricGroupB, FabricGroup }
-import gunbc.spark.vllm_endpoint_process_launch {
-  vllm_endpoint_process_launch, vllm_endpoint_process_launch_key, vllm_endpoint_process_launch_is,
-  LaunchObserved, LaunchUnobserved,
+import gunbc.serving.rented_replica { RentedReplicaIdentity }
+import gunbc.serving.replica_endpoint_launch {
+  ReplicaEndpointLaunch, ReplicaLaunchObservation, replica_endpoint_launch, ReplicaLaunchObserved, ReplicaLaunchUnobserved,
+  replica_endpoint_launch_key, replica_endpoint_launch_is,
 }
 import gunbc.serving.turn_admission {
   ServingQueueReading, QueueDepthRead, GroupOccupied, QueueDepthUnread, GroupIdle, serving_co_tenancy,
@@ -33,6 +33,8 @@ import gunbc.harness.harness_backend {
   harness_gauge_count, harness_queue_from_body, harness_launch_from_body,
   harness_capacity_pressure_from_body,
 }
+
+data w_replica: RentedReplicaIdentity = RentedReplicaIdentity { node: "rental-1" as NonEmptyStr, device_index: 0, served_name: "qwen-first-row" as NonEmptyStr }
 
 data probe_receipt: ObservationReceiptRef = "test.claim.serving.turn_admission_witness" as ObservationReceiptRef
 
@@ -153,7 +155,7 @@ test fn unreadable_admission_evidence_never_admits() -> Bool {
     && (t_disposition(a: a) != "admissible")
     && (t_disposition(a: a) != "pending-retry")
     && (t_disposition(a: a) == "refused-measure")
-    && string_contains(s: serving_admission_detail(group: FabricGroupB {}, admission: a), pattern: "occupancy unread, which is not idle")
+    && string_contains(s: serving_admission_detail(replica: w_replica, admission: a), pattern: "occupancy unread, which is not idle")
 }
 
 // ── AN OCCUPIED GROUP IS NOT A WORSE CANDIDATE; IT IS NOT A CANDIDATE ─────────────────────────
@@ -167,7 +169,7 @@ test fn an_occupied_group_refuses_a_fresh_cold_prefill() -> Bool {
   (match a { InadmissibleUnexplainedOccupancy { occupants: n, seated: _ } => n == 1  _ => false })
     && (t_disposition(a: a) != "admissible")
     && (t_disposition(a: a) == "pending-retry")
-    && string_contains(s: serving_admission_detail(group: FabricGroupB {}, admission: a), pattern: "a turn nobody seated may be one somebody is reading")
+    && string_contains(s: serving_admission_detail(replica: w_replica, admission: a), pattern: "a turn nobody seated may be one somebody is reading")
 }
 
 // A GROUP WITH WORK WAITING IS NOT IDLE EITHER. The request admitted and waiting starts the moment
@@ -225,13 +227,13 @@ test fn an_admitted_candidate_carries_no_priced_estimate() -> Bool {
 // a field the key and the equality both ignored, which is the shape where a carrier holds a fact its
 // identity does not agree to.
 test fn a_restarted_engine_is_a_different_offer_subject() -> Bool {
-  let first = vllm_endpoint_process_launch(group: FabricGroupB {}, endpoint: "192.168.1.232" as NonEmptyStr, process_start_field: "1757200000.5" as NonEmptyStr)
-  let second = vllm_endpoint_process_launch(group: FabricGroupB {}, endpoint: "192.168.1.232" as NonEmptyStr, process_start_field: "1757209999.25" as NonEmptyStr)
-  let relocated = vllm_endpoint_process_launch(group: FabricGroupB {}, endpoint: "192.168.1.240" as NonEmptyStr, process_start_field: "1757200000.5" as NonEmptyStr)
-  !vllm_endpoint_process_launch_is(launch: first, other: second)
-    && vllm_endpoint_process_launch_is(launch: first, other: first)
-    && ((vllm_endpoint_process_launch_key(launch: first) as String) != (vllm_endpoint_process_launch_key(launch: second) as String))
-    && !vllm_endpoint_process_launch_is(launch: first, other: relocated)
+  let first = replica_endpoint_launch(replica: w_replica, endpoint: "192.168.1.232" as NonEmptyStr, process_start_field: "1757200000.5" as NonEmptyStr)
+  let second = replica_endpoint_launch(replica: w_replica, endpoint: "192.168.1.232" as NonEmptyStr, process_start_field: "1757209999.25" as NonEmptyStr)
+  let relocated = replica_endpoint_launch(replica: w_replica, endpoint: "192.168.1.240" as NonEmptyStr, process_start_field: "1757200000.5" as NonEmptyStr)
+  !replica_endpoint_launch_is(launch: first, other: second)
+    && replica_endpoint_launch_is(launch: first, other: first)
+    && ((replica_endpoint_launch_key(launch: first) as String) != (replica_endpoint_launch_key(launch: second) as String))
+    && !replica_endpoint_launch_is(launch: first, other: relocated)
 }
 
 // AND A LAUNCH THAT CANNOT BE NAMED IS NOT OFFERED, because the alternative is an offer keyed on the
@@ -241,13 +243,13 @@ test fn an_unnameable_launch_is_not_offered() -> Bool {
     "vllm:num_requests_waiting\{model_name=\"deepseek\"} 0.0\n",
     "vllm:num_requests_running\{model_name=\"deepseek\"} 0.0\n",
   ], "")
-  (match harness_launch_from_body(group: FabricGroupB {}, address: "192.168.1.232", body: no_process_line) {
-     LaunchUnobserved { group: _, obligation: o } => string_contains(s: o as String, pattern: "cannot be named")
-     LaunchObserved { launch: _, receipt: _ } => false
+  (match harness_launch_from_body(replica: w_replica, address: "192.168.1.232", body: no_process_line) {
+     ReplicaLaunchUnobserved { replica: _, obligation: o } => string_contains(s: o as String, pattern: "cannot be named")
+     ReplicaLaunchObserved { launch: _, receipt: _ } => false
    })
-    && (match harness_launch_from_body(group: FabricGroupB {}, address: "192.168.1.232", body: metrics_body(waiting: "0.0", running: "0.0", start: "1757200000.5")) {
-          LaunchObserved { launch: l, receipt: _ } => (l.process_start_field as String) == "1757200000.5"
-          LaunchUnobserved { group: _, obligation: _ } => false
+    && (match harness_launch_from_body(replica: w_replica, address: "192.168.1.232", body: metrics_body(waiting: "0.0", running: "0.0", start: "1757200000.5")) {
+          ReplicaLaunchObserved { launch: l, receipt: _ } => (l.process_start_field as String) == "1757200000.5"
+          ReplicaLaunchUnobserved { replica: _, obligation: _ } => false
         })
 }
 
@@ -355,7 +357,7 @@ test fn an_attributed_hit_on_the_owning_launch_reads_reused_at_turn() -> Bool {
 // THE DISCRIMINATING RED (A-evicted / B-hit): session A's own last response reported zero cached tokens
 // (its prefix was evicted) while session B hit on the same launch, advancing the engine-wide counters.
 // Engine counters are not read anywhere, so A cannot read reused; the same red runs on the
-// production fold in serving_availability_bind_wet_witness_test.
+// production fold in serving_session_attachment_witness_test.
 test fn an_evicted_session_does_not_inherit_a_neighbours_hit() -> Bool {
   (match residency_on(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierUnread) {
      ResidencyUnread { obligation: _ } => true
