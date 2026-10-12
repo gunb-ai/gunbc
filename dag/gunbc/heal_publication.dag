@@ -1,7 +1,7 @@
 module gunbc.heal_publication
 
 import std.types { NonEmptyStr, String, List, Int, Bool, CommitSha, FilePath, Secret }
-import extdeps.github.issues
+import extdeps.github.issues { IssueComment }
 import gunbc.github_effect_perform { mint_publisher_installation_token, PublisherTokenMinted, PublisherTokenNotMinted }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { trim }

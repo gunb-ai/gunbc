@@ -1688,6 +1688,9 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // 201 with a token valid for one hour. The token is decoded straight into a Secret so it has no
 // String life in this process. A mutation: a transport refusal is commit-ambiguous, and the caller
 // classifies the refusal through extdeps.transports.rest classify_rest_refusal as RestMutationExchange.
+// CreateScoped is the same endpoint with the request body GitHub documents for narrowing a token
+// below what the installation holds: `repositories` (names) and `permissions` (axis -> access). A
+// caller whose credential must be the smallest that can perform one effect names both at the mint.
 service github.AppInstallationAccessTokens {
   config {
     endpoint: default_api_base
@@ -1714,9 +1717,6 @@ service github.AppInstallationAccessTokens {
     }
   }
 
-  // The same endpoint with the request body GitHub documents for narrowing a token below what the
-  // installation holds: `repositories` (names) and `permissions` (axis -> access). A caller whose
-  // credential must be the smallest that can perform one effect names both at the mint.
   operation CreateScoped {
     requires Network
     input {
