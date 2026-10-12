@@ -2,6 +2,8 @@ module product.build_fulfillment
 
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
+import std.optional { Optional, Present, Absent }
+import std.error_primitives { Result, Ok, Err }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import std.measure { MoneyAmountMicro, MoneyOnce, money_amount_micro, money_amount_micro_count, money_once_micros }
 import extdeps.currency.currency { CurrencyCode }
@@ -721,10 +723,40 @@ type CashProjection
   | CashNoPurchaseLines
   | CashRefused { cause: CashRefusalCause }
 
+// The accumulator's running sum, or a refusal: std's short-circuiting refusal carrier
+// Result<Optional<R>, C> (std.error_primitives) applied to this coproduct's inhabitance -- the
+// refused variant carries its cause, the running variant carries the running sum, and the
+// not-yet-derived variant carries nothing. The fold matches on the carrier, not the variant list,
+// so the fold body is written once: naming the open variants in the fold would clone it once per
+// arm (the DESIGN section 2 redundancy, not the section 4 totality).
+fn cash_running(p: CashProjection) -> Result<Optional<MoneyOnce>, CashRefusalCause> {
+  match p {
+    CashDerived { cash: c } => Ok { value: Present { value: c } }
+    CashNoPurchaseLines => Ok { value: Absent }
+    CashRefused { cause: c } => Err { value: c }
+  }
+}
+
+// The first cash derivation: a line with no running sum yet contributes its own line total.
+// Factored so the not-yet-running variants of the accumulator name it rather than repeat it.
+fn cash_first_derivation(declared: CurrencyCode, price: MoneyOnce, q: Nat) -> CashProjection {
+  CashDerived {
+    cash: MoneyOnce {
+      amount: money_amount_micro(count: q * money_once_micros(q: price)),
+      currency: declared,
+    },
+  }
+}
+
+// The fold matches on the std refusal carrier, not the variant list: a refused accumulator
+// short-circuits and the open region runs the fold body once for every open variant. The running
+// vs. first derivation is totalized on the running fact the carrier carries (Absent until a
+// line derives one) -- no arm for a refused accumulator exists inside the fold, so nothing is
+// fabricated for a state the carrier already excluded.
 fn cash_step(acc: CashProjection, declared: CurrencyCode, r: LineResolution) -> CashProjection {
-  match acc {
-    CashRefused { cause: c } => CashRefused { cause: c }
-    _ =>
+  match cash_running(p: acc) {
+    Err { value: c } => CashRefused { cause: c }
+    Ok { value: running } =>
       match r {
         LineRefused { line: l, cause: _ } => CashRefused { cause: CashLineRefused { part: l.part } }
         LineResolved { line: l, fulfillment: f } =>
@@ -733,21 +765,15 @@ fn cash_step(acc: CashProjection, declared: CurrencyCode, r: LineResolution) -> 
               if price.currency != declared {
                 CashRefused { cause: CashCurrencyMismatch { declared: declared, line_currency: price.currency } }
               } else {
-                match acc {
-                  CashDerived { cash: running } =>
+                match running {
+                  Present { value: running_sum } =>
                     CashDerived {
                       cash: MoneyOnce {
-                        amount: money_amount_micro(count: money_once_micros(q: running) + q * money_once_micros(q: price)),
+                        amount: money_amount_micro(count: money_once_micros(q: running_sum) + q * money_once_micros(q: price)),
                         currency: declared,
                       },
                     }
-                  _ =>
-                    CashDerived {
-                      cash: MoneyOnce {
-                        amount: money_amount_micro(count: q * money_once_micros(q: price)),
-                        currency: declared,
-                      },
-                    }
+                  Absent => cash_first_derivation(declared: declared, price: price, q: q)
                 }
               }
             SupplyMissing { part: p, requested: _, owned_available: _, market_units: _ } =>
@@ -869,6 +895,30 @@ type BasisProjection
   | BasisNoDraws
   | BasisRefused { cause: BasisRefusalCause }
 
+// The running basis fact a fold needs to combine: the derived sum and its retained remainder
+// (the allocation policy of a new draw always replaces the running one, so it is not carried).
+type BasisRunning {
+  basis: MoneyOnce
+  remainder: MoneyAmountMicro
+}
+
+// The accumulator's running basis, or a refusal: std's short-circuiting refusal carrier
+// Result<Optional<R>, C> (std.error_primitives) applied to this coproduct's inhabitance. The
+// fold matches on the carrier, not the variant list, so the fold body is written once.
+fn basis_running(p: BasisProjection) -> Result<Optional<BasisRunning>, BasisRefusalCause> {
+  match p {
+    BasisDerived { basis: b, remainder: r, policy: _ } =>
+      Ok { value: Present { value: BasisRunning { basis: b, remainder: r } } }
+    BasisNoDraws => Ok { value: Absent }
+    BasisRefused { cause: c } => Err { value: c }
+  }
+}
+
+// The first basis derivation: a draw with no running basis yet stands alone.
+fn basis_first_derivation(b: MoneyOnce, rem: MoneyAmountMicro, p: BasisAllocationPolicy) -> BasisProjection {
+  BasisDerived { basis: b, remainder: rem, policy: p }
+}
+
 type LotLookup
   = LotFound { lot: ProcurementLot }
   | LotAbsent
@@ -911,10 +961,15 @@ fn basis_for_draw(lot: ProcurementLot, draw: LotDraw) -> BasisProjection {
   }
 }
 
+// The fold matches on the std refusal carrier, not the variant list: a refused accumulator
+// short-circuits and the open region runs the step once for every open variant. The running vs.
+// first derivation is totalized on the running basis fact the carrier carries (Absent until a
+// draw derives one) -- no arm for a refused accumulator exists inside the fold, so nothing is
+// fabricated for a state the carrier already excluded.
 fn basis_step(acc: BasisProjection, lots: List<ProcurementLot>, draw: LotDraw) -> BasisProjection {
-  match acc {
-    BasisRefused { cause: c } => BasisRefused { cause: c }
-    _ =>
+  match basis_running(p: acc) {
+    Err { value: c } => BasisRefused { cause: c }
+    Ok { value: running } =>
       match lot_for(lots: lots, identity: draw.lot) {
         LotAbsent => BasisRefused { cause: BasisLotUnknown { lot: draw.lot } }
         LotDuplicated => BasisRefused { cause: BasisLotDuplicated { lot: draw.lot } }
@@ -923,25 +978,25 @@ fn basis_step(acc: BasisProjection, lots: List<ProcurementLot>, draw: LotDraw) -
             BasisRefused { cause: c } => BasisRefused { cause: c }
             BasisNoDraws => acc
             BasisDerived { basis: b, remainder: rem, policy: p } =>
-              match acc {
-                BasisDerived { basis: running, remainder: running_rem, policy: _ } =>
-                  if running.currency != b.currency {
+              match running {
+                Present { value: running } =>
+                  if running.basis.currency != b.currency {
                     BasisRefused {
-                      cause: BasisCurrencyMismatchAcrossLots { first: running.currency, other: b.currency },
+                      cause: BasisCurrencyMismatchAcrossLots { first: running.basis.currency, other: b.currency },
                     }
                   } else {
                     BasisDerived {
                       basis: MoneyOnce {
-                        amount: money_amount_micro(count: money_once_micros(q: running) + money_once_micros(q: b)),
-                        currency: running.currency,
+                        amount: money_amount_micro(count: money_once_micros(q: running.basis) + money_once_micros(q: b)),
+                        currency: running.basis.currency,
                       },
                       remainder: money_amount_micro(
-                        count: money_amount_micro_count(m: running_rem) + money_amount_micro_count(m: rem),
+                        count: money_amount_micro_count(m: running.remainder) + money_amount_micro_count(m: rem),
                       ),
                       policy: p,
                     }
                   }
-                _ => BasisDerived { basis: b, remainder: rem, policy: p }
+                Absent => basis_first_derivation(b: b, rem: rem, p: p)
               }
           }
       }
@@ -1058,10 +1113,40 @@ type ConstructibleCeiling
   | CeilingUnconstrainedByAnyLine
   | CeilingRefused { cause: CeilingRefusalCause }
 
+// The running ceiling fact a fold needs to compare against: the best build ceiling seen so far,
+// the bottleneck lines that produce it, and their unit count.
+type CeilingRunning {
+  builds: Nat
+  bottlenecks: List<BomLine>
+  bottleneck_units: Nat
+}
+
+// The accumulator's running ceiling, or a refusal: std's short-circuiting refusal carrier
+// Result<Optional<R>, C> (std.error_primitives) applied to this coproduct's inhabitance. The
+// fold matches on the carrier, not the variant list, so the fold body is written once.
+fn ceiling_running(p: ConstructibleCeiling) -> Result<Optional<CeilingRunning>, CeilingRefusalCause> {
+  match p {
+    CeilingDerived { builds: b, bottlenecks: bs, bottleneck_units: bu } =>
+      Ok { value: Present { value: CeilingRunning { builds: b, bottlenecks: bs, bottleneck_units: bu } } }
+    CeilingUnconstrainedByAnyLine => Ok { value: Absent }
+    CeilingRefused { cause: c } => Err { value: c }
+  }
+}
+
+// The first ceiling derivation: no constraining line yet, so this line is the whole bottleneck.
+fn ceiling_first_derivation(line: BomLine, builds: Nat, u: Nat) -> ConstructibleCeiling {
+  CeilingDerived { builds: builds, bottlenecks: [line], bottleneck_units: u }
+}
+
+// The fold matches on the std refusal carrier, not the variant list: a refused ceiling short-circuits
+// and the open region runs the step once for every open variant. The running vs. first derivation
+// is totalized on the running ceiling fact the carrier carries (Absent until a line constrains
+// the build) -- no arm for a refused ceiling exists inside the fold, so nothing is fabricated for
+// a state the carrier already excluded.
 fn ceiling_step(acc: ConstructibleCeiling, line: BomLine, depth: LineDepth) -> ConstructibleCeiling {
-  match acc {
-    CeilingRefused { cause: c } => CeilingRefused { cause: c }
-    _ =>
+  match ceiling_running(p: acc) {
+    Err { value: c } => CeilingRefused { cause: c }
+    Ok { value: running } =>
       match depth {
         DepthRefused { cause: c } =>
           CeilingRefused { cause: CeilingLineRefused { part: line.part, cause: c } }
@@ -1070,16 +1155,20 @@ fn ceiling_step(acc: ConstructibleCeiling, line: BomLine, depth: LineDepth) -> C
         DepthUnconstrained => acc
         DepthUnits { units: u } => {
           let builds = u / line.quantity_per_build
-          match acc {
-            CeilingDerived { builds: best, bottlenecks: bs, bottleneck_units: bu } =>
-              if builds < best {
+          match running {
+            Present { value: running } =>
+              if builds < running.builds {
                 CeilingDerived { builds: builds, bottlenecks: [line], bottleneck_units: u }
-              } else if builds == best {
-                CeilingDerived { builds: best, bottlenecks: concat(bs, [line]), bottleneck_units: bu }
+              } else if builds == running.builds {
+                CeilingDerived {
+                  builds: running.builds,
+                  bottlenecks: concat(running.bottlenecks, [line]),
+                  bottleneck_units: running.bottleneck_units,
+                }
               } else {
                 acc
               }
-            _ => CeilingDerived { builds: builds, bottlenecks: [line], bottleneck_units: u }
+            Absent => ceiling_first_derivation(line: line, builds: builds, u: u)
           }
         }
       }

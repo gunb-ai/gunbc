@@ -8,9 +8,9 @@ import v2.extdeps.languages.dag {
   dag_lex,
   dag_target_model,
   dag_token_class_emit_transforms,
-  dag_value_expression_projection,
-  parse_production_emitted_identity_optional
+  dag_value_expression_projection
 }
+import v2.std.grammar { parse_production_emitted_identity_optional }
 import v2.std.compilers.lexing { Token }
 import v2.std.compilers.target_model {
   BoundToken,
