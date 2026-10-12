@@ -386,12 +386,12 @@ test fn the_per_host_producer_refuses_a_host_outside_the_named_unit_population()
        })
 }
 
-// ── THE PRODUCTION SETS, ASSERTED BY IDENTITY ────────────────────────────────────────────────
+// ── THE SOLD GROUP B FIXTURE SETS, ASSERTED BY IDENTITY ──────────────────────────────────────
 //
-// srv9-srv12 are the hosts of group B, every one of which carries a placement claim from the native GLM arm converged
-// on that group (gunbc.spark.serving_arm_placement, derived from
-// retired gunbc.spark.fabric_serving_assignment (deleted #13779)). So no production unit is UNPLACED, and the UNCOMMITTED set
-// -- no cause of any kind -- is empty.
+// srv9-srv12 are the hosts of sold group B. Production arm claims and reservations are empty
+// (inhabitance below). The fixture roster supplies one placement claim per host from
+// `glm_group_b_serving_arm` (now `dgx_spark_disposed_units`). Over that supplied population no
+// fixture unit is UNPLACED, and the UNCOMMITTED set -- no cause of any kind -- is empty.
 //
 // THIS CLAIM USED TO ASSERT THE OPPOSITE FOR srv10-srv12, as "the reserved but idle cage": only srv9
 // was claimed, by the retired exl3 canary, while the arm actually running tensor-parallel across all
@@ -433,7 +433,7 @@ fn placed_by_the_group_b_arm(host: HostIdentity) -> Bool {
   }
 }
 
-test fn the_production_group_b_hosts_are_placed_by_the_converged_arm_by_identity() -> Bool {
+test fn the_fixture_group_b_hosts_are_placed_by_the_sold_arm_by_identity() -> Bool {
   placed_by_the_group_b_arm(host: operator_host_srv9)
     && placed_by_the_group_b_arm(host: operator_host_srv10)
     && placed_by_the_group_b_arm(host: operator_host_srv11)
@@ -444,7 +444,7 @@ test fn the_production_group_b_hosts_are_placed_by_the_converged_arm_by_identity
     && !spark_host_is_unplaced(host: operator_host_srv12)
 }
 
-fn production_standing_is_committed(host: HostIdentity) -> Bool {
+fn fixture_group_b_standing_is_committed(host: HostIdentity) -> Bool {
   match spark_host_standing(host: host) {
     Absent => false
     Present { value: SparkHostUncommitted { host: _ } } => false
@@ -452,14 +452,14 @@ fn production_standing_is_committed(host: HostIdentity) -> Bool {
   }
 }
 
-// THE EMPTYING, SHOWN HOST BY HOST. With group B reserved for the GLM subject, every unit carries a
-// cause, so no unit is `SparkHostUncommitted`. This is the consequence the reservation row was
-// expected to have and it is asserted rather than assumed, because an empty set would satisfy every
-// "not in the set" claim above without saying anything.
-test fn every_production_unit_is_committed_so_the_uncommitted_set_is_empty_by_identity() -> Bool {
-  all(fixture_group_b_units, h => production_standing_is_committed(host: h))
-    && production_standing_is_committed(host: operator_host_srv10)
-    && production_standing_is_committed(host: operator_host_srv12)
+// THE EMPTYING, SHOWN HOST BY HOST. Over the sold Group B fixture reservation, every unit carries a
+// cause, so no fixture unit is `SparkHostUncommitted`. This is the consequence the reservation row
+// was expected to have and it is asserted rather than assumed, because an empty set would satisfy
+// every "not in the set" claim above without saying anything.
+test fn every_fixture_group_b_unit_is_committed_so_the_uncommitted_set_is_empty_by_identity() -> Bool {
+  all(fixture_group_b_units, h => fixture_group_b_standing_is_committed(host: h))
+    && fixture_group_b_standing_is_committed(host: operator_host_srv10)
+    && fixture_group_b_standing_is_committed(host: operator_host_srv12)
 }
 
 // ── RED 4: THE HOST A SERVING ARM IS PLACED ON IS NOT FREE ────────────────────────────────────
@@ -468,9 +468,9 @@ test fn every_production_unit_is_committed_so_the_uncommitted_set_is_empty_by_id
 // roles, claimed pair-serving groups and held llama.cpp reservations, and answered srv9 -- where GLM
 // was serving -- as uncommitted, while two consumers stood ready to start an hour-long build or pull a
 // 9.6 GB image onto whatever host they were handed. The claim is now a cause, and this asserts it BY
-// IDENTITY against the production placement roster rather than by a count. Its cause names group B's
-// assignment row, not an engine's declaration, so a change of engine does not move it.
-test fn the_group_b_head_host_is_committed_and_its_cause_names_the_assignment() -> Bool {
+// IDENTITY against the sold Group B fixture placement roster rather than by a count. Its cause names
+// the disposal-anchored arm (`dgx_spark_disposed_units`), not an engine's declaration.
+test fn the_fixture_group_b_head_host_is_committed_and_its_cause_names_disposal() -> Bool {
   !spark_host_is_unplaced(host: operator_host_srv9)
     && (match spark_host_standing(host: operator_host_srv9) {
          Absent => false
@@ -565,7 +565,7 @@ test fn a_host_outside_the_unit_population_is_refused_as_unrostered() -> Bool {
 // THE DERIVATION IS TOTAL OVER ITS UNIVERSE: unplaced plus authority-held partitions the units,
 // and nothing here authors a host list. The partition is between the placement projection and its
 // complement, which is the pair of derived sets that consumers actually read.
-fn production_host_has_authority_held_cause(host: HostIdentity) -> Bool {
+fn fixture_group_b_host_has_authority_held_cause(host: HostIdentity) -> Bool {
   match spark_host_standing(host: host) {
     Absent => false
     Present { value: SparkHostUncommitted { host: _ } } => false
@@ -576,7 +576,7 @@ fn production_host_has_authority_held_cause(host: HostIdentity) -> Bool {
 test fn the_derivation_partitions_the_unit_population() -> Bool {
   let units = fixture_group_b_units
   all(spark_unplaced_hosts_of(standings: group_b_standings), h => contains_host(hosts: units, host: h))
-    && all(units, h => spark_host_is_unplaced(host: h) != production_host_has_authority_held_cause(host: h))
+    && all(units, h => spark_host_is_unplaced(host: h) != fixture_group_b_host_has_authority_held_cause(host: h))
     && all(spark_committed_standings_of(standings: group_b_standings), s => match s {
          SparkHostUncommitted { host: _ } => false
          SparkHostCommitted { host: h, commitments: _ } => contains_host(hosts: units, host: h)
@@ -618,7 +618,7 @@ test fn authority_held_and_ruling_derived_causes_are_separable_by_a_fold() -> Bo
 
 // ── ADMISSIBILITY TO A SERVING SUBJECT ───────────────────────────────────────────────────────
 //
-// THE PRODUCTION ANSWER. Group B's subject sees srv9-srv12, every host of its cage. A pair unit on
+// THE FIXTURE ANSWER. The sold Group B subject sees srv9-srv12, every host of its cage. A pair unit on
 // group B is used below as a SUBJECT that holds none of them: no group is claimed by pair serving,
 // so against it the arm claim and the ruling's reservation are both unheld.
 data pair_unit_b: ServingSubject = PairServingUnitOn { group: FabricGroupB {} }
