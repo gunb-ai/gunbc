@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, declaration_ref_eq, declaration_ref_display_key }
 import std.interval { OrderedClosedInterval, degenerate_interval, interval_low, interval_high }
 import std.measure { MoneyAmountMicro, MoneyPerSecond, money_amount_micro_count, money_rate_micros }
-import std.checked_arithmetic { CheckedInt, CheckedIntReady, CheckedIntOverflow, checked_int_add, checked_int_multiply }
+import std.checked_arithmetic { CheckedInt, CheckedIntReady, CheckedIntOverflow, checked_int_add, checked_int_multiply, checked_int_subtract }
 import std.observation_completeness {
   ObservationCompleteness,
   ObservationComplete,
@@ -1205,21 +1205,21 @@ fn identity_order_pick(survivors: List<DeclarationRef>) -> DeclarationRef? {
   )
 }
 
-fn valuation_rate_micros(rate: ValuationRate) -> Int {
+// Sign is the coproduct arm: money, delay and interruption add; accepted work subtracts.
+// CONSUMER: valued_term_contribution.
+fn signed_valuation_product(reading: Int, rate: ValuationRate) -> CheckedInt {
   match rate {
-    MoneyValuation { amount: a } => money_amount_micro_count(m: a) as Int
-    DelayValuation { rate: r } => money_rate_micros(q: r) as Int
-    InterruptionValuation { amount: a } => money_amount_micro_count(m: a) as Int
-    AcceptedWorkValuation { amount: a } => money_amount_micro_count(m: a) as Int
-  }
-}
-
-fn valuation_is_benefit(rate: ValuationRate) -> Bool {
-  match rate {
-    AcceptedWorkValuation { amount: _ } => true
-    MoneyValuation { amount: _ } => false
-    DelayValuation { rate: _ } => false
-    InterruptionValuation { amount: _ } => false
+    MoneyValuation { amount: a } =>
+      checked_int_multiply(a: reading, b: money_amount_micro_count(m: a) as Int)
+    DelayValuation { rate: r } =>
+      checked_int_multiply(a: reading, b: money_rate_micros(q: r) as Int)
+    InterruptionValuation { amount: a } =>
+      checked_int_multiply(a: reading, b: money_amount_micro_count(m: a) as Int)
+    AcceptedWorkValuation { amount: a } =>
+      match checked_int_multiply(a: reading, b: money_amount_micro_count(m: a) as Int) {
+        CheckedIntOverflow { cause: c } => CheckedIntOverflow { cause: c }
+        CheckedIntReady { value: product } => checked_int_subtract(a: 0, b: product)
+      }
   }
 }
 
@@ -1246,15 +1246,10 @@ fn valued_term_contribution(entry: ParetoEntry, valuation: TermValuation) -> Val
           },
         }
       } else {
-        match checked_int_multiply(a: interval_low(interval: iv), b: valuation_rate_micros(rate: valuation.rate)) {
+        match signed_valuation_product(reading: interval_low(interval: iv), rate: valuation.rate) {
           CheckedIntOverflow { cause: _ } =>
             ValuedContributionRefused { defect: "valued-term product overflowed" as NonEmptyStr }
-          CheckedIntReady { value: product } =>
-            if valuation_is_benefit(rate: valuation.rate) {
-              ValuedContributionReady { micros: 0 - product }
-            } else {
-              ValuedContributionReady { micros: product }
-            }
+          CheckedIntReady { value: micros } => ValuedContributionReady { micros: micros }
         }
       }
   }
