@@ -10,8 +10,6 @@ import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
 import gunbc.cloudflare.r2_conditional_put_race_probe { race_probe_receipt_path }
 import gunbc.spark.managed_access_apply { spark_apply_receipt_path }
-import gunbc.spark.pair_serving_apply { spark_pair_apply_receipt_path }
-import gunbc.spark.native_serving_apply { spark_native_apply_receipt_path }
 import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_access_url, secret_ref_version_resource }
 import gunbc.auth.ci_app_key_rotation {
@@ -1117,6 +1115,9 @@ data gunbc_ci_spark_bootstrap_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/spark/managed_access_apply.dag",
   function: "spark_managed_access_bootstrap_ci_wet",
 }
+
+data spark_pair_apply_receipt_path: String = "target/spark-pair-apply-receipt.txt"
+data spark_native_apply_receipt_path: String = "target/spark-native-apply-receipt.txt"
 
 data gunbc_ci_spark_serving_apply_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/spark/pair_serving_apply.dag",

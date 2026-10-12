@@ -1,0 +1,15 @@
+module gunbc.spark.retired_serving_container_names
+
+import std.types { NonEmptyStr }
+
+// HISTORICAL CONTAINER NAMES THE MANAGED-ACCESS GRANT ROSTER STILL NAMES. The DGX Spark serving
+// processes are gone (all units sold, gunbc.spark.dgx_procurement dgx_spark_disposed_units). These
+// strings identify which inspect grants were issued, not a live serving path.
+
+data spark_pair_container_name: NonEmptyStr = "gunbc-spark-pair" as NonEmptyStr
+data glm_native_container_name: NonEmptyStr = "glm-native-tp4" as NonEmptyStr
+data glm53_staircase_container_name: NonEmptyStr = "gunbc-glm53-stair-tp4" as NonEmptyStr
+data spark_pair_head_unit_name: NonEmptyStr = "gunbc-spark-pair-head.service" as NonEmptyStr
+data spark_pair_worker_unit_name: NonEmptyStr = "gunbc-spark-pair-worker.service" as NonEmptyStr
+data spark_pair_retired_head_unit: NonEmptyStr = "spark-vllm.service" as NonEmptyStr
+data spark_pair_retired_worker_unit: NonEmptyStr = "spark-ray-worker.service" as NonEmptyStr

@@ -20,8 +20,7 @@ import gunbc.spark.fabric_switch_observed { spark_fabric_leg_netdev }
 import extdeps.systemd.systemctl { systemctl_reboot_argv, systemctl_reboot_command }
 import extdeps.exec.command { argv_words }
 import extdeps.docker.cli { docker_container_inspect_command }
-import gunbc.spark.pair_serving_realization { spark_pair_container_name }
-import gunbc.spark.serving_arm_launch { glm_native_container_name, glm53_staircase_container_name }
+import gunbc.spark.retired_serving_container_names { spark_pair_container_name, glm_native_container_name, glm53_staircase_container_name }
 // WHAT THE PROBE ESTABLISHED, AND WHAT FOLLOWS FROM IT.
 //
 // The credential-bound probe measured, on both Sparks: the fleet key authenticates as briansrls;

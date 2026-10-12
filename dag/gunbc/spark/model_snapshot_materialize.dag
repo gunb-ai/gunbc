@@ -21,7 +21,7 @@ import gunbc.fleet_known_hosts_anchor {
 }
 import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
 import gunbc.spark.fabric_reach { SparkReachPath, spark_reach_endpoint, spark_reach_path_wire }
-import gunbc.spark.pair_serving_realization { spark_pair_container_name }
+import gunbc.spark.retired_serving_container_names { spark_pair_container_name }
 import gunbc.artifact_acquisition {
   AcquisitionSubject, AcquisitionSource, AcquisitionHandler,
   AcquisitionObservation, AcquisitionAbsent, AcquisitionVerified,

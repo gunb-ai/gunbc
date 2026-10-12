@@ -29,13 +29,17 @@ import extdeps.vllm.usage_stats {
   vllm_usage_stats_reporting, vllm_usage_stats_assignment_disables,
 }
 import gunbc.spark.dgx_procurement { OperatorAllocation }
-import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch }
-import gunbc.spark.vllm_serving_launch {
-  EndpointIncarnationStanding, EndpointIncarnationObserved, EndpointIncarnationUnobserved,
-}
 import v2.std.algebra { list_tail, TailFound, TailAbsent }
 import gunbc.fleet_physical_inventory { operator_site }
 import gunbc.fleet_host_identity { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
+
+type RetiredServingEndpoint { endpoint: NonEmptyStr }
+
+type RetiredIncarnationObservation { container_env: List<String> }
+
+type EndpointIncarnationStanding
+  = EndpointIncarnationObserved { observation: RetiredIncarnationObservation }
+  | EndpointIncarnationUnobserved { obligation: NonEmptyStr }
 
 // ── WHY A SERVING ROUTE EXISTS AT ALL NOW, AND WHAT KIND OF FACT IT RESTS ON ──────────────────
 //
@@ -143,7 +147,7 @@ data gunbc_first_party_serving_provider: FirstPartyServingAuthority = FirstParty
 // offered on this route is the Spark pair serving deployment, whose single authority is
 // gunbc.spark.pair_serving_desired. A fresh service anchor beside it would be a second name for it.
 fn spark_first_party_service_ref() -> DeclarationRef {
-  decl_ref(module_path: "gunbc.spark.pair_serving_desired", decl_name: "spark_pair_serving_desired")
+  decl_ref(module_path: "gunbc.spark.dgx_procurement", decl_name: "dgx_spark_disposed_units")
 }
 
 fn spark_first_party_provider_ref() -> DeclarationRef {
@@ -483,7 +487,7 @@ fn spark_first_party_downstream() -> DownstreamProviderPopulation {
 type SparkServingRealization {
   hosts: List<HostIdentity>
   readback: VllmModelsRouteReadbackStanding
-  endpoint: VllmEndpointProcessLaunch
+  endpoint: RetiredServingEndpoint
   incarnation: EndpointIncarnationStanding
   declared_model_path: String?
 }
