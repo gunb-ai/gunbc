@@ -24,7 +24,6 @@ import gunbc.roadmap_component {
 import gunbc.roadmap_style { roadmap_rules }
 import gunbc.design.material { StaticRule }
 import extdeps.languages.css.selectors { ClassSelector }
-import v2.std.algebra { any }
 import std.upsert_decision { ObservationVerdict, Converged }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

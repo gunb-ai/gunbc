@@ -1,7 +1,7 @@
 module gunbc.workspace_commissioning_start_observe
 
 import std.types { String, NonEmptyStr, Bool }
-import v2.std.algebra { for_all, filter }
+import v2.std.algebra { for_all }
 import extdeps.systemd { IdProperty, LoadState, ActiveState, MainPID, InvocationIDProperty, JobProperty }
 import extdeps.systemd.systemctl { systemctl_show_properties_command, systemctl_show_property_value }
 import extdeps.exec.command { LocalExec }
