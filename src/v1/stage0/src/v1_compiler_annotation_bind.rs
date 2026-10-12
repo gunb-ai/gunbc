@@ -6,7 +6,9 @@ pub use crate::std_occurrence_identity::{OccurrenceId, OccurrenceIndexEntry, Occ
 use crate::std_source_annotation::AnnotationScope::{
     ErasedSourceRegion, FileScope, OccurrenceScope,
 };
-pub use crate::std_source_annotation::{attach_annotations, source_annotation_graph_rows};
+pub use crate::std_source_annotation::{
+    annotation_scope_key, attach_annotations, source_annotation_graph_rows,
+};
 pub use crate::std_source_annotation::{
     AnnotationGap, AnnotationRegion, AnnotationScope, KeyedAnnotationRow,
     NormalizedAnnotationCapture, SourceAnnotationDebt, SourceAnnotationGraph,
@@ -60,22 +62,6 @@ pub fn occurrence_base_parent(entry: Rc<OccurrenceIndexEntry>) -> Rc<AnnotationS
             occurrence: parent.clone(),
         }),
         std::option::Option::None => Rc::new(AnnotationScope::FileScope),
-    }
-}
-
-pub fn scope_key_text(scope: Rc<AnnotationScope>) -> String {
-    match (*scope.clone()).clone() {
-        AnnotationScope::FileScope => "file".to_string(),
-        AnnotationScope::OccurrenceScope { occurrence: o, .. } => {
-            v1_rt::concat("o".to_string(), (o.value.clone()).to_string())
-        }
-        AnnotationScope::ErasedSourceRegion { extent: e, .. } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat("e".to_string(), (e.start.clone()).to_string()),
-                "-".to_string(),
-            ),
-            (e.end.clone()).to_string(),
-        ),
     }
 }
 
@@ -365,7 +351,8 @@ pub fn region_key_index(
                 step_of: v1_rt::rc_empty_map::<String, String>(),
             }),
             |acc: Rc<RegionKeyStepAcc>, region: Rc<AnnotationRegion>| {
-                let parent_key = scope_key_text(region.parent.clone());
+                let parent_key =
+                    crate::std_source_annotation::annotation_scope_key(region.parent.clone());
                 let ordinal = match v1_rt::map_get(&acc.seen.clone(), parent_key.clone()) {
                     Some(n) => n.clone(),
                     std::option::Option::None => 0,
@@ -378,7 +365,7 @@ pub fn region_key_index(
                     ),
                     step_of: v1_rt::rc_map_insert(
                         acc.step_of.clone(),
-                        scope_key_text(region.scope.clone()),
+                        crate::std_source_annotation::annotation_scope_key(region.scope.clone()),
                         v1_rt::concat(
                             v1_rt::concat((ordinal.clone()).to_string(), ":".to_string()),
                             region_label(region.scope.clone(), names.clone()),
@@ -393,7 +380,7 @@ pub fn region_key_index(
                 |acc: Rc<HashMap<String, Rc<AnnotationScope>>>, region: Rc<AnnotationRegion>| {
                     v1_rt::rc_map_insert(
                         acc,
-                        scope_key_text(region.scope.clone()),
+                        crate::std_source_annotation::annotation_scope_key(region.scope.clone()),
                         region.parent.clone(),
                     )
                 },
@@ -422,7 +409,7 @@ pub fn region_structural_key(
                     "?".to_string()
                 } else {
                     {
-                        let key = scope_key_text(scope.clone());
+                        let key = crate::std_source_annotation::annotation_scope_key(scope.clone());
                         let step = match v1_rt::map_get(&index.step_of.clone(), key.clone()) {
                             Some(s) => s.clone(),
                             std::option::Option::None => "?".to_string(),

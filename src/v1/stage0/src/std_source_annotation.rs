@@ -137,86 +137,149 @@ pub fn region_contains(extent: Rc<SourceSpan>, origin: Rc<SourceSpan>) -> bool {
     ((extent.start.clone() <= origin.start.clone()) && (origin.end.clone() <= extent.end.clone()))
 }
 
-pub fn region_width(extent: Rc<SourceSpan>) -> i64 {
-    v1_rt::int_sub(extent.end.clone(), extent.start.clone())
-}
-
-pub fn innermost_region_step(
-    best: Option<Rc<AnnotationRegion>>,
-    region: Rc<AnnotationRegion>,
-) -> Option<Rc<AnnotationRegion>> {
-    match best.clone() {
-        std::option::Option::None => Some(region.clone()),
-        Some(current) => {
-            if (region_width(region.extent.clone()) < region_width(current.extent.clone())) {
-                Some(region.clone())
-            } else {
-                if ((region_width(region.extent.clone()) == region_width(current.extent.clone()))
-                    && (region.parent.clone() == current.scope.clone()))
-                {
-                    Some(region.clone())
-                } else {
-                    best.clone()
-                }
-            }
+pub fn annotation_scope_key(scope: Rc<AnnotationScope>) -> String {
+    match (*scope.clone()).clone() {
+        AnnotationScope::FileScope => "file".to_string(),
+        AnnotationScope::OccurrenceScope { occurrence: o, .. } => {
+            v1_rt::concat("o".to_string(), (o.value.clone()).to_string())
         }
+        AnnotationScope::ErasedSourceRegion { extent: e, .. } => v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat("e".to_string(), (e.start.clone()).to_string()),
+                "-".to_string(),
+            ),
+            (e.end.clone()).to_string(),
+        ),
     }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct AnnotationNeighbours {
-    pub before: Option<Rc<AnnotationRegion>>,
-    pub after: Option<Rc<AnnotationRegion>>,
+pub struct AnnotationRegionIndex {
+    pub children: Rc<HashMap<String, Rc<Vec<Rc<AnnotationRegion>>>>>,
 }
 
-pub fn annotation_neighbour_step(
-    acc: Rc<AnnotationNeighbours>,
-    region: Rc<AnnotationRegion>,
-    origin: Rc<SourceSpan>,
-) -> Rc<AnnotationNeighbours> {
-    if (region.extent.clone().end.clone() <= origin.start.clone()) {
-        match acc.before.clone() {
-            std::option::Option::None => Rc::new(AnnotationNeighbours {
-                before: Some(region.clone()),
-                after: acc.after.clone(),
-            }),
-            Some(b) => {
-                if (region.extent.clone().start.clone() > b.extent.clone().start.clone()) {
-                    Rc::new(AnnotationNeighbours {
-                        before: Some(region.clone()),
-                        after: acc.after.clone(),
-                    })
-                } else {
-                    acc.clone()
+pub fn annotation_region_index(
+    regions: Rc<Vec<Rc<AnnotationRegion>>>,
+) -> Rc<AnnotationRegionIndex> {
+    {
+        let grouped = regions.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<Vec<Rc<AnnotationRegion>>>>(),
+            |acc: Rc<HashMap<String, Rc<Vec<Rc<AnnotationRegion>>>>>,
+             region: Rc<AnnotationRegion>| {
+                let key = annotation_scope_key(region.parent.clone());
+                match v1_rt::map_get(&acc, key.clone()) {
+                    Some(siblings) => v1_rt::rc_map_insert(
+                        acc.clone(),
+                        key.clone(),
+                        v1_rt::rc_list_push(siblings.clone(), region.clone()),
+                    ),
+                    std::option::Option::None => v1_rt::rc_map_insert(
+                        acc.clone(),
+                        key.clone(),
+                        Rc::new(vec![region.clone()]),
+                    ),
                 }
-            }
-        }
-    } else {
-        if (region.extent.clone().start.clone() >= origin.end.clone()) {
-            match acc.after.clone() {
-                std::option::Option::None => Rc::new(AnnotationNeighbours {
-                    before: acc.before.clone(),
-                    after: Some(region.clone()),
-                }),
-                Some(a) => {
-                    if (region.extent.clone().start.clone() < a.extent.clone().start.clone()) {
-                        Rc::new(AnnotationNeighbours {
-                            before: acc.before.clone(),
-                            after: Some(region.clone()),
-                        })
-                    } else {
-                        acc.clone()
+            },
+        );
+        Rc::new(AnnotationRegionIndex {
+            children: Rc::new(v1_rt::map_keys(&grouped)).iter().cloned().fold(
+                v1_rt::rc_empty_map::<String, Rc<Vec<Rc<AnnotationRegion>>>>(),
+                |acc: Rc<HashMap<String, Rc<Vec<Rc<AnnotationRegion>>>>>, key: String| {
+                    match v1_rt::map_get(&grouped, key.clone()) {
+                        Some(siblings) => v1_rt::rc_map_insert(
+                            acc.clone(),
+                            key.clone(),
+                            Rc::new({
+                                let mut __sorted: Vec<_> = siblings.iter().cloned().collect();
+                                __sorted.sort_by(
+                                    |a: &Rc<AnnotationRegion>, b: &Rc<AnnotationRegion>| {
+                                        let __ka = (|r: Rc<AnnotationRegion>| {
+                                            r.extent.clone().start.clone()
+                                        })(
+                                            a.clone()
+                                        );
+                                        let __kb = (|r: Rc<AnnotationRegion>| {
+                                            r.extent.clone().start.clone()
+                                        })(
+                                            b.clone()
+                                        );
+                                        v1_rt::canonical_key_cmp(&__ka, &__kb)
+                                    },
+                                );
+                                __sorted
+                            }),
+                        ),
+                        std::option::Option::None => acc.clone(),
                     }
-                }
-            }
-        } else {
-            acc.clone()
-        }
+                },
+            ),
+        })
     }
 }
 
-pub fn no_annotation_region() -> Option<Rc<AnnotationRegion>> {
-    std::option::Option::None
+pub fn annotation_children(
+    index: Rc<AnnotationRegionIndex>,
+    scope: Rc<AnnotationScope>,
+) -> Rc<Vec<Rc<AnnotationRegion>>> {
+    match v1_rt::map_get(&index.children.clone(), annotation_scope_key(scope.clone())) {
+        Some(siblings) => siblings.clone(),
+        std::option::Option::None => Rc::new(vec![]),
+    }
+}
+
+pub fn siblings_starting_at_or_before(
+    mut __tco_loop_siblings: Rc<Vec<Rc<AnnotationRegion>>>,
+    mut __tco_loop_at: i64,
+    mut __tco_loop_lo: i64,
+    mut __tco_loop_hi: i64,
+) -> i64 {
+    loop {
+        #[allow(unused_mut)]
+        let mut siblings = __tco_loop_siblings;
+        #[allow(unused_mut)]
+        let mut at = __tco_loop_at;
+        #[allow(unused_mut)]
+        let mut lo = __tco_loop_lo;
+        #[allow(unused_mut)]
+        let mut hi = __tco_loop_hi;
+        if (lo.clone() >= hi.clone()) {
+            break lo.clone();
+        } else {
+            let mid = v1_rt::int_div(v1_rt::int_add(lo.clone(), hi.clone()), 2);
+            match siblings.clone().get((mid.clone()) as usize).cloned() {
+                Some(r) => {
+                    if (r.extent.clone().start.clone() <= at.clone()) {
+                        {
+                            let __tco_0 = siblings;
+                            let __tco_1 = at;
+                            let __tco_2 = v1_rt::int_add(mid.clone(), 1);
+                            let __tco_3 = hi;
+                            __tco_loop_siblings = __tco_0;
+                            __tco_loop_at = __tco_1;
+                            __tco_loop_lo = __tco_2;
+                            __tco_loop_hi = __tco_3;
+                            continue;
+                        }
+                    } else {
+                        {
+                            let __tco_0 = siblings;
+                            let __tco_1 = at;
+                            let __tco_2 = lo;
+                            let __tco_3 = mid.clone();
+                            __tco_loop_siblings = __tco_0;
+                            __tco_loop_at = __tco_1;
+                            __tco_loop_lo = __tco_2;
+                            __tco_loop_hi = __tco_3;
+                            continue;
+                        }
+                    }
+                }
+                std::option::Option::None => {
+                    break lo.clone();
+                }
+            }
+        }
+    }
 }
 
 pub fn region_scope(region: Option<Rc<AnnotationRegion>>) -> Option<Rc<AnnotationScope>> {
@@ -226,43 +289,80 @@ pub fn region_scope(region: Option<Rc<AnnotationRegion>>) -> Option<Rc<Annotatio
     }
 }
 
-pub fn annotation_gap_of(
-    regions: Rc<Vec<Rc<AnnotationRegion>>>,
-    origin: Rc<SourceSpan>,
+pub fn annotation_gap_in(
+    mut __tco_loop_index: Rc<AnnotationRegionIndex>,
+    mut __tco_loop_scope: Rc<AnnotationScope>,
+    mut __tco_loop_origin: Rc<SourceSpan>,
+    mut __tco_loop_depth: i64,
 ) -> Rc<AnnotationGap> {
-    {
-        let scope = match regions.iter().cloned().fold(
-            no_annotation_region(),
-            |best: Option<Rc<AnnotationRegion>>, region: Rc<AnnotationRegion>| {
-                if region_contains(region.extent.clone(), origin.clone()) {
-                    innermost_region_step(best.clone(), region.clone())
-                } else {
-                    best.clone()
-                }
-            },
-        ) {
-            Some(inner) => inner.scope.clone(),
-            std::option::Option::None => Rc::new(AnnotationScope::FileScope),
-        };
-        let neighbours = regions.iter().cloned().fold(
-            Rc::new(AnnotationNeighbours {
-                before: std::option::Option::None,
-                after: std::option::Option::None,
-            }),
-            |acc: Rc<AnnotationNeighbours>, region: Rc<AnnotationRegion>| {
-                if (region.parent.clone() == scope.clone()) {
-                    annotation_neighbour_step(acc.clone(), region.clone(), origin.clone())
-                } else {
-                    acc.clone()
-                }
-            },
+    loop {
+        #[allow(unused_mut)]
+        let mut index = __tco_loop_index;
+        #[allow(unused_mut)]
+        let mut scope = __tco_loop_scope;
+        #[allow(unused_mut)]
+        let mut origin = __tco_loop_origin;
+        #[allow(unused_mut)]
+        let mut depth = __tco_loop_depth;
+        let siblings = annotation_children(index.clone(), scope.clone());
+        let n = siblings_starting_at_or_before(
+            siblings.clone(),
+            origin.start.clone(),
+            0,
+            (siblings.clone().len() as i64),
         );
-        Rc::new(AnnotationGap {
-            scope: scope.clone(),
-            before: region_scope(neighbours.before.clone()),
-            after: region_scope(neighbours.after.clone()),
-        })
+        let candidate = if (n.clone() == 0) {
+            std::option::Option::None
+        } else {
+            siblings
+                .clone()
+                .get((v1_rt::int_sub(n.clone(), 1)) as usize)
+                .cloned()
+        };
+        let containing = match candidate.clone() {
+            Some(c) => {
+                if (region_contains(c.extent.clone(), origin.clone()) && (depth.clone() > 0)) {
+                    Some(c.clone())
+                } else {
+                    std::option::Option::None
+                }
+            }
+            std::option::Option::None => std::option::Option::None,
+        };
+        match containing.clone() {
+            Some(inner) => {
+                let __tco_0 = index;
+                let __tco_1 = inner.scope.clone();
+                let __tco_2 = origin;
+                let __tco_3 = v1_rt::int_sub(depth, 1);
+                __tco_loop_index = __tco_0;
+                __tco_loop_scope = __tco_1;
+                __tco_loop_origin = __tco_2;
+                __tco_loop_depth = __tco_3;
+                continue;
+            }
+            std::option::Option::None => {
+                break Rc::new(AnnotationGap {
+                    scope: scope.clone(),
+                    before: region_scope(candidate.clone()),
+                    after: region_scope(siblings.clone().get((n.clone()) as usize).cloned()),
+                });
+            }
+        }
     }
+}
+
+pub fn annotation_gap_of(
+    index: Rc<AnnotationRegionIndex>,
+    origin: Rc<SourceSpan>,
+    depth: i64,
+) -> Rc<AnnotationGap> {
+    annotation_gap_in(
+        index.clone(),
+        Rc::new(AnnotationScope::FileScope),
+        origin.clone(),
+        depth.clone(),
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -282,10 +382,11 @@ pub fn annotation_attach_flush(acc: Rc<AnnotationAttachAcc>) -> Rc<Vec<Rc<Source
 pub fn annotation_attach_step(
     acc: Rc<AnnotationAttachAcc>,
     capture: Rc<NormalizedAnnotationCapture>,
-    regions: Rc<Vec<Rc<AnnotationRegion>>>,
+    index: Rc<AnnotationRegionIndex>,
+    depth: i64,
 ) -> Rc<AnnotationAttachAcc> {
     {
-        let gap = annotation_gap_of(regions.clone(), capture.origin.clone());
+        let gap = annotation_gap_of(index.clone(), capture.origin.clone(), depth.clone());
         let continues = ((capture.preceded_by_annotation_line.clone()
             && !capture.preceded_by_blank_line.clone())
             && acc.pending_adjacent.clone());
@@ -341,6 +442,8 @@ pub fn attach_annotations(
     regions: Rc<Vec<Rc<AnnotationRegion>>>,
 ) -> Rc<SourceAnnotationGraph> {
     {
+        let index = annotation_region_index(regions.clone());
+        let depth = v1_rt::int_add((regions.clone().len() as i64), 1);
         let acc = captures.iter().cloned().fold(
             Rc::new(AnnotationAttachAcc {
                 rows: Rc::new(vec![]),
@@ -348,7 +451,7 @@ pub fn attach_annotations(
                 pending_adjacent: false,
             }),
             |acc: Rc<AnnotationAttachAcc>, capture: Rc<NormalizedAnnotationCapture>| {
-                annotation_attach_step(acc, capture.clone(), regions.clone())
+                annotation_attach_step(acc, capture.clone(), index.clone(), depth.clone())
             },
         );
         Rc::new(SourceAnnotationGraph {

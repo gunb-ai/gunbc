@@ -125,51 +125,61 @@ fn region_contains(extent: SourceSpan, origin: SourceSpan) -> Bool {
   extent.start <= origin.start && origin.end <= extent.end
 }
 
-fn region_width(extent: SourceSpan) -> Int {
-  extent.end - extent.start
-}
-
-// The innermost of two regions that both contain a capture. A narrower region is nested inside a wider one; two of EQUAL extent are a parent and its only child (an argument and the expression it wraps), and the child is the inner one -- the region whose parent is the other.
-fn innermost_region_step(best: AnnotationRegion?, region: AnnotationRegion) -> AnnotationRegion? {
-  match best {
-    Absent => Present { value: region }
-    Present { value: current } =>
-      if region_width(extent: region.extent) < region_width(extent: current.extent) {
-        Present { value: region }
-      } else if region_width(extent: region.extent) == region_width(extent: current.extent) && region.parent == current.scope {
-        Present { value: region }
-      } else {
-        best
-      }
+// A scope's key within one roster: the file, an occurrence by its id, an erased region by its extent.
+fn annotation_scope_key(scope: AnnotationScope) -> String {
+  match scope {
+    FileScope => "file"
+    OccurrenceScope { occurrence: o } => concat("o", to_string(o.value))
+    ErasedSourceRegion { extent: e } => concat("e", to_string(e.start), "-", to_string(e.end))
   }
 }
 
-type AnnotationNeighbours {
-  before: AnnotationRegion?
-  after: AnnotationRegion?
+// THE ROSTER INDEXED ONCE PER SOURCE: each scope's direct children, ordered by start. Built in one
+// pass plus one sort per sibling list, so locating a capture is a descent from the file through the
+// child containing it -- a binary search per level -- rather than a scan of every region for every
+// capture.
+type AnnotationRegionIndex {
+  children: Map<String, List<AnnotationRegion>>
 }
 
-fn annotation_neighbour_step(acc: AnnotationNeighbours, region: AnnotationRegion, origin: SourceSpan) -> AnnotationNeighbours {
-  if region.extent.end <= origin.start {
-    match acc.before {
-      Absent => AnnotationNeighbours { before: Present { value: region }, after: acc.after }
-      Present { value: b } =>
-        if region.extent.start > b.extent.start { AnnotationNeighbours { before: Present { value: region }, after: acc.after } } else { acc }
-    }
-  } else if region.extent.start >= origin.end {
-    match acc.after {
-      Absent => AnnotationNeighbours { before: acc.before, after: Present { value: region } }
-      Present { value: a } =>
-        if region.extent.start < a.extent.start { AnnotationNeighbours { before: acc.before, after: Present { value: region } } } else { acc }
-    }
-  } else {
-    acc
+fn annotation_region_index(regions: List<AnnotationRegion>) -> AnnotationRegionIndex {
+  let grouped = fold(regions, init: empty_map(), f: (acc, region) =>
+    let key = annotation_scope_key(scope: region.parent)
+    match map_get(acc, key) {
+      Present { value: siblings } => map_insert(acc, key, list_push(siblings, region))
+      Absent => map_insert(acc, key, [region])
+    })
+  AnnotationRegionIndex {
+    children: fold(map_keys(grouped), init: empty_map(), f: (acc, key) =>
+      match map_get(grouped, key) {
+        Present { value: siblings } => map_insert(acc, key, siblings |> sort_by(r => r.extent.start))
+        Absent => acc
+      }),
   }
 }
 
-// Names the empty innermost-region accumulator's element type, which a bare `none` leaves open.
-fn no_annotation_region() -> AnnotationRegion? {
-  none
+fn annotation_children(index: AnnotationRegionIndex, scope: AnnotationScope) -> List<AnnotationRegion> {
+  match map_get(index.children, annotation_scope_key(scope: scope)) {
+    Present { value: siblings } => siblings
+    Absent => []
+  }
+}
+
+// The count of siblings starting at or before `at`: the binary search every level of the descent
+// and both neighbour lookups share.
+fn siblings_starting_at_or_before(siblings: List<AnnotationRegion>, at: Int, lo: Int, hi: Int) -> Int {
+  if lo >= hi { lo } else {
+    let mid = (lo + hi) / 2
+    match siblings |> get(mid) {
+      Present { value: r } =>
+        if r.extent.start <= at {
+          siblings_starting_at_or_before(siblings: siblings, at: at, lo: mid + 1, hi: hi)
+        } else {
+          siblings_starting_at_or_before(siblings: siblings, at: at, lo: lo, hi: mid)
+        }
+      Absent => lo
+    }
+  }
 }
 
 fn region_scope(region: AnnotationRegion?) -> AnnotationScope? {
@@ -179,22 +189,29 @@ fn region_scope(region: AnnotationRegion?) -> AnnotationScope? {
   }
 }
 
-// THE GAP OF ONE CAPTURE: the innermost region containing it, then that region's direct children on either side. Both passes read the roster once; there is no proximity rule to get wrong and no position with no answer.
-// DISSOLVE-ON: the realization publishes its regions indexed by parent and ordered by start; then the
-// two scans become lookups.
-fn annotation_gap_of(regions: List<AnnotationRegion>, origin: SourceSpan) -> AnnotationGap {
-  let scope = match fold(regions, init: no_annotation_region(), f: (best, region) =>
-    if region_contains(extent: region.extent, origin: origin) { innermost_region_step(best: best, region: region) } else { best }
-  ) {
-    Present { value: inner } => inner.scope
-    Absent => FileScope
+// THE GAP OF ONE CAPTURE. Descend from the file: among the current scope's children -- disjoint and
+// ordered -- the only one that can contain the capture is the last starting at or before it; if it
+// does, it becomes the scope and the descent continues, so the innermost containing region is the
+// last one reached (an argument and the expression it wraps share an extent, and the descent goes
+// through the argument to the expression). When no child contains it, that same search splits the
+// scope's children around the capture: the last one starting at or before it is `before`, the next
+// is `after`. `depth` bounds the descent by the roster's size.
+fn annotation_gap_in(index: AnnotationRegionIndex, scope: AnnotationScope, origin: SourceSpan, depth: Int) -> AnnotationGap {
+  let siblings = annotation_children(index: index, scope: scope)
+  let n = siblings_starting_at_or_before(siblings: siblings, at: origin.start, lo: 0, hi: count(siblings))
+  let candidate = if n == 0 { none } else { siblings |> get(n - 1) }
+  let containing = match candidate {
+    Present { value: c } => if region_contains(extent: c.extent, origin: origin) && depth > 0 { Present { value: c } } else { none }
+    Absent => none
   }
-  let neighbours = fold(
-    regions,
-    init: AnnotationNeighbours { before: none, after: none },
-    f: (acc, region) => if region.parent == scope { annotation_neighbour_step(acc: acc, region: region, origin: origin) } else { acc }
-  )
-  AnnotationGap { scope: scope, before: region_scope(region: neighbours.before), after: region_scope(region: neighbours.after) }
+  match containing {
+    Present { value: inner } => annotation_gap_in(index: index, scope: inner.scope, origin: origin, depth: depth - 1)
+    Absent => AnnotationGap { scope: scope, before: region_scope(region: candidate), after: region_scope(region: siblings |> get(n)) }
+  }
+}
+
+fn annotation_gap_of(index: AnnotationRegionIndex, origin: SourceSpan, depth: Int) -> AnnotationGap {
+  annotation_gap_in(index: index, scope: FileScope, origin: origin, depth: depth)
 }
 
 // `pending_adjacent` records whether the immediately previous capture opened or extended `pending`. A continuation line merges into `pending` only when this is true: captures arrive in source order, so the comment line above a continuation IS the previous capture.
@@ -219,9 +236,10 @@ fn annotation_attach_flush(acc: AnnotationAttachAcc) -> List<SourceAnnotationDeb
 fn annotation_attach_step(
   acc: AnnotationAttachAcc,
   capture: NormalizedAnnotationCapture,
-  regions: List<AnnotationRegion>
+  index: AnnotationRegionIndex,
+  depth: Int
 ) -> AnnotationAttachAcc {
-  let gap = annotation_gap_of(regions: regions, origin: capture.origin)
+  let gap = annotation_gap_of(index: index, origin: capture.origin, depth: depth)
   let continues = capture.preceded_by_annotation_line && !capture.preceded_by_blank_line && acc.pending_adjacent
   match acc.pending {
     Present { value: open } =>
@@ -254,17 +272,19 @@ fn annotation_attach_step(
   }
 }
 
-// The single attachment authority every realization calls. It is a PURE FOLD over captures and an already-allocated region roster: it reads identities and never mints one, so inserting, editing, or deleting a comment cannot shift any occurrence identity here or in any later-parsed module — there is no allocator in scope for it to violate. It cannot refuse: every capture lies in some gap, the file's at worst.
+// The single attachment authority every realization calls. It indexes the roster once, then is a PURE FOLD over captures: it reads identities and never mints one, so inserting, editing, or deleting a comment cannot shift any occurrence identity here or in any later-parsed module — there is no allocator in scope for it to violate. It cannot refuse: every capture lies in some gap, the file's at worst.
 //
 // Captures must arrive in source order, which is the order the lexer produced them; the block grouping above is the only thing that depends on it.
 fn attach_annotations(
   captures: List<NormalizedAnnotationCapture>,
   regions: List<AnnotationRegion>
 ) -> SourceAnnotationGraph {
+  let index = annotation_region_index(regions: regions)
+  let depth = count(regions) + 1
   let acc = fold(
     captures,
     init: AnnotationAttachAcc { rows: [], pending: none, pending_adjacent: false },
-    f: (acc, capture) => annotation_attach_step(acc: acc, capture: capture, regions: regions)
+    f: (acc, capture) => annotation_attach_step(acc: acc, capture: capture, index: index, depth: depth)
   )
   SourceAnnotationGraph { rows: annotation_attach_flush(acc: acc) }
 }

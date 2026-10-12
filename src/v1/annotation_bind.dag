@@ -22,6 +22,7 @@ import std.source_annotation {
   KeyedAnnotationRow,
   SourceAnnotationDebt,
   UnboundAnnotationCapture,
+  annotation_scope_key,
   attach_annotations,
   source_annotation_graph_rows
 }
@@ -49,13 +50,6 @@ fn occurrence_base_parent(entry: OccurrenceIndexEntry) -> AnnotationScope {
   }
 }
 
-fn scope_key_text(scope: AnnotationScope) -> String {
-  match scope {
-    FileScope => "file"
-    OccurrenceScope { occurrence: o } => concat("o", to_string(o.value))
-    ErasedSourceRegion { extent: e } => concat("e", to_string(e.start), "-", to_string(e.end))
-  }
-}
 
 // One anchor's erased scopes, innermost first, and whether they enclose the anchor or lie inside it.
 type ErasedChain {
@@ -205,14 +199,14 @@ fn region_key_index(transport: OccurrenceTransport, regions: List<AnnotationRegi
     map_insert(acc, entry.projection.occurrence.value, entry.projection.authored_name))
   let ordered = regions |> sort_by(r => r.extent.start)
   let stepped = fold(ordered, init: RegionKeyStepAcc { seen: empty_map(), step_of: empty_map() }, f: (acc, region) =>
-    let parent_key = scope_key_text(scope: region.parent)
+    let parent_key = annotation_scope_key(scope: region.parent)
     let ordinal = match map_get(acc.seen, parent_key) { Present { value: n } => n  Absent => 0 }
     RegionKeyStepAcc {
       seen: map_insert(acc.seen, parent_key, ordinal + 1),
-      step_of: map_insert(acc.step_of, scope_key_text(scope: region.scope), concat(to_string(ordinal), ":", region_label(scope: region.scope, names: names))),
+      step_of: map_insert(acc.step_of, annotation_scope_key(scope: region.scope), concat(to_string(ordinal), ":", region_label(scope: region.scope, names: names))),
     })
   RegionKeyIndex {
-    parent_of: fold(regions, init: empty_map(), f: (acc, region) => map_insert(acc, scope_key_text(scope: region.scope), region.parent)),
+    parent_of: fold(regions, init: empty_map(), f: (acc, region) => map_insert(acc, annotation_scope_key(scope: region.scope), region.parent)),
     step_of: stepped.step_of,
   }
 }
@@ -228,7 +222,7 @@ fn region_structural_key(index: RegionKeyIndex, scope: AnnotationScope, depth: I
     FileScope => "/"
     _ =>
       if depth <= 0 { "?" } else {
-        let key = scope_key_text(scope: scope)
+        let key = annotation_scope_key(scope: scope)
         let step = match map_get(index.step_of, key) { Present { value: s } => s  Absent => "?" }
         match map_get(index.parent_of, key) {
           Present { value: parent } => concat(region_structural_key(index: index, scope: parent, depth: depth - 1), "/", step)
