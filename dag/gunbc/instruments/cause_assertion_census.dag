@@ -561,6 +561,7 @@ fn cause_import_projection_unestablished_count(refusals: List<CauseSourceObserva
       CauseSourceExcluded { path: _, cause: _ } => n
       CauseSourceIndexRefused { path: _, module_path: _ } => n
       CauseSourceLexicalRefused { path: _ } => n
+      CauseSourceMarkerFactRefused { path: _, reason: _ } => n
     }
   })
 }
