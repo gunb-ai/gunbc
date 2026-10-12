@@ -52,37 +52,41 @@ fn same_tree(a: Optional<Hash>, b: Optional<Hash>) -> Bool {
 
 data indexed_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  xs[i]\n}\n"
 data called_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  v2.std.collection.list_at_optional(xs: xs, index: i)\n}\n"
-data bare_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> List<Int> {\n  xs\n}\n"
-data match_scrutinee_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Int {\n  match xs[i] {\n    Present { value: v } => v\n    Absent => 0\n  }\n}\n"
+data bare_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  xs\n}\n"
+data match_indexed_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Int {\n  match xs[i] {\n    Present { value: v } => v\n    Absent => 0\n  }\n}\n"
+data match_called_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Int {\n  match v2.std.collection.list_at_optional(xs: xs, index: i) {\n    Present { value: v } => v\n    Absent => 0\n  }\n}\n"
 data computed_index_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  xs[i + 1]\n}\n"
+data computed_called_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  v2.std.collection.list_at_optional(xs: xs, index: i + 1)\n}\n"
 data chained_source: String = "module probe.index\n\nfn pick(r: R, i: Int) -> Optional<Int> {\n  r.items[i]\n}\n"
-data empty_index_red_source: String = "module probe.index\n\nfn pick(xs: List<Int>) -> Optional<Int> {\n  xs[]\n}\n"
+data chained_called_source: String = "module probe.index\n\nfn pick(r: R, i: Int) -> Optional<Int> {\n  v2.std.collection.list_at_optional(xs: r.items, index: i)\n}\n"
+data trailing_comma_red_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  xs[i,]\n}\n"
+data empty_index_red_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  xs[]\n}\n"
 data two_index_red_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  xs[i, i]\n}\n"
 data unclosed_index_red_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  xs[i\n}\n"
-data slice_red_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> List<Int> {\n  xs[0..i]\n}\n"
+data slice_red_source: String = "module probe.index\n\nfn pick(xs: List<Int>, i: Int) -> Optional<Int> {\n  xs[0..i]\n}\n"
 
 fn indexed_tree() -> Optional<Hash> { normalized_hash(tag: "indexed", text: indexed_source) }
 fn called_tree() -> Optional<Hash> { normalized_hash(tag: "called", text: called_source) }
 fn bare_tree() -> Optional<Hash> { normalized_hash(tag: "bare", text: bare_source) }
 
 test fn an_index_suffix_lowers_to_the_element_access_call_holds() -> Bool {
-  same_tree(a: indexed_tree(), b: called_tree())
+  same_tree(a: normalized_hash(tag: "indexed", text: indexed_source), b: normalized_hash(tag: "called", text: called_source))
 }
 
 test fn an_index_suffix_is_not_its_base_read_alone_holds() -> Bool {
-  same_tree(a: indexed_tree(), b: bare_tree()) == false
+  same_tree(a: normalized_hash(tag: "indexed2", text: indexed_source), b: normalized_hash(tag: "bare", text: bare_source)) == false
 }
 
-test fn an_indexed_match_scrutinee_parses_holds() -> Bool {
-  parsed_ok(tag: "scrutinee", text: match_scrutinee_source)
+test fn an_indexed_match_scrutinee_lowers_as_the_call_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "mi", text: match_indexed_source), b: normalized_hash(tag: "mc", text: match_called_source))
 }
 
-test fn a_computed_index_parses_holds() -> Bool {
-  parsed_ok(tag: "computed", text: computed_index_source)
+test fn a_computed_index_lowers_as_the_call_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "ci", text: computed_index_source), b: normalized_hash(tag: "cc", text: computed_called_source))
 }
 
-test fn an_index_after_a_field_projection_parses_holds() -> Bool {
-  parsed_ok(tag: "chained", text: chained_source)
+test fn an_index_after_a_field_projection_lowers_as_the_call_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "pi", text: chained_source), b: normalized_hash(tag: "pc", text: chained_called_source))
 }
 
 test fn an_empty_index_refuses_at_lowering_not_as_a_list_literal_holds() -> Bool {
@@ -91,6 +95,10 @@ test fn an_empty_index_refuses_at_lowering_not_as_a_list_literal_holds() -> Bool
 
 test fn a_two_expression_index_refuses_at_lowering_holds() -> Bool {
   arity_refused(tag: "two", text: two_index_red_source)
+}
+
+test fn a_trailing_comma_index_refuses_at_lowering_holds() -> Bool {
+  arity_refused(tag: "trailing", text: trailing_comma_red_source)
 }
 
 test fn an_unclosed_index_still_refuses_at_parse_holds() -> Bool {

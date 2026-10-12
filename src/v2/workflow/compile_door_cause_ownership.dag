@@ -133,7 +133,7 @@ data known_frontier_causes: List<CauseOwnership> = [
   CauseOwnership {
     cause: ^body_lowering_reason_index_suffix_arity,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "an index suffix `[..]` after an operand parses with the list literal's bracket shape and lowers only with EXACTLY ONE index expression (v2.compiler.body_lowering_fold PostfixIndex, lowered to v2.std.collection list_at_optional); `xs[]` and `xs[a, b]` refuse located at the suffix. The wider body is deliberate: a single-expression production left those brackets to parse as `xs` followed by a list literal, a silent misread. This is a fidelity wall, not a frontier: v1 refuses the same forms at parse (02_parse parse_index_or_slice), so it retires only if the grammar can express exactly-one-expression without reopening that misread"
+    flip_trigger: "an index suffix `[..]` after an operand parses with the list literal's bracket shape and lowers only with EXACTLY ONE index expression (v2.compiler.body_lowering_fold PostfixIndex, lowered to v2.std.collection list_at_optional); `xs[]`, `xs[a, b]` and `xs[a,]` (a trailing comma) refuse located at the suffix. The wider body is deliberate: a single-expression production left those brackets to parse as `xs` followed by a list literal, a silent misread. This is a fidelity wall, not a frontier: v1 refuses the same forms at parse (02_parse parse_index_or_slice), so it retires only if the grammar can express exactly-one-expression without reopening that misread"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_uses_clause_unmodeled,

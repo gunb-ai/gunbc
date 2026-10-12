@@ -6107,6 +6107,26 @@ fn body_lower_comma_list_items(list_capture: Node, shape_refusal: Symbol) -> Out
   }
 }
 
+// A comma list ends in an optional comma (dag_grammar_comma_list_expr: seq(first, seq(repeat, optional comma))).
+// Whether that trailing comma was written is a fact of the capture the items read does not carry; a
+// consumer for which `[a,]` is not `[a]` -- an index suffix -- asks it here.
+fn body_lower_comma_list_has_trailing_comma(list_capture: Node) -> Bool {
+  let list = body_lower_deep_unwrap_optional(node: list_capture)
+  if is_empty_conj_root(n: list) {
+    false
+  } else {
+    match sugar_sequence_pair_optional(node: list) {
+      Absent => false
+      Present { value: head_and_rest } =>
+        match sugar_sequence_pair_optional(node: head_and_rest.right) {
+          Absent => false
+          Present { value: repeat_and_trailing } =>
+            is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: repeat_and_trailing.right)) == false
+        }
+    }
+  }
+}
+
 // The consumers that refuse under their own cause read the shape through this adapter: Absent is
 // "not a comma list", and each such caller already turns Absent into its own located refusal.
 fn body_lower_comma_list_items_optional(list_capture: Node) -> Optional<List<Node>> {
@@ -6750,6 +6770,9 @@ fn body_lower_postfix_chain_fold_step(
           ) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: items, diagnostics: _ } =>
+              if body_lower_comma_list_has_trailing_comma(list_capture: items_capture) {
+                outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_index_suffix_arity, n: at))
+              } else {
               match items {
                 Empty => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_index_suffix_arity, n: at))
                 Cons { head: index, tail: more } =>
@@ -6772,6 +6795,7 @@ fn body_lower_postfix_chain_fold_step(
                           )
                       }
                   }
+              }
               }
           }
         PostfixRecord { segment: step_segment, items: items } =>
